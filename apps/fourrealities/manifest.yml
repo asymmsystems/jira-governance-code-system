@@ -9,7 +9,7 @@ modules:
   jira:issuePanel:
     - key: fourrealities-issue-panel
       title: Reality Alignment
-      icon: https://raw.githubusercontent.com/feathericons/feather/master/icons/activity.svg
+      icon: resource:icons;icon.svg
       render: native
       resource: main
       resolver:
@@ -21,6 +21,8 @@ modules:
 resources:
   - key: main
     path: src/frontend/index.tsx
+  - key: icons
+    path: static/icons
 
 app:
   id: ari:cloud:ecosystem::app/974e4981-7626-4b1c-a41f-7eaccb7f3605
@@ -30,4 +32,5 @@ app:
 permissions:
   scopes:
     - read:jira-work
+    - write:jira-work
     - storage:app

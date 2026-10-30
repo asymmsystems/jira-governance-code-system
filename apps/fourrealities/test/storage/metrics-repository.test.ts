@@ -40,7 +40,17 @@ describe('MetricsRepository', () => {
       totalAuditedIssues: 20,
       healthyIssueCount: 19,
       atRiskIssueCount: 1,
-      highRiskIssueKeys: ['PROJ-5']
+      highRiskIssueKeys: ['PROJ-5'],
+      gateBreakdown: {
+        intent: { passed: 18, attention: 0, blocked: 2, hollow: 0 },
+        process: { passed: 19, attention: 1, blocked: 0, hollow: 0 },
+        code: { passed: 19, attention: 0, blocked: 1, hollow: 0 },
+        audit: { passed: 18, attention: 1, blocked: 1, hollow: 0 }
+      },
+      weakestGate: 'intent',
+      sprintDelta: 6,
+      sprintName: 'Sprint 24',
+      riskDistribution: { low: 18, medium: 1, high: 1, critical: 0 }
     },
     issueScores: []
   };

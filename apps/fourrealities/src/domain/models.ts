@@ -1,8 +1,28 @@
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
+export type GateStatus = 'PASSED' | 'ATTENTION' | 'BLOCKED' | 'HOLLOW';
+
+export interface IssueGates {
+  intent: GateStatus;
+  process: GateStatus;
+  code: GateStatus;
+  audit: GateStatus;
+}
+
+export interface RealityGateCounts {
+  passed: number;
+  attention: number;
+  blocked: number;
+  hollow: number;
+}
+
 export interface RealitySignals {
   issueId: string;
   issueKey: string;
+  summary?: string;
+  status?: string;
+  statusCategory?: string; // 'To Do' | 'In Progress' | 'Done'
+  assigneeName?: string;
   hasDocumentedIntent: boolean;
   transitionCount: number;
   regressionCount: number; // M30: Bounces back from QA/Review to In Progress
@@ -15,12 +35,19 @@ export interface RealitySignals {
 export interface IssueIntegrityScore {
   issueId: string;
   issueKey: string;
+  summary?: string;
+  status?: string;
+  statusCategory?: string;
+  assigneeName?: string;
   intentScore: number; // 0 - 100
   processScore: number; // 0 - 100
   codeScore: number; // 0 - 100
   auditScore: number; // 0 - 100
   realityAlignmentIndex: number; // Composite RAI 0 - 100
   riskLevel: RiskLevel;
+  gates: IssueGates;
+  synthesizedFinding: string;
+  recoverablePoints: number;
   findings: string[];
 }
 
@@ -34,6 +61,22 @@ export interface MetricSummary {
   healthyIssueCount: number;
   atRiskIssueCount: number;
   highRiskIssueKeys: string[];
+  // UX Enhancement Fields
+  gateBreakdown: {
+    intent: RealityGateCounts;
+    process: RealityGateCounts;
+    code: RealityGateCounts;
+    audit: RealityGateCounts;
+  };
+  weakestGate: 'intent' | 'process' | 'code' | 'audit';
+  sprintDelta: number; // e.g. +6 vs previous sprint
+  sprintName: string; // e.g. "Sprint 24"
+  riskDistribution: {
+    low: number;
+    medium: number;
+    high: number;
+    critical: number;
+  };
 }
 
 export interface ProjectAuditSnapshot {

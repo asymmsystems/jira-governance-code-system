@@ -137,6 +137,110 @@ describe('MetricsEngine', () => {
       expect(summary.healthyIssueCount).toBe(1);
       expect(summary.atRiskIssueCount).toBe(1);
       expect(summary.highRiskIssueKeys).toEqual(['ISSUE-B']);
+      expect(summary.gateBreakdown.intent.passed).toBe(1);
+      expect(summary.gateBreakdown.intent.blocked).toBe(1);
+      expect(summary.riskDistribution.low).toBe(1);
+      expect(summary.riskDistribution.high).toBe(1);
+    });
+
+    it('identifies weakest gate accurately across intent, code, and process', () => {
+      // Intent weakest
+      const sig1: RealitySignals = { ...perfectSignals, hasDocumentedIntent: false };
+      const sum1 = MetricsEngine.summarizeProject([sig1]);
+      expect(sum1.weakestGate).toBe('intent');
+
+      // Code weakest
+      const sig2: RealitySignals = { ...perfectSignals, hasApprovedReview: false };
+      const sum2 = MetricsEngine.summarizeProject([sig2]);
+      expect(sum2.weakestGate).toBe('code');
+
+      // Process weakest
+      const sig3: RealitySignals = { ...perfectSignals, regressionCount: 3 };
+      const sum3 = MetricsEngine.summarizeProject([sig3]);
+      expect(sum3.weakestGate).toBe('process');
+    });
+  });
+
+  describe('evaluateGates and synthesizeFinding', () => {
+    it('marks early issues as HOLLOW for Intent and Code', () => {
+      const todoSignals: RealitySignals = {
+        ...perfectSignals,
+        hasDocumentedIntent: false,
+        prCount: 0,
+        hasApprovedReview: false,
+        isDoDSatisfied: false,
+        hasCryptographicSeal: false,
+        statusCategory: 'To Do',
+        transitionCount: 1
+      };
+      const gates = MetricsEngine.evaluateGates(todoSignals);
+      expect(gates.intent).toBe('HOLLOW');
+      expect(gates.code).toBe('HOLLOW');
+      expect(gates.audit).toBe('HOLLOW');
+      expect(gates.process).toBe('PASSED');
+    });
+
+    it('generates accurate synthesized findings and recoverable points', () => {
+      // Intent blocked
+      const intentBlocked: RealitySignals = { ...perfectSignals, hasDocumentedIntent: false };
+      const scoreIntent = MetricsEngine.evaluateIssue(intentBlocked);
+      expect(scoreIntent.synthesizedFinding).toContain('Work lacks documented architectural intent');
+      expect(scoreIntent.recoverablePoints).toBe(25);
+
+      // Code blocked without PR
+      const codeNoPr: RealitySignals = { ...perfectSignals, prCount: 0, hasApprovedReview: false };
+      const scoreNoPr = MetricsEngine.evaluateIssue(codeNoPr);
+      expect(scoreNoPr.synthesizedFinding).toContain('progressing without a linked Pull Request');
+      expect(scoreNoPr.recoverablePoints).toBe(25);
+
+      // Code blocked with unreviewed PR
+      const codeUnreviewed: RealitySignals = { ...perfectSignals, prCount: 1, hasApprovedReview: false };
+      const scoreUnreviewed = MetricsEngine.evaluateIssue(codeUnreviewed);
+      expect(scoreUnreviewed.synthesizedFinding).toContain('without verified peer review approval');
+      expect(scoreUnreviewed.recoverablePoints).toBe(15);
+
+      // Audit blocked (both missing on Done issue)
+      const auditBlocked: RealitySignals = {
+        ...perfectSignals,
+        isDoDSatisfied: false,
+        hasCryptographicSeal: false,
+        statusCategory: 'Done'
+      };
+      const scoreAudit = MetricsEngine.evaluateIssue(auditBlocked);
+      expect(scoreAudit.synthesizedFinding).toContain('Definition of Done is incomplete and cryptographic seal is missing');
+      expect(scoreAudit.recoverablePoints).toBe(25);
+
+      // Process attention
+      const procAttention: RealitySignals = { ...perfectSignals, regressionCount: 2 };
+      const scoreProc = MetricsEngine.evaluateIssue(procAttention);
+      expect(scoreProc.synthesizedFinding).toContain('rework loop(s) indicating requirement churn');
+
+      // Audit attention without seal
+      const auditNoSeal: RealitySignals = {
+        ...perfectSignals,
+        isDoDSatisfied: true,
+        hasCryptographicSeal: false,
+        statusCategory: 'Done'
+      };
+      const scoreNoSeal = MetricsEngine.evaluateIssue(auditNoSeal);
+      expect(scoreNoSeal.synthesizedFinding).toContain('Definition of Done satisfied, but cryptographic seal is unverified');
+      expect(scoreNoSeal.recoverablePoints).toBe(12);
+
+      // Audit attention without DoD
+      const auditNoDod: RealitySignals = {
+        ...perfectSignals,
+        isDoDSatisfied: false,
+        hasCryptographicSeal: true,
+        statusCategory: 'Done'
+      };
+      const scoreNoDod = MetricsEngine.evaluateIssue(auditNoDod);
+      expect(scoreNoDod.synthesizedFinding).toContain('Cryptographic seal recorded, but Definition of Done is incomplete');
+      expect(scoreNoDod.recoverablePoints).toBe(12);
+
+      // All passed
+      const scoreAllPassed = MetricsEngine.evaluateIssue(perfectSignals);
+      expect(scoreAllPassed.synthesizedFinding).toContain('All four delivery reality gates verified and aligned');
+      expect(scoreAllPassed.recoverablePoints).toBe(0);
     });
   });
 });

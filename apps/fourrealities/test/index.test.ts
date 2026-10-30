@@ -7,7 +7,10 @@ import {
   handler,
   setGlobalStorageProvider,
   resolveStorage,
-  fetchLiveProjectAudit
+  fetchLiveProjectAudit,
+  linkDecision,
+  sealIssue,
+  completeDod
 } from '../src/index';
 import { StorageProvider } from '../src/storage/metrics-repository';
 import { RealitySignals } from '../src/domain/models';
@@ -17,6 +20,9 @@ jest.mock('@forge/api', () => ({
   __esModule: true,
   default: {
     asApp: () => ({
+      requestJira: mockRequestJira
+    }),
+    asUser: () => ({
       requestJira: mockRequestJira
     })
   },
@@ -410,6 +416,25 @@ describe('FourRealities Index / Forge Handlers', () => {
       } as any);
       expect(resIssue.issueKey).toBe('CTX-I');
     });
+
+    it('dispatches linkDecision, sealIssue, completeDod via handler', async () => {
+      mockRequestJira.mockResolvedValue({ status: 200, json: async () => ({}) });
+
+      const resLink: any = await handler({
+        call: { functionKey: 'linkDecision', payload: { issueId: 'iss-h1' } }
+      } as any);
+      expect(resLink.success).toBe(true);
+
+      const resSeal: any = await handler({
+        call: { functionKey: 'sealIssue', payload: { issueId: 'iss-h2' } }
+      } as any);
+      expect(resSeal.success).toBe(true);
+
+      const resDod: any = await handler({
+        call: { functionKey: 'completeDod', payload: { issueId: 'iss-h3' } }
+      } as any);
+      expect(resDod.success).toBe(true);
+    });
   });
 
   describe('Storage Resolution and Edge Cases', () => {
@@ -549,6 +574,84 @@ describe('FourRealities Index / Forge Handlers', () => {
 
       const alignRes = await getIssueAlignment({ issueId: 'remote-iss-1' }, {}, mockStorage);
       expect(alignRes.intentScore).toBe(100);
+
+      // getIssueAlignment with devStatus pullRequests and reviewer approval
+      mockRequestJira
+        .mockResolvedValueOnce({
+          status: 200,
+          json: async () => ({
+            id: 'dev-iss-1',
+            key: 'DEV-1',
+            fields: { summary: 'Issue with dev status' },
+            properties: {}
+          })
+        })
+        .mockResolvedValueOnce({ status: 404 }) // remote links 404
+        .mockResolvedValueOnce({
+          status: 200,
+          json: async () => ({
+            detail: [
+              {
+                pullRequests: [
+                  {
+                    id: 'pr-1',
+                    reviewers: [{ name: 'Fahim', approvalStatus: 'APPROVED' }]
+                  }
+                ]
+              }
+            ]
+          })
+        });
+
+      const alignDev = await getIssueAlignment({ issueId: 'dev-iss-1' }, {}, mockStorage);
+      expect(alignDev.codeScore).toBe(100);
+      expect(alignDev.gates.code).toBe('PASSED');
+    });
+  });
+
+  describe('Remediation Resolvers', () => {
+    it('executes linkDecision successfully and handles errors', async () => {
+      mockRequestJira.mockResolvedValueOnce({ status: 201 });
+      const res = await linkDecision({ issueId: 'iss-1' });
+      expect(res.success).toBe(true);
+
+      const fail = await linkDecision({});
+      expect(fail.success).toBe(false);
+      expect(fail.error).toBe('Missing issueId');
+
+      mockRequestJira.mockRejectedValueOnce(new Error('Network failure'));
+      const netErr = await linkDecision({ issueId: 'iss-1' });
+      expect(netErr.success).toBe(false);
+    });
+
+    it('executes sealIssue successfully and handles errors', async () => {
+      mockRequestJira.mockResolvedValueOnce({ status: 200 });
+      const res = await sealIssue({ issueId: 'iss-1' });
+      expect(res.success).toBe(true);
+      expect(res.cert.status).toBe('SEAL_VALID');
+
+      const fail = await sealIssue({});
+      expect(fail.success).toBe(false);
+      expect(fail.error).toBe('Missing issueId');
+
+      mockRequestJira.mockRejectedValueOnce(new Error('Network failure'));
+      const netErr = await sealIssue({ issueId: 'iss-1' });
+      expect(netErr.success).toBe(false);
+    });
+
+    it('executes completeDod successfully and handles errors', async () => {
+      mockRequestJira.mockResolvedValueOnce({ status: 200 });
+      const res = await completeDod({ issueId: 'iss-1' });
+      expect(res.success).toBe(true);
+      expect(res.dod.satisfied).toBe(true);
+
+      const fail = await completeDod({});
+      expect(fail.success).toBe(false);
+      expect(fail.error).toBe('Missing issueId');
+
+      mockRequestJira.mockRejectedValueOnce(new Error('Network failure'));
+      const netErr = await completeDod({ issueId: 'iss-1' });
+      expect(netErr.success).toBe(false);
     });
   });
 });

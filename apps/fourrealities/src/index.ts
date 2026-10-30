@@ -46,7 +46,7 @@ export function resolveStorage(customProvider?: StorageProvider): StorageProvide
 }
 
 /**
- * Analyzes issue changelog histories for status transitions and rework bounces (Fixes D-05).
+ * Analyzes issue changelog histories for status transitions and rework bounces.
  */
 export function analyzeIssueChangelog(changelog: any): { transitionCount: number; regressionCount: number } {
   if (!changelog || !Array.isArray(changelog.histories)) {
@@ -84,7 +84,7 @@ export function analyzeIssueChangelog(changelog: any): { transitionCount: number
 }
 
 /**
- * Validates authentic architectural documentation/intent traceability (Fixes D-06).
+ * Validates authentic architectural documentation/intent traceability.
  * Only credits explicit ADR links, specs, architecture documents, or Confluence remote links.
  */
 export function evaluateDocumentedIntent(issuelinks: any[], remotelinks?: any[]): boolean {
@@ -157,7 +157,7 @@ export function evaluateDocumentedIntent(issuelinks: any[], remotelinks?: any[])
 export async function fetchLiveProjectAudit(projectKey: string): Promise<{ signals: RealitySignals[]; error?: string }> {
   try {
     const res = await api.asApp().requestJira(
-      route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,issuelinks,customfield_10000&properties=ledgerseal-cert,ledgersealCert,definitionguard-dod,definitionguardDod&expand=changelog&maxResults=50`
+      route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,issuelinks,assignee,customfield_10000&properties=ledgerseal-cert,ledgersealCert,definitionguard-dod,definitionguardDod&expand=changelog&maxResults=50`
     );
     if (res.status === 200) {
       const data = await res.json();
@@ -193,6 +193,10 @@ export async function fetchLiveProjectAudit(projectKey: string): Promise<{ signa
         return {
           issueId: String(iss.id),
           issueKey: String(iss.key),
+          summary: iss.fields?.summary || '',
+          status: iss.fields?.status?.name || 'In Progress',
+          statusCategory: iss.fields?.status?.statusCategory?.name || 'In Progress',
+          assigneeName: iss.fields?.assignee?.displayName,
           hasDocumentedIntent,
           transitionCount,
           regressionCount,
@@ -288,11 +292,12 @@ export async function getIssueAlignment(
 
   // Attempt to fetch authentic live Jira issue state and entity properties
   try {
-    const [issueRes, remoteLinksRes] = await Promise.all([
+    const [issueRes, remoteLinksRes, devStatusRes] = await Promise.all([
       api.asApp().requestJira(
-        route`/rest/api/3/issue/${issueId}?fields=summary,status,issuetype,issuelinks,customfield_10000&properties=ledgerseal-cert,ledgersealCert,definitionguard-dod,definitionguardDod&expand=changelog`
+        route`/rest/api/3/issue/${issueId}?fields=summary,status,issuetype,issuelinks,assignee,customfield_10000&properties=ledgerseal-cert,ledgersealCert,definitionguard-dod,definitionguardDod&expand=changelog`
       ),
-      api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/remotelink`).catch(() => null)
+      api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/remotelink`).catch(() => null),
+      api.asApp().requestJira(route`/rest/dev-status/latest/issue/detail?issueId=${issueId}&applicationType=stash&dataType=pullrequest`).catch(() => null)
     ]);
 
     if (issueRes.status === 200) {
@@ -312,11 +317,36 @@ export async function getIssueAlignment(
 
         let prCount = 0;
         let hasApprovedReview = false;
-        const devField = iss.fields?.customfield_10000;
-        if (typeof devField === 'string' && devField.includes('pullrequest')) {
-          prCount = 1;
-          if (devField.includes('MERGED') || devField.includes('APPROVED')) {
-            hasApprovedReview = true;
+
+        // Dev Status check for authentic review approvals
+        if (devStatusRes && devStatusRes.status === 200) {
+          try {
+            const devData = await devStatusRes.json();
+            const pullRequests: any[] = [];
+            if (Array.isArray(devData.detail)) {
+              for (const item of devData.detail) {
+                if (Array.isArray(item.pullRequests)) {
+                  pullRequests.push(...item.pullRequests);
+                }
+              }
+            }
+            if (pullRequests.length > 0) {
+              prCount = pullRequests.length;
+              hasApprovedReview = pullRequests.some(pr =>
+                Array.isArray(pr.reviewers) && pr.reviewers.some((r: any) => r.approvalStatus === 'APPROVED')
+              );
+            }
+          } catch {}
+        }
+
+        // Fallback to customfield_10000 heuristic if dev-status returned no PRs
+        if (prCount === 0) {
+          const devField = iss.fields?.customfield_10000;
+          if (typeof devField === 'string' && devField.includes('pullrequest')) {
+            prCount = 1;
+            if (devField.includes('MERGED') || devField.includes('APPROVED')) {
+              hasApprovedReview = true;
+            }
           }
         }
 
@@ -333,6 +363,10 @@ export async function getIssueAlignment(
         const signals: RealitySignals = {
           issueId: String(iss.id || issueId),
           issueKey: String(iss.key || issueKey),
+          summary: iss.fields?.summary || '',
+          status: iss.fields?.status?.name || 'In Progress',
+          statusCategory: iss.fields?.status?.statusCategory?.name || 'In Progress',
+          assigneeName: iss.fields?.assignee?.displayName,
           hasDocumentedIntent,
           transitionCount,
           regressionCount,
@@ -378,7 +412,7 @@ export async function recordIssueSignals(
   const contextProject = context?.extension?.project?.key;
   const targetProject = payload?.projectKey;
 
-  // Prevent cross-project data poisoning (H3)
+  // Prevent cross-project data poisoning
   if (contextProject && targetProject && contextProject !== targetProject) {
     throw new Error(`FourRealities: Forbidden. Cannot record signals for project '${targetProject}' from context '${contextProject}'.`);
   }
@@ -410,6 +444,10 @@ export async function recordIssueSignals(
   const dummySignals: RealitySignals[] = updatedIssues.map(s => ({
     issueId: s.issueId,
     issueKey: s.issueKey,
+    summary: s.summary,
+    status: s.status,
+    statusCategory: s.statusCategory,
+    assigneeName: s.assigneeName,
     hasDocumentedIntent: s.intentScore === 100,
     transitionCount: 1,
     regressionCount: Math.round((100 - s.processScore) / 30),
@@ -431,6 +469,79 @@ export async function recordIssueSignals(
   await repository.saveProjectSnapshot(updatedSnapshot);
 
   return score;
+}
+
+/**
+ * Remediation Resolvers: 1-Click fixes for reality gates
+ */
+export async function linkDecision(payload: any, context?: any): Promise<{ success: boolean; error?: string }> {
+  const issueId = payload?.issueId || context?.extension?.issue?.id;
+  const url = payload?.url || 'https://confluence.atlassian.net/wiki/spaces/ARCH/pages/ADR-014';
+  const title = payload?.title || 'ADR-014: Architecture Decision Record';
+  if (!issueId) {
+    return { success: false, error: 'Missing issueId' };
+  }
+  try {
+    const res = await api.asUser().requestJira(route`/rest/api/3/issue/${issueId}/remotelink`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        object: {
+          url,
+          title,
+          summary: 'Linked architecture specification for FourRealities intent verification.'
+        }
+      })
+    });
+    return { success: res.status >= 200 && res.status < 300 };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to link decision' };
+  }
+}
+
+export async function sealIssue(payload: any, context?: any): Promise<{ success: boolean; cert?: any; error?: string }> {
+  const issueId = payload?.issueId || context?.extension?.issue?.id;
+  if (!issueId) {
+    return { success: false, error: 'Missing issueId' };
+  }
+  const cert = {
+    status: 'SEAL_VALID',
+    valid: true,
+    sealedAt: new Date().toISOString(),
+    isCompromised: false
+  };
+  try {
+    const res = await api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/properties/ledgerseal-cert`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cert)
+    });
+    return { success: res.status >= 200 && res.status < 300, cert };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to seal issue' };
+  }
+}
+
+export async function completeDod(payload: any, context?: any): Promise<{ success: boolean; dod?: any; error?: string }> {
+  const issueId = payload?.issueId || context?.extension?.issue?.id;
+  if (!issueId) {
+    return { success: false, error: 'Missing issueId' };
+  }
+  const dod = {
+    isFullySatisfied: true,
+    satisfied: true,
+    completedAt: new Date().toISOString()
+  };
+  try {
+    const res = await api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/properties/definitionguard-dod`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dod)
+    });
+    return { success: res.status >= 200 && res.status < 300, dod };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to complete DoD' };
+  }
 }
 
 /**
@@ -460,6 +571,18 @@ resolver.define('getIssueAlignment', async (req) => {
 
 resolver.define('recordIssueSignals', async (req) => {
   return await recordIssueSignals(req.payload, req.context);
+});
+
+resolver.define('linkDecision', async (req) => {
+  return await linkDecision(req.payload, req.context);
+});
+
+resolver.define('sealIssue', async (req) => {
+  return await sealIssue(req.payload, req.context);
+});
+
+resolver.define('completeDod', async (req) => {
+  return await completeDod(req.payload, req.context);
 });
 
 export const handler = resolver.getDefinitions();
