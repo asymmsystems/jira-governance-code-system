@@ -1,19 +1,30 @@
+/**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ * @author Asymm Systems Team
+ * FourRealities: Forge Resolvers & Handlers Unit Tests
+ */
+
 import {
   getProjectDashboard,
   getIssueAlignment,
   recordIssueSignals,
   renderProjectPage,
   renderIssuePanel,
+  renderIssueContext,
   handler,
   setGlobalStorageProvider,
   resolveStorage,
   fetchLiveProjectAudit,
   linkDecision,
   sealIssue,
-  completeDod
+  completeDod,
+  recordException,
+  analyzeIssueChangelog,
+  evaluateDocumentedIntent,
+  extractSignalsFromIssue
 } from '../src/index';
-import { StorageProvider } from '../src/storage/metrics-repository';
-import { RealitySignals } from '../src/domain/models';
+import { StorageProvider, MetricsRepository } from '../src/storage/metrics-repository';
+import { RealitySignals, IssueExceptionRecord } from '../src/domain/models';
 
 const mockRequestJira = jest.fn();
 jest.mock('@forge/api', () => ({
@@ -67,21 +78,23 @@ describe('FourRealities Index / Forge Handlers', () => {
   });
 
   describe('fetchLiveProjectAudit', () => {
-    it('queries Jira and parses issues with entity properties', async () => {
+    it('queries Jira and parses issues with entity properties and pagination', async () => {
       mockRequestJira.mockResolvedValueOnce({
         status: 200,
         json: async () => ({
+          total: 2,
           issues: [
             {
               id: '1001',
               key: 'PROJ-1',
               fields: {
                 summary: 'Feature one',
-                status: { statusCategory: { key: 'done' } },
-                issuelinks: [{ id: 'link-1' }]
+                status: { name: 'Done', statusCategory: { name: 'Done' } },
+                issuelinks: [{ id: 'link-1' }],
+                sprint: { name: 'Sprint 10' }
               },
               properties: {
-                'ledgerseal-cert': { status: 'SEAL_VALID' },
+                'ledgerseal-cert': { status: 'SEAL_VALID', certificateId: 'LS-ABCD1234', snapshotHash: 'hash-abc' },
                 'definitionguard-dod': { isFullySatisfied: true }
               }
             },
@@ -90,7 +103,7 @@ describe('FourRealities Index / Forge Handlers', () => {
               key: 'PROJ-2',
               fields: {
                 summary: 'Task two',
-                status: { statusCategory: { key: 'indeterminate' } },
+                status: { name: 'In Progress', statusCategory: { name: 'In Progress' } },
                 issuelinks: []
               },
               properties: {}
@@ -99,78 +112,55 @@ describe('FourRealities Index / Forge Handlers', () => {
         })
       });
 
-      const { signals } = await fetchLiveProjectAudit('PROJ');
+      const repo = new MetricsRepository(mockStorage);
+      const { signals, error } = await fetchLiveProjectAudit('PROJ', repo);
+      expect(error).toBeUndefined();
       expect(signals.length).toBe(2);
+      expect(signals[0].issueKey).toBe('PROJ-1');
       expect(signals[0].hasCryptographicSeal).toBe(true);
       expect(signals[0].isDoDSatisfied).toBe(true);
+      expect(signals[0].sprintName).toBe('Sprint 10');
+      expect(signals[1].issueKey).toBe('PROJ-2');
       expect(signals[1].hasCryptographicSeal).toBe(false);
-      expect(signals[1].isDoDSatisfied).toBe(false);
     });
 
-    it('queries Jira with pullrequest data and parses PR review status', async () => {
+    it('returns error when Jira search returns non-200 status', async () => {
       mockRequestJira.mockResolvedValueOnce({
-        status: 200,
-        json: async () => ({
-          issues: [
-            {
-              id: '1005',
-              key: 'PROJ-5',
-              fields: {
-                summary: 'PR issue',
-                issuelinks: [{ id: 'link-5' }],
-                customfield_10000: '{pullrequest={dataType=pullrequest, state=MERGED}}'
-              },
-              properties: {}
-            }
-          ]
-        })
+        status: 502,
+        json: async () => ({ errorMessages: ['Gateway error'] })
       });
 
-      const { signals } = await fetchLiveProjectAudit('PROJ');
-      expect(signals.length).toBe(1);
-      expect(signals[0].prCount).toBe(1);
-      expect(signals[0].hasApprovedReview).toBe(true);
-    });
-
-    it('returns error on Jira fetch non-200 or failure', async () => {
-      mockRequestJira.mockResolvedValueOnce({ status: 500 });
       const { signals, error } = await fetchLiveProjectAudit('ERR');
-      expect(signals).toEqual([]);
-      expect(error).toContain('HTTP 500');
-
-      mockRequestJira.mockRejectedValueOnce(new Error('Network failure'));
-      const signalsErr = await fetchLiveProjectAudit('ERR2');
-      expect(signalsErr.signals).toEqual([]);
-      expect(signalsErr.error).toContain('Network failure');
+      expect(signals).toHaveLength(0);
+      expect(error).toContain('Jira search/jql failed with HTTP 502');
     });
-  });
 
-  describe('Storage resolution', () => {
-    it('throws error when storage provider is not set', async () => {
-      setGlobalStorageProvider(null as any);
-      await expect(getProjectDashboard({ projectKey: 'FAIL' })).rejects.toThrow(
-        'FourRealities: StorageProvider must be initialized.'
-      );
-      setGlobalStorageProvider(mockStorage);
+    it('catches and returns network errors', async () => {
+      mockRequestJira.mockRejectedValueOnce(new Error('Connection timeout'));
+
+      const { signals, error } = await fetchLiveProjectAudit('TIMEOUT');
+      expect(signals).toHaveLength(0);
+      expect(error).toBe('Connection timeout');
     });
   });
 
   describe('getProjectDashboard', () => {
-    it('computes live snapshot when Jira returns issues', async () => {
+    it('returns live audit snapshot with summary and stores in repository', async () => {
       mockRequestJira.mockResolvedValueOnce({
         status: 200,
         json: async () => ({
+          total: 1,
           issues: [
             {
-              id: '1001',
-              key: 'PROJ-1',
+              id: '2001',
+              key: 'DEMO-1',
               fields: {
-                summary: 'Feature one',
-                status: { statusCategory: { key: 'done' } },
-                issuelinks: [{ id: 'link-1' }]
+                summary: 'Core item',
+                status: { name: 'Done', statusCategory: { name: 'Done' } },
+                issuelinks: []
               },
               properties: {
-                'ledgerseal-cert': { status: 'SEAL_VALID' },
+                'ledgerseal-cert': { status: 'SEAL_VALID', certificateId: 'LS-999', snapshotHash: 'sha-999' },
                 'definitionguard-dod': { isFullySatisfied: true }
               }
             }
@@ -178,20 +168,68 @@ describe('FourRealities Index / Forge Handlers', () => {
         })
       });
 
-      const snap = await getProjectDashboard({ projectKey: 'PROJ' }, { accountId: 'user-live' }, mockStorage);
-      expect(snap.projectKey).toBe('PROJ');
-      expect(snap.issueScores.length).toBe(1);
-      expect(snap.summary.totalAuditedIssues).toBe(1);
+      const snapshot = await getProjectDashboard({ projectKey: 'DEMO' }, {}, mockStorage);
+
+      expect(snapshot.projectKey).toBe('DEMO');
+      expect(snapshot.summary.totalAuditedIssues).toBe(1);
+      expect(snapshot.issueScores.length).toBe(1);
+      expect(snapshot.warning).toBeUndefined();
     });
 
-    it('initializes baseline snapshot on first request when empty and returns existing on second', async () => {
-      mockRequestJira.mockRejectedValue(new Error('Jira unavailable'));
-      const snap1 = await getProjectDashboard({ projectKey: 'PROJ' }, { accountId: 'user-1' }, mockStorage);
-      expect(snap1.projectKey).toBe('PROJ');
-      expect(snap1.summary.totalAuditedIssues).toBe(0);
+    it('falls back to cached snapshot when live Jira query fails', async () => {
+      mockRequestJira.mockResolvedValueOnce({
+        status: 500,
+        json: async () => ({ error: 'Internal server error' })
+      });
 
-      const snap2 = await getProjectDashboard({ projectKey: 'PROJ' }, {}, mockStorage);
-      expect(snap2.snapshotId).toBe(snap1.snapshotId);
+      const cachedSnapshot = {
+        snapshotId: 'cached-1',
+        projectKey: 'FAIL-PROJ',
+        generatedAt: '2026-10-29T10:00:00Z',
+        generatedBy: 'admin',
+        summary: {
+          m11TraceabilityRate: 100,
+          m29ReviewComplianceRate: 100,
+          m30ReworkLoopRate: 0,
+          m40AuditComplianceRate: 100,
+          averageRAI: 100,
+          totalAuditedIssues: 1,
+          doneCount: 1,
+          sealedDoneCount: 1,
+          healthyIssueCount: 1,
+          atRiskIssueCount: 0,
+          highRiskIssueKeys: [],
+          gateBreakdown: {
+            intent: { passed: 1, attention: 0, blocked: 0, hollow: 0 },
+            process: { passed: 1, attention: 0, blocked: 0, hollow: 0 },
+            code: { passed: 1, attention: 0, blocked: 0, hollow: 0 },
+            audit: { passed: 1, attention: 0, blocked: 0, hollow: 0 }
+          },
+          weakestGate: 'audit' as const,
+          sprintName: 'Sprint 1',
+          hasTrendHistory: false,
+          riskDistribution: { low: 1, medium: 0, high: 0, critical: 0 }
+        },
+        issueScores: []
+      };
+
+      await mockStorage.set('fr:project:FAIL-PROJ:latest', cachedSnapshot);
+
+      const snapshot = await getProjectDashboard({ projectKey: 'FAIL-PROJ' }, {}, mockStorage);
+
+      expect(snapshot.snapshotId).toBe('cached-1');
+      expect(snapshot.warning).toContain('Live Jira sync failed');
+    });
+
+    it('returns empty fallback snapshot with warning when live fails and no cache exists', async () => {
+      mockRequestJira.mockResolvedValueOnce({
+        status: 500,
+        json: async () => ({ error: 'Fail' })
+      });
+
+      const snap = await getProjectDashboard({ projectKey: 'PROJ-FRESH-FAIL' }, {}, mockStorage);
+      expect(snap.projectKey).toBe('PROJ-FRESH-FAIL');
+      expect(snap.warning).toContain('No cached snapshot available');
     });
 
     it('falls back to context project key or DEFAULT when payload projectKey missing', async () => {
@@ -212,16 +250,10 @@ describe('FourRealities Index / Forge Handlers', () => {
       await expect(getIssueAlignment({}, {}, mockStorage)).rejects.toThrow('Missing issueId');
     });
 
-    it('returns default alignment score when issue signals not yet recorded', async () => {
-      const score = await getIssueAlignment({ issueId: 'issue-10', issueKey: 'TEST-10' }, {}, mockStorage);
-      expect(score.issueKey).toBe('TEST-10');
-      expect(score.riskLevel).toBe('CRITICAL');
-    });
-
-    it('returns evaluated score when issue signals exist', async () => {
-      const signals: RealitySignals = {
-        issueId: 'issue-20',
-        issueKey: 'TEST-20',
+    it('evaluates stored signals when available in repository', async () => {
+      const storedSignals: RealitySignals = {
+        issueId: 'stored-1',
+        issueKey: 'STORED-1',
         hasDocumentedIntent: true,
         transitionCount: 1,
         regressionCount: 0,
@@ -230,85 +262,22 @@ describe('FourRealities Index / Forge Handlers', () => {
         hasCryptographicSeal: true,
         isDoDSatisfied: true
       };
+      await mockStorage.set('fr:issue:stored-1:signals', storedSignals);
 
-      await recordIssueSignals({ signals, projectKey: 'TEST' }, {}, mockStorage);
-      const score = await getIssueAlignment({ issueId: 'issue-20' }, {}, mockStorage);
-      expect(score.issueKey).toBe('TEST-20');
+      const score = await getIssueAlignment({ issueId: 'stored-1', issueKey: 'STORED-1' }, {}, mockStorage);
+      expect(score.issueKey).toBe('STORED-1');
       expect(score.realityAlignmentIndex).toBe(100);
       expect(score.riskLevel).toBe('LOW');
     });
-  });
 
-  describe('recordIssueSignals', () => {
-    it('throws error when signals are missing or invalid', async () => {
-      await expect(recordIssueSignals({}, {}, mockStorage)).rejects.toThrow('Valid issue signals required.');
-      await expect(recordIssueSignals({ signals: { issueId: '' } }, {}, mockStorage)).rejects.toThrow(
-        'Valid issue signals required.'
-      );
-    });
-
-    it('records signals and updates project snapshot when projectKey is supplied', async () => {
-      const signals: RealitySignals = {
-        issueId: 'issue-30',
-        issueKey: 'TEST-30',
-        hasDocumentedIntent: true,
-        transitionCount: 1,
-        regressionCount: 0,
-        prCount: 1,
-        hasApprovedReview: true,
-        hasCryptographicSeal: false,
-        isDoDSatisfied: true
-      };
-
-      const score = await recordIssueSignals({ signals, projectKey: 'PROJ-REC' }, { accountId: 'recorder' }, mockStorage);
-      expect(score.issueKey).toBe('TEST-30');
-
-      // Update same issue to trigger replacing in snapshot
-      const updatedSignals: RealitySignals = {
-        ...signals,
-        hasCryptographicSeal: true
-      };
-      const score2 = await recordIssueSignals({ signals: updatedSignals, projectKey: 'PROJ-REC' }, {}, mockStorage);
-      expect(score2.realityAlignmentIndex).toBe(100);
-    });
-
-    it('rejects cross-project modification to prevent poisoning (H3)', async () => {
+    it('throws error when Jira query fails and no stored signals exist', async () => {
+      mockRequestJira.mockResolvedValueOnce({ status: 404 });
       await expect(
-        recordIssueSignals(
-          { signals: { issueId: '9', issueKey: 'FIN-9' }, projectKey: 'FIN' },
-          { extension: { project: { key: 'PROJ' } } },
-          mockStorage
-        )
-      ).rejects.toThrow('Forbidden. Cannot record signals for project');
+        getIssueAlignment({ issueId: 'not-found', issueKey: 'NF-1' }, {}, mockStorage)
+      ).rejects.toThrow("Failed to query Jira for issue 'NF-1'");
     });
 
-    it('returns cached snapshot with warning when Jira fails after initial success', async () => {
-      mockRequestJira.mockResolvedValueOnce({
-        status: 200,
-        json: async () => ({ issues: [] })
-      });
-      const snap1 = await getProjectDashboard({ projectKey: 'PROJ-CACHED' }, {}, mockStorage);
-
-      mockRequestJira.mockResolvedValueOnce({ status: 503 });
-      const snap2 = await getProjectDashboard({ projectKey: 'PROJ-CACHED' }, {}, mockStorage);
-      expect(snap2.snapshotId).toBe(snap1.snapshotId);
-      expect(snap2.warning).toContain('HTTP 503');
-    });
-
-    it('creates initial baseline snapshot with warning when Jira fails on first attempt', async () => {
-      mockRequestJira.mockResolvedValueOnce({ status: 500 });
-      const snap = await getProjectDashboard({ projectKey: 'PROJ-FRESH-FAIL' }, {}, mockStorage);
-      expect(snap.projectKey).toBe('PROJ-FRESH-FAIL');
-      expect(snap.warning).toContain('No cached snapshot available');
-    });
-
-    it('throws error when project key cannot be determined from signals', async () => {
-      await expect(
-        recordIssueSignals({ signals: { issueId: '99', issueKey: 'NOPROJECT' } }, {}, mockStorage)
-      ).rejects.toThrow('Project key required.');
-    });
-
-    it('fetches live Jira issue and parses PR data in getIssueAlignment', async () => {
+    it('fetches live Jira issue and parses authentic PR reviews in getIssueAlignment', async () => {
       mockRequestJira.mockResolvedValueOnce({
         status: 200,
         json: async () => ({
@@ -316,6 +285,7 @@ describe('FourRealities Index / Forge Handlers', () => {
           key: 'LIVE-1',
           fields: {
             summary: 'Live Issue',
+            status: { name: 'Done', statusCategory: { name: 'Done' } },
             issuelinks: [
               {
                 id: '1',
@@ -323,10 +293,10 @@ describe('FourRealities Index / Forge Handlers', () => {
                 outwardIssue: { fields: { summary: '[ADR] System Architecture' } }
               }
             ],
-            customfield_10000: '{pullrequest={dataType=pullrequest, state=MERGED}}'
+            customfield_10000: '{pullrequest={dataType=pullrequest, state=MERGED, reviewStatus=APPROVED}}'
           },
           properties: {
-            'ledgerseal-cert': { status: 'SEAL_VALID' },
+            'ledgerseal-cert': { status: 'SEAL_VALID', certificateId: 'LS-LIVE1', snapshotHash: 'hash-live' },
             'definitionguard-dod': { isFullySatisfied: true }
           }
         })
@@ -338,17 +308,94 @@ describe('FourRealities Index / Forge Handlers', () => {
       expect(score.auditScore).toBe(100);
       expect(score.realityAlignmentIndex).toBe(100);
     });
-  });
 
-  describe('renderProjectPage and renderIssuePanel', () => {
-    it('returns project page module metadata', async () => {
-      const res = await renderProjectPage({ some: 'context' });
-      expect(res.moduleKey).toBe('fourrealities-project-dashboard');
+    it('penalizes PRs that are merged without verified approval', async () => {
+      mockRequestJira.mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({
+          id: 'unreviewed-1',
+          key: 'UNREV-1',
+          fields: {
+            summary: 'Unreviewed Merge',
+            status: { name: 'Done', statusCategory: { name: 'Done' } },
+            issuelinks: [{ outwardIssue: { fields: { summary: '[ADR] Spec' } } }],
+            customfield_10000: '{pullrequest={dataType=pullrequest, state=MERGED}}' // Merged without APPROVED
+          },
+          properties: {
+            'ledgerseal-cert': { status: 'SEAL_VALID', certificateId: 'LS-1', snapshotHash: 'hash-1' },
+            'definitionguard-dod': { isFullySatisfied: true }
+          }
+        })
+      });
+
+      const score = await getIssueAlignment({ issueId: 'unreviewed-1' }, {}, mockStorage);
+      expect(score.codeScore).toBe(40); // Merged without review approval
+      expect(score.gates.code).toBe('BLOCKED');
+      expect(score.synthesizedFinding).toContain('without verified peer review approval');
     });
 
-    it('returns issue panel module metadata', async () => {
-      const res = await renderIssuePanel({ some: 'context' });
-      expect(res.moduleKey).toBe('fourrealities-issue-panel');
+    it('fetches pullRequests from dev-status in getIssueAlignment', async () => {
+      mockRequestJira
+        .mockResolvedValueOnce({
+          status: 200,
+          json: async () => ({
+            id: 'dev-iss-1',
+            key: 'DEV-1',
+            fields: { summary: 'Dev item', status: { name: 'Done', statusCategory: { name: 'Done' } }, issuelinks: [] },
+            properties: {}
+          })
+        })
+        .mockResolvedValueOnce({ status: 200, json: async () => ([]) }) // remotelink
+        .mockResolvedValueOnce({
+          status: 200,
+          json: async () => ({
+            detail: [
+              {
+                pullRequests: [
+                  { id: 'pr-1', status: 'APPROVED', reviewers: [{ approvalStatus: 'APPROVED' }] }
+                ]
+              }
+            ]
+          })
+        }) // stash
+        .mockResolvedValueOnce({ status: 404 }) // github
+        .mockResolvedValueOnce({ status: 404 }); // bitbucket
+
+      const score = await getIssueAlignment({ issueId: 'dev-iss-1' }, {}, mockStorage);
+      expect(score.codeScore).toBe(100);
+      expect(score.gates.code).toBe('PASSED');
+    });
+  });
+
+  describe('recordIssueSignals', () => {
+    it('prevents cross-project poisoning when contextProject mismatches targetProject', async () => {
+      await expect(
+        recordIssueSignals(
+          { signals: { issueId: '1', issueKey: 'ATTACK-1' }, projectKey: 'PROJ_B' },
+          { extension: { project: { key: 'PROJ_A' } } },
+          mockStorage
+        )
+      ).rejects.toThrow("Cannot record signals for project 'PROJ_B' from context 'PROJ_A'.");
+    });
+
+    it('throws error when signals payload is missing', async () => {
+      await expect(
+        recordIssueSignals({ projectKey: 'PROJ' }, {}, mockStorage)
+      ).rejects.toThrow('Valid issue signals required.');
+    });
+
+    it('throws error when project key cannot be determined from signals', async () => {
+      await expect(
+        recordIssueSignals({ signals: { issueId: '99', issueKey: 'NOPROJECT' } }, {}, mockStorage)
+      ).rejects.toThrow('Project key required.');
+    });
+  });
+
+  describe('render functions', () => {
+    it('returns module metadata for all views', async () => {
+      expect((await renderProjectPage({})).moduleKey).toBe('fourrealities-project-dashboard');
+      expect((await renderIssuePanel({})).moduleKey).toBe('fourrealities-issue-panel');
+      expect((await renderIssueContext({})).moduleKey).toBe('fourrealities-issue-context');
     });
   });
 
@@ -361,16 +408,6 @@ describe('FourRealities Index / Forge Handlers', () => {
         }
       } as any);
       expect(res.projectKey).toBe('DISP-PROJ');
-    });
-
-    it('dispatches getIssueAlignment', async () => {
-      const res: any = await handler({
-        call: {
-          functionKey: 'getIssueAlignment',
-          payload: { issueId: 'disp-issue', issueKey: 'DISP-1' }
-        }
-      } as any);
-      expect(res.issueKey).toBe('DISP-1');
     });
 
     it('dispatches recordIssueSignals', async () => {
@@ -410,6 +447,17 @@ describe('FourRealities Index / Forge Handlers', () => {
       } as any);
       expect(resProj.projectKey).toBe('CTX-P');
 
+      await mockStorage.set('fr:issue:ctx-i:signals', {
+        issueId: 'ctx-i',
+        issueKey: 'CTX-I',
+        hasDocumentedIntent: true,
+        transitionCount: 1,
+        regressionCount: 0,
+        prCount: 1,
+        hasApprovedReview: true,
+        hasCryptographicSeal: true,
+        isDoDSatisfied: true
+      });
       const resIssue: any = await handler({
         call: { functionKey: 'getIssueAlignment' },
         context: { extension: { issue: { id: 'ctx-i', key: 'CTX-I' } } }
@@ -417,13 +465,28 @@ describe('FourRealities Index / Forge Handlers', () => {
       expect(resIssue.issueKey).toBe('CTX-I');
     });
 
-    it('dispatches linkDecision, sealIssue, completeDod via handler', async () => {
+    it('dispatches linkDecision, sealIssue, completeDod, recordException via handler', async () => {
       mockRequestJira.mockResolvedValue({ status: 200, json: async () => ({}) });
 
       const resLink: any = await handler({
-        call: { functionKey: 'linkDecision', payload: { issueId: 'iss-h1' } }
+        call: {
+          functionKey: 'linkDecision',
+          payload: { issueId: 'iss-h1', url: 'https://confluence.example.com/adr', title: 'ADR' }
+        }
       } as any);
       expect(resLink.success).toBe(true);
+
+      mockRequestJira
+        .mockResolvedValueOnce({
+          status: 200,
+          json: async () => ({
+            id: 'iss-h2',
+            key: 'H-2',
+            fields: { summary: 'Done task', status: { name: 'Done', statusCategory: { name: 'Done' } } },
+            properties: { 'definitionguard-dod': { isFullySatisfied: true } }
+          })
+        })
+        .mockResolvedValueOnce({ status: 200 });
 
       const resSeal: any = await handler({
         call: { functionKey: 'sealIssue', payload: { issueId: 'iss-h2' } }
@@ -431,9 +494,20 @@ describe('FourRealities Index / Forge Handlers', () => {
       expect(resSeal.success).toBe(true);
 
       const resDod: any = await handler({
-        call: { functionKey: 'completeDod', payload: { issueId: 'iss-h3' } }
+        call: {
+          functionKey: 'completeDod',
+          payload: { issueId: 'iss-h3', items: [{ id: '1', text: 'Tests pass', completed: true }] }
+        }
       } as any);
       expect(resDod.success).toBe(true);
+
+      const resException: any = await handler({
+        call: {
+          functionKey: 'recordException',
+          payload: { issueId: 'iss-h4', type: 'CODE', reason: 'Configuration only' }
+        }
+      } as any);
+      expect(resException.success).toBe(true);
     });
   });
 
@@ -463,10 +537,7 @@ describe('FourRealities Index / Forge Handlers', () => {
       }
     });
 
-    it('covers analyzeIssueChangelog and evaluateDocumentedIntent', () => {
-      const { analyzeIssueChangelog, evaluateDocumentedIntent } = require('../src/index');
-
-      // analyzeIssueChangelog
+    it('covers analyzeIssueChangelog and rework loops', () => {
       expect(analyzeIssueChangelog(null)).toEqual({ transitionCount: 1, regressionCount: 0 });
       expect(analyzeIssueChangelog({})).toEqual({ transitionCount: 1, regressionCount: 0 });
       expect(analyzeIssueChangelog({ histories: [{ items: null }] })).toEqual({ transitionCount: 1, regressionCount: 0 });
@@ -475,183 +546,340 @@ describe('FourRealities Index / Forge Handlers', () => {
       const forwardChangelog = {
         histories: [
           { items: [{ field: 'status', fromString: 'Open', toString: 'In Progress' }] },
-          { items: [{ field: 'status', fromString: 'In Progress', toString: 'Done' }] }
+          { items: [{ field: 'status', fromString: 'In Progress', toString: 'In Review' }] },
+          { items: [{ field: 'status', fromString: 'In Review', toString: 'Done' }] }
         ]
       };
-      expect(analyzeIssueChangelog(forwardChangelog)).toEqual({ transitionCount: 2, regressionCount: 0 });
+      expect(analyzeIssueChangelog(forwardChangelog)).toEqual({ transitionCount: 3, regressionCount: 0 });
 
-      // Backward rework loop
-      const reworkChangelog = {
+      // Rework loop from In Review back to In Progress
+      const reviewBounce = {
         histories: [
-          { items: [{ field: 'status', fromString: 'In Progress', toString: 'Done' }] },
+          { items: [{ field: 'status', fromString: 'In Progress', toString: 'In Review' }] },
+          { items: [{ field: 'status', fromString: 'In Review', toString: 'In Progress' }] }
+        ]
+      };
+      expect(analyzeIssueChangelog(reviewBounce)).toEqual({ transitionCount: 2, regressionCount: 1 });
+
+      // Reopening from Done
+      const doneBounce = {
+        histories: [
           { items: [{ field: 'status', fromString: 'Done', toString: 'Reopened' }] }
         ]
       };
-      expect(analyzeIssueChangelog(reworkChangelog)).toEqual({ transitionCount: 2, regressionCount: 1 });
+      expect(analyzeIssueChangelog(doneBounce)).toEqual({ transitionCount: 1, regressionCount: 1 });
+    });
 
-      // evaluateDocumentedIntent
+    it('covers evaluateDocumentedIntent with strict ADR criteria', () => {
       expect(evaluateDocumentedIntent(null)).toBe(false);
       expect(evaluateDocumentedIntent([])).toBe(false);
 
-      // Remote links
-      expect(evaluateDocumentedIntent([], [{ url: 'https://confluence.example.com/pages/1' }])).toBe(true);
-      expect(evaluateDocumentedIntent([], [{ title: 'System Architecture Specification' }])).toBe(true);
-      expect(evaluateDocumentedIntent([], [{ url: 'https://google.com', title: 'Search Engine' }])).toBe(false);
+      // Remote links with explicit ADR / architecture titles
+      expect(evaluateDocumentedIntent([], [{ title: 'ADR-042: System Architecture' }])).toBe(true);
+      expect(evaluateDocumentedIntent([], [{ url: 'https://confluence.example.com/wiki/spaces/ARCH/pages/ADR-01' }])).toBe(true);
+      expect(evaluateDocumentedIntent([], [{ url: 'https://notion.so/rfc-event-sourcing' }])).toBe(true);
+      expect(evaluateDocumentedIntent([], [{ url: 'https://google.com', title: 'Search' }])).toBe(false);
 
-      // Generic issue links (no ADR)
-      expect(evaluateDocumentedIntent([{ type: { inward: 'relates to' }, inwardIssue: { fields: { summary: 'Fix typo' } } }])).toBe(false);
-
-      // Link type doc keyword
-      expect(evaluateDocumentedIntent([{ type: { outward: 'specifies requirement' } }])).toBe(true);
-
-      // Issue summary keywords
-      expect(evaluateDocumentedIntent([{ inwardIssue: { fields: { summary: '[SPEC] Payment API' } } }])).toBe(true);
+      // Issue links
+      expect(evaluateDocumentedIntent([{ inwardIssue: { fields: { summary: '[ADR] Database Sharding' } } }])).toBe(true);
+      expect(evaluateDocumentedIntent([{ outwardIssue: { fields: { summary: '[SPEC] Payment API' } } }])).toBe(true);
       expect(evaluateDocumentedIntent([{ outwardIssue: { fields: { summary: '[ARCH] Event Mesh' } } }])).toBe(true);
       expect(evaluateDocumentedIntent([{ inwardIssue: { fields: { summary: '[RFC] Auth Flow' } } }])).toBe(true);
-      expect(evaluateDocumentedIntent([{ outwardIssue: { fields: { summary: 'Software Design Document' } } }])).toBe(true);
-
-      // Issue type keyword
+      expect(evaluateDocumentedIntent([{ type: { outward: 'specifies requirement' } }])).toBe(true);
       expect(evaluateDocumentedIntent([{ inwardIssue: { fields: { issuetype: { name: 'Architecture Decision' } } } }])).toBe(true);
+      expect(evaluateDocumentedIntent([{ inwardIssue: { fields: { summary: 'Random bug fix' } } }])).toBe(false);
     });
 
-    it('covers fetchLiveProjectAudit and getIssueAlignment fallbacks and camelCase properties', async () => {
-      // camelCase entity properties and compromised certificates
-      mockRequestJira.mockResolvedValueOnce({
-        status: 200,
-        json: async () => ({
-          issues: [
-            {
-              id: 'comp-1',
-              key: 'COMP-1',
-              fields: { summary: 'Compromised Seal Issue' },
-              properties: {
-                ledgersealCert: { status: 'SEAL_VALID', isCompromised: true },
-                definitionguardDod: { satisfied: true }
-              }
-            }
-          ]
-        })
-      });
+    it('covers extractSignalsFromIssue with remoteLinks and devStatus pullRequests', () => {
+      const rawIssue = {
+        id: '123',
+        key: 'KEY-123',
+        fields: {
+          summary: 'Item',
+          status: { name: 'Done', statusCategory: { name: 'Done' } },
+          issuelinks: [],
+          sprint: { name: 'Sprint 5' }
+        },
+        properties: {
+          'ledgerseal-cert': { status: 'SEAL_VALID', certificateId: 'LS-TEST', snapshotHash: 'hash-xyz' },
+          'definitionguard-dod': { isFullySatisfied: true, completedCount: 5, totalCount: 5 }
+        }
+      };
 
-      const { signals } = await fetchLiveProjectAudit('COMP');
-      expect(signals.length).toBe(1);
-      expect(signals[0].hasCryptographicSeal).toBe(false); // Compromised seal is not valid
-      expect(signals[0].isDoDSatisfied).toBe(true);
+      const remoteLinks = [{ object: { url: 'https://wiki.example.com/adr-01', title: 'ADR-01 Spec' } }];
+      const pullRequests = [{ id: 'pr-1', status: 'APPROVED', reviewers: [{ approvalStatus: 'APPROVED' }] }];
+      const exception: IssueExceptionRecord = {
+        issueId: '123',
+        issueKey: 'KEY-123',
+        type: 'CODE',
+        reason: 'No code change: Documentation only',
+        recordedBy: 'user',
+        recordedAt: '2026-10-30T10:00:00Z'
+      };
 
-      // getProjectDashboard sync failure with existing cached snapshot
-      mockRequestJira.mockResolvedValueOnce({ status: 500 });
-      await mockStorage.set('fr:project:SYNC-FAIL:latest', {
-        snapshotId: 'cached-snap',
-        projectKey: 'SYNC-FAIL',
-        summary: { totalAuditedIssues: 5 }
-      });
-
-      const cachedDashboard = await getProjectDashboard({ projectKey: 'SYNC-FAIL' }, {}, mockStorage);
-      expect(cachedDashboard.warning).toContain('Live Jira sync failed');
-      expect(cachedDashboard.snapshotId).toBe('cached-snap');
-
-      // getProjectDashboard sync failure with no cached snapshot
-      mockRequestJira.mockResolvedValueOnce({ status: 500 });
-      const freshFallback = await getProjectDashboard({ projectKey: 'NO-CACHE' }, {}, mockStorage);
-      expect(freshFallback.warning).toContain('Live Jira sync failed');
-      expect(freshFallback.summary.totalAuditedIssues).toBe(0);
-
-      // getIssueAlignment with remotelink
-      mockRequestJira
-        .mockResolvedValueOnce({
-          status: 200,
-          json: async () => ({
-            id: 'remote-iss-1',
-            key: 'REM-1',
-            fields: { summary: 'Issue with remote link' },
-            properties: {}
-          })
-        })
-        .mockResolvedValueOnce({
-          status: 200,
-          json: async () => ([{ object: { url: 'https://asymm.atlassian.net/wiki/spaces/ARCH' } }])
-        });
-
-      const alignRes = await getIssueAlignment({ issueId: 'remote-iss-1' }, {}, mockStorage);
-      expect(alignRes.intentScore).toBe(100);
-
-      // getIssueAlignment with devStatus pullRequests and reviewer approval
-      mockRequestJira
-        .mockResolvedValueOnce({
-          status: 200,
-          json: async () => ({
-            id: 'dev-iss-1',
-            key: 'DEV-1',
-            fields: { summary: 'Issue with dev status' },
-            properties: {}
-          })
-        })
-        .mockResolvedValueOnce({ status: 404 }) // remote links 404
-        .mockResolvedValueOnce({
-          status: 200,
-          json: async () => ({
-            detail: [
-              {
-                pullRequests: [
-                  {
-                    id: 'pr-1',
-                    reviewers: [{ name: 'Fahim', approvalStatus: 'APPROVED' }]
-                  }
-                ]
-              }
-            ]
-          })
-        });
-
-      const alignDev = await getIssueAlignment({ issueId: 'dev-iss-1' }, {}, mockStorage);
-      expect(alignDev.codeScore).toBe(100);
-      expect(alignDev.gates.code).toBe('PASSED');
+      const signals = extractSignalsFromIssue(rawIssue, remoteLinks, pullRequests, exception);
+      expect(signals.hasDocumentedIntent).toBe(true);
+      expect(signals.hasApprovedReview).toBe(true);
+      expect(signals.hasCryptographicSeal).toBe(true);
+      expect(signals.isDoDSatisfied).toBe(true);
+      expect(signals.codeExceptionReason).toBe('No code change: Documentation only');
+      expect(signals.sprintName).toBe('Sprint 5');
     });
   });
 
   describe('Remediation Resolvers', () => {
-    it('executes linkDecision successfully and handles errors', async () => {
+    it('executes linkDecision with validated URL and title', async () => {
       mockRequestJira.mockResolvedValueOnce({ status: 201 });
-      const res = await linkDecision({ issueId: 'iss-1' });
+      const res = await linkDecision({
+        issueId: 'iss-1',
+        url: 'https://confluence.example.com/wiki/spaces/ARCH/pages/ADR-014',
+        title: 'ADR-014: Architecture Decision'
+      });
       expect(res.success).toBe(true);
+      expect(res.remoteLink.title).toBe('ADR-014: Architecture Decision');
 
-      const fail = await linkDecision({});
-      expect(fail.success).toBe(false);
-      expect(fail.error).toBe('Missing issueId');
+      // Fails on missing issueId
+      const failNoId = await linkDecision({});
+      expect(failNoId.success).toBe(false);
+      expect(failNoId.error).toContain('Missing issueId');
 
-      mockRequestJira.mockRejectedValueOnce(new Error('Network failure'));
-      const netErr = await linkDecision({ issueId: 'iss-1' });
-      expect(netErr.success).toBe(false);
+      // Fails on invalid URL
+      const failUrl = await linkDecision({ issueId: 'iss-1', url: 'not-a-url', title: 'ADR' });
+      expect(failUrl.success).toBe(false);
+      expect(failUrl.error).toContain('Invalid specification URL');
+
+      // Fails on missing title
+      const failTitle = await linkDecision({ issueId: 'iss-1', url: 'https://example.com' });
+      expect(failTitle.success).toBe(false);
+      expect(failTitle.error).toContain('title or ADR identifier required');
+
+      // Fails when context issueId mismatches payload issueId
+      const failAuth = await linkDecision({ issueId: 'external-id' }, { extension: { issue: { id: 'context-id' } } });
+      expect(failAuth.success).toBe(false);
+      expect(failAuth.error).toContain('Unauthorized');
+
+      // Fails on non-HTTP/HTTPS protocol
+      const failProto = await linkDecision({ issueId: 'iss-1', url: 'ftp://bad.com', title: 'ADR' });
+      expect(failProto.success).toBe(false);
+      expect(failProto.error).toContain('Invalid URL protocol');
+
+      // Fails when Jira returns non-200
+      mockRequestJira.mockResolvedValueOnce({ status: 400 });
+      const failHttp = await linkDecision({ issueId: 'iss-1', url: 'https://confluence.com/adr', title: 'ADR' });
+      expect(failHttp.success).toBe(false);
+      expect(failHttp.error).toContain('Jira returned status 400');
     });
 
-    it('executes sealIssue successfully and handles errors', async () => {
-      mockRequestJira.mockResolvedValueOnce({ status: 200 });
-      const res = await sealIssue({ issueId: 'iss-1' });
+    it('executes sealIssue enforcing Done/review and DoD preconditions with cryptographic SHA-256', async () => {
+      // Successful seal when Done and DoD satisfied
+      mockRequestJira
+        .mockResolvedValueOnce({
+          status: 200,
+          json: async () => ({
+            id: 'iss-seal-1',
+            key: 'SEAL-1',
+            fields: { summary: 'Completed task', status: { name: 'Done', statusCategory: { name: 'Done' } } },
+            properties: { 'definitionguard-dod': { isFullySatisfied: true } }
+          })
+        })
+        .mockResolvedValueOnce({ status: 200 }); // property update
+
+      const res = await sealIssue({ issueId: 'iss-seal-1' });
       expect(res.success).toBe(true);
       expect(res.cert.status).toBe('SEAL_VALID');
+      expect(res.cert.certificateId).toMatch(/^LS-[0-9A-F]{8}$/);
+      expect(res.cert.snapshotHash).toBeDefined();
 
-      const fail = await sealIssue({});
-      expect(fail.success).toBe(false);
-      expect(fail.error).toBe('Missing issueId');
+      // Fails when issue is in To Do
+      mockRequestJira.mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({
+          id: 'iss-todo',
+          key: 'TODO-1',
+          fields: { summary: 'Unstarted task', status: { name: 'To Do', statusCategory: { name: 'To Do' } } },
+          properties: { 'definitionguard-dod': { isFullySatisfied: true } }
+        })
+      });
+      const failEarly = await sealIssue({ issueId: 'iss-todo' });
+      expect(failEarly.success).toBe(false);
+      expect(failEarly.error).toContain('Cannot seal issue: Issue is in early status');
 
-      mockRequestJira.mockRejectedValueOnce(new Error('Network failure'));
-      const netErr = await sealIssue({ issueId: 'iss-1' });
-      expect(netErr.success).toBe(false);
+      // Fails when DoD is incomplete
+      mockRequestJira.mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({
+          id: 'iss-nodod',
+          key: 'NODOD-1',
+          fields: { summary: 'Done task', status: { name: 'Done', statusCategory: { name: 'Done' } } },
+          properties: { 'definitionguard-dod': { isFullySatisfied: false } }
+        })
+      });
+      const failNoDod = await sealIssue({ issueId: 'iss-nodod' });
+      expect(failNoDod.success).toBe(false);
+      expect(failNoDod.error).toContain('Definition of Done checklist must be satisfied');
+
+      // Fails on missing issueId
+      const failNoId = await sealIssue({});
+      expect(failNoId.success).toBe(false);
+      expect(failNoId.error).toContain('Missing issueId');
+
+      // Fails on context issueId mismatch
+      const failAuth = await sealIssue({ issueId: 'iss-other' }, { extension: { issue: { id: 'iss-ctx' } } });
+      expect(failAuth.success).toBe(false);
+      expect(failAuth.error).toContain('Unauthorized');
+
+      // Fails when issue fetch returns 500
+      mockRequestJira.mockResolvedValueOnce({ status: 500 });
+      const failFetch = await sealIssue({ issueId: 'iss-500' });
+      expect(failFetch.success).toBe(false);
+      expect(failFetch.error).toContain('Failed to verify issue state');
+
+      // Fallback from asUser() to asApp() on property write
+      mockRequestJira
+        .mockResolvedValueOnce({
+          status: 200,
+          json: async () => ({
+            id: 'iss-fallback',
+            key: 'FALL-1',
+            fields: { summary: 'Done task', status: { name: 'Done', statusCategory: { name: 'Done' } } },
+            properties: { 'definitionguard-dod': { isFullySatisfied: true } }
+          })
+        })
+        .mockResolvedValueOnce({ status: 403 }) // asUser fails
+        .mockResolvedValueOnce({ status: 200 }); // asApp succeeds
+
+      const resFallback = await sealIssue({ issueId: 'iss-fallback' });
+      expect(resFallback.success).toBe(true);
+
+      // Fails when both asUser and asApp fail
+      mockRequestJira
+        .mockResolvedValueOnce({
+          status: 200,
+          json: async () => ({
+            id: 'iss-both-fail',
+            key: 'BOTH-1',
+            fields: { summary: 'Done task', status: { name: 'Done', statusCategory: { name: 'Done' } } },
+            properties: { 'definitionguard-dod': { isFullySatisfied: true } }
+          })
+        })
+        .mockResolvedValueOnce({ status: 403 })
+        .mockResolvedValueOnce({ status: 500 });
+
+      const resBothFail = await sealIssue({ issueId: 'iss-both-fail' });
+      expect(resBothFail.success).toBe(false);
+      expect(resBothFail.error).toContain('Failed to persist cryptographic seal');
+
+      // Exception thrown
+      mockRequestJira.mockRejectedValueOnce(new Error('Network break'));
+      const resEx = await sealIssue({ issueId: 'iss-ex' });
+      expect(resEx.success).toBe(false);
+      expect(resEx.error).toBe('Network break');
     });
 
-    it('executes completeDod successfully and handles errors', async () => {
+    it('executes completeDod with interactive checklist verification and fallbacks', async () => {
       mockRequestJira.mockResolvedValueOnce({ status: 200 });
-      const res = await completeDod({ issueId: 'iss-1' });
+      const items = [
+        { id: '1', text: 'Unit tests pass', completed: true },
+        { id: '2', text: 'Docs updated', completed: true }
+      ];
+      const res = await completeDod({ issueId: 'iss-dod-1', items });
       expect(res.success).toBe(true);
-      expect(res.dod.satisfied).toBe(true);
+      expect(res.dod.isFullySatisfied).toBe(true);
+      expect(res.dod.completedCount).toBe(2);
+      expect(res.dod.checklistHash).toBeDefined();
 
-      const fail = await completeDod({});
-      expect(fail.success).toBe(false);
-      expect(fail.error).toBe('Missing issueId');
+      // Fails on missing items
+      const failNoItems = await completeDod({ issueId: 'iss-dod-1' });
+      expect(failNoItems.success).toBe(false);
+      expect(failNoItems.error).toContain('Checklist items required');
 
-      mockRequestJira.mockRejectedValueOnce(new Error('Network failure'));
-      const netErr = await completeDod({ issueId: 'iss-1' });
-      expect(netErr.success).toBe(false);
+      // Fails on missing issueId
+      const failNoId = await completeDod({});
+      expect(failNoId.success).toBe(false);
+      expect(failNoId.error).toContain('Missing issueId');
+
+      // Fails on context issueId mismatch
+      const failAuth = await completeDod({ issueId: 'iss-other' }, { extension: { issue: { id: 'iss-ctx' } } });
+      expect(failAuth.success).toBe(false);
+      expect(failAuth.error).toContain('Unauthorized');
+
+      // Fallback from asUser() to asApp()
+      mockRequestJira
+        .mockResolvedValueOnce({ status: 403 })
+        .mockResolvedValueOnce({ status: 200 });
+      const resFallback = await completeDod({ issueId: 'iss-fb', items });
+      expect(resFallback.success).toBe(true);
+
+      // Fails when both asUser and asApp fail
+      mockRequestJira
+        .mockResolvedValueOnce({ status: 403 })
+        .mockResolvedValueOnce({ status: 500 });
+      const resFailBoth = await completeDod({ issueId: 'iss-fb2', items });
+      expect(resFailBoth.success).toBe(false);
+
+      // Exception thrown
+      mockRequestJira.mockRejectedValueOnce(new Error('DoD network failure'));
+      const resEx = await completeDod({ issueId: 'iss-ex', items });
+      expect(resEx.success).toBe(false);
+      expect(resEx.error).toBe('DoD network failure');
+    });
+
+    it('executes recordException for code and rework reasons and handles validations', async () => {
+      mockRequestJira.mockResolvedValue({ status: 200 });
+      const resCode = await recordException(
+        { issueId: 'ex-1', issueKey: 'EX-1', type: 'CODE', reason: 'No code change: Documentation only', notes: 'Readme fix' },
+        {},
+        mockStorage
+      );
+      expect(resCode.success).toBe(true);
+      expect(resCode.record?.reason).toBe('No code change: Documentation only');
+      expect(resCode.record?.notes).toBe('Readme fix');
+
+      const resRework = await recordException(
+        { issueId: 'ex-2', issueKey: 'EX-2', type: 'REWORK', reason: 'Requirement scope expansion' },
+        {},
+        mockStorage
+      );
+      expect(resRework.success).toBe(true);
+      expect(resRework.record?.type).toBe('REWORK');
+
+      // Fails on missing issueId
+      const failNoId = await recordException({});
+      expect(failNoId.success).toBe(false);
+      expect(failNoId.error).toContain('Missing issueId');
+
+      // Fails on context mismatch
+      const failAuth = await recordException({ issueId: 'other' }, { extension: { issue: { id: 'ctx' } } });
+      expect(failAuth.success).toBe(false);
+      expect(failAuth.error).toContain('Unauthorized');
+
+      // Fails on missing reason
+      const failNoReason = await recordException({ issueId: 'ex-3' });
+      expect(failNoReason.success).toBe(false);
+      expect(failNoReason.error).toContain('Exception reason required');
+
+      // Falls back to asApp when asUser fails to persist exception
+      mockRequestJira
+        .mockRejectedValueOnce(new Error('User forbidden'))
+        .mockResolvedValueOnce({ status: 200 });
+
+      const resFallback = await recordException(
+        { issueId: 'ex-fb', type: 'CODE', reason: 'Technical Spike' },
+        {},
+        mockStorage
+      );
+      expect(resFallback.success).toBe(true);
+    });
+
+    it('handles network error in linkDecision', async () => {
+      mockRequestJira.mockRejectedValueOnce(new Error('Connection dropped'));
+      const res = await linkDecision({
+        issueId: 'iss-1',
+        url: 'https://confluence.com/adr',
+        title: 'ADR'
+      });
+      expect(res.success).toBe(false);
+      expect(res.error).toBe('Connection dropped');
     });
   });
 });

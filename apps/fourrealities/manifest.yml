@@ -14,6 +14,14 @@ modules:
       resource: main
       resolver:
         function: resolver
+  jira:issueContext:
+    - key: fourrealities-issue-context
+      title: Delivery Integrity
+      label: Delivery Integrity
+      render: native
+      resource: main
+      resolver:
+        function: resolver
   function:
     - key: resolver
       handler: index.handler
