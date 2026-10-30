@@ -1,0 +1,15 @@
+node_modules
+apps/*/node_modules
+dist
+apps/*/dist
+coverage
+apps/*/coverage
+.forge
+apps/*/.forge
+*.log
+.DS_Store
+__pycache__
+*.pyc
+
+# Do not ignore Custom UI static bundles
+!apps/*/static/frontend/build/

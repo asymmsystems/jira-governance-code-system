@@ -1,0 +1,36 @@
+modules:
+  jira:issuePanel:
+    - key: definitionguard-issue-panel
+      title: DefinitionGuard Checklist
+      tooltip: Definition of Done Checklist
+      icon: https://raw.githubusercontent.com/feathericons/feather/master/icons/check-square.svg
+      render: native
+      resource: main
+      resolver:
+        function: resolver
+  jira:workflowValidator:
+    - key: definitionguard-workflow-validator
+      name: DefinitionGuard DoD Enforcement
+      description: Blocks workflow transitions when mandatory Definition of Done checklist items remain incomplete
+      function: validateTransition
+  function:
+    - key: resolver
+      handler: index.handler
+    - key: validateTransition
+      handler: index.validateTransition
+
+resources:
+  - key: main
+    path: src/frontend/index.tsx
+
+app:
+  id: ari:cloud:ecosystem::app/73e4f63d-7d60-450c-96d5-f81ca68a709c
+  runtime:
+    name: nodejs22.x
+
+permissions:
+  scopes:
+    - read:jira-work
+    - write:jira-work
+    - read:jira-user
+    - storage:app

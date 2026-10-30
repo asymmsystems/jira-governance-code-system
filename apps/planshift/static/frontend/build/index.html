@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CascadePlan - Visual Project & Portfolio Planner</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!-- App Header -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="brand-title">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0052CC" stroke-width="2.5"><path d="M3 3h18v18H3z"/><path d="M7 8h10M7 12h6M7 16h8"/></svg>
+        <span>CascadePlan</span>
+      </div>
+      <span class="badge badge-primary" id="projectBadge">Project: DEMO</span>
+      <span class="badge badge-success" id="completionBadge">Completion: 31% | Target: 25%</span>
+      <button class="btn btn-outline" id="toggleBacklogBtn" title="Toggle unmapped backlog tray">
+        📂 Backlog Tray (<span id="backlogCount">0</span>)
+      </button>
+      <button class="btn btn-outline" id="refreshBtn">🔄 Refresh</button>
+    </div>
+
+    <div class="header-right">
+      <button class="btn btn-outline" id="newEpicBtn">+ New Epic</button>
+      <button class="btn btn-primary" id="newTaskBtn">+ Add Task / Issue</button>
+      <select class="view-select" id="viewSwitcher">
+        <option value="timeline">📊 Project Tracking (WBS & Timeline)</option>
+        <option value="utilization">👤 Resource Utilization (Per-Person)</option>
+        <option value="heatmap">🗺️ Executive Heatmap (Capacity)</option>
+      </select>
+    </div>
+  </header>
+
+  <div class="workspace-container">
+    <!-- Collapsible Backlog Tray -->
+    <aside class="backlog-tray collapsed" id="backlogTray">
+      <div class="tray-header">
+        <span class="tray-title">Unmapped Project Issues</span>
+        <button class="btn btn-subtle" id="closeTrayBtn">✕</button>
+      </div>
+      <div class="tray-content" id="backlogCardsList">
+        <!-- Backlog cards dynamically rendered here -->
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="planner-content">
+      <!-- 1. Timeline View -->
+      <div id="timelineViewSection" style="display: flex; flex-direction: column; flex: 1;">
+        <div class="timeline-banner">
+          <div class="legend-row">
+            <span style="font-weight: 700; color: #42526E;">Legend:</span>
+            <div class="legend-item"><div class="legend-swatch" style="background: #36B37E;"></div><span>Completed / On Track</span></div>
+            <div class="legend-item"><div class="legend-swatch" style="background: #DE350B;"></div><span>Behind Schedule / Dependency Violation</span></div>
+            <div class="legend-item"><div class="legend-swatch" style="background: #0065FF;"></div><span>Planned Remaining</span></div>
+            <div class="legend-item"><span style="color: #0052CC; font-weight: 700;">|</span><span id="legendCurrentWeek">Current Week</span></div>
+          </div>
+          <div class="milestones-strip" id="milestonesStrip">
+            <!-- Milestones dynamically injected -->
+          </div>
+        </div>
+
+        <div class="gantt-wrapper" id="ganttWrapper">
+          <svg class="dependency-svg-layer" id="dependencySvgLayer"></svg>
+          <table class="gantt-table" id="ganttTable">
+            <thead>
+              <tr id="ganttHeaderRow">
+                <!-- Columns dynamically injected with resizers -->
+              </tr>
+            </thead>
+            <tbody id="ganttBody">
+              <!-- Task rows dynamically injected -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 2. Resource Utilization View -->
+      <div id="utilizationViewSection" class="resource-view-container">
+        <h3 style="margin-bottom: 8px;">Resource Utilization Profile</h3>
+        <p style="color: #626F86; margin-bottom: 14px;">Detailed weekly task allocations grouped by assigned team member.</p>
+        <div id="utilizationProfilesContent"></div>
+      </div>
+
+      <!-- 3. Executive Capacity Heatmap View -->
+      <div id="heatmapViewSection" class="resource-view-container">
+        <h3 style="margin-bottom: 8px;">Executive Resource Capacity Heatmap</h3>
+        <p style="color: #626F86; margin-bottom: 14px;">Portfolio-wide capacity heatmap with Center of Excellence (COE) and Vertical tags.</p>
+        <div id="heatmapContent"></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Rich Floating Tooltip -->
+  <div class="tooltip-popup" id="globalTooltip"></div>
+
+  <!-- Task Detail & Estimation / Subtasks Modal -->
+  <div class="modal-backdrop" id="taskDetailModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title" id="modalTaskKey">Task Details</div>
+        <button class="btn btn-subtle" onclick="closeModal('taskDetailModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Summary</label>
+          <input type="text" class="form-input" id="editSummaryInput" />
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="form-group">
+            <label class="form-label">Assignee / Resource</label>
+            <select class="form-input" id="editAssigneeSelect"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Status</label>
+            <select class="form-input" id="editStatusSelect">
+              <option value="NOT_STARTED">NOT_STARTED</option>
+              <option value="IN_PROGRESS">IN_PROGRESS</option>
+              <option value="COMPLETED">COMPLETED</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Multi-Unit Estimation Section -->
+        <div style="background: #FAFBFC; border: 1px solid var(--ds-border); border-radius: 6px; padding: 12px;">
+          <div style="font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+            <span>Estimation & Sizing</span>
+            <span class="badge badge-primary" id="reconciledHoursBadge">Total: 40 hrs</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-group">
+              <label class="form-label">Estimation Unit</label>
+              <select class="form-input" id="editEstimateUnitSelect" onchange="handleEstimateUnitChange()">
+                <option value="HOURS">Hours (Direct Effort)</option>
+                <option value="STORY_POINTS">Story Points (1 pt = 8 hrs)</option>
+                <option value="TSHIRT">T-Shirt Size (XS, S, M, L, XL)</option>
+              </select>
+            </div>
+            <div class="form-group" id="rawEstimateGroup">
+              <label class="form-label" id="rawEstimateLabel">Effort Value</label>
+              <input type="number" class="form-input" id="editEstimateValueInput" value="40" />
+            </div>
+            <div class="form-group" id="tshirtSizeGroup" style="display: none;">
+              <label class="form-label">T-Shirt Size</label>
+              <select class="form-input" id="editTshirtSelect">
+                <option value="XS">XS (4 hrs)</option>
+                <option value="S">S (8 hrs)</option>
+                <option value="M" selected>M (16 hrs)</option>
+                <option value="L">L (32 hrs)</option>
+                <option value="XL">XL (64 hrs)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Subtasks & Buffer Section -->
+        <div style="background: #FAFBFC; border: 1px solid var(--ds-border); border-radius: 6px; padding: 12px;">
+          <div style="font-weight: 700; margin-bottom: 8px;">Subtasks & Risk Buffer</div>
+          <div id="subtasksList" style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;"></div>
+          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <input type="text" class="form-input" id="newSubtaskSummary" placeholder="New subtask title..." style="flex: 1;" />
+            <input type="number" class="form-input" id="newSubtaskHours" value="8" style="width: 70px;" />
+            <button class="btn btn-outline" onclick="handleAddSubtask()">+ Add Subtask</button>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-group">
+              <label class="form-label">Buffer Type</label>
+              <select class="form-input" id="editBufferTypeSelect">
+                <option value="NONE">No Buffer</option>
+                <option value="PERCENTAGE">Percentage Buffer (%)</option>
+                <option value="FIXED_HOURS">Fixed Hours Buffer (h)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Buffer Value</label>
+              <input type="number" class="form-input" id="editBufferValueInput" value="15" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Dependency Section -->
+        <div style="background: #FAFBFC; border: 1px solid var(--ds-border); border-radius: 6px; padding: 12px;">
+          <div style="font-weight: 700; margin-bottom: 8px;">Fractional Completion Dependency</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-group">
+              <label class="form-label">Predecessor Task</label>
+              <select class="form-input" id="editPredecessorSelect"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Trigger Completion %</label>
+              <input type="number" class="form-input" id="editTriggerPercentInput" value="30" min="1" max="100" />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('taskDetailModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveTaskModalChanges()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create New Task Modal -->
+  <div class="modal-backdrop" id="createTaskModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">Create Jira Task & Schedule</div>
+        <button class="btn btn-subtle" onclick="closeModal('createTaskModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Summary</label>
+          <input type="text" class="form-input" id="createSummaryInput" placeholder="e.g. Integrate Payment Webhooks" />
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="form-group">
+            <label class="form-label">Parent Epic</label>
+            <select class="form-input" id="createEpicSelect"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Assignee</label>
+            <select class="form-input" id="createAssigneeSelect"></select>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="form-group">
+            <label class="form-label">Effort Hours</label>
+            <input type="number" class="form-input" id="createEffortInput" value="40" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Start Week</label>
+            <select class="form-input" id="createStartWeekSelect"></select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('createTaskModal')">Cancel</button>
+        <button class="btn btn-primary" id="btnSubmitCreateTask" onclick="executeCreateTask()">Create & Schedule</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create New Epic Modal -->
+  <div class="modal-backdrop" id="createEpicModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">Create Jira Epic</div>
+        <button class="btn btn-subtle" onclick="closeModal('createEpicModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Epic Summary</label>
+          <input type="text" class="form-input" id="newEpicSummaryInput" placeholder="e.g. Identity & Access Overhaul" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('createEpicModal')">Cancel</button>
+        <button class="btn btn-primary" id="btnSubmitCreateEpic" onclick="executeCreateEpic()">Create Epic</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Atlassian Forge Custom UI Bridge Integration
+    const bridge = window.__bridge || (window.parent && window.parent.__bridge);
+
+    async function callResolver(fnName, payload = {}) {
+      if (bridge && bridge.callBridge) {
+        try {
+          return await bridge.callBridge('invoke', { functionKey: fnName, payload });
+        } catch (err) {
+          console.error('Forge resolver error:', fnName, err);
+          return null;
+        }
+      }
+      console.warn('Bridge not present, using mock fallback for', fnName);
+      return null;
+    }
+
+    // State Variables
+    let currentPlan = null;
+    let activeTaskId = null;
+    let columnWidths = { epic: 110, story: 100, task: 230, resource: 120, effort: 65, progress: 65, target: 65, status: 95 };
+    const COL_KEYS = ['epic', 'story', 'task', 'resource', 'effort', 'progress', 'target', 'status'];
+    const WEEK_WIDTH = 85;
+
+    // Initialization
+    window.addEventListener('DOMContentLoaded', async () => {
+      setupEventListeners();
+      await loadProjectPlan();
+    });
+
+    function setupEventListeners() {
+      document.getElementById('viewSwitcher').addEventListener('change', (e) => {
+        switchView(e.target.value);
+      });
+      document.getElementById('toggleBacklogBtn').addEventListener('click', toggleBacklogTray);
+      document.getElementById('closeTrayBtn').addEventListener('click', () => {
+        document.getElementById('backlogTray').classList.add('collapsed');
+      });
+      document.getElementById('refreshBtn').addEventListener('click', loadProjectPlan);
+      document.getElementById('newTaskBtn').addEventListener('click', openCreateTaskModal);
+      document.getElementById('newEpicBtn').addEventListener('click', openCreateEpicModal);
+
+      window.addEventListener('resize', () => {
+        renderDependencySvgOverlay();
+      });
+    }
+
+    function switchView(viewName) {
+      document.getElementById('timelineViewSection').style.display = viewName === 'timeline' ? 'flex' : 'none';
+      document.getElementById('utilizationViewSection').style.display = viewName === 'utilization' ? 'block' : 'none';
+      document.getElementById('heatmapViewSection').style.display = viewName === 'heatmap' ? 'block' : 'none';
+
+      if (viewName === 'timeline') {
+        setTimeout(renderDependencySvgOverlay, 100);
+      } else if (viewName === 'utilization') {
+        renderUtilizationView();
+      } else if (viewName === 'heatmap') {
+        renderHeatmapView();
+      }
+    }
+
+    function toggleBacklogTray() {
+      const tray = document.getElementById('backlogTray');
+      tray.classList.toggle('collapsed');
+      setTimeout(renderDependencySvgOverlay, 250);
+    }
+
+    async function loadProjectPlan() {
+      const plan = await callResolver('getProjectPlan', {});
+      if (plan) {
+        currentPlan = plan;
+        if (plan.columnWidths) {
+          columnWidths = { ...columnWidths, ...plan.columnWidths };
+        }
+        renderPlan();
+      }
+    }
+
+    function renderPlan() {
+      if (!currentPlan) return;
+
+      document.getElementById('projectBadge').textContent = `Project: ${currentPlan.projectKey}`;
+      document.getElementById('completionBadge').textContent = `Completion: ${currentPlan.overallProjectCompletion}% | Target: ${currentPlan.overallTargetCompletion}%`;
+      document.getElementById('backlogCount').textContent = currentPlan.backlogTasks ? currentPlan.backlogTasks.length : 0;
+
+      const curWk = (currentPlan.weeks || []).find(w => w.isCurrentWeek);
+      if (curWk) {
+        const el = document.getElementById('legendCurrentWeek');
+        if (el) el.textContent = `Current Week (${curWk.weekKey})`;
+      }
+
+      renderMilestones();
+      renderBacklogTray();
+      renderTimelineHeader();
+      renderTimelineRows();
+      setTimeout(renderDependencySvgOverlay, 150);
+    }
+
+    function renderMilestones() {
+      const strip = document.getElementById('milestonesStrip');
+      strip.innerHTML = '';
+      (currentPlan.milestones || []).forEach(m => {
+        const el = document.createElement('div');
+        el.className = 'milestone-pill';
+        el.innerHTML = `<span class="milestone-icon">🔷</span><span>${m.title}</span><span style="color:#626F86;">(${m.weekKey})</span>`;
+        strip.appendChild(el);
+      });
+    }
+
+    function renderBacklogTray() {
+      const container = document.getElementById('backlogCardsList');
+      container.innerHTML = '';
+
+      const backlog = currentPlan.backlogTasks || [];
+      if (backlog.length === 0) {
+        container.innerHTML = '<div style="color:#626F86; font-size:12px; text-align:center; padding:20px;">No unmapped backlog issues. Drag from timeline to unmap.</div>';
+        return;
+      }
+
+      backlog.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'backlog-card';
+        card.draggable = true;
+        card.innerHTML = `
+          <div class="backlog-card-header">
+            <span class="backlog-key">${item.key}</span>
+            <span class="badge badge-neutral">${item.story || 'Task'}</span>
+          </div>
+          <div class="backlog-summary" title="${item.summary}">${item.summary}</div>
+          <div class="backlog-footer">
+            <span>⏱️ ${item.effortHours || 40}h</span>
+            <span>👤 ${item.resource || 'Unassigned'}</span>
+          </div>
+        `;
+        card.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('text/plain', JSON.stringify({ taskId: item.key, effortHours: item.effortHours }));
+        });
+        container.appendChild(card);
+      });
+    }
+
+    function renderTimelineHeader() {
+      const tr = document.getElementById('ganttHeaderRow');
+      tr.innerHTML = '';
+
+      const labels = {
+        epic: 'Epic', story: 'Story', task: 'Task', resource: 'Resource',
+        effort: 'Hrs', progress: 'Progress', target: 'Target', status: 'Status'
+      };
+
+      COL_KEYS.forEach(k => {
+        const th = document.createElement('th');
+        th.className = 'th-col';
+        th.style.width = columnWidths[k] + 'px';
+        th.style.minWidth = columnWidths[k] + 'px';
+        th.textContent = labels[k];
+
+        // Resizer Handle
+        const resizer = document.createElement('div');
+        resizer.className = 'resizer';
+        setupColumnResizer(resizer, k);
+        th.appendChild(resizer);
+        tr.appendChild(th);
+      });
+
+      // Weekly Sprint Columns
+      currentPlan.weeks.forEach((w, idx) => {
+        const th = document.createElement('th');
+        th.className = 'week-header-cell' + (w.isCurrentWeek ? ' current-week' : '');
+        th.innerHTML = `
+          <div class="week-date">${w.weekKey}</div>
+          <div class="week-sprint">${w.sprintName}</div>
+        `;
+        tr.appendChild(th);
+      });
+    }
+
+    function setupColumnResizer(resizer, colKey) {
+      resizer.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const startX = e.clientX;
+        const startWidth = columnWidths[colKey];
+
+        function onMouseMove(moveEvent) {
+          const newWidth = Math.max(50, startWidth + (moveEvent.clientX - startX));
+          columnWidths[colKey] = newWidth;
+          renderTimelineHeader();
+          renderTimelineRows();
+        }
+
+        function onMouseUp() {
+          window.removeEventListener('mousemove', onMouseMove);
+          window.removeEventListener('mouseup', onMouseUp);
+          callResolver('saveColumnWidths', { columnWidths });
+        }
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+      });
+    }
+
+    function renderTimelineRows() {
+      const tbody = document.getElementById('ganttBody');
+      tbody.innerHTML = '';
+
+      if (!currentPlan.tasks || currentPlan.tasks.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="${COL_KEYS.length + currentPlan.weeks.length}" style="text-align:center; padding:30px; color:#626F86;">No scheduled tasks in project. Drag issues from the Backlog Tray or click "+ Add Task / Issue" to schedule.</td></tr>`;
+        return;
+      }
+
+      currentPlan.tasks.forEach((task, rowIdx) => {
+        const tr = document.createElement('tr');
+        tr.className = 'task-row';
+        tr.dataset.taskId = task.key;
+
+        // Data Columns
+        tr.innerHTML = `
+          <td class="td-data" style="width:${columnWidths.epic}px;" title="${task.epic || ''}">${task.epic || '—'}</td>
+          <td class="td-data" style="width:${columnWidths.story}px;" title="${task.story || ''}">${task.story || 'Task'}</td>
+          <td class="td-data td-task-summary" style="width:${columnWidths.task}px;" title="${task.summary}" onclick="openTaskDetailModal('${task.key}')">
+            <span>${task.key}: ${task.summary}</span>
+          </td>
+          <td class="td-data" style="width:${columnWidths.resource}px;">
+            <div class="resource-chip" onclick="openTaskDetailModal('${task.key}')" title="${task.resource}">
+              <span>👤</span><span>${task.resource}</span>
+            </div>
+          </td>
+          <td class="td-data" style="width:${columnWidths.effort}px; text-align:center;">
+            <span style="font-weight:700;">${task.effortHours}h</span>
+          </td>
+          <td class="td-data" style="width:${columnWidths.progress}px; text-align:center;">
+            <span style="color:#006644; font-weight:700;">${task.progress}%</span>
+          </td>
+          <td class="td-data" style="width:${columnWidths.target}px; text-align:center;">
+            <span style="color:#626F86;">${task.targetProgress}%</span>
+          </td>
+          <td class="td-data" style="width:${columnWidths.status}px; text-align:center;">
+            <span class="badge ${task.status === 'COMPLETED' ? 'badge-success' : task.status === 'IN_PROGRESS' ? 'badge-primary' : 'badge-neutral'}">
+              ${task.status}
+            </span>
+          </td>
+        `;
+
+        // Timeline Track Cell (Spanning all week columns)
+        const trackTd = document.createElement('td');
+        trackTd.colSpan = currentPlan.weeks.length;
+        trackTd.className = 'timeline-track-cell';
+        trackTd.style.width = (currentPlan.weeks.length * WEEK_WIDTH) + 'px';
+
+        // Week Drop Targets
+        for (let i = 0; i < currentPlan.weeks.length; i++) {
+          const dropSlot = document.createElement('div');
+          dropSlot.style.position = 'absolute';
+          dropSlot.style.left = (i * WEEK_WIDTH) + 'px';
+          dropSlot.style.top = '0';
+          dropSlot.style.bottom = '0';
+          dropSlot.style.width = WEEK_WIDTH + 'px';
+          dropSlot.style.borderRight = '1px dashed #E2E4E8';
+
+          dropSlot.addEventListener('dragover', (e) => e.preventDefault());
+          dropSlot.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            const dataStr = e.dataTransfer.getData('text/plain');
+            if (dataStr) {
+              const data = JSON.parse(dataStr);
+              await callResolver('scheduleBacklogTask', {
+                taskId: data.taskId,
+                startWeek: currentPlan.weeks[i].weekKey,
+                spanWeeks: 3
+              });
+              await loadProjectPlan();
+            }
+          });
+          trackTd.appendChild(dropSlot);
+        }
+
+        // Render "Today" line marker on current week index
+        const currentWkIdx = currentPlan.weeks.findIndex(w => w.isCurrentWeek);
+        const activeTodayIdx = currentWkIdx >= 0 ? currentWkIdx : Math.floor(currentPlan.weeks.length / 2);
+        const currentWeekKey = currentPlan.weeks[activeTodayIdx]?.weekKey || 'Today';
+        const todayX = (activeTodayIdx * WEEK_WIDTH) + (WEEK_WIDTH / 2);
+        const todayLine = document.createElement('div');
+        todayLine.className = 'today-line';
+        todayLine.style.left = todayX + 'px';
+        trackTd.appendChild(todayLine);
+
+        if (rowIdx === 0) {
+          const flag = document.createElement('div');
+          flag.className = 'today-flag';
+          flag.style.left = todayX + 'px';
+          flag.textContent = `TODAY (${currentWeekKey})`;
+          trackTd.appendChild(flag);
+        }
+
+        // Render Continuous Gantt Bar
+        const startWeekKey = task.startWeek || currentWeekKey;
+        const startIdx = Math.max(0, currentPlan.weeks.findIndex(w => w.weekKey === startWeekKey));
+        const span = task.spanWeeks || 3;
+        const barLeft = startIdx * WEEK_WIDTH + 4;
+        const barWidth = Math.max(WEEK_WIDTH - 8, span * WEEK_WIDTH - 8);
+
+        const bar = document.createElement('div');
+        bar.className = 'gantt-bar';
+        bar.style.left = barLeft + 'px';
+        bar.style.width = barWidth + 'px';
+        bar.dataset.taskId = task.key;
+
+        // Background Color Coding
+        const isBehind = task.progress < task.targetProgress && task.status !== 'COMPLETED';
+        const barBaseColor = task.status === 'COMPLETED' ? '#36B37E' : isBehind ? '#DE350B' : '#0065FF';
+        bar.style.background = '#DFE1E6';
+
+        // Actual Progress Fill
+        const actualFillWidth = (task.progress / 100) * barWidth;
+        const fillActual = document.createElement('div');
+        fillActual.className = 'gantt-bar-fill-actual';
+        fillActual.style.width = actualFillWidth + 'px';
+        fillActual.style.background = barBaseColor;
+        bar.appendChild(fillActual);
+
+        // Remaining Planned Fill
+        const fillPlanned = document.createElement('div');
+        fillPlanned.className = 'gantt-bar-fill-planned';
+        fillPlanned.style.left = actualFillWidth + 'px';
+        fillPlanned.style.width = (barWidth - actualFillWidth) + 'px';
+        fillPlanned.style.background = barBaseColor;
+        bar.appendChild(fillPlanned);
+
+        // Bar Text Content
+        const content = document.createElement('div');
+        content.className = 'gantt-bar-content';
+        content.textContent = `${task.key} (${task.progress}%)`;
+        bar.appendChild(content);
+
+        // Resize Handles
+        const leftHandle = document.createElement('div');
+        leftHandle.className = 'bar-handle bar-handle-left';
+        setupBarResizeHandle(leftHandle, task, 'left');
+        bar.appendChild(leftHandle);
+
+        const rightHandle = document.createElement('div');
+        rightHandle.className = 'bar-handle bar-handle-right';
+        setupBarResizeHandle(rightHandle, task, 'right');
+        bar.appendChild(rightHandle);
+
+        // Drag Bar to Reschedule
+        setupBarDrag(bar, task);
+
+        // Hover Tooltip Trigger
+        bar.addEventListener('mouseenter', (e) => showTaskTooltip(e, task));
+        bar.addEventListener('mouseleave', hideTooltip);
+        bar.addEventListener('click', (e) => {
+          if (!e.defaultPrevented) openTaskDetailModal(task.key);
+        });
+
+        trackTd.appendChild(bar);
+        tr.appendChild(trackTd);
+        tbody.appendChild(tr);
+      });
+    }
+
+    function setupBarResizeHandle(handle, task, edge) {
+      handle.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const startX = e.clientX;
+        const origSpan = task.spanWeeks || 3;
+        const origStartIdx = Math.max(0, currentPlan.weeks.findIndex(w => w.weekKey === (task.startWeek || '05-Aug')));
+
+        function onMouseMove(moveEvent) {
+          const deltaWeeks = Math.round((moveEvent.clientX - startX) / WEEK_WIDTH);
+          if (edge === 'right') {
+            const newSpan = Math.max(1, origSpan + deltaWeeks);
+            task.spanWeeks = newSpan;
+            task.effortHours = newSpan * 15;
+          } else if (edge === 'left') {
+            const newStartIdx = Math.max(0, Math.min(origStartIdx + deltaWeeks, currentPlan.weeks.length - 1));
+            task.startWeek = currentPlan.weeks[newStartIdx].weekKey;
+            task.spanWeeks = Math.max(1, origSpan - deltaWeeks);
+          }
+          renderTimelineRows();
+        }
+
+        async function onMouseUp() {
+          window.removeEventListener('mousemove', onMouseMove);
+          window.removeEventListener('mouseup', onMouseUp);
+          await callResolver('updateWbsTask', {
+            taskId: task.key,
+            updates: { startWeek: task.startWeek, spanWeeks: task.spanWeeks, effortHours: task.effortHours }
+          });
+          await loadProjectPlan();
+        }
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+      });
+    }
+
+    function setupBarDrag(bar, task) {
+      bar.addEventListener('mousedown', (e) => {
+        if (e.target.classList.contains('bar-handle')) return;
+        const startX = e.clientX;
+        const origStartIdx = Math.max(0, currentPlan.weeks.findIndex(w => w.weekKey === (task.startWeek || '05-Aug')));
+
+        function onMouseMove(moveEvent) {
+          const deltaWeeks = Math.round((moveEvent.clientX - startX) / WEEK_WIDTH);
+          const newStartIdx = Math.max(0, Math.min(origStartIdx + deltaWeeks, currentPlan.weeks.length - (task.spanWeeks || 3)));
+          task.startWeek = currentPlan.weeks[newStartIdx].weekKey;
+          renderTimelineRows();
+        }
+
+        async function onMouseUp() {
+          window.removeEventListener('mousemove', onMouseMove);
+          window.removeEventListener('mouseup', onMouseUp);
+          await callResolver('updateWbsTask', {
+            taskId: task.key,
+            updates: { startWeek: task.startWeek }
+          });
+          await loadProjectPlan();
+        }
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+      });
+    }
+
+    // SVG Dependency Bezier Curves Overlay
+    function renderDependencySvgOverlay() {
+      const svg = document.getElementById('dependencySvgLayer');
+      svg.innerHTML = '';
+      if (!currentPlan || !currentPlan.tasks) return;
+
+      const ganttWrapper = document.getElementById('ganttWrapper');
+      const wrapperRect = ganttWrapper.getBoundingClientRect();
+      svg.setAttribute('width', ganttWrapper.scrollWidth);
+      svg.setAttribute('height', ganttWrapper.scrollHeight);
+
+      currentPlan.tasks.forEach(task => {
+        if (!task.dependency || !task.dependency.predecessorKey) return;
+
+        const predTask = currentPlan.tasks.find(t => t.key === task.dependency.predecessorKey);
+        if (!predTask) return;
+
+        const predBar = document.querySelector(`.gantt-bar[data-task-id="${predTask.key}"]`);
+        const succBar = document.querySelector(`.gantt-bar[data-task-id="${task.key}"]`);
+        if (!predBar || !succBar) return;
+
+        const predRect = predBar.getBoundingClientRect();
+        const succRect = succBar.getBoundingClientRect();
+
+        // Coordinates relative to SVG canvas
+        const triggerPct = (task.dependency.triggerPercent || 30) / 100;
+        const x1 = (predRect.left - wrapperRect.left) + ganttWrapper.scrollLeft + (predRect.width * triggerPct);
+        const y1 = (predRect.top - wrapperRect.top) + ganttWrapper.scrollTop + (predRect.height / 2);
+
+        const x2 = (succRect.left - wrapperRect.left) + ganttWrapper.scrollLeft;
+        const y2 = (succRect.top - wrapperRect.top) + ganttWrapper.scrollTop + (succRect.height / 2);
+
+        const isViolated = task.dependency.isViolated;
+        const curveColor = isViolated ? '#DE350B' : '#36B37E';
+
+        const dx = Math.max(30, (x2 - x1) / 2);
+        const pathData = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', pathData);
+        path.setAttribute('class', 'dep-path' + (isViolated ? ' violated' : ''));
+        svg.appendChild(path);
+
+        // Predecessor Trigger Anchor Dot
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', x1);
+        circle.setAttribute('cy', y1);
+        circle.setAttribute('r', 4.5);
+        circle.setAttribute('class', 'dep-marker' + (isViolated ? ' violated' : ''));
+        svg.appendChild(circle);
+
+        // Text Badge on Curve
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', (x1 + x2) / 2);
+        text.setAttribute('y', (y1 + y2) / 2 - 6);
+        text.setAttribute('fill', curveColor);
+        text.setAttribute('font-size', '10px');
+        text.setAttribute('font-weight', '700');
+        text.textContent = `Lag: ${task.dependency.triggerPercent}% Trigger`;
+        svg.appendChild(text);
+      });
+    }
+
+    // Rich Tooltip Helpers
+    function showTaskTooltip(e, task) {
+      const tip = document.getElementById('globalTooltip');
+      const depInfo = task.dependency
+        ? `<div style="margin-top:4px; color:${task.dependency.isViolated ? '#FF8F73' : '#79F2C0'};">🔗 Dep: ${task.dependency.predecessorKey} >= ${task.dependency.triggerPercent}% (${task.dependency.isViolated ? 'VIOLATED' : 'SATISFIED'})</div>`
+        : '';
+      const subInfo = task.subtasks && task.subtasks.length > 0
+        ? `<div style="color:#B3BAC5;">Subtasks: ${task.subtasks.length} items (${task.effortHours}h total)</div>`
+        : '';
+
+      tip.innerHTML = `
+        <strong>${task.key}: ${task.summary}</strong>
+        <div>Assignee: ${task.resource}</div>
+        <div>Effort: ${task.effortHours}h | Progress: ${task.progress}% (Target: ${task.targetProgress}%)</div>
+        <div>Dates: ${task.startDate} to ${task.endDate}</div>
+        ${subInfo}
+        ${depInfo}
+      `;
+      tip.style.display = 'block';
+      tip.style.left = (e.clientX + 14) + 'px';
+      tip.style.top = (e.clientY + 14) + 'px';
+    }
+
+    function hideTooltip() {
+      document.getElementById('globalTooltip').style.display = 'none';
+    }
+
+    // Modals Handling
+    function openTaskDetailModal(taskKey) {
+      const task = (currentPlan.tasks || []).find(t => t.key === taskKey);
+      if (!task) return;
+      activeTaskId = task.key;
+
+      document.getElementById('modalTaskKey').textContent = `Edit Task: ${task.key}`;
+      document.getElementById('editSummaryInput').value = task.summary;
+      document.getElementById('editStatusSelect').value = task.status;
+
+      // Assignee Select
+      const assSelect = document.getElementById('editAssigneeSelect');
+      assSelect.innerHTML = '';
+      (currentPlan.availableUsers || []).forEach(u => {
+        const opt = document.createElement('option');
+        opt.value = u.displayName;
+        opt.textContent = u.displayName + (u.isPlaceholder ? ' [Placeholder]' : '');
+        if (u.displayName === task.resource) opt.selected = true;
+        assSelect.appendChild(opt);
+      });
+
+      // Predecessor Select
+      const predSelect = document.getElementById('editPredecessorSelect');
+      predSelect.innerHTML = '<option value="">None (No Dependency)</option>';
+      (currentPlan.tasks || []).forEach(t => {
+        if (t.key !== task.key) {
+          const opt = document.createElement('option');
+          opt.value = t.key;
+          opt.textContent = `${t.key}: ${t.summary}`;
+          if (task.dependency && task.dependency.predecessorKey === t.key) opt.selected = true;
+          predSelect.appendChild(opt);
+        }
+      });
+      document.getElementById('editTriggerPercentInput').value = task.dependency?.triggerPercent || 30;
+
+      // Subtasks
+      renderModalSubtasks(task);
+
+      document.getElementById('taskDetailModal').style.display = 'flex';
+    }
+
+    function renderModalSubtasks(task) {
+      const list = document.getElementById('subtasksList');
+      list.innerHTML = '';
+      const subs = task.subtasks || [];
+      if (subs.length === 0) {
+        list.innerHTML = '<div style="font-size:11px; color:#626F86;">No subtasks added yet.</div>';
+      } else {
+        subs.forEach((s, idx) => {
+          const item = document.createElement('div');
+          item.style.display = 'flex';
+          item.style.justifyContent = 'space-between';
+          item.style.fontSize = '12px';
+          item.innerHTML = `<span>• ${s.summary}</span><span style="font-weight:700;">${s.normalizedHours}h</span>`;
+          list.appendChild(item);
+        });
+      }
+    }
+
+    async function handleAddSubtask() {
+      const summary = document.getElementById('newSubtaskSummary').value.trim();
+      const hours = parseInt(document.getElementById('newSubtaskHours').value, 10) || 8;
+      if (!summary || !activeTaskId) return;
+
+      await callResolver('addSubtaskToTask', {
+        parentTaskId: activeTaskId,
+        subtask: { summary, estimateValue: hours, estimateUnit: 'HOURS' },
+        bufferType: document.getElementById('editBufferTypeSelect').value,
+        bufferValue: parseFloat(document.getElementById('editBufferValueInput').value) || 0
+      });
+
+      document.getElementById('newSubtaskSummary').value = '';
+      await loadProjectPlan();
+      const updated = currentPlan.tasks.find(t => t.key === activeTaskId);
+      if (updated) renderModalSubtasks(updated);
+    }
+
+    function handleEstimateUnitChange() {
+      const unit = document.getElementById('editEstimateUnitSelect').value;
+      document.getElementById('rawEstimateGroup').style.display = unit === 'TSHIRT' ? 'none' : 'block';
+      document.getElementById('tshirtSizeGroup').style.display = unit === 'TSHIRT' ? 'block' : 'none';
+    }
+
+    async function saveTaskModalChanges() {
+      if (!activeTaskId) return;
+      const summary = document.getElementById('editSummaryInput').value.trim();
+      const resource = document.getElementById('editAssigneeSelect').value;
+      const status = document.getElementById('editStatusSelect').value;
+      const predKey = document.getElementById('editPredecessorSelect').value;
+      const triggerPercent = parseInt(document.getElementById('editTriggerPercentInput').value, 10) || 30;
+
+      const updates = { summary, resource, status };
+      if (predKey) {
+        updates.dependency = {
+          predecessorId: predKey,
+          predecessorKey: predKey,
+          triggerPercent,
+          isTriggerSatisfied: false
+        };
+      } else {
+        updates.dependency = undefined;
+      }
+
+      await callResolver('updateWbsTask', { taskId: activeTaskId, updates });
+      closeModal('taskDetailModal');
+      await loadProjectPlan();
+    }
+
+    function openCreateTaskModal() {
+      const epicSelect = document.getElementById('createEpicSelect');
+      epicSelect.innerHTML = '';
+      (currentPlan?.availableEpics || []).forEach(ep => {
+        const opt = document.createElement('option');
+        opt.value = ep.summary;
+        opt.textContent = `${ep.key}: ${ep.summary}`;
+        epicSelect.appendChild(opt);
+      });
+
+      const assSelect = document.getElementById('createAssigneeSelect');
+      assSelect.innerHTML = '';
+      (currentPlan?.availableUsers || []).forEach(u => {
+        const opt = document.createElement('option');
+        opt.value = u.displayName;
+        opt.textContent = u.displayName;
+        assSelect.appendChild(opt);
+      });
+
+      const startWeekSelect = document.getElementById('createStartWeekSelect');
+      startWeekSelect.innerHTML = '';
+      (currentPlan?.weeks || []).forEach(w => {
+        const opt = document.createElement('option');
+        opt.value = w.weekKey;
+        opt.textContent = `${w.weekKey} (${w.sprintName})`;
+        startWeekSelect.appendChild(opt);
+      });
+
+      document.getElementById('createTaskModal').style.display = 'flex';
+    }
+
+    let isCreatingTask = false;
+    async function executeCreateTask() {
+      if (isCreatingTask) return;
+      const btn = document.getElementById('btnSubmitCreateTask');
+      const summary = document.getElementById('createSummaryInput').value.trim();
+      const epic = document.getElementById('createEpicSelect').value || 'Prerequisites';
+      const resource = document.getElementById('createAssigneeSelect').value || 'Resource 1';
+      const effortHours = parseInt(document.getElementById('createEffortInput').value, 10) || 40;
+      const startWeek = document.getElementById('createStartWeekSelect').value || '05-Aug';
+
+      if (!summary) return;
+
+      isCreatingTask = true;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Creating in Jira...';
+      }
+
+      try {
+        await callResolver('createInlineTask', {
+          summary, epic, resource, effortHours, startWeek, spanWeeks: 3
+        });
+
+        document.getElementById('createSummaryInput').value = '';
+        closeModal('createTaskModal');
+        await loadProjectPlan();
+      } finally {
+        isCreatingTask = false;
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Create & Schedule';
+        }
+      }
+    }
+
+    function openCreateEpicModal() {
+      document.getElementById('createEpicModal').style.display = 'flex';
+    }
+
+    let isCreatingEpic = false;
+    async function executeCreateEpic() {
+      if (isCreatingEpic) return;
+      const btn = document.getElementById('btnSubmitCreateEpic');
+      const summary = document.getElementById('newEpicSummaryInput').value.trim();
+      if (!summary) return;
+
+      isCreatingEpic = true;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Creating Epic...';
+      }
+
+      try {
+        await callResolver('createJiraEpic', { summary });
+        document.getElementById('newEpicSummaryInput').value = '';
+        closeModal('createEpicModal');
+        await loadProjectPlan();
+      } finally {
+        isCreatingEpic = false;
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Create Epic';
+        }
+      }
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).style.display = 'none';
+    }
+
+    // Utilization & Heatmap Views
+    async function renderUtilizationView() {
+      const cont = document.getElementById('utilizationProfilesContent');
+      cont.innerHTML = '<div style="color:#626F86;">Loading utilization profiles...</div>';
+      const res = await callResolver('getPortfolioResourceHeatmap', {});
+      if (!res || !res.rows) {
+        cont.innerHTML = '<div>No resource allocation data available.</div>';
+        return;
+      }
+
+      let html = '<div style="display:flex; flex-direction:column; gap:16px;">';
+      res.rows.forEach(r => {
+        html += `
+          <div style="background:#FFF; border:1px solid #DCDFE4; border-radius:6px; padding:12px;">
+            <div style="font-weight:700; font-size:13px; margin-bottom:4px;">👤 ${r.resourceName} <span style="font-weight:500; color:#626F86;">(${r.coe} • ${r.vertical})</span></div>
+            <div style="display:flex; gap:6px; overflow-x:auto; margin-top:8px;">
+        `;
+        res.weeks.forEach(w => {
+          const pct = r.weeklyUtilization[w.weekKey] || 0;
+          const bg = pct > 100 ? '#FFEBE6' : pct === 100 ? '#E3FCEF' : pct > 0 ? '#DEEBFF' : '#F4F5F7';
+          const fg = pct > 100 ? '#BF2600' : pct === 100 ? '#006644' : pct > 0 ? '#0747A6' : '#626F86';
+          html += `
+            <div style="background:${bg}; color:${fg}; border-radius:4px; padding:4px 8px; text-align:center; min-width:60px;">
+              <div style="font-size:10px; font-weight:600;">${w.weekKey}</div>
+              <div style="font-size:12px; font-weight:700;">${pct}%</div>
+            </div>
+          `;
+        });
+        html += '</div></div>';
+      });
+      html += '</div>';
+      cont.innerHTML = html;
+    }
+
+    async function renderHeatmapView() {
+      const cont = document.getElementById('heatmapContent');
+      cont.innerHTML = '<div style="color:#626F86;">Loading capacity heatmap...</div>';
+      const res = await callResolver('getPortfolioResourceHeatmap', {});
+      if (!res || !res.rows) {
+        cont.innerHTML = '<div>No capacity data available.</div>';
+        return;
+      }
+
+      let html = '<table class="heatmap-table"><thead><tr><th class="heatmap-th">Resource</th><th class="heatmap-th">COE</th><th class="heatmap-th">Vertical</th>';
+      res.weeks.forEach(w => {
+        html += `<th class="heatmap-th">${w.weekKey}</th>`;
+      });
+      html += '</tr></thead><tbody>';
+
+      res.rows.forEach(r => {
+        html += `<tr>
+          <td class="heatmap-td" style="text-align:left; font-weight:700;">${r.resourceName}</td>
+          <td class="heatmap-td" style="color:#626F86;">${r.coe}</td>
+          <td class="heatmap-td" style="color:#626F86;">${r.vertical}</td>
+        `;
+        res.weeks.forEach(w => {
+          const pct = r.weeklyUtilization[w.weekKey] || 0;
+          const bg = pct > 100 ? '#FFEBE6' : pct === 100 ? '#E3FCEF' : pct > 0 ? '#DEEBFF' : '#FFF0B3';
+          const fg = pct > 100 ? '#BF2600' : pct === 100 ? '#006644' : pct > 0 ? '#0747A6' : '#172B4D';
+          html += `<td class="heatmap-td" style="background:${bg}; color:${fg};">${pct}%</td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      cont.innerHTML = html;
+    }
+  </script>
+</body>
+</html>

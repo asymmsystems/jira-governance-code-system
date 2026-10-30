@@ -1,0 +1,33 @@
+modules:
+  jira:projectPage:
+    - key: fourrealities-project-dashboard
+      title: FourRealities Audit Dashboard
+      render: native
+      resource: main
+      resolver:
+        function: resolver
+  jira:issuePanel:
+    - key: fourrealities-issue-panel
+      title: Reality Alignment
+      icon: https://raw.githubusercontent.com/feathericons/feather/master/icons/activity.svg
+      render: native
+      resource: main
+      resolver:
+        function: resolver
+  function:
+    - key: resolver
+      handler: index.handler
+
+resources:
+  - key: main
+    path: src/frontend/index.tsx
+
+app:
+  id: ari:cloud:ecosystem::app/974e4981-7626-4b1c-a41f-7eaccb7f3605
+  runtime:
+    name: nodejs22.x
+
+permissions:
+  scopes:
+    - read:jira-work
+    - storage:app
