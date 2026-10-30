@@ -366,25 +366,27 @@ export class PlannerEngine {
       const allocations: ResourceProjectAllocation[] = resTasks.map(t => {
         const weeklyWorkload: Record<string, number> = {};
         for (const week of weeks) {
+          const wIdx = weeks.findIndex(w => w.weekKey === week.weekKey);
+          const sIdx = t.startWeek ? weeks.findIndex(w => w.weekKey === t.startWeek) : -1;
+          const span = Math.max(1, t.spanWeeks || 1);
+          const eIdx = t.endWeek
+            ? weeks.findIndex(w => w.weekKey === t.endWeek)
+            : (sIdx !== -1 ? sIdx + span - 1 : -1);
+
           if (t.weeklyAllocations && typeof t.weeklyAllocations[week.weekKey] === 'number') {
             weeklyWorkload[week.weekKey] = t.weeklyAllocations[week.weekKey];
-          } else if (t.startWeek && t.endWeek) {
-            const wIdx = weeks.findIndex(w => w.weekKey === week.weekKey);
-            const sIdx = weeks.findIndex(w => w.weekKey === t.startWeek);
-            const eIdx = weeks.findIndex(w => w.weekKey === t.endWeek);
-            if (sIdx !== -1 && eIdx !== -1 && wIdx >= sIdx && wIdx <= eIdx) {
-              const span = Math.max(1, eIdx - sIdx + 1);
-              weeklyWorkload[week.weekKey] = Math.round(100 / span);
-            } else {
-              weeklyWorkload[week.weekKey] = 0;
-            }
-          } else {
-            const taskStart = new Date(t.startDate).getTime();
-            const taskEnd = new Date(t.endDate).getTime();
+          } else if (sIdx !== -1 && eIdx !== -1 && wIdx >= sIdx && wIdx <= eIdx) {
+            const totalSpan = Math.max(1, eIdx - sIdx + 1);
+            weeklyWorkload[week.weekKey] = Math.round(100 / totalSpan);
+          } else if (t.startDate && t.endDate) {
+            const taskStart = new Date(t.startDate.slice(0, 10)).getTime();
+            const taskEnd = new Date(t.endDate.slice(0, 10)).getTime();
             const weekStart = new Date(week.startDate).getTime();
             const weekEnd = new Date(week.endDate).getTime();
             const isWithinRange = !(taskEnd < weekStart || taskStart > weekEnd);
-            weeklyWorkload[week.weekKey] = isWithinRange ? Math.round(100 / Math.max(1, t.spanWeeks || 4)) : 0;
+            weeklyWorkload[week.weekKey] = isWithinRange ? Math.max(10, Math.round(100 / span)) : 0;
+          } else {
+            weeklyWorkload[week.weekKey] = 0;
           }
         }
         return {

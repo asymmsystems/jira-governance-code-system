@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CascadePlan - Visual Project & Portfolio Planner</title>
   <link rel="stylesheet" href="./style.css">
+  <style>
+    @keyframes cpSpin { to { transform: rotate(360deg); } }
+  </style>
 </head>
 <body>
 
@@ -50,6 +53,15 @@
     <main class="planner-content">
       <!-- 1. Timeline View -->
       <div id="timelineViewSection" style="display: flex; flex-direction: column; flex: 1;">
+        <!-- Initial Loading Indicator & Error Banner -->
+        <div id="plannerLoadingIndicator" style="display: flex; align-items: center; justify-content: center; gap: 10px; padding: 30px; color: #42526E; font-size: 13px; font-weight: 600;">
+          <span style="display: inline-block; width: 16px; height: 16px; border: 2px solid #0052CC; border-top-color: transparent; border-radius: 50%; animation: cpSpin 0.8s linear infinite;"></span>
+          <span>Loading project schedule & backlog issues...</span>
+        </div>
+        <div id="plannerErrorBanner" style="display: none; margin: 16px; padding: 12px 16px; background: #FFEBE6; border: 1px solid #FF8F73; border-radius: 6px; color: #BF2600; font-size: 13px; align-items: center; justify-content: space-between;">
+          <span id="plannerErrorMsg">Failed to load project plan.</span>
+          <button class="btn btn-outline" id="btnRetryLoad">Retry</button>
+        </div>
         <div class="timeline-banner">
           <div class="legend-row">
             <span style="font-weight: 700; color: #42526E;">Legend:</span>
@@ -102,7 +114,7 @@
     <div class="modal-card">
       <div class="modal-header">
         <div class="modal-title" id="modalTaskKey">Task Details</div>
-        <button class="btn btn-subtle" onclick="closeModal('taskDetailModal')">✕</button>
+        <button class="btn btn-subtle" id="btnCloseTaskDetail" title="Close">✕</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
@@ -133,7 +145,7 @@
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <div class="form-group">
               <label class="form-label">Estimation Unit</label>
-              <select class="form-input" id="editEstimateUnitSelect" onchange="handleEstimateUnitChange()">
+              <select class="form-input" id="editEstimateUnitSelect">
                 <option value="HOURS">Hours (Direct Effort)</option>
                 <option value="STORY_POINTS">Story Points (1 pt = 8 hrs)</option>
                 <option value="TSHIRT">T-Shirt Size (XS, S, M, L, XL)</option>
@@ -163,7 +175,7 @@
           <div style="display: flex; gap: 8px; margin-bottom: 12px;">
             <input type="text" class="form-input" id="newSubtaskSummary" placeholder="New subtask title..." style="flex: 1;" />
             <input type="number" class="form-input" id="newSubtaskHours" value="8" style="width: 70px;" />
-            <button class="btn btn-outline" onclick="handleAddSubtask()">+ Add Subtask</button>
+            <button class="btn btn-outline" id="btnAddSubtaskBtn">+ Add Subtask</button>
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <div class="form-group">
@@ -197,8 +209,8 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-outline" onclick="closeModal('taskDetailModal')">Cancel</button>
-        <button class="btn btn-primary" onclick="saveTaskModalChanges()">Save Changes</button>
+        <button class="btn btn-outline" id="btnCancelTaskDetail">Cancel</button>
+        <button class="btn btn-primary" id="btnSaveTaskModal">Save Changes</button>
       </div>
     </div>
   </div>
@@ -208,12 +220,13 @@
     <div class="modal-card">
       <div class="modal-header">
         <div class="modal-title">Create Jira Task & Schedule</div>
-        <button class="btn btn-subtle" onclick="closeModal('createTaskModal')">✕</button>
+        <button class="btn btn-subtle" id="btnCloseCreateTask" title="Close">✕</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
           <label class="form-label">Summary</label>
           <input type="text" class="form-input" id="createSummaryInput" placeholder="e.g. Integrate Payment Webhooks" />
+          <div id="createTaskError" style="display: none; color: #DE350B; font-size: 12px; margin-top: 6px; font-weight: 600;"></div>
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="form-group">
@@ -237,8 +250,8 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-outline" onclick="closeModal('createTaskModal')">Cancel</button>
-        <button class="btn btn-primary" id="btnSubmitCreateTask" onclick="executeCreateTask()">Create & Schedule</button>
+        <button class="btn btn-outline" id="btnCancelCreateTask">Cancel</button>
+        <button class="btn btn-primary" id="btnSubmitCreateTask">Create & Schedule</button>
       </div>
     </div>
   </div>
@@ -248,17 +261,18 @@
     <div class="modal-card">
       <div class="modal-header">
         <div class="modal-title">Create Jira Epic</div>
-        <button class="btn btn-subtle" onclick="closeModal('createEpicModal')">✕</button>
+        <button class="btn btn-subtle" id="btnCloseCreateEpic" title="Close">✕</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
           <label class="form-label">Epic Summary</label>
           <input type="text" class="form-input" id="newEpicSummaryInput" placeholder="e.g. Identity & Access Overhaul" />
+          <div id="createEpicError" style="display: none; color: #DE350B; font-size: 12px; margin-top: 6px; font-weight: 600;"></div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-outline" onclick="closeModal('createEpicModal')">Cancel</button>
-        <button class="btn btn-primary" id="btnSubmitCreateEpic" onclick="executeCreateEpic()">Create Epic</button>
+        <button class="btn btn-outline" id="btnCancelCreateEpic">Cancel</button>
+        <button class="btn btn-primary" id="btnSubmitCreateEpic">Create Epic</button>
       </div>
     </div>
   </div>
@@ -305,6 +319,45 @@
       document.getElementById('newTaskBtn').addEventListener('click', openCreateTaskModal);
       document.getElementById('newEpicBtn').addEventListener('click', openCreateEpicModal);
 
+      // Task Detail Modal Listeners
+      document.getElementById('btnCloseTaskDetail').addEventListener('click', () => closeModal('taskDetailModal'));
+      document.getElementById('btnCancelTaskDetail').addEventListener('click', () => closeModal('taskDetailModal'));
+      document.getElementById('btnSaveTaskModal').addEventListener('click', saveTaskModalChanges);
+      document.getElementById('btnAddSubtaskBtn').addEventListener('click', handleAddSubtask);
+      document.getElementById('editEstimateUnitSelect').addEventListener('change', handleEstimateUnitChange);
+
+      // Create Task Modal Listeners
+      document.getElementById('btnCloseCreateTask').addEventListener('click', () => closeModal('createTaskModal'));
+      document.getElementById('btnCancelCreateTask').addEventListener('click', () => closeModal('createTaskModal'));
+      document.getElementById('btnSubmitCreateTask').addEventListener('click', executeCreateTask);
+
+      // Create Epic Modal Listeners
+      document.getElementById('btnCloseCreateEpic').addEventListener('click', () => closeModal('createEpicModal'));
+      document.getElementById('btnCancelCreateEpic').addEventListener('click', () => closeModal('createEpicModal'));
+      document.getElementById('btnSubmitCreateEpic').addEventListener('click', executeCreateEpic);
+
+      // Retry Button
+      const retryBtn = document.getElementById('btnRetryLoad');
+      if (retryBtn) retryBtn.addEventListener('click', loadProjectPlan);
+
+      // Dismiss Modals on Backdrop Click
+      document.querySelectorAll('.modal-backdrop').forEach(modal => {
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) {
+            modal.style.display = 'none';
+          }
+        });
+      });
+
+      // Dismiss Modals on Escape Key
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          document.querySelectorAll('.modal-backdrop').forEach(modal => {
+            modal.style.display = 'none';
+          });
+        }
+      });
+
       window.addEventListener('resize', () => {
         renderDependencySvgOverlay();
       });
@@ -331,13 +384,26 @@
     }
 
     async function loadProjectPlan() {
+      const loader = document.getElementById('plannerLoadingIndicator');
+      const errBanner = document.getElementById('plannerErrorBanner');
+      if (loader) loader.style.display = 'flex';
+      if (errBanner) errBanner.style.display = 'none';
+
       const plan = await callResolver('getProjectPlan', {});
+      if (loader) loader.style.display = 'none';
+
       if (plan) {
         currentPlan = plan;
         if (plan.columnWidths) {
           columnWidths = { ...columnWidths, ...plan.columnWidths };
         }
         renderPlan();
+      } else {
+        if (errBanner) {
+          errBanner.style.display = 'flex';
+          const msg = document.getElementById('plannerErrorMsg');
+          if (msg) msg.textContent = 'Unable to synchronize with Jira. Please verify your connection or click Retry.';
+        }
       }
     }
 
@@ -482,11 +548,11 @@
         tr.innerHTML = `
           <td class="td-data" style="width:${columnWidths.epic}px;" title="${task.epic || ''}">${task.epic || '—'}</td>
           <td class="td-data" style="width:${columnWidths.story}px;" title="${task.story || ''}">${task.story || 'Task'}</td>
-          <td class="td-data td-task-summary" style="width:${columnWidths.task}px;" title="${task.summary}" onclick="openTaskDetailModal('${task.key}')">
+          <td class="td-data td-task-summary" style="width:${columnWidths.task}px; cursor:pointer;" title="${task.summary}">
             <span>${task.key}: ${task.summary}</span>
           </td>
           <td class="td-data" style="width:${columnWidths.resource}px;">
-            <div class="resource-chip" onclick="openTaskDetailModal('${task.key}')" title="${task.resource}">
+            <div class="resource-chip" title="${task.resource}" style="cursor:pointer;">
               <span>👤</span><span>${task.resource}</span>
             </div>
           </td>
@@ -505,6 +571,11 @@
             </span>
           </td>
         `;
+
+        const summaryTd = tr.querySelector('.td-task-summary');
+        if (summaryTd) summaryTd.addEventListener('click', () => openTaskDetailModal(task.key));
+        const chip = tr.querySelector('.resource-chip');
+        if (chip) chip.addEventListener('click', () => openTaskDetailModal(task.key));
 
         // Timeline Track Cell (Spanning all week columns)
         const trackTd = document.createElement('td');
@@ -888,8 +959,14 @@
     }
 
     function openCreateTaskModal() {
+      const summaryInput = document.getElementById('createSummaryInput');
+      summaryInput.value = '';
+      summaryInput.style.borderColor = '';
+      const errEl = document.getElementById('createTaskError');
+      if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+
       const epicSelect = document.getElementById('createEpicSelect');
-      epicSelect.innerHTML = '';
+      epicSelect.innerHTML = '<option value="">(None / Standalone Task)</option>';
       (currentPlan?.availableEpics || []).forEach(ep => {
         const opt = document.createElement('option');
         opt.value = ep.summary;
@@ -902,33 +979,49 @@
       (currentPlan?.availableUsers || []).forEach(u => {
         const opt = document.createElement('option');
         opt.value = u.displayName;
-        opt.textContent = u.displayName;
+        opt.textContent = u.displayName + (u.isPlaceholder ? ' [Placeholder]' : '');
         assSelect.appendChild(opt);
       });
 
       const startWeekSelect = document.getElementById('createStartWeekSelect');
       startWeekSelect.innerHTML = '';
+      const curWk = (currentPlan?.weeks || []).find(w => w.isCurrentWeek);
       (currentPlan?.weeks || []).forEach(w => {
         const opt = document.createElement('option');
         opt.value = w.weekKey;
         opt.textContent = `${w.weekKey} (${w.sprintName})`;
+        if (curWk && w.weekKey === curWk.weekKey) opt.selected = true;
         startWeekSelect.appendChild(opt);
       });
 
       document.getElementById('createTaskModal').style.display = 'flex';
+      setTimeout(() => summaryInput.focus(), 50);
     }
 
     let isCreatingTask = false;
     async function executeCreateTask() {
       if (isCreatingTask) return;
       const btn = document.getElementById('btnSubmitCreateTask');
-      const summary = document.getElementById('createSummaryInput').value.trim();
+      const summaryInput = document.getElementById('createSummaryInput');
+      const summary = summaryInput.value.trim();
       const epic = document.getElementById('createEpicSelect').value || 'Prerequisites';
-      const resource = document.getElementById('createAssigneeSelect').value || 'Resource 1';
+      const resource = document.getElementById('createAssigneeSelect').value || 'Unassigned';
       const effortHours = parseInt(document.getElementById('createEffortInput').value, 10) || 40;
-      const startWeek = document.getElementById('createStartWeekSelect').value || '05-Aug';
+      const startWeek = document.getElementById('createStartWeekSelect').value;
+      const errEl = document.getElementById('createTaskError');
 
-      if (!summary) return;
+      if (!summary) {
+        summaryInput.style.borderColor = '#DE350B';
+        summaryInput.focus();
+        if (errEl) {
+          errEl.textContent = 'Please enter a task summary.';
+          errEl.style.display = 'block';
+        }
+        return;
+      }
+
+      summaryInput.style.borderColor = '';
+      if (errEl) errEl.style.display = 'none';
 
       isCreatingTask = true;
       if (btn) {
@@ -937,13 +1030,26 @@
       }
 
       try {
-        await callResolver('createInlineTask', {
+        const res = await callResolver('createInlineTask', {
           summary, epic, resource, effortHours, startWeek, spanWeeks: 3
         });
 
-        document.getElementById('createSummaryInput').value = '';
+        if (res && res.success === false) {
+          if (errEl) {
+            errEl.textContent = res.error || 'Failed to create task in Jira.';
+            errEl.style.display = 'block';
+          }
+          return;
+        }
+
+        summaryInput.value = '';
         closeModal('createTaskModal');
         await loadProjectPlan();
+      } catch (err) {
+        if (errEl) {
+          errEl.textContent = 'An unexpected network error occurred.';
+          errEl.style.display = 'block';
+        }
       } finally {
         isCreatingTask = false;
         if (btn) {
@@ -954,15 +1060,35 @@
     }
 
     function openCreateEpicModal() {
+      const summaryInput = document.getElementById('newEpicSummaryInput');
+      summaryInput.value = '';
+      summaryInput.style.borderColor = '';
+      const errEl = document.getElementById('createEpicError');
+      if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
       document.getElementById('createEpicModal').style.display = 'flex';
+      setTimeout(() => summaryInput.focus(), 50);
     }
 
     let isCreatingEpic = false;
     async function executeCreateEpic() {
       if (isCreatingEpic) return;
       const btn = document.getElementById('btnSubmitCreateEpic');
-      const summary = document.getElementById('newEpicSummaryInput').value.trim();
-      if (!summary) return;
+      const summaryInput = document.getElementById('newEpicSummaryInput');
+      const summary = summaryInput.value.trim();
+      const errEl = document.getElementById('createEpicError');
+
+      if (!summary) {
+        summaryInput.style.borderColor = '#DE350B';
+        summaryInput.focus();
+        if (errEl) {
+          errEl.textContent = 'Please enter an epic summary.';
+          errEl.style.display = 'block';
+        }
+        return;
+      }
+
+      summaryInput.style.borderColor = '';
+      if (errEl) errEl.style.display = 'none';
 
       isCreatingEpic = true;
       if (btn) {
@@ -971,10 +1097,23 @@
       }
 
       try {
-        await callResolver('createJiraEpic', { summary });
-        document.getElementById('newEpicSummaryInput').value = '';
+        const res = await callResolver('createJiraEpic', { summary });
+        if (res && res.success === false) {
+          if (errEl) {
+            errEl.textContent = res.error || 'Failed to create epic in Jira.';
+            errEl.style.display = 'block';
+          }
+          return;
+        }
+
+        summaryInput.value = '';
         closeModal('createEpicModal');
         await loadProjectPlan();
+      } catch (err) {
+        if (errEl) {
+          errEl.textContent = 'An unexpected network error occurred.';
+          errEl.style.display = 'block';
+        }
       } finally {
         isCreatingEpic = false;
         if (btn) {

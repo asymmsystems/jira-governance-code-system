@@ -259,7 +259,8 @@ describe('CascadePlan Index & Resolver Tests', () => {
     it('handles Jira user fetch errors gracefully', async () => {
       mockRequestJira.mockRejectedValueOnce(new Error('Network failure'));
       const users = await fetchProjectUsers('TEST');
-      expect(users.length).toBe(PLACEHOLDER_USERS.length);
+      expect(users.length).toBe(PLACEHOLDER_USERS.length + 1);
+      expect(users[0].displayName).toBe('Unassigned');
     });
 
     it('fetches real Epics from Jira', async () => {
@@ -454,8 +455,8 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(res.task?.epic).toBe('General');
       expect(res.task?.story).toBe('Task');
       expect(res.task?.effortHours).toBe(40);
-      expect(res.task?.resource).toBe('Resource 1');
-      expect(res.task?.startWeek).toBe('05-Aug');
+      expect(res.task?.resource).toBe('Unassigned');
+      expect(res.task?.startWeek).toBe(DEFAULT_WEEKS.find(w => w.isCurrentWeek)?.weekKey || DEFAULT_WEEKS[0].weekKey);
     });
   });
 
@@ -550,6 +551,24 @@ describe('CascadePlan Index & Resolver Tests', () => {
 
       const modified = updatedPlan.backlogTasks!.find(t => t.key === 'TEST-3');
       expect(modified?.effortHours).toBe(24);
+    });
+
+    it('derives startDate, endDate, and weeklyAllocations dynamically when startWeek or spanWeeks is updated', async () => {
+      const updatedPlan = await updateWbsTask(
+        {
+          projectKey: 'TEST',
+          taskId: 'TEST-1',
+          updates: { startWeek: DEFAULT_WEEKS[1].weekKey, spanWeeks: 3 }
+        },
+        mockStorage
+      );
+
+      const modified = updatedPlan.tasks.find(t => t.key === 'TEST-1');
+      expect(modified?.startWeek).toBe(DEFAULT_WEEKS[1].weekKey);
+      expect(modified?.endWeek).toBe(DEFAULT_WEEKS[3].weekKey);
+      expect(modified?.startDate).toBe(DEFAULT_WEEKS[1].startDate);
+      expect(modified?.endDate).toBe(DEFAULT_WEEKS[3].endDate);
+      expect(modified?.weeklyAllocations).toBeDefined();
     });
 
     it('throws error if task to update is not found', async () => {
@@ -1018,6 +1037,59 @@ describe('CascadePlan Index & Resolver Tests', () => {
       });
       expect(res.synced).toBe(true);
       expect(mockRequestJira).toHaveBeenCalled();
+    });
+
+    it('syncTaskToJira unassigns issue when resourceAccountId is unassigned', async () => {
+      mockRequestJira.mockResolvedValueOnce({ status: 204 });
+      const res = await syncTaskToJira('TEST-1', { resourceAccountId: 'unassigned' });
+      expect(res.synced).toBe(true);
+      const lastCall = mockRequestJira.mock.calls[mockRequestJira.mock.calls.length - 1];
+      const parsed = JSON.parse(lastCall[1].body);
+      expect(parsed.fields.assignee).toBeNull();
+    });
+
+    it('syncTaskToJira gracefully retries without duedate if duedate is rejected on issue screen', async () => {
+      mockRequestJira
+        .mockResolvedValueOnce({
+          status: 400,
+          json: async () => ({ errors: { duedate: 'Field duedate cannot be set on screen' } })
+        })
+        .mockResolvedValueOnce({ status: 204 });
+
+      const res = await syncTaskToJira('TEST-1', {
+        summary: 'Clean Task Title',
+        endDate: '2026-11-20'
+      });
+      expect(res.synced).toBe(true);
+      expect(mockRequestJira).toHaveBeenCalledTimes(2);
+    });
+
+    it('syncTaskToJira handles duedate retry failure and empty fallbackFields', async () => {
+      mockRequestJira
+        .mockResolvedValueOnce({
+          status: 400,
+          json: async () => ({ errors: { duedate: 'Cannot set duedate' } })
+        })
+        .mockResolvedValueOnce({
+          status: 400,
+          json: async () => ({ errorMessages: ['Still invalid'] })
+        });
+
+      const res = await syncTaskToJira('TEST-1', {
+        summary: 'Failing retry',
+        endDate: '2026-11-20'
+      });
+      expect(res.synced).toBe(false);
+      expect(res.error).toContain('Still invalid');
+
+      mockRequestJira.mockResolvedValueOnce({
+        status: 400,
+        json: async () => ({ errors: { duedate: 'Cannot set duedate' } })
+      });
+      const resOnlyDuedate = await syncTaskToJira('TEST-1', {
+        endDate: '2026-11-20'
+      });
+      expect(resOnlyDuedate.synced).toBe(false);
     });
 
     it('syncTaskToJira handles non-200 responses gracefully', async () => {

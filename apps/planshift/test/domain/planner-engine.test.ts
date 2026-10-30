@@ -147,6 +147,13 @@ describe('PlannerEngine Domain Tests', () => {
       expect(res.isViolated).toBe(false);
       expect(res.blockerMessage).toBeUndefined();
     });
+
+    it('evaluates dependency when predecessor has no explicit endDate', () => {
+      const pred: WbsTask = { ...sampleTask, progress: 10, startDate: '2026-08-01', endDate: undefined as any };
+      const res = PlannerEngine.evaluateDependency(pred, dep);
+      expect(res.isSatisfied).toBe(false);
+      expect(res.earliestStartDate).toBeDefined();
+    });
   });
 
   describe('validateDependency', () => {
@@ -217,6 +224,11 @@ describe('PlannerEngine Domain Tests', () => {
       expect(weeks.length).toBe(15);
       expect(currentWeekIndex).toBe(6);
       expect(weeks[6].isCurrentWeek).toBe(true);
+    });
+
+    it('calculates Wednesday alignment properly when reference date is earlier in the week (e.g. Sunday or Monday)', () => {
+      const { weeks } = PlannerEngine.generateDynamicWeeks(new Date('2026-10-25'), 2, 2);
+      expect(weeks.length).toBe(5);
     });
   });
 
@@ -313,6 +325,18 @@ describe('PlannerEngine Domain Tests', () => {
       expect(profiles[0].allocations[0].weeklyWorkload['16-Sep']).toBe(50);
     });
 
+    it('computes end index from span when endWeek is undefined', () => {
+      const taskNoEndWeek: WbsTask = {
+        ...sampleTask,
+        startWeek: '15-Jul',
+        endWeek: undefined,
+        spanWeeks: 1,
+        weeklyAllocations: undefined
+      };
+      const profiles = PlannerEngine.calculateResourceUtilization([taskNoEndWeek], weeks, 0);
+      expect(profiles[0].allocations[0].weeklyWorkload['15-Jul']).toBe(100);
+    });
+
     it('assigns Unassigned when task resource is empty or whitespace', () => {
       const unassignedTask: WbsTask = {
         ...sampleTask,
@@ -320,6 +344,19 @@ describe('PlannerEngine Domain Tests', () => {
       };
       const profiles = PlannerEngine.calculateResourceUtilization([unassignedTask], weeks, 0);
       expect(profiles[0].resourceName).toBe('Unassigned');
+    });
+
+    it('sets workload to 0 when task has no weekly allocations, week keys, or date range', () => {
+      const taskNoDates: WbsTask = {
+        ...sampleTask,
+        startWeek: undefined,
+        endWeek: undefined,
+        startDate: undefined as any,
+        endDate: undefined as any,
+        weeklyAllocations: undefined
+      };
+      const profiles = PlannerEngine.calculateResourceUtilization([taskNoDates], weeks, 0);
+      expect(profiles[0].allocations[0].weeklyWorkload['15-Jul']).toBe(0);
     });
   });
 

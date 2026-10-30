@@ -125,18 +125,24 @@ export function mapJiraStatus(statusCategoryKey?: string, statusName?: string): 
   return 'NOT_STARTED';
 }
 
+export const UNASSIGNED_USER: JiraAssignableUser = {
+  accountId: 'unassigned',
+  displayName: 'Unassigned',
+  isPlaceholder: false
+};
+
 /**
  * Fetches real Jira project assignees and merges with placeholders.
  */
 export async function fetchProjectUsers(projectKey: string): Promise<JiraAssignableUser[]> {
-  const users: JiraAssignableUser[] = [...PLACEHOLDER_USERS];
+  const realUsers: JiraAssignableUser[] = [];
   try {
     const res = await api.asApp().requestJira(route`/rest/api/3/user/assignable/search?project=${projectKey}&maxResults=50`);
     if (res.status === 200) {
       const data: any[] = await res.json();
       for (const u of data) {
         if (u.accountId && u.displayName) {
-          users.push({
+          realUsers.push({
             accountId: u.accountId,
             displayName: u.displayName,
             avatarUrl: u.avatarUrls?.['24x24'] || u.avatarUrls?.['48x48'],
@@ -146,7 +152,7 @@ export async function fetchProjectUsers(projectKey: string): Promise<JiraAssigna
       }
     }
   } catch {}
-  return users;
+  return [UNASSIGNED_USER, ...realUsers, ...PLACEHOLDER_USERS];
 }
 
 /**
@@ -248,17 +254,17 @@ export async function fetchLiveJiraIssues(
           storyKey: key,
           effortHours: totalHours,
           effortConfig,
-          resource: (stored?.resource || iss.fields?.assignee?.displayName || 'Resource 1'),
-          resourceAccountId: stored?.resourceAccountId || iss.fields?.assignee?.accountId,
+          resource: (stored?.resource || iss.fields?.assignee?.displayName || 'Unassigned'),
+          resourceAccountId: stored?.resourceAccountId || iss.fields?.assignee?.accountId || undefined,
           progress: stored?.progress !== undefined ? stored.progress : progress,
           targetProgress: stored?.targetProgress !== undefined ? stored.targetProgress : 20,
           status: stored?.status || status,
-          startDate: stored?.startDate || '2026-08-05',
-          endDate: stored?.endDate || '2026-09-16',
+          startDate: stored?.startDate || DEFAULT_WEEKS[0]?.startDate || '2026-10-14',
+          endDate: stored?.endDate || iss.fields?.duedate || DEFAULT_WEEKS[3]?.endDate || '2026-11-04',
           startWeek: stored?.startWeek,
           endWeek: stored?.endWeek,
           spanWeeks: stored?.spanWeeks || 4,
-          weeklyAllocations: stored?.weeklyAllocations || { '05-Aug': 50, '12-Aug': 50, '19-Aug': 50, '26-Aug': 50 },
+          weeklyAllocations: stored?.weeklyAllocations,
           dependency: stored?.dependency,
           subtasks: finalSubtasks
         };
@@ -273,7 +279,7 @@ export async function fetchLiveJiraIssues(
             wbsItem.endWeek = DEFAULT_WEEKS[weekIdx + 3].weekKey;
             wbsItem.spanWeeks = 4;
             wbsItem.startDate = DEFAULT_WEEKS[weekIdx].startDate;
-            wbsItem.endDate = DEFAULT_WEEKS[weekIdx + 3].endDate;
+            wbsItem.endDate = iss.fields?.duedate || DEFAULT_WEEKS[weekIdx + 3].endDate;
             wbsItem.weeklyAllocations = {
               [DEFAULT_WEEKS[weekIdx].weekKey]: 25,
               [DEFAULT_WEEKS[weekIdx + 1].weekKey]: 25,
@@ -351,17 +357,17 @@ export async function getProjectPlan(
         story: stored.story || 'Task',
         storyKey: key,
         effortHours: stored.effortHours || 40,
-        resource: stored.resource || 'Resource 1',
+        resource: stored.resource || 'Unassigned',
         resourceAccountId: stored.resourceAccountId,
         progress: stored.progress || 0,
         targetProgress: stored.targetProgress || 20,
         status: stored.status || 'NOT_STARTED',
-        startDate: stored.startDate || '2026-08-05',
-        endDate: stored.endDate || '2026-08-26',
-        startWeek: stored.startWeek || '05-Aug',
-        endWeek: stored.endWeek || '26-Aug',
+        startDate: stored.startDate || DEFAULT_WEEKS[0]?.startDate || '2026-10-14',
+        endDate: stored.endDate || DEFAULT_WEEKS[3]?.endDate || '2026-11-04',
+        startWeek: stored.startWeek || DEFAULT_WEEKS[0]?.weekKey || '14-Oct',
+        endWeek: stored.endWeek || DEFAULT_WEEKS[3]?.weekKey || '04-Nov',
         spanWeeks: stored.spanWeeks || 4,
-        weeklyAllocations: stored.weeklyAllocations || { '05-Aug': 50, '12-Aug': 50, '19-Aug': 50, '26-Aug': 50 },
+        weeklyAllocations: stored.weeklyAllocations,
         dependency: stored.dependency,
         subtasks: stored.subtasks || []
       });
@@ -432,11 +438,17 @@ export async function scheduleBacklogTask(
     startDate: DEFAULT_WEEKS[startIdx].startDate,
     endDate: DEFAULT_WEEKS[endIdx].endDate,
     effortHours,
-    resource: resource || 'Resource 1',
+    resource: resource || 'Unassigned',
     weeklyAllocations: allocations
   };
 
   await storage.set(`scheduleMap:${projectKey}`, scheduleMap);
+
+  // Sync scheduled due date and effort back to Jira issue
+  await syncTaskToJira(taskId, {
+    endDate: DEFAULT_WEEKS[endIdx].endDate,
+    effortHours
+  });
 
   return await getProjectPlan(projectKey, storage);
 }
@@ -448,7 +460,8 @@ export async function createInlineTask(
   request: InlineTaskCreateRequest,
   storageProvider?: StorageProvider
 ): Promise<{ success: boolean; task?: WbsTask; plan?: ProjectPlanState; error?: string }> {
-  const { projectKey, epic, story, summary, effortHours = 40, resource = 'Resource 1', startWeek, spanWeeks = 3 } = request;
+  const currentWeekKey = DEFAULT_WEEKS.find(w => w.isCurrentWeek)?.weekKey || DEFAULT_WEEKS[0].weekKey;
+  const { projectKey, epic, story, summary, effortHours = 40, resource = 'Unassigned', startWeek, spanWeeks = 3 } = request;
 
   let jiraIssueId = '';
   let jiraIssueKey = '';
@@ -493,7 +506,7 @@ export async function createInlineTask(
   const storage = resolveStorage(storageProvider);
   const scheduleMap = (await storage.get<Record<string, Partial<WbsTask>>>(`scheduleMap:${projectKey}`)) || {};
 
-  const assignedStartWeek = startWeek || '05-Aug';
+  const assignedStartWeek = startWeek || currentWeekKey;
   const startIdx = Math.max(0, DEFAULT_WEEKS.findIndex(w => w.weekKey === assignedStartWeek));
   const endIdx = Math.min(DEFAULT_WEEKS.length - 1, startIdx + spanWeeks - 1);
   const endWeek = DEFAULT_WEEKS[endIdx].weekKey;
@@ -518,6 +531,13 @@ export async function createInlineTask(
   };
 
   await storage.set(`scheduleMap:${projectKey}`, scheduleMap);
+
+  // Sync scheduled due date and effort back to Jira
+  await syncTaskToJira(jiraIssueKey, {
+    endDate: DEFAULT_WEEKS[endIdx].endDate,
+    effortHours
+  });
+
   const plan = await getProjectPlan(projectKey, storage);
   const createdTask = plan.tasks.find(t => t.key === jiraIssueKey) || plan.tasks[0];
 
@@ -598,10 +618,14 @@ export async function syncTaskToJira(
     };
   }
 
-  if (updates.resourceAccountId && !updates.resourceAccountId.startsWith('ph:')) {
-    fields.assignee = {
-      accountId: updates.resourceAccountId
-    };
+  if (updates.resourceAccountId) {
+    if (updates.resourceAccountId === 'unassigned') {
+      fields.assignee = null;
+    } else if (!updates.resourceAccountId.startsWith('ph:')) {
+      fields.assignee = {
+        accountId: updates.resourceAccountId
+      };
+    }
   }
 
   if (Object.keys(fields).length === 0) {
@@ -610,7 +634,7 @@ export async function syncTaskToJira(
 
   try {
     const caller = getJiraCaller();
-    const res = await caller.requestJira(route`/rest/api/3/issue/${taskIdOrKey}`, {
+    let res = await caller.requestJira(route`/rest/api/3/issue/${taskIdOrKey}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fields })
@@ -618,20 +642,42 @@ export async function syncTaskToJira(
 
     if (res && res.status >= 200 && res.status < 300) {
       return { synced: true };
-    } else {
-      let errMsg = `Jira status ${res?.status || 500}`;
+    }
+
+    // Graceful retry without duedate if duedate is rejected by screen layout
+    if (res?.status === 400 && fields.duedate) {
       try {
         const errJson = await res.json();
-        if (errJson.errorMessages && errJson.errorMessages.length > 0) {
-          errMsg = errJson.errorMessages.join(', ');
-        } else if (errJson.errors && Object.keys(errJson.errors).length > 0) {
-          errMsg = Object.values(errJson.errors).join(', ');
-        } else {
-          errMsg = JSON.stringify(errJson);
+        if (errJson?.errors?.duedate) {
+          const fallbackFields = { ...fields };
+          delete fallbackFields.duedate;
+          if (Object.keys(fallbackFields).length > 0) {
+            const retryRes = await caller.requestJira(route`/rest/api/3/issue/${taskIdOrKey}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fields: fallbackFields })
+            });
+            if (retryRes?.status >= 200 && retryRes?.status < 300) {
+              return { synced: true };
+            }
+            res = retryRes;
+          }
         }
       } catch {}
-      return { synced: false, error: errMsg };
     }
+
+    let errMsg = `Jira status ${res?.status || 500}`;
+    try {
+      const errJson = await res.json();
+      if (errJson.errorMessages && errJson.errorMessages.length > 0) {
+        errMsg = errJson.errorMessages.join(', ');
+      } else if (errJson.errors && Object.keys(errJson.errors).length > 0) {
+        errMsg = Object.values(errJson.errors).join(', ');
+      } else {
+        errMsg = JSON.stringify(errJson);
+      }
+    } catch {}
+    return { synced: false, error: errMsg };
   } catch (err: any) {
     return { synced: false, error: err?.message };
   }
@@ -689,6 +735,31 @@ export async function updateWbsTask(
     if ((updates as any)[k] !== undefined) {
       (sanitized as any)[k] = (updates as any)[k];
     }
+  }
+
+  // Derive schedule dates and weeks dynamically
+  const activeWeeks = plan.weeks || DEFAULT_WEEKS;
+  if (sanitized.startWeek || sanitized.spanWeeks) {
+    const sWk = sanitized.startWeek || targetTask.startWeek || activeWeeks[0].weekKey;
+    const span = sanitized.spanWeeks || targetTask.spanWeeks || 3;
+    const sIdx = Math.max(0, activeWeeks.findIndex(w => w.weekKey === sWk));
+    const eIdx = Math.min(activeWeeks.length - 1, sIdx + span - 1);
+
+    sanitized.startWeek = activeWeeks[sIdx].weekKey;
+    sanitized.endWeek = activeWeeks[eIdx].weekKey;
+    sanitized.startDate = activeWeeks[sIdx].startDate;
+    sanitized.endDate = activeWeeks[eIdx].endDate;
+    sanitized.spanWeeks = span;
+
+    if (!sanitized.weeklyAllocations) {
+      const allocations: Record<string, number> = {};
+      for (let i = sIdx; i <= eIdx; i++) {
+        allocations[activeWeeks[i].weekKey] = Math.round(100 / span);
+      }
+      sanitized.weeklyAllocations = allocations;
+    }
+  } else if (!sanitized.endDate && targetTask.endDate) {
+    sanitized.endDate = targetTask.endDate;
   }
 
   const scheduleMap = (await storage.get<Record<string, Partial<WbsTask>>>(`scheduleMap:${projectKey}`)) || {};
