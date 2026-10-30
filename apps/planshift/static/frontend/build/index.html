@@ -203,10 +203,11 @@
             </div>
             <div class="form-group">
               <label class="form-label">Trigger Completion %</label>
-              <input type="number" class="form-input" id="editTriggerPercentInput" value="30" min="1" max="100" />
+              <input type="number" class="form-input" id="editTriggerPercentInput" value="30" min="0" max="100" />
             </div>
           </div>
         </div>
+        <div id="taskDetailError" style="display: none; color: #DE350B; font-size: 12px; margin-top: 10px; font-weight: 600;"></div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline" id="btnCancelTaskDetail">Cancel</button>
@@ -708,7 +709,6 @@
           if (edge === 'right') {
             const newSpan = Math.max(1, origSpan + deltaWeeks);
             task.spanWeeks = newSpan;
-            task.effortHours = newSpan * 15;
           } else if (edge === 'left') {
             const newStartIdx = Math.max(0, Math.min(origStartIdx + deltaWeeks, currentPlan.weeks.length - 1));
             task.startWeek = currentPlan.weeks[newStartIdx].weekKey;
@@ -722,7 +722,7 @@
           window.removeEventListener('mouseup', onMouseUp);
           await callResolver('updateWbsTask', {
             taskId: task.key,
-            updates: { startWeek: task.startWeek, spanWeeks: task.spanWeeks, effortHours: task.effortHours }
+            updates: { startWeek: task.startWeek, spanWeeks: task.spanWeeks }
           });
           await loadProjectPlan();
         }
@@ -860,12 +860,17 @@
       document.getElementById('editSummaryInput').value = task.summary;
       document.getElementById('editStatusSelect').value = task.status;
 
+      // Clear error display
+      const errEl = document.getElementById('taskDetailError');
+      if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+
       // Assignee Select
       const assSelect = document.getElementById('editAssigneeSelect');
       assSelect.innerHTML = '';
       (currentPlan.availableUsers || []).forEach(u => {
         const opt = document.createElement('option');
         opt.value = u.displayName;
+        opt.dataset.accountId = u.accountId || '';
         opt.textContent = u.displayName + (u.isPlaceholder ? ' [Placeholder]' : '');
         if (u.displayName === task.resource) opt.selected = true;
         assSelect.appendChild(opt);
@@ -883,7 +888,13 @@
           predSelect.appendChild(opt);
         }
       });
-      document.getElementById('editTriggerPercentInput').value = task.dependency?.triggerPercent || 30;
+      document.getElementById('editTriggerPercentInput').value = task.dependency?.triggerPercent !== undefined ? task.dependency.triggerPercent : 30;
+
+      // Multi-unit Estimation Section
+      document.getElementById('editEstimateUnitSelect').value = 'HOURS';
+      document.getElementById('editEstimateValueInput').value = task.effortHours || 0;
+      document.getElementById('reconciledHoursBadge').textContent = `Total: ${task.effortHours || 0} hrs`;
+      handleEstimateUnitChange();
 
       // Subtasks
       renderModalSubtasks(task);
@@ -935,13 +946,38 @@
 
     async function saveTaskModalChanges() {
       if (!activeTaskId) return;
+      const errEl = document.getElementById('taskDetailError');
+      if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+
       const summary = document.getElementById('editSummaryInput').value.trim();
-      const resource = document.getElementById('editAssigneeSelect').value;
+      const assSelect = document.getElementById('editAssigneeSelect');
+      const selectedAss = assSelect.options[assSelect.selectedIndex];
+      const resource = selectedAss ? selectedAss.value : 'Unassigned';
+      const resourceAccountId = selectedAss?.dataset?.accountId || (resource === 'Unassigned' ? 'unassigned' : undefined);
       const status = document.getElementById('editStatusSelect').value;
+
       const predKey = document.getElementById('editPredecessorSelect').value;
-      const triggerPercent = parseInt(document.getElementById('editTriggerPercentInput').value, 10) || 30;
+      const rawTrigger = parseInt(document.getElementById('editTriggerPercentInput').value, 10);
+      const triggerPercent = isNaN(rawTrigger) ? 30 : Math.max(0, Math.min(100, rawTrigger));
+
+      const unit = document.getElementById('editEstimateUnitSelect').value;
+      let effortHours = undefined;
+      if (unit === 'HOURS') {
+        const val = parseFloat(document.getElementById('editEstimateValueInput').value);
+        if (!isNaN(val)) effortHours = val;
+      } else if (unit === 'STORY_POINTS') {
+        const pts = parseFloat(document.getElementById('editEstimateValueInput').value);
+        if (!isNaN(pts)) effortHours = pts * 8;
+      } else if (unit === 'TSHIRT') {
+        const sz = document.getElementById('editTshirtSelect').value;
+        const tshirtMap = { XS: 4, S: 8, M: 16, L: 32, XL: 64 };
+        effortHours = tshirtMap[sz] || 16;
+      }
 
       const updates = { summary, resource, status };
+      if (resourceAccountId) updates.resourceAccountId = resourceAccountId;
+      if (effortHours !== undefined) updates.effortHours = effortHours;
+
       if (predKey) {
         updates.dependency = {
           predecessorId: predKey,
@@ -950,12 +986,31 @@
           isTriggerSatisfied: false
         };
       } else {
-        updates.dependency = undefined;
+        updates.dependency = null;
       }
 
-      await callResolver('updateWbsTask', { taskId: activeTaskId, updates });
-      closeModal('taskDetailModal');
-      await loadProjectPlan();
+      const btn = document.getElementById('btnSaveTaskModal');
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+
+      try {
+        const res = await callResolver('updateWbsTask', { taskId: activeTaskId, updates });
+        if (res && res.error) {
+          if (errEl) {
+            errEl.textContent = res.error;
+            errEl.style.display = 'block';
+          }
+          return;
+        }
+        closeModal('taskDetailModal');
+        await loadProjectPlan();
+      } catch (err) {
+        if (errEl) {
+          errEl.textContent = err?.message || 'Failed to save task updates.';
+          errEl.style.display = 'block';
+        }
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Save Changes'; }
+      }
     }
 
     function openCreateTaskModal() {

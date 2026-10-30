@@ -109,6 +109,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
                   issuetype: { name: 'Task' },
                   status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } },
                   timeoriginalestimate: 144000,
+                  aggregatetimespent: 72000,
                   assignee: { displayName: 'Fahim Farook', accountId: 'jira-user-1' },
                   subtasks: [
                     { id: 'sub-1', key: 'TEST-11', fields: { summary: 'Terraform scripts', status: { name: 'Done', statusCategory: { key: 'done' } } } }
@@ -579,6 +580,90 @@ describe('CascadePlan Index & Resolver Tests', () => {
         )
       ).rejects.toThrow('Task \'NON_EXISTENT\' not found in project plan');
     });
+
+    it('validates and saves a valid progress-gated dependency', async () => {
+      const updatedPlan = await updateWbsTask(
+        {
+          projectKey: 'TEST',
+          taskId: 'TEST-1',
+          updates: {
+            dependency: {
+              predecessorId: 'TEST-2',
+              predecessorKey: 'TEST-2',
+              triggerPercent: 30,
+              isTriggerSatisfied: false
+            }
+          }
+        },
+        mockStorage
+      );
+
+      const modified = updatedPlan.tasks.find(t => t.key === 'TEST-1');
+      expect(modified?.dependency?.predecessorKey).toBe('TEST-2');
+      expect(modified?.dependency?.triggerPercent).toBe(30);
+    });
+
+    it('rejects an invalid self dependency or cycle in updateWbsTask', async () => {
+      await expect(
+        updateWbsTask(
+          {
+            projectKey: 'TEST',
+            taskId: 'TEST-1',
+            updates: {
+              dependency: {
+                predecessorId: 'TEST-1',
+                predecessorKey: 'TEST-1',
+                triggerPercent: 30,
+                isTriggerSatisfied: false
+              }
+            }
+          },
+          mockStorage
+        )
+      ).rejects.toThrow("Invalid dependency: Task 'TEST-1' cannot depend on itself.");
+    });
+
+    it('clears dependency when empty dependency object is provided', async () => {
+      const updatedPlan = await updateWbsTask(
+        {
+          projectKey: 'TEST',
+          taskId: 'TEST-1',
+          updates: {
+            dependency: {
+              predecessorId: '',
+              predecessorKey: '',
+              triggerPercent: 0,
+              isTriggerSatisfied: false
+            }
+          }
+        },
+        mockStorage
+      );
+
+      const modified = updatedPlan.tasks.find(t => t.key === 'TEST-1');
+      expect(modified?.dependency).toBeUndefined();
+    });
+
+    it('defaults triggerPercent to 30 when undefined in updateWbsTask dependency', async () => {
+      const updatedPlan = await updateWbsTask(
+        {
+          projectKey: 'TEST',
+          taskId: 'TEST-1',
+          updates: {
+            dependency: {
+              predecessorId: 'TEST-2',
+              predecessorKey: 'TEST-2',
+              triggerPercent: undefined as any,
+              isTriggerSatisfied: false
+            }
+          }
+        },
+        mockStorage
+      );
+
+      const modified = updatedPlan.tasks.find(t => t.key === 'TEST-1');
+      expect(modified?.dependency?.triggerPercent).toBe(30);
+    });
   });
 
   describe('addSubtaskToTask', () => {
@@ -864,6 +949,35 @@ describe('CascadePlan Index & Resolver Tests', () => {
       const second = await getPortfolioResourceHeatmap('TEST', { project: 'ALL' }, mockStorage);
       expect(second.rows.length).toBe(first.rows.length);
     });
+
+    it('handles plan whose weeks do not carry isCurrentWeek', async () => {
+      const customStorage = new MockStorage();
+      const repo = new PlanRepository(customStorage);
+      const weeksWithoutCurrent = DEFAULT_WEEKS.map(w => ({ ...w, isCurrentWeek: false }));
+      await repo.saveProjectPlan({
+        planId: 'plan-NO-CUR',
+        projectKey: 'NOCUR',
+        projectName: 'No Current Week Project',
+        overallProjectCompletion: 0,
+        overallTargetCompletion: 0,
+        weeks: weeksWithoutCurrent,
+        tasks: [],
+        milestones: [],
+        columnWidths: DEFAULT_COLUMN_WIDTHS,
+        availableEpics: [],
+        availableUsers: [],
+        lastUpdated: new Date().toISOString()
+      });
+      mockRequestJira.mockImplementation(async (routeStr: any) => {
+        const url = String(routeStr);
+        if (url.includes('/rest/api/3/search/jql')) {
+          return { status: 200, json: async () => ({ issues: [] }) };
+        }
+        return { status: 200, json: async () => [] };
+      });
+      const res = await getPortfolioResourceHeatmap('NOCUR', {}, customStorage);
+      expect(res.weeks).toBeDefined();
+    });
   });
 
   describe('extractProjectKey', () => {
@@ -999,11 +1113,32 @@ describe('CascadePlan Index & Resolver Tests', () => {
       const resMilestone: any = await handler({
         call: {
           functionKey: 'saveProjectMilestone',
-          payload: { milestone: DEFAULT_MILESTONES[0] }
+          payload: {
+            milestone: {
+              id: 'm-1',
+              title: 'Sprint 1 Target',
+              date: '2026-11-01',
+              weekKey: '01-Nov',
+              type: 'TARGET' as const,
+              isPassed: false
+            }
+          }
         },
         context: { extension: { project: { key: 'TEST' } } }
       } as any);
       expect(resMilestone.success).toBe(true);
+    });
+
+    it('returns error object when updateWbsTask fails in resolver', async () => {
+      const res: any = await handler({
+        call: {
+          functionKey: 'updateWbsTask',
+          payload: { taskId: 'NON_EXISTENT', updates: { summary: 'New' } }
+        },
+        context: { extension: { project: { key: 'TEST' } } }
+      } as any);
+      expect(res.success).toBe(false);
+      expect(res.error).toBeDefined();
     });
 
     it('handles bridge invocations for getPortfolioResourceHeatmap with context fallback', async () => {

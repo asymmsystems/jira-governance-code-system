@@ -70,7 +70,11 @@ export function getTimelineWeeks(referenceDate: Date = new Date()): { weeks: Wee
   return PlannerEngine.generateDynamicWeeks(referenceDate, 4, 10);
 }
 
-export const DEFAULT_WEEKS: WeeklySprintColumn[] = getTimelineWeeks(new Date('2026-10-30')).weeks;
+export function getDefaultWeeks(referenceDate: Date = new Date()): WeeklySprintColumn[] {
+  return getTimelineWeeks(referenceDate).weeks;
+}
+
+export const DEFAULT_WEEKS: WeeklySprintColumn[] = getDefaultWeeks();
 
 export const DEFAULT_COLUMN_WIDTHS: ColumnWidthConfig = {
   epic: 120,
@@ -83,11 +87,7 @@ export const DEFAULT_COLUMN_WIDTHS: ColumnWidthConfig = {
   status: 100
 };
 
-export const DEFAULT_MILESTONES: ProjectMilestone[] = [
-  { id: 'm-1', title: 'Architecture Baseline', date: '2026-10-14', weekKey: '14-Oct', type: 'GATE', isPassed: true },
-  { id: 'm-2', title: 'Beta Feature Freeze', date: '2026-11-18', weekKey: '18-Nov', type: 'TARGET', isPassed: false },
-  { id: 'm-3', title: 'Production Cutover', date: '2026-12-23', weekKey: '23-Dec', type: 'RELEASE', isPassed: false }
-];
+export const DEFAULT_MILESTONES: ProjectMilestone[] = [];
 
 export const PLACEHOLDER_USERS: JiraAssignableUser[] = [
   { accountId: 'ph:res-1', displayName: 'Resource 1 (Placeholder)', isPlaceholder: true },
@@ -98,14 +98,7 @@ export const PLACEHOLDER_USERS: JiraAssignableUser[] = [
   { accountId: 'ph:devops', displayName: 'DevOps & SRE (Placeholder)', isPlaceholder: true }
 ];
 
-export const DEFAULT_RESOURCE_METADATA: Record<string, { coe: string; vertical: string; project: string }> = {
-  'Resource 1': { coe: 'Backend & Cloud', vertical: 'Fintech Core', project: 'Project 1' },
-  'Resource 2': { coe: 'Frontend & UI/UX', vertical: 'Customer Portal', project: 'Project 1' },
-  'Resource 3': { coe: 'QA Automation', vertical: 'Quality & SRE', project: 'Project 2' },
-  'Resource 4': { coe: 'Data & Analytics', vertical: 'Business Intelligence', project: 'Project 2' },
-  'Resource 5': { coe: 'Security & Compliance', vertical: 'Enterprise Risk', project: 'Project 3' },
-  'Resource 6': { coe: 'DevOps & SRE', vertical: 'Infrastructure', project: 'Project 3' }
-};
+export const DEFAULT_RESOURCE_METADATA: Record<string, { coe: string; vertical: string; project: string }> = {};
 
 export { CURRENT_WEEK_INDEX } from './domain/models';
 
@@ -207,22 +200,23 @@ export async function fetchLiveJiraIssues(
         const status = mapJiraStatus(iss.fields?.status?.statusCategory?.key, iss.fields?.status?.name);
 
         const rawSeconds = iss.fields?.timeoriginalestimate || 0;
-        const effortHours = rawSeconds > 0 ? Math.round(rawSeconds / 3600) : 40;
+        const rawSpent = iss.fields?.aggregatetimespent || 0;
+        const effortHours = rawSeconds > 0 ? Math.round(rawSeconds / 3600) : 0;
 
         let progress = 0;
         if (status === 'COMPLETED') {
           progress = 100;
-        } else if (status === 'IN_PROGRESS') {
-          progress = 30;
+        } else if (rawSeconds > 0 && rawSpent > 0) {
+          progress = Math.min(100, Math.round((rawSpent / rawSeconds) * 100));
         }
 
         const subtasks: SubtaskItem[] = (iss.fields?.subtasks || []).map((sub: any) => ({
           id: String(sub.id),
           key: String(sub.key),
           summary: sub.fields?.summary || 'Subtask',
-          estimateValue: 8,
+          estimateValue: 0,
           estimateUnit: 'HOURS' as const,
-          normalizedHours: 8,
+          normalizedHours: 0,
           status: mapJiraStatus(sub.fields?.status?.statusCategory?.key, sub.fields?.status?.name)
         }));
 
@@ -257,46 +251,19 @@ export async function fetchLiveJiraIssues(
           resource: (stored?.resource || iss.fields?.assignee?.displayName || 'Unassigned'),
           resourceAccountId: stored?.resourceAccountId || iss.fields?.assignee?.accountId || undefined,
           progress: stored?.progress !== undefined ? stored.progress : progress,
-          targetProgress: stored?.targetProgress !== undefined ? stored.targetProgress : 20,
+          targetProgress: stored?.targetProgress !== undefined ? stored.targetProgress : 0,
           status: stored?.status || status,
-          startDate: stored?.startDate || DEFAULT_WEEKS[0]?.startDate || '2026-10-14',
-          endDate: stored?.endDate || iss.fields?.duedate || DEFAULT_WEEKS[3]?.endDate || '2026-11-04',
+          startDate: stored?.startDate || DEFAULT_WEEKS[0]?.startDate || '',
+          endDate: stored?.endDate || iss.fields?.duedate || DEFAULT_WEEKS[3]?.endDate || '',
           startWeek: stored?.startWeek,
           endWeek: stored?.endWeek,
-          spanWeeks: stored?.spanWeeks || 4,
+          spanWeeks: stored?.spanWeeks || 3,
           weeklyAllocations: stored?.weeklyAllocations,
           dependency: stored?.dependency,
           subtasks: finalSubtasks
         };
 
-        const hasCustomSchedule = Object.keys(storedScheduleMap).length > 0;
-        const autoSchedule = !hasCustomSchedule && (tasks.length < 6);
-
-        if (wbsItem.startWeek || autoSchedule) {
-          if (!wbsItem.startWeek) {
-            const weekIdx = Math.min(DEFAULT_WEEKS.length - 4, tasks.length * 2);
-            wbsItem.startWeek = DEFAULT_WEEKS[weekIdx].weekKey;
-            wbsItem.endWeek = DEFAULT_WEEKS[weekIdx + 3].weekKey;
-            wbsItem.spanWeeks = 4;
-            wbsItem.startDate = DEFAULT_WEEKS[weekIdx].startDate;
-            wbsItem.endDate = iss.fields?.duedate || DEFAULT_WEEKS[weekIdx + 3].endDate;
-            wbsItem.weeklyAllocations = {
-              [DEFAULT_WEEKS[weekIdx].weekKey]: 25,
-              [DEFAULT_WEEKS[weekIdx + 1].weekKey]: 25,
-              [DEFAULT_WEEKS[weekIdx + 2].weekKey]: 25,
-              [DEFAULT_WEEKS[weekIdx + 3].weekKey]: 25
-            };
-            if (tasks.length > 0) {
-              const prev = tasks[tasks.length - 1];
-              wbsItem.dependency = {
-                predecessorId: prev.id,
-                predecessorKey: prev.key,
-                triggerPercent: 30,
-                isTriggerSatisfied: prev.progress >= 30,
-                isViolated: false
-              };
-            }
-          }
+        if (wbsItem.startWeek) {
           tasks.push(wbsItem);
         } else {
           wbsItem.isBacklog = true;
@@ -316,13 +283,17 @@ export async function fetchLiveJiraIssues(
  */
 export async function getProjectPlan(
   projectKey: string,
-  storageProvider?: StorageProvider
+  storageProvider?: StorageProvider,
+  referenceDate: Date = new Date()
 ): Promise<ProjectPlanState> {
   const storage = resolveStorage(storageProvider);
   const repository = new PlanRepository(storage);
 
+  const dynamicTimeline = getTimelineWeeks(referenceDate);
+  const activeWeeks = dynamicTimeline.weeks;
+
   const storedScheduleMap = (await storage.get<Record<string, Partial<WbsTask>>>(`scheduleMap:${projectKey}`)) || {};
-  const storedMilestones = (await storage.get<ProjectMilestone[]>(`milestones:${projectKey}`)) || DEFAULT_MILESTONES;
+  const storedMilestones = (await storage.get<ProjectMilestone[]>(`milestones:${projectKey}`)) || [];
   const storedWidths = (await storage.get<ColumnWidthConfig>(`colWidths:${projectKey}`)) || DEFAULT_COLUMN_WIDTHS;
 
   // Query live Jira issues and assignees
@@ -352,21 +323,21 @@ export async function getProjectPlan(
         id: stored.id || key,
         key: key,
         summary: stored.summary || `Task ${key}`,
-        epic: stored.epic || 'General',
+        epic: stored.epic || '',
         epicKey: stored.epicKey,
         story: stored.story || 'Task',
         storyKey: key,
-        effortHours: stored.effortHours || 40,
+        effortHours: stored.effortHours || 0,
         resource: stored.resource || 'Unassigned',
         resourceAccountId: stored.resourceAccountId,
         progress: stored.progress || 0,
-        targetProgress: stored.targetProgress || 20,
+        targetProgress: stored.targetProgress || 0,
         status: stored.status || 'NOT_STARTED',
-        startDate: stored.startDate || DEFAULT_WEEKS[0]?.startDate || '2026-10-14',
-        endDate: stored.endDate || DEFAULT_WEEKS[3]?.endDate || '2026-11-04',
-        startWeek: stored.startWeek || DEFAULT_WEEKS[0]?.weekKey || '14-Oct',
-        endWeek: stored.endWeek || DEFAULT_WEEKS[3]?.weekKey || '04-Nov',
-        spanWeeks: stored.spanWeeks || 4,
+        startDate: stored.startDate || activeWeeks[0]?.startDate || '',
+        endDate: stored.endDate || activeWeeks[3]?.endDate || '',
+        startWeek: stored.startWeek || activeWeeks[0]?.weekKey || '',
+        endWeek: stored.endWeek || activeWeeks[3]?.weekKey || '',
+        spanWeeks: stored.spanWeeks || 3,
         weeklyAllocations: stored.weeklyAllocations,
         dependency: stored.dependency,
         subtasks: stored.subtasks || []
@@ -395,7 +366,7 @@ export async function getProjectPlan(
     projectName: `Project ${projectKey}`,
     overallProjectCompletion: actualCompletion,
     overallTargetCompletion: targetCompletion,
-    weeks: DEFAULT_WEEKS,
+    weeks: activeWeeks,
     tasks,
     backlogTasks,
     milestones: storedMilestones,
@@ -728,12 +699,40 @@ export async function updateWbsTask(
   const ALLOWED_KEYS = [
     'summary', 'epic', 'story', 'effortHours', 'effortConfig', 'resource',
     'resourceAccountId', 'progress', 'targetProgress', 'status', 'startDate',
-    'endDate', 'startWeek', 'endWeek', 'spanWeeks', 'weeklyAllocations', 'subtasks'
+    'endDate', 'startWeek', 'endWeek', 'spanWeeks', 'weeklyAllocations', 'subtasks',
+    'dependency'
   ];
   const sanitized: Partial<WbsTask> = {};
   for (const k of ALLOWED_KEYS) {
     if ((updates as any)[k] !== undefined) {
       (sanitized as any)[k] = (updates as any)[k];
+    }
+  }
+
+  // Fractional progress-threshold dependency validation and Jira link mirroring
+  if (sanitized.dependency !== undefined) {
+    if (sanitized.dependency && sanitized.dependency.predecessorKey) {
+      const predKey = sanitized.dependency.predecessorKey;
+      const rawTrigger = sanitized.dependency.triggerPercent;
+      const triggerPercent = typeof rawTrigger === 'number' && !isNaN(rawTrigger) ? rawTrigger : 30;
+      const validation = PlannerEngine.validateDependency(
+        targetTask.key,
+        predKey,
+        triggerPercent,
+        plan.tasks
+      );
+      if (!validation.valid) {
+        throw new Error(validation.error);
+      }
+      sanitized.dependency = {
+        predecessorId: predKey,
+        predecessorKey: predKey,
+        triggerPercent,
+        isTriggerSatisfied: false
+      };
+      await mirrorDependencyToJira(targetTask.key, predKey);
+    } else {
+      sanitized.dependency = undefined;
     }
   }
 
@@ -921,7 +920,10 @@ export async function getPortfolioResourceHeatmap(
     await repository.saveResourceMetadata(projectKey, metadata);
   }
 
-  const profiles = PlannerEngine.calculateResourceUtilization(plan.tasks, plan.weeks, CURRENT_WEEK_INDEX, plan.projectName);
+  const currentWkIdx = plan.weeks.findIndex(w => w.isCurrentWeek);
+  const activeWeekIdx = currentWkIdx >= 0 ? currentWkIdx : Math.floor(plan.weeks.length / 2);
+
+  const profiles = PlannerEngine.calculateResourceUtilization(plan.tasks, plan.weeks, activeWeekIdx, plan.projectName);
   const allRows = PlannerEngine.buildPortfolioHeatmap(profiles, metadata);
   const filteredRows = PlannerEngine.filterPortfolioHeatmap(allRows, filters);
 
@@ -963,7 +965,11 @@ resolver.define('createJiraEpic', async (req) => {
 });
 
 resolver.define('updateWbsTask', async (req) => {
-  return await updateWbsTask({ ...req.payload, projectKey: extractProjectKey(req) });
+  try {
+    return await updateWbsTask({ ...req.payload, projectKey: extractProjectKey(req) });
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to update task' };
+  }
 });
 
 resolver.define('addSubtaskToTask', async (req) => {

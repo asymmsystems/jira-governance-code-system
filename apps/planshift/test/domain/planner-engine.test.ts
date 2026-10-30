@@ -148,11 +148,16 @@ describe('PlannerEngine Domain Tests', () => {
       expect(res.blockerMessage).toBeUndefined();
     });
 
-    it('evaluates dependency when predecessor has no explicit endDate', () => {
-      const pred: WbsTask = { ...sampleTask, progress: 10, startDate: '2026-08-01', endDate: undefined as any };
+    it('evaluates dependency when predecessor has no explicit endDate and no explicit startDate', () => {
+      const pred: WbsTask = { ...sampleTask, progress: 10, startDate: undefined as any, endDate: undefined as any };
       const res = PlannerEngine.evaluateDependency(pred, dep);
       expect(res.isSatisfied).toBe(false);
       expect(res.earliestStartDate).toBeDefined();
+    });
+
+    it('uses default empty existingTasks parameter in validateDependency when omitted', () => {
+      const res = PlannerEngine.validateDependency('DEMO-2', 'DEMO-1', 40);
+      expect(res.valid).toBe(true);
     });
   });
 
