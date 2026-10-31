@@ -6056,6 +6056,32 @@ Please see https://iframe-resizer.com/upgrade for more details.
     void import_bridge.router.open(`/browse/${encodeURIComponent(issueKey)}`);
   }
 
+  // src/ui/safe-html.ts
+  var SafeHtml = class {
+    constructor(markup) {
+      this.markup = markup;
+    }
+    toString() {
+      return this.markup;
+    }
+  };
+  function escapeHtml(value) {
+    if (value === null || value === void 0) return "";
+    return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function render(value) {
+    if (value instanceof SafeHtml) return value.toString();
+    if (Array.isArray(value)) return value.map(render).join("");
+    return escapeHtml(value);
+  }
+  function html(strings, ...values) {
+    let out = strings[0];
+    for (let i = 0; i < values.length; i++) {
+      out += render(values[i]) + strings[i + 1];
+    }
+    return new SafeHtml(out);
+  }
+
   // src/ui/cascade-preview.ts
   function earliestStartWeek(pred, triggerPercent, weeks) {
     if (!pred || weeks.length === 0) return 0;
@@ -6700,12 +6726,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
         const row = document.createElement("div");
         row.className = "col-option-row" + (col.locked ? " locked" : "");
         const isChecked = !hiddenColumns.has(col.key);
-        row.innerHTML = `
+        row.innerHTML = html`
         <input type="checkbox" id="col_chk_${col.key}" ${isChecked ? "checked" : ""} ${col.locked ? "disabled" : ""} />
         <label for="col_chk_${col.key}" class="col-option-label" style="cursor:${col.locked ? "default" : "pointer"};">
           <span>${col.icon}</span>
           <span>${col.label}</span>
-          ${col.locked ? '<span class="badge badge-neutral" style="font-size:9px; padding:1px 4px;">Required</span>' : ""}
+          ${col.locked ? html`<span class="badge badge-neutral" style="font-size:9px; padding:1px 4px;">Required</span>` : ""}
         </label>
       `;
         if (!col.locked) {
@@ -6732,13 +6758,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
     menu.style.left = Math.min(window.innerWidth - 210, e.clientX) + "px";
     menu.style.top = e.clientY + 12 + "px";
     menu.style.zIndex = "1200";
-    menu.innerHTML = `
+    menu.innerHTML = html`
     <div style="font-weight:700; font-size:11px; color:#626F86; margin-bottom:4px;">Column: ${colLabel}</div>
     <button class="btn btn-outline btn-sm" id="btnHideThisCol" style="text-align:left; justify-content:flex-start; width:100%; font-size:12px; margin-bottom:4px;">
-      \u{1F6AB} Hide "${colLabel}"
+      🚫 Hide "${colLabel}"
     </button>
     <button class="btn btn-subtle btn-sm" id="btnManageAllFromHeader" style="text-align:left; justify-content:flex-start; width:100%; font-size:12px;">
-      \u2699 Manage All Columns...
+      ⚙ Manage All Columns...
     </button>
   `;
     document.body.appendChild(menu);
@@ -6830,7 +6856,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     (currentPlan.milestones || []).forEach((m) => {
       const el = document.createElement("div");
       el.className = "milestone-pill";
-      el.innerHTML = `<span class="milestone-icon">\u{1F537}</span><span>${m.title}</span><span style="color:#626F86;">(${m.weekKey})</span>`;
+      el.innerHTML = html`<span class="milestone-icon">🔷</span><span>${m.title}</span><span style="color:#626F86;">(${m.weekKey})</span>`;
       strip.appendChild(el);
     });
   }
@@ -6852,15 +6878,15 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const badgeClass = isEpicCard ? "badge-primary" : "badge-neutral";
       const effortDisplay = item.effortHours > 0 ? `${item.effortHours}h` : "Unestimated";
       const siteUrl = getJiraBaseUrl();
-      card.innerHTML = `
+      card.innerHTML = html`
       <div class="backlog-card-header">
-        <a href="${siteUrl}/browse/${item.key}" target="_blank" rel="noopener noreferrer" class="backlog-key-link" title="Open ${item.key} in native Jira (new tab)">${item.key} \u2197</a>
+        <a href="${siteUrl}/browse/${item.key}" target="_blank" rel="noopener noreferrer" class="backlog-key-link" title="Open ${item.key} in native Jira (new tab)">${item.key} ↗</a>
         <span class="badge ${badgeClass}">${badgeLabel}</span>
       </div>
       <div class="backlog-summary" title="${item.summary}">${item.summary}</div>
       <div class="backlog-footer">
-        <span>\u23F1\uFE0F ${effortDisplay}</span>
-        <span>\u{1F464} ${item.resource || "Unassigned"}</span>
+        <span>⏱️ ${effortDisplay}</span>
+        <span>👤 ${item.resource || "Unassigned"}</span>
       </div>
     `;
       const bKeyLink = card.querySelector(".backlog-key-link");
@@ -6884,10 +6910,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
       th.className = "th-col";
       th.style.width = columnWidths[k] + "px";
       th.style.minWidth = columnWidths[k] + "px";
-      th.innerHTML = `
+      th.innerHTML = html`
       <div class="th-content-wrap">
         <span class="th-label-text">${colDef.label}</span>
-        ${!colDef.locked ? `<button class="th-col-menu-btn" data-col-key="${k}" title="Column options (Hide ${colDef.label})">\u25BE</button>` : ""}
+        ${!colDef.locked ? html`<button class="th-col-menu-btn" data-col-key="${k}" title="Column options (Hide ${colDef.label})">▾</button>` : ""}
       </div>
     `;
       const menuBtn = th.querySelector(".th-col-menu-btn");
@@ -6906,7 +6932,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     currentPlan.weeks.forEach((w, idx) => {
       const th = document.createElement("th");
       th.className = "week-header-cell" + (w.isCurrentWeek ? " current-week" : "");
-      th.innerHTML = `
+      th.innerHTML = html`
       <div class="week-date">${w.weekKey}</div>
       <div class="week-sprint">${w.sprintName}</div>
     `;
@@ -7061,12 +7087,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
         const chip = document.createElement("div");
         chip.className = "resource-current-chip" + (res.isParent ? " is-lead" : "");
         const initials = getInitials(res.name);
-        chip.innerHTML = `
+        chip.innerHTML = html`
         <span class="resource-option-avatar" style="width:16px; height:16px; font-size:9px;">${initials}</span>
         <span>${res.name}</span>
         <span style="font-size:9px; opacity:0.8;">${res.isParent ? "(Lead)" : ""}</span>
-        ${!res.isParent ? `<button class="resource-btn-make-lead" title="Make primary Jira assignee">\u2605 Lead</button>` : ""}
-        <span class="resource-current-chip-remove" title="Remove ${res.name}">\u2715</span>
+        ${!res.isParent ? html`<button class="resource-btn-make-lead" title="Make primary Jira assignee">★ Lead</button>` : ""}
+        <span class="resource-current-chip-remove" title="Remove ${res.name}">✕</span>
       `;
         const removeBtn = chip.querySelector(".resource-current-chip-remove");
         if (removeBtn) {
@@ -7192,7 +7218,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         const isUnassignedSelected = assignedResources.length === 0;
         const opt = document.createElement("div");
         opt.className = "resource-option" + (isUnassignedSelected ? " is-selected" : "");
-        opt.innerHTML = `
+        opt.innerHTML = html`
         <input type="checkbox" class="resource-option-checkbox" ${isUnassignedSelected ? "checked" : ""} />
         <span class="resource-option-avatar">U</span>
         <span style="flex:1;">Unassigned</span>
@@ -7217,12 +7243,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
         const opt = document.createElement("div");
         opt.className = "resource-option" + (isAssigned ? " is-selected" : "");
         const initials = getInitials(u.displayName);
-        const isPlaceholder = u.isPlaceholder ? ' <span style="font-size:10px; color:#8993A4;">(Placeholder)</span>' : "";
-        let badgeHtml = "";
+        const isPlaceholder = u.isPlaceholder ? html` <span style="font-size:10px; color:#8993A4;">(Placeholder)</span>` : "";
+        let badgeHtml = html``;
         if (isAssigned) {
-          badgeHtml = isLead ? `<span class="resource-badge-lead">Lead</span>` : `<span class="resource-badge-contrib">Contributor</span>`;
+          badgeHtml = isLead ? html`<span class="resource-badge-lead">Lead</span>` : html`<span class="resource-badge-contrib">Contributor</span>`;
         }
-        opt.innerHTML = `
+        opt.innerHTML = html`
         <input type="checkbox" class="resource-option-checkbox" ${isAssigned ? "checked" : ""} />
         <span class="resource-option-avatar">${initials}</span>
         <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${u.displayName}${isPlaceholder}</span>
@@ -7288,7 +7314,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       if (!q || "none standalone".includes(q)) {
         const opt = document.createElement("div");
         opt.className = "resource-option";
-        opt.innerHTML = `<span style="color:#626F86; font-size:11px;">\u2715 (None / Standalone Task)</span>`;
+        opt.innerHTML = html`<span style="color:#626F86; font-size:11px;">✕ (None / Standalone Task)</span>`;
         opt.addEventListener("click", async () => {
           popover.style.display = "none";
           if (activePickerTaskKey === "NEW_INLINE_TASK") {
@@ -7315,7 +7341,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       epics.forEach((ep) => {
         const opt = document.createElement("div");
         opt.className = "resource-option";
-        opt.innerHTML = `<span>\u{1F7EA} <strong>${ep.key}</strong>: ${ep.summary}</span>`;
+        opt.innerHTML = html`<span>🟪 <strong>${ep.key}</strong>: ${ep.summary}</span>`;
         opt.addEventListener("click", async () => {
           popover.style.display = "none";
           if (activePickerTaskKey === "NEW_INLINE_TASK") {
@@ -7423,61 +7449,61 @@ Please see https://iframe-resizer.com/upgrade for more details.
     creationTr.className = "inline-creation-row";
     let epicDisplay = inheritedEpic ? `\u{1F7EA} ${inheritedEpic}` : "+ Link Epic";
     const visibleKeys = getVisibleColKeys();
-    let cellsHtml = "";
+    let cellsHtml = html``;
     if (visibleKeys.includes("epic")) {
-      cellsHtml += `
+      cellsHtml = html`${cellsHtml}
       <td class="td-data td-epic-cell" style="width:${columnWidths.epic}px;">
-        <span class="epic-link-chip new-task-epic-chip ${inheritedEpic ? "has-epic" : "no-epic"}" title="Choose Epic">${epicDisplay} \u25BE</span>
+        <span class="epic-link-chip new-task-epic-chip ${inheritedEpic ? "has-epic" : "no-epic"}" title="Choose Epic">${epicDisplay} ▾</span>
       </td>
     `;
     }
     if (visibleKeys.includes("story")) {
-      cellsHtml += `<td class="td-data" style="width:${columnWidths.story}px; color:#0052CC; font-weight:700;">\u{1F537} Task</td>`;
+      cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.story}px; color:#0052CC; font-weight:700;">🔷 Task</td>`;
     }
-    cellsHtml += `
+    cellsHtml = html`${cellsHtml}
     <td class="td-data td-task-summary" style="width:${columnWidths.task}px;">
       <div style="display:flex; align-items:center; gap:6px; padding-left:14px;">
         <input type="text" class="inline-create-input" placeholder="Type new task summary & press Enter to save..." autocomplete="off" />
         <button class="btn-inline-save">Add</button>
-        <button class="btn-inline-cancel" title="Cancel (Esc)">\u2715</button>
+        <button class="btn-inline-cancel" title="Cancel (Esc)">✕</button>
       </div>
     </td>
   `;
     if (visibleKeys.includes("resource")) {
-      cellsHtml += `
+      cellsHtml = html`${cellsHtml}
       <td class="td-data td-resource-cell" style="width:${columnWidths.resource}px;">
         <div class="resource-chip-btn new-task-resource-btn" title="Assign team member">
           <span class="resource-option-avatar">U</span>
           <span class="new-task-resource-name" style="flex:1; overflow:hidden; text-overflow:ellipsis;">Unassigned</span>
-          <span style="font-size:10px; color:#626F86;">\u25BE</span>
+          <span style="font-size:10px; color:#626F86;">▾</span>
         </div>
       </td>
     `;
     }
     if (visibleKeys.includes("effort")) {
-      cellsHtml += `
+      cellsHtml = html`${cellsHtml}
       <td class="td-data td-effort-cell" style="width:${columnWidths.effort}px; text-align:center;">
         <input type="number" class="inline-edit-input new-task-hours" style="width:50px; text-align:center;" value="40" min="0" />
       </td>
     `;
     }
     if (visibleKeys.includes("progress")) {
-      cellsHtml += `<td class="td-data" style="width:${columnWidths.progress}px; text-align:center; color:#626F86; font-weight:600;">0%</td>`;
+      cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.progress}px; text-align:center; color:#626F86; font-weight:600;">0%</td>`;
     }
     if (visibleKeys.includes("target")) {
-      cellsHtml += `<td class="td-data" style="width:${columnWidths.target}px; text-align:center; color:#626F86; font-weight:600;">0%</td>`;
+      cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.target}px; text-align:center; color:#626F86; font-weight:600;">0%</td>`;
     }
     if (visibleKeys.includes("status")) {
-      cellsHtml += `<td class="td-data" style="width:${columnWidths.status}px; text-align:center;"><span class="badge badge-neutral">NOT_STARTED</span></td>`;
+      cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.status}px; text-align:center;"><span class="badge badge-neutral">NOT_STARTED</span></td>`;
     }
-    cellsHtml += `
+    cellsHtml = html`${cellsHtml}
     <td class="timeline-track-cell" colspan="${currentPlan.weeks.length}" style="width:${currentPlan.weeks.length * WEEK_WIDTH}px;">
       <div class="gantt-bar ghost-timeline-bar" style="left:${barLeft}px; width:${barWidth}px;">
-        <span>\u2795 New Task Preview (3 wks)</span>
+        <span>➕ New Task Preview (3 wks)</span>
       </div>
     </td>
   `;
-    creationTr.innerHTML = cellsHtml;
+    creationTr.innerHTML = html`${cellsHtml}`;
     rowElement.after(creationTr);
     let selectedResource = "Unassigned";
     let selectedAccountId = void 0;
@@ -7577,12 +7603,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const tbody = document.getElementById("ganttBody");
     tbody.innerHTML = "";
     if (!currentPlan.tasks || currentPlan.tasks.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="${getVisibleColKeys().length + currentPlan.weeks.length}" style="text-align:center; padding:30px; color:#626F86;">No scheduled tasks in project. Drag issues from the Backlog Tray or click "+ Add Task / Issue" to schedule.</td></tr>`;
+      tbody.innerHTML = html`<tr><td colspan="${getVisibleColKeys().length + currentPlan.weeks.length}" style="text-align:center; padding:30px; color:#626F86;">No scheduled tasks in project. Drag issues from the Backlog Tray or click "+ Add Task / Issue" to schedule.</td></tr>`;
       return;
     }
     const topDropRow = document.createElement("tr");
     topDropRow.className = "drop-target-row";
-    topDropRow.innerHTML = `<td colspan="${getVisibleColKeys().length + currentPlan.weeks.length}">+ Drop here to place task at top of schedule</td>`;
+    topDropRow.innerHTML = html`<td colspan="${getVisibleColKeys().length + currentPlan.weeks.length}">+ Drop here to place task at top of schedule</td>`;
     setupDropTargetRow(topDropRow, 0);
     tbody.appendChild(topDropRow);
     let tasksToRender = currentPlan.tasks;
@@ -7606,52 +7632,52 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const hasChildren = Boolean(
         task.childrenCount && task.childrenCount > 0 || task.subtasks && task.subtasks.length > 0 || currentPlan.tasks.some((t) => (t.parentKey === task.key || t.parentId === task.id || isEpic && t.epicKey === task.key) && t.key !== task.key)
       );
-      let expandToggleHtml = "";
+      let expandToggleHtml = html``;
       if (hasChildren && !isSub) {
         const isExp = expandedTasks.has(task.key);
-        expandToggleHtml = `<button class="tree-toggle-btn" data-parent-key="${task.key}" title="${isExp ? "Collapse children" : "Expand children"}">${isExp ? "\u25BC" : "\u25B6"}</button>`;
+        expandToggleHtml = html`<button class="tree-toggle-btn" data-parent-key="${task.key}" title="${isExp ? "Collapse children" : "Expand children"}">${isExp ? "\u25BC" : "\u25B6"}</button>`;
       }
-      let badgeHtml = "";
+      let badgeHtml = html``;
       let indentPx = 0;
       if (isEpic) {
-        badgeHtml = `<span class="epic-badge" title="Epic Roadmap Level">\u{1F7EA} EPIC</span>`;
+        badgeHtml = html`<span class="epic-badge" title="Epic Roadmap Level">🟪 EPIC</span>`;
         indentPx = 0;
       } else if (isSub) {
-        badgeHtml = `<span class="subtask-tree-icon" title="Subtask Execution Level">\u21B3</span>`;
+        badgeHtml = html`<span class="subtask-tree-icon" title="Subtask Execution Level">↳</span>`;
         indentPx = 28;
       } else {
-        badgeHtml = `<span class="story-badge" title="Story / Task Plan Level">\u{1F537}</span>`;
+        badgeHtml = html`<span class="story-badge" title="Story / Task Plan Level">🔷</span>`;
         if (task.epicKey && currentPlan.tasks.some((t) => t.key === task.epicKey && t.key !== task.key)) {
           indentPx = 16;
         }
       }
       const siteUrl = getJiraBaseUrl();
-      const summaryHtml = `
+      const summaryHtml = html`
       <div style="display:flex; align-items:center; width:100%; padding-left:${indentPx}px;">
         <div class="row-insert-affordance" title="Insert task below (Row ${rowIdx + 2})">
-          <button class="row-insert-plus-btn" title="Insert new task below">\uFF0B</button>
+          <button class="row-insert-plus-btn" title="Insert new task below">＋</button>
         </div>
-        <span class="row-drag-handle" draggable="true" title="Drag to reorder row">\u283F</span>
+        <span class="row-drag-handle" draggable="true" title="Drag to reorder row">⠿</span>
         ${expandToggleHtml}
         ${badgeHtml}
-        <a href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer" class="task-key-link" title="Open ${task.key} in native Jira (new tab)">${task.key} \u2197</a>
+        <a href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer" class="task-key-link" title="Open ${task.key} in native Jira (new tab)">${task.key} ↗</a>
         <span class="task-summary-text" style="cursor:pointer; margin-left:6px; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="Click or double-click to edit summary">
           : ${task.summary}
         </span>
         <div class="row-action-toolbar">
-          <button class="row-action-btn quick-insert-below-btn" title="Insert task below (Row ${rowIdx + 2})">\u2795 Add below</button>
-          <button class="row-action-btn quick-progress-btn" title="Set actual progress">\u{1F4C8} Progress</button>
-          <button class="row-action-btn edit-modal-btn" title="Open full detail modal">\u270F\uFE0F Edit</button>
-          <button class="row-action-btn quick-subtask-btn" title="Add Jira subtask">\u21B3 Subtask</button>
-          <button class="row-action-btn quick-resource-btn" title="Allocate team member">\u{1F465} Team</button>
-          <button class="row-action-btn open-jira-row-btn" title="Open ${task.key} in native Jira (new tab)">\u2197 Jira</button>
-          <button class="row-action-btn unschedule-row-btn" title="Remove from planner (Move to backlog)">\u{1F4E4} Backlog</button>
+          <button class="row-action-btn quick-insert-below-btn" title="Insert task below (Row ${rowIdx + 2})">➕ Add below</button>
+          <button class="row-action-btn quick-progress-btn" title="Set actual progress">📈 Progress</button>
+          <button class="row-action-btn edit-modal-btn" title="Open full detail modal">✏️ Edit</button>
+          <button class="row-action-btn quick-subtask-btn" title="Add Jira subtask">↳ Subtask</button>
+          <button class="row-action-btn quick-resource-btn" title="Allocate team member">👥 Team</button>
+          <button class="row-action-btn open-jira-row-btn" title="Open ${task.key} in native Jira (new tab)">↗ Jira</button>
+          <button class="row-action-btn unschedule-row-btn" title="Remove from planner (Move to backlog)">📤 Backlog</button>
         </div>
       </div>
     `;
-      let epicHtml = "";
+      let epicHtml = html``;
       if (isEpic) {
-        epicHtml = `<span class="epic-badge" title="Epic Roadmap Level">\u{1F7EA} EPIC</span>`;
+        epicHtml = html`<span class="epic-badge" title="Epic Roadmap Level">🟪 EPIC</span>`;
       } else {
         let epicLabel = task.epic || "";
         if (!epicLabel && task.epicKey) {
@@ -7659,27 +7685,27 @@ Please see https://iframe-resizer.com/upgrade for more details.
           epicLabel = epObj ? epObj.summary : task.epicKey;
         }
         if (epicLabel) {
-          epicHtml = `<span class="epic-link-chip has-epic" title="Click to change epic">\u{1F7EA} ${epicLabel} \u25BE</span>`;
+          epicHtml = html`<span class="epic-link-chip has-epic" title="Click to change epic">🟪 ${epicLabel} ▾</span>`;
         } else {
-          epicHtml = `<span class="epic-link-chip no-epic" title="Click to link epic">+ Link Epic</span>`;
+          epicHtml = html`<span class="epic-link-chip no-epic" title="Click to link epic">+ Link Epic</span>`;
         }
       }
       const visibleKeys = getVisibleColKeys();
-      let rowColsHtml = "";
+      let rowColsHtml = html``;
       if (visibleKeys.includes("epic")) {
-        rowColsHtml += `<td class="td-data td-epic-cell" style="width:${columnWidths.epic}px;">${epicHtml}</td>`;
+        rowColsHtml = html`${rowColsHtml}<td class="td-data td-epic-cell" style="width:${columnWidths.epic}px;">${epicHtml}</td>`;
       }
       if (visibleKeys.includes("story")) {
-        rowColsHtml += `<td class="td-data td-story-cell" style="width:${columnWidths.story}px;" title="${task.story || ""}">${task.story || (isEpic ? "Epic" : isSub ? "Subtask" : "Task")}</td>`;
+        rowColsHtml = html`${rowColsHtml}<td class="td-data td-story-cell" style="width:${columnWidths.story}px;" title="${task.story || ""}">${task.story || (isEpic ? "Epic" : isSub ? "Subtask" : "Task")}</td>`;
       }
       if (visibleKeys.includes("task")) {
-        rowColsHtml += `<td class="td-data td-task-summary" style="width:${columnWidths.task}px;">${summaryHtml}</td>`;
+        rowColsHtml = html`${rowColsHtml}<td class="td-data td-task-summary" style="width:${columnWidths.task}px;">${summaryHtml}</td>`;
       }
       if (visibleKeys.includes("resource")) {
-        rowColsHtml += `<td class="td-data td-resource-cell" style="width:${columnWidths.resource}px;"></td>`;
+        rowColsHtml = html`${rowColsHtml}<td class="td-data td-resource-cell" style="width:${columnWidths.resource}px;"></td>`;
       }
       if (visibleKeys.includes("effort")) {
-        rowColsHtml += `
+        rowColsHtml = html`${rowColsHtml}
         <td class="td-data td-effort-cell" style="width:${columnWidths.effort}px; text-align:center; cursor:pointer;" title="Click to edit effort hours">
           <span class="effort-text" style="font-weight:700;">${task.effortHours}h</span>
         </td>
@@ -7688,68 +7714,68 @@ Please see https://iframe-resizer.com/upgrade for more details.
       if (visibleKeys.includes("progress")) {
         const isProgRollup = isEpic || task.childrenCount && task.childrenCount > 0;
         const progTitle = isProgRollup ? `Actual progress: ${task.progress}% (Rollup from children: click to edit or override)` : `Click to set actual progress (${task.progress}%)`;
-        rowColsHtml += `
+        rowColsHtml = html`${rowColsHtml}
         <td class="td-data td-progress-cell" style="width:${columnWidths.progress}px; text-align:center; cursor:pointer;" title="${progTitle}">
           <div class="progress-chip-cell ${task.progress === 100 ? "is-complete" : task.progress > 0 ? "is-active" : "is-zero"}">
             <span class="progress-chip-fill" style="width:${task.progress}%;"></span>
-            <span class="progress-chip-text">${task.progress}% \u25BE</span>
+            <span class="progress-chip-text">${task.progress}% ▾</span>
           </div>
         </td>
       `;
       }
       if (visibleKeys.includes("target")) {
-        rowColsHtml += `
+        rowColsHtml = html`${rowColsHtml}
         <td class="td-data td-target-cell" style="width:${columnWidths.target}px; text-align:center; cursor:pointer;" title="Click to set target progress (${task.targetProgress}%)">
           <div class="target-chip-cell">
-            <span class="target-chip-text">\u{1F3AF} ${task.targetProgress}% \u25BE</span>
+            <span class="target-chip-text">🎯 ${task.targetProgress}% ▾</span>
           </div>
         </td>
       `;
       }
       if (visibleKeys.includes("status")) {
-        rowColsHtml += `
+        rowColsHtml = html`${rowColsHtml}
         <td class="td-data td-status-cell" style="width:${columnWidths.status}px; text-align:center;">
           <span class="badge editable-badge-chip ${task.status === "COMPLETED" ? "badge-success" : task.status === "IN_PROGRESS" ? "badge-primary" : "badge-neutral"}" title="Click to change status">
-            ${task.status} \u25BE
+            ${task.status} ▾
           </span>
         </td>
       `;
       }
-      tr.innerHTML = rowColsHtml;
+      tr.innerHTML = html`${rowColsHtml}`;
       if (visibleKeys.includes("resource")) {
         const resourceTd = tr.querySelector(".td-resource-cell");
         if (resourceTd) {
           const contributing = getTaskContributingResources(task);
-          let avatarHtml = "";
+          let avatarHtml = html``;
           let labelText = "";
           let titleText = "";
           let isMultiple = false;
           if (contributing.length === 0) {
-            avatarHtml = `<span class="resource-option-avatar">U</span>`;
+            avatarHtml = html`<span class="resource-option-avatar">U</span>`;
             labelText = "Unassigned";
             titleText = "Unassigned. Click to assign team member.";
           } else if (contributing.length === 1) {
             const res = contributing[0];
             const initials = getInitials(res.name);
-            avatarHtml = `<span class="resource-option-avatar">${initials}</span>`;
+            avatarHtml = html`<span class="resource-option-avatar">${initials}</span>`;
             labelText = res.name;
             if (res.isParent) {
               titleText = `${res.name} (Task Assignee)`;
             } else {
               titleText = `${res.name} (Assigned via subtask: ${res.subtasks.join(", ") || "subtask"})`;
-              labelText += ` <span class="resource-via-subtask-label">(subtask)</span>`;
+              labelText = html`${labelText} <span class="resource-via-subtask-label">(subtask)</span>`;
             }
           } else {
             isMultiple = true;
             const maxAvatars = 3;
-            avatarHtml = '<div class="avatar-stack">';
+            avatarHtml = html`<div class="avatar-stack">`;
             contributing.slice(0, maxAvatars).forEach((res, aIdx) => {
               const initials = getInitials(res.name);
               const bg = aIdx === 0 ? "#DFE1E6" : aIdx === 1 ? "#DEEBFF" : "#EAE6FF";
               const color = aIdx === 0 ? "#172B4D" : aIdx === 1 ? "#0747A6" : "#403294";
-              avatarHtml += `<span class="resource-option-avatar" style="background:${bg}; color:${color}; z-index:${10 - aIdx};" title="${res.name}">${initials}</span>`;
+              avatarHtml = html`${avatarHtml}<span class="resource-option-avatar" style="background:${bg}; color:${color}; z-index:${10 - aIdx};" title="${res.name}">${initials}</span>`;
             });
-            avatarHtml += "</div>";
+            avatarHtml = html`${avatarHtml}</div>`;
             const names = contributing.map((c) => c.name);
             if (contributing.length === 2) {
               labelText = `${names[0]}, ${names[1]}`;
@@ -7769,12 +7795,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
 ` + breakdownLines.join("\n") + `
 Click to manage or assign.`;
           }
-          resourceTd.innerHTML = `
-          <div class="resource-chip-btn ${isMultiple ? "has-multiple-resources" : ""}" title="${titleText.replace(/"/g, "&quot;")}">
+          resourceTd.innerHTML = html`
+          <div class="resource-chip-btn ${isMultiple ? "has-multiple-resources" : ""}" title="${titleText}">
             ${avatarHtml}
             <span class="resource-names-wrap" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${labelText}</span>
-            ${isMultiple ? `<span class="res-count-badge">${contributing.length}</span>` : ""}
-            <span style="font-size:10px; color:#626F86;">\u25BE</span>
+            ${isMultiple ? html`<span class="res-count-badge">${contributing.length}</span>` : ""}
+            <span style="font-size:10px; color:#626F86;">▾</span>
           </div>
         `;
           const resChip = resourceTd.querySelector(".resource-chip-btn");
@@ -7857,7 +7883,7 @@ Click to manage or assign.`;
               });
               await loadProjectPlan();
             } else {
-              effortTd.innerHTML = `<span class="effort-text" style="font-weight:700;">${origHours}h</span>`;
+              effortTd.innerHTML = html`<span class="effort-text" style="font-weight:700;">${origHours}h</span>`;
             }
           }
           input.addEventListener("keydown", (ke) => {
@@ -7866,7 +7892,7 @@ Click to manage or assign.`;
               saveInlineEffort();
             } else if (ke.key === "Escape") {
               saved = true;
-              effortTd.innerHTML = `<span class="effort-text" style="font-weight:700;">${origHours}h</span>`;
+              effortTd.innerHTML = html`<span class="effort-text" style="font-weight:700;">${origHours}h</span>`;
             }
           });
           input.addEventListener("blur", saveInlineEffort);
@@ -8199,7 +8225,7 @@ Click to manage or assign.`;
     });
     const btmDropRow = document.createElement("tr");
     btmDropRow.className = "drop-target-row";
-    btmDropRow.innerHTML = `<td colspan="${getVisibleColKeys().length + currentPlan.weeks.length}">+ Drop here to place task at bottom of schedule</td>`;
+    btmDropRow.innerHTML = html`<td colspan="${getVisibleColKeys().length + currentPlan.weeks.length}">+ Drop here to place task at bottom of schedule</td>`;
     setupDropTargetRow(btmDropRow, tasksToRender.length);
     tbody.appendChild(btmDropRow);
     setTimeout(renderDependencySvgOverlay, 50);
@@ -8404,7 +8430,7 @@ Click to manage or assign.`;
     svg.setAttribute("width", scrollWidth);
     svg.setAttribute("height", scrollHeight);
     const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-    defs.innerHTML = `
+    defs.innerHTML = html`
     <marker id="dep-arrow-success" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
       <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#36B37E" />
     </marker>
@@ -8524,20 +8550,20 @@ Click to manage or assign.`;
     const isEpic = task.isEpic || task.hierarchyLevel === 1;
     const isSub = task.isSubtask || task.hierarchyLevel === -1;
     const levelTitle = isEpic ? "\u{1F7EA} Epic Roadmap Level" : isSub ? "\u21B3 Subtask Execution Level" : "\u{1F537} Story / Task Plan Level";
-    const depInfo = task.dependency ? `<div style="margin-top:4px; color:${task.dependency.isViolated ? "#FF8F73" : "#79F2C0"};">\u{1F517} Dep: ${task.dependency.predecessorKey} >= ${task.dependency.triggerPercent}% (${task.dependency.isViolated ? "VIOLATED" : "SATISFIED"})</div>` : "";
-    const rollupInfo = isEpic && task.rollupStats ? `<div style="color:#A5B4FC; font-weight:600;">Rollup: ${task.childrenCount || 0} child items | Total ${task.effortHours}h</div>` : "";
-    const subInfo = !isEpic && task.subtasks && task.subtasks.length > 0 ? `<div style="color:#B3BAC5;">Subtasks: ${task.subtasks.length} items (${task.effortHours}h total)</div>` : "";
+    const depInfo = task.dependency ? html`<div style="margin-top:4px; color:${task.dependency.isViolated ? "#FF8F73" : "#79F2C0"};">🔗 Dep: ${task.dependency.predecessorKey} >= ${task.dependency.triggerPercent}% (${task.dependency.isViolated ? "VIOLATED" : "SATISFIED"})</div>` : "";
+    const rollupInfo = isEpic && task.rollupStats ? html`<div style="color:#A5B4FC; font-weight:600;">Rollup: ${task.childrenCount || 0} child items | Total ${task.effortHours}h</div>` : "";
+    const subInfo = !isEpic && task.subtasks && task.subtasks.length > 0 ? html`<div style="color:#B3BAC5;">Subtasks: ${task.subtasks.length} items (${task.effortHours}h total)</div>` : "";
     const contributing = getTaskContributingResources(task);
-    let assigneeHtml = `<div>${isEpic ? "Epic Lead" : "Assignee"}: ${task.resource || "Unassigned"}</div>`;
+    let assigneeHtml = html`<div>${isEpic ? "Epic Lead" : "Assignee"}: ${task.resource || "Unassigned"}</div>`;
     if (contributing.length > 1) {
-      assigneeHtml = `<div>${isEpic ? "Epic Team" : "Team"}: <strong>${contributing.map((c) => c.name).join(", ")}</strong> (${contributing.length} resources)</div>`;
+      assigneeHtml = html`<div>${isEpic ? "Epic Team" : "Team"}: <strong>${contributing.map((c) => c.name).join(", ")}</strong> (${contributing.length} resources)</div>`;
     } else if (contributing.length === 1 && !contributing[0].isParent) {
-      assigneeHtml = `<div>Assignee: <strong>${contributing[0].name}</strong> (via subtask)</div>`;
+      assigneeHtml = html`<div>Assignee: <strong>${contributing[0].name}</strong> (via subtask)</div>`;
     }
     const siteUrl = getJiraBaseUrl();
-    tip.innerHTML = `
+    tip.innerHTML = html`
     <div style="font-size:10px; color:#A5B4FC; font-weight:700; margin-bottom:2px;">${levelTitle}</div>
-    <div><strong><a href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer" style="color:#FFF; text-decoration:underline;">${task.key} \u2197</a>: ${task.summary}</strong></div>
+    <div><strong><a href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer" style="color:#FFF; text-decoration:underline;">${task.key} ↗</a>: ${task.summary}</strong></div>
     ${assigneeHtml}
     <div>Effort: ${task.effortHours}h | Progress: ${task.progress}% (Target: ${task.targetProgress}%)</div>
     <div>Dates: ${task.startDate} to ${task.endDate}</div>
@@ -8676,7 +8702,7 @@ Click to manage or assign.`;
         item.style.display = "flex";
         item.style.justifyContent = "space-between";
         item.style.fontSize = "12px";
-        item.innerHTML = `<span>\u2022 ${s.summary}</span><span style="font-weight:700;">${s.normalizedHours}h</span>`;
+        item.innerHTML = html`<span>• ${s.summary}</span><span style="font-weight:700;">${s.normalizedHours}h</span>`;
         list.appendChild(item);
       });
     }
@@ -9067,28 +9093,28 @@ Click to manage or assign.`;
       cont.innerHTML = "<div>No resource allocation data available.</div>";
       return;
     }
-    let html = '<div style="display:flex; flex-direction:column; gap:16px;">';
+    let markup = html`<div style="display:flex; flex-direction:column; gap:16px;">`;
     res.rows.forEach((r) => {
-      html += `
+      markup = html`${markup}
       <div style="background:#FFF; border:1px solid #DCDFE4; border-radius:6px; padding:12px;">
-        <div style="font-weight:700; font-size:13px; margin-bottom:4px;">\u{1F464} ${r.resourceName} <span style="font-weight:500; color:#626F86;">(${r.coe} \u2022 ${r.vertical})</span></div>
+        <div style="font-weight:700; font-size:13px; margin-bottom:4px;">👤 ${r.resourceName} <span style="font-weight:500; color:#626F86;">(${r.coe} • ${r.vertical})</span></div>
         <div style="display:flex; gap:6px; overflow-x:auto; margin-top:8px;">
     `;
       res.weeks.forEach((w) => {
         const pct = r.weeklyUtilization[w.weekKey] || 0;
         const bg = pct > 100 ? "#FFEBE6" : pct === 100 ? "#E3FCEF" : pct > 0 ? "#DEEBFF" : "#F4F5F7";
         const fg = pct > 100 ? "#BF2600" : pct === 100 ? "#006644" : pct > 0 ? "#0747A6" : "#626F86";
-        html += `
+        markup = html`${markup}
         <div style="background:${bg}; color:${fg}; border-radius:4px; padding:4px 8px; text-align:center; min-width:60px;">
           <div style="font-size:10px; font-weight:600;">${w.weekKey}</div>
           <div style="font-size:12px; font-weight:700;">${pct}%</div>
         </div>
       `;
       });
-      html += "</div></div>";
+      markup = html`${markup}</div></div>`;
     });
-    html += "</div>";
-    cont.innerHTML = html;
+    markup = html`${markup}</div>`;
+    cont.innerHTML = html`${markup}`;
   }
   async function renderHeatmapView() {
     const cont = document.getElementById("heatmapContent");
@@ -9098,13 +9124,13 @@ Click to manage or assign.`;
       cont.innerHTML = "<div>No capacity data available.</div>";
       return;
     }
-    let html = '<table class="heatmap-table"><thead><tr><th class="heatmap-th">Resource</th><th class="heatmap-th">COE</th><th class="heatmap-th">Vertical</th>';
+    let markup = html`<table class="heatmap-table"><thead><tr><th class="heatmap-th">Resource</th><th class="heatmap-th">COE</th><th class="heatmap-th">Vertical</th>`;
     res.weeks.forEach((w) => {
-      html += `<th class="heatmap-th">${w.weekKey}</th>`;
+      markup = html`${markup}<th class="heatmap-th">${w.weekKey}</th>`;
     });
-    html += "</tr></thead><tbody>";
+    markup = html`${markup}</tr></thead><tbody>`;
     res.rows.forEach((r) => {
-      html += `<tr>
+      markup = html`${markup}<tr>
       <td class="heatmap-td" style="text-align:left; font-weight:700;">${r.resourceName}</td>
       <td class="heatmap-td" style="color:#626F86;">${r.coe}</td>
       <td class="heatmap-td" style="color:#626F86;">${r.vertical}</td>
@@ -9113,11 +9139,11 @@ Click to manage or assign.`;
         const pct = r.weeklyUtilization[w.weekKey] || 0;
         const bg = pct > 100 ? "#FFEBE6" : pct === 100 ? "#E3FCEF" : pct > 0 ? "#DEEBFF" : "#FFF0B3";
         const fg = pct > 100 ? "#BF2600" : pct === 100 ? "#006644" : pct > 0 ? "#0747A6" : "#172B4D";
-        html += `<td class="heatmap-td" style="background:${bg}; color:${fg};">${pct}%</td>`;
+        markup = html`${markup}<td class="heatmap-td" style="background:${bg}; color:${fg};">${pct}%</td>`;
       });
-      html += "</tr>";
+      markup = html`${markup}</tr>`;
     });
-    html += "</tbody></table>";
-    cont.innerHTML = html;
+    markup = html`${markup}</tbody></table>`;
+    cont.innerHTML = html`${markup}`;
   }
 })();

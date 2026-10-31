@@ -36,14 +36,24 @@ import { StorageProvider, PlanRepository } from '../src/storage/plan-repository'
 import { EstimateUnit, ProjectMilestone, ColumnWidthConfig } from '../src/domain/models';
 
 const mockRequestJira = jest.fn();
+// Answers the issue-to-project lookup of verifyIssueInProject (B-02) from the key prefix,
+// and passes every other call to mockRequestJira.
+function mockLookupOr(args: any[]): any {
+  const [routeStr, options] = args;
+  const m = String(routeStr).match(/\/rest\/api\/3\/issue\/([A-Z0-9_]+)-(\d+)\?fields=project/);
+  if (m && !options?.method) {
+    return Promise.resolve({ status: 200, json: async () => ({ key: `${m[1]}-${m[2]}`, fields: { project: { key: m[1] } } }) });
+  }
+  return mockRequestJira(...args);
+}
 jest.mock('@forge/api', () => ({
   __esModule: true,
   default: {
     asApp: () => ({
-      requestJira: mockRequestJira
+      requestJira: (...args: any[]) => mockLookupOr(args)
     }),
     asUser: () => ({
-      requestJira: mockRequestJira
+      requestJira: (...args: any[]) => mockLookupOr(args)
     })
   },
   route: (strings: any, ...values: any[]) => strings.reduce((acc: string, str: string, i: number) => acc + str + (values[i] !== undefined ? values[i] : ''), '')
@@ -1088,8 +1098,8 @@ describe('CascadePlan Index & Resolver Tests', () => {
             projectKey: 'TEST',
             taskId: 'INVALID_TASK',
             dependency: {
-              predecessorId: 'P-1',
-              predecessorKey: 'P-1',
+              predecessorId: 'TEST-2',
+              predecessorKey: 'TEST-2',
               triggerPercent: 30,
               isTriggerSatisfied: false
             }
@@ -1613,7 +1623,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
     });
 
     it('unscheduleTask handles unscheduling a task that had no prior schedule override', async () => {
-      const plan = await unscheduleTask({ taskId: 'TEST-UNSEEN', projectKey: 'TEST' });
+      const plan = await unscheduleTask({ taskId: 'TEST-99', projectKey: 'TEST' });
       expect(plan.projectKey).toBe('TEST');
     });
 
@@ -1849,7 +1859,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
 
       jest.spyOn(mockStorage, 'get').mockRejectedValueOnce('string error without message');
       const resErrNoMsg: any = await handler({
-        call: { functionKey: 'updateWbsTask', payload: { taskId: 'TEST-1' } },
+        call: { functionKey: 'updateWbsTask', payload: { taskId: 'TEST-1', updates: {} } },
         context: { extension: { project: { key: 'TEST' } } }
       } as any);
       expect(resErrNoMsg.success).toBe(false);

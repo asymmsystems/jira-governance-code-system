@@ -31,6 +31,16 @@ import {
 } from './domain/models';
 import { PlannerEngine } from './domain/planner-engine';
 import { PlanRepository, StorageProvider } from './storage/plan-repository';
+import {
+  ValidationError,
+  assertIssueKey,
+  validateTaskUpdates,
+  validateDependencyPayload,
+  validateColumnWidths,
+  validateHiddenColumns,
+  validateMilestone,
+  toValidationResult
+} from './validation';
 
 class ForgeKvsProvider implements StorageProvider {
   async get<T>(key: string): Promise<T | undefined> {
@@ -67,6 +77,37 @@ export function getJiraCaller() {
     return api.asUser();
   }
   return api.asApp();
+}
+
+/**
+ * Throws ValidationError unless Jira reports the issue as part of the given project (INV-15).
+ */
+export async function verifyIssueInProject(issueKey: unknown, projectKey: string, field: string): Promise<void> {
+  assertIssueKey(issueKey, field);
+  let projectOfIssue: string | undefined;
+  try {
+    const res = await getJiraCaller().requestJira(route`/rest/api/3/issue/${issueKey}?fields=project`);
+    if (res && res.status === 200) {
+      const data = await res.json();
+      projectOfIssue = data?.fields?.project?.key;
+    }
+  } catch {}
+  if (projectOfIssue !== projectKey) {
+    throw new ValidationError(field, `${issueKey} is not in project ${projectKey}`);
+  }
+}
+
+/**
+ * Runs a resolver and maps a ValidationError to { ok: false, error: 'validation', field, message }.
+ */
+export async function withValidation<T>(fn: () => Promise<T>): Promise<T | ReturnType<typeof toValidationResult>> {
+  try {
+    return await fn();
+  } catch (err) {
+    const result = toValidationResult(err);
+    if (result) return result;
+    throw err;
+  }
 }
 
 export function getTimelineWeeks(referenceDate: Date = new Date()): { weeks: WeeklySprintColumn[]; currentWeekIndex: number } {
@@ -515,6 +556,7 @@ export async function scheduleBacklogTask(
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState> {
   const { projectKey, taskId, startWeek, spanWeeks = 3, effortHours = 40, resource, targetIndex } = request;
+  await verifyIssueInProject(taskId, projectKey, 'taskId');
   const storage = resolveStorage(storageProvider);
 
   const scheduleMap = (await storage.get<Record<string, Partial<WbsTask>>>(`scheduleMap:${projectKey}`)) || {};
@@ -985,6 +1027,7 @@ export async function updateWbsTask(
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState> {
   const { projectKey, taskId, updates } = payload;
+  validateTaskUpdates(updates as Record<string, unknown>);
   const storage = resolveStorage(storageProvider);
 
   const plan = await getProjectPlan(projectKey, storage);
@@ -992,6 +1035,10 @@ export async function updateWbsTask(
     (plan.backlogTasks || []).find(t => t.id === taskId || t.key === taskId);
   if (!targetTask) {
     throw new Error(`Task '${taskId}' not found in project plan`);
+  }
+  const planKeys = new Set([...plan.tasks, ...(plan.backlogTasks || [])].map(t => t.key));
+  if (updates.dependency && updates.dependency.predecessorKey && !planKeys.has(updates.dependency.predecessorKey)) {
+    throw new ValidationError('dependency.predecessorKey', `${updates.dependency.predecessorKey} is not in project ${projectKey}`);
   }
 
   const ALLOWED_KEYS = [
@@ -1207,6 +1254,7 @@ export async function unscheduleTask(
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState> {
   const { projectKey, taskId } = payload;
+  await verifyIssueInProject(taskId, projectKey, 'taskId');
   const storage = resolveStorage(storageProvider);
 
   const scheduleMap = (await storage.get<Record<string, Partial<WbsTask>>>(`scheduleMap:${projectKey}`)) || {};
@@ -1266,6 +1314,7 @@ export async function createSubtaskForResource(
   if (!parentKey) {
     return { success: false, error: 'parentKey is required' };
   }
+  await verifyIssueInProject(parentKey, projectKey, 'parentKey');
 
   const caller = getJiraCaller();
 
@@ -1368,6 +1417,7 @@ export async function addSubtaskToTask(
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState> {
   const { projectKey, parentTaskId, subtask, bufferType = 'NONE', bufferValue = 0 } = payload;
+  await verifyIssueInProject(parentTaskId, projectKey, 'parentTaskId');
   const storage = resolveStorage(storageProvider);
 
   const scheduleMap = (await storage.get<Record<string, Partial<WbsTask>>>(`scheduleMap:${projectKey}`)) || {};
@@ -1412,9 +1462,14 @@ export async function saveTaskDependency(
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState> {
   const { projectKey, taskId, dependency } = payload;
+  validateDependencyPayload(dependency);
   const storage = resolveStorage(storageProvider);
 
   const plan = await getProjectPlan(projectKey, storage);
+  const planKeys = new Set([...plan.tasks, ...(plan.backlogTasks || [])].map(t => t.key));
+  if (!planKeys.has(dependency.predecessorKey)) {
+    throw new ValidationError('dependency.predecessorKey', `${dependency.predecessorKey} is not in project ${projectKey}`);
+  }
   const targetTask = plan.tasks.find(t => t.id === taskId || t.key === taskId) ||
     plan.backlogTasks?.find(t => t.id === taskId || t.key === taskId);
   if (!targetTask) {
@@ -1455,6 +1510,7 @@ export async function saveColumnWidths(
   storageProvider?: StorageProvider
 ): Promise<{ success: boolean; columnWidths: ColumnWidthConfig }> {
   const { projectKey, columnWidths } = payload;
+  validateColumnWidths(columnWidths as unknown as Record<string, unknown>);
   const storage = resolveStorage(storageProvider);
   await storage.set(`colWidths:${projectKey}`, columnWidths);
   return { success: true, columnWidths };
@@ -1468,6 +1524,7 @@ export async function saveHiddenColumns(
   storageProvider?: StorageProvider
 ): Promise<{ success: boolean; hiddenColumns: string[] }> {
   const { projectKey, hiddenColumns } = payload;
+  validateHiddenColumns(hiddenColumns);
   const storage = resolveStorage(storageProvider);
   const cols = Array.isArray(hiddenColumns) ? hiddenColumns : [];
   await storage.set(`hiddenColumns:${projectKey}`, cols);
@@ -1482,6 +1539,7 @@ export async function saveProjectMilestone(
   storageProvider?: StorageProvider
 ): Promise<{ success: boolean; milestones: ProjectMilestone[] }> {
   const { projectKey, milestone } = payload;
+  validateMilestone(milestone as unknown as Record<string, unknown>);
   const storage = resolveStorage(storageProvider);
   const current = (await storage.get<ProjectMilestone[]>(`milestones:${projectKey}`)) || DEFAULT_MILESTONES;
   const filtered = current.filter(m => m.id !== milestone.id);
@@ -1544,64 +1602,38 @@ export function extractSiteUrl(req: any): string | undefined {
 // Register Forge Resolvers
 const resolver = new Resolver();
 
-resolver.define('getProjectPlan', async (req) => {
-  return await getProjectPlan(extractProjectKey(req), undefined, new Date(), extractSiteUrl(req));
-});
+resolver.define('getProjectPlan', async (req) => withValidation(() => getProjectPlan(extractProjectKey(req), undefined, new Date(), extractSiteUrl(req))));
 
-resolver.define('scheduleBacklogTask', async (req) => {
-  return await scheduleBacklogTask({ ...req.payload, projectKey: extractProjectKey(req) });
-});
+resolver.define('scheduleBacklogTask', async (req) => withValidation(() => scheduleBacklogTask({ ...req.payload, projectKey: extractProjectKey(req) })));
 
-resolver.define('createInlineTask', async (req) => {
-  return await createInlineTask({ ...req.payload, projectKey: extractProjectKey(req) });
-});
+resolver.define('createInlineTask', async (req) => withValidation(() => createInlineTask({ ...req.payload, projectKey: extractProjectKey(req) })));
 
-resolver.define('createJiraEpic', async (req) => {
-  return await createJiraEpic({ ...req.payload, projectKey: extractProjectKey(req) });
-});
+resolver.define('createJiraEpic', async (req) => withValidation(() => createJiraEpic({ ...req.payload, projectKey: extractProjectKey(req) })));
 
 resolver.define('updateWbsTask', async (req) => {
   try {
-    return await updateWbsTask({ ...req.payload, projectKey: extractProjectKey(req) });
+    return await withValidation(() => updateWbsTask({ ...req.payload, projectKey: extractProjectKey(req) }));
   } catch (err: any) {
     return { success: false, error: err?.message || 'Failed to update task' };
   }
 });
 
-resolver.define('addSubtaskToTask', async (req) => {
-  return await addSubtaskToTask({ ...req.payload, projectKey: extractProjectKey(req) });
-});
+resolver.define('addSubtaskToTask', async (req) => withValidation(() => addSubtaskToTask({ ...req.payload, projectKey: extractProjectKey(req) })));
 
-resolver.define('saveTaskDependency', async (req) => {
-  return await saveTaskDependency({ ...req.payload, projectKey: extractProjectKey(req) });
-});
+resolver.define('saveTaskDependency', async (req) => withValidation(() => saveTaskDependency({ ...req.payload, projectKey: extractProjectKey(req) })));
 
-resolver.define('saveColumnWidths', async (req) => {
-  return await saveColumnWidths({ ...req.payload, projectKey: extractProjectKey(req) });
-});
+resolver.define('saveColumnWidths', async (req) => withValidation(() => saveColumnWidths({ ...req.payload, projectKey: extractProjectKey(req) })));
 
-resolver.define('saveHiddenColumns', async (req) => {
-  return await saveHiddenColumns({ ...req.payload, projectKey: extractProjectKey(req) });
-});
+resolver.define('saveHiddenColumns', async (req) => withValidation(() => saveHiddenColumns({ ...req.payload, projectKey: extractProjectKey(req) })));
 
-resolver.define('saveProjectMilestone', async (req) => {
-  return await saveProjectMilestone({ ...req.payload, projectKey: extractProjectKey(req) });
-});
+resolver.define('saveProjectMilestone', async (req) => withValidation(() => saveProjectMilestone({ ...req.payload, projectKey: extractProjectKey(req) })));
 
-resolver.define('getPortfolioResourceHeatmap', async (req) => {
-  return await getPortfolioResourceHeatmap(extractProjectKey(req), req.payload?.filters);
-});
+resolver.define('getPortfolioResourceHeatmap', async (req) => withValidation(() => getPortfolioResourceHeatmap(extractProjectKey(req), req.payload?.filters)));
 
-resolver.define('unscheduleTask', async (req) => {
-  return await unscheduleTask({ ...req.payload, projectKey: extractProjectKey(req) });
-});
+resolver.define('unscheduleTask', async (req) => withValidation(() => unscheduleTask({ ...req.payload, projectKey: extractProjectKey(req) })));
 
-resolver.define('reorderWbsTasks', async (req) => {
-  return await reorderWbsTasks({ ...req.payload, projectKey: extractProjectKey(req) });
-});
+resolver.define('reorderWbsTasks', async (req) => withValidation(() => reorderWbsTasks({ ...req.payload, projectKey: extractProjectKey(req) })));
 
-resolver.define('createSubtaskForResource', async (req) => {
-  return await createSubtaskForResource({ ...req.payload, projectKey: extractProjectKey(req) });
-});
+resolver.define('createSubtaskForResource', async (req) => withValidation(() => createSubtaskForResource({ ...req.payload, projectKey: extractProjectKey(req) })));
 
 export const handler = resolver.getDefinitions();
