@@ -87,7 +87,32 @@ export interface WbsTask {
   dependency?: TaskDependency;
   isBacklog?: boolean;
   subtasks?: SubtaskItem[];
+  parentId?: string;
+  parentKey?: string;
+  isSubtask?: boolean;
+  isEpic?: boolean;
+  hierarchyLevel?: number; // 1 = Epic, 0 = Story/Task, -1 = Subtask
+  childrenCount?: number;
+  isRollup?: boolean;
+  rollupStats?: WbsHierarchyStats;
+  contributingResources?: string[];
+  manualProgress?: boolean;
+  isExpanded?: boolean;
+  orderIndex?: number;
   version?: number;
+}
+
+export interface WbsHierarchyStats {
+  startDate: string;
+  endDate: string;
+  totalHours: number;
+  completedHours: number;
+  progressPct: number;
+  startWeek?: string;
+  endWeek?: string;
+  spanWeeks?: number;
+  childrenCount: number;
+  contributingResources?: string[];
 }
 
 export interface WeeklySprintColumn {
@@ -147,6 +172,8 @@ export interface ProjectPlanState {
   availableUsers?: JiraAssignableUser[]; // Real project assignees
   lastUpdated: string;
   isLiveSynced?: boolean;
+  siteUrl?: string;
+  hiddenColumns?: string[];
 }
 
 export interface ResourceProjectAllocation {
@@ -199,6 +226,7 @@ export interface InlineTaskCreateRequest {
   targetProgress?: number;
   startWeek?: string;
   spanWeeks?: number;
+  targetIndex?: number;
 }
 
 export interface ScheduleBacklogRequest {
@@ -208,6 +236,32 @@ export interface ScheduleBacklogRequest {
   spanWeeks?: number;
   effortHours?: number;
   resource?: string;
+  targetIndex?: number;
+}
+
+export interface UnscheduleTaskRequest {
+  projectKey: string;
+  taskId: string;
+}
+
+export interface CreateSubtaskForResourceRequest {
+  projectKey: string;
+  parentKey?: string;
+  parentTaskId?: string;
+  summary?: string;
+  resource?: string;
+  assigneeName?: string;
+  resourceAccountId?: string;
+  assigneeAccountId?: string;
+  effortHours?: number;
+  startWeek?: string;
+  spanWeeks?: number;
+}
+
+export interface ReorderTasksRequest {
+  projectKey: string;
+  taskId: string;
+  targetIndex: number;
 }
 
 export const DEFAULT_TSHIRT_MAP: Record<TShirtSize, number> = {
@@ -221,3 +275,150 @@ export const DEFAULT_TSHIRT_MAP: Record<TShirtSize, number> = {
 export const DEFAULT_STORY_POINT_RATIO = 8; // 1 pt = 8 hours
 
 export const CURRENT_WEEK_INDEX = 6; // '26-Aug'
+
+/**
+ * Universal Data Models for Project Management (Silverston / OFBiz / Moqui Pattern)
+ * Provides canonical enterprise data modeling alignment for work efforts, associations,
+ * party assignments, and estimation standards.
+ */
+export type WorkEffortType = 'PROJECT' | 'PHASE' | 'PROGRAM' | 'EPIC' | 'TASK' | 'ACTIVITY' | 'MILESTONE';
+
+export type WorkEffortStatus = 'WE_PLANNED' | 'WE_IN_PROGRESS' | 'WE_ON_HOLD' | 'WE_COMPLETE' | 'WE_CANCELLED';
+
+export type WorkEffortAssocType = 'WORK_BREAKDOWN' | 'PRECEDENCE' | 'FRACTIONAL_MILESTONE' | 'DEPENDENCY';
+
+export type WorkEffortRoleType = 'PRIMARY_ASSIGNEE' | 'CONTRIBUTOR' | 'QA_LEAD' | 'REVIEWER' | 'STAKEHOLDER';
+
+export interface WorkEffort {
+  workEffortId: string;
+  workEffortTypeId: WorkEffortType;
+  workEffortName: string;
+  description?: string;
+  currentStatusId: WorkEffortStatus;
+  estimatedStartDate?: string;
+  estimatedCompletionDate?: string;
+  actualStartDate?: string;
+  actualCompletionDate?: string;
+  estimatedHours: number;
+  actualHours?: number;
+  percentComplete: number;
+  targetPercentComplete: number;
+  manualProgress?: boolean;
+  sequenceNum?: number;
+  workEffortParentId?: string;
+}
+
+export interface WorkEffortAssoc {
+  workEffortIdFrom: string;
+  workEffortIdTo: string;
+  workEffortAssocTypeId: WorkEffortAssocType;
+  sequenceNum?: number;
+  triggerPercent?: number;
+  lagTimeDays?: number;
+  isTriggerSatisfied: boolean;
+  isViolated?: boolean;
+  violationReason?: string;
+  notes?: string;
+}
+
+export interface WorkEffortPartyAssignment {
+  workEffortId: string;
+  partyId: string;
+  displayName: string;
+  roleTypeId: WorkEffortRoleType;
+  allocatedHours?: number;
+  capacityPercent?: number;
+  fromDate?: string;
+  thruDate?: string;
+}
+
+export interface WorkEffortEstimate {
+  workEffortId: string;
+  estimateUnit: EstimateUnit;
+  rawEstimate: number;
+  normalizedHours: number;
+  bufferType: BufferType;
+  bufferValue: number;
+  totalCalculatedHours: number;
+}
+
+/**
+ * Converts a CascadePlan WbsTask into a canonical Silverston / Moqui WorkEffort entity.
+ */
+export function toWorkEffort(task: WbsTask): WorkEffort {
+  let statusId: WorkEffortStatus = 'WE_PLANNED';
+  if (task.status === 'COMPLETED') statusId = 'WE_COMPLETE';
+  else if (task.status === 'IN_PROGRESS') statusId = 'WE_IN_PROGRESS';
+
+  let typeId: WorkEffortType = 'TASK';
+  if (task.isEpic || task.hierarchyLevel === 1) typeId = 'EPIC';
+  else if (task.isSubtask || task.hierarchyLevel === -1) typeId = 'ACTIVITY';
+
+  return {
+    workEffortId: task.key || task.id,
+    workEffortTypeId: typeId,
+    workEffortName: task.summary,
+    currentStatusId: statusId,
+    estimatedStartDate: task.startDate,
+    estimatedCompletionDate: task.endDate,
+    estimatedHours: task.effortHours || 0,
+    percentComplete: task.progress || 0,
+    targetPercentComplete: task.targetProgress || 0,
+    manualProgress: task.manualProgress,
+    sequenceNum: task.orderIndex,
+    workEffortParentId: task.parentKey || task.parentId
+  };
+}
+
+/**
+ * Converts a canonical Silverston / Moqui WorkEffort entity back into a CascadePlan WbsTask.
+ */
+export function fromWorkEffort(
+  we: WorkEffort,
+  assocs?: WorkEffortAssoc[],
+  parties?: WorkEffortPartyAssignment[]
+): Partial<WbsTask> {
+  let status: TaskStatus = 'NOT_STARTED';
+  if (we.currentStatusId === 'WE_COMPLETE') status = 'COMPLETED';
+  else if (we.currentStatusId === 'WE_IN_PROGRESS') status = 'IN_PROGRESS';
+
+  const isEpic = we.workEffortTypeId === 'EPIC';
+  const isSubtask = we.workEffortTypeId === 'ACTIVITY';
+
+  const primaryParty = (parties || []).find(p => p.roleTypeId === 'PRIMARY_ASSIGNEE');
+  const otherParties = (parties || []).filter(p => p.roleTypeId !== 'PRIMARY_ASSIGNEE').map(p => p.displayName);
+
+  let dependency: TaskDependency | undefined;
+  const precAssoc = (assocs || []).find(a => a.workEffortIdTo === we.workEffortId && (a.workEffortAssocTypeId === 'PRECEDENCE' || a.workEffortAssocTypeId === 'FRACTIONAL_MILESTONE'));
+  if (precAssoc) {
+    dependency = {
+      predecessorId: precAssoc.workEffortIdFrom,
+      predecessorKey: precAssoc.workEffortIdFrom,
+      triggerPercent: precAssoc.triggerPercent !== undefined ? precAssoc.triggerPercent : 30,
+      isTriggerSatisfied: precAssoc.isTriggerSatisfied,
+      isViolated: precAssoc.isViolated,
+      violationReason: precAssoc.violationReason
+    };
+  }
+
+  return {
+    id: we.workEffortId,
+    key: we.workEffortId,
+    summary: we.workEffortName,
+    status,
+    effortHours: we.estimatedHours,
+    progress: we.percentComplete,
+    targetProgress: we.targetPercentComplete,
+    manualProgress: we.manualProgress,
+    startDate: we.estimatedStartDate || '',
+    endDate: we.estimatedCompletionDate || '',
+    isEpic,
+    isSubtask,
+    hierarchyLevel: isEpic ? 1 : (isSubtask ? -1 : 0),
+    parentKey: we.workEffortParentId,
+    resource: primaryParty ? primaryParty.displayName : 'Unassigned',
+    resourceAccountId: primaryParty ? primaryParty.partyId : undefined,
+    contributingResources: otherParties.length > 0 ? otherParties : undefined,
+    dependency
+  };
+}

@@ -1,5 +1,14 @@
 import { PlannerEngine } from '../../src/domain/planner-engine';
-import { WbsTask, WeeklySprintColumn, TaskDependency } from '../../src/domain/models';
+import {
+  WbsTask,
+  WeeklySprintColumn,
+  TaskDependency,
+  toWorkEffort,
+  fromWorkEffort,
+  WorkEffort,
+  WorkEffortAssoc,
+  WorkEffortPartyAssignment
+} from '../../src/domain/models';
 
 describe('PlannerEngine Domain Tests', () => {
   const sampleWeek: WeeklySprintColumn = {
@@ -485,4 +494,742 @@ describe('PlannerEngine Domain Tests', () => {
       expect(effort.totalCalculatedHours).toBe(40);
     });
   });
+
+  describe('cascadeSchedule', () => {
+    const weeks: WeeklySprintColumn[] = [
+      { weekKey: 'W1', sprintName: 'Sprint 1', startDate: '2026-07-01', endDate: '2026-07-07' },
+      { weekKey: 'W2', sprintName: 'Sprint 2', startDate: '2026-07-08', endDate: '2026-07-14' },
+      { weekKey: 'W3', sprintName: 'Sprint 3', startDate: '2026-07-15', endDate: '2026-07-21' },
+      { weekKey: 'W4', sprintName: 'Sprint 4', startDate: '2026-07-22', endDate: '2026-07-28' },
+      { weekKey: 'W5', sprintName: 'Sprint 5', startDate: '2026-07-29', endDate: '2026-08-04' },
+    ];
+
+    it('returns empty results if tasks or weeks are empty or null', () => {
+      expect(PlannerEngine.cascadeSchedule([], 'T1', weeks).updatedTasks).toEqual([]);
+      expect(PlannerEngine.cascadeSchedule([sampleTask], 'T1', []).updatedTasks.length).toBe(1);
+      expect(PlannerEngine.cascadeSchedule(null as any, 'T1', weeks).updatedTasks).toEqual([]);
+    });
+
+    it('cascades schedule downstream when predecessor moves forward', () => {
+      const pred: WbsTask = {
+        ...sampleTask,
+        key: 'PRED-1',
+        startWeek: 'W2',
+        endWeek: 'W3',
+        spanWeeks: 2
+      };
+      const succ: WbsTask = {
+        ...sampleTask,
+        key: 'SUCC-1',
+        startWeek: 'W1',
+        spanWeeks: 2,
+        dependency: {
+          predecessorId: 'PRED-1',
+          predecessorKey: 'PRED-1',
+          triggerPercent: 50,
+          isTriggerSatisfied: false
+        }
+      };
+
+      const res = PlannerEngine.cascadeSchedule([pred, succ], 'PRED-1', weeks);
+      expect(res.affectedTaskKeys).toContain('SUCC-1');
+      const updatedSucc = res.updatedTasks.find(t => t.key === 'SUCC-1')!;
+      // PRED starts at idx 1 (W2), span 2, 50% = 1 week offset -> earliest start idx = 2 (W3)
+      expect(updatedSucc.startWeek).toBe('W3');
+      expect(updatedSucc.endWeek).toBe('W4');
+      expect(updatedSucc.weeklyAllocations).toBeDefined();
+    });
+
+    it('does not shift downstream task if it is already scheduled after earliest start', () => {
+      const pred: WbsTask = {
+        ...sampleTask,
+        key: 'PRED-1',
+        startWeek: 'W1',
+        spanWeeks: 2
+      };
+      const succ: WbsTask = {
+        ...sampleTask,
+        key: 'SUCC-1',
+        startWeek: 'W4',
+        spanWeeks: 2,
+        dependency: {
+          predecessorId: 'PRED-1',
+          predecessorKey: 'PRED-1',
+          triggerPercent: 30,
+          isTriggerSatisfied: true
+        }
+      };
+
+      const res = PlannerEngine.cascadeSchedule([pred, succ], 'PRED-1', weeks);
+      expect(res.affectedTaskKeys.length).toBe(0);
+      const unchangedSucc = res.updatedTasks.find(t => t.key === 'SUCC-1')!;
+      expect(unchangedSucc.startWeek).toBe('W4');
+    });
+
+    it('handles predecessor with undefined or default span and trigger', () => {
+      const pred: WbsTask = {
+        ...sampleTask,
+        key: 'PRED-1',
+        startWeek: 'W2',
+        spanWeeks: undefined
+      };
+      const succ: WbsTask = {
+        ...sampleTask,
+        key: 'SUCC-1',
+        startWeek: 'W1',
+        spanWeeks: undefined,
+        dependency: {
+          predecessorId: 'PRED-1',
+          isTriggerSatisfied: false
+        } as any
+      };
+
+      const res = PlannerEngine.cascadeSchedule([pred, succ], 'PRED-1', weeks);
+      expect(res.affectedTaskKeys).toContain('SUCC-1');
+    });
+
+    it('handles diamond dependency graph and visited node branches', () => {
+      const predA: WbsTask = { ...sampleTask, key: 'A', startWeek: 'W2', spanWeeks: 2 };
+      const succB: WbsTask = { ...sampleTask, key: 'B', startWeek: 'W1', spanWeeks: 2, dependency: { predecessorId: 'A', predecessorKey: 'A', triggerPercent: 50, isTriggerSatisfied: false } };
+      const succC: WbsTask = { ...sampleTask, key: 'C', startWeek: 'W1', spanWeeks: 2, dependency: { predecessorId: 'A', predecessorKey: 'A', triggerPercent: 50, isTriggerSatisfied: false } };
+      const succD: WbsTask = { ...sampleTask, key: 'D', startWeek: 'W1', spanWeeks: 2, dependency: { predecessorId: 'B', predecessorKey: 'B', triggerPercent: 50, isTriggerSatisfied: false } };
+
+      const res = PlannerEngine.cascadeSchedule([predA, succB, succC, succD], 'A', weeks);
+      expect(res.affectedTaskKeys).toContain('D');
+    });
+  });
+
+  describe('calculateEarliestStartWeekIndex', () => {
+    const testWeeks: WeeklySprintColumn[] = [
+      { weekKey: 'W1', sprintName: 'Sprint 1', startDate: '2026-07-01', endDate: '2026-07-07' },
+      { weekKey: 'W2', sprintName: 'Sprint 2', startDate: '2026-07-08', endDate: '2026-07-14' },
+      { weekKey: 'W3', sprintName: 'Sprint 3', startDate: '2026-07-15', endDate: '2026-07-21' },
+      { weekKey: 'W4', sprintName: 'Sprint 4', startDate: '2026-07-22', endDate: '2026-07-28' },
+      { weekKey: 'W5', sprintName: 'Sprint 5', startDate: '2026-07-29', endDate: '2026-08-04' },
+    ];
+
+    it('returns 0 for empty or invalid predecessor or activeWeeks', () => {
+      expect(PlannerEngine.calculateEarliestStartWeekIndex(null as any, 30, testWeeks)).toBe(0);
+      expect(PlannerEngine.calculateEarliestStartWeekIndex(sampleTask, 30, [])).toBe(0);
+      expect(PlannerEngine.calculateEarliestStartWeekIndex(sampleTask, 30, null as any)).toBe(0);
+    });
+
+    it('calculates earliest start week using team capacity factor when predecessor has multiple assignees', () => {
+      const pred: WbsTask = {
+        ...sampleTask,
+        key: 'PRED-TEAM',
+        startWeek: 'W1',
+        spanWeeks: 4,
+        resource: 'Alice',
+        contributingResources: ['Alice', 'Bob'], // team size = 2
+        weeklyAllocations: {
+          W1: 20,
+          W2: 20,
+          W3: 20,
+          W4: 20
+        }
+      };
+      // For team size 2: factor is 1 + (2 - 1)*0.25 = 1.25.
+      // W1: 20 * 1.25 = 25% cumulative.
+      // W2: 25 + 25 = 50% cumulative. Target trigger 50% is satisfied in W2 (idx 1).
+      // Earliest successor start index is W2 idx + 1 = 2 (W3).
+      const earliestIdx = PlannerEngine.calculateEarliestStartWeekIndex(pred, 50, testWeeks);
+      expect(earliestIdx).toBe(2);
+      expect(testWeeks[earliestIdx].weekKey).toBe('W3');
+    });
+
+    it('falls through and returns reachedWeekIdx + 1 when cumulative progress does not reach trigger', () => {
+      const pred: WbsTask = {
+        ...sampleTask,
+        key: 'PRED-SHORT',
+        startWeek: 'W1',
+        spanWeeks: 1,
+        resource: 'Solo Dev',
+        weeklyAllocations: {
+          W1: 20
+        }
+      };
+      // Target trigger is 80%, but W1 only achieves 20%. Loop finishes, returns W1 idx + 1 = 1.
+      const earliestIdx = PlannerEngine.calculateEarliestStartWeekIndex(pred, 80, testWeeks);
+      expect(earliestIdx).toBe(1);
+    });
+  });
+
+  describe('reorderTasks', () => {
+    const t1: WbsTask = { ...sampleTask, key: 'T-1', id: '1' };
+    const t2: WbsTask = { ...sampleTask, key: 'T-2', id: '2' };
+    const t3: WbsTask = { ...sampleTask, key: 'T-3', id: '3' };
+
+    it('reorders task to specific valid index', () => {
+      const res = PlannerEngine.reorderTasks([t1, t2, t3], 'T-1', 2);
+      expect(res.map(t => t.key)).toEqual(['T-2', 'T-3', 'T-1']);
+      expect(res[0].orderIndex).toBe(0);
+      expect(res[1].orderIndex).toBe(1);
+      expect(res[2].orderIndex).toBe(2);
+    });
+
+    it('clamps negative targetIndex to 0 and excessive targetIndex to end', () => {
+      const resLow = PlannerEngine.reorderTasks([t1, t2, t3], 'T-3', -5);
+      expect(resLow[0].key).toBe('T-3');
+
+      const resHigh = PlannerEngine.reorderTasks([t1, t2, t3], 'T-1', 99);
+      expect(resHigh[2].key).toBe('T-1');
+    });
+
+    it('returns unchanged list if task is not found', () => {
+      const res = PlannerEngine.reorderTasks([t1, t2], 'UNKNOWN', 1);
+      expect(res.map(t => t.key)).toEqual(['T-1', 'T-2']);
+    });
+  });
+
+  describe('buildWbsHierarchy', () => {
+    it('groups subtasks directly beneath parent tasks', () => {
+      const parent: WbsTask = { ...sampleTask, key: 'P-1', id: 'p1' };
+      const sub1: WbsTask = { ...sampleTask, key: 'S-1', id: 's1', parentKey: 'P-1' };
+      const sub2: WbsTask = { ...sampleTask, key: 'S-2', id: 's2', parentId: 'p1' };
+      const standalone: WbsTask = { ...sampleTask, key: 'T-2', id: 't2' };
+
+      const res = PlannerEngine.buildWbsHierarchy([parent, sub1, standalone, sub2]);
+      expect(res.map(t => t.key)).toEqual(['P-1', 'S-1', 'S-2', 'T-2']);
+      expect(res[0].isSubtask).toBe(false);
+      expect(res[1].isSubtask).toBe(true);
+      expect(res[2].isSubtask).toBe(true);
+      expect(res[3].isSubtask).toBe(false);
+    });
+
+    it('appends orphaned subtasks whose parents are not in the list', () => {
+      const orphan: WbsTask = { ...sampleTask, key: 'ORPHAN-1', id: 'o1', parentKey: 'MISSING' };
+      const res = PlannerEngine.buildWbsHierarchy([orphan]);
+      expect(res.length).toBe(1);
+      expect(res[0].key).toBe('ORPHAN-1');
+      expect(res[0].isSubtask).toBe(true);
+    });
+
+    it('handles tasks without keys or matching by id only', () => {
+      const parentNoKey: WbsTask = { ...sampleTask, key: '', id: 'pk-id' };
+      const subNoKey: WbsTask = { ...sampleTask, key: '', id: 'sub-id', parentId: 'pk-id' };
+      const orphanNoKey: WbsTask = { ...sampleTask, key: '', id: 'orphan-id', parentId: 'missing-parent' };
+
+      const res = PlannerEngine.buildWbsHierarchy([parentNoKey, subNoKey, orphanNoKey]);
+      expect(res.length).toBe(3);
+    });
+
+    it('builds 3-tier hierarchy (Epic -> Story -> Subtask) with memory rollups', () => {
+      const epic: WbsTask = {
+        ...sampleTask,
+        key: 'EPIC-1',
+        id: 'e1',
+        summary: 'Checkout Epic',
+        isEpic: true,
+        hierarchyLevel: 1,
+        story: 'Epic'
+      };
+      const story1: WbsTask = {
+        ...sampleTask,
+        key: 'STORY-1',
+        id: 's1',
+        summary: 'Payment Gateway',
+        parentKey: 'EPIC-1',
+        hierarchyLevel: 0,
+        effortHours: 40,
+        progress: 50,
+        startDate: '2026-10-14',
+        endDate: '2026-10-21'
+      };
+      const subtask1: WbsTask = {
+        ...sampleTask,
+        key: 'SUB-1',
+        id: 'sub1',
+        summary: 'Stripe webhook',
+        parentKey: 'STORY-1',
+        hierarchyLevel: -1,
+        effortHours: 20,
+        progress: 100,
+        startDate: '2026-10-14',
+        endDate: '2026-10-18'
+      };
+      const story2: WbsTask = {
+        ...sampleTask,
+        key: 'STORY-2',
+        id: 's2',
+        summary: 'Checkout UI',
+        parentKey: 'EPIC-1',
+        hierarchyLevel: 0,
+        effortHours: 60,
+        progress: 20,
+        startDate: '2026-10-21',
+        endDate: '2026-10-28'
+      };
+
+      const sampleWeeks: WeeklySprintColumn[] = [
+        { weekKey: 'W1', sprintName: 'Sprint 1', startDate: '2026-10-14', endDate: '2026-10-21' },
+        { weekKey: 'W2', sprintName: 'Sprint 2', startDate: '2026-10-21', endDate: '2026-10-28' }
+      ];
+
+      const res = PlannerEngine.buildWbsHierarchy([epic, story1, subtask1, story2], sampleWeeks);
+
+      // Verify order: Epic -> Story 1 -> Sub 1 -> Story 2
+      expect(res.map(t => t.key)).toEqual(['EPIC-1', 'STORY-1', 'SUB-1', 'STORY-2']);
+
+      // Check level flags
+      expect(res[0].isEpic).toBe(true);
+      expect(res[0].isSubtask).toBe(false);
+      expect(res[1].isSubtask).toBe(false);
+      expect(res[1].hierarchyLevel).toBe(0);
+      expect(res[2].isSubtask).toBe(true);
+      expect(res[2].hierarchyLevel).toBe(-1);
+      expect(res[3].isSubtask).toBe(false);
+
+      // Check rollup calculations on Epic
+      expect(res[0].isRollup).toBe(true);
+      expect(res[0].childrenCount).toBe(2);
+      expect(res[0].effortHours).toBe(100); // 40h + 60h
+      expect(res[0].rollupStats?.totalHours).toBe(100);
+      expect(res[0].startDate).toBe('2026-10-14');
+      expect(res[0].endDate).toBe('2026-10-28');
+
+      // Check project completion calculation does not double count rollups
+      const completion = PlannerEngine.calculateProjectCompletion(res);
+      expect(completion.actualCompletion).toBeGreaterThan(0);
+    });
+
+    it('returns empty array when passed empty or null tasks', () => {
+      expect(PlannerEngine.buildWbsHierarchy([])).toEqual([]);
+      expect(PlannerEngine.buildWbsHierarchy(null as any)).toEqual([]);
+    });
+
+    it('aggregates contributing resources on parent tasks from subtasks', () => {
+      const parentTask: WbsTask = {
+        ...sampleTask,
+        key: 'PARENT-1',
+        id: 'p1',
+        resource: 'Alice',
+        subtasks: [
+          {
+            id: 'sub-embed-1',
+            summary: 'QA verification',
+            estimateValue: 8,
+            estimateUnit: 'HOURS',
+            normalizedHours: 8,
+            status: 'NOT_STARTED',
+            assignee: 'Charlie'
+          }
+        ]
+      };
+      const childSubtask: WbsTask = {
+        ...sampleTask,
+        key: 'CHILD-SUB-1',
+        id: 'cs1',
+        parentKey: 'PARENT-1',
+        resource: 'Bob'
+      };
+
+      const res = PlannerEngine.buildWbsHierarchy([parentTask, childSubtask]);
+      const parent = res.find(t => t.key === 'PARENT-1');
+      expect(parent).toBeDefined();
+      expect(parent?.contributingResources).toContain('Alice');
+      expect(parent?.contributingResources).toContain('Bob');
+      expect(parent?.contributingResources).toContain('Charlie');
+      expect(parent?.rollupStats?.contributingResources).toContain('Bob');
+    });
+
+    it('aggregates contributing resources for standalone tasks with embedded subtasks', () => {
+      const standaloneWithSubtasks: WbsTask = {
+        ...sampleTask,
+        key: 'STANDALONE-1',
+        id: 'st1',
+        resource: 'Unassigned',
+        subtasks: [
+          {
+            id: 'sub-st-1',
+            summary: 'Sub 1',
+            estimateValue: 4,
+            estimateUnit: 'HOURS',
+            normalizedHours: 4,
+            status: 'NOT_STARTED',
+            assignee: 'Dev1'
+          }
+        ]
+      };
+      const res = PlannerEngine.buildWbsHierarchy([standaloneWithSubtasks]);
+      expect(res[0].contributingResources).toEqual(['Dev1']);
+    });
+
+    it('handles orphaned stories whose parent epic is missing from schedule', () => {
+      const orphanStory: WbsTask = {
+        ...sampleTask,
+        key: 'STORY-ALONE',
+        id: 'sa1',
+        epicKey: 'MISSING-EPIC',
+        parentKey: 'MISSING-EPIC',
+        hierarchyLevel: 0
+      };
+      const res = PlannerEngine.buildWbsHierarchy([orphanStory]);
+      expect(res.length).toBe(1);
+      expect(res[0].isSubtask).toBe(false);
+      expect(res[0].hierarchyLevel).toBe(0);
+    });
+
+    it('infers levels from isSubtask flag, story type Epic, and links stories via epicKey', () => {
+      const epic: WbsTask = {
+        ...sampleTask,
+        key: 'EPIC-A',
+        id: 'ea',
+        story: 'Epic',
+        epicKey: 'EPIC-A'
+      };
+      const storyViaEpicKey: WbsTask = {
+        ...sampleTask,
+        key: 'STORY-A',
+        id: 'sa',
+        epicKey: 'EPIC-A' // linked via epicKey without parentKey
+      };
+      const subtaskExplicit: WbsTask = {
+        ...sampleTask,
+        key: 'SUB-A',
+        id: 'suba',
+        isSubtask: true,
+        parentKey: 'STORY-A'
+      };
+
+      const res = PlannerEngine.buildWbsHierarchy([epic, storyViaEpicKey, subtaskExplicit]);
+      expect(res.map(t => t.key)).toEqual(['EPIC-A', 'STORY-A', 'SUB-A']);
+      expect(res[0].isEpic).toBe(true);
+      expect(res[1].isSubtask).toBe(false);
+      expect(res[2].isSubtask).toBe(true);
+    });
+
+    it('recovers all tasks if circular parentage exists', () => {
+      const t1: WbsTask = { ...sampleTask, key: 'CYCLE-1', parentKey: 'CYCLE-2' };
+      const t2: WbsTask = { ...sampleTask, key: 'CYCLE-2', parentKey: 'CYCLE-1' };
+
+      const res = PlannerEngine.buildWbsHierarchy([t1, t2]);
+      expect(res.length).toBe(2);
+      expect(res.map(t => t.key)).toContain('CYCLE-1');
+      expect(res.map(t => t.key)).toContain('CYCLE-2');
+    });
+
+    it('preserves manual progress on parent when manualProgress is true and does not overwrite with child rollup', () => {
+      const parent: WbsTask = {
+        ...sampleTask,
+        key: 'EPIC-MANUAL',
+        id: 'em',
+        progress: 80,
+        manualProgress: true,
+        effortHours: 100
+      };
+      const child: WbsTask = {
+        ...sampleTask,
+        key: 'STORY-MANUAL',
+        id: 'sm',
+        parentKey: 'EPIC-MANUAL',
+        progress: 10,
+        effortHours: 50
+      };
+
+      const res = PlannerEngine.buildWbsHierarchy([parent, child]);
+      const resParent = res.find(t => t.key === 'EPIC-MANUAL');
+      expect(resParent?.progress).toBe(80);
+      expect(resParent?.manualProgress).toBe(true);
+      expect(resParent?.rollupStats?.progressPct).toBe(10);
+    });
+
+    it('calculates child progress rollup when parent manualProgress is false', () => {
+      const parent: WbsTask = {
+        ...sampleTask,
+        key: 'EPIC-AUTO',
+        id: 'ea',
+        progress: 0,
+        manualProgress: false,
+        effortHours: 100
+      };
+      const child: WbsTask = {
+        ...sampleTask,
+        key: 'STORY-AUTO',
+        id: 'sa',
+        parentKey: 'EPIC-AUTO',
+        progress: 60,
+        effortHours: 50
+      };
+
+      const res = PlannerEngine.buildWbsHierarchy([parent, child]);
+      const resParent = res.find(t => t.key === 'EPIC-AUTO');
+      expect(resParent?.progress).toBe(60);
+      expect(resParent?.rollupStats?.progressPct).toBe(60);
+    });
+  });
+
+  describe('Universal Data Models: toWorkEffort and fromWorkEffort (Silverston / OFBiz / Moqui)', () => {
+    it('converts WbsTask to canonical WorkEffort entity for Task, Epic, and Subtask with status mapping', () => {
+      const task: WbsTask = {
+        ...sampleTask,
+        key: 'WE-1',
+        summary: 'Database Migration',
+        status: 'COMPLETED',
+        effortHours: 40,
+        progress: 100,
+        targetProgress: 100,
+        manualProgress: true,
+        orderIndex: 2
+      };
+      const we = toWorkEffort(task);
+      expect(we.workEffortId).toBe('WE-1');
+      expect(we.workEffortTypeId).toBe('TASK');
+      expect(we.currentStatusId).toBe('WE_COMPLETE');
+      expect(we.percentComplete).toBe(100);
+      expect(we.manualProgress).toBe(true);
+
+      const epicTask: WbsTask = {
+        ...sampleTask,
+        key: 'WE-EPIC',
+        summary: 'Cloud Modernization',
+        isEpic: true,
+        status: 'IN_PROGRESS'
+      };
+      const weEpic = toWorkEffort(epicTask);
+      expect(weEpic.workEffortTypeId).toBe('EPIC');
+      expect(weEpic.currentStatusId).toBe('WE_IN_PROGRESS');
+
+      const subTask: WbsTask = {
+        ...sampleTask,
+        key: 'WE-SUB',
+        summary: 'Schema DDL',
+        isSubtask: true,
+        status: 'NOT_STARTED'
+      };
+      const weSub = toWorkEffort(subTask);
+      expect(weSub.workEffortTypeId).toBe('ACTIVITY');
+      expect(weSub.currentStatusId).toBe('WE_PLANNED');
+    });
+
+    it('converts canonical WorkEffort entity back to WbsTask with associations and party assignments', () => {
+      const we: WorkEffort = {
+        workEffortId: 'WE-20',
+        workEffortTypeId: 'TASK',
+        workEffortName: 'API Microservices',
+        currentStatusId: 'WE_COMPLETE',
+        estimatedStartDate: '2026-08-01',
+        estimatedCompletionDate: '2026-08-20',
+        estimatedHours: 80,
+        percentComplete: 100,
+        targetPercentComplete: 100,
+        workEffortParentId: 'WE-EPIC'
+      };
+
+      const parties: WorkEffortPartyAssignment[] = [
+        {
+          workEffortId: 'WE-20',
+          partyId: 'user-lead',
+          displayName: 'Tech Lead',
+          roleTypeId: 'PRIMARY_ASSIGNEE'
+        },
+        {
+          workEffortId: 'WE-20',
+          partyId: 'user-dev',
+          displayName: 'Backend Dev',
+          roleTypeId: 'CONTRIBUTOR'
+        }
+      ];
+
+      const assocs: WorkEffortAssoc[] = [
+        {
+          workEffortIdFrom: 'WE-19',
+          workEffortIdTo: 'WE-20',
+          workEffortAssocTypeId: 'FRACTIONAL_MILESTONE',
+          triggerPercent: 50,
+          isTriggerSatisfied: true
+        }
+      ];
+
+      const task = fromWorkEffort(we, assocs, parties);
+      expect(task.key).toBe('WE-20');
+      expect(task.status).toBe('COMPLETED');
+      expect(task.resource).toBe('Tech Lead');
+      expect(task.contributingResources).toEqual(['Backend Dev']);
+      expect(task.parentKey).toBe('WE-EPIC');
+      expect(task.dependency?.predecessorKey).toBe('WE-19');
+      expect(task.dependency?.triggerPercent).toBe(50);
+      expect(task.dependency?.isTriggerSatisfied).toBe(true);
+    });
+
+    it('handles default conversion when parties and assocs are omitted', () => {
+      const we: WorkEffort = {
+        workEffortId: 'WE-DEFAULT',
+        workEffortTypeId: 'ACTIVITY',
+        workEffortName: 'Standalone Unit',
+        currentStatusId: 'WE_IN_PROGRESS',
+        estimatedHours: 16,
+        percentComplete: 25,
+        targetPercentComplete: 50
+      };
+      const task = fromWorkEffort(we);
+      expect(task.status).toBe('IN_PROGRESS');
+      expect(task.isSubtask).toBe(true);
+      expect(task.resource).toBe('Unassigned');
+      expect(task.dependency).toBeUndefined();
+    });
+
+    it('covers all toWorkEffort and fromWorkEffort edge cases and branches', () => {
+      // 1. toWorkEffort fallback branches
+      const minimalTask: WbsTask = {
+        id: 'TASK-FALLBACK',
+        summary: 'Minimal Fallback Task',
+        orderIndex: 5,
+        status: 'BLOCKED' as any,
+        hierarchyLevel: 1,
+        parentId: 'PARENT-ID'
+      } as any;
+
+      const weEpic = toWorkEffort(minimalTask);
+      expect(weEpic.workEffortId).toBe('TASK-FALLBACK');
+      expect(weEpic.workEffortTypeId).toBe('EPIC');
+      expect(weEpic.currentStatusId).toBe('WE_PLANNED');
+      expect(weEpic.estimatedHours).toBe(0);
+      expect(weEpic.percentComplete).toBe(0);
+      expect(weEpic.targetPercentComplete).toBe(0);
+      expect(weEpic.workEffortParentId).toBe('PARENT-ID');
+
+      const subtaskActivity: WbsTask = {
+        id: 'SUB-1',
+        summary: 'Subactivity',
+        orderIndex: 1,
+        status: 'IN_PROGRESS',
+        hierarchyLevel: -1
+      } as any;
+      const weSub = toWorkEffort(subtaskActivity);
+      expect(weSub.workEffortTypeId).toBe('ACTIVITY');
+      expect(weSub.currentStatusId).toBe('WE_IN_PROGRESS');
+
+      // 2. fromWorkEffort fallback branches
+      const weStandard: WorkEffort = {
+        workEffortId: 'WE-TASK',
+        workEffortTypeId: 'TASK',
+        workEffortName: 'Standard Work Unit',
+        currentStatusId: 'WE_PLANNED',
+        estimatedHours: 0,
+        percentComplete: 0,
+        targetPercentComplete: 0
+      };
+      const assocNoTrigger: WorkEffortAssoc[] = [
+        {
+          workEffortIdFrom: 'WE-PRED',
+          workEffortIdTo: 'WE-TASK',
+          workEffortAssocTypeId: 'PRECEDENCE',
+          isTriggerSatisfied: false
+        }
+      ];
+      const onlyPrimaryParty: WorkEffortPartyAssignment[] = [
+        {
+          workEffortId: 'WE-TASK',
+          partyId: 'user-p',
+          displayName: 'Solo Assignee',
+          roleTypeId: 'PRIMARY_ASSIGNEE'
+        }
+      ];
+
+      const convertedStandard = fromWorkEffort(weStandard, assocNoTrigger, onlyPrimaryParty);
+      expect(convertedStandard.status).toBe('NOT_STARTED');
+      expect(convertedStandard.isEpic).toBe(false);
+      expect(convertedStandard.isSubtask).toBe(false);
+      expect(convertedStandard.hierarchyLevel).toBe(0);
+      expect(convertedStandard.startDate).toBe('');
+      expect(convertedStandard.endDate).toBe('');
+      expect(convertedStandard.resource).toBe('Solo Assignee');
+      expect(convertedStandard.contributingResources).toBeUndefined();
+      expect(convertedStandard.dependency?.triggerPercent).toBe(30); // fallback to 30
+
+      // Activity hierarchy level branch
+      const weSubtaskEffort: WorkEffort = {
+        workEffortId: 'WE-SUB',
+        workEffortTypeId: 'ACTIVITY',
+        workEffortName: 'Sub Work Unit',
+        currentStatusId: 'WE_PLANNED',
+        estimatedHours: 0,
+        percentComplete: 0,
+        targetPercentComplete: 0
+      };
+      const convertedSubtask = fromWorkEffort(weSubtaskEffort);
+      expect(convertedSubtask.isSubtask).toBe(true);
+      expect(convertedSubtask.hierarchyLevel).toBe(-1);
+    });
+  });
+
+  describe('Edge cases in PlannerEngine helpers', () => {
+    const localWeeks: WeeklySprintColumn[] = [
+      { weekKey: 'W1', sprintName: 'Sprint 1', startDate: '2026-07-01', endDate: '2026-07-07' },
+      { weekKey: 'W2', sprintName: 'Sprint 2', startDate: '2026-07-08', endDate: '2026-07-14' },
+      { weekKey: 'W3', sprintName: 'Sprint 3', startDate: '2026-07-15', endDate: '2026-07-21' }
+    ];
+
+    it('covers buildWbsHierarchy with orphaned child tasks and cyclic parent relationships', () => {
+      const rootTask: WbsTask = {
+        id: 'ROOT',
+        key: 'ROOT',
+        summary: 'Root Task',
+        orderIndex: 0
+      } as any;
+
+      const orphanTask: WbsTask = {
+        id: 'ORPHAN',
+        key: 'ORPHAN',
+        parentKey: 'NON_EXISTENT_PARENT',
+        summary: 'Orphaned Task',
+        orderIndex: 1
+      } as any;
+
+      const result = PlannerEngine.buildWbsHierarchy([rootTask, orphanTask], localWeeks);
+      expect(result.map(t => t.key)).toEqual(['ROOT', 'ORPHAN']);
+
+      const cycleA: WbsTask = { id: 'CYCLE_A', key: 'CYCLE_A', parentKey: 'CYCLE_B', summary: 'Cycle A', orderIndex: 0 } as any;
+      const cycleB: WbsTask = { id: 'CYCLE_B', key: 'CYCLE_B', parentKey: 'CYCLE_A', summary: 'Cycle B', orderIndex: 1 } as any;
+      const resCycle = PlannerEngine.buildWbsHierarchy([cycleA, cycleB], localWeeks);
+      expect(resCycle.length).toBe(2);
+    });
+
+    it('handles calculateEarliestStartWeekIndex with subtask assignees and fallback triggers', () => {
+      const pred: WbsTask = {
+        id: 'PRED-SUB',
+        key: 'PRED-SUB',
+        summary: 'Predecessor with Subtasks',
+        orderIndex: 0,
+        startWeek: 'W1',
+        spanWeeks: 4,
+        resource: 'Unassigned',
+        subtasks: [
+          { id: 'S1', key: 'S1', summary: 'Sub 1', status: 'IN_PROGRESS', assignee: 'Dev Alpha' },
+          { id: 'S2', key: 'S2', summary: 'Sub 2', status: 'NOT_STARTED', assignee: 'Dev Beta' }
+        ]
+      } as any;
+
+      // triggerPercent as NaN triggers fallback
+      const earliestIdx = PlannerEngine.calculateEarliestStartWeekIndex(pred, NaN, localWeeks);
+      expect(earliestIdx).toBeGreaterThan(0);
+    });
+
+    it('handles cascadeSchedule circular dependency safely without infinite loop', () => {
+      const taskA: WbsTask = {
+        id: 'A',
+        key: 'A',
+        summary: 'Task A',
+        orderIndex: 0,
+        startWeek: 'W1',
+        spanWeeks: 2,
+        dependency: { predecessorKey: 'B', triggerPercent: 50 }
+      } as any;
+
+      const taskB: WbsTask = {
+        id: 'B',
+        key: 'B',
+        summary: 'Task B',
+        orderIndex: 1,
+        startWeek: 'W1',
+        spanWeeks: 2,
+        dependency: { predecessorKey: 'A', triggerPercent: 50 }
+      } as any;
+
+      const cascade = PlannerEngine.cascadeSchedule([taskA, taskB], 'A', localWeeks);
+      expect(cascade.affectedTaskKeys).toContain('B');
+    });
+  });
 });
+

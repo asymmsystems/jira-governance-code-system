@@ -10,6 +10,7 @@ import {
   addSubtaskToTask,
   saveTaskDependency,
   saveColumnWidths,
+  saveHiddenColumns,
   saveProjectMilestone,
   getPortfolioResourceHeatmap,
   resolveStorage,
@@ -21,9 +22,14 @@ import {
   PLACEHOLDER_USERS,
   mapJiraStatus,
   extractProjectKey,
+  extractSiteUrl,
   syncTaskToJira,
   mirrorDependencyToJira,
-  getJiraCaller
+  getJiraCaller,
+  unscheduleTask,
+  reorderWbsTasks,
+  createSubtaskForResource,
+  resolveProjectIssueType
 } from '../src/index';
 import api from '@forge/api';
 import { StorageProvider, PlanRepository } from '../src/storage/plan-repository';
@@ -392,6 +398,25 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(res.task?.startWeek).toBe('26-Aug');
     });
 
+    it('creates a task with targetIndex and places it exactly at target position in plan', async () => {
+      await mockStorage.set('taskOrder:TEST', ['TEST-1', 'TEST-2', 'TEST-3']);
+      const res = await createInlineTask(
+        {
+          projectKey: 'TEST',
+          summary: 'Inserted at row 1',
+          targetIndex: 1,
+          resource: 'Alice',
+          resourceAccountId: 'acc-alice',
+          epicKey: 'TEST-EPIC'
+        },
+        mockStorage
+      );
+
+      expect(res.success).toBe(true);
+      const updatedOrder = await mockStorage.get<string[]>('taskOrder:TEST');
+      expect(updatedOrder).toEqual(['TEST-1', 'TEST-50', 'TEST-2', 'TEST-3']);
+    });
+
     it('handles Jira API errors accurately and returns error without synthetic issue generation', async () => {
       mockRequestJira.mockRejectedValueOnce(new Error('Jira unavailable'));
 
@@ -443,6 +468,35 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(res.error).toBe('Failed to create Jira issue (HTTP 500)');
     });
 
+    it('automatically recovers and retries when Jira returns HTTP 400 Specify a valid issue type', async () => {
+      mockRequestJira.mockResolvedValueOnce({
+        status: 400,
+        clone: () => ({
+          json: async () => ({ errors: { issuetype: 'Specify a valid issue type' } })
+        }),
+        json: async () => ({ errors: { issuetype: 'Specify a valid issue type' } })
+      });
+      mockRequestJira.mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({
+          issueTypes: [
+            { id: '10001', name: 'Task', hierarchyLevel: 0, subtask: false }
+          ]
+        })
+      });
+      mockRequestJira.mockResolvedValueOnce({
+        status: 201,
+        json: async () => ({ id: '10088', key: 'TEST-88' })
+      });
+
+      const res = await createInlineTask(
+        { projectKey: 'TEST', summary: 'Auto Recovered Task' },
+        mockStorage
+      );
+      expect(res.success).toBe(true);
+      expect(res.task?.key).toBe('TEST-88');
+    });
+
     it('applies default field values when optional attributes are empty', async () => {
       const res = await createInlineTask(
         {
@@ -466,6 +520,35 @@ describe('CascadePlan Index & Resolver Tests', () => {
       const res = await createJiraEpic({ projectKey: 'TEST', summary: 'Payment Microservices' }, mockStorage);
       expect(res.success).toBe(true);
       expect(res.epic?.key).toBe('TEST-50');
+    });
+
+    it('automatically recovers and retries when Jira returns HTTP 400 Specify a valid issue type', async () => {
+      mockRequestJira.mockResolvedValueOnce({
+        status: 400,
+        clone: () => ({
+          json: async () => ({ errors: { issuetype: 'Specify a valid issue type' } })
+        }),
+        json: async () => ({ errors: { issuetype: 'Specify a valid issue type' } })
+      });
+      mockRequestJira.mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({
+          issueTypes: [
+            { id: '10000', name: 'Epic', hierarchyLevel: 1 }
+          ]
+        })
+      });
+      mockRequestJira.mockResolvedValueOnce({
+        status: 201,
+        json: async () => ({ id: '10099', key: 'TEST-99' })
+      });
+
+      const res = await createJiraEpic(
+        { projectKey: 'TEST', summary: 'Auto Recovered Epic' },
+        mockStorage
+      );
+      expect(res.success).toBe(true);
+      expect(res.epic?.key).toBe('TEST-99');
     });
 
     it('handles Jira HTTP 400 with errorMessages in createJiraEpic', async () => {
@@ -507,6 +590,51 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(res.success).toBe(false);
       expect(res.error).toContain('Epic error');
       expect(res.epic).toBeUndefined();
+    });
+  });
+
+  describe('resolveProjectIssueType', () => {
+    it('resolves Epic by hierarchyLevel or names (Epic, Feature, Initiative)', async () => {
+      mockRequestJira.mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({
+          issueTypes: [
+            { id: '10010', name: 'Feature', hierarchyLevel: 1 },
+            { id: '10011', name: 'Story', hierarchyLevel: 0 }
+          ]
+        })
+      });
+      const res = await resolveProjectIssueType('TEST', 'Epic');
+      expect(res.id).toBe('10010');
+      expect(res.name).toBe('Feature');
+    });
+
+    it('resolves Task by non-subtask standard type', async () => {
+      mockRequestJira.mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({
+          issueTypes: [
+            { id: '10012', name: 'Item', hierarchyLevel: 0, subtask: false }
+          ]
+        })
+      });
+      const res = await resolveProjectIssueType('TEST', 'Task');
+      expect(res.id).toBe('10012');
+      expect(res.name).toBe('Item');
+    });
+
+    it('falls back to default name when project metadata call fails or returns non-200', async () => {
+      mockRequestJira.mockResolvedValueOnce({
+        status: 500
+      });
+      const res = await resolveProjectIssueType('TEST', 'Epic');
+      expect(res.name).toBe('Epic');
+      expect(res.id).toBeUndefined();
+
+      mockRequestJira.mockRejectedValueOnce(new Error('Network error'));
+      const res2 = await resolveProjectIssueType('TEST', 'Task');
+      expect(res2.name).toBe('Task');
+      expect(res2.id).toBeUndefined();
     });
   });
 
@@ -663,6 +791,113 @@ describe('CascadePlan Index & Resolver Tests', () => {
 
       const modified = updatedPlan.tasks.find(t => t.key === 'TEST-1');
       expect(modified?.dependency?.triggerPercent).toBe(30);
+    });
+
+    it('preserves existing dependency when moving timeline bar (updating startWeek only)', async () => {
+      await updateWbsTask(
+        {
+          projectKey: 'TEST',
+          taskId: 'TEST-1',
+          updates: {
+            dependency: {
+              predecessorId: 'TEST-2',
+              predecessorKey: 'TEST-2',
+              triggerPercent: 40,
+              isTriggerSatisfied: false
+            }
+          }
+        },
+        mockStorage
+      );
+
+      const targetWeek = DEFAULT_WEEKS[2].weekKey;
+      const movedPlan = await updateWbsTask(
+        {
+          projectKey: 'TEST',
+          taskId: 'TEST-1',
+          updates: {
+            startWeek: targetWeek
+          }
+        },
+        mockStorage
+      );
+
+      const modified = movedPlan.tasks.find(t => t.key === 'TEST-1');
+      expect(modified?.startWeek).toBe(targetWeek);
+      expect(modified?.dependency).toBeDefined();
+      expect(modified?.dependency?.predecessorKey).toBe('TEST-2');
+      expect(modified?.dependency?.triggerPercent).toBe(40);
+    });
+
+    it('preserves dependent task dependency when predecessor bar is moved and downstream cascades', async () => {
+      await updateWbsTask(
+        {
+          projectKey: 'TEST',
+          taskId: 'TEST-1',
+          updates: {
+            startWeek: DEFAULT_WEEKS[0].weekKey,
+            spanWeeks: 2,
+            dependency: {
+              predecessorId: 'TEST-2',
+              predecessorKey: 'TEST-2',
+              triggerPercent: 50,
+              isTriggerSatisfied: false
+            }
+          }
+        },
+        mockStorage
+      );
+
+      const cascadedPlan = await updateWbsTask(
+        {
+          projectKey: 'TEST',
+          taskId: 'TEST-2',
+          updates: {
+            startWeek: DEFAULT_WEEKS[2].weekKey
+          }
+        },
+        mockStorage
+      );
+
+      const succ = cascadedPlan.tasks.find(t => t.key === 'TEST-1');
+      expect(succ?.dependency).toBeDefined();
+      expect(succ?.dependency?.predecessorKey).toBe('TEST-2');
+      expect(succ?.dependency?.triggerPercent).toBe(50);
+    });
+
+    it('preserves parent task dependency when subtask progress or startWeek rolls up', async () => {
+      await updateWbsTask(
+        {
+          projectKey: 'TEST',
+          taskId: 'TEST-1',
+          updates: {
+            dependency: {
+              predecessorId: 'TEST-2',
+              predecessorKey: 'TEST-2',
+              triggerPercent: 30,
+              isTriggerSatisfied: false
+            }
+          }
+        },
+        mockStorage
+      );
+
+      const rolledUpPlan = await updateWbsTask(
+        {
+          projectKey: 'TEST',
+          taskId: 'TEST-2',
+          updates: {
+            parentKey: 'TEST-1',
+            startWeek: DEFAULT_WEEKS[1].weekKey,
+            progress: 50
+          }
+        },
+        mockStorage
+      );
+
+      const parent = rolledUpPlan.tasks.find(t => t.key === 'TEST-1');
+      expect(parent?.dependency).toBeDefined();
+      expect(parent?.dependency?.predecessorKey).toBe('TEST-2');
     });
   });
 
@@ -926,6 +1161,16 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(res.columnWidths.task).toBe(320);
     });
 
+    it('saves hidden columns configuration', async () => {
+      const res = await saveHiddenColumns({ projectKey: 'TEST', hiddenColumns: ['story', 'target'] }, mockStorage);
+      expect(res.success).toBe(true);
+      expect(res.hiddenColumns).toEqual(['story', 'target']);
+
+      const resEmpty = await saveHiddenColumns({ projectKey: 'TEST', hiddenColumns: undefined as any }, mockStorage);
+      expect(resEmpty.success).toBe(true);
+      expect(resEmpty.hiddenColumns).toEqual([]);
+    });
+
     it('saves project milestone marker', async () => {
       const milestone: ProjectMilestone = {
         id: 'm-new',
@@ -995,13 +1240,28 @@ describe('CascadePlan Index & Resolver Tests', () => {
     });
   });
 
+  describe('extractSiteUrl', () => {
+    it('extracts siteUrl from context when valid string', () => {
+      expect(extractSiteUrl({ context: { siteUrl: 'https://asymmsystems.atlassian.net' } })).toBe('https://asymmsystems.atlassian.net');
+    });
+
+    it('returns undefined when context siteUrl is missing, empty, or not a string', () => {
+      expect(extractSiteUrl({})).toBeUndefined();
+      expect(extractSiteUrl(undefined)).toBeUndefined();
+      expect(extractSiteUrl({ context: {} })).toBeUndefined();
+      expect(extractSiteUrl({ context: { siteUrl: '   ' } })).toBeUndefined();
+      expect(extractSiteUrl({ context: { siteUrl: 123 } })).toBeUndefined();
+    });
+  });
+
   describe('Forge Resolver Definitions (handler)', () => {
     it('handles bridge invocations for getProjectPlan with context fallback', async () => {
       const resContext: any = await handler({
         call: { functionKey: 'getProjectPlan' },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST' } }, siteUrl: 'https://asymmsystems.atlassian.net' }
       } as any);
       expect(resContext.projectKey).toBe('TEST');
+      expect(resContext.siteUrl).toBe('https://asymmsystems.atlassian.net');
 
       const resDefault: any = await handler({
         call: { functionKey: 'getProjectPlan' },
@@ -1109,6 +1369,16 @@ describe('CascadePlan Index & Resolver Tests', () => {
         context: { extension: { project: { key: 'TEST' } } }
       } as any);
       expect(resCol.success).toBe(true);
+
+      const resHidden: any = await handler({
+        call: {
+          functionKey: 'saveHiddenColumns',
+          payload: { hiddenColumns: ['story', 'status'] }
+        },
+        context: { extension: { project: { key: 'TEST' } } }
+      } as any);
+      expect(resHidden.success).toBe(true);
+      expect(resHidden.hiddenColumns).toEqual(['story', 'status']);
 
       const resMilestone: any = await handler({
         call: {
@@ -1255,6 +1525,16 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(res2.error).toContain('Server crash');
     });
 
+    it('syncTaskToJira handles non-json error response gracefully', async () => {
+      mockRequestJira.mockResolvedValueOnce({
+        status: 502,
+        json: async () => { throw new Error('Bad gateway HTML'); }
+      });
+      const res = await syncTaskToJira('TEST-1', { summary: 'New Title' });
+      expect(res.synced).toBe(false);
+      expect(res.error).toBe('Jira status 502');
+    });
+
     it('getJiraCaller falls back to asApp when asUser is not available', () => {
       const orig = (api as any).asUser;
       delete (api as any).asUser;
@@ -1285,6 +1565,956 @@ describe('CascadePlan Index & Resolver Tests', () => {
       const res2 = await mirrorDependencyToJira('TEST-2', 'TEST-1');
       expect(res2.linked).toBe(false);
       expect(res2.error).toBe('Link error');
+    });
+
+    it('syncTaskToJira executes status transition when status is provided', async () => {
+      mockRequestJira
+        .mockResolvedValueOnce({
+          status: 200,
+          json: async () => ({
+            transitions: [
+              { id: '31', name: 'In Progress', to: { name: 'In Progress', statusCategory: { key: 'indeterminate' } } },
+              { id: '41', name: 'Done', to: { name: 'Done', statusCategory: { key: 'done' } } }
+            ]
+          })
+        }) // GET /rest/api/3/issue/TEST-1/transitions
+        .mockResolvedValueOnce({ status: 204 }); // POST /rest/api/3/issue/TEST-1/transitions
+
+      const res = await syncTaskToJira('TEST-1', { status: 'COMPLETED' });
+      expect(res.synced).toBe(true);
+      expect(mockRequestJira).toHaveBeenCalledTimes(2);
+    });
+
+    it('syncTaskToJira falls back to dedicated /assignee endpoint if issue update fails on assignee', async () => {
+      mockRequestJira
+        .mockResolvedValueOnce({
+          status: 400,
+          json: async () => ({ errors: { assignee: 'Field assignee not found on screen' } })
+        })
+        .mockResolvedValueOnce({ status: 204 }); // PUT /rest/api/3/issue/TEST-1/assignee
+
+      const res = await syncTaskToJira('TEST-1', { resourceAccountId: 'user-xyz' });
+      expect(res.synced).toBe(true);
+      expect(mockRequestJira).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('Unschedule, Reorder, and Multi-Resource Subtasks', () => {
+    it('unscheduleTask moves a scheduled task to backlog and updates storage', async () => {
+      const plan = await unscheduleTask({ taskId: 'TEST-1', projectKey: 'TEST' });
+      expect(plan.projectKey).toBe('TEST');
+
+      const scheduleMap = (await mockStorage.get<Record<string, any>>('scheduleMap:TEST')) || {};
+      expect(scheduleMap['TEST-1'].isBacklog).toBe(true);
+      expect(scheduleMap['TEST-1'].startWeek).toBeUndefined();
+
+      const taskOrder = (await mockStorage.get<string[]>('taskOrder:TEST')) || [];
+      expect(taskOrder).not.toContain('TEST-1');
+    });
+
+    it('unscheduleTask handles unscheduling a task that had no prior schedule override', async () => {
+      const plan = await unscheduleTask({ taskId: 'TEST-UNSEEN', projectKey: 'TEST' });
+      expect(plan.projectKey).toBe('TEST');
+    });
+
+    it('reorderWbsTasks reorders tasks and updates taskOrder in storage', async () => {
+      await mockStorage.set('taskOrder:TEST', ['TEST-1', 'TEST-2']);
+      const plan = await reorderWbsTasks({ taskId: 'TEST-2', targetIndex: 0, projectKey: 'TEST' });
+      expect(plan.projectKey).toBe('TEST');
+      const taskOrder = (await mockStorage.get<string[]>('taskOrder:TEST')) || [];
+      expect(taskOrder).toEqual(['TEST-2', 'TEST-1']);
+    });
+
+    it('reorderWbsTasks builds initial task order from live issues if taskOrder is empty', async () => {
+      await mockStorage.delete('taskOrder:TEST');
+      const plan = await reorderWbsTasks({ taskId: 'TEST-2', targetIndex: 0, projectKey: 'TEST' });
+      expect(plan.projectKey).toBe('TEST');
+      const taskOrder = (await mockStorage.get<string[]>('taskOrder:TEST')) || [];
+      expect(taskOrder[0]).toBe('TEST-2');
+    });
+
+    it('createSubtaskForResource creates Jira subtask and assigns dedicated team member', async () => {
+      mockRequestJira.mockImplementation(async (routeStr: any, options?: any) => {
+        const url = String(routeStr);
+        if (url.includes('/rest/api/3/issue')) {
+          return {
+            status: 201,
+            json: async () => ({ id: '10099', key: 'TEST-99' })
+          };
+        }
+        return { status: 200, json: async () => ({}) };
+      });
+
+      await mockStorage.delete('scheduleMap:TEST');
+      const res = await createSubtaskForResource({
+        parentTaskId: 'TEST-1',
+        assigneeAccountId: 'user-jane',
+        assigneeName: 'Jane Engineer',
+        effortHours: 16,
+        startWeek: DEFAULT_WEEKS[1].weekKey,
+        projectKey: 'TEST'
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.subtask?.key).toBe('TEST-99');
+      expect(res.subtask?.resource).toBe('Jane Engineer');
+
+      // Test with empty scheduleMap
+      await mockStorage.delete('scheduleMap:TEST');
+      const addSubRes = await addSubtaskToTask({
+        projectKey: 'TEST',
+        parentTaskId: 'TEST-1',
+        subtask: { summary: 'New Sub', estimateValue: 4, estimateUnit: 'HOURS' }
+      }, mockStorage);
+      expect(addSubRes.projectKey).toBe('TEST');
+
+      const scheduleMap = (await mockStorage.get<Record<string, any>>('scheduleMap:TEST')) || {};
+      expect(scheduleMap['TEST-1']).toBeDefined();
+    });
+
+    it('createSubtaskForResource retries with Subtask if Sub-task type fails', async () => {
+      let callCount = 0;
+      mockRequestJira.mockImplementation(async (routeStr: any, options?: any) => {
+        const url = String(routeStr);
+        if (url.includes('/rest/api/3/issue')) {
+          callCount++;
+          if (callCount === 1) {
+            return {
+              status: 400,
+              json: async () => ({ errors: { issuetype: 'Issue type Sub-task not found' } })
+            };
+          }
+          return {
+            status: 201,
+            json: async () => ({ id: '10100', key: 'TEST-100' })
+          };
+        }
+        return { status: 200, json: async () => ({}) };
+      });
+
+      const res = await createSubtaskForResource({
+        parentTaskId: 'TEST-1',
+        effortHours: 12,
+        projectKey: 'TEST'
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.subtask?.key).toBe('TEST-100');
+    });
+
+    it('createSubtaskForResource returns error if Jira subtask creation fails', async () => {
+      mockRequestJira.mockResolvedValue({
+        status: 400,
+        json: async () => ({ errorMessages: ['Parent issue is closed'] })
+      });
+
+      const res = await createSubtaskForResource({
+        parentTaskId: 'TEST-1',
+        projectKey: 'TEST'
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toContain('Parent issue is closed');
+    });
+
+    it('createSubtaskForResource rejects when parentTaskId is missing', async () => {
+      const res = await createSubtaskForResource({
+        parentTaskId: '',
+        projectKey: 'TEST'
+      });
+      expect(res.success).toBe(false);
+      expect(res.error).toContain('required');
+    });
+
+    it('createSubtaskForResource catches network error and returns failure message', async () => {
+      mockRequestJira.mockRejectedValue(new Error('Jira connection dropped'));
+      const res = await createSubtaskForResource({
+        parentTaskId: 'TEST-1',
+        projectKey: 'TEST'
+      });
+      expect(res.success).toBe(false);
+      expect(res.error).toContain('Jira connection dropped');
+
+      // Test string rejection (err.message undefined -> fallback 'Network error')
+      mockRequestJira.mockRejectedValue('raw string failure');
+      const resStr = await createSubtaskForResource({
+        parentTaskId: 'TEST-1',
+        projectKey: 'TEST'
+      });
+      expect(resStr.success).toBe(false);
+      expect(resStr.error).toContain('Network error');
+
+      // Test 400 response with empty JSON object
+      mockRequestJira.mockResolvedValue({
+        status: 400,
+        json: async () => ({})
+      });
+      const resEmpty = await createSubtaskForResource({
+        parentTaskId: 'TEST-1',
+        projectKey: 'TEST'
+      });
+      expect(resEmpty.success).toBe(false);
+      expect(resEmpty.error).toContain('Failed to create subtask');
+
+      // Test unscheduleTask when scheduleMap does not exist in storage
+      await mockStorage.delete('scheduleMap:TEST');
+      const unschedEmpty = await unscheduleTask({
+        projectKey: 'TEST',
+        taskId: 'TEST-1'
+      }, mockStorage);
+      expect(unschedEmpty.projectKey).toBe('TEST');
+    });
+
+    it('scheduleBacklogTask respects targetIndex parameter when ordering', async () => {
+      await mockStorage.set('taskOrder:TEST', ['TEST-1', 'TEST-2']);
+      const plan = await scheduleBacklogTask({
+        taskId: 'TEST-3',
+        startWeek: '15-Jul',
+        spanWeeks: 2,
+        targetIndex: 1,
+        projectKey: 'TEST'
+      });
+      expect(plan.projectKey).toBe('TEST');
+
+      const taskOrder = (await mockStorage.get<string[]>('taskOrder:TEST')) || [];
+      expect(taskOrder).toEqual(['TEST-1', 'TEST-3', 'TEST-2']);
+    });
+
+    it('updateWbsTask cascades schedule shifts downstream when predecessor changes', async () => {
+      await mockStorage.set('scheduleMap:TEST', {
+        'TEST-1': { startWeek: '15-Jul', spanWeeks: 2, effortHours: 20 },
+        'TEST-2': {
+          startWeek: '15-Jul',
+          spanWeeks: 2,
+          effortHours: 20,
+          dependency: { predecessorId: 'TEST-1', predecessorKey: 'TEST-1', triggerPercent: 100, isTriggerSatisfied: false }
+        }
+      });
+
+      const plan = await updateWbsTask({
+        taskId: 'TEST-1',
+        updates: { startWeek: '29-Jul' },
+        projectKey: 'TEST'
+      });
+      expect(plan.projectKey).toBe('TEST');
+
+      const scheduleMap = (await mockStorage.get<Record<string, any>>('scheduleMap:TEST')) || {};
+      expect(scheduleMap['TEST-2'].startWeek).toBeDefined();
+    });
+
+    it('handler invokes unscheduleTask, reorderWbsTasks, and createSubtaskForResource resolvers', async () => {
+      const resUnsched: any = await handler({
+        call: { functionKey: 'unscheduleTask', payload: { taskId: 'TEST-1' } },
+        context: { extension: { project: { key: 'TEST' } } }
+      } as any);
+      expect(resUnsched.projectKey).toBe('TEST');
+
+      const resReorder: any = await handler({
+        call: { functionKey: 'reorderWbsTasks', payload: { taskId: 'TEST-2', targetIndex: 0 } },
+        context: { extension: { project: { key: 'TEST' } } }
+      } as any);
+      expect(resReorder.projectKey).toBe('TEST');
+
+      mockRequestJira.mockImplementation(async (routeStr: any) => {
+        const url = String(routeStr);
+        if (url.includes('/rest/api/3/issue')) {
+          return {
+            status: 201,
+            json: async () => ({ id: '10101', key: 'TEST-101' })
+          };
+        }
+        if (url.includes('/rest/api/3/search/jql')) {
+          return {
+            status: 200,
+            json: async () => ({
+              issues: [
+                { id: '10101', key: 'TEST-101', fields: { summary: 'Subtask', issuetype: { name: 'Subtask' } } }
+              ]
+            })
+          };
+        }
+        return { status: 200, json: async () => ({}) };
+      });
+      const resSubtask: any = await handler({
+        call: { functionKey: 'createSubtaskForResource', payload: { parentTaskId: 'TEST-1', effortHours: 8 } },
+        context: { extension: { project: { key: 'TEST' } } }
+      } as any);
+      expect(resSubtask.success).toBe(true);
+
+      const resUpdateErr: any = await handler({
+        call: { functionKey: 'updateWbsTask', payload: { taskId: 'NONEXISTENT' } },
+        context: { extension: { project: { key: 'TEST' } } }
+      } as any);
+      expect(resUpdateErr.success).toBe(false);
+
+      jest.spyOn(mockStorage, 'get').mockRejectedValueOnce('string error without message');
+      const resErrNoMsg: any = await handler({
+        call: { functionKey: 'updateWbsTask', payload: { taskId: 'TEST-1' } },
+        context: { extension: { project: { key: 'TEST' } } }
+      } as any);
+      expect(resErrNoMsg.success).toBe(false);
+      expect(resErrNoMsg.error).toBe('Failed to update task');
+    });
+  });
+
+  describe('fetchLiveJiraIssues hierarchy parsing', () => {
+    it('correctly maps hierarchy levels for Epics, Stories, and Subtasks', async () => {
+      mockRequestJira.mockImplementation(async (routeStr: any) => {
+        const url = String(routeStr);
+        if (url.includes('/rest/api/3/search/jql')) {
+          return {
+            status: 200,
+            json: async () => ({
+              issues: [
+                {
+                  id: '1',
+                  key: 'TEST-E1',
+                  fields: {
+                    summary: 'Epic One',
+                    issuetype: { name: 'Epic', hierarchyLevel: 1 },
+                    timeoriginalestimate: 36000,
+                    aggregatetimespent: 7200
+                  }
+                },
+                {
+                  id: '2',
+                  key: 'TEST-S1',
+                  fields: {
+                    summary: 'Story One',
+                    issuetype: { name: 'Story', hierarchyLevel: 0 },
+                    parent: { key: 'TEST-E1', fields: { summary: 'Epic One' } }
+                  }
+                },
+                {
+                  id: '3',
+                  key: 'TEST-SUB1',
+                  fields: {
+                    summary: 'Subtask One',
+                    issuetype: { name: 'Subtask', hierarchyLevel: -1, subtask: true },
+                    parent: { key: 'TEST-S1' }
+                  }
+                },
+                {
+                  id: '4',
+                  key: 'TEST-SUB2',
+                  fields: {
+                    summary: 'Deep Subtask',
+                    issuetype: { name: 'DeepSub', hierarchyLevel: -2 },
+                    parent: { key: 'TEST-SUB1' }
+                  }
+                },
+                {
+                  id: '5',
+                  key: 'TEST-SUB3',
+                  fields: {
+                    summary: 'Classic Subtask',
+                    issuetype: { name: 'Subtask', subtask: true },
+                    parent: { key: 'TEST-S1' }
+                  }
+                },
+                {
+                  id: '6',
+                  key: 'TEST-E2',
+                  fields: {
+                    summary: 'Classic Epic',
+                    issuetype: { name: 'Epic' }
+                  }
+                }
+              ]
+            })
+          };
+        }
+        return { status: 200, json: async () => ({}) };
+      });
+
+      const res = await fetchLiveJiraIssues('TEST');
+      expect(res.isLive).toBe(true);
+      const allTasks = [...res.tasks, ...res.backlogTasks];
+      const epic = allTasks.find(t => t.key === 'TEST-E1');
+      const story = allTasks.find(t => t.key === 'TEST-S1');
+      const sub = allTasks.find(t => t.key === 'TEST-SUB1');
+      const deepSub = allTasks.find(t => t.key === 'TEST-SUB2');
+
+      expect(epic?.isEpic).toBe(true);
+      expect(epic?.isSubtask).toBe(false);
+      expect(epic?.hierarchyLevel).toBe(1);
+
+      expect(story?.isEpic).toBe(false);
+      expect(story?.isSubtask).toBe(false);
+      expect(story?.hierarchyLevel).toBe(0);
+      expect(story?.epicKey).toBe('TEST-E1');
+
+      expect(sub?.isSubtask).toBe(true);
+      expect(sub?.hierarchyLevel).toBe(-1);
+
+      expect(deepSub?.isSubtask).toBe(true);
+      expect(deepSub?.hierarchyLevel).toBe(-1);
+    });
+
+    it('returns empty and isLive false when request throws error', async () => {
+      mockRequestJira.mockImplementation(async () => {
+        throw new Error('Jira API timeout');
+      });
+      const res = await fetchLiveJiraIssues('ERR');
+      expect(res.isLive).toBe(false);
+      expect(res.tasks).toEqual([]);
+      expect(res.backlogTasks).toEqual([]);
+    });
+
+    it('recovers dependency from Jira issuelinks when stored dependency is missing', async () => {
+      mockRequestJira.mockImplementation(async (routeStr: any) => {
+        const url = String(routeStr);
+        if (url.includes('/rest/api/3/search/jql')) {
+          return {
+            status: 200,
+            json: async () => ({
+              issues: [
+                {
+                  id: '101',
+                  key: 'TEST-101',
+                  fields: {
+                    summary: 'Predecessor task',
+                    issuetype: { name: 'Task' }
+                  }
+                },
+                {
+                  id: '102',
+                  key: 'TEST-102',
+                  fields: {
+                    summary: 'Successor task with block link',
+                    issuetype: { name: 'Task' },
+                    issuelinks: [
+                      {
+                        type: { name: 'Blocks' },
+                        inwardIssue: { id: '101', key: 'TEST-101' }
+                      }
+                    ]
+                  }
+                }
+              ]
+            })
+          };
+        }
+        return { status: 200, json: async () => ({}) };
+      });
+
+      const res = await fetchLiveJiraIssues('TEST');
+      const succ = [...res.tasks, ...res.backlogTasks].find(t => t.key === 'TEST-102');
+      expect(succ?.dependency?.predecessorKey).toBe('TEST-101');
+      expect(succ?.dependency?.triggerPercent).toBe(30);
+    });
+  });
+
+  describe('getPortfolioResourceHeatmap coverage', () => {
+    it('retrieves and filters portfolio heatmap rows', async () => {
+      const res = await getPortfolioResourceHeatmap('TEST');
+      expect(res.rows).toBeDefined();
+      expect(res.weeks).toBeDefined();
+      expect(res.rows.length).toBeGreaterThan(0);
+    });
+
+    it('saves task dependency when scheduleMap key does not yet exist', async () => {
+      await mockStorage.delete('scheduleMap:TEST');
+      const plan = await saveTaskDependency({
+        projectKey: 'TEST',
+        taskId: 'TEST-2',
+        dependency: {
+          predecessorId: '10001',
+          predecessorKey: 'TEST-1',
+          triggerPercent: 30,
+          isTriggerSatisfied: false
+        }
+      });
+      expect(plan.projectKey).toBe('TEST');
+    });
+
+    it('cascades bounds to parent task when a subtask schedule or progress updates', async () => {
+      const initialPlan = await getProjectPlan('TEST', mockStorage);
+      const w0 = initialPlan.weeks[0];
+      const w1 = initialPlan.weeks[1];
+      const w2 = initialPlan.weeks[2];
+
+      // Setup scheduleMap with parent and subtask
+      await mockStorage.set('scheduleMap:TEST', {
+        'TEST-1': {
+          startWeek: w0.weekKey,
+          endWeek: w1.weekKey,
+          startDate: w0.startDate,
+          endDate: w1.endDate,
+          spanWeeks: 2
+        },
+        'TEST-SUB1': {
+          parentKey: 'TEST-1',
+          isSubtask: true,
+          hierarchyLevel: -1,
+          startWeek: w0.weekKey,
+          endWeek: w1.weekKey,
+          startDate: w0.startDate,
+          endDate: w1.endDate,
+          spanWeeks: 2,
+          effortHours: 20,
+          progress: 50
+        }
+      });
+
+      const updatedPlan = await updateWbsTask(
+        {
+          projectKey: 'TEST',
+          taskId: 'TEST-SUB1',
+          updates: {
+            parentKey: 'TEST-1',
+            startWeek: w1.weekKey,
+            spanWeeks: 2,
+            progress: 100
+          }
+        },
+        mockStorage
+      );
+
+      expect(updatedPlan).toBeDefined();
+      const parentTask = updatedPlan.tasks.find(t => t.key === 'TEST-1');
+      expect(parentTask).toBeDefined();
+
+      // Test dynamically assigning parentKey to a task that previously had no parent
+      const updatedDynParent = await updateWbsTask(
+        {
+          projectKey: 'TEST',
+          taskId: 'TEST-2',
+          updates: {
+            parentKey: 'TEST-1',
+            startWeek: w1.weekKey,
+            spanWeeks: 2
+          }
+        },
+        mockStorage
+      );
+      expect(updatedDynParent).toBeDefined();
+    });
+
+    it('cascades bounds to parent when parent is not yet in scheduleMap and effort is 0', async () => {
+      const initialPlan = await getProjectPlan('TEST', mockStorage);
+      const w0 = initialPlan.weeks[0];
+      const w1 = initialPlan.weeks[1];
+
+      await mockStorage.set('scheduleMap:TEST', {
+        'TEST-1': {
+          startWeek: w0.weekKey,
+          spanWeeks: 2
+        },
+        'TEST-SUB1': {
+          parentKey: 'TEST-1',
+          isSubtask: true,
+          hierarchyLevel: -1,
+          startWeek: w0.weekKey,
+          endWeek: w1.weekKey,
+          startDate: w0.startDate,
+          endDate: w1.endDate,
+          spanWeeks: 2,
+          effortHours: 0,
+          progress: 0
+        },
+        'TEST-SUB2': {
+          parentKey: 'TEST-1',
+          isSubtask: true,
+          hierarchyLevel: -1,
+          startWeek: w0.weekKey,
+          spanWeeks: 1,
+          effortHours: 0,
+          progress: 0
+        }
+      });
+
+      const updatedPlan = await updateWbsTask(
+        {
+          projectKey: 'TEST',
+          taskId: 'TEST-SUB1',
+          updates: {
+            parentKey: 'TEST-1',
+            startWeek: w0.weekKey,
+            spanWeeks: 2,
+            effortHours: 0
+          }
+        },
+        mockStorage
+      );
+      expect(updatedPlan).toBeDefined();
+    });
+
+    it('handles subtask updates when parent task is missing from plan', async () => {
+      const initialPlan = await getProjectPlan('TEST', mockStorage);
+      const w0 = initialPlan.weeks[0];
+
+      await mockStorage.set('scheduleMap:TEST', {
+        'TEST-SUB99': {
+          parentKey: 'MISSING_PARENT',
+          startWeek: w0.weekKey,
+          spanWeeks: 2
+        }
+      });
+
+      const updatedPlan = await updateWbsTask(
+        {
+          projectKey: 'TEST',
+          taskId: 'TEST-SUB99',
+          updates: {
+            parentKey: 'MISSING_PARENT',
+            startWeek: w0.weekKey,
+            spanWeeks: 2
+          }
+        },
+        mockStorage
+      );
+      expect(updatedPlan).toBeDefined();
+    });
+
+    it('inherits Epic from parent when subtask is fetched and parent has epic object', async () => {
+      mockRequestJira.mockImplementationOnce(async () => ({
+        status: 200,
+        json: async () => ({
+          issues: [
+            {
+              id: '10',
+              key: 'TEST-P1',
+              fields: {
+                summary: 'Parent Story',
+                issuetype: { name: 'Story', hierarchyLevel: 0 },
+                epic: { key: 'TEST-E10', name: 'Security Epic' }
+              }
+            },
+            {
+              id: '11',
+              key: 'TEST-S11',
+              fields: {
+                summary: 'Child Subtask',
+                issuetype: { name: 'Subtask', hierarchyLevel: -1, subtask: true },
+                parent: { key: 'TEST-P1' }
+              }
+            }
+          ]
+        })
+      }));
+
+      const res = await fetchLiveJiraIssues('TEST');
+      const sub = res.backlogTasks.find(t => t.key === 'TEST-S11') || res.tasks.find(t => t.key === 'TEST-S11');
+      expect(sub?.epicKey).toBe('TEST-E10');
+      expect(sub?.epic).toBe('Security Epic');
+    });
+
+    it('reorders tasks and persists unique keys', async () => {
+      const plan = await reorderWbsTasks({
+        projectKey: 'TEST',
+        taskId: 'TEST-2',
+        targetIndex: 0
+      }, mockStorage);
+      expect(plan.tasks.length).toBeGreaterThan(0);
+    });
+
+    it('falls back to single Epic issuetype query when first JQL returns error', async () => {
+      mockRequestJira
+        .mockResolvedValueOnce({ status: 400 })
+        .mockResolvedValueOnce({
+          status: 200,
+          json: async () => ({
+            issues: [{ id: '99', key: 'TEST-E99', fields: { summary: 'Fallback Epic' } }]
+          })
+        });
+
+      const epics = await fetchProjectEpics('TEST');
+      expect(epics).toHaveLength(1);
+      expect(epics[0].key).toBe('TEST-E99');
+    });
+
+    it('merges scheduled Epics from tasks into availableEpics', async () => {
+      await mockStorage.set('scheduleMap:TEST', {
+        'TEST-E50': {
+          summary: 'Special Scheduled Epic',
+          isEpic: true,
+          hierarchyLevel: 1,
+          startWeek: DEFAULT_WEEKS[0].weekKey,
+          endWeek: DEFAULT_WEEKS[2].weekKey,
+          spanWeeks: 3
+        }
+      });
+
+      const plan = await getProjectPlan('TEST', mockStorage);
+      expect(plan.availableEpics?.some(e => e.key === 'TEST-E50')).toBe(true);
+    });
+
+    it('saves task dependency when target task is in backlogTasks', async () => {
+      // TEST-3 is in backlogTasks
+      const plan = await saveTaskDependency({
+        projectKey: 'TEST',
+        taskId: 'TEST-3',
+        dependency: {
+          predecessorId: '10001',
+          predecessorKey: 'TEST-1',
+          triggerPercent: 30,
+          isTriggerSatisfied: false
+        }
+      });
+      const t3 = plan.backlogTasks?.find(t => t.key === 'TEST-3');
+      expect(t3?.dependency).toBeDefined();
+    });
+
+    it('uses fallback mid week index in getPortfolioResourceHeatmap when no week is current week', async () => {
+      const farFutureDate = new Date('2035-01-01');
+      const res = await getPortfolioResourceHeatmap('TEST', {}, mockStorage, farFutureDate);
+      expect(res.rows.length).toBeGreaterThan(0);
+    });
+
+    it('saves and preserves contributingResources on updateWbsTask', async () => {
+      const plan = await updateWbsTask({
+        projectKey: 'TEST',
+        taskId: 'TEST-1',
+        updates: {
+          resource: 'Lead Engineer',
+          contributingResources: ['Lead Engineer', 'Peer Dev', 'QA Lead']
+        }
+      }, mockStorage);
+
+      const task1 = plan.tasks.find(t => t.key === 'TEST-1');
+      expect(task1?.resource).toBe('Lead Engineer');
+      expect(task1?.contributingResources).toEqual(expect.arrayContaining(['Lead Engineer', 'Peer Dev', 'QA Lead']));
+
+      // Now update another field without contributingResources - it should preserve existing
+      const plan2 = await updateWbsTask({
+        projectKey: 'TEST',
+        taskId: 'TEST-1',
+        updates: {
+          progress: 50
+        }
+      }, mockStorage);
+
+      const task1Updated = plan2.tasks.find(t => t.key === 'TEST-1');
+      expect(task1Updated?.progress).toBe(50);
+      expect(task1Updated?.contributingResources).toEqual(expect.arrayContaining(['Lead Engineer', 'Peer Dev', 'QA Lead']));
+    });
+
+    it('auto-moves startWeek and shifts bar when fractional dependency is added', async () => {
+      // TEST-1 starts at week index 0 (15-Jul) with span 4.
+      // Setting dependency on TEST-1 with trigger 50% on TEST-2.
+      // TEST-1 reaches 50% at week index 1 (22-Jul). Earliest start for TEST-2 is week index 2 (29-Jul).
+      const plan = await updateWbsTask({
+        projectKey: 'TEST',
+        taskId: 'TEST-2',
+        updates: {
+          startWeek: DEFAULT_WEEKS[0].weekKey, // Attempt to set to first week
+          dependency: {
+            predecessorId: '10001',
+            predecessorKey: 'TEST-1',
+            triggerPercent: 50,
+            isTriggerSatisfied: false
+          }
+        }
+      }, mockStorage);
+
+      const task2 = plan.tasks.find(t => t.key === 'TEST-2');
+      expect(task2?.dependency?.predecessorKey).toBe('TEST-1');
+      // Earliest start week must be shifted to index 2 (29-Jul) or later
+      const startIdx = DEFAULT_WEEKS.findIndex(w => w.weekKey === task2?.startWeek);
+      expect(startIdx).toBeGreaterThanOrEqual(2);
+    });
+
+    it('auto-transitions status to COMPLETED when progress reaches 100', async () => {
+      const plan = await updateWbsTask({
+        projectKey: 'TEST',
+        taskId: 'TEST-1',
+        updates: {
+          progress: 100,
+          status: 'IN_PROGRESS'
+        }
+      }, mockStorage);
+
+      const task1 = plan.tasks.find(t => t.key === 'TEST-1');
+      expect(task1?.progress).toBe(100);
+      expect(task1?.status).toBe('COMPLETED');
+    });
+
+    it('auto-transitions status to IN_PROGRESS when progress is greater than 0 on NOT_STARTED task', async () => {
+      const plan = await updateWbsTask({
+        projectKey: 'TEST',
+        taskId: 'TEST-1',
+        updates: {
+          progress: 35,
+          status: 'NOT_STARTED'
+        }
+      }, mockStorage);
+
+      const task1 = plan.tasks.find(t => t.key === 'TEST-1');
+      expect(task1?.progress).toBe(35);
+      expect(task1?.status).toBe('IN_PROGRESS');
+    });
+
+    it('clamps progress and targetProgress between 0 and 100', async () => {
+      const plan = await updateWbsTask({
+        projectKey: 'TEST',
+        taskId: 'TEST-1',
+        updates: {
+          progress: 150,
+          targetProgress: -20
+        }
+      }, mockStorage);
+
+      const task1 = plan.tasks.find(t => t.key === 'TEST-1');
+      expect(task1?.progress).toBe(100);
+      expect(task1?.targetProgress).toBe(0);
+    });
+
+    it('saves and preserves manualProgress flag on updateWbsTask', async () => {
+      const plan = await updateWbsTask({
+        projectKey: 'TEST',
+        taskId: 'TEST-1',
+        updates: {
+          progress: 85,
+          manualProgress: true
+        }
+      }, mockStorage);
+
+      const task1 = plan.tasks.find(t => t.key === 'TEST-1');
+      expect(task1?.progress).toBe(85);
+      expect(task1?.manualProgress).toBe(true);
+
+      // Subsequent update without manualProgress should preserve manualProgress: true
+      const plan2 = await updateWbsTask({
+        projectKey: 'TEST',
+        taskId: 'TEST-1',
+        updates: {
+          targetProgress: 90
+        }
+      }, mockStorage);
+
+      const task1Second = plan2.tasks.find(t => t.key === 'TEST-1');
+      expect(task1Second?.targetProgress).toBe(90);
+      expect(task1Second?.manualProgress).toBe(true);
+    });
+
+    it('sets manualProgress: true automatically when updating progress on an Epic without manualProgress specified', async () => {
+      mockRequestJira.mockImplementation(async (routeStr: any) => {
+        const url = String(routeStr);
+        if (url.includes('/rest/api/3/search/jql')) {
+          return {
+            status: 200,
+            json: async () => ({
+              issues: [
+                {
+                  id: '301',
+                  key: 'TEST-EPIC-1',
+                  fields: {
+                    summary: 'Epic Roadmap Item',
+                    issuetype: { name: 'Epic', hierarchyLevel: 1 }
+                  }
+                }
+              ]
+            })
+          };
+        }
+        return { status: 200, json: async () => ({}) };
+      });
+
+      await mockStorage.set('scheduleMap:TEST', {
+        'TEST-EPIC-1': {
+          startWeek: DEFAULT_WEEKS[0].weekKey,
+          spanWeeks: 4
+        }
+      });
+
+      const plan = await updateWbsTask({
+        projectKey: 'TEST',
+        taskId: 'TEST-EPIC-1',
+        updates: {
+          progress: 65
+        }
+      }, mockStorage);
+
+      const epic = plan.tasks.find(t => t.key === 'TEST-EPIC-1');
+      expect(epic?.progress).toBe(65);
+      expect(epic?.manualProgress).toBe(true);
+    });
+
+    it('preserves affTask.dependency and parentTask.dependency when missing in curAff/curParent scheduleMap', async () => {
+      mockRequestJira.mockImplementation(async (routeStr: any) => {
+        const url = String(routeStr);
+        if (url.includes('/rest/api/3/search/jql')) {
+          return {
+            status: 200,
+            json: async () => ({
+              issues: [
+                {
+                  id: '201',
+                  key: 'TEST-P1',
+                  fields: {
+                    summary: 'Parent task with block link',
+                    issuetype: { name: 'Task' },
+                    issuelinks: [
+                      {
+                        type: { name: 'Blocks' },
+                        inwardIssue: { id: '200', key: 'TEST-ROOT' }
+                      }
+                    ]
+                  }
+                },
+                {
+                  id: '202',
+                  key: 'TEST-CHILD',
+                  fields: {
+                    summary: 'Child task',
+                    issuetype: { name: 'Subtask' },
+                    parent: { id: '201', key: 'TEST-P1' }
+                  }
+                },
+                {
+                  id: '203',
+                  key: 'TEST-DEP',
+                  fields: {
+                    summary: 'Downstream task depending on Child',
+                    issuetype: { name: 'Task' },
+                    issuelinks: [
+                      {
+                        type: { name: 'Blocks' },
+                        inwardIssue: { id: '202', key: 'TEST-CHILD' }
+                      }
+                    ]
+                  }
+                }
+              ]
+            })
+          };
+        }
+        return { status: 200, json: async () => ({}) };
+      });
+
+      // Schedule all three without dependency in scheduleMap
+      await mockStorage.set('scheduleMap:TEST', {
+        'TEST-P1': {
+          startWeek: DEFAULT_WEEKS[0].weekKey,
+          endWeek: DEFAULT_WEEKS[1].weekKey,
+          spanWeeks: 2
+        },
+        'TEST-CHILD': {
+          startWeek: DEFAULT_WEEKS[0].weekKey,
+          endWeek: DEFAULT_WEEKS[1].weekKey,
+          spanWeeks: 2,
+          parentKey: 'TEST-P1'
+        },
+        'TEST-DEP': {
+          startWeek: DEFAULT_WEEKS[0].weekKey,
+          endWeek: DEFAULT_WEEKS[1].weekKey,
+          spanWeeks: 2
+        }
+      });
+
+      // Now update TEST-CHILD with startWeek move to week 2
+      // This will cascade downstream to TEST-DEP (line 1045) and roll up to TEST-P1 (line 1088)
+      const plan = await updateWbsTask({
+        projectKey: 'TEST',
+        taskId: 'TEST-CHILD',
+        updates: {
+          startWeek: DEFAULT_WEEKS[2].weekKey,
+          spanWeeks: 2
+        }
+      }, mockStorage);
+
+      expect(plan.tasks.length).toBe(3);
     });
   });
 });

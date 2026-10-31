@@ -332,9 +332,12 @@ export class PlannerEngine {
       return { actualCompletion: 0, targetCompletion: 0 };
     }
 
-    const totalEffort = tasks.reduce((acc, t) => acc + (t.effortHours > 0 ? t.effortHours : 1), 0);
-    const actualWork = tasks.reduce((acc, t) => acc + (t.effortHours > 0 ? t.effortHours : 1) * (t.progress / 100), 0);
-    const targetWork = tasks.reduce((acc, t) => acc + (t.effortHours > 0 ? t.effortHours : 1) * (t.targetProgress / 100), 0);
+    const nonRollupTasks = tasks.filter(t => !t.isRollup);
+    const targetTasks = nonRollupTasks.length > 0 ? nonRollupTasks : tasks;
+
+    const totalEffort = targetTasks.reduce((acc, t) => acc + (t.effortHours > 0 ? t.effortHours : 1), 0);
+    const actualWork = targetTasks.reduce((acc, t) => acc + (t.effortHours > 0 ? t.effortHours : 1) * (t.progress / 100), 0);
+    const targetWork = targetTasks.reduce((acc, t) => acc + (t.effortHours > 0 ? t.effortHours : 1) * (t.targetProgress / 100), 0);
 
     return {
       actualCompletion: Math.round((actualWork / totalEffort) * 100),
@@ -486,5 +489,366 @@ export class PlannerEngine {
       }
       return true;
     });
+  }
+
+  /**
+   * Calculates the earliest week index that a dependent task can start based on a predecessor's
+   * fractional completion trigger threshold (e.g. 50%), accounting for:
+   * 1. The predecessor's startWeek and spanWeeks
+   * 2. The predecessor's weeklyAllocations (% of work per week)
+   * 3. The number and capacity of assigned resources (primary, contributing, subtask assignees)
+   */
+  public static calculateEarliestStartWeekIndex(
+    predecessorTask: WbsTask,
+    triggerPercent: number,
+    activeWeeks: WeeklySprintColumn[]
+  ): number {
+    if (!predecessorTask || !activeWeeks || activeWeeks.length === 0) return 0;
+
+    const predStartIdx = Math.max(0, activeWeeks.findIndex(w => w.weekKey === predecessorTask.startWeek));
+    const predSpan = Math.max(1, predecessorTask.spanWeeks || 1);
+    const predEndIdx = Math.min(activeWeeks.length - 1, predStartIdx + predSpan - 1);
+    const targetTrigger = typeof triggerPercent === 'number' && !isNaN(triggerPercent) ? triggerPercent : 30;
+
+    // 1. Determine assigned team size and capacity on predecessor
+    const distinctTeam = new Set<string>();
+    if (predecessorTask.resource && predecessorTask.resource !== 'Unassigned' && predecessorTask.resource !== 'Unallocated') {
+      distinctTeam.add(predecessorTask.resource.trim());
+    }
+    (predecessorTask.contributingResources || []).forEach(r => {
+      if (r && r !== 'Unassigned' && r !== 'Unallocated') distinctTeam.add(r.trim());
+    });
+    (predecessorTask.subtasks || []).forEach(s => {
+      if (s.assignee && s.assignee !== 'Unassigned' && s.assignee !== 'Unallocated') distinctTeam.add(s.assignee.trim());
+    });
+    const teamSize = Math.max(1, distinctTeam.size);
+
+    // 2. Accumulate progress week by week across predecessor's scheduled duration
+    let cumulativeProgress = 0;
+    let reachedWeekIdx = predStartIdx;
+
+    for (let i = predStartIdx; i <= predEndIdx; i++) {
+      const wk = activeWeeks[i];
+      let weekPct = 0;
+      if (predecessorTask.weeklyAllocations && typeof predecessorTask.weeklyAllocations[wk.weekKey] === 'number') {
+        weekPct = predecessorTask.weeklyAllocations[wk.weekKey];
+        if (teamSize > 1 && weekPct > 0) {
+          weekPct = Math.min(100, weekPct * (1 + (teamSize - 1) * 0.25));
+        }
+      } else {
+        const baseAlloc = 100 / predSpan;
+        weekPct = Math.min(100, baseAlloc * (1 + (teamSize - 1) * 0.25));
+      }
+
+      cumulativeProgress += weekPct;
+      reachedWeekIdx = i;
+
+      if (cumulativeProgress >= targetTrigger) {
+        return Math.min(activeWeeks.length - 1, i + 1);
+      }
+    }
+
+    return Math.min(activeWeeks.length - 1, reachedWeekIdx + 1);
+  }
+
+  /**
+   * Cascades timeline shifts downstream to any dependent successor tasks.
+   * Auto-adjusts successor start/end weeks and redistributes weekly allocations.
+   */
+  public static cascadeSchedule(
+    tasks: WbsTask[],
+    changedTaskKey: string,
+    activeWeeks: WeeklySprintColumn[]
+  ): { updatedTasks: WbsTask[]; affectedTaskKeys: string[] } {
+    if (!tasks || tasks.length === 0 || !activeWeeks || activeWeeks.length === 0) {
+      return { updatedTasks: tasks || [], affectedTaskKeys: [] };
+    }
+
+    const taskMap = new Map<string, WbsTask>();
+    tasks.forEach(t => taskMap.set(t.key, { ...t }));
+
+    const queue: string[] = [changedTaskKey];
+    const visited = new Set<string>();
+    const affected = new Set<string>();
+
+    while (queue.length > 0) {
+      const currentKey = queue.shift()!;
+      if (visited.has(currentKey)) continue;
+      visited.add(currentKey);
+
+      const parentTask = taskMap.get(currentKey);
+      if (!parentTask) continue;
+
+      for (const t of taskMap.values()) {
+        if (t.dependency && (t.dependency.predecessorKey === currentKey || t.dependency.predecessorId === currentKey)) {
+          const triggerPercent = typeof t.dependency.triggerPercent === 'number' ? t.dependency.triggerPercent : 30;
+          const earliestStartIdx = PlannerEngine.calculateEarliestStartWeekIndex(parentTask, triggerPercent, activeWeeks);
+
+          const currentSuccStartIdx = activeWeeks.findIndex(w => w.weekKey === t.startWeek);
+          if (currentSuccStartIdx < earliestStartIdx) {
+            const succSpan = t.spanWeeks || 3;
+            const newStartIdx = earliestStartIdx;
+            const newEndIdx = Math.min(activeWeeks.length - 1, newStartIdx + succSpan - 1);
+
+            t.startWeek = activeWeeks[newStartIdx].weekKey;
+            t.endWeek = activeWeeks[newEndIdx].weekKey;
+            t.startDate = activeWeeks[newStartIdx].startDate;
+            t.endDate = activeWeeks[newEndIdx].endDate;
+
+            const allocations: Record<string, number> = {};
+            for (let i = newStartIdx; i <= newEndIdx; i++) {
+              allocations[activeWeeks[i].weekKey] = Math.round(100 / succSpan);
+            }
+            t.weeklyAllocations = allocations;
+
+            affected.add(t.key);
+            queue.push(t.key);
+          }
+        }
+      }
+    }
+
+    return {
+      updatedTasks: Array.from(taskMap.values()),
+      affectedTaskKeys: Array.from(affected)
+    };
+  }
+
+  /**
+   * Reorders tasks list by moving a task to a target row index and updating order indices.
+   */
+  public static reorderTasks(tasks: WbsTask[], taskId: string, targetIndex: number): WbsTask[] {
+    const list = [...tasks];
+    const currentIndex = list.findIndex(t => t.key === taskId || t.id === taskId);
+    if (currentIndex === -1) return list;
+
+    const [item] = list.splice(currentIndex, 1);
+    const clampedIndex = Math.max(0, Math.min(list.length, targetIndex));
+    list.splice(clampedIndex, 0, item);
+
+    list.forEach((t, idx) => {
+      t.orderIndex = idx;
+    });
+
+    return list;
+  }
+
+  /**
+   * Organizes tasks into a hierarchical multi-tier tree (Epics -> Stories/Tasks -> Subtasks)
+   * and computes memory roll-up statistics (bounding dates, total hours, weighted progress)
+   * for parent tasks.
+   */
+  public static buildWbsHierarchy(tasks: WbsTask[], weeks?: WeeklySprintColumn[]): WbsTask[] {
+    if (!tasks || tasks.length === 0) return [];
+
+    const taskList = tasks.map(t => ({ ...t }));
+
+    // 1. Establish hierarchyLevel, isEpic, and isSubtask
+    taskList.forEach(t => {
+      let level = t.hierarchyLevel;
+      if (level === undefined) {
+        if (t.isSubtask) {
+          level = -1;
+        } else if (t.isEpic || t.story === 'Epic' || t.story?.toLowerCase() === 'epic' || (t.epicKey && t.epicKey === t.key)) {
+          level = 1;
+        }
+      }
+      if (level !== undefined) {
+        t.hierarchyLevel = level;
+        t.isEpic = (level === 1);
+        t.isSubtask = (level === -1);
+      }
+    });
+
+    // 2. Map parent-child relationships
+    const taskByKey = new Map<string, WbsTask>();
+    const taskById = new Map<string, WbsTask>();
+    taskList.forEach(t => {
+      if (t.key) taskByKey.set(t.key, t);
+      if (t.id) taskById.set(t.id, t);
+    });
+
+    const childrenMap = new Map<string, WbsTask[]>();
+    const childSet = new Set<string>();
+
+    taskList.forEach(t => {
+      let parentTask: WbsTask | undefined;
+      const targetParentKey = t.parentKey;
+      const targetParentId = t.parentId;
+
+      if (targetParentKey && (taskByKey.has(targetParentKey) || taskById.has(targetParentKey))) {
+        parentTask = taskByKey.get(targetParentKey) || taskById.get(targetParentKey);
+      } else if (targetParentId && (taskById.has(targetParentId) || taskByKey.has(targetParentId))) {
+        parentTask = taskById.get(targetParentId) || taskByKey.get(targetParentId);
+      } else if (t.epicKey && !t.isEpic && (taskByKey.has(t.epicKey) || taskById.has(t.epicKey))) {
+        parentTask = taskByKey.get(t.epicKey) || taskById.get(t.epicKey);
+      }
+
+      if (parentTask && parentTask.key !== t.key && parentTask.id !== t.id) {
+        const pk = parentTask.key || parentTask.id;
+        if (!childrenMap.has(pk)) childrenMap.set(pk, []);
+        childrenMap.get(pk)!.push(t);
+        childSet.add(t.key || t.id);
+
+        if (parentTask.isEpic) {
+          t.parentKey = parentTask.key;
+          t.epicKey = parentTask.key;
+          t.epic = parentTask.summary || parentTask.key;
+          if (t.hierarchyLevel === undefined || t.hierarchyLevel === 0) {
+            t.isSubtask = false;
+            t.hierarchyLevel = 0;
+          }
+        } else {
+          t.parentKey = parentTask.key;
+          t.isSubtask = true;
+          t.hierarchyLevel = -1;
+          if (parentTask.epic) {
+            t.epic = parentTask.epic;
+            t.epicKey = parentTask.epicKey;
+          }
+        }
+      } else {
+        if (t.hierarchyLevel === undefined) {
+          t.isSubtask = Boolean(t.isSubtask || t.parentKey || t.parentId);
+          t.hierarchyLevel = t.isSubtask ? -1 : 0;
+        }
+      }
+      t.isEpic = (t.hierarchyLevel === 1);
+    });
+
+    // 3. Compute roll-ups bottom-up for parents
+    taskList.forEach(t => {
+      const pk = t.key || t.id;
+      const children = childrenMap.get(pk) || [];
+      if (children.length > 0) {
+        t.childrenCount = children.length;
+        t.isRollup = true;
+
+        let totalHours = 0;
+        let completedHours = 0;
+        const validStartDates: string[] = [];
+        const validEndDates: string[] = [];
+        const distinctResources = new Set<string>();
+
+        const addResource = (res?: string) => {
+          if (res && res !== 'Unassigned' && res !== 'Unallocated') {
+            distinctResources.add(res);
+          }
+        };
+
+        addResource(t.resource);
+
+        children.forEach(c => {
+          const effort = c.effortHours > 0 ? c.effortHours : 0;
+          totalHours += effort;
+          completedHours += effort * ((c.progress || 0) / 100);
+          if (c.startDate) validStartDates.push(c.startDate.slice(0, 10));
+          if (c.endDate) validEndDates.push(c.endDate.slice(0, 10));
+
+          addResource(c.resource);
+          (c.contributingResources || []).forEach(addResource);
+          (c.subtasks || []).forEach(s => addResource(s.assignee));
+        });
+
+        (t.subtasks || []).forEach(s => addResource(s.assignee));
+        (t.contributingResources || []).forEach(addResource);
+
+        const contributingResources = Array.from(distinctResources);
+        if (contributingResources.length > 0) {
+          t.contributingResources = contributingResources;
+        }
+
+        validStartDates.sort();
+        validEndDates.sort();
+
+        const earliestStart = validStartDates[0];
+        const latestEnd = validEndDates[validEndDates.length - 1];
+        const progressPct = totalHours > 0 ? Math.round((completedHours / totalHours) * 100) : 0;
+
+        let startWeek = t.startWeek;
+        let spanWeeks = t.spanWeeks;
+
+        if (weeks && weeks.length > 0 && earliestStart && latestEnd) {
+          const sIdx = weeks.findIndex(w => w.startDate <= earliestStart && w.endDate >= earliestStart);
+          const eIdx = weeks.findIndex(w => w.startDate <= latestEnd && w.endDate >= latestEnd);
+          if (sIdx !== -1 && eIdx !== -1 && eIdx >= sIdx) {
+            startWeek = weeks[sIdx].weekKey;
+            spanWeeks = Math.max(1, eIdx - sIdx + 1);
+          }
+        }
+
+        t.rollupStats = {
+          startDate: earliestStart || t.startDate,
+          endDate: latestEnd || t.endDate,
+          totalHours,
+          completedHours,
+          progressPct,
+          startWeek,
+          spanWeeks,
+          childrenCount: children.length,
+          contributingResources
+        };
+
+        // Dynamically adjust bounding box and progress for all parent rollups (Epics AND Stories/Tasks with subtasks)
+        if (t.isRollup || t.isEpic || children.length > 0) {
+          if (t.isEpic && totalHours > 0) {
+            t.effortHours = totalHours;
+          }
+          if (!t.manualProgress) {
+            t.progress = progressPct;
+          }
+          if (earliestStart) t.startDate = earliestStart;
+          if (latestEnd) t.endDate = latestEnd;
+          if (startWeek) t.startWeek = startWeek;
+          if (spanWeeks) t.spanWeeks = spanWeeks;
+        }
+      } else {
+        const distinctResources = new Set<string>();
+        const addResource = (res?: string) => {
+          if (res && res !== 'Unassigned' && res !== 'Unallocated') {
+            distinctResources.add(res);
+          }
+        };
+        addResource(t.resource);
+        (t.subtasks || []).forEach(s => addResource(s.assignee));
+        (t.contributingResources || []).forEach(addResource);
+        const contributingResources = Array.from(distinctResources);
+        if (contributingResources.length > 0) {
+          t.contributingResources = contributingResources;
+        }
+      }
+    });
+
+    // 4. Construct ordered hierarchy list
+    const orderedResult: WbsTask[] = [];
+    const addedKeys = new Set<string>();
+
+    const appendWithChildren = (task: WbsTask) => {
+      const idStr = task.key || task.id;
+      if (addedKeys.has(idStr)) return;
+      addedKeys.add(idStr);
+      orderedResult.push(task);
+
+      const children = childrenMap.get(idStr) || [];
+      // Preserve the input taskList order among children
+      children.sort((a, b) => taskList.indexOf(a) - taskList.indexOf(b));
+      children.forEach(c => appendWithChildren(c));
+    };
+
+    taskList.forEach(t => {
+      const idStr = t.key || t.id;
+      if (!childSet.has(idStr)) {
+        appendWithChildren(t);
+      }
+    });
+
+    taskList.forEach(t => {
+      const idStr = t.key || t.id;
+      if (!addedKeys.has(idStr)) {
+        appendWithChildren(t);
+      }
+    });
+
+    return orderedResult;
   }
 }
