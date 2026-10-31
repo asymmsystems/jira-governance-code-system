@@ -4,9 +4,10 @@
   "description": "Visual WBS Planning, Resource Utilization Heatmaps and Milestone Dependencies for Jira (CascadePlan)",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run build:ui",
     "test": "jest --coverage",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "build:ui": "tools/node_modules/.bin/esbuild src/frontend/main.ts --bundle --format=iife --target=es2020 --outfile=static/frontend/build/app.js --log-level=warning"
   },
   "keywords": [
     "atlassian",

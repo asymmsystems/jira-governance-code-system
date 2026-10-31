@@ -81,4 +81,10 @@ One entry per research round and per build item. Dates are local (UTC+5:30).
 
 ## Build items
 
-No build item has started. Part B waits for the owner's `APPROVED` line in `backlog.md` and for precondition P-0.
+Approved 2026-11-01: `B-01..B-27`. Spec: `docs/spec/cascadeplan-spec.md` (commit `11953b1`); `grade_spec.py` passes on a copy named `planshift-spec.md` (the grader looks for the folder name; the brief names the file `cascadeplan-spec.md`).
+
+Checks per item: `tsc --noEmit`; `npx jest --coverage` with 90% branches for each changed file; `grade_tdd`, `grade_security`, `grade_ui` (`~/.cache/gemini-earning-cascadeplan-research/run_graders.sh`); Playwright harness for UI items; no em dash.
+
+| Item | Date | Tests added | Result | Commit |
+|---|---|---|---|---|
+| B-01 | 2026-11-01 | `test/ui/static-ui.test.ts` (6), `timeline-math.test.ts` (4), `undo-stack.test.ts` (5), `cascade-preview.test.ts` (7); harness `check_load.py` | Failed first (no modules, inline script). Now 227 of 227 pass; `src/ui/*` branches 92.6% to 100%; bundle loads 50, 300, 1,000 rows with 0 page errors and 0 inline scripts; graders pass. Bundler: esbuild 0.25.11 in `tools/` (D-01) | see git log |

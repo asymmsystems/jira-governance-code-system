@@ -1,0 +1,8 @@
+{
+  "name": "cascadeplan-ui-tools",
+  "private": true,
+  "description": "Build tools for the CascadePlan Custom UI bundle, kept apart from the shared app node_modules.",
+  "devDependencies": {
+    "esbuild": "0.25.11"
+  }
+}
