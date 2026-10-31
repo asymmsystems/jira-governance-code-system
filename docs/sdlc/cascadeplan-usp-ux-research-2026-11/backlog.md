@@ -1,4 +1,4 @@
-PENDING OWNER APPROVAL (replace this line with `APPROVED <date> <scope>`, for example `APPROVED 2026-11-02 B-01..B-12`)
+APPROVED 2026-11-01 B-01..B-27 (owner, in chat: "APPROVED today full"; bundler choice delegated; [DEP], [MIGRATE] and [SCOPE] flags approved)
 
 # CascadePlan: ranked backlog
 
