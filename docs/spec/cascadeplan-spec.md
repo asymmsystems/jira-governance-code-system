@@ -39,12 +39,12 @@ The Silverston / OFBiz / Moqui WorkEffort pattern is the storage model. `models.
 
 | Type | Role | Stored fields |
 |---|---|---|
-| `WorkEffort` | One per Jira issue on the plan | `workEffortId` (issue key), `issueId`, `estimatedStartDate`, `estimatedCompletionDate`, `sequenceNum`, `manualProgress`, `percentComplete` (parents with a manual override only) |
+| `WorkEffort` | One per Jira issue on the plan | `workEffortId` (issue key), `issueId`, `estimatedStartDate`, `estimatedCompletionDate`, `sequenceNum`, `manualProgress`, `percentComplete` (only when the user set progress by hand, on a task or a parent) |
 | `WorkEffortAssoc` | Precedence link into this effort | `workEffortIdFrom` (predecessor key), `workEffortIdTo`, `workEffortAssocTypeId` (`FRACTIONAL_MILESTONE`), `triggerPercent` (0 to 100), `jiraLinkId` (the "Blocks" link CascadePlan created, if any) |
 | `WorkEffortPartyAssignment` | Second people on a task (U3) | `partyId` (account id), `displayName`, `roleTypeId` (`CONTRIBUTOR`), `subtaskKey` |
 | `WorkEffortEstimate` | Estimate as the user entered it | `estimateUnit`, `rawEstimate`, `normalizedHours` |
 
-Not stored: summary, status, assignee, Jira original estimate, time spent, leaf progress (INV-04).
+Not stored: summary, status, assignee, Jira original estimate, time spent, and computed progress (INV-04).
 
 `WorkEffortRecord` (one KVS value per issue):
 

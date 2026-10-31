@@ -3151,82 +3151,60 @@ async function saveTaskModalChanges() {
     effortHours = tshirtMap[sz] || 16;
   }
 
-  const updates = { summary, resource, status };
-  if (resourceAccountId) updates.resourceAccountId = resourceAccountId;
-  if (effortHours !== undefined) updates.effortHours = effortHours;
+  // Only fields the user changed are sent (B-04, INV-03).
+  const curTask = (currentPlan?.tasks || []).find(t => t.key === activeTaskId) || {};
+  const updates = {};
+  if (summary && summary !== curTask.summary) updates.summary = summary;
+  if (resource !== (curTask.resource || 'Unassigned')) {
+    updates.resource = resource;
+    if (resourceAccountId) updates.resourceAccountId = resourceAccountId;
+  }
+  if (status !== curTask.status) updates.status = status;
+  if (effortHours !== undefined && effortHours !== (curTask.effortHours || 0)) updates.effortHours = effortHours;
 
   // Progress and Target Progress Inputs
   const progInput = document.getElementById('editProgressInput');
   if (progInput && progInput.value !== '') {
-    const prog = parseInt(progInput.value, 10);
-    if (!isNaN(prog)) {
-      updates.progress = Math.max(0, Math.min(100, prog));
+    const prog = Math.max(0, Math.min(100, parseInt(progInput.value, 10)));
+    if (!isNaN(prog) && (prog !== (curTask.progress || 0) || modalUseRollupProgressFlag)) {
+      updates.progress = prog;
       updates.manualProgress = !modalUseRollupProgressFlag;
-      if (updates.progress === 100 && updates.status !== 'COMPLETED') {
+      const effectiveStatus = updates.status || curTask.status;
+      if (prog === 100 && effectiveStatus !== 'COMPLETED') {
         updates.status = 'COMPLETED';
-      } else if (updates.progress > 0 && updates.status === 'NOT_STARTED') {
+      } else if (prog > 0 && effectiveStatus === 'NOT_STARTED') {
         updates.status = 'IN_PROGRESS';
       }
     }
   }
   const targetInput = document.getElementById('editTargetProgressInput');
   if (targetInput && targetInput.value !== '') {
-    const target = parseInt(targetInput.value, 10);
-    if (!isNaN(target)) updates.targetProgress = Math.max(0, Math.min(100, target));
+    const target = Math.max(0, Math.min(100, parseInt(targetInput.value, 10)));
+    if (!isNaN(target) && target !== (curTask.targetProgress || 0)) updates.targetProgress = target;
   }
 
-  // Start & End Date Inputs
-  const startInput = document.getElementById('editStartDateInput');
-  const endInput = document.getElementById('editEndDateInput');
-  if (startInput && startInput.value) {
-    updates.startDate = startInput.value;
-    if (currentPlan.weeks && currentPlan.weeks.length > 0) {
-      const matchWk = currentPlan.weeks.find(w => {
-        if (!w.startDate || !w.endDate) return false;
-        return startInput.value >= w.startDate.split('T')[0] && startInput.value <= w.endDate.split('T')[0];
-      });
-      if (matchWk) {
-        updates.startWeek = matchWk.weekKey;
-      }
-    }
-  }
-  if (endInput && endInput.value) {
-    updates.endDate = endInput.value;
-    if (updates.startDate) {
-      const startMs = new Date(updates.startDate).getTime();
-      const endMs = new Date(updates.endDate).getTime();
-      if (endMs >= startMs) {
-        updates.spanWeeks = Math.max(1, Math.ceil((endMs - startMs) / (7 * 24 * 3600 * 1000)));
-      }
-    }
+  // Start & End Date Inputs: the resolver keeps the exact dates and derives the week position.
+  const startVal = document.getElementById('editStartDateInput')?.value || '';
+  const endVal = document.getElementById('editEndDateInput')?.value || '';
+  const origStart = (curTask.startDate || '').slice(0, 10);
+  const origEnd = (curTask.endDate || '').slice(0, 10);
+  if ((startVal && startVal !== origStart) || (endVal && endVal !== origEnd)) {
+    if (startVal) updates.startDate = startVal;
+    if (endVal) updates.endDate = endVal;
   }
 
-  const curTask = (currentPlan?.tasks || []).find(t => t.key === activeTaskId);
-  if (predKey) {
-    updates.dependency = {
-      predecessorId: predKey,
-      predecessorKey: predKey,
-      triggerPercent,
-      isTriggerSatisfied: false
-    };
-    const predTask = (currentPlan?.tasks || []).find(t => t.key === predKey);
-    if (predTask && currentPlan?.weeks && currentPlan.weeks.length > 0) {
-      const earliestIdx = calculateClientEarliestStartWeek(predTask, triggerPercent, currentPlan.weeks);
-      const currentStartWk = updates.startWeek || (curTask ? curTask.startWeek : currentPlan.weeks[0].weekKey);
-      const curStartIdx = currentPlan.weeks.findIndex(w => w.weekKey === currentStartWk);
-      if (curStartIdx < earliestIdx) {
-        const span = (updates.spanWeeks || (curTask ? curTask.spanWeeks : 3)) || 3;
-        const newStartWk = currentPlan.weeks[earliestIdx];
-        const endIdx = Math.min(currentPlan.weeks.length - 1, earliestIdx + span - 1);
-        const newEndWk = currentPlan.weeks[endIdx];
-        updates.startWeek = newStartWk.weekKey;
-        updates.endWeek = newEndWk.weekKey;
-        if (newStartWk.startDate) updates.startDate = newStartWk.startDate;
-        if (newEndWk.endDate) updates.endDate = newEndWk.endDate;
-      }
-    }
-  } else {
-    updates.dependency = null;
+  // Dependency: the resolver moves the bar to the earliest allowed week when needed.
+  const origPred = curTask.dependency?.predecessorKey || '';
+  const origTrigger = curTask.dependency?.triggerPercent;
+  if (predKey !== origPred || (predKey && triggerPercent !== origTrigger)) {
+    updates.dependency = predKey
+      ? { predecessorId: predKey, predecessorKey: predKey, triggerPercent, isTriggerSatisfied: false }
+      : null;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    closeModal('taskDetailModal');
+    return;
   }
 
   const btn = document.getElementById('btnSaveTaskModal');

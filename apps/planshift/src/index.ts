@@ -110,6 +110,31 @@ export async function withValidation<T>(fn: () => Promise<T>): Promise<T | Retur
   }
 }
 
+/**
+ * Fields that Jira owns. They are read live on every load and never stored in KVS (INV-04).
+ */
+export const JIRA_OWNED_FIELDS = [
+  'summary', 'status', 'resource', 'resourceAccountId', 'isPlaceholderResource', 'epic', 'epicKey', 'story', 'storyKey',
+  'effortHours', 'parentKey', 'parentId', 'isSubtask', 'isEpic', 'hierarchyLevel', 'id', 'key'
+];
+
+/**
+ * Copy of a stored schedule entry with every Jira-owned field removed. Progress is kept only
+ * when the user set it by hand (manualProgress). Idempotent.
+ */
+export function stripJiraOwnedFields(entry: Partial<WbsTask>): Partial<WbsTask> {
+  const out: Record<string, unknown> = { ...entry };
+  for (const f of JIRA_OWNED_FIELDS) delete out[f];
+  if (out.manualProgress !== true) delete out.progress;
+  if (out.manualProgress === false) delete out.manualProgress;
+  return out as Partial<WbsTask>;
+}
+
+function hasJiraOwnedFields(map: Record<string, Partial<WbsTask>>): boolean {
+  return Object.values(map).some(e => e && (JIRA_OWNED_FIELDS.some(f => (e as any)[f] !== undefined) ||
+    (e.progress !== undefined && e.manualProgress !== true)));
+}
+
 function isIsoDate(v: unknown): v is string {
   return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 }
@@ -372,33 +397,32 @@ export async function fetchLiveJiraIssues(
 
         const calculatedEffortConfig = PlannerEngine.calculateEffortWithSubtasksAndBuffer({
           unit: 'HOURS',
-          rawEstimate: stored?.effortHours !== undefined ? stored.effortHours : effortHours,
+          rawEstimate: effortHours,
           subtasks: finalSubtasks,
           bufferType: 'NONE'
         });
 
         const effortConfig = stored?.effortConfig || calculatedEffortConfig;
-        const totalHours = stored?.effortHours !== undefined
-          ? stored.effortHours
-          : effortConfig.totalCalculatedHours;
+        // The estimate is Jira's original estimate, read live (INV-04).
+        const totalHours = effortHours;
 
         const wbsItem: WbsTask = {
           id,
           key,
-          summary: stored?.summary || summary,
-          epic: stored?.epic || epicName,
-          epicKey: stored?.epicKey || epicKey,
-          story: stored?.story || typeName,
+          summary,
+          epic: epicName,
+          epicKey,
+          story: typeName,
           storyKey: key,
           effortHours: totalHours,
           effortConfig,
-          resource: (stored?.resource || iss.fields?.assignee?.displayName || 'Unassigned'),
-          resourceAccountId: stored?.resourceAccountId || iss.fields?.assignee?.accountId || undefined,
+          resource: iss.fields?.assignee?.displayName || 'Unassigned',
+          resourceAccountId: iss.fields?.assignee?.accountId || undefined,
           contributingResources: stored?.contributingResources,
-          progress: stored?.progress !== undefined ? stored.progress : progress,
+          progress: stored?.manualProgress === true && stored.progress !== undefined ? stored.progress : progress,
           targetProgress: stored?.targetProgress !== undefined ? stored.targetProgress : 0,
           manualProgress: stored?.manualProgress,
-          status: stored?.status || status,
+          status,
           startDate: stored?.startDate || DEFAULT_WEEKS[0]?.startDate || '',
           endDate: stored?.endDate || iss.fields?.duedate || DEFAULT_WEEKS[3]?.endDate || '',
           startWeek: stored?.startWeek,
@@ -410,8 +434,8 @@ export async function fetchLiveJiraIssues(
           isSubtask,
           isEpic,
           hierarchyLevel,
-          parentKey: stored?.parentKey || parentKey,
-          parentId: stored?.parentId || parentId
+          parentKey,
+          parentId
         };
 
         if (wbsItem.startWeek) {
@@ -444,7 +468,14 @@ export async function getProjectPlan(
   const dynamicTimeline = getTimelineWeeks(referenceDate);
   const activeWeeks = dynamicTimeline.weeks;
 
-  const storedScheduleMap = (await storage.get<Record<string, Partial<WbsTask>>>(`scheduleMap:${projectKey}`)) || {};
+  let storedScheduleMap = (await storage.get<Record<string, Partial<WbsTask>>>(`scheduleMap:${projectKey}`)) || {};
+  if (hasJiraOwnedFields(storedScheduleMap)) {
+    // One-time migration: entries written before B-04 held Jira-owned fields (approved [MIGRATE]).
+    const migrated: Record<string, Partial<WbsTask>> = {};
+    for (const [k, v] of Object.entries(storedScheduleMap)) migrated[k] = stripJiraOwnedFields(v);
+    await storage.set(`scheduleMap:${projectKey}`, migrated);
+    storedScheduleMap = migrated;
+  }
   const storedMilestones = (await storage.get<ProjectMilestone[]>(`milestones:${projectKey}`)) || [];
   const storedWidths = (await storage.get<ColumnWidthConfig>(`colWidths:${projectKey}`)) || DEFAULT_COLUMN_WIDTHS;
   const storedHiddenColumns = (await storage.get<string[]>(`hiddenColumns:${projectKey}`)) || [];
@@ -605,9 +636,9 @@ export async function scheduleBacklogTask(
     endDate: DEFAULT_WEEKS[endIdx].endDate,
     weeklyAllocations: allocations
   };
-  // Only values the user entered in this action are stored (INV-03).
-  if (effortHours !== undefined) scheduleMap[taskId].effortHours = effortHours;
-  if (resource) scheduleMap[taskId].resource = resource;
+  // Estimate and assignee are Jira-owned: an entered estimate goes to Jira, never to KVS (INV-04).
+  scheduleMap[taskId] = stripJiraOwnedFields(scheduleMap[taskId]);
+  void resource;
 
   await storage.set(`scheduleMap:${projectKey}`, scheduleMap);
 
@@ -763,20 +794,14 @@ export async function createInlineTask(
   }
 
   scheduleMap[jiraIssueKey] = {
-    summary,
-    epic: epic || 'General',
-    epicKey,
-    story: story || 'Task',
     startWeek: assignedStartWeek,
     endWeek,
     spanWeeks,
     startDate: DEFAULT_WEEKS[startIdx].startDate,
     endDate: DEFAULT_WEEKS[endIdx].endDate,
-    resource,
-    resourceAccountId,
     weeklyAllocations: allocations
   };
-  if (effortHours !== undefined) scheduleMap[jiraIssueKey].effortHours = effortHours;
+  void epic; void story; void resource;
 
   await storage.set(`scheduleMap:${projectKey}`, scheduleMap);
 
@@ -901,6 +926,11 @@ export async function syncTaskToJira(
     fields.timetracking = {
       originalEstimate: `${updates.effortHours}h`
     };
+  }
+
+  if (updates.epicKey !== undefined) {
+    // The epic link is the Jira parent; an empty key removes it.
+    fields.parent = updates.epicKey ? { key: updates.epicKey } : null;
   }
 
   if (updates.resourceAccountId) {
@@ -1084,10 +1114,9 @@ export async function updateWbsTask(
   if (sanitized.progress !== undefined) {
     const rawP = Number(sanitized.progress);
     sanitized.progress = isNaN(rawP) ? 0 : Math.max(0, Math.min(100, Math.round(rawP)));
+    // A progress the user sets by hand is stored as manual; "Use rollup" sends manualProgress false.
     if (sanitized.manualProgress === undefined) {
-      if (targetTask.isEpic || (targetTask.childrenCount && targetTask.childrenCount > 0)) {
-        sanitized.manualProgress = true;
-      }
+      sanitized.manualProgress = true;
     }
     if (sanitized.progress === 100) {
       sanitized.status = 'COMPLETED';
@@ -1187,8 +1216,6 @@ export async function updateWbsTask(
     if (!sanitized.weeklyAllocations) {
       sanitized.weeklyAllocations = evenAllocations(activeWeeks, sIdx, span);
     }
-  } else if (!sanitized.endDate && targetTask.endDate) {
-    sanitized.endDate = targetTask.endDate;
   }
 
   const scheduleMap = (await storage.get<Record<string, Partial<WbsTask>>>(`scheduleMap:${projectKey}`)) || {};
@@ -1210,11 +1237,11 @@ export async function updateWbsTask(
     sanitized.manualProgress = current.manualProgress !== undefined ? current.manualProgress : targetTask.manualProgress;
   }
 
-  scheduleMap[targetTask.key] = {
+  scheduleMap[targetTask.key] = stripJiraOwnedFields({
     ...current,
     ...sanitized,
     version: currentVersion + 1
-  };
+  });
 
   // Cascade schedule shifts to dependent tasks
   if (sanitized.startWeek || sanitized.spanWeeks || sanitized.dependency) {
@@ -1276,9 +1303,10 @@ export async function updateWbsTask(
           endWeek: activeWeeks[maxEndIdx].weekKey,
           startDate: activeWeeks[minStartIdx].startDate,
           endDate: activeWeeks[maxEndIdx].endDate,
-          spanWeeks: maxEndIdx - minStartIdx + 1,
-          progress: curParent.manualProgress ? (curParent.progress ?? 0) : (totalHours > 0 ? Math.round((completedHours / totalHours) * 100) : 0)
+          spanWeeks: maxEndIdx - minStartIdx + 1
         };
+        // A computed roll-up is derived on every load and is not stored (INV-04).
+        void totalHours; void completedHours;
         await syncTaskToJira(pKey, { endDate: activeWeeks[maxEndIdx].endDate });
       }
     }
@@ -1422,17 +1450,11 @@ export async function createSubtaskForResource(
 
   const scheduleMap = (await storage.get<Record<string, Partial<WbsTask>>>(`scheduleMap:${projectKey}`)) || {};
   scheduleMap[createdKey] = {
-    summary,
-    parentKey,
-    isSubtask: true,
     startWeek: assignedStart,
     endWeek: activeWeeks[eIdx].weekKey,
     startDate: activeWeeks[sIdx].startDate,
     endDate: activeWeeks[eIdx].endDate,
     spanWeeks,
-    effortHours,
-    resource,
-    resourceAccountId,
     weeklyAllocations: allocations
   };
 

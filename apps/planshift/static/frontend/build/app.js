@@ -6082,24 +6082,6 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return new SafeHtml(out);
   }
 
-  // src/ui/cascade-preview.ts
-  function earliestStartWeek(pred, triggerPercent, weeks) {
-    if (!pred || weeks.length === 0) return 0;
-    const startIdx = Math.max(0, weeks.findIndex((w) => w.weekKey === pred.startWeek));
-    const span = Math.max(1, pred.spanWeeks || 1);
-    const endIdx = Math.min(weeks.length - 1, startIdx + span - 1);
-    const trigger = typeof triggerPercent === "number" && !isNaN(triggerPercent) ? triggerPercent : 30;
-    let cumulative = 0;
-    let reached = startIdx;
-    for (let i = startIdx; i <= endIdx; i++) {
-      const alloc = pred.weeklyAllocations ? pred.weeklyAllocations[weeks[i].weekKey] : void 0;
-      cumulative += typeof alloc === "number" ? alloc : 100 / span;
-      reached = i;
-      if (cumulative >= trigger) return Math.min(weeks.length - 1, i + 1);
-    }
-    return Math.min(weeks.length - 1, reached + 1);
-  }
-
   // src/ui/timeline-math.ts
   function deltaWeeksFromPixels(deltaX, weekWidth) {
     const weeks = Math.round(deltaX / weekWidth);
@@ -8414,7 +8396,6 @@ Click to manage or assign.`;
       window.addEventListener("mouseup", onMouseUp);
     });
   }
-  var calculateClientEarliestStartWeek = earliestStartWeek;
   function renderDependencySvgOverlay() {
     const svg = document.getElementById("dependencySvgLayer");
     if (!svg) return;
@@ -8823,77 +8804,50 @@ Click to manage or assign.`;
       const tshirtMap = { XS: 4, S: 8, M: 16, L: 32, XL: 64 };
       effortHours = tshirtMap[sz] || 16;
     }
-    const updates = { summary, resource, status };
-    if (resourceAccountId) updates.resourceAccountId = resourceAccountId;
-    if (effortHours !== void 0) updates.effortHours = effortHours;
+    const curTask = (currentPlan?.tasks || []).find((t) => t.key === activeTaskId) || {};
+    const updates = {};
+    if (summary && summary !== curTask.summary) updates.summary = summary;
+    if (resource !== (curTask.resource || "Unassigned")) {
+      updates.resource = resource;
+      if (resourceAccountId) updates.resourceAccountId = resourceAccountId;
+    }
+    if (status !== curTask.status) updates.status = status;
+    if (effortHours !== void 0 && effortHours !== (curTask.effortHours || 0)) updates.effortHours = effortHours;
     const progInput = document.getElementById("editProgressInput");
     if (progInput && progInput.value !== "") {
-      const prog = parseInt(progInput.value, 10);
-      if (!isNaN(prog)) {
-        updates.progress = Math.max(0, Math.min(100, prog));
+      const prog = Math.max(0, Math.min(100, parseInt(progInput.value, 10)));
+      if (!isNaN(prog) && (prog !== (curTask.progress || 0) || modalUseRollupProgressFlag)) {
+        updates.progress = prog;
         updates.manualProgress = !modalUseRollupProgressFlag;
-        if (updates.progress === 100 && updates.status !== "COMPLETED") {
+        const effectiveStatus = updates.status || curTask.status;
+        if (prog === 100 && effectiveStatus !== "COMPLETED") {
           updates.status = "COMPLETED";
-        } else if (updates.progress > 0 && updates.status === "NOT_STARTED") {
+        } else if (prog > 0 && effectiveStatus === "NOT_STARTED") {
           updates.status = "IN_PROGRESS";
         }
       }
     }
     const targetInput = document.getElementById("editTargetProgressInput");
     if (targetInput && targetInput.value !== "") {
-      const target = parseInt(targetInput.value, 10);
-      if (!isNaN(target)) updates.targetProgress = Math.max(0, Math.min(100, target));
+      const target = Math.max(0, Math.min(100, parseInt(targetInput.value, 10)));
+      if (!isNaN(target) && target !== (curTask.targetProgress || 0)) updates.targetProgress = target;
     }
-    const startInput = document.getElementById("editStartDateInput");
-    const endInput = document.getElementById("editEndDateInput");
-    if (startInput && startInput.value) {
-      updates.startDate = startInput.value;
-      if (currentPlan.weeks && currentPlan.weeks.length > 0) {
-        const matchWk = currentPlan.weeks.find((w) => {
-          if (!w.startDate || !w.endDate) return false;
-          return startInput.value >= w.startDate.split("T")[0] && startInput.value <= w.endDate.split("T")[0];
-        });
-        if (matchWk) {
-          updates.startWeek = matchWk.weekKey;
-        }
-      }
+    const startVal = document.getElementById("editStartDateInput")?.value || "";
+    const endVal = document.getElementById("editEndDateInput")?.value || "";
+    const origStart = (curTask.startDate || "").slice(0, 10);
+    const origEnd = (curTask.endDate || "").slice(0, 10);
+    if (startVal && startVal !== origStart || endVal && endVal !== origEnd) {
+      if (startVal) updates.startDate = startVal;
+      if (endVal) updates.endDate = endVal;
     }
-    if (endInput && endInput.value) {
-      updates.endDate = endInput.value;
-      if (updates.startDate) {
-        const startMs = new Date(updates.startDate).getTime();
-        const endMs = new Date(updates.endDate).getTime();
-        if (endMs >= startMs) {
-          updates.spanWeeks = Math.max(1, Math.ceil((endMs - startMs) / (7 * 24 * 3600 * 1e3)));
-        }
-      }
+    const origPred = curTask.dependency?.predecessorKey || "";
+    const origTrigger = curTask.dependency?.triggerPercent;
+    if (predKey !== origPred || predKey && triggerPercent !== origTrigger) {
+      updates.dependency = predKey ? { predecessorId: predKey, predecessorKey: predKey, triggerPercent, isTriggerSatisfied: false } : null;
     }
-    const curTask = (currentPlan?.tasks || []).find((t) => t.key === activeTaskId);
-    if (predKey) {
-      updates.dependency = {
-        predecessorId: predKey,
-        predecessorKey: predKey,
-        triggerPercent,
-        isTriggerSatisfied: false
-      };
-      const predTask = (currentPlan?.tasks || []).find((t) => t.key === predKey);
-      if (predTask && currentPlan?.weeks && currentPlan.weeks.length > 0) {
-        const earliestIdx = calculateClientEarliestStartWeek(predTask, triggerPercent, currentPlan.weeks);
-        const currentStartWk = updates.startWeek || (curTask ? curTask.startWeek : currentPlan.weeks[0].weekKey);
-        const curStartIdx = currentPlan.weeks.findIndex((w) => w.weekKey === currentStartWk);
-        if (curStartIdx < earliestIdx) {
-          const span = updates.spanWeeks || (curTask ? curTask.spanWeeks : 3) || 3;
-          const newStartWk = currentPlan.weeks[earliestIdx];
-          const endIdx = Math.min(currentPlan.weeks.length - 1, earliestIdx + span - 1);
-          const newEndWk = currentPlan.weeks[endIdx];
-          updates.startWeek = newStartWk.weekKey;
-          updates.endWeek = newEndWk.weekKey;
-          if (newStartWk.startDate) updates.startDate = newStartWk.startDate;
-          if (newEndWk.endDate) updates.endDate = newEndWk.endDate;
-        }
-      }
-    } else {
-      updates.dependency = null;
+    if (Object.keys(updates).length === 0) {
+      closeModal("taskDetailModal");
+      return;
     }
     const btn = document.getElementById("btnSaveTaskModal");
     if (btn) {

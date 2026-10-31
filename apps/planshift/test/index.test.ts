@@ -517,7 +517,8 @@ describe('CascadePlan Index & Resolver Tests', () => {
       );
 
       expect(res.success).toBe(true);
-      expect(res.task?.epic).toBe('General');
+      // Epic is read live from Jira; no "General" label is invented (B-04).
+      expect(res.task?.epic).toBe('');
       expect(res.task?.story).toBe('Task');
       // No estimate is invented for an unestimated issue (B-03).
       expect(res.task?.effortHours).toBe(0);
@@ -662,7 +663,10 @@ describe('CascadePlan Index & Resolver Tests', () => {
 
       const modified = updatedPlan.tasks.find(t => t.key === 'TEST-1');
       expect(modified?.progress).toBe(85);
-      expect(modified?.effortHours).toBe(80);
+      // The estimate goes to Jira; the plan shows Jira's value read live (B-04).
+      const estimatePut = mockRequestJira.mock.calls.find(c => c[1]?.method === 'PUT' && String(c[0]).endsWith('/issue/TEST-1'));
+      expect(JSON.parse(estimatePut[1].body).fields.timetracking).toEqual({ originalEstimate: '80h' });
+      expect(modified?.effortHours).toBe(40);
     });
 
     it('updates a task located by its Jira ID', async () => {
@@ -690,7 +694,9 @@ describe('CascadePlan Index & Resolver Tests', () => {
       );
 
       const modified = updatedPlan.backlogTasks!.find(t => t.key === 'TEST-3');
-      expect(modified?.effortHours).toBe(24);
+      expect(modified).toBeDefined();
+      const estimatePut = mockRequestJira.mock.calls.find(c => c[1]?.method === 'PUT' && String(c[0]).endsWith('/issue/TEST-3'));
+      expect(JSON.parse(estimatePut[1].body).fields.timetracking).toEqual({ originalEstimate: '24h' });
     });
 
     it('derives startDate, endDate, and weeklyAllocations dynamically when startWeek or spanWeeks is updated', async () => {
@@ -1032,7 +1038,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
       const successor = updatedPlan.tasks.find(t => t.key === 'TEST-2');
       expect(successor?.dependency?.isTriggerSatisfied).toBe(false);
       expect(successor?.dependency?.isViolated).toBe(true);
-      expect(successor?.dependency?.violationReason).toContain('threshold: 90%');
+      expect(successor?.dependency?.violationReason).toContain('90%');
     });
 
     it('saves dependency when target task is located by its ID', async () => {
@@ -1668,7 +1674,9 @@ describe('CascadePlan Index & Resolver Tests', () => {
 
       expect(res.success).toBe(true);
       expect(res.subtask?.key).toBe('TEST-99');
-      expect(res.subtask?.resource).toBe('Jane Engineer');
+      // The second person is the Jira assignee of the new sub-task (read live, not stored).
+      const createCall = mockRequestJira.mock.calls.find(c => c[1]?.method === 'POST' && String(c[0]).endsWith('/rest/api/3/issue'));
+      expect(JSON.parse(createCall[1].body).fields.assignee).toEqual({ accountId: 'user-jane' });
 
       // Test with empty scheduleMap
       await mockStorage.delete('scheduleMap:TEST');
@@ -2236,11 +2244,9 @@ describe('CascadePlan Index & Resolver Tests', () => {
     });
 
     it('merges scheduled Epics from tasks into availableEpics', async () => {
+      // TEST-4 is an Epic in Jira; once scheduled it joins the epic list.
       await mockStorage.set('scheduleMap:TEST', {
-        'TEST-E50': {
-          summary: 'Special Scheduled Epic',
-          isEpic: true,
-          hierarchyLevel: 1,
+        'TEST-4': {
           startWeek: DEFAULT_WEEKS[0].weekKey,
           endWeek: DEFAULT_WEEKS[2].weekKey,
           spanWeeks: 3
@@ -2248,7 +2254,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
       });
 
       const plan = await getProjectPlan('TEST', mockStorage);
-      expect(plan.availableEpics?.some(e => e.key === 'TEST-E50')).toBe(true);
+      expect(plan.availableEpics?.some(e => e.key === 'TEST-4')).toBe(true);
     });
 
     it('saves task dependency when target task is in backlogTasks', async () => {
@@ -2284,7 +2290,8 @@ describe('CascadePlan Index & Resolver Tests', () => {
       }, mockStorage);
 
       const task1 = plan.tasks.find(t => t.key === 'TEST-1');
-      expect(task1?.resource).toBe('Lead Engineer');
+      // The assignee is read live from Jira; a name without an account id changes nothing in Jira.
+      expect(task1?.resource).toBe('Fahim Farook');
       expect(task1?.contributingResources).toEqual(expect.arrayContaining(['Lead Engineer', 'Peer Dev', 'QA Lead']));
 
       // Now update another field without contributingResources - it should preserve existing
@@ -2338,7 +2345,8 @@ describe('CascadePlan Index & Resolver Tests', () => {
 
       const task1 = plan.tasks.find(t => t.key === 'TEST-1');
       expect(task1?.progress).toBe(100);
-      expect(task1?.status).toBe('COMPLETED');
+      // Status is Jira-owned: the resolver asks Jira for the transitions to Done (B-04).
+      expect(mockRequestJira.mock.calls.some(c => String(c[0]).endsWith('/issue/TEST-1/transitions'))).toBe(true);
     });
 
     it('auto-transitions status to IN_PROGRESS when progress is greater than 0 on NOT_STARTED task', async () => {

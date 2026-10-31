@@ -94,7 +94,7 @@ Opportunity IDs O1 to O10 come from `ux-spec.md` section 5.2 (research round 3).
 - **Acceptance criteria:**
   1. After a Jira-side change of summary, status, assignee or estimate, the next `getProjectPlan` returns the Jira value even when a stored entry exists. (Resolver.)
   2. The modal sends only the fields the user changed. Opening and saving with no edit sends no write. (Playwright: payload diff.)
-  3. `manualProgress` becomes true only when the user edits progress on a parent. (UI module + Resolver.)
+  3. `manualProgress` and a stored percent are set only when the user changes progress (on a task or a parent); a form save that does not change progress never sets them. Clarified 2026-11-01 during the build: U5 and benchmark task 4 need progress on tasks too, and NF-06 was about every save setting the flag. (UI module + Resolver.)
   4. The migration is idempotent, and the plan renders the same before and after it, apart from the dropped fields. (Resolver.)
 - **Size:** M.
 
