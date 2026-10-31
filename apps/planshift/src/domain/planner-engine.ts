@@ -141,7 +141,7 @@ export class PlannerEngine {
     successorKey: string,
     predecessorKey: string,
     triggerPercent: number,
-    existingTasks: { key: string; dependency?: TaskDependency }[] = []
+    existingTasks: { key: string; dependency?: TaskDependency | null }[] = []
   ): { valid: boolean; error?: string } {
     if (typeof triggerPercent !== 'number' || isNaN(triggerPercent) || triggerPercent < 0 || triggerPercent > 100) {
       return {

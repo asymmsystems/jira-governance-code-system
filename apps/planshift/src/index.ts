@@ -375,8 +375,10 @@ export async function fetchLiveJiraIssues(
 
         const stored = storedScheduleMap[key] || storedScheduleMap[id];
 
-        let liveDependency: TaskDependency | undefined = stored?.dependency;
-        if (!liveDependency && Array.isArray(iss.fields?.issuelinks)) {
+        // A stored null means the user removed the dependency; a Jira link must not bring it back.
+        const dependencyRemoved = stored ? stored.dependency === null : false;
+        let liveDependency: TaskDependency | undefined = stored?.dependency || undefined;
+        if (!liveDependency && !dependencyRemoved && Array.isArray(iss.fields?.issuelinks)) {
           const blockLink = iss.fields.issuelinks.find((link: any) => {
             const typeName = link.type?.name?.toLowerCase();
             return (typeName === 'blocks' || typeName === 'dependency') && link.inwardIssue?.key;
@@ -1051,13 +1053,32 @@ export async function syncTaskToJira(
 }
 
 /**
- * Mirrors dependency links into native Jira issue links.
+ * Id of the "Blocks" link from the predecessor to the successor, if Jira has one.
+ */
+async function findBlocksLinkId(successorKey: string, predecessorKey: string): Promise<string | undefined> {
+  try {
+    const res = await getJiraCaller().requestJira(route`/rest/api/3/issue/${successorKey}?fields=issuelinks`);
+    if (res && res.status === 200) {
+      const data = await res.json();
+      const link = (data?.fields?.issuelinks || []).find((l: any) =>
+        String(l.type?.name || '').toLowerCase() === 'blocks' && l.inwardIssue?.key === predecessorKey);
+      return link ? String(link.id) : undefined;
+    }
+  } catch {}
+  return undefined;
+}
+
+/**
+ * Mirrors a dependency into a native Jira "Blocks" link. Reuses an existing link, so saving the
+ * same dependency twice creates one link, and returns the link id.
  */
 export async function mirrorDependencyToJira(
   successorKey: string,
   predecessorKey: string
-): Promise<{ linked: boolean; error?: string }> {
+): Promise<{ linked: boolean; linkId?: string; created?: boolean; error?: string }> {
   try {
+    const existing = await findBlocksLinkId(successorKey, predecessorKey);
+    if (existing) return { linked: true, linkId: existing, created: false };
     const body = {
       type: { name: 'Blocks' },
       inwardIssue: { key: predecessorKey },
@@ -1069,9 +1090,22 @@ export async function mirrorDependencyToJira(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-    return { linked: res?.status === 201 };
+    if (res?.status !== 201) return { linked: false };
+    return { linked: true, linkId: await findBlocksLinkId(successorKey, predecessorKey), created: true };
   } catch (err: any) {
     return { linked: false, error: err?.message };
+  }
+}
+
+/**
+ * Deletes a Jira issue link by id. Used only for links that CascadePlan created.
+ */
+export async function removeMirroredLink(linkId: string): Promise<boolean> {
+  try {
+    const res = await getJiraCaller().requestJira(route`/rest/api/3/issueLink/${linkId}`, { method: 'DELETE' });
+    return res?.status === 204 || res?.status === 200;
+  } catch {
+    return false;
   }
 }
 
@@ -1144,15 +1178,27 @@ export async function updateWbsTask(
       if (!validation.valid) {
         throw new Error(validation.error);
       }
+      const previous = targetTask.dependency;
+      if (previous && previous.jiraLinkId && previous.predecessorKey !== predKey) {
+        await removeMirroredLink(previous.jiraLinkId);
+      }
+      const mirror = await mirrorDependencyToJira(targetTask.key, predKey);
       sanitized.dependency = {
         predecessorId: predKey,
         predecessorKey: predKey,
         triggerPercent,
         isTriggerSatisfied: false
       };
-      await mirrorDependencyToJira(targetTask.key, predKey);
+      // Remember the link only when CascadePlan created it (or already owned it).
+      const ownedLinkId = mirror.created ? mirror.linkId
+        : (previous && previous.predecessorKey === predKey ? previous.jiraLinkId : undefined);
+      if (ownedLinkId) sanitized.dependency.jiraLinkId = ownedLinkId;
     } else {
-      sanitized.dependency = undefined;
+      // Explicit removal: delete only the link CascadePlan created, and keep a null so that
+      // a Jira link the user made does not bring the dependency back (NF-02).
+      const previous = targetTask.dependency;
+      if (previous && previous.jiraLinkId) await removeMirroredLink(previous.jiraLinkId);
+      sanitized.dependency = null;
     }
   }
 
@@ -1223,8 +1269,8 @@ export async function updateWbsTask(
   const currentVersion = (current as any).version || 0;
 
   // Preserve existing dependency if updates didn't explicitly modify or clear it
-  if (sanitized.dependency === undefined && (current.dependency || targetTask.dependency)) {
-    sanitized.dependency = current.dependency || targetTask.dependency;
+  if (sanitized.dependency === undefined && current.dependency === undefined && targetTask.dependency) {
+    sanitized.dependency = targetTask.dependency;
   }
 
   // Preserve existing contributingResources if updates didn't explicitly modify or clear it
@@ -1555,18 +1601,21 @@ export async function saveTaskDependency(
     throw new Error(validation.error);
   }
 
+  // Mirror dependency to a native Jira issue link (reused when it already exists)
+  const mirror = await mirrorDependencyToJira(targetTask.key, dependency.predecessorKey);
+  const previous = targetTask.dependency;
+  const ownedLinkId = mirror.created ? mirror.linkId
+    : (previous && previous.predecessorKey === dependency.predecessorKey ? previous.jiraLinkId : undefined);
+
   const scheduleMap = (await storage.get<Record<string, Partial<WbsTask>>>(`scheduleMap:${projectKey}`)) || {};
   const current = scheduleMap[targetTask.key] || {};
   scheduleMap[targetTask.key] = {
     ...current,
-    dependency
+    dependency: ownedLinkId ? { ...dependency, jiraLinkId: ownedLinkId } : dependency
   };
 
   await storage.set(`scheduleMap:${projectKey}`, scheduleMap);
   await storage.set(`ps:${projectKey}:task:${targetTask.key}`, scheduleMap[targetTask.key]);
-
-  // Mirror dependency to native Jira issue link
-  await mirrorDependencyToJira(targetTask.key, dependency.predecessorKey);
 
   return await getProjectPlan(projectKey, storage);
 }

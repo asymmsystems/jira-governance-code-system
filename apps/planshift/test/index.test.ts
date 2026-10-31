@@ -1574,11 +1574,12 @@ describe('CascadePlan Index & Resolver Tests', () => {
     });
 
     it('mirrorDependencyToJira handles non-201 response and network errors', async () => {
-      mockRequestJira.mockResolvedValueOnce({ status: 404 });
+      // First call looks for an existing link, second call creates one (B-06).
+      mockRequestJira.mockResolvedValueOnce({ status: 404 }).mockResolvedValueOnce({ status: 404 });
       const res1 = await mirrorDependencyToJira('TEST-2', 'TEST-1');
       expect(res1.linked).toBe(false);
 
-      mockRequestJira.mockRejectedValueOnce(new Error('Link error'));
+      mockRequestJira.mockRejectedValueOnce(new Error('Lookup error')).mockRejectedValueOnce(new Error('Link error'));
       const res2 = await mirrorDependencyToJira('TEST-2', 'TEST-1');
       expect(res2.linked).toBe(false);
       expect(res2.error).toBe('Link error');

@@ -60,6 +60,7 @@ export interface TaskDependency {
   earliestStartDate?: string;
   earliestStartReason?: string;
   notes?: string;
+  jiraLinkId?: string; // id of the "Blocks" link that CascadePlan created for this dependency
 }
 
 export interface WbsTask {
@@ -84,7 +85,7 @@ export interface WbsTask {
   endWeek?: string;       // weekKey, e.g. "26-Aug"
   spanWeeks?: number;     // number of weeks duration
   weeklyAllocations?: Record<string, number>; // weekKey -> % of week effort (e.g. { '15-Jul': 50 })
-  dependency?: TaskDependency;
+  dependency?: TaskDependency | null; // null: the user removed it; a Jira link must not bring it back
   isBacklog?: boolean;
   subtasks?: SubtaskItem[];
   parentId?: string;
