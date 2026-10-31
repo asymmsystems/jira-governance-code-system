@@ -175,6 +175,21 @@ export interface ProjectPlanState {
   isLiveSynced?: boolean;
   siteUrl?: string;
   hiddenColumns?: string[];
+  ok?: boolean;                     // set by write resolvers (B-07)
+  jiraSync?: JiraSyncReport;        // set by write resolvers (B-07)
+}
+
+export interface JiraWriteRecord {
+  key: string;
+  fields: string[];
+  ok: boolean;
+  error?: string;
+}
+
+export interface JiraSyncReport {
+  ok: boolean;
+  error?: string;
+  writes: JiraWriteRecord[];
 }
 
 export interface ResourceProjectAllocation {

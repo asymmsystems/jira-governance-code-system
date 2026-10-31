@@ -1193,3 +1193,8 @@ body { font-family: var(--ds-font); color: var(--ds-text); background: #F4F5F7; 
 }
 
 
+
+/* Error banner for failed writes (B-07). Stays until dismissed. */
+.sync-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 8px 16px; padding: 10px 14px;
+  background: var(--ds-danger-subtle); border: 1px solid var(--ds-danger); border-radius: 6px; color: #AE2E24; font-size: 13px; font-weight: 600; }
+.sync-banner[hidden] { display: none; }

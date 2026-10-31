@@ -10,17 +10,26 @@
  */
 
 import { invoke, router } from '@forge/bridge';
+import { classifyResult } from '../ui/result';
+import { showErrorBanner } from './banner';
 
 /**
- * Calls a resolver. Returns null when the call fails, as the planner expects today.
+ * Calls a resolver. A thrown call becomes { ok: false, error }, and every failed write
+ * (ok false, success false, or a failed Jira sync) shows the error banner (B-07, INV-05).
  */
 export async function callResolver(fnName: string, payload: Record<string, unknown> = {}): Promise<any> {
+  let res: any;
   try {
-    return await invoke(fnName, payload);
-  } catch (err) {
+    res = await invoke(fnName, payload);
+  } catch (err: any) {
     console.error('Forge resolver error:', fnName, err);
-    return null;
+    res = { ok: false, error: err?.message || 'The planner could not reach Jira.' };
   }
+  if (!fnName.startsWith('get')) {
+    const verdict = classifyResult(res);
+    if (verdict.failed && verdict.message) showErrorBanner(verdict.message);
+  }
+  return res;
 }
 
 /**

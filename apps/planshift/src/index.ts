@@ -26,6 +26,8 @@ import {
   SubtaskItem,
   TaskEffortConfig,
   EstimateUnit,
+  JiraSyncReport,
+  JiraWriteRecord,
   CURRENT_WEEK_INDEX,
   DEFAULT_STORY_POINT_RATIO
 } from './domain/models';
@@ -108,6 +110,35 @@ export async function withValidation<T>(fn: () => Promise<T>): Promise<T | Retur
     if (result) return result;
     throw err;
   }
+}
+
+/**
+ * Collects the result of every Jira write that one resolver call makes (B-07, INV-05).
+ */
+export class SyncLog {
+  private readonly writes: JiraWriteRecord[] = [];
+
+  record(key: string, fields: string[], result: { synced: boolean; error?: string }): void {
+    if (!fields || fields.length === 0) return;
+    const entry: JiraWriteRecord = { key, fields, ok: result.synced };
+    if (!result.synced) entry.error = result.error || 'Jira rejected the change';
+    this.writes.push(entry);
+  }
+
+  report(): JiraSyncReport {
+    const failed = this.writes.filter(w => !w.ok);
+    const out: JiraSyncReport = { ok: failed.length === 0, writes: [...this.writes] };
+    if (failed.length > 0) out.error = failed.map(w => `${w.key}: ${w.error}`).join('; ');
+    return out;
+  }
+}
+
+function noJiraWrites(): JiraSyncReport {
+  return { ok: true, writes: [] };
+}
+
+function failedCreate(error: string): JiraSyncReport {
+  return { ok: false, error, writes: [{ key: 'new issue', fields: ['create'], ok: false, error }] };
 }
 
 /**
@@ -656,12 +687,13 @@ export async function scheduleBacklogTask(
   await storage.set(`taskOrder:${projectKey}`, filteredOrder);
 
   // Sync scheduled due date and effort back to Jira issue
+  const log = new SyncLog();
   await syncTaskToJira(taskId, {
     endDate: DEFAULT_WEEKS[endIdx].endDate,
     effortHours
-  });
+  }, log);
 
-  return await getProjectPlan(projectKey, storage);
+  return Object.assign(await getProjectPlan(projectKey, storage), { ok: true, jiraSync: log.report() });
 }
 
 /**
@@ -711,7 +743,7 @@ export async function resolveProjectIssueType(
 export async function createInlineTask(
   request: InlineTaskCreateRequest,
   storageProvider?: StorageProvider
-): Promise<{ success: boolean; task?: WbsTask; plan?: ProjectPlanState; error?: string }> {
+): Promise<{ success: boolean; ok: boolean; jiraSync: JiraSyncReport; task?: WbsTask; plan?: ProjectPlanState; error?: string }> {
   const currentWeekKey = DEFAULT_WEEKS.find(w => w.isCurrentWeek)?.weekKey || DEFAULT_WEEKS[0].weekKey;
   const {
     projectKey, epic, epicKey, story, summary, effortHours,
@@ -772,14 +804,15 @@ export async function createInlineTask(
           errMsg = Object.values(errJson.errors).join(', ');
         }
       } catch {}
-      return { success: false, error: errMsg };
+      return { success: false, ok: false, error: errMsg, jiraSync: failedCreate(errMsg) };
     }
 
     const data = await res.json();
     jiraIssueId = String(data.id);
     jiraIssueKey = String(data.key);
   } catch (err: any) {
-    return { success: false, error: err?.message || 'Network error while contacting Jira' };
+    const message = err?.message || 'Network error while contacting Jira';
+    return { success: false, ok: false, error: message, jiraSync: failedCreate(message) };
   }
 
   const storage = resolveStorage(storageProvider);
@@ -819,17 +852,18 @@ export async function createInlineTask(
   await storage.set(`taskOrder:${projectKey}`, filteredOrder);
 
   // Sync scheduled due date and effort back to Jira
+  const log = new SyncLog();
   await syncTaskToJira(jiraIssueKey, {
     endDate: DEFAULT_WEEKS[endIdx].endDate,
     effortHours,
     resourceAccountId,
     epicKey
-  });
+  }, log);
 
   const plan = await getProjectPlan(projectKey, storage);
   const createdTask = plan.tasks.find(t => t.key === jiraIssueKey) || plan.tasks[0];
 
-  return { success: true, task: createdTask, plan };
+  return { success: true, ok: true, jiraSync: log.report(), task: createdTask, plan };
 }
 
 /**
@@ -838,7 +872,7 @@ export async function createInlineTask(
 export async function createJiraEpic(
   payload: { projectKey: string; summary: string },
   storageProvider?: StorageProvider
-): Promise<{ success: boolean; epic?: JiraEpicItem; error?: string }> {
+): Promise<{ success: boolean; ok: boolean; jiraSync: JiraSyncReport; epic?: JiraEpicItem; error?: string }> {
   const { projectKey, summary } = payload;
   try {
     let res: any;
@@ -891,19 +925,19 @@ export async function createJiraEpic(
           errMsg = Object.values(errJson.errors).join(', ');
         }
       } catch {}
-      return { success: false, error: errMsg };
+      return { success: false, ok: false, error: errMsg, jiraSync: failedCreate(errMsg) };
     }
 
     const data = await res.json();
     return {
       success: true,
+      ok: true,
+      jiraSync: { ok: true, writes: [{ key: String(data.key), fields: ['create'], ok: true }] },
       epic: { id: String(data.id), key: String(data.key), summary }
     };
   } catch (err: any) {
-    return {
-      success: false,
-      error: err?.message || 'Network error while contacting Jira'
-    };
+    const message = err?.message || 'Network error while contacting Jira';
+    return { success: false, ok: false, error: message, jiraSync: failedCreate(message) };
   }
 }
 
@@ -912,8 +946,18 @@ export async function createJiraEpic(
  */
 export async function syncTaskToJira(
   taskIdOrKey: string,
+  updates: Partial<WbsTask>,
+  log?: SyncLog
+): Promise<{ synced: boolean; error?: string; fields: string[] }> {
+  const result = await syncTaskFields(taskIdOrKey, updates);
+  if (log) log.record(taskIdOrKey, result.fields, result);
+  return result;
+}
+
+async function syncTaskFields(
+  taskIdOrKey: string,
   updates: Partial<WbsTask>
-): Promise<{ synced: boolean; error?: string }> {
+): Promise<{ synced: boolean; error?: string; fields: string[] }> {
   const fields: Record<string, any> = {};
 
   if (updates.summary && typeof updates.summary === 'string' && updates.summary.trim()) {
@@ -1019,10 +1063,11 @@ export async function syncTaskToJira(
         }
       }
     } catch (err: any) {
-      return { synced: false, error: err?.message || 'Network error updating Jira issue' };
+      return { synced: false, error: err?.message || 'Network error updating Jira issue', fields: Object.keys(fields) };
     }
   }
 
+  const sentFields = Object.keys(fields);
   // Status workflow transition sync
   if (updates.status) {
     try {
@@ -1049,7 +1094,8 @@ export async function syncTaskToJira(
     } catch {}
   }
 
-  return { synced: syncSuccess, error: errMsg };
+  if (updates.status) sentFields.push('status');
+  return { synced: syncSuccess, error: errMsg, fields: sentFields };
 }
 
 /**
@@ -1119,6 +1165,7 @@ export async function updateWbsTask(
   const { projectKey, taskId, updates } = payload;
   validateTaskUpdates(updates as Record<string, unknown>);
   const storage = resolveStorage(storageProvider);
+  const log = new SyncLog();
 
   const plan = await getProjectPlan(projectKey, storage);
   const targetTask = plan.tasks.find(t => t.id === taskId || t.key === taskId) ||
@@ -1180,9 +1227,10 @@ export async function updateWbsTask(
       }
       const previous = targetTask.dependency;
       if (previous && previous.jiraLinkId && previous.predecessorKey !== predKey) {
-        await removeMirroredLink(previous.jiraLinkId);
+        log.record(targetTask.key, ['issuelink'], { synced: await removeMirroredLink(previous.jiraLinkId), error: 'Jira did not delete the old link' });
       }
       const mirror = await mirrorDependencyToJira(targetTask.key, predKey);
+      log.record(targetTask.key, ['issuelink'], { synced: mirror.linked, error: mirror.error || 'Jira did not create the link' });
       sanitized.dependency = {
         predecessorId: predKey,
         predecessorKey: predKey,
@@ -1197,7 +1245,9 @@ export async function updateWbsTask(
       // Explicit removal: delete only the link CascadePlan created, and keep a null so that
       // a Jira link the user made does not bring the dependency back (NF-02).
       const previous = targetTask.dependency;
-      if (previous && previous.jiraLinkId) await removeMirroredLink(previous.jiraLinkId);
+      if (previous && previous.jiraLinkId) {
+        log.record(targetTask.key, ['issuelink'], { synced: await removeMirroredLink(previous.jiraLinkId), error: 'Jira did not delete the link' });
+      }
       sanitized.dependency = null;
     }
   }
@@ -1308,7 +1358,7 @@ export async function updateWbsTask(
           endDate: affTask.endDate,
           weeklyAllocations: affTask.weeklyAllocations
         };
-        await syncTaskToJira(affKey, { endDate: affTask.endDate });
+        await syncTaskToJira(affKey, { endDate: affTask.endDate }, log);
       }
     }
   }
@@ -1353,7 +1403,7 @@ export async function updateWbsTask(
         };
         // A computed roll-up is derived on every load and is not stored (INV-04).
         void totalHours; void completedHours;
-        await syncTaskToJira(pKey, { endDate: activeWeeks[maxEndIdx].endDate });
+        await syncTaskToJira(pKey, { endDate: activeWeeks[maxEndIdx].endDate }, log);
       }
     }
   }
@@ -1362,9 +1412,9 @@ export async function updateWbsTask(
   await storage.set(`ps:${projectKey}:task:${targetTask.key}`, scheduleMap[targetTask.key]);
 
   // Two-way sync: write-back changed fields to Jira
-  await syncTaskToJira(targetTask.key, sanitized);
+  await syncTaskToJira(targetTask.key, sanitized, log);
 
-  return await getProjectPlan(projectKey, storage);
+  return Object.assign(await getProjectPlan(projectKey, storage), { ok: true, jiraSync: log.report() });
 }
 
 /**
@@ -1394,7 +1444,7 @@ export async function unscheduleTask(
   const updatedOrder = taskOrder.filter(k => k !== taskId);
   await storage.set(`taskOrder:${projectKey}`, updatedOrder);
 
-  return await getProjectPlan(projectKey, storage);
+  return Object.assign(await getProjectPlan(projectKey, storage), { ok: true, jiraSync: noJiraWrites() });
 }
 
 /**
@@ -1412,7 +1462,7 @@ export async function reorderWbsTasks(
   const newOrder = Array.from(new Set(reordered.map(t => t.key).filter(Boolean)));
 
   await storage.set(`taskOrder:${projectKey}`, newOrder);
-  return await getProjectPlan(projectKey, storage);
+  return Object.assign(await getProjectPlan(projectKey, storage), { ok: true, jiraSync: noJiraWrites() });
 }
 
 /**
@@ -1422,7 +1472,7 @@ export async function reorderWbsTasks(
 export async function createSubtaskForResource(
   payload: CreateSubtaskForResourceRequest,
   storageProvider?: StorageProvider
-): Promise<{ success: boolean; subtask?: WbsTask; plan?: ProjectPlanState; error?: string }> {
+): Promise<{ success: boolean; ok: boolean; jiraSync: JiraSyncReport; subtask?: WbsTask; plan?: ProjectPlanState; error?: string }> {
   const projectKey = payload.projectKey;
   const parentKey = payload.parentKey || payload.parentTaskId;
   const resource = payload.resource || payload.assigneeName || 'Unassigned';
@@ -1433,7 +1483,7 @@ export async function createSubtaskForResource(
   const spanWeeks = payload.spanWeeks ?? 2;
 
   if (!parentKey) {
-    return { success: false, error: 'parentKey is required' };
+    return { success: false, ok: false, error: 'parentKey is required', jiraSync: noJiraWrites() };
   }
   await verifyIssueInProject(parentKey, projectKey, 'parentKey');
 
@@ -1479,7 +1529,8 @@ export async function createSubtaskForResource(
   }
 
   if (!createdKey) {
-    return { success: false, error: `Failed to create subtask in Jira: ${lastErr}` };
+    const message = `Failed to create subtask in Jira: ${lastErr}`;
+    return { success: false, ok: false, error: message, jiraSync: failedCreate(message) };
   }
 
   const storage = resolveStorage(storageProvider);
@@ -1507,15 +1558,17 @@ export async function createSubtaskForResource(
   await storage.set(`scheduleMap:${projectKey}`, scheduleMap);
 
   // Sync estimate & duedate to newly created subtask
+  const log = new SyncLog();
+  log.record(createdKey, ['create'], { synced: true });
   await syncTaskToJira(createdKey, {
     effortHours,
     endDate: activeWeeks[eIdx].endDate,
     resourceAccountId
-  });
+  }, log);
 
   const plan = await getProjectPlan(projectKey, storage);
   const subtask = plan.tasks.find(t => t.key === createdKey);
-  return { success: true, subtask, plan };
+  return { success: true, ok: true, jiraSync: log.report(), subtask, plan };
 }
 
 /**
@@ -1566,7 +1619,7 @@ export async function addSubtaskToTask(
   };
 
   await storage.set(`scheduleMap:${projectKey}`, scheduleMap);
-  return await getProjectPlan(projectKey, storage);
+  return Object.assign(await getProjectPlan(projectKey, storage), { ok: true, jiraSync: noJiraWrites() });
 }
 
 /**
@@ -1603,6 +1656,8 @@ export async function saveTaskDependency(
 
   // Mirror dependency to a native Jira issue link (reused when it already exists)
   const mirror = await mirrorDependencyToJira(targetTask.key, dependency.predecessorKey);
+  const log = new SyncLog();
+  log.record(targetTask.key, ['issuelink'], { synced: mirror.linked, error: mirror.error || 'Jira did not create the link' });
   const previous = targetTask.dependency;
   const ownedLinkId = mirror.created ? mirror.linkId
     : (previous && previous.predecessorKey === dependency.predecessorKey ? previous.jiraLinkId : undefined);
@@ -1617,7 +1672,7 @@ export async function saveTaskDependency(
   await storage.set(`scheduleMap:${projectKey}`, scheduleMap);
   await storage.set(`ps:${projectKey}:task:${targetTask.key}`, scheduleMap[targetTask.key]);
 
-  return await getProjectPlan(projectKey, storage);
+  return Object.assign(await getProjectPlan(projectKey, storage), { ok: true, jiraSync: log.report() });
 }
 
 /**
@@ -1626,12 +1681,12 @@ export async function saveTaskDependency(
 export async function saveColumnWidths(
   payload: { projectKey: string; columnWidths: ColumnWidthConfig },
   storageProvider?: StorageProvider
-): Promise<{ success: boolean; columnWidths: ColumnWidthConfig }> {
+): Promise<{ success: boolean; ok: boolean; jiraSync: JiraSyncReport; columnWidths: ColumnWidthConfig }> {
   const { projectKey, columnWidths } = payload;
   validateColumnWidths(columnWidths as unknown as Record<string, unknown>);
   const storage = resolveStorage(storageProvider);
   await storage.set(`colWidths:${projectKey}`, columnWidths);
-  return { success: true, columnWidths };
+  return { success: true, ok: true, jiraSync: noJiraWrites(), columnWidths };
 }
 
 /**
@@ -1640,13 +1695,13 @@ export async function saveColumnWidths(
 export async function saveHiddenColumns(
   payload: { projectKey: string; hiddenColumns: string[] },
   storageProvider?: StorageProvider
-): Promise<{ success: boolean; hiddenColumns: string[] }> {
+): Promise<{ success: boolean; ok: boolean; jiraSync: JiraSyncReport; hiddenColumns: string[] }> {
   const { projectKey, hiddenColumns } = payload;
   validateHiddenColumns(hiddenColumns);
   const storage = resolveStorage(storageProvider);
   const cols = Array.isArray(hiddenColumns) ? hiddenColumns : [];
   await storage.set(`hiddenColumns:${projectKey}`, cols);
-  return { success: true, hiddenColumns: cols };
+  return { success: true, ok: true, jiraSync: noJiraWrites(), hiddenColumns: cols };
 }
 
 /**
@@ -1655,7 +1710,7 @@ export async function saveHiddenColumns(
 export async function saveProjectMilestone(
   payload: { projectKey: string; milestone: ProjectMilestone },
   storageProvider?: StorageProvider
-): Promise<{ success: boolean; milestones: ProjectMilestone[] }> {
+): Promise<{ success: boolean; ok: boolean; jiraSync: JiraSyncReport; milestones: ProjectMilestone[] }> {
   const { projectKey, milestone } = payload;
   validateMilestone(milestone as unknown as Record<string, unknown>);
   const storage = resolveStorage(storageProvider);
@@ -1663,7 +1718,7 @@ export async function saveProjectMilestone(
   const filtered = current.filter(m => m.id !== milestone.id);
   filtered.push(milestone);
   await storage.set(`milestones:${projectKey}`, filtered);
-  return { success: true, milestones: filtered };
+  return { success: true, ok: true, jiraSync: noJiraWrites(), milestones: filtered };
 }
 
 /**

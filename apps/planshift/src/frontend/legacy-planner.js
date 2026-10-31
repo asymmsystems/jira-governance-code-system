@@ -10,6 +10,7 @@
  */
 
 import { callResolver, openIssueInNewTab } from './bridge';
+import { initErrorBanner } from './banner';
 import { html } from '../ui/safe-html';
 import { earliestStartWeek, cascadePreview } from '../ui/cascade-preview';
 import { deltaWeeksFromPixels, clampStartIndex, spanFromResize } from '../ui/timeline-math';
@@ -87,6 +88,7 @@ let currentHierarchyView = 'all'; // 'all' | 'epics' | 'stories'
 
 // Initialization with immediate readiness check
 function initApp() {
+  initErrorBanner();
   setupEventListeners();
   loadProjectPlan();
 }
@@ -787,7 +789,7 @@ async function loadProjectPlan() {
   const plan = await callResolver('getProjectPlan', {});
   if (loader) loader.style.display = 'none';
 
-  if (plan) {
+  if (plan && Array.isArray(plan.tasks)) {
     currentPlan = plan;
     if (plan.columnWidths) {
       columnWidths = { ...columnWidths, ...plan.columnWidths };
@@ -3073,9 +3075,10 @@ async function handleAddResourceSubtask() {
       assigneeName,
       effortHours: hours
     });
-    if (res && res.error) {
+    if (!res || res.success !== true) {
+      // Only a confirmed create shows success; a null or failed result is an error (B-07).
       if (statusEl) {
-        statusEl.textContent = res.error;
+        statusEl.textContent = (res && (res.message || res.error)) || 'Jira did not create the subtask.';
         statusEl.style.color = '#DE350B';
         statusEl.style.display = 'block';
       }

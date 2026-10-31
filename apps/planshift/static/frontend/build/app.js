@@ -6044,13 +6044,56 @@ Please see https://iframe-resizer.com/upgrade for more details.
 
   // src/frontend/bridge.ts
   var import_bridge = __toESM(require_out3());
+
+  // src/ui/result.ts
+  function classifyResult(res) {
+    if (res === null || res === void 0) {
+      return { failed: true, message: "The planner could not reach Jira. Nothing was changed." };
+    }
+    if (res.ok === false || res.success === false) {
+      const text = res.message || (res.error && res.error !== "validation" ? res.error : void 0);
+      return { failed: true, message: text || "The change failed." };
+    }
+    if (res.jiraSync && res.jiraSync.ok === false) {
+      return {
+        failed: true,
+        message: res.jiraSync.error ? `Saved in CascadePlan, but Jira rejected part of it: ${res.jiraSync.error}` : "Saved in CascadePlan, but Jira rejected part of it."
+      };
+    }
+    return { failed: false };
+  }
+
+  // src/frontend/banner.ts
+  function showErrorBanner(message) {
+    const banner = document.getElementById("syncBanner");
+    const text = document.getElementById("syncBannerText");
+    if (!banner || !text) return;
+    text.textContent = message;
+    banner.hidden = false;
+  }
+  function hideErrorBanner() {
+    const banner = document.getElementById("syncBanner");
+    if (banner) banner.hidden = true;
+  }
+  function initErrorBanner() {
+    const btn = document.getElementById("btnDismissSync");
+    if (btn) btn.addEventListener("click", hideErrorBanner);
+  }
+
+  // src/frontend/bridge.ts
   async function callResolver(fnName, payload = {}) {
+    let res;
     try {
-      return await (0, import_bridge.invoke)(fnName, payload);
+      res = await (0, import_bridge.invoke)(fnName, payload);
     } catch (err) {
       console.error("Forge resolver error:", fnName, err);
-      return null;
+      res = { ok: false, error: err?.message || "The planner could not reach Jira." };
     }
+    if (!fnName.startsWith("get")) {
+      const verdict = classifyResult(res);
+      if (verdict.failed && verdict.message) showErrorBanner(verdict.message);
+    }
+    return res;
   }
   function openIssueInNewTab(issueKey) {
     void import_bridge.router.open(`/browse/${encodeURIComponent(issueKey)}`);
@@ -6167,6 +6210,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
   var expandedTasks = /* @__PURE__ */ new Set();
   var currentHierarchyView = "all";
   function initApp() {
+    initErrorBanner();
     setupEventListeners();
     loadProjectPlan();
   }
@@ -6783,7 +6827,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (errBanner) errBanner.style.display = "none";
     const plan = await callResolver("getProjectPlan", {});
     if (loader) loader.style.display = "none";
-    if (plan) {
+    if (plan && Array.isArray(plan.tasks)) {
       currentPlan = plan;
       if (plan.columnWidths) {
         columnWidths = { ...columnWidths, ...plan.columnWidths };
@@ -8721,9 +8765,9 @@ Click to manage or assign.`;
         assigneeName,
         effortHours: hours
       });
-      if (res && res.error) {
+      if (!res || res.success !== true) {
         if (statusEl) {
-          statusEl.textContent = res.error;
+          statusEl.textContent = res && (res.message || res.error) || "Jira did not create the subtask.";
           statusEl.style.color = "#DE350B";
           statusEl.style.display = "block";
         }
