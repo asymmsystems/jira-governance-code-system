@@ -255,7 +255,7 @@ export const UNASSIGNED_USER: JiraAssignableUser = {
 export async function fetchProjectUsers(projectKey: string): Promise<JiraAssignableUser[]> {
   const realUsers: JiraAssignableUser[] = [];
   try {
-    const res = await api.asApp().requestJira(route`/rest/api/3/user/assignable/search?project=${projectKey}&maxResults=50`);
+    const res = await getJiraCaller().requestJira(route`/rest/api/3/user/assignable/search?project=${projectKey}&maxResults=50`);
     if (res.status === 200) {
       const data: any[] = await res.json();
       for (const u of data) {
@@ -279,11 +279,11 @@ export async function fetchProjectUsers(projectKey: string): Promise<JiraAssigna
 export async function fetchProjectEpics(projectKey: string): Promise<JiraEpicItem[]> {
   const epics: JiraEpicItem[] = [];
   try {
-    let res = await api.asApp().requestJira(
+    let res = await getJiraCaller().requestJira(
       route`/rest/api/3/search/jql?jql=project = "${projectKey}" AND issuetype in (Epic, "Initiative") order by created desc&fields=summary,status&maxResults=50`
     );
     if (!res || res.status !== 200) {
-      res = await api.asApp().requestJira(
+      res = await getJiraCaller().requestJira(
         route`/rest/api/3/search/jql?jql=project = "${projectKey}" AND issuetype = "Epic" order by created desc&fields=summary,status&maxResults=50`
       );
     }
@@ -309,7 +309,7 @@ export async function fetchLiveJiraIssues(
   storedScheduleMap: Record<string, Partial<WbsTask>> = {}
 ): Promise<{ tasks: WbsTask[]; backlogTasks: WbsTask[]; isLive: boolean }> {
   try {
-    const res = await api.asApp().requestJira(
+    const res = await getJiraCaller().requestJira(
       route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100`
     );
 
