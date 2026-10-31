@@ -519,7 +519,8 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(res.success).toBe(true);
       expect(res.task?.epic).toBe('General');
       expect(res.task?.story).toBe('Task');
-      expect(res.task?.effortHours).toBe(40);
+      // No estimate is invented for an unestimated issue (B-03).
+      expect(res.task?.effortHours).toBe(0);
       expect(res.task?.resource).toBe('Unassigned');
       expect(res.task?.startWeek).toBe(DEFAULT_WEEKS.find(w => w.isCurrentWeek)?.weekKey || DEFAULT_WEEKS[0].weekKey);
     });

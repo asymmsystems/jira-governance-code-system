@@ -238,17 +238,15 @@
         <!-- Start & End Date/Time Section -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="form-group">
-            <label class="form-label">Start Date &amp; Time</label>
+            <label class="form-label">Start Date</label>
             <div style="display: flex; gap: 6px;">
               <input type="date" class="form-input" id="editStartDateInput" style="flex: 1;" />
-              <input type="time" class="form-input" id="editStartTimeInput" value="09:00" style="width: 85px;" />
             </div>
           </div>
           <div class="form-group">
-            <label class="form-label">End Date (Due Date) &amp; Time</label>
+            <label class="form-label">Due Date</label>
             <div style="display: flex; gap: 6px;">
               <input type="date" class="form-input" id="editEndDateInput" style="flex: 1;" />
-              <input type="time" class="form-input" id="editEndTimeInput" value="18:00" style="width: 85px;" />
             </div>
           </div>
         </div>
@@ -270,7 +268,7 @@
             </div>
             <div class="form-group" id="rawEstimateGroup">
               <label class="form-label" id="rawEstimateLabel">Effort Value</label>
-              <input type="number" class="form-input" id="editEstimateValueInput" value="40" />
+              <input type="number" class="form-input" id="editEstimateValueInput" placeholder="Unestimated" />
             </div>
             <div class="form-group" id="tshirtSizeGroup" style="display: none;">
               <label class="form-label">T-Shirt Size</label>
@@ -284,9 +282,9 @@
             </div>
           </div>
           <div style="margin-top: 8px; display: flex; align-items: center; gap: 6px;">
-            <input type="checkbox" id="autoScaleEffortCheckbox" checked />
+            <input type="checkbox" id="autoScaleEffortCheckbox" />
             <label for="autoScaleEffortCheckbox" style="font-size: 11px; color: #42526E; cursor: pointer;">
-              Auto-scale effort hours when resizing timeline bar duration
+              Also scale the Jira estimate when I resize this bar
             </label>
           </div>
         </div>
@@ -387,7 +385,7 @@
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="form-group">
             <label class="form-label">Effort Hours</label>
-            <input type="number" class="form-input" id="createEffortInput" value="40" />
+            <input type="number" class="form-input" id="createEffortInput" placeholder="Optional" />
           </div>
           <div class="form-group">
             <label class="form-label">Start Week</label>

@@ -110,6 +110,31 @@ export async function withValidation<T>(fn: () => Promise<T>): Promise<T | Retur
   }
 }
 
+function isIsoDate(v: unknown): v is string {
+  return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+}
+
+/** Adds whole days to an ISO date (UTC). */
+export function addDaysIso(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Index of the week whose date range contains the ISO date, or -1. */
+export function weekIndexContaining(weeks: WeeklySprintColumn[], iso: string | undefined): number {
+  if (!isIsoDate(iso)) return -1;
+  return weeks.findIndex(w => w.startDate <= iso && w.endDate >= iso);
+}
+
+function evenAllocations(weeks: WeeklySprintColumn[], startIdx: number, span: number): Record<string, number> {
+  const allocations: Record<string, number> = {};
+  for (let i = startIdx; i < Math.min(weeks.length, startIdx + span); i++) {
+    allocations[weeks[i].weekKey] = Math.round(100 / span);
+  }
+  return allocations;
+}
+
 export function getTimelineWeeks(referenceDate: Date = new Date()): { weeks: WeeklySprintColumn[]; currentWeekIndex: number } {
   return PlannerEngine.generateDynamicWeeks(referenceDate, 4, 10);
 }
@@ -555,7 +580,7 @@ export async function scheduleBacklogTask(
   request: ScheduleBacklogRequest,
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState> {
-  const { projectKey, taskId, startWeek, spanWeeks = 3, effortHours = 40, resource, targetIndex } = request;
+  const { projectKey, taskId, startWeek, spanWeeks = 3, effortHours, resource, targetIndex } = request;
   await verifyIssueInProject(taskId, projectKey, 'taskId');
   const storage = resolveStorage(storageProvider);
 
@@ -578,10 +603,11 @@ export async function scheduleBacklogTask(
     spanWeeks,
     startDate: DEFAULT_WEEKS[startIdx].startDate,
     endDate: DEFAULT_WEEKS[endIdx].endDate,
-    effortHours: effortHours !== undefined ? effortHours : current.effortHours,
-    resource: resource || current.resource || 'Unassigned',
     weeklyAllocations: allocations
   };
+  // Only values the user entered in this action are stored (INV-03).
+  if (effortHours !== undefined) scheduleMap[taskId].effortHours = effortHours;
+  if (resource) scheduleMap[taskId].resource = resource;
 
   await storage.set(`scheduleMap:${projectKey}`, scheduleMap);
 
@@ -655,7 +681,7 @@ export async function createInlineTask(
 ): Promise<{ success: boolean; task?: WbsTask; plan?: ProjectPlanState; error?: string }> {
   const currentWeekKey = DEFAULT_WEEKS.find(w => w.isCurrentWeek)?.weekKey || DEFAULT_WEEKS[0].weekKey;
   const {
-    projectKey, epic, epicKey, story, summary, effortHours = 40,
+    projectKey, epic, epicKey, story, summary, effortHours,
     resource = 'Unassigned', resourceAccountId, startWeek, spanWeeks = 3, targetIndex
   } = request;
 
@@ -746,11 +772,11 @@ export async function createInlineTask(
     spanWeeks,
     startDate: DEFAULT_WEEKS[startIdx].startDate,
     endDate: DEFAULT_WEEKS[endIdx].endDate,
-    effortHours,
     resource,
     resourceAccountId,
     weeklyAllocations: allocations
   };
+  if (effortHours !== undefined) scheduleMap[jiraIssueKey].effortHours = effortHours;
 
   await storage.set(`scheduleMap:${projectKey}`, scheduleMap);
 
@@ -1121,24 +1147,45 @@ export async function updateWbsTask(
     }
   }
 
-  if (sanitized.startWeek || sanitized.spanWeeks) {
+  const userPickedDates = sanitized.startDate !== undefined || sanitized.endDate !== undefined;
+  if (userPickedDates) {
+    // Dates the user picked are kept exactly; the week grid position is derived from them (CP-07).
+    const s = sanitized.startDate || targetTask.startDate;
+    const e = sanitized.endDate || targetTask.endDate;
+    sanitized.startDate = s;
+    sanitized.endDate = e;
+    const sIdx = weekIndexContaining(activeWeeks, s);
+    const eIdx = weekIndexContaining(activeWeeks, e);
+    if (sIdx !== -1) sanitized.startWeek = activeWeeks[sIdx].weekKey;
+    if (sIdx !== -1 && eIdx !== -1 && eIdx >= sIdx) {
+      sanitized.endWeek = activeWeeks[eIdx].weekKey;
+      sanitized.spanWeeks = eIdx - sIdx + 1;
+    }
+    if (!sanitized.weeklyAllocations && sanitized.startWeek && sanitized.spanWeeks) {
+      sanitized.weeklyAllocations = evenAllocations(activeWeeks, sIdx, sanitized.spanWeeks);
+    }
+  } else if (sanitized.startWeek || sanitized.spanWeeks) {
+    const oldIdx = activeWeeks.findIndex(w => w.weekKey === targetTask.startWeek);
+    const oldSpan = targetTask.spanWeeks || 3;
     const sWk = sanitized.startWeek || targetTask.startWeek || activeWeeks[0].weekKey;
-    const span = sanitized.spanWeeks || targetTask.spanWeeks || 3;
+    const span = sanitized.spanWeeks || oldSpan;
     const sIdx = Math.max(0, activeWeeks.findIndex(w => w.weekKey === sWk));
     const eIdx = Math.min(activeWeeks.length - 1, sIdx + span - 1);
 
     sanitized.startWeek = activeWeeks[sIdx].weekKey;
     sanitized.endWeek = activeWeeks[eIdx].weekKey;
-    sanitized.startDate = activeWeeks[sIdx].startDate;
-    sanitized.endDate = activeWeeks[eIdx].endDate;
     sanitized.spanWeeks = span;
-
+    if (oldIdx !== -1 && isIsoDate(targetTask.startDate) && isIsoDate(targetTask.endDate)) {
+      // A move or resize by whole weeks keeps the exact days of the bar.
+      const shiftStart = (sIdx - oldIdx) * 7;
+      sanitized.startDate = addDaysIso(targetTask.startDate, shiftStart);
+      sanitized.endDate = addDaysIso(targetTask.endDate, shiftStart + (span - oldSpan) * 7);
+    } else {
+      sanitized.startDate = activeWeeks[sIdx].startDate;
+      sanitized.endDate = activeWeeks[eIdx].endDate;
+    }
     if (!sanitized.weeklyAllocations) {
-      const allocations: Record<string, number> = {};
-      for (let i = sIdx; i <= eIdx; i++) {
-        allocations[activeWeeks[i].weekKey] = Math.round(100 / span);
-      }
-      sanitized.weeklyAllocations = allocations;
+      sanitized.weeklyAllocations = evenAllocations(activeWeeks, sIdx, span);
     }
   } else if (!sanitized.endDate && targetTask.endDate) {
     sanitized.endDate = targetTask.endDate;

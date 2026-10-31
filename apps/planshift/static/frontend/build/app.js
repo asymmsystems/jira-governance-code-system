@@ -6155,6 +6155,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
       window.open(fullUrl, "_blank", "noopener,noreferrer");
     }
   }
+  function formatEffort(hours) {
+    return hours > 0 ? `${hours}h` : "Unestimated";
+  }
   var currentPlan = null;
   var activeTaskId = null;
   var hoveredTaskId = null;
@@ -6876,7 +6879,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const isSubCard = item.isSubtask || item.hierarchyLevel === -1;
       const badgeLabel = isEpicCard ? "\u{1F7EA} EPIC" : isSubCard ? "\u21B3 Subtask" : item.story || "Task";
       const badgeClass = isEpicCard ? "badge-primary" : "badge-neutral";
-      const effortDisplay = item.effortHours > 0 ? `${item.effortHours}h` : "Unestimated";
+      const effortDisplay = formatEffort(item.effortHours);
       const siteUrl = getJiraBaseUrl();
       card.innerHTML = html`
       <div class="backlog-card-header">
@@ -7483,7 +7486,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (visibleKeys.includes("effort")) {
       cellsHtml = html`${cellsHtml}
       <td class="td-data td-effort-cell" style="width:${columnWidths.effort}px; text-align:center;">
-        <input type="number" class="inline-edit-input new-task-hours" style="width:50px; text-align:center;" value="40" min="0" />
+        <input type="number" class="inline-edit-input new-task-hours" style="width:50px; text-align:center;" placeholder="h" min="0" />
       </td>
     `;
     }
@@ -7559,7 +7562,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
       input.disabled = true;
       saveBtn.disabled = true;
       saveBtn.textContent = "Adding...";
-      const hours = parseInt(hoursInput.value, 10) || 40;
+      const parsedHours = parseInt(hoursInput.value, 10);
+      const hours = isNaN(parsedHours) ? void 0 : parsedHours;
       try {
         const res = await callResolver("createInlineTask", {
           summary,
@@ -7707,7 +7711,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       if (visibleKeys.includes("effort")) {
         rowColsHtml = html`${rowColsHtml}
         <td class="td-data td-effort-cell" style="width:${columnWidths.effort}px; text-align:center; cursor:pointer;" title="Click to edit effort hours">
-          <span class="effort-text" style="font-weight:700;">${task.effortHours}h</span>
+          <span class="effort-text" style="font-weight:700;">${formatEffort(task.effortHours)}</span>
         </td>
       `;
       }
@@ -7883,7 +7887,7 @@ Click to manage or assign.`;
               });
               await loadProjectPlan();
             } else {
-              effortTd.innerHTML = html`<span class="effort-text" style="font-weight:700;">${origHours}h</span>`;
+              effortTd.innerHTML = html`<span class="effort-text" style="font-weight:700;">${formatEffort(origHours)}</span>`;
             }
           }
           input.addEventListener("keydown", (ke) => {
@@ -7892,7 +7896,7 @@ Click to manage or assign.`;
               saveInlineEffort();
             } else if (ke.key === "Escape") {
               saved = true;
-              effortTd.innerHTML = html`<span class="effort-text" style="font-weight:700;">${origHours}h</span>`;
+              effortTd.innerHTML = html`<span class="effort-text" style="font-weight:700;">${formatEffort(origHours)}</span>`;
             }
           });
           input.addEventListener("blur", saveInlineEffort);
@@ -8096,6 +8100,7 @@ Click to manage or assign.`;
         });
         dropSlot.addEventListener("drop", async (e) => {
           e.preventDefault();
+          e.stopPropagation();
           dropSlot.classList.remove("drag-over");
           trackTd.classList.remove("drag-over-cell");
           const badge = dropSlot.querySelector(".drop-slot-badge");
@@ -8267,7 +8272,7 @@ Click to manage or assign.`;
       const startX = e.clientX;
       let wasResized = false;
       const origSpan = Math.max(1, task.spanWeeks || 3);
-      const origEffort = task.effortHours || 40;
+      const origEffort = task.effortHours || 0;
       const origStartIdx = Math.max(0, currentPlan.weeks.findIndex((w) => w.weekKey === (task.startWeek || currentPlan.weeks[0]?.weekKey)));
       const origLeftPx = origStartIdx * WEEK_WIDTH + 4;
       const origWidthPx = Math.max(WEEK_WIDTH - 8, origSpan * WEEK_WIDTH - 8);
@@ -8330,23 +8335,16 @@ Click to manage or assign.`;
           isDraggingBar = false;
         }, 80);
         if (wasResized && (targetSpan !== origSpan || targetStartIdx !== origStartIdx)) {
-          const autoScale = document.getElementById("autoScaleEffortCheckbox")?.checked !== false;
-          let newEffort = origEffort;
-          if (autoScale && origSpan > 0) {
-            newEffort = Math.max(1, Math.round(origEffort / origSpan * targetSpan));
-          }
+          const autoScale = document.getElementById("autoScaleEffortCheckbox")?.checked === true;
           const newStartWeek = currentPlan.weeks[targetStartIdx].weekKey;
+          const updates = { startWeek: newStartWeek, spanWeeks: targetSpan };
+          if (autoScale && origEffort > 0 && origSpan > 0) {
+            updates.effortHours = Math.max(1, Math.round(origEffort / origSpan * targetSpan));
+            task.effortHours = updates.effortHours;
+          }
           task.startWeek = newStartWeek;
           task.spanWeeks = targetSpan;
-          task.effortHours = newEffort;
-          await callResolver("updateWbsTask", {
-            taskId: task.key,
-            updates: {
-              startWeek: newStartWeek,
-              spanWeeks: targetSpan,
-              effortHours: newEffort
-            }
-          });
+          await callResolver("updateWbsTask", { taskId: task.key, updates });
           await loadProjectPlan();
         } else {
           bar.style.left = origLeftPx + "px";
@@ -8565,7 +8563,7 @@ Click to manage or assign.`;
     <div style="font-size:10px; color:#A5B4FC; font-weight:700; margin-bottom:2px;">${levelTitle}</div>
     <div><strong><a href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer" style="color:#FFF; text-decoration:underline;">${task.key} ↗</a>: ${task.summary}</strong></div>
     ${assigneeHtml}
-    <div>Effort: ${task.effortHours}h | Progress: ${task.progress}% (Target: ${task.targetProgress}%)</div>
+    <div>Effort: ${formatEffort(task.effortHours)} | Progress: ${task.progress}% (Target: ${task.targetProgress}%)</div>
     <div>Dates: ${task.startDate} to ${task.endDate}</div>
     ${rollupInfo}
     ${subInfo}
@@ -8971,7 +8969,8 @@ Click to manage or assign.`;
     const summary = summaryInput.value.trim();
     const epic = document.getElementById("createEpicSelect").value || "Prerequisites";
     const resource = document.getElementById("createAssigneeSelect").value || "Unassigned";
-    const effortHours = parseInt(document.getElementById("createEffortInput").value, 10) || 40;
+    const parsedEffort = parseInt(document.getElementById("createEffortInput").value, 10);
+    const effortHours = isNaN(parsedEffort) ? void 0 : parsedEffort;
     const startWeek = document.getElementById("createStartWeekSelect").value;
     const errEl = document.getElementById("createTaskError");
     if (!summary) {
