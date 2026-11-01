@@ -424,94 +424,17 @@ export async function getIssueAlignment(
         }
 
         const signals = extractSignalsFromIssue(iss, remoteLinks, pullRequests, storedException);
-        await repository.saveIssueSignals(signals);
         return MetricsEngine.evaluateIssue(signals);
       }
     }
+    throw new Error(`FourRealities: Jira returned HTTP ${issueRes.status} for issue '${issueKey}'.`);
   } catch (err: any) {
-    console.error('FourRealities: Jira API fetch failed for issue', err);
+    // Signals come from Jira only. There is no cached fallback: a failed read is reported.
+    if (String(err?.message || '').startsWith('FourRealities:')) {
+      throw err;
+    }
+    throw new Error(`FourRealities: Failed to query Jira for issue '${issueKey}': ${err?.message || 'network error'}`);
   }
-
-  // Check fallback stored signals in repository
-  const stored = await repository.getIssueSignals(issueId);
-  if (stored) {
-    return MetricsEngine.evaluateIssue(stored);
-  }
-
-  throw new Error(`FourRealities: Failed to query Jira for issue '${issueKey}'. Verify Jira connection and issue permissions.`);
-}
-
-/**
- * Records reality signals for an issue and updates project snapshot.
- * Enforces cross-project isolation to prevent unauthorized poisoning.
- */
-export async function recordIssueSignals(
-  payload: any,
-  context?: any,
-  storageProvider?: StorageProvider
-): Promise<IssueIntegrityScore> {
-  const contextProject = context?.extension?.project?.key;
-  const targetProject = payload?.projectKey;
-
-  // Prevent cross-project data poisoning
-  if (contextProject && targetProject && contextProject !== targetProject) {
-    throw new Error(`FourRealities: Forbidden. Cannot record signals for project '${targetProject}' from context '${contextProject}'.`);
-  }
-
-  const { signals, projectKey } = payload || {};
-  if (!signals?.issueId || !signals?.issueKey) {
-    throw new Error('FourRealities: Valid issue signals required.');
-  }
-
-  let effectiveProject = contextProject || targetProject || projectKey;
-  if (!effectiveProject && signals?.issueKey?.includes('-')) {
-    effectiveProject = signals.issueKey.split('-')[0];
-  }
-  if (!effectiveProject) {
-    throw new Error('FourRealities: Project key required.');
-  }
-
-  const storage = resolveStorage(storageProvider);
-  const repository = new MetricsRepository(storage);
-
-  await repository.saveIssueSignals(signals);
-  const score = MetricsEngine.evaluateIssue(signals);
-
-  const current = await repository.getLatestProjectSnapshot(String(effectiveProject));
-  const now = new Date().toISOString();
-  const updatedIssues = current?.issueScores.filter(s => s.issueId !== signals.issueId) || [];
-  updatedIssues.push(score);
-
-  const newSummary = MetricsEngine.summarizeProject(
-    updatedIssues.map(s => ({
-      issueId: s.issueId,
-      issueKey: s.issueKey,
-      summary: s.summary,
-      status: s.status,
-      statusCategory: s.statusCategory,
-      assigneeName: s.assigneeName,
-      hasDocumentedIntent: s.intentScore === 100,
-      transitionCount: 1,
-      regressionCount: Math.round((100 - s.processScore) / 25),
-      prCount: s.codeScore > 0 ? 1 : 0,
-      hasApprovedReview: s.codeScore === 100,
-      hasCryptographicSeal: s.auditScore === 100 || (s.auditScore >= 50 && s.gates.audit === 'PASSED'),
-      isDoDSatisfied: s.auditScore === 100 || (s.auditScore >= 50 && s.gates.audit !== 'BLOCKED')
-    })),
-    current
-  );
-
-  const updatedSnapshot: ProjectAuditSnapshot = {
-    snapshotId: `snap-${Date.now()}`,
-    projectKey: String(effectiveProject),
-    generatedAt: now,
-    generatedBy: String(context?.accountId || 'system'),
-    summary: newSummary,
-    issueScores: updatedIssues
-  };
-  await repository.saveProjectSnapshot(updatedSnapshot);
-
-  return score;
 }
 
 /**
@@ -662,10 +585,6 @@ resolver.define('getIssueAlignment', async (req) => {
   const issueId = req.payload?.issueId || req.context?.extension?.issue?.id || 'default-issue';
   const issueKey = req.payload?.issueKey || req.context?.extension?.issue?.key || issueId;
   return await getIssueAlignment({ ...req.payload, issueId, issueKey }, req.context);
-});
-
-resolver.define('recordIssueSignals', async (req) => {
-  return await recordIssueSignals(req.payload, req.context);
 });
 
 resolver.define('linkDecision', async (req) => {

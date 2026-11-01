@@ -7,7 +7,6 @@
 import {
   getProjectDashboard,
   getIssueAlignment,
-  recordIssueSignals,
   renderProjectPage,
   renderIssuePanel,
   renderIssueContext,
@@ -248,31 +247,31 @@ describe('FourRealities Index / Forge Handlers', () => {
       await expect(getIssueAlignment({}, {}, mockStorage)).rejects.toThrow('Missing issueId');
     });
 
-    it('evaluates stored signals when available in repository', async () => {
-      const storedSignals: RealitySignals = {
-        issueId: 'stored-1',
-        issueKey: 'STORED-1',
-        hasDocumentedIntent: true,
-        transitionCount: 1,
-        regressionCount: 0,
-        prCount: 1,
-        hasApprovedReview: true,
-        hasCryptographicSeal: true,
-        isDoDSatisfied: true
-      };
-      await mockStorage.set('fr:issue:stored-1:signals', storedSignals);
+    it('never returns stored signals when the Jira read fails (B-03)', async () => {
+      await mockStorage.set('fr:issue:stored-1:signals', {
+        issueId: 'stored-1', issueKey: 'STORED-1', hasDocumentedIntent: true, transitionCount: 1,
+        regressionCount: 0, prCount: 1, hasApprovedReview: true, hasCryptographicSeal: true, isDoDSatisfied: true
+      });
+      mockRequestJira.mockResolvedValueOnce({ status: 404 });
+      await expect(getIssueAlignment({ issueId: 'stored-1', issueKey: 'STORED-1' }, {}, mockStorage))
+        .rejects.toThrow("Jira returned HTTP 404 for issue 'STORED-1'");
+    });
 
-      const score = await getIssueAlignment({ issueId: 'stored-1', issueKey: 'STORED-1' }, {}, mockStorage);
-      expect(score.issueKey).toBe('STORED-1');
-      expect(score.realityAlignmentIndex).toBe(100);
-      expect(score.riskLevel).toBe('LOW');
+    it('writes no signals key after a successful read (B-03)', async () => {
+      const setSpy = jest.spyOn(mockStorage, 'set');
+      mockRequestJira.mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({ id: 'w-1', key: 'W-1', fields: { status: { name: 'Done', statusCategory: { name: 'Done' } } }, properties: {} })
+      });
+      await getIssueAlignment({ issueId: 'w-1' }, {}, mockStorage);
+      expect(setSpy.mock.calls.filter(c => String(c[0]).endsWith(':signals'))).toEqual([]);
     });
 
     it('throws error when Jira query fails and no stored signals exist', async () => {
       mockRequestJira.mockResolvedValueOnce({ status: 404 });
       await expect(
         getIssueAlignment({ issueId: 'not-found', issueKey: 'NF-1' }, {}, mockStorage)
-      ).rejects.toThrow("Failed to query Jira for issue 'NF-1'");
+      ).rejects.toThrow("Jira returned HTTP 404 for issue 'NF-1'");
     });
 
     it('fetches live Jira issue and parses authentic PR reviews in getIssueAlignment', async () => {
@@ -365,30 +364,6 @@ describe('FourRealities Index / Forge Handlers', () => {
     });
   });
 
-  describe('recordIssueSignals', () => {
-    it('prevents cross-project poisoning when contextProject mismatches targetProject', async () => {
-      await expect(
-        recordIssueSignals(
-          { signals: { issueId: '1', issueKey: 'ATTACK-1' }, projectKey: 'PROJ_B' },
-          { extension: { project: { key: 'PROJ_A' } } },
-          mockStorage
-        )
-      ).rejects.toThrow("Cannot record signals for project 'PROJ_B' from context 'PROJ_A'.");
-    });
-
-    it('throws error when signals payload is missing', async () => {
-      await expect(
-        recordIssueSignals({ projectKey: 'PROJ' }, {}, mockStorage)
-      ).rejects.toThrow('Valid issue signals required.');
-    });
-
-    it('throws error when project key cannot be determined from signals', async () => {
-      await expect(
-        recordIssueSignals({ signals: { issueId: '99', issueKey: 'NOPROJECT' } }, {}, mockStorage)
-      ).rejects.toThrow('Project key required.');
-    });
-  });
-
   describe('render functions', () => {
     it('returns module metadata for all views', async () => {
       expect((await renderProjectPage({})).moduleKey).toBe('fourrealities-project-dashboard');
@@ -408,26 +383,9 @@ describe('FourRealities Index / Forge Handlers', () => {
       expect(res.projectKey).toBe('DISP-PROJ');
     });
 
-    it('dispatches recordIssueSignals', async () => {
-      const res: any = await handler({
-        call: {
-          functionKey: 'recordIssueSignals',
-          payload: {
-            signals: {
-              issueId: 'issue-66',
-              issueKey: 'TEST-66',
-              hasDocumentedIntent: true,
-              transitionCount: 1,
-              regressionCount: 0,
-              prCount: 1,
-              hasApprovedReview: true,
-              hasCryptographicSeal: true,
-              isDoDSatisfied: true
-            }
-          }
-        }
-      } as any);
-      expect(res.issueKey).toBe('TEST-66');
+    it('has no recordIssueSignals resolver (B-03)', async () => {
+      await expect(handler({ call: { functionKey: 'recordIssueSignals', payload: { signals: { issueId: '1', issueKey: 'A-1' } } } } as any))
+        .rejects.toThrow("Resolver has no definition for 'recordIssueSignals'");
     });
 
     it('throws on unsupported call', async () => {
@@ -445,16 +403,9 @@ describe('FourRealities Index / Forge Handlers', () => {
       } as any);
       expect(resProj.projectKey).toBe('CTX-P');
 
-      await mockStorage.set('fr:issue:ctx-i:signals', {
-        issueId: 'ctx-i',
-        issueKey: 'CTX-I',
-        hasDocumentedIntent: true,
-        transitionCount: 1,
-        regressionCount: 0,
-        prCount: 1,
-        hasApprovedReview: true,
-        hasCryptographicSeal: true,
-        isDoDSatisfied: true
+      mockRequestJira.mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({ id: 'ctx-i', key: 'CTX-I', fields: { status: { name: 'Done', statusCategory: { name: 'Done' } } }, properties: {} })
       });
       const resIssue: any = await handler({
         call: { functionKey: 'getIssueAlignment' },

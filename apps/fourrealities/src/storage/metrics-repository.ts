@@ -4,7 +4,7 @@
  * FourRealities: Metrics & Audit Snapshot Storage Repository
  */
 
-import { ProjectAuditSnapshot, RealitySignals, IssueExceptionRecord } from '../domain/models';
+import { ProjectAuditSnapshot, IssueExceptionRecord } from '../domain/models';
 
 export interface StorageProvider {
   get<T>(key: string): Promise<T | undefined>;
@@ -60,14 +60,9 @@ export class MetricsRepository {
     return history[history.length - 2];
   }
 
-  public async saveIssueSignals(signals: RealitySignals): Promise<void> {
-    await this.storage.set(this.getIssueKey(signals.issueId), signals);
-  }
-
-  public async getIssueSignals(issueId: string): Promise<RealitySignals | undefined> {
-    return await this.storage.get<RealitySignals>(this.getIssueKey(issueId));
-  }
-
+  /**
+   * Deletes a v1 signals record. Signals are never stored any more; this exists for clean-up only.
+   */
   public async deleteIssueSignals(issueId: string): Promise<void> {
     await this.storage.delete(this.getIssueKey(issueId));
   }

@@ -113,19 +113,10 @@ describe('MetricsRepository', () => {
     expect(retrieved).toBeUndefined();
   });
 
-  it('saves and retrieves issue signals', async () => {
-    await repository.saveIssueSignals(sampleSignals);
-    const retrieved = await repository.getIssueSignals('900');
-
-    expect(retrieved).toEqual(sampleSignals);
-  });
-
-  it('deletes issue signals', async () => {
-    await repository.saveIssueSignals(sampleSignals);
+  it('deletes a v1 signals record', async () => {
+    await mockStorage.set('fr:issue:900:signals', sampleSignals);
     await repository.deleteIssueSignals('900');
-
-    const retrieved = await repository.getIssueSignals('900');
-    expect(retrieved).toBeUndefined();
+    expect(await mockStorage.get('fr:issue:900:signals')).toBeUndefined();
   });
 
   it('saves and retrieves issue exceptions', async () => {
