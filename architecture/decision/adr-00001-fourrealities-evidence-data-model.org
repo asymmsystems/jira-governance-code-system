@@ -1,0 +1,258 @@
+#+TITLE: ADR-001: FourRealities Evidence Data Model Patterns
+#+DATE: 2026-11-01
+#+STATUS: Proposed
+
+* Status
+Proposed - Pending owner approval. Build items B-17 onwards are paused until this ADR is decided.
+
+* Context
+
+FourRealities shows, for each Jira issue, whether four kinds of delivery evidence exist
+(Intent, Process, Code, Audit) and where each fact comes from. The model in specification v2
+(=docs/spec/fourrealities-spec-v2.md=) was designed item by item during the build. It was not
+checked against the enterprise data model patterns that Asymm applies elsewhere
+([[file:/home/fahimfarookme/Documents/projects/m360/architecture/decision/adr-00009-data-model-patterns.org][M360 ADR-009]]).
+
+A review against those patterns found three gaps that matter for an evidence product:
+
+1. *Exceptions have no history.* A new Code exception overwrites the earlier one
+   (=src/index.ts= =recordException=, KVS =fr:issue:{id}:exception=). An audit trail cannot be
+   rebuilt.
+2. *The requester approves their own exception.* One person records the exception, and the
+   gate shows "Excepted" at once. This is self-approval. Audit guidance ranks inquiry below
+   observed evidence (ISA 500, research EV-01) and asks for separation of duties
+   (NIST SP 800-53 AC-5, research EV-03).
+3. *Evidence rules are hard-coded.* The Intent rule matches a fixed list of issue-type names
+   (=src/domain/gates.ts= =INTENT_ISSUE_TYPES=). A team that records decisions another way must
+   change the code.
+
+Two facts constrain the design:
+- *Jira owns the work data.* Issues, links, status history, people and Confluence pages
+  belong to Atlassian. FourRealities reads them and never copies them as its own facts.
+- *Forge KVS is a key-value store.* No joins, 240 KiB per value, 25 operations per
+  transaction (research FL-01). A logical model must map onto keys, not tables.
+
+* Decision
+
+Apply the following patterns. Each pattern names what Jira owns (read only) and what
+FourRealities owns (written by FourRealities).
+
+** Pattern 1: Work Effort, Association and Content (Silverston)
+
+*Source*: Len Silverston, "The Data Model Resource Book" Vol 1 (Work Effort). Verified against
+the Apache OFBiz implementation of that model (=workeffort-entitymodel.xml=, read 2026-11-01).
+
+*** Pattern Description
+- *WorkEffort*: a unit of work (task, project, phase).
+- *WorkEffortAssoc*: a typed, time-bounded link between two work efforts
+  (=workEffortIdFrom=, =workEffortIdTo=, =workEffortAssocTypeId=, =fromDate=, =thruDate=).
+- *WorkEffortContent*: a typed, time-bounded link from a work effort to content
+  (=workEffortContentTypeId=, =fromDate=, =thruDate=).
+- *WorkEffortStatus*: status history (=statusId=, =statusDatetime=, =setByUserLogin=, =reason=).
+- *WorkEffortPartyAssignment*: a party in a role on a work effort, time-bounded.
+
+*** Application to FourRealities (all owned by Jira, read only)
+#+begin_src text
+SILVERSTON (OFBiz)              JIRA CLOUD                         FOURREALITIES USE
+──────────────────              ──────────                         ─────────────────
+WorkEffort                      Issue                              subject of every observation
+WorkEffortType                  Issue type                         classifies the link target
+WorkEffortAssoc + AssocType     Issue link + link type             Intent evidence (decision issue)
+WorkEffortContent + Type        Remote link + application type     Intent evidence (Confluence page)
+WorkEffortStatus (history)      Status changelog                   rework loops, started, done
+WorkEffortPartyAssignment       Assignee                           separation-of-duties check
+#+end_src
+
+*** Key Decision
+Intent evidence is decided by the *type of the association* and the *type of the target*,
+both read from a Knowledge Level catalog (Pattern 4), never by titles and never by a fixed
+list in code. Default: a Confluence content link on this site, or an issue link to an issue
+whose type is a decision or specification type (the current rule, moved into the catalog).
+
+*** Trade-offs
+- Jira link-type names differ per site. The catalog must be editable per project
+  (a settings page is a later backlog item; defaults ship in code).
+
+** Pattern 2: Observation and Measurement (Fowler)
+
+*Source*: Martin Fowler, "Analysis Patterns", Ch. 3. Same pattern as M360 ADR-009 Pattern 3.
+
+*** Pattern Description
+- *Observation*: a recorded fact about a subject, at a time, by an observer, with a method.
+- *Phenomenon*: what is observed.
+- *Measurement*: a quantified observation. Derived measurements are computed, not recorded.
+
+*** Application to FourRealities (owned by FourRealities, derived)
+#+begin_src text
+GATE_OBSERVATION
+├── subject           ─── Jira issue id
+├── phenomenon        ─── gate: INTENT | PROCESS | CODE | AUDIT
+├── value             ─── state: FOUND | MISSING | EXCEPTED | NEEDS_RECHECK | NOT_APPLICABLE
+├── method            ─── evidence source (catalog): e.g. LEDGERSEAL_PROPERTY
+├── verification      ─── VERIFIED | NOT_VERIFIED | HEURISTIC   (protocol strength)
+├── evidence_ref      ─── what was seen: link key, page title, certificate id, PR count
+├── reason            ─── reason code (UI text)
+└── observed_at       ─── snapshot or read time
+
+DERIVED MEASUREMENTS (computed on read, never stored as facts)
+├── RAI per issue     ─── share of FOUND among FOUND + MISSING
+├── gate rates        ─── per project, with numerator and denominator
+└── TREND_POINT       ─── weekly aggregate of observations (stored, bounded to 52)
+#+end_src
+
+*** Key Decision
+Add =method= (evidence source) and =evidence_ref= as fields of the observation. Today the
+source is inferred from the reason code (=src/ui/gate-text.ts=), which ties the UI text to
+the evidence source. RAI stays a derived measurement (research H5).
+
+*** Trade-offs
+- Row size grows by a few bytes per gate. Measured headroom: 63,099 B per 100-row chunk
+  against a 100 KiB budget (harness T-06).
+
+** Pattern 3: Status with History and Valid Transitions (Silverston)
+
+*Source*: Silverston Vol 1 status entities; OFBiz =WorkEffortStatus=, =StatusItem=,
+=StatusType= and =StatusValidChange= (=statusId=, =statusIdTo=, =conditionExpression=,
+=transitionName=), read 2026-11-01.
+
+*** Pattern Description
+- Status is a history, not a field. Each change records who, when and why.
+- A catalog lists the valid transitions and the condition for each.
+
+*** Application to FourRealities (owned by FourRealities)
+A Code exception becomes a *gate exception* with a lifecycle:
+#+begin_src text
+EXCEPTION_STATUS (Knowledge Level)        VALID_TRANSITION (Knowledge Level)
+├── REQUESTED                              REQUESTED ──approve──> APPROVED   [by APPROVER, not requester, not assignee]
+├── APPROVED                               REQUESTED ──reject───> REJECTED   [by APPROVER]
+├── REJECTED                               REQUESTED ──withdraw─> WITHDRAWN  [by requester]
+├── WITHDRAWN                              APPROVED  ──revoke───> REVOKED    [by APPROVER]
+└── REVOKED
+
+GATE_EXCEPTION_EVENT (Operational Level, append-only)
+├── issue_id, gate                         ─── subject
+├── status                                 ─── new status
+├── at                                     ─── event time
+├── by_account_id, as_role                 ─── who, in what role (Pattern 5)
+└── reason                                 ─── why
+#+end_src
+
+The gate shows *Excepted* only while the current status is APPROVED. While REQUESTED, the
+gate stays *Evidence missing* and the panel shows "Exception requested by <user>, awaiting
+approval". A pull request that appears later ends the exception's effect (existing rule).
+
+*** Key Decision
+Store each event under its own KVS key (append-only), never rewrite an event:
+=fr:ex:{issueId}:{gate}:{at}:{seq}=. The current status is the last event. The issue
+property =fourrealities-exception= holds only the current status summary, for other tools.
+
+*** Trade-offs
+- Reading the current status needs a prefix query per issue on the panel (one query), and
+  one prefix query per project page of 100 events in the snapshot build.
+- The number of event keys grows with use, but each value is small and no value grows.
+
+** Pattern 4: Knowledge Level / Operational Level (Fowler)
+
+*Source*: Fowler, "Analysis Patterns". Same pattern as M360 ADR-009 Pattern 2.
+
+*** Application to FourRealities
+#+begin_src text
+KNOWLEDGE LEVEL (catalog, defaults in code,      OPERATIONAL LEVEL (instances)
+later per-project override in KVS)
+────────────────────────────────────────         ─────────────────────────────
+GATE_TYPE (4) + applicability rule               GATE_OBSERVATION
+EVIDENCE_SOURCE (catalog of sources,             GATE_OBSERVATION.method
+  each with its verification class)
+INTENT_EVIDENCE_RULE (link types, target         GATE_OBSERVATION for INTENT
+  issue types, content application types)
+EXCEPTION_STATUS + VALID_TRANSITION              GATE_EXCEPTION_EVENT
+ROLE_TYPE (REQUESTER, APPROVER)                  GATE_EXCEPTION_EVENT.as_role
+#+end_src
+
+*** Key Decision
+One catalog module holds every rule as data. Gate functions read the catalog; they hold no
+lists of names. A per-project override key (=fr:p:{key}:catalog=) is reserved; the settings
+page that writes it is a separate, later backlog item.
+
+** Pattern 5: Party Role and Accountability (Silverston, Fowler)
+
+*Source*: Silverston Vol 1 Ch. 2; Fowler "Analysis Patterns" Ch. 2; M360 ADR-009 Patterns 1 and 5
+and the Party-Role deep dive (explicit role context).
+
+*** Application to FourRealities
+Jira owns the parties (Atlassian accounts). FourRealities records the *role context* of each
+action explicitly on the event (=as_role=), as M360 does with PartyRole-to-PartyRole:
+"acc-1 *as REQUESTER* asked; acc-2 *as APPROVER* approved".
+
+Separation-of-duties rule (Knowledge Level, on the APPROVE transition):
+- The approver is not the requester.
+- The approver is not the issue's assignee at approval time.
+- Jira's own Edit Issues permission is enforced by the property write, made as the user.
+
+*** Trade-offs
+- A stricter rule ("approver must hold the project Administrators role") needs a Jira
+  permission read. The supported call and scope for it were not verified (Unknown); it is
+  left as a catalog option for later.
+
+** Pattern 6: Notes (Silverston)
+
+*Source*: OFBiz =WorkEffortNote= (=noteId=, =internalNote=) over =NoteData=.
+
+*** Application to FourRealities
+A rework reason is a *note*, not an exception and not a status: an append-only list per
+issue (=fr:note:{issueId}:{at}:{seq}=), with author and time. It never changes a gate.
+
+* Consequences
+
+** Positive
+- Every exception decision has a full, append-only trail: who asked, who approved, when, why.
+- No one can turn their own gate to "Excepted" (separation of duties).
+- Evidence rules change by data, not by code.
+- The observation carries its own source and reference, so the UI text no longer encodes
+  where evidence came from.
+- The same vocabulary as M360 (Party Role, Knowledge Level, Observation, Status history).
+
+** Negative
+- A second person is needed for every Code exception. Small teams may find this slow.
+- More KVS keys and one more prefix query on the issue panel.
+- Migration: v2 exception records (one record per issue) become events.
+
+** Mitigations
+- The panel shows a pending request clearly, with the requester and reason, so an approver
+  can act in one click from the same panel.
+- Migration reads a v2 record as one REQUESTED event plus one APPROVED event by the same
+  person, flagged =migrated: true=, and the panel labels it "approved before two-person
+  approval was required". Nothing is deleted.
+- Option B below keeps one-person exceptions for teams that choose it.
+
+* Options considered for the approval rule
+
+| Option | Rule | For | Against |
+|--------+------+-----+---------|
+| A (recommended) | Two people: requester and a different approver who is not the assignee | Meets separation of duties (EV-03); honest evidence | Slower for small teams |
+| B | One person, with append-only history | No extra step | Self-approval stays; weak evidence (EV-01) |
+| C | Approver must be a project administrator | Strongest | Needs an unverified Jira permission read |
+
+* Pattern Summary Table
+
+| Pattern | Entities | Owner | Purpose |
+|---------+----------+-------+---------|
+| Work Effort, Assoc, Content | Issue, issue link, remote link, changelog, assignee | Jira (read only) | Inputs to the gates |
+| Observation | GATE_OBSERVATION, TREND_POINT | FourRealities (derived) | What was seen, how, when |
+| Status history | GATE_EXCEPTION_EVENT, EXCEPTION_STATUS, VALID_TRANSITION | FourRealities | Exception lifecycle and trail |
+| Knowledge Level | GATE_TYPE, EVIDENCE_SOURCE, INTENT_EVIDENCE_RULE, ROLE_TYPE | FourRealities (catalog) | Rules as data |
+| Party Role | as_role on events | FourRealities (role context); Jira (parties) | Who acted in what capacity |
+| Notes | REWORK_NOTE | FourRealities | Context that changes no gate |
+
+* References
+
+- [[file:/home/fahimfarookme/Documents/projects/m360/architecture/decision/adr-00009-data-model-patterns.org][M360 ADR-009: Enterprise Data Model Patterns]]
+- [[file:/home/fahimfarookme/Documents/projects/m360/research/permanent/party-role-relationship-deep-dive.org][M360 Research: Party-Role-Relationship Deep Dive]]
+- [[https://raw.githubusercontent.com/apache/ofbiz-framework/trunk/applications/datamodel/entitydef/workeffort-entitymodel.xml][Apache OFBiz Work Effort entity model]] (read 2026-11-01)
+- [[https://raw.githubusercontent.com/apache/ofbiz-framework/trunk/framework/common/entitydef/entitymodel.xml][Apache OFBiz common entity model: StatusItem, StatusType, StatusValidChange]] (read 2026-11-01)
+- [[https://svn.apache.org/repos/asf/ofbiz/old-site/apache-ofbiz-project-overview.html][Apache OFBiz project overview]]: the OFBiz data model follows Silverston Vol 1 and 2
+- Len Silverston, "The Data Model Resource Book" Vol 1 and Vol 3 (not read in this review; patterns verified through OFBiz and M360)
+- Martin Fowler, "Analysis Patterns: Reusable Object Models" (Observation, Accountability, Knowledge Level)
+- Research brief =docs/sdlc/fourrealities-usp-ux-research-2026-11/research-brief.md=: EV-01 (ISA 500), EV-03 (NIST AC-5), FL-01 (KVS limits), H5, H9
+- [[file:adr-00002-fourrealities-volatility-layering.org][ADR-002: FourRealities Volatility Layering]]
+- [[file:../model/fourrealities-domain-model.org][FourRealities Domain Model (HLD)]]
