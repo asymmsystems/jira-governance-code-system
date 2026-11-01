@@ -8,6 +8,7 @@
  * report EDIT_ISSUES for a user who lacks it on a given issue. Any failure denies (fail closed).
  */
 import api, { route } from '@forge/api';
+import { withRetry } from '../jira/jira-client';
 
 export type JiraPermissionKey = string;
 
@@ -48,7 +49,7 @@ export async function getIssuePermissions(issueKey: string, keys: JiraPermission
   if (!issueKey || keys.length === 0) {
     throw new PermissionDeniedError(PERMISSION_CHECK_FAILED);
   }
-  return fetchGranted(() => api.asUser().requestJira(route`/rest/api/3/mypermissions?issueKey=${issueKey}&permissions=${keys.join(',')}`), keys);
+  return fetchGranted(() => withRetry(() => api.asUser().requestJira(route`/rest/api/3/mypermissions?issueKey=${issueKey}&permissions=${keys.join(',')}`)), keys);
 }
 
 /**
@@ -58,7 +59,7 @@ export async function getProjectPermissions(projectKey: string, keys: JiraPermis
   if (!projectKey || keys.length === 0) {
     throw new PermissionDeniedError(PERMISSION_CHECK_FAILED);
   }
-  return fetchGranted(() => api.asUser().requestJira(route`/rest/api/3/mypermissions?projectKey=${projectKey}&permissions=${keys.join(',')}`), keys);
+  return fetchGranted(() => withRetry(() => api.asUser().requestJira(route`/rest/api/3/mypermissions?projectKey=${projectKey}&permissions=${keys.join(',')}`)), keys);
 }
 
 export async function checkProjectPermissions(projectKey: string, keys: JiraPermissionKey[], deniedMessage: string): Promise<void> {

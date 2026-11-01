@@ -20,6 +20,7 @@ import { ChecklistStore } from '../storage/checklist-store';
 import { resyncEntry } from '../domain/event-log';
 import { publishAttestation } from '../integrity/attestation';
 import { ProjectConfigStore } from './project-config';
+import { withRetry } from '../jira/jira-client';
 
 export const TEMPLATE_DENIED = 'Only a project admin can change DefinitionGuard templates.';
 
@@ -39,7 +40,7 @@ export async function requireProjectAdmin(context: any) {
 
 /** The project's issue types, read as the user. */
 export async function projectIssueTypes(projectId: string): Promise<Array<{ id: string; name: string }>> {
-  const res = await api.asUser().requestJira(route`/rest/api/3/project/${projectId}`);
+  const res = await withRetry(() => api.asUser().requestJira(route`/rest/api/3/project/${projectId}`));
   if (res.status !== 200) {
     throw new Error('DefinitionGuard could not read the project issue types. Refresh the page.');
   }
@@ -49,7 +50,7 @@ export async function projectIssueTypes(projectId: string): Promise<Array<{ id: 
 
 /** The project's Done-category statuses, read as the user, without duplicates. */
 export async function projectDoneStatuses(projectId: string): Promise<Array<{ id: string; name: string }>> {
-  const res = await api.asUser().requestJira(route`/rest/api/3/project/${projectId}/statuses`);
+  const res = await withRetry(() => api.asUser().requestJira(route`/rest/api/3/project/${projectId}/statuses`));
   if (res.status !== 200) {
     throw new Error('DefinitionGuard could not read the project statuses. Refresh the page.');
   }
@@ -125,8 +126,8 @@ export async function resyncIssues(payload: any, context?: any, storageProvider?
   const jql = `project = ${c.projectId} AND issuetype = ${issueTypeId} AND statusCategory != Done`;
   const cursor = typeof payload?.cursor === 'string' ? payload.cursor : '';
   const res = cursor
-    ? await api.asApp().requestJira(route`/rest/api/3/search/jql?jql=${jql}&maxResults=${RESYNC_PAGE}&fields=id,key&nextPageToken=${cursor}`)
-    : await api.asApp().requestJira(route`/rest/api/3/search/jql?jql=${jql}&maxResults=${RESYNC_PAGE}&fields=id,key`);
+    ? await withRetry(() => api.asApp().requestJira(route`/rest/api/3/search/jql?jql=${jql}&maxResults=${RESYNC_PAGE}&fields=id,key&nextPageToken=${cursor}`))
+    : await withRetry(() => api.asApp().requestJira(route`/rest/api/3/search/jql?jql=${jql}&maxResults=${RESYNC_PAGE}&fields=id,key`));
   if (res.status !== 200) {
     throw new Error('DefinitionGuard could not search the open issues. Try again.');
   }

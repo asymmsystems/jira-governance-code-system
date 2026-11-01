@@ -88,10 +88,8 @@ function signIfConfigured(att: Attestation): SignedAttestation {
   return { ...att, keyId: null, sig: null };
 }
 
-/** Test seam: the wait between tries. */
-export const retryPolicy = {
-  sleep: (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
-};
+export { retryPolicy } from '../jira/jira-client';
+import { retryPolicy, backoffMs } from '../jira/jira-client';
 
 /**
  * Writes the property as the app. Retries on 429 and 5xx (Retry-After honoured, else 1 s, 2 s),
@@ -118,8 +116,7 @@ export async function publishAttestation(state: DodState, issuedAt: string): Pro
       console.warn(`DefinitionGuard: issue property write failed with status ${status} after ${attempt} tries.`);
       return { ok: false, attempts: attempt, status };
     }
-    const retryAfter = Number(res?.headers?.get?.('retry-after'));
-    await retryPolicy.sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1000 * attempt);
+    await retryPolicy.sleep(backoffMs(res, attempt));
   }
   /* istanbul ignore next: the loop always returns */
   return { ok: false, attempts: MAX_TRIES, status };

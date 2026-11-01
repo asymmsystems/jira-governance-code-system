@@ -14,6 +14,7 @@ import { StorageProvider } from '../storage/checklist-repository';
 import { resolveStorage } from '../storage/forge-storage';
 import { ProjectConfigStore } from './project-config';
 import { requireProjectAdmin } from './settings-resolvers';
+import { withRetry } from '../jira/jira-client';
 
 /** The validator module key from manifest.yml. */
 export const VALIDATOR_MODULE_KEY = 'definitionguard-workflow-validator';
@@ -79,7 +80,7 @@ export async function gateCoverage(_payload: any, context?: any, storageProvider
   const c = await requireProjectAdmin(context);
   const pages: any[] = [];
   for (let startAt = 0, n = 0; n < MAX_PAGES; n++, startAt += PAGE) {
-    const res = await api.asApp().requestJira(route`/rest/api/3/workflows/search?projectId=${c.projectId}&expand=values.transitions&startAt=${startAt}&maxResults=${PAGE}`);
+    const res = await withRetry(() => api.asApp().requestJira(route`/rest/api/3/workflows/search?projectId=${c.projectId}&expand=values.transitions&startAt=${startAt}&maxResults=${PAGE}`));
     if (res.status !== 200) {
       throw new Error('DefinitionGuard could not read the project workflows. Ask a Jira admin to check that DefinitionGuard has workflow read access.');
     }

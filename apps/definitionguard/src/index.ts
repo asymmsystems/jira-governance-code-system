@@ -17,6 +17,7 @@ import { resolveTemplate } from './settings/template-store';
 import { assertLicensed, isLicenceInactive, VALIDATOR_LICENCE_INACTIVE } from './security/licence';
 import { validateEvidence, EVIDENCE_REQUIRED } from './domain/evidence';
 import { publishAttestation } from './integrity/attestation';
+import { withRetry } from './jira/jira-client';
 
 export { settingsHandler } from './settings/settings-resolvers';
 
@@ -27,7 +28,7 @@ export { setGlobalStorageProvider, resolveStorage } from './storage/forge-storag
  */
 export async function fetchLiveJiraIssue(issueIdOrKey: string): Promise<any | null> {
   try {
-    const res = await api.asApp().requestJira(route`/rest/api/3/issue/${issueIdOrKey}?fields=issuetype,project,status`);
+    const res = await withRetry(() => api.asApp().requestJira(route`/rest/api/3/issue/${issueIdOrKey}?fields=issuetype,project,status`));
     if (res.status === 200) {
       return await res.json();
     }
@@ -44,7 +45,7 @@ export const VALIDATOR_FAILURE_MESSAGE =
  * so the validator blocks instead of guessing (fail closed).
  */
 async function fetchIssueForValidator(issueIdOrKey: string): Promise<any> {
-  const res = await api.asApp().requestJira(route`/rest/api/3/issue/${issueIdOrKey}?fields=issuetype,project,assignee`);
+  const res = await withRetry(() => api.asApp().requestJira(route`/rest/api/3/issue/${issueIdOrKey}?fields=issuetype,project,assignee`));
   if (res.status !== 200) {
     throw new Error(`DefinitionGuard: issue lookup returned ${res.status}`);
   }
@@ -153,7 +154,7 @@ async function evaluateTransition(payload: any, context?: any, storageProvider?:
   // A missing target is treated as a Done move (fail closed).
   const targetId = String(payload?.transition?.to?.id || '');
   if (targetId) {
-    const res = await api.asApp().requestJira(route`/rest/api/3/status/${targetId}`);
+    const res = await withRetry(() => api.asApp().requestJira(route`/rest/api/3/status/${targetId}`));
     if (res.status !== 200) {
       throw new Error(`DefinitionGuard: status lookup returned ${res.status}`);
     }
@@ -305,7 +306,7 @@ async function currentState(storage: StorageProvider, store: ChecklistStore, c: 
 async function currentAssignee(issueKey: string): Promise<string | undefined> {
   let res: any;
   try {
-    res = await api.asUser().requestJira(route`/rest/api/3/issue/${issueKey}?fields=assignee`);
+    res = await withRetry(() => api.asUser().requestJira(route`/rest/api/3/issue/${issueKey}?fields=assignee`));
   } catch {
     res = { status: 0 };
   }
