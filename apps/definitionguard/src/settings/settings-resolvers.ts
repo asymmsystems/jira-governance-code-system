@@ -161,5 +161,10 @@ resolver.define('getSettings', async (req) => getSettings(req.payload, req.conte
 resolver.define('saveTemplate', async (req) => saveTemplate(req.payload, req.context));
 resolver.define('saveExemptions', async (req) => saveExemptions(req.payload, req.context));
 resolver.define('resyncIssues', async (req) => resyncIssues(req.payload, req.context));
+resolver.define('gateCoverage', async (req) => {
+  // Loaded lazily: coverage.ts imports requireProjectAdmin from this module.
+  const { gateCoverage } = await import('./coverage');
+  return gateCoverage(req.payload, req.context);
+});
 
 export const settingsHandler = resolver.getDefinitions();

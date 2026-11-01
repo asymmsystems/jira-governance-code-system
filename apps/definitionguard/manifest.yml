@@ -46,3 +46,4 @@ permissions:
     - read:jira-work
     - write:jira-work
     - storage:app
+    - read:workflow:jira

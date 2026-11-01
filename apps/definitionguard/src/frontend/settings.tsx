@@ -18,7 +18,10 @@ import ForgeReconciler, {
   Spinner,
   Stack,
   Text,
-  Textfield
+  Textfield,
+  List,
+  ListItem,
+  Lozenge
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
 import {
@@ -51,6 +54,8 @@ export const SettingsPage: React.FC = () => {
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState<boolean>(false);
   const [exempt, setExempt] = useState<string[]>([]);
+  const [coverage, setCoverage] = useState<{ summary: string; missing: number; transitions: Array<{ workflow: string; transition: string; toStatus: string; gated: boolean; exempt: boolean }> } | null>(null);
+  const [coverageError, setCoverageError] = useState<string | null>(null);
 
   const load = async () => {
     setError(null);
@@ -66,8 +71,18 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  const loadCoverage = async () => {
+    setCoverageError(null);
+    try {
+      setCoverage((await invoke('gateCoverage', {})) as any);
+    } catch (err) {
+      setCoverageError(panelErrorText(err, 'read the workflows'));
+    }
+  };
+
   useEffect(() => {
     load();
+    loadCoverage();
   }, []);
 
   const chooseIssueType = (id: string) => {
@@ -99,6 +114,7 @@ export const SettingsPage: React.FC = () => {
       await invoke('saveExemptions', { exemptStatusIds: exempt });
       setNotice('Saved. Moves into the ticked statuses are not gated, for example Canceled or Declined.');
       await load();
+      await loadCoverage();
     } catch (err) {
       setError(panelErrorText(err, 'save the statuses'));
     } finally {
@@ -256,6 +272,32 @@ export const SettingsPage: React.FC = () => {
       <Inline space="space.100">
         <Button isDisabled={saving} onClick={saveExempt}>Save statuses</Button>
       </Inline>
+
+      <Heading as="h3">Gate coverage</Heading>
+      <Text>DefinitionGuard blocks a move only on transitions where a Jira admin added the "DefinitionGuard DoD Enforcement" validator in the workflow editor. The app cannot add it for you.</Text>
+      {coverageError && (
+        <SectionMessage appearance="error">
+          <Text>{coverageError}</Text>
+        </SectionMessage>
+      )}
+      {coverage && (
+        <Stack space="space.100">
+          <SectionMessage appearance={coverage.missing === 0 ? 'success' : 'warning'}>
+            <Text>{coverage.summary}</Text>
+          </SectionMessage>
+          <List type="unordered">
+            {coverage.transitions.map(t => (
+              <ListItem key={`${t.workflow}/${t.transition}/${t.toStatus}`}>
+                <Inline space="space.100" alignBlock="center" shouldWrap>
+                  <Lozenge appearance={t.exempt ? 'default' : t.gated ? 'success' : 'removed'}>{t.exempt ? 'Exempt' : t.gated ? 'Gated' : 'Not gated'}</Lozenge>
+                  <Text>{t.workflow}: {t.transition} (to {t.toStatus})</Text>
+                </Inline>
+              </ListItem>
+            ))}
+          </List>
+          <Button appearance="subtle" onClick={loadCoverage}>Check again</Button>
+        </Stack>
+      )}
     </Stack>
   );
 };
