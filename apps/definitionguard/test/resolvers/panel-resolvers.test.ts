@@ -134,11 +134,18 @@ describe('panel resolvers (v2 event log)', () => {
       await expect(toggleChecklistItem({}, ctx(), storage)).rejects.toThrow('Missing itemId');
     });
 
-    it('publishes the property with the counts and the head hash', async () => {
+    it('publishes the schema v2 property with the counts and the head hash', async () => {
       const res = await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx(), storage);
       const put = jira.callsTo('/properties/definitionguard-dod', 'app')[0];
       expect(put.method).toBe('PUT');
-      expect(put.body).toMatchObject({ completedCount: 1, totalCount: DEFAULT_DEFINITION_OF_DONE.items.length, checklistHash: res.checklistHash, isFullySatisfied: false });
+      expect(put.body).toMatchObject({
+        schemaVersion: 2,
+        issueId: '40001',
+        mandatoryTotal: DEFAULT_DEFINITION_OF_DONE.items.filter(i => i.isMandatory).length,
+        mandatoryCompleted: 1,
+        headHash: res.checklistHash,
+        isFullySatisfied: false
+      });
     });
 
     it('still returns the new state when the property write throws', async () => {

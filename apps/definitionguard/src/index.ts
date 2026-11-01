@@ -15,6 +15,7 @@ import { checkIssuePermissions, getIssuePermissions, permissionLabel, Permission
 import { resolveTemplate } from './settings/template-store';
 import { assertLicensed, isLicenceInactive, VALIDATOR_LICENCE_INACTIVE } from './security/licence';
 import { validateEvidence, EVIDENCE_REQUIRED } from './domain/evidence';
+import { publishAttestation } from './integrity/attestation';
 import { ChecklistTemplate } from './domain/models';
 
 export { settingsHandler } from './settings/settings-resolvers';
@@ -227,22 +228,6 @@ export function toPanelResponse(state: ChecklistState, events: ChecklistEvent[] 
   };
 }
 
-async function publishProperty(issueId: string, response: IssueChecklistState): Promise<void> {
-  // Publish DoD status to Jira issue entity property for cross-reality audits
-  try {
-    await api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/properties/definitionguard-dod`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        isFullySatisfied: response.isFullySatisfied,
-        completedCount: response.items.filter(i => i.isCompleted).length,
-        totalCount: response.items.length,
-        checklistHash: response.checklistHash,
-        lastModifiedAt: response.lastModifiedAt
-      })
-    });
-  } catch {}
-}
 
 /** The template for a panel action: ids from the context, else from one issue lookup. */
 async function templateFor(storage: StorageProvider, c: ReturnType<typeof panelContext>): Promise<ChecklistTemplate> {
@@ -354,9 +339,8 @@ export async function waiveChecklistItem(payload: any, context?: any, storagePro
     { issueKey: c.issueKey, projectId: c.projectId }
   );
 
-  const response = toPanelResponse(state);
-  await publishProperty(c.issueId, response);
-  return response;
+  await publishAttestation(state, new Date().toISOString());
+  return toPanelResponse(state);
 }
 
 /**
@@ -439,9 +423,8 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
     { issueKey: c.issueKey, projectId: c.projectId }
   );
 
-  const response = toPanelResponse(state);
-  await publishProperty(c.issueId, response);
-  return response;
+  await publishAttestation(state, new Date().toISOString());
+  return toPanelResponse(state);
 }
 
 /**
@@ -464,9 +447,8 @@ export async function resetChecklist(_payload: any, context?: any, storageProvid
     { issueKey: c.issueKey, projectId: c.projectId }
   );
 
-  const response = toPanelResponse(state);
-  await publishProperty(c.issueId, response);
-  return response;
+  await publishAttestation(state, new Date().toISOString());
+  return toPanelResponse(state);
 }
 
 /**

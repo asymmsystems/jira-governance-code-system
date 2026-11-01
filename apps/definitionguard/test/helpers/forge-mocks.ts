@@ -31,7 +31,13 @@ export function makeRequester(who: 'app' | 'user') {
     jira.calls.push(call);
     const reply = jira.handler(call);
     if ((reply as any).throws) throw new Error(String((reply as any).throws));
-    return { status: reply.status, ok: reply.status >= 200 && reply.status < 300, json: async () => reply.body ?? {}, headers: { get: () => null } };
+    const retryAfter = (reply as any).retryAfter;
+    return {
+      status: reply.status,
+      ok: reply.status >= 200 && reply.status < 300,
+      json: async () => reply.body ?? {},
+      headers: { get: (name: string) => (name.toLowerCase() === 'retry-after' && retryAfter !== undefined ? String(retryAfter) : null) }
+    };
   });
 }
 
