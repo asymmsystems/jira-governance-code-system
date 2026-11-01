@@ -135,13 +135,14 @@ export const DefinitionGuardPanel: React.FC = () => {
         </Inline>
       )}
 
-      <Stack space="space.100">
+      <Stack space="space.150">
         {vm?.items.map(item => (
-          <Box key={item.id} padding="space.050">
+          <Box key={item.id} paddingBlock="space.050">
             <Inline space="space.100" alignBlock="center" shouldWrap>
               <Checkbox
                 value={item.id}
-                label={item.label}
+                name={item.label}
+                label={item.title}
                 isChecked={item.checked}
                 isDisabled={busyId === item.id}
                 onChange={() => {
@@ -158,17 +159,20 @@ export const DefinitionGuardPanel: React.FC = () => {
             </Inline>
 
             {item.attribution && (
-              <Box paddingInlineStart="space.200">
+              <Box paddingInlineStart="space.300">
                 <Inline space="space.050" alignBlock="center">
-                  <Text>{item.doneText}</Text>
                   <Who who={item.attribution} />
-                  <Text>{item.when}</Text>
+                  <Text size="small" color="color.text.subtle">
+                    {item.doneText === 'Waived by' ? 'waived this' : 'completed this'}
+                  </Text>
+                  <Text size="small" color="color.text.subtle">•</Text>
+                  <Text size="small" color="color.text.subtle">{item.when}</Text>
                 </Inline>
               </Box>
             )}
 
             {evidenceFor === item.id && (
-              <Box paddingInlineStart="space.200">
+              <Box paddingInlineStart="space.300">
                 <Stack space="space.050">
                   <Text>{item.needsEvidence ? 'This item needs evidence. Add a link, a note, or both.' : 'Add a link, a note, or both.'}</Text>
                   <Textfield id={`dg-ev-url-${item.id}`} placeholder="https://..." onChange={(e: any) => setEvUrl(e.target.value)} />
@@ -176,40 +180,42 @@ export const DefinitionGuardPanel: React.FC = () => {
                   <Inline space="space.100">
                     <Button
                       appearance="primary"
+                      spacing="compact"
                       isDisabled={busyId === item.id || (!evUrl.trim() && !evNote.trim())}
                       onClick={() => change('toggleItem', { itemId: item.id, isCompleted: true, evidence: { url: evUrl.trim() || undefined, note: evNote.trim() || undefined } }, item.id, 'save the evidence')}
                     >
                       Save and tick
                     </Button>
-                    <Button appearance="subtle" onClick={() => setEvidenceFor(null)}>Cancel</Button>
+                    <Button appearance="subtle" spacing="compact" onClick={() => setEvidenceFor(null)}>Cancel</Button>
                   </Inline>
                 </Stack>
               </Box>
             )}
 
             {waiveFor === item.id && (
-              <Box paddingInlineStart="space.200">
+              <Box paddingInlineStart="space.300">
                 <Stack space="space.050">
                   <Text>Why does this item not apply? The reason is kept in the history.</Text>
                   <Textfield id={`dg-waive-${item.id}`} placeholder="Reason (10 to 500 characters)" maxLength={500} onChange={(e: any) => setWaiveReason(e.target.value)} />
                   <Inline space="space.100">
-                    <Button appearance="warning" isDisabled={busyId === item.id || waiveReason.trim().length < 10} onClick={() => change('waiveItem', { itemId: item.id, reason: waiveReason }, item.id, 'waive the item')}>
+                    <Button appearance="warning" spacing="compact" isDisabled={busyId === item.id || waiveReason.trim().length < 10} onClick={() => change('waiveItem', { itemId: item.id, reason: waiveReason }, item.id, 'waive the item')}>
                       Waive item
                     </Button>
-                    <Button appearance="subtle" onClick={() => setWaiveFor(null)}>Cancel</Button>
+                    <Button appearance="subtle" spacing="compact" onClick={() => setWaiveFor(null)}>Cancel</Button>
                   </Inline>
                 </Stack>
               </Box>
             )}
 
             {evidenceFor !== item.id && waiveFor !== item.id && (item.canAddEvidence || item.canWaive || item.canShowEvidence) && (
-              <Box paddingInlineStart="space.200">
-                <Inline space="space.100">
-                  {item.canAddEvidence && <Button appearance="subtle" onClick={() => setEvidenceFor(item.id)}>Tick with evidence</Button>}
-                  {item.canWaive && <Button appearance="subtle" onClick={() => setWaiveFor(item.id)}>Waive</Button>}
+              <Box paddingInlineStart="space.300">
+                <Inline space="space.100" alignBlock="center">
+                  {item.canAddEvidence && <Button appearance="subtle" spacing="compact" onClick={() => setEvidenceFor(item.id)}>Tick with evidence</Button>}
+                  {item.canWaive && <Button appearance="subtle" spacing="compact" onClick={() => setWaiveFor(item.id)}>Waive</Button>}
                   {item.canShowEvidence && shownEvidence[item.id] === undefined && (
                     <Button
                       appearance="subtle"
+                      spacing="compact"
                       onClick={() => run('load the evidence', item.id, async () => {
                         const res = (await invoke('getEvidence', { itemId: item.id })) as unknown as { evidence?: Evidence };
                         setShownEvidence({ ...shownEvidence, [item.id]: res?.evidence || null });
@@ -220,10 +226,12 @@ export const DefinitionGuardPanel: React.FC = () => {
                   )}
                 </Inline>
                 {shownEvidence[item.id] && (
-                  <Stack space="space.050">
-                    {shownEvidence[item.id]!.url && <Link href={shownEvidence[item.id]!.url!} openNewTab>{shownEvidence[item.id]!.url}</Link>}
-                    {shownEvidence[item.id]!.note && <Text>{shownEvidence[item.id]!.note}</Text>}
-                  </Stack>
+                  <Box paddingBlockStart="space.050">
+                    <Stack space="space.050">
+                      {shownEvidence[item.id]!.url && <Link href={shownEvidence[item.id]!.url!} openNewTab>{shownEvidence[item.id]!.url}</Link>}
+                      {shownEvidence[item.id]!.note && <Text size="small">{shownEvidence[item.id]!.note}</Text>}
+                    </Stack>
+                  </Box>
                 )}
               </Box>
             )}
@@ -231,26 +239,30 @@ export const DefinitionGuardPanel: React.FC = () => {
         ))}
       </Stack>
 
-      <Inline space="space.100" alignBlock="center" shouldWrap>
-        <Button appearance="subtle" isDisabled={loading || busyId !== null || showResetConfirm} onClick={() => setShowResetConfirm(true)}>
-          Reset checklist
-        </Button>
-        <Button
-          appearance="subtle"
-          isDisabled={loading}
-          onClick={() => (history ? setHistory(null) : run('load the history', 'history', async () => setHistory((await invoke('getHistory', {})) as unknown as HistoryPage)))}
-        >
-          {history ? 'Hide history' : 'History'}
-        </Button>
-        <Button
-          appearance="subtle"
-          isDisabled={loading}
-          onClick={() => (exported ? setExported(null) : run('export the history', 'export', async () => setExported((await invoke('exportHistory', {})) as unknown as { fileName: string; text: string })))}
-        >
-          {exported ? 'Hide export' : 'Export history'}
-        </Button>
-        <Button appearance="subtle" isDisabled={loading} onClick={loadChecklist}>Refresh</Button>
-      </Inline>
+      <Box paddingBlockStart="space.100">
+        <Inline space="space.050" alignBlock="center" shouldWrap>
+          <Button appearance="subtle" spacing="compact" isDisabled={loading || busyId !== null || showResetConfirm} onClick={() => setShowResetConfirm(true)}>
+            Reset checklist
+          </Button>
+          <Button
+            appearance="subtle"
+            spacing="compact"
+            isDisabled={loading}
+            onClick={() => (history ? setHistory(null) : run('load the history', 'history', async () => setHistory((await invoke('getHistory', {})) as unknown as HistoryPage)))}
+          >
+            {history ? 'Hide history' : 'History'}
+          </Button>
+          <Button
+            appearance="subtle"
+            spacing="compact"
+            isDisabled={loading}
+            onClick={() => (exported ? setExported(null) : run('export the history', 'export', async () => setExported((await invoke('exportHistory', {})) as unknown as { fileName: string; text: string })))}
+          >
+            {exported ? 'Hide export' : 'Export history'}
+          </Button>
+          <Button appearance="subtle" spacing="compact" isDisabled={loading} onClick={loadChecklist}>Refresh</Button>
+        </Inline>
+      </Box>
 
       {exported && (
         <Stack space="space.100">
@@ -260,7 +272,7 @@ export const DefinitionGuardPanel: React.FC = () => {
       )}
 
       {history && (
-        <Stack space="space.100">
+        <Stack space="space.150">
           <Heading as="h4">History</Heading>
           {history.chain && (
             <SectionMessage appearance={history.chain.ok ? 'information' : 'error'}>
@@ -268,28 +280,48 @@ export const DefinitionGuardPanel: React.FC = () => {
               <Text>{history.chain.limit}</Text>
             </SectionMessage>
           )}
-          <Stack space="space.150">
+          <Stack space="space.200">
             {historyRows(history.auditTrail).map(row => (
-              <Box key={row.key} padding="space.050">
+              <Box key={row.key} paddingBlock="space.050">
                 <Stack space="space.050">
-                  <Inline space="space.100" alignBlock="center" shouldWrap>
+                  <Inline space="space.100" alignBlock="center">
                     <User accountId={row.accountId} />
-                    <Text>{row.actionText || row.text}</Text>
-                    <Text>{row.when}</Text>
+                    <Text size="small" color="color.text.subtle">•</Text>
+                    <Text size="small" color="color.text.subtle">{row.when}</Text>
                   </Inline>
-                  {row.reason && (
-                    <Box paddingInlineStart="space.300">
-                      <Text>Reason: {row.reason}</Text>
-                    </Box>
-                  )}
-                  {row.evidence && (row.evidence.url || row.evidence.note) && (
-                    <Box paddingInlineStart="space.300">
-                      <Stack space="space.025">
-                        {row.evidence.url && <Link href={row.evidence.url} openNewTab>{row.evidence.url}</Link>}
-                        {row.evidence.note && <Text>{row.evidence.note}</Text>}
-                      </Stack>
-                    </Box>
-                  )}
+                  <Box paddingInlineStart="space.400">
+                    <Stack space="space.050">
+                      {row.itemTitle ? (
+                        <Inline space="space.100" alignBlock="center">
+                          <Lozenge
+                            appearance={
+                              row.eventType === 'CHECK'
+                                ? 'success'
+                                : row.eventType === 'WAIVE'
+                                ? 'inprogress'
+                                : row.eventType === 'UNCHECK'
+                                ? 'moved'
+                                : 'default'
+                            }
+                          >
+                            {row.actionVerb || row.actionText}
+                          </Lozenge>
+                          <Text weight="medium">{row.itemTitle}</Text>
+                        </Inline>
+                      ) : (
+                        <Lozenge appearance="default">{row.actionText}</Lozenge>
+                      )}
+                      {row.reason && (
+                        <Text size="small" color="color.text.subtle">Reason: {row.reason}</Text>
+                      )}
+                      {row.evidence && (row.evidence.url || row.evidence.note) && (
+                        <Stack space="space.025">
+                          {row.evidence.url && <Link href={row.evidence.url} openNewTab>{row.evidence.url}</Link>}
+                          {row.evidence.note && <Text size="small">{row.evidence.note}</Text>}
+                        </Stack>
+                      )}
+                    </Stack>
+                  </Box>
                 </Stack>
               </Box>
             ))}

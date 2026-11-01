@@ -163,6 +163,9 @@ export interface HistoryRow {
   accountId: string;
   text: string;
   actionText: string;
+  eventType?: ChecklistAuditEvent['eventType'];
+  actionVerb?: string;
+  itemTitle?: string;
   reason?: string;
   evidence?: { url?: string; note?: string };
 }
@@ -182,9 +185,19 @@ export function historyRows(trail: ChecklistAuditEvent[] | undefined, format: (i
     if (ev.itemTitle) actionText += `: ${ev.itemTitle}`;
     let text = actionText;
     if (ev.details) text += ` (reason: ${ev.details})`;
-    const row: HistoryRow = { key: ev.id, when: format(ev.timestamp), accountId: ev.actorAccountId, text, actionText };
+    const row: HistoryRow = {
+      key: ev.id,
+      when: format(ev.timestamp),
+      accountId: ev.actorAccountId,
+      text,
+      actionText,
+      eventType: ev.eventType,
+      actionVerb: ACTION_TEXT[ev.eventType],
+      itemTitle: ev.itemTitle
+    };
     if (ev.details) row.reason = ev.details;
     if (ev.evidence) row.evidence = ev.evidence;
     return row;
   });
 }
+
