@@ -140,4 +140,29 @@ Build order (deviation from backlog order, recorded 2026-11-01): B-03, B-05, B-0
   - Project page "FourRealities Audit Dashboard" on DEMO renders (FR-01 closed live): gate cards with counts, RAI line (21 rated, 14 unrated), trend notice with next snapshot 2026-11-02, filter bar with Search, Assignee and Gate (Sprint hidden: no DEMO issue has a sprint), 35 issues in the table with named gate chips. Screenshot `/tmp/claude-chrome-screenshots-r0BuFx/screenshot-1793509979028-2.jpg` (local, not committed).
   - Observed: with `maxWidth="100%"` (B-20) each gate lozenge fills the width of its container, so it reads as a bar, not a pill. Text is not cut. Open for a visual decision.
   - No `[FR-PROBE]` issue exists (`labels = fr-probe` search returned none), so the write paths (B-17, B-30, B-32) were not checked live.
-- Writes made in Loop 3: none.
+- Writes made in the read-only pass: none.
+
+### Loop 3 live write check on AUDT (owner decision in chat: "Option B", 2026-11-01)
+
+Every write, in order. All went to AUDT-1 (id 10068), created for this check; no other issue was opened for writing, no sealed issue was touched, DEMO-26 was not repaired, and no LedgerSeal or DefinitionGuard key was written.
+
+| # | Time (UTC) | Write | By | Result |
+|---|---|---|---|---|
+| 1 | 05:19 | `POST /rest/api/3/issue`: Task "[FR-PROBE] FourRealities write check" in AUDT, label `fr-probe` | owner session, browser | 201, AUDT-1 |
+| 2 | 05:19 | Transition AUDT-1 to Done | owner session, browser | 204 |
+| - | 05:20 | Link decision record, first try: the browser tool's burst typing kept one character per field; FourRealities refused the input ("Invalid specification URL provided."); nothing written | app, as user | refused |
+| 3 | 05:21 | Link decision record: remote link `https://asymmsystems.atlassian.net/wiki/spaces/FRPROBE/pages/1`, title "[FR-PROBE] decision link" (fields filled with one input event each) | app, as user | added; panel updated in place: "Link added. Intent: Evidence found."; RAI 25% |
+| 4 | 05:22 | Request Code exception, reason "[FR-PROBE] configuration change only, no code", notes "FR-PROBE write check": property `fourrealities-exception` and one `fr:ex:` event | app, as user | "Exception requested. A project administrator must approve it. Code: Evidence missing." |
+| - | 05:22 | Approve as the requester | app, as user | refused before any write: "Only a project administrator can approve, reject or revoke an exception." |
+| 5 | 05:23 | Withdraw request: property and one `fr:ex:` event | app, as user | "Decision recorded. Code: Evidence missing."; stored reason "Approved without comment." (defect, fixed in `ac961dc`; the stored event stays as written) |
+| 6 | 05:23 | Transition AUDT-1 to In Progress | owner session, browser | 204; panel shows "Rework loops: 1." (B-24 categories live) |
+| 7 | 05:24 | Add rework reason "[FR-PROBE] reopened to check the rework note": property and one `fr:note:` key | app, as user | "Rework reason recorded. It does not change any gate." |
+
+Read back: `fourrealities-exception` holds schemaVersion 3, code WITHDRAWN with requester and decider, the rework note and `reworkNoteCount: 1`. AUDT-1 is left In Progress with label `fr-probe`.
+
+Findings from the live check:
+- **L3-1 (design, for the owner):** the owner is a Jira administrator (`ADMINISTER: true`) without `ADMINISTER_PROJECTS` on AUDT (`false`), so FourRealities refuses the owner's approvals there. ADR-001 Option C names the project permission only.
+- **L3-2 (fixed, `ac961dc`):** a withdrawal without a comment stored "Approved without comment."; the request dialog title said "Record". Deployed as 3.4.0.
+- **L3-3 (not resolved):** text entered by the browser tool in one burst (typing or many key events) kept only the last character in UI Kit text fields; single key presses and single input events worked. Fields were made uncontrolled (`ac58487`, deployed as 3.3.0) and the burst loss stayed. Whether fast human typing loses characters is not known.
+- **L3-4 (visual, open):** gate lozenges with `maxWidth="100%"` fill their container and read as bars.
+- Labels are announced with their fields (accessible names "Page address", "Page title"), as B-20 requires.
