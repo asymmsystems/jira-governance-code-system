@@ -16,7 +16,7 @@ jest.mock('@forge/react', () => require('./forge-mocks').reactMock());
 jest.mock('@forge/bridge', () => require('./forge-mocks').bridgeMock());
 
 import { FourRealitiesApp } from '../../src/frontend/index';
-import { errorText } from '../../src/frontend/app';
+import { errorText } from '../../src/ui/triage';
 
 describe('FourRealitiesApp rendering', () => {
   let hookErrors: string[];

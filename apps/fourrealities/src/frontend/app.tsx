@@ -10,11 +10,7 @@ import { invoke, view } from '@forge/bridge';
 import { IssueRow, ProjectDashboardView } from '../contract/data/models';
 import { IssuePanel } from './issue-panel';
 import { ProjectDashboard } from './project-dashboard';
-
-/** Error text from a resolver envelope or a thrown error. */
-export function errorText(res: any, fallback: string): string {
-  return res?.error?.message || res?.message || fallback;
-}
+import { errorText } from '../ui/triage';
 
 export const FourRealitiesApp: React.FC = () => {
   // All hooks run on every render, before any early return (React rules of hooks, FR-01).

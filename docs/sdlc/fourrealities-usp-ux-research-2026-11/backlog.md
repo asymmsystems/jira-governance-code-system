@@ -40,7 +40,7 @@ Status: approved. Part B in progress on branch `feature/fourrealities-research-b
 | B-19 | Four-week trend with denominators | Task 6 | FR-15, FR-16 | M | depends on B-08; DONE 2026-11-01 |
 | B-20 | Accessibility and narrow-width layout | Task 8 | FR-23, NF-04 | S | none; DONE 2026-11-01 |
 | B-21 | RAI shown as a secondary number, with its parts | H5 | FR-15 (label), H5 | S | none; DONE 2026-11-01 |
-| B-22 | Pure UI logic in modules; per-file coverage | PX-03 | PX-03, FR-22 | M | none |
+| B-22 | Pure UI logic in modules; per-file coverage | PX-03 | PX-03, FR-22 | M | none; DONE 2026-11-01 |
 | B-23 | Marketplace licensing | PX-01 | PX-01 | S | [MANIFEST] |
 | B-24 | Code hygiene: headers, unused dependency, typed payloads | Portfolio rules | FR-25 | S | [DEP] (removal) |
 | B-25 | Read the HeroCoders `checklist` property as a labelled DoD hint | U7, H6 | NF-08 | M | none |

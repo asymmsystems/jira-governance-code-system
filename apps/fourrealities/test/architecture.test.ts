@@ -67,6 +67,26 @@ describe('ADR-002 volatility layering', () => {
     expect(violations(f => inside(f, 'contract'), s => inside(s, 'contract'))).toEqual([]);
   });
 
+  it('B-22: UI logic modules import no React and no UI Kit', () => {
+    expect(violations(f => inside(f, 'ui'), s => inside(s, 'contract') || inside(s, 'ui'))).toEqual([]);
+  });
+
+  it('B-22: React files export components, not logic functions', () => {
+    const logic = files.filter(f => inside(rel(f), 'frontend'))
+      .flatMap(f => Array.from(fs.readFileSync(f, 'utf8').matchAll(/^export (?:async )?function ([a-z]\w*)/gm)).map(m => `${rel(f)}: ${m[1]}`));
+    expect(logic).toEqual([]);
+  });
+
+  it('B-22: no test asserts only that a value is defined', () => {
+    const testDir = path.join(__dirname);
+    const all = (dir: string): string[] => fs.readdirSync(dir).flatMap(n => {
+      const p = path.join(dir, n);
+      return fs.statSync(p).isDirectory() ? all(p) : /\.test\.tsx?$/.test(n) ? [p] : [];
+    });
+    const hits = all(testDir).filter(f => f !== __filename && /\.toBeDefined\(\)/.test(fs.readFileSync(f, 'utf8'))).map(f => path.relative(testDir, f));
+    expect(hits).toEqual([]);
+  });
+
   it('production code has no NODE_ENV branch', () => {
     expect(files.filter(f => fs.readFileSync(f, 'utf8').includes('NODE_ENV')).map(rel)).toEqual([]);
   });

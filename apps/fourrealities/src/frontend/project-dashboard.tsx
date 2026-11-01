@@ -30,6 +30,7 @@ import { router } from '@forge/bridge';
 import { GATE_NAMES, GateName, IssueRow, ProjectDashboardView } from '../contract/data/models';
 import { GATE_LABEL, raiText, rateText, riskAppearance } from '../ui/gate-text';
 import { DashboardFilters, FilterField, GATE_FILTER_OPTIONS, NO_FILTERS, activeFilters, applyFilters, filterOptions, missingGateLabel } from '../ui/filters';
+import { triageOrder } from '../ui/triage';
 import { TREND_WEEKS, chartData, recentWeeks, trendNotice, trendTableRows } from '../ui/trend';
 import { GateChips, GateRow } from './gate-row';
 
@@ -42,8 +43,6 @@ const RATE_OF: Record<GateName, (v: ProjectDashboardView) => number | null> = {
   code: v => v.summary.m29PullRequestRate,
   audit: v => v.summary.sealRate
 };
-
-const RISK_RANK: Record<IssueRow['risk'], number> = { CRITICAL: 1, HIGH: 2, MEDIUM: 3, LOW: 4, UNRATED: 5 };
 
 /**
  * Weekly trend for the whole project (spec v2, D-4): a text table first, so the numbers are
@@ -66,13 +65,6 @@ export const TrendPanel: React.FC<{ view: ProjectDashboardView }> = ({ view }) =
     </Stack>
   );
 };
-
-/** Rows sorted for triage: most missing evidence first, then lowest RAI. */
-export function triageOrder(rows: IssueRow[]): IssueRow[] {
-  const missing = (r: IssueRow) => GATE_NAMES.filter(g => r.gates[g].state === 'MISSING').length;
-  return [...rows].sort((a, b) =>
-    missing(b) - missing(a) || RISK_RANK[a.risk] - RISK_RANK[b.risk] || (a.rai ?? 101) - (b.rai ?? 101) || a.issueKey.localeCompare(b.issueKey));
-}
 
 export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh: () => void }> = ({ view, onRefresh }) => {
   const [filters, setFilters] = useState<DashboardFilters>(NO_FILTERS);

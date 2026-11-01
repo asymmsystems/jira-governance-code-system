@@ -21,6 +21,7 @@ import {
 } from '../src/index';
 import { StorageProvider } from '../src/contract/accessors';
 import { judged } from './domain/fixtures';
+import { DefaultForgeKvsStore } from '../src/accessor/default-forge-kvs-store';
 
 // One response queue (mockRequestJira) and one recording mock per principal,
 // so a test can assert which principal made each call (FR-22).
@@ -257,7 +258,7 @@ describe('FourRealities Index / Forge Handlers', () => {
         setGlobalStorageProvider(null);
         const { kvs } = require('@forge/kvs');
         const storage = resolveStorage();
-        expect(storage).toBeDefined();
+        expect(storage).toBeInstanceOf(DefaultForgeKvsStore);
 
         await storage.set('test-key', { a: 1 });
         expect(kvs.set).toHaveBeenCalledWith('test-key', { a: 1 });

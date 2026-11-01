@@ -14,7 +14,8 @@ import { F, M_CODE, M_DOD, M_INTENT, M_SEAL, NA, dashboard, row } from './rows';
 jest.mock('@forge/react', () => require('./forge-mocks').reactMock());
 jest.mock('@forge/bridge', () => require('./forge-mocks').bridgeMock());
 
-import { ProjectDashboard, triageOrder } from '../../src/frontend/project-dashboard';
+import { ProjectDashboard } from '../../src/frontend/project-dashboard';
+import { triageOrder } from '../../src/ui/triage';
 
 const rows = [
   row('DEMO-1', { intent: F, process: F, code: NA, audit: F }),
