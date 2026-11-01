@@ -83,6 +83,11 @@ describe('DefinitionGuard Index / Forge Handlers', () => {
       expect(name).toBe('Mock User');
     });
 
+    it('falls back to accountId when the user record has no display name', async () => {
+      mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => ({}) });
+      expect(await fetchJiraUser('acc-no-name')).toBe('acc-no-name');
+    });
+
     it('falls back to accountId on user fetch failure', async () => {
       mockRequestJira.mockResolvedValueOnce({ status: 404 });
       const name = await fetchJiraUser('acc-404');
@@ -112,12 +117,12 @@ describe('DefinitionGuard Index / Forge Handlers', () => {
       expect(res.errorMessage).toContain('Definition of Done incomplete:');
     });
 
-    it('falls back to issueKey when live resolution returns null id', async () => {
+    it('blocks with the failure message when the key lookup fails (no key fallback)', async () => {
       mockRequestJira.mockResolvedValueOnce({ status: 500 });
 
       const res = await validateTransition({ issue: { key: 'KEY-ONLY-FALLBACK' } }, {}, mockStorage);
       expect(res.result).toBe(false);
-      expect(res.errorMessage).toContain('Definition of Done incomplete:');
+      expect(res.errorMessage).toContain('could not check the Definition of Done, so this move is blocked');
     });
 
     it('blocks transition when checklist is not completed', async () => {
@@ -375,10 +380,13 @@ describe('DefinitionGuard Index / Forge Handlers', () => {
       expect(resetCustom.templateId).toBe('template-bug-dod');
     });
 
-    it('covers validateTransition fallback lookup by issueKey', async () => {
-      // Save checklist with issueKey CR-2 but query with issueId different
-      const initial = ChecklistEngine.initializeState('cr-key-only', 'CR-2');
-      await mockStorage.set('issue:CR-2', initial);
+    it('ignores a record stored under the issue key and decides by the numeric id only', async () => {
+      // A complete record under the key must not satisfy the gate for the id (DG-08, DG-13)
+      let complete = ChecklistEngine.initializeState('CR-2', 'CR-2');
+      for (const item of complete.items.filter(i => i.isMandatory)) {
+        complete = ChecklistEngine.toggleItem(complete, { issueId: 'CR-2', issueKey: 'CR-2', itemId: item.id, isCompleted: true, userId: 'u' });
+      }
+      await mockStorage.set('dg:checklist:CR-2', complete);
 
       const result = await validateTransition(
         { issue: { id: 'mismatched-id', key: 'CR-2' } },
@@ -386,6 +394,7 @@ describe('DefinitionGuard Index / Forge Handlers', () => {
         mockStorage
       );
       expect(result.result).toBe(false);
+      expect(result.errorMessage).toContain('Pending items:');
     });
 
     it('retroactively resolves raw account IDs in existing checklist items and history', async () => {
@@ -451,6 +460,26 @@ describe('DefinitionGuard Index / Forge Handlers', () => {
       );
       expect(updated.issueId).toBe('toggle-new-1');
       expect(updated.templateId).toBe('template-bug-dod');
+    });
+
+    it('toggle on a new issue takes the template from the context type when Jira returns none', async () => {
+      mockRequestJira.mockResolvedValue({ status: 404 });
+      const updated = await toggleChecklistItem(
+        { itemId: 'item-story-acceptance-criteria', isCompleted: true },
+        { extension: { issue: { id: 'ctx-type-1', key: 'CT-1', type: 'Story' } } },
+        mockStorage
+      );
+      expect(updated.templateId).toBe('template-story-dod');
+    });
+
+    it('reset of a new issue with an unknown templateId takes the template from the context type', async () => {
+      mockRequestJira.mockResolvedValue({ status: 404 });
+      const reset = await resetChecklist(
+        { templateId: 'no-such-template' },
+        { extension: { issue: { id: 'ctx-type-2', key: 'CT-2', type: 'Bug' } } },
+        mockStorage
+      );
+      expect(reset.templateId).toBe('template-bug-dod');
     });
 
     it('covers saveProjectTemplate and getProjectTemplates via handler', async () => {

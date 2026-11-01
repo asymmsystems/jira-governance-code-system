@@ -74,22 +74,47 @@ export async function fetchJiraUser(accountId: string): Promise<string> {
   return accountId;
 }
 
+export const VALIDATOR_FAILURE_MESSAGE =
+  'DefinitionGuard could not check the Definition of Done, so this move is blocked. ' +
+  'Try again. If it keeps failing, ask your Jira admin.';
+
+/**
+ * Fetches the issue for the validator. Unlike fetchLiveJiraIssue, any failure throws,
+ * so the validator blocks instead of guessing (fail closed).
+ */
+async function fetchIssueForValidator(issueIdOrKey: string): Promise<any> {
+  const res = await api.asApp().requestJira(route`/rest/api/3/issue/${issueIdOrKey}?fields=issuetype`);
+  if (res.status !== 200) {
+    throw new Error(`DefinitionGuard: issue lookup returned ${res.status}`);
+  }
+  return await res.json();
+}
+
 /**
  * Jira Workflow Validator entry point:
  * Blocks transition if any mandatory checklist item remains incomplete.
  * Supports both { issue: { key } } and { issue: { id } } payloads.
+ * Fails closed: any error returns result false. Never writes storage.
  */
 export async function validateTransition(payload: any, context?: any, storageProvider?: StorageProvider) {
+  try {
+    return await evaluateTransition(payload, context, storageProvider);
+  } catch {
+    return { result: false, errorMessage: VALIDATOR_FAILURE_MESSAGE };
+  }
+}
+
+async function evaluateTransition(payload: any, context?: any, storageProvider?: StorageProvider) {
   const issueKey = payload?.issue?.key || payload?.issueKey;
   let issueId = String(payload?.issue?.id || payload?.issueId || '');
+  let live: any = null;
 
   if (!issueId && issueKey) {
-    const live = await fetchLiveJiraIssue(issueKey);
-    if (live?.id) {
-      issueId = String(live.id);
-    } else {
-      issueId = String(issueKey);
+    live = await fetchIssueForValidator(issueKey);
+    if (!live?.id) {
+      throw new Error('DefinitionGuard: issue lookup returned no id');
     }
+    issueId = String(live.id);
   }
 
   if (!issueId) {
@@ -103,21 +128,17 @@ export async function validateTransition(payload: any, context?: any, storagePro
   const repository = new ChecklistRepository(storage);
 
   let checklistState = await repository.getIssueChecklist(issueId);
-  if (!checklistState && issueKey && issueKey !== issueId) {
-    checklistState = await repository.getIssueChecklist(issueKey);
-  }
 
-  // If issue checklist not initialized, auto-initialize from template (Fixes D-14)
+  // No checklist yet: apply the issue-type template in memory and block on it (Fixes D-14).
+  // Nothing is stored; the first change on the panel creates the record.
   if (!checklistState) {
-    const contextIssue = context?.extension?.issue;
-    let issueType = contextIssue?.type;
-    const live = await fetchLiveJiraIssue(issueId);
-    if (!issueType && live?.fields?.issuetype?.name) {
-      issueType = live.fields.issuetype.name;
+    let issueType = context?.extension?.issue?.type;
+    if (!issueType) {
+      live = live || await fetchIssueForValidator(issueId);
+      issueType = live?.fields?.issuetype?.name;
     }
     const template = getTemplateForCategory(issueType || 'Task');
-    checklistState = ChecklistEngine.initializeState(issueId, issueKey, template, 'system');
-    await repository.saveIssueChecklist(checklistState);
+    checklistState = ChecklistEngine.initializeState(issueId, String(issueKey || issueId), template, 'system');
   }
 
   const validation = TransitionValidator.validate(checklistState);
