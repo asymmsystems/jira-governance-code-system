@@ -13,7 +13,7 @@ import { computeSnapshotHash } from '../domain/crypto';
 import { buildEntry, verifyChain } from '../domain/history';
 import { CanonicalIssueSnapshot, FieldDiff, HistoryEntry, SealRecord, TamperAnalysis } from '../domain/models';
 import { authorsSince } from '../domain/policy';
-import { summarise, withRecordHash } from '../domain/seal-record';
+import { hasValidRecordHash, summarise, withRecordHash } from '../domain/seal-record';
 import { compareToSeal, SealedState } from '../domain/tamper-detector';
 import { capped } from '../domain/display';
 import { DECLARATION, isMeaning, matchesDeclaration, validReason } from '../domain/declaration';
@@ -137,8 +137,10 @@ export async function evaluate(repo: SealRepository, issueId: string, live: Cano
   if (!record) {
     return (await repo.getLegacyCertificate(issueId)) ? { kind: 'LEGACY' } : { kind: 'NONE' };
   }
+  // Check the stored record and snapshot on every read (LS-10): a rewritten value fails its hash
+  if (!hasValidRecordHash(record)) return { kind: 'RECORD_INVALID', record };
   const sealedSnapshot = await repo.getSnapshot(record);
-  if (!sealedSnapshot) return { kind: 'RECORD_INVALID', record };
+  if (!sealedSnapshot || computeSnapshotHash(sealedSnapshot) !== record.snapshotHash) return { kind: 'RECORD_INVALID', record };
   const sealed: SealedState = {
     snapshotHash: record.snapshotHash,
     snapshot: sealedSnapshot,
@@ -228,9 +230,16 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   const snapshot = live.snapshot;
 
   let previous: SealRecord | null = null;
+  let previousState: string | null = null;
   const evaluation = await evaluate(repo, issue.id, snapshot, now);
-  if (evaluation.kind === 'SEAL' || evaluation.kind === 'RECORD_INVALID') {
+  if (evaluation.kind === 'SEAL') {
     previous = evaluation.record;
+    previousState = previous.state;
+  }
+  if (evaluation.kind === 'RECORD_INVALID') {
+    // The stored counts cannot be trusted, so the new seal says the issue was compromised
+    previous = { ...evaluation.record, everCompromised: true };
+    previousState = 'RECORD_INVALID';
   }
   if (evaluation.kind === 'SEAL') {
     const status = evaluation.analysis.status;
@@ -263,7 +272,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
       declarationVersion: DECLARATION.version,
       signerName: signerDisplayName,
       previousCertificateId: previous ? previous.certificateId : null,
-      previousState: previous ? previous.state : null
+      previousState
     }
   });
   if (!(await repo.appendEntry(issue.id, entry))) return fail('CONFLICT');

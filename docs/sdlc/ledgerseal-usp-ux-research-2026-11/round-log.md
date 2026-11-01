@@ -159,3 +159,12 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - Contract change: tests now build payloads with `validSignature()` in `test/support/fakes.ts`. Spec v2 section 7.3 now states the real payload shape, `{ signature: { ... } }`.
 - Adversarial test: T-02 A6 (stored text differs from the shown text; any text passes "re-authentication") is closed. The stored text equals the shown text, and the re-authentication field no longer exists.
 - Results: `tsc` OK. 18 suites, 151 tests pass. Global branches 97.42%. `declaration.ts` 100%, `ledger.ts` 97.08%. Graders all True. No em dash.
+- B-07 commit: `9c76823`.
+
+### B-08 Integrity check on every read (LS-10 part 1)
+- Tests first: `test/record-integrity.test.ts`. First run: 3 of 4 failed for the right reason. A record with a rewritten signer, a changed sealed hash, or an edited snapshot part each showed `SEAL_VALID`. The fourth case (an invalid record writes nothing, and an approver can reseal) passed and stays as a guard.
+- Code: in `src/service/ledger.ts`, `evaluate` checks `recordHash` on every read and recomputes the snapshot hash from the stored parts. Either mismatch gives `RECORD_INVALID`. The panel shows the integrity message, and the validator blocks with it. A reseal over an invalid record sets `everCompromised: true`, because the stored counts cannot be trusted, and the reseal entry records `previousState: RECORD_INVALID`.
+- AC3 ("tamper-evident" wording in the UI and listing) is carried by B-10 and the Loop 3 listing rewrite.
+- Limit (unchanged, stated in spec v2 section 8): a writer with app-storage access who recomputes every hash is not detected by this check. B-09 adds a signature on the public property.
+- Adversarial test: T-02 A7 (a rewritten signer in KVS) now gives `RECORD_INVALID`, and the forged name is not shown.
+- Results: `tsc` OK. 19 suites, 155 tests pass. Global branches 97.42%. `ledger.ts` 97.08%. Graders all True. No em dash.
