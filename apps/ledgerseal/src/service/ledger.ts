@@ -40,7 +40,8 @@ export type SealErrorCode =
   | 'REASON_REQUIRED'
   | 'CONFLICT'
   | 'NOT_SEALED'
-  | 'SNAPSHOT_TOO_LARGE';
+  | 'SNAPSHOT_TOO_LARGE'
+  | 'LICENSE_INACTIVE';
 
 export interface SealFailure {
   ok: false;
@@ -59,11 +60,22 @@ const MESSAGES: Record<SealErrorCode, string> = {
   REASON_REQUIRED: 'Give a reason for approving these changes (1 to 500 characters).',
   CONFLICT: 'Someone else sealed this issue a moment ago. Reload to see the new seal.',
   NOT_SEALED: 'This issue is not sealed, so there is no evidence to export.',
-  SNAPSHOT_TOO_LARGE: 'This issue is too large to seal (over about 2.6 MB of content). Nothing was saved.'
+  SNAPSHOT_TOO_LARGE: 'This issue is too large to seal (over about 2.6 MB of content). Nothing was saved.',
+  LICENSE_INACTIVE: 'The LedgerSeal licence is not active. Ask your Jira admin to renew it.'
 };
 
 export function fail(code: SealErrorCode, message: string = MESSAGES[code]): SealFailure {
   return { ok: false, code, message };
+}
+
+/**
+ * True when Forge reports an inactive Marketplace licence (B-19). No licence object, as in development
+ * installs, counts as active. `isActive` is the deprecated name of `active`.
+ */
+export function licenseInactive(context: any): boolean {
+  const license = context?.license;
+  if (!license) return false;
+  return license.active === false || (license.active === undefined && license.isActive === false);
 }
 
 /** The issue comes from the trusted Forge context only, never from the payload. */
@@ -285,6 +297,7 @@ export async function recordIncidentIfNew(
 export async function sealIssueFlow(payload: any, context: any, deps: LedgerSealDeps) {
   const accountId = context?.accountId ? String(context.accountId) : '';
   if (!accountId) return fail('NO_IDENTITY');
+  if (licenseInactive(context)) return fail('LICENSE_INACTIVE');
   const issue = contextIssue(context);
   if (!issue) return fail('MISSING_ISSUE');
   const signature = payload?.signature;
@@ -421,6 +434,7 @@ function errorResult(errorReason: 'JIRA_UNREACHABLE' | 'STORAGE', at: string): T
 
 export async function verifyIssueFlow(payload: any, context: any, deps: LedgerSealDeps) {
   if (!context?.accountId) return fail('NO_IDENTITY');
+  if (licenseInactive(context)) return fail('LICENSE_INACTIVE');
   const issue = contextIssue(context);
   if (!issue) return fail('MISSING_ISSUE');
 
@@ -504,6 +518,7 @@ async function verifyAgainstSeal(
  */
 export async function historyFlow(payload: any, context: any, deps: LedgerSealDeps) {
   if (!context?.accountId) return fail('NO_IDENTITY');
+  if (licenseInactive(context)) return fail('LICENSE_INACTIVE');
   const issue = contextIssue(context);
   if (!issue) return fail('MISSING_ISSUE');
   const repo = new SealRepository(deps.storage);
@@ -578,6 +593,7 @@ const VERIFICATION_STEPS = [
  */
 export async function evidenceFlow(payload: any, context: any, deps: LedgerSealDeps) {
   if (!context?.accountId) return fail('NO_IDENTITY');
+  if (licenseInactive(context)) return fail('LICENSE_INACTIVE');
   const issue = contextIssue(context);
   if (!issue) return fail('MISSING_ISSUE');
   const repo = new SealRepository(deps.storage);
@@ -608,6 +624,7 @@ export async function evidenceFlow(payload: any, context: any, deps: LedgerSealD
 export async function revokeFlow(payload: any, context: any, deps: LedgerSealDeps) {
   const accountId = context?.accountId ? String(context.accountId) : '';
   if (!accountId) return fail('NO_IDENTITY');
+  if (licenseInactive(context)) return fail('LICENSE_INACTIVE');
   const issue = contextIssue(context);
   if (!issue) return fail('MISSING_ISSUE');
   const reason = validReason(payload?.reason);

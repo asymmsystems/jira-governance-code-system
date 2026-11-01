@@ -331,3 +331,13 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - Code: `manifest.yml` adds `jira:entityProperty` `ledgerseal-cert-index`, which indexes `status` (string, `ledgersealStatus`), `everCompromised` (string, `ledgersealEverCompromised`) and `incidentCount` (number, `ledgersealIncidents`). The README gives the JQL and the warning that the property is a searchable summary, not evidence.
 - AC2 (the live JQL query on an `[LS-PROBE]` issue) runs in Loop 3.
 - Results: `tsc` OK. 30 suites, 261 tests pass. No source branch change. No em dash.
+- B-18 commit: `2df67f7`.
+
+### B-19 Marketplace licensing (PX-01) [MANIFEST]
+- Tests first: `test/licensing.test.ts`. First run: 3 of 4 failed for the right reasons (no `licensing` in the manifest; resolvers ignored `context.license`). The D-8 case (the validator result does not change on licence alone) passed before and after.
+- Code:
+  - `manifest.yml` sets `app.licensing.enabled: true` (FG-37).
+  - In `src/service/ledger.ts`, `licenseInactive` reads `context.license.active`, and `isActive` as the deprecated fallback (FG-38). A missing licence object counts as active, as in development installs.
+  - Verify, seal, revoke, history and evidence return `LICENSE_INACTIVE` and write nothing. The view model shows the B-15 licence state.
+- Decision D-8 is kept: the validator does not block on licence, so a lapsed licence cannot stop a customer's releases.
+- Results: `tsc` OK. 31 suites, 265 tests pass. Global branches 94.73%. `ledger.ts` 91.91%. Graders all True. No em dash.
