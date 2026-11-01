@@ -12,7 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { contrastRatio, blend } from '../../src/ui/contrast';
-import { CANVAS_PAIRS, CANVAS_TOKENS, FORCED_COLOURS, barStyle, labelPlacement, LABEL_PAD } from '../../src/ui/canvas-palette';
+import { CANVAS_PAIRS, CANVAS_TOKENS, FORCED_COLOURS, barStyle, labelPlacement, LABEL_PAD, isInProgressZero } from '../../src/ui/canvas-palette';
 
 const ROOT = path.join(__dirname, '..', '..');
 const css = fs.readFileSync(path.join(ROOT, 'static/frontend/build/style.css'), 'utf8');
@@ -72,5 +72,25 @@ describe('forced colours (B-15 criterion 12)', () => {
       ...[{ status: 'COMPLETED' }, { progress: 1, targetProgress: 2 }, { isEpic: true }, {}].flatMap(s => Object.values(barStyle(s)))]);
     for (const t of used) expect(system.has(FORCED_COLOURS[t])).toBe(true);
     expect(FORCED_COLOURS[CANVAS_TOKENS.labelChip]).toBe('Canvas');
+  });
+});
+
+describe('in-progress zero progress detection', () => {
+  it('returns true when status is in-progress and progress is zero or unset', () => {
+    expect(isInProgressZero({ status: 'IN_PROGRESS', progress: 0 })).toBe(true);
+    expect(isInProgressZero({ status: 'IN_PROGRESS' })).toBe(true);
+    expect(isInProgressZero({ status: 'In Progress', progress: 0 })).toBe(true);
+    expect(isInProgressZero({ status: 'inprogress' })).toBe(true);
+  });
+
+  it('returns false when status is in-progress but progress is greater than zero', () => {
+    expect(isInProgressZero({ status: 'IN_PROGRESS', progress: 10 })).toBe(false);
+    expect(isInProgressZero({ status: 'In Progress', progress: 100 })).toBe(false);
+  });
+
+  it('returns false for other statuses', () => {
+    expect(isInProgressZero({ status: 'COMPLETED', progress: 0 })).toBe(false);
+    expect(isInProgressZero({ status: 'NOT_STARTED', progress: 0 })).toBe(false);
+    expect(isInProgressZero({})).toBe(false);
   });
 });

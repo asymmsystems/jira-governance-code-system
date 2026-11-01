@@ -1193,6 +1193,115 @@ body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-
   .task-row.is-grid-focused > td { outline: 2px solid Highlight; }
 }
 
+/* Dependency link badges and popover */
+.dep-links-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 32;
+}
+
+.dep-link-badge {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  cursor: pointer;
+  background: var(--cp-surface-raised);
+  border: 1.5px solid var(--cp-border-bold);
+  border-radius: 4px;
+  font-family: var(--cp-font, sans-serif);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--cp-text-success);
+  padding: 1px 6px;
+  line-height: 14px;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(9, 30, 66, 0.15);
+  transition: transform 0.1s ease, box-shadow 0.1s ease, border-color 0.1s ease;
+}
+
+.dep-link-badge:hover, .dep-link-badge:focus {
+  transform: translate(-50%, -50%) scale(1.08);
+  border-color: var(--cp-border-brand);
+  box-shadow: 0 2px 6px rgba(9, 30, 66, 0.25);
+  outline: none;
+}
+
+.dep-link-badge.is-violated {
+  color: var(--cp-text-danger);
+  border-color: var(--cp-border-danger);
+  border-style: dashed;
+}
+
+.dep-edit-popover {
+  width: 380px;
+}
+
+.dep-edit-parties {
+  margin: 6px 0 10px;
+  padding: 8px 10px;
+  background: var(--cp-surface-sunken);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--cp-text-subtle);
+}
+
+.dep-edit-parties strong {
+  color: var(--cp-text);
+}
+
+.dep-edit-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+
+.dep-edit-input-row .form-input {
+  width: 80px;
+  margin: 0;
+}
+
+.dep-preset-group {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.dep-preset-group .btn-xs {
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+.dep-edit-preview {
+  margin: 8px 0 14px;
+  padding: 8px 10px;
+  background: var(--cp-bg-information);
+  border: 1px solid var(--cp-border);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.dep-edit-preview.is-violated {
+  background: var(--cp-bg-danger);
+  border-color: var(--cp-border-danger);
+  color: var(--cp-text-danger);
+}
+
+.dep-edit-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--cp-border);
+}
+
 /* First run (B-25). */
 .empty-state-cell { padding: 0; }
 .empty-state { position: sticky; left: 0; max-width: 560px; padding: 32px 24px; }

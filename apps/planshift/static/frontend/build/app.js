@@ -6774,6 +6774,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if ((task.progress || 0) < (task.targetProgress || 0)) return { fill: "--cp-bar-late", track };
     return { fill: epic ? "--cp-bar-epic-fill" : "--cp-bar-fill", track };
   }
+  function isInProgressZero(task) {
+    const norm = (task.status || "").toUpperCase().replace(/[\s_-]+/g, "");
+    const inProgress = norm === "INPROGRESS";
+    const hasProgress = typeof task.progress === "number" && task.progress > 0;
+    return inProgress && !hasProgress;
+  }
   var ROW_BACKGROUNDS = ["--cp-surface", "--cp-surface-sunken"];
   var CANVAS_PAIRS = [
     ...[
@@ -6842,6 +6848,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
       /** Focused element of the treegrid in the canvas fallback content, for drawFocusIfNeeded (B-15). */
       __publicField(this, "focusElement", null);
       __publicField(this, "forced", false);
+      __publicField(this, "arrowLinks", []);
+      __publicField(this, "onDraw");
       this.canvas = document.createElement("canvas");
       this.canvas.className = "timeline-canvas";
       const host = wrapper.parentElement;
@@ -6863,6 +6871,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     /** The canvas element; its fallback content holds the accessible treegrid (B-15). */
     get root() {
       return this.canvas;
+    }
+    getArrowLinks() {
+      return this.arrowLinks;
     }
     setModel(model) {
       if (!this.model || this.model.tasks !== model.tasks) {
@@ -6897,6 +6908,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     draw() {
       const m = this.model;
+      this.arrowLinks = [];
       const perf = globalThis.__cpPerf;
       if (perf) {
         performance.mark("cp:draw:start");
@@ -6909,6 +6921,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const cssH = Math.max(0, w.clientHeight - (m ? m.headerH : 0));
       if (!m || cssW === 0 || cssH === 0) {
         this.canvas.style.display = "none";
+        this.onDraw?.([]);
         return;
       }
       const dpr = window.devicePixelRatio || 1;
@@ -6936,6 +6949,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       for (let i = m.first; i <= m.last; i++) this.drawBar(m, i, rects);
       if (todayX !== null) this.drawTodayFlag(m, todayX, top);
       ctx.restore();
+      this.onDraw?.(this.arrowLinks);
       if (perf) performance.measure("cp:draw", "cp:draw:start");
     }
     dates(task) {
@@ -7036,6 +7050,21 @@ Please see https://iframe-resizer.com/upgrade for more details.
         ctx.fillStyle = fill;
         ctx.fillRect(r.x, r.y, r.w * done, r.h);
         ctx.restore();
+      } else if (isInProgressZero(task)) {
+        ctx.save();
+        this.path(r);
+        ctx.clip();
+        ctx.strokeStyle = fill;
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.35;
+        const step = 8;
+        ctx.beginPath();
+        for (let offset = -r.h; offset < r.w + r.h; offset += step) {
+          ctx.moveTo(r.x + offset, r.y + r.h);
+          ctx.lineTo(r.x + offset + r.h, r.y);
+        }
+        ctx.stroke();
+        ctx.restore();
       }
       this.path(r);
       ctx.strokeStyle = fill;
@@ -7111,10 +7140,24 @@ Please see https://iframe-resizer.com/upgrade for more details.
           const when = dep.triggerDate ? `, ${dep.triggerDate}` : "";
           const text = violated ? `${dep.triggerPercent}%${when}: starts too early` : `${dep.triggerPercent}%${when}`;
           const tw = ctx.measureText(text).width + 10;
+          const badgeX = (x1 + x2) / 2;
+          const badgeY = (y1 + y2) / 2;
+          this.arrowLinks.push({
+            predecessorKey: dep.predecessorKey,
+            successorKey: task.key,
+            triggerPercent: typeof dep.triggerPercent === "number" ? dep.triggerPercent : 100,
+            triggerDate: dep.triggerDate,
+            isViolated: violated,
+            x: badgeX,
+            y: badgeY,
+            width: tw,
+            height: CHIP_H,
+            text
+          });
           this.chip(
             text,
-            (x1 + x2) / 2 - tw / 2,
-            (y1 + y2) / 2,
+            badgeX - tw / 2,
+            badgeY,
             this.c(violated ? CANVAS_TOKENS.badgeViolatedText : CANVAS_TOKENS.badgeOkText),
             colour
           );
@@ -7142,6 +7185,41 @@ Please see https://iframe-resizer.com/upgrade for more details.
       ctx.fillText(text, r.x + 6, r.y + r.h / 2);
     }
   };
+
+  // src/ui/dependency-edit.ts
+  function clampTriggerPercent(value) {
+    if (value === void 0 || value === null) return 100;
+    const num = typeof value === "number" ? value : parseInt(String(value), 10);
+    if (isNaN(num)) return 100;
+    return Math.max(0, Math.min(100, num));
+  }
+  function dependencyPopoverTitle(predKey, succKey) {
+    return `${predKey} \u2794 ${succKey}`;
+  }
+  function computeDependencyPreview(pred, triggerPercent, today) {
+    if (!pred.startDate) {
+      return {
+        isSatisfied: false,
+        earliestStartDate: null,
+        triggerDate: null,
+        summary: "Predecessor has no planned start date."
+      };
+    }
+    const effort = {
+      workEffortId: pred.key,
+      estimatedStartDate: pred.startDate,
+      estimatedCompletionDate: pred.endDate || pred.startDate,
+      percentComplete: pred.progress || 0,
+      started: pred.status === "IN_PROGRESS" || pred.status === "COMPLETED"
+    };
+    const res = earliestStart(effort, triggerPercent, today);
+    return {
+      isSatisfied: res.basis === "satisfied",
+      earliestStartDate: res.date,
+      triggerDate: res.triggerDate,
+      summary: res.reason
+    };
+  }
 
   // src/ui/keyboard-grid.ts
   var GRID_COLUMNS = ["Key", "Summary", "Start", "Due", "Progress", "Status", "Dependencies"];
@@ -7661,6 +7739,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const wrapper = document.getElementById("ganttWrapper");
     if (wrapper) {
       timeline = new CanvasTimeline(wrapper);
+      timeline.onDraw = (links) => renderDependencyBadges(links);
       wrapper.addEventListener("scroll", scheduleVirtualRows, { passive: true });
     }
     document.addEventListener("cp:drivers", (e) => {
@@ -10842,6 +10921,127 @@ Click to manage or assign.`;
     await loadProjectPlan();
     announce(`${key} now starts when ${chosen} reaches ${pct}%.`);
   }
+  var depEditState = null;
+  function renderDependencyBadges(links) {
+    const layer = document.getElementById("depLinksLayer");
+    if (!layer) return;
+    layer.replaceChildren(...(links || []).map((link) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "dep-link-badge" + (link.isViolated ? " is-violated" : "");
+      btn.style.left = `${link.x}px`;
+      btn.style.top = `${link.y}px`;
+      btn.textContent = link.text;
+      btn.title = `Click to edit dependency: ${link.predecessorKey} \u2794 ${link.successorKey}`;
+      btn.setAttribute("aria-label", `Dependency link: ${link.predecessorKey} to ${link.successorKey}, ${link.text}`);
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        openDependencyEditPopover(link, btn);
+      });
+      return btn;
+    }));
+  }
+  function openDependencyEditPopover(link, anchor) {
+    const pop = document.getElementById("depEditPopover");
+    if (!pop) return;
+    depEditState = { link, anchor };
+    const predTask = findTask(link.predecessorKey);
+    const succTask = findTask(link.successorKey);
+    const titleEl = document.getElementById("depEditTitle");
+    if (titleEl) titleEl.textContent = dependencyPopoverTitle(link.predecessorKey, link.successorKey);
+    const partiesEl = document.getElementById("depEditParties");
+    if (partiesEl) {
+      partiesEl.innerHTML = html`
+      <div><strong>Predecessor:</strong> ${link.predecessorKey} (${predTask ? predTask.summary || "" : ""})</div>
+      <div><strong>Successor:</strong> ${link.successorKey} (${succTask ? succTask.summary || "" : ""})</div>
+    `;
+    }
+    const triggerInput = document.getElementById("depEditTrigger");
+    if (triggerInput) {
+      triggerInput.value = String(link.triggerPercent);
+    }
+    updateDepEditPreview();
+    pop.hidden = false;
+    const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { bottom: 120, left: 120 };
+    pop.style.top = `${Math.max(8, Math.min(window.innerHeight - pop.offsetHeight - 8, r.bottom + 6))}px`;
+    pop.style.left = `${Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, r.left))}px`;
+    if (triggerInput) {
+      triggerInput.focus();
+      triggerInput.select();
+    }
+  }
+  function updateDepEditPreview() {
+    if (!depEditState) return;
+    const triggerInput = document.getElementById("depEditTrigger");
+    const previewEl = document.getElementById("depEditPreview");
+    if (!triggerInput || !previewEl) return;
+    const pct = clampTriggerPercent(triggerInput.value);
+    const predTask = findTask(depEditState.link.predecessorKey);
+    const succTask = findTask(depEditState.link.successorKey);
+    if (!predTask) {
+      previewEl.textContent = "Predecessor details unavailable.";
+      previewEl.classList.remove("is-violated");
+      return;
+    }
+    const preview = computeDependencyPreview(predTask, pct, todayIso());
+    let violated = false;
+    let text = preview.summary;
+    if (preview.earliestStartDate && succTask && succTask.startDate && succTask.startDate < preview.earliestStartDate) {
+      violated = true;
+      text += ` | Warning: ${succTask.key} is scheduled on ${succTask.startDate}, before earliest start ${preview.earliestStartDate}.`;
+    }
+    previewEl.textContent = text;
+    if (violated) previewEl.classList.add("is-violated");
+    else previewEl.classList.remove("is-violated");
+  }
+  function closeDependencyEditPopover() {
+    const pop = document.getElementById("depEditPopover");
+    if (pop) pop.hidden = true;
+    if (depEditState && depEditState.anchor) {
+      depEditState.anchor.focus();
+    }
+    depEditState = null;
+  }
+  async function saveDependencyEdit() {
+    if (!depEditState) return;
+    const { link } = depEditState;
+    const triggerInput = document.getElementById("depEditTrigger");
+    const pct = clampTriggerPercent(triggerInput ? triggerInput.value : link.triggerPercent);
+    const succKey = link.successorKey;
+    const predKey = link.predecessorKey;
+    const succTask = findTask(succKey);
+    closeDependencyEditPopover();
+    await callResolver2("updateWbsTask", {
+      taskId: succKey,
+      updates: {
+        dependency: {
+          predecessorKey: predKey,
+          predecessorId: predKey,
+          triggerPercent: pct,
+          isTriggerSatisfied: false
+        }
+      },
+      expectedVersion: succTask && succTask.version || 0
+    });
+    await loadProjectPlan();
+    announce(`Updated link: ${succKey} now starts when ${predKey} reaches ${pct}%.`);
+  }
+  async function removeDependencyLink() {
+    if (!depEditState) return;
+    const { link } = depEditState;
+    const succKey = link.successorKey;
+    const predKey = link.predecessorKey;
+    const succTask = findTask(succKey);
+    closeDependencyEditPopover();
+    await callResolver2("updateWbsTask", {
+      taskId: succKey,
+      updates: { dependency: null },
+      expectedVersion: succTask && succTask.version || 0
+    });
+    await loadProjectPlan();
+    announce(`Removed dependency link between ${predKey} and ${succKey}.`);
+  }
   function initKeyboard() {
     initGrid();
     initSelectionBar();
@@ -10913,11 +11113,42 @@ Click to manage or assign.`;
       document.getElementById("linkHint").hidden = true;
     });
     document.getElementById("btnDepCancel")?.addEventListener("click", closeDependencyPopup);
+    document.getElementById("btnCloseDepEdit")?.addEventListener("click", closeDependencyEditPopover);
+    document.getElementById("btnCancelDepEdit")?.addEventListener("click", closeDependencyEditPopover);
+    document.getElementById("btnSaveDepEdit")?.addEventListener("click", saveDependencyEdit);
+    document.getElementById("btnRemoveDepLink")?.addEventListener("click", removeDependencyLink);
+    document.querySelectorAll("#depEditPopover .dep-preset-group button[data-pct]").forEach((b) => {
+      b.addEventListener("click", () => {
+        const inp = document.getElementById("depEditTrigger");
+        if (inp) {
+          inp.value = b.dataset.pct;
+          updateDepEditPreview();
+        }
+      });
+    });
+    const depEditTrig = document.getElementById("depEditTrigger");
+    if (depEditTrig) {
+      depEditTrig.addEventListener("input", updateDepEditPreview);
+      depEditTrig.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          saveDependencyEdit();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          closeDependencyEditPopover();
+        }
+      });
+    }
     document.addEventListener("click", (e) => {
       const tb = document.getElementById("barToolbar");
       if (tb && !tb.hidden && !tb.contains(e.target) && !e.target.closest(".bar-hit")) closeBarToolbar();
+      const depEditPop = document.getElementById("depEditPopover");
+      if (depEditPop && !depEditPop.hidden && !depEditPop.contains(e.target) && !e.target.closest(".dep-link-badge")) closeDependencyEditPopover();
     });
-    document.getElementById("ganttWrapper")?.addEventListener("scroll", followBarToolbar, { passive: true });
+    document.getElementById("ganttWrapper")?.addEventListener("scroll", () => {
+      followBarToolbar();
+      if (depEditState) closeDependencyEditPopover();
+    }, { passive: true });
   }
   function onShortcut(e, inField) {
     if (inField || e.ctrlKey || e.metaKey || e.altKey || !shortcutsOn() || openModal()) return false;

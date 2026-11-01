@@ -13,7 +13,20 @@
 
 import { cssToken } from './theme';
 import { barRect, xForDate, Rect } from '../ui/timeline-geometry';
-import { CANVAS_TOKENS, FORCED_COLOURS, barStyle, labelPlacement } from '../ui/canvas-palette';
+import { CANVAS_TOKENS, FORCED_COLOURS, barStyle, labelPlacement, isInProgressZero } from '../ui/canvas-palette';
+
+export interface ArrowLink {
+  predecessorKey: string;
+  successorKey: string;
+  triggerPercent: number;
+  triggerDate?: string;
+  isViolated: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text: string;
+}
 
 export const ROW_H = 44;
 export const BAR_H = 24;
@@ -60,6 +73,8 @@ export class CanvasTimeline {
   /** Focused element of the treegrid in the canvas fallback content, for drawFocusIfNeeded (B-15). */
   focusElement: Element | null = null;
   private forced = false;
+  private arrowLinks: ArrowLink[] = [];
+  onDraw?: (links: ArrowLink[]) => void;
 
   constructor(private readonly wrapper: HTMLElement) {
     this.canvas = document.createElement('canvas');
@@ -84,6 +99,10 @@ export class CanvasTimeline {
   /** The canvas element; its fallback content holds the accessible treegrid (B-15). */
   get root(): HTMLCanvasElement {
     return this.canvas;
+  }
+
+  getArrowLinks(): ArrowLink[] {
+    return this.arrowLinks;
   }
 
   setModel(model: TimelineModel): void {
@@ -123,6 +142,7 @@ export class CanvasTimeline {
 
   draw(): void {
     const m = this.model;
+    this.arrowLinks = [];
     // The test harness sets __cpPerf to read draw times and the label texts canvas pixels hide.
     const perf = (globalThis as any).__cpPerf;
     if (perf) {
@@ -137,6 +157,7 @@ export class CanvasTimeline {
     const cssH = Math.max(0, w.clientHeight - (m ? m.headerH : 0));
     if (!m || cssW === 0 || cssH === 0) {
       this.canvas.style.display = 'none';
+      this.onDraw?.([]);
       return;
     }
     const dpr = window.devicePixelRatio || 1;
@@ -166,6 +187,7 @@ export class CanvasTimeline {
     for (let i = m.first; i <= m.last; i++) this.drawBar(m, i, rects);
     if (todayX !== null) this.drawTodayFlag(m, todayX, top);
     ctx.restore();
+    this.onDraw?.(this.arrowLinks);
     if (perf) performance.measure('cp:draw', 'cp:draw:start');
   }
 
@@ -276,6 +298,21 @@ export class CanvasTimeline {
       ctx.fillStyle = fill;
       ctx.fillRect(r.x, r.y, r.w * done, r.h);
       ctx.restore();
+    } else if (isInProgressZero(task)) {
+      ctx.save();
+      this.path(r);
+      ctx.clip();
+      ctx.strokeStyle = fill;
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 0.35;
+      const step = 8;
+      ctx.beginPath();
+      for (let offset = -r.h; offset < r.w + r.h; offset += step) {
+        ctx.moveTo(r.x + offset, r.y + r.h);
+        ctx.lineTo(r.x + offset + r.h, r.y);
+      }
+      ctx.stroke();
+      ctx.restore();
     }
     this.path(r);
     ctx.strokeStyle = fill;
@@ -355,7 +392,21 @@ export class CanvasTimeline {
         const when = dep.triggerDate ? `, ${dep.triggerDate}` : '';
         const text = violated ? `${dep.triggerPercent}%${when}: starts too early` : `${dep.triggerPercent}%${when}`;
         const tw = ctx.measureText(text).width + 10;
-        this.chip(text, (x1 + x2) / 2 - tw / 2, (y1 + y2) / 2,
+        const badgeX = (x1 + x2) / 2;
+        const badgeY = (y1 + y2) / 2;
+        this.arrowLinks.push({
+          predecessorKey: dep.predecessorKey,
+          successorKey: task.key,
+          triggerPercent: typeof dep.triggerPercent === 'number' ? dep.triggerPercent : 100,
+          triggerDate: dep.triggerDate,
+          isViolated: violated,
+          x: badgeX,
+          y: badgeY,
+          width: tw,
+          height: CHIP_H,
+          text
+        });
+        this.chip(text, badgeX - tw / 2, badgeY,
           this.c(violated ? CANVAS_TOKENS.badgeViolatedText : CANVAS_TOKENS.badgeOkText), colour);
       }
     }

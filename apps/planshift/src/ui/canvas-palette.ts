@@ -51,6 +51,17 @@ export function barStyle(task: BarTask): BarStyle {
   return { fill: epic ? '--cp-bar-epic-fill' : '--cp-bar-fill', track };
 }
 
+/**
+ * Detects if a task is marked in-progress but has 0% explicit progress logged.
+ * Used to draw a distinct diagonal hatched fill so in-progress work is immediately visible.
+ */
+export function isInProgressZero(task: BarTask): boolean {
+  const norm = (task.status || '').toUpperCase().replace(/[\s_-]+/g, '');
+  const inProgress = norm === 'INPROGRESS';
+  const hasProgress = typeof task.progress === 'number' && task.progress > 0;
+  return inProgress && !hasProgress;
+}
+
 /** Rows are drawn over these backgrounds: plain, sunken (subtask and hover rows). */
 export const ROW_BACKGROUNDS = ['--cp-surface', '--cp-surface-sunken'] as const;
 

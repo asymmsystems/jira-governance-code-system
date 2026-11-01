@@ -173,6 +173,7 @@
               <!-- Task rows dynamically injected -->
             </tbody>
           </table>
+          <div id="depLinksLayer" class="dep-links-layer"></div>
         </div>
 
         <!-- Bottom Synchronized Horizontal Scrollbar -->
@@ -269,6 +270,33 @@
     <input id="depSearch" class="form-input" type="search" role="combobox" aria-expanded="true" aria-controls="depList" aria-autocomplete="list" autocomplete="off">
     <ul id="depList" class="dep-list" role="listbox" aria-label="Issues"></ul>
     <div class="why-fixes"><button class="btn btn-primary btn-sm" id="btnDepSave" type="button">Add dependency</button></div>
+  </div>
+
+  <!-- Dependency Edit Popover: click an arrow badge to change trigger percent or remove link -->
+  <div id="depEditPopover" class="why-popup dep-edit-popover" role="dialog" aria-labelledby="depEditTitle" hidden>
+    <div class="why-header">
+      <strong id="depEditTitle">Predecessor ➔ Successor</strong>
+      <button class="btn btn-subtle btn-sm" id="btnCloseDepEdit" type="button" aria-label="Close">✕</button>
+    </div>
+    <div id="depEditParties" class="dep-edit-parties"></div>
+    <label class="form-label" for="depEditTrigger">Starts when predecessor reaches (percent)</label>
+    <div class="dep-edit-input-row">
+      <input id="depEditTrigger" class="form-input" type="number" min="0" max="100" step="5" value="100">
+      <div class="dep-preset-group">
+        <button type="button" class="btn btn-outline btn-xs" data-pct="0">0%</button>
+        <button type="button" class="btn btn-outline btn-xs" data-pct="30">30%</button>
+        <button type="button" class="btn btn-outline btn-xs" data-pct="50">50%</button>
+        <button type="button" class="btn btn-outline btn-xs" data-pct="100">100%</button>
+      </div>
+    </div>
+    <div id="depEditPreview" class="dep-edit-preview"></div>
+    <div class="dep-edit-actions">
+      <button class="btn btn-danger btn-sm" id="btnRemoveDepLink" type="button">Remove Link</button>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-outline btn-sm" id="btnCancelDepEdit" type="button">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="btnSaveDepEdit" type="button">Save</button>
+      </div>
+    </div>
   </div>
 
   <!-- Help (B-25) -->
