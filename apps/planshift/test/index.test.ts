@@ -27,7 +27,8 @@ import {
   unscheduleTask,
   reorderWbsTasks,
   createSubtaskForResource,
-  resolveProjectIssueType
+  resolveProjectIssueType,
+  verifyIssueInProject
 } from '../src/index';
 import api from '@forge/api';
 import { PlanRepository } from '../src/storage/plan-repository';
@@ -35,6 +36,9 @@ import { MemStorage, entryOf, clearRecords } from './helpers/mem-storage';
 import { EstimateUnit, ProjectMilestone, ColumnWidthConfig } from '../src/domain/models';
 
 const mockRequestJira = jest.fn();
+const mockAsAppRequest = jest.fn().mockImplementation(async () => {
+  throw new Error('asApp must not be used for normal operations');
+});
 // Answers the issue-to-project lookup of verifyIssueInProject (B-02) from the key prefix,
 // and passes every other call to mockRequestJira.
 function mockLookupOr(args: any[]): any {
@@ -49,7 +53,7 @@ jest.mock('@forge/api', () => ({
   __esModule: true,
   default: {
     asApp: () => ({
-      requestJira: (...args: any[]) => mockLookupOr(args)
+      requestJira: (...args: any[]) => mockAsAppRequest(...args)
     }),
     asUser: () => ({
       requestJira: (...args: any[]) => mockLookupOr(args)
@@ -79,6 +83,10 @@ describe('CascadePlan Index & Resolver Tests', () => {
     mockStorage = new MockStorage();
     setGlobalStorageProvider(mockStorage);
     mockRequestJira.mockReset();
+    mockAsAppRequest.mockReset();
+    mockAsAppRequest.mockImplementation(async () => {
+      throw new Error('asApp must not be used for normal operations');
+    });
 
     mockRequestJira.mockImplementation(async (routeStr: any, options?: any) => {
       const url = String(routeStr);
@@ -227,7 +235,8 @@ describe('CascadePlan Index & Resolver Tests', () => {
         setGlobalStorageProvider(null);
         const { kvs } = require('@forge/kvs');
         const storage = resolveStorage();
-        expect(storage).toBeDefined();
+        expect(typeof storage.get).toBe('function');
+        expect(typeof storage.set).toBe('function');
 
         await storage.set('test-key', { val: 1 });
         expect(kvs.set).toHaveBeenCalledWith('test-key', { val: 1 });
@@ -298,7 +307,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(plan.backlogTasks![0].key).toBe('TEST-3');
       expect(plan.weeks).toEqual(DEFAULT_WEEKS);
       expect(plan.isLiveSynced).toBe(true);
-      expect(plan.milestones).toBeDefined();
+      expect(plan.milestones).toEqual(DEFAULT_MILESTONES);
       expect(plan.columnWidths).toEqual(DEFAULT_COLUMN_WIDTHS);
     });
 
@@ -639,7 +648,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
       );
 
       const modified = updatedPlan.backlogTasks!.find(t => t.key === 'TEST-3');
-      expect(modified).toBeDefined();
+      expect(modified?.key).toBe('TEST-3');
       const estimatePut = mockRequestJira.mock.calls.find(c => c[1]?.method === 'PUT' && String(c[0]).endsWith('/issue/TEST-3'));
       expect(JSON.parse(estimatePut[1].body).fields.timetracking).toEqual({ originalEstimate: '24h' });
     });
@@ -659,7 +668,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(modified?.endWeek).toBe(DEFAULT_WEEKS[3].weekKey);
       expect(modified?.startDate).toBe(DEFAULT_WEEKS[1].startDate);
       expect(modified?.endDate).toBe(DEFAULT_WEEKS[3].endDate);
-      expect(modified?.weeklyAllocations).toBeDefined();
+      expect(Object.keys(modified?.weeklyAllocations || {})).toEqual([DEFAULT_WEEKS[1].weekKey, DEFAULT_WEEKS[2].weekKey, DEFAULT_WEEKS[3].weekKey]);
     });
 
     it('throws error if task to update is not found', async () => {
@@ -773,7 +782,6 @@ describe('CascadePlan Index & Resolver Tests', () => {
 
       const modified = movedPlan.tasks.find(t => t.key === 'TEST-1');
       expect(modified?.startWeek).toBe(targetWeek);
-      expect(modified?.dependency).toBeDefined();
       expect(modified?.dependency?.predecessorKey).toBe('TEST-2');
       expect(modified?.dependency?.triggerPercent).toBe(40);
     });
@@ -809,7 +817,6 @@ describe('CascadePlan Index & Resolver Tests', () => {
       );
 
       const succ = cascadedPlan.tasks.find(t => t.key === 'TEST-1');
-      expect(succ?.dependency).toBeDefined();
       expect(succ?.dependency?.predecessorKey).toBe('TEST-2');
       expect(succ?.dependency?.triggerPercent).toBe(50);
     });
@@ -845,7 +852,6 @@ describe('CascadePlan Index & Resolver Tests', () => {
       );
 
       const parent = rolledUpPlan.tasks.find(t => t.key === 'TEST-1');
-      expect(parent?.dependency).toBeDefined();
       expect(parent?.dependency?.predecessorKey).toBe('TEST-2');
     });
   });
@@ -1010,7 +1016,8 @@ describe('CascadePlan Index & Resolver Tests', () => {
       );
 
       const target = updatedPlan.backlogTasks!.find(t => t.key === 'TEST-3');
-      expect(target?.dependency).toBeDefined();
+      expect(target?.dependency?.predecessorKey).toBe('TEST-1');
+      expect(target?.dependency?.triggerPercent).toBe(40);
     });
 
     it('saves dependency when target backlog task is matched by its numeric ID', async () => {
@@ -1270,7 +1277,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
         },
         context: { extension: { project: { key: 'TEST' } } }
       } as any);
-      expect(res.tasks.find((t: any) => t.key === 'TEST-2')?.dependency).toBeDefined();
+      expect(res.tasks.find((t: any) => t.key === 'TEST-2')?.dependency?.predecessorKey).toBe('TEST-1');
     });
 
     it('handles bridge invocations for saveColumnWidths and saveProjectMilestone', async () => {
@@ -1321,7 +1328,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
         context: { extension: { project: { key: 'TEST' } } }
       } as any);
       expect(res.success).toBe(false);
-      expect(res.error).toBeDefined();
+      expect(res.error).toBe("Task 'NON_EXISTENT' not found in project plan");
     });
 
   });
@@ -1439,8 +1446,18 @@ describe('CascadePlan Index & Resolver Tests', () => {
       const orig = (api as any).asUser;
       delete (api as any).asUser;
       const caller = getJiraCaller();
-      expect(caller).toBeDefined();
+      expect(typeof caller.requestJira).toBe('function');
       (api as any).asUser = orig;
+    });
+
+    it('fails if a read uses asApp (B-22 criterion 3)', async () => {
+      const origAsUser = (api as any).asUser;
+      try {
+        delete (api as any).asUser;
+        await expect(getJiraCaller().requestJira('/rest/api/3/issue/TEST-1')).rejects.toThrow('asApp must not be used');
+      } finally {
+        (api as any).asUser = origAsUser;
+      }
     });
 
     it('syncTaskToJira handles network exception gracefully', async () => {
@@ -1567,7 +1584,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
       }, mockStorage);
       expect(addSubRes.projectKey).toBe('TEST');
 
-      expect(await entryOf(mockStorage, 'TEST-1')).toBeDefined();
+      expect((await entryOf(mockStorage, 'TEST-1')).subtasks[0].summary).toBe('New Sub');
     });
 
     it('createSubtaskForResource retries with Subtask if Sub-task type fails', async () => {
@@ -1696,7 +1713,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
       });
       expect(plan.projectKey).toBe('TEST');
 
-      expect((await entryOf(mockStorage, 'TEST-2')).startWeek).toBeDefined();
+      expect((await entryOf(mockStorage, 'TEST-2')).startWeek).toBe('15-Jul');
     });
 
     it('handler invokes unscheduleTask, reorderWbsTasks, and createSubtaskForResource resolvers', async () => {
@@ -2008,7 +2025,8 @@ describe('CascadePlan Index & Resolver Tests', () => {
         }
       });
       const t3 = plan.backlogTasks?.find(t => t.key === 'TEST-3');
-      expect(t3?.dependency).toBeDefined();
+      expect(t3?.dependency?.predecessorKey).toBe('TEST-1');
+      expect(t3?.dependency?.triggerPercent).toBe(30);
     });
 
 

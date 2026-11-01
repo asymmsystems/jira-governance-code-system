@@ -122,7 +122,6 @@ describe('estimation unit per task (B-20)', () => {
 
     // Verify KVS stored estimate unit and rawEstimate
     const storedRec: any = await storage.get('cp:TEST:we:10001');
-    expect(storedRec.estimate).toBeDefined();
     expect(storedRec.estimate.estimateUnit).toBe('STORY_POINTS');
     expect(storedRec.estimate.rawEstimate).toBe(5);
     expect(storedRec.estimate.normalizedHours).toBe(40);
@@ -130,7 +129,7 @@ describe('estimation unit per task (B-20)', () => {
     // Verify getProjectPlan loads effortConfig with unit and rawEstimate intact
     const plan = await getProjectPlan('TEST', storage);
     const task = plan.tasks.find(t => t.key === 'TEST-1');
-    expect(task).toBeDefined();
+    expect(task?.key).toBe('TEST-1');
     expect(task?.effortHours).toBe(40);
     expect(task?.effortConfig?.unit).toBe('STORY_POINTS');
     expect(task?.effortConfig?.rawEstimate).toBe(5);

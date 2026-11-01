@@ -48,7 +48,6 @@ describe('licensing check (B-21)', () => {
     };
 
     const res: any = await handler(req);
-    expect(res).toBeDefined();
     expect(res.ok).toBe(false);
     expect(res.error).toBe('license_required');
     expect(res.message).toMatch(/licen[sc]e required/i);
@@ -72,7 +71,6 @@ describe('licensing check (B-21)', () => {
     };
 
     const res: any = await handler(req);
-    expect(res).toBeDefined();
     expect(res.ok).toBe(false);
     expect(res.error).toBe('license_required');
     expect(res.message).toMatch(/licen[sc]e required/i);
@@ -92,7 +90,6 @@ describe('licensing check (B-21)', () => {
     };
 
     const res: any = await handler(req);
-    expect(res).toBeDefined();
     expect(res.ok).toBe(false);
     expect(res.error).toBe('license_required');
     expect(res.message).toMatch(/licen[sc]e required/i);
@@ -117,7 +114,6 @@ describe('licensing check (B-21)', () => {
     };
 
     const res: any = await handler(req);
-    expect(res).toBeDefined();
     expect(res.error).toBeUndefined();
     expect(res.projectKey).toBe('TEST');
   });
@@ -139,7 +135,6 @@ describe('licensing check (B-21)', () => {
     };
 
     const res: any = await handler(req);
-    expect(res).toBeDefined();
     expect(res.error).toBeUndefined();
     expect(res.projectKey).toBe('TEST');
   });

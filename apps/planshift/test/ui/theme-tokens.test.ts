@@ -27,7 +27,7 @@ describe('ADS tokens only (B-17)', () => {
   it('every --cp alias points to a real ADS token from the CDN sheet', () => {
     const used = [...css.matchAll(/--cp-[a-z-]+:\s*var\((--ds-[a-z0-9-]+),/g)].map(m => m[1]);
     expect(used.length).toBeGreaterThan(30);
-    for (const t of used) expect(tokens.light[t]).toBeDefined();
+    for (const t of used) expect(typeof tokens.light[t]).toBe('string');
   });
 
   it('index.html has no CSP meta tag', () => {

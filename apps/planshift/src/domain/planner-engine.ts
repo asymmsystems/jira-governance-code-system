@@ -50,7 +50,7 @@ export class PlannerEngine {
     config: Partial<TaskEffortConfig>
   ): TaskEffortConfig {
     const unit: EstimateUnit = config.unit || 'HOURS';
-    const rawEstimate = typeof config.rawEstimate === 'number' ? config.rawEstimate : 40;
+    const rawEstimate = typeof config.rawEstimate === 'number' ? config.rawEstimate : 0;
     const tshirtSize = config.tshirtSize;
     const ratio = config.hoursConversionRatio || DEFAULT_STORY_POINT_RATIO;
     const subtasks = config.subtasks || [];

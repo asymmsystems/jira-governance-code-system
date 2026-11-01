@@ -72,7 +72,7 @@ describe('Jira sync report (B-07)', () => {
     expect(res.ok).toBe(true);
     expect(res.jiraSync).toEqual({ ok: true, writes: [{ key: 'TEST-1', fields: ['summary'], ok: true,
       changes: [{ field: 'summary', from: 'TEST-1', to: 'Renamed' }] }] });
-    expect(res.tasks).toBeDefined();
+    expect(res.tasks.length).toBe(2);
   });
 
   it('a Jira rejection is reported with the Jira error text', async () => {

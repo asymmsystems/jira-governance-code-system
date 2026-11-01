@@ -319,8 +319,8 @@ describe('PlannerEngine Domain Tests', () => {
     it('applies complete defaults when empty config is provided', () => {
       const effort = PlannerEngine.calculateEffortWithSubtasksAndBuffer({});
       expect(effort.unit).toBe('HOURS');
-      expect(effort.rawEstimate).toBe(40);
-      expect(effort.totalCalculatedHours).toBe(40);
+      expect(effort.rawEstimate).toBe(0);
+      expect(effort.totalCalculatedHours).toBe(0);
       expect(effort.bufferHours).toBe(0);
     });
 
@@ -361,12 +361,13 @@ describe('PlannerEngine Domain Tests', () => {
 
     it('handles subtasks with undefined normalizedHours', () => {
       const effort = PlannerEngine.calculateEffortWithSubtasksAndBuffer({
+        rawEstimate: 20,
         subtasks: [
           { id: 's0', summary: 'Zero', estimateValue: 0, estimateUnit: 'HOURS', normalizedHours: undefined as any, status: 'NOT_STARTED' }
         ]
       });
       expect(effort.subtasksSumHours).toBe(0);
-      expect(effort.totalCalculatedHours).toBe(40);
+      expect(effort.totalCalculatedHours).toBe(20);
     });
   });
 
@@ -541,7 +542,7 @@ describe('PlannerEngine Domain Tests', () => {
 
       const res = PlannerEngine.buildWbsHierarchy([parentTask, childSubtask]);
       const parent = res.find(t => t.key === 'PARENT-1');
-      expect(parent).toBeDefined();
+      expect(parent?.key).toBe('PARENT-1');
       expect(parent?.contributingResources).toContain('Alice');
       expect(parent?.contributingResources).toContain('Bob');
       expect(parent?.contributingResources).toContain('Charlie');

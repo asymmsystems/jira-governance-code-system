@@ -30,8 +30,8 @@ describe('canvas colour contrast (B-13 criterion 7)', () => {
   it('every canvas token is a --cp alias of a real ADS token', () => {
     const used = new Set([...Object.values(CANVAS_TOKENS), ...CANVAS_PAIRS.flatMap(p => [p.fg, p.bg])]);
     for (const t of used) {
-      expect(alias.get(t)).toBeDefined();
-      expect(tokens.light[alias.get(t)!]).toBeDefined();
+      expect(typeof alias.get(t)).toBe('string');
+      expect(typeof tokens.light[alias.get(t)!]).toBe('string');
     }
   });
 

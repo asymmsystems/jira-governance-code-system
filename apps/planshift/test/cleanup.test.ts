@@ -99,7 +99,7 @@ describe('ghost rows and pruning (B-18 criterion 2)', () => {
       return { status: 200, json: async () => [] };
     });
     const plan = await getProjectPlan('TEST', storage);
-    expect(plan.truncated).toBeDefined();
+    expect(plan.truncated).toEqual({ shown: 10, total: 5000 });
     expect(plan.staleEntries).toEqual([]);
   });
 

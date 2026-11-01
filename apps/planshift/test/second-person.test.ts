@@ -136,7 +136,7 @@ describe('second person path (B-19)', () => {
     // Verify subtaskKey recorded in parent's stored contributors / parties
     const parentRec: any = await storage.get('cp:TEST:we:10001');
     const bobParty = parentRec.parties.find((p: any) => p.partyId === 'acc-bob');
-    expect(bobParty).toBeDefined();
+    expect(bobParty?.partyId).toBe('acc-bob');
     expect(bobParty.subtaskKey).toBe('TEST-99');
 
     // Calling again updates existing contributor party
@@ -174,7 +174,7 @@ describe('second person path (B-19)', () => {
     // Verify subtaskKey stored on parent record
     const parentRec: any = await storage.get('cp:TEST:we:10001');
     const janeParty = parentRec.parties.find((p: any) => p.partyId === 'acc-jane');
-    expect(janeParty).toBeDefined();
+    expect(janeParty?.partyId).toBe('acc-jane');
     expect(janeParty.subtaskKey).toBe('TEST-99');
   });
 

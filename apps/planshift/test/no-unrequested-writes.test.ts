@@ -64,7 +64,7 @@ describe('no unrequested Jira writes (B-03)', () => {
     const [put] = puts();
     expect(put.fields.timetracking).toBeUndefined();
     expect(put.fields.assignee).toBeUndefined();
-    expect(put.fields.duedate).toBeDefined();
+    expect(put.fields.duedate).toBe('2026-11-16');
     const stored = (await entryOf(storage, 'TEST-1'));
     expect(stored.effortHours).toBeUndefined();
     expect(stored.resource).toBeUndefined();
