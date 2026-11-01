@@ -373,3 +373,33 @@ export async function historyFlow(payload: any, context: any, deps: LedgerSealDe
     nextFromSeq: toSeq < record.head.seq ? toSeq + 1 : null
   };
 }
+
+/** The issue an event is about: issue events carry `issue`, attachment and work log events carry `issueId`. */
+function eventIssueId(event: any): string | null {
+  const id = event?.issue?.id ?? event?.attachment?.issueId ?? event?.worklog?.issueId;
+  return id ? String(id) : null;
+}
+
+/**
+ * Records a change as soon as Jira reports it (spec v2 section 7.4), so a change that is reverted before anyone
+ * opens the panel is still on record. It writes only for a new change to a covered field, and never throws:
+ * the validator checks the live issue at every transition anyway, because events can arrive late.
+ */
+export async function issueChangedFlow(event: any, deps: LedgerSealDeps): Promise<{ recorded: boolean }> {
+  const issueId = eventIssueId(event);
+  if (!issueId || event?.selfGenerated === true) return { recorded: false };
+  try {
+    const repo = new SealRepository(deps.storage);
+    const now = new Date().toISOString();
+    if (!(await repo.getSeal(issueId))) return { recorded: false };
+    const live = await readLiveSnapshot(deps.jira, issueId, now);
+    if (!live) return { recorded: false };
+    const evaluation = await evaluate(repo, issueId, live.snapshot, now);
+    if (evaluation.kind !== 'SEAL') return { recorded: false };
+    const { recorded } = await recordIncidentIfNew(deps, repo, evaluation, now);
+    return { recorded };
+  } catch (err) {
+    console.error('LedgerSeal: issue event handling failed', err);
+    return { recorded: false };
+  }
+}

@@ -5,7 +5,16 @@ import { validateTransitionGate } from './validator/workflow-validator';
 import { SealRepository, StorageProvider } from './storage/seal-repository';
 import { createJiraClient } from './jira/jira-client';
 import { signerFromEnvironment } from './domain/attestation';
-import { evaluate, historyFlow, LedgerSealDeps, readLiveSnapshot, recordIncidentIfNew, sealIssueFlow, verifyIssueFlow } from './service/ledger';
+import {
+  evaluate,
+  historyFlow,
+  issueChangedFlow,
+  LedgerSealDeps,
+  readLiveSnapshot,
+  recordIncidentIfNew,
+  sealIssueFlow,
+  verifyIssueFlow
+} from './service/ledger';
 
 export { LedgerSealDeps } from './service/ledger';
 
@@ -160,6 +169,13 @@ export async function verifyIssue(payload: any, context?: any, deps: LedgerSealD
  */
 export async function getSealHistory(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
   return historyFlow(payload, context, deps);
+}
+
+/**
+ * Product event trigger: issue updated, commented, attachment and work log events.
+ */
+export async function onIssueChanged(event: any, context?: any, deps: LedgerSealDeps = forgeDeps(false)) {
+  return issueChangedFlow(event, deps);
 }
 
 /**

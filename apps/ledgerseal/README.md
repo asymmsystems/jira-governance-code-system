@@ -18,7 +18,7 @@ Built on Atlassian Forge. The app backend makes no outbound network calls.
 - **Covered fields** are chosen by field type from the site field list (`/rest/api/3/field`). Rank, Sprint, SLA timers, satisfaction, request participants, approvals, development summary, status and Jira's own timestamps are left out, and the panel lists each with the reason. Every other field with a value is covered.
 - **Trust:** the panel and the validator decide only from app storage, which only the app can read and write. The `ledgerseal-cert` property is an output for other tools. Any user who can edit an issue can change its properties, so a reader must check the signature.
 - **Integrity check:** every read recomputes the hash of the stored seal record and the stored snapshot. A mismatch shows "the seal record failed its integrity check".
-- **Limits:** the vendor holds the signing key, so a valid signature shows that LedgerSeal wrote the attestation, not that the vendor could not. Changes are found when someone opens the panel, at a transition, or from Jira's issue events, which can arrive up to 3 minutes late.
+- **Limits:** the vendor holds the signing key, so a valid signature shows that LedgerSeal wrote the attestation, not that the vendor could not. Changes are recorded from Jira issue, comment, attachment and work log events, which can arrive up to 3 minutes late, and are checked again whenever someone opens the panel or runs a transition.
 
 ## Modules and scopes
 
@@ -51,8 +51,8 @@ Measured on the last change to this file:
 
 | Measure | Value |
 |---|---|
-| Tests | 169 in 21 suites |
-| Branch coverage (all files in `src/` except the UI Kit view) | 97.33% |
+| Tests | 177 in 22 suites |
+| Branch coverage (all files in `src/` except the UI Kit view) | 97.39% |
 
 ```bash
 npm install

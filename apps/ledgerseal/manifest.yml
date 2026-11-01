@@ -13,11 +13,24 @@ modules:
       name: Require Valid LedgerSeal
       description: Blocks the transition unless the issue is sealed and unchanged since approval.
       function: validate-transition
+  trigger:
+    - key: ledgerseal-issue-changed
+      function: on-issue-changed
+      events:
+        - avi:jira:updated:issue
+        - avi:jira:commented:issue
+        - avi:jira:created:attachment
+        - avi:jira:deleted:attachment
+        - avi:jira:created:worklog
+        - avi:jira:updated:worklog
+        - avi:jira:deleted:worklog
   function:
     - key: resolver
       handler: index.handler
     - key: validate-transition
       handler: index.validateTransition
+    - key: on-issue-changed
+      handler: index.onIssueChanged
 
 resources:
   - key: main

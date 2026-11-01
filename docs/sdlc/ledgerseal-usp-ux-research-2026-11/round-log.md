@@ -198,3 +198,16 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - Test data that carried claim words (an "ISO 27001" declaration fixture, a "compliance" label) was changed. Tests that asserted the old messages now assert the new ones.
 - B-08 AC3 ("tamper-evident" in the UI) is met here. The listing is rewritten in Loop 3.
 - Results: `tsc` OK. 21 suites, 169 tests pass. Global branches 97.33%. `workflow-validator.ts` 100%, `crypto.ts` 100%, `tamper-detector.ts` 100%. Graders all True. No em dash.
+- B-10 commit: `a588148`.
+
+### B-11 Record changes when they happen (LS-16, PX-04 LedgerSeal side) [MANIFEST]
+- Tests first: `test/issue-trigger.test.ts`. First run: failed for the right reason (`onIssueChanged` not exported).
+- Event payload shapes come from the Forge Jira events reference (read 2026-11-01): issue and comment events carry `issue`, attachment events `attachment.issueId`, work log events `worklog.issueId`. Work log is a covered field, so the trigger also listens to the three work log events.
+- Code:
+  - `src/service/ledger.ts` `issueChangedFlow` runs the same `recordIncidentIfNew` as the panel and the validator. It never throws, and skips self-generated events and unsealed issues.
+  - `src/index.ts` exports `onIssueChanged`.
+  - `manifest.yml` adds the `trigger` module `ledgerseal-issue-changed` with 7 events and the function `on-issue-changed`.
+- Adversarial test: T-02 A9 (an edit and a revert with no view in between) now leaves the gate closed with the "changed back" message.
+- A 100-field change takes well under 2 s in-process (limit 25 s, FG-01).
+- PX-04: the property is updated within the event delay, not only when someone opens the panel. CascadePlan's lock badge and its confirm-before-write step stay in the CascadePlan backlog.
+- Results: `tsc` OK. 22 suites, 177 tests pass. Global branches 97.39%. `ledger.ts` 96.58%, `index.ts` 93.93%. Graders all True. README numbers updated. No em dash.
