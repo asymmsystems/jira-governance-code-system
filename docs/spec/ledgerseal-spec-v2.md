@@ -70,48 +70,75 @@ interface CanonicalSnapshot {
 }
 ```
 
-### 3.2 Seal record (`SealRecord`, KVS)
+### 3.2 Silverston WorkEffort model (D-10, ADR-01)
+
+The stored model follows the Silverston WorkEffort, Party and Status patterns, with names taken from the Apache OFBiz entity definitions (`docs/sdlc/ledgerseal-usp-ux-research-2026-11/adr-01-silverston-data-model.md`). Jira-owned issue fields are not stored; only LedgerSeal's own facts are.
 
 ```typescript
-interface SealRecord {
-  schemaVersion: 2;
-  issueId: string; issueKey: string;
-  certificateId: string;              // UUID v4
-  state: 'ACTIVE' | 'REVOKED';
-  sealedAt: string;                   // ISO-8601 UTC, server clock
-  sealedBy: { accountId: string; displayName: string };
-  meaning: 'APPROVAL' | 'REVIEW' | 'VERIFICATION';
+type LedgerSealStatusId = 'LS_SEALED' | 'LS_CHANGED' | 'LS_REVOKED';         // StatusItem, StatusType LEDGERSEAL_STATUS
+type LedgerSealRoleTypeId = 'LS_APPROVER' | 'LS_REVIEWER' | 'LS_VERIFIER';  // RoleType = the meaning of the signature
+
+interface SealedWorkEffort {            // WorkEffort, one per issue
+  schemaVersion: 3;
+  workEffortId: string;                 // Jira issue id
+  workEffortTypeId: 'JIRA_ISSUE';
+  sourceReferenceId: string;            // Jira issue key
+  currentStatusId: LedgerSealStatusId;
+  lastStatusUpdate: string;
+  revisionNumber: number;               // seq of the newest status row
+  statusHead: { seq: number; entryHash: string };
+  currentAssignment: { partyId: string; roleTypeId: LedgerSealRoleTypeId; fromDate: string; assignmentHash: string; sealingSeq: number; sealingEntryHash: string };
+  currentContentId: string;             // the certificate id: the sealed snapshot content
+  attributes: { snapshotHash: string; canonicalizerVersion: string; declarationVersion: string; statusAtSeal: string; snapshotParts: number }; // WorkEffortAttribute
+  everCompromised: boolean;             // derived from status rows, kept as a current value
+  incidentCount: number;                // derived from status rows, kept as a current value
+  lastIncidentHash: string | null;      // live hash of the newest LS_CHANGED row of the current seal
+  recordHash: string;                   // SHA-256 of the canonical JSON of every other field
+}
+
+interface WorkEffortPartyAssignment {   // one per seal
+  workEffortId: string;
+  partyId: string;                      // Atlassian account id; no name copy (A-5)
+  roleTypeId: LedgerSealRoleTypeId;
+  fromDate: string;                     // seal time
+  thruDate: string | null;              // set when a reseal or a revoke ends this seal
+  comments: string | null;              // reseal reason
+  contentId: string;
   declaration: { version: string; text: string };
-  reason: string | null;              // required on reseal and revoke
-  statusAtSeal: string;
-  snapshotHash: string;               // SHA-256 hex of the canonical form
-  canonicalizerVersion: string;
-  coveredFields: { id: string; name: string }[];
-  excludedFields: { id: string; name: string; reason: string }[];
-  snapshotChunks: number;
-  everCompromised: boolean;
-  incidentCount: number;              // across all seals of this issue
-  lastIncidentHash: string | null;    // for the current seal
-  head: { seq: number; entryHash: string };
-  revocation: { revokedAt: string; revokedByAccountId: string; reason: string } | null;
-  recordHash: string;                 // SHA-256 of the canonical JSON of all other fields
+}
+
+interface WorkEffortStatus {            // one per state change, created once (history)
+  workEffortId: string;
+  statusId: LedgerSealStatusId;
+  statusDatetime: string;
+  setByPartyId: string | null;          // null when the app found the change
+  reason: string | null;
+  transitionName: 'SEAL' | 'RESEAL' | 'CHANGE' | 'REVOKE';
+  seq: number;                          // LedgerSeal extension: chain position
+  data: Record<string, unknown>;        // hashes, signer name at signing, changed fields
+  prevEntryHash: string;                // LedgerSeal extension (A-4)
+  entryHash: string;                    // LedgerSeal extension (A-4)
 }
 ```
 
-### 3.3 History entry (`HistoryEntry`, KVS)
+Allowed state changes (`StatusValidChange`, `src/domain/status.ts`):
 
-```typescript
-interface HistoryEntry {
-  seq: number;                        // 1, 2, 3 ...
-  type: 'SEALED' | 'RESEALED' | 'INCIDENT' | 'REVOKED';
-  at: string;
-  actorAccountId: string | null;      // null for an incident found by the app
-  certificateId: string;
-  data: Record<string, unknown>;      // per type, section 7
-  prevEntryHash: string;              // "0" x 64 for seq 1
-  entryHash: string;                  // SHA-256 of the canonical JSON of all other fields
-}
-```
+| From | To | transitionName |
+|---|---|---|
+| (none) | `LS_SEALED` | `SEAL` |
+| `LS_SEALED` | `LS_SEALED` | `RESEAL` |
+| `LS_SEALED` | `LS_CHANGED` | `CHANGE` |
+| `LS_SEALED` | `LS_REVOKED` | `REVOKE` |
+| `LS_CHANGED` | `LS_CHANGED` | `CHANGE` |
+| `LS_CHANGED` | `LS_SEALED` | `RESEAL` |
+| `LS_CHANGED` | `LS_REVOKED` | `REVOKE` |
+| `LS_REVOKED` | `LS_SEALED` | `RESEAL` |
+
+"Changed back" is derived, not stored: the current status is `LS_CHANGED` and the live hash equals the sealed hash.
+
+### 3.3 Integrity bindings
+
+`recordHash` covers the work effort. The work effort holds the hash of the current assignment and of the status row that sealed it, and the snapshot hash of the content. So a rewrite of any of them fails the check on read (B-08).
 
 ### 3.4 Panel data (resolver to UI)
 
@@ -237,16 +264,19 @@ Trigger events can arrive up to 3 minutes late (Forge trigger module page). The 
 
 | Key | Value | Largest value |
 |---|---|---|
-| `ls2:seal:{issueId}` | `SealRecord` | about 2 KiB plus field names; under 20 KiB with 300 covered fields |
-| `ls2:snap:{certificateId}:{n}` | part `n` (0-based) of the canonical snapshot JSON string | 120,000 UTF-8 bytes |
-| `ls2:entry:{issueId}:{seq}` (`seq` zero-padded to 6 digits) | `HistoryEntry` | under 8 KiB (incident entries store at most 50 changed field names) |
-| `cert:active:{issueId}` (v1) | legacy certificate, read only | not written by v2 |
+| `ls3:we:{issueId}` | `SealedWorkEffort` | under 4 KiB |
+| `ls3:wes:{issueId}:{seq}` (`seq` zero-padded to 6 digits) | `WorkEffortStatus`, created once | under 8 KiB (at most 50 changed field names) |
+| `ls3:wepa:{issueId}:{fromDate}` | `WorkEffortPartyAssignment` | under 2 KiB |
+| `ls3:content:{contentId}:{part}` | part `part` (0-based) of the canonical snapshot JSON string, with its covered and excluded field lists | 120,000 UTF-8 bytes |
+| `cert:active:{issueId}` (v1) | legacy certificate, read only | not written |
+
+The `ls2:` layout of B-02 to B-11 was never deployed and is not read.
 
 - KVS value limit: 240 KiB (FG-07). The part size is measured in UTF-8 bytes, at most 120,000 bytes, so every part stays under half the limit (B-17). A split never cuts a UTF-16 surrogate pair.
 - A seal or reseal writes its snapshot parts and the seal record in one `kvs.transact()` of at most 25 operations (FG-08). A snapshot over 23 parts (about 2.7 MB) fails with `SNAPSHOT_TOO_LARGE` and nothing is written.
 - Concurrency: every write that changes the seal record first creates history entry `head.seq + 1` with `FAIL_IF_EXISTS`. If the key exists, another writer won, and the call returns `CONFLICT` (B-17).
 - Measured sizes (T-01, after Part B) are in `ux-spec.md` section 3, column "After".
-- **Migration (D-3):** a v1 record is read as `LEGACY`. v2 never writes or deletes v1 keys. A reseal writes a v2 record, and from then on the v2 record wins.
+- **Migration (D-3):** a v1 record is read as `LEGACY`. The app never writes or deletes v1 keys. A reseal writes a `ls3:` work effort, and from then on it wins.
 
 ---
 
@@ -387,3 +417,4 @@ The seal form shows this exact text with "(Declaration v1)". The record stores t
 | D-7 | Evidence format | (a) JSON plus a stand-alone verifier; (b) PDF | (a). No new dependency, and the verifier can recompute the hash. A PDF cannot |
 | D-8 | Licence and the validator | (a) block when unlicensed; (b) do not change the gate result | (b). A lapsed licence must not stop a customer's releases; the panel shows the licence state |
 | D-9 | Field list per call | (a) fetch `/field` once per invocation; (b) cache in KVS | (a). A KVS cache write during a panel view would break invariant 3 |
+| D-10 | Data model | (a) Silverston WorkEffort, Party and Status patterns (ADR-01); (b) the B-02 event-history records | (a), owner approved 2026-11-01. One vocabulary with CascadePlan; an explicit state-change table; no v2 data existed to migrate |

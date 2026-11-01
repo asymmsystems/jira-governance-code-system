@@ -1,4 +1,4 @@
-APPROVED 2026-11-01 B-01..B-20 (owner, in chat: "APPROVED now all"; [MANIFEST], [VAR] and [MIGRATE] flags approved; D-1, D-2, D-3 recommendations accepted)
+APPROVED 2026-11-01 B-01..B-20 (owner, in chat: "APPROVED now all"; [MANIFEST], [VAR] and [MIGRATE] flags approved; D-1, D-2, D-3 recommendations accepted); B-21 added and approved 2026-11-01 (owner, in chat: "approve", ADR-01), built before B-12
 
 # LedgerSeal: ranked backlog
 
@@ -223,6 +223,18 @@ Items with these flags need explicit owner approval before the work starts (brie
   1. The manifest has no `http` URL. (U: manifest test)
   2. `renderIssuePanel` is removed and no test imports it. (U)
 - **Size:** S.
+
+### B-21 Silverston WorkEffort, Party and Status data model (ADR-01, D-10) [MIGRATE]
+- **Serves:** one vocabulary with CascadePlan; an explicit state machine; a stable base for B-13, B-14 and B-17.
+- **Closes:** nothing new. It rebuilds the storage of B-02, B-03, B-08, B-09 and B-11 without changing their behaviour. **Depends on:** B-11. **Built before:** B-12.
+- **Acceptance criteria:**
+  1. A seal writes `ls3:we:{issueId}` (`workEffortTypeId: JIRA_ISSUE`, `sourceReferenceId` = key, `currentStatusId: LS_SEALED`), one `ls3:wepa:{issueId}:{fromDate}` assignment (`partyId`, `roleTypeId` from the meaning, `thruDate: null`, no display name), one `ls3:wes:{issueId}:{seq}` status row and the content parts. No `ls2:` key is written. (R)
+  2. The meanings map to the roles `LS_APPROVER`, `LS_REVIEWER` and `LS_VERIFIER`. (U, R)
+  3. A change writes an `LS_CHANGED` row with `setByPartyId: null`. A reseal ends the previous assignment (`thruDate` = reseal time), adds a new one with the reason in `comments`, and writes an `LS_SEALED` row with `transitionName: RESEAL`. (R)
+  4. `src/domain/status.ts` lists exactly the allowed changes of spec v2 section 3.2, and the service refuses any other. (U)
+  5. A rewritten assignment or sealing row is reported as `RECORD_INVALID`. (R, A: T-02 A7)
+  6. Every test from B-01 to B-11 passes against the new model. Tests that read storage use the model helpers, not raw keys. (all)
+- **Size:** L.
 
 ## Top 10 for the gate
 
