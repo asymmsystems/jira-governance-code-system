@@ -290,7 +290,7 @@ The `ls2:` layout of B-02 to B-11 was never deployed and is not read.
 - A group or role policy needs a settings page. That is follow-up work, not in B-01 to B-20.
 
 ### 7.2 Separation of duties (B-01)
-On a reseal after a change, LedgerSeal reads the change log since `sealedAt` (`/rest/api/3/issue/{id}/changelog`, paged), the comments created or edited since then, and the attachments added since then. If the caller is the author of any of them, the reseal fails with `SELF_APPROVAL`.
+On a reseal after a change, LedgerSeal reads the change log since `sealedAt` (`/rest/api/3/issue/{id}/changelog`, paged), the comments created or edited since then, and the attachments added since then. If the caller is the author of any of them, the reseal fails with `SELF_APPROVAL`. The same check applies to a seal after a revoke, from the `fromDate` of the revoked seal, and a reason is required when the issue changed since that seal. So a revoke cannot be used to approve one's own change.
 
 ### 7.3 Seal and reseal contract (`seal-issue-api`)
 Payload: `{ signature: { meaning, declarationVersion, declarationText, reason? } }`. Any other field is ignored. `meaning` defaults to `APPROVAL`.

@@ -339,6 +339,14 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
       previous = (await recordIncidentIfNew(deps, repo, evaluation, now)).seal;
       previousWorkEffort = previous.workEffort;
     }
+    if (status === 'SEAL_REVOKED') {
+      // A revoke must not open a way around separation of duties (live, DEMO-34)
+      const changelog = await deps.jira.getChangelog(issue.id);
+      if (!changelog.ok) return fail('JIRA_UNREACHABLE');
+      if (authorsSince(changelog.value, previous.assignment.fromDate).has(accountId)) return fail('SELF_APPROVAL');
+      const changed = computeSnapshotHash(snapshot) !== previousWorkEffort.attributes.snapshotHash;
+      if (changed && !validReason(signature.reason)) return fail('REASON_REQUIRED');
+    }
   }
   if (evaluation.kind === 'RECORD_INVALID') {
     // The stored counts cannot be trusted, so the new seal says the issue was compromised

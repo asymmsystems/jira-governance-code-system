@@ -8,7 +8,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { sealIssue, verifyIssue, validateTransition } from '../src/index';
+import { sealIssue, verifyIssue, validateTransition, revokeSeal } from '../src/index';
 import { createJiraClient } from '../src/jira/jira-client';
 import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature, model } from './support/fakes';
 
@@ -133,6 +133,54 @@ describe('B-01 failure paths', () => {
     const active = await model.workEffort(storage);
     expect(active.everCompromised).toBe(true);
     await expect(sealIssue({ signature: sig }, panelContext('mallory'), deps('mallory'))).resolves.toMatchObject({ code: 'SELF_APPROVAL' });
+  });
+
+  it('adversarial (live, DEMO-34): the editor cannot revoke and then seal their own change', async () => {
+    const { jira, storage, deps } = setup();
+    jira.approvers.add('mallory');
+    await sealIssue({ signature: sig }, panelContext('ann'), deps('ann'));
+    jira.edit('mallory', '2099-01-01T00:00:00.000Z', 'summary', 'Rotate credentials and drop the audit table');
+    await expect(revokeSeal({ reason: 'Clearing the way' }, panelContext('mallory'), deps('mallory'))).resolves.toMatchObject({ ok: true });
+    const before = storage.sets.length;
+    const writesBefore = jira.propertyWrites.length;
+
+    const result = await sealIssue({ signature: validSignature({ reason: 'Looks fine' }) }, panelContext('mallory'), deps('mallory'));
+
+    expect(result).toMatchObject({ ok: false, code: 'SELF_APPROVAL' });
+    expect(storage.sets.length).toBe(before);
+    expect(jira.propertyWrites.length).toBe(writesBefore);
+  });
+
+  it('a seal after a revoke needs a reason when the issue changed, and another approver may give it', async () => {
+    const { jira, storage, deps } = setup();
+    await sealIssue({ signature: sig }, panelContext('ann'), deps('ann'));
+    jira.edit('mallory', '2099-01-01T00:00:00.000Z', 'summary', 'changed');
+    await revokeSeal({ reason: 'Scope withdrawn' }, panelContext('ann'), deps('ann'));
+
+    const noReason = validSignature({ reason: undefined });
+    await expect(sealIssue({ signature: noReason }, panelContext('bob'), deps('bob'))).resolves.toMatchObject({ code: 'REASON_REQUIRED' });
+    const sealed = await sealIssue({ signature: validSignature({ reason: 'Reviewed the new scope' }) }, panelContext('bob'), deps('bob'));
+
+    expect(sealed).toMatchObject({ ok: true });
+    const rows = model.statusRows(storage);
+    expect(rows[rows.length - 1]).toMatchObject({ statusId: 'LS_SEALED', setByPartyId: 'bob', reason: 'Reviewed the new scope' });
+  });
+
+  it('a seal after a revoke with no change since the last seal needs no reason, even from the revoker', async () => {
+    const { storage, deps } = setup();
+    await sealIssue({ signature: sig }, panelContext('ann'), deps('ann'));
+    await revokeSeal({ reason: 'Wrong meaning chosen' }, panelContext('ann'), deps('ann'));
+
+    await expect(sealIssue({ signature: validSignature({ reason: undefined }) }, panelContext('ann'), deps('ann'))).resolves.toMatchObject({ ok: true });
+    expect(model.statusRows(storage).map(r => r.statusId)).toEqual(['LS_SEALED', 'LS_REVOKED', 'LS_SEALED']);
+  });
+
+  it('refuses a seal after a revoke when the change log cannot be read', async () => {
+    const { jira, deps } = setup();
+    await sealIssue({ signature: sig }, panelContext('ann'), deps('ann'));
+    await revokeSeal({ reason: 'Scope withdrawn' }, panelContext('ann'), deps('ann'));
+    jira.failChangelog = true;
+    await expect(sealIssue({ signature: sig }, panelContext('bob'), deps('bob'))).resolves.toMatchObject({ code: 'JIRA_UNREACHABLE' });
   });
 
   it('stores a default meaning and uses the issue id as the key when the context has no key', async () => {
