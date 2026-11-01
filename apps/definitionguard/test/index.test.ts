@@ -14,11 +14,20 @@ import { StorageProvider } from '../src/storage/checklist-repository';
 import { ChecklistEngine, DEFAULT_DEFINITION_OF_DONE, BUG_DEFINITION_OF_DONE, STORY_DEFINITION_OF_DONE } from '../src/domain/checklist-engine';
 
 const mockRequestJira = jest.fn();
+// asUser is a separate double: it only answers permission checks, and grants them all here.
+// Permission denial is tested in test/security/permissions.test.ts.
+const mockUserRequestJira = jest.fn(async () => ({
+  status: 200,
+  json: async () => ({ permissions: { EDIT_ISSUES: { havePermission: true }, ADMINISTER_PROJECTS: { havePermission: true } } })
+}));
 jest.mock('@forge/api', () => ({
   __esModule: true,
   default: {
     asApp: () => ({
       requestJira: mockRequestJira
+    }),
+    asUser: () => ({
+      requestJira: mockUserRequestJira
     })
   },
   route: (strings: any, ...values: any[]) => strings.join('')
@@ -482,41 +491,6 @@ describe('DefinitionGuard Index / Forge Handlers', () => {
       expect(reset.templateId).toBe('template-bug-dod');
     });
 
-    it('covers saveProjectTemplate and getProjectTemplates via handler', async () => {
-      const tmpl = {
-        id: 'tmpl-custom',
-        name: 'Custom Task',
-        items: [{ id: 'i1', title: 'Task Done', isMandatory: true, category: 'GENERAL' }]
-      };
-      const saveRes: any = await handler({
-        call: {
-          functionKey: 'saveProjectTemplate',
-          payload: { projectKey: 'PROJ-TEST', issueType: 'Task', template: tmpl }
-        },
-        context: { accountId: 'admin-acc' }
-      } as any);
-      expect(saveRes.success).toBe(true);
-
-      const getRes: any = await handler({
-        call: {
-          functionKey: 'getProjectTemplates',
-          payload: { projectKey: 'PROJ-TEST' }
-        }
-      } as any);
-      expect(getRes.templates['Task']).toBeDefined();
-      expect(getRes.templates['Task'].id).toBe('tmpl-custom');
-
-      // Update existing config
-      const saveRes2: any = await handler({
-        call: {
-          functionKey: 'saveProjectTemplate',
-          payload: { projectKey: 'PROJ-TEST', issueType: 'Bug', template: tmpl }
-        },
-        context: { accountId: 'admin-acc' }
-      } as any);
-      expect(saveRes2.success).toBe(true);
-    });
-
     it('covers resetChecklist with accountId resolving to displayName', async () => {
       const existing = ChecklistEngine.initializeState('reset-acc-1', 'RST-1');
       await mockStorage.set('dg:checklist:reset-acc-1', existing);
@@ -544,22 +518,7 @@ describe('DefinitionGuard Index / Forge Handlers', () => {
       expect(res.errorMessage).toContain('Definition of Done incomplete:');
     });
 
-    it('covers context project key and anonymous userId branches', async () => {
-      const saveRes: any = await handler({
-        call: {
-          functionKey: 'saveProjectTemplate',
-          payload: { issueType: 'Task', template: { id: 't1', name: 'T', items: [] } }
-        },
-        context: { extension: { project: { key: 'CTX-PRJ' } } }
-      } as any);
-      expect(saveRes.success).toBe(true);
-
-      const getRes: any = await handler({
-        call: { functionKey: 'getProjectTemplates' },
-        context: { extension: { project: { key: 'CTX-PRJ' } } }
-      } as any);
-      expect(getRes.projectKey).toBe('CTX-PRJ');
-
+    it('covers the anonymous userId branch', async () => {
       // Toggle with anonymous userId
       const state = ChecklistEngine.initializeState('anon-1', 'ANON-1');
       await mockStorage.set('dg:checklist:anon-1', state);

@@ -11,7 +11,8 @@ import {
 } from './domain/checklist-engine';
 import { TransitionValidator } from './validator/transition-validator';
 import { ChecklistRepository, StorageProvider } from './storage/checklist-repository';
-import { ChecklistToggleRequest, IssueChecklistState, ProjectDoDConfig, ChecklistTemplate } from './domain/models';
+import { ChecklistToggleRequest, IssueChecklistState } from './domain/models';
+import { checkIssuePermissions, EDIT_DENIED, RESET_DENIED } from './security/permissions';
 
 class ForgeKvsProvider implements StorageProvider {
   async get<T>(key: string): Promise<T | undefined> {
@@ -236,6 +237,8 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
     throw new Error('DefinitionGuard: Missing issueId or itemId.');
   }
 
+  await checkIssuePermissions(issueKey, ['EDIT_ISSUES'], EDIT_DENIED);
+
   // Resolve human display name for attribution
   let userDisplayName = rawUserId;
   if (context?.accountId) {
@@ -296,6 +299,8 @@ export async function resetChecklist(payload: any, context?: any, storageProvide
     throw new Error('DefinitionGuard: Missing issueId.');
   }
 
+  await checkIssuePermissions(issueKey, ['ADMINISTER_PROJECTS'], RESET_DENIED);
+
   if (context?.accountId) {
     try {
       const liveUser = await fetchJiraUser(context.accountId);
@@ -343,44 +348,6 @@ export async function resetChecklist(payload: any, context?: any, storageProvide
 }
 
 /**
- * Retrieves custom configured templates for a project (Fixes D-04).
- */
-export async function getProjectTemplates(payload: any, context?: any, storageProvider?: StorageProvider) {
-  const projectKey = String(context?.extension?.project?.key || payload?.projectKey || 'DEMO');
-  const storage = resolveStorage(storageProvider);
-  const config = await storage.get<ProjectDoDConfig>(`dod-templates:${projectKey}`);
-  return {
-    projectKey,
-    templates: config?.templatesByIssueType || {},
-    availableDefaults: ALL_TEMPLATES
-  };
-}
-
-/**
- * Saves a custom configured template for a project and issue type (Fixes D-04).
- */
-export async function saveProjectTemplate(payload: any, context?: any, storageProvider?: StorageProvider) {
-  const projectKey = String(context?.extension?.project?.key || payload?.projectKey || 'DEMO');
-  const issueType = String(payload?.issueType || 'Task');
-  const template = payload?.template as ChecklistTemplate;
-  const storage = resolveStorage(storageProvider);
-
-  let config = await storage.get<ProjectDoDConfig>(`dod-templates:${projectKey}`);
-  if (!config) {
-    config = {
-      projectKey,
-      templatesByIssueType: {},
-      updatedAt: new Date().toISOString(),
-      updatedBy: String(context?.accountId || 'anonymous')
-    };
-  }
-  config.templatesByIssueType[issueType] = template;
-  config.updatedAt = new Date().toISOString();
-  await storage.set(`dod-templates:${projectKey}`, config);
-  return { success: true, config };
-}
-
-/**
  * Issue panel rendering function.
  */
 export async function renderIssuePanel(context: any) {
@@ -407,14 +374,6 @@ resolver.define('resetChecklist', async (req) => {
 
 resolver.define('getAvailableTemplates', async () => {
   return getAvailableTemplates();
-});
-
-resolver.define('getProjectTemplates', async (req) => {
-  return await getProjectTemplates(req.payload, req.context);
-});
-
-resolver.define('saveProjectTemplate', async (req) => {
-  return await saveProjectTemplate(req.payload, req.context);
 });
 
 export const handler = resolver.getDefinitions();
