@@ -162,7 +162,7 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
       <Inline space="space.100" alignBlock="end" shouldWrap>
         <Stack space="space.050">
           <Label labelFor="fr-search">Search key or summary</Label>
-          <Textfield id="fr-search" value={filters.search} onChange={(e: TextChange) => set({ search: e.target?.value || '' })} />
+          <Textfield id="fr-search" onChange={(e: TextChange) => set({ search: e.target?.value || '' })} />
         </Stack>
         <Stack space="space.050">
           <Label labelFor="fr-filter-assignee">Assignee</Label>

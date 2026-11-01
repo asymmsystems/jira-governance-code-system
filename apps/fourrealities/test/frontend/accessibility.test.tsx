@@ -36,6 +36,11 @@ function checkTree(renderer: any, where: string) {
       expect({ where, type, id: control.props.id, labelled: labels.has(control.props.id) }).toEqual({ where, type, id: control.props.id, labelled: true });
     }
   }
+  // Loop 3 (live): a controlled Textfield drops typed characters across the UI Kit bridge, so
+  // every text field is uncontrolled (no value prop); state follows onChange only.
+  for (const field of findAll(root, 'Textfield')) {
+    expect({ where, id: field.props.id, controlled: 'value' in field.props }).toEqual({ where, id: field.props.id, controlled: false });
+  }
   for (const lozenge of findAll(root, 'Lozenge')) {
     expect({ where, text: flat(lozenge.props.children), maxWidth: lozenge.props.maxWidth }).toEqual({ where, text: flat(lozenge.props.children), maxWidth: '100%' });
   }
