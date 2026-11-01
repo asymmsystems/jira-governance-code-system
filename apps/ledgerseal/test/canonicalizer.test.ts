@@ -2,14 +2,14 @@ import { canonicalizeIssueState, canonicalizeValue } from '../src/domain/canonic
 
 describe('Canonicalizer', () => {
   describe('canonicalizeValue', () => {
-    it('normalizes string values by trimming whitespace and normalizing newlines', () => {
-      expect(canonicalizeValue('  hello world  ')).toBe('hello world');
+    it('keeps typed spaces and normalizes newlines (canonical form v2, LS-11)', () => {
+      expect(canonicalizeValue('  hello world  ')).toBe('  hello world  ');
       expect(canonicalizeValue('line1\r\nline2\rline3')).toBe('line1\nline2\nline3');
     });
 
     it('normalizes empty strings, undefined, and null to null', () => {
       expect(canonicalizeValue('')).toBeNull();
-      expect(canonicalizeValue('   ')).toBeNull();
+      expect(canonicalizeValue('   ')).toBe('   ');
       expect(canonicalizeValue(undefined)).toBeNull();
       expect(canonicalizeValue(null)).toBeNull();
     });
@@ -33,9 +33,10 @@ describe('Canonicalizer', () => {
       expect(JSON.stringify(canonicalizeValue(obj1))).toBe(JSON.stringify(canonicalizeValue(obj2)));
     });
 
-    it('normalizes nested arrays and filters out empty values if specified', () => {
-      const arr = ['  banana ', 'apple  ', ''];
-      expect(canonicalizeValue(arr)).toEqual(['apple', 'banana']);
+    it('drops empty items, keeps order, and sorts only when asked for a set', () => {
+      const arr = ['banana', 'apple', ''];
+      expect(canonicalizeValue(arr)).toEqual(['banana', 'apple']);
+      expect(canonicalizeValue(arr, true)).toEqual(['apple', 'banana']);
     });
   });
 
@@ -51,7 +52,7 @@ describe('Canonicalizer', () => {
           summary: 'Fix memory leak in parser',
           description: 'Detailed description\r\nwith windows newlines',
           priority: { name: 'High' },
-          labels: ['security', 'compliance'],
+          labels: ['security', 'regulated'],
           components: [{ name: 'Backend' }, { name: 'API' }],
           attachment: [
             { id: 'att-2', filename: 'log.txt', size: 1024, created: '2026-10-28T10:00:00Z', author: { accountId: 'acc-1' } },
@@ -66,7 +67,7 @@ describe('Canonicalizer', () => {
         fields: {
           description: 'Detailed description\nwith windows newlines',
           status: { name: 'Done' },
-          summary: 'Fix memory leak in parser  ',
+          summary: 'Fix memory leak in parser', // v2 keeps typed spaces, so equal content means equal text
           issuetype: { name: 'Bug' },
           project: { key: 'PROD' },
           priority: { name: 'High' },
@@ -75,7 +76,7 @@ describe('Canonicalizer', () => {
             { id: 'att-2', filename: 'log.txt', size: 1024, created: '2026-10-28T10:00:00Z', author: { accountId: 'acc-1' } }
           ],
           components: [{ name: 'API' }, { name: 'Backend' }],
-          labels: ['compliance', 'security']
+          labels: ['regulated', 'security']
         }
       };
 
@@ -113,7 +114,7 @@ describe('Canonicalizer', () => {
       expect(snapshot.attachments[1].id).toBe('att-99');
     });
 
-    it('skips volatile custom fields like Rank, Sprint, and Dev summary', () => {
+    it('skips Rank, Sprint and Development by schema type, and Resolution with the status rule (NF-05)', () => {
       const rawIssue = {
         id: '10003',
         key: 'PROD-44',
@@ -122,14 +123,19 @@ describe('Canonicalizer', () => {
           customfield_10019: '0|i0001b:',
           customfield_10020: [{ id: 1, name: 'Sprint 1', state: 'active' }],
           customfield_10000: '{"pullrequest":{"dataType":"pullrequest"}}',
-          customfield_customrank: '123|abc:',
-          resolution: { name: 'Done' },
+          resolution: { id: '1', name: 'Done' },
           resolutiondate: '2026-10-29T10:00:00Z'
         }
       };
+      const schemas = [
+        { id: 'customfield_10019', name: 'Rank', schema: { custom: 'com.pyxis.greenhopper.jira:gh-lexo-rank' } },
+        { id: 'customfield_10020', name: 'Sprint', schema: { custom: 'com.pyxis.greenhopper.jira:gh-sprint' } },
+        { id: 'customfield_10000', name: 'Development', schema: { custom: 'com.atlassian.jira.plugins.jira-development-integration-plugin:devsummarycf' } }
+      ];
 
-      const snapshot = canonicalizeIssueState(rawIssue, '2026-10-28T12:00:00Z');
+      const snapshot = canonicalizeIssueState(rawIssue, '2026-10-28T12:00:00Z', schemas);
       expect(snapshot.fields.map(f => f.id)).toEqual(['summary']);
+      expect(snapshot.excluded?.map(e => e.name)).toEqual(['Development', 'Rank', 'Sprint', 'resolution', 'resolutiondate']);
     });
 
     it('normalizes assignee, issuelinks, and subtasks to stable values without mutable status or avatars', () => {
@@ -150,13 +156,14 @@ describe('Canonicalizer', () => {
 
       const snapshot = canonicalizeIssueState(rawIssue, '2026-10-28T12:00:00Z');
       const assigneeField = snapshot.fields.find(f => f.id === 'assignee');
-      expect(assigneeField?.value).toEqual({ accountId: 'acc-1', displayName: 'Alice' });
+      expect(assigneeField?.value).toEqual({ accountId: 'acc-1' });
+      expect(assigneeField?.display).toBe('Alice');
 
       const linksField = snapshot.fields.find(f => f.id === 'issuelinks');
-      expect(linksField?.value).toEqual([{ inwardIssueKey: null, outwardIssueKey: 'PROJ-5', type: 'Blocks' }]);
+      expect(linksField?.value).toEqual([{ direction: 'outward', issue: 'PROJ-5', type: 'Blocks' }]);
 
       const subtasksField = snapshot.fields.find(f => f.id === 'subtasks');
-      expect(subtasksField?.value).toEqual([{ key: 'PROD-46' }]);
+      expect(subtasksField?.value).toEqual([{ id: '10' }]);
     });
 
     it('preserves whitespace inside ADF text nodes', () => {
@@ -252,34 +259,31 @@ describe('Canonicalizer', () => {
       expect(snap.fields.map(f => f.id)).toEqual(['summary']);
     });
 
-    it('excludes JSM request metadata, SLA timers, CSAT ratings, and approvals (Fixes D-03)', () => {
+    it('excludes JSM SLA timers, satisfaction, participants and approvals by schema type, not by value (Fixes D-03, LS-05)', () => {
       const raw = {
         id: '1',
         key: 'DEMO-5',
         fields: {
           summary: 'JSM ticket',
-          customfield_10010: { requestType: { name: 'IT Help' }, currentStatus: { statusCategory: 3 } },
-          customfield_10027: { ongoingCycle: { breached: false }, sla: 'Time to response' },
-          customfield_10037: { rating: 5, satisfactionDate: '2026-10-29' },
-          customfield_10001: { approvals: [] },
-          customfield_approvers: { approvers: ['acc-1'] },
-          customfield_participants: { participants: ['acc-2'] },
-          customfield_req: { customerRequestType: 'Help' },
-          customfield_dev: { cachedValue: 'summary' },
-          customfield_branch: 'branch={main}',
-          customfield_timeline: [{ state: 'closed' }],
-          customfield_mysprint: 'sprint 1',
-          customfield_mysatisfaction: 'high',
-          customfield_myrank: 'rank-1',
-          customfield_mysla: 'sla-met',
-          customfield_prstring: 'merged pullrequest #42',
-          customfield_satisfactionDate: { satisfactionDate: '2026-10-30' },
-          slaField: { completedCycles: [] }
+          customfield_10027: { ongoingCycle: { breached: false } },
+          customfield_10037: { rating: 5 },
+          customfield_10031: [{ accountId: 'acc-2' }],
+          customfield_10032: [{ id: '1', finalDecision: 'pending' }],
+          customfield_10001: 'Approved budget 1000',
+          customfield_branch: 'branch={main}'
         }
       };
+      const schemas = [
+        { id: 'customfield_10027', name: 'Time to first response', schema: { custom: 'com.atlassian.servicedesk:sd-sla-field' } },
+        { id: 'customfield_10037', name: 'Satisfaction', schema: { custom: 'com.atlassian.servicedesk:sd-request-feedback' } },
+        { id: 'customfield_10031', name: 'Request participants', schema: { custom: 'com.atlassian.servicedesk:sd-request-participants' } },
+        { id: 'customfield_10032', name: 'Approvals', schema: { custom: 'com.atlassian.servicedesk.approvals-plugin:sd-approvals' } },
+        { id: 'customfield_10001', name: 'Budget notes', schema: { custom: 'com.atlassian.jira.plugin.system.customfieldtypes:textarea' } }
+      ];
 
-      const snap = canonicalizeIssueState(raw, '2026-10-28T12:00:00Z');
-      expect(snap.fields.map(f => f.id)).toEqual(['summary']);
+      const snap = canonicalizeIssueState(raw, '2026-10-28T12:00:00Z', schemas);
+      expect(snap.fields.map(f => f.id)).toEqual(['customfield_10001', 'customfield_branch', 'summary']);
+      expect(snap.excluded?.map(e => e.id)).toEqual(['customfield_10027', 'customfield_10031', 'customfield_10032', 'customfield_10037']);
     });
 
     it('normalizes empty arrays and null identically (Fixes D-03 components: null vs [])', () => {
@@ -360,7 +364,8 @@ describe('Canonicalizer', () => {
       expect(canonicalizeValue({})).toBeNull();
       expect(canonicalizeValue('')).toBeNull();
       expect(canonicalizeValue({ emptyList: [] })).toBeNull();
-      expect(canonicalizeValue([null, '   '])).toBeNull();
+      expect(canonicalizeValue([null, ''])).toBeNull();
+      expect(canonicalizeValue([null, '   '])).toEqual(['   ']);
     });
   });
 });

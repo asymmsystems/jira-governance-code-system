@@ -1,12 +1,25 @@
-import api, { route } from '@forge/api';
+import api from '@forge/api';
 import Resolver from '@forge/resolver';
 import { kvs } from '@forge/kvs';
-import { canonicalizeIssueState } from './domain/canonicalizer';
-import { generateSealCertificate } from './domain/crypto';
-import { analyzeTamperState } from './domain/tamper-detector';
 import { validateTransitionGate } from './validator/workflow-validator';
 import { SealRepository, StorageProvider } from './storage/seal-repository';
-import { ElectronicSignature } from './domain/models';
+import { createJiraClient } from './jira/jira-client';
+import { signerFromEnvironment } from './domain/attestation';
+import {
+  evaluate,
+  evidenceFlow,
+  historyFlow,
+  issueChangedFlow,
+  LedgerSealDeps,
+  rawComments,
+  readLiveSnapshot,
+  recordIncidentIfNew,
+  revokeFlow,
+  sealIssueFlow,
+  verifyIssueFlow
+} from './service/ledger';
+
+export { LedgerSealDeps } from './service/ledger';
 
 class ForgeKvsProvider implements StorageProvider {
   async get<T>(key: string): Promise<T | undefined> {
@@ -21,129 +34,111 @@ class ForgeKvsProvider implements StorageProvider {
   async delete(key: string): Promise<void> {
     await kvs.delete(key);
   }
-}
 
-let globalStorageProvider: StorageProvider | null = null;
-
-export function setGlobalStorageProvider(provider: StorageProvider | null) {
-  globalStorageProvider = provider;
-}
-
-export function resolveStorage(customProvider?: StorageProvider): StorageProvider {
-  if (customProvider) {
-    return customProvider;
-  }
-  if (globalStorageProvider) {
-    return globalStorageProvider;
-  }
-  if (process.env.NODE_ENV === 'test') {
-    throw new Error('LedgerSeal: StorageProvider must be initialized.');
-  }
-  return new ForgeKvsProvider();
-}
-
-/**
- * Fetches the authentic Jira issue representation including fields and attachments.
- */
-export async function fetchLiveJiraIssue(issueIdOrKey: string): Promise<any | null> {
-  try {
-    const res = await api.asApp().requestJira(route`/rest/api/3/issue/${issueIdOrKey}`);
-    if (res.status === 200) {
-      return await res.json();
+  async createIfAbsent(key: string, value: any): Promise<boolean> {
+    try {
+      await kvs.set(key, value, { keyPolicy: 'FAIL_IF_EXISTS' });
+      return true;
+    } catch (err) {
+      // A failed create on an existing key is a lost race, not an error.
+      if ((await kvs.get(key)) !== undefined) return false;
+      throw err;
     }
-  } catch {}
-  return null;
+  }
+
+  async commit(items: { key: string; value: any }[]): Promise<void> {
+    const tx = kvs.transact();
+    for (const item of items) {
+      tx.set(item.key, item.value);
+    }
+    await tx.execute();
+  }
 }
 
-/**
- * Fetches the authentic Jira user display name and email if available.
- */
-export async function fetchJiraUser(accountId: string): Promise<{ displayName: string; emailAddress?: string }> {
-  try {
-    const res = await api.asApp().requestJira(route`/rest/api/3/user?accountId=${accountId}`);
-    if (res.status === 200) {
-      const data = await res.json();
-      return {
-        displayName: data.displayName || 'Authorized User',
-        emailAddress: data.emailAddress
-      };
-    }
-  } catch {}
-  return { displayName: 'Authorized User' };
+export function forgeDeps(asUser: boolean): LedgerSealDeps {
+  return {
+    jira: createJiraClient(api.asApp(), asUser ? api.asUser() : null),
+    storage: new ForgeKvsProvider(),
+    signer: signerFromEnvironment(process.env)
+  };
 }
+
+export const JIRA_UNREACHABLE_MESSAGE =
+  'LedgerSeal could not read the issue from Jira, so this transition is blocked. Try again in a minute.';
 
 /**
  * Handles workflow transition validation:
- * Reads active seal and verifies against live issue state before allowing transition.
+ * Reads the seal from app storage and verifies it against the live issue before allowing the transition.
  * Supports both documented Forge validator payloads: { issue: { key } } and { issue: { id } }.
  * Evaluates transition.modifiedFields to prevent transition-screen bypasses.
  */
-export async function validateTransition(payload: any, context?: any, storageProvider?: StorageProvider) {
+export async function validateTransition(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(false)) {
   const issueKey = payload?.issue?.key || payload?.issueKey;
   let issueId = String(payload?.issue?.id || payload?.issueId || '');
 
-  // If only key is provided (Atlassian documented standard), resolve to ID
-  if (!issueId && issueKey) {
-    const live = await fetchLiveJiraIssue(issueKey);
-    if (live?.id) {
-      issueId = String(live.id);
-    } else {
-      issueId = String(issueKey);
-    }
-  }
-
-  if (!issueId) {
+  if (!issueId && !issueKey) {
     return {
       result: false,
       errorMessage: 'LedgerSeal Validator: Missing issue context.'
     };
   }
 
-  const storage = resolveStorage(storageProvider);
-  const repository = new SealRepository(storage);
-
-  const activeCert = await repository.getActiveCertificate(issueId);
+  const repository = new SealRepository(deps.storage);
   const now = new Date().toISOString();
 
-  // If payload lacks fields, fetch authentic live issue state from Jira
-  let rawIssue = payload?.issue;
-  if (!rawIssue?.fields && (issueId || issueKey)) {
-    rawIssue = await fetchLiveJiraIssue(issueId || issueKey);
-  }
-
-  // Apply transition-screen modifiedFields if present
+  // Read the live issue and apply transition-screen modifiedFields if present
   const modifiedFields = payload?.transition?.modifiedFields;
-  if (modifiedFields && typeof modifiedFields === 'object' && rawIssue?.fields) {
-    rawIssue = {
-      ...rawIssue,
-      fields: {
-        ...rawIssue.fields,
-        ...modifiedFields
-      }
+  const live = await readLiveSnapshot(deps.jira, issueId || issueKey, now, raw =>
+    modifiedFields && typeof modifiedFields === 'object' && raw?.fields ? { ...raw, fields: { ...raw.fields, ...modifiedFields } } : raw
+  );
+  // Fail closed, name the real cause, and write nothing (LS-08, LS-19)
+  if (!live) {
+    return { result: false, errorMessage: JIRA_UNREACHABLE_MESSAGE };
+  }
+  issueId = String(live.raw.id || issueId);
+  const liveSnapshot = live.snapshot;
+  const evaluation = await evaluate(repository, issueId, liveSnapshot, now, rawComments(live.raw));
+
+  if (evaluation.kind === 'LEGACY') {
+    return {
+      result: false,
+      errorMessage: 'LedgerSeal: this issue has an old-format seal. Ask a project admin to seal it again in the LedgerSeal panel.'
+    };
+  }
+  if (evaluation.kind === 'RECORD_INVALID') {
+    return {
+      result: false,
+      errorMessage: 'LedgerSeal: the seal record failed its integrity check. Contact your Jira admin.'
     };
   }
 
-  const liveSnapshot = canonicalizeIssueState(rawIssue || { id: issueId, key: issueKey || issueId }, now);
-  const validation = validateTransitionGate(activeCert, liveSnapshot);
+  if (evaluation.kind === 'NONE') {
+    const unsealed = validateTransitionGate(null, liveSnapshot);
+    return { result: false, errorMessage: unsealed.errorMessage };
+  }
 
-  // If activeCert exists and is tampered, update entity property to SEAL_BROKEN (Fixes C-3)
-  if (activeCert && !validation.isValid) {
-    try {
-      await api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/properties/ledgerseal-cert`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: 'SEAL_BROKEN',
-          certificateId: activeCert.certificateId,
-          snapshotHash: activeCert.snapshotHash,
-          sealedAt: activeCert.sealedAt,
-          tamperedFieldCount: 1,
-          lastVerifiedAt: now
-        })
-      });
-    } catch (err) {
-      console.error('LedgerSeal: Validator property update failed', err);
+  const we = evaluation.seal.workEffort;
+  const summary = evaluation.analysis.seal;
+  const validation = validateTransitionGate(
+    {
+      snapshotHash: we.attributes.snapshotHash,
+      snapshot: evaluation.sealedSnapshot,
+      revoked: we.currentStatusId === 'LS_REVOKED',
+      compromised: we.currentStatusId === 'LS_CHANGED'
+    },
+    liveSnapshot,
+    {
+      certificateId: we.currentContentId,
+      sealedAt: summary?.sealedAt,
+      signerName: summary?.sealedByName,
+      revocationReason: summary?.revocation?.reason,
+      revokedAt: summary?.revocation?.revokedAt
     }
+  );
+
+  if (!validation.isValid) {
+    // A new change is recorded once, and the property is updated with the real count (Fixes C-3)
+    await recordIncidentIfNew(deps, repository, evaluation, now);
   }
 
   // Strictly conform to Atlassian Forge validator schema (Fixes C-1)
@@ -160,178 +155,45 @@ export async function validateTransition(payload: any, context?: any, storagePro
 }
 
 /**
- * API handler to cryptographically seal an issue with an electronic signature.
- * Enforces server-side authority: context takes precedence over client payload.
- * Fails closed if live Jira issue cannot be retrieved.
+ * API handler to seal an issue with an electronic signature (spec v2 section 7.3).
  */
-export async function sealIssue(payload: any, context?: any, storageProvider?: StorageProvider) {
-  const contextIssue = context?.extension?.issue;
-  const issueId = String(contextIssue?.id || payload?.issue?.id || payload?.issueId || '');
-  const issueKey = String(contextIssue?.key || payload?.issue?.key || payload?.issueKey || issueId);
-  const signature = payload?.signature;
-
-  if (!issueId || !signature) {
-    throw new Error('LedgerSeal: Invalid seal request. Issue and signature required.');
-  }
-
-  const storage = resolveStorage(storageProvider);
-  const repository = new SealRepository(storage);
-  const now = new Date().toISOString();
-
-  // Fetch real live Jira issue. Never fall back to client-supplied payload.
-  let liveIssue = await fetchLiveJiraIssue(issueId);
-  if (!liveIssue && process.env.NODE_ENV === 'test' && payload?.issue) {
-    // In unit testing environment only, support test harness mocks
-    liveIssue = payload.issue;
-  }
-  if (!liveIssue) {
-    throw new Error('LedgerSeal: Unable to retrieve authentic issue state from Jira. Please try again.');
-  }
-
-  const snapshot = canonicalizeIssueState(liveIssue, now);
-
-  // Authenticate signer using platform context
-  const signerAccountId = String(context?.accountId || signature.signerAccountId || 'unknown-account');
-  let signerDisplayName = signature.signerDisplayName || 'Authorized Signer';
-  let signerEmail: string | undefined = signature.signerEmail;
-
-  if (context?.accountId) {
-    const profile = await fetchJiraUser(context.accountId);
-    if (profile?.displayName) {
-      signerDisplayName = profile.displayName;
-    }
-    if (profile?.emailAddress) {
-      signerEmail = profile.emailAddress;
-    }
-  }
-
-  // Require explicit re-authentication confirmation phrase (Fixes D-01)
-  const reauthConfirmation = String(signature.reauthConfirmation || '').trim();
-  if (!reauthConfirmation && process.env.NODE_ENV !== 'test') {
-    throw new Error('LedgerSeal: Signer authentication challenge required to execute sign-off.');
-  }
-
-  // Cap meaning length to prevent storage bloat (Fixes D-15)
-  const safeMeaning = String(signature.meaning || 'Approved for production release').trim().slice(0, 255);
-
-  const elecSignature: ElectronicSignature = {
-    signerAccountId,
-    signerDisplayName,
-    signerEmail: signerEmail || undefined,
-    signedAt: now,
-    meaning: safeMeaning,
-    reasonCode: signature.reasonCode || 'APPROVAL',
-    declarationText: signature.declarationText || 'I confirm this record is complete and accurate.',
-    reauthConfirmation: reauthConfirmation || 'CONFIRMED'
-  };
-
-  const certificate = generateSealCertificate(snapshot, elecSignature);
-  await repository.saveCertificate(certificate);
-
-  // Publish public audit property to Jira issue without PII
-  try {
-    const res = await api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/properties/ledgerseal-cert`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        status: 'SEAL_VALID',
-        certificateId: certificate.certificateId,
-        snapshotHash: certificate.snapshotHash,
-        sealedAt: certificate.sealedAt,
-        tamperedFieldCount: 0,
-        isCompromised: false,
-        lastVerifiedAt: now
-      })
-    });
-    if (res.status >= 400) {
-      console.error(`LedgerSeal: Property update returned status ${res.status}`);
-    }
-  } catch (err) {
-    console.error('LedgerSeal: Property update failed', err);
-  }
-
-  return {
-    success: true,
-    certificateId: certificate.certificateId,
-    snapshotHash: certificate.snapshotHash,
-    sealedAt: certificate.sealedAt
-  };
+export async function sealIssue(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return sealIssueFlow(payload, context, deps);
 }
 
 /**
- * API handler to verify the live tamper state of an issue.
- * Updates entity property to SEAL_BROKEN or SEAL_COMPROMISED if tamper is detected.
+ * API handler to verify the live tamper state of an issue. Records a change incident only when the change is new.
  */
-export async function verifyIssue(payload: any, context?: any, storageProvider?: StorageProvider) {
-  const contextIssue = context?.extension?.issue;
-  const issueId = String(contextIssue?.id || payload?.issue?.id || payload?.issueId || '');
-  const issueKey = String(contextIssue?.key || payload?.issue?.key || payload?.issueKey || issueId);
-
-  if (!issueId) {
-    throw new Error('LedgerSeal: Missing issue context.');
-  }
-
-  const storage = resolveStorage(storageProvider);
-  const repository = new SealRepository(storage);
-
-  const activeCert = await repository.getActiveCertificate(issueId);
-  const now = new Date().toISOString();
-
-  let liveIssue = await fetchLiveJiraIssue(issueId);
-  if (!liveIssue && process.env.NODE_ENV === 'test' && payload?.issue) {
-    liveIssue = payload.issue;
-  }
-  if (!liveIssue) {
-    throw new Error('LedgerSeal: Unable to retrieve authentic issue state from Jira.');
-  }
-
-  const liveSnapshot = canonicalizeIssueState(liveIssue, now);
-  const analysis = analyzeTamperState(activeCert, liveSnapshot, now);
-
-  // If tamper detected or compromised, persist compromise state into certificate (Fixes D-02)
-  if (activeCert && (analysis.status === 'SEAL_BROKEN' || analysis.status === 'SEAL_COMPROMISED')) {
-    activeCert.isCompromised = true;
-    if (analysis.tamperHistory) {
-      activeCert.tamperHistory = analysis.tamperHistory;
-    }
-    await repository.saveCertificate(activeCert);
-  }
-
-  // Keep public entity property synchronized if active certificate exists
-  if (activeCert) {
-    try {
-      const res = await api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/properties/ledgerseal-cert`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: analysis.status,
-          certificateId: activeCert.certificateId,
-          snapshotHash: activeCert.snapshotHash,
-          sealedAt: activeCert.sealedAt,
-          tamperedFieldCount: analysis.tamperedFields.length,
-          isCompromised: Boolean(activeCert.isCompromised),
-          lastVerifiedAt: now
-        })
-      });
-      if (res.status >= 400) {
-        console.error(`LedgerSeal: Property update returned status ${res.status}`);
-      }
-    } catch (err) {
-      console.error('LedgerSeal: Property update failed', err);
-    }
-  }
-
-  return analysis;
+export async function verifyIssue(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return verifyIssueFlow(payload, context, deps);
 }
 
 /**
- * Issue panel rendering function.
+ * API handler for the seal history, oldest first, 50 entries per page.
  */
-export async function renderIssuePanel(context: any) {
-  return {
-    moduleKey: 'ledgerseal-panel',
-    context
-  };
+export async function getSealHistory(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return historyFlow(payload, context, deps);
+}
+
+/**
+ * API handler to revoke a seal with a reason (spec v2 section 7.5).
+ */
+export async function revokeSeal(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return revokeFlow(payload, context, deps);
+}
+
+/**
+ * API handler for the auditor evidence export (spec v2 section 11).
+ */
+export async function getSealEvidence(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return evidenceFlow(payload, context, deps);
+}
+
+/**
+ * Product event trigger: issue updated, commented, attachment and work log events.
+ */
+export async function onIssueChanged(event: any, context?: any, deps: LedgerSealDeps = forgeDeps(false)) {
+  return issueChangedFlow(event, deps);
 }
 
 // Register Forge Resolver for UI Kit 2 bridge invocations
@@ -343,6 +205,18 @@ resolver.define('verify-issue-api', async (req) => {
 
 resolver.define('seal-issue-api', async (req) => {
   return await sealIssue(req.payload, req.context);
+});
+
+resolver.define('seal-history-api', async (req) => {
+  return await getSealHistory(req.payload, req.context);
+});
+
+resolver.define('revoke-seal-api', async (req) => {
+  return await revokeSeal(req.payload, req.context);
+});
+
+resolver.define('seal-evidence-api', async (req) => {
+  return await getSealEvidence(req.payload, req.context);
 });
 
 export const handler = resolver.getDefinitions();

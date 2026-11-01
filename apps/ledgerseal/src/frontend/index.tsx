@@ -7,240 +7,305 @@ import ForgeReconciler, {
   Stack,
   Inline,
   Heading,
-  Textfield,
   Label,
   Checkbox,
   Box,
-  Spinner
+  Spinner,
+  User,
+  RadioGroup,
+  TextArea,
+  CodeBlock
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
-import { TamperAnalysis } from '../domain/models';
+import { DECLARATION, MEANINGS } from '../domain/declaration';
+import { buildPanelView, formatTime, PanelView } from './view-model';
 
-function formatDiffValue(val: any): string {
-  if (val === null || val === undefined) return '(empty)';
-  if (typeof val === 'string') return val.length > 80 ? `${val.slice(0, 77)}...` : val;
-  if (typeof val === 'number' || typeof val === 'boolean') return String(val);
-  if (Array.isArray(val)) return val.map(formatDiffValue).join(', ') || '(empty list)';
-  if (typeof val === 'object') {
-    if (val.name) return val.name;
-    if (val.displayName) return val.displayName;
-    if (val.type === 'doc') return 'Rich text description updated';
-    return Object.entries(val)
-      .map(([k, v]) => `${k}: ${typeof v === 'object' ? '...' : String(v)}`)
-      .slice(0, 3)
-      .join(', ');
-  }
-  return String(val);
-}
+type FormMode = 'seal' | 'approve' | 'revoke' | null;
 
+/**
+ * The LedgerSeal issue panel. Every decision about what to show comes from the view model (view-model.ts);
+ * this component only maps it to UI Kit components and holds the form state.
+ */
 export const LedgerSealPanel: React.FC = () => {
-  const [analysis, setAnalysis] = useState<TamperAnalysis | null>(null);
+  const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [showSignForm, setShowSignForm] = useState<boolean>(false);
-  const [showDetails, setShowDetails] = useState<boolean>(false);
-  const [meaning, setMeaning] = useState<string>('Approved for production release');
-  const [reauthCode, setReauthCode] = useState<string>('');
+  const [loadFailed, setLoadFailed] = useState<boolean>(false);
+  const [form, setForm] = useState<FormMode>(null);
+  const [meaning, setMeaning] = useState<string>('APPROVAL');
+  const [reason, setReason] = useState<string>('');
   const [declarationAgreed, setDeclarationAgreed] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [showDetails, setShowDetails] = useState<boolean>(false);
+  const [showCovered, setShowCovered] = useState<boolean>(false);
+  const [fullValues, setFullValues] = useState<Record<string, boolean>>({});
+  const [history, setHistory] = useState<any[] | null>(null);
+  const [evidence, setEvidence] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadTamperState();
-  }, []);
-
-  const loadTamperState = async () => {
+  const loadState = async () => {
     setLoading(true);
+    setLoadFailed(false);
     try {
-      const result = await invoke<TamperAnalysis>('verify-issue-api', {});
-      if (result) {
-        setAnalysis(result as TamperAnalysis);
-      } else {
-        setAnalysis({
-          status: 'NO_SEAL',
-          tamperedFields: [],
-          tamperedAttachments: [],
-          verifiedAt: new Date().toISOString()
-        });
-      }
+      setResult(await invoke('verify-issue-api', {}));
     } catch (err) {
       console.error('Failed to load seal state', err);
-      setAnalysis({
-        status: 'NO_SEAL',
-        tamperedFields: [],
-        tamperedAttachments: [],
-        verifiedAt: new Date().toISOString()
-      });
+      // A failed load is an error state, never "not sealed" (LS-12)
+      setLoadFailed(true);
+      setResult(null);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSealSubmit = async () => {
-    if (!declarationAgreed || !reauthCode.trim()) {
-      return;
-    }
+  useEffect(() => {
+    loadState();
+  }, []);
+
+  const view: PanelView = buildPanelView({ loading, result, error: loadFailed });
+  const sealReasonLabel = form === 'seal' ? view.actions.seal?.reasonLabel : undefined;
+  const reasonNeeded = form === 'approve' || form === 'revoke' || Boolean(sealReasonLabel);
+  const reasonMissing = reasonNeeded && reason.trim().length === 0;
+
+  const openForm = (mode: FormMode) => {
+    setForm(mode);
+    setActionError(null);
+    setReason('');
+    setDeclarationAgreed(false);
+  };
+
+  const submit = async () => {
+    if (reasonMissing || (form !== 'revoke' && !declarationAgreed)) return;
     setSubmitting(true);
+    setActionError(null);
     try {
-      await invoke('seal-issue-api', {
-        signature: {
-          meaning,
-          reasonCode: 'APPROVAL',
-          declarationText: 'I electronically sign and seal this issue per compliance guidelines.',
-          reauthConfirmation: reauthCode.trim()
-        }
-      });
-      setShowSignForm(false);
-      setReauthCode('');
-      await loadTamperState();
+      const response =
+        form === 'revoke'
+          ? ((await invoke('revoke-seal-api', { reason: reason.trim() })) as { ok: boolean; message?: string } | undefined)
+          : ((await invoke('seal-issue-api', {
+              signature: {
+                meaning,
+                declarationVersion: DECLARATION.version,
+                declarationText: DECLARATION.text,
+                reason: reasonNeeded ? reason.trim() : undefined
+              }
+            })) as { ok: boolean; message?: string } | undefined);
+      if (!response?.ok) {
+        setActionError(response?.message || 'LedgerSeal could not save this. Nothing was saved.');
+        return;
+      }
+      setForm(null);
+      setHistory(null);
+      await loadState();
     } catch (err) {
-      console.error('Failed to seal issue', err);
+      console.error('LedgerSeal action failed', err);
+      setActionError('LedgerSeal could not save this. Nothing was saved. Try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (loading) {
+  const loadHistory = async () => {
+    if (history) {
+      setHistory(null);
+      return;
+    }
+    const page = (await invoke('seal-history-api', { fromSeq: 1 })) as { entries?: any[] } | undefined;
+    setHistory(page?.entries ?? []);
+  };
+
+  const loadEvidence = async () => {
+    if (evidence) {
+      setEvidence(null);
+      return;
+    }
+    setEvidence(JSON.stringify(await invoke('seal-evidence-api', {}), null, 2));
+  };
+
+  if (view.state === 'LOADING') {
     return (
       <Inline alignBlock="center">
         <Spinner size="small" />
-        <Text>Verifying cryptographic seal...</Text>
+        <Text>{view.title}</Text>
       </Inline>
     );
   }
 
   return (
     <Stack space="space.150">
-      <Heading as="h4">LedgerSeal: Cryptographic Sign-Off &amp; Change Gate</Heading>
+      <Heading as="h4">LedgerSeal</Heading>
 
-      {analysis?.status === 'SEAL_VALID' && (
-        <SectionMessage appearance="success" title="Cryptographic Seal Verified">
-          <Text>
-            Signer: {analysis.certificate?.sealedBy.signerDisplayName} ({analysis.certificate?.sealedBy.reasonCode})
-          </Text>
-          <Text>
-            Sealed At: {analysis.certificate?.sealedAt}
-          </Text>
-          <Text>
-            SHA-256 Hash: {analysis.sealedHash?.slice(0, 16)}...
-          </Text>
-          <Lozenge appearance="success">UNTAMPERED &amp; AUDIT READY</Lozenge>
-        </SectionMessage>
-      )}
-
-      {analysis?.status === 'SEAL_COMPROMISED' && (
-        <SectionMessage appearance="error" title="CRITICAL: Previous Unauthorized Modification Detected">
-          <Text>
-            Non-Monotonic Audit Alert: This issue was modified after sign-off and subsequently reverted.
-            Reverting modified content does not heal a cryptographic seal. Explicit re-authorization is required.
-          </Text>
-          <Lozenge appearance="removed">PREVIOUSLY TAMPERED / COMPROMISED</Lozenge>
-          <Button appearance="warning" onClick={() => setShowSignForm(true)}>
-            Re-Authorize and Reseal
-          </Button>
-        </SectionMessage>
-      )}
-
-      {analysis?.status === 'SEAL_BROKEN' && (
-        <SectionMessage appearance="error" title="CRITICAL: Cryptographic Seal Broken">
-          <Text>
-            This issue was modified after it was signed off by{' '}
-            {analysis.certificate?.sealedBy.signerDisplayName} at {analysis.certificate?.sealedAt}.
-          </Text>
-          <Lozenge appearance="removed">TAMPER DETECTED</Lozenge>
-          {analysis.tamperedFields.length > 0 && (
-            <Stack space="space.050">
-              <Heading as="h5">Altered Fields ({analysis.tamperedFields.length}):</Heading>
-              {analysis.tamperedFields.map(diff => (
-                <Box key={diff.fieldId} padding="space.050">
-                  <Text>
-                    {diff.fieldName}: "{formatDiffValue(diff.sealedValue)}" → "{formatDiffValue(diff.liveValue)}"
-                  </Text>
-                </Box>
-              ))}
-            </Stack>
-          )}
-          <Button appearance="warning" onClick={() => setShowSignForm(true)}>
-            Re-Authorize and Reseal
-          </Button>
-        </SectionMessage>
-      )}
-
-      {(!analysis || analysis.status === 'NO_SEAL') && (
-        <SectionMessage appearance="information" title="Issue Not Sealed">
-          <Text>
-            This issue does not possess an active cryptographic seal. A seal is required to pass compliance workflow gates.
-          </Text>
-          <Button appearance="primary" onClick={() => setShowSignForm(true)}>
-            Seal Issue with Cryptographic Sign-Off
-          </Button>
-        </SectionMessage>
-      )}
-
-      {analysis?.certificate && (
-        <Box padding="space.100">
+      <SectionMessage appearance={view.message.appearance} title={view.title}>
+        {view.message.lines.map(line => (
+          <Text key={line}>{line}</Text>
+        ))}
+        {view.revokedByAccountId && (
+          <Inline space="space.050" alignBlock="center">
+            <Text>Revoked by:</Text>
+            <User accountId={view.revokedByAccountId} />
+          </Inline>
+        )}
+        {view.lozenge && <Lozenge appearance={view.lozenge.appearance}>{view.lozenge.text}</Lozenge>}
+        {view.changes.length > 0 && (
           <Stack space="space.050">
-            <Heading as="h5">Audit Certificate Details</Heading>
-            <Text>Certificate ID: {analysis.certificate.certificateId}</Text>
-            <Text>
-              Signer: {analysis.certificate.sealedBy.signerDisplayName}
-              {analysis.certificate.sealedBy.signerEmail
-                ? ` (${analysis.certificate.sealedBy.signerEmail})`
-                : ` (Account: ${analysis.certificate.sealedBy.signerAccountId})`}
-            </Text>
-            <Text>Meaning: {analysis.certificate.sealedBy.meaning}</Text>
-            <Text>Digest: {analysis.sealedHash}</Text>
-            <Button appearance="subtle" onClick={() => setShowDetails(!showDetails)}>
-              {showDetails ? 'Hide Certificate Details' : 'Inspect Certificate Metadata'}
-            </Button>
-            {showDetails && (
-              <Box padding="space.050">
-                <Text>Algorithm: {analysis.certificate.algorithm}</Text>
-                <Text>Canonical Fields Sealed: {analysis.certificate.snapshot.fields.length}</Text>
-                <Text>Attachments Sealed: {analysis.certificate.snapshot.attachments.length}</Text>
-                <Text>Comments Sealed: {analysis.certificate.snapshot.comments?.length || 0}</Text>
-                {analysis.certificate.tamperHistory && analysis.certificate.tamperHistory.length > 0 && (
-                  <Text>Tamper Incident Count: {analysis.certificate.tamperHistory.length}</Text>
+            <Heading as="h5">Changed items ({view.changes.length})</Heading>
+            {view.changes.map(row => (
+              <Box key={row.fieldId} padding="space.050">
+                <Text>{row.fieldName}</Text>
+                {row.detail && <Text>{row.detail}</Text>}
+                <Text>Was: {fullValues[row.fieldId] ? row.wasFull : row.was}</Text>
+                <Text>Now: {fullValues[row.fieldId] ? row.nowFull : row.now}</Text>
+                <Inline space="space.050" alignBlock="center">
+                  <Text>Changed by:</Text>
+                  {row.changedBy.length > 0 ? row.changedBy.map(id => <User key={id} accountId={id} />) : <Text>not known</Text>}
+                  <Text>on {row.changedAt}</Text>
+                </Inline>
+                {row.showFullToggle && (
+                  <Button appearance="subtle" onClick={() => setFullValues({ ...fullValues, [row.fieldId]: !fullValues[row.fieldId] })}>
+                    {fullValues[row.fieldId] ? 'Show less' : 'Show full value'}
+                  </Button>
                 )}
               </Box>
+            ))}
+          </Stack>
+        )}
+        <Inline space="space.100">
+          {view.actions.retry && (
+            <Button appearance="primary" onClick={() => loadState()}>
+              {view.actions.retry.label}
+            </Button>
+          )}
+          {view.actions.seal && (
+            <Button appearance="primary" onClick={() => openForm('seal')}>
+              {view.actions.seal.label}
+            </Button>
+          )}
+          {view.actions.approveChanges && (
+            <Button appearance="warning" onClick={() => openForm('approve')}>
+              {view.actions.approveChanges.label}
+            </Button>
+          )}
+          {view.actions.revoke && (
+            <Button appearance="subtle" onClick={() => openForm('revoke')}>
+              {view.actions.revoke.label}
+            </Button>
+          )}
+        </Inline>
+        {view.askText && <Text>{view.askText}</Text>}
+      </SectionMessage>
+
+      {view.seal && (
+        <Box padding="space.100">
+          <Stack space="space.050">
+            <Heading as="h5">Seal details</Heading>
+            <Inline space="space.050" alignBlock="center">
+              <Text>Signer:</Text>
+              <User accountId={view.seal.signerAccountId} />
+            </Inline>
+            <Text>
+              Sealed: {view.seal.sealedAt}. Meaning: {view.seal.meaningLabel}.
+            </Text>
+            {view.seal.reason && <Text>Reason: {view.seal.reason}</Text>}
+            <Text>Tamper-evident seal: SHA-256 hash of the covered fields, comments and attachments.</Text>
+            <Text>Hash: {showDetails ? view.seal.hash : view.seal.hashShort}</Text>
+            <Inline space="space.100">
+              <Button appearance="subtle" onClick={() => setShowDetails(!showDetails)}>
+                {showDetails ? 'Hide seal details' : 'Show seal details'}
+              </Button>
+              <Button appearance="subtle" onClick={() => setShowCovered(!showCovered)}>
+                {showCovered ? 'Hide fields' : `Covered fields (${view.covered.length}), not covered (${view.excluded.length})`}
+              </Button>
+              <Button appearance="subtle" onClick={() => loadHistory()}>
+                {history ? 'Hide history' : `History (${view.seal.historyLength})`}
+              </Button>
+              <Button appearance="subtle" onClick={() => loadEvidence()}>
+                {evidence ? 'Hide evidence' : 'Show evidence (JSON)'}
+              </Button>
+            </Inline>
+            {showDetails && (
+              <Box padding="space.050">
+                <Text>Certificate: {view.seal.certificateId}</Text>
+                <Text>
+                  Canonical form {view.seal.canonicalizerVersion}. Declaration v{view.seal.declarationVersion}.
+                </Text>
+              </Box>
             )}
+            {showCovered && (
+              <Box padding="space.050">
+                <Text>Covered: {view.covered.join(', ')}</Text>
+                {view.excluded.map(item => (
+                  <Text key={item.name}>
+                    Not covered: {item.name}. {item.reason}
+                  </Text>
+                ))}
+              </Box>
+            )}
+            {history && (
+              <Box padding="space.050">
+                {history.map(row => (
+                  <Text key={row.seq}>
+                    {row.seq}. {row.transitionName} on {formatTime(row.statusDatetime)}
+                    {row.reason ? `. Reason: ${row.reason}` : ''}
+                  </Text>
+                ))}
+              </Box>
+            )}
+            {evidence && <CodeBlock language="json" text={evidence} />}
+            <Text>{view.policyText}</Text>
           </Stack>
         </Box>
       )}
 
-      {showSignForm && (
+      {form && (
         <Box padding="space.150">
           <Stack space="space.100">
-            <Heading as="h4">Cryptographic Sign-Off &amp; Seal</Heading>
-            <Label labelFor="meaning">Sign-Off Meaning / Regulatory Purpose</Label>
-            <Textfield
-              id="meaning"
-              name="meaning"
-              placeholder="e.g. Approved for production release"
-              defaultValue={meaning}
-              onChange={(e: any) => setMeaning(e.target.value)}
-            />
-            <Label labelFor="reauth">Signer Re-Authentication Challenge</Label>
-            <Textfield
-              id="reauth"
-              name="reauth"
-              placeholder="Type 'CONFIRM' to authorize signature"
-              value={reauthCode}
-              onChange={(e: any) => setReauthCode(e.target.value)}
-            />
-            <Checkbox
-              value="agreed"
-              isChecked={declarationAgreed}
-              onChange={(e: any) => setDeclarationAgreed(e.target.checked)}
-              label="I certify that I am the authorized signer and this record is complete, accurate, and ready for release."
-            />
+            <Heading as="h4">{form === 'revoke' ? 'Revoke seal' : form === 'approve' ? 'Approve these changes' : 'Seal this issue'}</Heading>
+            {form !== 'revoke' && (
+              <>
+                <Label labelFor="meaning">Meaning</Label>
+                <RadioGroup
+                  name="meaning"
+                  options={MEANINGS.map(m => ({ name: 'meaning', value: m.value, label: m.label }))}
+                  value={meaning}
+                  onChange={(e: any) => setMeaning(e.target.value)}
+                />
+              </>
+            )}
+            {reasonNeeded && (
+              <>
+                <Label labelFor="reason">
+                  {form === 'revoke' ? 'Reason for revoking (required)' : sealReasonLabel || 'Reason for approving these changes (required)'}
+                </Label>
+                {/* Uncontrolled on purpose: a controlled value lost typed characters over the UI Kit bridge (live, DEMO-34) */}
+                <TextArea key={`reason-${form}`} id="reason" name="reason" onChange={(e: any) => setReason(e.target.value)} />
+              </>
+            )}
+            {form !== 'revoke' && (
+              <>
+                <Text>
+                  {DECLARATION.text} (Declaration v{DECLARATION.version})
+                </Text>
+                <Checkbox
+                  value="agreed"
+                  isChecked={declarationAgreed}
+                  onChange={(e: any) => setDeclarationAgreed(e.target.checked)}
+                  label="I agree to the declaration above."
+                />
+              </>
+            )}
+            {actionError && (
+              <SectionMessage appearance="warning">
+                <Text>{actionError}</Text>
+              </SectionMessage>
+            )}
             <Inline space="space.100">
               <Button
                 appearance="primary"
-                isDisabled={!declarationAgreed || !reauthCode.trim() || submitting}
-                onClick={handleSealSubmit}
+                isDisabled={reasonMissing || (form !== 'revoke' && !declarationAgreed) || submitting}
+                onClick={submit}
               >
-                {submitting ? 'Sealing...' : 'Sign & Cryptographically Seal'}
+                {submitting ? 'Saving...' : form === 'revoke' ? 'Revoke' : 'Sign and seal'}
               </Button>
-              <Button appearance="subtle" onClick={() => setShowSignForm(false)}>
+              <Button appearance="subtle" onClick={() => setForm(null)}>
                 Cancel
               </Button>
             </Inline>

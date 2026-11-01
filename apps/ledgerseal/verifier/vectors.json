@@ -1,0 +1,188 @@
+{
+  "format": "ledgerseal-canonical-vectors/1",
+  "canonicalizerVersion": "2.0.0",
+  "note": "Each vector gives the Jira issue fields (issue id 1, key X-1, no field list) and the canonical JSON written by hand from spec v2 section 4. The hash is the lowercase hex SHA-256 of the UTF-8 bytes of that text.",
+  "vectors": [
+    {
+      "name": "V1 plain text",
+      "issue": {
+        "id": "1",
+        "key": "X-1",
+        "fields": {
+          "summary": "Release v1"
+        }
+      },
+      "canonical": "{\"attachments\":[],\"canonicalizerVersion\":\"2.0.0\",\"comments\":[],\"fields\":[{\"id\":\"summary\",\"value\":\"Release v1\"}],\"issueId\":\"1\",\"issueKey\":\"X-1\",\"issueTypeId\":\"\",\"projectId\":\"\"}"
+    },
+    {
+      "name": "V2 line endings kept, no trim",
+      "issue": {
+        "id": "1",
+        "key": "X-1",
+        "fields": {
+          "summary": "Line one\r\nLine two  "
+        }
+      },
+      "canonical": "{\"attachments\":[],\"canonicalizerVersion\":\"2.0.0\",\"comments\":[],\"fields\":[{\"id\":\"summary\",\"value\":\"Line one\\nLine two  \"}],\"issueId\":\"1\",\"issueKey\":\"X-1\",\"issueTypeId\":\"\",\"projectId\":\"\"}"
+    },
+    {
+      "name": "V3 user by account id only",
+      "issue": {
+        "id": "1",
+        "key": "X-1",
+        "fields": {
+          "assignee": {
+            "accountId": "a1",
+            "displayName": "Alice",
+            "avatarUrls": {
+              "48x48": "https://a/1"
+            }
+          }
+        }
+      },
+      "canonical": "{\"attachments\":[],\"canonicalizerVersion\":\"2.0.0\",\"comments\":[],\"fields\":[{\"id\":\"assignee\",\"value\":{\"accountId\":\"a1\"}}],\"issueId\":\"1\",\"issueKey\":\"X-1\",\"issueTypeId\":\"\",\"projectId\":\"\"}"
+    },
+    {
+      "name": "V4 date-time in UTC",
+      "issue": {
+        "id": "1",
+        "key": "X-1",
+        "fields": {
+          "customfield_1": "2026-10-31T15:30:00.000+0530"
+        }
+      },
+      "canonical": "{\"attachments\":[],\"canonicalizerVersion\":\"2.0.0\",\"comments\":[],\"fields\":[{\"id\":\"customfield_1\",\"value\":\"2026-10-31T10:00:00.000Z\"}],\"issueId\":\"1\",\"issueKey\":\"X-1\",\"issueTypeId\":\"\",\"projectId\":\"\"}"
+    },
+    {
+      "name": "V5 labels are a set",
+      "issue": {
+        "id": "1",
+        "key": "X-1",
+        "fields": {
+          "labels": [
+            "b",
+            "a"
+          ]
+        }
+      },
+      "canonical": "{\"attachments\":[],\"canonicalizerVersion\":\"2.0.0\",\"comments\":[],\"fields\":[{\"id\":\"labels\",\"value\":[\"a\",\"b\"]}],\"issueId\":\"1\",\"issueKey\":\"X-1\",\"issueTypeId\":\"\",\"projectId\":\"\"}"
+    },
+    {
+      "name": "V6 other arrays keep their order",
+      "issue": {
+        "id": "1",
+        "key": "X-1",
+        "fields": {
+          "customfield_2": [
+            "step3",
+            "step1"
+          ]
+        }
+      },
+      "canonical": "{\"attachments\":[],\"canonicalizerVersion\":\"2.0.0\",\"comments\":[],\"fields\":[{\"id\":\"customfield_2\",\"value\":[\"step3\",\"step1\"]}],\"issueId\":\"1\",\"issueKey\":\"X-1\",\"issueTypeId\":\"\",\"projectId\":\"\"}"
+    },
+    {
+      "name": "V7 option by id",
+      "issue": {
+        "id": "1",
+        "key": "X-1",
+        "fields": {
+          "priority": {
+            "id": "2",
+            "name": "High",
+            "iconUrl": "https://a/p.svg",
+            "self": "https://a/2"
+          }
+        }
+      },
+      "canonical": "{\"attachments\":[],\"canonicalizerVersion\":\"2.0.0\",\"comments\":[],\"fields\":[{\"id\":\"priority\",\"value\":{\"id\":\"2\"}}],\"issueId\":\"1\",\"issueKey\":\"X-1\",\"issueTypeId\":\"\",\"projectId\":\"\"}"
+    },
+    {
+      "name": "V8 time tracking original estimate only",
+      "issue": {
+        "id": "1",
+        "key": "X-1",
+        "fields": {
+          "timetracking": {
+            "originalEstimate": "8h",
+            "originalEstimateSeconds": 28800,
+            "remainingEstimateSeconds": 3600
+          }
+        }
+      },
+      "canonical": "{\"attachments\":[],\"canonicalizerVersion\":\"2.0.0\",\"comments\":[],\"fields\":[{\"id\":\"timetracking\",\"value\":{\"originalEstimateSeconds\":28800}}],\"issueId\":\"1\",\"issueKey\":\"X-1\",\"issueTypeId\":\"\",\"projectId\":\"\"}"
+    },
+    {
+      "name": "V9 comment with UTC time",
+      "issue": {
+        "id": "1",
+        "key": "X-1",
+        "fields": {
+          "comment": {
+            "comments": [
+              {
+                "id": "9",
+                "author": {
+                  "accountId": "c",
+                  "displayName": "C"
+                },
+                "created": "2026-11-01T05:30:00.000+0530",
+                "body": "ok"
+              }
+            ],
+            "total": 1
+          }
+        }
+      },
+      "canonical": "{\"attachments\":[],\"canonicalizerVersion\":\"2.0.0\",\"comments\":[{\"authorAccountId\":\"c\",\"body\":\"ok\",\"created\":\"2026-11-01T00:00:00.000Z\",\"id\":\"9\"}],\"fields\":[],\"issueId\":\"1\",\"issueKey\":\"X-1\",\"issueTypeId\":\"\",\"projectId\":\"\"}"
+    },
+    {
+      "name": "V10 link, project, issue type and attachment by id",
+      "issue": {
+        "id": "1",
+        "key": "X-1",
+        "fields": {
+          "project": {
+            "id": "100",
+            "key": "X"
+          },
+          "issuetype": {
+            "id": "3",
+            "name": "Change"
+          },
+          "issuelinks": [
+            {
+              "id": "77",
+              "type": {
+                "id": "10000",
+                "name": "Blocks"
+              },
+              "outwardIssue": {
+                "id": "5",
+                "key": "X-5",
+                "fields": {
+                  "status": {
+                    "name": "Done"
+                  }
+                }
+              }
+            }
+          ],
+          "attachment": [
+            {
+              "id": "7",
+              "filename": "a.pdf",
+              "size": 10,
+              "mimeType": "application/pdf",
+              "created": "2026-11-01T00:00:00.000+0000",
+              "author": {
+                "accountId": "u"
+              }
+            }
+          ]
+        }
+      },
+      "canonical": "{\"attachments\":[{\"authorAccountId\":\"u\",\"created\":\"2026-11-01T00:00:00.000Z\",\"filename\":\"a.pdf\",\"id\":\"7\",\"mimeType\":\"application/pdf\",\"size\":10}],\"canonicalizerVersion\":\"2.0.0\",\"comments\":[],\"fields\":[{\"id\":\"issuelinks\",\"value\":[{\"direction\":\"outward\",\"issue\":\"5\",\"type\":\"10000\"}]}],\"issueId\":\"1\",\"issueKey\":\"X-1\",\"issueTypeId\":\"3\",\"projectId\":\"100\"}"
+    }
+  ]
+}

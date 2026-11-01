@@ -5,8 +5,9 @@ module.exports = {
   testMatch: ['**/*.test.ts'],
   collectCoverageFrom: [
     'src/**/*.ts',
+    'src/frontend/view-model.ts',
     '!src/**/*.d.ts',
-    '!src/frontend/**'
+    '!src/frontend/**/*.tsx'
   ],
   coverageReporters: ['json', 'json-summary', 'text', 'lcov'],
   coverageThreshold: {

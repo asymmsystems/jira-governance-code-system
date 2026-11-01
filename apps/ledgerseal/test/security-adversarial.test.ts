@@ -27,7 +27,7 @@ describe('Loop 3: Adversarial Security & Quality Verification', () => {
     signedAt: '2026-10-28T12:01:00Z',
     meaning: 'Approved for urgent patch deployment',
     reasonCode: 'RELEASE_GATE',
-    declarationText: 'Verified per ISO 27001 change management protocol.'
+    declarationText: 'Verified per the change management procedure.'
   };
 
   describe('Adversarial Invariant 1: Zero External Egress Verification', () => {
@@ -104,7 +104,7 @@ describe('Loop 3: Adversarial Security & Quality Verification', () => {
     });
   });
 
-  describe('Adversarial Invariant 3: Forge Storage Constraint Compliance', () => {
+  describe('Adversarial Invariant 3: Forge storage limits', () => {
     it('serialized seal certificate comfortably fits within Forge 32 KB per-item storage limit', () => {
       const cert = generateSealCertificate(sampleSnapshot, sampleSig);
       const serialized = JSON.stringify(cert);

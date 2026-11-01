@@ -1,9 +1,9 @@
 modules:
   jira:issuePanel:
     - key: ledgerseal-panel
-      title: LedgerSeal Audit Gate
-      tooltip: LedgerSeal Audit Gate
-      icon: https://raw.githubusercontent.com/feathericons/feather/master/icons/shield.svg
+      title: LedgerSeal
+      tooltip: LedgerSeal approval seal
+      icon: resource:icons;icon.svg
       render: native
       resource: main
       resolver:
@@ -11,22 +11,53 @@ modules:
   jira:workflowValidator:
     - key: ledgerseal-validator
       name: Require Valid LedgerSeal
-      description: Blocks issue transition if issue is unsealed or has a broken cryptographic seal.
+      description: Blocks the transition unless the issue is sealed and unchanged since approval.
       function: validate-transition
+  jira:entityProperty:
+    - key: ledgerseal-cert-index
+      entityType: issue
+      propertyKey: ledgerseal-cert
+      values:
+        - path: status
+          type: string
+          searchAlias: ledgersealStatus
+        - path: everCompromised
+          type: string
+          searchAlias: ledgersealEverCompromised
+        - path: incidentCount
+          type: number
+          searchAlias: ledgersealIncidents
+  trigger:
+    - key: ledgerseal-issue-changed
+      function: on-issue-changed
+      events:
+        - avi:jira:updated:issue
+        - avi:jira:commented:issue
+        - avi:jira:created:attachment
+        - avi:jira:deleted:attachment
+        - avi:jira:created:worklog
+        - avi:jira:updated:worklog
+        - avi:jira:deleted:worklog
   function:
     - key: resolver
       handler: index.handler
     - key: validate-transition
       handler: index.validateTransition
+    - key: on-issue-changed
+      handler: index.onIssueChanged
 
 resources:
   - key: main
     path: src/frontend/index.tsx
+  - key: icons
+    path: static/icons
 
 app:
   id: ari:cloud:ecosystem::app/7489a645-7c96-400a-b289-eb36f2701a00
   runtime:
     name: nodejs22.x
+  licensing:
+    enabled: true
 
 permissions:
   scopes:
