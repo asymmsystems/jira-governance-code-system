@@ -275,7 +275,7 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
 
             <Inline space="space.100" alignBlock="center" spread="space-between" shouldWrap>
               <Inline space="space.050" alignBlock="center" shouldWrap>
-                <Text><strong>Views:</strong></Text>
+                <Text>Views:</Text>
                 {PRESETS.filter(p => p.name !== 'mine' || viewerAccountId).map(p => (
                   <Button key={p.name} appearance="default" onClick={() => setFilters(f => presetFilters(p.name, viewerAccountId || '', f.search))}>{p.label}</Button>
                 ))}

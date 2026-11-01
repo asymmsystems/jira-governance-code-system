@@ -120,4 +120,13 @@ describe('ADR-002 volatility layering', () => {
         .map(({ at }) => at));
     expect(rawTokens).toEqual([]);
   });
+
+  it('no source file contains raw HTML tags (Forge native UI Kit uses Forge components only)', () => {
+    const rawHtml = files
+      .flatMap(f => fs.readFileSync(f, 'utf8').split('\n')
+        .map((line, i) => ({ line, at: `${rel(f)}:${i + 1}` }))
+        .filter(({ line }) => /<(strong|b|i|em|span|div|p|h1|h2|h3|h4|h5|h6|table|tr|td|th|ul|li|ol|a)[ >]/.test(line))
+        .map(({ at }) => at));
+    expect(rawHtml).toEqual([]);
+  });
 });

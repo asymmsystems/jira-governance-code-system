@@ -81,12 +81,12 @@ export function StatusBanner({
     <Box xcss={CARD_STYLE}>
       <Stack space="space.100" alignInline="start">
         <Inline alignBlock="center" space="space.100" shouldWrap>
-          <Text><strong>{status}</strong></Text>
+          <Text>{status}</Text>
           <Badge>{statusWord}</Badge>
         </Inline>
         <Text>{summary}</Text>
         <NoteBox>
-          <Text><strong>Next step: </strong>{nextStep}</Text>
+          <Text>{nextStep.startsWith('Next step:') ? nextStep : `Next step: ${nextStep}`}</Text>
         </NoteBox>
       </Stack>
     </Box>
