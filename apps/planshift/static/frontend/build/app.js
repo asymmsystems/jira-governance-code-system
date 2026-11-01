@@ -7714,6 +7714,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const addResBtn = document.getElementById("btnAddResourceSubtaskBtn");
     if (addResBtn) addResBtn.addEventListener("click", handleAddResourceSubtask);
     document.getElementById("editEstimateUnitSelect").addEventListener("change", handleEstimateUnitChange);
+    const estValInput = document.getElementById("editEstimateValueInput");
+    if (estValInput) estValInput.addEventListener("input", updateReconciledHoursBadge);
+    const tshirtSel = document.getElementById("editTshirtSelect");
+    if (tshirtSel) tshirtSel.addEventListener("change", updateReconciledHoursBadge);
     document.getElementById("btnCloseCreateTask").addEventListener("click", () => closeModal("createTaskModal"));
     document.getElementById("btnCancelCreateTask").addEventListener("click", () => closeModal("createTaskModal"));
     document.getElementById("btnSubmitCreateTask").addEventListener("click", executeCreateTask);
@@ -11110,9 +11114,14 @@ Click to manage or assign.`;
       }
     });
     document.getElementById("editTriggerPercentInput").value = task.dependency?.triggerPercent !== void 0 ? task.dependency.triggerPercent : 30;
-    document.getElementById("editEstimateUnitSelect").value = "HOURS";
-    document.getElementById("editEstimateValueInput").value = task.effortHours || 0;
-    document.getElementById("reconciledHoursBadge").textContent = `Total: ${task.effortHours || 0} hrs`;
+    const effortCfg = task.effortConfig;
+    const savedUnit = effortCfg && effortCfg.unit || "HOURS";
+    document.getElementById("editEstimateUnitSelect").value = savedUnit;
+    if (savedUnit === "TSHIRT") {
+      document.getElementById("editTshirtSelect").value = effortCfg && effortCfg.tshirtSize || "M";
+    } else {
+      document.getElementById("editEstimateValueInput").value = effortCfg && effortCfg.rawEstimate !== void 0 ? effortCfg.rawEstimate : task.effortHours || 0;
+    }
     handleEstimateUnitChange();
     renderModalSubtasks(task);
     document.getElementById("taskDetailModal").style.display = "flex";
@@ -11218,10 +11227,29 @@ Click to manage or assign.`;
       }
     }
   }
+  function updateReconciledHoursBadge() {
+    const unit = document.getElementById("editEstimateUnitSelect").value;
+    let hrs = 0;
+    if (unit === "HOURS") {
+      const val = parseFloat(document.getElementById("editEstimateValueInput").value);
+      hrs = isNaN(val) ? 0 : Math.max(0, Math.round(val));
+    } else if (unit === "STORY_POINTS") {
+      const pts = parseFloat(document.getElementById("editEstimateValueInput").value);
+      hrs = isNaN(pts) ? 0 : Math.max(0, Math.round(pts * 8));
+    } else if (unit === "TSHIRT") {
+      const sz = document.getElementById("editTshirtSelect").value;
+      const tshirtMap = { XS: 4, S: 8, M: 16, L: 32, XL: 64 };
+      hrs = tshirtMap[sz] || 16;
+    }
+    const badge = document.getElementById("reconciledHoursBadge");
+    if (badge) badge.textContent = `Total: ${hrs} hrs`;
+    return hrs;
+  }
   function handleEstimateUnitChange() {
     const unit = document.getElementById("editEstimateUnitSelect").value;
     document.getElementById("rawEstimateGroup").style.display = unit === "TSHIRT" ? "none" : "block";
     document.getElementById("tshirtSizeGroup").style.display = unit === "TSHIRT" ? "block" : "none";
+    updateReconciledHoursBadge();
   }
   async function saveTaskModalChanges() {
     if (!activeTaskId) return;
@@ -11241,16 +11269,26 @@ Click to manage or assign.`;
     const triggerPercent = isNaN(rawTrigger) ? 30 : Math.max(0, Math.min(100, rawTrigger));
     const unit = document.getElementById("editEstimateUnitSelect").value;
     let effortHours = void 0;
+    let rawEstimate = void 0;
+    let tshirtSize = void 0;
     if (unit === "HOURS") {
       const val = parseFloat(document.getElementById("editEstimateValueInput").value);
-      if (!isNaN(val)) effortHours = val;
+      if (!isNaN(val)) {
+        rawEstimate = Math.max(0, Math.round(val));
+        effortHours = rawEstimate;
+      }
     } else if (unit === "STORY_POINTS") {
       const pts = parseFloat(document.getElementById("editEstimateValueInput").value);
-      if (!isNaN(pts)) effortHours = pts * 8;
+      if (!isNaN(pts)) {
+        rawEstimate = pts;
+        effortHours = Math.max(0, Math.round(pts * 8));
+      }
     } else if (unit === "TSHIRT") {
       const sz = document.getElementById("editTshirtSelect").value;
       const tshirtMap = { XS: 4, S: 8, M: 16, L: 32, XL: 64 };
+      tshirtSize = sz;
       effortHours = tshirtMap[sz] || 16;
+      rawEstimate = effortHours;
     }
     const curTask = (currentPlan?.tasks || []).find((t) => t.key === activeTaskId) || {};
     const updates = {};
@@ -11260,7 +11298,22 @@ Click to manage or assign.`;
       if (resourceAccountId) updates.resourceAccountId = resourceAccountId;
     }
     if (status !== curTask.status) updates.status = status;
-    if (effortHours !== void 0 && effortHours !== (curTask.effortHours || 0)) updates.effortHours = effortHours;
+    const curCfg = curTask.effortConfig;
+    const curUnit = curCfg?.unit || "HOURS";
+    const curRaw = curCfg?.rawEstimate !== void 0 ? curCfg.rawEstimate : curTask.effortHours || 0;
+    const curTshirt = curCfg?.tshirtSize || "M";
+    const estimateChanged = unit !== curUnit || (unit === "TSHIRT" ? tshirtSize !== curTshirt : rawEstimate !== curRaw);
+    if (estimateChanged && effortHours !== void 0) {
+      updates.effortConfig = {
+        unit,
+        rawEstimate: unit === "TSHIRT" ? void 0 : rawEstimate,
+        tshirtSize: unit === "TSHIRT" ? tshirtSize : void 0,
+        totalCalculatedHours: effortHours
+      };
+      if (effortHours !== (curTask.effortHours || 0)) {
+        updates.effortHours = effortHours;
+      }
+    }
     const progInput = document.getElementById("editProgressInput");
     if (progInput && progInput.value !== "") {
       const prog = Math.max(0, Math.min(100, parseInt(progInput.value, 10)));

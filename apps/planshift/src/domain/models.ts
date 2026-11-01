@@ -31,12 +31,12 @@ export interface TaskEffortConfig {
   rawEstimate: number; // e.g. 5 points, or 16 hours, or size ordinal
   tshirtSize?: TShirtSize;
   hoursConversionRatio?: number; // default 8h per story point
-  subtasks: SubtaskItem[];
-  subtasksSumHours: number;
-  bufferType: BufferType;
-  bufferValue: number; // e.g. 15 (%) or 10 (hours)
-  bufferHours: number;
-  totalCalculatedHours: number;
+  subtasks?: SubtaskItem[];
+  subtasksSumHours?: number;
+  bufferType?: BufferType;
+  bufferValue?: number; // e.g. 15 (%) or 10 (hours)
+  bufferHours?: number;
+  totalCalculatedHours?: number;
 }
 
 export type CellVisualState =
@@ -446,9 +446,10 @@ export function toWorkEffortRecord(issueKey: string, entry: Partial<WbsTask>, to
   const body: WorkEffortRecordBody = { model: WORK_EFFORT_MODEL, effort, assocs, parties };
   const cfg = entry.effortConfig;
   if (cfg) {
+    const norm = normalizedHoursOf(cfg);
     body.estimate = {
-      workEffortId: issueKey, estimateUnit: cfg.unit, rawEstimate: cfg.rawEstimate, normalizedHours: normalizedHoursOf(cfg),
-      bufferType: cfg.bufferType, bufferValue: cfg.bufferValue, totalCalculatedHours: cfg.totalCalculatedHours
+      workEffortId: issueKey, estimateUnit: cfg.unit, rawEstimate: cfg.rawEstimate, normalizedHours: norm,
+      bufferType: cfg.bufferType || 'NONE', bufferValue: cfg.bufferValue || 0, totalCalculatedHours: cfg.totalCalculatedHours ?? norm
     };
     const extras = defined({ hoursConversionRatio: cfg.hoursConversionRatio, tshirtSize: cfg.tshirtSize, subtasks: cfg.subtasks,
       subtasksSumHours: cfg.subtasksSumHours, bufferHours: cfg.bufferHours });

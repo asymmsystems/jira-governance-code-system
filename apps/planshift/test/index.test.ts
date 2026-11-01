@@ -868,7 +868,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
       );
 
       const parent = updatedPlan.tasks.find(t => t.key === 'TEST-1');
-      expect(parent?.effortConfig?.subtasks.length).toBeGreaterThanOrEqual(1);
+      expect(parent?.effortConfig?.subtasks?.length).toBeGreaterThanOrEqual(1);
       expect(parent?.effortConfig?.bufferHours).toBeGreaterThan(0);
     });
 
@@ -927,7 +927,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
       );
 
       const item = updatedPlan.backlogTasks!.find(t => t.key === 'TEST-3');
-      expect(item?.effortConfig?.subtasks.length).toBeGreaterThan(0);
+      expect(item?.effortConfig?.subtasks?.length).toBeGreaterThan(0);
     });
   });
 
