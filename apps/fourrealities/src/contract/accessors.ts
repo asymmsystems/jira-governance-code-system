@@ -62,6 +62,12 @@ export interface SnapshotAccessor extends Accessor {
   deleteV1Signals(): Promise<number>;
 }
 
+/** The Forge app context of the current invocation. */
+export interface AppContextAccessor extends Accessor {
+  /** The licence state; undefined on development installs or outside the Forge runtime. */
+  licenceActive(): boolean | undefined;
+}
+
 /** Append-only rework notes (ADR-001 Pattern 6). A note is never rewritten. */
 export interface ReworkNoteAccessor extends Accessor {
   append(note: ReworkNote): Promise<void>;

@@ -13,6 +13,7 @@ import { DefaultForgeJiraIssueAccessor, Principal } from './accessor/default-for
 import { DefaultKvsSiteConfigAccessor } from './accessor/default-kvs-site-config-accessor';
 import { DefaultKvsSnapshotAccessor } from './accessor/default-kvs-snapshot-accessor';
 import { DefaultKvsReworkNoteAccessor } from './accessor/default-kvs-rework-note-accessor';
+import { DefaultForgeAppContextAccessor } from './accessor/default-forge-app-context-accessor';
 import { DefaultKvsExceptionEventAccessor } from './accessor/default-kvs-exception-event-accessor';
 import { requestAs } from './accessor/default-forge-jira-issue-accessor';
 import { DefaultGateEngine } from './engine/default-gate-engine';
@@ -118,6 +119,10 @@ export async function runScheduledSnapshot(storageProvider?: StorageProvider, de
 
 /** Forge scheduledTrigger handler (manifest function "snapshot"). */
 export const snapshot = async (): Promise<void> => {
+  if (new DefaultForgeAppContextAccessor().licenceActive() === false) {
+    console.log('FourRealities: scheduled snapshot skipped: the licence is not active.');
+    return;
+  }
   const result = await runScheduledSnapshot();
   console.log('FourRealities: scheduled snapshot', JSON.stringify(result));
 };

@@ -44,8 +44,11 @@ const mockDefaultUser = (...args: any[]) => (String(args[0]).includes('fields=id
   : mockRequestJira(...args));
 const mockAppRequestJira = jest.fn(mockDefaultApp);
 const mockUserRequestJira = jest.fn(mockDefaultUser);
+// The Forge app context of the current invocation (licence); a test may replace it or make it throw.
+const mockAppContext: { get: () => any } = { get: () => ({}) };
 jest.mock('@forge/api', () => ({
   __esModule: true,
+  getAppContext: () => mockAppContext.get(),
   default: {
     asApp: () => ({
       requestJira: mockAppRequestJira
@@ -919,6 +922,29 @@ describe('B-08: bounded storage and a scheduled snapshot', () => {
     expect(await runScheduledSnapshot(storage, Date.now() - 1)).toEqual({ built: [], failed: [], skipped: ['DEMO'], signalsDeleted: 0, exceptionsMigrated: 0, reworkNotesMigrated: 0 });
     mockRequestJira.mockImplementation(async () => ({ status: 500, json: async () => ({}) }));
     expect((await runScheduledSnapshot(storage, Date.now() + 60_000)).failed).toEqual(['DEMO']);
+  });
+
+  it('8: skips the scheduled run when the licence is inactive, and runs when it is active, absent or unreadable', async () => {
+    const storage = seeded();
+    await storage.set('fr:projects', ['DEMO']);
+    setGlobalStorageProvider(storage);
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    const { snapshot } = require('../src/index');
+    try {
+      mockAppContext.get = () => ({ license: { isActive: false } });
+      await snapshot();
+      expect(log).toHaveBeenLastCalledWith('FourRealities: scheduled snapshot skipped: the licence is not active.');
+      expect(storage.store.has('fr:p:DEMO:meta')).toBe(false);
+      for (const ctx of [() => ({ license: { isActive: true } }), () => ({}), () => { throw new Error('outside the Forge runtime'); }]) {
+        mockAppContext.get = ctx;
+        await snapshot();
+        expect(String(log.mock.calls[log.mock.calls.length - 1][0])).toBe('FourRealities: scheduled snapshot');
+      }
+    } finally {
+      mockAppContext.get = () => ({});
+      log.mockRestore();
+      setGlobalStorageProvider(null);
+    }
   });
 
   it('runs the scheduled trigger handler against the global storage and logs the result', async () => {
