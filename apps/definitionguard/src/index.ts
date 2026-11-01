@@ -1,17 +1,15 @@
 import api, { route } from '@forge/api';
 import Resolver from '@forge/resolver';
-import { kvs } from '@forge/kvs';
+import { kvs, WhereConditions } from '@forge/kvs';
 import {
-  ChecklistEngine,
   getTemplateForCategory,
-  getTemplateById,
-  getAvailableTemplates,
-  DEFAULT_DEFINITION_OF_DONE,
-  ALL_TEMPLATES
+  getAvailableTemplates
 } from './domain/checklist-engine';
 import { TransitionValidator } from './validator/transition-validator';
-import { ChecklistRepository, StorageProvider } from './storage/checklist-repository';
-import { ChecklistToggleRequest, IssueChecklistState } from './domain/models';
+import { StorageProvider } from './storage/checklist-repository';
+import { ChecklistStore, eventKey } from './storage/checklist-store';
+import { applyEvent, createdEvent, emptyState } from './domain/event-log';
+import { ChecklistEvent, ChecklistState, IssueChecklistState, ChecklistAuditEvent } from './domain/models';
 import { checkIssuePermissions, EDIT_DENIED, RESET_DENIED } from './security/permissions';
 
 class ForgeKvsProvider implements StorageProvider {
@@ -26,6 +24,24 @@ class ForgeKvsProvider implements StorageProvider {
 
   async delete(key: string): Promise<void> {
     await kvs.delete(key);
+  }
+
+  async setIfAbsent(key: string, value: any): Promise<boolean> {
+    try {
+      await kvs.set(key, value, { keyPolicy: 'FAIL_IF_EXISTS' });
+      return true;
+    } catch (err) {
+      // A failed FAIL_IF_EXISTS write is a lost race only if the key now exists (strict read).
+      if ((await kvs.get(key)) !== undefined) return false;
+      throw err;
+    }
+  }
+
+  async listByPrefix(prefix: string, cursor?: string, limit = 100): Promise<{ values: any[]; nextCursor?: string }> {
+    let query = kvs.query().where('key', WhereConditions.beginsWith(prefix)).limit(limit);
+    if (cursor) query = query.cursor(cursor);
+    const page = await query.getMany<any>();
+    return { values: page.results.map(r => r.value), nextCursor: page.nextCursor };
   }
 }
 
@@ -91,6 +107,26 @@ async function fetchIssueForValidator(issueIdOrKey: string): Promise<any> {
   return await res.json();
 }
 
+/** A checklist built in memory from the issue-type template. Nothing is stored. */
+function stateFromTemplate(issueId: string, issueKey: string, projectId: string, issueType?: string): ChecklistState {
+  const base = emptyState(issueId, issueKey, projectId);
+  return applyEvent(base, createdEvent(base, getTemplateForCategory(issueType || 'Task'), 'system', new Date().toISOString()));
+}
+
+/** The v1 item shape that TransitionValidator and the current panel read. */
+function toLegacyItems(state: ChecklistState) {
+  return state.items.map(i => ({
+    id: i.id,
+    title: i.title,
+    isMandatory: i.isMandatory,
+    category: i.category,
+    isCompleted: i.status !== 'OPEN',
+    completedBy: i.status !== 'OPEN' ? i.byAccountId : undefined,
+    completedByAccountId: i.status !== 'OPEN' ? i.byAccountId : undefined,
+    completedAt: i.status !== 'OPEN' ? i.at : undefined
+  }));
+}
+
 /**
  * Jira Workflow Validator entry point:
  * Blocks transition if any mandatory checklist item remains incomplete.
@@ -125,226 +161,187 @@ async function evaluateTransition(payload: any, context?: any, storageProvider?:
     };
   }
 
-  const storage = resolveStorage(storageProvider);
-  const repository = new ChecklistRepository(storage);
-
-  let checklistState = await repository.getIssueChecklist(issueId);
+  const store = new ChecklistStore(resolveStorage(storageProvider));
+  let state = await store.loadOrLegacy(issueId);
 
   // No checklist yet: apply the issue-type template in memory and block on it (Fixes D-14).
   // Nothing is stored; the first change on the panel creates the record.
-  if (!checklistState) {
+  if (!state) {
     let issueType = context?.extension?.issue?.type;
     if (!issueType) {
       live = live || await fetchIssueForValidator(issueId);
       issueType = live?.fields?.issuetype?.name;
     }
-    const template = getTemplateForCategory(issueType || 'Task');
-    checklistState = ChecklistEngine.initializeState(issueId, String(issueKey || issueId), template, 'system');
+    state = stateFromTemplate(issueId, String(issueKey || issueId), '', issueType);
   }
 
-  const validation = TransitionValidator.validate(checklistState);
+  const validation = TransitionValidator.validate({ ...state, items: toLegacyItems(state) } as any);
   return TransitionValidator.toForgeValidatorResult(validation);
 }
 
-/**
- * Retrieves the current checklist state for an issue, initializing category-specific DoD if none exists.
- */
-export async function getIssueChecklist(payload: any, context?: any, storageProvider?: StorageProvider): Promise<IssueChecklistState> {
-  const contextIssue = context?.extension?.issue;
-  const issueId = String(contextIssue?.id || payload?.issueId || payload?.issue?.id || '');
-  const issueKey = String(contextIssue?.key || payload?.issueKey || payload?.issue?.key || issueId);
-  const userId = String(context?.accountId || payload?.userId || 'anonymous');
-
+/** Issue identity and actor come from the Forge context only, never from the payload. */
+function panelContext(context: any) {
+  const issue = context?.extension?.issue;
+  const issueId = String(issue?.id || '');
   if (!issueId) {
-    throw new Error('DefinitionGuard: Missing issueId.');
+    throw new Error('DefinitionGuard: Missing issue context. Open this panel from a Jira issue.');
   }
-
-  const storage = resolveStorage(storageProvider);
-  const repository = new ChecklistRepository(storage);
-
-  let state = await repository.getIssueChecklist(issueId);
-  if (!state) {
-    // Automatically select category template based on Jira issue type
-    let issueType = contextIssue?.type;
-    if (!issueType) {
-      const live = await fetchLiveJiraIssue(issueId);
-      issueType = live?.fields?.issuetype?.name;
-    }
-    const template = getTemplateForCategory(issueType);
-
-    state = ChecklistEngine.initializeState(issueId, issueKey, template, userId);
-    await repository.saveIssueChecklist(state);
-
-    // Publish initial DoD status to Jira issue entity property (Fixes H2)
-    try {
-      await api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/properties/definitionguard-dod`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          isFullySatisfied: state.isFullySatisfied,
-          completedCount: state.items.filter(i => i.isCompleted).length,
-          totalCount: state.items.length,
-          checklistHash: state.checklistHash
-        })
-      });
-    } catch {}
-  } else {
-    // Retroactively resolve any stored raw account IDs to human display names (Fixes M-1)
-    let modified = false;
-    for (const item of state.items) {
-      if (item.completedBy && (item.completedBy.startsWith('712020:') || item.completedBy.includes(':'))) {
-        try {
-          const name = await fetchJiraUser(item.completedBy);
-          if (name && name !== item.completedBy) {
-            item.completedBy = name;
-            modified = true;
-          }
-        } catch {}
-      }
-      if (item.history) {
-        for (const entry of item.history) {
-          if (entry.userId && (entry.userId.startsWith('712020:') || entry.userId.includes(':'))) {
-            try {
-              const name = await fetchJiraUser(entry.userId);
-              if (name && name !== entry.userId) {
-                entry.userId = name;
-                modified = true;
-              }
-            } catch {}
-          }
-        }
-      }
-    }
-    if (modified) {
-      await repository.saveIssueChecklist(state);
-    }
-  }
-
-  return state;
+  return {
+    issueId,
+    issueKey: String(issue?.key || issueId),
+    issueType: issue?.type as string | undefined,
+    projectId: String(context?.extension?.project?.id || ''),
+    actorAccountId: String(context?.accountId || 'unknown')
+  };
 }
 
-/**
- * Toggles a checklist item's completion state and updates attribution.
- */
-export async function toggleChecklistItem(payload: any, context?: any, storageProvider?: StorageProvider): Promise<IssueChecklistState> {
-  const contextIssue = context?.extension?.issue;
-  const issueId = String(contextIssue?.id || payload?.issueId || payload?.issue?.id || '');
-  const issueKey = String(contextIssue?.key || payload?.issueKey || payload?.issue?.key || issueId);
-  const { itemId, isCompleted, notes } = payload || {};
-  const rawUserId = String(context?.accountId || payload?.userId || 'anonymous');
+const AUDIT_TYPE: Record<string, ChecklistAuditEvent['eventType']> = {
+  CREATED: 'TEMPLATE_CONFIGURED',
+  MIGRATED: 'TEMPLATE_CONFIGURED',
+  RESYNC: 'TEMPLATE_CONFIGURED',
+  TICK: 'CHECK',
+  WAIVE: 'CHECK',
+  UNTICK: 'UNCHECK',
+  RESET: 'RESET'
+};
 
-  if (!issueId || !itemId) {
-    throw new Error('DefinitionGuard: Missing issueId or itemId.');
+const RECENT_EVENTS = 10;
+
+async function recentEvents(storage: StorageProvider, state: ChecklistState): Promise<ChecklistEvent[]> {
+  const out: ChecklistEvent[] = [];
+  for (let seq = state.seq; seq > 0 && out.length < RECENT_EVENTS; seq--) {
+    const e = await storage.get<ChecklistEvent>(eventKey(state.issueId, seq));
+    if (e) out.unshift(e);
   }
+  return out;
+}
 
-  await checkIssuePermissions(issueKey, ['EDIT_ISSUES'], EDIT_DENIED);
-
-  // Resolve human display name for attribution
-  let userDisplayName = rawUserId;
-  if (context?.accountId) {
-    userDisplayName = await fetchJiraUser(context.accountId);
-  }
-
-  const storage = resolveStorage(storageProvider);
-  const repository = new ChecklistRepository(storage);
-
-  let state = await repository.getIssueChecklist(String(issueId));
-  if (!state) {
-    const live = await fetchLiveJiraIssue(issueId);
-    const template = getTemplateForCategory(live?.fields?.issuetype?.name || contextIssue?.type);
-    state = ChecklistEngine.initializeState(String(issueId), String(issueKey || issueId), template, userDisplayName);
-  }
-
-  const request: ChecklistToggleRequest = {
-    issueId: String(issueId),
-    issueKey: String(issueKey || state.issueKey),
-    itemId: String(itemId),
-    isCompleted: Boolean(isCompleted),
-    userId: userDisplayName,
-    userAccountId: context?.accountId || (payload?.userId !== 'anonymous' ? payload?.userId : undefined),
-    notes
+/** The panel response. Keeps the fields the panel reads; names are accountIds. */
+export function toPanelResponse(state: ChecklistState, events: ChecklistEvent[]): IssueChecklistState {
+  const items = toLegacyItems(state);
+  return {
+    issueId: state.issueId,
+    issueKey: state.issueKey,
+    templateId: state.templateId,
+    items,
+    lastModifiedAt: state.lastModifiedAt || '',
+    lastModifiedBy: state.lastModifiedByAccountId || '',
+    isFullySatisfied: items.filter(i => i.isMandatory).every(i => i.isCompleted),
+    checklistHash: state.headHash,
+    stateVersion: state.seq,
+    auditTrail: events.map(e => ({
+      id: `evt-${e.seq}`,
+      timestamp: e.at,
+      eventType: AUDIT_TYPE[e.type],
+      actorName: e.actorAccountId,
+      actorAccountId: e.actorAccountId,
+      itemId: e.itemId,
+      itemTitle: e.itemTitle
+    }))
   };
+}
 
-  const updatedState = ChecklistEngine.toggleItem(state, request);
-  await repository.saveIssueChecklist(updatedState);
-
+async function publishProperty(issueId: string, response: IssueChecklistState): Promise<void> {
   // Publish DoD status to Jira issue entity property for cross-reality audits
   try {
     await api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/properties/definitionguard-dod`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        isFullySatisfied: updatedState.isFullySatisfied,
-        completedCount: updatedState.items.filter(i => i.isCompleted).length,
-        totalCount: updatedState.items.length,
-        checklistHash: updatedState.checklistHash
+        isFullySatisfied: response.isFullySatisfied,
+        completedCount: response.items.filter(i => i.isCompleted).length,
+        totalCount: response.items.length,
+        checklistHash: response.checklistHash,
+        lastModifiedAt: response.lastModifiedAt
       })
     });
   } catch {}
+}
 
-  return updatedState;
+async function templateFor(issueId: string, issueType?: string) {
+  let type = issueType;
+  if (!type) {
+    const live = await fetchLiveJiraIssue(issueId);
+    type = live?.fields?.issuetype?.name;
+  }
+  return getTemplateForCategory(type);
+}
+
+/**
+ * Retrieves the current checklist state for an issue. When none is stored, applies the
+ * issue-type template in memory. Never writes.
+ */
+export async function getIssueChecklist(_payload: any, context?: any, storageProvider?: StorageProvider): Promise<IssueChecklistState> {
+  const c = panelContext(context);
+  const storage = resolveStorage(storageProvider);
+  const store = new ChecklistStore(storage);
+
+  let state = await store.loadOrLegacy(c.issueId, c.projectId);
+  if (!state) {
+    const base = emptyState(c.issueId, c.issueKey, c.projectId);
+    state = applyEvent(base, createdEvent(base, await templateFor(c.issueId, c.issueType), c.actorAccountId, new Date().toISOString()));
+    state = { ...state, seq: 0 };
+  }
+  return toPanelResponse(state, state.seq > 0 ? await recentEvents(storage, state) : []);
+}
+
+/**
+ * Toggles a checklist item's completion state and records it as an event.
+ */
+export async function toggleChecklistItem(payload: any, context?: any, storageProvider?: StorageProvider): Promise<IssueChecklistState> {
+  const c = panelContext(context);
+  const itemId = String(payload?.itemId || '');
+  const isCompleted = Boolean(payload?.isCompleted);
+  if (!itemId) {
+    throw new Error('DefinitionGuard: Missing itemId.');
+  }
+
+  await checkIssuePermissions(c.issueKey, ['EDIT_ISSUES'], EDIT_DENIED);
+
+  const storage = resolveStorage(storageProvider);
+  const store = new ChecklistStore(storage);
+  const at = new Date().toISOString();
+
+  const state = await store.mutate(
+    c.issueId,
+    base => store.initFromLegacyOr(base, () => templateFor(c.issueId, c.issueType), c.actorAccountId, at),
+    st => {
+      const item = st.items.find(i => i.id === itemId);
+      if (!item) {
+        throw new Error(`Checklist item with id '${itemId}' not found on issue ${st.issueKey}`);
+      }
+      return [{ type: isCompleted ? 'TICK' : 'UNTICK', itemId, itemTitle: item.title, actorAccountId: c.actorAccountId, at }];
+    },
+    { issueKey: c.issueKey, projectId: c.projectId }
+  );
+
+  const response = toPanelResponse(state, await recentEvents(storage, state));
+  await publishProperty(c.issueId, response);
+  return response;
 }
 
 /**
  * Resets an issue's checklist while monotonically preserving audit history (Fixes D-13).
  */
-export async function resetChecklist(payload: any, context?: any, storageProvider?: StorageProvider): Promise<IssueChecklistState> {
-  const contextIssue = context?.extension?.issue;
-  const issueId = String(contextIssue?.id || payload?.issueId || payload?.issue?.id || '');
-  const issueKey = String(contextIssue?.key || payload?.issueKey || payload?.issue?.key || issueId);
-  const userAccountId = String(context?.accountId || payload?.userAccountId || 'anonymous');
-  let actorName = String(payload?.userName || payload?.userId || userAccountId);
+export async function resetChecklist(_payload: any, context?: any, storageProvider?: StorageProvider): Promise<IssueChecklistState> {
+  const c = panelContext(context);
 
-  if (!issueId) {
-    throw new Error('DefinitionGuard: Missing issueId.');
-  }
-
-  await checkIssuePermissions(issueKey, ['ADMINISTER_PROJECTS'], RESET_DENIED);
-
-  if (context?.accountId) {
-    try {
-      const liveUser = await fetchJiraUser(context.accountId);
-      if (liveUser) actorName = liveUser;
-    } catch {}
-  }
+  await checkIssuePermissions(c.issueKey, ['ADMINISTER_PROJECTS'], RESET_DENIED);
 
   const storage = resolveStorage(storageProvider);
-  const repository = new ChecklistRepository(storage);
+  const store = new ChecklistStore(storage);
+  const at = new Date().toISOString();
 
-  let state = await repository.getIssueChecklist(issueId);
-  if (!state && issueKey && issueKey !== issueId) {
-    state = await repository.getIssueChecklist(issueKey);
-  }
+  const state = await store.mutate(
+    c.issueId,
+    base => store.initFromLegacyOr(base, () => templateFor(c.issueId, c.issueType), c.actorAccountId, at),
+    () => [{ type: 'RESET', actorAccountId: c.actorAccountId, at }],
+    { issueKey: c.issueKey, projectId: c.projectId }
+  );
 
-  if (!state) {
-    const live = await fetchLiveJiraIssue(issueId);
-    let template = payload?.templateId ? getTemplateById(payload.templateId) : null;
-    if (!template) {
-      template = getTemplateForCategory(live?.fields?.issuetype?.name || contextIssue?.type);
-    }
-    state = ChecklistEngine.initializeState(issueId, issueKey, template, actorName);
-  } else {
-    state = ChecklistEngine.resetChecklist(state, actorName, userAccountId);
-  }
-
-  await repository.saveIssueChecklist(state);
-
-  // Publish fresh DoD status to Jira issue entity property
-  try {
-    await api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/properties/definitionguard-dod`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        isFullySatisfied: state.isFullySatisfied,
-        completedCount: state.items.filter(i => i.isCompleted).length,
-        totalCount: state.items.length,
-        checklistHash: state.checklistHash,
-        lastModifiedAt: state.lastModifiedAt
-      })
-    });
-  } catch {}
-
-  return state;
+  const response = toPanelResponse(state, await recentEvents(storage, state));
+  await publishProperty(c.issueId, response);
+  return response;
 }
 
 /**
@@ -377,4 +374,3 @@ resolver.define('getAvailableTemplates', async () => {
 });
 
 export const handler = resolver.getDefinitions();
-

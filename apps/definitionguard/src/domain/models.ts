@@ -99,3 +99,66 @@ export interface TransitionValidationResult {
   reasons: string[];
   incompleteMandatoryItems: string[];
 }
+
+// ---------------------------------------------------------------------------
+// v2: append-only event log (docs/spec/definitionguard-spec-v2.md)
+// ---------------------------------------------------------------------------
+
+export type ItemStatus = 'OPEN' | 'DONE' | 'WAIVED';
+
+export type ChecklistEventType = 'CREATED' | 'MIGRATED' | 'TICK' | 'UNTICK' | 'WAIVE' | 'RESET' | 'RESYNC';
+
+export interface ItemState {
+  id: string;
+  title: string;
+  isMandatory: boolean;
+  category: ChecklistCategory;
+  status: ItemStatus;
+  byAccountId?: string;
+  at?: string;
+  eventSeq?: number;
+}
+
+export interface LegacyRef {
+  stateVersion: number;
+  eventCount: number;
+  checklistHash: string;
+}
+
+/** Cache of the event log, stored at dg:state:<issueId>. */
+export interface ChecklistState {
+  schemaVersion: 2;
+  issueId: string;
+  issueKey: string;
+  projectId: string;
+  templateId: string;
+  templateVersion: number;
+  items: ItemState[];
+  seq: number;
+  headHash: string;
+  lastModifiedAt?: string;
+  lastModifiedByAccountId?: string;
+  legacy?: LegacyRef;
+}
+
+/** One change, stored at dg:evt:<issueId>:<seq as 8 digits>. Never changed after it is written. */
+export interface ChecklistEvent {
+  seq: number;
+  issueId: string;
+  type: ChecklistEventType;
+  at: string;
+  actorAccountId: string;
+  itemId?: string;
+  itemTitle?: string;
+  items?: ItemState[];          // CREATED, MIGRATED, RESYNC: the item list
+  issueKey?: string;            // CREATED, MIGRATED: lets a rebuild from events restore the state
+  projectId?: string;
+  templateId?: string;
+  templateVersion?: number;
+  legacy?: LegacyRef;           // MIGRATED
+  prevHash: string;
+  hash: string;
+}
+
+/** What a resolver asks the log to record; seq, prevHash and hash are added by makeEvent. */
+export type EventInput = Omit<ChecklistEvent, 'seq' | 'issueId' | 'prevHash' | 'hash'>;

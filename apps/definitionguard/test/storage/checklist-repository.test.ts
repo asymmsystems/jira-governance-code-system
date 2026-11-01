@@ -15,6 +15,17 @@ class MockStorageProvider implements StorageProvider {
   async delete(key: string): Promise<void> {
     this.store.delete(key);
   }
+
+  // Not used by ChecklistRepository; present to satisfy the v2 StorageProvider interface.
+  async setIfAbsent(key: string, value: any): Promise<boolean> {
+    if (this.store.has(key)) return false;
+    this.store.set(key, value);
+    return true;
+  }
+
+  async listByPrefix(): Promise<{ values: any[] }> {
+    return { values: [] };
+  }
 }
 
 describe('ChecklistRepository', () => {

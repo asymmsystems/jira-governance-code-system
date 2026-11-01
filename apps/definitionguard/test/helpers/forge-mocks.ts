@@ -67,6 +67,23 @@ export class CountingStorage implements StorageProvider {
     this.store.delete(key);
   }
 
+  // Atomic in this single-threaded mock, like KVS set with keyPolicy FAIL_IF_EXISTS.
+  async setIfAbsent(key: string, value: any): Promise<boolean> {
+    if (this.failSet && this.failSet(key)) throw new Error('KVS write failed (test)');
+    if (this.store.has(key)) return false;
+    this.sets.push(key);
+    this.store.set(key, JSON.stringify(value));
+    return true;
+  }
+
+  async listByPrefix(prefix: string, cursor?: string, limit = 100): Promise<{ values: any[]; nextCursor?: string }> {
+    const keys = [...this.store.keys()].filter(k => k.startsWith(prefix)).sort();
+    const start = cursor ? Number(cursor) : 0;
+    const page = keys.slice(start, start + limit);
+    const next = start + limit < keys.length ? String(start + limit) : undefined;
+    return { values: page.map(k => JSON.parse(this.store.get(k)!)), nextCursor: next };
+  }
+
   put(key: string, value: any): void {
     this.store.set(key, JSON.stringify(value));
   }
