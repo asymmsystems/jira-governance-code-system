@@ -26,7 +26,9 @@ const ctx = { accountId: '712020:admin', extension: { project } };
 
 // The shape of /rest/api/3/workflows/search?projectId=10001 on the DEMO site (live GET, 2026-11-01, L-01 and L-07),
 // trimmed to the fields the check reads. One "Mark as done" transition carries a DefinitionGuard rule for the test.
-const DG_RULE = { ruleKey: 'forge:workflow-validator', parameters: { key: 'ari:cloud:ecosystem::extension/73e4f63d/env/static/definitionguard-workflow-validator' }, id: 'r1' };
+// The rule exactly as Jira stored it on DEMO "Mark as done" (live GET, 2026-11-01): a function validator
+// is stored with ruleKey forge:expression-validator and the module key in parameters.key.
+const DG_RULE = { ruleKey: 'forge:expression-validator', parameters: { key: 'ari:cloud:ecosystem::extension/73e4f63d-7d60-450c-96d5-f81ca68a709c/b575a3a8-ffe9-4570-ac50-42a6a555c167/static/definitionguard-workflow-validator', config: '', id: '92c2e007-4a00-40f2-b141-04d6dedfe263' }, id: '40142776' };
 const FIXTURE = {
   isLast: true,
   statuses: [

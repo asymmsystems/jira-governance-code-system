@@ -120,7 +120,8 @@ Every item: `tsc` exit 0, Jest all pass, 90% branch or more on each changed sour
 | Export | JSON shown in a CodeBlock to copy (B-15 criterion 4: UI Kit has no download); Silverston-shaped rows (WorkEffort ISSUE, WorkEffortAssoc, WorkEffortStatus, Content) |
 | Signed property | `definitionguard-dod` schema v2, stateVersion 3, mandatoryCompleted 2, keyId `dg-dev-2026-11`. An independent script (`~/.cache/gemini-earning-definitionguard-research/live/verify.js`) verifies the signature with `docs/marketplace/definitionguard-public-key.pem`: true; a copy with isFullySatisfied changed: false |
 | Settings page, view only | Lists DEMO's Done-category statuses (Closed, Resolved, Canceled, Done). Coverage: "0 of 8 completion transitions are gated", listing all 8 (matches L-06). Read with the new `read:workflow:jira` scope as the app. Nothing saved |
-| Gate (validator) on a real transition | Not tested: no DEMO workflow has the validator yet (workflows unchanged since 2026-10-29). Waits for the owner to add it (brief 12.4) |
+| Gate (validator) on a real transition | Owner decision "A" (in chat): I add the validator, test, then remove it; this overrides the brief's "do not change any workflow" for this one test. With DefinitionGuard DoD Enforcement on DEMO "Mark as done": POST transition 61 on DEMO-35 returned 400 "Definition of Done is not complete. Open mandatory items: Peer code review approved by authorized reviewers; Static analysis and dependency vulnerability scan clear; Compliance and regulatory sign-off criteria satisfied. Open the DefinitionGuard panel on this issue to finish them."; the issue stayed Open. The waived item and the evidence item counted as done. After ticking the 3 items in the panel (the optional item left open), the panel said "Definition of Done satisfied" and the same POST returned 204; status Done; property isFullySatisfied true, stateVersion 6 |
+| Validator rule shape | Jira stores the function validator as `ruleKey: forge:expression-validator` with the module key in `parameters.key`. The coverage matcher (module key) finds it; the test fixture now uses this exact shape |
 | DG-08 on a live throw | Not tested: the validator now catches every error (unit-tested); a live throw would need a deliberately broken build |
 | Keyboard and screen reader (task 9) | Not tested live. Accessible names are set and unit-tested |
 | Team-managed (B-20) | Not testable: the site has no team-managed project |
@@ -134,4 +135,11 @@ Every item: `tsc` exit 0, Jest all pass, 90% branch or more on each changed sour
 | 3 | Tick "Automated test suite passes with zero regressions" with evidence | criterion DOD_OPEN; no app storage for 10067; no property | KVS `dg:evt:10067:00000001` (Create), `:00000002` (Complete with Content), `dg:state:10067`; property `definitionguard-dod` v2 stateVersion 2 |
 | 4 | Waive "Branch test coverage meets or exceeds policy threshold" with reason "DG-PROBE live check: coverage gate not used on this probe." | criterion DOD_OPEN | KVS `dg:evt:10067:00000003` (Waive), `dg:state:10067`; property stateVersion 3 |
 
-No other issue, workflow, template or project setting was changed. No LedgerSeal panel was opened. Nothing was deleted.
+| 5 | Workflow "DEMO: Jira Service Management default workflow", transition "Mark as done" (61): added validator DefinitionGuard DoD Enforcement (owner decision A) | version 8, no Forge validator | version 9, validator present |
+| 6 | Tick "Peer code review approved by authorized reviewers" on DEMO-35 | DOD_OPEN | DOD_DONE (entry 4) |
+| 7 | Tick "Static analysis and dependency vulnerability scan clear" on DEMO-35 | DOD_OPEN | DOD_DONE (entry 5) |
+| 8 | Tick "Compliance and regulatory sign-off criteria satisfied" on DEMO-35 | DOD_OPEN | DOD_DONE (entry 6); property stateVersion 6, isFullySatisfied true |
+| 9 | Transition DEMO-35 "Mark as done" | first attempt blocked (400, no change); then Open | Done |
+| 10 | Workflow: removed the DefinitionGuard validator from "Mark as done" (owner decision A) | version 9, validator present | version 10, no Forge validator (checked by GET) |
+
+No other issue, workflow, template or project setting was changed. No LedgerSeal panel was opened. Nothing was deleted. DEMO-35 stays as a closed probe issue with the label `dg-probe`.

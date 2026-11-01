@@ -38,9 +38,9 @@ export interface Coverage {
 }
 
 /**
- * True when a workflow rule is the DefinitionGuard validator. The rule is matched by the module
- * key anywhere in the rule, because no workflow on the site carries the rule yet to show its
- * exact shape (Inferred, spec v2 D-12).
+ * True when a workflow rule is the DefinitionGuard validator, matched by the module key. Jira
+ * stores the function validator as ruleKey forge:expression-validator with the module key in
+ * parameters.key (seen live on DEMO, 2026-11-01).
  */
 export function isDefinitionGuardRule(rule: unknown): boolean {
   return rule !== null && rule !== undefined && JSON.stringify(rule).includes(VALIDATOR_MODULE_KEY);
