@@ -1205,6 +1205,38 @@ body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-
 .why-fixes { display: flex; flex-wrap: wrap; gap: 6px; }
 .driver-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
+/* Table view and in-app search (B-26) */
+.search-box-container { display: inline-flex; align-items: center; gap: 6px; position: relative; }
+.in-app-search-input {
+  background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 4px;
+  padding: 5px 10px; font-size: 12px; color: var(--cp-text); outline: none; width: 170px;
+  transition: border-color 0.12s ease, width 0.15s ease;
+}
+.in-app-search-input:focus { border-color: var(--cp-border-focused); width: 220px; }
+.search-match-count { font-size: 11px; font-weight: 600; color: var(--cp-text-subtle); min-width: 45px; }
+
+.table-view-container {
+  display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; height: 100%;
+  padding: 16px; background: var(--cp-surface-sunken);
+}
+.table-view-banner { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.table-view-title { margin: 0 0 4px 0; font-size: 15px; font-weight: 700; color: var(--cp-text); }
+.table-view-desc { margin: 0; color: var(--cp-text-subtle); font-size: 12px; }
+.table-row-count { color: var(--cp-text-subtle); font-size: 12px; font-weight: 600; }
+.table-view-wrapper {
+  flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--cp-border); border-radius: 6px;
+  background: var(--cp-surface);
+}
+.plain-data-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+.plain-data-table thead tr {
+  border-bottom: 2px solid var(--cp-border); background: var(--cp-surface-sunken); position: sticky; top: 0; z-index: 2;
+}
+.plain-data-table th { padding: 10px 12px; font-weight: 700; color: var(--cp-text); border-bottom: 2px solid var(--cp-border); }
+.plain-data-table td { padding: 8px 12px; border-bottom: 1px solid var(--cp-border); color: var(--cp-text); }
+.plain-data-table tbody tr:hover { background: var(--cp-surface-sunken); }
+.plain-data-table tbody tr.is-search-match { background: var(--cp-bg-selected); }
+.plain-data-table tbody tr:focus { outline: 2px solid var(--cp-border-focused); outline-offset: -2px; }
+
 /* Reduced motion: motion is off and instant (ADS motion guidance, UP-53; B-17). */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
