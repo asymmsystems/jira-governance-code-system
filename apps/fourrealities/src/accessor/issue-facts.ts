@@ -4,7 +4,8 @@
  * FourRealities: parses Jira issue JSON into IssueFacts (spec v2, Validator step 1)
  */
 
-import { ExceptionRecord, IssueExceptionRecord, IssueFacts, StatusCategory } from '../domain/models';
+import { ExceptionRecord, IssueExceptionRecord, IssueFacts, RemoteLink, StatusCategory } from '../contract/data/models';
+import { parseDevField } from './dev-field';
 
 /** Issue properties read in one search or issue call. Only the producers' own keys. */
 export const PROPERTY_KEYS = ['ledgerseal-cert', 'definitionguard-dod', 'checklist'];
@@ -84,6 +85,15 @@ export function normalizeException(record: any): ExceptionRecord | undefined {
   };
 }
 
+/** Jira remote link objects to contract RemoteLinks. */
+export function normalizeRemoteLinks(raw: any[]): RemoteLink[] {
+  return raw.map((rl: any) => ({
+    url: rl?.object?.url ?? rl?.url,
+    title: rl?.object?.title ?? rl?.title,
+    applicationType: rl?.application?.type
+  }));
+}
+
 export interface FactOptions {
   remoteLinks?: any[];
   exception?: ExceptionRecord;
@@ -104,16 +114,18 @@ export function factsFromIssue(iss: any, options: FactOptions = {}): IssueFacts 
   // Present means the site has a Development field; an issue response may omit an empty value.
   const devPresent = devFieldId !== null;
   const devRaw = devPresent ? fields[devFieldId as string] : undefined;
+  const statusCategory = statusCategoryOf(fields.status);
 
   return {
     issueId: String(iss?.id),
     issueKey: String(iss?.key),
     summary: String(fields.summary || ''),
     statusName: String(fields.status?.name || ''),
-    statusCategory: statusCategoryOf(fields.status),
+    statusCategory,
     assigneeName: fields.assignee?.displayName,
     sprintNames: Array.from(new Set(sprintNames)),
     updated: fields.updated,
+    started: statusCategory !== 'new' || statusChanges > 0,
     statusChanges,
     reworkLoops,
     issueLinks: (Array.isArray(fields.issuelinks) ? fields.issuelinks : []).map((link: any) => {
@@ -126,13 +138,9 @@ export function factsFromIssue(iss: any, options: FactOptions = {}): IssueFacts 
         linkOutward: link.type?.outward
       };
     }),
-    remoteLinks: options.remoteLinks?.map((rl: any) => ({
-      url: rl?.object?.url ?? rl?.url,
-      title: rl?.object?.title ?? rl?.title,
-      applicationType: rl?.application?.type
-    })),
+    remoteLinks: options.remoteLinks === undefined ? undefined : normalizeRemoteLinks(options.remoteLinks),
     siteHost: options.siteHost,
-    devField: { present: devPresent, raw: typeof devRaw === 'string' ? devRaw : undefined },
+    devField: { present: devPresent, summary: parseDevField(typeof devRaw === 'string' ? devRaw : undefined) },
     properties: {
       ledgerseal: iss?.properties?.['ledgerseal-cert'],
       dod: iss?.properties?.['definitionguard-dod'],

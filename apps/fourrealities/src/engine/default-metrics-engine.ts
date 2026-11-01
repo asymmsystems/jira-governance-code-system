@@ -7,26 +7,25 @@
 import {
   GATE_NAMES,
   GateCount,
-  GateName,
   IssueFacts,
   IssueGates,
   IssueRow,
   ProjectSummary,
+  RECOVERY_ORDER,
   RiskLevel
-} from './models';
-import { evaluateGates, isStarted } from './gates';
+} from '../contract/data/models';
+import { MetricsEngine } from '../contract/engines';
 
 const SUMMARY_MAX = 120;
 
-/** Order in which a missing gate is offered as the next thing to fix. */
-export const RECOVERY_ORDER: GateName[] = ['intent', 'code', 'process', 'audit'];
+export class DefaultMetricsEngine implements MetricsEngine {
+  readonly serviceType = 'engine' as const;
 
-export class MetricsEngine {
   /**
    * RAI is the rounded mean of the scored gates: FOUND = 100, MISSING = 0.
    * EXCEPTED, NEEDS_RECHECK and NOT_APPLICABLE are not scored. No scored gate gives null (UNRATED).
    */
-  public static rai(gates: IssueGates): number | null {
+  public rai(gates: IssueGates): number | null {
     const scored = GATE_NAMES.map(g => gates[g].state).filter(s => s === 'FOUND' || s === 'MISSING');
     if (scored.length === 0) {
       return null;
@@ -35,7 +34,7 @@ export class MetricsEngine {
     return Math.round((found * 100) / scored.length);
   }
 
-  public static risk(rai: number | null): RiskLevel {
+  public risk(rai: number | null): RiskLevel {
     if (rai === null) return 'UNRATED';
     if (rai < 50) return 'CRITICAL';
     if (rai < 70) return 'HIGH';
@@ -47,7 +46,7 @@ export class MetricsEngine {
    * Points gained by fixing the first missing gate (Intent, Code, Process, Audit):
    * RAI recomputed with that gate found, minus the current RAI.
    */
-  public static recoverablePoints(gates: IssueGates): number {
+  public recoverablePoints(gates: IssueGates): number {
     const current = this.rai(gates);
     const first = RECOVERY_ORDER.find(g => gates[g].state === 'MISSING');
     if (current === null || !first) {
@@ -57,7 +56,7 @@ export class MetricsEngine {
     return (this.rai(fixed) as number) - current;
   }
 
-  public static buildRow(facts: IssueFacts, gates: IssueGates = evaluateGates(facts)): IssueRow {
+  public buildRow(facts: IssueFacts, gates: IssueGates): IssueRow {
     const rai = this.rai(gates);
     const summary = facts.summary.length > SUMMARY_MAX ? facts.summary.slice(0, SUMMARY_MAX - 3) + '...' : facts.summary;
     return {
@@ -68,7 +67,7 @@ export class MetricsEngine {
       statusCategory: facts.statusCategory,
       assigneeName: facts.assigneeName,
       sprintNames: facts.sprintNames,
-      started: isStarted(facts),
+      started: facts.started,
       gates,
       reworkLoops: facts.reworkLoops,
       rai,
@@ -80,12 +79,12 @@ export class MetricsEngine {
     };
   }
 
-  private static emptyCount(): GateCount {
+  private emptyCount(): GateCount {
     return { found: 0, missing: 0, excepted: 0, recheck: 0, notApplicable: 0 };
   }
 
   /** found / (found + missing) as a rounded percentage, or null when nothing is scored. */
-  public static rate(count: { found: number; missing: number }): number | null {
+  public rate(count: Pick<GateCount, 'found' | 'missing'>): number | null {
     const denominator = count.found + count.missing;
     return denominator === 0 ? null : Math.round((count.found * 100) / denominator);
   }
@@ -94,7 +93,7 @@ export class MetricsEngine {
    * Project summary over the given rows. Rows are counted once each; UNRATED rows are
    * excluded from the average and counted separately.
    */
-  public static summarize(rows: IssueRow[]): ProjectSummary {
+  public summarize(rows: IssueRow[]): ProjectSummary {
     const gates = {
       intent: this.emptyCount(),
       process: this.emptyCount(),
@@ -142,11 +141,6 @@ export class MetricsEngine {
       reworkIssues: rework,
       riskDistribution
     };
-  }
-
-  /** Convenience for one issue: facts to row. */
-  public static evaluate(facts: IssueFacts): IssueRow {
-    return this.buildRow(facts);
   }
 }
 

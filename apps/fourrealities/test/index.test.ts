@@ -18,7 +18,7 @@ import {
   refreshProjectSnapshot,
   runScheduledSnapshot
 } from '../src/index';
-import { StorageProvider, MetricsRepository } from '../src/storage/metrics-repository';
+import { StorageProvider, MetricsRepository } from '../src/accessor/default-kvs-exception-accessor';
 
 // One response queue (mockRequestJira) and one recording mock per principal,
 // so a test can assert which principal made each call (FR-22).

@@ -4,7 +4,7 @@
  * FourRealities: gate text unit tests
  */
 
-import { GateReason, GateResult } from '../../src/domain/models';
+import { GateReason, GateResult } from '../../src/contract/data/models';
 import { appearanceOf, chipText, detailText, glyphOf, raiText, rateText, recoveryText, riskAppearance, sourceLine, stateLabel } from '../../src/ui/gate-text';
 
 const ALL_REASONS: GateReason[] = [

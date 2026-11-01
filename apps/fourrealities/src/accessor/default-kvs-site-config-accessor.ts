@@ -4,27 +4,15 @@
  * FourRealities: per-site configuration read from Jira and cached in KVS for 24 hours.
  */
 
-import { Route, route } from '@forge/api';
-import { StorageProvider } from '../storage/metrics-repository';
+import { route } from '@forge/api';
+import { SiteConfig } from '../contract/data/models';
+import { SiteConfigAccessor, StorageProvider } from '../contract/accessors';
+import { JiraRequest } from './jira-request';
 
 export const SITE_CONFIG_KEY = 'fr:cfg:site';
 export const SITE_CONFIG_TTL_MS = 24 * 60 * 60 * 1000;
 
 const DEV_FIELD_TYPE = 'com.atlassian.jira.plugins.jira-development-integration-plugin:devsummarycf';
-
-export interface SiteConfig {
-  /** Id of the Development field, or null when the site has none. */
-  devFieldId: string | null;
-  /** Host name of this Jira site, used to recognise Confluence pages on the same site. */
-  siteHost: string | null;
-  readAt: string;
-}
-
-/**
- * Sends one request as a chosen principal. Callers build the route with the @forge/api route tag,
- * which rejects interpolated values that contain '/', '?' or '#'.
- */
-export type JiraRequest = (path: Route, init?: any) => Promise<{ status: number; json: () => Promise<any>; headers?: { get: (name: string) => string | null } }>;
 
 /** Host of the site from serverInfo; null when it cannot be read. Not fatal: only same-site links depend on it. */
 async function readSiteHost(request: JiraRequest): Promise<string | null> {
@@ -56,4 +44,14 @@ export async function getSiteConfig(storage: StorageProvider, request: JiraReque
   const config: SiteConfig = { devFieldId: dev?.id ? String(dev.id) : null, siteHost: await readSiteHost(request), readAt: new Date(now).toISOString() };
   await storage.set(SITE_CONFIG_KEY, config);
   return config;
+}
+
+export class DefaultKvsSiteConfigAccessor implements SiteConfigAccessor {
+  readonly serviceType = 'accessor' as const;
+
+  constructor(private readonly storage: StorageProvider, private readonly request: JiraRequest) {}
+
+  get(): Promise<SiteConfig> {
+    return getSiteConfig(this.storage, this.request);
+  }
 }

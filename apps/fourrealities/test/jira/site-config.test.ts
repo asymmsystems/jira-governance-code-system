@@ -4,7 +4,7 @@
  * FourRealities: site configuration (Development field lookup) unit tests
  */
 
-import { SITE_CONFIG_KEY, getSiteConfig } from '../../src/jira/site-config';
+import { SITE_CONFIG_KEY, getSiteConfig } from '../../src/accessor/default-kvs-site-config-accessor';
 
 // These tests use the real @forge/api route tag, so a path that the tag would reject fails here.
 const pathOf = (r: any): string => (typeof r === 'string' ? r : r.value);

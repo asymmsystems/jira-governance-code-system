@@ -4,8 +4,10 @@
  * FourRealities: row and dashboard fixtures for render tests
  */
 
-import { MetricsEngine } from '../../src/domain/metrics-engine';
-import { GateResult, IssueRow, ProjectDashboardView } from '../../src/domain/models';
+import { DefaultMetricsEngine } from '../../src/engine/default-metrics-engine';
+
+const MetricsEngine = new DefaultMetricsEngine();
+import { GateResult, IssueRow, ProjectDashboardView } from '../../src/contract/data/models';
 import { makeFacts } from '../domain/fixtures';
 
 export const F: GateResult = { state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK' };

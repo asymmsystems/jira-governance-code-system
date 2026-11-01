@@ -7,7 +7,7 @@
 import React, { useEffect, useState } from 'react';
 import { Inline, SectionMessage, Spinner, Text } from '@forge/react';
 import { invoke, view } from '@forge/bridge';
-import { IssueRow, ProjectDashboardView } from '../domain/models';
+import { IssueRow, ProjectDashboardView } from '../contract/data/models';
 import { IssuePanel } from './issue-panel';
 import { ProjectDashboard } from './project-dashboard';
 

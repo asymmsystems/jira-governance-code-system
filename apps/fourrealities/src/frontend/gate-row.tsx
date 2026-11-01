@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { Lozenge, Stack, Text } from '@forge/react';
-import { GATE_NAMES, GateName, GateResult, IssueGates } from '../domain/models';
+import { GATE_NAMES, GateName, GateResult, IssueGates } from '../contract/data/models';
 import { GATE_LABEL, appearanceOf, chipText, detailText, glyphOf, sourceLine, stateLabel } from '../ui/gate-text';
 
 /** One gate: state with glyph and text, the source line, and one sentence of detail. */

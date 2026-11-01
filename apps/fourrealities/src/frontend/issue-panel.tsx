@@ -7,7 +7,7 @@
 import React, { useState } from 'react';
 import { Box, Button, Heading, Inline, Lozenge, SectionMessage, Stack, Text, User } from '@forge/react';
 import { router } from '@forge/bridge';
-import { ExceptionNote, GATE_NAMES, GateName, IssueRow } from '../domain/models';
+import { ExceptionNote, GATE_NAMES, GateName, IssueRow } from '../contract/data/models';
 import { raiText, recoveryText, riskAppearance } from '../ui/gate-text';
 import { GateRow } from './gate-row';
 import { ExceptionModal, LinkDecisionModal } from './modals';

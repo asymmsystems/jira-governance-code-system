@@ -4,7 +4,7 @@
 
 * Status
 Approved - 2026-11-01 by the owner, in chat, together with [[file:adr-00001-fourrealities-evidence-data-model.org][ADR-001]].
-Not yet implemented: backlog item B-29.
+Implemented: backlog item B-29 (see Implementation Notes).
 
 * Context
 
@@ -128,6 +128,35 @@ graph with fake accessors. =resolveStorage= and its =NODE_ENV= branch are remove
 - The refactor is one backlog item with no behaviour change: the existing 205 tests must stay
   green, apart from moving to fake Accessors.
 - It lands before the ADR-001 model changes, so those changes are made once, in the new layout.
+
+* Implementation Notes (2026-11-01, B-29)
+
+Two corrections to the Decision section, made while building, both to keep the M360 ADR-029
+rule that an Engine has no dependency on another Engine, and the IDesign rule that one Manager
+does not call another synchronously:
+
+1. *No DevFieldEngine.* Parsing the Jira Development field is a translation of Jira's data
+   format, so it lives in the Jira Accessor (=src/accessor/dev-field.ts=). Engines receive a
+   parsed =DevFieldSummary=. "Started" is also a fact derived by the Accessor
+   (=IssueFacts.started=), so the Metrics Engine does not call the Gate Engine.
+2. *One project Manager.* The dashboard view, the on-demand build and the daily run share one
+   subject (the project snapshot), so =DefaultSnapshotManager= implements both
+   =DashboardManager= and =SnapshotManager=. The scope check before a user action is a short
+   private method in each of the two user-action Managers, so no Manager imports another.
+
+Layout as built:
+#+begin_src text
+src/contract/   service-types.ts, engines.ts, accessors.ts, managers.ts, data/models.ts, data/errors.ts
+src/engine/     default-gate-engine.ts, default-metrics-engine.ts, default-snapshot-engine.ts, default-policy-engine.ts
+src/accessor/   default-forge-jira-issue-accessor.ts, default-forge-kvs-store.ts, default-kvs-site-config-accessor.ts,
+                default-kvs-snapshot-accessor.ts, default-kvs-exception-accessor.ts,
+                helpers: jira-request.ts, jira-search.ts, remote-links.ts, issue-facts.ts, dev-field.ts
+src/manager/    default-snapshot-manager.ts, default-issue-evidence-manager.ts, default-exception-manager.ts
+src/index.ts    resolvers, scheduled trigger, compose() (the only file that creates Default* objects)
+#+end_src
+
+=test/architecture.test.ts= enforces the dependency rules. It failed on the earlier code
+(4 of 9 rules) and passes on this layout.
 
 * References
 

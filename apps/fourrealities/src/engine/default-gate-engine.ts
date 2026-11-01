@@ -4,12 +4,12 @@
  * FourRealities: gate evaluation. Pure functions from issue facts to gate results (spec v2, Gates).
  */
 
-import { GateResult, IssueFacts, IssueGates } from './models';
-import { parseDevField } from '../jira/dev-field';
+import { GateResult, IssueFacts, IssueGates } from '../contract/data/models';
+import { GateEngine } from '../contract/engines';
 
-/** Started: the status category is not "new", or the status has changed at least once. */
+/** Started is a fact parsed from Jira (status category not "new", or a status change). */
 export function isStarted(f: IssueFacts): boolean {
-  return f.statusCategory !== 'new' || f.statusChanges > 0;
+  return f.started;
 }
 
 export function isDone(f: IssueFacts): boolean {
@@ -120,7 +120,7 @@ export function evaluateCode(f: IssueFacts): GateResult {
   if (!f.devField.present) {
     return { state: 'NOT_APPLICABLE', reason: 'NO_DEV_TOOL' };
   }
-  const pr = parseDevField(f.devField.raw);
+  const pr = f.devField.summary;
   const merged = pr.mergedCount > 0 || (pr.state === 'MERGED' && pr.count > 0);
   const open = !merged && (pr.openCount > 0 || (pr.state === 'OPEN' && pr.count > 0));
   if (f.exception?.code && pr.count === 0) {
@@ -173,4 +173,12 @@ export function evaluateGates(f: IssueFacts): IssueGates {
     code: evaluateCode(f),
     audit: evaluateAudit(f)
   };
+}
+
+export class DefaultGateEngine implements GateEngine {
+  readonly serviceType = 'engine' as const;
+
+  evaluate(facts: IssueFacts): IssueGates {
+    return evaluateGates(facts);
+  }
 }

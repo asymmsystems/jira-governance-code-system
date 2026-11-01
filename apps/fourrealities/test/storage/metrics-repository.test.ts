@@ -4,8 +4,8 @@
  * FourRealities: MetricsRepository Unit Tests
  */
 
-import { MetricsRepository, StorageProvider } from '../../src/storage/metrics-repository';
-import { ExceptionRecord } from '../../src/domain/models';
+import { MetricsRepository, StorageProvider } from '../../src/accessor/default-kvs-exception-accessor';
+import { ExceptionRecord } from '../../src/contract/data/models';
 
 class MockStorageProvider implements StorageProvider {
   private store: Map<string, any> = new Map();

@@ -4,8 +4,9 @@
  * FourRealities: gate evaluation unit tests (spec v2, Gates)
  */
 
-import { evaluateAudit, evaluateCode, evaluateGates, evaluateIntent, evaluateProcess, isDone, isStarted } from '../../src/domain/gates';
+import { evaluateAudit, evaluateCode, evaluateGates, evaluateIntent, evaluateProcess, isDone, isStarted } from '../../src/engine/default-gate-engine';
 import { makeFacts } from './fixtures';
+import { parseDevField } from '../../src/accessor/dev-field';
 
 const note = { reason: 'Configuration change only', recordedBy: 'acc-1', recordedAt: '2026-11-01T00:00:00Z' };
 
@@ -196,7 +197,7 @@ describe('B-06: exceptions and rework notes', () => {
   const ex = (code?: any, rework?: any) => ({ schemaVersion: 2 as const, issueId: '1', issueKey: 'A-1', code, rework });
 
   it('ignores a Code exception once a pull request exists', () => {
-    const f = makeFacts({ exception: ex(note), devField: { present: true, raw: '{pullrequest={dataType=pullrequest, state=MERGED, stateCount=1}}' } });
+    const f = makeFacts({ exception: ex(note), devField: { present: true, summary: parseDevField('{pullrequest={dataType=pullrequest, state=MERGED, stateCount=1}}') } });
     expect(evaluateCode(f).state).not.toBe('EXCEPTED');
   });
 
@@ -208,7 +209,7 @@ describe('B-06: exceptions and rework notes', () => {
 });
 
 describe('B-10: Code gate from the Development field, labelled heuristic', () => {
-  const dev = (state: string, count = 1) => ({ present: true, raw: `{pullrequest={dataType=pullrequest, state=${state}, stateCount=${count}}}` });
+  const dev = (state: string, count = 1) => ({ present: true, summary: parseDevField(`{pullrequest={dataType=pullrequest, state=${state}, stateCount=${count}}}`) });
 
   it('reads a merged pull request as found (heuristic), never approved', () => {
     expect(evaluateCode(makeFacts({ devField: dev('MERGED', 2) })))
@@ -224,12 +225,12 @@ describe('B-10: Code gate from the Development field, labelled heuristic', () =>
 
   it('treats only declined pull requests, or none, as no pull request', () => {
     expect(evaluateCode(makeFacts({ devField: dev('DECLINED') }))).toEqual({ state: 'MISSING', reason: 'PR_NONE' });
-    expect(evaluateCode(makeFacts({ devField: { present: true } }))).toEqual({ state: 'MISSING', reason: 'PR_NONE' });
+    expect(evaluateCode(makeFacts({ devField: { present: true, summary: parseDevField(undefined) } }))).toEqual({ state: 'MISSING', reason: 'PR_NONE' });
     expect(evaluateCode(makeFacts({ statusCategory: 'indeterminate', devField: dev('DECLINED') }))).toEqual({ state: 'NOT_APPLICABLE', reason: 'NOT_DONE' });
   });
 
   it('is not applicable when the site has no Development field', () => {
-    expect(evaluateCode(makeFacts({ devField: { present: false } }))).toEqual({ state: 'NOT_APPLICABLE', reason: 'NO_DEV_TOOL' });
+    expect(evaluateCode(makeFacts({ devField: { present: false, summary: parseDevField(undefined) } }))).toEqual({ state: 'NOT_APPLICABLE', reason: 'NO_DEV_TOOL' });
   });
 
   it('never returns VERIFIED for the Code gate', () => {

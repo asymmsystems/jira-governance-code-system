@@ -4,7 +4,7 @@
  * FourRealities: Jira issue parsing unit tests
  */
 
-import { analyzeIssueChangelog, factsFromIssue, normalizeException, statusCategoryOf } from '../../src/jira/issue-facts';
+import { analyzeIssueChangelog, factsFromIssue, normalizeException, statusCategoryOf } from '../../src/accessor/issue-facts';
 
 describe('analyzeIssueChangelog', () => {
   it('counts status changes and rework loops', () => {
@@ -72,7 +72,8 @@ describe('factsFromIssue', () => {
     expect(f.sprintNames).toEqual(['Sprint 3', 'Sprint 4']);
     expect(f.issueLinks[0]).toEqual({ key: 'DEMO-2', summary: 'ADR', typeName: 'Decision', linkInward: 'is implemented by', linkOutward: 'implements' });
     expect(f.remoteLinks?.[0]).toEqual({ url: 'https://s.atlassian.net/wiki/x', title: 'ADR-1', applicationType: 'com.atlassian.confluence' });
-    expect(f.devField).toEqual({ present: true, raw: '{pullrequest={dataType=pullrequest, state=MERGED, stateCount=1}}' });
+    expect(f.devField).toEqual({ present: true, summary: { count: 1, state: 'MERGED', openCount: 0, mergedCount: 1, declinedCount: 0 } });
+    expect(f.started).toBe(true);
     expect(f.properties.ledgerseal).toEqual({ status: 'SEAL_VALID', valid: true });
     expect(f.properties.dod).toEqual({ isFullySatisfied: true, satisfied: true });
     expect(f.updated).toBe('2026-10-30T16:12:00.000+0000');
@@ -81,11 +82,11 @@ describe('factsFromIssue', () => {
   it('marks remote links as unread when none were passed, and the Development field as absent', () => {
     const f = factsFromIssue({ id: 1, key: 'A-1', fields: {} }, { devFieldId: null });
     expect(f.remoteLinks).toBeUndefined();
-    expect(f.devField).toEqual({ present: false, raw: undefined });
+    expect(f.devField).toEqual({ present: false, summary: { count: 0, state: null, openCount: 0, mergedCount: 0, declinedCount: 0 } });
     expect(f.summary).toBe('');
     expect(f.issueLinks).toEqual([]);
     const g = factsFromIssue({ id: 2, key: 'A-2', fields: { customfield_99: { a: 1 } } }, { devFieldId: 'customfield_99', remoteLinks: [{ url: 'u', title: 't' }] });
-    expect(g.devField).toEqual({ present: true, raw: undefined });
+    expect(g.devField).toEqual({ present: true, summary: { count: 0, state: null, openCount: 0, mergedCount: 0, declinedCount: 0 } });
     expect(g.remoteLinks?.[0]).toEqual({ url: 'u', title: 't', applicationType: undefined });
   });
 });

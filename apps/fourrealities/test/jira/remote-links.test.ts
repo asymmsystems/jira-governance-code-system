@@ -4,7 +4,7 @@
  * FourRealities: bounded remote-link reader unit tests
  */
 
-import { readRemoteLinks } from '../../src/jira/remote-links';
+import { readRemoteLinks } from '../../src/accessor/remote-links';
 
 // These tests use the real @forge/api route tag, so a path that the tag would reject fails here.
 const pathOf = (r: any): string => (typeof r === 'string' ? r : r.value);

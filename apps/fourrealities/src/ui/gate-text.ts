@@ -4,8 +4,7 @@
  * FourRealities: gate labels, sources and plain-English text (no React; spec v2, Gates)
  */
 
-import { GateName, GateReason, GateResult, IssueRow, Verification } from '../domain/models';
-import { RECOVERY_ORDER } from '../domain/metrics-engine';
+import { GateName, GateReason, GateResult, IssueRow, RECOVERY_ORDER, Verification } from '../contract/data/models';
 
 export const GATE_LABEL: Record<GateName, string> = {
   intent: 'Intent',

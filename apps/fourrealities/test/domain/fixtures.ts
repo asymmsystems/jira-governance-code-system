@@ -4,10 +4,10 @@
  * FourRealities: shared test fixtures for issue facts and gate results
  */
 
-import { GateResult, IssueFacts, IssueGates } from '../../src/domain/models';
+import { GateResult, IssueFacts, IssueGates, NO_PULL_REQUEST } from '../../src/contract/data/models';
 
 export function makeFacts(overrides: Partial<IssueFacts> = {}): IssueFacts {
-  return {
+  const base: IssueFacts = {
     issueId: '10001',
     issueKey: 'DEMO-1',
     summary: 'Deliver the settlement flow',
@@ -15,14 +15,17 @@ export function makeFacts(overrides: Partial<IssueFacts> = {}): IssueFacts {
     statusCategory: 'done',
     assigneeName: 'Ana Silva',
     sprintNames: [],
+    started: true,
     statusChanges: 2,
     reworkLoops: 0,
     issueLinks: [],
     remoteLinks: [],
-    devField: { present: true },
+    devField: { present: true, summary: NO_PULL_REQUEST },
     properties: {},
     ...overrides
   };
+  // Started is derived from Jira data unless a test sets it.
+  return 'started' in overrides ? base : { ...base, started: base.statusCategory !== 'new' || base.statusChanges > 0 };
 }
 
 export const FOUND_V: GateResult = { state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK' };

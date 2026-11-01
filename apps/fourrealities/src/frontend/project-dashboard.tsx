@@ -25,7 +25,7 @@ import {
   Textfield
 } from '@forge/react';
 import { router } from '@forge/bridge';
-import { GATE_NAMES, GateName, IssueRow, ProjectDashboardView } from '../domain/models';
+import { GATE_NAMES, GateName, IssueRow, ProjectDashboardView } from '../contract/data/models';
 import { GATE_LABEL, raiText, rateText, riskAppearance } from '../ui/gate-text';
 import { GateChips, GateRow } from './gate-row';
 

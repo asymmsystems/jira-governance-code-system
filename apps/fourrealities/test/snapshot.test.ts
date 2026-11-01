@@ -1,14 +1,38 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: snapshot builder unit tests (spec v2, Snapshot schedule)
+ * FourRealities: snapshot build tests: DefaultSnapshotManager over the real Accessors and Engines,
+ * with a mocked Jira request (spec v2, Snapshot schedule)
  */
 
-import { buildSnapshot } from '../src/snapshot';
-import { SnapshotRepository } from '../src/storage/snapshot-repository';
+import { DefaultSnapshotManager } from '../src/manager/default-snapshot-manager';
+import { DefaultKvsSnapshotAccessor, SnapshotRepository } from '../src/accessor/default-kvs-snapshot-accessor';
+import { DefaultKvsExceptionAccessor } from '../src/accessor/default-kvs-exception-accessor';
+import { DefaultKvsSiteConfigAccessor } from '../src/accessor/default-kvs-site-config-accessor';
+import { DefaultForgeJiraIssueAccessor } from '../src/accessor/default-forge-jira-issue-accessor';
+import { DefaultGateEngine } from '../src/engine/default-gate-engine';
+import { DefaultMetricsEngine } from '../src/engine/default-metrics-engine';
+import { DefaultSnapshotEngine } from '../src/engine/default-snapshot-engine';
 import { MemoryStorage } from './storage/memory-storage';
 
 const pathOf = (r: any): string => (typeof r === 'string' ? r : r.value);
+
+function buildSnapshot(o: { projectKey: string; storage: any; request: any; deadline: number; generatedBy: string; now?: () => Date }) {
+  const jira = new DefaultForgeJiraIssueAccessor('app', () => o.deadline, o.request);
+  const manager = new DefaultSnapshotManager({
+    jira,
+    viewerJira: jira,
+    budgetMs: 0,
+    siteConfig: new DefaultKvsSiteConfigAccessor(o.storage, o.request),
+    snapshots: new DefaultKvsSnapshotAccessor(o.storage),
+    exceptions: new DefaultKvsExceptionAccessor(o.storage),
+    gates: new DefaultGateEngine(),
+    metrics: new DefaultMetricsEngine(),
+    snapshot: new DefaultSnapshotEngine(),
+    now: o.now
+  });
+  return manager.build(o.projectKey, o.generatedBy, o.deadline);
+}
 
 const issue = (id: string, category: string, extra: any = {}) => ({
   id, key: `DEMO-${id}`,

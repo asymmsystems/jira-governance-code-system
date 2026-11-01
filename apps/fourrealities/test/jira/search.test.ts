@@ -4,7 +4,8 @@
  * FourRealities: paged project search and 429 retry unit tests (real @forge/api route tag)
  */
 
-import { ISSUE_CAP, searchProjectIssues, withRetry } from '../../src/jira/search';
+import { ISSUE_CAP, searchProjectIssues } from '../../src/accessor/jira-search';
+import { withRetry } from '../../src/accessor/jira-request';
 
 const pathOf = (r: any): string => (typeof r === 'string' ? r : r.value);
 
@@ -72,6 +73,11 @@ describe('searchProjectIssues', () => {
     expect((await searchProjectIssues('DEMO', null, capped, deadline())).totalKnown).toBeNull();
     const thrown = jest.fn(async () => { throw new Error('socket'); });
     expect((await searchProjectIssues('DEMO', null, thrown, deadline())).error).toBe('socket');
+    const silent = jest.fn(async () => { throw {}; });
+    expect((await searchProjectIssues('DEMO', null, silent, deadline())).error).toBe('Network error querying Jira search/jql');
+    const page = jira(2100);
+    const countThrows = jest.fn(async (r: any, init?: any) => { if (pathOf(r).includes('approximate')) throw new Error('x'); return page(r, init); });
+    expect((await searchProjectIssues('DEMO', null, countThrows, deadline())).totalKnown).toBeNull();
   });
 });
 
@@ -109,7 +115,7 @@ describe('withRetry', () => {
 });
 
 describe('visibleIssueIds', () => {
-  const { visibleIssueIds } = require('../../src/jira/search');
+  const { visibleIssueIds } = require('../../src/accessor/jira-search');
 
   it('pages an id-only search and returns the ids the caller can see', async () => {
     const request = jest.fn(async (r: any) => {

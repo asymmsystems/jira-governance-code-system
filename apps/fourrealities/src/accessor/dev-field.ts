@@ -5,17 +5,11 @@
  * The field reports pull request state only. Review approval is not in it (research H11).
  */
 
-export type PullRequestState = 'MERGED' | 'OPEN' | 'DECLINED';
+import { DevFieldSummary, NO_PULL_REQUEST, PullRequestState } from '../contract/data/models';
 
-export interface DevFieldSummary {
-  count: number;
-  state: PullRequestState | null;
-  openCount: number;
-  mergedCount: number;
-  declinedCount: number;
-}
+export { DevFieldSummary };
 
-const NONE: DevFieldSummary = { count: 0, state: null, openCount: 0, mergedCount: 0, declinedCount: 0 };
+const NONE: DevFieldSummary = NO_PULL_REQUEST;
 
 function asState(value: unknown): PullRequestState | null {
   return value === 'MERGED' || value === 'OPEN' || value === 'DECLINED' ? value : null;

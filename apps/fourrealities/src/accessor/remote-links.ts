@@ -5,7 +5,7 @@
  */
 
 import { route } from '@forge/api';
-import { JiraRequest } from './site-config';
+import { JiraRequest } from './jira-request';
 
 export const REMOTE_LINK_CONCURRENCY = 8;
 

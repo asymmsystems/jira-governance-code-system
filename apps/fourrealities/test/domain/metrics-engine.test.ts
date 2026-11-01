@@ -4,7 +4,10 @@
  * FourRealities: MetricsEngine unit tests (spec v2, Metrics)
  */
 
-import { MetricsEngine } from '../../src/domain/metrics-engine';
+import { DefaultMetricsEngine } from '../../src/engine/default-metrics-engine';
+import { evaluateGates } from '../../src/engine/default-gate-engine';
+
+const MetricsEngine = new DefaultMetricsEngine();
 import { EXCEPTED, FOUND_V, MISSING, NA, RECHECK, gates, makeFacts } from './fixtures';
 
 describe('MetricsEngine.rai and risk', () => {
@@ -59,20 +62,22 @@ describe('MetricsEngine.buildRow', () => {
   });
 
   it('truncates long summaries to 120 characters', () => {
-    const row = MetricsEngine.buildRow(makeFacts({ summary: 'x'.repeat(200) }));
+    const row = MetricsEngine.buildRow(makeFacts({ summary: 'x'.repeat(200) }), evaluateGates(makeFacts()));
     expect(row.summary.length).toBe(120);
     expect(row.summary.endsWith('...')).toBe(true);
   });
 
   it('carries the exception and rework notes', () => {
     const note = { reason: 'Configuration change only', recordedBy: 'acc-1', recordedAt: '2026-11-01T00:00:00Z' };
-    const row = MetricsEngine.buildRow(makeFacts({ exception: { schemaVersion: 2, issueId: '1', issueKey: 'A-1', code: note, rework: note } }));
+    const facts = makeFacts({ exception: { schemaVersion: 2, issueId: '1', issueKey: 'A-1', code: note, rework: note } });
+    const row = MetricsEngine.buildRow(facts, evaluateGates(facts));
     expect(row.exception).toEqual(note);
     expect(row.reworkNote).toEqual(note);
   });
 
-  it('evaluate() evaluates the gates from facts', () => {
-    const row = MetricsEngine.evaluate(makeFacts({ statusCategory: 'new', statusChanges: 0, devField: { present: false } }));
+  it('builds an UNRATED row for an unstarted issue', () => {
+    const facts = makeFacts({ statusCategory: 'new', statusChanges: 0, devField: { present: false, summary: { count: 0, state: null, openCount: 0, mergedCount: 0, declinedCount: 0 } } });
+    const row = MetricsEngine.buildRow(facts, evaluateGates(facts));
     expect(row.rai).toBeNull();
     expect(row.risk).toBe('UNRATED');
     expect(row.started).toBe(false);

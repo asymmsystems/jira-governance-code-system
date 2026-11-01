@@ -4,21 +4,13 @@
  * FourRealities: bounded snapshot storage (spec v2, Storage Schema). No value grows with page views.
  */
 
-import { ExceptionRecord, IssueRow, ProjectSummary, SnapshotMeta, TrendPoint } from '../domain/models';
-import { normalizeException } from '../jira/issue-facts';
-import { StorageProvider } from './metrics-repository';
+import { CHUNK_SIZE_HINT, IssueRow, ProjectSummary, SnapshotMeta, StoredSnapshot, TrendPoint } from '../contract/data/models';
+import { SnapshotAccessor, StorageProvider } from '../contract/accessors';
 
-export const CHUNK_SIZE = 100;
+export const CHUNK_SIZE = CHUNK_SIZE_HINT;
 export const MAX_TREND_POINTS = 52;
 export const MAX_PROJECTS = 500;
 const V1_SIGNALS_PER_RUN = 100;
-
-/** Monday (UTC) of the ISO week that holds the given time, as YYYY-MM-DD. */
-export function weekStartOf(iso: string): string {
-  const d = new Date(iso);
-  const day = (d.getUTCDay() + 6) % 7;
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - day)).toISOString().slice(0, 10);
-}
 
 interface Chunk {
   snapshotId: string;
@@ -50,7 +42,7 @@ export class SnapshotRepository {
     }
   }
 
-  public async loadSnapshot(projectKey: string): Promise<{ meta: SnapshotMeta; rows: IssueRow[] } | undefined> {
+  public async loadSnapshot(projectKey: string): Promise<StoredSnapshot | undefined> {
     const meta = await this.storage.get<SnapshotMeta>(this.key(projectKey, 'meta'));
     if (!meta || meta.schemaVersion !== 2) {
       return undefined;
@@ -90,27 +82,6 @@ export class SnapshotRepository {
     return (await this.storage.get<string[]>('fr:projects')) || [];
   }
 
-  /** Exception records keyed by issue id, read with a paged prefix query. */
-  public async listExceptions(): Promise<Map<string, ExceptionRecord>> {
-    const result = new Map<string, ExceptionRecord>();
-    if (!this.storage.queryPrefix) {
-      return result;
-    }
-    let cursor: string | undefined;
-    do {
-      const page: { results: Array<{ key: string; value: any }>; nextCursor?: string } = await this.storage.queryPrefix<any>('fr:issue:', cursor);
-      for (const { key, value } of page.results) {
-        const match = /^fr:issue:(.+):exception$/.exec(key);
-        const record = match ? normalizeException(value) : undefined;
-        if (match && record) {
-          result.set(match[1], record);
-        }
-      }
-      cursor = page.nextCursor;
-    } while (cursor);
-    return result;
-  }
-
   /** Deletes the v1 per-view snapshot keys of one project (spec v2, Migration). */
   public async deleteV1ProjectKeys(projectKey: string): Promise<void> {
     await this.storage.delete(`fr:project:${projectKey}:latest`);
@@ -137,4 +108,8 @@ export class SnapshotRepository {
     const deleted = batch.length;
     return deleted;
   }
+}
+
+export class DefaultKvsSnapshotAccessor extends SnapshotRepository implements SnapshotAccessor {
+  readonly serviceType = 'accessor' as const;
 }

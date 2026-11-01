@@ -5,43 +5,18 @@
  */
 
 import { Route, route } from '@forge/api';
-import { JiraRequest } from './site-config';
+import { JiraRequest } from './jira-request';
 import { PROPERTY_KEYS } from './issue-facts';
 
 /** At most this many issues are read per project. Above it the UI shows "Showing N of M". */
 export const ISSUE_CAP = 2000;
 const PAGE_SIZE = 100;
-const MAX_RETRIES = 3;
-const MAX_WAIT_MS = 5000;
 
 const BASE_FIELDS = 'summary,status,issuetype,issuelinks,assignee,updated,customfield_10020,sprint';
 
 /** Fields every issue read requests, plus the site's Development field when it has one. */
 export function issueFields(devFieldId: string | null): string {
   return devFieldId ? `${BASE_FIELDS},${devFieldId}` : BASE_FIELDS;
-}
-
-const defaultSleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
-
-/**
- * Wraps a request so that a 429 is retried at most 3 times, waiting Retry-After seconds
- * (default 1, at most 5) while the wait still ends before the deadline. Then the 429 is returned.
- */
-export function withRetry(send: JiraRequest, deadline: () => number, sleep: (ms: number) => Promise<void> = defaultSleep): JiraRequest {
-  return async (r: Route, init?: any) => {
-    let res = await send(r, init);
-    for (let attempt = 0; attempt < MAX_RETRIES && res.status === 429; attempt++) {
-      const header = res.headers?.get('Retry-After');
-      const seconds = header !== null && header !== undefined && header !== '' && Number(header) >= 0 ? Number(header) : 1;
-      const wait = Math.min(seconds, MAX_WAIT_MS / 1000) * 1000;
-      if (Date.now() + wait > deadline()) {
-        break;
-      }
-      await sleep(wait);
-      res = await send(r, init);
-    }
-    return res;
-  };
 }
 
 export interface SearchResult {

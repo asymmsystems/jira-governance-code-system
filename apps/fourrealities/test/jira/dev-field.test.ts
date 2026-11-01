@@ -4,7 +4,7 @@
  * FourRealities: Development field parser unit tests
  */
 
-import { parseDevField } from '../../src/jira/dev-field';
+import { parseDevField } from '../../src/accessor/dev-field';
 
 const withJson = (pr: any) =>
   `{pullrequest={dataType=pullrequest, state=${pr.state}, stateCount=${pr.count}}, json={"cachedValue":{"errors":[],"summary":{"pullrequest":{"overall":{"count":${pr.count},"state":"${pr.state}","details":{"openCount":${pr.open},"mergedCount":${pr.merged},"declinedCount":${pr.declined},"total":${pr.count}},"open":${pr.open > 0}},"byInstanceType":{}}}},"isStale":false}}`;

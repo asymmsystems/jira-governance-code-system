@@ -4,13 +4,18 @@
  * FourRealities: bounded snapshot storage unit tests (spec v2, Storage Schema)
  */
 
-import { CHUNK_SIZE, MAX_PROJECTS, MAX_TREND_POINTS, SnapshotRepository, weekStartOf } from '../../src/storage/snapshot-repository';
-import { MetricsEngine } from '../../src/domain/metrics-engine';
-import { SnapshotMeta, TrendPoint } from '../../src/domain/models';
+import { CHUNK_SIZE, MAX_PROJECTS, MAX_TREND_POINTS, SnapshotRepository } from '../../src/accessor/default-kvs-snapshot-accessor';
+import { DefaultKvsExceptionAccessor } from '../../src/accessor/default-kvs-exception-accessor';
+import { weekStartOf } from '../../src/engine/default-snapshot-engine';
+import { DefaultMetricsEngine } from '../../src/engine/default-metrics-engine';
+import { evaluateGates } from '../../src/engine/default-gate-engine';
+
+const MetricsEngine = new DefaultMetricsEngine();
+import { SnapshotMeta, TrendPoint } from '../../src/contract/data/models';
 import { makeFacts } from '../domain/fixtures';
 import { MemoryStorage } from './memory-storage';
 
-const rows = (n: number) => Array.from({ length: n }, (_, i) => MetricsEngine.buildRow(makeFacts({ issueId: String(i), issueKey: `DEMO-${i}` })));
+const rows = (n: number) => Array.from({ length: n }, (_, i) => { const f = makeFacts({ issueId: String(i), issueKey: `DEMO-${i}` }); return MetricsEngine.buildRow(f, evaluateGates(f)); });
 const meta = (id: string, n: number): SnapshotMeta => ({
   schemaVersion: 2, projectKey: 'DEMO', snapshotId: id, generatedAt: '2026-11-01T00:00:00.000Z', generatedBy: 'scheduled',
   chunkCount: Math.ceil(n / CHUNK_SIZE), shownCount: n, totalKnown: n, capped: false, remoteLinksRead: 0
@@ -109,10 +114,10 @@ describe('SnapshotRepository trend, registry and migration', () => {
 
   it('lists exception records with a paged prefix query', async () => {
     const storage = new MemoryStorage();
-    const repo = new SnapshotRepository(storage);
+    const repo = new DefaultKvsExceptionAccessor(storage);
     for (let i = 0; i < 150; i++) await storage.set(`fr:issue:${i}:exception`, { schemaVersion: 2, issueId: String(i), issueKey: `D-${i}` });
     await storage.set('fr:issue:7:signals', {});
-    const map = await repo.listExceptions();
+    const map = await repo.listByIssue([]);
     expect(map.size).toBe(150);
     expect(map.get('7')?.issueKey).toBe('D-7');
     expect(storage.count('query')).toBe(2);
