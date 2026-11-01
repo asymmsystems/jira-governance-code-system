@@ -236,7 +236,20 @@ Audit and Process show "Source: LedgerSeal property ledgerseal-cert" or "Source:
 
 ## How RAI is shown (B-21, H5)
 
-RAI is a secondary number. The dashboard shows the four gate rates, each with its counts, before the project RAI line, which names the rated and unrated issue counts. The issue panel shows the four gates first, then the RAI lozenge with its parts: "RAI 67% (HIGH): 2 of 3 rated gates have evidence found. 3 of 4 gates apply to this issue." No sprint name appears next to a project-wide score, and no view ranks people or teams by RAI (the triage table's Assignee column is not sortable; the Assignee filter selects one person).
+RAI is a secondary number, shown to users as "Alignment". The dashboard shows the four reality cards, each with its counts, before the alignment box, which names the rated and unrated issue counts. The issue panel shows the four gates first, then the RAI lozenge with its parts: "RAI 67% (HIGH): 2 of 3 rated gates have evidence found. 3 of 4 gates apply to this issue." No sprint name appears next to a project-wide score, and no view ranks people or teams by RAI (the triage table's Assignee column is not sortable; the Assignee filter selects one person).
+
+## Dashboard and panel layout (B-33 to B-40)
+
+Approved by the owner on 2026-11-01 from a UX consultation review (backlog "Added by the UX consultation review"). The words come from pure functions in `src/ui/pipeline.ts`; the components are in `src/frontend/`.
+
+- **Pipeline (B-33).** Every surface shows the gates as one chain: Intent, Process, Code, Audit. Each chip shows a glyph, an ADS colour and a short state, for example "✕ Intent: missing", "● Code: found, heuristic", "○ Audit: n/a"; the chip text alone names the state. A tooltip adds the full state and the source. The panel and the Inspect modal show arrows between the chips; the table and the compact view do not.
+- **Table (B-34).** Columns: Issue, Summary, Gates (compact pipeline, widest column), Alignment, Top finding, Assignee, Action. Column widths (percent): 7, 18, 34, 9, 18, 8, 6.
+- **Reality cards (B-35).** One bordered card per gate: gate name with the metric code in a tooltip (M11, DoD rate, M29, seal rate), the rate as a lozenge, one plain question, a progress bar with an `ariaLabel`, "n of m rated issues have evidence", and "Show n missing Gate" only when n is above 0. The Code question is "Was the work merged through a pull request?": apps cannot read review approvals (H11).
+- **Drift sentence and next action (B-36).** From the first MISSING gate in chain order, for example "Code was merged, but it does not trace to a decision record." or "No Definition of Done record is on this issue.", and one next action, for example "Next: link the decision record." With nothing missing: "Every rated gate has evidence." or "No gate applies yet." Shown in the panel, the compact view, the Inspect modal and the table's Top finding column.
+- **Alignment box (B-37, B-39).** After the cards (H5): "Alignment n%" with rated and unrated counts, the change against the previous weekly point (only when both weeks rate at least 10 issues, else "Not enough data for a trend yet."), the weakest rated gate with its counts, the risk buttons, and one sentence that defines Alignment. In the issue panel, "Why n%?" lists what each gate adds and what fixing the first missing gate recovers.
+- **Compact issue-context view (B-38).** The `fourrealities-issue-context` module shows the pipeline, "Alignment n%" with its risk level, the next action and "See all findings"; the full panel has "Hide findings".
+- **Inspect (B-40).** Shows the pipeline, the drift sentence and the gate rows, with "Previous issue" and "Next issue" through the visible rows, "Close" and "Open issue". No remediation action.
+- **Not built from the consultation, with the reason:** review-approval wording for Code (H11); a seal action in FourRealities, DoD checkboxes and "tamper-evident" wording (hard rules, T-05); title-overlap decision suggestions (FR-13); Custom UI (needs new dependencies). Trend by sprint is not built: weekly points are stored, and a sprint trend needs a new storage shape.
 
 ## Accessibility rules (B-20)
 
@@ -254,9 +267,11 @@ The filter bar sits above the triage table, in this tab order: Search (key or su
 |---|---|---|
 | Assignee | assignee names in name order, then "Unassigned" when a row has no assignee | exact name |
 | Sprint | sprint names on the rows, in name order | the row is in that sprint; the control is hidden when no row has a sprint |
-| Gate | "Intent missing", "Process missing", "Code missing", "Audit missing" | that gate is MISSING; the "Show Gate missing (n)" buttons set the same filter |
+| Gate | "Intent missing", "Process missing", "Code missing", "Audit missing" | that gate is MISSING; the cards' "Show n missing Gate" buttons set the same filter |
+| Risk (B-39) | Critical, High, Medium, Low buttons in the alignment box, with counts | the row's risk is one of the chosen levels; each button adds or removes its level |
+| My issues (B-40) | the viewer's account id | the row's assignee account id; offered only when the viewer is known |
 
-Filters combine with AND. Each active filter has its own "Remove filter: ..." button; "Clear all filters" appears when two or more are active and keeps the search text. The count reads "Showing n of m issues".
+Preset views (B-40) set several filters at once and keep the search text: "My issues", "Critical and high", "Audit prep" (Audit missing), "Needs a decision link" (Intent missing). Filters combine with AND. Each active filter has its own "Remove filter: ..." button; "Clear all filters" appears when two or more are active and keeps the search text. The count reads "Showing n of m issues".
 
 ## Manifest
 
