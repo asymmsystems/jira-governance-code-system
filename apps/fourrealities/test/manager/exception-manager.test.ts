@@ -21,7 +21,7 @@ function setup(o: { events?: GateExceptionEvent[]; admin?: boolean; assignee?: s
   const userJira: any = {
     serviceType: 'accessor',
     issueProject: jest.fn().mockResolvedValue(o.project || { status: 200, issueKey: 'DEMO-1', projectKey: 'DEMO', assigneeAccountId: o.assignee }),
-    hasProjectPermission: jest.fn().mockResolvedValue(o.permission || { status: 200, granted: o.admin ?? true }),
+    hasAnyPermission: jest.fn().mockResolvedValue(o.permission || { status: 200, granted: o.admin ?? true }),
     pullRequests: jest.fn().mockResolvedValue({ status: 200, issueKey: 'DEMO-1', summary: { count: o.prCount || 0 } }),
     putExceptionProperty: jest.fn().mockResolvedValue(o.put ?? 200)
   };
@@ -106,14 +106,14 @@ describe('DefaultExceptionManager.decide (Option C)', () => {
     const { manager, userJira, events } = setup({ events: [requested], assignee: 'dev-9' });
     const res = await manager.decide(issueView('admin-1'), { decision: 'APPROVE', reason: '' });
     expect(res.success).toBe(true);
-    expect(userJira.hasProjectPermission).toHaveBeenCalledWith('DEMO', 'ADMINISTER_PROJECTS');
+    expect(userJira.hasAnyPermission).toHaveBeenCalledWith('DEMO', ['ADMINISTER_PROJECTS', 'ADMINISTER']);
     expect(events.append.mock.calls[0][0]).toEqual(expect.objectContaining({ status: 'APPROVED', byAccountId: 'admin-1', asRole: 'APPROVER', reason: 'Approved without comment.' }));
     expect(res.record?.code).toEqual(expect.objectContaining({ status: 'APPROVED', requestedBy: 'dev-1', decidedBy: 'admin-1' }));
   });
 
   it('refuses a non-administrator, the requester and the assignee, and appends nothing', async () => {
     const cases: Array<[any, string, string]> = [
-      [{ events: [requested], admin: false }, 'dev-2', 'Only a project administrator can approve, reject or revoke an exception.'],
+      [{ events: [requested], admin: false }, 'dev-2', 'Only a project administrator or a Jira administrator can approve, reject or revoke an exception.'],
       [{ events: [requested] }, 'dev-1', 'The person who requested the exception cannot approve, reject or revoke it.'],
       [{ events: [requested], assignee: 'admin-1' }, 'admin-1', "The issue's assignee cannot approve, reject or revoke its exception."]
     ];
@@ -128,7 +128,7 @@ describe('DefaultExceptionManager.decide (Option C)', () => {
     const { manager, userJira, events } = setup({ events: [requested] });
     const res = await manager.decide(issueView('dev-1'), { decision: 'WITHDRAW' });
     expect(res.success).toBe(true);
-    expect(userJira.hasProjectPermission).not.toHaveBeenCalled();
+    expect(userJira.hasAnyPermission).not.toHaveBeenCalled();
     expect(events.append.mock.calls[0][0]).toEqual(expect.objectContaining({ status: 'WITHDRAWN', asRole: 'REQUESTER', reason: 'Withdrawn without comment.' }));
     // Found live on AUDT-1: a withdrawal without a comment was stored as "Approved without comment."
     expect(res.record?.code?.decisionReason).toBe('Withdrawn without comment.');

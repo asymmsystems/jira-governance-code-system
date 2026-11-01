@@ -114,7 +114,7 @@ describe('B-17: afterActionText (feedback from the re-evaluated state, FR-20)', 
   it('names the gate state that Jira returned after the write', () => {
     expect(afterActionText('link', row(found, missing))).toBe('Link added. Intent: Evidence found.');
     expect(afterActionText('link', row({ state: 'MISSING', reason: 'INTENT_NONE' }, missing))).toBe('Link added. Intent: Evidence missing.');
-    expect(afterActionText('code', row(found, missing))).toBe('Exception requested. A project administrator must approve it. Code: Evidence missing.');
+    expect(afterActionText('code', row(found, missing))).toBe('Exception requested. A project or Jira administrator must approve it. Code: Evidence missing.');
     expect(afterActionText('decision', row(found, excepted))).toBe('Decision recorded. Code: Excepted.');
     expect(afterActionText('rework', row(found, missing))).toBe('Rework reason recorded. It does not change any gate.');
   });

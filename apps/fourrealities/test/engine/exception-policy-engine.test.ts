@@ -76,7 +76,7 @@ describe('decisionError (Option C)', () => {
 
   it('refuses a non-administrator, the requester and the assignee', () => {
     expect(policy.decisionError(waiting, 'APPROVE', { accountId: 'dev-2', isProjectAdmin: false }, undefined, ''))
-      .toBe('Only a project administrator can approve, reject or revoke an exception.');
+      .toBe('Only a project administrator or a Jira administrator can approve, reject or revoke an exception.');
     expect(policy.decisionError(waiting, 'APPROVE', admin('dev-1'), undefined, ''))
       .toBe('The person who requested the exception cannot approve, reject or revoke it.');
     expect(policy.decisionError(waiting, 'APPROVE', admin('admin-1'), 'admin-1', ''))

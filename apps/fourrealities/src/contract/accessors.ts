@@ -41,7 +41,7 @@ export interface JiraIssueAccessor extends Accessor {
   /** The issue's key, project and current assignee. */
   issueProject(issueId: string): Promise<{ status: number; issueKey?: string; projectKey?: string; assigneeAccountId?: string }>;
   /** Whether the caller holds a project permission, for example ADMINISTER_PROJECTS. */
-  hasProjectPermission(projectKey: string, permission: string): Promise<{ status: number; granted: boolean }>;
+  hasAnyPermission(projectKey: string, permissions: string[]): Promise<{ status: number; granted: boolean }>;
   pullRequests(issueId: string, devFieldId: string): Promise<{ status: number; issueKey?: string; summary?: DevFieldSummary }>;
   addRemoteLink(issueId: string, link: { url: string; title: string; summary: string }): Promise<number>;
   putExceptionProperty(issueId: string, value: ExceptionProperty): Promise<number>;

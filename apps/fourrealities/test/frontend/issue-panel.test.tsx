@@ -206,7 +206,7 @@ describe('IssuePanel', () => {
       const r = await mount(row('DEMO-20', missingCode, { codeException: { ...base, status: 'REQUESTED' } }));
       const text = textOf(r.toJSON());
       expect(text).toContain('Code: Evidence missing');
-      expect(text).toContain('Waiting for a project administrator who is not the requester or the assignee.');
+      expect(text).toContain('Waiting for a project or Jira administrator who is not the requester or the assignee.');
       for (const label of ['Approve exception', 'Reject exception', 'Withdraw request']) findButton(r.root, label);
       expect(() => findButton(r.root, 'Request Code exception')).toThrow('No button');
     });
@@ -216,9 +216,9 @@ describe('IssuePanel', () => {
       const r = await mount(row('DEMO-20', missingCode, { codeException: { ...base, status: 'REQUESTED' } }), onReload);
       await act(async () => { findButton(r.root, 'Approve exception').props.onClick(); });
       expect(textOf(r.toJSON())).toContain('Approve the Code exception for DEMO-20');
-      bridgeState.invoke.mockResolvedValueOnce({ success: false, error: 'Only a project administrator can approve, reject or revoke an exception.' });
+      bridgeState.invoke.mockResolvedValueOnce({ success: false, error: 'Only a project administrator or a Jira administrator can approve, reject or revoke an exception.' });
       await act(async () => { findButton(r.root, 'Approve').props.onClick(); });
-      expect(textOf(r.toJSON())).toContain('Only a project administrator can approve, reject or revoke an exception.');
+      expect(textOf(r.toJSON())).toContain('Only a project administrator or a Jira administrator can approve, reject or revoke an exception.');
       bridgeState.invoke.mockRejectedValueOnce({});
       await act(async () => { findButton(r.root, 'Approve').props.onClick(); });
       expect(textOf(r.toJSON())).toContain('The decision was not recorded.');

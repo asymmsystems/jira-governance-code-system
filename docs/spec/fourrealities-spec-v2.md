@@ -198,12 +198,12 @@ A Code exception is a list of append-only events (`GateExceptionEvent`): REQUEST
 | Decision | From | To | Who may make it |
 |---|---|---|---|
 | Request | none, REJECTED, WITHDRAWN, REVOKED | REQUESTED | any user with Edit issues; refused when a pull request exists |
-| Approve | REQUESTED | APPROVED | a user with `ADMINISTER_PROJECTS` in the issue's project, who is not the requester and not the assignee |
+| Approve | REQUESTED | APPROVED | a user with `ADMINISTER_PROJECTS` in the issue's project or the global `ADMINISTER` permission, who is not the requester and not the assignee |
 | Reject | REQUESTED | REJECTED | as Approve; reason 15 to 500 characters |
 | Revoke | APPROVED | REVOKED | as Approve; reason 15 to 500 characters |
 | Withdraw | REQUESTED | WITHDRAWN | the requester only |
 
-The administrator check is `GET /rest/api/3/mypermissions?projectKey={key}&permissions=ADMINISTER_PROJECTS`, run as the acting user (scope `read:jira-work`).
+The administrator check is one call, `GET /rest/api/3/mypermissions?projectKey={key}&permissions=ADMINISTER_PROJECTS,ADMINISTER`, run as the acting user (scope `read:jira-work`); either permission is enough (owner decision 1B, 2026-11-01).
 
 ### Audit (seal)
 
@@ -294,7 +294,7 @@ All resolvers return `{ ok: true, ... }` or `{ ok: false, error: { code, message
 | `getIssueAlignment` | none | Issue from context only. Reads the issue (fields, properties, changelog) and its remote links as the user. At most 3 Jira calls (the field list is cached in `fr:cfg:site`). | `{ row }` |
 | `linkDecision` | `issueId`, `url`, `title`, `summary?` | `url` is http or https; `title` 3 to 255 characters after trim. Project-key check (below). POST as the user. Re-reads the issue. | `{ success, remoteLink, row? }` |
 | `recordException` | `issueId`, `type` (`CODE` or `REWORK`), `reason`, `notes?` | Reason 15 to 500 characters after trim. Project-key check. `CODE` requests an exception and is rejected when a pull request exists or one is waiting or approved. `REWORK` appends a note and never replaces an earlier one. PUT `fourrealities-exception` (current Code state, latest rework note, `reworkNoteCount`) as the user; the event or note is stored only after a 2xx. | `{ success, record, row? }` |
-| `decideException` | `issueId`, `decision` (`APPROVE`, `REJECT`, `REVOKE`, `WITHDRAW`), `reason` | Signed-in user required. Reads the issue's project and assignee as the user, checks scope, checks `ADMINISTER_PROJECTS` as the user (not for Withdraw), applies the lifecycle table. Property first, then the event. | `{ success, record, row? }` |
+| `decideException` | `issueId`, `decision` (`APPROVE`, `REJECT`, `REVOKE`, `WITHDRAW`), `reason` | Signed-in user required. Reads the issue's project and assignee as the user, checks scope, checks `ADMINISTER_PROJECTS` or `ADMINISTER` as the user (not for Withdraw), applies the lifecycle table. Property first, then the event. | `{ success, record, row? }` |
 
 **Feedback after a write (B-17, FR-20):** after a successful `linkDecision`, `recordException` or `decideException` from an issue view, the resolver reads the issue again as the user (as `getIssueAlignment`) and returns its `row`. The panel replaces its row in place and stays mounted, and its message names the gate state from that row ("Link added. Intent: Evidence found."). When the read fails, or the call came from the project page, there is no `row`, and the message says "The gates could not be read again. Use Refresh." It never claims a state.
 

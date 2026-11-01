@@ -1048,11 +1048,29 @@ describe('B-30: exception request and administrator approval, end to end', () =>
     expect(res.error).toBe('FourRealities: no signed-in user.');
     const approved = await decideException({ decision: 'APPROVE' }, { extension: { issue: { id: '31001' } }, accountId: 'admin-1' }, storage);
     expect(approved.success).toBe(true);
-    expect(mockUserRequestJira.mock.calls.some(c => String(c[0]) === '/rest/api/3/mypermissions?projectKey=DEMO&permissions=ADMINISTER_PROJECTS')).toBe(true);
+    const permissionCall = mockUserRequestJira.mock.calls.map(c => String(c[0])).find(p => p.startsWith('/rest/api/3/mypermissions'));
+    expect(decodeURIComponent(String(permissionCall))).toBe('/rest/api/3/mypermissions?projectKey=DEMO&permissions=ADMINISTER_PROJECTS,ADMINISTER');
     const after: any = await getIssueAlignment({}, { extension: { issue: { id: '31001', key: 'DEMO-31' } } }, storage);
     expect(after.row.gates.code.state).toBe('EXCEPTED');
     expect(after.row.codeException).toEqual(expect.objectContaining({ status: 'APPROVED', requestedBy: 'dev-1', decidedBy: 'admin-1' }));
     expect(mockAppRequestJira).not.toHaveBeenCalled();
+  });
+
+  it('1B: lets a Jira administrator without project administration approve', async () => {
+    const store = new MockStorage();
+    mockRequestJira.mockImplementation(async (path: string) => {
+      if (path.startsWith('/rest/api/3/issue/31002?fields=customfield_10000')) return { status: 200, json: async () => ({ key: 'DEMO-32', fields: {} }) };
+      if (path.startsWith('/rest/api/3/issue/31002?fields=project,assignee')) return { status: 200, json: async () => ({ key: 'DEMO-32', fields: { project: { key: 'DEMO' } } }) };
+      if (path.startsWith('/rest/api/3/mypermissions')) return { status: 200, json: async () => ({ permissions: { ADMINISTER_PROJECTS: { havePermission: false }, ADMINISTER: { havePermission: true } } }) };
+      if (path.endsWith('/properties/fourrealities-exception')) return { status: 200 };
+      if (path.endsWith('/remotelink')) return { status: 200, json: async () => [] };
+      if (path.startsWith('/rest/api/3/issue/31002?')) return { status: 200, json: async () => ({ id: '31002', key: 'DEMO-32', fields: { status: { name: 'Done', statusCategory: { key: 'done' } } }, properties: {} }) };
+      return { status: 404, json: async () => ({}) };
+    });
+    expect((await recordException({ type: 'CODE', reason: 'Configuration change only, no code' }, { extension: { issue: { id: '31002' } }, accountId: 'dev-1' }, store)).success).toBe(true);
+    const approved = await decideException({ decision: 'APPROVE' }, { extension: { issue: { id: '31002' } }, accountId: 'jira-admin-1' }, store);
+    expect(approved.success).toBe(true);
+    expect(approved.record?.code?.status).toBe('APPROVED');
   });
 });
 

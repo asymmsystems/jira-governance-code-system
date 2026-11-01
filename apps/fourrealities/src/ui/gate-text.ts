@@ -182,6 +182,6 @@ export function afterActionText(action: PanelAction, row?: Pick<IssueRow, 'gates
   if (action === 'rework') return `${done} It does not change any gate.`;
   if (!row) return `${done} The gates could not be read again. Use Refresh.`;
   if (action === 'link') return `${done} Intent: ${stateLabel(row.gates.intent)}.`;
-  if (action === 'code') return `${done} A project administrator must approve it. Code: ${stateLabel(row.gates.code)}.`;
+  if (action === 'code') return `${done} A project or Jira administrator must approve it. Code: ${stateLabel(row.gates.code)}.`;
   return `${done} Code: ${stateLabel(row.gates.code)}.`;
 }

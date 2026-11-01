@@ -83,14 +83,15 @@ export class DefaultForgeJiraIssueAccessor implements JiraIssueAccessor {
     return { status: 200, issueKey: iss?.key, projectKey: iss?.fields?.project?.key, assigneeAccountId: iss?.fields?.assignee?.accountId };
   }
 
-  /** "Get my permissions" for the principal, in one project (scope read:jira-work). */
-  async hasProjectPermission(projectKey: string, permission: string): Promise<{ status: number; granted: boolean }> {
-    const res = await this.request(route`/rest/api/3/mypermissions?projectKey=${projectKey}&permissions=${permission}`);
+  /** "Get my permissions" for the principal in one project, one call (scope read:jira-work). Granted when any is held. */
+  async hasAnyPermission(projectKey: string, permissions: string[]): Promise<{ status: number; granted: boolean }> {
+    const keys = permissions.join(',');
+    const res = await this.request(route`/rest/api/3/mypermissions?projectKey=${projectKey}&permissions=${keys}`);
     if (res.status !== 200) {
       return { status: res.status, granted: false };
     }
     const body = (await res.json()) as { permissions?: Record<string, { havePermission?: boolean }> } | null;
-    return { status: 200, granted: body?.permissions?.[permission]?.havePermission === true };
+    return { status: 200, granted: permissions.some(p => body?.permissions?.[p]?.havePermission === true) };
   }
 
   async pullRequests(issueId: string, devFieldId: string): Promise<{ status: number; issueKey?: string; summary?: DevFieldSummary }> {

@@ -53,7 +53,7 @@ export const ExceptionStateLine: React.FC<{ state: GateExceptionState }> = ({ st
     return (
       <Stack space="space.050">
         {requested}
-        <Text>Waiting for a project administrator who is not the requester or the assignee.</Text>
+        <Text>Waiting for a project or Jira administrator who is not the requester or the assignee.</Text>
       </Stack>
     );
   }

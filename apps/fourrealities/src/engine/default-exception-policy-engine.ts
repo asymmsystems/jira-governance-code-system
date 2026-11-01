@@ -70,7 +70,7 @@ export class DefaultExceptionPolicyEngine implements ExceptionPolicyEngine {
       return actor.accountId === current.requestedBy ? undefined : 'Only the person who requested the exception can withdraw it.';
     }
     if (!actor.isProjectAdmin) {
-      return 'Only a project administrator can approve, reject or revoke an exception.';
+      return 'Only a project administrator or a Jira administrator can approve, reject or revoke an exception.';
     }
     if (actor.accountId === current.requestedBy) {
       return 'The person who requested the exception cannot approve, reject or revoke it.';

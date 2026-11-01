@@ -186,9 +186,12 @@ action explicitly on the event (=as_role=), as M360 does with PartyRole-to-Party
 "acc-1 *as REQUESTER* asked; acc-2 *as APPROVER* approved".
 
 Approval rule (Knowledge Level, on the APPROVE, REJECT and REVOKE transitions; Option C):
-- The approver holds the Jira project permission =ADMINISTER_PROJECTS= in the issue's project.
-  Checked as the approving user with =GET /rest/api/3/mypermissions?projectKey={key}&permissions=ADMINISTER_PROJECTS=
-  (field =permissions.ADMINISTER_PROJECTS.havePermission=). Scope =read:jira-work=, which the app
+- The approver holds the Jira project permission =ADMINISTER_PROJECTS= in the issue's project,
+  or the global Jira permission =ADMINISTER= (owner decision "1B", 2026-11-01, after the live
+  check found a Jira administrator without project administration refused on AUDT).
+  Checked as the approving user in one call:
+  =GET /rest/api/3/mypermissions?projectKey={key}&permissions=ADMINISTER_PROJECTS,ADMINISTER=
+  (granted when either =havePermission= is true). Scope =read:jira-work=, which the app
   already holds; no new scope. Verified in the Jira Cloud OpenAPI document
   (=swagger-v3.v3.json=, read 2026-11-01): operation "Get my permissions", scope state "Current".
 - The approver is not the requester (separation of duties; without it an administrator could

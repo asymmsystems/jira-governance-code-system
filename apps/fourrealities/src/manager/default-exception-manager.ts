@@ -13,6 +13,9 @@ import { messageOf } from '../contract/data/errors';
 
 const DECISIONS: ExceptionDecision[] = ['APPROVE', 'REJECT', 'REVOKE', 'WITHDRAW'];
 
+/** Jira permissions that make the caller an approver (ADR-001 Option C, widened by owner decision 1B). */
+const APPROVER_PERMISSIONS = ['ADMINISTER_PROJECTS', 'ADMINISTER'];
+
 /** Stored when a decision comes without a comment. Reject and revoke always need a reason. */
 const NO_COMMENT: Partial<Record<ExceptionDecision, string>> = {
   APPROVE: 'Approved without comment.',
@@ -133,7 +136,8 @@ export class DefaultExceptionManager implements ExceptionManager {
       issueKey = String(project.issueKey || issueId);
       assigneeAccountId = project.assigneeAccountId;
       if (decision !== 'WITHDRAW') {
-        const permission = await this.d.userJira.hasProjectPermission(String(project.projectKey), 'ADMINISTER_PROJECTS');
+        // A project administrator, or a Jira administrator (owner decision 1B, 2026-11-01).
+        const permission = await this.d.userJira.hasAnyPermission(String(project.projectKey), APPROVER_PERMISSIONS);
         if (permission.status !== 200) {
           return { success: false, error: `Jira returned HTTP ${permission.status} checking your permissions.` };
         }
