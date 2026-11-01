@@ -5,7 +5,7 @@
  */
 
 import { evaluateAudit, evaluateCode, evaluateGates, evaluateIntent, evaluateProcess, isDone, isStarted } from '../../src/engine/default-gate-engine';
-import { makeFacts } from './fixtures';
+import { judged, makeFacts } from './fixtures';
 import { parseDevField } from '../../src/accessor/dev-field';
 
 const note = { reason: 'Configuration change only', recordedBy: 'acc-1', recordedAt: '2026-11-01T00:00:00Z' };
@@ -35,7 +35,7 @@ describe('B-15: Intent from link structure, never title keywords', () => {
   const intent = (o: any) => evaluateIntent(makeFacts({ siteHost: SITE, ...o }));
 
   it('finds a Confluence app link, verified by FourRealities, with its title', () => {
-    expect(intent({ remoteLinks: [{ url: 'https://other.example/x', title: 'Payment flow', applicationType: 'com.atlassian.confluence' }] }))
+    expect(judged(intent({ remoteLinks: [{ url: 'https://other.example/x', title: 'Payment flow', applicationType: 'com.atlassian.confluence' }] })))
       .toEqual({ state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK', args: { title: 'Payment flow' } });
   });
 
@@ -52,7 +52,7 @@ describe('B-15: Intent from link structure, never title keywords', () => {
   });
 
   it('finds an issue link to a decision or specification issue type, matched exactly', () => {
-    expect(intent({ issueLinks: [{ key: 'DEMO-2', typeName: 'Architecture Decision' }] }))
+    expect(judged(intent({ issueLinks: [{ key: 'DEMO-2', typeName: 'Architecture Decision' }] })))
       .toEqual({ state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_DECISION_ISSUE', args: { key: 'DEMO-2', type: 'Architecture Decision' } });
     expect(intent({ issueLinks: [{ key: 'DEMO-3', typeName: 'adr' }] }).state).toBe('FOUND');
     expect(intent({ issueLinks: [{ key: 'DEMO-4', typeName: 'Story', summary: '[ADR] Sharding', linkOutward: 'implements' }] }).state).toBe('MISSING');
@@ -77,7 +77,7 @@ describe('B-15: Intent from link structure, never title keywords', () => {
 describe('Code', () => {
   it('shows an approved exception as EXCEPTED, never FOUND', () => {
     const r = evaluateCode(makeFacts({ codeException: approvedState }));
-    expect(r).toEqual({ state: 'EXCEPTED', reason: 'CODE_EXCEPTED' });
+    expect(judged(r)).toEqual({ state: 'EXCEPTED', reason: 'CODE_EXCEPTED' });
   });
 
   it('B-30: a waiting, rejected, withdrawn or revoked exception leaves the gate missing', () => {
@@ -107,29 +107,29 @@ const DEMO26_DOD = { isFullySatisfied: true, satisfied: true, completedAt: '2026
 
 describe('B-04: Audit reads ledgerseal-cert as a hint, with LedgerSeal\'s shape', () => {
   it('ignores the valid alias: {valid: true, snapshotHash: "x"} is evidence missing', () => {
-    expect(evaluateAudit(makeFacts({ properties: { ledgerseal: { valid: true, snapshotHash: 'x' } } })))
+    expect(judged(evaluateAudit(makeFacts({ properties: { ledgerseal: { valid: true, snapshotHash: 'x' } } }))))
       .toEqual({ state: 'MISSING', reason: 'SEAL_SHAPE_UNKNOWN' });
   });
 
   it('reads a well-formed SEAL_VALID as found, not verified, with the seal date', () => {
-    expect(evaluateAudit(makeFacts({ properties: { ledgerseal: lsCert() } })))
+    expect(judged(evaluateAudit(makeFacts({ properties: { ledgerseal: lsCert() } }))))
       .toEqual({ state: 'FOUND', verification: 'NOT_VERIFIED', reason: 'SEAL_VALID_LS', args: { sealedAt: '2026-10-30T10:29:00.000Z' } });
   });
 
   it('reads SEAL_BROKEN and SEAL_COMPROMISED as missing: seal broken', () => {
-    expect(evaluateAudit(makeFacts({ properties: { ledgerseal: lsCert({ status: 'SEAL_BROKEN' }) } }))).toEqual({ state: 'MISSING', reason: 'SEAL_BROKEN_LS' });
-    expect(evaluateAudit(makeFacts({ properties: { ledgerseal: lsCert({ status: 'SEAL_COMPROMISED' }) } }))).toEqual({ state: 'MISSING', reason: 'SEAL_BROKEN_LS' });
-    expect(evaluateAudit(makeFacts({ properties: { ledgerseal: lsCert({ isCompromised: true }) } }))).toEqual({ state: 'MISSING', reason: 'SEAL_BROKEN_LS' });
+    expect(judged(evaluateAudit(makeFacts({ properties: { ledgerseal: lsCert({ status: 'SEAL_BROKEN' }) } })))).toEqual({ state: 'MISSING', reason: 'SEAL_BROKEN_LS' });
+    expect(judged(evaluateAudit(makeFacts({ properties: { ledgerseal: lsCert({ status: 'SEAL_COMPROMISED' }) } })))).toEqual({ state: 'MISSING', reason: 'SEAL_BROKEN_LS' });
+    expect(judged(evaluateAudit(makeFacts({ properties: { ledgerseal: lsCert({ isCompromised: true }) } })))).toEqual({ state: 'MISSING', reason: 'SEAL_BROKEN_LS' });
   });
 
   it('names other statuses, and they apply only when done', () => {
-    expect(evaluateAudit(makeFacts({ properties: { ledgerseal: lsCert({ status: 'UNSEALED' }) } })))
+    expect(judged(evaluateAudit(makeFacts({ properties: { ledgerseal: lsCert({ status: 'UNSEALED' }) } }))))
       .toEqual({ state: 'MISSING', reason: 'SEAL_OTHER_LS', args: { status: 'UNSEALED' } });
     expect(evaluateAudit(makeFacts({ statusCategory: 'indeterminate', properties: { ledgerseal: lsCert({ status: 'UNSEALED' }) } })).state).toBe('NOT_APPLICABLE');
   });
 
   it('rejects the DEMO-26 shape: record shape not written by LedgerSeal', () => {
-    expect(evaluateAudit(makeFacts({ statusCategory: 'indeterminate', properties: { ledgerseal: DEMO26_CERT } })))
+    expect(judged(evaluateAudit(makeFacts({ statusCategory: 'indeterminate', properties: { ledgerseal: DEMO26_CERT } }))))
       .toEqual({ state: 'MISSING', reason: 'SEAL_SHAPE_UNKNOWN' });
   });
 
@@ -146,7 +146,7 @@ describe('B-04: Audit reads ledgerseal-cert as a hint, with LedgerSeal\'s shape'
   });
 
   it('needs a re-check when the record carries issuedAt older than the issue update', () => {
-    expect(evaluateAudit(makeFacts({ updated: '2026-10-31T00:00:00.000Z', properties: { ledgerseal: lsCert({ issuedAt: '2026-10-30T00:00:00.000Z' }) } })))
+    expect(judged(evaluateAudit(makeFacts({ updated: '2026-10-31T00:00:00.000Z', properties: { ledgerseal: lsCert({ issuedAt: '2026-10-30T00:00:00.000Z' }) } }))))
       .toEqual({ state: 'NEEDS_RECHECK', reason: 'CHANGED_SINCE_ATTESTATION' });
     expect(evaluateAudit(makeFacts({ updated: '2026-10-29T00:00:00.000Z', properties: { ledgerseal: lsCert({ issuedAt: '2026-10-30T00:00:00.000Z' }) } })).state).toBe('FOUND');
   });
@@ -154,22 +154,22 @@ describe('B-04: Audit reads ledgerseal-cert as a hint, with LedgerSeal\'s shape'
 
 describe('B-04: Process reads definitionguard-dod as a hint, with DefinitionGuard\'s shape', () => {
   it('ignores the satisfied alias', () => {
-    expect(evaluateProcess(makeFacts({ properties: { dod: { satisfied: true } } }))).toEqual({ state: 'MISSING', reason: 'DOD_SHAPE_UNKNOWN' });
+    expect(judged(evaluateProcess(makeFacts({ properties: { dod: { satisfied: true } } })))).toEqual({ state: 'MISSING', reason: 'DOD_SHAPE_UNKNOWN' });
   });
 
   it('reads a complete record as found, not verified, with counts', () => {
-    expect(evaluateProcess(makeFacts({ properties: { dod: dgDod() } })))
+    expect(judged(evaluateProcess(makeFacts({ properties: { dod: dgDod() } }))))
       .toEqual({ state: 'FOUND', verification: 'NOT_VERIFIED', reason: 'DOD_COMPLETE_DG', args: { completed: 5, total: 5 } });
   });
 
   it('reads open items as missing when done and not applicable before', () => {
     const open = dgDod({ isFullySatisfied: false, completedCount: 3 });
-    expect(evaluateProcess(makeFacts({ properties: { dod: open } }))).toEqual({ state: 'MISSING', reason: 'DOD_OPEN_DG', args: { completed: 3, total: 5 } });
+    expect(judged(evaluateProcess(makeFacts({ properties: { dod: open } })))).toEqual({ state: 'MISSING', reason: 'DOD_OPEN_DG', args: { completed: 3, total: 5 } });
     expect(evaluateProcess(makeFacts({ statusCategory: 'indeterminate', properties: { dod: open } })).state).toBe('NOT_APPLICABLE');
   });
 
   it('rejects the DEMO-26 shape and malformed counts or hash', () => {
-    expect(evaluateProcess(makeFacts({ statusCategory: 'indeterminate', properties: { dod: DEMO26_DOD } }))).toEqual({ state: 'MISSING', reason: 'DOD_SHAPE_UNKNOWN' });
+    expect(judged(evaluateProcess(makeFacts({ statusCategory: 'indeterminate', properties: { dod: DEMO26_DOD } })))).toEqual({ state: 'MISSING', reason: 'DOD_SHAPE_UNKNOWN' });
     for (const bad of [{ completedCount: 6 }, { totalCount: -1 }, { completedCount: 1.5 }, { checklistHash: 'x' }, { isFullySatisfied: 'yes' }]) {
       expect(evaluateProcess(makeFacts({ properties: { dod: dgDod(bad) } })).reason).toBe('DOD_SHAPE_UNKNOWN');
     }
@@ -223,14 +223,14 @@ describe('B-10: Code gate from the Development field, labelled heuristic', () =>
   const dev = (state: string, count = 1) => ({ present: true, summary: parseDevField(`{pullrequest={dataType=pullrequest, state=${state}, stateCount=${count}}}`) });
 
   it('reads a merged pull request as found (heuristic), never approved', () => {
-    expect(evaluateCode(makeFacts({ devField: dev('MERGED', 2) })))
+    expect(judged(evaluateCode(makeFacts({ devField: dev('MERGED', 2) }))))
       .toEqual({ state: 'FOUND', verification: 'HEURISTIC', reason: 'PR_MERGED', args: { count: 2 } });
     expect(evaluateCode(makeFacts({ statusCategory: 'indeterminate', devField: dev('MERGED') })).reason).toBe('PR_MERGED');
   });
 
   it('reads an open pull request as missing at done and found (heuristic) before done', () => {
-    expect(evaluateCode(makeFacts({ devField: dev('OPEN') }))).toEqual({ state: 'MISSING', reason: 'PR_OPEN_AT_DONE' });
-    expect(evaluateCode(makeFacts({ statusCategory: 'indeterminate', devField: dev('OPEN') })))
+    expect(judged(evaluateCode(makeFacts({ devField: dev('OPEN') })))).toEqual({ state: 'MISSING', reason: 'PR_OPEN_AT_DONE' });
+    expect(judged(evaluateCode(makeFacts({ statusCategory: 'indeterminate', devField: dev('OPEN') }))))
       .toEqual({ state: 'FOUND', verification: 'HEURISTIC', reason: 'PR_OPEN' });
   });
 

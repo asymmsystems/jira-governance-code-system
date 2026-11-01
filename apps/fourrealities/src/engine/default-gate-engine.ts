@@ -5,6 +5,7 @@
  */
 
 import { GateResult, IssueFacts, IssueGates } from '../contract/data/models';
+import { DEFAULT_CATALOG, EVIDENCE_REF_MAX, EvidenceCatalog } from '../contract/data/catalog';
 import { GateEngine } from '../contract/engines';
 
 /** Started is a fact parsed from Jira (status category not "new", or a status change). */
@@ -16,16 +17,22 @@ export function isDone(f: IssueFacts): boolean {
   return f.statusCategory === 'done';
 }
 
-/** Issue types that record a decision or a specification. Compared by exact name, without case. */
-export const INTENT_ISSUE_TYPES = ['adr', 'architecture decision', 'decision', 'decision record', 'spec', 'specification', 'requirement'];
+/** An observation of one catalog source: verification from the catalog, reference cut to size. */
+function observed(c: EvidenceCatalog, method: string, result: GateResult, ref?: unknown): GateResult {
+  const verification = c.sources[method]?.verification;
+  return {
+    ...result,
+    ...(result.state === 'FOUND' && verification ? { verification } : {}),
+    method,
+    ...(ref === undefined || ref === null || ref === '' ? {} : { evidenceRef: String(ref).slice(0, EVIDENCE_REF_MAX) })
+  };
+}
 
-const CONFLUENCE_APP_TYPE = 'com.atlassian.confluence';
-
-function isSameSiteConfluencePage(url: string | undefined, siteHost: string | undefined): boolean {
+function isSameSiteContentPage(url: string | undefined, siteHost: string | undefined, prefix: string): boolean {
   if (!url || !siteHost) return false;
   try {
     const parsed = new URL(url);
-    return parsed.host === siteHost && parsed.pathname.startsWith('/wiki/');
+    return parsed.host === siteHost && parsed.pathname.startsWith(prefix);
   } catch {
     return false;
   }
@@ -36,15 +43,16 @@ function isSameSiteConfluencePage(url: string | undefined, siteHost: string | un
  * is linked. FourRealities reads the link itself (VERIFIED) and does not read the page.
  * Title keywords never count (FR-13).
  */
-export function evaluateIntent(f: IssueFacts): GateResult {
+export function evaluateIntent(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG): GateResult {
+  const rule = c.intent;
   const page = (f.remoteLinks || []).find(rl =>
-    rl.applicationType === CONFLUENCE_APP_TYPE || isSameSiteConfluencePage(rl.url, f.siteHost));
+    rule.contentApplicationTypes.includes(String(rl.applicationType || '')) || isSameSiteContentPage(rl.url, f.siteHost, rule.sameSiteContentPath));
   if (page) {
-    return { state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK', args: { title: String(page.title || page.url || '') } };
+    return observed(c, 'CONFLUENCE_PAGE_LINK', { state: 'FOUND', reason: 'INTENT_CONFLUENCE_LINK', args: { title: String(page.title || page.url || '') } }, page.url || page.title);
   }
-  const decision = f.issueLinks.find(l => INTENT_ISSUE_TYPES.includes(String(l.typeName || '').trim().toLowerCase()));
+  const decision = f.issueLinks.find(l => rule.issueTypes.includes(String(l.typeName || '').trim().toLowerCase()));
   if (decision) {
-    return { state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_DECISION_ISSUE', args: { key: String(decision.key || ''), type: String(decision.typeName) } };
+    return observed(c, 'DECISION_ISSUE_LINK', { state: 'FOUND', reason: 'INTENT_DECISION_ISSUE', args: { key: String(decision.key || ''), type: String(decision.typeName) } }, decision.key);
   }
   if (!isStarted(f)) {
     return { state: 'NOT_APPLICABLE', reason: 'NOT_STARTED' };
@@ -92,19 +100,20 @@ function isStale(record: any, f: IssueFacts): boolean {
  * Process: the Definition of Done record from DefinitionGuard, read as a hint only.
  * FourRealities never verifies it, so it never shows as verified (spec v2, Process).
  */
-export function evaluateProcess(f: IssueFacts): GateResult {
+export function evaluateProcess(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG): GateResult {
   const dod = f.properties.dod;
   if (dod !== undefined && dod !== null) {
+    const seen = (result: GateResult, ref?: unknown) => observed(c, 'DEFINITIONGUARD_PROPERTY', result, ref);
     if (!isDefinitionGuardShape(dod)) {
-      return { state: 'MISSING', reason: 'DOD_SHAPE_UNKNOWN' };
+      return seen({ state: 'MISSING', reason: 'DOD_SHAPE_UNKNOWN' });
     }
     const args = { completed: dod.completedCount, total: dod.totalCount };
     if (dod.isFullySatisfied) {
       return isStale(dod, f)
-        ? { state: 'NEEDS_RECHECK', reason: 'CHANGED_SINCE_ATTESTATION' }
-        : { state: 'FOUND', verification: 'NOT_VERIFIED', reason: 'DOD_COMPLETE_DG', args };
+        ? seen({ state: 'NEEDS_RECHECK', reason: 'CHANGED_SINCE_ATTESTATION' }, dod.checklistHash)
+        : seen({ state: 'FOUND', reason: 'DOD_COMPLETE_DG', args }, dod.checklistHash);
     }
-    return isDone(f) ? { state: 'MISSING', reason: 'DOD_OPEN_DG', args } : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
+    return isDone(f) ? seen({ state: 'MISSING', reason: 'DOD_OPEN_DG', args }, dod.checklistHash) : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
   }
   return isDone(f)
     ? { state: 'MISSING', reason: 'DOD_NONE' }
@@ -116,7 +125,7 @@ export function evaluateProcess(f: IssueFacts): GateResult {
  * read review approvals (research H11), so a merged pull request is never shown as approved.
  * A Code exception applies only to work with no pull request (FR-10).
  */
-export function evaluateCode(f: IssueFacts): GateResult {
+export function evaluateCode(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG): GateResult {
   if (!f.devField.present) {
     return { state: 'NOT_APPLICABLE', reason: 'NO_DEV_TOOL' };
   }
@@ -125,15 +134,16 @@ export function evaluateCode(f: IssueFacts): GateResult {
   const open = !merged && (pr.openCount > 0 || (pr.state === 'OPEN' && pr.count > 0));
   // Only an approved exception counts (ADR-001: a waiting request leaves the evidence missing).
   if (f.codeException?.status === 'APPROVED' && pr.count === 0) {
-    return { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' };
+    return observed(c, 'GATE_EXCEPTION', { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' }, `approved ${f.codeException.decidedAt || f.codeException.requestedAt}`);
   }
+  const prs = `pull requests: ${pr.count}`;
   if (merged) {
-    return { state: 'FOUND', verification: 'HEURISTIC', reason: 'PR_MERGED', args: { count: pr.count } };
+    return observed(c, 'DEVELOPMENT_FIELD', { state: 'FOUND', reason: 'PR_MERGED', args: { count: pr.count } }, prs);
   }
   if (open) {
     return isDone(f)
-      ? { state: 'MISSING', reason: 'PR_OPEN_AT_DONE' }
-      : { state: 'FOUND', verification: 'HEURISTIC', reason: 'PR_OPEN' };
+      ? observed(c, 'DEVELOPMENT_FIELD', { state: 'MISSING', reason: 'PR_OPEN_AT_DONE' }, prs)
+      : observed(c, 'DEVELOPMENT_FIELD', { state: 'FOUND', reason: 'PR_OPEN' }, prs);
   }
   return isDone(f)
     ? { state: 'MISSING', reason: 'PR_NONE' }
@@ -144,22 +154,23 @@ export function evaluateCode(f: IssueFacts): GateResult {
  * Audit: the LedgerSeal record, read as a hint only. Shapes that LedgerSeal does not write,
  * such as {valid: true}, are evidence missing (spec v2, Audit; FR-04).
  */
-export function evaluateAudit(f: IssueFacts): GateResult {
+export function evaluateAudit(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG): GateResult {
   const cert = f.properties.ledgerseal;
   if (cert !== undefined && cert !== null) {
+    const seen = (result: GateResult) => observed(c, 'LEDGERSEAL_PROPERTY', result, isLedgerSealShape(cert) ? cert.certificateId : undefined);
     if (!isLedgerSealShape(cert)) {
-      return { state: 'MISSING', reason: 'SEAL_SHAPE_UNKNOWN' };
+      return seen({ state: 'MISSING', reason: 'SEAL_SHAPE_UNKNOWN' });
     }
     if (cert.status === 'SEAL_BROKEN' || cert.status === 'SEAL_COMPROMISED' || cert.isCompromised === true) {
-      return { state: 'MISSING', reason: 'SEAL_BROKEN_LS' };
+      return seen({ state: 'MISSING', reason: 'SEAL_BROKEN_LS' });
     }
     if (cert.status === 'SEAL_VALID') {
       return isStale(cert, f)
-        ? { state: 'NEEDS_RECHECK', reason: 'CHANGED_SINCE_ATTESTATION' }
-        : { state: 'FOUND', verification: 'NOT_VERIFIED', reason: 'SEAL_VALID_LS', args: { sealedAt: cert.sealedAt } };
+        ? seen({ state: 'NEEDS_RECHECK', reason: 'CHANGED_SINCE_ATTESTATION' })
+        : seen({ state: 'FOUND', reason: 'SEAL_VALID_LS', args: { sealedAt: cert.sealedAt } });
     }
     return isDone(f)
-      ? { state: 'MISSING', reason: 'SEAL_OTHER_LS', args: { status: cert.status } }
+      ? seen({ state: 'MISSING', reason: 'SEAL_OTHER_LS', args: { status: cert.status } })
       : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
   }
   return isDone(f)
@@ -167,19 +178,21 @@ export function evaluateAudit(f: IssueFacts): GateResult {
     : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
 }
 
-export function evaluateGates(f: IssueFacts): IssueGates {
+export function evaluateGates(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG): IssueGates {
   return {
-    intent: evaluateIntent(f),
-    process: evaluateProcess(f),
-    code: evaluateCode(f),
-    audit: evaluateAudit(f)
+    intent: evaluateIntent(f, c),
+    process: evaluateProcess(f, c),
+    code: evaluateCode(f, c),
+    audit: evaluateAudit(f, c)
   };
 }
 
 export class DefaultGateEngine implements GateEngine {
   readonly serviceType = 'engine' as const;
 
+  constructor(private readonly catalog: EvidenceCatalog = DEFAULT_CATALOG) {}
+
   evaluate(facts: IssueFacts): IssueGates {
-    return evaluateGates(facts);
+    return evaluateGates(facts, this.catalog);
   }
 }

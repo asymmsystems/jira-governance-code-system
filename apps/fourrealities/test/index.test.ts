@@ -20,6 +20,7 @@ import {
   runScheduledSnapshot
 } from '../src/index';
 import { StorageProvider, MetricsRepository } from '../src/accessor/default-kvs-exception-accessor';
+import { judged } from './domain/fixtures';
 
 // One response queue (mockRequestJira) and one recording mock per principal,
 // so a test can assert which principal made each call (FR-22).
@@ -661,7 +662,7 @@ describe('B-10: one Code-gate path from the Development field', () => {
   it('reads the issue and its remote links as the user, with no dev-status call', async () => {
     mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => issue }).mockResolvedValueOnce({ status: 200, json: async () => [] });
     const res: any = await getIssueAlignment({}, { extension: { issue: { id: '40001', key: 'DEMO-40' } } }, new MockStorage());
-    expect(res.row.gates.code).toEqual({ state: 'FOUND', verification: 'HEURISTIC', reason: 'PR_MERGED', args: { count: 1 } });
+    expect(judged(res.row.gates.code)).toEqual({ state: 'FOUND', verification: 'HEURISTIC', reason: 'PR_MERGED', args: { count: 1 } });
     const paths = mockUserRequestJira.mock.calls.map(c => String(c[0]));
     expect(paths).toHaveLength(2);
     expect(paths[0]).toContain('/rest/api/3/issue/40001?fields=');
@@ -763,7 +764,7 @@ describe('B-15: Intent from link structure on both views', () => {
     const remoteCalls = mockAppRequestJira.mock.calls.map(c => String(c[0])).filter(p => p.endsWith('/remotelink'));
     expect(remoteCalls).toEqual(['/rest/api/3/issue/50001/remotelink']);
     const byKey = Object.fromEntries(dash.rows.map((r: any) => [r.issueKey, r.gates.intent]));
-    expect(byKey['DEMO-50']).toEqual({ state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK', args: { title: 'ADR-7 Settlement' } });
+    expect(judged(byKey['DEMO-50'])).toEqual({ state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK', args: { title: 'ADR-7 Settlement' } });
     expect(byKey['DEMO-51']).toEqual({ state: 'NOT_APPLICABLE', reason: 'NOT_STARTED' });
 
     const panel: any = await getIssueAlignment({}, { extension: { issue: { id: '50001', key: 'DEMO-50' } } }, new MockStorage());

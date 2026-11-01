@@ -46,6 +46,8 @@ interface GateResult {
   verification?: Verification;   // set when state is FOUND
   reason: GateReason;            // a code; the UI turns it into text
   args?: Record<string, string | number>;
+  method?: string;               // evidence source id in the catalog; set when a source record was read
+  evidenceRef?: string;          // what was seen, at most 200 characters
 }
 
 interface IssueRow {               // one row per issue, stored in snapshot chunks
@@ -120,6 +122,21 @@ The removed v1 types are `RealitySignals` as stored state, `ProjectAuditSnapshot
 ## Gates
 
 "Started" means the status category is not `new`, or the changelog has at least one status change. "Done" means the status category key is `done`. Status matching uses `statusCategory.key`, never the status name.
+
+### Evidence catalog and observations (ADR-001 Patterns 2 and 4)
+
+Every name the gates match on is data in one catalog (`src/contract/data/catalog.ts`, `DEFAULT_CATALOG`); the gate code holds no lists. The catalog holds the evidence sources, each with its gate and verification class, and the Intent rule (issue types, content application types, same-site content path). The values in the tables below are the defaults. The key `fr:p:{key}:catalog` is reserved for a per-project override; no code writes it yet.
+
+| Source (`method`) | Gate | Verification when FOUND | `evidenceRef` |
+|---|---|---|---|
+| `CONFLUENCE_PAGE_LINK` | Intent | VERIFIED | the link URL |
+| `DECISION_ISSUE_LINK` | Intent | VERIFIED | the linked issue key |
+| `DEFINITIONGUARD_PROPERTY` | Process | NOT_VERIFIED | the checklist hash, when the shape is DefinitionGuard's |
+| `DEVELOPMENT_FIELD` | Code | HEURISTIC | `pull requests: n` |
+| `GATE_EXCEPTION` | Code | (EXCEPTED) | `approved <time>` |
+| `LEDGERSEAL_PROPERTY` | Audit | NOT_VERIFIED | the certificate id, when the shape is LedgerSeal's |
+
+A gate result is an observation: `method` names the source whose record it rests on, including a record that was read and did not count. A result with no source record (for example `INTENT_NONE`, `DOD_NONE`, `NOT_DONE`) has no `method`. Verification is taken from the catalog source.
 
 ### Intent
 

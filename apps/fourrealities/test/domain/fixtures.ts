@@ -28,6 +28,12 @@ export function makeFacts(overrides: Partial<IssueFacts> = {}): IssueFacts {
   return 'started' in overrides ? base : { ...base, started: base.statusCategory !== 'new' || base.statusChanges > 0 };
 }
 
+/** The judgement of a gate, without the observation fields (method, evidenceRef) that B-31 added. */
+export function judged(result: GateResult): GateResult {
+  const { method, evidenceRef, ...rest } = result;
+  return rest;
+}
+
 export const FOUND_V: GateResult = { state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK' };
 export const MISSING: GateResult = { state: 'MISSING', reason: 'INTENT_NONE' };
 export const NA: GateResult = { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };

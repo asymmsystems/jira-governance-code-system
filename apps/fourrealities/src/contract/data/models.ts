@@ -71,6 +71,10 @@ export interface GateResult {
   verification?: Verification;
   reason: GateReason;
   args?: Record<string, string | number>;
+  /** Evidence source in the catalog that this observation rests on (ADR-001 Pattern 2). */
+  method?: string;
+  /** What was seen: a link, an issue key, a certificate id, a hash or a count. */
+  evidenceRef?: string;
 }
 
 export type IssueGates = Record<GateName, GateResult>;
