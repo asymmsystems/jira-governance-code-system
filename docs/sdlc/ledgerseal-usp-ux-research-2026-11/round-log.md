@@ -422,3 +422,10 @@ Final state of DEMO-34: SEAL_REVOKED, everCompromised true, incidentCount 3 (`li
 - The price tiers are kept as the owner set them. H9 (willingness to pay) stays Unknown.
 - Nothing was changed on the Marketplace itself.
 - README test numbers: 275 tests in 32 suites, branches 94.90%.
+
+### Owner approval after the final report (2026-11-01)
+- NF-04 fixed in `9ba3757`. The seal leaves out Sentiment, the four forms counts and Agent Sessions, by the type keys read again from the live `/rest/api/3/field` on DEMO. The forms list stays covered. Test first in `test/field-selection.test.ts` (failed on the hash, then passed). 276 tests pass. `canonicalizer.ts` branches 96.95%. Deployed to development as 3.7.0.
+- No stored DEMO seal held these fields, so no seal broke. Spec v2 section 4.1 now says that after a production install a covered-set change needs a new `canonicalizerVersion` and the old rules kept. That rule is not built.
+- Merge: `master` fast-forwarded to the feature branch locally (`5097bf5` to `9ba3757`, then to this commit). The main checkout stays on another session's branch and its files were not touched. No remote exists, so nothing was pushed.
+- Not done: the old unsigned v1 properties on DEMO-5, DEMO-20 and DEMO-22 are left as they are. Removing them writes to issues that are not LedgerSeal probe issues.
+- Waiting: the validator live test. The DEMO workflow for the probe issue type is shared by two issue types, so a gate there would block other sessions' probe issues.
