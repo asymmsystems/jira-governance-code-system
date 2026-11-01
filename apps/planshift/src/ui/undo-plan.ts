@@ -111,7 +111,19 @@ export function buildUndoEntry(before: Map<string, TaskSnap>, after: Map<string,
 }
 
 /** Flag text for a write, e.g. "Moved ABC-12 and 4 dependents". */
-export function actionLabel(fn: string, payload: { taskId?: string; updates?: any }, entry: UndoEntry): string {
+export function actionLabel(fn: string, payload: { taskId?: string; updates?: any; items?: Array<{ taskId: string; updates: any }> }, entry: UndoEntry): string {
+  if (fn === 'batchUpdateTasks') {
+    // One undo for the whole batch (B-16).
+    const items = payload.items || [];
+    const n = items.length;
+    const issues = `${n} issue${n === 1 ? '' : 's'}`;
+    const others = entry.keys.filter(k => !items.some(i => i.taskId === k)).length;
+    const first = (items[0] && items[0].updates) || {};
+    if (first.startDate || first.endDate) return `Moved ${issues}` + (others ? ` and ${others} dependent${others > 1 ? 's' : ''}` : '');
+    if (first.progress !== undefined) return `Set progress on ${issues}`;
+    if (first.resourceAccountId !== undefined) return `Assigned ${issues}`;
+    return `Changed ${issues}`;
+  }
   const key = payload.taskId || entry.keys[0];
   const u = payload.updates || {};
   const others = entry.keys.filter(k => k !== key).length;

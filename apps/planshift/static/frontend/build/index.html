@@ -235,6 +235,21 @@
     </ul>
   </div>
 
+  <!-- Standup flow (B-16): actions for the selected rows -->
+  <div id="selectionBar" class="selection-bar" role="toolbar" aria-label="Selected issues" hidden>
+    <strong id="selectionCount">0 selected</strong>
+    <label for="selProgress">Progress %</label>
+    <input id="selProgress" class="form-input sel-input" type="number" min="0" max="100" step="10" value="50">
+    <button class="btn btn-outline btn-sm" type="button" id="btnSelProgress">Set progress</button>
+    <label for="selDays">Days</label>
+    <input id="selDays" class="form-input sel-input" type="number" step="1" value="3">
+    <button class="btn btn-outline btn-sm" type="button" id="btnSelMove">Move by days</button>
+    <label for="selAssignee">Assignee</label>
+    <select id="selAssignee" class="form-input"></select>
+    <button class="btn btn-outline btn-sm" type="button" id="btnSelAssign">Set assignee</button>
+    <button class="btn btn-subtle btn-sm" type="button" id="btnSelClear">Clear</button>
+  </div>
+
   <!-- Flags (B-14): write results with Undo -->
   <div id="flagGroup" class="flag-group"></div>
 

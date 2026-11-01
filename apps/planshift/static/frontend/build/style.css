@@ -1179,6 +1179,14 @@ body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-
 .link-hint span { flex: 1; }
 .help-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
 
+/* Standup flow (B-16). */
+.task-row.is-selected, .task-row.is-selected > td.td-frozen { background: var(--cp-bg-selected); }
+.selection-bar { position: fixed; z-index: 1250; left: 50%; bottom: 64px; transform: translateX(-50%); display: flex; align-items: center; gap: 6px;
+  flex-wrap: wrap; max-width: calc(100vw - 32px); padding: 8px 12px; border-radius: 8px; background: var(--cp-surface-overlay);
+  border: 1px solid var(--cp-border); box-shadow: 0 8px 16px rgba(9, 30, 66, 0.25); font-size: 12px; }
+.selection-bar[hidden] { display: none; }
+.sel-input { width: 64px; }
+
 /* Flags and the unsaved-form prompt (B-14). */
 .flag-group { position: fixed; z-index: 1400; left: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; max-width: calc(100vw - 32px); }
 .flag { display: flex; align-items: center; gap: 8px; width: 400px; max-width: 100%; padding: 10px 12px; border-radius: 6px;

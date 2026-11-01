@@ -25,6 +25,7 @@ import { barRect, daysBetween, visibleRange, handleOffsets, snapDays, previewMov
 import { GRID_COLUMNS, navigate, rowCells, rowLevel, moveKey, moveAnnouncement } from '../ui/keyboard-grid';
 import { weeklyHours } from '../ui/weekly-hours';
 import { emptyState, showLinkHint } from '../ui/first-run';
+import { toggleKey, rangeKeys, moveSelectionBy, progressFromDigit } from '../ui/selection';
 import { addDays as addDaysIso } from '../domain/schedule-engine';
 import { shouldAutoCompact, ZOOMS, zoomById, zoomStep, mondayOf, initialRange, rangeDays, extendRange, edgeToExtend, headerCells, gridLines, anchorScroll, dateAt } from '../ui/time-scale';
 
@@ -67,7 +68,7 @@ function openJiraIssueInNewTab(issueKey, event) {
 }
 
 // Undo (B-14): every undoable write is recorded with its inverse when the next plan arrives.
-const UNDOABLE = new Set(['updateWbsTask', 'unscheduleTask', 'scheduleBacklogTask']);
+const UNDOABLE = new Set(['updateWbsTask', 'unscheduleTask', 'scheduleBacklogTask', 'batchUpdateTasks']);
 const undoStack = new UndoStack(20);
 let pendingUndo = null;
 let replayingUndo = false;
@@ -92,7 +93,7 @@ function settleUndo() {
   const p = pendingUndo;
   if (!p || !p.done || !currentPlan) return;
   pendingUndo = null;
-  const entry = buildUndoEntry(p.before, snapshotPlan(currentPlan), p.payload.taskId);
+  const entry = buildUndoEntry(p.before, snapshotPlan(currentPlan), p.payload.taskId || (p.payload.items && p.payload.items[0] && p.payload.items[0].taskId));
   if (!entry) return;
   entry.label = actionLabel(p.fn, p.payload, entry);
   undoStack.push(entry);
@@ -442,6 +443,7 @@ function setupEventListeners() {
         pinnedDependencyTaskId = null;
         drawTimeline(true);
       }
+      if (selectedKeys.size && !pendingProgress.size) clearSelection();
       const inlineRow = document.querySelector('.inline-creation-row');
       if (inlineRow) {
         inlineRow.remove();
@@ -1073,6 +1075,7 @@ function closeHelp() {
 /** Header badges, backlog count, truncation note and legend. */
 function renderPlanSummary() {
   updateLinkHint();
+  fillAssigneeOptions();
   // Badges are empty and hidden until real values arrive (B-18: no fixed text before load).
   const projectBadge = document.getElementById('projectBadge');
   projectBadge.textContent = `Project: ${currentPlan.projectKey}`;
@@ -2537,6 +2540,14 @@ function buildTaskRow(task, rowIdx) {
   }
   tr.innerHTML = html`${rowColsHtml}`;
   applyFrozen(tr);
+  if (selectedKeys.has(task.key)) tr.classList.add('is-selected');
+  // Ctrl/Cmd+click toggles the row, Shift+click selects a range; nothing else on the row reacts (B-16).
+  tr.addEventListener('click', (e) => {
+    if (!(e.ctrlKey || e.metaKey || e.shiftKey)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    selectRow(task.key, e);
+  }, true);
 
   // Interactive Scalable Resource Selection (Typeahead Picker & Subtask Rollup)
   if (visibleKeys.includes('resource')) {
@@ -3244,6 +3255,7 @@ function renderGrid() {
     rows.push(row);
   }
   gridRoot.replaceChildren(...rows);
+  applySelection();
   if (hadFocus) focusGridCell();
 }
 
@@ -3301,6 +3313,30 @@ function onGridKey(e) {
     return;
   }
   if (!task) return;
+  const digit = progressFromDigit(e.key);
+  if (digit !== null && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    e.preventDefault();
+    setPendingProgress(task.key, digit);
+    return;
+  }
+  if (e.key === 'Enter' && pendingProgress.size) {
+    e.preventDefault();
+    commitPendingProgress();
+    return;
+  }
+  if (e.key === 'Escape' && pendingProgress.size) {
+    pendingProgress.clear();
+    renderTimelineRows();
+    announce('Progress changes discarded.');
+    return;
+  }
+  // Space moves the bar on the Start or Due cell; on any other cell it selects the row (B-15, B-16).
+  if (e.key === ' ' && gridFocus.col !== 2 && gridFocus.col !== 3) {
+    e.preventDefault();
+    selectRow(task.key, { shiftKey: false });
+    announce(`${task.key} ${selectedKeys.has(task.key) ? 'selected' : 'not selected'}. ${selectedKeys.size} selected.`);
+    return;
+  }
   if (e.key === ' ' && task.startDate && !(task.isEpic || task.hierarchyLevel === 1)) {
     if (task.datesFromChildren) {
       e.preventDefault();
@@ -3512,6 +3548,7 @@ async function saveDependency() {
 
 function initKeyboard() {
   initGrid();
+  initSelectionBar();
   document.querySelectorAll('#zoomGroup [data-zoom]').forEach(b => b.addEventListener('click', () => setZoom(b.dataset.zoom)));
   document.getElementById('btnCompactColumns')?.addEventListener('click', () => setCompactColumns(!compactColumns));
   updateZoomButtons();
@@ -3586,6 +3623,108 @@ function onShortcut(e, inField) {
     return true;
   }
   return false;
+}
+
+// Standup flow (B-16): multi-select, a selection bar, digit progress, one call and one undo per batch.
+let selectedKeys = new Set();
+let selectionAnchor = null;
+const pendingProgress = new Map();
+
+function applySelection() {
+  for (const [key, tr] of rowCache) tr.classList.toggle('is-selected', selectedKeys.has(key));
+  if (gridRoot) {
+    gridRoot.setAttribute('aria-multiselectable', 'true');
+    gridRoot.querySelectorAll('[role="row"][data-row]').forEach(r => {
+      const t = rowTasks[Number(r.dataset.row)];
+      r.setAttribute('aria-selected', String(!!t && selectedKeys.has(t.task.key)));
+    });
+  }
+  const bar = document.getElementById('selectionBar');
+  if (bar) {
+    bar.hidden = selectedKeys.size === 0;
+    document.getElementById('selectionCount').textContent = `${selectedKeys.size} selected`;
+  }
+}
+
+function selectRow(key, e) {
+  if (e.shiftKey) {
+    const order = rowTasks.map(r => r.task.key);
+    selectedKeys = new Set([...selectedKeys, ...rangeKeys(order, selectionAnchor, key)]);
+  } else {
+    selectedKeys = toggleKey(selectedKeys, key);
+    selectionAnchor = key;
+  }
+  applySelection();
+}
+
+function clearSelection() {
+  selectedKeys = new Set();
+  selectionAnchor = null;
+  applySelection();
+}
+
+/** One batchUpdateTasks call; a move keeps the rows, other edits re-render them (no extra call). */
+async function runBatch(items, kind) {
+  if (!items.length) return;
+  const res = await callResolver('batchUpdateTasks', { items });
+  if (res && Array.isArray(res.tasks)) {
+    if (kind === 'move') applyPlanInPlace(res);
+    else {
+      currentPlan = res;
+      renderPlan();
+      settleUndo();
+    }
+  } else {
+    await loadProjectPlan();
+  }
+}
+
+function versionOf(key) {
+  return findTask(key)?.version || 0;
+}
+
+function initSelectionBar() {
+  document.getElementById('btnSelProgress')?.addEventListener('click', () => {
+    const p = Math.max(0, Math.min(100, parseInt(document.getElementById('selProgress').value, 10) || 0));
+    runBatch([...selectedKeys].map(k => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) })), 'progress');
+  });
+  document.getElementById('btnSelMove')?.addEventListener('click', () => {
+    const days = parseInt(document.getElementById('selDays').value, 10) || 0;
+    runBatch(moveSelectionBy(currentPlan.tasks, selectedKeys, days), 'move');
+  });
+  document.getElementById('btnSelAssign')?.addEventListener('click', () => {
+    const sel = document.getElementById('selAssignee');
+    const name = sel.options[sel.selectedIndex]?.textContent || '';
+    runBatch([...selectedKeys].map(k => ({ taskId: k, updates: { resourceAccountId: sel.value, resource: name }, expectedVersion: versionOf(k) })), 'assign');
+  });
+  document.getElementById('btnSelClear')?.addEventListener('click', clearSelection);
+}
+
+function fillAssigneeOptions() {
+  const sel = document.getElementById('selAssignee');
+  if (!sel || !currentPlan) return;
+  sel.replaceChildren(...(currentPlan.availableUsers || []).map(u => {
+    const o = document.createElement('option');
+    o.value = u.accountId;
+    o.textContent = u.displayName;
+    return o;
+  }));
+}
+
+/** Digits set a pending progress on the focused row; Enter saves every pending value in one call. */
+function setPendingProgress(key, pct) {
+  pendingProgress.set(key, pct);
+  const chip = rowCache.get(key)?.querySelector('.progress-chip-text');
+  if (chip) chip.textContent = `${pct}% (not saved)`;
+  announce(`${key} progress ${pct}%, not saved. Down for the next row, Enter saves all ${pendingProgress.size}.`);
+}
+
+async function commitPendingProgress() {
+  const items = [...pendingProgress].map(([k, p]) => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) }));
+  pendingProgress.clear();
+  await runBatch(items, 'progress');
+  announce(`Saved progress on ${items.length} issue${items.length === 1 ? '' : 's'}.`);
+  focusGridCell();
 }
 
 // Rich Tooltip Helpers

@@ -6358,6 +6358,17 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return keys.length ? { keys, restore, reapply } : null;
   }
   function actionLabel(fn, payload, entry) {
+    if (fn === "batchUpdateTasks") {
+      const items = payload.items || [];
+      const n = items.length;
+      const issues = `${n} issue${n === 1 ? "" : "s"}`;
+      const others2 = entry.keys.filter((k) => !items.some((i) => i.taskId === k)).length;
+      const first = items[0] && items[0].updates || {};
+      if (first.startDate || first.endDate) return `Moved ${issues}` + (others2 ? ` and ${others2} dependent${others2 > 1 ? "s" : ""}` : "");
+      if (first.progress !== void 0) return `Set progress on ${issues}`;
+      if (first.resourceAccountId !== void 0) return `Assigned ${issues}`;
+      return `Changed ${issues}`;
+    }
     const key = payload.taskId || entry.keys[0];
     const u = payload.updates || {};
     const others = entry.keys.filter((k) => k !== key).length;
@@ -7241,6 +7252,27 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return scheduled.length >= 2 && !scheduled.some((t) => t.dependency && t.dependency.predecessorKey);
   }
 
+  // src/ui/selection.ts
+  function toggleKey(selected, key) {
+    const next = new Set(selected);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  }
+  function rangeKeys(order, anchor, key) {
+    const a = anchor ? order.indexOf(anchor) : -1;
+    const b = order.indexOf(key);
+    if (a < 0 || b < 0) return [key];
+    return order.slice(Math.min(a, b), Math.max(a, b) + 1);
+  }
+  function moveSelectionBy(tasks, selected, days) {
+    if (!days) return [];
+    return tasks.filter((t) => selected.has(t.key) && t.startDate && !t.isEpic && t.hierarchyLevel !== 1 && !t.datesFromChildren).sort((a, b) => a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0).map((t) => ({ taskId: t.key, updates: { startDate: addDays(t.startDate, days), endDate: addDays(t.endDate || t.startDate, days) }, expectedVersion: t.version || 0 }));
+  }
+  function progressFromDigit(key) {
+    return /^[0-9]$/.test(key) ? Number(key) * 10 : null;
+  }
+
   // src/ui/time-scale.ts
   var ZOOMS = [
     { id: "day", label: "Day", dayPx: 40, snap: "day" },
@@ -7379,7 +7411,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       window.open(fullUrl, "_blank", "noopener,noreferrer");
     }
   }
-  var UNDOABLE = /* @__PURE__ */ new Set(["updateWbsTask", "unscheduleTask", "scheduleBacklogTask"]);
+  var UNDOABLE = /* @__PURE__ */ new Set(["updateWbsTask", "unscheduleTask", "scheduleBacklogTask", "batchUpdateTasks"]);
   var undoStack = new UndoStack(20);
   var pendingUndo = null;
   var replayingUndo = false;
@@ -7400,7 +7432,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const p = pendingUndo;
     if (!p || !p.done || !currentPlan) return;
     pendingUndo = null;
-    const entry = buildUndoEntry(p.before, snapshotPlan(currentPlan), p.payload.taskId);
+    const entry = buildUndoEntry(p.before, snapshotPlan(currentPlan), p.payload.taskId || p.payload.items && p.payload.items[0] && p.payload.items[0].taskId);
     if (!entry) return;
     entry.label = actionLabel(p.fn, p.payload, entry);
     undoStack.push(entry);
@@ -7729,6 +7761,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
           pinnedDependencyTaskId = null;
           drawTimeline(true);
         }
+        if (selectedKeys.size && !pendingProgress.size) clearSelection();
         const inlineRow = document.querySelector(".inline-creation-row");
         if (inlineRow) {
           inlineRow.remove();
@@ -8283,6 +8316,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   function renderPlanSummary() {
     updateLinkHint();
+    fillAssigneeOptions();
     const projectBadge = document.getElementById("projectBadge");
     projectBadge.textContent = `Project: ${currentPlan.projectKey}`;
     projectBadge.hidden = false;
@@ -9510,6 +9544,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     tr.innerHTML = html`${rowColsHtml}`;
     applyFrozen(tr);
+    if (selectedKeys.has(task.key)) tr.classList.add("is-selected");
+    tr.addEventListener("click", (e) => {
+      if (!(e.ctrlKey || e.metaKey || e.shiftKey)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      selectRow(task.key, e);
+    }, true);
     if (visibleKeys.includes("resource")) {
       const resourceTd = tr.querySelector(".td-resource-cell");
       if (resourceTd) {
@@ -10154,6 +10195,7 @@ Click to manage or assign.`;
       rows.push(row);
     }
     gridRoot.replaceChildren(...rows);
+    applySelection();
     if (hadFocus) focusGridCell();
   }
   function viewportFirstRow() {
@@ -10207,6 +10249,29 @@ Click to manage or assign.`;
       return;
     }
     if (!task) return;
+    const digit = progressFromDigit(e.key);
+    if (digit !== null && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      setPendingProgress(task.key, digit);
+      return;
+    }
+    if (e.key === "Enter" && pendingProgress.size) {
+      e.preventDefault();
+      commitPendingProgress();
+      return;
+    }
+    if (e.key === "Escape" && pendingProgress.size) {
+      pendingProgress.clear();
+      renderTimelineRows();
+      announce("Progress changes discarded.");
+      return;
+    }
+    if (e.key === " " && gridFocus.col !== 2 && gridFocus.col !== 3) {
+      e.preventDefault();
+      selectRow(task.key, { shiftKey: false });
+      announce(`${task.key} ${selectedKeys.has(task.key) ? "selected" : "not selected"}. ${selectedKeys.size} selected.`);
+      return;
+    }
     if (e.key === " " && task.startDate && !(task.isEpic || task.hierarchyLevel === 1)) {
       if (task.datesFromChildren) {
         e.preventDefault();
@@ -10397,6 +10462,7 @@ Click to manage or assign.`;
   }
   function initKeyboard() {
     initGrid();
+    initSelectionBar();
     document.querySelectorAll("#zoomGroup [data-zoom]").forEach((b) => b.addEventListener("click", () => setZoom(b.dataset.zoom)));
     document.getElementById("btnCompactColumns")?.addEventListener("click", () => setCompactColumns(!compactColumns));
     updateZoomButtons();
@@ -10488,6 +10554,95 @@ Click to manage or assign.`;
       return true;
     }
     return false;
+  }
+  var selectedKeys = /* @__PURE__ */ new Set();
+  var selectionAnchor = null;
+  var pendingProgress = /* @__PURE__ */ new Map();
+  function applySelection() {
+    for (const [key, tr] of rowCache) tr.classList.toggle("is-selected", selectedKeys.has(key));
+    if (gridRoot) {
+      gridRoot.setAttribute("aria-multiselectable", "true");
+      gridRoot.querySelectorAll('[role="row"][data-row]').forEach((r) => {
+        const t = rowTasks[Number(r.dataset.row)];
+        r.setAttribute("aria-selected", String(!!t && selectedKeys.has(t.task.key)));
+      });
+    }
+    const bar = document.getElementById("selectionBar");
+    if (bar) {
+      bar.hidden = selectedKeys.size === 0;
+      document.getElementById("selectionCount").textContent = `${selectedKeys.size} selected`;
+    }
+  }
+  function selectRow(key, e) {
+    if (e.shiftKey) {
+      const order = rowTasks.map((r) => r.task.key);
+      selectedKeys = /* @__PURE__ */ new Set([...selectedKeys, ...rangeKeys(order, selectionAnchor, key)]);
+    } else {
+      selectedKeys = toggleKey(selectedKeys, key);
+      selectionAnchor = key;
+    }
+    applySelection();
+  }
+  function clearSelection() {
+    selectedKeys = /* @__PURE__ */ new Set();
+    selectionAnchor = null;
+    applySelection();
+  }
+  async function runBatch(items, kind) {
+    if (!items.length) return;
+    const res = await callResolver2("batchUpdateTasks", { items });
+    if (res && Array.isArray(res.tasks)) {
+      if (kind === "move") applyPlanInPlace(res);
+      else {
+        currentPlan = res;
+        renderPlan();
+        settleUndo();
+      }
+    } else {
+      await loadProjectPlan();
+    }
+  }
+  function versionOf(key) {
+    return findTask(key)?.version || 0;
+  }
+  function initSelectionBar() {
+    document.getElementById("btnSelProgress")?.addEventListener("click", () => {
+      const p = Math.max(0, Math.min(100, parseInt(document.getElementById("selProgress").value, 10) || 0));
+      runBatch([...selectedKeys].map((k) => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) })), "progress");
+    });
+    document.getElementById("btnSelMove")?.addEventListener("click", () => {
+      const days = parseInt(document.getElementById("selDays").value, 10) || 0;
+      runBatch(moveSelectionBy(currentPlan.tasks, selectedKeys, days), "move");
+    });
+    document.getElementById("btnSelAssign")?.addEventListener("click", () => {
+      const sel = document.getElementById("selAssignee");
+      const name = sel.options[sel.selectedIndex]?.textContent || "";
+      runBatch([...selectedKeys].map((k) => ({ taskId: k, updates: { resourceAccountId: sel.value, resource: name }, expectedVersion: versionOf(k) })), "assign");
+    });
+    document.getElementById("btnSelClear")?.addEventListener("click", clearSelection);
+  }
+  function fillAssigneeOptions() {
+    const sel = document.getElementById("selAssignee");
+    if (!sel || !currentPlan) return;
+    sel.replaceChildren(...(currentPlan.availableUsers || []).map((u) => {
+      const o = document.createElement("option");
+      o.value = u.accountId;
+      o.textContent = u.displayName;
+      return o;
+    }));
+  }
+  function setPendingProgress(key, pct) {
+    pendingProgress.set(key, pct);
+    const chip = rowCache.get(key)?.querySelector(".progress-chip-text");
+    if (chip) chip.textContent = `${pct}% (not saved)`;
+    announce(`${key} progress ${pct}%, not saved. Down for the next row, Enter saves all ${pendingProgress.size}.`);
+  }
+  async function commitPendingProgress() {
+    const items = [...pendingProgress].map(([k, p]) => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) }));
+    pendingProgress.clear();
+    await runBatch(items, "progress");
+    announce(`Saved progress on ${items.length} issue${items.length === 1 ? "" : "s"}.`);
+    focusGridCell();
   }
   function showTaskTooltip(e, task) {
     const tip = document.getElementById("globalTooltip");

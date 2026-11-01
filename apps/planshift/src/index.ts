@@ -1366,7 +1366,8 @@ export async function removeMirroredLink(linkId: string): Promise<boolean> {
  */
 export async function updateWbsTask(
   payload: { projectKey: string; projectId?: string; taskId: string; updates: Partial<WbsTask>; expectedVersion?: number },
-  storageProvider?: StorageProvider
+  storageProvider?: StorageProvider,
+  preloaded?: LiveData
 ): Promise<ProjectPlanState> {
   const { projectKey, projectId, taskId, updates, expectedVersion } = payload;
   validateTaskUpdates(updates as Record<string, unknown>);
@@ -1376,8 +1377,8 @@ export async function updateWbsTask(
   const storage = resolveStorage(storageProvider);
   const log = new SyncLog();
 
-  // Jira is read once per update; the returned plan reuses the same read (B-10).
-  const live = await loadLive(projectKey);
+  // Jira is read once per update (or once per batch); the returned plan reuses the same read (B-10, B-16).
+  const live = preloaded || await loadLive(projectKey);
   const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live);
   const targetTask = plan.tasks.find(t => t.id === taskId || t.key === taskId) ||
     (plan.backlogTasks || []).find(t => t.id === taskId || t.key === taskId);
@@ -1606,6 +1607,49 @@ export async function pruneStaleEntries(
     }
   }
   return { ok: true, success: true, pruned, jiraSync: noJiraWrites() };
+}
+
+/**
+ * Applies several task updates in one call (B-16 standup flow), with one Jira read. Each item runs
+ * like updateWbsTask, including its cascade. When an item's version was changed by an earlier item of
+ * the same batch (a cascade), it is retried once with the current version; a version changed by
+ * anyone else is reported as a conflict and the other items still apply.
+ */
+export async function batchUpdateTasks(
+  payload: { projectKey: string; projectId?: string; items: Array<{ taskId: string; updates: Partial<WbsTask>; expectedVersion?: number }> },
+  storageProvider?: StorageProvider
+): Promise<ProjectPlanState & { results: Array<{ taskId: string; ok: boolean; conflict?: boolean }> }> {
+  const { projectKey, projectId, items } = payload;
+  if (!Array.isArray(items) || items.length === 0 || items.length > 50) throw new ValidationError('items', 'items must be a list of 1 to 50 updates');
+  for (const item of items) {
+    assertIssueKey(item.taskId, 'taskId');
+    validateTaskUpdates(item.updates as Record<string, unknown>);
+  }
+  const storage = resolveStorage(storageProvider);
+  const store = openStore(storage, projectKey, projectId);
+  const live = await loadLive(projectKey);
+  const startVersions = new Map([...(await store.loadEntries())].map(([k, e]) => [k, e.version]));
+  const writes: JiraWriteRecord[] = [];
+  const results: Array<{ taskId: string; ok: boolean; conflict?: boolean }> = [];
+  let plan: ProjectPlanState | null = null;
+  for (const item of items) {
+    const run = (expectedVersion?: number) => updateWbsTask({ projectKey, projectId, taskId: item.taskId, updates: item.updates, expectedVersion }, storage, live);
+    let res: any = await run(item.expectedVersion);
+    if (res && res.conflict) {
+      const now = (await store.loadEntries()).get(item.taskId)?.version ?? 0;
+      const changedByBatch = now !== (startVersions.get(item.taskId) ?? 0) && item.expectedVersion === (startVersions.get(item.taskId) ?? 0);
+      if (changedByBatch) res = await run(now);
+    }
+    const conflict = !!(res && res.conflict);
+    results.push(conflict ? { taskId: item.taskId, ok: false, conflict: true } : { taskId: item.taskId, ok: true });
+    writes.push(...((res && res.jiraSync && res.jiraSync.writes) || []));
+    if (res && Array.isArray(res.tasks)) plan = res;
+  }
+  const finalPlan = plan || await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live);
+  const failed = writes.filter(w => !w.ok);
+  const jiraSync: JiraSyncReport = { ok: failed.length === 0, writes };
+  if (failed.length) jiraSync.error = failed.map(w => `${w.key}: ${w.error}`).join('; ');
+  return Object.assign(finalPlan, { ok: results.every(r => r.ok), jiraSync, results, cascadeRemaining: [] });
 }
 
 export const CASCADE_BATCH_LIMIT = 25;
@@ -2029,6 +2073,7 @@ const resolver = new Resolver();
 resolver.define('getProjectPlan', async (req) => withValidation(() => getProjectPlan(extractProjectKey(req), undefined, new Date(), extractSiteUrl(req), extractProjectId(req))));
 
 resolver.define('pruneStaleEntries', async (req) => withValidation(() => pruneStaleEntries({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('batchUpdateTasks', async (req) => withValidation(() => batchUpdateTasks({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 resolver.define('scheduleBacklogTask', async (req) => withValidation(() => scheduleBacklogTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
 resolver.define('createInlineTask', async (req) => withValidation(() => createInlineTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
