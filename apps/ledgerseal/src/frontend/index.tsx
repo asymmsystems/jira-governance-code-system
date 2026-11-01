@@ -272,7 +272,8 @@ export const LedgerSealPanel: React.FC = () => {
             {reasonNeeded && (
               <>
                 <Label labelFor="reason">{form === 'revoke' ? 'Reason for revoking (required)' : 'Reason for approving these changes (required)'}</Label>
-                <TextArea id="reason" name="reason" value={reason} onChange={(e: any) => setReason(e.target.value)} />
+                {/* Uncontrolled on purpose: a controlled value lost typed characters over the UI Kit bridge (live, DEMO-34) */}
+                <TextArea key={`reason-${form}`} id="reason" name="reason" onChange={(e: any) => setReason(e.target.value)} />
               </>
             )}
             {form !== 'revoke' && (
