@@ -23,18 +23,23 @@ import {
 import { StorageProvider, MetricsRepository } from '../src/storage/metrics-repository';
 import { RealitySignals, IssueExceptionRecord } from '../src/domain/models';
 
+// One response queue (mockRequestJira) and one recording mock per principal,
+// so a test can assert which principal made each call (FR-22).
 const mockRequestJira = jest.fn();
+const mockAppRequestJira = jest.fn((...args: any[]) => mockRequestJira(...args));
+const mockUserRequestJira = jest.fn((...args: any[]) => mockRequestJira(...args));
 jest.mock('@forge/api', () => ({
   __esModule: true,
   default: {
     asApp: () => ({
-      requestJira: mockRequestJira
+      requestJira: mockAppRequestJira
     }),
     asUser: () => ({
-      requestJira: mockRequestJira
+      requestJira: mockUserRequestJira
     })
   },
-  route: (strings: any, ...values: any[]) => strings.join('')
+  route: (strings: any, ...values: any[]) =>
+    strings.reduce((acc: string, part: string, i: number) => acc + part + (i < values.length ? String(values[i]) : ''), '')
 }));
 
 jest.mock('@forge/kvs', () => ({
@@ -68,6 +73,8 @@ describe('FourRealities Index / Forge Handlers', () => {
     mockStorage = new MockStorage();
     setGlobalStorageProvider(mockStorage);
     mockRequestJira.mockReset();
+    mockAppRequestJira.mockClear();
+    mockUserRequestJira.mockClear();
     mockRequestJira.mockResolvedValue({
       status: 200,
       json: async () => ({ issues: [] })
@@ -628,17 +635,6 @@ describe('FourRealities Index / Forge Handlers', () => {
       expect(failNoReason.success).toBe(false);
       expect(failNoReason.error).toContain('Exception reason required');
 
-      // Falls back to asApp when asUser fails to persist exception
-      mockRequestJira
-        .mockRejectedValueOnce(new Error('User forbidden'))
-        .mockResolvedValueOnce({ status: 200 });
-
-      const resFallback = await recordException(
-        { issueId: 'ex-fb', type: 'CODE', reason: 'Technical Spike' },
-        {},
-        mockStorage
-      );
-      expect(resFallback.success).toBe(true);
     });
 
     it('handles network error in linkDecision', async () => {
@@ -698,5 +694,65 @@ describe('getIssueAlignment with failing secondary calls', () => {
     expect(score.issueKey).toBe('SEC-1');
     expect(score.gates.intent).toBe('BLOCKED');
     expect(score.codeScore).toBe(0);
+  });
+});
+
+describe('B-05: user actions run as the user only', () => {
+  beforeEach(() => {
+    mockRequestJira.mockReset();
+    mockAppRequestJira.mockClear();
+    mockUserRequestJira.mockClear();
+  });
+
+  it('linkDecision returns the permission error on 403 and never calls asApp', async () => {
+    mockRequestJira.mockResolvedValueOnce({ status: 403 });
+    const res = await linkDecision({ issueId: '10001', issueKey: 'DEMO-1', url: 'https://example.atlassian.net/wiki/x', title: 'ADR-1' });
+    expect(res.success).toBe(false);
+    expect(res.error).toBe('You need the Edit issues permission on DEMO-1 to add a link.');
+    expect(mockUserRequestJira).toHaveBeenCalledTimes(1);
+    expect(mockAppRequestJira).not.toHaveBeenCalled();
+  });
+
+  it('recordException returns the permission error on 403, never calls asApp, and stores nothing', async () => {
+    const storage = new MockStorage();
+    mockRequestJira.mockResolvedValueOnce({ status: 403 });
+    const res = await recordException({ issueId: '10001', issueKey: 'DEMO-1', type: 'CODE', reason: 'Configuration change only, no code' }, {}, storage);
+    expect(res.success).toBe(false);
+    expect(res.error).toBe('You need the Edit issues permission on DEMO-1 to record an exception.');
+    expect(mockAppRequestJira).not.toHaveBeenCalled();
+    expect(await storage.get('fr:issue:10001:exception')).toBeUndefined();
+  });
+
+  it('recordException reports a rejected request and stores nothing', async () => {
+    const storage = new MockStorage();
+    mockRequestJira.mockRejectedValueOnce(new Error('socket hang up'));
+    const res = await recordException({ issueId: '10002', issueKey: 'DEMO-2', type: 'CODE', reason: 'Configuration change only, no code' }, {}, storage);
+    expect(res.success).toBe(false);
+    expect(res.error).toBe('socket hang up');
+    expect(mockAppRequestJira).not.toHaveBeenCalled();
+    expect(await storage.get('fr:issue:10002:exception')).toBeUndefined();
+  });
+
+  it('recordException reports a non-2xx status and stores nothing', async () => {
+    const storage = new MockStorage();
+    mockRequestJira.mockResolvedValueOnce({ status: 500 });
+    const res = await recordException({ issueId: '10003', issueKey: 'DEMO-3', type: 'CODE', reason: 'Configuration change only, no code' }, {}, storage);
+    expect(res.success).toBe(false);
+    expect(res.error).toBe('Jira returned status 500 recording the exception.');
+    expect(await storage.get('fr:issue:10003:exception')).toBeUndefined();
+  });
+
+  it('recordException writes the property as the user, then stores the record', async () => {
+    const storage = new MockStorage();
+    mockRequestJira.mockResolvedValueOnce({ status: 200 });
+    const res = await recordException({ issueId: '10004', issueKey: 'DEMO-4', type: 'CODE', reason: 'Configuration change only, no code' }, { accountId: 'acc-9' }, storage);
+    expect(res.success).toBe(true);
+    expect(mockUserRequestJira).toHaveBeenCalledTimes(1);
+    const [path, init] = mockUserRequestJira.mock.calls[0];
+    expect(path).toBe('/rest/api/3/issue/10004/properties/fourrealities-exception');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(init.body).recordedBy).toBe('acc-9');
+    expect(mockAppRequestJira).not.toHaveBeenCalled();
+    expect((await storage.get<any>('fr:issue:10004:exception')).reason).toBe('Configuration change only, no code');
   });
 });

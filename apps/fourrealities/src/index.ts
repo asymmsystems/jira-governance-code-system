@@ -493,6 +493,10 @@ export async function linkDecision(payload: any, context?: any): Promise<{ succe
     if (res.status >= 200 && res.status < 300) {
       return { success: true, remoteLink: { url, title } };
     }
+    if (res.status === 403) {
+      // A user action stays a user action: no retry as the app (FR-05).
+      return { success: false, error: `You need the Edit issues permission on ${payload?.issueKey || issueId} to add a link.` };
+    }
     return { success: false, error: `Jira returned status ${res.status} linking decision.` };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Failed to link architecture decision.' };
@@ -536,24 +540,27 @@ export async function recordException(
     recordedAt: new Date().toISOString()
   };
 
-  const storage = resolveStorage(storageProvider);
-  const repository = new MetricsRepository(storage);
-  await repository.saveIssueException(record);
-
-  // Persist property to Jira issue
+  // Write the issue property as the user first. The KVS record follows only after Jira accepts
+  // the write, so a user without edit rights cannot change the gate (FR-05, FR-24).
   try {
-    await api.asUser().requestJira(route`/rest/api/3/issue/${issueId}/properties/fourrealities-exception`, {
+    const res = await api.asUser().requestJira(route`/rest/api/3/issue/${issueId}/properties/fourrealities-exception`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(record)
-    }).catch(async () => {
-      await api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/properties/fourrealities-exception`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(record)
-      });
     });
-  } catch {}
+    if (res.status === 403) {
+      return { success: false, error: `You need the Edit issues permission on ${record.issueKey} to record an exception.` };
+    }
+    if (res.status < 200 || res.status >= 300) {
+      return { success: false, error: `Jira returned status ${res.status} recording the exception.` };
+    }
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to record exception.' };
+  }
+
+  const storage = resolveStorage(storageProvider);
+  const repository = new MetricsRepository(storage);
+  await repository.saveIssueException(record);
 
   return { success: true, record };
 }
