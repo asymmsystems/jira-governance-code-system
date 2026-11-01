@@ -7375,6 +7375,80 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return (viewportW - columnsW) / weekPx < MIN_VISIBLE_WEEKS;
   }
 
+  // src/ui/table-view.ts
+  function formatTableDate(iso2) {
+    if (!iso2) return "-";
+    const trimmed = iso2.trim();
+    return trimmed ? trimmed : "-";
+  }
+  function formatTableProgress(progress) {
+    if (typeof progress !== "number" || !Number.isFinite(progress)) return "0%";
+    const p = Math.max(0, Math.min(100, Math.round(progress)));
+    return `${p}%`;
+  }
+  function formatTableDependencies(task) {
+    const list = task.dependencies && task.dependencies.length > 0 ? task.dependencies : task.dependency ? [task.dependency] : [];
+    if (list.length === 0) return "-";
+    const valid = list.filter((d) => Boolean(d.predecessorKey && d.predecessorKey.trim()));
+    if (valid.length === 0) return "-";
+    return valid.map((d) => `${d.predecessorKey} (${d.triggerPercent !== void 0 ? d.triggerPercent : 100}%)`).join(", ");
+  }
+  function buildTableViewRows(tasks) {
+    return tasks.map((t) => ({
+      key: t.key,
+      summary: t.summary || "",
+      issueType: t.issueType || "Task",
+      epic: t.epic || "-",
+      assignee: t.resource || "Unassigned",
+      startDate: formatTableDate(t.startDate),
+      dueDate: formatTableDate(t.endDate),
+      progress: formatTableProgress(t.progress),
+      status: t.status || "To Do",
+      dependencies: formatTableDependencies(t)
+    }));
+  }
+  function toggleTableView(currentView2) {
+    return currentView2 === "table" ? "timeline" : "table";
+  }
+
+  // src/ui/in-app-search.ts
+  function matchTask(task, query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return false;
+    const k = task.key ? task.key.toLowerCase() : "";
+    const s = task.summary ? task.summary.toLowerCase() : "";
+    return k.includes(q) || s.includes(q);
+  }
+  function findMatchingTasks(tasks, query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const results = [];
+    tasks.forEach((task, index) => {
+      if (matchTask(task, q)) {
+        results.push({ task, index });
+      }
+    });
+    return results;
+  }
+  function findNextMatch(matchIndices, currentMatchPos, direction = 1) {
+    const count = matchIndices.length;
+    if (count === 0) return -1;
+    if (currentMatchPos < 0) return direction === 1 ? 0 : count - 1;
+    return (currentMatchPos + direction + count) % count;
+  }
+  function formatMatchCount(query, matchCount, currentMatchPos) {
+    const q = query.trim();
+    if (!q) return "";
+    if (matchCount === 0) return "No matches";
+    const pos = Math.max(0, currentMatchPos);
+    return `${pos + 1} of ${matchCount}`;
+  }
+  function isSearchShortcut(e) {
+    if (e.altKey) return false;
+    const isCtrlOrCmd = Boolean(e.ctrlKey || e.metaKey);
+    return isCtrlOrCmd && (e.key === "f" || e.key === "F");
+  }
+
   // src/frontend/legacy-planner.js
   function getJiraBaseUrl() {
     if (currentPlan && currentPlan.siteUrl) {
@@ -7601,11 +7675,22 @@ Please see https://iframe-resizer.com/upgrade for more details.
     document.getElementById("viewSwitcher").addEventListener("change", (e) => {
       switchView(e.target.value);
     });
+    const toggleTableBtn = document.getElementById("toggleTableViewBtn");
+    if (toggleTableBtn) {
+      toggleTableBtn.addEventListener("click", () => {
+        switchView(toggleTableView(currentView));
+      });
+    }
+    initInAppSearch();
     const hierSwitcher = document.getElementById("hierarchySwitcher");
     if (hierSwitcher) {
       hierSwitcher.addEventListener("change", (e) => {
         currentHierarchyView = e.target.value;
-        renderTimelineRows();
+        if (currentView === "table") {
+          renderTableView();
+        } else {
+          renderTimelineRows();
+        }
       });
     }
     document.getElementById("toggleBacklogBtn").addEventListener("click", toggleBacklogTray);
@@ -7718,6 +7803,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
         e.preventDefault();
         if (e.shiftKey) redoLast();
         else undoLast();
+        return;
+      }
+      if (isSearchShortcut(e) && !openModal()) {
+        e.preventDefault();
+        focusInAppSearch();
         return;
       }
       if (e.key.length === 1 && e.key !== "?" && onShortcut(e, inField)) {
@@ -8093,13 +8183,171 @@ Please see https://iframe-resizer.com/upgrade for more details.
       window.addEventListener("mouseup", onMouseUp);
     });
   }
+  var currentView = "timeline";
   function switchView(viewName) {
-    document.getElementById("timelineViewSection").style.display = viewName === "timeline" ? "flex" : "none";
-    document.getElementById("utilizationViewSection").style.display = viewName === "utilization" ? "block" : "none";
-    if (viewName === "timeline") {
+    currentView = viewName;
+    const isTimeline = viewName === "timeline";
+    const isTable = viewName === "table";
+    const isUtil = viewName === "utilization";
+    const timelineSec = document.getElementById("timelineViewSection");
+    const utilSec = document.getElementById("utilizationViewSection");
+    const tableSec = document.getElementById("tableViewSection");
+    const toggleBtn = document.getElementById("toggleTableViewBtn");
+    const switcher = document.getElementById("viewSwitcher");
+    if (timelineSec) timelineSec.style.display = isTimeline ? "flex" : "none";
+    if (utilSec) utilSec.style.display = isUtil ? "block" : "none";
+    if (tableSec) tableSec.style.display = isTable ? "flex" : "none";
+    if (toggleBtn) {
+      toggleBtn.setAttribute("aria-pressed", isTable ? "true" : "false");
+    }
+    if (switcher && switcher.value !== viewName) {
+      switcher.value = viewName;
+    }
+    if (isTimeline) {
       setTimeout(updateVirtualRows, 100);
-    } else if (viewName === "utilization") {
+    } else if (isUtil) {
       renderUtilizationView();
+    } else if (isTable) {
+      renderTableView();
+    }
+  }
+  function renderTableView() {
+    const tbody = document.getElementById("plainDataTableBody");
+    const countEl = document.getElementById("tableRowCount");
+    if (!tbody) return;
+    const tasks = rowTasks && rowTasks.length > 0 ? rowTasks.map((r) => r.task) : currentPlan?.tasks || [];
+    const rows = buildTableViewRows(tasks);
+    if (countEl) {
+      countEl.textContent = `${rows.length} ${rows.length === 1 ? "issue" : "issues"}`;
+    }
+    const trs = rows.map((r) => {
+      const tr = document.createElement("tr");
+      tr.dataset.taskKey = r.key;
+      tr.tabIndex = -1;
+      const cells = [
+        r.key,
+        r.summary,
+        r.issueType,
+        r.epic,
+        r.assignee,
+        r.startDate,
+        r.dueDate,
+        r.progress,
+        r.status,
+        r.dependencies
+      ];
+      cells.forEach((val, idx) => {
+        const td = document.createElement("td");
+        if (idx === 0) {
+          const link = document.createElement("a");
+          link.href = "#";
+          link.textContent = val;
+          link.style.color = "var(--cp-link)";
+          link.style.textDecoration = "none";
+          link.style.fontWeight = "600";
+          link.addEventListener("click", (e) => openJiraIssueInNewTab(val, e));
+          td.appendChild(link);
+        } else {
+          td.textContent = val;
+        }
+        tr.appendChild(td);
+      });
+      return tr;
+    });
+    tbody.replaceChildren(...trs);
+  }
+  var searchMatches = [];
+  var currentSearchMatchPos = -1;
+  function initInAppSearch() {
+    const input = document.getElementById("inAppSearchInput");
+    const count = document.getElementById("searchMatchCount");
+    if (!input) return;
+    input.addEventListener("input", () => {
+      const query = input.value;
+      const tasks = rowTasks && rowTasks.length > 0 ? rowTasks.map((r) => r.task) : currentPlan?.tasks || [];
+      searchMatches = findMatchingTasks(tasks, query);
+      currentSearchMatchPos = searchMatches.length > 0 ? 0 : -1;
+      if (count) {
+        count.textContent = formatMatchCount(query, searchMatches.length, currentSearchMatchPos);
+      }
+      if (searchMatches.length > 0) {
+        navigateToSearchMatch(currentSearchMatchPos);
+      }
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (searchMatches.length > 0) {
+          const dir = e.shiftKey ? -1 : 1;
+          currentSearchMatchPos = findNextMatch(searchMatches.map((m) => m.index), currentSearchMatchPos, dir);
+          if (count) {
+            count.textContent = formatMatchCount(input.value, searchMatches.length, currentSearchMatchPos);
+          }
+          navigateToSearchMatch(currentSearchMatchPos);
+        }
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (searchMatches.length > 0) {
+          currentSearchMatchPos = findNextMatch(searchMatches.map((m) => m.index), currentSearchMatchPos, 1);
+          if (count) {
+            count.textContent = formatMatchCount(input.value, searchMatches.length, currentSearchMatchPos);
+          }
+          navigateToSearchMatch(currentSearchMatchPos);
+        }
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (searchMatches.length > 0) {
+          currentSearchMatchPos = findNextMatch(searchMatches.map((m) => m.index), currentSearchMatchPos, -1);
+          if (count) {
+            count.textContent = formatMatchCount(input.value, searchMatches.length, currentSearchMatchPos);
+          }
+          navigateToSearchMatch(currentSearchMatchPos);
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        input.value = "";
+        searchMatches = [];
+        currentSearchMatchPos = -1;
+        if (count) count.textContent = "";
+        input.blur();
+        if (currentView === "table") {
+          const table = document.getElementById("plainDataTable");
+          if (table) table.focus();
+        } else {
+          focusGridCell();
+        }
+      }
+    });
+  }
+  function focusInAppSearch() {
+    const input = document.getElementById("inAppSearchInput");
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  }
+  function navigateToSearchMatch(pos) {
+    if (pos < 0 || pos >= searchMatches.length) return;
+    const match = searchMatches[pos];
+    const key = match.task.key;
+    if (!key) return;
+    if (currentView === "table") {
+      const tbody = document.getElementById("plainDataTableBody");
+      if (tbody) {
+        tbody.querySelectorAll("tr.is-search-match").forEach((tr2) => tr2.classList.remove("is-search-match"));
+        const tr = tbody.querySelector(`tr[data-task-key="${CSS.escape(key)}"]`);
+        if (tr) {
+          tr.classList.add("is-search-match");
+          tr.scrollIntoView({ block: "center" });
+          tr.focus();
+        }
+      }
+    } else {
+      scrollRowIntoView(key);
+      const rIdx = rowTasks.findIndex((r) => r.task.key === key);
+      if (rIdx >= 0) {
+        setGridFocus(rIdx, 0);
+      }
     }
   }
   function toggleBacklogTray() {
@@ -8295,6 +8543,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (!hasInitialScrolledToToday) {
       hasInitialScrolledToToday = true;
       setTimeout(scrollToToday, 250);
+    }
+    if (currentView === "table") {
+      renderTableView();
     }
   }
   var HINT_KEY = "cascadeplan_hint_link";
@@ -9412,6 +9663,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
       if (hit && byKey.has(key)) positionBarHit(hit, byKey.get(key));
     }
     drawTimeline(true);
+    if (currentView === "table") {
+      renderTableView();
+    }
     settleUndo();
   }
   function applyFrozen(tr) {

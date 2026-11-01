@@ -29,9 +29,14 @@
       <button class="btn btn-outline" id="btnChanges" type="button" aria-expanded="false" aria-controls="changesPanel" title="Every Jira write of this session">
         Changes (<span id="changesCount">0</span>)
       </button>
+      <div class="search-box-container" role="search">
+        <input type="search" id="inAppSearchInput" class="in-app-search-input" placeholder="Search tasks (Ctrl+F)..." aria-label="Search tasks by key or summary" autocomplete="off">
+        <span id="searchMatchCount" class="search-match-count" aria-live="polite"></span>
+      </div>
     </div>
 
     <div class="header-right">
+      <button class="btn btn-outline" id="toggleTableViewBtn" type="button" aria-pressed="false" title="Switch between timeline and plain table view">Table view</button>
       <div style="position: relative; display: inline-block;">
         <button class="btn btn-outline" id="btnManageColumns" title="Show or hide table columns">
           ⊞ Columns <span id="colCountBadge" class="col-count-badge">8/8</span> ▾
@@ -61,6 +66,7 @@
       </select>
       <select class="view-select" id="viewSwitcher" aria-label="View">
         <option value="timeline">📊 Project Tracking (WBS & Timeline)</option>
+        <option value="table">📋 Table View (Plain Table)</option>
         <option value="utilization">👤 Resource Utilization (Per-Person)</option>
       </select>
     </div>
@@ -167,6 +173,37 @@
         <h3 style="margin-bottom: 8px;">Hours per person per week</h3>
         <p style="color: var(--cp-text-subtle); margin-bottom: 14px;">From the Jira estimates on the plan, spread evenly over the days of each task. No capacity is assumed.</p>
         <div id="utilizationProfilesContent"></div>
+      </div>
+
+      <!-- 3. Plain DOM Table View (B-26: canvas fallback) -->
+      <div id="tableViewSection" class="table-view-container" style="display: none;">
+        <div class="table-view-banner">
+          <div>
+            <h3 class="table-view-title">Plain Table View</h3>
+            <p class="table-view-desc">Project tasks and dates in a plain DOM table (canvas fallback).</p>
+          </div>
+          <span class="table-row-count" id="tableRowCount">0 issues</span>
+        </div>
+        <div class="table-view-wrapper">
+          <table id="plainDataTable" class="plain-data-table" aria-label="Project tasks table">
+            <thead>
+              <tr>
+                <th scope="col">Key</th>
+                <th scope="col">Summary</th>
+                <th scope="col">Type</th>
+                <th scope="col">Epic</th>
+                <th scope="col">Assignee</th>
+                <th scope="col">Start Date</th>
+                <th scope="col">Due Date</th>
+                <th scope="col">Progress</th>
+                <th scope="col">Status</th>
+                <th scope="col">Dependencies</th>
+              </tr>
+            </thead>
+            <tbody id="plainDataTableBody">
+            </tbody>
+          </table>
+        </div>
       </div>
 
     </main>
