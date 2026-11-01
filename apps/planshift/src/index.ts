@@ -29,7 +29,8 @@ import {
   JiraWriteRecord,
   CURRENT_WEEK_INDEX,
   DEFAULT_STORY_POINT_RATIO,
-  WORK_EFFORT_MODEL
+  WORK_EFFORT_MODEL,
+  PlanMetadata
 } from './domain/models';
 import { PlannerEngine } from './domain/planner-engine';
 import { describeJiraChanges, JiraFieldChange } from './domain/jira-change';
@@ -46,6 +47,7 @@ import {
   validateColumnWidths,
   validateHiddenColumns,
   validateMilestone,
+  validatePlanName,
   toValidationResult
 } from './validation';
 
@@ -294,8 +296,8 @@ function evenAllocations(weeks: WeeklySprintColumn[], startIdx: number, span: nu
  * The planning store of a project. Records are keyed by the project id from the Forge context;
  * direct callers without a context use the project key (B-09).
  */
-export function openStore(storage: StorageProvider, projectKey: string, projectId?: string): PlanStore {
-  return new PlanStore(storage, projectId || projectKey, projectKey);
+export function openStore(storage: StorageProvider, projectKey: string, projectId?: string, planId?: string): PlanStore {
+  return new PlanStore(storage, projectId || projectKey, projectKey, planId);
 }
 
 /**
@@ -752,11 +754,13 @@ export async function getProjectPlan(
   referenceDate: Date = new Date(),
   siteUrl?: string,
   projectId?: string,
-  preloaded?: LiveData
+  preloaded?: LiveData,
+  planId?: string
 ): Promise<ProjectPlanState> {
   const storage = resolveStorage(storageProvider);
-  const store = openStore(storage, projectKey, projectId);
-  await migrateIfNeeded(store, projectKey);
+  const store = openStore(storage, projectKey, projectId, planId);
+  if (!planId || planId === 'default') await migrateIfNeeded(store, projectKey);
+  const availablePlans = await store.listPlans();
 
   const dynamicTimeline = getTimelineWeeks(referenceDate);
   const activeWeeks = dynamicTimeline.weeks;
@@ -832,7 +836,7 @@ export async function getProjectPlan(
   const { actualCompletion, targetCompletion } = PlannerEngine.calculateProjectCompletion(tasks);
 
   const planState: ProjectPlanState = {
-    planId: `plan-${projectKey}`,
+    planId: planId || 'default',
     projectKey,
     projectName: `Project ${projectKey}`,
     overallProjectCompletion: actualCompletion,
@@ -845,6 +849,7 @@ export async function getProjectPlan(
     hiddenColumns: storedHiddenColumns,
     availableEpics,
     availableUsers,
+    availablePlans,
     hasEpic: live.hasEpic !== undefined ? live.hasEpic : (availableEpics.length > 0),
     lastUpdated: new Date().toISOString(),
     isLiveSynced: liveData.isLive,
@@ -1397,16 +1402,17 @@ export async function updateWbsTask(
   }
   const storage = resolveStorage(storageProvider);
   const log = new SyncLog();
+  const planId = (payload as any).planId;
 
   // Jira is read once per update (or once per batch); the returned plan reuses the same read (B-10, B-16).
   const live = preloaded || await loadLive(projectKey);
-  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live);
+  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId);
   const targetTask = plan.tasks.find(t => t.id === taskId || t.key === taskId) ||
     (plan.backlogTasks || []).find(t => t.id === taskId || t.key === taskId);
   if (!targetTask) {
     throw new Error(`Task '${taskId}' not found in project plan`);
   }
-  const store = openStore(storage, projectKey, projectId);
+  const store = openStore(storage, projectKey, projectId, planId);
   const entries = await store.loadEntries();
   const baseVersion = entries.get(targetTask.key)?.version ?? 0;
   if (expectedVersion !== undefined && expectedVersion !== baseVersion) {
@@ -1662,7 +1668,7 @@ export async function updateWbsTask(
   // Two-way sync: write-back changed fields to Jira
   await syncTaskToJira(targetTask.key, sanitized, log, targetTask);
 
-  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live),
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId),
     { ok: true, jiraSync: log.report(), cascadeRemaining });
 }
 
@@ -2139,6 +2145,74 @@ export async function saveProjectMilestone(
   return { success: true, ok: true, jiraSync: noJiraWrites(), milestones: filtered };
 }
 
+/**
+ * Retrieves the available named plans for a project (UX-05).
+ */
+export async function getProjectPlans(
+  payload: { projectKey: string; projectId?: string; planId?: string },
+  storageProvider?: StorageProvider
+): Promise<{ ok: boolean; plans: PlanMetadata[]; activePlanId: string }> {
+  const storage = resolveStorage(storageProvider);
+  const store = openStore(storage, payload.projectKey, payload.projectId, payload.planId);
+  const plans = await store.listPlans();
+  return { ok: true, plans, activePlanId: payload.planId || 'default' };
+}
+
+/**
+ * Creates a new named plan, optionally cloning tasks and settings from an existing plan (UX-05).
+ */
+export async function createProjectPlan(
+  payload: { projectKey: string; projectId?: string; name: string; cloneFromPlanId?: string },
+  storageProvider?: StorageProvider
+): Promise<{ ok: boolean; plan: PlanMetadata; plans: PlanMetadata[]; error?: string; message?: string }> {
+  try {
+    const trimmed = validatePlanName(payload.name);
+    const storage = resolveStorage(storageProvider);
+    const store = openStore(storage, payload.projectKey, payload.projectId);
+    const plan = await store.createPlan(trimmed, payload.cloneFromPlanId);
+    const plans = await store.listPlans();
+    return { ok: true, plan, plans };
+  } catch (err: any) {
+    return { ok: false, plan: undefined as any, plans: [], error: 'validation', message: err?.message || 'Invalid plan name' };
+  }
+}
+
+/**
+ * Deletes a named plan (UX-05). The default plan cannot be deleted.
+ */
+export async function deleteProjectPlan(
+  payload: { projectKey: string; projectId?: string; planId: string },
+  storageProvider?: StorageProvider
+): Promise<{ ok: boolean; plans: PlanMetadata[]; error?: string; message?: string }> {
+  if (!payload.planId || payload.planId === 'default') {
+    return { ok: false, plans: [], error: 'cannot_delete_default', message: 'Cannot delete the default plan' };
+  }
+  const storage = resolveStorage(storageProvider);
+  const store = openStore(storage, payload.projectKey, payload.projectId);
+  const success = await store.deletePlan(payload.planId);
+  const plans = await store.listPlans();
+  return { ok: success, plans };
+}
+
+/**
+ * Renames an existing plan (UX-05).
+ */
+export async function renameProjectPlan(
+  payload: { projectKey: string; projectId?: string; planId: string; name: string },
+  storageProvider?: StorageProvider
+): Promise<{ ok: boolean; plan?: PlanMetadata | null; plans: PlanMetadata[]; error?: string; message?: string }> {
+  try {
+    const trimmed = validatePlanName(payload.name);
+    const storage = resolveStorage(storageProvider);
+    const store = openStore(storage, payload.projectKey, payload.projectId);
+    const plan = await store.renamePlan(payload.planId, trimmed);
+    const plans = await store.listPlans();
+    return { ok: !!plan, plan, plans };
+  } catch (err: any) {
+    return { ok: false, plans: [], error: 'validation', message: err?.message || 'Invalid plan name' };
+  }
+}
+
 
 /**
  * Helper to extract projectKey from trusted Jira Forge context first, with payload fallback.
@@ -2202,7 +2276,11 @@ export async function withResolverHandler<T>(req: any, fn: () => Promise<T>): Pr
 // Register Forge Resolvers
 const resolver = new Resolver();
 
-resolver.define('getProjectPlan', async (req) => withResolverHandler(req, () => getProjectPlan(extractProjectKey(req), undefined, new Date(), extractSiteUrl(req), extractProjectId(req))));
+resolver.define('getProjectPlan', async (req) => withResolverHandler(req, () => getProjectPlan(extractProjectKey(req), undefined, new Date(), extractSiteUrl(req), extractProjectId(req), undefined, req.payload?.planId)));
+resolver.define('getProjectPlans', async (req) => withResolverHandler(req, () => getProjectPlans({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('createProjectPlan', async (req) => withResolverHandler(req, () => createProjectPlan({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('deleteProjectPlan', async (req) => withResolverHandler(req, () => deleteProjectPlan({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('renameProjectPlan', async (req) => withResolverHandler(req, () => renameProjectPlan({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
 resolver.define('pruneStaleEntries', async (req) => withResolverHandler(req, () => pruneStaleEntries({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 resolver.define('batchUpdateTasks', async (req) => withResolverHandler(req, () => batchUpdateTasks({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));

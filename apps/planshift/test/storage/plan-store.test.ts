@@ -144,4 +144,77 @@ describe('PlanStore (B-09)', () => {
     expect(sequenceBetween(3000, undefined)).toBe(4000);
     expect(sequenceBetween(1000, 2000)).toBe(1500);
   });
+
+  describe('Multiple plans per project (UX-05)', () => {
+    it('listPlans returns default Main Plan when no plans exist', async () => {
+      const plans = await store.listPlans();
+      expect(plans).toHaveLength(1);
+      expect(plans[0]).toMatchObject({ id: 'default', name: 'Main Plan', isDefault: true });
+    });
+
+    it('creates a new empty plan and lists it', async () => {
+      const created = await store.createPlan('Optimistic Schedule');
+      expect(created.name).toBe('Optimistic Schedule');
+      expect(created.id).toMatch(/^plan-/);
+
+      const plans = await store.listPlans();
+      expect(plans).toHaveLength(2);
+      expect(plans.map(p => p.name)).toEqual(['Main Plan', 'Optimistic Schedule']);
+    });
+
+    it('isolates entries between default plan and a named plan', async () => {
+      await store.putEntry('TEST-1', '101', { startWeek: 'w1' });
+
+      const scenarioStore = new PlanStore(storage, '10000', 'TEST', 'scenario-a');
+      await scenarioStore.putEntry('TEST-1', '101', { startWeek: 'w5' });
+
+      const defaultEntries = await store.loadEntries();
+      const scenarioEntries = await scenarioStore.loadEntries();
+
+      expect(defaultEntries.get('TEST-1')).toMatchObject({ startWeek: 'w1' });
+      expect(scenarioEntries.get('TEST-1')).toMatchObject({ startWeek: 'w5' });
+    });
+
+    it('clones existing plan entries and settings when creating a cloned plan', async () => {
+      await store.putEntry('TEST-1', '101', { startWeek: 'w1', spanWeeks: 3 });
+      await store.saveSettings({ hiddenColumns: ['status'] });
+
+      const clonedMeta = await store.createPlan('Cloned Plan', 'default');
+      const clonedStore = new PlanStore(storage, '10000', 'TEST', clonedMeta.id);
+
+      const clonedEntries = await clonedStore.loadEntries();
+      expect(clonedEntries.get('TEST-1')).toMatchObject({ startWeek: 'w1', spanWeeks: 3 });
+
+      const clonedSettings = await clonedStore.getSettings();
+      expect(clonedSettings.hiddenColumns).toEqual(['status']);
+    });
+
+    it('deleting a plan removes its metadata and entries, but cannot delete default plan', async () => {
+      const planMeta = await store.createPlan('Temporary Plan');
+      const tempStore = new PlanStore(storage, '10000', 'TEST', planMeta.id);
+      await tempStore.putEntry('TEST-99', '199', { startWeek: 'w9' });
+
+      const cannotDeleteDefault = await store.deletePlan('default');
+      expect(cannotDeleteDefault).toBe(false);
+
+      const deleted = await store.deletePlan(planMeta.id);
+      expect(deleted).toBe(true);
+
+      const plans = await store.listPlans();
+      expect(plans.map(p => p.id)).not.toContain(planMeta.id);
+
+      const remainingEntries = await tempStore.loadEntries();
+      expect(remainingEntries.size).toBe(0);
+    });
+
+    it('renames an existing plan', async () => {
+      const planMeta = await store.createPlan('Old Name');
+      const renamed = await store.renamePlan(planMeta.id, 'New Name');
+      expect(renamed?.name).toBe('New Name');
+
+      const plans = await store.listPlans();
+      expect(plans.find(p => p.id === planMeta.id)?.name).toBe('New Name');
+    });
+  });
 });
+

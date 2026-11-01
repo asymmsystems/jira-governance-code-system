@@ -1425,6 +1425,77 @@ body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-
 .plain-data-table tbody tr.is-search-match { background: var(--cp-bg-selected); }
 .plain-data-table tbody tr:focus { outline: 2px solid var(--cp-border-focused); outline-offset: -2px; }
 
+/* Multiple plans per project (UX-05) */
+.plan-selector-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+}
+.plan-select {
+  font-weight: 600;
+  max-width: 170px;
+}
+.plans-manager-popover {
+  left: 0;
+  right: auto;
+  width: 320px;
+  max-width: 90vw;
+}
+.plans-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.plans-create-section {
+  border-top: 1px solid var(--cp-border);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.clone-plan-label {
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--cp-text-subtle);
+  cursor: pointer;
+}
+.plan-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--cp-surface-sunken);
+  gap: 8px;
+}
+.plan-item-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cp-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.plan-item-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--cp-bg-brand-subtle);
+  color: var(--cp-text-brand);
+  font-weight: 600;
+}
+.plan-item-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 /* Reduced motion: motion is off and instant (ADS motion guidance, UP-53; B-17). */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }

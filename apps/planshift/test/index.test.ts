@@ -28,10 +28,15 @@ import {
   reorderWbsTasks,
   createSubtaskForResource,
   resolveProjectIssueType,
-  verifyIssueInProject
+  verifyIssueInProject,
+  getProjectPlans,
+  createProjectPlan,
+  deleteProjectPlan,
+  renameProjectPlan
 } from '../src/index';
 import api from '@forge/api';
 import { PlanRepository } from '../src/storage/plan-repository';
+import { PlanStore } from '../src/storage/plan-store';
 import { MemStorage, entryOf, clearRecords } from './helpers/mem-storage';
 import { EstimateUnit, ProjectMilestone, ColumnWidthConfig } from '../src/domain/models';
 
@@ -2327,6 +2332,61 @@ describe('CascadePlan Index & Resolver Tests', () => {
       }, mockStorage);
 
       expect(plan.tasks.length).toBe(3);
+    });
+  });
+
+  describe('Multiple plans per project resolvers (UX-05)', () => {
+    it('getProjectPlans returns default Main Plan when no plans exist', async () => {
+      const res = await getProjectPlans({ projectKey: 'TEST' }, mockStorage);
+      expect(res.ok).toBe(true);
+      expect(res.plans).toHaveLength(1);
+      expect(res.plans[0]).toMatchObject({ id: 'default', name: 'Main Plan', isDefault: true });
+    });
+
+    it('createProjectPlan validates plan name and creates a new plan', async () => {
+      const invalid = await createProjectPlan({ projectKey: 'TEST', name: '   ' }, mockStorage);
+      expect(invalid.ok).toBe(false);
+
+      const created = await createProjectPlan({ projectKey: 'TEST', name: 'Sprint 2 Plan' }, mockStorage);
+      expect(created.ok).toBe(true);
+      expect(created.plan.name).toBe('Sprint 2 Plan');
+      expect(created.plans).toHaveLength(2);
+    });
+
+    it('createProjectPlan with cloneFromPlanId copies tasks from source plan', async () => {
+      const store = new PlanStore(mockStorage, 'TEST', 'TEST');
+      await store.putEntry('TEST-1', '10001', { startWeek: 'w1' });
+      const cloned = await createProjectPlan({ projectKey: 'TEST', name: 'Cloned Plan', cloneFromPlanId: 'default' }, mockStorage);
+      expect(cloned.ok).toBe(true);
+
+      const planState = await getProjectPlan('TEST', mockStorage, new Date(), undefined, undefined, undefined, cloned.plan.id);
+
+      expect(planState.planId).toBe(cloned.plan.id);
+      expect(planState.tasks.find((t: any) => t.key === 'TEST-1')?.startWeek).toBe('w1');
+    });
+
+    it('deleteProjectPlan removes a named plan but rejects deleting default', async () => {
+      const cannotDeleteDefault = await deleteProjectPlan({ projectKey: 'TEST', planId: 'default' }, mockStorage);
+      expect(cannotDeleteDefault.ok).toBe(false);
+
+      const created = await createProjectPlan({ projectKey: 'TEST', name: 'Disposable Plan' }, mockStorage);
+      const deleted = await deleteProjectPlan({ projectKey: 'TEST', planId: created.plan.id }, mockStorage);
+      expect(deleted.ok).toBe(true);
+      expect(deleted.plans.find((p: any) => p.id === created.plan.id)).toBeUndefined();
+    });
+
+    it('renameProjectPlan updates the plan name', async () => {
+      const created = await createProjectPlan({ projectKey: 'TEST', name: 'Old Plan Name' }, mockStorage);
+      const renamed = await renameProjectPlan({ projectKey: 'TEST', planId: created.plan.id, name: 'New Plan Name' }, mockStorage);
+      expect(renamed.ok).toBe(true);
+      expect(renamed.plan?.name).toBe('New Plan Name');
+    });
+
+    it('getProjectPlan includes availablePlans in state', async () => {
+      await createProjectPlan({ projectKey: 'TEST', name: 'Scenario B' }, mockStorage);
+      const state = await getProjectPlan('TEST', mockStorage);
+      expect(state.availablePlans).toBeDefined();
+      expect(state.availablePlans?.map((p: any) => p.name)).toContain('Scenario B');
     });
   });
 });

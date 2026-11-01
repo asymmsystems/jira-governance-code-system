@@ -13,7 +13,7 @@
  * the version the caller started from, the previous value is restored and a conflict is returned.
  */
 
-import { WbsTask, ColumnWidthConfig, ProjectMilestone, WorkEffortRecordBody, toWorkEffortRecord, fromWorkEffortRecord } from '../domain/models';
+import { WbsTask, ColumnWidthConfig, ProjectMilestone, WorkEffortRecordBody, toWorkEffortRecord, fromWorkEffortRecord, PlanMetadata } from '../domain/models';
 import { StorageProvider } from './plan-repository';
 
 export interface StoredEntry extends Partial<WbsTask> {
@@ -69,12 +69,22 @@ export class PlanStore {
   private readonly settingsKey: string;
   private keyByIssue: Map<string, string> | null = null;
 
-  constructor(private readonly storage: StorageProvider, private readonly projectId: string, private readonly projectKey: string) {
+  constructor(
+    private readonly storage: StorageProvider,
+    private readonly projectId: string,
+    private readonly projectKey: string,
+    private readonly planId: string = 'default'
+  ) {
     if (!storage.query || !storage.swap) {
       throw new Error('CascadePlan: the storage provider must support query and swap');
     }
-    this.prefix = `cp:${projectId}:we:`;
-    this.settingsKey = `cp:${projectId}:settings`;
+    const cleanPlanId = planId && planId !== 'default' ? `plan:${planId}:` : '';
+    this.prefix = `cp:${projectId}:${cleanPlanId}we:`;
+    this.settingsKey = `cp:${projectId}:${cleanPlanId}settings`;
+  }
+
+  getSettingsKey(): string {
+    return this.settingsKey;
   }
 
   /** Every record of the project, by issue key. */
@@ -140,6 +150,71 @@ export class PlanStore {
     const next = { ...(await this.getSettings()), ...patch };
     await this.storage.set(this.settingsKey, next);
     return next;
+  }
+
+  async listPlans(): Promise<PlanMetadata[]> {
+    const raw = await this.storage.get<PlanMetadata[]>(`cp:${this.projectId}:plans`);
+    if (Array.isArray(raw) && raw.length > 0) return raw;
+    return [{ id: 'default', name: 'Main Plan', createdAt: new Date(0).toISOString(), isDefault: true }];
+  }
+
+  async savePlans(plans: PlanMetadata[]): Promise<void> {
+    await this.storage.set(`cp:${this.projectId}:plans`, plans);
+  }
+
+  async createPlan(name: string, cloneFromPlanId?: string): Promise<PlanMetadata> {
+    const trimmed = name.trim();
+    const plans = await this.listPlans();
+    const id = `plan-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    const newPlan: PlanMetadata = {
+      id,
+      name: trimmed,
+      createdAt: new Date().toISOString()
+    };
+    plans.push(newPlan);
+    await this.savePlans(plans);
+
+    if (cloneFromPlanId) {
+      const sourceStore = new PlanStore(this.storage, this.projectId, this.projectKey, cloneFromPlanId);
+      const entries = await sourceStore.loadEntries();
+      const settings = await sourceStore.getSettings();
+      const targetStore = new PlanStore(this.storage, this.projectId, this.projectKey, id);
+      for (const [key, entry] of entries) {
+        await targetStore.putEntry(key, entry.issueId, entry);
+      }
+      if (Object.keys(settings).length > 0) {
+        await targetStore.saveSettings(settings);
+      }
+    }
+
+    return newPlan;
+  }
+
+  async deletePlan(planId: string): Promise<boolean> {
+    if (!planId || planId === 'default') return false;
+    const plans = await this.listPlans();
+    const idx = plans.findIndex(p => p.id === planId);
+    if (idx === -1) return false;
+    plans.splice(idx, 1);
+    await this.savePlans(plans);
+
+    const targetStore = new PlanStore(this.storage, this.projectId, this.projectKey, planId);
+    const entries = await targetStore.loadEntries();
+    for (const key of entries.keys()) {
+      await targetStore.deleteEntry(key);
+    }
+    await this.storage.delete(targetStore.getSettingsKey());
+    return true;
+  }
+
+  async renamePlan(planId: string, newName: string): Promise<PlanMetadata | null> {
+    const trimmed = newName.trim();
+    const plans = await this.listPlans();
+    const plan = plans.find(p => p.id === planId);
+    if (!plan) return null;
+    plan.name = trimmed;
+    await this.savePlans(plans);
+    return plan;
   }
 
   /**

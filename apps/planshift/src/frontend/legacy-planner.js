@@ -77,10 +77,13 @@ const undoStack = new UndoStack(20);
 let pendingUndo = null;
 let replayingUndo = false;
 
+let activePlanId = 'default';
+
 async function callResolver(fn, payload = {}) {
-  if (!UNDOABLE.has(fn) || replayingUndo) return rawCallResolver(fn, payload);
-  if (!pendingUndo) pendingUndo = { before: snapshotPlan(currentPlan), fn, payload };
-  const res = await rawCallResolver(fn, payload);
+  const mergedPayload = { planId: activePlanId, ...payload };
+  if (!UNDOABLE.has(fn) || replayingUndo) return rawCallResolver(fn, mergedPayload);
+  if (!pendingUndo) pendingUndo = { before: snapshotPlan(currentPlan), fn, payload: mergedPayload };
+  const res = await rawCallResolver(fn, mergedPayload);
   const verdict = classifyResult(res);
   if (verdict.failed) {
     pendingUndo = null;
@@ -1194,17 +1197,140 @@ function openColumnHeaderMenu(e, colKey, colLabel) {
   setTimeout(() => document.addEventListener('click', onDocClick), 10);
 }
 
+function updatePlansUI(availablePlans = [], currentId = 'default') {
+  const switcher = document.getElementById('planSwitcher');
+  if (!switcher) return;
+
+  const plans = Array.isArray(availablePlans) && availablePlans.length > 0
+    ? availablePlans
+    : [{ id: 'default', name: 'Main Plan', isDefault: true }];
+
+  switcher.innerHTML = '';
+  for (const p of plans) {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.name;
+    if (p.id === currentId) opt.selected = true;
+    switcher.appendChild(opt);
+  }
+
+  const container = document.getElementById('plansListContainer');
+  if (!container) return;
+  container.innerHTML = '';
+
+  for (const p of plans) {
+    const row = document.createElement('div');
+    row.className = 'plan-item-row';
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'plan-item-name';
+    nameSpan.textContent = p.name;
+    row.appendChild(nameSpan);
+
+    if (p.id === currentId) {
+      const activeBadge = document.createElement('span');
+      activeBadge.className = 'plan-item-badge';
+      activeBadge.textContent = 'Active';
+      row.appendChild(activeBadge);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'plan-item-actions';
+
+    if (p.id !== 'default' && p.isDefault !== true) {
+      const btnRename = document.createElement('button');
+      btnRename.className = 'btn btn-subtle btn-sm';
+      btnRename.textContent = '✏️';
+      btnRename.title = 'Rename plan';
+      btnRename.type = 'button';
+      btnRename.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (row.querySelector('.plan-rename-input')) return;
+        const origName = p.name;
+        const renameInp = document.createElement('input');
+        renameInp.type = 'text';
+        renameInp.className = 'in-app-search-input plan-rename-input';
+        renameInp.value = origName;
+        renameInp.style.flex = '1';
+        renameInp.style.fontSize = '12px';
+        nameSpan.replaceWith(renameInp);
+        renameInp.focus();
+        renameInp.select();
+
+        const finish = async (save) => {
+          const newName = renameInp.value.trim();
+          if (save && newName && newName !== origName) {
+            const res = await callResolver('renameProjectPlan', { planId: p.id, name: newName });
+            if (res && res.ok) {
+              showFlag({ text: `Renamed plan to ${newName}.` });
+              await loadProjectPlan();
+            } else {
+              showFlag({ text: res?.message || 'Failed to rename plan.', error: true });
+              renameInp.replaceWith(nameSpan);
+            }
+          } else {
+            renameInp.replaceWith(nameSpan);
+          }
+        };
+
+        renameInp.addEventListener('keydown', (ke) => {
+          if (ke.key === 'Enter') finish(true);
+          if (ke.key === 'Escape') finish(false);
+        });
+        renameInp.addEventListener('blur', () => finish(true));
+      });
+      actions.appendChild(btnRename);
+
+      const btnDel = document.createElement('button');
+      btnDel.className = 'btn btn-subtle btn-sm';
+      btnDel.textContent = '🗑️';
+      btnDel.title = 'Delete plan';
+      btnDel.type = 'button';
+      btnDel.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (btnDel.dataset.confirming === 'true') {
+          const res = await callResolver('deleteProjectPlan', { planId: p.id });
+          if (res && res.ok) {
+            showFlag({ text: `Deleted plan ${p.name}.` });
+            if (activePlanId === p.id) {
+              activePlanId = 'default';
+            }
+            await loadProjectPlan();
+          } else {
+            showFlag({ text: res?.message || 'Failed to delete plan.', error: true });
+          }
+        } else {
+          btnDel.dataset.confirming = 'true';
+          btnDel.textContent = 'Confirm?';
+          btnDel.className = 'btn btn-danger btn-sm';
+          setTimeout(() => {
+            btnDel.dataset.confirming = 'false';
+            btnDel.textContent = '🗑️';
+            btnDel.className = 'btn btn-subtle btn-sm';
+          }, 4000);
+        }
+      });
+      actions.appendChild(btnDel);
+    }
+
+    row.appendChild(actions);
+    container.appendChild(row);
+  }
+}
+
 async function loadProjectPlan() {
   const loader = document.getElementById('plannerLoadingIndicator');
   const errBanner = document.getElementById('plannerErrorBanner');
   if (loader) loader.style.display = 'flex';
   if (errBanner) errBanner.style.display = 'none';
 
-  const plan = await callResolver('getProjectPlan', {});
+  const plan = await callResolver('getProjectPlan', { planId: activePlanId });
   if (loader) loader.style.display = 'none';
 
   if (plan && Array.isArray(plan.tasks)) {
     currentPlan = plan;
+    if (plan.planId) activePlanId = plan.planId;
+    updatePlansUI(plan.availablePlans, activePlanId);
     if (plan.columnWidths) {
       columnWidths = { ...columnWidths, ...plan.columnWidths };
     }
@@ -1694,6 +1820,8 @@ function closeAllPopovers() {
   if (colMenu) colMenu.remove();
   if (typeof closeDependencyEditPopover === 'function') closeDependencyEditPopover();
   if (typeof closeDependencyConflictDialog === 'function') closeDependencyConflictDialog();
+  const plansPop = document.getElementById('plansManagerPopover');
+  if (plansPop) plansPop.style.display = 'none';
 }
 
 function openResourcePicker(targetEl, taskKey) {
@@ -4300,6 +4428,49 @@ function initKeyboard() {
   document.getElementById('btnConflictAdjust')?.addEventListener('click', applyConflictAdjust);
   document.getElementById('btnConflictKeep')?.addEventListener('click', applyConflictKeep);
 
+  document.getElementById('planSwitcher')?.addEventListener('change', async (e) => {
+    activePlanId = e.target.value;
+    await loadProjectPlan();
+    announce(`Switched to plan ${e.target.selectedOptions[0]?.textContent || activePlanId}.`);
+  });
+
+  document.getElementById('btnManagePlans')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const pop = document.getElementById('plansManagerPopover');
+    if (pop) {
+      pop.style.display = pop.style.display === 'none' ? 'flex' : 'none';
+    }
+  });
+
+  document.getElementById('btnClosePlansPopover')?.addEventListener('click', () => {
+    const pop = document.getElementById('plansManagerPopover');
+    if (pop) pop.style.display = 'none';
+  });
+
+  document.getElementById('btnCreatePlan')?.addEventListener('click', async () => {
+    const nameInp = document.getElementById('newPlanNameInput');
+    const name = nameInp ? nameInp.value.trim() : '';
+    if (!name) {
+      showFlag({ text: 'Please enter a name for the new plan.', error: true });
+      return;
+    }
+    const clone = document.getElementById('cloneCurrentPlanCheckbox')?.checked === true;
+    const res = await callResolver('createProjectPlan', {
+      name,
+      cloneFromPlanId: clone ? activePlanId : undefined
+    });
+    if (res && res.ok && res.plan) {
+      if (nameInp) nameInp.value = '';
+      const pop = document.getElementById('plansManagerPopover');
+      if (pop) pop.style.display = 'none';
+      activePlanId = res.plan.id;
+      showFlag({ text: `Created and switched to plan ${res.plan.name}.` });
+      await loadProjectPlan();
+    } else {
+      showFlag({ text: res?.message || 'Failed to create plan.', error: true });
+    }
+  });
+
   document.addEventListener('click', (e) => {
     const tb = document.getElementById('barToolbar');
     if (tb && !tb.hidden && !tb.contains(e.target) && !e.target.closest('.bar-hit')) closeBarToolbar();
@@ -4307,6 +4478,10 @@ function initKeyboard() {
     if (depEditPop && !depEditPop.hidden && !depEditPop.contains(e.target) && !e.target.closest('.dep-link-badge')) closeDependencyEditPopover();
     const conflictBanner = document.getElementById('depConflictBanner');
     if (conflictBanner && !conflictBanner.hidden && !conflictBanner.contains(e.target)) closeDependencyConflictDialog();
+    const plansPop = document.getElementById('plansManagerPopover');
+    if (plansPop && plansPop.style.display !== 'none' && !plansPop.contains(e.target) && !e.target.closest('#btnManagePlans')) {
+      plansPop.style.display = 'none';
+    }
   });
   document.getElementById('ganttWrapper')?.addEventListener('scroll', () => {
     followBarToolbar();

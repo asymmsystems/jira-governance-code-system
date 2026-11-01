@@ -22,6 +22,33 @@
       <span class="badge badge-warning" id="truncatedNote" hidden></span>
       <span class="badge badge-success" id="completionBadge" hidden></span>
       <div class="header-divider"></div>
+      <div class="plan-selector-group">
+        <select class="view-select plan-select" id="planSwitcher" aria-label="Active Plan" title="Switch active plan">
+          <option value="default">Main Plan</option>
+        </select>
+        <button class="btn btn-outline btn-sm" id="btnManagePlans" title="Manage plans or create new scenario" type="button" aria-expanded="false" aria-controls="plansManagerPopover">Plans ▾</button>
+        <!-- Plans Manager Popover -->
+        <div class="column-manager-popover plans-manager-popover" id="plansManagerPopover" style="display: none;">
+          <div class="col-popover-header">
+            <span style="font-weight: 700; font-size: 13px;">Manage Project Plans</span>
+            <button class="btn-icon-subtle" id="btnClosePlansPopover" title="Close" type="button">✕</button>
+          </div>
+          <div class="col-popover-info">
+            Create scenarios, optimistic timelines, or alternative baselines for this project.
+          </div>
+          <div id="plansListContainer" class="plans-list-container"></div>
+          <div class="plans-create-section">
+            <div style="display: flex; gap: 6px;">
+              <input type="text" id="newPlanNameInput" class="in-app-search-input" placeholder="New plan name..." style="flex: 1;">
+              <button class="btn btn-primary btn-sm" id="btnCreatePlan" type="button">+ Create</button>
+            </div>
+            <label class="clone-plan-label">
+              <input type="checkbox" id="cloneCurrentPlanCheckbox" checked> Clone current plan tasks &amp; settings
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="header-divider"></div>
       <div class="search-box-container" role="search">
         <input type="search" id="inAppSearchInput" class="in-app-search-input" placeholder="Search tasks (Ctrl+F)..." aria-label="Search tasks by key or summary" autocomplete="off">
         <span id="searchMatchCount" class="search-match-count" aria-live="polite"></span>

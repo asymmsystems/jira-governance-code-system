@@ -159,6 +159,13 @@ export function validateMilestone(m: Record<string, unknown>): void {
   if (!MILESTONE_TYPES.includes(m.type as string)) fail('milestone.type', 'milestone.type is not a known type');
 }
 
+export function validatePlanName(name: unknown): string {
+  if (typeof name !== 'string' || name.trim().length === 0 || name.length > 80) {
+    fail('name', 'Plan name must be between 1 and 80 characters');
+  }
+  return name.trim();
+}
+
 /**
  * Maps a ValidationError to the resolver result shape; other errors give undefined.
  */

@@ -175,6 +175,13 @@ export interface ColumnWidthConfig {
   status: number;
 }
 
+export interface PlanMetadata {
+  id: string;
+  name: string;
+  createdAt: string;
+  isDefault?: boolean;
+}
+
 export interface ProjectPlanState {
   planId: string;
   projectKey: string;
@@ -188,6 +195,7 @@ export interface ProjectPlanState {
   columnWidths?: ColumnWidthConfig; // User-adjusted column widths
   availableEpics?: JiraEpicItem[];  // Real project Epics
   availableUsers?: JiraAssignableUser[]; // Real project assignees
+  availablePlans?: PlanMetadata[];  // Available named plans for project (UX-05)
   hasEpic?: boolean;                // Whether the project supports Epic issue type
   lastUpdated: string;
   isLiveSynced?: boolean;
