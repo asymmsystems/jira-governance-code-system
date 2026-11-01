@@ -148,7 +148,7 @@ describe('B-05 store and resolvers', () => {
     const after = await validateTransition({ issue: { id: '70003' } }, {}, storage);
     expect(after).toEqual(before);
     expect(after.result).toBe(false);
-    expect(after.errorMessage).toContain('Pending items:');
+    expect(after.errorMessage).toContain('Open mandatory items:');
   });
 });
 

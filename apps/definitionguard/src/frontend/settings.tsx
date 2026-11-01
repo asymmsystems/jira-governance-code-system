@@ -36,6 +36,8 @@ type Settings = {
   projectKey: string;
   issueTypes: Array<{ id: string; name: string }>;
   templates: Record<string, any>;
+  doneStatuses: Array<{ id: string; name: string }>;
+  exemptStatusIds: string[];
 };
 
 export const SettingsPage: React.FC = () => {
@@ -46,12 +48,14 @@ export const SettingsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState<boolean>(false);
+  const [exempt, setExempt] = useState<string[]>([]);
 
   const load = async () => {
     setError(null);
     try {
       const s = (await invoke('getSettings', {})) as unknown as Settings;
       setSettings(s);
+      setExempt(s.exemptStatusIds || []);
       const first = issueTypeId || s.issueTypes[0]?.id || '';
       setIssueTypeId(first);
       setEditor(editorFromTemplate(s.templates[first]));
@@ -80,6 +84,21 @@ export const SettingsPage: React.FC = () => {
       await load();
     } catch (err: any) {
       setError(err?.message || 'The template was not saved. Try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveExempt = async () => {
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await invoke('saveExemptions', { exemptStatusIds: exempt });
+      setNotice('Saved. Moves into the ticked statuses are not gated, for example Canceled or Declined.');
+      await load();
+    } catch (err: any) {
+      setError(err?.message || 'The statuses were not saved. Try again.');
     } finally {
       setSaving(false);
     }
@@ -175,6 +194,22 @@ export const SettingsPage: React.FC = () => {
         <Button appearance="primary" isDisabled={saving || !issueTypeId} onClick={save}>
           Save template
         </Button>
+      </Inline>
+
+      <Heading as="h3">Statuses the gate lets through</Heading>
+      <Text>The gate blocks moves into Done-category statuses while mandatory items are open. Tick statuses that are not completions, such as Canceled or Declined.</Text>
+      <Stack space="space.050">
+        {(settings?.doneStatuses || []).map(st => (
+          <Checkbox
+            key={st.id}
+            label={st.name}
+            isChecked={exempt.includes(st.id)}
+            onChange={() => setExempt(exempt.includes(st.id) ? exempt.filter(x => x !== st.id) : [...exempt, st.id])}
+          />
+        ))}
+      </Stack>
+      <Inline space="space.100">
+        <Button isDisabled={saving} onClick={saveExempt}>Save statuses</Button>
       </Inline>
     </Stack>
   );

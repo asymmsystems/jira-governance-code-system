@@ -72,6 +72,7 @@ export interface IssueChecklistState {
   checklistHash: string;
   stateVersion?: number;
   auditTrail?: ChecklistAuditEvent[];
+  openMandatoryTitles?: string[];  // v2 panel response: from the shared gate rule
 }
 
 export interface ProjectDoDConfig {
@@ -124,6 +125,9 @@ export interface ItemState {
   legacyName?: string;          // v1 display name, kept only when v1 recorded no accountId
   at?: string;
   eventSeq?: number;
+  evidenceRequired?: boolean;   // from the template (B-11)
+  hasEvidence?: boolean;        // the DONE event carried evidence (B-11)
+  notAssignee?: boolean;        // from the template (B-12)
 }
 
 export interface LegacyRef {

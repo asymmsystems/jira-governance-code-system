@@ -14,6 +14,7 @@ import { resolveStorage } from '../storage/forge-storage';
 import { checkProjectPermissions } from '../security/permissions';
 import { assertLicensed } from '../security/licence';
 import { TemplateStore, StoredTemplate } from './template-store';
+import { ProjectConfigStore } from './project-config';
 
 export const TEMPLATE_DENIED = 'Only a project admin can change DefinitionGuard templates.';
 
@@ -41,16 +42,49 @@ export async function projectIssueTypes(projectId: string): Promise<Array<{ id: 
   return (body.issueTypes || []).map((t: any) => ({ id: String(t.id), name: String(t.name) }));
 }
 
+/** The project's Done-category statuses, read as the user, without duplicates. */
+export async function projectDoneStatuses(projectId: string): Promise<Array<{ id: string; name: string }>> {
+  const res = await api.asUser().requestJira(route`/rest/api/3/project/${projectId}/statuses`);
+  if (res.status !== 200) {
+    throw new Error('DefinitionGuard could not read the project statuses. Refresh the page.');
+  }
+  const body = await res.json();
+  const byId = new Map<string, string>();
+  for (const type of Array.isArray(body) ? body : []) {
+    for (const st of type.statuses || []) {
+      if (st?.statusCategory?.key === 'done') byId.set(String(st.id), String(st.name));
+    }
+  }
+  return [...byId].map(([id, name]) => ({ id, name }));
+}
+
 export async function getSettings(_payload: any, context?: any, storageProvider?: StorageProvider) {
   const c = await requireProjectAdmin(context);
-  const store = new TemplateStore(resolveStorage(storageProvider));
+  const storage = resolveStorage(storageProvider);
+  const store = new TemplateStore(storage);
   const issueTypes = await projectIssueTypes(c.projectId);
   const templates: Record<string, StoredTemplate> = {};
   for (const t of issueTypes) {
     const saved = await store.get(c.projectId, t.id);
     if (saved) templates[t.id] = saved;
   }
-  return { projectId: c.projectId, projectKey: c.projectKey, issueTypes, templates };
+  const doneStatuses = await projectDoneStatuses(c.projectId);
+  const config = await new ProjectConfigStore(storage).get(c.projectId);
+  return { projectId: c.projectId, projectKey: c.projectKey, issueTypes, templates, doneStatuses, exemptStatusIds: config?.exemptStatusIds || [] };
+}
+
+export const EXEMPT_INVALID = 'Only Done-category statuses of this project can be exempt.';
+
+/** Saves the Done-category statuses that the gate lets through, for example Canceled. */
+export async function saveExemptions(payload: any, context?: any, storageProvider?: StorageProvider) {
+  assertLicensed(context);
+  const c = await requireProjectAdmin(context);
+  const ids = payload?.exemptStatusIds;
+  const done = new Set((await projectDoneStatuses(c.projectId)).map(s => s.id));
+  if (!Array.isArray(ids) || ids.length > 50 || !ids.every((id: any) => typeof id === 'string' && done.has(id))) {
+    throw new Error(EXEMPT_INVALID);
+  }
+  return await new ProjectConfigStore(resolveStorage(storageProvider)).saveExemptions(c.projectId, ids, c.actorAccountId);
 }
 
 export async function saveTemplate(payload: any, context?: any, storageProvider?: StorageProvider) {
@@ -70,5 +104,6 @@ const resolver = new Resolver();
 
 resolver.define('getSettings', async (req) => getSettings(req.payload, req.context));
 resolver.define('saveTemplate', async (req) => saveTemplate(req.payload, req.context));
+resolver.define('saveExemptions', async (req) => saveExemptions(req.payload, req.context));
 
 export const settingsHandler = resolver.getDefinitions();

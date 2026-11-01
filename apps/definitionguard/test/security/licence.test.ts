@@ -78,6 +78,6 @@ describe('B-09 licensing', () => {
     expect(blocked).toEqual({ result: false, errorMessage: VALIDATOR_LICENCE_INACTIVE });
     const normal = await validateTransition({ issue: { id: '91001' } }, { extension: { issue, project } }, storage);
     expect(normal.result).toBe(false);
-    expect(normal.errorMessage).toContain('Pending items:');
+    expect(normal.errorMessage).toContain('Open mandatory items:');
   });
 });

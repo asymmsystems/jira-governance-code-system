@@ -15,7 +15,7 @@ import ForgeReconciler, {
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
 import { IssueChecklistState } from '../domain/models';
-import { attributionOf } from '../ui/panel-view-model';
+import { attributionOf, gateStatusText } from '../ui/panel-view-model';
 
 export const DefinitionGuardPanel: React.FC = () => {
   const [checklist, setChecklist] = useState<IssueChecklistState | null>(null);
@@ -126,8 +126,6 @@ export const DefinitionGuardPanel: React.FC = () => {
   const completedMandatory = mandatoryItems.filter(i => i.isCompleted).length;
   const totalCompleted = checklist?.items.filter(i => i.isCompleted).length || 0;
   const totalItems = checklist?.items.length || 0;
-  // Same rule as the validator: satisfied when every mandatory item is done (zero mandatory items counts as satisfied).
-  const isGateOpen = checklist ? checklist.isFullySatisfied : false;
 
   return (
     <Stack space="space.150">
@@ -137,23 +135,15 @@ export const DefinitionGuardPanel: React.FC = () => {
         </SectionMessage>
       )}
 
-      {isGateOpen ? (
-        <SectionMessage appearance="success" title="Definition of Done Satisfied">
-          <Text>All mandatory checklist items are complete. Workflow transition gate is open.</Text>
-          <Box paddingBlockStart="space.050">
-            <Lozenge appearance="success">GATE OPEN</Lozenge>
-          </Box>
-        </SectionMessage>
-      ) : (
-        <SectionMessage appearance="warning" title="Definition of Done Incomplete">
-          <Text>
-            {mandatoryItems.length - completedMandatory} mandatory item(s) remain pending. Workflow transitions are blocked.
-          </Text>
-          <Box paddingBlockStart="space.050">
-            <Lozenge appearance="inprogress">GATE LOCKED</Lozenge>
-          </Box>
-        </SectionMessage>
-      )}
+      {checklist && (() => {
+        const gate = gateStatusText(checklist);
+        return (
+          <SectionMessage appearance={gate.satisfied ? 'success' : 'warning'} title={gate.title}>
+            <Text>{gate.body}</Text>
+            {gate.scope && <Text>{gate.scope}</Text>}
+          </SectionMessage>
+        );
+      })()}
 
       {showResetConfirm && (
         <SectionMessage appearance="warning" title="Confirm Checklist Reset (D-13)">

@@ -4,7 +4,8 @@ import {
   getTemplateForCategory,
   getAvailableTemplates
 } from './domain/checklist-engine';
-import { TransitionValidator } from './validator/transition-validator';
+import { evaluateGate, blockMessage } from './domain/gate-rule';
+import { ProjectConfigStore } from './settings/project-config';
 import { StorageProvider } from './storage/checklist-repository';
 import { resolveStorage } from './storage/forge-storage';
 import { ChecklistStore } from './storage/checklist-store';
@@ -127,8 +128,35 @@ async function evaluateTransition(payload: any, context?: any, storageProvider?:
     state = stateFromTemplate(issueId, String(issueKey || issueId), projectId, template);
   }
 
-  const validation = TransitionValidator.validate({ ...state, items: toLegacyItems(state) } as any);
-  return TransitionValidator.toForgeValidatorResult(validation);
+  const gate = evaluateGate(state);
+  if (gate.satisfied) {
+    return { result: true };
+  }
+
+  // Unsatisfied: the gate applies to moves into a Done-category status that the admin has not exempted.
+  // A missing target is treated as a Done move (fail closed).
+  const targetId = String(payload?.transition?.to?.id || '');
+  if (targetId) {
+    const res = await api.asApp().requestJira(route`/rest/api/3/status/${targetId}`);
+    if (res.status !== 200) {
+      throw new Error(`DefinitionGuard: status lookup returned ${res.status}`);
+    }
+    const status = await res.json();
+    if (status?.statusCategory?.key !== 'done') {
+      return { result: true };
+    }
+    let projectId = state.projectId || String(context?.extension?.project?.id || '');
+    if (!projectId) {
+      live = live || await fetchIssueForValidator(issueId);
+      projectId = String(live?.fields?.project?.id || '');
+    }
+    const config = await new ProjectConfigStore(resolveStorage(storageProvider)).get(projectId);
+    if (config?.exemptStatusIds.includes(targetId)) {
+      return { result: true };
+    }
+  }
+
+  return { result: false, errorMessage: blockMessage(gate.openMandatory) };
 }
 
 /** Issue identity and actor come from the Forge context only, never from the payload. */
@@ -161,6 +189,7 @@ const AUDIT_TYPE: Record<string, ChecklistAuditEvent['eventType']> = {
 /** The panel response. Keeps the fields the panel reads; names are accountIds. */
 export function toPanelResponse(state: ChecklistState, events: ChecklistEvent[] = []): IssueChecklistState {
   const items = toLegacyItems(state);
+  const gate = evaluateGate(state);
   return {
     issueId: state.issueId,
     issueKey: state.issueKey,
@@ -168,7 +197,8 @@ export function toPanelResponse(state: ChecklistState, events: ChecklistEvent[] 
     items,
     lastModifiedAt: state.lastModifiedAt || '',
     lastModifiedBy: state.lastModifiedByAccountId || '',
-    isFullySatisfied: items.filter(i => i.isMandatory).every(i => i.isCompleted),
+    isFullySatisfied: gate.satisfied,
+    openMandatoryTitles: gate.openMandatory.map(i => i.title),
     checklistHash: state.headHash,
     stateVersion: state.seq,
     auditTrail: events.map(e => ({

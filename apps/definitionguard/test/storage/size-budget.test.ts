@@ -123,7 +123,7 @@ describe('B-04 paged history and panel reads', () => {
     const storage = new CountingStorage();
     const res = await validateTransition({ issue: { id: '60006' } }, { extension: { issue: { type: 'Task' } } }, storage);
     expect(res.result).toBe(false);
-    expect(res.errorMessage).toContain('Pending items:');
+    expect(res.errorMessage).toContain('Open mandatory items:');
     expect(storage.sets).toEqual([]);
   });
 });
