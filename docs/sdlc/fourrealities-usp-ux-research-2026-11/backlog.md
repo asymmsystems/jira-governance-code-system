@@ -305,3 +305,20 @@ Status: approved. Part B in progress on branch `feature/fourrealities-research-b
 | B-32 | Rework notes as an append-only list | ADR-001 Pattern 6 | [MIGRATE] DONE 2026-11-01 |
 
 Order: B-29, B-30, B-31, B-32, then B-17 to B-25.
+
+## Added by the UX consultation review (approved 2026-11-01, owner, in chat: "Approved all yor suggestions")
+
+The owner's pasted consultation was reviewed item by item in chat; rejected items (approval-based Code wording, a FourRealities seal action, DoD checkboxes that write DefinitionGuard data, title-overlap ADR suggestions) stay out because of research H11, FR-13, T-05 and the hard rules.
+
+| ID | Title | Source | Flags |
+|---|---|---|---|
+| B-33 | Four-gate pipeline: one row Intent, Process, Code, Audit with glyph, colour and name, a tooltip per gate, the same on every surface | consultation A, E | none |
+| B-34 | Triage table: compact pipeline instead of four text boxes; "Top finding" column | consultation B3 | none |
+| B-35 | Reality cards: plain question, rate, progress bar with label, plain count, action only when something is missing; metric codes in a tooltip | consultation B2 | none |
+| B-36 | Drift sentence from the first missing gate, on the panel, the table and the Inspect modal | consultation A | none |
+| B-37 | "Alignment n%" with risk as a small tag, the weakest gate named, "Why n%?" with each gate's part and the points a fix recovers; hero delta against the previous week, shown only with 10 or more rated issues | consultation A, B1 | none |
+| B-38 | Compact issue-context view: pipeline, alignment line, next action, "See all findings" | consultation C | none |
+| B-39 | Risk row: Critical, High, Medium, Low counts that filter the table | consultation B1 | none |
+| B-40 | Inspect modal with previous and next; preset views (My issues, Critical and high, Audit prep, Needs a decision link) | consultation B3 | none |
+| B-41 | Link-decision modal with Confluence page search | consultation C | [MANIFEST] scope |
+| B-42 | "Request retrospective review" (comment as the user) | consultation C | none (write as user) |
