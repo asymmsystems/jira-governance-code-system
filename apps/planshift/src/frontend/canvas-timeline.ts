@@ -13,7 +13,7 @@
 
 import { cssToken } from './theme';
 import { barRect, xForDate, Rect } from '../ui/timeline-geometry';
-import { CANVAS_TOKENS, barStyle, labelPlacement } from '../ui/canvas-palette';
+import { CANVAS_TOKENS, FORCED_COLOURS, barStyle, labelPlacement } from '../ui/canvas-palette';
 
 export const ROW_H = 44;
 export const BAR_H = 24;
@@ -55,13 +55,33 @@ export class CanvasTimeline {
   focusKey: string | null = null;
   driverKeys: string[] = [];
   drag: DragPreview | null = null;
+  /** Focused element of the treegrid in the canvas fallback content, for drawFocusIfNeeded (B-15). */
+  focusElement: Element | null = null;
+  private forced = false;
 
   constructor(private readonly wrapper: HTMLElement) {
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'timeline-canvas';
-    this.canvas.setAttribute('aria-hidden', 'true');
-    wrapper.appendChild(this.canvas);
+    // The canvas is an overlay next to the scroll container, not inside it: nothing in the scrolled
+    // content moves on scroll, so the browser never re-scrolls to the focused treegrid cell (B-15).
+    const host = wrapper.parentElement as HTMLElement;
+    if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+    host.appendChild(this.canvas);
     this.ctx = this.canvas.getContext('2d') as CanvasRenderingContext2D;
+    // Forced colours (Windows contrast themes) replace tokens with system colours (B-15).
+    const mq = window.matchMedia ? window.matchMedia('(forced-colors: active)') : null;
+    const apply = () => {
+      this.forced = !!(mq && mq.matches);
+      this.canvas.dataset.forced = this.forced ? '1' : '0';
+      this.invalidateColours();
+    };
+    apply();
+    if (mq && mq.addEventListener) mq.addEventListener('change', () => { apply(); this.requestDraw(); });
+  }
+
+  /** The canvas element; its fallback content holds the accessible treegrid (B-15). */
+  get root(): HTMLCanvasElement {
+    return this.canvas;
   }
 
   setModel(model: TimelineModel): void {
@@ -93,7 +113,7 @@ export class CanvasTimeline {
   private c(token: string): string {
     let v = this.colours.get(token);
     if (!v) {
-      v = cssToken(token, 'GrayText');
+      v = this.forced ? (FORCED_COLOURS[token] || 'CanvasText') : cssToken(token, 'GrayText');
       this.colours.set(token, v);
     }
     return v;
@@ -119,8 +139,8 @@ export class CanvasTimeline {
     const dpr = window.devicePixelRatio || 1;
     const cv = this.canvas;
     cv.style.display = 'block';
-    cv.style.left = `${left}px`;
-    cv.style.top = `${top}px`;
+    cv.style.left = `${w.offsetLeft + left - w.scrollLeft}px`;
+    cv.style.top = `${w.offsetTop + m.headerH}px`;
     cv.style.width = `${cssW}px`;
     cv.style.height = `${cssH}px`;
     const bw = Math.round(cssW * dpr);
@@ -270,6 +290,11 @@ export class CanvasTimeline {
       ctx.setLineDash([]);
     };
     const isDriver = this.driverKeys.includes(task.key);
+    if (task.key === this.focusKey && this.focusElement) {
+      // Native focus ring for the focused treegrid cell, plus a 2 px focus token ring (UP-03, UP-40).
+      this.path({ x: r.x - 3, y: r.y - 3, w: r.w + 6, h: r.h + 6 }, RADIUS + 2);
+      ctx.drawFocusIfNeeded(this.focusElement);
+    }
     if (task.key === this.focusKey || task.key === this.activeKey) ring(false);
     else if (isDriver) ring(true);
 

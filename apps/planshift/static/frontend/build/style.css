@@ -48,7 +48,10 @@
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-surface-sunken); overflow: hidden; font-size: 13px; line-height: 1.4; height: 100vh; }
+body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-surface-sunken); overflow: hidden; font-size: 13px; line-height: 1.4; height: 100vh;
+  /* Header, banner and workspace stack in one column; the workspace takes what is left, whatever the header height. */
+  display: flex; flex-direction: column; }
+.app-header { flex: none; }
 
 /* Top App Navigation Bar */
 .app-header {
@@ -94,7 +97,7 @@ body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-
 .btn-outline:hover { background: var(--cp-surface-sunken); }
 
 /* Workspace Layout */
-.workspace-container { display: flex; height: calc(100vh - 53px); position: relative; overflow: hidden; }
+.workspace-container { display: flex; flex: 1; min-height: 0; position: relative; overflow: hidden; }
 
 /* Left Collapsible Backlog Tray */
 .backlog-tray {
@@ -205,6 +208,9 @@ body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-
 .gantt-wrapper {
   position: relative;
   overflow: auto;
+  /* The canvas moves with the scroll position and rows are virtualised: browser scroll anchoring
+     would chase them, so the planner keeps scroll under its own control (B-15). */
+  overflow-anchor: none;
   flex: 1;
   min-height: 0;
   width: 100%;
@@ -1135,6 +1141,22 @@ body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-
 .write-preview { position: fixed; z-index: 1200; left: 50%; bottom: 16px; transform: translateX(-50%); max-width: calc(100vw - 32px);
   background: var(--cp-bg-neutral-bold); color: var(--cp-text-inverse); border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 600; }
 .write-preview[hidden] { display: none; }
+
+/* Keyboard and single-pointer scheduling (B-15). */
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.task-row.is-grid-focused > td { box-shadow: inset 0 2px 0 var(--cp-border-focused), inset 0 -2px 0 var(--cp-border-focused); }
+.bar-toolbar { position: fixed; z-index: 1250; display: flex; flex-wrap: wrap; gap: 4px; padding: 6px; background: var(--cp-surface-overlay);
+  border: 1px solid var(--cp-border); border-radius: 6px; box-shadow: 0 8px 16px rgba(9, 30, 66, 0.25); }
+.bar-toolbar[hidden] { display: none; }
+.dep-popup .form-input { width: 100%; margin: 4px 0 8px; }
+.dep-list { list-style: none; margin: 0 0 8px; padding: 0; max-height: 180px; overflow: auto; border: 1px solid var(--cp-border); border-radius: 4px; }
+.dep-list li { padding: 4px 8px; cursor: pointer; }
+.dep-list li[aria-selected="true"] { background: var(--cp-bg-selected); color: var(--cp-text-brand); }
+.dep-chosen { margin: 0 0 8px; color: var(--cp-text-subtle); }
+.shortcut-toggle { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--cp-text-subtle); }
+@media (forced-colors: active) {
+  .task-row.is-grid-focused > td { outline: 2px solid Highlight; }
+}
 
 /* Flags and the unsaved-form prompt (B-14). */
 .flag-group { position: fixed; z-index: 1400; left: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; max-width: calc(100vw - 32px); }

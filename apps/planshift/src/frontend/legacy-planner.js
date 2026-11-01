@@ -21,7 +21,8 @@ import { initChangesPanel, isChangesPanelOpen, closeChangesPanel } from './chang
 import { describePendingWrites } from '../ui/change-log';
 import { html } from '../ui/safe-html';
 import { CanvasTimeline, ROW_H, BAR_H } from './canvas-timeline';
-import { barRect, daysBetween, visibleRange, handleOffsets, snapDays, previewMoves } from '../ui/timeline-geometry';
+import { barRect, daysBetween, visibleRange, handleOffsets, snapDays, previewMoves, xForDate } from '../ui/timeline-geometry';
+import { GRID_COLUMNS, navigate, rowCells, rowLevel, moveKey, moveAnnouncement } from '../ui/keyboard-grid';
 
 function getJiraBaseUrl() {
   if (currentPlan && currentPlan.siteUrl) {
@@ -221,6 +222,7 @@ async function initApp() {
     drawTimeline(true);
   });
   setupEventListeners();
+  initKeyboard();
   loadProjectPlan();
 }
 if (document.readyState === 'loading') {
@@ -346,8 +348,9 @@ function setupEventListeners() {
       if (e.target === modal) closeModalAsking(modal);
     });
     // Any edit in a form marks it unsaved until it closes (B-14 criterion 7).
-    modal.addEventListener('input', () => { modal.dataset.dirty = '1'; });
-    modal.addEventListener('change', () => { modal.dataset.dirty = '1'; });
+    // Only the user's own edits count; the code that fills a form fires synthetic change events.
+    modal.addEventListener('input', (e) => { if (e.isTrusted) modal.dataset.dirty = '1'; });
+    modal.addEventListener('change', (e) => { if (e.isTrusted) modal.dataset.dirty = '1'; });
   });
 
   // Dismiss Modals and Popovers on Escape Key
@@ -359,14 +362,22 @@ function setupEventListeners() {
       if (e.shiftKey) redoLast(); else undoLast();
       return;
     }
+    if (e.key.length === 1 && e.key !== '?' && onShortcut(e, inField)) {
+      e.preventDefault();
+      return;
+    }
     if (e.key === '?' && !inField) {
-      const key = pinnedDependencyTaskId || hoveredTaskId;
+      const key = (gridRoot && gridRoot.contains(document.activeElement) ? rowTasks[gridFocus.row]?.task.key : null) || pinnedDependencyTaskId || hoveredTaskId;
       const bar = key && document.querySelector(`.bar-hit[data-task-id="${CSS.escape(key)}"]`);
       if (key) { e.preventDefault(); showWhy(key, bar ? bar.getBoundingClientRect() : null); }
       return;
     }
     if (e.key === 'Escape' && isWhyPopupOpen()) {
       closeWhyPopup();
+      return;
+    }
+    if (e.key === 'Escape' && !openModal() && !document.getElementById('barToolbar')?.hidden) {
+      closeBarToolbar();
       return;
     }
     if (e.key === 'Escape' && isChangesPanelOpen()) {
@@ -409,7 +420,7 @@ function setupEventListeners() {
       epicPopover.style.display = 'none';
     }
     const progPopover = document.getElementById('progressPickerPopover');
-    if (progPopover && progPopover.style.display === 'flex' && !progPopover.contains(e.target) && !e.target.closest('.td-progress-cell') && !e.target.closest('.quick-progress-btn')) {
+    if (progPopover && progPopover.style.display === 'flex' && !progPopover.contains(e.target) && !e.target.closest('.td-progress-cell') && !e.target.closest('.quick-progress-btn') && !e.target.closest('#barToolbar')) {
       progPopover.style.display = 'none';
     }
     const targetPopover = document.getElementById('targetPickerPopover');
@@ -2035,6 +2046,7 @@ function renderTimelineRows() {
   rowTaskList = [];
   renderedRange = { first: 0, last: -1 };
   topDropRowEl = topSpacer = bottomSpacer = null;
+  if (gridRoot) gridRoot.replaceChildren();
   const cols = getVisibleColKeys().length + currentPlan.weeks.length;
 
   if (!currentPlan.tasks || currentPlan.tasks.length === 0) {
@@ -2107,6 +2119,7 @@ function updateVirtualRows() {
     bottomSpacer.firstChild.style.height = (Math.max(0, rowTasks.length - 1 - next.last) * ROW_H) + 'px';
     renderedRange = next;
     measureLayout();
+    renderGrid();
   }
   drawTimeline(true);
 }
@@ -2143,6 +2156,7 @@ function applyPlanInPlace(plan) {
   rowTasks = computed.rows;
   rowTaskList = rowTasks.map(r => r.task);
   renderPlanSummary();
+  renderGrid();
   const byKey = new Map(rowTaskList.map(t => [t.key, t]));
   for (const [key, tr] of rowCache) {
     const hit = tr.querySelector('.bar-hit');
@@ -2765,8 +2779,8 @@ function createBarHit(task, isEpic) {
   const hit = document.createElement('div');
   hit.className = 'bar-hit' + (isEpic ? ' is-epic' : '');
   hit.dataset.taskId = key;
-  hit.tabIndex = 0;
-  hit.setAttribute('role', 'button');
+  // Pointer only: keyboard and screen readers use the treegrid in the canvas (one tab stop, B-15).
+  hit.setAttribute('aria-hidden', 'true');
 
   // Resize handles and drag (only on non-epic items).
   if (!isEpic) {
@@ -2805,25 +2819,29 @@ function createBarHit(task, isEpic) {
   hit.addEventListener('click', (e) => {
     if (!e.defaultPrevented && !isDraggingBar) {
       pinnedDependencyTaskId = pinnedDependencyTaskId === key ? null : key;
+      // The clicked bar's row takes grid focus in the same frame, and the toolbar opens (B-15).
+      const i = rowTasks.findIndex(r => r.task.key === key);
+      if (i >= 0 && gridRoot) {
+        gridFocus = { row: i, col: 2 };
+        renderGrid();
+        focusGridCell();
+      }
       drawTimeline(true);
+      // A double-click opens the form instead; the toolbar waits until that is ruled out.
+      clearTimeout(toolbarTimer);
+      toolbarTimer = setTimeout(() => openBarToolbar(key, hit), DOUBLE_CLICK_MS);
     }
   });
   hit.addEventListener('dblclick', (e) => {
     e.stopPropagation();
+    clearTimeout(toolbarTimer);
+    closeBarToolbar();
     openTaskDetailModal(key);
   });
   hit.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     e.stopPropagation();
     openProgressPicker(hit, key);
-  });
-  hit.addEventListener('focus', () => {
-    if (timeline) timeline.focusKey = key;
-    drawTimeline();
-  });
-  hit.addEventListener('blur', () => {
-    if (timeline && timeline.focusKey === key) timeline.focusKey = null;
-    drawTimeline();
   });
   return hit;
 }
@@ -2908,6 +2926,420 @@ function startBarPointerEdit(e, key, mode, hit) {
   window.addEventListener('mouseup', onUp);
 }
 
+
+// Keyboard and single-pointer scheduling (B-15). The treegrid lives in the canvas fallback content:
+// focusable and accessible, no visual box, and drawFocusIfNeeded draws the native focus ring.
+let gridRoot = null;
+let toolbarTimer = 0;
+const DOUBLE_CLICK_MS = 250;
+let gridFocus = { row: 0, col: 0 };
+let moveState = null;
+const SHORTCUT_KEY = 'cascadeplan_shortcuts';
+
+function shortcutsOn() {
+  const box = document.getElementById('shortcutsToggle');
+  return !box || box.checked;
+}
+
+function announce(text) {
+  const live = document.getElementById('cpLive');
+  if (live) live.textContent = text;
+}
+
+function initGrid() {
+  if (!timeline || gridRoot) return;
+  gridRoot = document.createElement('div');
+  gridRoot.setAttribute('role', 'treegrid');
+  gridRoot.setAttribute('aria-label', 'Schedule');
+  gridRoot.setAttribute('aria-colcount', String(GRID_COLUMNS.length));
+  timeline.root.appendChild(gridRoot);
+  gridRoot.addEventListener('keydown', onGridKey);
+  gridRoot.addEventListener('focusin', (e) => {
+    const cell = e.target.closest('[role="gridcell"]');
+    if (!cell) return;
+    gridFocus = { row: Number(cell.parentElement.dataset.row), col: Number(cell.dataset.col) };
+    const key = rowTasks[gridFocus.row]?.task.key || null;
+    timeline.focusKey = key;
+    timeline.focusElement = cell;
+    document.querySelectorAll('#ganttBody tr.is-grid-focused').forEach(r => r.classList.remove('is-grid-focused'));
+    const tr = key && rowCache.get(key);
+    if (tr) tr.classList.add('is-grid-focused');
+    drawTimeline(true);
+  });
+  gridRoot.addEventListener('focusout', (e) => {
+    if (gridRoot.contains(e.relatedTarget)) return;
+    timeline.focusKey = null;
+    timeline.focusElement = null;
+    document.querySelectorAll('#ganttBody tr.is-grid-focused').forEach(r => r.classList.remove('is-grid-focused'));
+    drawTimeline(true);
+  });
+}
+
+/** Rows of the treegrid for the DOM row range, with absolute aria-rowindex (header is row 1). */
+function renderGrid() {
+  if (!gridRoot) return;
+  const hadFocus = gridRoot.contains(document.activeElement);
+  const planKeys = new Set((currentPlan?.tasks || []).map(t => t.key));
+  gridRoot.setAttribute('aria-rowcount', String(rowTasks.length + 1));
+  const header = document.createElement('div');
+  header.setAttribute('role', 'row');
+  header.setAttribute('aria-rowindex', '1');
+  GRID_COLUMNS.forEach((name, c) => {
+    const h = document.createElement('span');
+    h.setAttribute('role', 'columnheader');
+    h.setAttribute('aria-colindex', String(c + 1));
+    h.textContent = name;
+    header.appendChild(h);
+  });
+  const rows = [header];
+  const { first, last } = renderedRange;
+  if (gridFocus.row < first || gridFocus.row > last) gridFocus = { row: Math.max(first, viewportFirstRow()), col: gridFocus.col };
+  for (let i = first; i <= last; i++) {
+    const t = rowTasks[i].task;
+    const row = document.createElement('div');
+    row.setAttribute('role', 'row');
+    row.setAttribute('aria-rowindex', String(i + 2));
+    row.setAttribute('aria-level', String(rowLevel(t, planKeys)));
+    if (expandedTasks.has(t.key) && (t.isEpic || t.childrenCount)) row.setAttribute('aria-expanded', 'true');
+    row.dataset.row = String(i);
+    rowCells(t).forEach((text, c) => {
+      const cell = document.createElement('span');
+      cell.setAttribute('role', 'gridcell');
+      cell.setAttribute('aria-colindex', String(c + 1));
+      cell.dataset.col = String(c);
+      cell.tabIndex = i === gridFocus.row && c === gridFocus.col ? 0 : -1;
+      cell.textContent = text;
+      row.appendChild(cell);
+    });
+    rows.push(row);
+  }
+  gridRoot.replaceChildren(...rows);
+  if (hadFocus) focusGridCell();
+}
+
+function viewportFirstRow() {
+  const wrapper = document.getElementById('ganttWrapper');
+  if (!wrapper) return 0;
+  return Math.max(0, Math.min(rowTasks.length - 1, Math.ceil((wrapper.scrollTop + layout.headerH - layout.bodyStart) / ROW_H)));
+}
+
+function focusGridCell() {
+  const cell = gridRoot && gridRoot.querySelector(`[role="row"][data-row="${gridFocus.row}"] [data-col="${gridFocus.col}"]`);
+  if (cell) {
+    gridRoot.querySelectorAll('[role="gridcell"][tabindex="0"]').forEach(c => { c.tabIndex = -1; });
+    cell.tabIndex = 0;
+    cell.focus({ preventScroll: true });
+  }
+}
+
+/** Keeps a row clear of the sticky header, the viewport edges and any Flag (WCAG 2.4.11). */
+function ensureRowVisible(i) {
+  const wrapper = document.getElementById('ganttWrapper');
+  if (!wrapper) return;
+  const top = rowTop(i);
+  const flags = document.getElementById('flagGroup');
+  const flagH = flags && flags.children.length ? flags.getBoundingClientRect().height + 16 : 8;
+  const viewTop = wrapper.scrollTop + layout.headerH;
+  const viewBottom = wrapper.scrollTop + wrapper.clientHeight - flagH;
+  if (top < viewTop) wrapper.scrollTop = top - layout.headerH - 8;
+  else if (top + ROW_H > viewBottom) wrapper.scrollTop = top + ROW_H - wrapper.clientHeight + flagH;
+  const t = rowTasks[i] && rowTasks[i].task;
+  if (t && t.startDate) {
+    const x = layout.trackLeft + xForDate(t.startDate, originIso(), DAY_PX);
+    if (x < wrapper.scrollLeft + 40 || x > wrapper.scrollLeft + wrapper.clientWidth - 80) wrapper.scrollLeft = Math.max(0, x - 240);
+  }
+}
+
+function setGridFocus(row, col) {
+  gridFocus = { row, col };
+  ensureRowVisible(row);
+  updateVirtualRows();
+  focusGridCell();
+}
+
+function onGridKey(e) {
+  if (moveState) {
+    onMoveKey(e);
+    return;
+  }
+  const task = rowTasks[gridFocus.row]?.task;
+  const page = Math.max(1, Math.floor((document.getElementById('ganttWrapper').clientHeight - layout.headerH) / ROW_H) - 1);
+  const next = navigate(gridFocus, e, rowTasks.length, GRID_COLUMNS.length, page);
+  if (next) {
+    e.preventDefault();
+    setGridFocus(next.row, next.col);
+    return;
+  }
+  if (!task) return;
+  if (e.key === ' ' && task.startDate && !(task.isEpic || task.hierarchyLevel === 1)) {
+    e.preventDefault();
+    startMoveMode(task);
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    openTaskDetailModal(task.key);
+  }
+}
+
+/** Shows the live preview for day shifts of a task, as a drag does (B-13, B-23). */
+function showShiftPreview(key, startShift, endShift, label) {
+  const moves = previewMoves(currentPlan.tasks, key, startShift, endShift, todayIso());
+  const mine = moves.get(key);
+  timeline.drag = { key, moves, label: label(mine) };
+  const strip = document.getElementById('writePreview');
+  if (strip) {
+    strip.textContent = describePendingWrites(currentPlan.tasks, moves, key).text;
+    strip.hidden = false;
+  }
+  timeline.requestDraw();
+  return mine;
+}
+
+function clearShiftPreview() {
+  timeline.drag = null;
+  const strip = document.getElementById('writePreview');
+  if (strip) strip.hidden = true;
+  drawTimeline();
+}
+
+/** One updateWbsTask call with exact dates and the version; the returned plan is used (B-13, B-14). */
+async function commitDates(key, start, end) {
+  const task = findTask(key);
+  const res = await callResolver('updateWbsTask', { taskId: key, updates: { startDate: start, endDate: end }, expectedVersion: (task && task.version) || 0 });
+  timeline.drag = null;
+  if (res && Array.isArray(res.tasks)) applyPlanInPlace(res);
+  else await loadProjectPlan();
+  return res;
+}
+
+function startMoveMode(task) {
+  moveState = { key: task.key, start: 0, end: 0 };
+  const mine = showShiftPreview(task.key, 0, 0, () => `${task.key} (move mode)`);
+  announce(moveAnnouncement(task.key, mine.start, mine.end, true));
+}
+
+async function onMoveKey(e) {
+  const { state, action } = moveKey(moveState, e);
+  if (!action) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const key = state.key;
+  if (action === 'cancel') {
+    moveState = null;
+    clearShiftPreview();
+    announce(`Move cancelled. ${key} keeps its dates.`);
+    return;
+  }
+  if (action === 'move') {
+    moveState = state;
+    const mine = showShiftPreview(key, state.start, state.end, (m) => `${key} ➔ ${m.start}`);
+    announce(moveAnnouncement(key, mine.start, mine.end, false));
+    return;
+  }
+  const mine = timeline.drag && timeline.drag.moves.get(key);
+  moveState = null;
+  if (!mine || (state.start === 0 && state.end === 0)) {
+    clearShiftPreview();
+    announce(`No change to ${key}.`);
+    return;
+  }
+  const strip = document.getElementById('writePreview');
+  if (strip) strip.hidden = true;
+  await commitDates(key, mine.start, mine.end);
+  announce(`Saved. ${key}: ${mine.start} to ${mine.end}.`);
+  focusGridCell();
+}
+
+// Single-pointer path (WCAG 2.5.7): a click on a bar opens a toolbar with the drag actions.
+function openBarToolbar(key, anchor) {
+  const bar = document.getElementById('barToolbar');
+  if (!bar) return;
+  bar.dataset.key = key;
+  bar.setAttribute('aria-label', `Actions for ${key}`);
+  const r = anchor.getBoundingClientRect();
+  bar.hidden = false;
+  bar.style.top = `${Math.min(window.innerHeight - bar.offsetHeight - 8, r.bottom + 6)}px`;
+  bar.style.left = `${Math.max(8, Math.min(window.innerWidth - bar.offsetWidth - 8, r.left))}px`;
+}
+
+/** On scroll the toolbar follows its bar, and closes when the bar leaves the view. */
+function followBarToolbar() {
+  const bar = document.getElementById('barToolbar');
+  if (!bar || bar.hidden) return;
+  const hit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(bar.dataset.key || '')}"]`);
+  const wrapper = document.getElementById('ganttWrapper');
+  if (!hit || !wrapper) return closeBarToolbar();
+  const r = hit.getBoundingClientRect();
+  const w = wrapper.getBoundingClientRect();
+  if (r.bottom < w.top || r.top > w.bottom || r.right < w.left || r.left > w.right) return closeBarToolbar();
+  openBarToolbar(bar.dataset.key, hit);
+}
+
+function closeBarToolbar() {
+  const bar = document.getElementById('barToolbar');
+  if (bar) bar.hidden = true;
+}
+
+async function toolbarAction(action, key, btn) {
+  const task = findTask(key);
+  if (!task) return;
+  closeBarToolbar();
+  if (action === 'earlier' || action === 'later') {
+    const days = action === 'later' ? 7 : -7;
+    const mine = showShiftPreview(key, days, days, (m) => `${key} ➔ ${m.start}`);
+    await commitDates(key, mine.start, mine.end);
+  } else if (action === 'dates') {
+    openTaskDetailModal(key);
+    setTimeout(() => document.getElementById('editStartDateInput')?.focus(), 50);
+  } else if (action === 'dependency') {
+    openDependencyPopup(key, btn);
+  } else if (action === 'progress') {
+    const row = rowCache.get(key);
+    openProgressPicker(row ? row.querySelector('.td-progress-cell') || btn : btn, key);
+  }
+}
+
+// "Add dependency" popup (UP-48): searchable issue list and a trigger percent field.
+let depState = null;
+
+function dependencyCandidates(key) {
+  const idx = rowTasks.findIndex(r => r.task.key === key);
+  const others = rowTasks.map((r, i) => ({ t: r.task, d: i < idx ? idx - i : 1000 + i - idx })).filter(x => x.t.key !== key);
+  // Rows just above the task come first: the usual predecessor is one or two rows up.
+  return others.sort((a, b) => a.d - b.d).map(x => x.t);
+}
+
+function renderDependencyOptions() {
+  const list = document.getElementById('depList');
+  const search = document.getElementById('depSearch');
+  const q = search.value.trim().toLowerCase();
+  depState.options = dependencyCandidates(depState.key).filter(t => !q || t.key.toLowerCase().includes(q) || (t.summary || '').toLowerCase().includes(q)).slice(0, 50);
+  depState.active = Math.min(depState.active, depState.options.length - 1);
+  list.replaceChildren(...depState.options.map((t, i) => {
+    const li = document.createElement('li');
+    li.id = `dep-opt-${i}`;
+    li.setAttribute('role', 'option');
+    li.setAttribute('aria-selected', String(i === depState.active));
+    li.textContent = `${t.key}: ${t.summary || ''}`;
+    li.addEventListener('click', () => chooseDependency(i));
+    return li;
+  }));
+  if (depState.active >= 0) search.setAttribute('aria-activedescendant', `dep-opt-${depState.active}`);
+  else search.removeAttribute('aria-activedescendant');
+}
+
+function openDependencyPopup(key, anchor) {
+  const pop = document.getElementById('depPopup');
+  if (!pop) return;
+  depState = { key, active: -1, options: [], chosen: null, anchor };
+  document.getElementById('depTitle').textContent = `${key} starts when`;
+  document.getElementById('depSearch').value = '';
+  document.getElementById('depTrigger').value = '100';
+  document.getElementById('depChosen').textContent = 'No issue chosen';
+  renderDependencyOptions();
+  pop.hidden = false;
+  const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { bottom: 120, left: 120 };
+  pop.style.top = `${Math.max(8, Math.min(window.innerHeight - pop.offsetHeight - 8, r.bottom + 6))}px`;
+  pop.style.left = `${Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, r.left))}px`;
+  document.getElementById('depSearch').focus();
+}
+
+function closeDependencyPopup() {
+  const pop = document.getElementById('depPopup');
+  if (pop) pop.hidden = true;
+  depState = null;
+  focusGridCell();
+}
+
+function chooseDependency(i) {
+  const t = depState.options[i];
+  if (!t) return;
+  depState.chosen = t.key;
+  document.getElementById('depChosen').textContent = `Waits for ${t.key}`;
+  const trig = document.getElementById('depTrigger');
+  trig.focus();
+  trig.select();
+}
+
+async function saveDependency() {
+  if (!depState || !depState.chosen) return;
+  const pct = Math.max(0, Math.min(100, parseInt(document.getElementById('depTrigger').value, 10) || 0));
+  const { key, chosen } = depState;
+  const task = findTask(key);
+  closeDependencyPopup();
+  await callResolver('updateWbsTask', { taskId: key, updates: { dependency: { predecessorKey: chosen, predecessorId: chosen, triggerPercent: pct, isTriggerSatisfied: false } },
+    expectedVersion: (task && task.version) || 0 });
+  await loadProjectPlan();
+  announce(`${key} now starts when ${chosen} reaches ${pct}%.`);
+}
+
+function initKeyboard() {
+  initGrid();
+  const box = document.getElementById('shortcutsToggle');
+  if (box) {
+    try { box.checked = localStorage.getItem(SHORTCUT_KEY) !== 'off'; } catch (e) {}
+    box.addEventListener('change', () => {
+      try { localStorage.setItem(SHORTCUT_KEY, box.checked ? 'on' : 'off'); } catch (e) {}
+    });
+  }
+  const bar = document.getElementById('barToolbar');
+  if (bar) {
+    bar.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (btn) toolbarAction(btn.dataset.action, bar.dataset.key, btn);
+    });
+    bar.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeBarToolbar(); focusGridCell(); } });
+  }
+  const search = document.getElementById('depSearch');
+  if (search) {
+    search.addEventListener('input', () => { depState.active = -1; renderDependencyOptions(); });
+    search.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const n = depState.options.length;
+        if (n) depState.active = (depState.active + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
+        renderDependencyOptions();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        chooseDependency(Math.max(0, depState.active));
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        closeDependencyPopup();
+      }
+    });
+  }
+  const trig = document.getElementById('depTrigger');
+  if (trig) trig.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); saveDependency(); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeDependencyPopup(); }
+  });
+  document.getElementById('btnDepSave')?.addEventListener('click', saveDependency);
+  document.getElementById('btnDepCancel')?.addEventListener('click', closeDependencyPopup);
+  document.addEventListener('click', (e) => {
+    const tb = document.getElementById('barToolbar');
+    if (tb && !tb.hidden && !tb.contains(e.target) && !e.target.closest('.bar-hit')) closeBarToolbar();
+  });
+  document.getElementById('ganttWrapper')?.addEventListener('scroll', followBarToolbar, { passive: true });
+}
+
+/** Single-letter shortcuts: only while focus is in the planner outside text fields, and only when on (WCAG 2.1.4). */
+function onShortcut(e, inField) {
+  if (inField || e.ctrlKey || e.metaKey || e.altKey || !shortcutsOn() || openModal()) return false;
+  const key = gridRoot && gridRoot.contains(document.activeElement) ? rowTasks[gridFocus.row]?.task.key : (pinnedDependencyTaskId || hoveredTaskId);
+  if (e.key === 't') {
+    scrollToToday();
+    return true;
+  }
+  if (!key) return false;
+  if (e.key === 'd') {
+    openDependencyPopup(key, document.activeElement);
+    return true;
+  }
+  if (e.key === 'e') {
+    openTaskDetailModal(key);
+    return true;
+  }
+  return false;
+}
 
 // Rich Tooltip Helpers
 function showTaskTooltip(e, task) {

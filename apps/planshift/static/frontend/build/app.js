@@ -4525,7 +4525,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
           throw new Error(`Failed to parse URL: ${url} (${error})`);
         }
       };
-      var navigate = (location) => {
+      var navigate2 = (location) => {
         if (typeof location === "string") {
           return callBridge("navigate", { url: location, type: "same-tab" });
         } else {
@@ -4548,7 +4548,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       var reload = async () => callBridge("reload");
       exports.router = {
         getUrl,
-        navigate,
+        navigate: navigate2,
         open,
         reload
       };
@@ -6792,6 +6792,26 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (chipW + LABEL_PAD * 2 <= barW) return { x: barX + LABEL_PAD, inside: true };
     return { x: barX + barW + LABEL_PAD, inside: false };
   }
+  var FORCED_COLOURS = {
+    [CANVAS_TOKENS.grid]: "GrayText",
+    [CANVAS_TOKENS.todayLine]: "Highlight",
+    [CANVAS_TOKENS.todayFlagText]: "HighlightText",
+    [CANVAS_TOKENS.labelChip]: "Canvas",
+    [CANVAS_TOKENS.labelText]: "CanvasText",
+    [CANVAS_TOKENS.arrowOk]: "CanvasText",
+    [CANVAS_TOKENS.arrowViolated]: "LinkText",
+    [CANVAS_TOKENS.arrowActive]: "Highlight",
+    [CANVAS_TOKENS.badgeOkText]: "CanvasText",
+    [CANVAS_TOKENS.badgeViolatedText]: "LinkText",
+    [CANVAS_TOKENS.focus]: "Highlight",
+    [CANVAS_TOKENS.driverText]: "CanvasText",
+    "--cp-bar-fill": "Highlight",
+    "--cp-bar-epic-fill": "Highlight",
+    "--cp-bar-done": "Highlight",
+    "--cp-bar-late": "Highlight",
+    "--cp-bar-planned": "Canvas",
+    "--cp-bar-epic": "Canvas"
+  };
 
   // src/frontend/canvas-timeline.ts
   var ROW_H = 44;
@@ -6812,11 +6832,30 @@ Please see https://iframe-resizer.com/upgrade for more details.
       __publicField(this, "focusKey", null);
       __publicField(this, "driverKeys", []);
       __publicField(this, "drag", null);
+      /** Focused element of the treegrid in the canvas fallback content, for drawFocusIfNeeded (B-15). */
+      __publicField(this, "focusElement", null);
+      __publicField(this, "forced", false);
       this.canvas = document.createElement("canvas");
       this.canvas.className = "timeline-canvas";
-      this.canvas.setAttribute("aria-hidden", "true");
-      wrapper.appendChild(this.canvas);
+      const host = wrapper.parentElement;
+      if (getComputedStyle(host).position === "static") host.style.position = "relative";
+      host.appendChild(this.canvas);
       this.ctx = this.canvas.getContext("2d");
+      const mq = window.matchMedia ? window.matchMedia("(forced-colors: active)") : null;
+      const apply = () => {
+        this.forced = !!(mq && mq.matches);
+        this.canvas.dataset.forced = this.forced ? "1" : "0";
+        this.invalidateColours();
+      };
+      apply();
+      if (mq && mq.addEventListener) mq.addEventListener("change", () => {
+        apply();
+        this.requestDraw();
+      });
+    }
+    /** The canvas element; its fallback content holds the accessible treegrid (B-15). */
+    get root() {
+      return this.canvas;
     }
     setModel(model) {
       if (!this.model || this.model.tasks !== model.tasks) {
@@ -6844,7 +6883,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     c(token) {
       let v = this.colours.get(token);
       if (!v) {
-        v = cssToken(token, "GrayText");
+        v = this.forced ? FORCED_COLOURS[token] || "CanvasText" : cssToken(token, "GrayText");
         this.colours.set(token, v);
       }
       return v;
@@ -6868,8 +6907,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const dpr = window.devicePixelRatio || 1;
       const cv = this.canvas;
       cv.style.display = "block";
-      cv.style.left = `${left}px`;
-      cv.style.top = `${top}px`;
+      cv.style.left = `${w.offsetLeft + left - w.scrollLeft}px`;
+      cv.style.top = `${w.offsetTop + m.headerH}px`;
       cv.style.width = `${cssW}px`;
       cv.style.height = `${cssH}px`;
       const bw = Math.round(cssW * dpr);
@@ -7006,6 +7045,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
         ctx.setLineDash([]);
       };
       const isDriver = this.driverKeys.includes(task.key);
+      if (task.key === this.focusKey && this.focusElement) {
+        this.path({ x: r.x - 3, y: r.y - 3, w: r.w + 6, h: r.h + 6 }, RADIUS + 2);
+        ctx.drawFocusIfNeeded(this.focusElement);
+      }
       if (task.key === this.focusKey || task.key === this.activeKey) ring(false);
       else if (isDriver) ring(true);
       ctx.font = `600 11px ${cssToken("--cp-font", "sans-serif")}`;
@@ -7093,6 +7136,78 @@ Please see https://iframe-resizer.com/upgrade for more details.
       ctx.fillText(text, r.x + 6, r.y + r.h / 2);
     }
   };
+
+  // src/ui/keyboard-grid.ts
+  var GRID_COLUMNS = ["Key", "Summary", "Start", "Due", "Progress", "Status", "Dependencies"];
+  var clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  function navigate(pos, e, rows, cols, page) {
+    const last = rows - 1;
+    switch (e.key) {
+      case "ArrowDown":
+        return { row: clamp(pos.row + 1, 0, last), col: pos.col };
+      case "ArrowUp":
+        return { row: clamp(pos.row - 1, 0, last), col: pos.col };
+      case "ArrowRight":
+        return { row: pos.row, col: clamp(pos.col + 1, 0, cols - 1) };
+      case "ArrowLeft":
+        return { row: pos.row, col: clamp(pos.col - 1, 0, cols - 1) };
+      case "Home":
+        return e.ctrlKey ? { row: 0, col: pos.col } : { row: pos.row, col: 0 };
+      case "End":
+        return e.ctrlKey ? { row: last, col: pos.col } : { row: pos.row, col: cols - 1 };
+      case "PageDown":
+        return { row: clamp(pos.row + page, 0, last), col: pos.col };
+      case "PageUp":
+        return { row: clamp(pos.row - page, 0, last), col: pos.col };
+      default:
+        return null;
+    }
+  }
+  var STATUS = { NOT_STARTED: "Not started", IN_PROGRESS: "In progress", COMPLETED: "Done" };
+  function dependencyText(dep) {
+    if (!dep || !dep.predecessorKey) return "None";
+    const when = dep.triggerDate ? ` (${dep.triggerDate})` : "";
+    return `Starts when ${dep.predecessorKey} reaches ${dep.triggerPercent}%${when}` + (dep.isViolated ? ". Starts too early" : "");
+  }
+  function rowCells(t) {
+    return [
+      t.key,
+      t.summary || "No summary",
+      t.startDate || "Not scheduled",
+      t.endDate || "Not scheduled",
+      `${t.progress || 0}%`,
+      STATUS[t.status] || t.status,
+      dependencyText(t.dependency)
+    ];
+  }
+  function rowLevel(t, planKeys) {
+    if (t.isEpic || t.hierarchyLevel === 1) return 1;
+    if (t.isSubtask || t.hierarchyLevel === -1) return t.parentKey && planKeys.has(t.parentKey) ? 3 : 2;
+    return t.epicKey && planKeys.has(t.epicKey) ? 2 : 1;
+  }
+  function moveKey(s, e) {
+    const step = e.shiftKey ? 7 : 1;
+    switch (e.key) {
+      case "ArrowRight":
+        return { state: { ...s, start: s.start + step, end: s.end + step }, action: "move" };
+      case "ArrowLeft":
+        return { state: { ...s, start: s.start - step, end: s.end - step }, action: "move" };
+      case "]":
+        return { state: { ...s, end: s.end + 1 }, action: "move" };
+      case "[":
+        return { state: { ...s, end: s.end - 1 }, action: "move" };
+      case "Enter":
+        return { state: s, action: "commit" };
+      case "Escape":
+        return { state: s, action: "cancel" };
+      default:
+        return { state: s, action: null };
+    }
+  }
+  function moveAnnouncement(key, start, end, entering) {
+    const dates = `${key}: ${start} to ${end}.`;
+    return entering ? `Move mode for ${dates} Left and Right move 1 day, with Shift 1 week; [ and ] change the due date; Enter saves; Escape cancels.` : dates;
+  }
 
   // src/frontend/legacy-planner.js
   function getJiraBaseUrl() {
@@ -7269,6 +7384,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       drawTimeline(true);
     });
     setupEventListeners();
+    initKeyboard();
     loadProjectPlan();
   }
   if (document.readyState === "loading") {
@@ -7379,11 +7495,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
       modal.addEventListener("click", (e) => {
         if (e.target === modal) closeModalAsking(modal);
       });
-      modal.addEventListener("input", () => {
-        modal.dataset.dirty = "1";
+      modal.addEventListener("input", (e) => {
+        if (e.isTrusted) modal.dataset.dirty = "1";
       });
-      modal.addEventListener("change", () => {
-        modal.dataset.dirty = "1";
+      modal.addEventListener("change", (e) => {
+        if (e.isTrusted) modal.dataset.dirty = "1";
       });
     });
     window.addEventListener("keydown", (e) => {
@@ -7394,8 +7510,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
         else undoLast();
         return;
       }
+      if (e.key.length === 1 && e.key !== "?" && onShortcut(e, inField)) {
+        e.preventDefault();
+        return;
+      }
       if (e.key === "?" && !inField) {
-        const key = pinnedDependencyTaskId || hoveredTaskId;
+        const key = (gridRoot && gridRoot.contains(document.activeElement) ? rowTasks[gridFocus.row]?.task.key : null) || pinnedDependencyTaskId || hoveredTaskId;
         const bar = key && document.querySelector(`.bar-hit[data-task-id="${CSS.escape(key)}"]`);
         if (key) {
           e.preventDefault();
@@ -7405,6 +7525,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
       }
       if (e.key === "Escape" && isWhyPopupOpen()) {
         closeWhyPopup();
+        return;
+      }
+      if (e.key === "Escape" && !openModal() && !document.getElementById("barToolbar")?.hidden) {
+        closeBarToolbar();
         return;
       }
       if (e.key === "Escape" && isChangesPanelOpen()) {
@@ -7444,7 +7568,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         epicPopover.style.display = "none";
       }
       const progPopover2 = document.getElementById("progressPickerPopover");
-      if (progPopover2 && progPopover2.style.display === "flex" && !progPopover2.contains(e.target) && !e.target.closest(".td-progress-cell") && !e.target.closest(".quick-progress-btn")) {
+      if (progPopover2 && progPopover2.style.display === "flex" && !progPopover2.contains(e.target) && !e.target.closest(".td-progress-cell") && !e.target.closest(".quick-progress-btn") && !e.target.closest("#barToolbar")) {
         progPopover2.style.display = "none";
       }
       const targetPopover2 = document.getElementById("targetPickerPopover");
@@ -8817,6 +8941,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     rowTaskList = [];
     renderedRange = { first: 0, last: -1 };
     topDropRowEl = topSpacer = bottomSpacer = null;
+    if (gridRoot) gridRoot.replaceChildren();
     const cols = getVisibleColKeys().length + currentPlan.weeks.length;
     if (!currentPlan.tasks || currentPlan.tasks.length === 0) {
       tbody.innerHTML = html`<tr><td colspan="${cols}" style="text-align:center; padding:30px; color: var(--cp-text-subtle);">No scheduled tasks in project. Drag issues from the Backlog Tray or click "+ Add Task / Issue" to schedule.</td></tr>`;
@@ -8880,6 +9005,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       bottomSpacer.firstChild.style.height = Math.max(0, rowTasks.length - 1 - next.last) * ROW_H + "px";
       renderedRange = next;
       measureLayout();
+      renderGrid();
     }
     drawTimeline(true);
   }
@@ -8911,6 +9037,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     rowTasks = computed.rows;
     rowTaskList = rowTasks.map((r) => r.task);
     renderPlanSummary();
+    renderGrid();
     const byKey = new Map(rowTaskList.map((t) => [t.key, t]));
     for (const [key, tr] of rowCache) {
       const hit = tr.querySelector(".bar-hit");
@@ -9479,8 +9606,7 @@ Click to manage or assign.`;
     const hit = document.createElement("div");
     hit.className = "bar-hit" + (isEpic ? " is-epic" : "");
     hit.dataset.taskId = key;
-    hit.tabIndex = 0;
-    hit.setAttribute("role", "button");
+    hit.setAttribute("aria-hidden", "true");
     if (!isEpic) {
       for (const edge of ["left", "right"]) {
         const handle = document.createElement("div");
@@ -9515,25 +9641,27 @@ Click to manage or assign.`;
     hit.addEventListener("click", (e) => {
       if (!e.defaultPrevented && !isDraggingBar) {
         pinnedDependencyTaskId = pinnedDependencyTaskId === key ? null : key;
+        const i = rowTasks.findIndex((r) => r.task.key === key);
+        if (i >= 0 && gridRoot) {
+          gridFocus = { row: i, col: 2 };
+          renderGrid();
+          focusGridCell();
+        }
         drawTimeline(true);
+        clearTimeout(toolbarTimer);
+        toolbarTimer = setTimeout(() => openBarToolbar(key, hit), DOUBLE_CLICK_MS);
       }
     });
     hit.addEventListener("dblclick", (e) => {
       e.stopPropagation();
+      clearTimeout(toolbarTimer);
+      closeBarToolbar();
       openTaskDetailModal(key);
     });
     hit.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       e.stopPropagation();
       openProgressPicker(hit, key);
-    });
-    hit.addEventListener("focus", () => {
-      if (timeline) timeline.focusKey = key;
-      drawTimeline();
-    });
-    hit.addEventListener("blur", () => {
-      if (timeline && timeline.focusKey === key) timeline.focusKey = null;
-      drawTimeline();
     });
     return hit;
   }
@@ -9606,6 +9734,405 @@ Click to manage or assign.`;
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+  }
+  var gridRoot = null;
+  var toolbarTimer = 0;
+  var DOUBLE_CLICK_MS = 250;
+  var gridFocus = { row: 0, col: 0 };
+  var moveState = null;
+  var SHORTCUT_KEY = "cascadeplan_shortcuts";
+  function shortcutsOn() {
+    const box = document.getElementById("shortcutsToggle");
+    return !box || box.checked;
+  }
+  function announce(text) {
+    const live = document.getElementById("cpLive");
+    if (live) live.textContent = text;
+  }
+  function initGrid() {
+    if (!timeline || gridRoot) return;
+    gridRoot = document.createElement("div");
+    gridRoot.setAttribute("role", "treegrid");
+    gridRoot.setAttribute("aria-label", "Schedule");
+    gridRoot.setAttribute("aria-colcount", String(GRID_COLUMNS.length));
+    timeline.root.appendChild(gridRoot);
+    gridRoot.addEventListener("keydown", onGridKey);
+    gridRoot.addEventListener("focusin", (e) => {
+      const cell2 = e.target.closest('[role="gridcell"]');
+      if (!cell2) return;
+      gridFocus = { row: Number(cell2.parentElement.dataset.row), col: Number(cell2.dataset.col) };
+      const key = rowTasks[gridFocus.row]?.task.key || null;
+      timeline.focusKey = key;
+      timeline.focusElement = cell2;
+      document.querySelectorAll("#ganttBody tr.is-grid-focused").forEach((r) => r.classList.remove("is-grid-focused"));
+      const tr = key && rowCache.get(key);
+      if (tr) tr.classList.add("is-grid-focused");
+      drawTimeline(true);
+    });
+    gridRoot.addEventListener("focusout", (e) => {
+      if (gridRoot.contains(e.relatedTarget)) return;
+      timeline.focusKey = null;
+      timeline.focusElement = null;
+      document.querySelectorAll("#ganttBody tr.is-grid-focused").forEach((r) => r.classList.remove("is-grid-focused"));
+      drawTimeline(true);
+    });
+  }
+  function renderGrid() {
+    if (!gridRoot) return;
+    const hadFocus = gridRoot.contains(document.activeElement);
+    const planKeys = new Set((currentPlan?.tasks || []).map((t) => t.key));
+    gridRoot.setAttribute("aria-rowcount", String(rowTasks.length + 1));
+    const header = document.createElement("div");
+    header.setAttribute("role", "row");
+    header.setAttribute("aria-rowindex", "1");
+    GRID_COLUMNS.forEach((name, c) => {
+      const h = document.createElement("span");
+      h.setAttribute("role", "columnheader");
+      h.setAttribute("aria-colindex", String(c + 1));
+      h.textContent = name;
+      header.appendChild(h);
+    });
+    const rows = [header];
+    const { first, last } = renderedRange;
+    if (gridFocus.row < first || gridFocus.row > last) gridFocus = { row: Math.max(first, viewportFirstRow()), col: gridFocus.col };
+    for (let i = first; i <= last; i++) {
+      const t = rowTasks[i].task;
+      const row = document.createElement("div");
+      row.setAttribute("role", "row");
+      row.setAttribute("aria-rowindex", String(i + 2));
+      row.setAttribute("aria-level", String(rowLevel(t, planKeys)));
+      if (expandedTasks.has(t.key) && (t.isEpic || t.childrenCount)) row.setAttribute("aria-expanded", "true");
+      row.dataset.row = String(i);
+      rowCells(t).forEach((text, c) => {
+        const cell2 = document.createElement("span");
+        cell2.setAttribute("role", "gridcell");
+        cell2.setAttribute("aria-colindex", String(c + 1));
+        cell2.dataset.col = String(c);
+        cell2.tabIndex = i === gridFocus.row && c === gridFocus.col ? 0 : -1;
+        cell2.textContent = text;
+        row.appendChild(cell2);
+      });
+      rows.push(row);
+    }
+    gridRoot.replaceChildren(...rows);
+    if (hadFocus) focusGridCell();
+  }
+  function viewportFirstRow() {
+    const wrapper = document.getElementById("ganttWrapper");
+    if (!wrapper) return 0;
+    return Math.max(0, Math.min(rowTasks.length - 1, Math.ceil((wrapper.scrollTop + layout.headerH - layout.bodyStart) / ROW_H)));
+  }
+  function focusGridCell() {
+    const cell2 = gridRoot && gridRoot.querySelector(`[role="row"][data-row="${gridFocus.row}"] [data-col="${gridFocus.col}"]`);
+    if (cell2) {
+      gridRoot.querySelectorAll('[role="gridcell"][tabindex="0"]').forEach((c) => {
+        c.tabIndex = -1;
+      });
+      cell2.tabIndex = 0;
+      cell2.focus({ preventScroll: true });
+    }
+  }
+  function ensureRowVisible(i) {
+    const wrapper = document.getElementById("ganttWrapper");
+    if (!wrapper) return;
+    const top = rowTop(i);
+    const flags = document.getElementById("flagGroup");
+    const flagH = flags && flags.children.length ? flags.getBoundingClientRect().height + 16 : 8;
+    const viewTop = wrapper.scrollTop + layout.headerH;
+    const viewBottom = wrapper.scrollTop + wrapper.clientHeight - flagH;
+    if (top < viewTop) wrapper.scrollTop = top - layout.headerH - 8;
+    else if (top + ROW_H > viewBottom) wrapper.scrollTop = top + ROW_H - wrapper.clientHeight + flagH;
+    const t = rowTasks[i] && rowTasks[i].task;
+    if (t && t.startDate) {
+      const x = layout.trackLeft + xForDate(t.startDate, originIso(), DAY_PX);
+      if (x < wrapper.scrollLeft + 40 || x > wrapper.scrollLeft + wrapper.clientWidth - 80) wrapper.scrollLeft = Math.max(0, x - 240);
+    }
+  }
+  function setGridFocus(row, col) {
+    gridFocus = { row, col };
+    ensureRowVisible(row);
+    updateVirtualRows();
+    focusGridCell();
+  }
+  function onGridKey(e) {
+    if (moveState) {
+      onMoveKey(e);
+      return;
+    }
+    const task = rowTasks[gridFocus.row]?.task;
+    const page = Math.max(1, Math.floor((document.getElementById("ganttWrapper").clientHeight - layout.headerH) / ROW_H) - 1);
+    const next = navigate(gridFocus, e, rowTasks.length, GRID_COLUMNS.length, page);
+    if (next) {
+      e.preventDefault();
+      setGridFocus(next.row, next.col);
+      return;
+    }
+    if (!task) return;
+    if (e.key === " " && task.startDate && !(task.isEpic || task.hierarchyLevel === 1)) {
+      e.preventDefault();
+      startMoveMode(task);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      openTaskDetailModal(task.key);
+    }
+  }
+  function showShiftPreview(key, startShift, endShift, label) {
+    const moves = previewMoves(currentPlan.tasks, key, startShift, endShift, todayIso());
+    const mine = moves.get(key);
+    timeline.drag = { key, moves, label: label(mine) };
+    const strip = document.getElementById("writePreview");
+    if (strip) {
+      strip.textContent = describePendingWrites(currentPlan.tasks, moves, key).text;
+      strip.hidden = false;
+    }
+    timeline.requestDraw();
+    return mine;
+  }
+  function clearShiftPreview() {
+    timeline.drag = null;
+    const strip = document.getElementById("writePreview");
+    if (strip) strip.hidden = true;
+    drawTimeline();
+  }
+  async function commitDates(key, start, end) {
+    const task = findTask(key);
+    const res = await callResolver2("updateWbsTask", { taskId: key, updates: { startDate: start, endDate: end }, expectedVersion: task && task.version || 0 });
+    timeline.drag = null;
+    if (res && Array.isArray(res.tasks)) applyPlanInPlace(res);
+    else await loadProjectPlan();
+    return res;
+  }
+  function startMoveMode(task) {
+    moveState = { key: task.key, start: 0, end: 0 };
+    const mine = showShiftPreview(task.key, 0, 0, () => `${task.key} (move mode)`);
+    announce(moveAnnouncement(task.key, mine.start, mine.end, true));
+  }
+  async function onMoveKey(e) {
+    const { state, action } = moveKey(moveState, e);
+    if (!action) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const key = state.key;
+    if (action === "cancel") {
+      moveState = null;
+      clearShiftPreview();
+      announce(`Move cancelled. ${key} keeps its dates.`);
+      return;
+    }
+    if (action === "move") {
+      moveState = state;
+      const mine2 = showShiftPreview(key, state.start, state.end, (m) => `${key} \u2794 ${m.start}`);
+      announce(moveAnnouncement(key, mine2.start, mine2.end, false));
+      return;
+    }
+    const mine = timeline.drag && timeline.drag.moves.get(key);
+    moveState = null;
+    if (!mine || state.start === 0 && state.end === 0) {
+      clearShiftPreview();
+      announce(`No change to ${key}.`);
+      return;
+    }
+    const strip = document.getElementById("writePreview");
+    if (strip) strip.hidden = true;
+    await commitDates(key, mine.start, mine.end);
+    announce(`Saved. ${key}: ${mine.start} to ${mine.end}.`);
+    focusGridCell();
+  }
+  function openBarToolbar(key, anchor) {
+    const bar = document.getElementById("barToolbar");
+    if (!bar) return;
+    bar.dataset.key = key;
+    bar.setAttribute("aria-label", `Actions for ${key}`);
+    const r = anchor.getBoundingClientRect();
+    bar.hidden = false;
+    bar.style.top = `${Math.min(window.innerHeight - bar.offsetHeight - 8, r.bottom + 6)}px`;
+    bar.style.left = `${Math.max(8, Math.min(window.innerWidth - bar.offsetWidth - 8, r.left))}px`;
+  }
+  function followBarToolbar() {
+    const bar = document.getElementById("barToolbar");
+    if (!bar || bar.hidden) return;
+    const hit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(bar.dataset.key || "")}"]`);
+    const wrapper = document.getElementById("ganttWrapper");
+    if (!hit || !wrapper) return closeBarToolbar();
+    const r = hit.getBoundingClientRect();
+    const w = wrapper.getBoundingClientRect();
+    if (r.bottom < w.top || r.top > w.bottom || r.right < w.left || r.left > w.right) return closeBarToolbar();
+    openBarToolbar(bar.dataset.key, hit);
+  }
+  function closeBarToolbar() {
+    const bar = document.getElementById("barToolbar");
+    if (bar) bar.hidden = true;
+  }
+  async function toolbarAction(action, key, btn) {
+    const task = findTask(key);
+    if (!task) return;
+    closeBarToolbar();
+    if (action === "earlier" || action === "later") {
+      const days = action === "later" ? 7 : -7;
+      const mine = showShiftPreview(key, days, days, (m) => `${key} \u2794 ${m.start}`);
+      await commitDates(key, mine.start, mine.end);
+    } else if (action === "dates") {
+      openTaskDetailModal(key);
+      setTimeout(() => document.getElementById("editStartDateInput")?.focus(), 50);
+    } else if (action === "dependency") {
+      openDependencyPopup(key, btn);
+    } else if (action === "progress") {
+      const row = rowCache.get(key);
+      openProgressPicker(row ? row.querySelector(".td-progress-cell") || btn : btn, key);
+    }
+  }
+  var depState = null;
+  function dependencyCandidates(key) {
+    const idx = rowTasks.findIndex((r) => r.task.key === key);
+    const others = rowTasks.map((r, i) => ({ t: r.task, d: i < idx ? idx - i : 1e3 + i - idx })).filter((x) => x.t.key !== key);
+    return others.sort((a, b) => a.d - b.d).map((x) => x.t);
+  }
+  function renderDependencyOptions() {
+    const list = document.getElementById("depList");
+    const search = document.getElementById("depSearch");
+    const q = search.value.trim().toLowerCase();
+    depState.options = dependencyCandidates(depState.key).filter((t) => !q || t.key.toLowerCase().includes(q) || (t.summary || "").toLowerCase().includes(q)).slice(0, 50);
+    depState.active = Math.min(depState.active, depState.options.length - 1);
+    list.replaceChildren(...depState.options.map((t, i) => {
+      const li = document.createElement("li");
+      li.id = `dep-opt-${i}`;
+      li.setAttribute("role", "option");
+      li.setAttribute("aria-selected", String(i === depState.active));
+      li.textContent = `${t.key}: ${t.summary || ""}`;
+      li.addEventListener("click", () => chooseDependency(i));
+      return li;
+    }));
+    if (depState.active >= 0) search.setAttribute("aria-activedescendant", `dep-opt-${depState.active}`);
+    else search.removeAttribute("aria-activedescendant");
+  }
+  function openDependencyPopup(key, anchor) {
+    const pop = document.getElementById("depPopup");
+    if (!pop) return;
+    depState = { key, active: -1, options: [], chosen: null, anchor };
+    document.getElementById("depTitle").textContent = `${key} starts when`;
+    document.getElementById("depSearch").value = "";
+    document.getElementById("depTrigger").value = "100";
+    document.getElementById("depChosen").textContent = "No issue chosen";
+    renderDependencyOptions();
+    pop.hidden = false;
+    const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { bottom: 120, left: 120 };
+    pop.style.top = `${Math.max(8, Math.min(window.innerHeight - pop.offsetHeight - 8, r.bottom + 6))}px`;
+    pop.style.left = `${Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, r.left))}px`;
+    document.getElementById("depSearch").focus();
+  }
+  function closeDependencyPopup() {
+    const pop = document.getElementById("depPopup");
+    if (pop) pop.hidden = true;
+    depState = null;
+    focusGridCell();
+  }
+  function chooseDependency(i) {
+    const t = depState.options[i];
+    if (!t) return;
+    depState.chosen = t.key;
+    document.getElementById("depChosen").textContent = `Waits for ${t.key}`;
+    const trig = document.getElementById("depTrigger");
+    trig.focus();
+    trig.select();
+  }
+  async function saveDependency() {
+    if (!depState || !depState.chosen) return;
+    const pct = Math.max(0, Math.min(100, parseInt(document.getElementById("depTrigger").value, 10) || 0));
+    const { key, chosen } = depState;
+    const task = findTask(key);
+    closeDependencyPopup();
+    await callResolver2("updateWbsTask", {
+      taskId: key,
+      updates: { dependency: { predecessorKey: chosen, predecessorId: chosen, triggerPercent: pct, isTriggerSatisfied: false } },
+      expectedVersion: task && task.version || 0
+    });
+    await loadProjectPlan();
+    announce(`${key} now starts when ${chosen} reaches ${pct}%.`);
+  }
+  function initKeyboard() {
+    initGrid();
+    const box = document.getElementById("shortcutsToggle");
+    if (box) {
+      try {
+        box.checked = localStorage.getItem(SHORTCUT_KEY) !== "off";
+      } catch (e) {
+      }
+      box.addEventListener("change", () => {
+        try {
+          localStorage.setItem(SHORTCUT_KEY, box.checked ? "on" : "off");
+        } catch (e) {
+        }
+      });
+    }
+    const bar = document.getElementById("barToolbar");
+    if (bar) {
+      bar.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-action]");
+        if (btn) toolbarAction(btn.dataset.action, bar.dataset.key, btn);
+      });
+      bar.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          closeBarToolbar();
+          focusGridCell();
+        }
+      });
+    }
+    const search = document.getElementById("depSearch");
+    if (search) {
+      search.addEventListener("input", () => {
+        depState.active = -1;
+        renderDependencyOptions();
+      });
+      search.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          const n = depState.options.length;
+          if (n) depState.active = (depState.active + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
+          renderDependencyOptions();
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          chooseDependency(Math.max(0, depState.active));
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          closeDependencyPopup();
+        }
+      });
+    }
+    const trig = document.getElementById("depTrigger");
+    if (trig) trig.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        saveDependency();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        closeDependencyPopup();
+      }
+    });
+    document.getElementById("btnDepSave")?.addEventListener("click", saveDependency);
+    document.getElementById("btnDepCancel")?.addEventListener("click", closeDependencyPopup);
+    document.addEventListener("click", (e) => {
+      const tb = document.getElementById("barToolbar");
+      if (tb && !tb.hidden && !tb.contains(e.target) && !e.target.closest(".bar-hit")) closeBarToolbar();
+    });
+    document.getElementById("ganttWrapper")?.addEventListener("scroll", followBarToolbar, { passive: true });
+  }
+  function onShortcut(e, inField) {
+    if (inField || e.ctrlKey || e.metaKey || e.altKey || !shortcutsOn() || openModal()) return false;
+    const key = gridRoot && gridRoot.contains(document.activeElement) ? rowTasks[gridFocus.row]?.task.key : pinnedDependencyTaskId || hoveredTaskId;
+    if (e.key === "t") {
+      scrollToToday();
+      return true;
+    }
+    if (!key) return false;
+    if (e.key === "d") {
+      openDependencyPopup(key, document.activeElement);
+      return true;
+    }
+    if (e.key === "e") {
+      openTaskDetailModal(key);
+      return true;
+    }
+    return false;
   }
   function showTaskTooltip(e, task) {
     const tip = document.getElementById("globalTooltip");

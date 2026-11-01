@@ -25,6 +25,7 @@
         📂 Backlog Tray (<span id="backlogCount">0</span>)
       </button>
       <button class="btn btn-outline" id="refreshBtn">🔄 Refresh</button>
+      <label class="shortcut-toggle"><input type="checkbox" id="shortcutsToggle" checked> Keyboard shortcuts</label>
       <button class="btn btn-outline" id="btnChanges" type="button" aria-expanded="false" aria-controls="changesPanel" title="Every Jira write of this session">
         Changes (<span id="changesCount">0</span>)
       </button>
@@ -53,12 +54,12 @@
       </div>
       <button class="btn btn-outline" id="newEpicBtn">+ New Epic</button>
       <button class="btn btn-primary" id="newTaskBtn">+ Add Task / Issue</button>
-      <select class="view-select hierarchy-select" id="hierarchySwitcher" title="Filter hierarchy level">
+      <select class="view-select hierarchy-select" id="hierarchySwitcher" aria-label="Hierarchy level" title="Filter hierarchy level">
         <option value="all">🌳 Full Hierarchy (Epics ➔ Stories ➔ Subtasks)</option>
         <option value="epics">🟪 Epics Only (Executive Roadmap)</option>
         <option value="stories">🔷 Stories & Tasks (Sprint Plan)</option>
       </select>
-      <select class="view-select" id="viewSwitcher">
+      <select class="view-select" id="viewSwitcher" aria-label="View">
         <option value="timeline">📊 Project Tracking (WBS & Timeline)</option>
         <option value="utilization">👤 Resource Utilization (Per-Person)</option>
         <option value="heatmap">🗺️ Executive Heatmap (Capacity)</option>
@@ -190,6 +191,29 @@
   <!-- Drag preview of every change a drop will make (B-23) -->
   <div id="writePreview" class="write-preview" role="status" aria-live="polite" hidden></div>
 
+  <!-- Keyboard and single-pointer scheduling (B-15) -->
+  <div id="cpLive" class="visually-hidden" aria-live="polite"></div>
+  <div id="barToolbar" class="bar-toolbar" role="toolbar" aria-label="Bar actions" hidden>
+    <button class="btn btn-outline btn-sm" type="button" data-action="earlier">Move 1 week earlier</button>
+    <button class="btn btn-outline btn-sm" type="button" data-action="later">Move 1 week later</button>
+    <button class="btn btn-outline btn-sm" type="button" data-action="dates">Edit dates</button>
+    <button class="btn btn-outline btn-sm" type="button" data-action="dependency">Add dependency</button>
+    <button class="btn btn-outline btn-sm" type="button" data-action="progress">Set progress</button>
+  </div>
+  <div id="depPopup" class="why-popup dep-popup" role="dialog" aria-labelledby="depTitle" hidden>
+    <div class="why-header">
+      <strong id="depTitle">Starts when</strong>
+      <button class="btn btn-subtle btn-sm" id="btnDepCancel" type="button" aria-label="Close">✕</button>
+    </div>
+    <label class="form-label" for="depSearch">Issue it waits for</label>
+    <input id="depSearch" class="form-input" type="search" role="combobox" aria-expanded="true" aria-controls="depList" aria-autocomplete="list" autocomplete="off">
+    <ul id="depList" class="dep-list" role="listbox" aria-label="Issues"></ul>
+    <p id="depChosen" class="dep-chosen">No issue chosen</p>
+    <label class="form-label" for="depTrigger">Trigger percent of that issue</label>
+    <input id="depTrigger" class="form-input" type="number" min="0" max="100" step="5" value="100">
+    <div class="why-fixes"><button class="btn btn-primary btn-sm" id="btnDepSave" type="button">Add dependency</button></div>
+  </div>
+
   <!-- Flags (B-14): write results with Undo -->
   <div id="flagGroup" class="flag-group"></div>
 
@@ -210,16 +234,16 @@
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label class="form-label">Summary</label>
+          <label class="form-label" for="editSummaryInput">Summary</label>
           <input type="text" class="form-input" id="editSummaryInput" />
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="form-group">
-            <label class="form-label">Assignee / Resource</label>
+            <label class="form-label" for="editAssigneeSelect">Assignee / Resource</label>
             <select class="form-input" id="editAssigneeSelect"></select>
           </div>
           <div class="form-group">
-            <label class="form-label">Status</label>
+            <label class="form-label" for="editStatusSelect">Status</label>
             <select class="form-input" id="editStatusSelect">
               <option value="NOT_STARTED">NOT_STARTED</option>
               <option value="IN_PROGRESS">IN_PROGRESS</option>
@@ -233,12 +257,12 @@
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
             <div class="form-group" style="margin-bottom: 0;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <label class="form-label" id="editProgressLabel" style="margin: 0; font-weight: 700;">Actual Progress</label>
+                <label class="form-label" for="editProgressSlider" id="editProgressLabel" style="margin: 0; font-weight: 700;">Actual Progress</label>
                 <span id="modalProgressValLabel" style="font-size: 12px; font-weight: 800; color: var(--cp-text-success);">0%</span>
               </div>
               <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
                 <input type="range" min="0" max="100" step="5" id="editProgressSlider" style="flex: 1; accent-color: var(--cp-bg-success-bold); cursor: pointer;" />
-                <input type="number" min="0" max="100" class="form-input" id="editProgressInput" style="width: 50px; text-align: center; padding: 2px 4px; font-weight: 700;" placeholder="0-100" />
+                <input type="number" min="0" max="100" class="form-input" id="editProgressInput" aria-label="Actual progress percent" style="width: 50px; text-align: center; padding: 2px 4px; font-weight: 700;" placeholder="0-100" />
               </div>
               <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;">
                 <button type="button" class="btn btn-sm btn-subtle modal-prog-preset" data-pct="0">0%</button>
@@ -255,12 +279,12 @@
 
             <div class="form-group" style="margin-bottom: 0;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <label class="form-label" style="margin: 0; font-weight: 700;">Target Progress</label>
+                <label class="form-label" for="editTargetProgressSlider" style="margin: 0; font-weight: 700;">Target Progress</label>
                 <span id="modalTargetValLabel" style="font-size: 12px; font-weight: 800; color: var(--cp-text-brand);">0%</span>
               </div>
               <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
                 <input type="range" min="0" max="100" step="5" id="editTargetProgressSlider" style="flex: 1; accent-color: var(--cp-bg-brand); cursor: pointer;" />
-                <input type="number" min="0" max="100" class="form-input" id="editTargetProgressInput" style="width: 50px; text-align: center; padding: 2px 4px; font-weight: 700;" placeholder="0-100" />
+                <input type="number" min="0" max="100" class="form-input" id="editTargetProgressInput" aria-label="Target progress percent" style="width: 50px; text-align: center; padding: 2px 4px; font-weight: 700;" placeholder="0-100" />
               </div>
               <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;">
                 <button type="button" class="btn btn-sm btn-subtle modal-target-preset" data-pct="0">0%</button>
@@ -276,13 +300,13 @@
         <!-- Start & End Date/Time Section -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="form-group">
-            <label class="form-label">Start Date</label>
+            <label class="form-label" for="editStartDateInput">Start Date</label>
             <div style="display: flex; gap: 6px;">
               <input type="date" class="form-input" id="editStartDateInput" style="flex: 1;" />
             </div>
           </div>
           <div class="form-group">
-            <label class="form-label">Due Date</label>
+            <label class="form-label" for="editEndDateInput">Due Date</label>
             <div style="display: flex; gap: 6px;">
               <input type="date" class="form-input" id="editEndDateInput" style="flex: 1;" />
             </div>
@@ -297,7 +321,7 @@
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <div class="form-group">
-              <label class="form-label">Estimation Unit</label>
+              <label class="form-label" for="editEstimateUnitSelect">Estimation Unit</label>
               <select class="form-input" id="editEstimateUnitSelect">
                 <option value="HOURS">Hours (Direct Effort)</option>
                 <option value="STORY_POINTS">Story Points (1 pt = 8 hrs)</option>
@@ -305,11 +329,11 @@
               </select>
             </div>
             <div class="form-group" id="rawEstimateGroup">
-              <label class="form-label" id="rawEstimateLabel">Effort Value</label>
+              <label class="form-label" for="editEstimateValueInput" id="rawEstimateLabel">Effort Value</label>
               <input type="number" class="form-input" id="editEstimateValueInput" placeholder="Unestimated" />
             </div>
             <div class="form-group" id="tshirtSizeGroup" style="display: none;">
-              <label class="form-label">T-Shirt Size</label>
+              <label class="form-label" for="editTshirtSelect">T-Shirt Size</label>
               <select class="form-input" id="editTshirtSelect">
                 <option value="XS">XS (4 hrs)</option>
                 <option value="S">S (8 hrs)</option>
@@ -337,8 +361,8 @@
             Assign additional team members to this task. CascadePlan creates a dedicated background Jira subtask for each resource to maintain single-assignee traceability.
           </p>
           <div style="display: flex; gap: 8px; margin-bottom: 6px;">
-            <select class="form-input" id="multiResourceSelect" style="flex: 1;"></select>
-            <input type="number" class="form-input" id="multiResourceHours" value="20" style="width: 75px;" placeholder="Hrs" />
+            <select class="form-input" id="multiResourceSelect" aria-label="Team member for a new sub-task" style="flex: 1;"></select>
+            <input type="number" class="form-input" id="multiResourceHours" aria-label="Hours for the new sub-task" value="20" style="width: 75px;" placeholder="Hrs" />
             <button class="btn btn-outline" id="btnAddResourceSubtaskBtn">+ Allocate Resource</button>
           </div>
           <div id="multiResourceStatus" style="font-size: 11px; color: var(--cp-text-success); display: none;"></div>
@@ -349,13 +373,13 @@
           <div style="font-weight: 700; margin-bottom: 8px;">Subtasks & Risk Buffer</div>
           <div id="subtasksList" style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;"></div>
           <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-            <input type="text" class="form-input" id="newSubtaskSummary" placeholder="New subtask title..." style="flex: 1;" />
-            <input type="number" class="form-input" id="newSubtaskHours" value="8" style="width: 70px;" />
+            <input type="text" class="form-input" id="newSubtaskSummary" aria-label="New sub-task summary" placeholder="New subtask title..." style="flex: 1;" />
+            <input type="number" class="form-input" id="newSubtaskHours" aria-label="New sub-task hours" value="8" style="width: 70px;" />
             <button class="btn btn-outline" id="btnAddSubtaskBtn">+ Add Subtask</button>
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <div class="form-group">
-              <label class="form-label">Buffer Type</label>
+              <label class="form-label" for="editBufferTypeSelect">Buffer Type</label>
               <select class="form-input" id="editBufferTypeSelect">
                 <option value="NONE">No Buffer</option>
                 <option value="PERCENTAGE">Percentage Buffer (%)</option>
@@ -363,7 +387,7 @@
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">Buffer Value</label>
+              <label class="form-label" for="editBufferValueInput">Buffer Value</label>
               <input type="number" class="form-input" id="editBufferValueInput" value="15" />
             </div>
           </div>
@@ -374,11 +398,11 @@
           <div style="font-weight: 700; margin-bottom: 8px;">Fractional Completion Dependency</div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <div class="form-group">
-              <label class="form-label">Predecessor Task</label>
+              <label class="form-label" for="editPredecessorSelect">Predecessor Task</label>
               <select class="form-input" id="editPredecessorSelect"></select>
             </div>
             <div class="form-group">
-              <label class="form-label">Trigger Completion %</label>
+              <label class="form-label" for="editTriggerPercentInput">Trigger Completion %</label>
               <input type="number" class="form-input" id="editTriggerPercentInput" value="30" min="0" max="100" />
             </div>
           </div>
@@ -406,27 +430,27 @@
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label class="form-label">Summary</label>
+          <label class="form-label" for="createSummaryInput">Summary</label>
           <input type="text" class="form-input" id="createSummaryInput" placeholder="e.g. Integrate Payment Webhooks" />
           <div id="createTaskError" style="display: none; color: var(--cp-text-danger); font-size: 12px; margin-top: 6px; font-weight: 600;"></div>
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="form-group">
-            <label class="form-label">Parent Epic</label>
+            <label class="form-label" for="createEpicSelect">Parent Epic</label>
             <select class="form-input" id="createEpicSelect"></select>
           </div>
           <div class="form-group">
-            <label class="form-label">Assignee</label>
+            <label class="form-label" for="createAssigneeSelect">Assignee</label>
             <select class="form-input" id="createAssigneeSelect"></select>
           </div>
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="form-group">
-            <label class="form-label">Effort Hours</label>
+            <label class="form-label" for="createEffortInput">Effort Hours</label>
             <input type="number" class="form-input" id="createEffortInput" placeholder="Optional" />
           </div>
           <div class="form-group">
-            <label class="form-label">Start Week</label>
+            <label class="form-label" for="createStartWeekSelect">Start Week</label>
             <select class="form-input" id="createStartWeekSelect"></select>
           </div>
         </div>
@@ -447,7 +471,7 @@
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label class="form-label">Epic Summary</label>
+          <label class="form-label" for="newEpicSummaryInput">Epic Summary</label>
           <input type="text" class="form-input" id="newEpicSummaryInput" placeholder="e.g. Identity & Access Overhaul" />
           <div id="createEpicError" style="display: none; color: var(--cp-text-danger); font-size: 12px; margin-top: 6px; font-weight: 600;"></div>
         </div>
@@ -466,7 +490,7 @@
         <span id="resourcePickerTitleText">Assign Team</span>
         <span class="badge badge-primary" id="resourcePickerBadge">1 assigned</span>
       </div>
-      <input type="text" id="resourcePickerSearch" class="resource-picker-search" placeholder="Search team members..." autocomplete="off" />
+      <input type="text" id="resourcePickerSearch" aria-label="Search people" class="resource-picker-search" placeholder="Search team members..." autocomplete="off" />
     </div>
     <div id="resourcePickerCurrent" class="resource-picker-current" style="display: none;"></div>
     <div id="resourcePickerList" class="resource-picker-list"></div>
@@ -486,7 +510,7 @@
   <!-- Quick Epic Link Popover -->
   <div id="epicPickerPopover" class="quick-menu-popover" style="min-width: 220px;">
     <div class="resource-picker-header" style="padding: 6px 8px;">
-      <input type="text" id="epicPickerSearch" class="resource-picker-search" placeholder="Search epics..." autocomplete="off" />
+      <input type="text" id="epicPickerSearch" aria-label="Search epics" class="resource-picker-search" placeholder="Search epics..." autocomplete="off" />
     </div>
     <div id="epicPickerList" class="resource-picker-list"></div>
   </div>
@@ -509,8 +533,8 @@
 
     <!-- Slider & Direct Input -->
     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
-      <input type="range" min="0" max="100" step="5" id="progressPickerSlider" style="flex: 1; accent-color: var(--cp-bg-success-bold); cursor: pointer;" />
-      <input type="number" min="0" max="100" id="progressPickerNumberInput" class="form-input" style="width: 52px; height: 26px; text-align: center; padding: 2px 4px; font-weight: 700;" />
+      <input type="range" min="0" max="100" step="5" id="progressPickerSlider" aria-label="Actual progress" style="flex: 1; accent-color: var(--cp-bg-success-bold); cursor: pointer;" />
+      <input type="number" min="0" max="100" id="progressPickerNumberInput" aria-label="Actual progress percent" class="form-input" style="width: 52px; height: 26px; text-align: center; padding: 2px 4px; font-weight: 700;" />
     </div>
 
     <!-- Rollup Toggle for Parents / Epics -->
@@ -542,8 +566,8 @@
       <button class="btn btn-sm btn-subtle target-preset-btn" data-pct="100">100%</button>
     </div>
     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-      <input type="range" min="0" max="100" step="5" id="targetPickerSlider" style="flex: 1; accent-color: var(--cp-bg-brand); cursor: pointer;" />
-      <input type="number" min="0" max="100" id="targetPickerNumberInput" class="form-input" style="width: 52px; height: 26px; text-align: center; padding: 2px 4px; font-weight: 700;" />
+      <input type="range" min="0" max="100" step="5" id="targetPickerSlider" aria-label="Target progress" style="flex: 1; accent-color: var(--cp-bg-brand); cursor: pointer;" />
+      <input type="number" min="0" max="100" id="targetPickerNumberInput" aria-label="Target progress percent" class="form-input" style="width: 52px; height: 26px; text-align: center; padding: 2px 4px; font-weight: 700;" />
     </div>
     <div style="display: flex; justify-content: flex-end; gap: 6px;">
       <button class="btn btn-subtle btn-sm" id="btnCancelTargetPicker">Cancel</button>

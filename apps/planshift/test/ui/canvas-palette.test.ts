@@ -12,7 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { contrastRatio, blend } from '../../src/ui/contrast';
-import { CANVAS_PAIRS, CANVAS_TOKENS, barStyle, labelPlacement, LABEL_PAD } from '../../src/ui/canvas-palette';
+import { CANVAS_PAIRS, CANVAS_TOKENS, FORCED_COLOURS, barStyle, labelPlacement, LABEL_PAD } from '../../src/ui/canvas-palette';
 
 const ROOT = path.join(__dirname, '..', '..');
 const css = fs.readFileSync(path.join(ROOT, 'static/frontend/build/style.css'), 'utf8');
@@ -62,5 +62,15 @@ describe('bar style and label placement (B-13 criterion 9)', () => {
     expect(labelPlacement(100, 200, 80)).toEqual({ x: 100 + LABEL_PAD, inside: true });
     expect(labelPlacement(100, 80 + LABEL_PAD * 2, 80)).toEqual({ x: 100 + LABEL_PAD, inside: true });
     expect(labelPlacement(100, 60, 80)).toEqual({ x: 160 + LABEL_PAD, inside: false });
+  });
+});
+
+describe('forced colours (B-15 criterion 12)', () => {
+  it('every canvas token and bar colour has a CSS system colour', () => {
+    const system = new Set(['Canvas', 'CanvasText', 'Highlight', 'HighlightText', 'LinkText', 'GrayText']);
+    const used = new Set([...Object.values(CANVAS_TOKENS), ...CANVAS_PAIRS.flatMap(p => [p.fg]),
+      ...[{ status: 'COMPLETED' }, { progress: 1, targetProgress: 2 }, { isEpic: true }, {}].flatMap(s => Object.values(barStyle(s)))]);
+    for (const t of used) expect(system.has(FORCED_COLOURS[t])).toBe(true);
+    expect(FORCED_COLOURS[CANVAS_TOKENS.labelChip]).toBe('Canvas');
   });
 });

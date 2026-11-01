@@ -80,3 +80,28 @@ export function labelPlacement(barX: number, barW: number, chipW: number): { x: 
   if (chipW + LABEL_PAD * 2 <= barW) return { x: barX + LABEL_PAD, inside: true };
   return { x: barX + barW + LABEL_PAD, inside: false };
 }
+
+/**
+ * System colours used instead of tokens when forced colours are active (Windows contrast themes,
+ * B-15 criterion 12). Bars become outlined shapes with a Highlight progress fill.
+ */
+export const FORCED_COLOURS: Record<string, string> = {
+  [CANVAS_TOKENS.grid]: 'GrayText',
+  [CANVAS_TOKENS.todayLine]: 'Highlight',
+  [CANVAS_TOKENS.todayFlagText]: 'HighlightText',
+  [CANVAS_TOKENS.labelChip]: 'Canvas',
+  [CANVAS_TOKENS.labelText]: 'CanvasText',
+  [CANVAS_TOKENS.arrowOk]: 'CanvasText',
+  [CANVAS_TOKENS.arrowViolated]: 'LinkText',
+  [CANVAS_TOKENS.arrowActive]: 'Highlight',
+  [CANVAS_TOKENS.badgeOkText]: 'CanvasText',
+  [CANVAS_TOKENS.badgeViolatedText]: 'LinkText',
+  [CANVAS_TOKENS.focus]: 'Highlight',
+  [CANVAS_TOKENS.driverText]: 'CanvasText',
+  '--cp-bar-fill': 'Highlight',
+  '--cp-bar-epic-fill': 'Highlight',
+  '--cp-bar-done': 'Highlight',
+  '--cp-bar-late': 'Highlight',
+  '--cp-bar-planned': 'Canvas',
+  '--cp-bar-epic': 'Canvas'
+};
