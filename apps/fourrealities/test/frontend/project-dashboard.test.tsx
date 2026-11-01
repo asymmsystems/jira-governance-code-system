@@ -126,5 +126,31 @@ describe('ProjectDashboard', () => {
     const full = await mount(dashboard(rows));
     expect(textOf(full.toJSON())).not.toContain('Partial read');
   });
+
+  it('B-11: every dashboard button has a visible effect or opens a page, and none writes', async () => {
+    const onRefresh = jest.fn();
+    const r = await mount(dashboard(rows), onRefresh);
+    const labels = findAll(r.root, 'Button').map((b: any) => JSON.stringify(b.props.children));
+    const signature = (t: any) => [textOf(t.toJSON()), findAll(t.root, 'Modal').length, tableKeys(t).join(',')].join('|');
+    for (const label of labels) {
+      const fresh = await mount(dashboard(rows), onRefresh);
+      const before = signature(fresh);
+      const button = findAll(fresh.root, 'Button').find((b: any) => JSON.stringify(b.props.children) === label);
+      onRefresh.mockClear();
+      bridgeState.routerOpen.mockClear();
+      await act(async () => { button.props.onClick(); });
+      const changed = signature(fresh) !== before;
+      expect(changed || onRefresh.mock.calls.length > 0 || bridgeState.routerOpen.mock.calls.length > 0).toBe(true);
+    }
+    expect(bridgeState.invoke).not.toHaveBeenCalled();
+  });
+
+  it('B-11: the Inspect modal offers no remediation action', async () => {
+    const r = await mount(dashboard(rows));
+    await act(async () => { findAll(r.root, 'DynamicTable')[0].props.rows[0].cells[5].content.props.onClick(); });
+    const modal = findAll(r.root, 'Modal')[0];
+    const modalButtons = modal.findAll((n: any) => n.type === 'ui-Button').map((b: any) => String(b.props.children));
+    expect(modalButtons.sort()).toEqual(['Close', 'Open issue']);
+  });
 });
 
