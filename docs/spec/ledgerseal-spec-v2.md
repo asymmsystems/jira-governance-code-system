@@ -170,8 +170,8 @@ An outside verifier recomputes the hash from an exported snapshot with these rul
 - Objects: keys sorted by UTF-16 code unit order, at every level. No whitespace. Strings use `JSON.stringify` escaping. UTF-8 bytes.
 - Numbers: finite numbers as `JSON.stringify` writes them. Non-finite numbers become `null`.
 - The hash input is the canonical JSON of:
-  `{ canonicalizerVersion, issueId, issueKey, fields: [{ id, value }...], attachments, comments }`
-  `name`, `display`, `excluded` and `statusAtCapture` are not hashed.
+  `{ canonicalizerVersion, issueId, issueKey, projectId, issueTypeId, fields: [{ id, value }...], attachments, comments }`
+  `projectId` and `issueTypeId` are the Jira ids (the key or the name when Jira gives no id). Field `name`, `display`, the excluded list, the project key, the issue type name and the status are not hashed, so renaming a field, a project or an issue type keeps the seal.
 - `snapshotHash` = lowercase hex SHA-256 of those bytes.
 
 ### 4.2 Field selection (LS-04, LS-05)
@@ -202,7 +202,7 @@ Every other field with a value is covered, including reporter, resolution, issue
 | Shape | Canonical value | Display |
 |---|---|---|
 | Absent, `null`, `""`, `[]`, `{}` | field omitted | n/a |
-| String | as is, with `\r\n` and `\r` turned into `\n`. No trim (LS-11) | the string |
+| String | as is, with `\r\n` and `\r` turned into `\n`. No trim, and a string of spaces is kept (LS-11) | the string |
 | Date-time string (ISO-8601 with offset or `Z`) | UTC ISO-8601 with milliseconds (`toISOString`) | the original |
 | Date string `YYYY-MM-DD` | as is | as is |
 | Number, boolean | as is | `String(value)` |
@@ -213,8 +213,8 @@ Every other field with a value is covered, including reporter, resolution, issue
 | Atlassian Document Format | order kept; `localId` removed; text nodes normalised like strings | plain text of the document |
 | Time tracking | `{ originalEstimateSeconds }` only | for example "8h" |
 | Work log | each entry `{ id, authorAccountId, started (UTC), timeSpentSeconds, comment }` | "n work log entries" |
-| Array | elements canonicalised. Sorted by their canonical JSON only when the schema says the field is a set: `schema.type` is `array` and `schema.items` is one of `option`, `user`, `group`, `version`, `component`, `string` with field id `labels`, `issuelinks`. Otherwise the order is kept (LS-11) | elements joined by ", " |
-| Other object | keys sorted, each value canonicalised | short JSON |
+| Array | elements canonicalised, empty elements dropped. Sorted by their JSON only for a set: the fields `labels`, `components`, `fixVersions`, `versions`, `issuelinks` and `subtasks`, and any field whose schema has `type: array` with `items` `option`, `user`, `group`, `version` or `component`. Every other array keeps its order (LS-11) | elements joined by ", ", sorted for a set |
+| Other object | keys sorted, each value canonicalised; `self`, `avatarUrls` and `iconUrl` are dropped | short JSON |
 
 ### 4.4 Comments
 All comments come from `/rest/api/3/issue/{id}/comment`, paged by 100 (LS-15). Each is `{ id, authorAccountId, created (UTC), body (ADF, section 4.3) }`, sorted by id. An edit changes `body` and so breaks the seal.
@@ -223,7 +223,7 @@ All comments come from `/rest/api/3/issue/{id}/comment`, paged by 100 (LS-15). E
 Each is `{ id, filename, size, mimeType, created (UTC), authorAccountId }`, sorted by id. Content is not hashed. Jira gives a replaced file a new id.
 
 ### 4.6 Test vectors
-`test/canonical-vectors.test.ts` holds 10 input and hash pairs. The verifier test checks the same vectors.
+`apps/ledgerseal/verifier/vectors.json` holds 10 vectors. Each gives the issue fields and the canonical text written by hand from this section; the hash is the SHA-256 of that text. `test/canonical-v2.test.ts` checks the code against them, and the open verifier (section 11) checks itself against them.
 
 ---
 

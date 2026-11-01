@@ -248,3 +248,25 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - Contract changes: "Comments / Discussion: n comment(s)" is replaced by per-comment rows, and two older tests now assert the per-comment rows.
 - Adversarial test: T-03 C05 (an issue type change with no field named) now names "Issue type", and the validator message says "1 field changed after approval (Issue type)".
 - Results: `tsc` OK. 24 suites, 195 tests pass. Global branches 95.85%. `tamper-detector.ts` 100%, `display.ts` 95.83%, `ledger.ts` 91.09%, `index.ts` 93.93%. Graders all True. No em dash.
+- B-12 commit: `50eec50`.
+
+### B-13 Canonical form v2 (LS-11, LS-22, NF-01 hash side)
+- Tests first: `test/canonical-v2.test.ts` and `apps/ledgerseal/verifier/vectors.json`.
+  - The 10 vectors hold canonical texts written by hand from spec v2 section 4, so the tests compare the code with the specification.
+  - First run: failed for the right reason (`canonicalFormText` missing).
+- Code:
+  - `src/domain/canonicalizer.ts`: v2 value rules.
+    - Users become `{ accountId }`. Options, components, versions and issue references become `{ id }`, and a cascading option keeps its child.
+    - Date-times become UTC. Text keeps its typed spaces, with `\n` line endings.
+    - Only set fields are sorted. Links become `{ type, direction, issue }`, time tracking keeps only the original estimate, and work-log entries are normalised.
+    - A display text that is not hashed sits next to each value.
+  - `src/domain/crypto.ts`: `canonicalForm` and `canonicalFormText`. The hash covers the project and issue type ids and no field names.
+  - `src/domain/tamper-detector.ts` shows display text and compares comment bodies as canonical JSON.
+  - The service records `canonicalizerVersion: 2.0.0`.
+- Defects found by the new tests and fixed:
+  - Display text for a set field followed Jira's order, so equal issues gave unequal snapshots. It is now sorted.
+  - A link with no other issue was dropped from the hash but still shown. The display now skips it.
+- Old tests changed because B-13 replaces the rule they asserted: trimming, whitespace-only strings, sorting every array, user display names in the hash, the v1 link and sub-task shapes, an empty work log as content, and one fixture whose trailing spaces v1 ignored.
+- Adversarial tests: T-03 C14 (reordered list), C15 (trailing spaces), C18 (time zone) and C19 (display-name rename) now behave as `shouldBreak` says. Component and custom-field renames keep the seal.
+- Spec v2 sections 4.1, 4.3 and 4.6 were updated to the code.
+- Results: `tsc` OK. 25 suites, 218 tests pass. Global branches 95.38%. `canonicalizer.ts` 96.95%, `crypto.ts` 100%, `tamper-detector.ts` 100%, `ledger.ts` 91.09%. Graders all True. No em dash.

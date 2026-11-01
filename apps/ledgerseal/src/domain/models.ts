@@ -9,12 +9,15 @@ export interface CanonicalField {
   name: string;
   type: string;
   value: any;
+  /** Display text for the change list (not hashed). */
+  display?: string;
 }
 
 export interface CanonicalAttachment {
   id: string;
   filename: string;
   size: number;
+  mimeType?: string;
   created: string;
   authorAccountId: string;
 }
@@ -22,14 +25,20 @@ export interface CanonicalAttachment {
 export interface CanonicalComment {
   id: string;
   authorAccountId: string;
-  body: string;
+  /** Canonical value of the comment body (spec v2 section 4.4). */
+  body: unknown;
   created: string;
 }
 
 export interface CanonicalIssueSnapshot {
+  /** Version of the canonical form (spec v2 section 4). Absent on v1 snapshots. */
+  canonicalizerVersion?: string;
   issueId: string;
   issueKey: string;
+  /** Hashed project and issue type ids. projectKey and issueType are display text. */
+  projectId?: string;
   projectKey: string;
+  issueTypeId?: string;
   issueType: string;
   status: string;
   fields: CanonicalField[];

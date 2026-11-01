@@ -6,6 +6,7 @@
 
 import { AttachmentDiff, CanonicalIssueSnapshot, FieldDiff, SealCertificate, TamperAnalysis, TamperIncident } from './models';
 import { computeSnapshotHash } from './crypto';
+import { canonicalJson } from './canonical-json';
 
 /**
  * What the detector needs to know about a seal, independent of how it is stored (v1 certificate or v2 record).
@@ -132,14 +133,15 @@ export function diffSnapshots(
   const tamperedFields: FieldDiff[] = [];
 
   // Changes outside `fields` that the hash covers: a move to another project, or a new issue type (NF-01)
-  const topLevel: [string, string, keyof CanonicalIssueSnapshot][] = [
-    ['issuekey', 'Issue key', 'issueKey'],
-    ['project', 'Project', 'projectKey'],
-    ['issuetype', 'Issue type', 'issueType']
+  // Compared by the hashed id; shown by key or name
+  const topLevel: [string, string, (s: CanonicalIssueSnapshot) => unknown, (s: CanonicalIssueSnapshot) => unknown][] = [
+    ['issuekey', 'Issue key', s => s.issueKey, s => s.issueKey],
+    ['project', 'Project', s => s.projectId ?? s.projectKey, s => s.projectKey],
+    ['issuetype', 'Issue type', s => s.issueTypeId ?? s.issueType, s => s.issueType]
   ];
-  for (const [fieldId, fieldName, key] of topLevel) {
-    if (sealedSnapshot[key] !== liveSnapshot[key]) {
-      tamperedFields.push({ fieldId, fieldName, sealedValue: sealedSnapshot[key], liveValue: liveSnapshot[key] });
+  for (const [fieldId, fieldName, id, shown] of topLevel) {
+    if (id(sealedSnapshot) !== id(liveSnapshot)) {
+      tamperedFields.push({ fieldId, fieldName, sealedValue: shown(sealedSnapshot), liveValue: shown(liveSnapshot) });
     }
   }
 
@@ -153,6 +155,13 @@ export function diffSnapshots(
     liveFieldsMap.set(f.id, f);
   }
 
+  // A changed field shows its display text; rich text keeps its document for the paragraph summary
+  const shown = (field: any) => {
+    if (!field) return null;
+    if (field.value && typeof field.value === 'object' && field.value.type === 'doc') return field.value;
+    return field.display ?? field.value;
+  };
+
   // Check changed or removed fields
   for (const [id, sealedField] of sealedFieldsMap.entries()) {
     const liveField = liveFieldsMap.get(id);
@@ -163,8 +172,8 @@ export function diffSnapshots(
       tamperedFields.push({
         fieldId: id,
         fieldName: sealedField.name,
-        sealedValue: sealedField.value,
-        liveValue: liveField?.value ?? null
+        sealedValue: shown(sealedField),
+        liveValue: shown(liveField)
       });
     }
   }
@@ -176,7 +185,7 @@ export function diffSnapshots(
         fieldId: id,
         fieldName: liveField.name,
         sealedValue: null,
-        liveValue: liveField.value
+        liveValue: shown(liveField)
       });
     }
   }
@@ -216,29 +225,22 @@ export function diffSnapshots(
   // Check comments one by one (Fixes D-10): added, edited and removed comments each get a row
   const sealedComments = new Map((sealedSnapshot.comments || []).map(c => [c.id, c]));
   const liveComments = new Map((liveSnapshot.comments || []).map(c => [c.id, c]));
-  const commentText = (body: string): unknown => {
-    try {
-      return JSON.parse(body);
-    } catch {
-      return body;
-    }
-  };
   for (const [id, sealedComment] of sealedComments.entries()) {
     const liveComment = liveComments.get(id);
     if (!liveComment) {
-      tamperedFields.push({ fieldId: `comment:${id}`, fieldName: 'Comment removed', sealedValue: commentText(sealedComment.body), liveValue: null });
-    } else if (liveComment.body !== sealedComment.body || liveComment.authorAccountId !== sealedComment.authorAccountId) {
+      tamperedFields.push({ fieldId: `comment:${id}`, fieldName: 'Comment removed', sealedValue: sealedComment.body, liveValue: null });
+    } else if (canonicalJson(liveComment.body) !== canonicalJson(sealedComment.body) || liveComment.authorAccountId !== sealedComment.authorAccountId) {
       tamperedFields.push({
         fieldId: `comment:${id}`,
         fieldName: 'Comment edited',
-        sealedValue: commentText(sealedComment.body),
-        liveValue: commentText(liveComment.body)
+        sealedValue: sealedComment.body,
+        liveValue: liveComment.body
       });
     }
   }
   for (const [id, liveComment] of liveComments.entries()) {
     if (!sealedComments.has(id)) {
-      tamperedFields.push({ fieldId: `comment:${id}`, fieldName: 'Comment added', sealedValue: null, liveValue: commentText(liveComment.body) });
+      tamperedFields.push({ fieldId: `comment:${id}`, fieldName: 'Comment added', sealedValue: null, liveValue: liveComment.body });
     }
   }
 

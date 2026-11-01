@@ -8,7 +8,7 @@
  */
 
 import * as crypto from 'crypto';
-import { canonicalizeIssueState, FieldSchema } from '../domain/canonicalizer';
+import { CANONICALIZER_VERSION, canonicalizeIssueState, FieldSchema } from '../domain/canonicalizer';
 import { computeSnapshotHash } from '../domain/crypto';
 import { buildStatusRow, verifyChain } from '../domain/history';
 import { CanonicalIssueSnapshot, FieldDiff, SealedWorkEffort, WorkEffortPartyAssignment, WorkEffortStatus, TamperAnalysis } from '../domain/models';
@@ -375,7 +375,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
     currentContentId: certificateId,
     attributes: {
       snapshotHash,
-      canonicalizerVersion: '1.0.0',
+      canonicalizerVersion: CANONICALIZER_VERSION,
       declarationVersion: DECLARATION.version,
       statusAtSeal: snapshot.status,
       snapshotParts: 1

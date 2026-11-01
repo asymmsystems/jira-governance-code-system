@@ -2,14 +2,14 @@ import { canonicalizeIssueState, canonicalizeValue } from '../src/domain/canonic
 
 describe('Canonicalizer', () => {
   describe('canonicalizeValue', () => {
-    it('normalizes string values by trimming whitespace and normalizing newlines', () => {
-      expect(canonicalizeValue('  hello world  ')).toBe('hello world');
+    it('keeps typed spaces and normalizes newlines (canonical form v2, LS-11)', () => {
+      expect(canonicalizeValue('  hello world  ')).toBe('  hello world  ');
       expect(canonicalizeValue('line1\r\nline2\rline3')).toBe('line1\nline2\nline3');
     });
 
     it('normalizes empty strings, undefined, and null to null', () => {
       expect(canonicalizeValue('')).toBeNull();
-      expect(canonicalizeValue('   ')).toBeNull();
+      expect(canonicalizeValue('   ')).toBe('   ');
       expect(canonicalizeValue(undefined)).toBeNull();
       expect(canonicalizeValue(null)).toBeNull();
     });
@@ -33,9 +33,10 @@ describe('Canonicalizer', () => {
       expect(JSON.stringify(canonicalizeValue(obj1))).toBe(JSON.stringify(canonicalizeValue(obj2)));
     });
 
-    it('normalizes nested arrays and filters out empty values if specified', () => {
-      const arr = ['  banana ', 'apple  ', ''];
-      expect(canonicalizeValue(arr)).toEqual(['apple', 'banana']);
+    it('drops empty items, keeps order, and sorts only when asked for a set', () => {
+      const arr = ['banana', 'apple', ''];
+      expect(canonicalizeValue(arr)).toEqual(['banana', 'apple']);
+      expect(canonicalizeValue(arr, true)).toEqual(['apple', 'banana']);
     });
   });
 
@@ -66,7 +67,7 @@ describe('Canonicalizer', () => {
         fields: {
           description: 'Detailed description\nwith windows newlines',
           status: { name: 'Done' },
-          summary: 'Fix memory leak in parser  ',
+          summary: 'Fix memory leak in parser', // v2 keeps typed spaces, so equal content means equal text
           issuetype: { name: 'Bug' },
           project: { key: 'PROD' },
           priority: { name: 'High' },
@@ -155,13 +156,14 @@ describe('Canonicalizer', () => {
 
       const snapshot = canonicalizeIssueState(rawIssue, '2026-10-28T12:00:00Z');
       const assigneeField = snapshot.fields.find(f => f.id === 'assignee');
-      expect(assigneeField?.value).toEqual({ accountId: 'acc-1', displayName: 'Alice' });
+      expect(assigneeField?.value).toEqual({ accountId: 'acc-1' });
+      expect(assigneeField?.display).toBe('Alice');
 
       const linksField = snapshot.fields.find(f => f.id === 'issuelinks');
-      expect(linksField?.value).toEqual([{ inwardIssueKey: null, outwardIssueKey: 'PROJ-5', type: 'Blocks' }]);
+      expect(linksField?.value).toEqual([{ direction: 'outward', issue: 'PROJ-5', type: 'Blocks' }]);
 
       const subtasksField = snapshot.fields.find(f => f.id === 'subtasks');
-      expect(subtasksField?.value).toEqual([{ key: 'PROD-46' }]);
+      expect(subtasksField?.value).toEqual([{ id: '10' }]);
     });
 
     it('preserves whitespace inside ADF text nodes', () => {
@@ -362,7 +364,8 @@ describe('Canonicalizer', () => {
       expect(canonicalizeValue({})).toBeNull();
       expect(canonicalizeValue('')).toBeNull();
       expect(canonicalizeValue({ emptyList: [] })).toBeNull();
-      expect(canonicalizeValue([null, '   '])).toBeNull();
+      expect(canonicalizeValue([null, ''])).toBeNull();
+      expect(canonicalizeValue([null, '   '])).toEqual(['   ']);
     });
   });
 });

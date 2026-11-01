@@ -5,24 +5,35 @@
 
 import * as crypto from 'crypto';
 import { CanonicalIssueSnapshot, ElectronicSignature, SealCertificate } from './models';
+import { canonicalJson, sha256Hex } from './canonical-json';
+
+/**
+ * The hashed form of a snapshot (spec v2 section 4.1). Field names, display text, the excluded list
+ * and the status are not part of it.
+ */
+export function canonicalForm(snapshot: CanonicalIssueSnapshot) {
+  return {
+    canonicalizerVersion: snapshot.canonicalizerVersion ?? '2.0.0',
+    issueId: snapshot.issueId,
+    issueKey: snapshot.issueKey,
+    projectId: snapshot.projectId ?? snapshot.projectKey,
+    issueTypeId: snapshot.issueTypeId ?? snapshot.issueType,
+    fields: snapshot.fields.map(f => ({ id: f.id, value: f.value })),
+    attachments: snapshot.attachments,
+    comments: snapshot.comments || []
+  };
+}
+
+/** The exact text that is hashed: canonical JSON (sorted keys, no whitespace) of the canonical form. */
+export function canonicalFormText(snapshot: CanonicalIssueSnapshot): string {
+  return canonicalJson(canonicalForm(snapshot));
+}
 
 /**
  * Computes deterministic SHA-256 hash of a CanonicalIssueSnapshot.
  */
 export function computeSnapshotHash(snapshot: CanonicalIssueSnapshot): string {
-  // Exclude capturedAt timestamp so hash reflects pure state content
-  const stateOnly = {
-    issueId: snapshot.issueId,
-    issueKey: snapshot.issueKey,
-    projectKey: snapshot.projectKey,
-    issueType: snapshot.issueType,
-    fields: snapshot.fields,
-    attachments: snapshot.attachments,
-    comments: snapshot.comments || []
-  };
-
-  const serialized = JSON.stringify(stateOnly);
-  return crypto.createHash('sha256').update(serialized, 'utf8').digest('hex');
+  return sha256Hex(canonicalFormText(snapshot));
 }
 
 /**

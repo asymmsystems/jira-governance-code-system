@@ -99,7 +99,8 @@ describe('B-05 schema-based field selection', () => {
   it('lists covered fields by Jira name and excluded fields with a reason', () => {
     const snap = canonicalizeIssueState(issue(), T, FIELD_LIST);
     const names = snap.fields.map(f => f.name);
-    expect(names).toEqual(expect.arrayContaining(['Approved budget', 'Risk score', 'Reporter', 'Release notes', 'Tier', 'Summary', 'Log Work']));
+    expect(names).toEqual(expect.arrayContaining(['Approved budget', 'Risk score', 'Reporter', 'Release notes', 'Tier', 'Summary']));
+    expect(names).not.toContain('Log Work'); // an empty work log has no content
     const excluded = Object.fromEntries((snap.excluded || []).map(e => [e.name, e.reason]));
     expect(excluded['Rank']).toBe('Rank changes on every board drag.');
     expect(excluded['Sprint']).toBe('Sprint changes when a sprint closes.');
@@ -177,20 +178,17 @@ describe('B-05 sparse Jira objects', () => {
       [{ id: 'aliasOfUpdated', name: 'Last change', schema: { system: 'updated' } }]
     );
     const value = (id: string) => snap.fields.find(f => f.id === id)?.value;
-    expect(value('reporter')).toEqual({ accountId: 'unknown', displayName: 'unknown' });
-    expect(value('customfield_1')).toEqual([
-      { accountId: 'a', displayName: 'A' },
-      { accountId: 'b', displayName: 'unknown' }
-    ]);
-    expect(value('priority')).toEqual({ id: '2', name: 'unknown' });
+    expect(value('reporter')).toBeUndefined(); // no account id and no id: no content
+    expect(value('customfield_1')).toEqual([{ accountId: 'b' }, { accountId: 'a' }]);
+    expect(value('priority')).toEqual({ id: '2' });
     expect(value('components')).toEqual(['raw-string']);
-    expect(value('fixVersions')).toEqual(['9']);
+    expect(value('fixVersions')).toEqual([{ id: '9' }]);
     expect(value('labels')).toBeUndefined();
-    expect(value('issuelinks')).toEqual([{ type: 'relates', outwardIssueKey: 'X-2', inwardIssueKey: null }]);
-    expect(value('subtasks')).toEqual([{ key: '55' }, { key: 'unknown' }]);
+    expect(value('issuelinks')).toEqual([{ type: '', direction: 'outward', issue: 'X-2' }]);
+    expect(value('subtasks')).toEqual([{ id: '55' }]);
     expect(value('worklog')).toEqual([{ id: '', authorAccountId: '', started: '', timeSpentSeconds: 0, comment: null }]);
-    expect(snap.attachments).toEqual([{ id: '', filename: '', size: 0, created: '', authorAccountId: '' }]);
-    expect(snap.comments).toEqual([{ id: '', authorAccountId: '', body: '"hi"', created: '' }]);
+    expect(snap.attachments).toEqual([{ id: '', filename: '', size: 0, mimeType: '', created: '', authorAccountId: '' }]);
+    expect(snap.comments).toEqual([{ id: '', authorAccountId: '', body: 'hi', created: '' }]);
     expect(snap.excluded).toEqual([{ id: 'aliasOfUpdated', name: 'Last change', reason: 'Jira sets this time itself.' }]);
   });
 

@@ -54,8 +54,8 @@ Measured on the last change to this file:
 
 | Measure | Value |
 |---|---|
-| Tests | 195 in 24 suites |
-| Branch coverage (all files in `src/` except the UI Kit view) | 95.85% |
+| Tests | 218 in 25 suites |
+| Branch coverage (all files in `src/` except the UI Kit view) | 95.38% |
 
 ```bash
 npm install
