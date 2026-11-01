@@ -102,7 +102,8 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
       { key: 'summary', content: 'Summary' },
       { key: 'gates', content: 'Gates' },
       { key: 'rai', content: 'RAI', isSortable: true },
-      { key: 'assignee', content: 'Assignee', isSortable: true },
+      // Not sortable: the table never orders people next to a score (B-21, H5). Use the Assignee filter.
+      { key: 'assignee', content: 'Assignee' },
       { key: 'action', content: 'Action' }
     ]
   };

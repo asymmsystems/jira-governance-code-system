@@ -5,7 +5,7 @@
  */
 
 import { GateReason, GateResult } from '../../src/contract/data/models';
-import { afterActionText, appearanceOf, chipText, detailText, glyphOf, raiText, rateText, recoveryText, riskAppearance, sourceLine, stateLabel } from '../../src/ui/gate-text';
+import { afterActionText, appearanceOf, chipText, detailText, glyphOf, raiPartsText, raiText, rateText, recoveryText, riskAppearance, sourceLine, stateLabel } from '../../src/ui/gate-text';
 
 const ALL_REASONS: GateReason[] = [
   'NOT_STARTED', 'NOT_DONE', 'INTENT_CONFLUENCE_LINK', 'INTENT_DECISION_ISSUE', 'INTENT_LINKS_NOT_READ',
@@ -62,6 +62,19 @@ describe('source line and detail text', () => {
     expect(detailText({ state: 'FOUND', reason: 'DOD_COMPLETE_DG', args: { completed: 5, total: 5 } })).toContain('5 of 5 items');
     expect(detailText({ state: 'FOUND', reason: 'SEAL_VALID_LS', args: { sealedAt: '2026-10-30T10:29:00Z' } })).toContain('(2026-10-30)');
     expect(detailText({ state: 'FOUND', reason: 'SEAL_VALID_LS' })).toBe('LedgerSeal reports the issue is sealed.');
+  });
+});
+
+describe('B-21: raiPartsText', () => {
+  const found: GateResult = { state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK' };
+  const missing: GateResult = { state: 'MISSING', reason: 'PR_NONE' };
+  const na: GateResult = { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
+
+  it('gives RAI with its parts: gates with evidence, rated gates, and applicable gates', () => {
+    expect(raiPartsText({ rai: 67, risk: 'HIGH', applicableGates: 3, gates: { intent: found, process: found, code: missing, audit: na } }))
+      .toBe('RAI 67% (HIGH): 2 of 3 rated gates have evidence found. 3 of 4 gates apply to this issue.');
+    expect(raiPartsText({ rai: null, risk: 'UNRATED', applicableGates: 0, gates: { intent: na, process: na, code: na, audit: na } }))
+      .toBe('RAI: not rated. No gate applies to this issue yet.');
   });
 });
 

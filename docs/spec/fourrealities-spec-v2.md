@@ -232,6 +232,10 @@ Audit and Process show "Source: LedgerSeal property ledgerseal-cert" or "Source:
 - **averageRAI** = rounded mean RAI over rated issues; `null` when none is rated.
 - Counts shown in the UI come from the gate counts, never from a rounded percentage.
 
+## How RAI is shown (B-21, H5)
+
+RAI is a secondary number. The dashboard shows the four gate rates, each with its counts, before the project RAI line, which names the rated and unrated issue counts. The issue panel shows the four gates first, then the RAI lozenge with its parts: "RAI 67% (HIGH): 2 of 3 rated gates have evidence found. 3 of 4 gates apply to this issue." No sprint name appears next to a project-wide score, and no view ranks people or teams by RAI (the triage table's Assignee column is not sortable; the Assignee filter selects one person).
+
 ## Accessibility rules (B-20)
 
 Checked on every rendered view by `test/frontend/accessibility.test.tsx`: every `Inline` wraps (`shouldWrap`); every `Textfield` and `Select` has a `Label` whose `labelFor` is its `id`; every `Lozenge` sets `maxWidth="100%"`, so its text is not cut at the 200 px default; every gate glyph sits next to its text name; every button has text; every modal closes with `onClose` (Escape); no UI text or UI source file contains the em dash, box-drawing arrows or the middle dot. UI Kit gives no role or `aria-live` prop on `SectionMessage`, so whether the result message is announced is checked only in the live run.

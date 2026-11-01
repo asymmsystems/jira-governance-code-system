@@ -8,7 +8,7 @@ import React, { useState } from 'react';
 import { Box, Button, Heading, Inline, Lozenge, SectionMessage, Stack, Text, User } from '@forge/react';
 import { router } from '@forge/bridge';
 import { ExceptionDecision, ExceptionNote, GATE_NAMES, GateExceptionState, GateName, IssueRow } from '../contract/data/models';
-import { PanelAction, afterActionText, raiText, recoveryText, riskAppearance } from '../ui/gate-text';
+import { PanelAction, afterActionText, raiPartsText, raiText, recoveryText, riskAppearance } from '../ui/gate-text';
 import { GateRow } from './gate-row';
 import { DecisionModal, ExceptionModal, LinkDecisionModal } from './modals';
 
@@ -117,8 +117,6 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void; onRow: 
 
       <Inline space="space.100" alignBlock="center" shouldWrap>
         <Heading as="h4">Delivery evidence: {row.issueKey}</Heading>
-        <Lozenge maxWidth="100%" appearance={riskAppearance(row.risk)}>{raiText(row)}</Lozenge>
-        <Text>{`${row.applicableGates} of 4 gates rated`}</Text>
         <Button appearance="subtle" onClick={onReload}>Refresh</Button>
       </Inline>
 
@@ -131,6 +129,11 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void; onRow: 
           ))}
         </Stack>
       </Box>
+
+      <Inline space="space.100" alignBlock="center" shouldWrap>
+        <Lozenge maxWidth="100%" appearance={riskAppearance(row.risk)}>{raiText(row)}</Lozenge>
+        <Text>{raiPartsText(row)}</Text>
+      </Inline>
 
       <Inline space="space.100" alignBlock="center" shouldWrap>
         {row.gates.intent.state === 'MISSING' ? (

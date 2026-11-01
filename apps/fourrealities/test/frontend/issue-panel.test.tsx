@@ -40,8 +40,16 @@ describe('IssuePanel', () => {
     expect(text).toContain('Code: Not applicable');
     expect(text).toContain('Audit: Evidence found (not verified)');
     expect(text).toContain('Source: LedgerSeal property ledgerseal-cert, not verified by FourRealities.');
-    expect(text).toContain('67% (HIGH)');
-    expect(text).toContain('3 of 4 gates rated');
+    expect(text).toContain('RAI 67% (HIGH): 2 of 3 rated gates have evidence found. 3 of 4 gates apply to this issue.');
+  });
+
+  it('B-21: shows the four gates first and RAI after them, with no RAI in the heading', async () => {
+    const r = await mount(row('DEMO-5', { intent: M_INTENT, process: F, code: NA, audit: F }));
+    const lozenges = findAll(r.root, 'Lozenge').map((l: any) => String(l.props.children));
+    expect(lozenges.slice(0, 4).map(t => t.split(': ')[0].slice(2))).toEqual(['Intent', 'Process', 'Code', 'Audit']);
+    expect(lozenges[4]).toBe('67% (HIGH)');
+    const order = r.root.findAll((n: any) => n.type === 'ui-Heading' || n.type === 'ui-Lozenge');
+    expect(order.map((n: any) => n.type)).toEqual(['ui-Heading', 'ui-Lozenge', 'ui-Lozenge', 'ui-Lozenge', 'ui-Lozenge', 'ui-Lozenge']);
   });
 
   it('shows UNRATED when no gate is rated', async () => {

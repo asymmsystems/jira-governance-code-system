@@ -42,6 +42,8 @@ describe('ProjectDashboard', () => {
 
   it('shows gate rates with counts first, then RAI with its rated count', async () => {
     const r = await mount(dashboard(rows));
+    const order = r.root.findAll((n: any) => (n.type === 'ui-Heading' && ['Intent', 'Audit'].includes(String(n.props.children))) || (n.type === 'ui-Text' && String(n.props.children).startsWith('RAI ')));
+    expect(order.map((n: any) => String(n.props.children).slice(0, 3))).toEqual(['Int', 'Aud', 'RAI']);
     const text = textOf(r.toJSON());
     expect(text).toContain('33% evidence found');
     expect(text).toContain('1 of 3 rated issues');
@@ -49,6 +51,17 @@ describe('ProjectDashboard', () => {
     expect(text).toContain('across 3 rated issues (1 unrated)');
     expect(text).toContain('Read 2026-11-01 08:30 UTC');
     expect(tableKeys(r)).toEqual(['DEMO-2', 'DEMO-3', 'DEMO-1', 'DEMO-4']);
+  });
+
+  it('B-21: puts no sprint name next to the project score and offers no way to rank people', async () => {
+    const r = await mount(dashboard([row('DEMO-1', { intent: F, process: F, code: NA, audit: F }, { sprintNames: ['Sprint 12'] })]));
+    const score = findAll(r.root, 'Text').map((t: any) => String(t.props.children)).filter(t => t.startsWith('RAI '));
+    expect(score).toHaveLength(1);
+    expect(score[0]).not.toContain('Sprint');
+    const heading = findAll(r.root, 'Heading').map((h: any) => (Array.isArray(h.props.children) ? h.props.children.join('') : String(h.props.children)));
+    expect(heading.filter(h => h.includes('Sprint'))).toEqual([]);
+    const head = findAll(r.root, 'DynamicTable')[0].props.head.cells;
+    expect(head.find((c: any) => c.key === 'assignee').isSortable).toBeFalsy();
   });
 
   it('shows RAI n/a when nothing is rated', async () => {
