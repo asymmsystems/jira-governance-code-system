@@ -270,3 +270,14 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - Adversarial tests: T-03 C14 (reordered list), C15 (trailing spaces), C18 (time zone) and C19 (display-name rename) now behave as `shouldBreak` says. Component and custom-field renames keep the seal.
 - Spec v2 sections 4.1, 4.3 and 4.6 were updated to the code.
 - Results: `tsc` OK. 25 suites, 218 tests pass. Global branches 95.38%. `canonicalizer.ts` 96.95%, `crypto.ts` 100%, `tamper-detector.ts` 100%, `ledger.ts` 91.09%. Graders all True. No em dash.
+- B-13 commit: `8798c08`.
+
+### B-14 Evidence export and an open verifier (U4, U5, 11.10(b), AS 1105)
+- Tests first: `test/evidence.test.ts`. They run `verifier/verify-evidence.mjs` as its own process, as an auditor would. First run: failed for the right reason (`getSealEvidence` not exported).
+- Code:
+  - `src/service/ledger.ts` `evidenceFlow` returns `ledgerseal-evidence/1`: a signed attestation of the stored state (`LS_SEALED` gives SEAL_VALID, `LS_CHANGED` gives SEAL_BROKEN, `LS_REVOKED` gives SEAL_REVOKED), the canonical snapshot form that was hashed, every status row, and the steps to verify.
+  - `src/index.ts`: the resolver `seal-evidence-api`.
+  - `verifier/verify-evidence.mjs` uses only `node:` modules. It checks the snapshot hash, the chain, that the attestation names the newest seal, and the Ed25519 signature, and exits 0, 1 or 2 (usage). `--self-test` checks its canonical JSON against the 10 hand-written vectors.
+- Adversarial tests: an export with one changed field value, a rewritten history entry, a forged `everCompromised`, a swapped certificate id, and a wrong public key all fail with exit code 1.
+- Deviation from `ux-spec.md` task 6: UI Kit has no file download, so the panel will show the evidence JSON for copying (B-15). PDF stays out of scope (D-7).
+- Results: `tsc` OK. 26 suites, 229 tests pass. Global branches 95.31%. `ledger.ts` 91.71%, `index.ts` 91.17%. The verifier is outside `src/`, so it has no coverage number; its behaviour is covered by the 9 process-level tests. Graders all True. README section "Evidence for an auditor" added. No em dash.

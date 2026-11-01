@@ -9,7 +9,7 @@
 
 import * as crypto from 'crypto';
 import { CANONICALIZER_VERSION, canonicalizeIssueState, FieldSchema } from '../domain/canonicalizer';
-import { computeSnapshotHash } from '../domain/crypto';
+import { canonicalForm, computeSnapshotHash } from '../domain/crypto';
 import { buildStatusRow, verifyChain } from '../domain/history';
 import { CanonicalIssueSnapshot, FieldDiff, SealedWorkEffort, WorkEffortPartyAssignment, WorkEffortStatus, TamperAnalysis } from '../domain/models';
 import { authorsSince } from '../domain/policy';
@@ -38,7 +38,8 @@ export type SealErrorCode =
   | 'INVALID_REQUEST'
   | 'DECLARATION_MISMATCH'
   | 'REASON_REQUIRED'
-  | 'CONFLICT';
+  | 'CONFLICT'
+  | 'NOT_SEALED';
 
 export interface SealFailure {
   ok: false;
@@ -55,7 +56,8 @@ const MESSAGES: Record<SealErrorCode, string> = {
   INVALID_REQUEST: 'LedgerSeal: invalid seal request.',
   DECLARATION_MISMATCH: 'The declaration changed since this form opened. Reload the page and try again.',
   REASON_REQUIRED: 'Give a reason for approving these changes (1 to 500 characters).',
-  CONFLICT: 'Someone else sealed this issue a moment ago. Reload to see the new seal.'
+  CONFLICT: 'Someone else sealed this issue a moment ago. Reload to see the new seal.',
+  NOT_SEALED: 'This issue is not sealed, so there is no evidence to export.'
 };
 
 export function fail(code: SealErrorCode, message: string = MESSAGES[code]): SealFailure {
@@ -502,4 +504,50 @@ export async function issueChangedFlow(event: any, deps: LedgerSealDeps): Promis
     console.error('LedgerSeal: issue event handling failed', err);
     return { recorded: false };
   }
+}
+
+/** The attestation status that the stored state supports, without a live read. */
+const STORED_STATUS: Record<LedgerSealStatusId, AttestationStatus> = {
+  LS_SEALED: 'SEAL_VALID',
+  LS_CHANGED: 'SEAL_BROKEN',
+  LS_REVOKED: 'SEAL_REVOKED'
+};
+
+const VERIFICATION_STEPS = [
+  'Compute the canonical JSON of "snapshot": keys sorted by UTF-16 code unit at every level, no whitespace (spec v2 section 4.1).',
+  'Check that the SHA-256 of that text, in lowercase hex, equals attestation.snapshotHash.',
+  'Check the history: each entry\'s entryHash is the SHA-256 of the canonical JSON of the entry without entryHash, and each prevEntryHash equals the entryHash before it (64 zeros for the first).',
+  'Check that the newest LS_SEALED entry names attestation.certificateId.',
+  'Check the Ed25519 signature attestation.sig over the canonical JSON of the attestation without sig, with the public key named by attestation.keyId.',
+  'Run: node verify-evidence.mjs <this file> <public key file>. It performs every step and exits 0 only when all pass.'
+];
+
+/**
+ * Evidence for an auditor (spec v2 section 11): a signed attestation of the stored state, the canonical
+ * snapshot that was hashed, and the full status history. Reads only.
+ */
+export async function evidenceFlow(payload: any, context: any, deps: LedgerSealDeps) {
+  if (!context?.accountId) return fail('NO_IDENTITY');
+  const issue = contextIssue(context);
+  if (!issue) return fail('MISSING_ISSUE');
+  const repo = new SealRepository(deps.storage);
+  const seal = await repo.getSeal(issue.id);
+  if (!seal) return fail('NOT_SEALED');
+  if (seal === 'missing' || !isConsistent(seal)) return fail('INVALID_REQUEST', 'The seal record failed its integrity check, so no evidence can be exported.');
+  const snapshot = await repo.getContent(seal.workEffort);
+  if (!snapshot) return fail('INVALID_REQUEST', 'The sealed snapshot could not be read.');
+  const history: WorkEffortStatus[] = [];
+  for (let from = 1; from <= seal.workEffort.statusHead.seq; from += HISTORY_PAGE_SIZE) {
+    history.push(...(await repo.getStatusRows(issue.id, from, seal.workEffort.statusHead.seq)));
+  }
+  const now = new Date().toISOString();
+  return {
+    format: 'ledgerseal-evidence/1',
+    exportedAt: now,
+    publicKeyId: deps.signer?.keyId ?? null,
+    attestation: buildAttestation(attestationSource(seal), STORED_STATUS[seal.workEffort.currentStatusId], now, deps.signer ?? null),
+    snapshot: canonicalForm(snapshot),
+    history,
+    verification: VERIFICATION_STEPS
+  };
 }

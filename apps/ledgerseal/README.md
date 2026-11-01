@@ -46,6 +46,17 @@ Seals are stored on the Silverston WorkEffort, Party and Status patterns (ADR-01
 | `ls3:content:{contentId}:{part}` | The sealed snapshot, in parts |
 | `cert:active:{issueId}` | Old-format records, read only |
 
+## Evidence for an auditor
+
+The `seal-evidence-api` resolver returns a JSON export: a signed attestation of the stored seal, the canonical snapshot that was hashed, and the full history. An auditor checks it without access to LedgerSeal:
+
+```bash
+node verifier/verify-evidence.mjs evidence.json keys/ls-dev-2026-11.pub.pem
+node verifier/verify-evidence.mjs --self-test
+```
+
+The verifier uses the Node standard library only. It exits 0 only when the snapshot hash, the history chain, the certificate and the signature all pass.
+
 The full design is in `docs/spec/ledgerseal-spec-v2.md`.
 
 ## Tests
@@ -54,8 +65,8 @@ Measured on the last change to this file:
 
 | Measure | Value |
 |---|---|
-| Tests | 218 in 25 suites |
-| Branch coverage (all files in `src/` except the UI Kit view) | 95.38% |
+| Tests | 229 in 26 suites |
+| Branch coverage (all files in `src/` except the UI Kit view) | 95.31% |
 
 ```bash
 npm install

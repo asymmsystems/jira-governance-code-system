@@ -7,6 +7,7 @@ import { createJiraClient } from './jira/jira-client';
 import { signerFromEnvironment } from './domain/attestation';
 import {
   evaluate,
+  evidenceFlow,
   historyFlow,
   issueChangedFlow,
   LedgerSealDeps,
@@ -174,6 +175,13 @@ export async function getSealHistory(payload: any, context?: any, deps: LedgerSe
 }
 
 /**
+ * API handler for the auditor evidence export (spec v2 section 11).
+ */
+export async function getSealEvidence(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return evidenceFlow(payload, context, deps);
+}
+
+/**
  * Product event trigger: issue updated, commented, attachment and work log events.
  */
 export async function onIssueChanged(event: any, context?: any, deps: LedgerSealDeps = forgeDeps(false)) {
@@ -203,6 +211,10 @@ resolver.define('seal-issue-api', async (req) => {
 
 resolver.define('seal-history-api', async (req) => {
   return await getSealHistory(req.payload, req.context);
+});
+
+resolver.define('seal-evidence-api', async (req) => {
+  return await getSealEvidence(req.payload, req.context);
 });
 
 export const handler = resolver.getDefinitions();
