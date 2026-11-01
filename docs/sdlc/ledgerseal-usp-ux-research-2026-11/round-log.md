@@ -460,3 +460,16 @@ Every write in this test (owner's account):
 | 10 | after 9 | Transition 41 attempt | In Progress | no change (blocked) |
 
 The project, the validator and LSP-1 stay in place. Whether to remove them is the owner's call.
+
+### NF-05 fixed (owner chose "exclude, like Status", 2026-11-01)
+- Fix `100f3e0`: `resolution` and `resolutiondate` are excluded with the reason "The gated transition sets the resolution. The status at seal is recorded." A manual resolution change after approval is no longer flagged; Jira's change log keeps it. Spec v2 section 4.2, the README and the listing say so.
+- Test first: the NF-05 case in `test/field-selection.test.ts` failed on the hash, then passed. Two older tests that encoded "resolution is covered" were changed to the new rule. 277 tests pass, branches 94.90%, `canonicalizer.ts` 96.95%. Deployed to development as 3.8.0.
+- No stored seal held a resolution (DEMO-34 and LSP-1 were sealed unresolved), so no seal broke.
+- Live re-test on a new probe issue, because LSP-1 was broken by the owner's own edit and SoD blocks the owner from resealing it:
+
+| # | Time | Item | Old value | New value |
+|---|---|---|---|---|
+| 1 | 2026-11-01 | Issue LSP-2 (id 10070) created | none | summary "[LS-PROBE] LedgerSeal resolution re-test (NF-05)", label `ls-probe` |
+| 2 | 08:44:35 UTC | `ledgerseal-cert` property; KVS seal (certificate a67afbce) | absent | SEAL_VALID, incidents 0 |
+| 3 | after 2 | Status, resolution (transition 41, HTTP 204) | Backlog, none | Done, Done |
+| 4 | 8 s after 3 | Property read | SEAL_VALID, incidents 0 | unchanged (no write; `issuedAt` still 08:44:35) |
