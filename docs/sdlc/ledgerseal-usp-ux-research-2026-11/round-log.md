@@ -364,3 +364,7 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
   - T-03 C02 (status change keeps the seal) is decision D-2 by design.
   - C28 (duplicated label) cannot happen in Jira, which stores labels as a set.
   - T-02 A9 is detected when the issue-updated event arrives. With no event and no panel view between an edit and its revert, the change is not detected.
+- Process error, recorded: commit `bf324e5` was made while the coverage run showed 1 failing test. The command chained the commit after the check without stopping on its result.
+  - The failing test was a wall-clock and CPU-time threshold on `splitUtf8`. It passed alone, but under coverage instrumentation it took 54 to 61 ms against a 50 ms limit.
+  - The follow-up commit replaces it with a deterministic check of the defect's cause: zero `JSON.stringify` calls while splitting. The speed itself is measured where it is fair, by the uninstrumented probe T-01 (p95 10.6 ms for desc400).
+  - After the fix: 268 of 268 tests pass in two consecutive coverage runs.

@@ -120,12 +120,12 @@ describe('B-17 stored-size rule (performance fix)', () => {
     }
   });
 
-  it('splits a 400-paragraph snapshot in well under 50 ms', () => {
+  it('splits without a JSON.stringify call per character (the cause of the 210 ms seal); timing is measured by probe T-01', () => {
     const text = JSON.stringify({ text: 'Line x '.padEnd(200, 'x') }).repeat(1200);
-    // CPU time of this worker, so parallel test workers do not slow the measure
-    const started = process.cpuUsage();
-    splitUtf8(text, MAX_PART_BYTES);
-    const used = process.cpuUsage(started);
-    expect((used.user + used.system) / 1000).toBeLessThan(50);
+    const spy = jest.spyOn(JSON, 'stringify');
+    const parts = splitUtf8(text, MAX_PART_BYTES);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+    expect(parts.join('')).toBe(text);
   });
 });
