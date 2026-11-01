@@ -173,7 +173,7 @@ describe('ProjectDashboard', () => {
 
   it('B-35: shows one card per gate with a question, a labelled progress bar, a count, and an action only when something is missing', async () => {
     const r = await mount(dashboard(rows));
-    const cards = findAll(r.root, 'Box').filter((b: any) => b.props.xcss && findAll(b, 'Tooltip').some((t: any) => String(t.props.content).startsWith('Metric ')));
+    const cards = findAll(r.root, 'Box').filter((b: any) => b.props.xcss && findAll(b, 'Tooltip').some((t: any) => String(t.props.content).startsWith('Metric ')) && findAll(b, 'Tooltip').length === 1);
     expect(cards).toHaveLength(4);
     const intent = textOf(TestRenderer.create(cards[0].props.children).toJSON());
     expect(intent).toContain('Is the work traced to a decision record?');

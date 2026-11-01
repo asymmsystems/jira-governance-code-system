@@ -111,6 +111,8 @@ export function heroDelta(trend: TrendPoint[]): string {
 
 export interface AuditReadinessSummary {
   readonly status: string;
+  readonly statusWord: string;
+  readonly appearance: 'default' | 'success' | 'removed' | 'inprogress' | 'new' | 'moved';
   readonly summary: string;
   readonly nextStep: string;
 }
@@ -120,6 +122,8 @@ export function auditReadiness(issues: IssueRow[]): AuditReadinessSummary {
   if (issues.length === 0) {
     return {
       status: 'Audit readiness: Incomplete',
+      statusWord: 'Incomplete',
+      appearance: 'removed',
       summary: 'No issues found.',
       nextStep: 'Create issues or adjust filters to review audit readiness.'
     };
@@ -131,6 +135,8 @@ export function auditReadiness(issues: IssueRow[]): AuditReadinessSummary {
   if (rated.length === 0) {
     return {
       status: 'Audit readiness: Incomplete',
+      statusWord: 'Incomplete',
+      appearance: 'removed',
       summary: `0 of ${issues.length} issues are rated.`,
       nextStep: 'Rate issues to assess delivery audit readiness.'
     };
@@ -157,6 +163,8 @@ export function auditReadiness(issues: IssueRow[]): AuditReadinessSummary {
   if (evidencedGates === applicableGates && applicableGates > 0) {
     return {
       status: 'Audit readiness: Complete',
+      statusWord: 'Complete',
+      appearance: 'success',
       summary: `Evidence found for all ${evidencedGates} applicable gates across ${rated.length} rated issue${rated.length === 1 ? '' : 's'}.`,
       nextStep: 'All rated gates are evidenced.'
     };
@@ -190,6 +198,8 @@ export function auditReadiness(issues: IssueRow[]): AuditReadinessSummary {
   const unratedNote = unrated.length > 0 ? ` (${unrated.length} unrated)` : '';
   return {
     status: 'Audit readiness: Incomplete',
+    statusWord: 'Incomplete',
+    appearance: 'removed',
     summary: `Evidence found for ${evidencedGates} of ${applicableGates} gates across ${rated.length} rated issue${rated.length === 1 ? '' : 's'}${unratedNote}.`,
     nextStep
   };

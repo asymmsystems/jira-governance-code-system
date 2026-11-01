@@ -118,6 +118,8 @@ describe('B-44: audit readiness sentence and gaps text', () => {
   it('summarises audit readiness across rated issues', () => {
     expect(auditReadiness([])).toEqual({
       status: 'Audit readiness: Incomplete',
+      statusWord: 'Incomplete',
+      appearance: 'removed',
       summary: 'No issues found.',
       nextStep: 'Create issues or adjust filters to review audit readiness.'
     });
@@ -125,6 +127,8 @@ describe('B-44: audit readiness sentence and gaps text', () => {
     const unrated = row('DEMO-1', null, {});
     expect(auditReadiness([unrated])).toEqual({
       status: 'Audit readiness: Incomplete',
+      statusWord: 'Incomplete',
+      appearance: 'removed',
       summary: '0 of 1 issues are rated.',
       nextStep: 'Rate issues to assess delivery audit readiness.'
     });
@@ -133,6 +137,8 @@ describe('B-44: audit readiness sentence and gaps text', () => {
     const partial2 = row('AUDT-2', 25, { intent: F, process: miss('DOD_NONE'), code: miss('PR_NONE') });
     expect(auditReadiness([partial1, partial2])).toEqual({
       status: 'Audit readiness: Incomplete',
+      statusWord: 'Incomplete',
+      appearance: 'removed',
       summary: 'Evidence found for 2 of 5 gates across 2 rated issues.',
       nextStep: 'Next step: complete Definition of Done for 2 issues in DefinitionGuard.'
     });
@@ -149,6 +155,8 @@ describe('B-44: audit readiness sentence and gaps text', () => {
     const complete = row('AUDT-3', 100, { intent: F, process: F, code: F, audit: F });
     expect(auditReadiness([complete])).toEqual({
       status: 'Audit readiness: Complete',
+      statusWord: 'Complete',
+      appearance: 'success',
       summary: 'Evidence found for all 4 applicable gates across 1 rated issue.',
       nextStep: 'All rated gates are evidenced.'
     });

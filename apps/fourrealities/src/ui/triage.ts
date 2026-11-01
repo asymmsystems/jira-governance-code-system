@@ -10,6 +10,7 @@ import { nextActionText } from './pipeline';
 const RISK_RANK: Record<IssueRow['risk'], number> = { CRITICAL: 1, HIGH: 2, MEDIUM: 3, LOW: 4, UNRATED: 5 };
 
 export interface PriorityAction {
+  readonly issueId: string;
   readonly issueKey: string;
   readonly summary: string;
   readonly nextStep: string;
@@ -28,6 +29,7 @@ export function priorityActions(rows: IssueRow[], limit = 5): PriorityAction[] {
   const ordered = triageOrder(rows);
   const withMissing = ordered.filter(r => GATE_NAMES.some(g => r.gates[g].state === 'MISSING'));
   return withMissing.slice(0, limit).map(r => ({
+    issueId: r.issueId,
     issueKey: r.issueKey,
     summary: r.summary,
     nextStep: nextActionText(r) as string,

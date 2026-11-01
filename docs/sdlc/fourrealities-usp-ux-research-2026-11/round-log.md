@@ -229,4 +229,15 @@ AUDT-1 is left Done with label `fr-probe`.
 - Architecture tests updated to 16 rules: verified zero raw token strings or hex colour codes outside `src/brand/`.
 - 373 of 373 tests pass; all graders PASS (grade_tdd: PASS 96.61, grade_security: PASS, grade_ui: PASS); committed `f82a966`; deployed to development as 3.11.0.
 
+### Dashboard UX Polish and Layout Redesign Fix (3.12.0)
+
+- Addressed live review feedback on DEMO dashboard:
+  - Wrapped ProjectDashboard in `AppSurface` so the page has the soft sunken background (`elevation.surface.sunken`) and cards have genuine depth and contrast.
+  - Replaced the full-width empty status box with a dedicated `StatusBanner` component featuring a prominent `Badge` status indicator and an indented, highlighted `NoteBox` for the next step.
+  - Redesigned Priority Actions into a rich list with issue key, next step, issue summary in an indented `SubSection`, and an "Inspect" button.
+  - Balanced the Priority Actions and Alignment cards into two 49% width columns (`Column`).
+  - Consolidated search, filter dropdowns, presets, and active filters into a unified filter `Card`, pulling the triage table above the fold.
+- 373 of 373 tests pass; all graders PASS (grade_tdd: PASS 96.52, grade_security: PASS, grade_ui: PASS).
+
+
 

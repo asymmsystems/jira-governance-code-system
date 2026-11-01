@@ -14,6 +14,11 @@ const APP_SURFACE_STYLE = xcss({
   padding: 'space.150'
 });
 
+const TWO_COLUMN_STYLE = xcss({
+  width: '49%',
+  minWidth: '300px'
+});
+
 const CARD_STYLE = xcss({
   backgroundColor: 'elevation.surface',
   borderColor: 'color.border',
@@ -43,6 +48,47 @@ export function AppSurface({ children }: AppSurfaceProps): React.JSX.Element {
   return (
     <Box xcss={APP_SURFACE_STYLE}>
       <Stack space="space.150">{children}</Stack>
+    </Box>
+  );
+}
+
+export interface ColumnProps {
+  readonly children: React.ReactNode;
+}
+
+export function Column({ children }: ColumnProps): React.JSX.Element {
+  return (
+    <Box xcss={TWO_COLUMN_STYLE}>
+      {children}
+    </Box>
+  );
+}
+
+export interface StatusBannerProps {
+  readonly status: string;
+  readonly statusWord: string;
+  readonly summary: string;
+  readonly nextStep: string;
+}
+
+export function StatusBanner({
+  status,
+  statusWord,
+  summary,
+  nextStep
+}: StatusBannerProps): React.JSX.Element {
+  return (
+    <Box xcss={CARD_STYLE}>
+      <Stack space="space.100" alignInline="start">
+        <Inline alignBlock="center" space="space.100" shouldWrap>
+          <Text><strong>{status}</strong></Text>
+          <Badge>{statusWord}</Badge>
+        </Inline>
+        <Text>{summary}</Text>
+        <NoteBox>
+          <Text><strong>Next step: </strong>{nextStep}</Text>
+        </NoteBox>
+      </Stack>
     </Box>
   );
 }

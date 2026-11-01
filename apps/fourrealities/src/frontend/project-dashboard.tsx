@@ -25,7 +25,8 @@ import {
   Stack,
   Text,
   Textfield,
-  Tooltip
+  Tooltip,
+  Badge
 } from '@forge/react';
 import { router } from '@forge/bridge';
 import { GATE_NAMES, GateCount, GateName, IssueRow, ProjectDashboardView, RiskLevel } from '../contract/data/models';
@@ -35,7 +36,7 @@ import { priorityActions, triageOrder } from '../ui/triage';
 import { TREND_WEEKS, chartData, recentWeeks, trendNotice, trendTableRows } from '../ui/trend';
 import { GatePipeline, GateRow } from './gate-row';
 import { GATE_QUESTION, auditReadiness, driftText, heroDelta, weakestGate } from '../ui/pipeline';
-import { AppSurface, Card, SummaryBlock } from '../brand/layout';
+import { AppSurface, Card, Column, StatusBanner, SubSection } from '../brand/layout';
 import { TextChange } from './modals';
 
 type Option<T extends string = string> = { label: string; value: T };
@@ -86,17 +87,19 @@ export const TrendPanel: React.FC<{ view: ProjectDashboardView }> = ({ view }) =
   const points = recentWeeks(view.trend);
   const notice = trendNotice(points, view.generatedAt);
   return (
-    <Stack space="space.100">
-      <Heading as="h4">{`Trend: last ${TREND_WEEKS} weeks (whole project)`}</Heading>
-      {notice ? <Text>{notice}</Text> : (
-        <>
-          {trendTableRows(points).map(t => (
-            <Text key={t.week}>{`${t.week}: ${t.rai}; ${t.intent}; ${t.process}; ${t.code}; ${t.audit}.`}</Text>
-          ))}
-          <LineChart data={chartData(points)} xAccessor="week" yAccessor="percent" colorAccessor="series" title="Evidence found, percent of rated" />
-        </>
-      )}
-    </Stack>
+    <Card>
+      <Stack space="space.100" alignInline="start">
+        <Heading as="h4">{`Trend: last ${TREND_WEEKS} weeks (whole project)`}</Heading>
+        {notice ? <Text>{notice}</Text> : (
+          <>
+            {trendTableRows(points).map(t => (
+              <Text key={t.week}>{`${t.week}: ${t.rai}; ${t.intent}; ${t.process}; ${t.code}; ${t.audit}.`}</Text>
+            ))}
+            <LineChart data={chartData(points)} xAccessor="week" yAccessor="percent" colorAccessor="series" title="Evidence found, percent of rated" />
+          </>
+        )}
+      </Stack>
+    </Card>
   );
 };
 
@@ -153,131 +156,153 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
   }));
 
   return (
-    <Stack space="space.200">
-      {view.coverage?.capped ? (
-        <SectionMessage appearance="information" title="Partial read">
-          <Text>
-            {`Showing ${view.coverage.shown} of ${view.coverage.totalKnown === null ? 'an unknown number of' : `about ${view.coverage.totalKnown}`} issues. FourRealities reads at most ${view.coverage.shown} issues per project, newest first.`}
-          </Text>
-        </SectionMessage>
-      ) : null}
-
-      {view.warning ? (
-        <SectionMessage appearance="warning" title="Sync notice">
-          <Text>{view.warning}</Text>
-        </SectionMessage>
-      ) : null}
-
-      <Inline space="space.150" alignBlock="center" shouldWrap>
-        <Heading as="h3">Delivery evidence: {view.projectKey}</Heading>
-        <Text>{`Read ${view.generatedAt.slice(0, 16).replace('T', ' ')} UTC`}</Text>
-        <Button appearance="subtle" onClick={onRefresh}>Refresh</Button>
-      </Inline>
-
-      <SummaryBlock>
-        <Stack space="space.050">
-          <Text>{readiness.status}</Text>
-          <Text>{readiness.summary}</Text>
-          <Text>{readiness.nextStep}</Text>
-        </Stack>
-      </SummaryBlock>
-
-      <Inline space="space.150" shouldWrap>
-        {GATE_NAMES.map(g => <RealityCard key={g} gate={g} count={summary.gates[g]} onShowMissing={() => set({ missingGate: g })} />)}
-      </Inline>
-
-      <Inline space="space.150" alignBlock="start" shouldWrap>
-        <Card>
-          <Stack space="space.100">
-            <Heading as="h4">Priority actions</Heading>
-            {topActions.length === 0 ? (
-              <Text>All issues have complete gate evidence.</Text>
-            ) : (
-              topActions.map((act, i) => (
-                <Inline key={act.issueKey} space="space.050" alignBlock="center" shouldWrap>
-                  <Text>{`${i + 1}. ${act.issueKey}: ${act.nextStep}`}</Text>
-                </Inline>
-              ))
-            )}
-          </Stack>
-        </Card>
-
-        {/* B-21 (H5): the gate rates come first, the score after them. */}
-        <Card>
-          <Stack space="space.100">
-            <Inline space="space.150" alignBlock="center" shouldWrap>
-              <Heading as="h2">{summary.averageRAI === null ? 'Alignment: not rated yet' : `Alignment ${summary.averageRAI}%`}</Heading>
-              <Text>{`across ${summary.ratedIssues} rated issues (${summary.unratedIssues} unrated)`}</Text>
-            </Inline>
-            <Text>{heroDelta(view.trend)}</Text>
-            {weakestGate(summary) ? <Text>{weakestGate(summary)}</Text> : null}
-            <Inline space="space.100" alignBlock="center" shouldWrap>
-              <Text>Risk:</Text>
-              {RISK_BUTTONS.map(([level, key]) => (
-                <Button key={level} appearance={filters.risks.includes(level) ? 'primary' : 'default'} onClick={() => set({ risks: toggleRisk(filters.risks, level) })}>
-                  {`${RISK_WORD[level]} ${summary.riskDistribution[key]}`}
-                </Button>
-              ))}
-            </Inline>
-            <Text>Alignment is the share of rated gates with evidence found, averaged over rated issues.</Text>
-          </Stack>
-        </Card>
-      </Inline>
-
-      <TrendPanel view={view} />
-
-      <Inline space="space.100" alignBlock="end" shouldWrap>
-        <Stack space="space.050">
-          <Label labelFor="fr-search">Search key or summary</Label>
-          <Textfield id="fr-search" onChange={(e: TextChange) => set({ search: e.target?.value || '' })} />
-        </Stack>
-        <Stack space="space.050">
-          <Label labelFor="fr-filter-assignee">Assignee</Label>
-          <Select id="fr-filter-assignee" isClearable placeholder="Any assignee" options={options.assignees.map(a => ({ label: a, value: a }))}
-            value={asOption(filters.assignee)} onChange={(o: Option | null) => set({ assignee: o?.value ?? null })} />
-        </Stack>
-        {options.sprints.length > 0 ? (
-          <Stack space="space.050">
-            <Label labelFor="fr-filter-sprint">Sprint</Label>
-            <Select id="fr-filter-sprint" isClearable placeholder="Any sprint" options={options.sprints.map(s => ({ label: s, value: s }))}
-              value={asOption(filters.sprint)} onChange={(o: Option | null) => set({ sprint: o?.value ?? null })} />
-          </Stack>
+    <AppSurface>
+      <Stack space="space.200">
+        {view.coverage?.capped ? (
+          <SectionMessage appearance="information" title="Partial read">
+            <Text>
+              {`Showing ${view.coverage.shown} of ${view.coverage.totalKnown === null ? 'an unknown number of' : `about ${view.coverage.totalKnown}`} issues. FourRealities reads at most ${view.coverage.shown} issues per project, newest first.`}
+            </Text>
+          </SectionMessage>
         ) : null}
-        <Stack space="space.050">
-          <Label labelFor="fr-filter-gate">Gate</Label>
-          <Select id="fr-filter-gate" isClearable placeholder="Any gate" options={GATE_FILTER_OPTIONS}
-            value={filters.missingGate ? { label: missingGateLabel(filters.missingGate), value: filters.missingGate } : null}
-            onChange={(o: Option<GateName> | null) => set({ missingGate: o?.value ?? null })} />
-        </Stack>
-      </Inline>
 
-      <Inline space="space.100" alignBlock="center" shouldWrap>
-        <Text>Views:</Text>
-        {PRESETS.filter(p => p.name !== 'mine' || viewerAccountId).map(p => (
-          <Button key={p.name} appearance="default" onClick={() => setFilters(f => presetFilters(p.name, viewerAccountId || '', f.search))}>{p.label}</Button>
-        ))}
-      </Inline>
+        {view.warning ? (
+          <SectionMessage appearance="warning" title="Sync notice">
+            <Text>{view.warning}</Text>
+          </SectionMessage>
+        ) : null}
 
-      <Inline space="space.100" alignBlock="center" shouldWrap>
-        {active.map(a => (
-          <Button key={a.field} appearance="subtle" onClick={() => remove(a.field)}>{`Remove filter: ${a.label}`}</Button>
-        ))}
-        {active.length > 1 ? <Button appearance="subtle" onClick={() => setFilters(f => ({ ...NO_FILTERS, search: f.search }))}>Clear all filters</Button> : null}
-        <Text>{`Showing ${visible.length} of ${view.rows.length} issues`}</Text>
-      </Inline>
+        <Inline space="space.150" alignBlock="center" shouldWrap>
+          <Heading as="h3">Delivery evidence: {view.projectKey}</Heading>
+          <Text>{`Read ${view.generatedAt.slice(0, 16).replace('T', ' ')} UTC`}</Text>
+          <Button appearance="subtle" onClick={onRefresh}>Refresh</Button>
+        </Inline>
 
-      <DynamicTable head={head} rows={rows} rowsPerPage={25} emptyView={<Text>No issues match the filters.</Text>} />
+        <StatusBanner
+          status={readiness.status}
+          statusWord={readiness.statusWord}
+          summary={readiness.summary}
+          nextStep={readiness.nextStep}
+        />
 
-      <Text>Alignment is calculated across rated gates only.</Text>
+        <Inline space="space.150" shouldWrap>
+          {GATE_NAMES.map(g => <RealityCard key={g} gate={g} count={summary.gates[g]} onShowMissing={() => set({ missingGate: g })} />)}
+        </Inline>
 
-      {selected ? (
-        <Modal onClose={() => setSelectedId(null)} width="large">
-          <ModalHeader>
-            <ModalTitle>{`${selected.issueKey}: ${selected.summary}`}</ModalTitle>
-          </ModalHeader>
-          <ModalBody>
-            <Stack space="space.150">
-              <GatePipeline gates={selected.gates} />
+        <Inline space="space.150" alignBlock="start" spread="space-between" shouldWrap>
+          <Column>
+            <Card>
+              <Stack space="space.100" alignInline="start">
+                <Inline alignBlock="center" space="space.100" shouldWrap>
+                  <Heading as="h4">Priority actions</Heading>
+                  <Badge>{topActions.length}</Badge>
+                </Inline>
+                {topActions.length === 0 ? (
+                  <Text>All issues have complete gate evidence.</Text>
+                ) : (
+                  topActions.map((act, i) => (
+                    <Stack key={act.issueKey} space="space.025" alignInline="start">
+                      <Inline space="space.050" alignBlock="center" shouldWrap>
+                        <Text>{`${i + 1}. ${act.issueKey}: ${act.nextStep}`}</Text>
+                        <Button appearance="subtle" spacing="compact" onClick={() => setSelectedId(act.issueId)}>
+                          Inspect
+                        </Button>
+                      </Inline>
+                      {act.summary ? (
+                        <SubSection>
+                          <Text>{act.summary}</Text>
+                        </SubSection>
+                      ) : null}
+                    </Stack>
+                  ))
+                )}
+              </Stack>
+            </Card>
+          </Column>
+
+          <Column>
+            {/* B-21 (H5): the gate rates come first, the score after them. */}
+            <Card>
+              <Stack space="space.100" alignInline="start">
+                <Inline space="space.150" alignBlock="center" shouldWrap>
+                  <Heading as="h2">{summary.averageRAI === null ? 'Alignment: not rated yet' : `Alignment ${summary.averageRAI}%`}</Heading>
+                  <Text>{`across ${summary.ratedIssues} rated issues (${summary.unratedIssues} unrated)`}</Text>
+                </Inline>
+                <Text>{heroDelta(view.trend)}</Text>
+                {weakestGate(summary) ? <Text>{weakestGate(summary)}</Text> : null}
+                <Inline space="space.100" alignBlock="center" shouldWrap>
+                  <Text>Risk:</Text>
+                  {RISK_BUTTONS.map(([level, key]) => (
+                    <Button key={level} appearance={filters.risks.includes(level) ? 'primary' : 'default'} onClick={() => set({ risks: toggleRisk(filters.risks, level) })}>
+                      {`${RISK_WORD[level]} ${summary.riskDistribution[key]}`}
+                    </Button>
+                  ))}
+                </Inline>
+                <Text>Alignment is the share of rated gates with evidence found, averaged over rated issues.</Text>
+              </Stack>
+            </Card>
+          </Column>
+        </Inline>
+
+        <TrendPanel view={view} />
+
+        <Card>
+          <Stack space="space.100">
+            <Inline space="space.100" alignBlock="end" shouldWrap>
+              <Stack space="space.050">
+                <Label labelFor="fr-search">Search key or summary</Label>
+                <Textfield id="fr-search" onChange={(e: TextChange) => set({ search: e.target?.value || '' })} />
+              </Stack>
+              <Stack space="space.050">
+                <Label labelFor="fr-filter-assignee">Assignee</Label>
+                <Select id="fr-filter-assignee" isClearable placeholder="Any assignee" options={options.assignees.map(a => ({ label: a, value: a }))}
+                  value={asOption(filters.assignee)} onChange={(o: Option | null) => set({ assignee: o?.value ?? null })} />
+              </Stack>
+              {options.sprints.length > 0 ? (
+                <Stack space="space.050">
+                  <Label labelFor="fr-filter-sprint">Sprint</Label>
+                  <Select id="fr-filter-sprint" isClearable placeholder="Any sprint" options={options.sprints.map(s => ({ label: s, value: s }))}
+                    value={asOption(filters.sprint)} onChange={(o: Option | null) => set({ sprint: o?.value ?? null })} />
+                </Stack>
+              ) : null}
+              <Stack space="space.050">
+                <Label labelFor="fr-filter-gate">Gate</Label>
+                <Select id="fr-filter-gate" isClearable placeholder="Any gate" options={GATE_FILTER_OPTIONS}
+                  value={filters.missingGate ? { label: missingGateLabel(filters.missingGate), value: filters.missingGate } : null}
+                  onChange={(o: Option<GateName> | null) => set({ missingGate: o?.value ?? null })} />
+              </Stack>
+            </Inline>
+
+            <Inline space="space.100" alignBlock="center" spread="space-between" shouldWrap>
+              <Inline space="space.050" alignBlock="center" shouldWrap>
+                <Text><strong>Views:</strong></Text>
+                {PRESETS.filter(p => p.name !== 'mine' || viewerAccountId).map(p => (
+                  <Button key={p.name} appearance="default" onClick={() => setFilters(f => presetFilters(p.name, viewerAccountId || '', f.search))}>{p.label}</Button>
+                ))}
+              </Inline>
+              <Inline space="space.050" alignBlock="center" shouldWrap>
+                {active.map(a => (
+                  <Button key={a.field} appearance="subtle" onClick={() => remove(a.field)}>{`Remove filter: ${a.label}`}</Button>
+                ))}
+                {active.length > 1 ? <Button appearance="subtle" onClick={() => setFilters(f => ({ ...NO_FILTERS, search: f.search }))}>Clear all filters</Button> : null}
+                <Text>{`Showing ${visible.length} of ${view.rows.length} issues`}</Text>
+              </Inline>
+            </Inline>
+          </Stack>
+        </Card>
+
+        <DynamicTable head={head} rows={rows} rowsPerPage={25} emptyView={<Text>No issues match the filters.</Text>} />
+
+        <Text>Alignment is calculated across rated gates only.</Text>
+
+        {selected ? (
+          <Modal onClose={() => setSelectedId(null)} width="large">
+            <ModalHeader>
+              <ModalTitle>{`${selected.issueKey}: ${selected.summary}`}</ModalTitle>
+            </ModalHeader>
+            <ModalBody>
+              <Stack space="space.150">
+                <GatePipeline gates={selected.gates} />
               <Text>{driftText(selected)}</Text>
               {GATE_NAMES.map(g => <GateRow key={g} gate={g} result={selected.gates[g]} />)}
             </Stack>
@@ -291,5 +316,6 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
         </Modal>
       ) : null}
     </Stack>
+  </AppSurface>
   );
 };

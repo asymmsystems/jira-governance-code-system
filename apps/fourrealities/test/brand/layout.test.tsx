@@ -16,9 +16,11 @@ import {
   ActionRow,
   AppSurface,
   Card,
+  Column,
   NoteBox,
   PanelHeader,
   Section,
+  StatusBanner,
   StatusLozenge,
   SubSection,
   SummaryBlock
@@ -108,5 +110,22 @@ describe('brand layout primitives', () => {
     expect(textOf(lozenge.toJSON())).toContain('Found');
     expect(findAll(lozenge.root, 'Lozenge')[0].props.appearance).toBe('success');
     expect(findAll(lozenge.root, 'Lozenge')[0].props.isBold).toBe(true);
+
+    const col = TestRenderer.create(<Column><span>Col content</span></Column>);
+    expect(textOf(col.toJSON())).toContain('Col content');
+
+    const banner = TestRenderer.create(
+      <StatusBanner
+        status="Audit readiness: Incomplete"
+        statusWord="Incomplete"
+        summary="Evidence found for 1 of 4 gates."
+        nextStep="Next step: link decision record."
+      />
+    );
+    expect(textOf(banner.toJSON())).toContain('Audit readiness: Incomplete');
+    expect(textOf(banner.toJSON())).toContain('Incomplete');
+    expect(findAll(banner.root, 'Badge')).toHaveLength(1);
+    expect(textOf(banner.toJSON())).toContain('Evidence found for 1 of 4 gates.');
+    expect(textOf(banner.toJSON())).toContain('Next step: link decision record.');
   });
 });
