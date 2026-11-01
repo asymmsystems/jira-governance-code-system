@@ -34,9 +34,14 @@ describe('state labels, appearance and glyphs', () => {
     expect(appearanceOf({ state: 'FOUND', verification: 'NOT_VERIFIED', reason: 'SEAL_VALID_LS' })).not.toBe('success');
   });
 
-  it('names the gate in table chips', () => {
-    expect(chipText('intent', { state: 'MISSING', reason: 'INTENT_NONE' })).toBe('Intent: evidence missing');
-    expect(chipText('audit', { state: 'FOUND', verification: 'NOT_VERIFIED', reason: 'SEAL_VALID_LS' })).toBe('Audit: evidence found (not verified)');
+  it('B-33: names the gate and a short state in pipeline chips, so the chip stays small', () => {
+    expect(chipText('intent', { state: 'MISSING', reason: 'INTENT_NONE' })).toBe('Intent: missing');
+    expect(chipText('intent', { state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK' })).toBe('Intent: found');
+    expect(chipText('audit', { state: 'FOUND', verification: 'NOT_VERIFIED', reason: 'SEAL_VALID_LS' })).toBe('Audit: found, not verified');
+    expect(chipText('code', { state: 'FOUND', verification: 'HEURISTIC', reason: 'PR_MERGED' })).toBe('Code: found, heuristic');
+    expect(chipText('code', { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' })).toBe('Code: excepted');
+    expect(chipText('intent', { state: 'NEEDS_RECHECK', reason: 'INTENT_LINKS_NOT_READ' })).toBe('Intent: re-check');
+    expect(chipText('process', { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' })).toBe('Process: n/a');
   });
 });
 

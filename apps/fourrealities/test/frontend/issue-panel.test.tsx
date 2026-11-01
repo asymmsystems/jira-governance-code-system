@@ -43,13 +43,24 @@ describe('IssuePanel', () => {
     expect(text).toContain('RAI 67% (HIGH): 2 of 3 rated gates have evidence found. 3 of 4 gates apply to this issue.');
   });
 
+  it('B-33, B-36: opens with the pipeline, the drift sentence and the next action', async () => {
+    const r = await mount(row('DEMO-5', { intent: M_INTENT, process: F, code: M_CODE, audit: NA }));
+    const pipeline = findAll(r.root, 'Inline').find((n: any) => findAll(n, 'Tooltip').length === 4);
+    expect(findAll(pipeline, 'Lozenge').map((l: any) => String(l.props.children))).toEqual(['✕ Intent: missing', '● Process: found', '✕ Code: missing', '○ Audit: n/a']);
+    expect(findAll(pipeline, 'Text').map((t: any) => t.props.children)).toEqual(['→', '→', '→']);
+    const text = textOf(r.toJSON());
+    expect(text).toContain('No decision record is linked.');
+    expect(text).toContain('Next: link the decision record.');
+  });
+
   it('B-21: shows the four gates first and RAI after them, with no RAI in the heading', async () => {
     const r = await mount(row('DEMO-5', { intent: M_INTENT, process: F, code: NA, audit: F }));
     const lozenges = findAll(r.root, 'Lozenge').map((l: any) => String(l.props.children));
-    expect(lozenges.slice(0, 4).map(t => t.split(': ')[0].slice(2))).toEqual(['Intent', 'Process', 'Code', 'Audit']);
-    expect(lozenges[4]).toBe('67% (HIGH)');
-    const order = r.root.findAll((n: any) => n.type === 'ui-Heading' || n.type === 'ui-Lozenge');
-    expect(order.map((n: any) => n.type)).toEqual(['ui-Heading', 'ui-Lozenge', 'ui-Lozenge', 'ui-Lozenge', 'ui-Lozenge', 'ui-Lozenge']);
+    // Pipeline chips, then the four gate rows, then the RAI lozenge last.
+    expect(lozenges.slice(4, 8).map(t => t.split(': ')[0].slice(2))).toEqual(['Intent', 'Process', 'Code', 'Audit']);
+    expect(lozenges).toHaveLength(9);
+    expect(lozenges[8]).toBe('67% (HIGH)');
+    expect(r.root.findAll((n: any) => n.type === 'ui-Heading' || n.type === 'ui-Lozenge')[0].type).toBe('ui-Heading');
   });
 
   it('shows UNRATED when no gate is rated', async () => {

@@ -9,7 +9,8 @@ import { Box, Button, Heading, Inline, Lozenge, SectionMessage, Stack, Text, Use
 import { router } from '@forge/bridge';
 import { ExceptionDecision, ExceptionNote, GATE_NAMES, GateExceptionState, GateName, IssueRow } from '../contract/data/models';
 import { PanelAction, afterActionText, raiPartsText, raiText, recoveryText, riskAppearance } from '../ui/gate-text';
-import { GateRow } from './gate-row';
+import { GatePipeline, GateRow } from './gate-row';
+import { driftText, nextActionText } from '../ui/pipeline';
 import { DecisionModal, ExceptionModal, LinkDecisionModal } from './modals';
 
 /**
@@ -120,6 +121,9 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void; onRow: 
         <Button appearance="subtle" onClick={onReload}>Refresh</Button>
       </Inline>
 
+      <GatePipeline gates={row.gates} />
+      <Text>{driftText(row)}</Text>
+      {nextActionText(row) ? <Text>{nextActionText(row)}</Text> : null}
       {recoveryText(row) ? <Text>{recoveryText(row)}</Text> : null}
 
       <Box padding="space.100">

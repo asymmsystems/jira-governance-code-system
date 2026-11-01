@@ -86,7 +86,7 @@ describe('B-20: accessibility on every view', () => {
     await act(async () => { findAll(r.root, 'Select', p => p.id === 'fr-filter-sprint')[0].props.onChange({ label: 'Sprint 1', value: 'Sprint 1' }); });
     checkTree(r, 'dashboard with filters');
     await act(async () => { findButton(r.root, 'Clear all filters').props.onClick(); });
-    await act(async () => { findAll(r.root, 'DynamicTable')[0].props.rows[0].cells[5].content.props.onClick(); });
+    await act(async () => { findAll(r.root, 'DynamicTable')[0].props.rows[0].cells[6].content.props.onClick(); });
     checkTree(r, 'inspect modal');
   });
 

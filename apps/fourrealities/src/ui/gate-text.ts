@@ -50,9 +50,23 @@ export function glyphOf(result: GateResult): string {
   }
 }
 
-/** Text name for a table chip, for example "Intent: evidence missing". */
+/** Short state for a pipeline chip; the chip text names the state, so it never relies on colour or glyph. */
+function shortState(result: GateResult): string {
+  switch (result.state) {
+    case 'FOUND':
+      if (result.verification === 'NOT_VERIFIED') return 'found, not verified';
+      if (result.verification === 'HEURISTIC') return 'found, heuristic';
+      return 'found';
+    case 'MISSING': return 'missing';
+    case 'EXCEPTED': return 'excepted';
+    case 'NEEDS_RECHECK': return 're-check';
+    default: return 'n/a';
+  }
+}
+
+/** Text of a pipeline chip, for example "Intent: missing" (B-33). */
 export function chipText(gate: GateName, result: GateResult): string {
-  return `${GATE_LABEL[gate]}: ${stateLabel(result).charAt(0).toLowerCase()}${stateLabel(result).slice(1)}`;
+  return `${GATE_LABEL[gate]}: ${shortState(result)}`;
 }
 
 const SOURCE: Record<GateReason, string> = {

@@ -157,9 +157,19 @@ describe('ProjectDashboard', () => {
     expect(findAll(r.root, 'Label').map((l: any) => l.props.labelFor)).toEqual(['fr-search', 'fr-filter-assignee', 'fr-filter-gate']);
   });
 
+  it('B-34: shows each issue as a compact pipeline and a top finding, not four text boxes', async () => {
+    const r = await mount(dashboard(rows));
+    expect(findAll(r.root, 'DynamicTable')[0].props.head.cells.map((c: any) => c.content)).toEqual(['Issue', 'Summary', 'Gates', 'Alignment', 'Top finding', 'Assignee', 'Action']);
+    const first = findAll(r.root, 'DynamicTable')[0].props.rows[0];
+    const gatesCell = TestRenderer.create(first.cells[2].content);
+    expect(findAll(gatesCell.root, 'Lozenge').map((l: any) => String(l.props.children))).toEqual(['✕ Intent: missing', '✕ Process: missing', '✕ Code: missing', '✕ Audit: missing']);
+    expect(findAll(gatesCell.root, 'Tooltip')[0].props.content).toBe('Intent: Evidence missing. Source: Jira issue links and remote links.');
+    expect(textOf(TestRenderer.create(first.cells[4].content).toJSON())).toBe('No decision record is linked.');
+  });
+
   it('opens Inspect with gate rows and only an Open issue action', async () => {
     const r = await mount(dashboard(rows));
-    const inspect = findAll(r.root, 'DynamicTable')[0].props.rows[0].cells[5].content;
+    const inspect = findAll(r.root, 'DynamicTable')[0].props.rows[0].cells[6].content;
     await act(async () => { inspect.props.onClick(); });
     const modal = findAll(r.root, 'Modal')[0];
     const modalText = JSON.stringify(TestRenderer.create(modal.props.children[1]).toJSON());
@@ -176,7 +186,7 @@ describe('ProjectDashboard', () => {
     const r = await mount(dashboard(rows, { warning: 'Snapshot is 8 days old.' }));
     const text = textOf(r.toJSON());
     expect(text).toContain('Snapshot is 8 days old.');
-    const assignees = findAll(r.root, 'DynamicTable')[0].props.rows.map((x: any) => x.cells[4].key);
+    const assignees = findAll(r.root, 'DynamicTable')[0].props.rows.map((x: any) => x.cells[5].key);
     expect(assignees).toContain('Unassigned');
   });
 
@@ -201,8 +211,8 @@ describe('ProjectDashboard', () => {
     const r = await mount(dashboard(rows));
     const chips = findAll(r.root, 'DynamicTable')[0].props.rows[0].cells[2].content;
     const json = JSON.stringify(TestRenderer.create(chips).toJSON());
-    expect(json).toContain('Intent: evidence missing');
-    expect(json).toContain('Audit: evidence missing');
+    expect(json).toContain('Intent: missing');
+    expect(json).toContain('Audit: missing');
     const raiKeys = findAll(r.root, 'DynamicTable')[0].props.rows.map((x: any) => x.cells[3].key);
     expect(raiKeys).toContain('999');
   });
@@ -236,7 +246,7 @@ describe('ProjectDashboard', () => {
 
   it('B-11: the Inspect modal offers no remediation action', async () => {
     const r = await mount(dashboard(rows));
-    await act(async () => { findAll(r.root, 'DynamicTable')[0].props.rows[0].cells[5].content.props.onClick(); });
+    await act(async () => { findAll(r.root, 'DynamicTable')[0].props.rows[0].cells[6].content.props.onClick(); });
     const modal = findAll(r.root, 'Modal')[0];
     const modalButtons = modal.findAll((n: any) => n.type === 'ui-Button').map((b: any) => String(b.props.children));
     expect(modalButtons.sort()).toEqual(['Close', 'Open issue']);

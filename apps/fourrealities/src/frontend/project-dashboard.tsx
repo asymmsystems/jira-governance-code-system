@@ -32,7 +32,8 @@ import { GATE_LABEL, raiText, rateText, riskAppearance } from '../ui/gate-text';
 import { DashboardFilters, FilterField, GATE_FILTER_OPTIONS, NO_FILTERS, activeFilters, applyFilters, filterOptions, missingGateLabel } from '../ui/filters';
 import { triageOrder } from '../ui/triage';
 import { TREND_WEEKS, chartData, recentWeeks, trendNotice, trendTableRows } from '../ui/trend';
-import { GateChips, GateRow } from './gate-row';
+import { GatePipeline, GateRow } from './gate-row';
+import { driftText } from '../ui/pipeline';
 import { TextChange } from './modals';
 
 type Option<T extends string = string> = { label: string; value: T };
@@ -94,7 +95,8 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
       { key: 'key', content: 'Issue', isSortable: true },
       { key: 'summary', content: 'Summary' },
       { key: 'gates', content: 'Gates' },
-      { key: 'rai', content: 'RAI', isSortable: true },
+      { key: 'rai', content: 'Alignment', isSortable: true },
+      { key: 'finding', content: 'Top finding' },
       // Not sortable: the table never orders people next to a score (B-21, H5). Use the Assignee filter.
       { key: 'assignee', content: 'Assignee' },
       { key: 'action', content: 'Action' }
@@ -106,8 +108,9 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
     cells: [
       { key: r.issueKey, content: <Text>{r.issueKey}</Text> },
       { key: r.summary, content: <Text>{r.summary}</Text> },
-      { key: 'gates', content: <GateChips gates={r.gates} /> },
+      { key: 'gates', content: <GatePipeline gates={r.gates} arrows={false} /> },
       { key: r.rai === null ? '999' : String(r.rai).padStart(3, '0'), content: <Lozenge maxWidth="100%" appearance={riskAppearance(r.risk)}>{raiText(r)}</Lozenge> },
+      { key: 'finding', content: <Text>{driftText(r)}</Text> },
       { key: r.assigneeName || 'Unassigned', content: <Text>{r.assigneeName || 'Unassigned'}</Text> },
       { key: 'action', content: <Button appearance="subtle" onClick={() => setSelected(r)}>Inspect</Button> }
     ]
