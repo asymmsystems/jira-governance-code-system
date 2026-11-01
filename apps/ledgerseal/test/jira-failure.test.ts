@@ -8,7 +8,7 @@
 
 import { sealIssue, validateTransition, verifyIssue } from '../src/index';
 import { createJiraClient } from '../src/jira/jira-client';
-import { FakeJira, MemoryStore, panelContext, sampleIssue } from './support/fakes';
+import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
 
 jest.mock('@forge/api', () => ({
   __esModule: true,
@@ -34,7 +34,7 @@ function sealed() {
 describe('B-06 honest results when Jira cannot be read', () => {
   it('adversarial (audit flow.js step 6, LS-08, LS-19): the validator says Jira could not be read and writes nothing', async () => {
     const { jira, storage, as } = sealed();
-    await sealIssue({ signature: { meaning: 'Approved', reauthConfirmation: 'CONFIRM' } }, panelContext('ann'), as('ann'));
+    await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
     jira.failIssueGet = true;
     const sets = storage.sets.length;
     const writes = jira.propertyWrites.length;
@@ -105,7 +105,7 @@ describe('B-06 explicit fields and paged comments', () => {
     const { jira, storage, as } = sealed();
     jira.issue.fields.comment = { comments: [{ id: 'stale', author: { accountId: 'x' }, body: 'old', created: 'x' }], total: 1 };
     jira.comments = [{ id: '7', author: { accountId: 'a' }, body: 'from the endpoint', created: '2026-11-01T00:00:00.000Z' }];
-    await sealIssue({ signature: { meaning: 'Approved', reauthConfirmation: 'CONFIRM' } }, panelContext('ann'), as('ann'));
+    await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
     const record = await storage.get('ls2:seal:10001');
     const snapshot = JSON.parse(await storage.get(`ls2:snap:${record.certificateId}:0`));
     expect(snapshot.comments.map((c: any) => c.id)).toEqual(['7']);
@@ -117,7 +117,7 @@ describe('B-06 explicit fields and paged comments', () => {
     const { jira, storage, as } = sealed();
     jira.issue.fields.worklog = { total: 3, worklogs: [{ id: '1', author: { accountId: 'a' }, started: 'x', timeSpentSeconds: 60 }] };
     jira.worklogs = ['1', '2', '3'].map(id => ({ id, author: { accountId: 'a' }, started: 'x', timeSpentSeconds: 60 }));
-    await sealIssue({ signature: { meaning: 'Approved', reauthConfirmation: 'CONFIRM' } }, panelContext('ann'), as('ann'));
+    await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
     const record = await storage.get('ls2:seal:10001');
     const snapshot = JSON.parse(await storage.get(`ls2:snap:${record.certificateId}:0`));
     expect(snapshot.fields.find((f: any) => f.id === 'worklog').value.map((w: any) => w.id)).toEqual(['1', '2', '3']);

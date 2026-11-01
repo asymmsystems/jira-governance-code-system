@@ -262,7 +262,7 @@ Trigger events can arrive up to 3 minutes late (Forge trigger module page). The 
 On a reseal after a change, LedgerSeal reads the change log since `sealedAt` (`/rest/api/3/issue/{id}/changelog`, paged), the comments created or edited since then, and the attachments added since then. If the caller is the author of any of them, the reseal fails with `SELF_APPROVAL`.
 
 ### 7.3 Seal and reseal contract (`seal-issue-api`)
-Payload: `{ meaning, declarationVersion, declarationText, reason? }`. Any other field is ignored.
+Payload: `{ signature: { meaning, declarationVersion, declarationText, reason? } }`. Any other field is ignored. `meaning` defaults to `APPROVAL`.
 
 Steps:
 1. Identity from context, or `NO_IDENTITY`.

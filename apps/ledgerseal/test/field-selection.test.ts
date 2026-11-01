@@ -11,7 +11,7 @@ import * as path from 'path';
 import { canonicalizeIssueState } from '../src/domain/canonicalizer';
 import { computeSnapshotHash } from '../src/domain/crypto';
 import { sealIssue, validateTransition, verifyIssue } from '../src/index';
-import { FakeJira, MemoryStore, panelContext, sampleIssue } from './support/fakes';
+import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
 
 jest.mock('@forge/api', () => ({ __esModule: true, default: {}, route: () => '' }));
 jest.mock('@forge/kvs', () => ({ kvs: {} }));
@@ -124,7 +124,7 @@ describe('B-05 schema-based field selection', () => {
     jira.approvers = new Set(['ann']);
     const storage = new MemoryStore();
     jira.currentUser = 'ann';
-    await sealIssue({ signature: { meaning: 'Approved', reauthConfirmation: 'CONFIRM' } }, panelContext('ann'), { jira, storage });
+    await sealIssue({ signature: validSignature() }, panelContext('ann'), { jira, storage });
     const record = await storage.get('ls2:seal:10001');
     expect(record.coveredFields).toEqual(expect.arrayContaining([{ id: 'customfield_10001', name: 'Approved budget' }]));
     expect(record.excludedFields).toEqual(expect.arrayContaining([{ id: 'customfield_10019', name: 'Rank', reason: 'Rank changes on every board drag.' }]));
@@ -144,7 +144,7 @@ describe('B-05 schema-based field selection', () => {
     jira.failFields = true;
     const storage = new MemoryStore();
     await expect(
-      sealIssue({ signature: { meaning: 'Approved', reauthConfirmation: 'CONFIRM' } }, panelContext('ann'), { jira, storage })
+      sealIssue({ signature: validSignature() }, panelContext('ann'), { jira, storage })
     ).resolves.toMatchObject({ code: 'JIRA_UNREACHABLE' });
     await expect(validateTransition({ issue: { key: 'CHG-1' } }, {}, { jira, storage })).resolves.toMatchObject({ result: false });
     expect(storage.sets).toEqual([]);

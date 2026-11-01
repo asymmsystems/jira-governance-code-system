@@ -8,6 +8,12 @@
 
 import { ChangelogEntry, JiraClient, JiraResult } from '../../src/jira/jira-client';
 import { StorageProvider } from '../../src/storage/seal-repository';
+import { DECLARATION } from '../../src/domain/declaration';
+
+/** A seal payload signature that the resolver accepts. */
+export function validSignature(extra: Record<string, unknown> = {}) {
+  return { meaning: 'APPROVAL', declarationVersion: DECLARATION.version, declarationText: DECLARATION.text, reason: 'Approved change', ...extra };
+}
 
 export class FakeJira implements JiraClient {
   issue: any;

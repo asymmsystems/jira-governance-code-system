@@ -9,12 +9,12 @@
 
 import { getSealHistory, sealIssue, validateTransition, verifyIssue } from '../src/index';
 import { verifyChain } from '../src/domain/history';
-import { FakeJira, MemoryStore, panelContext, sampleIssue } from './support/fakes';
+import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
 
 jest.mock('@forge/api', () => ({ __esModule: true, default: {}, route: () => '' }));
 jest.mock('@forge/kvs', () => ({ kvs: {} }));
 
-const sig = { meaning: 'Approved', reauthConfirmation: 'CONFIRM' };
+const sig = validSignature();
 const entryKeys = (storage: MemoryStore) => [...storage.map.keys()].filter(k => k.startsWith('ls2:entry:10001:')).sort();
 
 function setup() {
@@ -203,7 +203,7 @@ describe('B-02 edge paths', () => {
   it('keeps the context key when Jira returns no key, and requires the confirmation text', async () => {
     const { jira, storage, as } = setup();
     delete jira.issue.key;
-    await expect(sealIssue({ signature: { meaning: 'x' } }, panelContext('ann'), as('ann'))).resolves.toMatchObject({ code: 'INVALID_REQUEST' });
+    await expect(sealIssue({ signature: validSignature({ meaning: 'x' }) }, panelContext('ann'), as('ann'))).resolves.toMatchObject({ code: 'INVALID_REQUEST' });
     await sealIssue({ signature: sig }, panelContext('ann'), as('ann'));
     expect((await storage.get('ls2:seal:10001')).issueKey).toBe('CHG-1');
   });

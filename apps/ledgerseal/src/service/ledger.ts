@@ -16,6 +16,7 @@ import { authorsSince } from '../domain/policy';
 import { summarise, withRecordHash } from '../domain/seal-record';
 import { compareToSeal, SealedState } from '../domain/tamper-detector';
 import { capped } from '../domain/display';
+import { DECLARATION, isMeaning, matchesDeclaration, validReason } from '../domain/declaration';
 import { ChangelogEntry, JiraClient } from '../jira/jira-client';
 import { HISTORY_PAGE_SIZE, SealRepository, StorageProvider } from '../storage/seal-repository';
 
@@ -31,6 +32,8 @@ export type SealErrorCode =
   | 'SELF_APPROVAL'
   | 'JIRA_UNREACHABLE'
   | 'INVALID_REQUEST'
+  | 'DECLARATION_MISMATCH'
+  | 'REASON_REQUIRED'
   | 'CONFLICT';
 
 export interface SealFailure {
@@ -46,6 +49,8 @@ const MESSAGES: Record<SealErrorCode, string> = {
   SELF_APPROVAL: 'You changed this issue, so another approver must approve it.',
   JIRA_UNREACHABLE: 'LedgerSeal could not read the issue from Jira. Nothing was saved. Try again.',
   INVALID_REQUEST: 'LedgerSeal: invalid seal request.',
+  DECLARATION_MISMATCH: 'The declaration changed since this form opened. Reload the page and try again.',
+  REASON_REQUIRED: 'Give a reason for approving these changes (1 to 500 characters).',
   CONFLICT: 'Someone else sealed this issue a moment ago. Reload to see the new seal.'
 };
 
@@ -209,11 +214,10 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   if (!permission.ok) return fail(permission.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
   if (!permission.value) return fail('NOT_APPROVER');
 
-  // Require explicit re-authentication confirmation phrase (Fixes D-01)
-  const reauthConfirmation = String(signature.reauthConfirmation || '').trim();
-  if (!reauthConfirmation) {
-    return fail('INVALID_REQUEST', 'LedgerSeal: Signer authentication challenge required to execute sign-off.');
-  }
+  // The signer agrees to the one declaration the panel shows (LS-09)
+  if (!matchesDeclaration(signature.declarationVersion, signature.declarationText)) return fail('DECLARATION_MISMATCH');
+  const meaning = signature.meaning === undefined ? 'APPROVAL' : signature.meaning;
+  if (!isMeaning(meaning)) return fail('INVALID_REQUEST');
 
   // Fetch real live Jira issue. Never fall back to client-supplied payload.
   const now = new Date().toISOString();
@@ -235,6 +239,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
       const changelog = await deps.jira.getChangelog(issue.id);
       if (!changelog.ok) return fail('JIRA_UNREACHABLE');
       if (authorsSince(changelog.value, previous!.sealedAt).has(accountId)) return fail('SELF_APPROVAL');
+      if (!validReason(signature.reason)) return fail('REASON_REQUIRED');
       // Record the change before the reseal, so the history shows it even if no one viewed the issue
       const incident = await recordIncidentIfNew(deps, repo, evaluation, now);
       previous = incident.record;
@@ -242,8 +247,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   }
 
   const signerDisplayName = (await deps.jira.getUserName(accountId)) || accountId;
-  // Cap meaning length to prevent storage bloat (Fixes D-15)
-  const safeMeaning = String(signature.meaning || 'Approved for production release').trim().slice(0, 255);
+  const reason = previous ? validReason(signature.reason) : null;
   const certificateId = crypto.randomUUID();
   const snapshotHash = computeSnapshotHash(snapshot);
 
@@ -254,7 +258,9 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
     certificateId,
     data: {
       snapshotHash,
-      meaning: safeMeaning,
+      meaning,
+      reason,
+      declarationVersion: DECLARATION.version,
       signerName: signerDisplayName,
       previousCertificateId: previous ? previous.certificateId : null,
       previousState: previous ? previous.state : null
@@ -270,9 +276,9 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
     state: 'ACTIVE',
     sealedAt: now,
     sealedBy: { accountId, displayName: signerDisplayName },
-    meaning: safeMeaning,
-    declaration: { version: 'unversioned', text: String(signature.declarationText || '') },
-    reason: null,
+    meaning,
+    declaration: { version: DECLARATION.version, text: DECLARATION.text },
+    reason,
     statusAtSeal: snapshot.status,
     snapshotHash,
     canonicalizerVersion: '1.0.0',

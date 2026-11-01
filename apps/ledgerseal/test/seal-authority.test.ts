@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { sealIssue, verifyIssue, validateTransition } from '../src/index';
 import { createJiraClient } from '../src/jira/jira-client';
-import { FakeJira, MemoryStore, panelContext, sampleIssue } from './support/fakes';
+import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
 
 jest.mock('@forge/api', () => ({
   __esModule: true,
@@ -20,7 +20,7 @@ jest.mock('@forge/api', () => ({
 }));
 jest.mock('@forge/kvs', () => ({ kvs: {} }));
 
-const sig = { meaning: 'Approved', reauthConfirmation: 'CONFIRM' };
+const sig = validSignature();
 
 function setup() {
   const jira = new FakeJira(sampleIssue());
@@ -74,7 +74,7 @@ describe('B-01 approver policy and separation of duties', () => {
     const before = storage.sets.length;
     const writesBefore = jira.propertyWrites.length;
 
-    const result = await sealIssue({ signature: { ...sig, reauthConfirmation: 'anything' } }, panelContext('mallory'), deps('mallory'));
+    const result = await sealIssue({ signature: sig }, panelContext('mallory'), deps('mallory'));
 
     expect(result).toMatchObject({ ok: false, code: 'SELF_APPROVAL' });
     expect(storage.sets.length).toBe(before);
@@ -137,9 +137,9 @@ describe('B-01 failure paths', () => {
 
   it('stores a default meaning and uses the issue id as the key when the context has no key', async () => {
     const { storage, deps } = setup();
-    await sealIssue({ signature: { reauthConfirmation: 'CONFIRM' } }, { accountId: 'ann', extension: { issue: { id: '10001' } } }, deps('ann'));
+    await sealIssue({ signature: validSignature({ meaning: undefined }) }, { accountId: 'ann', extension: { issue: { id: '10001' } } }, deps('ann'));
     const active = await storage.get('ls2:seal:10001');
-    expect(active.meaning).toBe('Approved for production release');
+    expect(active.meaning).toBe('APPROVAL');
   });
 
   it('validator: falls back when the issue cannot be read, by id or by key', async () => {

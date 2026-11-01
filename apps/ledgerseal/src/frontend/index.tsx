@@ -7,15 +7,17 @@ import ForgeReconciler, {
   Stack,
   Inline,
   Heading,
-  Textfield,
   Label,
   Checkbox,
   Box,
   Spinner,
-  User
+  User,
+  RadioGroup,
+  TextArea
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
 import { TamperAnalysis } from '../domain/models';
+import { DECLARATION, MEANINGS } from '../domain/declaration';
 
 function formatDiffValue(val: any): string {
   if (val === null || val === undefined) return '(empty)';
@@ -39,8 +41,8 @@ export const LedgerSealPanel: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [showSignForm, setShowSignForm] = useState<boolean>(false);
   const [showDetails, setShowDetails] = useState<boolean>(false);
-  const [meaning, setMeaning] = useState<string>('Approved for production release');
-  const [reauthCode, setReauthCode] = useState<string>('');
+  const [meaning, setMeaning] = useState<string>('APPROVAL');
+  const [reason, setReason] = useState<string>('');
   const [declarationAgreed, setDeclarationAgreed] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [sealError, setSealError] = useState<string | null>(null);
@@ -78,8 +80,12 @@ export const LedgerSealPanel: React.FC = () => {
     }
   };
 
+  // Approving changes after a seal needs a reason
+  const approvingChanges = analysis?.status === 'SEAL_BROKEN' || analysis?.status === 'SEAL_COMPROMISED';
+  const reasonMissing = approvingChanges && reason.trim().length === 0;
+
   const handleSealSubmit = async () => {
-    if (!declarationAgreed || !reauthCode.trim()) {
+    if (!declarationAgreed || reasonMissing) {
       return;
     }
     setSubmitting(true);
@@ -88,9 +94,9 @@ export const LedgerSealPanel: React.FC = () => {
       const result = (await invoke('seal-issue-api', {
         signature: {
           meaning,
-          reasonCode: 'APPROVAL',
-          declarationText: 'I electronically sign and seal this issue per compliance guidelines.',
-          reauthConfirmation: reauthCode.trim()
+          declarationVersion: DECLARATION.version,
+          declarationText: DECLARATION.text,
+          reason: approvingChanges ? reason.trim() : undefined
         }
       })) as { ok: boolean; message?: string } | undefined;
       if (!result?.ok) {
@@ -98,7 +104,8 @@ export const LedgerSealPanel: React.FC = () => {
         return;
       }
       setShowSignForm(false);
-      setReauthCode('');
+      setReason('');
+      setDeclarationAgreed(false);
       await loadTamperState();
     } catch (err) {
       console.error('Failed to seal issue', err);
@@ -242,27 +249,27 @@ export const LedgerSealPanel: React.FC = () => {
         <Box padding="space.150">
           <Stack space="space.100">
             <Heading as="h4">Cryptographic Sign-Off &amp; Seal</Heading>
-            <Label labelFor="meaning">Sign-Off Meaning / Regulatory Purpose</Label>
-            <Textfield
-              id="meaning"
+            <Label labelFor="meaning">Meaning</Label>
+            <RadioGroup
               name="meaning"
-              placeholder="e.g. Approved for production release"
-              defaultValue={meaning}
+              options={MEANINGS.map(m => ({ name: 'meaning', value: m.value, label: m.label }))}
+              value={meaning}
               onChange={(e: any) => setMeaning(e.target.value)}
             />
-            <Label labelFor="reauth">Signer Re-Authentication Challenge</Label>
-            <Textfield
-              id="reauth"
-              name="reauth"
-              placeholder="Type 'CONFIRM' to authorize signature"
-              value={reauthCode}
-              onChange={(e: any) => setReauthCode(e.target.value)}
-            />
+            {approvingChanges && (
+              <>
+                <Label labelFor="reason">Reason for approving these changes (required)</Label>
+                <TextArea id="reason" name="reason" value={reason} onChange={(e: any) => setReason(e.target.value)} />
+              </>
+            )}
+            <Text>
+              {DECLARATION.text} (Declaration v{DECLARATION.version})
+            </Text>
             <Checkbox
               value="agreed"
               isChecked={declarationAgreed}
               onChange={(e: any) => setDeclarationAgreed(e.target.checked)}
-              label="I certify that I am the authorized signer and this record is complete, accurate, and ready for release."
+              label="I agree to the declaration above."
             />
             {sealError && (
               <SectionMessage appearance="warning">
@@ -272,7 +279,7 @@ export const LedgerSealPanel: React.FC = () => {
             <Inline space="space.100">
               <Button
                 appearance="primary"
-                isDisabled={!declarationAgreed || !reauthCode.trim() || submitting}
+                isDisabled={!declarationAgreed || reasonMissing || submitting}
                 onClick={handleSealSubmit}
               >
                 {submitting ? 'Sealing...' : 'Sign & Cryptographically Seal'}

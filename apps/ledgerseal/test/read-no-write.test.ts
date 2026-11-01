@@ -7,12 +7,12 @@
  */
 
 import { sealIssue, validateTransition, verifyIssue } from '../src/index';
-import { FakeJira, MemoryStore, panelContext, sampleIssue } from './support/fakes';
+import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
 
 jest.mock('@forge/api', () => ({ __esModule: true, default: {}, route: () => '' }));
 jest.mock('@forge/kvs', () => ({ kvs: {} }));
 
-const sig = { meaning: 'Approved', reauthConfirmation: 'CONFIRM' };
+const sig = validSignature();
 const doc = (paras: number) => ({
   type: 'doc',
   version: 1,

@@ -148,3 +148,14 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - An older `index.test.ts` case asserted the throws, and it now asserts the typed results.
 - Adversarial test: in the audit flow.js step 6 scenario (Jira down at a transition), the validator now names the real cause, by key and by id, and writes no `SEAL_BROKEN` property.
 - Results: `tsc` OK. 17 suites, 145 tests pass. Global branches 97.37%. `jira-client.ts` 92.59%, `ledger.ts` 97.08%, `index.ts` 93.75%. Graders all True. No em dash.
+- B-06 commit: `c96da7d`.
+
+### B-07 Declaration text and version (LS-09)
+- Tests first: `test/declaration.test.ts`. First run: failed for the right reason (`src/domain/declaration` missing).
+- Code:
+  - `src/domain/declaration.ts` is the only copy of the declaration (version 1), the meanings (Approved, Reviewed, Verified) and the reason rule (1 to 500 characters).
+  - `src/service/ledger.ts` rejects a payload whose declaration text or version differs (`DECLARATION_MISMATCH`), accepts only a listed meaning, and requires a reason to approve changes (`REASON_REQUIRED`). The record stores the declaration text, its version and the reason.
+  - `src/frontend/index.tsx`: the form shows the declaration text with its version, an "I agree to the declaration above." checkbox, a meaning choice, and a required reason box when approving changes. The free-text "re-authentication" box is gone.
+- Contract change: tests now build payloads with `validSignature()` in `test/support/fakes.ts`. Spec v2 section 7.3 now states the real payload shape, `{ signature: { ... } }`.
+- Adversarial test: T-02 A6 (stored text differs from the shown text; any text passes "re-authentication") is closed. The stored text equals the shown text, and the re-authentication field no longer exists.
+- Results: `tsc` OK. 18 suites, 151 tests pass. Global branches 97.42%. `declaration.ts` 100%, `ledger.ts` 97.08%. Graders all True. No em dash.

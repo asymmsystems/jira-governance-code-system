@@ -1,5 +1,5 @@
 import { validateTransition, sealIssue, verifyIssue, renderIssuePanel, handler } from '../src/index';
-import { FakeJira, MemoryStore, panelContext } from './support/fakes';
+import { FakeJira, MemoryStore, panelContext, validSignature } from './support/fakes';
 
 jest.mock('@forge/api', () => ({
   __esModule: true,
@@ -26,12 +26,7 @@ describe('Forge Function Entry Points (index.ts)', () => {
   const deps = () => ({ jira, storage });
   const ctx = panelContext('lead');
 
-  const sampleSig = {
-    meaning: 'Approved for deployment',
-    reasonCode: 'APPROVAL' as const,
-    declarationText: 'Code reviewed and verified.',
-    reauthConfirmation: 'CONFIRM'
-  };
+  const sampleSig = validSignature();
 
   beforeEach(() => {
     storage = new MemoryStore();
@@ -61,10 +56,10 @@ describe('Forge Function Entry Points (index.ts)', () => {
       });
     });
 
-    it('requires the confirmation text', async () => {
-      await expect(sealIssue({ signature: { ...sampleSig, reauthConfirmation: ' ' } }, ctx, deps())).resolves.toMatchObject({
+    it('requires the declaration shown in the panel', async () => {
+      await expect(sealIssue({ signature: { ...sampleSig, declarationText: 'Code reviewed and verified.' } }, ctx, deps())).resolves.toMatchObject({
         ok: false,
-        code: 'INVALID_REQUEST'
+        code: 'DECLARATION_MISMATCH'
       });
     });
 

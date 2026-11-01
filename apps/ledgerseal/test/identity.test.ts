@@ -9,7 +9,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getSealHistory, sealIssue, verifyIssue } from '../src/index';
-import { FakeJira, MemoryStore, panelContext, sampleIssue } from './support/fakes';
+import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
 
 jest.mock('@forge/api', () => ({ __esModule: true, default: {}, route: () => '' }));
 jest.mock('@forge/kvs', () => ({ kvs: {} }));
@@ -30,8 +30,7 @@ describe('B-04 identity from context only', () => {
   it('adversarial (audit flow.js step 3, LS-03): a spoofed payload signer is ignored', async () => {
     const { storage, as } = setup();
     const spoof = {
-      meaning: 'Approved',
-      reauthConfirmation: 'CONFIRM',
+      ...validSignature(),
       signerEmail: 'cfo@victim.example',
       signerDisplayName: 'CFO',
       signerAccountId: 'cfo-account'
@@ -48,7 +47,7 @@ describe('B-04 identity from context only', () => {
 
   it('gives the panel the signer account id and name, and no email', async () => {
     const { storage, as } = setup();
-    await sealIssue({ signature: { meaning: 'Approved', reauthConfirmation: 'CONFIRM' } }, panelContext('mallory'), as('mallory'));
+    await sealIssue({ signature: validSignature() }, panelContext('mallory'), as('mallory'));
     const view: any = await verifyIssue({}, panelContext('viewer'), as('viewer'));
     expect(view.seal).toMatchObject({ sealedByAccountId: 'mallory', sealedByName: 'Mallory' });
     const history: any = await getSealHistory({}, panelContext('viewer'), as('viewer'));

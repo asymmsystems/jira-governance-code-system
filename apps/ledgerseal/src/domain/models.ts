@@ -46,7 +46,6 @@ export interface ElectronicSignature {
   meaning: string;
   reasonCode: 'APPROVAL' | 'REVIEW' | 'VERIFICATION' | 'RELEASE_GATE';
   declarationText: string;
-  reauthConfirmation?: string; // Identity challenge confirmation
 }
 
 export interface TamperIncident {
