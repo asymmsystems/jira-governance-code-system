@@ -7,7 +7,7 @@ You work on one of the owner's other Jira apps: LedgerSeal, DefinitionGuard, Pla
 | Thing | Full path |
 |---|---|
 | The prompt the FourRealities session follows (it defines the standard; read sections 1, 1b and 2) | `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/sdlc/fourrealities-usp-ux-research-2026-11/handover-gemini-ux.md` |
-| The standard, once written (approved only when line 1 reads `APPROVED <date>`) | `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/design/asymm-jira-ui-standard.md` |
+| The standard, once written | `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/design/asymm-jira-ui-standard.md` |
 | The brand module, once built | `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities/src/brand/brand.ts` |
 | The shared layout components, once built | `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities/src/brand/layout.tsx` |
 | The proposed shared package (exists only after the owner approves it) | `packages/asymm-jira-ui` at the repository root of the branch where it is created |
@@ -21,33 +21,33 @@ Work only in your own app's worktree. Never edit files in another session's work
 
 Run these checks at the start of every UI task, and say the result to the owner in one line:
 
-1. **Is the standard approved?** Read line 1 of `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/design/asymm-jira-ui-standard.md`. It is approved only if line 1 is `APPROVED <date>`. If the file does not exist, or line 1 is anything else, it is **not approved**.
+1. **Is the standard written?** Check that `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/design/asymm-jira-ui-standard.md` exists.
 2. **Is the brand module built?** Check that `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities/src/brand/brand.ts` exists.
 3. **Is the shared package approved and available on your branch?** It is available only if `packages/asymm-jira-ui` exists in **your** worktree, and the standard or the backlog records the owner's approval of that package.
 
 ## 3. What you may do at each stage
 
-### Stage A: standard not approved
+### Stage A: standard not written yet
 - Do **not** restyle your app's panels or pages. No new colours, backgrounds, borders or layout systems.
-- You may still fix bugs and build features in your own backlog. When you need UI, use plain UI Kit components with these neutral rules, which the draft standard already contains and which use only Atlassian tokens:
+- You may still fix bugs and build features in your own backlog. When you need UI, use plain UI Kit components with these neutral rules, which the standard will also contain and which use only Atlassian tokens:
   - Lozenge appearances by state: verified evidence `success`; found but not verified `inprogress`; missing `removed`; excepted or needs a re-check `moved`; not applicable yet `default`.
   - Exactly one `primary` button per panel, for the next step. Other actions `default`. Links to another app and "Refresh" `subtle`. At most three buttons in a row.
   - Sentence case, one sentence per evidence line, no em dashes, labels on every text field, `shouldWrap` on every `Inline`, and `alignInline="start"` on any `Stack` that holds lozenges (otherwise they stretch into bars).
 - Keep a short list of the UI places in your app that will need the standard later. You will need it in Stage C.
 
-### Stage B: standard approved, but no shared package yet
-- Read the approved standard in full.
+### Stage B: standard written, but no shared package yet
+- Read the standard in full.
 - You may change your own app's panels to follow the standard's **anatomy** (header row, summary block, collapsible detail sections, one border level, the button rules). Use plain UI Kit components and Atlassian tokens.
 - Do **not** copy `brand.ts` or `layout.tsx` into your app, and do not write your own version of them. Two copies drift apart. Wait for the shared package. If a task cannot wait, ask the owner one question: "Copy the brand module now and replace it with the package later, or wait for the package?" Recommend waiting.
 
 ### Stage C: shared package approved and present on your branch
-- Import the brand roles and layout components from the shared package, in the way the approved standard describes (a TypeScript path or a relative import; no `npm install`).
+- Import the brand roles and layout components from the shared package, in the way the standard describes (a TypeScript path or a relative import; no `npm install`).
 - In components, use only the semantic roles (for example `surface.app`, `status.missing`, `action.primary`). Never write a hex colour. Never write a raw token string such as `'color.border'` or `'space.150'` outside the package.
 - Add the same architecture-test rule to your app: outside the shared package, no file in your app's `src/` contains a hex colour, or a string that starts with `color.`, `elevation.`, `space.` or `radius.`.
 - Wrap every panel in the shared `AppSurface`, and use `PanelHeader`, `SummaryBlock`, `Section`, `NoteBox`, `ActionRow` and `StatusLozenge`. Show the summary block in the `jira:issueContext` glance, if your app has one.
 - Getting the package onto your branch means a merge or a cherry-pick from another branch. That changes shared code, so ask the owner first, and say which commit you would bring in.
 
-## 4. What the brand is (for reference; the approved standard wins if they differ)
+## 4. What the brand is (for reference; the standard wins if they differ)
 
 - **Owner palette:** teal #5295A3 / #9CC8D1, rose #BA6E8F / #C985A3, sage #8FA96D / #AFC29C, sand #F8DBA9 / #FDF5E5, surfaces #F9F7F6 (app area) and #FFFFFF (sections), ink #1A1C1E and #333333.
 - **Muted additions:** slate, plum, clay and stone, with text shades. The full table and the contrast numbers are in section 1b of `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/sdlc/fourrealities-usp-ux-research-2026-11/handover-gemini-ux.md`.
