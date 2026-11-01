@@ -47,18 +47,6 @@ describe('Intent (keyword heuristic until B-15)', () => {
   });
 });
 
-describe('Process (DoD hint until B-04)', () => {
-  it('reads a complete DoD as FOUND, not verified', () => {
-    expect(evaluateProcess(makeFacts({ properties: { dod: { isFullySatisfied: true } } })))
-      .toEqual({ state: 'FOUND', verification: 'NOT_VERIFIED', reason: 'DOD_COMPLETE_DG' });
-  });
-
-  it('is MISSING when done and NOT_APPLICABLE before done', () => {
-    expect(evaluateProcess(makeFacts()).state).toBe('MISSING');
-    expect(evaluateProcess(makeFacts({ statusCategory: 'indeterminate' })).state).toBe('NOT_APPLICABLE');
-  });
-});
-
 describe('Code', () => {
   it('shows an exception as EXCEPTED, never FOUND', () => {
     const r = evaluateCode(makeFacts({ exception: { schemaVersion: 2, issueId: '1', issueKey: 'A-1', code: note } }));
@@ -79,14 +67,110 @@ describe('Code', () => {
   });
 });
 
-describe('Audit (seal hint until B-04)', () => {
-  it('reads a valid seal as FOUND, not verified', () => {
-    expect(evaluateAudit(makeFacts({ properties: { ledgerseal: { status: 'SEAL_VALID', snapshotHash: 'h' } } })))
-      .toEqual({ state: 'FOUND', verification: 'NOT_VERIFIED', reason: 'SEAL_VALID_LS' });
+const HASH = 'a'.repeat(64);
+const UUID = '3f2b8c1e-9d4a-4e7b-8c2d-1a2b3c4d5e6f';
+const lsCert = (extra: any = {}) => ({ status: 'SEAL_VALID', certificateId: UUID, snapshotHash: HASH, sealedAt: '2026-10-30T10:29:00.000Z', tamperedFieldCount: 0, isCompromised: false, ...extra });
+const dgDod = (extra: any = {}) => ({ isFullySatisfied: true, completedCount: 5, totalCount: 5, checklistHash: HASH, ...extra });
+
+// Shapes observed live on DEMO-26 (T-05). Neither producer writes these.
+const DEMO26_CERT = { status: 'SEAL_VALID', valid: true, sealedAt: '2026-10-30T16:12:35.631Z', isCompromised: false };
+const DEMO26_DOD = { isFullySatisfied: true, satisfied: true, completedAt: '2026-10-30T16:12:22.188Z' };
+
+describe('B-04: Audit reads ledgerseal-cert as a hint, with LedgerSeal\'s shape', () => {
+  it('ignores the valid alias: {valid: true, snapshotHash: "x"} is evidence missing', () => {
+    expect(evaluateAudit(makeFacts({ properties: { ledgerseal: { valid: true, snapshotHash: 'x' } } })))
+      .toEqual({ state: 'MISSING', reason: 'SEAL_SHAPE_UNKNOWN' });
   });
 
-  it('rejects a compromised seal and is NOT_APPLICABLE before done', () => {
-    expect(evaluateAudit(makeFacts({ properties: { ledgerseal: { status: 'SEAL_VALID', snapshotHash: 'h', isCompromised: true } } })).state).toBe('MISSING');
-    expect(evaluateAudit(makeFacts({ statusCategory: 'indeterminate' })).state).toBe('NOT_APPLICABLE');
+  it('reads a well-formed SEAL_VALID as found, not verified, with the seal date', () => {
+    expect(evaluateAudit(makeFacts({ properties: { ledgerseal: lsCert() } })))
+      .toEqual({ state: 'FOUND', verification: 'NOT_VERIFIED', reason: 'SEAL_VALID_LS', args: { sealedAt: '2026-10-30T10:29:00.000Z' } });
+  });
+
+  it('reads SEAL_BROKEN and SEAL_COMPROMISED as missing: seal broken', () => {
+    expect(evaluateAudit(makeFacts({ properties: { ledgerseal: lsCert({ status: 'SEAL_BROKEN' }) } }))).toEqual({ state: 'MISSING', reason: 'SEAL_BROKEN_LS' });
+    expect(evaluateAudit(makeFacts({ properties: { ledgerseal: lsCert({ status: 'SEAL_COMPROMISED' }) } }))).toEqual({ state: 'MISSING', reason: 'SEAL_BROKEN_LS' });
+    expect(evaluateAudit(makeFacts({ properties: { ledgerseal: lsCert({ isCompromised: true }) } }))).toEqual({ state: 'MISSING', reason: 'SEAL_BROKEN_LS' });
+  });
+
+  it('names other statuses, and they apply only when done', () => {
+    expect(evaluateAudit(makeFacts({ properties: { ledgerseal: lsCert({ status: 'UNSEALED' }) } })))
+      .toEqual({ state: 'MISSING', reason: 'SEAL_OTHER_LS', args: { status: 'UNSEALED' } });
+    expect(evaluateAudit(makeFacts({ statusCategory: 'indeterminate', properties: { ledgerseal: lsCert({ status: 'UNSEALED' }) } })).state).toBe('NOT_APPLICABLE');
+  });
+
+  it('rejects the DEMO-26 shape: record shape not written by LedgerSeal', () => {
+    expect(evaluateAudit(makeFacts({ statusCategory: 'indeterminate', properties: { ledgerseal: DEMO26_CERT } })))
+      .toEqual({ state: 'MISSING', reason: 'SEAL_SHAPE_UNKNOWN' });
+  });
+
+  it('rejects malformed fields: hash, certificate id, date, status type', () => {
+    for (const bad of [{ snapshotHash: 'abc' }, { certificateId: 'LS-1234ABCD' }, { sealedAt: 'yesterday' }, { status: 7 }]) {
+      expect(evaluateAudit(makeFacts({ properties: { ledgerseal: lsCert(bad) } })).reason).toBe('SEAL_SHAPE_UNKNOWN');
+    }
+  });
+
+  it('is missing when done with no record, not applicable before done, found before done when sealed', () => {
+    expect(evaluateAudit(makeFacts())).toEqual({ state: 'MISSING', reason: 'SEAL_NONE' });
+    expect(evaluateAudit(makeFacts({ statusCategory: 'indeterminate' }))).toEqual({ state: 'NOT_APPLICABLE', reason: 'NOT_DONE' });
+    expect(evaluateAudit(makeFacts({ statusCategory: 'indeterminate', properties: { ledgerseal: lsCert() } })).state).toBe('FOUND');
+  });
+
+  it('needs a re-check when the record carries issuedAt older than the issue update', () => {
+    expect(evaluateAudit(makeFacts({ updated: '2026-10-31T00:00:00.000Z', properties: { ledgerseal: lsCert({ issuedAt: '2026-10-30T00:00:00.000Z' }) } })))
+      .toEqual({ state: 'NEEDS_RECHECK', reason: 'CHANGED_SINCE_ATTESTATION' });
+    expect(evaluateAudit(makeFacts({ updated: '2026-10-29T00:00:00.000Z', properties: { ledgerseal: lsCert({ issuedAt: '2026-10-30T00:00:00.000Z' }) } })).state).toBe('FOUND');
+  });
+});
+
+describe('B-04: Process reads definitionguard-dod as a hint, with DefinitionGuard\'s shape', () => {
+  it('ignores the satisfied alias', () => {
+    expect(evaluateProcess(makeFacts({ properties: { dod: { satisfied: true } } }))).toEqual({ state: 'MISSING', reason: 'DOD_SHAPE_UNKNOWN' });
+  });
+
+  it('reads a complete record as found, not verified, with counts', () => {
+    expect(evaluateProcess(makeFacts({ properties: { dod: dgDod() } })))
+      .toEqual({ state: 'FOUND', verification: 'NOT_VERIFIED', reason: 'DOD_COMPLETE_DG', args: { completed: 5, total: 5 } });
+  });
+
+  it('reads open items as missing when done and not applicable before', () => {
+    const open = dgDod({ isFullySatisfied: false, completedCount: 3 });
+    expect(evaluateProcess(makeFacts({ properties: { dod: open } }))).toEqual({ state: 'MISSING', reason: 'DOD_OPEN_DG', args: { completed: 3, total: 5 } });
+    expect(evaluateProcess(makeFacts({ statusCategory: 'indeterminate', properties: { dod: open } })).state).toBe('NOT_APPLICABLE');
+  });
+
+  it('rejects the DEMO-26 shape and malformed counts or hash', () => {
+    expect(evaluateProcess(makeFacts({ statusCategory: 'indeterminate', properties: { dod: DEMO26_DOD } }))).toEqual({ state: 'MISSING', reason: 'DOD_SHAPE_UNKNOWN' });
+    for (const bad of [{ completedCount: 6 }, { totalCount: -1 }, { completedCount: 1.5 }, { checklistHash: 'x' }, { isFullySatisfied: 'yes' }]) {
+      expect(evaluateProcess(makeFacts({ properties: { dod: dgDod(bad) } })).reason).toBe('DOD_SHAPE_UNKNOWN');
+    }
+  });
+
+  it('is missing when done with no record and not applicable before done', () => {
+    expect(evaluateProcess(makeFacts())).toEqual({ state: 'MISSING', reason: 'DOD_NONE' });
+    expect(evaluateProcess(makeFacts({ statusCategory: 'indeterminate' }))).toEqual({ state: 'NOT_APPLICABLE', reason: 'NOT_DONE' });
+  });
+
+  it('needs a re-check when issuedAt is older than the issue update', () => {
+    expect(evaluateProcess(makeFacts({ updated: '2026-10-31T00:00:00.000Z', properties: { dod: dgDod({ issuedAt: '2026-10-30T00:00:00.000Z' }) } })).state).toBe('NEEDS_RECHECK');
+  });
+});
+
+describe('B-04: no sibling property is ever shown as verified', () => {
+  it('never returns VERIFIED or text "verified by FourRealities" for Audit or Process', () => {
+    const { sourceLine } = require('../../src/ui/gate-text');
+    const certs = [undefined, lsCert(), lsCert({ status: 'SEAL_BROKEN' }), lsCert({ status: 'UNSEALED' }), DEMO26_CERT, { valid: true }];
+    const dods = [undefined, dgDod(), dgDod({ isFullySatisfied: false, completedCount: 1 }), DEMO26_DOD, { satisfied: true }];
+    for (const statusCategory of ['new', 'indeterminate', 'done'] as const) {
+      for (const ledgerseal of certs) {
+        for (const dod of dods) {
+          const f = makeFacts({ statusCategory, properties: { ledgerseal, dod } });
+          for (const r of [evaluateAudit(f), evaluateProcess(f)]) {
+            expect(r.verification).not.toBe('VERIFIED');
+            expect(sourceLine(r)).not.toContain(', verified by FourRealities.');
+          }
+        }
+      }
+    }
   });
 });

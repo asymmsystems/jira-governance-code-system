@@ -48,14 +48,57 @@ export function evaluateIntent(f: IssueFacts): GateResult {
     : { state: 'NOT_APPLICABLE', reason: 'NOT_STARTED' };
 }
 
+const HEX64 = /^[0-9a-f]{64}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isIsoDate(value: unknown): boolean {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !Number.isNaN(Date.parse(value));
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+/** The shape DefinitionGuard writes: {isFullySatisfied, completedCount, totalCount, checklistHash}. */
+export function isDefinitionGuardShape(dod: any): boolean {
+  return Boolean(dod) && typeof dod.isFullySatisfied === 'boolean'
+    && isCount(dod.completedCount) && isCount(dod.totalCount) && dod.completedCount <= dod.totalCount
+    && typeof dod.checklistHash === 'string' && HEX64.test(dod.checklistHash);
+}
+
+/** The shape LedgerSeal writes: status, UUID certificate id, SHA-256 hex hash, ISO seal date. */
+export function isLedgerSealShape(cert: any): boolean {
+  return Boolean(cert) && typeof cert.status === 'string'
+    && typeof cert.certificateId === 'string' && UUID.test(cert.certificateId)
+    && typeof cert.snapshotHash === 'string' && HEX64.test(cert.snapshotHash)
+    && isIsoDate(cert.sealedAt);
+}
+
 /**
- * Process: the Definition of Done record, read as a hint from DefinitionGuard.
- * Backlog B-04 adds the producer shape check.
+ * An attestation that carries issuedAt (sibling schema v2) is stale when the issue changed after it.
+ * Records without issuedAt cannot be checked for freshness.
+ */
+function isStale(record: any, f: IssueFacts): boolean {
+  return isIsoDate(record?.issuedAt) && isIsoDate(f.updated) && Date.parse(f.updated as string) > Date.parse(record.issuedAt);
+}
+
+/**
+ * Process: the Definition of Done record from DefinitionGuard, read as a hint only.
+ * FourRealities never verifies it, so it never shows as verified (spec v2, Process).
  */
 export function evaluateProcess(f: IssueFacts): GateResult {
   const dod = f.properties.dod;
-  if (dod && dod.isFullySatisfied === true) {
-    return { state: 'FOUND', verification: 'NOT_VERIFIED', reason: 'DOD_COMPLETE_DG' };
+  if (dod !== undefined && dod !== null) {
+    if (!isDefinitionGuardShape(dod)) {
+      return { state: 'MISSING', reason: 'DOD_SHAPE_UNKNOWN' };
+    }
+    const args = { completed: dod.completedCount, total: dod.totalCount };
+    if (dod.isFullySatisfied) {
+      return isStale(dod, f)
+        ? { state: 'NEEDS_RECHECK', reason: 'CHANGED_SINCE_ATTESTATION' }
+        : { state: 'FOUND', verification: 'NOT_VERIFIED', reason: 'DOD_COMPLETE_DG', args };
+    }
+    return isDone(f) ? { state: 'MISSING', reason: 'DOD_OPEN_DG', args } : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
   }
   return isDone(f)
     ? { state: 'MISSING', reason: 'DOD_NONE' }
@@ -89,12 +132,26 @@ export function evaluateCode(f: IssueFacts): GateResult {
 }
 
 /**
- * Audit: the LedgerSeal record, read as a hint. Backlog B-04 adds the producer shape check.
+ * Audit: the LedgerSeal record, read as a hint only. Shapes that LedgerSeal does not write,
+ * such as {valid: true}, are evidence missing (spec v2, Audit; FR-04).
  */
 export function evaluateAudit(f: IssueFacts): GateResult {
   const cert = f.properties.ledgerseal;
-  if (cert && cert.status === 'SEAL_VALID' && cert.isCompromised !== true && cert.snapshotHash) {
-    return { state: 'FOUND', verification: 'NOT_VERIFIED', reason: 'SEAL_VALID_LS' };
+  if (cert !== undefined && cert !== null) {
+    if (!isLedgerSealShape(cert)) {
+      return { state: 'MISSING', reason: 'SEAL_SHAPE_UNKNOWN' };
+    }
+    if (cert.status === 'SEAL_BROKEN' || cert.status === 'SEAL_COMPROMISED' || cert.isCompromised === true) {
+      return { state: 'MISSING', reason: 'SEAL_BROKEN_LS' };
+    }
+    if (cert.status === 'SEAL_VALID') {
+      return isStale(cert, f)
+        ? { state: 'NEEDS_RECHECK', reason: 'CHANGED_SINCE_ATTESTATION' }
+        : { state: 'FOUND', verification: 'NOT_VERIFIED', reason: 'SEAL_VALID_LS', args: { sealedAt: cert.sealedAt } };
+    }
+    return isDone(f)
+      ? { state: 'MISSING', reason: 'SEAL_OTHER_LS', args: { status: cert.status } }
+      : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
   }
   return isDone(f)
     ? { state: 'MISSING', reason: 'SEAL_NONE' }
