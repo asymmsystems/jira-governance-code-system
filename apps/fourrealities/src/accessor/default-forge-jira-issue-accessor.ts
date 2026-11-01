@@ -6,7 +6,7 @@
  */
 
 import api, { Route, route } from '@forge/api';
-import { DevFieldSummary, ExceptionRecord, IssueFacts, ProjectSearchResult, RemoteLink, SiteConfig, VisibleIds } from '../contract/data/models';
+import { DevFieldSummary, ExceptionProperty, IssueFacts, ProjectSearchResult, RemoteLink, SiteConfig, VisibleIds } from '../contract/data/models';
 import { JiraIssueAccessor } from '../contract/accessors';
 import { JiraRequest, withRetry } from './jira-request';
 import { issueFields, searchProjectIssues, visibleIssueIds } from './jira-search';
@@ -72,13 +72,23 @@ export class DefaultForgeJiraIssueAccessor implements JiraIssueAccessor {
     return new Map(Array.from(raw.entries()).map(([id, links]) => [id, normalizeRemoteLinks(links)]));
   }
 
-  async issueProject(issueId: string): Promise<{ status: number; issueKey?: string; projectKey?: string }> {
-    const res = await this.request(route`/rest/api/3/issue/${issueId}?fields=project`);
+  async issueProject(issueId: string): Promise<{ status: number; issueKey?: string; projectKey?: string; assigneeAccountId?: string }> {
+    const res = await this.request(route`/rest/api/3/issue/${issueId}?fields=project,assignee`);
     if (res.status !== 200) {
       return { status: res.status };
     }
     const iss = await res.json();
-    return { status: 200, issueKey: iss?.key, projectKey: iss?.fields?.project?.key };
+    return { status: 200, issueKey: iss?.key, projectKey: iss?.fields?.project?.key, assigneeAccountId: iss?.fields?.assignee?.accountId };
+  }
+
+  /** "Get my permissions" for the principal, in one project (scope read:jira-work). */
+  async hasProjectPermission(projectKey: string, permission: string): Promise<{ status: number; granted: boolean }> {
+    const res = await this.request(route`/rest/api/3/mypermissions?projectKey=${projectKey}&permissions=${permission}`);
+    if (res.status !== 200) {
+      return { status: res.status, granted: false };
+    }
+    const body = await res.json();
+    return { status: 200, granted: body?.permissions?.[permission]?.havePermission === true };
   }
 
   async pullRequests(issueId: string, devFieldId: string): Promise<{ status: number; issueKey?: string; summary?: DevFieldSummary }> {
@@ -100,11 +110,11 @@ export class DefaultForgeJiraIssueAccessor implements JiraIssueAccessor {
     return res.status;
   }
 
-  async putExceptionProperty(issueId: string, record: ExceptionRecord): Promise<number> {
+  async putExceptionProperty(issueId: string, value: ExceptionProperty): Promise<number> {
     const res = await this.request(route`/rest/api/3/issue/${issueId}/properties/fourrealities-exception`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(record)
+      body: JSON.stringify(value)
     });
     return res.status;
   }

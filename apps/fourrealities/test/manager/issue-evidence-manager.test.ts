@@ -8,6 +8,7 @@ import { DefaultIssueEvidenceManager } from '../../src/manager/default-issue-evi
 import { DefaultGateEngine } from '../../src/engine/default-gate-engine';
 import { DefaultMetricsEngine } from '../../src/engine/default-metrics-engine';
 import { DefaultPolicyEngine } from '../../src/engine/default-policy-engine';
+import { DefaultExceptionPolicyEngine } from '../../src/engine/default-exception-policy-engine';
 import { JiraIssueAccessor } from '../../src/contract/accessors';
 import { makeFacts } from '../domain/fixtures';
 
@@ -26,11 +27,13 @@ function fakeJira(over: Partial<JiraIssueAccessor> = {}): JiraIssueAccessor {
   } as JiraIssueAccessor;
 }
 
-function manager(jira: JiraIssueAccessor, exception?: any) {
+function manager(jira: JiraIssueAccessor, events: any[] = []) {
   return new DefaultIssueEvidenceManager({
     userJira: jira,
     siteConfig: { serviceType: 'accessor', get: jest.fn().mockResolvedValue({ devFieldId: null, siteHost: 's', readAt: 't' }) },
-    exceptions: { serviceType: 'accessor', get: jest.fn().mockResolvedValue(exception), save: jest.fn(), listByIssue: jest.fn() },
+    exceptions: { serviceType: 'accessor', get: jest.fn().mockResolvedValue(undefined), save: jest.fn(), listByIssue: jest.fn() },
+    events: { serviceType: 'accessor', append: jest.fn(), list: jest.fn().mockResolvedValue(events), listAll: jest.fn(), migrateV2CodeNotes: jest.fn() },
+    lifecycle: new DefaultExceptionPolicyEngine(),
     gates: new DefaultGateEngine(),
     metrics: new DefaultMetricsEngine(),
     policy: new DefaultPolicyEngine()
@@ -41,8 +44,8 @@ const link = { issueId: '1', url: 'https://s.atlassian.net/wiki/x', title: 'ADR-
 
 describe('DefaultIssueEvidenceManager', () => {
   it('is a Manager and evaluates the context issue with its exception', async () => {
-    const note = { reason: 'Configuration change only', recordedBy: 'u', recordedAt: 't' };
-    const m = manager(fakeJira(), { schemaVersion: 2, issueId: '1', issueKey: 'DEMO-1', code: note });
+    const e = (status: string, at: string) => ({ schemaVersion: 3, issueId: '1', issueKey: 'DEMO-1', gate: 'code', status, at, byAccountId: status === 'REQUESTED' ? 'dev-1' : 'admin-1', asRole: 'APPROVER', reason: 'Configuration change only' });
+    const m = manager(fakeJira(), [e('REQUESTED', 't1'), e('APPROVED', 't2')]);
     expect(m.serviceType).toBe('manager');
     const res: any = await m.evaluate({ issueId: '1', issueKey: 'DEMO-1' });
     expect(res.row.gates.code.state).toBe('EXCEPTED');

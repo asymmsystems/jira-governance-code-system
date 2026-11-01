@@ -8,6 +8,8 @@
 import { DefaultSnapshotManager } from '../src/manager/default-snapshot-manager';
 import { DefaultKvsSnapshotAccessor, SnapshotRepository } from '../src/accessor/default-kvs-snapshot-accessor';
 import { DefaultKvsExceptionAccessor } from '../src/accessor/default-kvs-exception-accessor';
+import { DefaultKvsExceptionEventAccessor } from '../src/accessor/default-kvs-exception-event-accessor';
+import { DefaultExceptionPolicyEngine } from '../src/engine/default-exception-policy-engine';
 import { DefaultKvsSiteConfigAccessor } from '../src/accessor/default-kvs-site-config-accessor';
 import { DefaultForgeJiraIssueAccessor } from '../src/accessor/default-forge-jira-issue-accessor';
 import { DefaultGateEngine } from '../src/engine/default-gate-engine';
@@ -26,6 +28,8 @@ function buildSnapshot(o: { projectKey: string; storage: any; request: any; dead
     siteConfig: new DefaultKvsSiteConfigAccessor(o.storage, o.request),
     snapshots: new DefaultKvsSnapshotAccessor(o.storage),
     exceptions: new DefaultKvsExceptionAccessor(o.storage),
+    events: new DefaultKvsExceptionEventAccessor(o.storage),
+    lifecycle: new DefaultExceptionPolicyEngine(),
     gates: new DefaultGateEngine(),
     metrics: new DefaultMetricsEngine(),
     snapshot: new DefaultSnapshotEngine(),
@@ -102,13 +106,5 @@ describe('buildSnapshot', () => {
     const cfgFail = jest.fn(async () => ({ status: 500, json: async () => ({}) }));
     const res2: any = await buildSnapshot({ projectKey: 'DEMO', storage: new MemoryStorage(), request: cfgFail, deadline: Date.now() + 60_000, generatedBy: 'a', now });
     expect(res2.error.message).toBe('Live Jira sync failed (Jira returned HTTP 500 reading the field list.).');
-  });
-
-  it('reads exceptions per issue when the storage has no prefix query', async () => {
-    const storage: any = new MemoryStorage();
-    storage.queryPrefix = undefined;
-    await storage.set('fr:issue:2:exception', { schemaVersion: 2, issueId: '2', issueKey: 'DEMO-2', code: { reason: 'Configuration change only', recordedBy: 'u', recordedAt: 't' } });
-    const res: any = await buildSnapshot({ projectKey: 'DEMO', storage, request: jira([issue('2', 'done')]), deadline: Date.now() + 60_000, generatedBy: 'a' });
-    expect(res.rows[0].gates.code.state).toBe('EXCEPTED');
   });
 });

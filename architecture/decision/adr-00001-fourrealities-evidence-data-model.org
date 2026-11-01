@@ -4,7 +4,7 @@
 
 * Status
 Approved - 2026-11-01 by the owner, in chat, with Option C for the approval rule (see "Options considered").
-Not yet implemented: backlog items B-30, B-31 and B-32.
+Implemented: B-30 (Patterns 3 and 5). Not yet implemented: B-31 and B-32.
 
 * Context
 

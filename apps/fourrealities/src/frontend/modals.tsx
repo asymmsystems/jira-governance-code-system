@@ -19,6 +19,7 @@ import {
   Textfield
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
+import { ExceptionDecision } from '../contract/data/models';
 
 interface ModalProps {
   issueId: string;
@@ -101,7 +102,7 @@ export const ExceptionModal: React.FC<ModalProps & { type: 'CODE' | 'REWORK' }> 
         <Stack space="space.100">
           <Text>
             {type === 'CODE'
-              ? 'Say why this work needs no pull request. The gate shows "Excepted" with your name and reason. It never shows as passed.'
+              ? 'Say why this work needs no pull request. A project administrator who is not you or the assignee must approve the request. Until then the Code gate stays "Evidence missing".'
               : 'Say what caused the rework. This note does not change any gate.'}
           </Text>
           {error ? (
@@ -118,6 +119,57 @@ export const ExceptionModal: React.FC<ModalProps & { type: 'CODE' | 'REWORK' }> 
       <ModalFooter>
         <Button appearance="subtle" onClick={onClose}>Cancel</Button>
         <Button appearance="primary" onClick={submit}>{type === 'CODE' ? 'Save exception' : 'Save reason'}</Button>
+      </ModalFooter>
+    </Modal>
+  );
+};
+
+const DECISION_TEXT: Record<ExceptionDecision, { title: string; button: string; field: string }> = {
+  APPROVE: { title: 'Approve the Code exception for', button: 'Approve', field: 'Comment (optional)' },
+  REJECT: { title: 'Reject the Code exception for', button: 'Reject', field: 'Reason (15 to 500 characters)' },
+  REVOKE: { title: 'Revoke the Code exception for', button: 'Revoke', field: 'Reason (15 to 500 characters)' },
+  WITHDRAW: { title: 'Withdraw your exception request for', button: 'Withdraw', field: 'Comment (optional)' }
+};
+
+/** Approve, reject, revoke or withdraw. FourRealities checks the rules on the server. */
+export const DecisionModal: React.FC<ModalProps & { decision: ExceptionDecision }> = ({ issueId, issueKey, decision, onClose, onDone }) => {
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const text = DECISION_TEXT[decision];
+
+  const submit = async () => {
+    setError(null);
+    try {
+      const res: any = await invoke('decideException', { issueId, issueKey, decision, reason });
+      if (res?.success) {
+        onDone();
+      } else {
+        setError(res?.error || 'The decision was not recorded.');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'The decision was not recorded.');
+    }
+  };
+
+  return (
+    <Modal onClose={onClose}>
+      <ModalHeader>
+        <ModalTitle>{`${text.title} ${issueKey}`}</ModalTitle>
+      </ModalHeader>
+      <ModalBody>
+        <Stack space="space.100">
+          {error ? (
+            <SectionMessage appearance="error" title="Not recorded">
+              <Text>{error}</Text>
+            </SectionMessage>
+          ) : null}
+          <Label labelFor="fr-decision-reason">{text.field}</Label>
+          <Textfield id="fr-decision-reason" value={reason} onChange={(e: any) => setReason(e.target?.value || '')} />
+        </Stack>
+      </ModalBody>
+      <ModalFooter>
+        <Button appearance="subtle" onClick={onClose}>Cancel</Button>
+        <Button appearance="primary" onClick={submit}>{text.button}</Button>
       </ModalFooter>
     </Modal>
   );

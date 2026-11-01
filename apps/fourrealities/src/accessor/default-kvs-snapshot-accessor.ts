@@ -90,9 +90,6 @@ export class SnapshotRepository {
 
   /** Deletes at most 100 v1 fr:issue:{id}:signals keys; returns how many it deleted. */
   public async deleteV1Signals(): Promise<number> {
-    if (!this.storage.queryPrefix) {
-      return 0;
-    }
     // Collect first, then delete, so deletes never move the query cursor.
     const keys: string[] = [];
     let cursor: string | undefined;

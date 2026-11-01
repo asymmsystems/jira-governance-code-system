@@ -9,6 +9,7 @@ import { makeFacts } from './fixtures';
 import { parseDevField } from '../../src/accessor/dev-field';
 
 const note = { reason: 'Configuration change only', recordedBy: 'acc-1', recordedAt: '2026-11-01T00:00:00Z' };
+const approvedState = { status: 'APPROVED' as const, issueKey: 'A-1', requestedBy: 'dev-1', requestedAt: 't1', reason: 'Configuration change only', decidedBy: 'admin-1', decidedAt: 't2' };
 
 describe('started and done', () => {
   it('treats a status change as started even in a new category', () => {
@@ -74,9 +75,19 @@ describe('B-15: Intent from link structure, never title keywords', () => {
 });
 
 describe('Code', () => {
-  it('shows an exception as EXCEPTED, never FOUND', () => {
-    const r = evaluateCode(makeFacts({ exception: { schemaVersion: 2, issueId: '1', issueKey: 'A-1', code: note } }));
+  it('shows an approved exception as EXCEPTED, never FOUND', () => {
+    const r = evaluateCode(makeFacts({ codeException: approvedState }));
     expect(r).toEqual({ state: 'EXCEPTED', reason: 'CODE_EXCEPTED' });
+  });
+
+  it('B-30: a waiting, rejected, withdrawn or revoked exception leaves the gate missing', () => {
+    for (const status of ['REQUESTED', 'REJECTED', 'WITHDRAWN', 'REVOKED'] as const) {
+      expect(evaluateCode(makeFacts({ codeException: { ...approvedState, status } }))).toEqual({ state: 'MISSING', reason: 'PR_NONE' });
+    }
+  });
+
+  it('B-30: a v2 code note alone no longer excepts the gate', () => {
+    expect(evaluateCode(makeFacts({ exception: { schemaVersion: 2, issueId: '1', issueKey: 'A-1', code: note } })).state).toBe('MISSING');
   });
 
   it('is MISSING with no PR when done, NOT_APPLICABLE before done', () => {
@@ -197,7 +208,7 @@ describe('B-06: exceptions and rework notes', () => {
   const ex = (code?: any, rework?: any) => ({ schemaVersion: 2 as const, issueId: '1', issueKey: 'A-1', code, rework });
 
   it('ignores a Code exception once a pull request exists', () => {
-    const f = makeFacts({ exception: ex(note), devField: { present: true, summary: parseDevField('{pullrequest={dataType=pullrequest, state=MERGED, stateCount=1}}') } });
+    const f = makeFacts({ codeException: approvedState, devField: { present: true, summary: parseDevField('{pullrequest={dataType=pullrequest, state=MERGED, stateCount=1}}') } });
     expect(evaluateCode(f).state).not.toBe('EXCEPTED');
   });
 

@@ -7,10 +7,10 @@
 import React, { useState } from 'react';
 import { Box, Button, Heading, Inline, Lozenge, SectionMessage, Stack, Text, User } from '@forge/react';
 import { router } from '@forge/bridge';
-import { ExceptionNote, GATE_NAMES, GateName, IssueRow } from '../contract/data/models';
+import { ExceptionDecision, ExceptionNote, GATE_NAMES, GateExceptionState, GateName, IssueRow } from '../contract/data/models';
 import { raiText, recoveryText, riskAppearance } from '../ui/gate-text';
 import { GateRow } from './gate-row';
-import { ExceptionModal, LinkDecisionModal } from './modals';
+import { DecisionModal, ExceptionModal, LinkDecisionModal } from './modals';
 
 /**
  * Opens the issue so the user can act in the producer app's own panel.
@@ -38,9 +38,44 @@ export const NoteLine: React.FC<{ label: string; note: ExceptionNote }> = ({ lab
   </Inline>
 );
 
+const ENDED: Record<string, string> = { REJECTED: 'Exception rejected', WITHDRAWN: 'Exception withdrawn', REVOKED: 'Exception revoked' };
+
+/** The Code exception in words: who asked, who decided, when and why (ADR-001, Option C). */
+export const ExceptionStateLine: React.FC<{ state: GateExceptionState }> = ({ state }) => {
+  const requested = (
+    <Inline space="space.050" alignBlock="center" shouldWrap>
+      <Text>Requested by</Text>
+      <User accountId={state.requestedBy} />
+      <Text>{`on ${state.requestedAt.slice(0, 10)}: ${state.reason}`}</Text>
+    </Inline>
+  );
+  if (state.status === 'REQUESTED') {
+    return (
+      <Stack space="space.050">
+        {requested}
+        <Text>Waiting for a project administrator who is not the requester or the assignee.</Text>
+      </Stack>
+    );
+  }
+  const decided = state.decidedBy ? (
+    <Inline space="space.050" alignBlock="center" shouldWrap>
+      <Text>{state.status === 'APPROVED' ? 'Approved by' : `${ENDED[state.status]} by`}</Text>
+      <User accountId={state.decidedBy} />
+      <Text>{`on ${String(state.decidedAt).slice(0, 10)}${state.status === 'APPROVED' ? '' : `: ${state.decisionReason}`}`}</Text>
+    </Inline>
+  ) : null;
+  return (
+    <Stack space="space.050">
+      {requested}
+      {decided}
+      {state.migrated ? <Text>Approved before administrator approval was required.</Text> : null}
+    </Stack>
+  );
+};
+
 function gateNote(gate: GateName, row: IssueRow): React.ReactNode {
-  if (gate === 'code' && row.exception) {
-    return <NoteLine label="Excepted" note={row.exception} />;
+  if (gate === 'code' && row.codeException) {
+    return <ExceptionStateLine state={row.codeException} />;
   }
   if (gate === 'process' && row.reworkLoops > 0) {
     return (
@@ -53,7 +88,7 @@ function gateNote(gate: GateName, row: IssueRow): React.ReactNode {
   return undefined;
 }
 
-type OpenModal = 'none' | 'link' | 'code' | 'rework';
+type OpenModal = 'none' | 'link' | 'code' | 'rework' | ExceptionDecision;
 
 export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void }> = ({ row, onReload }) => {
   const [open, setOpen] = useState<OpenModal>('none');
@@ -96,8 +131,18 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void }> = ({ 
         {row.gates.intent.state === 'MISSING' ? (
           <Button appearance="primary" onClick={() => setOpen('link')}>Link decision record</Button>
         ) : null}
-        {row.gates.code.state === 'MISSING' && row.gates.code.reason === 'PR_NONE' ? (
-          <Button appearance="default" onClick={() => setOpen('code')}>Record Code exception</Button>
+        {row.gates.code.state === 'MISSING' && row.gates.code.reason === 'PR_NONE' && row.codeException?.status !== 'REQUESTED' ? (
+          <Button appearance="default" onClick={() => setOpen('code')}>Request Code exception</Button>
+        ) : null}
+        {row.codeException?.status === 'REQUESTED' ? (
+          <>
+            <Button appearance="default" onClick={() => setOpen('APPROVE')}>Approve exception</Button>
+            <Button appearance="default" onClick={() => setOpen('REJECT')}>Reject exception</Button>
+            <Button appearance="subtle" onClick={() => setOpen('WITHDRAW')}>Withdraw request</Button>
+          </>
+        ) : null}
+        {row.codeException?.status === 'APPROVED' ? (
+          <Button appearance="default" onClick={() => setOpen('REVOKE')}>Revoke exception</Button>
         ) : null}
         {row.reworkLoops > 0 ? (
           <Button appearance="default" onClick={() => setOpen('rework')}>Add rework reason</Button>
@@ -114,7 +159,16 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void }> = ({ 
           issueKey={row.issueKey}
           type={open === 'code' ? 'CODE' : 'REWORK'}
           onClose={() => setOpen('none')}
-          onDone={() => done(open === 'code' ? 'Exception recorded. The gates were read again.' : 'Rework reason recorded.')}
+          onDone={() => done(open === 'code' ? 'Exception requested. A project administrator must approve it.' : 'Rework reason recorded.')}
+        />
+      ) : null}
+      {open === 'APPROVE' || open === 'REJECT' || open === 'REVOKE' || open === 'WITHDRAW' ? (
+        <DecisionModal
+          issueId={row.issueId}
+          issueKey={row.issueKey}
+          decision={open}
+          onClose={() => setOpen('none')}
+          onDone={() => done('Decision recorded. The gates were read again.')}
         />
       ) : null}
     </Stack>

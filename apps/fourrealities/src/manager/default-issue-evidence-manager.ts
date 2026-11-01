@@ -6,8 +6,8 @@
  */
 
 import { CallerContext, IssueRow, ResolverResult } from '../contract/data/models';
-import { ExceptionAccessor, JiraIssueAccessor, SiteConfigAccessor } from '../contract/accessors';
-import { GateEngine, MetricsEngine, PolicyEngine } from '../contract/engines';
+import { ExceptionAccessor, ExceptionEventAccessor, JiraIssueAccessor, SiteConfigAccessor } from '../contract/accessors';
+import { ExceptionPolicyEngine, GateEngine, MetricsEngine, PolicyEngine } from '../contract/engines';
 import { IssueEvidenceManager } from '../contract/managers';
 import { jiraError } from '../contract/data/errors';
 
@@ -15,6 +15,8 @@ export interface IssueEvidenceManagerDeps {
   userJira: JiraIssueAccessor;
   siteConfig: SiteConfigAccessor;
   exceptions: ExceptionAccessor;
+  events: ExceptionEventAccessor;
+  lifecycle: ExceptionPolicyEngine;
   gates: GateEngine;
   metrics: MetricsEngine;
   policy: PolicyEngine;
@@ -32,14 +34,15 @@ export class DefaultIssueEvidenceManager implements IssueEvidenceManager {
     if (!issueId) {
       return { ok: false, error: { code: 'INVALID_INPUT', message: 'FourRealities: open this panel from a Jira issue.' } };
     }
-    const exception = await this.d.exceptions.get(issueId);
     try {
+      const exception = await this.d.exceptions.get(issueId);
+      const codeException = this.d.lifecycle.currentState(await this.d.events.list(issueId));
       const config = await this.d.siteConfig.get();
       const read = await this.d.userJira.readIssue(issueId, config);
       if (read.status !== 200 || !read.facts) {
         return jiraError(read.status, `FourRealities: Jira returned HTTP ${read.status} for issue '${issueKey}'.`);
       }
-      const facts = { ...read.facts, exception };
+      const facts = { ...read.facts, exception, codeException };
       return { ok: true, row: this.d.metrics.buildRow(facts, this.d.gates.evaluate(facts)) };
     } catch (err: any) {
       return jiraError(undefined, `FourRealities: Failed to query Jira for issue '${issueKey}': ${err?.message || 'network error'}`);

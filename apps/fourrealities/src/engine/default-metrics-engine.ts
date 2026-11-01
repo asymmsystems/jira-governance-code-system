@@ -74,7 +74,7 @@ export class DefaultMetricsEngine implements MetricsEngine {
       risk: this.risk(rai),
       applicableGates: GATE_NAMES.filter(g => gates[g].state === 'FOUND' || gates[g].state === 'MISSING').length,
       recoverablePoints: this.recoverablePoints(gates),
-      exception: facts.exception?.code,
+      codeException: facts.codeException,
       reworkNote: facts.exception?.rework
     };
   }

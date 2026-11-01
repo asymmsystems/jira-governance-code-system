@@ -21,6 +21,10 @@ class MockStorageProvider implements StorageProvider {
   async delete(key: string): Promise<void> {
     this.store.delete(key);
   }
+
+  async queryPrefix<T>(prefix: string): Promise<{ results: Array<{ key: string; value: T }> }> {
+    return { results: Array.from(this.store.entries()).filter(([k]) => k.startsWith(prefix)).map(([key, value]) => ({ key, value })) };
+  }
 }
 
 describe('MetricsRepository', () => {

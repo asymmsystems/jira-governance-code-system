@@ -6,8 +6,8 @@
  */
 
 import { CallerContext, CHUNK_SIZE_HINT, IssueRow, ProjectDashboardView, ProjectSummary, ResolverResult, ScheduledRunResult, SiteConfig, SnapshotMeta, StoredSnapshot } from '../contract/data/models';
-import { ExceptionAccessor, JiraIssueAccessor, SiteConfigAccessor, SnapshotAccessor } from '../contract/accessors';
-import { GateEngine, MetricsEngine, SnapshotEngine } from '../contract/engines';
+import { ExceptionAccessor, ExceptionEventAccessor, JiraIssueAccessor, SiteConfigAccessor, SnapshotAccessor } from '../contract/accessors';
+import { ExceptionPolicyEngine, GateEngine, MetricsEngine, SnapshotEngine } from '../contract/engines';
 import { DashboardManager, SnapshotManager } from '../contract/managers';
 import { jiraError } from '../contract/data/errors';
 
@@ -20,6 +20,8 @@ export interface SnapshotManagerDeps {
   siteConfig: SiteConfigAccessor;
   snapshots: SnapshotAccessor;
   exceptions: ExceptionAccessor;
+  events: ExceptionEventAccessor;
+  lifecycle: ExceptionPolicyEngine;
   gates: GateEngine;
   metrics: MetricsEngine;
   snapshot: SnapshotEngine;
@@ -52,6 +54,7 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
 
     const ids = search.facts.map(f => f.issueId);
     const exceptions = await this.d.exceptions.listByIssue(ids);
+    const events = await this.d.events.listAll();
     const previous = new Map((await this.d.snapshots.loadSnapshot(projectKey))?.rows.map(r => [r.issueId, r]) || []);
     const started = search.facts.filter(f => f.started).map(f => f.issueId);
     const links = await this.d.jira.remoteLinks(started, deadline);
@@ -59,7 +62,12 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
     const rows = search.facts.map(base => {
       const id = base.issueId;
       const read = links.has(id) || !base.started;
-      const facts = { ...base, exception: exceptions.get(id), remoteLinks: links.get(id) ?? (base.started ? undefined : []) };
+      const facts = {
+        ...base,
+        exception: exceptions.get(id),
+        codeException: this.d.lifecycle.currentState(events.get(id) || []),
+        remoteLinks: links.get(id) ?? (base.started ? undefined : [])
+      };
       const gates = this.d.snapshot.keepPreviousIntent(this.d.gates.evaluate(facts), read, previous.get(id));
       return this.d.metrics.buildRow(facts, gates);
     });
@@ -86,10 +94,11 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
 
   /**
    * Daily scheduled run: builds every registered project as the app while the budget lasts,
-   * then deletes at most 100 v1 signals keys (spec v2, Migration).
+   * then deletes at most 100 v1 signals keys and converts at most 100 v2 code notes to
+   * migrated events (spec v2, Migration; ADR-001).
    */
   async runScheduled(deadline: number): Promise<ScheduledRunResult> {
-    const result: ScheduledRunResult = { built: [], failed: [], skipped: [], signalsDeleted: 0 };
+    const result: ScheduledRunResult = { built: [], failed: [], skipped: [], signalsDeleted: 0, exceptionsMigrated: 0 };
     for (const projectKey of await this.d.snapshots.listProjects()) {
       if (Date.now() >= deadline) {
         result.skipped.push(projectKey);
@@ -100,6 +109,7 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
     }
     if (Date.now() < deadline) {
       result.signalsDeleted = await this.d.snapshots.deleteV1Signals();
+      result.exceptionsMigrated = await this.d.events.migrateV2CodeNotes(100);
     }
     return result;
   }

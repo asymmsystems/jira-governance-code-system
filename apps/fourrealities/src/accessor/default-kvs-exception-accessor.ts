@@ -58,16 +58,9 @@ export class DefaultKvsExceptionAccessor implements ExceptionAccessor {
     return this.repository.saveIssueException(record);
   }
 
-  /** One paged prefix query when the store supports it; else one read per issue. */
+  /** All v2 records by issue id, read with one paged prefix query. */
   async listByIssue(issueIds: string[]): Promise<Map<string, ExceptionRecord>> {
     const result = new Map<string, ExceptionRecord>();
-    if (!this.storage.queryPrefix) {
-      for (const id of issueIds) {
-        const record = await this.get(id);
-        if (record) result.set(id, record);
-      }
-      return result;
-    }
     let cursor: string | undefined;
     do {
       const page: { results: Array<{ key: string; value: any }>; nextCursor?: string } = await this.storage.queryPrefix<any>('fr:issue:', cursor);

@@ -123,7 +123,8 @@ export function evaluateCode(f: IssueFacts): GateResult {
   const pr = f.devField.summary;
   const merged = pr.mergedCount > 0 || (pr.state === 'MERGED' && pr.count > 0);
   const open = !merged && (pr.openCount > 0 || (pr.state === 'OPEN' && pr.count > 0));
-  if (f.exception?.code && pr.count === 0) {
+  // Only an approved exception counts (ADR-001: a waiting request leaves the evidence missing).
+  if (f.codeException?.status === 'APPROVED' && pr.count === 0) {
     return { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' };
   }
   if (merged) {

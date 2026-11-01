@@ -89,7 +89,7 @@ describe('IssuePanel', () => {
     const r = await mount(row('DEMO-9', { intent: F, process: M_DOD, code: M_CODE, audit: NA }, { reworkLoops: 2 }), onReload);
     expect(textOf(r.toJSON())).toContain('Rework loops: 2.');
 
-    await act(async () => { findButton(r.root, 'Record Code exception').props.onClick(); });
+    await act(async () => { findButton(r.root, 'Request Code exception').props.onClick(); });
     expect(findAll(r.root, 'Textfield').map((f: any) => f.props.value)).toEqual(['', '']);
     await act(async () => { type(r, 'fr-exception-reason', 'Configuration change only'); type(r, 'fr-exception-notes', 'CHG-1'); });
     bridgeState.invoke.mockResolvedValueOnce({ success: false, error: 'Reason too short' });
@@ -101,7 +101,7 @@ describe('IssuePanel', () => {
     bridgeState.invoke.mockResolvedValueOnce({ success: true });
     await act(async () => { findButton(r.root, 'Save exception').props.onClick(); });
     expect(bridgeState.invoke).toHaveBeenLastCalledWith('recordException', { issueId: '9', issueKey: 'DEMO-9', type: 'CODE', reason: 'Configuration change only', notes: 'CHG-1' });
-    expect(textOf(r.toJSON())).toContain('Exception recorded.');
+    expect(textOf(r.toJSON())).toContain('Exception requested. A project administrator must approve it.');
 
     await act(async () => { findButton(r.root, 'Add rework reason').props.onClick(); });
     expect(textOf(r.toJSON())).toContain('This note does not change any gate.');
@@ -109,24 +109,25 @@ describe('IssuePanel', () => {
     await act(async () => { findButton(r.root, 'Save reason').props.onClick(); });
     expect(bridgeState.invoke).toHaveBeenLastCalledWith('recordException', expect.objectContaining({ type: 'REWORK' }));
     expect(textOf(r.toJSON())).toContain('Rework reason recorded.');
-    await act(async () => { findButton(r.root, 'Record Code exception').props.onClick(); });
+    await act(async () => { findButton(r.root, 'Request Code exception').props.onClick(); });
     await act(async () => { findButton(r.root, 'Cancel').props.onClick(); });
     expect(onReload).toHaveBeenCalledTimes(2);
   });
 
-  it('shows who and why for an exception and a rework reason', async () => {
+  it('shows who and why for an approved exception and a rework reason', async () => {
     const n = { reason: 'Configuration change only', recordedBy: 'acc-1', recordedAt: '2026-11-01T09:00:00Z' };
+    const state = { status: 'APPROVED' as const, issueKey: 'DEMO-10', requestedBy: 'dev-1', requestedAt: '2026-11-01T09:00:00Z', reason: 'Configuration change only', decidedBy: 'admin-1', decidedAt: '2026-11-02T08:00:00Z' };
     const r = await mount(row('DEMO-10', { intent: F, process: F, code: { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' }, audit: NA },
-      { reworkLoops: 1, exception: { schemaVersion: 2, issueId: '10', issueKey: 'DEMO-10', code: n, rework: n } }));
+      { reworkLoops: 1, codeException: state, exception: { schemaVersion: 2, issueId: '10', issueKey: 'DEMO-10', rework: n } }));
     const text = textOf(r.toJSON());
-    expect(text).toMatch(/Excepted\s+by/);
-    expect(text).toContain('on 2026-11-01: Configuration change only');
+    expect(text).toMatch(/Requested by\s+on 2026-11-01: Configuration change only/);
+    expect(text).toMatch(/Approved by\s+on 2026-11-02/);
     expect(text).toContain('Rework loops: 1.');
     expect(text).toMatch(/Rework reason\s+by/);
-    const users = findAll(r.root, 'User');
-    expect(users.map((u: any) => u.props.accountId)).toEqual(['acc-1', 'acc-1']);
+    expect(findAll(r.root, 'User').map((u: any) => u.props.accountId)).toEqual(['acc-1', 'dev-1', 'admin-1']);
     expect(text).toContain('Code: Excepted');
-    expect(text).not.toContain('Code: Evidence found');
+    expect(() => findButton(r.root, 'Request Code exception')).toThrow('No button');
+    findButton(r.root, 'Revoke exception');
   });
 
   it('treats an empty change event as an empty field', async () => {
@@ -139,7 +140,7 @@ describe('IssuePanel', () => {
     });
     expect(findAll(r.root, 'Textfield').map((f: any) => f.props.value)).toEqual(['', '']);
     await act(async () => { findButton(r.root, 'Cancel').props.onClick(); });
-    await act(async () => { findButton(r.root, 'Record Code exception').props.onClick(); });
+    await act(async () => { findButton(r.root, 'Request Code exception').props.onClick(); });
     await act(async () => {
       findAll(r.root, 'Textfield', p => p.id === 'fr-exception-reason')[0].props.onChange({});
       findAll(r.root, 'Textfield', p => p.id === 'fr-exception-notes')[0].props.onChange({});
@@ -162,7 +163,7 @@ describe('IssuePanel', () => {
 
   it('offers no Code exception when a pull request exists (FR-10)', async () => {
     const r = await mount(row('DEMO-13', { intent: F, process: NA, code: { state: 'MISSING', reason: 'PR_OPEN_AT_DONE' }, audit: NA }));
-    expect(() => findButton(r.root, 'Record Code exception')).toThrow('No button');
+    expect(() => findButton(r.root, 'Request Code exception')).toThrow('No button');
   });
 
   it('says how many RAI points the first missing gate would recover (B-14)', async () => {
@@ -170,6 +171,76 @@ describe('IssuePanel', () => {
     expect(textOf(r.toJSON())).toContain('Adding Intent evidence raises this issue\'s RAI by 50 points.');
     const full = await mount(row('DEMO-15', { intent: F, process: F, code: NA, audit: NA }));
     expect(textOf(full.toJSON())).not.toContain('raises this issue');
+  });
+
+  describe('B-30: exception lifecycle in the panel', () => {
+    const base = { issueKey: 'DEMO-20', requestedBy: 'dev-1', requestedAt: '2026-11-01T09:00:00Z', reason: 'Configuration change only' };
+    const missingCode = { intent: F, process: NA, code: M_CODE, audit: NA };
+
+    it('shows a waiting request with approve, reject and withdraw, and no new request', async () => {
+      const r = await mount(row('DEMO-20', missingCode, { codeException: { ...base, status: 'REQUESTED' } }));
+      const text = textOf(r.toJSON());
+      expect(text).toContain('Code: Evidence missing');
+      expect(text).toContain('Waiting for a project administrator who is not the requester or the assignee.');
+      for (const label of ['Approve exception', 'Reject exception', 'Withdraw request']) findButton(r.root, label);
+      expect(() => findButton(r.root, 'Request Code exception')).toThrow('No button');
+    });
+
+    it('sends each decision with the issue and the reason, and shows a refusal', async () => {
+      const onReload = jest.fn();
+      const r = await mount(row('DEMO-20', missingCode, { codeException: { ...base, status: 'REQUESTED' } }), onReload);
+      await act(async () => { findButton(r.root, 'Approve exception').props.onClick(); });
+      expect(textOf(r.toJSON())).toContain('Approve the Code exception for DEMO-20');
+      bridgeState.invoke.mockResolvedValueOnce({ success: false, error: 'Only a project administrator can approve, reject or revoke an exception.' });
+      await act(async () => { findButton(r.root, 'Approve').props.onClick(); });
+      expect(textOf(r.toJSON())).toContain('Only a project administrator can approve, reject or revoke an exception.');
+      bridgeState.invoke.mockRejectedValueOnce({});
+      await act(async () => { findButton(r.root, 'Approve').props.onClick(); });
+      expect(textOf(r.toJSON())).toContain('The decision was not recorded.');
+      bridgeState.invoke.mockResolvedValueOnce({});
+      await act(async () => { findButton(r.root, 'Approve').props.onClick(); });
+      expect(textOf(r.toJSON())).toContain('The decision was not recorded.');
+      await act(async () => { findButton(r.root, 'Cancel').props.onClick(); });
+
+      await act(async () => { findButton(r.root, 'Reject exception').props.onClick(); });
+      expect(textOf(r.toJSON())).toContain('Reason (15 to 500 characters)');
+      await act(async () => {
+        findAll(r.root, 'Textfield', p => p.id === 'fr-decision-reason')[0].props.onChange({ target: { value: 'Code changed in the config repo' } });
+      });
+      bridgeState.invoke.mockResolvedValueOnce({ success: true });
+      await act(async () => { findButton(r.root, 'Reject').props.onClick(); });
+      expect(bridgeState.invoke).toHaveBeenLastCalledWith('decideException', { issueId: '20', issueKey: 'DEMO-20', decision: 'REJECT', reason: 'Code changed in the config repo' });
+      expect(onReload).toHaveBeenCalled();
+
+      await act(async () => { findButton(r.root, 'Withdraw request').props.onClick(); });
+      await act(async () => { findAll(r.root, 'Textfield', p => p.id === 'fr-decision-reason')[0].props.onChange({}); });
+      bridgeState.invoke.mockResolvedValueOnce({ success: true });
+      await act(async () => { findButton(r.root, 'Withdraw').props.onClick(); });
+      expect(bridgeState.invoke).toHaveBeenLastCalledWith('decideException', expect.objectContaining({ decision: 'WITHDRAW', reason: '' }));
+    });
+
+    it('offers Revoke on an approved exception, and shows a migrated approval', async () => {
+      const state = { ...base, status: 'APPROVED' as const, decidedBy: 'dev-1', decidedAt: '2026-10-01T00:00:00Z', migrated: true };
+      const r = await mount(row('DEMO-21', { intent: F, process: NA, code: { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' }, audit: NA }, { codeException: state }));
+      expect(textOf(r.toJSON())).toContain('Approved before administrator approval was required.');
+      await act(async () => { findButton(r.root, 'Revoke exception').props.onClick(); });
+      bridgeState.invoke.mockResolvedValueOnce({ success: true });
+      await act(async () => { findButton(r.root, 'Revoke').props.onClick(); });
+      expect(bridgeState.invoke).toHaveBeenLastCalledWith('decideException', expect.objectContaining({ decision: 'REVOKE' }));
+    });
+
+    it('shows how an ended request ended, and allows a new request', async () => {
+      for (const [status, label] of [['REJECTED', 'Exception rejected by'], ['WITHDRAWN', 'Exception withdrawn by'], ['REVOKED', 'Exception revoked by']] as const) {
+        const state = { ...base, status, decidedBy: 'admin-1', decidedAt: '2026-11-02T00:00:00Z', decisionReason: 'Needs a pull request after all' };
+        const r = await mount(row('DEMO-22', missingCode, { codeException: state }));
+        const text = textOf(r.toJSON());
+        expect(text).toContain(label);
+        expect(text).toContain('on 2026-11-02: Needs a pull request after all');
+        findButton(r.root, 'Request Code exception');
+      }
+      const noDecider = await mount(row('DEMO-23', missingCode, { codeException: { ...base, status: 'WITHDRAWN' } }));
+      expect(textOf(noDecider.toJSON())).not.toContain('Exception withdrawn by');
+    });
   });
 });
 

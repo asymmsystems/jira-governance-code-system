@@ -51,9 +51,11 @@ export function findAll(root: any, type: string, predicate: (props: any) => bool
   return root.findAll((n: any) => n.type === 'ui-' + type && predicate(n.props));
 }
 
-/** Finds a button whose text contains the label. */
+/** Finds a button whose text equals the label, else the first whose text contains it. */
 export function findButton(root: any, label: string): any {
-  const buttons = findAll(root, 'Button').filter((b: any) => flatText(b.props.children).includes(label));
+  const all = findAll(root, 'Button');
+  const exact = all.filter((b: any) => flatText(b.props.children).trim() === label);
+  const buttons = exact.length > 0 ? exact : all.filter((b: any) => flatText(b.props.children).includes(label));
   if (buttons.length === 0) throw new Error(`No button with label "${label}"`);
   return buttons[0];
 }

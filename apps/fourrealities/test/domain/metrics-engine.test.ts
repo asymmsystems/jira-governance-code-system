@@ -67,11 +67,12 @@ describe('MetricsEngine.buildRow', () => {
     expect(row.summary.endsWith('...')).toBe(true);
   });
 
-  it('carries the exception and rework notes', () => {
+  it('carries the Code exception state and the rework note', () => {
     const note = { reason: 'Configuration change only', recordedBy: 'acc-1', recordedAt: '2026-11-01T00:00:00Z' };
-    const facts = makeFacts({ exception: { schemaVersion: 2, issueId: '1', issueKey: 'A-1', code: note, rework: note } });
+    const state = { status: 'REQUESTED' as const, issueKey: 'A-1', requestedBy: 'dev-1', requestedAt: 't', reason: 'Configuration change only' };
+    const facts = makeFacts({ codeException: state, exception: { schemaVersion: 2, issueId: '1', issueKey: 'A-1', rework: note } });
     const row = MetricsEngine.buildRow(facts, evaluateGates(facts));
-    expect(row.exception).toEqual(note);
+    expect(row.codeException).toEqual(state);
     expect(row.reworkNote).toEqual(note);
   });
 

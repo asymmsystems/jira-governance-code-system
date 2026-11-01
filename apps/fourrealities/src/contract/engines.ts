@@ -6,6 +6,11 @@
 
 import { Engine } from './service-types';
 import {
+  ExceptionActor,
+  ExceptionDecision,
+  ExceptionStatus,
+  GateExceptionEvent,
+  GateExceptionState,
   ExceptionNote,
   ExceptionRecord,
   GateCount,
@@ -48,6 +53,17 @@ export interface PolicyEngine extends Engine {
   scopeError(target: { issueId: string; issueKey?: string; projectKey?: string }, caller: { issueId?: string; projectKey?: string }): string | undefined;
   linkInputError(url: string, title: string): string | undefined;
   exceptionInputError(reason: string, notes?: string): string | undefined;
-  pullRequestBlocksException(pullRequestCount: number, issueKey: string): string | undefined;
   mergeException(existing: ExceptionRecord | undefined, issue: { issueId: string; issueKey: string }, type: 'CODE' | 'REWORK', note: ExceptionNote): ExceptionRecord;
+}
+
+/** Gate exception lifecycle rules (ADR-001 Patterns 3 and 5, Option C). */
+export interface ExceptionPolicyEngine extends Engine {
+  /** Current state from the events, newest last; undefined when there are none. */
+  currentState(events: GateExceptionEvent[]): GateExceptionState | undefined;
+  /** Error text when a new request is not allowed now, else undefined. */
+  requestError(current: GateExceptionState | undefined, pullRequestCount: number, issueKey: string): string | undefined;
+  /** The status a decision leads to. */
+  targetStatus(decision: ExceptionDecision): ExceptionStatus;
+  /** Error text when the actor may not make this decision now, else undefined. */
+  decisionError(current: GateExceptionState | undefined, decision: ExceptionDecision, actor: ExceptionActor, assigneeAccountId: string | undefined, reason: string): string | undefined;
 }

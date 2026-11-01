@@ -5,7 +5,7 @@
  */
 
 import { Manager } from './service-types';
-import { CallerContext, ExceptionRecord, IssueRow, ProjectDashboardView, ProjectSummary, ResolverResult, ScheduledRunResult, SnapshotMeta } from './data/models';
+import { CallerContext, ExceptionProperty, IssueRow, ProjectDashboardView, ProjectSummary, ResolverResult, ScheduledRunResult, SnapshotMeta } from './data/models';
 
 export interface DashboardManager extends Manager {
   /** Stored snapshot (built once when absent), filtered to what the viewer can browse. */
@@ -18,7 +18,10 @@ export interface IssueEvidenceManager extends Manager {
 }
 
 export interface ExceptionManager extends Manager {
-  record(caller: CallerContext, payload: any): Promise<{ success: boolean; record?: ExceptionRecord; error?: string }>;
+  /** Requests a Code exception, or records a rework note. */
+  record(caller: CallerContext, payload: any): Promise<{ success: boolean; record?: ExceptionProperty; error?: string }>;
+  /** Approves, rejects, revokes or withdraws a Code exception (ADR-001, Option C). */
+  decide(caller: CallerContext, payload: any): Promise<{ success: boolean; record?: ExceptionProperty; error?: string }>;
 }
 
 export interface SnapshotManager extends Manager {

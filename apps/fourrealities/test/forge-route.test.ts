@@ -27,6 +27,9 @@ class MapStorage {
   async get(key: string) { return this.store.get(key); }
   async set(key: string, value: any) { this.store.set(key, value); }
   async delete(key: string) { this.store.delete(key); }
+  async queryPrefix(prefix: string) {
+    return { results: Array.from(this.store.entries()).filter(([k]) => k.startsWith(prefix)).map(([key, value]) => ({ key, value })) };
+  }
 }
 
 const issue = { id: '60001', key: 'DEMO-60', fields: { summary: 'S', status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } } }, properties: {} };

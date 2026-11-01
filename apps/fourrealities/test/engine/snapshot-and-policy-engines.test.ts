@@ -73,9 +73,7 @@ describe('DefaultPolicyEngine', () => {
     expect(policy.exceptionInputError('Configuration change only', 'ok')).toBeUndefined();
   });
 
-  it('blocks a Code exception when a pull request exists, and merges notes', () => {
-    expect(policy.pullRequestBlocksException(0, 'A-1')).toBeUndefined();
-    expect(policy.pullRequestBlocksException(2, 'A-1')).toContain('A pull request is linked to A-1');
+  it('merges notes', () => {
     const n = (r: string) => ({ reason: r, recordedBy: 'u', recordedAt: 't' });
     const first = policy.mergeException(undefined, { issueId: '1', issueKey: 'A-1' }, 'CODE', n('code reason'));
     const second = policy.mergeException(first, { issueId: '1', issueKey: 'A-1' }, 'REWORK', n('rework reason'));

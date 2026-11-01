@@ -86,7 +86,60 @@ export interface ExceptionNote {
   recordedAt: string;
 }
 
-/** Stored in KVS at fr:issue:{issueId}:exception and in the fourrealities-exception property. */
+/** Gate exception lifecycle (ADR-001 Pattern 3). */
+export type ExceptionStatus = 'REQUESTED' | 'APPROVED' | 'REJECTED' | 'WITHDRAWN' | 'REVOKED';
+
+/** Role context of an action on an exception (ADR-001 Pattern 5). */
+export type ExceptionRole = 'REQUESTER' | 'APPROVER';
+
+export type ExceptionDecision = 'APPROVE' | 'REJECT' | 'REVOKE' | 'WITHDRAW';
+
+/** One append-only event, stored under its own KVS key fr:ex:{issueId}:{gate}:{at}:{seq}. */
+export interface GateExceptionEvent {
+  schemaVersion: 3;
+  issueId: string;
+  issueKey: string;
+  gate: 'code';
+  status: ExceptionStatus;
+  at: string;
+  byAccountId: string;
+  asRole: ExceptionRole;
+  reason: string;
+  notes?: string;
+  /** True for events created from a v2 record, approved before administrator approval was required. */
+  migrated?: boolean;
+}
+
+/** Current state of a gate exception, derived from its events. */
+export interface GateExceptionState {
+  status: ExceptionStatus;
+  issueKey: string;
+  requestedBy: string;
+  requestedAt: string;
+  reason: string;
+  notes?: string;
+  decidedBy?: string;
+  decidedAt?: string;
+  decisionReason?: string;
+  migrated?: boolean;
+}
+
+/** The person acting on an exception, as checked in Jira. */
+export interface ExceptionActor {
+  accountId: string;
+  isProjectAdmin: boolean;
+}
+
+/** The fourrealities-exception issue property: a projection of the current state for other tools. */
+export interface ExceptionProperty {
+  schemaVersion: 3;
+  issueId: string;
+  issueKey: string;
+  code?: GateExceptionState;
+  rework?: ExceptionNote;
+}
+
+/** Stored in KVS at fr:issue:{issueId}:exception (v2). Holds the rework note; a v2 code note is migrated to events. */
 export interface ExceptionRecord {
   schemaVersion: 2;
   issueId: string;
@@ -128,6 +181,8 @@ export interface IssueFacts {
   devField: { present: boolean; summary: DevFieldSummary };
   properties: { ledgerseal?: any; dod?: any; checklist?: any };
   exception?: ExceptionRecord;
+  /** Current Code exception state from the events (B-30); takes precedence over exception.code. */
+  codeException?: GateExceptionState;
 }
 
 /** One issue as shown in the dashboard and the issue panel. */
@@ -146,7 +201,8 @@ export interface IssueRow {
   risk: RiskLevel;
   applicableGates: number;
   recoverablePoints: number;
-  exception?: ExceptionNote;
+  /** Current Code exception, whatever its status (shown in the panel). */
+  codeException?: GateExceptionState;
   reworkNote?: ExceptionNote;
 }
 
@@ -254,6 +310,8 @@ export interface ScheduledRunResult {
   failed: string[];
   skipped: string[];
   signalsDeleted: number;
+  /** v2 code notes converted to migrated events in this run (at most 100). */
+  exceptionsMigrated: number;
 }
 
 /** Who calls, from where: the parts of the Forge context that Managers use. */

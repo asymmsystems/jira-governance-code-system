@@ -51,13 +51,6 @@ export class DefaultPolicyEngine implements PolicyEngine {
     return undefined;
   }
 
-  /** A Code exception may not hide a pull request (FR-10). */
-  pullRequestBlocksException(pullRequestCount: number, issueKey: string): string | undefined {
-    return pullRequestCount > 0
-      ? `A pull request is linked to ${issueKey}. A Code exception applies only to work with no pull request.`
-      : undefined;
-  }
-
   /** Keeps the other note and replaces the one of the given type (v2 record). */
   mergeException(existing: ExceptionRecord | undefined, issue: { issueId: string; issueKey: string }, type: 'CODE' | 'REWORK', note: ExceptionNote): ExceptionRecord {
     return {

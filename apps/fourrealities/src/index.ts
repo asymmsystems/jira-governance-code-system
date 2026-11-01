@@ -6,18 +6,20 @@
  */
 
 import Resolver from '@forge/resolver';
-import { CallerContext, ExceptionRecord, IssueRow, ProjectDashboardView, ResolverResult, ScheduledRunResult } from './contract/data/models';
+import { CallerContext, ExceptionProperty, IssueRow, ProjectDashboardView, ResolverResult, ScheduledRunResult } from './contract/data/models';
 import { StorageProvider } from './contract/accessors';
 import { DefaultForgeKvsStore } from './accessor/default-forge-kvs-store';
 import { DefaultForgeJiraIssueAccessor, Principal } from './accessor/default-forge-jira-issue-accessor';
 import { DefaultKvsSiteConfigAccessor } from './accessor/default-kvs-site-config-accessor';
 import { DefaultKvsSnapshotAccessor } from './accessor/default-kvs-snapshot-accessor';
 import { DefaultKvsExceptionAccessor } from './accessor/default-kvs-exception-accessor';
+import { DefaultKvsExceptionEventAccessor } from './accessor/default-kvs-exception-event-accessor';
 import { requestAs } from './accessor/default-forge-jira-issue-accessor';
 import { DefaultGateEngine } from './engine/default-gate-engine';
 import { DefaultMetricsEngine } from './engine/default-metrics-engine';
 import { DefaultSnapshotEngine } from './engine/default-snapshot-engine';
 import { DefaultPolicyEngine } from './engine/default-policy-engine';
+import { DefaultExceptionPolicyEngine } from './engine/default-exception-policy-engine';
 import { DefaultSnapshotManager } from './manager/default-snapshot-manager';
 import { DefaultIssueEvidenceManager } from './manager/default-issue-evidence-manager';
 import { DefaultExceptionManager } from './manager/default-exception-manager';
@@ -49,6 +51,8 @@ export function compose(storageProvider: StorageProvider | undefined, budgetMs: 
   const userJira = new DefaultForgeJiraIssueAccessor('user', () => deadline);
   const siteConfig = new DefaultKvsSiteConfigAccessor(storage, requestAs(configPrincipal, () => deadline));
   const exceptions = new DefaultKvsExceptionAccessor(storage);
+  const events = new DefaultKvsExceptionEventAccessor(storage);
+  const lifecycle = new DefaultExceptionPolicyEngine();
   const gates = new DefaultGateEngine();
   const metrics = new DefaultMetricsEngine();
   const policy = new DefaultPolicyEngine();
@@ -60,12 +64,14 @@ export function compose(storageProvider: StorageProvider | undefined, budgetMs: 
       siteConfig,
       snapshots: new DefaultKvsSnapshotAccessor(storage),
       exceptions,
+      events,
+      lifecycle,
       gates,
       metrics,
       snapshot: new DefaultSnapshotEngine()
     }),
-    issues: new DefaultIssueEvidenceManager({ userJira, siteConfig, exceptions, gates, metrics, policy }),
-    exceptions: new DefaultExceptionManager({ userJira, siteConfig, exceptions, policy })
+    issues: new DefaultIssueEvidenceManager({ userJira, siteConfig, exceptions, events, lifecycle, gates, metrics, policy }),
+    exceptions: new DefaultExceptionManager({ userJira, siteConfig, exceptions, events, policy, lifecycle })
   };
 }
 
@@ -117,8 +123,14 @@ export async function linkDecision(payload: any, context?: any): Promise<{ succe
   return compose(undefined, RESOLVER_LINK_BUDGET_MS, 'user').issues.linkDecision(callerOf(context), payload);
 }
 
-export async function recordException(payload: any, context?: any, storageProvider?: StorageProvider): Promise<{ success: boolean; record?: ExceptionRecord; error?: string }> {
+/** Requests a Code exception, or records a rework note. */
+export async function recordException(payload: any, context?: any, storageProvider?: StorageProvider): Promise<{ success: boolean; record?: ExceptionProperty; error?: string }> {
   return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user').exceptions.record(callerOf(context), payload);
+}
+
+/** Approves, rejects, revokes or withdraws a Code exception (ADR-001, Option C). */
+export async function decideException(payload: any, context?: any, storageProvider?: StorageProvider): Promise<{ success: boolean; record?: ExceptionProperty; error?: string }> {
+  return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user').exceptions.decide(callerOf(context), payload);
 }
 
 /**
@@ -157,6 +169,10 @@ resolver.define('linkDecision', async (req) => {
 
 resolver.define('recordException', async (req) => {
   return await recordException(req.payload, req.context);
+});
+
+resolver.define('decideException', async (req) => {
+  return await decideException(req.payload, req.context);
 });
 
 export const handler = resolver.getDefinitions();

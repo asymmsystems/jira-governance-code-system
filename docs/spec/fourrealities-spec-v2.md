@@ -67,7 +67,7 @@ interface IssueRow {               // one row per issue, stored in snapshot chun
 
 interface ExceptionNote { reason: string; notes?: string; recordedBy: string; recordedByName?: string; recordedAt: string; }
 
-interface ExceptionRecord {        // KVS fr:issue:{id}:exception and property fourrealities-exception
+interface ExceptionRecord {        // KVS fr:issue:{id}:exception (v2): holds the rework note; a v2 code note is migrated to events
   schemaVersion: 2;
   issueId: string;
   issueKey: string;
@@ -154,7 +154,7 @@ The Development field is found by name (`Development`) through `/rest/api/3/fiel
 
 | Condition | State | Verification | Reason |
 |---|---|---|---|
-| A Code exception exists and no pull request exists | EXCEPTED | | `CODE_EXCEPTED` |
+| The current Code exception status is APPROVED and no pull request exists | EXCEPTED | | `CODE_EXCEPTED` |
 | Pull request state MERGED | FOUND | HEURISTIC | `PR_MERGED` (args: count) |
 | Pull request OPEN, issue Done | MISSING | | `PR_OPEN_AT_DONE` |
 | Pull request OPEN, not Done | FOUND | HEURISTIC | `PR_OPEN` |
@@ -162,7 +162,21 @@ The Development field is found by name (`Development`) through `/rest/api/3/fiel
 | No pull request, not Done | NOT_APPLICABLE | | `NOT_DONE` |
 | The site has no Development field | NOT_APPLICABLE | | `NO_DEV_TOOL` |
 
-An exception recorded earlier is ignored once a pull request exists (reason `CODE_EXCEPTION_IGNORED` in the row note). The text always says "Approval is not readable by apps."
+An approved exception stops counting once a pull request exists. A waiting, rejected, withdrawn or revoked exception never counts. The text always says "Approval is not readable by apps."
+
+### Code exception lifecycle (ADR-001, Option C)
+
+A Code exception is a list of append-only events (`GateExceptionEvent`): REQUESTED, then APPROVED or REJECTED or WITHDRAWN; an APPROVED exception can be REVOKED. The current state is the last event.
+
+| Decision | From | To | Who may make it |
+|---|---|---|---|
+| Request | none, REJECTED, WITHDRAWN, REVOKED | REQUESTED | any user with Edit issues; refused when a pull request exists |
+| Approve | REQUESTED | APPROVED | a user with `ADMINISTER_PROJECTS` in the issue's project, who is not the requester and not the assignee |
+| Reject | REQUESTED | REJECTED | as Approve; reason 15 to 500 characters |
+| Revoke | APPROVED | REVOKED | as Approve; reason 15 to 500 characters |
+| Withdraw | REQUESTED | WITHDRAWN | the requester only |
+
+The administrator check is `GET /rest/api/3/mypermissions?projectKey={key}&permissions=ADMINISTER_PROJECTS`, run as the acting user (scope `read:jira-work`).
 
 ### Audit (seal)
 
@@ -209,12 +223,13 @@ Audit and Process show "Source: LedgerSeal property ledgerseal-cert" or "Source:
 | `fr:p:{projectKey}:trend` | `TrendPoint[]`, at most 52 | under 52 KiB |
 | `fr:p:{projectKey}:summary` | `ProjectSummary` for the whole project | under 2 KiB |
 | `fr:projects` | registered project keys, at most 500 | under 8 KiB |
-| `fr:issue:{issueId}:exception` | `ExceptionRecord` | under 4 KiB (reason 500 chars, notes 1,000 chars) |
+| `fr:issue:{issueId}:exception` | `ExceptionRecord` (v2): the rework note | under 4 KiB (reason 500 chars, notes 1,000 chars) |
+| `fr:ex:{issueId}:code:{at}:{seq}` | one `GateExceptionEvent`, written once | under 2 KiB each |
 | `fr:cfg:site` | `{ devFieldId: string or null, siteHost: string, readAt }` | under 1 KiB |
 
 The snapshot is rebuilt by writing new chunks, then the meta. A reader that finds a chunk missing treats the snapshot as absent and rebuilds.
 
-**Migration (B-03, B-08):** the v1 keys `fr:project:{key}:latest`, `fr:project:{key}:history` and `fr:issue:{id}:signals` are never read. The project keys are deleted on the first v2 build for that project. The `:signals` keys are deleted by the scheduled run, at most 100 per run. A v1 exception record (`{type, reason, ...}`) is read as `code` or `rework` and rewritten in v2 form on the next write.
+**Migration (B-03, B-08):** the v1 keys `fr:project:{key}:latest`, `fr:project:{key}:history` and `fr:issue:{id}:signals` are never read. The project keys are deleted on the first v2 build for that project. The `:signals` keys are deleted by the scheduled run, at most 100 per run. A v1 exception record (`{type, reason, ...}`) is read as `code` or `rework`. A v2 `code` note with no events reads as a REQUESTED and an APPROVED event by the note's author, marked migrated ("Approved before administrator approval was required"); the scheduled run writes those events and removes the `code` note, at most 100 per run.
 
 ## Resolver contracts
 
@@ -226,7 +241,8 @@ All resolvers return `{ ok: true, ... }` or `{ ok: false, error: { code, message
 | `refreshProjectSnapshot` | none | As above, but always rebuilds within an 18 s budget. | same |
 | `getIssueAlignment` | none | Issue from context only. Reads the issue (fields, properties, changelog) and its remote links as the user. At most 3 Jira calls (the field list is cached in `fr:cfg:site`). | `{ row }` |
 | `linkDecision` | `issueId`, `url`, `title`, `summary?` | `url` is http or https; `title` 3 to 255 characters after trim. Project-key check (below). POST as the user. Re-reads the issue. | `{ row, linked: true }` |
-| `recordException` | `issueId`, `type` (`CODE` or `REWORK`), `reason`, `notes?` | Reason 15 to 500 characters after trim. Project-key check. `CODE` is rejected when a pull request exists. PUT `fourrealities-exception` as the user; KVS written only after a 2xx. | `{ row }` |
+| `recordException` | `issueId`, `type` (`CODE` or `REWORK`), `reason`, `notes?` | Reason 15 to 500 characters after trim. Project-key check. `CODE` requests an exception and is rejected when a pull request exists or one is waiting or approved. PUT `fourrealities-exception` (current state projection) as the user; the event or note is stored only after a 2xx. | `{ success, record }` |
+| `decideException` | `issueId`, `decision` (`APPROVE`, `REJECT`, `REVOKE`, `WITHDRAW`), `reason` | Signed-in user required. Reads the issue's project and assignee as the user, checks scope, checks `ADMINISTER_PROJECTS` as the user (not for Withdraw), applies the lifecycle table. Property first, then the event. | `{ success, record }` |
 
 **Project-key check:** in issue context the payload `issueId` must equal the context issue id. In project context the resolver reads the issue as the user and rejects the call unless its project key equals the context project key. A 403 or 404 from Jira is returned as `FORBIDDEN` or `NOT_FOUND`.
 
