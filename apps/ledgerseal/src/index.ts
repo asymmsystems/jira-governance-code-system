@@ -196,16 +196,6 @@ export async function onIssueChanged(event: any, context?: any, deps: LedgerSeal
   return issueChangedFlow(event, deps);
 }
 
-/**
- * Issue panel rendering function.
- */
-export async function renderIssuePanel(context: any) {
-  return {
-    moduleKey: 'ledgerseal-panel',
-    context
-  };
-}
-
 // Register Forge Resolver for UI Kit 2 bridge invocations
 const resolver = new Resolver();
 

@@ -341,3 +341,12 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
   - Verify, seal, revoke, history and evidence return `LICENSE_INACTIVE` and write nothing. The view model shows the B-15 licence state.
 - Decision D-8 is kept: the validator does not block on licence, so a lapsed licence cannot stop a customer's releases.
 - Results: `tsc` OK. 31 suites, 265 tests pass. Global branches 94.73%. `ledger.ts` 91.91%. Graders all True. No em dash.
+- B-19 commit: `4abc72a`.
+
+### B-20 Bundled icon and dead code (LS-20, claim 15) [MANIFEST]
+- Tests first: two B-20 cases in `test/manifest.test.ts`. First run: 2 of 2 failed (an `https://raw.githubusercontent.com` icon URL, and an unused `renderIssuePanel`).
+- Code:
+  - `static/icons/icon.svg` is a simple shield drawn for this app, not copied from any icon set. The manifest uses `icon: resource:icons;icon.svg` with resource `icons` at `static/icons`, the same pattern as FourRealities.
+  - `renderIssuePanel` is removed from `src/index.ts`, along with its test.
+- Results: `tsc` OK. 31 suites, 266 tests pass. Global branches 94.73%. `index.ts` 91.42%. Graders all True. No em dash.
+- B-01 to B-21 are all done. Loop 3 follows.

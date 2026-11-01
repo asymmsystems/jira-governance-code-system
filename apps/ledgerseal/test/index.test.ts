@@ -1,4 +1,4 @@
-import { validateTransition, sealIssue, verifyIssue, renderIssuePanel, handler } from '../src/index';
+import { validateTransition, sealIssue, verifyIssue, handler } from '../src/index';
 import { FakeJira, MemoryStore, panelContext, validSignature, model } from './support/fakes';
 
 jest.mock('@forge/api', () => ({
@@ -142,12 +142,7 @@ describe('Forge Function Entry Points (index.ts)', () => {
     });
   });
 
-  describe('renderIssuePanel and resolver', () => {
-    it('returns panel configuration', async () => {
-      const res = await renderIssuePanel({ platformContext: { issueId: '10001' } });
-      expect(res.moduleKey).toBe('ledgerseal-panel');
-    });
-
+  describe('resolver', () => {
     it('registers the panel resolvers', async () => {
       await expect(handler({ call: { functionKey: 'unknown-api', payload: {} }, context: ctx } as any)).rejects.toThrow('unknown-api');
       const noUser = { extension: { issue: { id: '10001' } } };

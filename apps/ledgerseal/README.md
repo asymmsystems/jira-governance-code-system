@@ -11,7 +11,7 @@ After that, LedgerSeal:
 
 LedgerSeal is tamper-evident, not tamper-proof: it detects changes, it does not stop them. Where a status lock fits, also set the workflow property `jira.issue.editable` to `false`. LedgerSeal does not provide regulated electronic signatures by itself, and it does not ask the signer to log in again. Your own validation and procedures decide whether it fits a regulated process.
 
-Built on Atlassian Forge. The app backend makes no outbound network calls.
+Built on Atlassian Forge. The app backend makes no outbound network calls, and the panel icon is bundled with the app.
 
 ## How it decides
 
@@ -78,7 +78,7 @@ Measured on the last change to this file:
 
 | Measure | Value |
 |---|---|
-| Tests | 265 in 31 suites |
+| Tests | 266 in 31 suites |
 | Branch coverage (all files in `src/` except the UI Kit component file; the panel view model is included) | 94.73% |
 
 ```bash

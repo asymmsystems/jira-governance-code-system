@@ -3,7 +3,7 @@ modules:
     - key: ledgerseal-panel
       title: LedgerSeal
       tooltip: LedgerSeal approval seal
-      icon: https://raw.githubusercontent.com/feathericons/feather/master/icons/shield.svg
+      icon: resource:icons;icon.svg
       render: native
       resource: main
       resolver:
@@ -49,6 +49,8 @@ modules:
 resources:
   - key: main
     path: src/frontend/index.tsx
+  - key: icons
+    path: static/icons
 
 app:
   id: ari:cloud:ecosystem::app/7489a645-7c96-400a-b289-eb36f2701a00
