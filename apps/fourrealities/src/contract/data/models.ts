@@ -194,7 +194,8 @@ export interface IssueFacts {
   siteHost?: string;
   /** present: the site has a Development field. summary: parsed pull request counts. */
   devField: { present: boolean; summary: DevFieldSummary };
-  properties: { ledgerseal?: any; dod?: any; checklist?: any };
+  /** Sibling records as read; the gate engine checks each shape before use. */
+  properties: { ledgerseal?: unknown; dod?: unknown; checklist?: unknown };
   /** Rework notes, oldest first (ADR-001 Pattern 6). */
   reworkNotes?: ExceptionNote[];
   /** Current Code exception state from the events (B-30); takes precedence over exception.code. */
@@ -300,6 +301,8 @@ export interface SiteConfig {
   devFieldId: string | null;
   /** Host name of this Jira site, used to recognise Confluence pages on the same site. */
   siteHost: string | null;
+  /** Status id to status category key, from GET /rest/api/3/status (B-24). */
+  statusCategories: Record<string, StatusCategory>;
   readAt: string;
 }
 
@@ -331,6 +334,45 @@ export interface ScheduledRunResult {
   /** v2 code notes converted to migrated events in this run (at most 100). */
   exceptionsMigrated: number;
   reworkNotesMigrated: number;
+}
+
+/** The record DefinitionGuard writes at definitionguard-dod, after the gate engine checks its shape. */
+export interface DefinitionGuardRecord {
+  isFullySatisfied: boolean;
+  completedCount: number;
+  totalCount: number;
+  checklistHash: string;
+  issuedAt?: string;
+}
+
+/** The record LedgerSeal writes at ledgerseal-cert, after the gate engine checks its shape. */
+export interface LedgerSealRecord {
+  status: string;
+  certificateId: string;
+  snapshotHash: string;
+  sealedAt: string;
+  isCompromised?: boolean;
+  issuedAt?: string;
+}
+
+/** The parts of the Forge resolver context that FourRealities reads. */
+export interface ForgeContext {
+  accountId?: string;
+  extension?: { issue?: { id?: string | number; key?: string }; project?: { key?: string } };
+}
+
+/** Resolver payloads as sent by the UI. Every field is optional: the Managers validate them. */
+export interface LinkDecisionPayload { issueId?: string; issueKey?: string; url?: string; title?: string; summary?: string }
+export interface RecordExceptionPayload { issueId?: string; issueKey?: string; type?: string; reason?: string; notes?: string }
+export interface DecideExceptionPayload { issueId?: string; issueKey?: string; decision?: string; reason?: string }
+
+/** Result of a user write. `row` is the issue read again after the write (B-17). */
+export interface WriteResult {
+  success: boolean;
+  error?: string;
+  record?: ExceptionProperty;
+  remoteLink?: unknown;
+  row?: IssueRow;
 }
 
 /** Who calls, from where: the parts of the Forge context that Managers use. */

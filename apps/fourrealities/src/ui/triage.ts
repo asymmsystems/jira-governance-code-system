@@ -16,6 +16,7 @@ export function triageOrder(rows: IssueRow[]): IssueRow[] {
 }
 
 /** Error text from a resolver envelope or a thrown error. */
-export function errorText(res: any, fallback: string): string {
-  return res?.error?.message || res?.message || fallback;
+export function errorText(res: unknown, fallback: string): string {
+  const r = res as { error?: { message?: string }; message?: string } | null | undefined;
+  return r?.error?.message || r?.message || fallback;
 }

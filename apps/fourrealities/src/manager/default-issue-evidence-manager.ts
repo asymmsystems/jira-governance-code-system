@@ -5,11 +5,11 @@
  * Orchestration only. Every Jira call runs as the user (FR-05, FR-18).
  */
 
-import { CallerContext, IssueRow, ResolverResult } from '../contract/data/models';
+import { CallerContext, IssueRow, LinkDecisionPayload, ResolverResult, WriteResult } from '../contract/data/models';
 import { ExceptionEventAccessor, ReworkNoteAccessor, JiraIssueAccessor, SiteConfigAccessor } from '../contract/accessors';
 import { ExceptionPolicyEngine, GateEngine, MetricsEngine, PolicyEngine } from '../contract/engines';
 import { IssueEvidenceManager } from '../contract/managers';
-import { jiraError } from '../contract/data/errors';
+import { jiraError, messageOf } from '../contract/data/errors';
 
 export interface IssueEvidenceManagerDeps {
   userJira: JiraIssueAccessor;
@@ -44,13 +44,13 @@ export class DefaultIssueEvidenceManager implements IssueEvidenceManager {
       }
       const facts = { ...read.facts, reworkNotes, codeException };
       return { ok: true, row: this.d.metrics.buildRow(facts, this.d.gates.evaluate(facts)) };
-    } catch (err: any) {
-      return jiraError(undefined, `FourRealities: Failed to query Jira for issue '${issueKey}': ${err?.message || 'network error'}`);
+    } catch (err) {
+      return jiraError(undefined, `FourRealities: Failed to query Jira for issue '${issueKey}': ${messageOf(err, 'network error')}`);
     }
   }
 
   /** Adds a remote link as the user. FourRealities never writes evidence that another app owns. */
-  async linkDecision(caller: CallerContext, payload: any): Promise<{ success: boolean; remoteLink?: any; error?: string }> {
+  async linkDecision(caller: CallerContext, payload: LinkDecisionPayload | undefined): Promise<WriteResult> {
     const issueId = payload?.issueId || caller.issueId;
     if (caller.issueId && payload?.issueId && caller.issueId !== payload.issueId) {
       return { success: false, error: 'Unauthorized: Cannot link decision to external issue.' };
@@ -79,8 +79,8 @@ export class DefaultIssueEvidenceManager implements IssueEvidenceManager {
         return { success: false, error: `You need the Edit issues permission on ${payload?.issueKey || issueId} to add a link.` };
       }
       return { success: false, error: `Jira returned status ${status} linking decision.` };
-    } catch (err: any) {
-      return { success: false, error: err?.message || 'Failed to link architecture decision.' };
+    } catch (err) {
+      return { success: false, error: messageOf(err, 'Failed to link architecture decision.') };
     }
   }
 

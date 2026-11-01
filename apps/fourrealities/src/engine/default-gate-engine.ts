@@ -4,7 +4,7 @@
  * FourRealities: gate evaluation. Pure functions from issue facts to gate results (spec v2, Gates).
  */
 
-import { GateResult, IssueFacts, IssueGates } from '../contract/data/models';
+import { DefinitionGuardRecord, GateResult, IssueFacts, IssueGates, LedgerSealRecord } from '../contract/data/models';
 import { DEFAULT_CATALOG, EVIDENCE_REF_MAX, EvidenceCatalog } from '../contract/data/catalog';
 import { GateEngine } from '../contract/engines';
 
@@ -74,15 +74,17 @@ function isCount(value: unknown): value is number {
 }
 
 /** The shape DefinitionGuard writes: {isFullySatisfied, completedCount, totalCount, checklistHash}. */
-export function isDefinitionGuardShape(dod: any): boolean {
-  return Boolean(dod) && typeof dod.isFullySatisfied === 'boolean'
-    && isCount(dod.completedCount) && isCount(dod.totalCount) && dod.completedCount <= dod.totalCount
+export function isDefinitionGuardShape(value: unknown): value is DefinitionGuardRecord {
+  const dod = (value || {}) as Partial<Record<keyof DefinitionGuardRecord, unknown>>;
+  return Boolean(value) && typeof dod.isFullySatisfied === 'boolean'
+    && isCount(dod.completedCount) && isCount(dod.totalCount) && (dod.completedCount as number) <= (dod.totalCount as number)
     && typeof dod.checklistHash === 'string' && HEX64.test(dod.checklistHash);
 }
 
 /** The shape LedgerSeal writes: status, UUID certificate id, SHA-256 hex hash, ISO seal date. */
-export function isLedgerSealShape(cert: any): boolean {
-  return Boolean(cert) && typeof cert.status === 'string'
+export function isLedgerSealShape(value: unknown): value is LedgerSealRecord {
+  const cert = (value || {}) as Partial<Record<keyof LedgerSealRecord, unknown>>;
+  return Boolean(value) && typeof cert.status === 'string'
     && typeof cert.certificateId === 'string' && UUID.test(cert.certificateId)
     && typeof cert.snapshotHash === 'string' && HEX64.test(cert.snapshotHash)
     && isIsoDate(cert.sealedAt);
@@ -92,8 +94,8 @@ export function isLedgerSealShape(cert: any): boolean {
  * An attestation that carries issuedAt (sibling schema v2) is stale when the issue changed after it.
  * Records without issuedAt cannot be checked for freshness.
  */
-function isStale(record: any, f: IssueFacts): boolean {
-  return isIsoDate(record?.issuedAt) && isIsoDate(f.updated) && Date.parse(f.updated as string) > Date.parse(record.issuedAt);
+function isStale(record: { issuedAt?: string }, f: IssueFacts): boolean {
+  return isIsoDate(record.issuedAt) && isIsoDate(f.updated) && Date.parse(f.updated as string) > Date.parse(record.issuedAt as string);
 }
 
 /**

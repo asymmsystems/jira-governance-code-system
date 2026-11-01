@@ -19,7 +19,11 @@ import {
   Textfield
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
-import { ExceptionDecision, IssueRow } from '../contract/data/models';
+import { DecideExceptionPayload, ExceptionDecision, IssueRow, LinkDecisionPayload, RecordExceptionPayload, WriteResult } from '../contract/data/models';
+import { messageOf } from '../contract/data/errors';
+
+/** The change event a UI Kit Textfield sends. */
+export type TextChange = { target?: { value?: string } };
 
 interface ModalProps {
   issueId: string;
@@ -37,14 +41,14 @@ export const LinkDecisionModal: React.FC<ModalProps> = ({ issueId, issueKey, onC
   const submit = async () => {
     setError(null);
     try {
-      const res: any = await invoke('linkDecision', { issueId, issueKey, url, title });
+      const res = (await invoke<LinkDecisionPayload, WriteResult>('linkDecision', { issueId, issueKey, url, title })) as WriteResult | undefined;
       if (res?.success) {
         onDone(res.row);
       } else {
         setError(res?.error || 'The link was not added.');
       }
-    } catch (err: any) {
-      setError(err?.message || 'The link was not added.');
+    } catch (err) {
+      setError(messageOf(err, 'The link was not added.'));
     }
   };
 
@@ -62,9 +66,9 @@ export const LinkDecisionModal: React.FC<ModalProps> = ({ issueId, issueKey, onC
             </SectionMessage>
           ) : null}
           <Label labelFor="fr-link-url">Page address</Label>
-          <Textfield id="fr-link-url" value={url} onChange={(e: any) => setUrl(e.target?.value || '')} />
+          <Textfield id="fr-link-url" value={url} onChange={(e: TextChange) => setUrl(e.target?.value || '')} />
           <Label labelFor="fr-link-title">Page title</Label>
-          <Textfield id="fr-link-title" value={title} onChange={(e: any) => setTitle(e.target?.value || '')} />
+          <Textfield id="fr-link-title" value={title} onChange={(e: TextChange) => setTitle(e.target?.value || '')} />
         </Stack>
       </ModalBody>
       <ModalFooter>
@@ -83,14 +87,14 @@ export const ExceptionModal: React.FC<ModalProps & { type: 'CODE' | 'REWORK' }> 
   const submit = async () => {
     setError(null);
     try {
-      const res: any = await invoke('recordException', { issueId, issueKey, type, reason, notes });
+      const res = (await invoke<RecordExceptionPayload, WriteResult>('recordException', { issueId, issueKey, type, reason, notes })) as WriteResult | undefined;
       if (res?.success) {
         onDone(res.row);
       } else {
         setError(res?.error || 'The exception was not recorded.');
       }
-    } catch (err: any) {
-      setError(err?.message || 'The exception was not recorded.');
+    } catch (err) {
+      setError(messageOf(err, 'The exception was not recorded.'));
     }
   };
 
@@ -112,9 +116,9 @@ export const ExceptionModal: React.FC<ModalProps & { type: 'CODE' | 'REWORK' }> 
             </SectionMessage>
           ) : null}
           <Label labelFor="fr-exception-reason">Reason</Label>
-          <Textfield id="fr-exception-reason" value={reason} onChange={(e: any) => setReason(e.target?.value || '')} />
+          <Textfield id="fr-exception-reason" value={reason} onChange={(e: TextChange) => setReason(e.target?.value || '')} />
           <Label labelFor="fr-exception-notes">Notes (optional)</Label>
-          <Textfield id="fr-exception-notes" value={notes} onChange={(e: any) => setNotes(e.target?.value || '')} />
+          <Textfield id="fr-exception-notes" value={notes} onChange={(e: TextChange) => setNotes(e.target?.value || '')} />
         </Stack>
       </ModalBody>
       <ModalFooter>
@@ -141,14 +145,14 @@ export const DecisionModal: React.FC<ModalProps & { decision: ExceptionDecision 
   const submit = async () => {
     setError(null);
     try {
-      const res: any = await invoke('decideException', { issueId, issueKey, decision, reason });
+      const res = (await invoke<DecideExceptionPayload, WriteResult>('decideException', { issueId, issueKey, decision, reason })) as WriteResult | undefined;
       if (res?.success) {
         onDone(res.row);
       } else {
         setError(res?.error || 'The decision was not recorded.');
       }
-    } catch (err: any) {
-      setError(err?.message || 'The decision was not recorded.');
+    } catch (err) {
+      setError(messageOf(err, 'The decision was not recorded.'));
     }
   };
 
@@ -165,7 +169,7 @@ export const DecisionModal: React.FC<ModalProps & { decision: ExceptionDecision 
             </SectionMessage>
           ) : null}
           <Label labelFor="fr-decision-reason">{text.field}</Label>
-          <Textfield id="fr-decision-reason" value={reason} onChange={(e: any) => setReason(e.target?.value || '')} />
+          <Textfield id="fr-decision-reason" value={reason} onChange={(e: TextChange) => setReason(e.target?.value || '')} />
         </Stack>
       </ModalBody>
       <ModalFooter>

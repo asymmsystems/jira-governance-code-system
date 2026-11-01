@@ -9,7 +9,7 @@ import { CallerContext, CHUNK_SIZE_HINT, IssueRow, ProjectDashboardView, Project
 import { ExceptionEventAccessor, ReworkNoteAccessor, JiraIssueAccessor, SiteConfigAccessor, SnapshotAccessor } from '../contract/accessors';
 import { ExceptionPolicyEngine, GateEngine, MetricsEngine, SnapshotEngine } from '../contract/engines';
 import { DashboardManager, SnapshotManager } from '../contract/managers';
-import { jiraError } from '../contract/data/errors';
+import { jiraError, messageOf } from '../contract/data/errors';
 
 export interface SnapshotManagerDeps {
   /** Jira as the app: builds the shared snapshot. */
@@ -43,8 +43,8 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
     let config: SiteConfig;
     try {
       config = await this.d.siteConfig.get();
-    } catch (err: any) {
-      return jiraError(undefined, `Live Jira sync failed (${err?.message}).`);
+    } catch (err) {
+      return jiraError(undefined, `Live Jira sync failed (${messageOf(err, 'network error')}).`);
     }
 
     const search = await this.d.jira.searchProject(projectKey, config, deadline);

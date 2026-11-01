@@ -6,6 +6,7 @@
 
 import { route } from '@forge/api';
 import { JiraRequest } from './jira-request';
+import { JiraRemoteLinkJson } from './jira-types';
 
 export const REMOTE_LINK_CONCURRENCY = 8;
 
@@ -18,8 +19,8 @@ export async function readRemoteLinks(
   request: JiraRequest,
   deadline: number,
   concurrency: number = REMOTE_LINK_CONCURRENCY
-): Promise<Map<string, any[]>> {
-  const result = new Map<string, any[]>();
+): Promise<Map<string, JiraRemoteLinkJson[]>> {
+  const result = new Map<string, JiraRemoteLinkJson[]>();
   let next = 0;
   const worker = async () => {
     while (next < issueIds.length && Date.now() < deadline) {

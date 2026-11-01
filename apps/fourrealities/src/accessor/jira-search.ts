@@ -7,6 +7,8 @@
 import { Route, route } from '@forge/api';
 import { JiraRequest } from './jira-request';
 import { PROPERTY_KEYS } from './issue-facts';
+import { JiraIssueJson, JiraSearchPageJson } from './jira-types';
+import { messageOf } from '../contract/data/errors';
 
 /** At most this many issues are read per project. Above it the UI shows "Showing N of M". */
 export const ISSUE_CAP = 2000;
@@ -20,7 +22,7 @@ export function issueFields(devFieldId: string | null): string {
 }
 
 export interface SearchResult {
-  issues: any[];
+  issues: JiraIssueJson[];
   capped: boolean;
   /** Exact count when not capped; approximate count when capped; null when unknown. */
   totalKnown: number | null;
@@ -36,7 +38,7 @@ export async function searchProjectIssues(projectKey: string, devFieldId: string
   const jql = `project = "${projectKey}" ORDER BY created DESC`;
   const fields = issueFields(devFieldId);
   const properties = PROPERTY_KEYS.join(',');
-  const seen = new Map<string, any>();
+  const seen = new Map<string, JiraIssueJson>();
   let token: string | undefined;
   try {
     do {
@@ -46,14 +48,14 @@ export async function searchProjectIssues(projectKey: string, devFieldId: string
       if (res.status !== 200) {
         return { issues: [], capped: false, totalKnown: null, status: res.status, error: `Jira search/jql failed with HTTP ${res.status}` };
       }
-      const data = await res.json();
+      const data = ((await res.json()) || {}) as JiraSearchPageJson;
       for (const iss of data.issues || []) {
         if (seen.size < ISSUE_CAP) seen.set(String(iss.id), iss);
       }
       token = data.isLast ? undefined : data.nextPageToken;
     } while (token && seen.size < ISSUE_CAP && Date.now() < deadline);
-  } catch (err: any) {
-    return { issues: [], capped: false, totalKnown: null, error: err?.message || 'Network error querying Jira search/jql' };
+  } catch (err) {
+    return { issues: [], capped: false, totalKnown: null, error: messageOf(err, 'Network error querying Jira search/jql') };
   }
 
   const issues = Array.from(seen.values());
@@ -68,7 +70,7 @@ async function approximateCount(jql: string, request: JiraRequest): Promise<numb
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ jql })
     });
-    return res.status === 200 ? Number((await res.json())?.count) : null;
+    return res.status === 200 ? Number(((await res.json()) as { count?: number } | null)?.count) : null;
   } catch {
     return null;
   }
@@ -90,7 +92,7 @@ export async function visibleIssueIds(projectKey: string, request: JiraRequest, 
       if (res.status !== 200) {
         return { ids, complete: false, status: res.status };
       }
-      const data = await res.json();
+      const data = ((await res.json()) || {}) as JiraSearchPageJson;
       for (const iss of data.issues || []) ids.add(String(iss.id));
       token = data.isLast ? undefined : data.nextPageToken;
     } while (token && Date.now() < deadline);

@@ -87,6 +87,22 @@ describe('ADR-002 volatility layering', () => {
     expect(hits).toEqual([]);
   });
 
+  it('B-24: every source file carries the Asymm Systems copyright and @author Fahim Farook', () => {
+    const missing = files.filter(f => {
+      const head = fs.readFileSync(f, 'utf8').split('\n').slice(0, 6).join('\n');
+      return !head.includes('Copyright (c) 2026 Asymm Systems') || !head.includes('@author Fahim Farook');
+    }).map(rel);
+    expect(missing).toEqual([]);
+  });
+
+  it('B-24: no source file uses the any type', () => {
+    const uses = files.flatMap(f => fs.readFileSync(f, 'utf8').split('\n')
+      .map((line, i) => ({ line, at: `${rel(f)}:${i + 1}` }))
+      .filter(({ line }) => /:\s*any\b|<any>|\bas any\b|\bany\[\]/.test(line))
+      .map(({ at }) => at));
+    expect(uses).toEqual([]);
+  });
+
   it('production code has no NODE_ENV branch', () => {
     expect(files.filter(f => fs.readFileSync(f, 'utf8').includes('NODE_ENV')).map(rel)).toEqual([]);
   });

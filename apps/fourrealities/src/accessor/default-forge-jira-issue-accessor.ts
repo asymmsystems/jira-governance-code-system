@@ -13,13 +13,15 @@ import { issueFields, searchProjectIssues, visibleIssueIds } from './jira-search
 import { readRemoteLinks } from './remote-links';
 import { factsFromIssue, normalizeRemoteLinks, PROPERTY_KEYS } from './issue-facts';
 import { parseDevField } from './dev-field';
+import { JiraIssueJson, JiraRemoteLinkJson, JiraRequestInit } from './jira-types';
 
 export type Principal = 'user' | 'app';
 
 /** A request function for the principal, with 429 retry inside the deadline. */
 export function requestAs(principal: Principal, deadline: () => number): JiraRequest {
-  const send: JiraRequest = (r: Route, init?: any) =>
-    (principal === 'user' ? api.asUser() : api.asApp()).requestJira(r, init) as any;
+  // The platform response has the status, json and headers that JiraRequest names.
+  const send: JiraRequest = (r: Route, init?: JiraRequestInit) =>
+    (principal === 'user' ? api.asUser() : api.asApp()).requestJira(r, init) as ReturnType<JiraRequest>;
   return withRetry(send, deadline);
 }
 
@@ -33,7 +35,7 @@ export class DefaultForgeJiraIssueAccessor implements JiraIssueAccessor {
 
   async searchProject(projectKey: string, config: SiteConfig, deadline: number): Promise<ProjectSearchResult> {
     const res = await searchProjectIssues(projectKey, config.devFieldId, this.request, deadline);
-    const options = { devFieldId: config.devFieldId, siteHost: config.siteHost || undefined };
+    const options = { devFieldId: config.devFieldId, siteHost: config.siteHost || undefined, statusCategories: config.statusCategories };
     return {
       facts: res.issues.map(iss => factsFromIssue(iss, options)),
       capped: res.capped,
@@ -56,15 +58,15 @@ export class DefaultForgeJiraIssueAccessor implements JiraIssueAccessor {
     if (issueRes.status !== 200) {
       return { status: issueRes.status };
     }
-    const iss = await issueRes.json();
-    let remoteLinks: any[] = [];
+    const iss = (await issueRes.json()) as JiraIssueJson;
+    let remoteLinks: JiraRemoteLinkJson[] = [];
     if (remoteLinksRes && remoteLinksRes.status === 200) {
       try {
         const body = await remoteLinksRes.json();
         remoteLinks = Array.isArray(body) ? body : [];
       } catch {}
     }
-    return { status: 200, facts: factsFromIssue(iss, { remoteLinks, devFieldId: config.devFieldId, siteHost: config.siteHost || undefined }) };
+    return { status: 200, facts: factsFromIssue(iss, { remoteLinks, devFieldId: config.devFieldId, siteHost: config.siteHost || undefined, statusCategories: config.statusCategories }) };
   }
 
   async remoteLinks(issueIds: string[], deadline: number): Promise<Map<string, RemoteLink[]>> {
@@ -77,7 +79,7 @@ export class DefaultForgeJiraIssueAccessor implements JiraIssueAccessor {
     if (res.status !== 200) {
       return { status: res.status };
     }
-    const iss = await res.json();
+    const iss = (await res.json()) as JiraIssueJson | null;
     return { status: 200, issueKey: iss?.key, projectKey: iss?.fields?.project?.key, assigneeAccountId: iss?.fields?.assignee?.accountId };
   }
 
@@ -87,7 +89,7 @@ export class DefaultForgeJiraIssueAccessor implements JiraIssueAccessor {
     if (res.status !== 200) {
       return { status: res.status, granted: false };
     }
-    const body = await res.json();
+    const body = (await res.json()) as { permissions?: Record<string, { havePermission?: boolean }> } | null;
     return { status: 200, granted: body?.permissions?.[permission]?.havePermission === true };
   }
 
@@ -96,7 +98,7 @@ export class DefaultForgeJiraIssueAccessor implements JiraIssueAccessor {
     if (res.status !== 200) {
       return { status: res.status };
     }
-    const iss = await res.json();
+    const iss = (await res.json()) as JiraIssueJson | null;
     const dev = iss?.fields?.[devFieldId];
     return { status: 200, issueKey: iss?.key, summary: parseDevField(typeof dev === 'string' ? dev : undefined) };
   }

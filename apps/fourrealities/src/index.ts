@@ -6,7 +6,7 @@
  */
 
 import Resolver from '@forge/resolver';
-import { CallerContext, ExceptionProperty, IssueRow, ProjectDashboardView, ResolverResult, ScheduledRunResult } from './contract/data/models';
+import { CallerContext, DecideExceptionPayload, ForgeContext, IssueRow, LinkDecisionPayload, ProjectDashboardView, RecordExceptionPayload, ResolverResult, ScheduledRunResult, WriteResult } from './contract/data/models';
 import { StorageProvider } from './contract/accessors';
 import { DefaultForgeKvsStore } from './accessor/default-forge-kvs-store';
 import { DefaultForgeJiraIssueAccessor, Principal } from './accessor/default-forge-jira-issue-accessor';
@@ -76,7 +76,7 @@ export function compose(storageProvider: StorageProvider | undefined, budgetMs: 
 }
 
 /** The parts of the Forge context that Managers use. */
-export function callerOf(context: any): CallerContext {
+export function callerOf(context: ForgeContext | undefined): CallerContext {
   const issue = context?.extension?.issue;
   return {
     accountId: context?.accountId ? String(context.accountId) : undefined,
@@ -90,12 +90,12 @@ export function callerOf(context: any): CallerContext {
  * Project dashboard. Reads the stored snapshot and builds one only when none exists; a page
  * view never writes trend history. The project comes from the Forge context only.
  */
-export async function getProjectDashboard(payload: any, context?: any, storageProvider?: StorageProvider): Promise<ResolverResult<ProjectDashboardView>> {
+export async function getProjectDashboard(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<ResolverResult<ProjectDashboardView>> {
   return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'app').projects.view(callerOf(context), false);
 }
 
 /** Rebuilds the project snapshot now ("Refresh"), inside the resolver time budget. */
-export async function refreshProjectSnapshot(payload: any, context?: any, storageProvider?: StorageProvider): Promise<ResolverResult<ProjectDashboardView>> {
+export async function refreshProjectSnapshot(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<ResolverResult<ProjectDashboardView>> {
   return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'app').projects.view(callerOf(context), true);
 }
 
@@ -111,7 +111,7 @@ export const snapshot = async (): Promise<void> => {
 };
 
 /** Evaluates one Jira issue. The issue comes from the Forge context only. */
-export async function getIssueAlignment(payload: any, context?: any, storageProvider?: StorageProvider): Promise<ResolverResult<{ row: IssueRow }>> {
+export async function getIssueAlignment(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<ResolverResult<{ row: IssueRow }>> {
   return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user').issues.evaluate(callerOf(context));
 }
 
@@ -119,7 +119,7 @@ export async function getIssueAlignment(payload: any, context?: any, storageProv
  * After a successful write from the issue panel, reads the issue again as the user and adds its
  * row, so the panel shows the state Jira returns (B-17, FR-20). A failed read leaves no row.
  */
-async function withRow<T extends { success: boolean }>(app: ReturnType<typeof compose>, caller: CallerContext, result: T): Promise<T & { row?: IssueRow }> {
+async function withRow(app: ReturnType<typeof compose>, caller: CallerContext, result: WriteResult): Promise<WriteResult> {
   if (!result.success || !caller.issueId) return result;
   const evaluated = await app.issues.evaluate(caller);
   return evaluated.ok ? { ...result, row: evaluated.row } : result;
@@ -129,21 +129,21 @@ async function withRow<T extends { success: boolean }>(app: ReturnType<typeof co
  * Remediation Resolvers. FourRealities never writes the LedgerSeal or DefinitionGuard
  * properties: that evidence belongs to the producer apps (one writer per fact).
  */
-export async function linkDecision(payload: any, context?: any, storageProvider?: StorageProvider): Promise<{ success: boolean; remoteLink?: any; error?: string; row?: IssueRow }> {
+export async function linkDecision(payload: LinkDecisionPayload | undefined, context?: ForgeContext, storageProvider?: StorageProvider): Promise<WriteResult> {
   const app = compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user');
   const caller = callerOf(context);
   return withRow(app, caller, await app.issues.linkDecision(caller, payload));
 }
 
 /** Requests a Code exception, or records a rework note. */
-export async function recordException(payload: any, context?: any, storageProvider?: StorageProvider): Promise<{ success: boolean; record?: ExceptionProperty; error?: string; row?: IssueRow }> {
+export async function recordException(payload: RecordExceptionPayload | undefined, context?: ForgeContext, storageProvider?: StorageProvider): Promise<WriteResult> {
   const app = compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user');
   const caller = callerOf(context);
   return withRow(app, caller, await app.exceptions.record(caller, payload));
 }
 
 /** Approves, rejects, revokes or withdraws a Code exception (ADR-001, Option C). */
-export async function decideException(payload: any, context?: any, storageProvider?: StorageProvider): Promise<{ success: boolean; record?: ExceptionProperty; error?: string; row?: IssueRow }> {
+export async function decideException(payload: DecideExceptionPayload | undefined, context?: ForgeContext, storageProvider?: StorageProvider): Promise<WriteResult> {
   const app = compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user');
   const caller = callerOf(context);
   return withRow(app, caller, await app.exceptions.decide(caller, payload));
@@ -152,15 +152,15 @@ export async function decideException(payload: any, context?: any, storageProvid
 /**
  * Rendering hooks for Forge modules.
  */
-export async function renderProjectPage(context: any) {
+export async function renderProjectPage(context: ForgeContext) {
   return { moduleKey: 'fourrealities-project-dashboard', context };
 }
 
-export async function renderIssuePanel(context: any) {
+export async function renderIssuePanel(context: ForgeContext) {
   return { moduleKey: 'fourrealities-issue-panel', context };
 }
 
-export async function renderIssueContext(context: any) {
+export async function renderIssueContext(context: ForgeContext) {
   return { moduleKey: 'fourrealities-issue-context', context };
 }
 

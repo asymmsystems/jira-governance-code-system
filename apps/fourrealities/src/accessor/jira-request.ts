@@ -5,6 +5,7 @@
  */
 
 import { Route } from '@forge/api';
+import { JiraRequestInit } from './jira-types';
 
 const MAX_RETRIES = 3;
 const MAX_WAIT_MS = 5000;
@@ -13,7 +14,7 @@ const MAX_WAIT_MS = 5000;
  * Sends one request as a chosen principal. Callers build the route with the @forge/api route tag,
  * which rejects interpolated values that contain '/', '?' or '#'.
  */
-export type JiraRequest = (path: Route, init?: any) => Promise<{ status: number; json: () => Promise<any>; headers?: { get: (name: string) => string | null } }>;
+export type JiraRequest = (path: Route, init?: JiraRequestInit) => Promise<{ status: number; json: () => Promise<unknown>; headers?: { get: (name: string) => string | null } }>;
 
 const defaultSleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
@@ -22,7 +23,7 @@ const defaultSleep = (ms: number) => new Promise<void>(resolve => setTimeout(res
  * (default 1, at most 5) while the wait still ends before the deadline. Then the 429 is returned.
  */
 export function withRetry(send: JiraRequest, deadline: () => number, sleep: (ms: number) => Promise<void> = defaultSleep): JiraRequest {
-  return async (r: Route, init?: any) => {
+  return async (r: Route, init?: JiraRequestInit) => {
     let res = await send(r, init);
     for (let attempt = 0; attempt < MAX_RETRIES && res.status === 429; attempt++) {
       const header = res.headers?.get('Retry-After');

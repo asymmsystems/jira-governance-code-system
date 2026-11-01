@@ -5,7 +5,7 @@
  */
 
 import { Manager } from './service-types';
-import { CallerContext, ExceptionProperty, IssueRow, ProjectDashboardView, ProjectSummary, ResolverResult, ScheduledRunResult, SnapshotMeta } from './data/models';
+import { CallerContext, DecideExceptionPayload, IssueRow, LinkDecisionPayload, ProjectDashboardView, ProjectSummary, RecordExceptionPayload, ResolverResult, ScheduledRunResult, SnapshotMeta, WriteResult } from './data/models';
 
 export interface DashboardManager extends Manager {
   /** Stored snapshot (built once when absent), filtered to what the viewer can browse. */
@@ -14,14 +14,14 @@ export interface DashboardManager extends Manager {
 
 export interface IssueEvidenceManager extends Manager {
   evaluate(caller: CallerContext): Promise<ResolverResult<{ row: IssueRow }>>;
-  linkDecision(caller: CallerContext, payload: any): Promise<{ success: boolean; remoteLink?: any; error?: string }>;
+  linkDecision(caller: CallerContext, payload: LinkDecisionPayload | undefined): Promise<WriteResult>;
 }
 
 export interface ExceptionManager extends Manager {
   /** Requests a Code exception, or records a rework note. */
-  record(caller: CallerContext, payload: any): Promise<{ success: boolean; record?: ExceptionProperty; error?: string }>;
+  record(caller: CallerContext, payload: RecordExceptionPayload | undefined): Promise<WriteResult>;
   /** Approves, rejects, revokes or withdraws a Code exception (ADR-001, Option C). */
-  decide(caller: CallerContext, payload: any): Promise<{ success: boolean; record?: ExceptionProperty; error?: string }>;
+  decide(caller: CallerContext, payload: DecideExceptionPayload | undefined): Promise<WriteResult>;
 }
 
 export interface SnapshotManager extends Manager {

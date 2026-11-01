@@ -5,10 +5,11 @@
  * rework note (ADR-001 Patterns 3, 5, Option C). Orchestration only; rules live in the Engines.
  */
 
-import { CallerContext, ExceptionDecision, ExceptionProperty, GateExceptionEvent, GateExceptionState, ReworkNote } from '../contract/data/models';
+import { CallerContext, DecideExceptionPayload, ExceptionDecision, RecordExceptionPayload, ExceptionProperty, GateExceptionEvent, GateExceptionState, ReworkNote } from '../contract/data/models';
 import { ExceptionEventAccessor, ReworkNoteAccessor, JiraIssueAccessor, SiteConfigAccessor } from '../contract/accessors';
 import { ExceptionPolicyEngine, PolicyEngine } from '../contract/engines';
 import { ExceptionManager } from '../contract/managers';
+import { messageOf } from '../contract/data/errors';
 
 const DECISIONS: ExceptionDecision[] = ['APPROVE', 'REJECT', 'REVOKE', 'WITHDRAW'];
 
@@ -33,7 +34,7 @@ export class DefaultExceptionManager implements ExceptionManager {
     return (this.d.now || (() => new Date()))().toISOString();
   }
 
-  async record(caller: CallerContext, payload: any): Promise<Result> {
+  async record(caller: CallerContext, payload: RecordExceptionPayload | undefined): Promise<Result> {
     const issueId = payload?.issueId || caller.issueId;
     if (caller.issueId && payload?.issueId && caller.issueId !== payload.issueId) {
       return { success: false, error: 'Unauthorized: Cannot record exception on external issue.' };
@@ -65,8 +66,8 @@ export class DefaultExceptionManager implements ExceptionManager {
         issueKey = String(prs.issueKey || issueKey);
         pullRequestCount = prs.summary?.count || 0;
       }
-    } catch (err: any) {
-      return { success: false, error: err?.message || 'Failed to check the issue.' };
+    } catch (err) {
+      return { success: false, error: messageOf(err, 'Failed to check the issue.') };
     }
 
     const accountId = String(caller.accountId || 'unknown-user');
@@ -94,7 +95,7 @@ export class DefaultExceptionManager implements ExceptionManager {
     return this.commit(event, events, earlier);
   }
 
-  async decide(caller: CallerContext, payload: any): Promise<Result> {
+  async decide(caller: CallerContext, payload: DecideExceptionPayload | undefined): Promise<Result> {
     const issueId = payload?.issueId || caller.issueId;
     if (caller.issueId && payload?.issueId && caller.issueId !== payload.issueId) {
       return { success: false, error: 'Unauthorized: Cannot change an exception on an external issue.' };
@@ -132,8 +133,8 @@ export class DefaultExceptionManager implements ExceptionManager {
         }
         isProjectAdmin = permission.granted;
       }
-    } catch (err: any) {
-      return { success: false, error: err?.message || 'Failed to check the issue.' };
+    } catch (err) {
+      return { success: false, error: messageOf(err, 'Failed to check the issue.') };
     }
 
     const events = await this.d.events.list(String(issueId));
@@ -178,8 +179,8 @@ export class DefaultExceptionManager implements ExceptionManager {
         return { success: false, error: `Jira returned status ${status} recording the exception.` };
       }
       return undefined;
-    } catch (err: any) {
-      return { success: false, error: err?.message || 'Failed to record exception.' };
+    } catch (err) {
+      return { success: false, error: messageOf(err, 'Failed to record exception.') };
     }
   }
 

@@ -13,7 +13,7 @@ export class DefaultForgeKvsStore implements StorageProvider {
     return val as T;
   }
 
-  async set(key: string, value: any): Promise<void> {
+  async set(key: string, value: unknown): Promise<void> {
     await kvs.set(key, value);
   }
 

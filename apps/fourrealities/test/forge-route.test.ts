@@ -36,6 +36,7 @@ const issue = { id: '60001', key: 'DEMO-60', fields: { summary: 'S', status: { n
 
 function respond(path: string): any {
   if (path === '/rest/api/3/field') return { status: 200, json: async () => [{ id: 'customfield_10000', name: 'Development' }] };
+if (path === '/rest/api/3/status') return { status: 200, json: async () => [{ id: '1', statusCategory: { key: 'new' } }, { id: '3', statusCategory: { key: 'indeterminate' } }] };
   if (path === '/rest/api/3/serverInfo') return { status: 200, json: async () => ({ baseUrl: 'https://asymmsystems.atlassian.net' }) };
   if (path.startsWith('/rest/api/3/search/jql')) return { status: 200, json: async () => ({ issues: [issue] }) };
   if (path.endsWith('/remotelink')) return { status: 200, json: async () => [] };
@@ -53,7 +54,7 @@ describe('resolvers build valid Forge routes', () => {
   it('reads the issue panel with an empty site-config cache', async () => {
     const res: any = await getIssueAlignment({}, { extension: { issue: { id: '60001', key: 'DEMO-60' } } }, new MapStorage());
     expect(res.ok).toBe(true);
-    expect(mockRequests.map(r => r.path)).toEqual(expect.arrayContaining(['/rest/api/3/field', '/rest/api/3/serverInfo', '/rest/api/3/issue/60001/remotelink']));
+    expect(mockRequests.map(r => r.path)).toEqual(expect.arrayContaining(['/rest/api/3/field', '/rest/api/3/status', '/rest/api/3/serverInfo', '/rest/api/3/issue/60001/remotelink']));
   });
 
   it('reads the dashboard with remote links for started issues', async () => {

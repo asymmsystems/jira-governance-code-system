@@ -25,7 +25,7 @@ import {
 /** Key-value storage as seen by the KVS Accessors. Test fakes implement it. */
 export interface StorageProvider {
   get<T>(key: string): Promise<T | undefined>;
-  set(key: string, value: any): Promise<void>;
+  set(key: string, value: unknown): Promise<void>;
   delete(key: string): Promise<void>;
   /** One page (at most 100) of keys that start with the prefix. */
   queryPrefix<T>(prefix: string, cursor?: string): Promise<{ results: Array<{ key: string; value: T }>; nextCursor?: string }>;

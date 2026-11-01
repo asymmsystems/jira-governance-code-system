@@ -33,10 +33,31 @@ describe('getSiteConfig', () => {
     const first = await getSiteConfig(storage, request, NOW);
     expect(first.devFieldId).toBe('customfield_10042');
     expect((await storage.get(SITE_CONFIG_KEY)).devFieldId).toBe('customfield_10042');
-    expect(request.mock.calls.map(c => pathOf(c[0]))).toEqual(['/rest/api/3/field', '/rest/api/3/serverInfo']);
+    expect(request.mock.calls.map(c => pathOf(c[0]))).toEqual(['/rest/api/3/field', '/rest/api/3/status', '/rest/api/3/serverInfo']);
     const second = await getSiteConfig(storage, request, NOW + 60_000);
     expect(second.devFieldId).toBe('customfield_10042');
-    expect(request).toHaveBeenCalledTimes(2);
+    expect(request).toHaveBeenCalledTimes(3);
+  });
+
+  it('B-24: reads the status category of every status id, and reads again a cache that lacks them', async () => {
+    const statuses = [{ id: '1', statusCategory: { key: 'new' } }, { id: '10002', statusCategory: { key: 'done' } }, { id: '7' }, { statusCategory: { key: 'done' } }];
+    const request = jest.fn((r: any) => Promise.resolve(pathOf(r) === '/rest/api/3/status'
+      ? { status: 200, json: async () => statuses }
+      : { status: 200, json: async () => fields }));
+    const storage = new MapStorage();
+    await storage.set(SITE_CONFIG_KEY, { devFieldId: 'customfield_1', siteHost: null, readAt: '2026-11-01T09:00:00.000Z' });
+    const config = await getSiteConfig(storage, request, NOW);
+    expect(config.statusCategories).toEqual({ '1': 'new', '10002': 'done' });
+    expect(config.devFieldId).toBe('customfield_10042');
+  });
+
+  it('B-24: throws when Jira refuses the status list, and caches nothing', async () => {
+    const storage = new MapStorage();
+    const request = jest.fn((r: any) => Promise.resolve(pathOf(r) === '/rest/api/3/status'
+      ? { status: 403, json: async () => ({}) }
+      : { status: 200, json: async () => fields }));
+    await expect(getSiteConfig(storage, request, NOW)).rejects.toThrow('Jira returned HTTP 403 reading the status list.');
+    expect(await storage.get(SITE_CONFIG_KEY)).toBeUndefined();
   });
 
   it('finds the field by its custom type when the name differs', async () => {
@@ -53,7 +74,7 @@ describe('getSiteConfig', () => {
 
   it('reads the field list again after 24 hours', async () => {
     const storage = new MapStorage();
-    await storage.set(SITE_CONFIG_KEY, { devFieldId: 'customfield_1', readAt: '2026-10-31T09:00:00.000Z' });
+    await storage.set(SITE_CONFIG_KEY, { devFieldId: 'customfield_1', statusCategories: {}, readAt: '2026-10-31T09:00:00.000Z' });
     const request = jest.fn().mockResolvedValue({ status: 200, json: async () => fields });
     expect((await getSiteConfig(storage, request, NOW)).devFieldId).toBe('customfield_10042');
   });

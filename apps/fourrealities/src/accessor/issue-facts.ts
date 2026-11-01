@@ -6,54 +6,35 @@
 
 import { ExceptionRecord, IssueExceptionRecord, IssueFacts, RemoteLink, StatusCategory } from '../contract/data/models';
 import { parseDevField } from './dev-field';
+import { JiraChangelogJson, JiraIssueJson, JiraIssueLinkJson, JiraRemoteLinkJson, JiraStatusJson } from './jira-types';
 
 /** Issue properties read in one search or issue call. Only the producers' own keys. */
 export const PROPERTY_KEYS = ['ledgerseal-cert', 'definitionguard-dod', 'checklist'];
 
 /**
- * Analyzes issue changelog histories for status transitions and rework bounces.
- * Detects regressions from review/testing/done stages back into development.
+ * Counts status changes and rework loops from the changelog. A rework loop is a move from a
+ * status in category done to one that is not done, or from in progress back to to do. Categories
+ * come from the site's status list by status id; status names are never read (B-24, FR-25).
  */
-export function analyzeIssueChangelog(changelog: any): { statusChanges: number; reworkLoops: number } {
-  if (!changelog || !Array.isArray(changelog.histories)) {
-    return { statusChanges: 0, reworkLoops: 0 };
-  }
-
+export function analyzeIssueChangelog(changelog: JiraChangelogJson | null | undefined, categories: Readonly<Record<string, StatusCategory>>): { statusChanges: number; reworkLoops: number } {
   let statusChanges = 0;
   let reworkLoops = 0;
-
-  // Stages that indicate verification or completion
-  const reviewCategoryWords = ['review', 'in review', 'qa', 'testing', 'verification', 'uat', 'test'];
-  const doneCategoryWords = ['done', 'resolved', 'closed', 'complete', 'completed', 'shipped'];
-
-  // Stages that indicate development rework or reopening
-  const reworkTargetWords = ['in progress', 'to do', 'open', 'backlog', 'reopened', 'draft'];
-
-  for (const history of changelog.histories) {
-    if (!Array.isArray(history.items)) continue;
-    for (const item of history.items) {
-      if (item.field === 'status') {
-        statusChanges++;
-        const fromStatus = String(item.fromString || '').toLowerCase();
-        const toStatus = String(item.toString || '').toLowerCase();
-
-        const wasInReviewOrTesting = reviewCategoryWords.some(w => fromStatus.includes(w));
-        const wasDone = doneCategoryWords.some(w => fromStatus.includes(w));
-        const becameRework = reworkTargetWords.some(w => toStatus.includes(w));
-
-        // Rework bounce: moved from review/testing or done back to open/in progress
-        if ((wasInReviewOrTesting || wasDone) && becameRework) {
-          reworkLoops++;
-        }
+  for (const history of changelog?.histories || []) {
+    for (const item of history.items || []) {
+      if (item.field !== 'status') continue;
+      statusChanges++;
+      const from = categories[String(item.from)];
+      const to = categories[String(item.to)];
+      if ((from === 'done' && to !== undefined && to !== 'done') || (from === 'indeterminate' && to === 'new')) {
+        reworkLoops++;
       }
     }
   }
-
   return { statusChanges, reworkLoops };
 }
 
 /** Status category key from Jira; falls back to the category name for older payloads. */
-export function statusCategoryOf(status: any): StatusCategory {
+export function statusCategoryOf(status: JiraStatusJson | undefined): StatusCategory {
   const key = status?.statusCategory?.key;
   if (key === 'new' || key === 'indeterminate' || key === 'done') {
     return key;
@@ -65,10 +46,11 @@ export function statusCategoryOf(status: any): StatusCategory {
 }
 
 /** Reads a v1 ({type, reason, ...}) or v2 exception record into the v2 shape. */
-export function normalizeException(record: any): ExceptionRecord | undefined {
-  if (!record || typeof record !== 'object') {
+export function normalizeException(value: unknown): ExceptionRecord | undefined {
+  if (!value || typeof value !== 'object') {
     return undefined;
   }
+  const record = value as { schemaVersion?: number };
   if (record.schemaVersion === 2) {
     return record as ExceptionRecord;
   }
@@ -86,8 +68,8 @@ export function normalizeException(record: any): ExceptionRecord | undefined {
 }
 
 /** Jira remote link objects to contract RemoteLinks. */
-export function normalizeRemoteLinks(raw: any[]): RemoteLink[] {
-  return raw.map((rl: any) => ({
+export function normalizeRemoteLinks(raw: JiraRemoteLinkJson[]): RemoteLink[] {
+  return raw.map(rl => ({
     url: rl?.object?.url ?? rl?.url,
     title: rl?.object?.title ?? rl?.title,
     applicationType: rl?.application?.type
@@ -95,19 +77,21 @@ export function normalizeRemoteLinks(raw: any[]): RemoteLink[] {
 }
 
 export interface FactOptions {
-  remoteLinks?: any[];
+  remoteLinks?: JiraRemoteLinkJson[];
   siteHost?: string;
   /** Id of the Development field from the site configuration; null or absent when the site has none. */
   devFieldId?: string | null;
+  /** Status id to category key, from the site configuration. */
+  statusCategories?: Readonly<Record<string, StatusCategory>>;
 }
 
-export function factsFromIssue(iss: any, options: FactOptions = {}): IssueFacts {
+export function factsFromIssue(iss: JiraIssueJson | undefined, options: FactOptions = {}): IssueFacts {
   const fields = iss?.fields || {};
-  const { statusChanges, reworkLoops } = analyzeIssueChangelog(iss?.changelog);
+  const { statusChanges, reworkLoops } = analyzeIssueChangelog(iss?.changelog, options.statusCategories || {});
   const sprintField = Array.isArray(fields.customfield_10020) ? fields.customfield_10020 : [];
   const sprintNames: string[] = [
     ...(fields.sprint?.name ? [String(fields.sprint.name)] : []),
-    ...sprintField.map((s: any) => s?.name).filter(Boolean).map(String)
+    ...sprintField.map(s => s?.name).filter(Boolean).map(String)
   ];
   const devFieldId = options.devFieldId ?? null;
   // Present means the site has a Development field; an issue response may omit an empty value.
@@ -127,7 +111,7 @@ export function factsFromIssue(iss: any, options: FactOptions = {}): IssueFacts 
     started: statusCategory !== 'new' || statusChanges > 0,
     statusChanges,
     reworkLoops,
-    issueLinks: (Array.isArray(fields.issuelinks) ? fields.issuelinks : []).map((link: any) => {
+    issueLinks: (Array.isArray(fields.issuelinks) ? fields.issuelinks : []).map((link: JiraIssueLinkJson) => {
       const linked = link.inwardIssue || link.outwardIssue;
       return {
         key: linked?.key,

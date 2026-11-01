@@ -48,6 +48,7 @@ function jira(issues: any[], remote: (id: string) => any = () => ({ status: 200,
   return jest.fn(async (r: any) => {
     const path = pathOf(r);
     if (path === '/rest/api/3/field') return { status: 200, json: async () => [{ id: 'customfield_10000', name: 'Development' }] };
+    if (path === '/rest/api/3/status') return { status: 200, json: async () => [{ id: '1', statusCategory: { key: 'new' } }, { id: '10002', statusCategory: { key: 'done' } }] };
     if (path === '/rest/api/3/serverInfo') return { status: 200, json: async () => ({ baseUrl: 'https://asymmsystems.atlassian.net' }) };
     if (path.startsWith('/rest/api/3/search/jql')) return { status: 200, json: async () => ({ issues, isLast: true }) };
     const m = /\/rest\/api\/3\/issue\/(\w+)\/remotelink/.exec(path);
@@ -98,6 +99,7 @@ describe('buildSnapshot', () => {
       const path = pathOf(r);
       if (path === '/rest/api/3/field') return { status: 200, json: async () => [] };
       if (path === '/rest/api/3/serverInfo') return { status: 200, json: async () => ({}) };
+      if (path === '/rest/api/3/status') return { status: 200, json: async () => [] };
       return { status: 403, json: async () => ({}) };
     });
     const res: any = await buildSnapshot({ projectKey: 'DEMO', storage, request, deadline: Date.now() + 60_000, generatedBy: 'a', now });

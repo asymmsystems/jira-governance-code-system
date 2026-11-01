@@ -7,7 +7,10 @@
 import React, { useEffect, useState } from 'react';
 import { Inline, SectionMessage, Spinner, Text } from '@forge/react';
 import { invoke, view } from '@forge/bridge';
-import { IssueRow, ProjectDashboardView } from '../contract/data/models';
+import { ForgeContext, IssueRow, ProjectDashboardView, ResolverError } from '../contract/data/models';
+
+/** What the load resolvers return: an error envelope, an issue row, or a dashboard view. */
+type LoadResult = { ok?: boolean; row?: IssueRow; error?: ResolverError } & Partial<ProjectDashboardView>;
 import { IssuePanel } from './issue-panel';
 import { ProjectDashboard } from './project-dashboard';
 import { errorText } from '../ui/triage';
@@ -24,19 +27,19 @@ export const FourRealitiesApp: React.FC = () => {
     setLoading(true);
     setErrorMessage(null);
     try {
-      const context: any = await view.getContext().catch(() => null);
+      const context = (await view.getContext().catch(() => null)) as ForgeContext | null;
       const issueView = Boolean(context?.extension?.issue);
       setIsIssueView(issueView);
       const resolver = issueView ? 'getIssueAlignment' : refresh ? 'refreshProjectSnapshot' : 'getProjectDashboard';
-      const res: any = await invoke(resolver, {});
+      const res = (await invoke<Record<string, never>, LoadResult>(resolver, {})) as LoadResult | undefined;
       if (!res?.ok) {
         setErrorMessage(errorText(res, 'Failed to load delivery evidence.'));
       } else if (issueView) {
-        setRow(res.row);
+        setRow(res.row || null);
       } else {
         setDashboard(res as ProjectDashboardView);
       }
-    } catch (err: any) {
+    } catch (err) {
       setErrorMessage(errorText(err, 'Failed to load delivery evidence.'));
     } finally {
       setLoading(false);

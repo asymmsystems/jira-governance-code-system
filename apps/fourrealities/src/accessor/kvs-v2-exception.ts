@@ -9,7 +9,7 @@ import { ExceptionRecord } from '../contract/data/models';
 import { StorageProvider } from '../contract/accessors';
 import { normalizeException } from './issue-facts';
 
-export type KeyValue = { key: string; value: any };
+export type KeyValue = { key: string; value: unknown };
 
 export function v2Key(issueId: string): string {
   return `fr:issue:${issueId}:exception`;
@@ -20,7 +20,7 @@ export async function queryAll(storage: StorageProvider, prefix: string): Promis
   const all: KeyValue[] = [];
   let cursor: string | undefined;
   do {
-    const page: { results: KeyValue[]; nextCursor?: string } = await storage.queryPrefix<any>(prefix, cursor);
+    const page: { results: KeyValue[]; nextCursor?: string } = await storage.queryPrefix<unknown>(prefix, cursor);
     all.push(...page.results);
     cursor = page.nextCursor;
   } while (cursor);

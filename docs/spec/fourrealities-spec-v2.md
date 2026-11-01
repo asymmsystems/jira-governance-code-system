@@ -228,7 +228,7 @@ Audit and Process show "Source: LedgerSeal property ledgerseal-cert" or "Source:
 - **Risk:** RAI below 50 is CRITICAL, below 70 HIGH, below 85 MEDIUM, otherwise LOW. UNRATED issues have risk UNRATED.
 - **Recoverable points:** for the first MISSING gate in the order Intent, Code, Process, Audit, recompute RAI with that gate FOUND and subtract the current RAI. 0 when no gate is MISSING.
 - **M11 intent rate** = intent FOUND / (intent FOUND + intent MISSING) x 100, rounded. **M29 pull request rate (heuristic)**, **DoD rate** and **seal rate** use the same formula on their gates. The value is `null` when the denominator is 0, and the UI shows "n/a".
-- **M30 rework rate** = started issues with at least one rework loop / started issues x 100, rounded; `null` when no issue is started. A rework loop is a status change from a status in category `done`, or from a status whose name contains "review", "qa" or "test", to a status in category `new` or `indeterminate`. The changelog item carries status ids (`from`, `to`); categories come from `/rest/api/3/status` when available, else the names (Decision D-7).
+- **M30 rework rate** = started issues with at least one rework loop / started issues x 100, rounded; `null` when no issue is started. A rework loop is a status change from category `done` to `new` or `indeterminate`, or from `indeterminate` to `new`. The changelog item carries status ids (`from`, `to`); their categories come from `GET /rest/api/3/status` (scope `read:jira-work`), cached in `fr:cfg:site`. Status names are never read, and a status id missing from that list counts no rework (Decision D-7). A move between two statuses of the same category, for example "In Review" back to "In Progress" (both `indeterminate`), is not a rework loop: Jira gives no category that tells them apart.
 - **averageRAI** = rounded mean RAI over rated issues; `null` when none is rated.
 - Counts shown in the UI come from the gate counts, never from a rounded percentage.
 
@@ -275,7 +275,7 @@ Filters combine with AND. Each active filter has its own "Remove filter: ..." bu
 | `fr:note:{issueId}:{recordedAt}:{seq}` | one `ReworkNote`, written once; a rework note never changes a gate | under 2 KiB each (reason 500 chars, notes 1,000 chars) |
 | `fr:issue:{issueId}:exception` | `ExceptionRecord` (v1 or v2), read for migration only | removed by the scheduled run |
 | `fr:ex:{issueId}:code:{at}:{seq}` | one `GateExceptionEvent`, written once | under 2 KiB each |
-| `fr:cfg:site` | `{ devFieldId: string or null, siteHost: string, readAt }` | under 1 KiB |
+| `fr:cfg:site` | `{ devFieldId: string or null, siteHost: string or null, statusCategories: { [statusId]: category }, readAt }`; a cache without `statusCategories` is read again | under 16 KiB (about 30 bytes per status) |
 
 The snapshot is rebuilt by writing new chunks, then the meta. A reader that finds a chunk missing treats the snapshot as absent and rebuilds.
 
@@ -326,7 +326,7 @@ The gate evaluation pipeline, for one issue:
 | D-4 | Snapshots are built as the app and filtered per viewer at read time | Build per viewer as the user | One shared snapshot keeps reads bounded; per-viewer filtering closes FR-18. Visible-row summaries avoid leaking counts. The trend is labelled project-wide. |
 | D-5 | Store gate results as reason codes; the UI renders the text | Store full text | Keeps 100 rows per chunk well under the size budget. |
 | D-6 | Delete v1 history keys on first v2 build | Keep and ignore | v1 history can exceed 240 KiB and is never read again. Owner approved [MIGRATE]. |
-| D-7 | Rework detection uses status categories when the changelog gives ids, else names | Names only (v1) | FR-25 asks for category ids. Changelog items carry status ids. |
+| D-7 | Rework detection uses status categories by status id only; names are never read (B-24) | Names only (v1); categories with a name fallback (first v2 text) | FR-25 and B-24 ask for `statusCategory.key`, not name substrings. Changelog items carry status ids. Cost: a move inside one category is not counted. |
 | D-8 | Keep `write:jira-work` | Drop `linkDecision` and `recordException` to go read-only | Both are honest user actions. The listing states the scope exactly. |
 | D-9 | "Not applicable: producer not installed" is not shown | Detect installed apps | No supported call tells one Forge app that another is installed. An absent record on a Done issue is MISSING with the text "No LedgerSeal record", and NOT_APPLICABLE before Done. |
 | D-10 | Licence check blocks only `isActive === false` | Block when undefined | Development and free installs have no licence object. |

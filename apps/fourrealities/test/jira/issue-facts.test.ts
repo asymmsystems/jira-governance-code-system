@@ -6,18 +6,32 @@
 
 import { analyzeIssueChangelog, factsFromIssue, normalizeException, statusCategoryOf } from '../../src/accessor/issue-facts';
 
-describe('analyzeIssueChangelog', () => {
-  it('counts status changes and rework loops', () => {
-    expect(analyzeIssueChangelog(null)).toEqual({ statusChanges: 0, reworkLoops: 0 });
-    expect(analyzeIssueChangelog({ histories: [{ items: null }] })).toEqual({ statusChanges: 0, reworkLoops: 0 });
-    const changelog: any = {
+describe('analyzeIssueChangelog (B-24: status categories, never status names)', () => {
+  // Status ids to category keys, as read from GET /rest/api/3/status.
+  const categories = { '1': 'new', '3': 'indeterminate', '10001': 'indeterminate', '10002': 'done', '10003': 'indeterminate' } as const;
+  const move = (from: string, to: string, fromString = 'x', toString = 'y') => ({ items: [{ field: 'status', from, to, fromString, toString }] });
+
+  it('counts status changes, and a rework loop for done to not done and for in progress back to to do', () => {
+    expect(analyzeIssueChangelog(null, categories)).toEqual({ statusChanges: 0, reworkLoops: 0 });
+    expect(analyzeIssueChangelog({ histories: [{ items: null }] }, categories)).toEqual({ statusChanges: 0, reworkLoops: 0 });
+    const changelog = {
       histories: [
-        { items: [{ field: 'status', fromString: 'To Do', toString: 'In Progress' }] },
-        { items: [{ field: 'status', fromString: 'In Review', toString: 'In Progress' }] },
-        { items: [{ field: 'status', fromString: 'Done', toString: 'Reopened' }, { field: 'summary' }] }
+        move('1', '3'),
+        move('10002', '10003'),
+        move('3', '1'),
+        { items: [{ field: 'summary' }] }
       ]
     };
-    expect(analyzeIssueChangelog(changelog)).toEqual({ statusChanges: 3, reworkLoops: 2 });
+    expect(analyzeIssueChangelog(changelog, categories)).toEqual({ statusChanges: 3, reworkLoops: 2 });
+  });
+
+  it('ignores the status names, so a name with "review" or "reopened" counts nothing by itself', () => {
+    const named = { histories: [move('10001', '3', 'In Review', 'In Progress'), move('3', '10003', 'In Progress', 'Reopened')] };
+    expect(analyzeIssueChangelog(named, categories)).toEqual({ statusChanges: 2, reworkLoops: 0 });
+  });
+
+  it('counts no rework for a status id it does not know', () => {
+    expect(analyzeIssueChangelog({ histories: [move('999', '1')] }, categories)).toEqual({ statusChanges: 1, reworkLoops: 0 });
   });
 });
 

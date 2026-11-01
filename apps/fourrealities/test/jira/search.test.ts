@@ -142,3 +142,16 @@ describe('visibleIssueIds', () => {
     expect((await visibleIssueIds('DEMO', thrown, Date.now() + 10_000)).complete).toBe(false);
   });
 });
+
+describe('B-24: a 200 with an empty body', () => {
+  const { visibleIssueIds } = require('../../src/accessor/jira-search');
+  const empty = () => jest.fn(async () => ({ status: 200, json: async () => null }));
+
+  it('reads as no issues and the last page, for both searches', async () => {
+    expect(await searchProjectIssues('DEMO', null, empty(), Date.now() + 10_000)).toEqual({ issues: [], capped: false, totalKnown: 0 });
+    expect(await visibleIssueIds('DEMO', empty(), Date.now() + 10_000)).toEqual({ ids: new Set(), complete: true });
+    const noIssues = jest.fn(async () => ({ status: 200, json: async () => ({ isLast: true }) }));
+    expect((await searchProjectIssues('DEMO', null, noIssues, Date.now() + 10_000)).issues).toEqual([]);
+    expect((await visibleIssueIds('DEMO', noIssues, Date.now() + 10_000)).ids.size).toBe(0);
+  });
+});

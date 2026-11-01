@@ -42,7 +42,7 @@ Status: approved. Part B in progress on branch `feature/fourrealities-research-b
 | B-21 | RAI shown as a secondary number, with its parts | H5 | FR-15 (label), H5 | S | none; DONE 2026-11-01 |
 | B-22 | Pure UI logic in modules; per-file coverage | PX-03 | PX-03, FR-22 | M | none; DONE 2026-11-01 |
 | B-23 | Marketplace licensing | PX-01 | PX-01 | S | [MANIFEST] |
-| B-24 | Code hygiene: headers, unused dependency, typed payloads | Portfolio rules | FR-25 | S | [DEP] (removal) |
+| B-24 | Code hygiene: headers, unused dependency, typed payloads | Portfolio rules | FR-25 | S | [DEP] (removal); DONE 2026-11-01 |
 | B-25 | Read the HeroCoders `checklist` property as a labelled DoD hint | U7, H6 | NF-08 | M | none |
 | B-26 | Verify signed LedgerSeal and DefinitionGuard v2 properties | U1, U7 | audit 5.1 to 5.3 | L | [OTHER-APP] (blocked) |
 | B-27 | Code gate from Teamwork Graph approvals | U4 | H11 | L | [SCOPE] (blocked by platform) |

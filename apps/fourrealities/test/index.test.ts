@@ -69,7 +69,7 @@ jest.mock('@forge/kvs', () => ({
 
 /** Starts with a cached site configuration, so tests do not need a field-list call. */
 class MockStorage implements StorageProvider {
-  private store: Map<string, any> = new Map([['fr:cfg:site', { devFieldId: 'customfield_10000', siteHost: 'asymmsystems.atlassian.net', readAt: new Date().toISOString() }]]);
+  private store: Map<string, any> = new Map([['fr:cfg:site', { devFieldId: 'customfield_10000', siteHost: 'asymmsystems.atlassian.net', statusCategories: {}, readAt: new Date().toISOString() }]]);
 
   async get<T>(key: string): Promise<T | undefined> {
     return this.store.get(key);
@@ -286,7 +286,7 @@ describe('FourRealities Index / Forge Handlers', () => {
         title: 'ADR-014: Architecture Decision'
       }, { extension: { issue: { id: 'iss-1' } } });
       expect(res.success).toBe(true);
-      expect(res.remoteLink.title).toBe('ADR-014: Architecture Decision');
+      expect((res.remoteLink as { title?: string }).title).toBe('ADR-014: Architecture Decision');
 
       // Fails on missing issueId
       const failNoId = await linkDecision({});
@@ -683,19 +683,22 @@ describe('B-10: one Code-gate path from the Development field', () => {
     await storage.delete('fr:cfg:site');
     mockRequestJira
       .mockResolvedValueOnce({ status: 200, json: async () => [{ id: 'customfield_10042', name: 'Development' }] })
+      .mockResolvedValueOnce({ status: 200, json: async () => [{ id: '3', statusCategory: { key: 'indeterminate' } }] })
       .mockResolvedValueOnce({ status: 200, json: async () => ({ baseUrl: 'https://asymmsystems.atlassian.net' }) })
       .mockResolvedValueOnce({ status: 200, json: async () => ({ ...issue, fields: { ...issue.fields, customfield_10042: merged } }) })
       .mockResolvedValueOnce({ status: 200, json: async () => [] });
     const res: any = await getIssueAlignment({}, { extension: { issue: { id: '40001', key: 'DEMO-40' } } }, storage);
     expect(mockUserRequestJira.mock.calls[0][0]).toBe('/rest/api/3/field');
-    expect(mockUserRequestJira.mock.calls[1][0]).toBe('/rest/api/3/serverInfo');
-    expect(String(mockUserRequestJira.mock.calls[2][0])).toContain('customfield_10042');
+    expect(mockUserRequestJira.mock.calls[1][0]).toBe('/rest/api/3/status');
+    expect(mockUserRequestJira.mock.calls[2][0]).toBe('/rest/api/3/serverInfo');
+    expect(String(mockUserRequestJira.mock.calls[3][0])).toContain('customfield_10042');
+    expect((await storage.get<any>('fr:cfg:site')).statusCategories).toEqual({ '3': 'indeterminate' });
     expect(res.row.gates.code.reason).toBe('PR_MERGED');
   });
 
   it('shows Not applicable when the site has no Development field', async () => {
     const storage = new MockStorage();
-    await storage.set('fr:cfg:site', { devFieldId: null, readAt: new Date().toISOString() });
+    await storage.set('fr:cfg:site', { devFieldId: null, statusCategories: {}, readAt: new Date().toISOString() });
     mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => issue }).mockResolvedValueOnce({ status: 200, json: async () => [] });
     const res: any = await getIssueAlignment({}, { extension: { issue: { id: '40001', key: 'DEMO-40' } } }, storage);
     expect(res.row.gates.code).toEqual({ state: 'NOT_APPLICABLE', reason: 'NO_DEV_TOOL' });
@@ -722,7 +725,7 @@ describe('B-10: one Code-gate path from the Development field', () => {
 
   it('checks the discovered Development field before recording a Code exception', async () => {
     const storage = new MockStorage();
-    await storage.set('fr:cfg:site', { devFieldId: 'customfield_10042', readAt: new Date().toISOString() });
+    await storage.set('fr:cfg:site', { devFieldId: 'customfield_10042', statusCategories: {}, readAt: new Date().toISOString() });
     mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => ({ key: 'DEMO-40', fields: { customfield_10042: merged } }) });
     const res = await recordException({ issueId: '40001', type: 'CODE', reason: 'Configuration change only' }, { extension: { issue: { id: '40001' } } }, storage);
     expect(mockUserRequestJira.mock.calls[0][0]).toBe('/rest/api/3/issue/40001?fields=customfield_10042');
@@ -731,7 +734,7 @@ describe('B-10: one Code-gate path from the Development field', () => {
 
   it('records a Code exception without a field read when the site has no Development field', async () => {
     const storage = new MockStorage();
-    await storage.set('fr:cfg:site', { devFieldId: null, readAt: new Date().toISOString() });
+    await storage.set('fr:cfg:site', { devFieldId: null, statusCategories: {}, readAt: new Date().toISOString() });
     mockRequestJira.mockResolvedValueOnce({ status: 200 });
     const res = await recordException({ issueId: '40001', type: 'CODE', reason: 'Configuration change only' }, { extension: { issue: { id: '40001' } } }, storage);
     expect(res.success).toBe(true);
@@ -840,7 +843,7 @@ describe('B-08: bounded storage and a scheduled snapshot', () => {
   const issues = Array.from({ length: 250 }, (_, i) => ({ id: String(80000 + i), key: `DEMO-${i}`, fields: { summary: 'x', status: { name: 'To Do', statusCategory: { key: 'new' } } }, properties: {} }));
   const seeded = () => {
     const st = new MemoryStorage();
-    st.store.set('fr:cfg:site', { devFieldId: null, siteHost: 'asymmsystems.atlassian.net', readAt: new Date().toISOString() });
+    st.store.set('fr:cfg:site', { devFieldId: null, siteHost: 'asymmsystems.atlassian.net', statusCategories: {}, readAt: new Date().toISOString() });
     return st;
   };
   beforeEach(() => {
@@ -963,7 +966,7 @@ describe('B-13: dashboard rows respect the viewer', () => {
   const all = ['1', '2', '3'].map(id => ({ id: `9000${id}`, key: `DEMO-${id}`, fields: { summary: 'x', status: { name: 'Done', statusCategory: { key: 'done' } } }, properties: {} }));
   const seeded = () => {
     const st = new MemoryStorage();
-    st.store.set('fr:cfg:site', { devFieldId: null, siteHost: 'asymmsystems.atlassian.net', readAt: new Date().toISOString() });
+    st.store.set('fr:cfg:site', { devFieldId: null, siteHost: 'asymmsystems.atlassian.net', statusCategories: {}, readAt: new Date().toISOString() });
     return st;
   };
   beforeEach(() => {
