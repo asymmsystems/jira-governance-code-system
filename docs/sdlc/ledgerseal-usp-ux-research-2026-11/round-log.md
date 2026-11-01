@@ -429,3 +429,34 @@ Final state of DEMO-34: SEAL_REVOKED, everCompromised true, incidentCount 3 (`li
 - Merge: `master` fast-forwarded to the feature branch locally (`5097bf5` to `9ba3757`, then to this commit). The main checkout stays on another session's branch and its files were not touched. No remote exists, so nothing was pushed.
 - Not done: the old unsigned v1 properties on DEMO-5, DEMO-20 and DEMO-22 are left as they are. Removing them writes to issues that are not LedgerSeal probe issues.
 - Waiting: the validator live test. The DEMO workflow for the probe issue type is shared by two issue types, so a gate there would block other sessions' probe issues.
+
+### Validator live test in project LSP (owner approved a new project, 2026-11-01)
+- Project LSP "LedgerSeal Probe" (id 10035): company-managed Kanban software project. Workflow scheme 10036 "LSP: Software Simplified Workflow Scheme" is used by LSP only. Its one workflow, "Software Simplified Workflow for Project LSP", shows "Used in 1 space".
+- The LedgerSeal rule "Require Valid LedgerSeal" was added to transition 41 "Done" (any status to Done) only. No DEMO workflow was changed.
+
+Results (Observed-live, LSP-1, version 3.7.0):
+
+| Case | Transition 41 result | Status after |
+|---|---|---|
+| Not sealed | HTTP 400: "LedgerSeal: this issue is not sealed. Ask a project admin to seal it in the LedgerSeal panel, then try again." | Backlog |
+| Sealed, unchanged | HTTP 204 | Done |
+| Changed after seal (summary) | HTTP 400: "LedgerSeal: 1 field changed after approval (Summary). Ask a project admin who did not make the change to approve it in the LedgerSeal panel." | In Progress |
+
+New finding NF-05 (owner decision, not fixed): the gated transition itself breaks the seal when it sets a resolution. The Backlog to Done transition set `resolution: null -> Done` (change log, 10:49:50 +0530). Resolution is covered (spec v2 section 4.2), so the trigger recorded incident 1 right after the gate passed. Every issue that passes a gate to a resolving status will show "Changed after approval" and match `ledgersealStatus = SEAL_BROKEN`. Status is excluded for this reason (D-2); resolution is not.
+
+Every write in this test (owner's account):
+
+| # | Time | Item | Old value | New value |
+|---|---|---|---|---|
+| 1 | 2026-11-01 | Project LSP (id 10035) created, with its scheme 10036 and workflow | none | Kanban template, lead = owner |
+| 2 | 2026-11-01 | Workflow "Software Simplified Workflow for Project LSP", transition 41 validators | none | "Require Valid LedgerSeal" |
+| 3 | 2026-11-01 | Issue LSP-1 (id 10069) created | none | summary "[LS-PROBE] LedgerSeal validator live check", label `ls-probe` |
+| 4 | 05:19:36 UTC | `ledgerseal-cert` property; KVS seal (certificate 069e44a9) | absent | SEAL_VALID |
+| 5 | 10:49:50 +0530 | Status, resolution (transition 41) | Backlog, none | Done, Done |
+| 6 | after 5 | Property; KVS LS_CHANGED row (trigger, resolution) | SEAL_VALID | SEAL_BROKEN, incidents 1 |
+| 7 | 10:49:57 +0530 | Status, resolution (transition 31) | Done, Done | In Progress, none |
+| 8 | 10:49:57 +0530 | Summary | "[LS-PROBE] LedgerSeal validator live check" | "... (changed after seal)" |
+| 9 | after 8 | Property; KVS LS_CHANGED row (trigger, summary) | SEAL_BROKEN, incidents 1 | SEAL_BROKEN, incidents 2 |
+| 10 | after 9 | Transition 41 attempt | In Progress | no change (blocked) |
+
+The project, the validator and LSP-1 stay in place. Whether to remove them is the owner's call.
