@@ -2405,11 +2405,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
         function getMutationObserver() {
           return window.MutationObserver || window.WebKitMutationObserver || window.MozMutationObserver;
         }
-        function addEventListener(el, evt, func) {
-          el.addEventListener(evt, func, false);
+        function addEventListener(el2, evt, func) {
+          el2.addEventListener(evt, func, false);
         }
-        function removeEventListener(el, evt, func) {
-          el.removeEventListener(evt, func, false);
+        function removeEventListener(el2, evt, func) {
+          el2.removeEventListener(evt, func, false);
         }
         function setupRequestAnimationFrame() {
           var vendors = ["moz", "webkit", "o", "ms"];
@@ -3240,8 +3240,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
               function chkDimension(dimension) {
                 return "0px" === (settings[settingId] && settings[settingId].iframe.style[dimension]);
               }
-              function isVisible(el) {
-                return null !== el.offsetParent;
+              function isVisible(el2) {
+                return null !== el2.offsetParent;
               }
               if (settings[settingId] && isVisible(settings[settingId].iframe) && (chkDimension("height") || chkDimension("width"))) {
                 trigger(
@@ -3430,11 +3430,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
           window.removeEventListener("test", noop, options);
         } catch (error) {
         }
-        function addEventListener(el, evt, func, options2) {
-          el.addEventListener(evt, func, passiveSupported ? options2 || {} : false);
+        function addEventListener(el2, evt, func, options2) {
+          el2.addEventListener(evt, func, passiveSupported ? options2 || {} : false);
         }
-        function removeEventListener(el, evt, func) {
-          el.removeEventListener(evt, func, false);
+        function removeEventListener(el2, evt, func) {
+          el2.removeEventListener(evt, func, false);
         }
         function capitalizeFirstLetter(string) {
           return string.charAt(0).toUpperCase() + string.slice(1);
@@ -3772,8 +3772,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
               y: window.pageYOffset === undefined2 ? document.documentElement.scrollTop : window.pageYOffset
             };
           }
-          function getElementPosition(el) {
-            var elPosition = el.getBoundingClientRect(), pagePosition = getPagePosition();
+          function getElementPosition(el2) {
+            var elPosition = el2.getBoundingClientRect(), pagePosition = getPagePosition();
             return {
               x: parseInt(elPosition.left, 10) + parseInt(pagePosition.x, 10),
               y: parseInt(elPosition.top, 10) + parseInt(pagePosition.y, 10)
@@ -3805,13 +3805,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
             }
           }
           function bindAnchors() {
-            function setupLink(el) {
+            function setupLink(el2) {
               function linkClicked(e) {
                 e.preventDefault();
                 findTarget(this.getAttribute("href"));
               }
-              if ("#" !== el.getAttribute("href")) {
-                addEventListener(el, "click", linkClicked);
+              if ("#" !== el2.getAttribute("href")) {
+                addEventListener(el2, "click", linkClicked);
               }
             }
             Array.prototype.forEach.call(
@@ -4017,10 +4017,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
             initInterval();
           }
         }
-        function getComputedStyle2(prop, el) {
+        function getComputedStyle2(prop, el2) {
           var retVal = 0;
-          el = el || document.body;
-          retVal = document.defaultView.getComputedStyle(el, null);
+          el2 = el2 || document.body;
+          retVal = document.defaultView.getComputedStyle(el2, null);
           retVal = null === retVal ? 0 : retVal[prop];
           return parseInt(retVal, base);
         }
@@ -6105,6 +6105,119 @@ Please see https://iframe-resizer.com/upgrade for more details.
     void import_bridge.router.open(`/browse/${encodeURIComponent(issueKey)}`);
   }
 
+  // src/ui/why.ts
+  function buildWhyModel(tasks, key) {
+    const byKey = new Map(tasks.map((t) => [t.key, t]));
+    const task = byKey.get(key);
+    if (!task) return null;
+    const title = `Why ${key} starts on ${task.startDate}`;
+    const dep = task.dependency;
+    if (!dep || !dep.predecessorKey) {
+      return { title, reason: `${key} has no dependency. Its start date is the one set on the plan.`, chain: [], fixes: [], driverKeys: [] };
+    }
+    const chain = [];
+    const visited = /* @__PURE__ */ new Set([key]);
+    let next = dep.driverKey;
+    while (next && !visited.has(next)) {
+      visited.add(next);
+      const t = byKey.get(next);
+      if (!t) break;
+      const d = t.dependency;
+      if (d && d.predecessorKey) {
+        chain.push({ key: next, text: `${next}: starts when ${d.predecessorKey} reaches ${d.triggerPercent}% (${d.triggerDate})` });
+        next = d.driverKey;
+      } else {
+        chain.push({ key: next, text: `${next}: no dependency; starts ${t.startDate}` });
+        next = void 0;
+      }
+    }
+    const fixes = (dep.fixOptions || []).map((f) => f.kind === "move" ? { label: `Move ${key} to ${f.startDate}`, updates: { startDate: f.startDate, endDate: f.endDate } } : { label: `Lower the trigger to ${f.triggerPercent}%`, updates: { dependency: { predecessorId: dep.predecessorKey, predecessorKey: dep.predecessorKey, triggerPercent: f.triggerPercent, isTriggerSatisfied: false } } });
+    const model = {
+      title,
+      reason: dep.earliestStartReason || dep.violationReason || `${key} waits for ${dep.predecessorKey}.`,
+      chain,
+      fixes,
+      driverKeys: chain.map((c) => c.key)
+    };
+    if (dep.isViolated) model.violation = dep.fixSuggestion || dep.violationReason;
+    return model;
+  }
+
+  // src/frontend/why-popup.ts
+  function el(tag, text, className) {
+    const node = document.createElement(tag);
+    if (text !== void 0) node.textContent = text;
+    if (className) node.className = className;
+    return node;
+  }
+  function clearDriverMarks() {
+    document.querySelectorAll(".gantt-bar.is-driver").forEach((bar) => {
+      bar.classList.remove("is-driver");
+      bar.querySelectorAll(".driver-label").forEach((l) => l.remove());
+    });
+  }
+  function markDrivers(model) {
+    for (const k of model.driverKeys) {
+      const bar = document.querySelector(`.gantt-bar[data-task-id="${CSS.escape(k)}"]`);
+      if (!bar) continue;
+      bar.classList.add("is-driver");
+      bar.appendChild(el("span", "Driver", "driver-label"));
+    }
+  }
+  function closeWhyPopup() {
+    const pop = document.getElementById("whyPopup");
+    if (pop) pop.hidden = true;
+    clearDriverMarks();
+  }
+  function isWhyPopupOpen() {
+    const pop = document.getElementById("whyPopup");
+    return !!pop && !pop.hidden;
+  }
+  function openWhyPopup(tasks, taskKey, anchor, handlers) {
+    const model = buildWhyModel(tasks, taskKey);
+    const pop = document.getElementById("whyPopup");
+    if (!model || !pop) return false;
+    closeWhyPopup();
+    document.getElementById("whyTitle").textContent = model.title;
+    document.getElementById("whyReason").textContent = model.reason;
+    const chain = document.getElementById("whyChain");
+    chain.replaceChildren();
+    for (const step of model.chain) {
+      const li = el("li");
+      const link = el("button", step.text, "why-chain-link");
+      link.type = "button";
+      link.addEventListener("click", () => handlers.focusTask(step.key));
+      li.appendChild(link);
+      chain.appendChild(li);
+    }
+    const violation = document.getElementById("whyViolation");
+    violation.hidden = !model.violation;
+    violation.textContent = model.violation || "";
+    const fixes = document.getElementById("whyFixes");
+    fixes.replaceChildren();
+    for (const fix of model.fixes) {
+      const btn = el("button", fix.label, "btn btn-outline btn-sm why-fix");
+      btn.type = "button";
+      btn.addEventListener("click", async () => {
+        closeWhyPopup();
+        await handlers.apply(taskKey, fix.updates);
+      });
+      fixes.appendChild(btn);
+    }
+    pop.hidden = false;
+    if (anchor) {
+      pop.style.top = `${Math.min(window.innerHeight - pop.offsetHeight - 8, anchor.bottom + 6)}px`;
+      pop.style.left = `${Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, anchor.left))}px`;
+    }
+    markDrivers(model);
+    document.getElementById("btnCloseWhy").focus();
+    return true;
+  }
+  function initWhyPopup() {
+    const close = document.getElementById("btnCloseWhy");
+    if (close) close.addEventListener("click", closeWhyPopup);
+  }
+
   // src/ui/safe-html.ts
   var SafeHtml = class {
     constructor(markup) {
@@ -6189,6 +6302,25 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function formatEffort(hours) {
     return hours > 0 ? `${hours}h` : "Unestimated";
   }
+  function showWhy(taskKey, anchorRect) {
+    openWhyPopup(currentPlan?.tasks || [], taskKey, anchorRect, {
+      apply: async (key, updates) => {
+        const t = (currentPlan?.tasks || []).find((x) => x.key === key);
+        await callResolver("updateWbsTask", { taskId: key, updates, expectedVersion: t && t.version || 0 });
+        await loadProjectPlan();
+      },
+      focusTask: (key) => {
+        const row = document.querySelector(`#ganttBody tr[data-task-id="${CSS.escape(key)}"]`);
+        if (row) {
+          row.setAttribute("tabindex", "-1");
+          row.scrollIntoView({ block: "center" });
+          row.focus();
+        }
+        pinnedDependencyTaskId = key;
+        renderDependencySvgOverlay();
+      }
+    });
+  }
   var currentPlan = null;
   var activeTaskId = null;
   var hoveredTaskId = null;
@@ -6217,6 +6349,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
   var currentHierarchyView = "all";
   function initApp() {
     initErrorBanner();
+    initWhyPopup();
     setupEventListeners();
     loadProjectPlan();
   }
@@ -6333,6 +6466,20 @@ Please see https://iframe-resizer.com/upgrade for more details.
       });
     });
     window.addEventListener("keydown", (e) => {
+      const inField = e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT");
+      if (e.key === "?" && !inField) {
+        const key = pinnedDependencyTaskId || hoveredTaskId;
+        const bar = key && document.querySelector(`.gantt-bar[data-task-id="${CSS.escape(key)}"]`);
+        if (key) {
+          e.preventDefault();
+          showWhy(key, bar ? bar.getBoundingClientRect() : null);
+        }
+        return;
+      }
+      if (e.key === "Escape" && isWhyPopupOpen()) {
+        closeWhyPopup();
+        return;
+      }
       if (e.key === "Escape") {
         document.querySelectorAll(".modal-backdrop").forEach((modal) => {
           modal.style.display = "none";
@@ -6869,8 +7016,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     const curWk = (currentPlan.weeks || []).find((w) => w.isCurrentWeek);
     if (curWk) {
-      const el = document.getElementById("legendCurrentWeek");
-      if (el) el.textContent = `Current Week (${curWk.weekKey})`;
+      const el2 = document.getElementById("legendCurrentWeek");
+      if (el2) el2.textContent = `Current Week (${curWk.weekKey})`;
     }
     if (currentPlan.tasks) {
       currentPlan.tasks.forEach((t) => {
@@ -6894,10 +7041,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const strip = document.getElementById("milestonesStrip");
     strip.innerHTML = "";
     (currentPlan.milestones || []).forEach((m) => {
-      const el = document.createElement("div");
-      el.className = "milestone-pill";
-      el.innerHTML = html`<span class="milestone-icon">🔷</span><span>${m.title}</span><span style="color:#626F86;">(${m.weekKey})</span>`;
-      strip.appendChild(el);
+      const el2 = document.createElement("div");
+      el2.className = "milestone-pill";
+      el2.innerHTML = html`<span class="milestone-icon">🔷</span><span>${m.title}</span><span style="color:#626F86;">(${m.weekKey})</span>`;
+      strip.appendChild(el2);
     });
   }
   function renderBacklogTray() {
@@ -7709,6 +7856,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
           <button class="row-action-btn quick-insert-below-btn" title="Insert task below (Row ${rowIdx + 2})">➕ Add below</button>
           <button class="row-action-btn quick-progress-btn" title="Set actual progress">📈 Progress</button>
           <button class="row-action-btn edit-modal-btn" title="Open full detail modal">✏️ Edit</button>
+          <button class="row-action-btn why-date-btn" title="Why this date?">❓ Why?</button>
           <button class="row-action-btn quick-subtask-btn" title="Add Jira subtask">↳ Subtask</button>
           <button class="row-action-btn quick-resource-btn" title="Allocate team member">👥 Team</button>
           <button class="row-action-btn open-jira-row-btn" title="Open ${task.key} in native Jira (new tab)">↗ Jira</button>
@@ -7993,6 +8141,13 @@ Click to manage or assign.`;
         editModalBtn.addEventListener("click", (e) => {
           e.stopPropagation();
           openTaskDetailModal(task.key);
+        });
+      }
+      const whyBtn = tr.querySelector(".why-date-btn");
+      if (whyBtn) {
+        whyBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          showWhy(task.key, whyBtn.getBoundingClientRect());
         });
       }
       const quickSubBtn = tr.querySelector(".quick-subtask-btn");
@@ -8514,7 +8669,7 @@ Click to manage or assign.`;
       const y1 = predRect.top - wrapperRect.top + ganttWrapper.scrollTop + predRect.height / 2;
       const x2 = succRect.left - wrapperRect.left + ganttWrapper.scrollLeft;
       const y2 = succRect.top - wrapperRect.top + ganttWrapper.scrollTop + succRect.height / 2;
-      const isViolated = Boolean(task.dependency.isViolated || x2 < x1);
+      const isViolated = Boolean(task.dependency.isViolated);
       const dx = Math.max(35, Math.abs(x2 - x1) / 2);
       const pathData = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
       let curveClass = "dep-path";
@@ -8554,7 +8709,8 @@ Click to manage or assign.`;
         circle.setAttribute("r", isConnected ? 5.5 : 4);
         circle.setAttribute("fill", curveColor);
         svg.appendChild(circle);
-        const labelText = isConnected ? isIncoming ? `\u{1F517} ${task.key} depends on ${predTask.key} (${task.dependency.triggerPercent}% lag)` : `\u2794 ${task.key} depends on ${predTask.key} (${task.dependency.triggerPercent}% lag)` : isViolated ? `\u26A0 ${task.key} \u2794 ${predTask.key} (Lag violated)` : `${task.key} \u2794 ${predTask.key} (${task.dependency.triggerPercent}%)`;
+        const when = task.dependency.triggerDate ? `, ${task.dependency.triggerDate}` : "";
+        const labelText = isViolated ? `\u26A0 ${task.dependency.triggerPercent}%${when}: starts too early` : `${task.dependency.triggerPercent}%${when}`;
         const midX = (x1 + x2) / 2;
         const midY = (y1 + y2) / 2;
         const badgeW = Math.max(76, labelText.length * 6.5 + 20);
@@ -8585,7 +8741,8 @@ Click to manage or assign.`;
     const isEpic = task.isEpic || task.hierarchyLevel === 1;
     const isSub = task.isSubtask || task.hierarchyLevel === -1;
     const levelTitle = isEpic ? "\u{1F7EA} Epic Roadmap Level" : isSub ? "\u21B3 Subtask Execution Level" : "\u{1F537} Story / Task Plan Level";
-    const depInfo = task.dependency ? html`<div style="margin-top:4px; color:${task.dependency.isViolated ? "#FF8F73" : "#79F2C0"};">🔗 Dep: ${task.dependency.predecessorKey} >= ${task.dependency.triggerPercent}% (${task.dependency.isViolated ? "VIOLATED" : "SATISFIED"})</div>` : "";
+    const dep = task.dependency;
+    const depInfo = dep && dep.predecessorKey ? html`<div style="margin-top:4px;">🔗 ${dep.earliestStartReason || `Waits for ${dep.predecessorKey} at ${dep.triggerPercent}%`}</div>${dep.isViolated ? html`<div style="color:#FF8F73;">⚠ ${dep.fixSuggestion || dep.violationReason || "Starts too early"}</div>` : ""}` : "";
     const rollupInfo = isEpic && task.rollupStats ? html`<div style="color:#A5B4FC; font-weight:600;">Rollup: ${task.childrenCount || 0} child items | Total ${task.effortHours}h</div>` : "";
     const subInfo = !isEpic && task.subtasks && task.subtasks.length > 0 ? html`<div style="color:#B3BAC5;">Subtasks: ${task.subtasks.length} items (${task.effortHours}h total)</div>` : "";
     const contributing = getTaskContributingResources(task);

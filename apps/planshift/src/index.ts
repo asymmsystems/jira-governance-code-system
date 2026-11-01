@@ -772,6 +772,8 @@ export async function getProjectPlan(
       t.dependency.earliestStartReason = ev.reason || undefined;
       t.dependency.driverKey = ev.driver || undefined;
       t.dependency.fixSuggestion = ev.suggestion;
+      t.dependency.triggerDate = ev.triggerDate || undefined;
+      t.dependency.fixOptions = ev.fixes;
     }
   }
 

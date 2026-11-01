@@ -28,12 +28,18 @@ export interface EarliestStart {
   reason: string;
 }
 
+export type FixOption = { kind: 'move'; startDate: string; endDate: string } | { kind: 'trigger'; triggerPercent: number };
+
 export interface EffortEvaluation {
   earliestStartDate: string | null;
   driver: string | null;
   violated: boolean;
   reason: string | null;
   suggestion?: string;
+  triggerDate?: string | null;  // the day the driver reaches its trigger (B-12)
+  triggerPercent?: number;
+  basis?: EarliestStart['basis'];
+  fixes?: FixOption[];          // structured forms of the suggestion (B-12)
 }
 
 export interface CascadeChange {
@@ -114,20 +120,25 @@ export function evaluateEffort(key: string, efforts: Map<string, ScheduleEffort>
 
   const e = best.res.date as string;
   const reason = `Starts ${e} because ${best.res.reason}.`;
+  const detail = { triggerDate: best.res.triggerDate, triggerPercent: best.link.triggerPercent as number, basis: best.res.basis };
   const started = own.started === true || (own.percentComplete || 0) > 0;
   if (started) {
-    return { earliestStartDate: e, driver: best.pred.workEffortId, violated: true, reason,
+    return { earliestStartDate: e, driver: best.pred.workEffortId, violated: true, reason, ...detail,
       suggestion: `${key} has started, but ${best.pred.workEffortId} is at ${best.pred.percentComplete || 0}% of the ${best.link.triggerPercent}% trigger.` };
   }
   const ownStart = own.estimatedStartDate as string;
-  if (ownStart >= e) return { earliestStartDate: e, driver: best.pred.workEffortId, violated: false, reason };
+  if (ownStart >= e) return { earliestStartDate: e, driver: best.pred.workEffortId, violated: false, reason, ...detail };
 
   let suggestion = `Move ${key} to ${e}`;
+  const fixes: FixOption[] = [{ kind: 'move', startDate: e, endDate: addDays(e, durationDays(own) - 1) }];
   if (best.res.basis === 'planned') {
     const lower = Math.floor(((dayNumber(ownStart) - dayNumber(best.pred.estimatedStartDate as string)) / durationDays(best.pred)) * 100);
-    if (lower >= 0) suggestion += ` or lower the trigger to ${lower}%`;
+    if (lower >= 0) {
+      suggestion += ` or lower the trigger to ${lower}%`;
+      fixes.push({ kind: 'trigger', triggerPercent: lower });
+    }
   }
-  return { earliestStartDate: e, driver: best.pred.workEffortId, violated: true, reason, suggestion: `${suggestion}.` };
+  return { earliestStartDate: e, driver: best.pred.workEffortId, violated: true, reason, ...detail, suggestion: `${suggestion}.`, fixes };
 }
 
 /**

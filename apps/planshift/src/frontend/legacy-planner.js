@@ -11,6 +11,7 @@
 
 import { callResolver, openIssueInNewTab } from './bridge';
 import { initErrorBanner } from './banner';
+import { openWhyPopup, closeWhyPopup, isWhyPopupOpen, initWhyPopup } from './why-popup';
 import { html } from '../ui/safe-html';
 import { deltaWeeksFromPixels, clampStartIndex, spanFromResize } from '../ui/timeline-math';
 
@@ -57,6 +58,27 @@ function formatEffort(hours) {
   return hours > 0 ? `${hours}h` : 'Unestimated';
 }
 
+/** Opens "Why this date?" for a task (B-12); fixes are applied with a version check. */
+function showWhy(taskKey, anchorRect) {
+  openWhyPopup(currentPlan?.tasks || [], taskKey, anchorRect, {
+    apply: async (key, updates) => {
+      const t = (currentPlan?.tasks || []).find(x => x.key === key);
+      await callResolver('updateWbsTask', { taskId: key, updates, expectedVersion: (t && t.version) || 0 });
+      await loadProjectPlan();
+    },
+    focusTask: (key) => {
+      const row = document.querySelector(`#ganttBody tr[data-task-id="${CSS.escape(key)}"]`);
+      if (row) {
+        row.setAttribute('tabindex', '-1');
+        row.scrollIntoView({ block: 'center' });
+        row.focus();
+      }
+      pinnedDependencyTaskId = key;
+      renderDependencySvgOverlay();
+    }
+  });
+}
+
 // State Variables
 let currentPlan = null;
 let activeTaskId = null;
@@ -88,6 +110,7 @@ let currentHierarchyView = 'all'; // 'all' | 'epics' | 'stories'
 // Initialization with immediate readiness check
 function initApp() {
   initErrorBanner();
+  initWhyPopup();
   setupEventListeners();
   loadProjectPlan();
 }
@@ -220,6 +243,17 @@ function setupEventListeners() {
 
   // Dismiss Modals and Popovers on Escape Key
   window.addEventListener('keydown', (e) => {
+    const inField = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT');
+    if (e.key === '?' && !inField) {
+      const key = pinnedDependencyTaskId || hoveredTaskId;
+      const bar = key && document.querySelector(`.gantt-bar[data-task-id="${CSS.escape(key)}"]`);
+      if (key) { e.preventDefault(); showWhy(key, bar ? bar.getBoundingClientRect() : null); }
+      return;
+    }
+    if (e.key === 'Escape' && isWhyPopupOpen()) {
+      closeWhyPopup();
+      return;
+    }
     if (e.key === 'Escape') {
       document.querySelectorAll('.modal-backdrop').forEach(modal => {
         modal.style.display = 'none';
@@ -1856,6 +1890,7 @@ function renderTimelineRows() {
           <button class="row-action-btn quick-insert-below-btn" title="Insert task below (Row ${rowIdx + 2})">➕ Add below</button>
           <button class="row-action-btn quick-progress-btn" title="Set actual progress">📈 Progress</button>
           <button class="row-action-btn edit-modal-btn" title="Open full detail modal">✏️ Edit</button>
+          <button class="row-action-btn why-date-btn" title="Why this date?">❓ Why?</button>
           <button class="row-action-btn quick-subtask-btn" title="Add Jira subtask">↳ Subtask</button>
           <button class="row-action-btn quick-resource-btn" title="Allocate team member">👥 Team</button>
           <button class="row-action-btn open-jira-row-btn" title="Open ${task.key} in native Jira (new tab)">↗ Jira</button>
@@ -2169,6 +2204,13 @@ function renderTimelineRows() {
       editModalBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         openTaskDetailModal(task.key);
+      });
+    }
+    const whyBtn = tr.querySelector('.why-date-btn');
+    if (whyBtn) {
+      whyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showWhy(task.key, whyBtn.getBoundingClientRect());
       });
     }
     const quickSubBtn = tr.querySelector('.quick-subtask-btn');
@@ -2765,7 +2807,8 @@ function renderDependencySvgOverlay() {
     const x2 = (succRect.left - wrapperRect.left) + ganttWrapper.scrollLeft;
     const y2 = (succRect.top - wrapperRect.top) + ganttWrapper.scrollTop + (succRect.height / 2);
 
-    const isViolated = Boolean(task.dependency.isViolated || x2 < x1);
+    // The engine is the only judge of a violation (INV-09); the drawing does not add its own test.
+    const isViolated = Boolean(task.dependency.isViolated);
     const dx = Math.max(35, Math.abs(x2 - x1) / 2);
     const pathData = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
 
@@ -2813,13 +2856,10 @@ function renderDependencySvgOverlay() {
       svg.appendChild(circle);
 
       // Render Pill Badge Showing "X depends on Y" relationship
-      const labelText = isConnected
-        ? (isIncoming
-            ? `🔗 ${task.key} depends on ${predTask.key} (${task.dependency.triggerPercent}% lag)`
-            : `➔ ${task.key} depends on ${predTask.key} (${task.dependency.triggerPercent}% lag)`)
-        : (isViolated
-            ? `⚠ ${task.key} ➔ ${predTask.key} (Lag violated)`
-            : `${task.key} ➔ ${predTask.key} (${task.dependency.triggerPercent}%)`);
+      const when = task.dependency.triggerDate ? `, ${task.dependency.triggerDate}` : '';
+      const labelText = isViolated
+        ? `⚠ ${task.dependency.triggerPercent}%${when}: starts too early`
+        : `${task.dependency.triggerPercent}%${when}`;
 
       const midX = (x1 + x2) / 2;
       const midY = (y1 + y2) / 2;
@@ -2858,8 +2898,9 @@ function showTaskTooltip(e, task) {
   const isSub = task.isSubtask || task.hierarchyLevel === -1;
   const levelTitle = isEpic ? '🟪 Epic Roadmap Level' : (isSub ? '↳ Subtask Execution Level' : '🔷 Story / Task Plan Level');
 
-  const depInfo = task.dependency
-    ? html`<div style="margin-top:4px; color:${task.dependency.isViolated ? '#FF8F73' : '#79F2C0'};">🔗 Dep: ${task.dependency.predecessorKey} >= ${task.dependency.triggerPercent}% (${task.dependency.isViolated ? 'VIOLATED' : 'SATISFIED'})</div>`
+  const dep = task.dependency;
+  const depInfo = dep && dep.predecessorKey
+    ? html`<div style="margin-top:4px;">🔗 ${dep.earliestStartReason || `Waits for ${dep.predecessorKey} at ${dep.triggerPercent}%`}</div>${dep.isViolated ? html`<div style="color:#FF8F73;">⚠ ${dep.fixSuggestion || dep.violationReason || 'Starts too early'}</div>` : ''}`
     : '';
   const rollupInfo = (isEpic && task.rollupStats)
     ? html`<div style="color:#A5B4FC; font-weight:600;">Rollup: ${task.childrenCount || 0} child items | Total ${task.effortHours}h</div>`

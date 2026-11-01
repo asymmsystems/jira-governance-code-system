@@ -1198,3 +1198,18 @@ body { font-family: var(--ds-font); color: var(--ds-text); background: #F4F5F7; 
 .sync-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 8px 16px; padding: 10px 14px;
   background: var(--ds-danger-subtle); border: 1px solid var(--ds-danger); border-radius: 6px; color: #AE2E24; font-size: 13px; font-weight: 600; }
 .sync-banner[hidden] { display: none; }
+
+/* "Why this date?" popup and driving-path marks (B-12). Shape and text, not colour alone. */
+.why-popup { position: fixed; z-index: 1300; width: 360px; max-width: calc(100vw - 16px); background: var(--ds-surface); color: var(--ds-text);
+  border: 1px solid var(--ds-border); border-radius: 8px; box-shadow: 0 8px 16px rgba(9, 30, 66, 0.25); padding: 12px 14px; font-size: 13px; }
+.why-popup[hidden] { display: none; }
+.why-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.why-reason { margin: 0 0 8px; }
+.why-chain { margin: 0 0 8px 18px; padding: 0; }
+.why-chain-link { background: none; border: none; padding: 2px 0; color: var(--ds-primary); text-decoration: underline; cursor: pointer; font: inherit; text-align: left; }
+.why-violation { margin: 0 0 8px; padding: 6px 8px; border-left: 3px solid var(--ds-danger); background: var(--ds-danger-subtle); }
+.why-violation[hidden] { display: none; }
+.why-fixes { display: flex; flex-wrap: wrap; gap: 6px; }
+.gantt-bar.is-driver { outline: 2px dashed var(--ds-primary); outline-offset: 2px; }
+.driver-label { position: absolute; right: 4px; top: -16px; font-size: 10px; font-weight: 700; color: var(--ds-text); background: var(--ds-surface);
+  border: 1px solid var(--ds-text); border-radius: 3px; padding: 0 4px; line-height: 13px; }

@@ -154,3 +154,26 @@ describe('team factor (assumption, H7) and helpers', () => {
     expect(addDays('2026-03-01', -1)).toBe('2026-02-28');
   });
 });
+
+describe('evaluation details for "Why this date" (B-12)', () => {
+  const efforts = new Map([
+    ['A', eff('A', '2026-11-04', '2026-11-13')],
+    ['S', eff('S', '2026-11-06', '2026-11-20')]
+  ]);
+
+  it('returns the trigger date, trigger percent, basis and structured fixes of the driver', () => {
+    const r = evaluateEffort('S', efforts, [link('A', 'S', 50)], TODAY);
+    expect(r).toMatchObject({ triggerDate: '2026-11-08', triggerPercent: 50, basis: 'planned' });
+    expect(r.fixes).toEqual([
+      { kind: 'move', startDate: '2026-11-09', endDate: '2026-11-23' },
+      { kind: 'trigger', triggerPercent: 20 }
+    ]);
+  });
+
+  it('offers only a move when no lower trigger fits, and no fixes when there is no violation', () => {
+    const early = new Map(efforts); early.set('S', eff('S', '2026-11-01', '2026-11-02'));
+    expect(evaluateEffort('S', early, [link('A', 'S', 50)], TODAY).fixes).toEqual([{ kind: 'move', startDate: '2026-11-09', endDate: '2026-11-10' }]);
+    const ok = new Map(efforts); ok.set('S', eff('S', '2026-11-12', '2026-11-20'));
+    expect(evaluateEffort('S', ok, [link('A', 'S', 50)], TODAY).fixes).toBeUndefined();
+  });
+});

@@ -63,6 +63,8 @@ export interface TaskDependency {
   jiraLinkId?: string; // id of the "Blocks" link that CascadePlan created for this dependency
   driverKey?: string;    // the predecessor that sets the earliest start (B-11)
   fixSuggestion?: string; // what the user can change to resolve a violation (B-11, B-12)
+  triggerDate?: string;   // the day the driver reaches its trigger (B-12)
+  fixOptions?: Array<{ kind: 'move'; startDate: string; endDate: string } | { kind: 'trigger'; triggerPercent: number }>;
 }
 
 export interface WbsTask {

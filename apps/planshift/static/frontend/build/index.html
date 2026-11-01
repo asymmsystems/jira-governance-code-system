@@ -161,6 +161,18 @@
     </main>
   </div>
 
+  <!-- "Why this date?" popup (B-12): non-modal, dismissed by Escape or the close button -->
+  <div id="whyPopup" class="why-popup" role="dialog" aria-labelledby="whyTitle" hidden>
+    <div class="why-header">
+      <strong id="whyTitle"></strong>
+      <button class="btn btn-subtle btn-sm" id="btnCloseWhy" type="button" aria-label="Close">✕</button>
+    </div>
+    <p id="whyReason" class="why-reason"></p>
+    <ol id="whyChain" class="why-chain"></ol>
+    <p id="whyViolation" class="why-violation" hidden></p>
+    <div id="whyFixes" class="why-fixes"></div>
+  </div>
+
   <!-- Rich Floating Tooltip -->
   <div class="tooltip-popup" id="globalTooltip"></div>
 
