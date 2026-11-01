@@ -161,7 +161,7 @@ const LOZENGES: Partial<Record<PanelState, { text: string; appearance: LozengeAp
 
 const APPEARANCES: Record<PanelState, MessageAppearance> = {
   LOADING: 'information',
-  NOT_SEALED: 'information',
+  NOT_SEALED: 'warning',
   SEALED: 'success',
   CHANGED: 'error',
   CHANGED_BACK: 'error',

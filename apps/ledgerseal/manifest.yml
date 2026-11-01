@@ -1,7 +1,7 @@
 modules:
   jira:issuePanel:
     - key: ledgerseal-panel
-      title: LedgerSeal
+      title: Approval Seal
       tooltip: LedgerSeal approval seal
       icon: resource:icons;icon.svg
       render: native

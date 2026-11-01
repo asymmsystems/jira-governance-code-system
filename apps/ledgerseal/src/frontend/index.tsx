@@ -132,65 +132,88 @@ export const LedgerSealPanel: React.FC = () => {
 
   return (
     <Stack space="space.150">
-      <Heading as="h4">LedgerSeal</Heading>
-
       <SectionMessage appearance={view.message.appearance} title={view.title}>
-        {view.message.lines.map(line => (
-          <Text key={line}>{line}</Text>
-        ))}
-        {view.revokedByAccountId && (
-          <Inline space="space.050" alignBlock="center">
-            <Text>Revoked by:</Text>
-            <User accountId={view.revokedByAccountId} />
-          </Inline>
-        )}
-        {view.lozenge && <Lozenge appearance={view.lozenge.appearance}>{view.lozenge.text}</Lozenge>}
-        {view.changes.length > 0 && (
-          <Stack space="space.050">
-            <Heading as="h5">Changed items ({view.changes.length})</Heading>
-            {view.changes.map(row => (
-              <Box key={row.fieldId} padding="space.050">
-                <Text>{row.fieldName}</Text>
-                {row.detail && <Text>{row.detail}</Text>}
-                <Text>Was: {fullValues[row.fieldId] ? row.wasFull : row.was}</Text>
-                <Text>Now: {fullValues[row.fieldId] ? row.nowFull : row.now}</Text>
-                <Inline space="space.050" alignBlock="center">
-                  <Text>Changed by:</Text>
-                  {row.changedBy.length > 0 ? row.changedBy.map(id => <User key={id} accountId={id} />) : <Text>not known</Text>}
-                  <Text>on {row.changedAt}</Text>
-                </Inline>
-                {row.showFullToggle && (
-                  <Button appearance="subtle" onClick={() => setFullValues({ ...fullValues, [row.fieldId]: !fullValues[row.fieldId] })}>
-                    {fullValues[row.fieldId] ? 'Show less' : 'Show full value'}
-                  </Button>
-                )}
-              </Box>
-            ))}
-          </Stack>
-        )}
-        <Inline space="space.100">
-          {view.actions.retry && (
-            <Button appearance="primary" onClick={() => loadState()}>
-              {view.actions.retry.label}
-            </Button>
+        <Stack space="space.100">
+          {view.message.lines.map(line => (
+            <Text key={line}>{line}</Text>
+          ))}
+          {view.revokedByAccountId && (
+            <Inline space="space.050" alignBlock="center">
+              <Text>Revoked by:</Text>
+              <User accountId={view.revokedByAccountId} />
+            </Inline>
           )}
-          {view.actions.seal && (
-            <Button appearance="primary" onClick={() => openForm('seal')}>
-              {view.actions.seal.label}
-            </Button>
+          {view.lozenge && (
+            <Box paddingBlock="space.050">
+              <Lozenge appearance={view.lozenge.appearance}>{view.lozenge.text}</Lozenge>
+            </Box>
           )}
-          {view.actions.approveChanges && (
-            <Button appearance="warning" onClick={() => openForm('approve')}>
-              {view.actions.approveChanges.label}
-            </Button>
+          {view.changes.length > 0 && (
+            <Stack space="space.100">
+              <Heading as="h5">Changed items ({view.changes.length})</Heading>
+              {view.changes.map(row => (
+                <Box key={row.fieldId} padding="space.100" backgroundColor="color.background.neutral.subtle">
+                  <Stack space="space.050">
+                    <Inline space="space.050" alignBlock="center">
+                      <Text weight="bold">{row.fieldName}</Text>
+                      {row.detail && <Text color="color.text.subtle">({row.detail})</Text>}
+                    </Inline>
+                    <Text color="color.text.subtle" weight="medium">Was (at approval):</Text>
+                    <Box padding="space.050">
+                      <Text>{fullValues[row.fieldId] ? row.wasFull : row.was}</Text>
+                    </Box>
+                    <Text color="color.text.danger" weight="medium">Now (current edit):</Text>
+                    <Box padding="space.050">
+                      <Text>{fullValues[row.fieldId] ? row.nowFull : row.now}</Text>
+                    </Box>
+                    <Inline space="space.050" alignBlock="center">
+                      <Text color="color.text.subtlest">Changed by:</Text>
+                      {row.changedBy.length > 0 ? row.changedBy.map(id => <User key={id} accountId={id} />) : <Text>unknown</Text>}
+                      <Text color="color.text.subtlest">on {row.changedAt}</Text>
+                    </Inline>
+                    {row.showFullToggle && (
+                      <Button appearance="subtle" onClick={() => setFullValues({ ...fullValues, [row.fieldId]: !fullValues[row.fieldId] })}>
+                        {fullValues[row.fieldId] ? 'Show less' : 'Show full value'}
+                      </Button>
+                    )}
+                  </Stack>
+                </Box>
+              ))}
+            </Stack>
           )}
-          {view.actions.revoke && (
-            <Button appearance="subtle" onClick={() => openForm('revoke')}>
-              {view.actions.revoke.label}
-            </Button>
+          <Box paddingBlockStart="space.050">
+            <Inline space="space.100">
+              {view.actions.retry && (
+                <Button appearance="primary" onClick={() => loadState()}>
+                  {view.actions.retry.label}
+                </Button>
+              )}
+              {view.actions.seal && (
+                <Button appearance="primary" onClick={() => openForm('seal')}>
+                  {view.actions.seal.label}
+                </Button>
+              )}
+              {view.actions.approveChanges && (
+                <Button appearance="warning" onClick={() => openForm('approve')}>
+                  {view.actions.approveChanges.label}
+                </Button>
+              )}
+              {view.actions.revoke && (
+                <Button appearance="default" onClick={() => openForm('revoke')}>
+                  {view.actions.revoke.label}
+                </Button>
+              )}
+              <Button appearance="subtle" onClick={() => loadState()}>
+                Refresh status
+              </Button>
+            </Inline>
+          </Box>
+          {view.askText && (
+            <Box padding="space.050">
+              <Text weight="medium">{view.askText}</Text>
+            </Box>
           )}
-        </Inline>
-        {view.askText && <Text>{view.askText}</Text>}
+        </Stack>
       </SectionMessage>
 
       {view.seal && (
@@ -261,7 +284,7 @@ export const LedgerSealPanel: React.FC = () => {
             <Heading as="h4">{form === 'revoke' ? 'Revoke seal' : form === 'approve' ? 'Approve these changes' : 'Seal this issue'}</Heading>
             {form !== 'revoke' && (
               <>
-                <Label labelFor="meaning">Meaning</Label>
+                <Label labelFor="meaning">Choose the role of your sign-off for this approval:</Label>
                 <RadioGroup
                   name="meaning"
                   options={MEANINGS.map(m => ({ name: 'meaning', value: m.value, label: m.label }))}
@@ -281,9 +304,7 @@ export const LedgerSealPanel: React.FC = () => {
             )}
             {form !== 'revoke' && (
               <>
-                <Text>
-                  {DECLARATION.text} (Declaration v{DECLARATION.version})
-                </Text>
+                <Text>{DECLARATION.text}</Text>
                 <Checkbox
                   value="agreed"
                   isChecked={declarationAgreed}

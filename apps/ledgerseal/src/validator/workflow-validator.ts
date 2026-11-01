@@ -37,7 +37,8 @@ export function validateTransitionGate(
   if (analysis.status === 'NO_SEAL') {
     return {
       isValid: false,
-      errorMessage: 'LedgerSeal: this issue is not sealed. Ask a project admin to seal it in the LedgerSeal panel, then try again.'
+      errorMessage:
+        'LedgerSeal: this issue is not sealed. To proceed: open the LedgerSeal panel on this issue, select your sign-off role, agree to the declaration, and click "Seal issue".'
     };
   }
 
