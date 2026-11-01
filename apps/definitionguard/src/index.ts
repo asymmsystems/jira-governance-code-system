@@ -9,7 +9,7 @@ import { ProjectConfigStore } from './settings/project-config';
 import { StorageProvider } from './storage/checklist-repository';
 import { resolveStorage } from './storage/forge-storage';
 import { ChecklistStore, eventKey } from './storage/checklist-store';
-import { applyEvent, createdEvent, emptyState, chainMessage, CHAIN_LIMIT_NOTE } from './domain/event-log';
+import { applyEvent, createdEvent, emptyState, chainMessage, verifyChain, CHAIN_LIMIT_NOTE } from './domain/event-log';
 import { ChecklistEvent, ChecklistState, IssueChecklistState, ChecklistAuditEvent } from './domain/models';
 import { checkIssuePermissions, getIssuePermissions, permissionLabel, PermissionDeniedError, EDIT_DENIED, RESET_DENIED } from './security/permissions';
 import { resolveTemplate } from './settings/template-store';
@@ -362,6 +362,36 @@ export async function getItemEvidence(payload: any, context?: any, storageProvid
   return { itemId, evidence: event?.evidence };
 }
 
+export const EXPORT_DENIED = 'Only a project admin can export this history.';
+
+/**
+ * The whole history of the issue as JSON text, with the chain check and its limit, for an
+ * auditor. Project admins only. The panel shows the text to copy (UI Kit has no file download).
+ */
+export async function exportChecklistHistory(_payload: any, context?: any, storageProvider?: StorageProvider) {
+  const c = panelContext(context);
+  await checkIssuePermissions(c.issueKey, ['ADMINISTER_PROJECTS'], EXPORT_DENIED);
+  const store = new ChecklistStore(resolveStorage(storageProvider));
+  const state = await store.load(c.issueId);
+  const events = await store.allEvents(c.issueId, state);
+  const check = verifyChain(c.issueId, events, state);
+  const doc = {
+    format: 'definitionguard-history-export',
+    formatVersion: 1,
+    issueId: c.issueId,
+    issueKey: c.issueKey,
+    exportedAt: new Date().toISOString(),
+    exportedByAccountId: c.actorAccountId,
+    state: state
+      ? { stateVersion: state.seq, templateId: state.templateId, templateVersion: state.templateVersion, headHash: state.headHash, legacy: state.legacy }
+      : null,
+    chain: { ...check, message: chainMessage(check) },
+    limit: CHAIN_LIMIT_NOTE,
+    events
+  };
+  return { fileName: `${c.issueKey}-definitionguard-history.json`, text: JSON.stringify(doc, null, 2) };
+}
+
 /**
  * Toggles a checklist item's completion state and records it as an event.
  */
@@ -482,6 +512,10 @@ resolver.define('waiveItem', async (req) => {
 
 resolver.define('getEvidence', async (req) => {
   return await getItemEvidence(req.payload, req.context);
+});
+
+resolver.define('exportHistory', async (req) => {
+  return await exportChecklistHistory(req.payload, req.context);
 });
 
 resolver.define('getHistory', async (req) => {

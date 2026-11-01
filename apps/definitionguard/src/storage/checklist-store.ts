@@ -80,11 +80,10 @@ export class ChecklistStore {
   }
 
   /**
-   * Verifies the whole chain against the stored head. Reads every history page, then fills any
-   * seq the eventually consistent query missed with strict reads, so a gap is a real gap.
+   * Every event in seq order. Reads every history page, then fills any seq the eventually
+   * consistent query missed with strict reads, so a missing seq is really missing.
    */
-  public async verify(issueId: string): Promise<ChainCheck> {
-    const state = await this.load(issueId);
+  public async allEvents(issueId: string, state?: ChecklistState): Promise<ChecklistEvent[]> {
     const events: ChecklistEvent[] = [];
     let cursor: string | undefined;
     do {
@@ -98,7 +97,13 @@ export class ChecklistStore {
       const e = await this.storage.get<ChecklistEvent>(eventKey(issueId, seq));
       if (e) events.push(e);
     }
-    return verifyChain(issueId, events, state);
+    return events.sort((a, b) => a.seq - b.seq);
+  }
+
+  /** Verifies the whole chain against the stored head. */
+  public async verify(issueId: string): Promise<ChainCheck> {
+    const state = await this.load(issueId);
+    return verifyChain(issueId, await this.allEvents(issueId, state), state);
   }
 
   /** As load, but falls back to a state derived in memory from a v1 record (seq 0). Never writes. */

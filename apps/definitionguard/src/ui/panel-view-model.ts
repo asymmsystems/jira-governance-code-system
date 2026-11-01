@@ -4,7 +4,7 @@
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
  */
-import { IssueChecklistState, ItemState } from '../domain/models';
+import { IssueChecklistState, ItemState, ChecklistAuditEvent } from '../domain/models';
 
 /** Who completed an item, for rendering: a Jira user from the accountId, or v1 text. */
 export type Attribution = { kind: 'user'; accountId: string } | { kind: 'text'; text: string };
@@ -154,4 +154,32 @@ export function panelErrorText(err: unknown, action: string): string {
     if (at >= 0) return message.slice(at);
   }
   return `DefinitionGuard could not ${action}. Refresh the page and try again. If it keeps failing, ask your Jira admin.`;
+}
+
+export interface HistoryRow {
+  key: string;
+  when: string;
+  accountId: string;
+  text: string;
+  evidence?: { url?: string; note?: string };
+}
+
+const ACTION_TEXT: Record<ChecklistAuditEvent['eventType'], string> = {
+  TEMPLATE_CONFIGURED: 'Checklist created',
+  CHECK: 'Completed',
+  UNCHECK: 'Reopened',
+  WAIVE: 'Waived',
+  RESET: 'Checklist reset'
+};
+
+/** One row per event, oldest first: the action in words, the item title, and any waiver reason. */
+export function historyRows(trail: ChecklistAuditEvent[] | undefined, format: (iso?: string) => string = formatLocal): HistoryRow[] {
+  return (trail || []).map(ev => {
+    let text = ACTION_TEXT[ev.eventType];
+    if (ev.itemTitle) text += `: ${ev.itemTitle}`;
+    if (ev.details) text += ` (reason: ${ev.details})`;
+    const row: HistoryRow = { key: ev.id, when: format(ev.timestamp), accountId: ev.actorAccountId, text };
+    if (ev.evidence) row.evidence = ev.evidence;
+    return row;
+  });
 }

@@ -14,11 +14,12 @@ import ForgeReconciler, {
   Link,
   Textfield,
   List,
-  ListItem
+  ListItem,
+  CodeBlock
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
 import { IssueChecklistState, ChecklistAuditEvent } from '../domain/models';
-import { buildPanelViewModel, formatLocal, panelErrorText, Attribution } from '../ui/panel-view-model';
+import { buildPanelViewModel, historyRows, panelErrorText, Attribution } from '../ui/panel-view-model';
 
 type Evidence = { url?: string; note?: string };
 type HistoryPage = { auditTrail?: ChecklistAuditEvent[]; chain?: { ok: boolean; message: string; limit: string } };
@@ -40,6 +41,7 @@ export const DefinitionGuardPanel: React.FC = () => {
   const [waiveFor, setWaiveFor] = useState<string | null>(null);
   const [waiveReason, setWaiveReason] = useState<string>('');
   const [shownEvidence, setShownEvidence] = useState<Record<string, Evidence | null>>({});
+  const [exported, setExported] = useState<{ fileName: string; text: string } | null>(null);
 
   const run = async (action: string, id: string | null, call: () => Promise<void>) => {
     setBusyId(id);
@@ -234,8 +236,22 @@ export const DefinitionGuardPanel: React.FC = () => {
         >
           {history ? 'Hide history' : 'History'}
         </Button>
+        <Button
+          appearance="subtle"
+          isDisabled={loading}
+          onClick={() => (exported ? setExported(null) : run('export the history', 'export', async () => setExported((await invoke('exportHistory', {})) as unknown as { fileName: string; text: string })))}
+        >
+          {exported ? 'Hide export' : 'Export history'}
+        </Button>
         <Button appearance="subtle" isDisabled={loading} onClick={loadChecklist}>Refresh</Button>
       </Inline>
+
+      {exported && (
+        <Stack space="space.100">
+          <Text>Copy this JSON and save it as {exported.fileName}. It holds every event and the result of the history check.</Text>
+          <CodeBlock language="json" text={exported.text} />
+        </Stack>
+      )}
 
       {history && (
         <Stack space="space.100">
@@ -247,14 +263,14 @@ export const DefinitionGuardPanel: React.FC = () => {
             </SectionMessage>
           )}
           <List type="unordered">
-            {(history.auditTrail || []).map(ev => (
-              <ListItem key={ev.id}>
+            {historyRows(history.auditTrail).map(row => (
+              <ListItem key={row.key}>
                 <Inline space="space.050" alignBlock="center" shouldWrap>
-                  <Text>{formatLocal(ev.timestamp)}</Text>
-                  <User accountId={ev.actorAccountId} />
-                  <Text>{ev.eventType}{ev.itemTitle ? `: ${ev.itemTitle}` : ''}{ev.details ? ` (reason: ${ev.details})` : ''}</Text>
-                  {ev.evidence?.url && <Link href={ev.evidence.url} openNewTab>{ev.evidence.url}</Link>}
-                  {ev.evidence?.note && <Text>{ev.evidence.note}</Text>}
+                  <Text>{row.when}</Text>
+                  <User accountId={row.accountId} />
+                  <Text>{row.text}</Text>
+                  {row.evidence?.url && <Link href={row.evidence.url} openNewTab>{row.evidence.url}</Link>}
+                  {row.evidence?.note && <Text>{row.evidence.note}</Text>}
                 </Inline>
               </ListItem>
             ))}
