@@ -82,7 +82,7 @@ export const SettingsPage: React.FC = () => {
     setNotice(null);
     try {
       const res = (await invoke('saveTemplate', { issueTypeId, template: toTemplatePayload(editor) })) as unknown as { template: any };
-      setNotice(`Template "${res.template.name}" version ${res.template.version} saved. New checklists for this issue type use it.`);
+      setNotice(`Template "${res.template.name}" version ${res.template.version} saved. New checklists for this issue type use it. Open issues keep their version until you re-sync them.`);
       await load();
     } catch (err) {
       setError(panelErrorText(err, 'save the template'));
@@ -101,6 +101,28 @@ export const SettingsPage: React.FC = () => {
       await load();
     } catch (err) {
       setError(panelErrorText(err, 'save the statuses'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resync = async () => {
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      let cursor: string | undefined;
+      let updated = 0;
+      let version = 0;
+      do {
+        const page = (await invoke('resyncIssues', { issueTypeId, cursor })) as unknown as { updated: number; nextCursor?: string; templateVersion: number };
+        updated += page.updated;
+        version = page.templateVersion;
+        cursor = page.nextCursor;
+      } while (cursor);
+      setNotice(`Re-synced ${updated} open issues to version ${version}. Ticks on unchanged items were kept.`);
+    } catch (err) {
+      setError(panelErrorText(err, 're-sync the open issues'));
     } finally {
       setSaving(false);
     }
@@ -213,6 +235,9 @@ export const SettingsPage: React.FC = () => {
       <Inline space="space.100">
         <Button appearance="primary" isDisabled={saving || !issueTypeId} onClick={save}>
           Save template
+        </Button>
+        <Button isDisabled={saving || !settings?.templates[issueTypeId]} onClick={resync}>
+          Re-sync open issues
         </Button>
       </Inline>
 

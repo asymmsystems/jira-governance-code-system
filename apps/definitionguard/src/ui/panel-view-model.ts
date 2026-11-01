@@ -140,7 +140,8 @@ const OWN_MESSAGES = [
   'The template ',
   'Item ',
   'This issue type is not in the project.',
-  'Only Done-category statuses'
+  'Only Done-category statuses',
+  'This issue type has no project template'
 ];
 
 /**

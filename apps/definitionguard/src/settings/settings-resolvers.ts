@@ -16,6 +16,9 @@ import { assertLicensed } from '../security/licence';
 import { TemplateStore } from './template-store';
 import { toTemplateView } from '../domain/dod-template';
 import { ChecklistTemplate } from '../domain/models';
+import { ChecklistStore } from '../storage/checklist-store';
+import { resyncEntry } from '../domain/event-log';
+import { publishAttestation } from '../integrity/attestation';
 import { ProjectConfigStore } from './project-config';
 
 export const TEMPLATE_DENIED = 'Only a project admin can change DefinitionGuard templates.';
@@ -102,10 +105,61 @@ export async function saveTemplate(payload: any, context?: any, storageProvider?
   return { template: toTemplateView(template) };
 }
 
+export const RESYNC_PAGE = 25;
+export const NO_TEMPLATE_TO_RESYNC = 'This issue type has no project template to re-sync to.';
+
+/**
+ * Re-syncs open issues of one issue type to the current project template revision (B-16),
+ * one page of at most 25 issues per call. Issues on another template or already current are
+ * skipped. Each update is one Resync entry; ticks on unchanged ids are kept.
+ */
+export async function resyncIssues(payload: any, context?: any, storageProvider?: StorageProvider) {
+  assertLicensed(context);
+  const c = await requireProjectAdmin(context);
+  const issueTypeId = String(payload?.issueTypeId || '');
+  const storage = resolveStorage(storageProvider);
+  const template = await new TemplateStore(storage).get(c.projectId, issueTypeId);
+  if (!template) {
+    throw new Error(NO_TEMPLATE_TO_RESYNC);
+  }
+  const jql = `project = ${c.projectId} AND issuetype = ${issueTypeId} AND statusCategory != Done`;
+  const cursor = typeof payload?.cursor === 'string' ? payload.cursor : '';
+  const res = cursor
+    ? await api.asApp().requestJira(route`/rest/api/3/search/jql?jql=${jql}&maxResults=${RESYNC_PAGE}&fields=id,key&nextPageToken=${cursor}`)
+    : await api.asApp().requestJira(route`/rest/api/3/search/jql?jql=${jql}&maxResults=${RESYNC_PAGE}&fields=id,key`);
+  if (res.status !== 200) {
+    throw new Error('DefinitionGuard could not search the open issues. Try again.');
+  }
+  const body = await res.json();
+  const store = new ChecklistStore(storage);
+  const at = new Date().toISOString();
+  const outdated = (st: { template: { workEffortId: string; revisionNumber: number } }) =>
+    st.template.workEffortId === template.workEffortId && st.template.revisionNumber < template.revisionNumber;
+  let updated = 0;
+  let skipped = 0;
+  for (const issue of body.issues || []) {
+    const issueId = String(issue.id);
+    const current = await store.load(issueId);
+    if (!current || !outdated(current)) {
+      skipped++;
+      continue;
+    }
+    const state = await store.mutate(
+      issueId,
+      async () => { throw new Error('DefinitionGuard: the record disappeared during re-sync'); },
+      st => (outdated(st) ? [resyncEntry(st, template, c.actorAccountId, at)] : [])
+    );
+    await publishAttestation(state, at);
+    updated++;
+  }
+  return { updated, skipped, nextCursor: body.nextPageToken || undefined, templateVersion: template.revisionNumber };
+}
+
 const resolver = new Resolver();
 
 resolver.define('getSettings', async (req) => getSettings(req.payload, req.context));
 resolver.define('saveTemplate', async (req) => saveTemplate(req.payload, req.context));
 resolver.define('saveExemptions', async (req) => saveExemptions(req.payload, req.context));
+resolver.define('resyncIssues', async (req) => resyncIssues(req.payload, req.context));
 
 export const settingsHandler = resolver.getDefinitions();

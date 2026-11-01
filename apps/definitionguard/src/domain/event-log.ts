@@ -191,6 +191,31 @@ export function statusEntry(state: DodState, change: StatusChange): EntryInput {
   return { transitionName: change.transitionName, at: change.at, actorPartyId: change.actorPartyId, rows };
 }
 
+/**
+ * Resync to a new template revision (B-16): the template link gets the new revisionNumber; every
+ * criterion of the new revision is restated (an unchanged id keeps its status and its original
+ * breakdown link); new criteria start open; a removed criterion's breakdown link is ended with
+ * thruDate, never deleted.
+ */
+export function resyncEntry(state: DodState, template: DodTemplate, actorPartyId: string, at: string): EntryInput {
+  const issueId = state.issue.sourceReferenceId;
+  const existing = new Map(state.criteria.map(c => [c.workEffortId, c]));
+  const keep = new Set(template.criteria.map(c => criterionWorkEffortId(issueId, c.templateItemId)));
+  const rows: DodRow[] = [
+    { entity: 'WorkEffortAssoc', workEffortIdFrom: template.workEffortId, workEffortIdTo: state.issue.workEffortId, workEffortAssocTypeId: 'WORK_EFF_TEMPLATE', revisionNumber: template.revisionNumber, waiverRoleTypeId: template.waiverRoleTypeId, fromDate: at }
+  ];
+  for (const c of template.criteria) {
+    const workEffortId = criterionWorkEffortId(issueId, c.templateItemId);
+    rows.push({ entity: 'WorkEffort', workEffortId, workEffortTypeId: 'DOD_CRITERION', ...c });
+    rows.push({ entity: 'WorkEffortAssoc', workEffortIdFrom: state.issue.workEffortId, workEffortIdTo: workEffortId, workEffortAssocTypeId: 'WORK_EFF_BREAKDOWN', sequenceNum: c.sequenceNum, fromDate: existing.get(workEffortId)?.breakdownFromDate || at });
+  }
+  for (const c of state.criteria) {
+    if (keep.has(c.workEffortId)) continue;
+    rows.push({ entity: 'WorkEffortAssoc', workEffortIdFrom: state.issue.workEffortId, workEffortIdTo: c.workEffortId, workEffortAssocTypeId: 'WORK_EFF_BREAKDOWN', sequenceNum: c.sequenceNum, fromDate: c.breakdownFromDate || at, thruDate: at });
+  }
+  return { transitionName: 'Resync', at, actorPartyId, rows };
+}
+
 /** Reset: one WorkEffortStatus row back to DOD_OPEN for every criterion that is not open. */
 export function resetEntry(state: DodState, actorPartyId: string, at: string): EntryInput {
   return {
@@ -213,7 +238,7 @@ function foldRows(state: DodState, transitionName: TransitionName, seq: number, 
       const { entity: _e, workEffortTypeId: _t, ...fields } = r as any;
       const old = previous.get(fields.workEffortId);
       return old
-        ? { ...fields, currentStatusId: old.currentStatusId, lastStatusUpdate: old.lastStatusUpdate, lastStatusByPartyId: old.lastStatusByPartyId, lastStatusSeq: old.lastStatusSeq, evidenceContentId: old.evidenceContentId, legacyName: old.legacyName }
+        ? { ...fields, currentStatusId: old.currentStatusId, lastStatusUpdate: old.lastStatusUpdate, lastStatusByPartyId: old.lastStatusByPartyId, lastStatusSeq: old.lastStatusSeq, evidenceContentId: old.evidenceContentId, legacyName: old.legacyName, breakdownFromDate: old.breakdownFromDate }
         : { ...fields, currentStatusId: 'DOD_OPEN' };
     }) as CriterionState[];
   }
@@ -230,7 +255,10 @@ function foldRows(state: DodState, transitionName: TransitionName, seq: number, 
           next.template = { workEffortId: row.workEffortIdFrom, revisionNumber: row.revisionNumber || 1, waiverRoleTypeId: row.waiverRoleTypeId || DEFAULT_WAIVER_ROLE };
         } else {
           const c = byId.get(row.workEffortIdTo);
-          if (c && row.sequenceNum !== undefined) c.sequenceNum = row.sequenceNum;
+          if (c && !row.thruDate) {
+            if (row.sequenceNum !== undefined) c.sequenceNum = row.sequenceNum;
+            c.breakdownFromDate = row.fromDate;
+          }
         }
         break;
       case 'WorkEffortStatus': {

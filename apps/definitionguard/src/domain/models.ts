@@ -168,6 +168,7 @@ export interface CriterionState extends TemplateCriterion {
   lastStatusSeq?: number;
   evidenceContentId?: string;              // WorkEffortContent DOD_EVIDENCE for the current DONE
   legacyName?: string;                     // v1 display name, only when v1 recorded no accountId
+  breakdownFromDate?: string;              // fromDate of the WORK_EFF_BREAKDOWN link (part of its key)
 }
 
 export interface LegacyRef {
