@@ -21,54 +21,62 @@
       <span class="badge badge-primary" id="projectBadge" hidden></span>
       <span class="badge badge-warning" id="truncatedNote" hidden></span>
       <span class="badge badge-success" id="completionBadge" hidden></span>
-      <button class="btn btn-outline" id="toggleBacklogBtn" title="Toggle unmapped backlog tray">
-        📂 Backlog Tray (<span id="backlogCount">0</span>)
-      </button>
-      <button class="btn btn-outline" id="refreshBtn">🔄 Refresh</button>
-      <label class="shortcut-toggle"><input type="checkbox" id="shortcutsToggle" checked> Keyboard shortcuts</label>
-      <button class="btn btn-outline" id="btnChanges" type="button" aria-expanded="false" aria-controls="changesPanel" title="Every Jira write of this session">
-        Changes (<span id="changesCount">0</span>)
-      </button>
+      <div class="header-divider"></div>
       <div class="search-box-container" role="search">
         <input type="search" id="inAppSearchInput" class="in-app-search-input" placeholder="Search tasks (Ctrl+F)..." aria-label="Search tasks by key or summary" autocomplete="off">
         <span id="searchMatchCount" class="search-match-count" aria-live="polite"></span>
       </div>
+      <div class="btn-group">
+        <button class="btn btn-outline" id="toggleBacklogBtn" title="Toggle unmapped backlog tray">
+          📂 Backlog Tray (<span id="backlogCount">0</span>)
+        </button>
+        <button class="btn btn-outline" id="btnChanges" type="button" aria-expanded="false" aria-controls="changesPanel" title="Every Jira write of this session">
+          Changes (<span id="changesCount">0</span>)
+        </button>
+        <button class="btn btn-outline" id="refreshBtn" title="Refresh project plan">🔄 Refresh</button>
+      </div>
+      <label class="shortcut-toggle"><input type="checkbox" id="shortcutsToggle" checked> Keys</label>
     </div>
 
     <div class="header-right">
-      <button class="btn btn-outline" id="toggleTableViewBtn" type="button" aria-pressed="false" title="Switch between timeline and plain table view">Table view</button>
-      <div style="position: relative; display: inline-block;">
-        <button class="btn btn-outline" id="btnManageColumns" title="Show or hide table columns">
-          ⊞ Columns <span id="colCountBadge" class="col-count-badge">8/8</span> ▾
-        </button>
-        <!-- Column Manager Popover -->
-        <div class="column-manager-popover" id="columnManagerPopover" style="display: none;">
-          <div class="col-popover-header">
-            <span style="font-weight: 700; font-size: 13px;">Manage Table Columns</span>
-            <button class="btn-icon-subtle" id="btnCloseColPopover" title="Close">✕</button>
-          </div>
-          <div class="col-popover-info">
-            Toggle columns to customize view. Task Summary is required for task identity.
-          </div>
-          <div class="col-popover-list" id="columnOptionsList"></div>
-          <div class="col-popover-footer">
-            <button class="btn btn-outline btn-sm" id="btnShowAllColumns">Show All</button>
-            <button class="btn btn-outline btn-sm" id="btnResetColumns">Reset Defaults</button>
+      <div class="btn-group">
+        <button class="btn btn-outline" id="toggleTableViewBtn" type="button" aria-pressed="false" title="Switch between timeline and plain table view">Table view</button>
+        <div style="position: relative; display: inline-block;">
+          <button class="btn btn-outline" id="btnManageColumns" title="Show or hide table columns">
+            ⊞ Columns <span id="colCountBadge" class="col-count-badge">8/8</span> ▾
+          </button>
+          <!-- Column Manager Popover -->
+          <div class="column-manager-popover" id="columnManagerPopover" style="display: none;">
+            <div class="col-popover-header">
+              <span style="font-weight: 700; font-size: 13px;">Manage Table Columns</span>
+              <button class="btn-icon-subtle" id="btnCloseColPopover" title="Close">✕</button>
+            </div>
+            <div class="col-popover-info">
+              Toggle columns to customize view. Task Summary is required for task identity.
+            </div>
+            <div class="col-popover-list" id="columnOptionsList"></div>
+            <div class="col-popover-footer">
+              <button class="btn btn-outline btn-sm" id="btnShowAllColumns">Show All</button>
+              <button class="btn btn-outline btn-sm" id="btnResetColumns">Reset Defaults</button>
+            </div>
           </div>
         </div>
       </div>
-      <button class="btn btn-outline" id="newEpicBtn">+ New Epic</button>
-      <button class="btn btn-primary" id="newTaskBtn">+ Add Task / Issue</button>
       <select class="view-select hierarchy-select" id="hierarchySwitcher" aria-label="Hierarchy level" title="Filter hierarchy level">
-        <option value="all">🌳 Full Hierarchy (Epics ➔ Stories ➔ Subtasks)</option>
-        <option value="epics">🟪 Epics Only (Executive Roadmap)</option>
-        <option value="stories">🔷 Stories & Tasks (Sprint Plan)</option>
+        <option value="all">🌳 Full Hierarchy</option>
+        <option value="epics">🟪 Epics Only</option>
+        <option value="stories">🔷 Stories & Tasks</option>
       </select>
       <select class="view-select" id="viewSwitcher" aria-label="View">
-        <option value="timeline">📊 Project Tracking (WBS & Timeline)</option>
-        <option value="table">📋 Table View (Plain Table)</option>
-        <option value="utilization">👤 Resource Utilization (Per-Person)</option>
+        <option value="timeline">📊 Timeline (WBS)</option>
+        <option value="table">📋 Table View</option>
+        <option value="utilization">👤 Utilization</option>
       </select>
+      <div class="header-divider"></div>
+      <div class="btn-group">
+        <button class="btn btn-outline" id="newEpicBtn">+ New Epic</button>
+        <button class="btn btn-primary" id="newTaskBtn">+ Add Task / Issue</button>
+      </div>
     </div>
   </header>
 

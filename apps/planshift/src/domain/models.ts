@@ -188,6 +188,7 @@ export interface ProjectPlanState {
   columnWidths?: ColumnWidthConfig; // User-adjusted column widths
   availableEpics?: JiraEpicItem[];  // Real project Epics
   availableUsers?: JiraAssignableUser[]; // Real project assignees
+  hasEpic?: boolean;                // Whether the project supports Epic issue type
   lastUpdated: string;
   isLiveSynced?: boolean;
   siteUrl?: string;

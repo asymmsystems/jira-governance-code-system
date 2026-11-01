@@ -6064,7 +6064,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
 
   // src/frontend/banner.ts
-  function showErrorBanner(message) {
+  function showErrorBanner2(message) {
     const banner = document.getElementById("syncBanner");
     const text = document.getElementById("syncBannerText");
     if (!banner || !text) return;
@@ -6177,7 +6177,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     if (!fnName.startsWith("get")) {
       const verdict = classifyResult(res);
-      if (verdict.failed && verdict.message) showErrorBanner(verdict.message);
+      if (verdict.failed && verdict.message) showErrorBanner2(verdict.message);
       recordChanges(res);
     }
     let rounds = 0;
@@ -7590,18 +7590,18 @@ Please see https://iframe-resizer.com/upgrade for more details.
   var pinnedDependencyTaskId = null;
   var isDraggingBar = false;
   var modalUseRollupProgressFlag = false;
-  var columnWidths = { epic: 110, story: 100, task: 260, resource: 130, effort: 65, progress: 65, target: 65, status: 95 };
-  var DEFAULT_COLUMN_WIDTHS = { epic: 110, story: 100, task: 260, resource: 130, effort: 65, progress: 65, target: 65, status: 95 };
+  var columnWidths = { epic: 110, story: 100, task: 260, resource: 130, effort: 75, progress: 95, target: 95, status: 125 };
+  var DEFAULT_COLUMN_WIDTHS = { epic: 110, story: 100, task: 260, resource: 130, effort: 75, progress: 95, target: 95, status: 125 };
   var hiddenColumns = /* @__PURE__ */ new Set();
   var ALL_COLUMNS = [
     { key: "epic", label: "Epic", icon: "\u{1F7EA}", defaultWidth: 110, description: "Parent Epic roadmap category" },
     { key: "story", label: "Story", icon: "\u{1F537}", defaultWidth: 100, description: "Issue type (Story, Task, Subtask)" },
     { key: "task", label: "Task", icon: "\u{1F4DD}", defaultWidth: 260, locked: true, description: "Issue key and summary (Required)" },
     { key: "resource", label: "Resource", icon: "\u{1F465}", defaultWidth: 130, description: "Assigned team member" },
-    { key: "effort", label: "Hrs", icon: "\u23F1\uFE0F", defaultWidth: 65, description: "Estimated effort in hours" },
-    { key: "progress", label: "Progress", icon: "\u{1F4C8}", defaultWidth: 65, description: "Actual completion %" },
-    { key: "target", label: "Target", icon: "\u{1F3AF}", defaultWidth: 65, description: "Planned target completion %" },
-    { key: "status", label: "Status", icon: "\u{1F3F7}\uFE0F", defaultWidth: 95, description: "Workflow status" }
+    { key: "effort", label: "Hrs", icon: "\u23F1\uFE0F", defaultWidth: 75, description: "Estimated effort in hours" },
+    { key: "progress", label: "Progress", icon: "\u{1F4C8}", defaultWidth: 95, description: "Actual completion %" },
+    { key: "target", label: "Target", icon: "\u{1F3AF}", defaultWidth: 95, description: "Planned target completion %" },
+    { key: "status", label: "Status", icon: "\u{1F3F7}\uFE0F", defaultWidth: 125, description: "Workflow status" }
   ];
   function getVisibleColKeys() {
     if (compactColumns) return ["task"];
@@ -8530,6 +8530,16 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function renderPlan() {
     if (!currentPlan) return;
     renderPlanSummary();
+    const newEpicBtn = document.getElementById("newEpicBtn");
+    if (newEpicBtn) {
+      if (currentPlan.hasEpic === false) {
+        newEpicBtn.style.display = "none";
+        newEpicBtn.title = "Epics are not enabled in this project type";
+      } else {
+        newEpicBtn.style.display = "";
+        newEpicBtn.title = "";
+      }
+    }
     if (currentPlan.tasks) {
       currentPlan.tasks.forEach((t) => {
         if (t.isEpic || t.childrenCount || t.subtasks && t.subtasks.length > 0) {
@@ -8798,18 +8808,48 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function setupColumnResizer(resizer, colKey) {
     resizer.addEventListener("mousedown", (e) => {
       e.preventDefault();
+      e.stopPropagation();
       const startX = e.clientX;
-      const startWidth = columnWidths[colKey];
+      const startWidth = columnWidths[colKey] || 95;
+      resizer.classList.add("is-resizing");
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
       function onMouseMove(moveEvent) {
         const newWidth = Math.max(50, startWidth + (moveEvent.clientX - startX));
         columnWidths[colKey] = newWidth;
-        renderTimelineHeader();
-        renderTimelineRows();
+        const thList = document.querySelectorAll("#ganttHeaderRow .th-col");
+        const visibleKeys = getVisibleColKeys();
+        const offsets = frozenOffsets();
+        thList.forEach((th, i) => {
+          const k = visibleKeys[i];
+          if (!k) return;
+          th.style.width = colWidth(k) + "px";
+          th.style.minWidth = colWidth(k) + "px";
+          th.style.left = offsets[k] + "px";
+        });
+        const rows = document.querySelectorAll("#ganttTableBody tr.task-row");
+        rows.forEach((tr) => {
+          const cells = [...tr.children].filter((td) => !td.classList.contains("timeline-track-cell"));
+          cells.forEach((td, i) => {
+            const k = visibleKeys[i];
+            if (!k) return;
+            td.style.width = colWidth(k) + "px";
+            td.style.minWidth = colWidth(k) + "px";
+            td.style.left = offsets[k] + "px";
+          });
+        });
+        measureLayout();
+        drawTimeline(true);
         syncGanttScrollWidth();
       }
       function onMouseUp() {
         window.removeEventListener("mousemove", onMouseMove);
         window.removeEventListener("mouseup", onMouseUp);
+        resizer.classList.remove("is-resizing");
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        measureLayout();
+        drawTimeline(true);
         syncGanttScrollWidth();
         callResolver2("saveColumnWidths", { columnWidths });
       }
@@ -11489,6 +11529,10 @@ Click to manage or assign.`;
     }
   }
   function openCreateEpicModal() {
+    if (currentPlan && currentPlan.hasEpic === false) {
+      showErrorBanner("Epics are not enabled in this project type.");
+      return;
+    }
     const summaryInput = document.getElementById("newEpicSummaryInput");
     summaryInput.value = "";
     summaryInput.style.borderColor = "";

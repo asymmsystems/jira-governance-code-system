@@ -362,14 +362,14 @@ export function getDefaultWeeks(referenceDate: Date = new Date()): WeeklySprintC
 }
 
 export const DEFAULT_COLUMN_WIDTHS: ColumnWidthConfig = {
-  epic: 120,
-  story: 110,
-  task: 240,
-  resource: 120,
-  effort: 70,
-  progress: 70,
-  target: 70,
-  status: 100
+  epic: 110,
+  story: 100,
+  task: 260,
+  resource: 130,
+  effort: 75,
+  progress: 95,
+  target: 95,
+  status: 125
 };
 
 export const DEFAULT_MILESTONES: ProjectMilestone[] = [];
@@ -729,12 +729,18 @@ export interface LiveData {
   raw: RawIssues;
   users: JiraAssignableUser[];
   epics: JiraEpicItem[];
+  hasEpic?: boolean;
 }
 
 /** One read of everything a plan needs from Jira. */
 export async function loadLive(projectKey: string): Promise<LiveData> {
   const [raw, users, epics] = await Promise.all([fetchRawIssues(projectKey), fetchProjectUsers(projectKey), fetchProjectEpics(projectKey)]);
-  return { raw, users, epics };
+  let hasEpic = epics.length > 0;
+  if (!hasEpic) {
+    const meta = await resolveProjectIssueType(projectKey, 'Epic');
+    hasEpic = Boolean(meta && meta.id);
+  }
+  return { raw, users, epics, hasEpic };
 }
 
 /**
@@ -839,6 +845,7 @@ export async function getProjectPlan(
     hiddenColumns: storedHiddenColumns,
     availableEpics,
     availableUsers,
+    hasEpic: live.hasEpic !== undefined ? live.hasEpic : (availableEpics.length > 0),
     lastUpdated: new Date().toISOString(),
     isLiveSynced: liveData.isLive,
     truncated: liveData.truncated,
@@ -1118,6 +1125,9 @@ export async function createJiraEpic(
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
           });
+        } else {
+          const errMsg = 'Epics are not enabled in this project type';
+          return { success: false, ok: false, error: errMsg, jiraSync: failedCreate(errMsg) };
         }
       }
     }

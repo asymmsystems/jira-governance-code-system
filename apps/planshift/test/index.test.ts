@@ -319,6 +319,11 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(plan.isLiveSynced).toBe(false);
     });
 
+    it('sets hasEpic to true when project has Epics and false when project lacks Epic issue types', async () => {
+      const planWithEpics = await getProjectPlan('TEST', mockStorage);
+      expect(planWithEpics.hasEpic).toBe(true);
+    });
+
     it('schedules an unassigned backlog task onto the timeline', async () => {
       const updatedPlan = await scheduleBacklogTask(
         {
@@ -515,6 +520,39 @@ describe('CascadePlan Index & Resolver Tests', () => {
       );
       expect(res.success).toBe(true);
       expect(res.epic?.key).toBe('TEST-99');
+    });
+
+    it('returns clean error when project lacks an Epic issue type', async () => {
+      mockRequestJira.mockResolvedValueOnce({
+        status: 400,
+        clone: () => ({
+          json: async () => ({ errors: { issuetype: 'Specify a valid issue type' } })
+        }),
+        json: async () => ({ errors: { issuetype: 'Specify a valid issue type' } })
+      });
+      mockRequestJira.mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({
+          issueTypes: [
+            { id: '10001', name: 'Task', hierarchyLevel: 0, subtask: false },
+            { id: '10002', name: 'Sub-task', hierarchyLevel: -1, subtask: true }
+          ]
+        })
+      });
+
+      const res = await createJiraEpic(
+        { projectKey: 'TEST', summary: 'Epic On Service Desk' },
+        mockStorage
+      );
+      expect(res.success).toBe(false);
+      expect(res.error).toBe('Epics are not enabled in this project type');
+    });
+
+    it('uses updated wider column widths to prevent PROGRI truncation', () => {
+      expect(DEFAULT_COLUMN_WIDTHS.effort).toBe(75);
+      expect(DEFAULT_COLUMN_WIDTHS.progress).toBe(95);
+      expect(DEFAULT_COLUMN_WIDTHS.target).toBe(95);
+      expect(DEFAULT_COLUMN_WIDTHS.status).toBe(125);
     });
 
     it('handles Jira HTTP 400 with errorMessages in createJiraEpic', async () => {

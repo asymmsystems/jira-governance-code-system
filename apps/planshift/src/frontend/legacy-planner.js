@@ -187,18 +187,18 @@ let hoveredTaskId = null;
 let pinnedDependencyTaskId = null;
 let isDraggingBar = false;
 let modalUseRollupProgressFlag = false;
-let columnWidths = { epic: 110, story: 100, task: 260, resource: 130, effort: 65, progress: 65, target: 65, status: 95 };
-const DEFAULT_COLUMN_WIDTHS = { epic: 110, story: 100, task: 260, resource: 130, effort: 65, progress: 65, target: 65, status: 95 };
+let columnWidths = { epic: 110, story: 100, task: 260, resource: 130, effort: 75, progress: 95, target: 95, status: 125 };
+const DEFAULT_COLUMN_WIDTHS = { epic: 110, story: 100, task: 260, resource: 130, effort: 75, progress: 95, target: 95, status: 125 };
 let hiddenColumns = new Set();
 const ALL_COLUMNS = [
   { key: 'epic', label: 'Epic', icon: '🟪', defaultWidth: 110, description: 'Parent Epic roadmap category' },
   { key: 'story', label: 'Story', icon: '🔷', defaultWidth: 100, description: 'Issue type (Story, Task, Subtask)' },
   { key: 'task', label: 'Task', icon: '📝', defaultWidth: 260, locked: true, description: 'Issue key and summary (Required)' },
   { key: 'resource', label: 'Resource', icon: '👥', defaultWidth: 130, description: 'Assigned team member' },
-  { key: 'effort', label: 'Hrs', icon: '⏱️', defaultWidth: 65, description: 'Estimated effort in hours' },
-  { key: 'progress', label: 'Progress', icon: '📈', defaultWidth: 65, description: 'Actual completion %' },
-  { key: 'target', label: 'Target', icon: '🎯', defaultWidth: 65, description: 'Planned target completion %' },
-  { key: 'status', label: 'Status', icon: '🏷️', defaultWidth: 95, description: 'Workflow status' }
+  { key: 'effort', label: 'Hrs', icon: '⏱️', defaultWidth: 75, description: 'Estimated effort in hours' },
+  { key: 'progress', label: 'Progress', icon: '📈', defaultWidth: 95, description: 'Actual completion %' },
+  { key: 'target', label: 'Target', icon: '🎯', defaultWidth: 95, description: 'Planned target completion %' },
+  { key: 'status', label: 'Status', icon: '🏷️', defaultWidth: 125, description: 'Workflow status' }
 ];
 function getVisibleColKeys() {
   // Compact mode shows only Key and Summary, so the timeline gets the width (B-27).
@@ -1224,6 +1224,17 @@ function renderPlan() {
   if (!currentPlan) return;
   renderPlanSummary();
 
+  const newEpicBtn = document.getElementById('newEpicBtn');
+  if (newEpicBtn) {
+    if (currentPlan.hasEpic === false) {
+      newEpicBtn.style.display = 'none';
+      newEpicBtn.title = 'Epics are not enabled in this project type';
+    } else {
+      newEpicBtn.style.display = '';
+      newEpicBtn.title = '';
+    }
+  }
+
   if (currentPlan.tasks) {
     currentPlan.tasks.forEach(t => {
       if (t.isEpic || t.childrenCount || (t.subtasks && t.subtasks.length > 0)) {
@@ -1534,20 +1545,55 @@ function setCompactColumns(on) {
 function setupColumnResizer(resizer, colKey) {
   resizer.addEventListener('mousedown', (e) => {
     e.preventDefault();
+    e.stopPropagation();
     const startX = e.clientX;
-    const startWidth = columnWidths[colKey];
+    const startWidth = columnWidths[colKey] || 95;
+    resizer.classList.add('is-resizing');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
 
     function onMouseMove(moveEvent) {
       const newWidth = Math.max(50, startWidth + (moveEvent.clientX - startX));
       columnWidths[colKey] = newWidth;
-      renderTimelineHeader();
-      renderTimelineRows();
+
+      const thList = document.querySelectorAll('#ganttHeaderRow .th-col');
+      const visibleKeys = getVisibleColKeys();
+      const offsets = frozenOffsets();
+
+      thList.forEach((th, i) => {
+        const k = visibleKeys[i];
+        if (!k) return;
+        th.style.width = colWidth(k) + 'px';
+        th.style.minWidth = colWidth(k) + 'px';
+        th.style.left = offsets[k] + 'px';
+      });
+
+      const rows = document.querySelectorAll('#ganttTableBody tr.task-row');
+      rows.forEach(tr => {
+        const cells = [...tr.children].filter(td => !td.classList.contains('timeline-track-cell'));
+        cells.forEach((td, i) => {
+          const k = visibleKeys[i];
+          if (!k) return;
+          td.style.width = colWidth(k) + 'px';
+          td.style.minWidth = colWidth(k) + 'px';
+          td.style.left = offsets[k] + 'px';
+        });
+      });
+
+      measureLayout();
+      drawTimeline(true);
       syncGanttScrollWidth();
     }
 
     function onMouseUp() {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
+      resizer.classList.remove('is-resizing');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+
+      measureLayout();
+      drawTimeline(true);
       syncGanttScrollWidth();
       callResolver('saveColumnWidths', { columnWidths });
     }
@@ -4577,6 +4623,10 @@ async function executeCreateTask() {
 }
 
 function openCreateEpicModal() {
+  if (currentPlan && currentPlan.hasEpic === false) {
+    showErrorBanner('Epics are not enabled in this project type.');
+    return;
+  }
   const summaryInput = document.getElementById('newEpicSummaryInput');
   summaryInput.value = '';
   summaryInput.style.borderColor = '';
