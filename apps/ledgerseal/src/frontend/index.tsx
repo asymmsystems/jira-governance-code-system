@@ -42,6 +42,7 @@ export const LedgerSealPanel: React.FC = () => {
   const [reauthCode, setReauthCode] = useState<string>('');
   const [declarationAgreed, setDeclarationAgreed] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const [sealError, setSealError] = useState<string | null>(null);
 
   useEffect(() => {
     loadTamperState();
@@ -79,20 +80,26 @@ export const LedgerSealPanel: React.FC = () => {
       return;
     }
     setSubmitting(true);
+    setSealError(null);
     try {
-      await invoke('seal-issue-api', {
+      const result = (await invoke('seal-issue-api', {
         signature: {
           meaning,
           reasonCode: 'APPROVAL',
           declarationText: 'I electronically sign and seal this issue per compliance guidelines.',
           reauthConfirmation: reauthCode.trim()
         }
-      });
+      })) as { ok: boolean; message?: string } | undefined;
+      if (!result?.ok) {
+        setSealError(result?.message || 'LedgerSeal could not seal this issue. Nothing was saved.');
+        return;
+      }
       setShowSignForm(false);
       setReauthCode('');
       await loadTamperState();
     } catch (err) {
       console.error('Failed to seal issue', err);
+      setSealError('LedgerSeal could not seal this issue. Nothing was saved. Try again.');
     } finally {
       setSubmitting(false);
     }
@@ -232,6 +239,11 @@ export const LedgerSealPanel: React.FC = () => {
               onChange={(e: any) => setDeclarationAgreed(e.target.checked)}
               label="I certify that I am the authorized signer and this record is complete, accurate, and ready for release."
             />
+            {sealError && (
+              <SectionMessage appearance="warning">
+                <Text>{sealError}</Text>
+              </SectionMessage>
+            )}
             <Inline space="space.100">
               <Button
                 appearance="primary"

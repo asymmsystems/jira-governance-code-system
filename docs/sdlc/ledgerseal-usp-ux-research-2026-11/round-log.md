@@ -69,3 +69,14 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - D-1 resolved by its approved fallback rule. `GET /rest/api/3/project/{key}/roledetails` requires Administer Jira or Administer projects from the caller (Jira REST v3 OpenAPI text, read 2026-11-01), so an approver cannot read their own role membership. The policy is the `ADMINISTER_PROJECTS` or `ADMINISTER` permission, checked as the user with `mypermissions` (permissions required: none; scope `read:jira-work`).
 - Forge facts read for the spec: KVS `keyPolicy: FAIL_IF_EXISTS` and `kvs.transact()` exist in the installed `@forge/kvs` 2.1.1; entity property index types are number, text, string, user and date; trigger events can arrive up to 3 minutes late; UI Kit panel icons may be a resource path (`resource:icons;icon.svg`, as FourRealities does).
 - `python3 loop-engine/graders/grade_spec.py apps/ledgerseal`: passed. The grader reads only the v1 file name (`docs/spec/{app}-spec.md`) and checks six section words, so this pass says nothing about v2. Spec v2 records the scope conflict with the v1 claim (section 5) and keeps `write:jira-work`.
+
+### B-01 Approver policy and separation of duties (LS-01, LS-14)
+- Tests first: `test/seal-authority.test.ts` (B-01 cases), `test/jira-client.test.ts`, fakes in `test/support/fakes.ts`. First run failed for the right reason: `createJiraClient` and the injected dependency argument did not exist (TS2345, module not found).
+- Code:
+  - `src/jira/jira-client.ts`: one Jira interface. Reads and the property write run as the app. `hasApproverPermission` runs as the user (`mypermissions`, `ADMINISTER_PROJECTS` or `ADMINISTER`).
+  - `src/domain/policy.ts`: `authorsSince`, which fails closed on unreadable times.
+  - `src/index.ts`: handlers take `LedgerSealDeps`, and every `NODE_ENV` branch is gone. The issue comes from context only. Errors are typed results: `NO_IDENTITY`, `NOT_APPROVER`, `SELF_APPROVAL`, `JIRA_UNREACHABLE`.
+  - `src/frontend/index.tsx`: shows a refused or failed seal.
+- Adversarial test: the audit flow.js step 3 scenario (an editor reseals their own change) now returns `SELF_APPROVAL`. The gate stays closed, and nothing is written.
+- `index.test.ts` and `edge-cases.test.ts`: the cases that drove the `NODE_ENV`, payload-issue and global-storage paths are replaced by the same behaviour through injected fakes. Domain-level cases are kept.
+- Results: `tsc --noEmit` OK. 10 suites, 97 tests pass. Global branches 92.97%. Changed files: `index.ts` 97.36%, `policy.ts` 100%, `jira-client.ts` 100%. graders: `grade_tdd` True (92.97), `grade_security` True, `grade_ui` True. No em dash.
