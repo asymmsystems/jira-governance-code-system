@@ -473,3 +473,42 @@ The project, the validator and LSP-1 stay in place. Whether to remove them is th
 | 2 | 08:44:35 UTC | `ledgerseal-cert` property; KVS seal (certificate a67afbce) | absent | SEAL_VALID, incidents 0 |
 | 3 | after 2 | Status, resolution (transition 41, HTTP 204) | Backlog, none | Done, Done |
 | 4 | 8 s after 3 | Property read | SEAL_VALID, incidents 0 | unchanged (no write; `issuedAt` still 08:44:35) |
+
+### Owner instruction "fix all open stuff" (2026-11-01)
+
+**1. Old unsigned v1 properties.** Deleting issues is not done (permanent deletion stays with the owner). Instead the stale property on each issue was marked, keeping the old value on the issue. Old values first saved to `~/.cache/gemini-earning-ledgerseal-research/live/legacy-v1-properties-before.json`.
+
+| Issues | Item | Old value | New value |
+|---|---|---|---|
+| TEST-1, DEMO-26, DEMO-22, DEMO-20, DEMO-19, DEMO-17, DEMO-14, DEMO-13, DEMO-11, DEMO-5 (HTTP 200 each) | `ledgerseal-cert` property | unsigned v1 value (SEAL_VALID or SEAL_BROKEN, no `schemaVersion`, no `sig`) | `{status: "LEGACY_UNSIGNED", note, previous: <old value>}` |
+
+After it, `issue.property[ledgerseal-cert].status in ("SEAL_VALID","SEAL_BROKEN","SEAL_REVOKED")` returns only the signed v2 seals LSP-2, LSP-1 and DEMO-34.
+
+**2. Versioned canonical rules** (`504a88e`, development 3.9.0). Rule sets 2.0.0 (original) and 2.1.0 (NF-04 and NF-05). New seals use 2.1.0. A seal is checked with the rules of the version it records; an unknown version gives RECORD_INVALID. 285 tests at that commit.
+
+| # | Time | Item | Old value | New value |
+|---|---|---|---|---|
+| 1 | 2026-11-01 | Issue LSP-3 (id 10071) created | none | summary "[LS-PROBE] LedgerSeal canonical form 2.1.0 check", label `ls-probe` |
+| 2 | about 09:03 UTC | LSP-3 property; KVS seal | absent | SEAL_VALID, canonical form 2.1.0, incidents 0 |
+| 3 | after 2 | LSP-3 status, resolution (transition 41, HTTP 204) | Backlog, none | Done, Done |
+| 4 | 8 s after 3 | LSP-3 property read | SEAL_VALID, incidents 0 | unchanged |
+| 5 | after 4 | LSP-2 panel view (seal records 2.0.0); property and KVS LS_CHANGED row | SEAL_VALID, incidents 0 | SEAL_BROKEN: "Changed after approval", Resolution (empty) to Done. Correct under 2.0.0, where Resolution is covered |
+
+Note: LSP-2 was sealed on 3.8.0, whose rules already left Resolution out while still recording "2.0.0". Its snapshot held no resolution, so the stored hash is the same under both rule sets; only the live resolution change differs.
+
+**3. Approver groups** (`505cf45`, development 3.10.0). Spec v2 section 7.1. Tests first in `test/approver-policy.test.ts`, `test/admin-view-model.test.ts`, the manifest and view-model tests (red: suites did not compile, then 2 manifest and 1 view-model case failed). 306 tests in 35 suites pass, branches 95.29%; every changed file at 90% or more. `forge lint` clean. Install `b8f7e832` stayed "Up-to-date" (no new scope).
+
+Live (admin page "LedgerSeal approvers" under Jira admin settings, Apps):
+
+| # | Item | Old value | New value |
+|---|---|---|---|
+| 1 | Page load as the owner (Jira admin) | n/a | READY, "No approver groups." |
+| 2 | Search "jira-admins" (`/groups/picker`, as user) | n/a | found `jira-admins-asymmsystems` |
+| 3 | KVS `ls3:partyrole:LS_APPROVER` (Save; name resolved by `/group/bulk`) | absent | parties: `jira-admins-asymmsystems` |
+| 4 | LSP-3 panel text (read) | n/a | "Who can seal: project admins, Jira admins and members of jira-admins-asymmsystems." |
+| 5 | KVS `ls3:partyrole:LS_APPROVER` (Remove, Save) | parties: `jira-admins-asymmsystems` | parties: [] (restored; "Who can seal: project admins and Jira admins.") |
+
+Not tested live: a seal by a non-admin group member, because the site has one human account. The unit tests cover it.
+
+Also: the gate `tools/check.sh` now runs jest with `-w 2`; one full run was killed (exit 137) with the default worker count.
+
