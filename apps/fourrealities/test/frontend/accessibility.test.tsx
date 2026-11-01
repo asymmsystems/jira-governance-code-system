@@ -41,6 +41,10 @@ function checkTree(renderer: any, where: string) {
   for (const field of findAll(root, 'Textfield')) {
     expect({ where, id: field.props.id, controlled: 'value' in field.props }).toEqual({ where, id: field.props.id, controlled: false });
   }
+  // Loop 3 (live): a Stack stretches its children, which drew each gate lozenge as a full-width bar.
+  for (const stack of findAll(root, 'Stack').filter((st: any) => findAll(st, 'Lozenge').some((l: any) => l.parent?.parent === st))) {
+    expect({ where, alignInline: stack.props.alignInline }).toEqual({ where, alignInline: 'start' });
+  }
   for (const lozenge of findAll(root, 'Lozenge')) {
     expect({ where, text: flat(lozenge.props.children), maxWidth: lozenge.props.maxWidth }).toEqual({ where, text: flat(lozenge.props.children), maxWidth: '100%' });
   }
