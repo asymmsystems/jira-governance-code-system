@@ -79,45 +79,59 @@ export const LedgerSealAdmin: React.FC = () => {
 
   return (
     <Stack space="space.150">
-      <Heading as="h2">LedgerSeal approvers</Heading>
       {view.state !== 'READY' ? (
         <SectionMessage appearance={view.state === 'NOT_ADMIN' ? 'information' : 'warning'}>
           <Text>{view.message}</Text>
         </SectionMessage>
       ) : (
         <>
-          <Text>{view.message}</Text>
+          <SectionMessage appearance="information">
+            <Text>{view.message}</Text>
+          </SectionMessage>
           <Text>Project admins and Jira admins can always seal. Members of the groups below can also seal, reseal and revoke.</Text>
-          <Heading as="h4">Approver groups ({view.chosen.length})</Heading>
-          {view.chosen.length === 0 && <Text>No approver groups.</Text>}
-          {view.chosen.map(g => (
-            <Inline key={g.groupId} space="space.100" alignBlock="center">
-              <Text>{g.name}</Text>
-              <Button appearance="subtle" onClick={() => setChosen(removeGroup(chosen, g.groupId))}>
-                Remove
+          <Stack space="space.100">
+            <Heading as="h4">Approver groups ({view.chosen.length})</Heading>
+            {view.chosen.length === 0 && <Text>No approver groups configured.</Text>}
+            {view.chosen.map(g => (
+              <Inline key={g.groupId} space="space.100" alignBlock="center">
+                <Text weight="medium">{g.name}</Text>
+                <Button appearance="subtle" onClick={() => setChosen(removeGroup(chosen, g.groupId))}>
+                  Remove
+                </Button>
+              </Inline>
+            ))}
+            <Inline space="space.100">
+              <Button appearance="primary" isDisabled={!view.canSave || saving} onClick={save}>
+                {saving ? 'Saving...' : 'Save changes'}
               </Button>
             </Inline>
-          ))}
-          <Label labelFor="group-search">Find a group</Label>
-          {/* Uncontrolled on purpose: a controlled value lost typed characters over the UI Kit bridge (live, DEMO-34) */}
-          <Textfield id="group-search" name="group-search" onChange={(e: any) => setQuery(e.target.value)} />
-          <Inline space="space.100">
-            <Button onClick={search}>Search</Button>
-          </Inline>
-          {view.results.map(g => (
-            <Inline key={g.groupId} space="space.100" alignBlock="center">
-              <Text>{g.name}</Text>
-              <Button appearance="subtle" onClick={() => setChosen(addGroup(chosen, g))}>
-                Add
-              </Button>
+          </Stack>
+          {notice && (
+            <SectionMessage appearance="success">
+              <Text>{notice}</Text>
+            </SectionMessage>
+          )}
+          <Stack space="space.100">
+            <Label labelFor="group-search">Find a group to add</Label>
+            <Inline space="space.100" alignBlock="center">
+              {/* Uncontrolled on purpose: a controlled value lost typed characters over the UI Kit bridge (live, DEMO-34) */}
+              <Textfield id="group-search" name="group-search" onChange={(e: any) => setQuery(e.target.value)} />
+              <Button onClick={search}>Search</Button>
             </Inline>
-          ))}
-          {notice && <Text>{notice}</Text>}
-          <Inline space="space.100">
-            <Button appearance="primary" isDisabled={!view.canSave || saving} onClick={save}>
-              {saving ? 'Saving...' : 'Save'}
-            </Button>
-          </Inline>
+            {view.results.length > 0 && (
+              <Stack space="space.050">
+                <Text color="color.text.subtle">Search results:</Text>
+                {view.results.map(g => (
+                  <Inline key={g.groupId} space="space.100" alignBlock="center">
+                    <Text>{g.name}</Text>
+                    <Button appearance="subtle" onClick={() => setChosen(addGroup(chosen, g))}>
+                      Add
+                    </Button>
+                  </Inline>
+                ))}
+              </Stack>
+            )}
+          </Stack>
         </>
       )}
     </Stack>
