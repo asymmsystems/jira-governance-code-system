@@ -19,7 +19,7 @@ import {
   refreshProjectSnapshot,
   runScheduledSnapshot
 } from '../src/index';
-import { StorageProvider, MetricsRepository } from '../src/accessor/default-kvs-exception-accessor';
+import { StorageProvider } from '../src/contract/accessors';
 import { judged } from './domain/fixtures';
 
 // One response queue (mockRequestJira) and one recording mock per principal,
@@ -585,17 +585,17 @@ describe('B-06: a Code exception is its own state, with who and why', () => {
     expect(res).toEqual({ success: false, error: 'Jira returned HTTP 403 reading issue 30001.' });
   });
 
-  it('keeps the Code exception as an event and the rework reason in the v2 record, and projects both into the property', async () => {
+  it('keeps the Code exception as an event and the rework reason as a note, and projects both into the property', async () => {
     const storage = new MockStorage();
     mockRequestJira.mockResolvedValueOnce(NO_PR).mockResolvedValueOnce({ status: 200 });
     await recordException({ issueId: '30001', issueKey: 'DEMO-30', type: 'CODE', reason: 'Configuration change only' }, ctx, storage);
     mockRequestJira.mockResolvedValueOnce({ status: 200 });
     const res = await recordException({ issueId: '30001', issueKey: 'DEMO-30', type: 'REWORK', reason: 'Requirement changed after review', notes: 'PO request' }, ctx, storage);
     expect(res.success).toBe(true);
-    const stored = await storage.get<any>('fr:issue:30001:exception');
-    expect(stored.schemaVersion).toBe(2);
-    expect(stored.code).toBeUndefined();
-    expect(stored.rework).toEqual(expect.objectContaining({ reason: 'Requirement changed after review', notes: 'PO request', recordedBy: 'acc-7' }));
+    expect(await storage.get('fr:issue:30001:exception')).toBeUndefined();
+    const noteKeys = Array.from((storage as any).store.keys() as Iterable<string>).filter(k => k.startsWith('fr:note:30001:'));
+    expect(noteKeys).toHaveLength(1);
+    expect(await storage.get<any>(noteKeys[0])).toEqual(expect.objectContaining({ schemaVersion: 1, reason: 'Requirement changed after review', notes: 'PO request', recordedBy: 'acc-7' }));
     const lastPut = mockUserRequestJira.mock.calls[mockUserRequestJira.mock.calls.length - 1];
     expect(lastPut[0]).toBe('/rest/api/3/issue/30001/properties/fourrealities-exception');
     const property = JSON.parse(lastPut[1].body);
@@ -605,14 +605,14 @@ describe('B-06: a Code exception is its own state, with who and why', () => {
     expect(mockAppRequestJira).not.toHaveBeenCalled();
   });
 
-  it('reads a v1 record and rewrites it in v2 form', async () => {
+  it('leaves a v1 record to the scheduled migration and appends the rework note', async () => {
     const storage = new MockStorage();
     await storage.set('fr:issue:30001:exception', { issueId: '30001', issueKey: 'DEMO-30', type: 'CODE', reason: 'Old v1 reason text', recordedBy: 'u', recordedAt: '2026-10-01T00:00:00Z' });
     mockRequestJira.mockResolvedValueOnce({ status: 200 });
     await recordException({ issueId: '30001', issueKey: 'DEMO-30', type: 'REWORK', reason: 'Requirement changed after review' }, ctx, storage);
-    const stored = await storage.get<any>('fr:issue:30001:exception');
-    expect(stored.code.reason).toBe('Old v1 reason text');
-    expect(stored.type).toBeUndefined();
+    expect((await storage.get<any>('fr:issue:30001:exception')).type).toBe('CODE');
+    const keys = Array.from((storage as any).store.keys() as Iterable<string>).filter(k => k.startsWith('fr:note:30001:'));
+    expect(keys).toHaveLength(1);
   });
 });
 
@@ -640,6 +640,7 @@ describe('B-06: recordException fallbacks', () => {
     mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => ({ key: 'DEMO-32', fields: {} }) }).mockResolvedValueOnce({ status: 200 });
     const res = await recordException({ issueId: '30003', type: 'CODE', reason: 'Configuration change only' }, { extension: { issue: { id: '30003' } }, accountId: 'a' }, storage);
     expect(res.record?.rework).toEqual(rework);
+    expect(res.record?.reworkNoteCount).toBe(1);
     expect(res.record?.code?.reason).toBe('Configuration change only');
   });
 
@@ -885,15 +886,27 @@ describe('B-08: bounded storage and a scheduled snapshot', () => {
     await storage.set('fr:projects', ['DEMO', 'TEST']);
     await storage.set('fr:issue:1:signals', {});
     const result = await runScheduledSnapshot(storage, Date.now() + 60_000);
-    expect(result).toEqual({ built: ['DEMO', 'TEST'], failed: [], skipped: [], signalsDeleted: 1, exceptionsMigrated: 0 });
+    expect(result).toEqual({ built: ['DEMO', 'TEST'], failed: [], skipped: [], signalsDeleted: 1, exceptionsMigrated: 0, reworkNotesMigrated: 0 });
     expect((await storage.get('fr:p:TEST:meta')).generatedBy).toBe('scheduled');
     expect(storage.store.has('fr:issue:1:signals')).toBe(false);
+  });
+
+  it('B-32: converts v2 code and rework notes in the same record, and keeps nothing behind', async () => {
+    const storage = seeded();
+    const n = { reason: 'Requirement changed after review', recordedBy: 'u', recordedAt: '2026-10-01T00:00:00Z' };
+    await storage.set('fr:issue:40001:exception', { schemaVersion: 2, issueId: '40001', issueKey: 'DEMO-41', code: n, rework: n });
+    const result = await runScheduledSnapshot(storage, Date.now() + 60_000);
+    expect(result).toEqual(expect.objectContaining({ exceptionsMigrated: 1, reworkNotesMigrated: 1 }));
+    expect(storage.store.has('fr:issue:40001:exception')).toBe(false);
+    const keys = Array.from(storage.store.keys() as Iterable<string>).filter(k => k.includes(':40001:'));
+    expect(keys.filter(k => k.startsWith('fr:ex:'))).toHaveLength(2);
+    expect(keys.filter(k => k.startsWith('fr:note:'))).toHaveLength(1);
   });
 
   it('skips projects once the run budget is spent, and records failures', async () => {
     const storage = seeded();
     await storage.set('fr:projects', ['DEMO']);
-    expect(await runScheduledSnapshot(storage, Date.now() - 1)).toEqual({ built: [], failed: [], skipped: ['DEMO'], signalsDeleted: 0, exceptionsMigrated: 0 });
+    expect(await runScheduledSnapshot(storage, Date.now() - 1)).toEqual({ built: [], failed: [], skipped: ['DEMO'], signalsDeleted: 0, exceptionsMigrated: 0, reworkNotesMigrated: 0 });
     mockRequestJira.mockImplementation(async () => ({ status: 500, json: async () => ({}) }));
     expect((await runScheduledSnapshot(storage, Date.now() + 60_000)).failed).toEqual(['DEMO']);
   });
@@ -905,7 +918,7 @@ describe('B-08: bounded storage and a scheduled snapshot', () => {
     const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
     const { snapshot } = require('../src/index');
     await snapshot();
-    expect(log).toHaveBeenCalledWith('FourRealities: scheduled snapshot', JSON.stringify({ built: ['DEMO'], failed: [], skipped: [], signalsDeleted: 0, exceptionsMigrated: 0 }));
+    expect(log).toHaveBeenCalledWith('FourRealities: scheduled snapshot', JSON.stringify({ built: ['DEMO'], failed: [], skipped: [], signalsDeleted: 0, exceptionsMigrated: 0, reworkNotesMigrated: 0 }));
     log.mockRestore();
   });
 

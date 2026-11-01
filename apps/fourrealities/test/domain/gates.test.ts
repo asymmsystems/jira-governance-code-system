@@ -86,8 +86,8 @@ describe('Code', () => {
     }
   });
 
-  it('B-30: a v2 code note alone no longer excepts the gate', () => {
-    expect(evaluateCode(makeFacts({ exception: { schemaVersion: 2, issueId: '1', issueKey: 'A-1', code: note } })).state).toBe('MISSING');
+  it('B-30, B-32: only an approved exception excepts the gate; a rework note never does', () => {
+    expect(evaluateCode(makeFacts({ reworkNotes: [note] })).state).toBe('MISSING');
   });
 
   it('is MISSING with no PR when done, NOT_APPLICABLE before done', () => {
@@ -205,8 +205,6 @@ describe('B-04: no sibling property is ever shown as verified', () => {
 });
 
 describe('B-06: exceptions and rework notes', () => {
-  const ex = (code?: any, rework?: any) => ({ schemaVersion: 2 as const, issueId: '1', issueKey: 'A-1', code, rework });
-
   it('ignores a Code exception once a pull request exists', () => {
     const f = makeFacts({ codeException: approvedState, devField: { present: true, summary: parseDevField('{pullrequest={dataType=pullrequest, state=MERGED, stateCount=1}}') } });
     expect(evaluateCode(f).state).not.toBe('EXCEPTED');
@@ -214,7 +212,7 @@ describe('B-06: exceptions and rework notes', () => {
 
   it('a rework note changes no gate', () => {
     const base = evaluateGates(makeFacts({ reworkLoops: 2 }));
-    const withNote = evaluateGates(makeFacts({ reworkLoops: 2, exception: ex(undefined, note) }));
+    const withNote = evaluateGates(makeFacts({ reworkLoops: 2, reworkNotes: [note] }));
     expect(withNote).toEqual(base);
   });
 });

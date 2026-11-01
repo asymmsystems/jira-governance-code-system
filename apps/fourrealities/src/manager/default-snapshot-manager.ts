@@ -6,7 +6,7 @@
  */
 
 import { CallerContext, CHUNK_SIZE_HINT, IssueRow, ProjectDashboardView, ProjectSummary, ResolverResult, ScheduledRunResult, SiteConfig, SnapshotMeta, StoredSnapshot } from '../contract/data/models';
-import { ExceptionAccessor, ExceptionEventAccessor, JiraIssueAccessor, SiteConfigAccessor, SnapshotAccessor } from '../contract/accessors';
+import { ExceptionEventAccessor, ReworkNoteAccessor, JiraIssueAccessor, SiteConfigAccessor, SnapshotAccessor } from '../contract/accessors';
 import { ExceptionPolicyEngine, GateEngine, MetricsEngine, SnapshotEngine } from '../contract/engines';
 import { DashboardManager, SnapshotManager } from '../contract/managers';
 import { jiraError } from '../contract/data/errors';
@@ -19,7 +19,7 @@ export interface SnapshotManagerDeps {
   budgetMs: number;
   siteConfig: SiteConfigAccessor;
   snapshots: SnapshotAccessor;
-  exceptions: ExceptionAccessor;
+  notes: ReworkNoteAccessor;
   events: ExceptionEventAccessor;
   lifecycle: ExceptionPolicyEngine;
   gates: GateEngine;
@@ -53,7 +53,7 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
     }
 
     const ids = search.facts.map(f => f.issueId);
-    const exceptions = await this.d.exceptions.listByIssue(ids);
+    const notes = await this.d.notes.listAll();
     const events = await this.d.events.listAll();
     const previous = new Map((await this.d.snapshots.loadSnapshot(projectKey))?.rows.map(r => [r.issueId, r]) || []);
     const started = search.facts.filter(f => f.started).map(f => f.issueId);
@@ -64,7 +64,7 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
       const read = links.has(id) || !base.started;
       const facts = {
         ...base,
-        exception: exceptions.get(id),
+        reworkNotes: notes.get(id),
         codeException: this.d.lifecycle.currentState(events.get(id) || []),
         remoteLinks: links.get(id) ?? (base.started ? undefined : [])
       };
@@ -94,11 +94,11 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
 
   /**
    * Daily scheduled run: builds every registered project as the app while the budget lasts,
-   * then deletes at most 100 v1 signals keys and converts at most 100 v2 code notes to
-   * migrated events (spec v2, Migration; ADR-001).
+   * then deletes at most 100 v1 signals keys, converts at most 100 v2 code notes to
+   * migrated events and at most 100 v2 rework notes to notes (spec v2, Migration; ADR-001).
    */
   async runScheduled(deadline: number): Promise<ScheduledRunResult> {
-    const result: ScheduledRunResult = { built: [], failed: [], skipped: [], signalsDeleted: 0, exceptionsMigrated: 0 };
+    const result: ScheduledRunResult = { built: [], failed: [], skipped: [], signalsDeleted: 0, exceptionsMigrated: 0, reworkNotesMigrated: 0 };
     for (const projectKey of await this.d.snapshots.listProjects()) {
       if (Date.now() >= deadline) {
         result.skipped.push(projectKey);
@@ -110,6 +110,7 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
     if (Date.now() < deadline) {
       result.signalsDeleted = await this.d.snapshots.deleteV1Signals();
       result.exceptionsMigrated = await this.d.events.migrateV2CodeNotes(100);
+      result.reworkNotesMigrated = await this.d.notes.migrateV2ReworkNotes(100);
     }
     return result;
   }

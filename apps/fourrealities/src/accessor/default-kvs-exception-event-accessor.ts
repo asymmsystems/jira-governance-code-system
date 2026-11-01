@@ -8,12 +8,9 @@
 import { ExceptionRecord, GateExceptionEvent } from '../contract/data/models';
 import { ExceptionEventAccessor, StorageProvider } from '../contract/accessors';
 import { normalizeException } from './issue-facts';
+import { queryAll, removeV2Note, seq, v2Key, v2Records } from './kvs-v2-exception';
 
 const MIGRATED_APPROVAL = 'Approved before administrator approval was required.';
-
-function v2Key(issueId: string): string {
-  return `fr:issue:${issueId}:exception`;
-}
 
 /** Two migrated events for a v2 code note: requested and approved by the note's author. */
 function migratedEvents(record: ExceptionRecord): GateExceptionEvent[] {
@@ -30,20 +27,12 @@ export class DefaultKvsExceptionEventAccessor implements ExceptionEventAccessor 
 
   constructor(private readonly storage: StorageProvider) {}
 
-  private async query(prefix: string): Promise<Array<{ key: string; value: any }>> {
-    const all: Array<{ key: string; value: any }> = [];
-    let cursor: string | undefined;
-    do {
-      const page: { results: Array<{ key: string; value: any }>; nextCursor?: string } = await this.storage.queryPrefix<any>(prefix, cursor);
-      all.push(...page.results);
-      cursor = page.nextCursor;
-    } while (cursor);
-    return all;
+  private query(prefix: string) {
+    return queryAll(this.storage, prefix);
   }
 
   async append(event: GateExceptionEvent): Promise<void> {
-    const seq = Math.random().toString(36).slice(2, 10);
-    await this.storage.set(`fr:ex:${event.issueId}:${event.gate}:${event.at}:${seq}`, event);
+    await this.storage.set(`fr:ex:${event.issueId}:${event.gate}:${event.at}:${seq()}`, event);
   }
 
   async list(issueId: string): Promise<GateExceptionEvent[]> {
@@ -72,12 +61,7 @@ export class DefaultKvsExceptionEventAccessor implements ExceptionEventAccessor 
     let migrated = 0;
     for (const record of (await this.v2CodeNotes()).slice(0, limit)) {
       for (const e of migratedEvents(record)) await this.append(e);
-      const { code, ...rest } = record;
-      if (rest.rework) {
-        await this.storage.set(v2Key(record.issueId), rest);
-      } else {
-        await this.storage.delete(v2Key(record.issueId));
-      }
+      await removeV2Note(this.storage, record, 'code');
       migrated++;
     }
     return migrated;
@@ -85,9 +69,6 @@ export class DefaultKvsExceptionEventAccessor implements ExceptionEventAccessor 
 
   /** v2 records that still hold a code note. */
   private async v2CodeNotes(): Promise<ExceptionRecord[]> {
-    return (await this.query('fr:issue:'))
-      .filter(r => r.key.endsWith(':exception'))
-      .map(r => normalizeException(r.value))
-      .filter((r): r is ExceptionRecord => Boolean(r?.code));
+    return (await v2Records(this.storage)).filter(r => Boolean(r.code));
   }
 }

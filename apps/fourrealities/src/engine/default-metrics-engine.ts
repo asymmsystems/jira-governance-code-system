@@ -5,6 +5,7 @@
  */
 
 import {
+  ExceptionNote,
   GATE_NAMES,
   GateCount,
   IssueFacts,
@@ -75,8 +76,15 @@ export class DefaultMetricsEngine implements MetricsEngine {
       applicableGates: GATE_NAMES.filter(g => gates[g].state === 'FOUND' || gates[g].state === 'MISSING').length,
       recoverablePoints: this.recoverablePoints(gates),
       codeException: facts.codeException,
-      reworkNote: facts.exception?.rework
+      ...(facts.reworkNotes?.length
+        ? { reworkNote: this.noteOnly(facts.reworkNotes[facts.reworkNotes.length - 1]), reworkNoteCount: facts.reworkNotes.length }
+        : {})
     };
+  }
+
+  /** The note itself, without storage fields, so a stored row stays small. */
+  private noteOnly(n: ExceptionNote): ExceptionNote {
+    return { reason: n.reason, ...(n.notes ? { notes: n.notes } : {}), recordedBy: n.recordedBy, recordedAt: n.recordedAt };
   }
 
   private emptyCount(): GateCount {

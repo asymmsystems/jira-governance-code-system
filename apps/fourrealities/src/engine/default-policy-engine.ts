@@ -4,7 +4,6 @@
  * FourRealities: request validation and access rules for user actions. Pure, no I/O.
  */
 
-import { ExceptionNote, ExceptionRecord } from '../contract/data/models';
 import { PolicyEngine } from '../contract/engines';
 
 export class DefaultPolicyEngine implements PolicyEngine {
@@ -49,17 +48,5 @@ export class DefaultPolicyEngine implements PolicyEngine {
       return 'Notes can be at most 1,000 characters.';
     }
     return undefined;
-  }
-
-  /** Keeps the other note and replaces the one of the given type (v2 record). */
-  mergeException(existing: ExceptionRecord | undefined, issue: { issueId: string; issueKey: string }, type: 'CODE' | 'REWORK', note: ExceptionNote): ExceptionRecord {
-    return {
-      schemaVersion: 2,
-      issueId: issue.issueId,
-      issueKey: issue.issueKey,
-      ...(existing?.code ? { code: existing.code } : {}),
-      ...(existing?.rework ? { rework: existing.rework } : {}),
-      ...(type === 'CODE' ? { code: note } : { rework: note })
-    };
   }
 }

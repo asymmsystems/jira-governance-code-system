@@ -5,7 +5,6 @@
  */
 
 import { CHUNK_SIZE, MAX_PROJECTS, MAX_TREND_POINTS, SnapshotRepository } from '../../src/accessor/default-kvs-snapshot-accessor';
-import { DefaultKvsExceptionAccessor } from '../../src/accessor/default-kvs-exception-accessor';
 import { weekStartOf } from '../../src/engine/default-snapshot-engine';
 import { DefaultMetricsEngine } from '../../src/engine/default-metrics-engine';
 import { evaluateGates } from '../../src/engine/default-gate-engine';
@@ -110,16 +109,5 @@ describe('SnapshotRepository trend, registry and migration', () => {
     expect(await repo.deleteV1Signals()).toBe(100);
     expect(await repo.deleteV1Signals()).toBe(30);
     expect(storage.store.has('fr:issue:5:exception')).toBe(true);
-  });
-
-  it('lists exception records with a paged prefix query', async () => {
-    const storage = new MemoryStorage();
-    const repo = new DefaultKvsExceptionAccessor(storage);
-    for (let i = 0; i < 150; i++) await storage.set(`fr:issue:${i}:exception`, { schemaVersion: 2, issueId: String(i), issueKey: `D-${i}` });
-    await storage.set('fr:issue:7:signals', {});
-    const map = await repo.listByIssue([]);
-    expect(map.size).toBe(150);
-    expect(map.get('7')?.issueKey).toBe('D-7');
-    expect(storage.count('query')).toBe(2);
   });
 });

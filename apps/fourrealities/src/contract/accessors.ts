@@ -7,13 +7,13 @@
 import { Accessor } from './service-types';
 import {
   ExceptionProperty,
-  ExceptionRecord,
   GateExceptionEvent,
   IssueFacts,
   IssueRow,
   ProjectSearchResult,
   ProjectSummary,
   RemoteLink,
+  ReworkNote,
   SiteConfig,
   SnapshotMeta,
   StoredSnapshot,
@@ -62,11 +62,15 @@ export interface SnapshotAccessor extends Accessor {
   deleteV1Signals(): Promise<number>;
 }
 
-export interface ExceptionAccessor extends Accessor {
-  get(issueId: string): Promise<ExceptionRecord | undefined>;
-  save(record: ExceptionRecord): Promise<void>;
-  /** All exception records by issue id; one paged prefix query when the store supports it. */
-  listByIssue(issueIds: string[]): Promise<Map<string, ExceptionRecord>>;
+/** Append-only rework notes (ADR-001 Pattern 6). A note is never rewritten. */
+export interface ReworkNoteAccessor extends Accessor {
+  append(note: ReworkNote): Promise<void>;
+  /** Notes of one issue, oldest first. A v2 rework note with no notes reads as one migrated note. */
+  list(issueId: string): Promise<ReworkNote[]>;
+  /** Notes of every issue, by issue id, read with paged prefix queries. Includes migrated v2 notes. */
+  listAll(): Promise<Map<string, ReworkNote[]>>;
+  /** Writes migrated notes for at most `limit` v2 rework notes and removes them from the v2 records; returns the count. */
+  migrateV2ReworkNotes(limit: number): Promise<number>;
 }
 
 /** Append-only gate exception events (ADR-001 Pattern 3). An event is never rewritten. */

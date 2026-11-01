@@ -81,6 +81,7 @@ function gateNote(gate: GateName, row: IssueRow): React.ReactNode {
     return (
       <Stack space="space.050">
         <Text>{`Rework loops: ${row.reworkLoops}.`}</Text>
+        {(row.reworkNoteCount || 0) > 1 ? <Text>{`${row.reworkNoteCount} rework reasons recorded. The latest is shown.`}</Text> : null}
         {row.reworkNote ? <NoteLine label="Rework reason" note={row.reworkNote} /> : null}
       </Stack>
     );

@@ -4,7 +4,7 @@
 
 * Status
 Approved - 2026-11-01 by the owner, in chat, with Option C for the approval rule (see "Options considered").
-Implemented: B-30 (Patterns 3 and 5), B-31 (Patterns 2 and 4; per-project override not yet). Not yet implemented: B-32.
+Implemented: B-30 (Patterns 3 and 5), B-31 (Patterns 2 and 4; per-project override not yet), B-32 (Pattern 6).
 
 * Context
 

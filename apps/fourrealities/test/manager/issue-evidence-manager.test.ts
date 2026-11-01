@@ -31,7 +31,7 @@ function manager(jira: JiraIssueAccessor, events: any[] = []) {
   return new DefaultIssueEvidenceManager({
     userJira: jira,
     siteConfig: { serviceType: 'accessor', get: jest.fn().mockResolvedValue({ devFieldId: null, siteHost: 's', readAt: 't' }) },
-    exceptions: { serviceType: 'accessor', get: jest.fn().mockResolvedValue(undefined), save: jest.fn(), listByIssue: jest.fn() },
+    notes: { serviceType: 'accessor', append: jest.fn(), list: jest.fn().mockResolvedValue([]), listAll: jest.fn(), migrateV2ReworkNotes: jest.fn() },
     events: { serviceType: 'accessor', append: jest.fn(), list: jest.fn().mockResolvedValue(events), listAll: jest.fn(), migrateV2CodeNotes: jest.fn() },
     lifecycle: new DefaultExceptionPolicyEngine(),
     gates: new DefaultGateEngine(),

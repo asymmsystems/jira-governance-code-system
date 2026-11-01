@@ -6,7 +6,7 @@
  */
 
 import { CallerContext, IssueRow, ResolverResult } from '../contract/data/models';
-import { ExceptionAccessor, ExceptionEventAccessor, JiraIssueAccessor, SiteConfigAccessor } from '../contract/accessors';
+import { ExceptionEventAccessor, ReworkNoteAccessor, JiraIssueAccessor, SiteConfigAccessor } from '../contract/accessors';
 import { ExceptionPolicyEngine, GateEngine, MetricsEngine, PolicyEngine } from '../contract/engines';
 import { IssueEvidenceManager } from '../contract/managers';
 import { jiraError } from '../contract/data/errors';
@@ -14,7 +14,7 @@ import { jiraError } from '../contract/data/errors';
 export interface IssueEvidenceManagerDeps {
   userJira: JiraIssueAccessor;
   siteConfig: SiteConfigAccessor;
-  exceptions: ExceptionAccessor;
+  notes: ReworkNoteAccessor;
   events: ExceptionEventAccessor;
   lifecycle: ExceptionPolicyEngine;
   gates: GateEngine;
@@ -35,14 +35,14 @@ export class DefaultIssueEvidenceManager implements IssueEvidenceManager {
       return { ok: false, error: { code: 'INVALID_INPUT', message: 'FourRealities: open this panel from a Jira issue.' } };
     }
     try {
-      const exception = await this.d.exceptions.get(issueId);
+      const reworkNotes = await this.d.notes.list(issueId);
       const codeException = this.d.lifecycle.currentState(await this.d.events.list(issueId));
       const config = await this.d.siteConfig.get();
       const read = await this.d.userJira.readIssue(issueId, config);
       if (read.status !== 200 || !read.facts) {
         return jiraError(read.status, `FourRealities: Jira returned HTTP ${read.status} for issue '${issueKey}'.`);
       }
-      const facts = { ...read.facts, exception, codeException };
+      const facts = { ...read.facts, reworkNotes, codeException };
       return { ok: true, row: this.d.metrics.buildRow(facts, this.d.gates.evaluate(facts)) };
     } catch (err: any) {
       return jiraError(undefined, `FourRealities: Failed to query Jira for issue '${issueKey}': ${err?.message || 'network error'}`);

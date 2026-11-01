@@ -67,13 +67,18 @@ describe('MetricsEngine.buildRow', () => {
     expect(row.summary.endsWith('...')).toBe(true);
   });
 
-  it('carries the Code exception state and the rework note', () => {
+  it('carries the Code exception state, the latest rework note and the note count', () => {
     const note = { reason: 'Configuration change only', recordedBy: 'acc-1', recordedAt: '2026-11-01T00:00:00Z' };
+    const older = { reason: 'Earlier rework reason', recordedBy: 'acc-2', recordedAt: '2026-10-01T00:00:00Z' };
     const state = { status: 'REQUESTED' as const, issueKey: 'A-1', requestedBy: 'dev-1', requestedAt: 't', reason: 'Configuration change only' };
-    const facts = makeFacts({ codeException: state, exception: { schemaVersion: 2, issueId: '1', issueKey: 'A-1', rework: note } });
+    const facts = makeFacts({ codeException: state, reworkNotes: [older, note] });
     const row = MetricsEngine.buildRow(facts, evaluateGates(facts));
     expect(row.codeException).toEqual(state);
     expect(row.reworkNote).toEqual(note);
+    expect(row.reworkNoteCount).toBe(2);
+    const none = MetricsEngine.buildRow(makeFacts(), evaluateGates(makeFacts()));
+    expect(none.reworkNote).toBeUndefined();
+    expect(none.reworkNoteCount).toBeUndefined();
   });
 
   it('builds an UNRATED row for an unstarted issue', () => {

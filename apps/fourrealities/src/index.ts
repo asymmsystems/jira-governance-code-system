@@ -12,7 +12,7 @@ import { DefaultForgeKvsStore } from './accessor/default-forge-kvs-store';
 import { DefaultForgeJiraIssueAccessor, Principal } from './accessor/default-forge-jira-issue-accessor';
 import { DefaultKvsSiteConfigAccessor } from './accessor/default-kvs-site-config-accessor';
 import { DefaultKvsSnapshotAccessor } from './accessor/default-kvs-snapshot-accessor';
-import { DefaultKvsExceptionAccessor } from './accessor/default-kvs-exception-accessor';
+import { DefaultKvsReworkNoteAccessor } from './accessor/default-kvs-rework-note-accessor';
 import { DefaultKvsExceptionEventAccessor } from './accessor/default-kvs-exception-event-accessor';
 import { requestAs } from './accessor/default-forge-jira-issue-accessor';
 import { DefaultGateEngine } from './engine/default-gate-engine';
@@ -50,7 +50,7 @@ export function compose(storageProvider: StorageProvider | undefined, budgetMs: 
   const appJira = new DefaultForgeJiraIssueAccessor('app', () => deadline);
   const userJira = new DefaultForgeJiraIssueAccessor('user', () => deadline);
   const siteConfig = new DefaultKvsSiteConfigAccessor(storage, requestAs(configPrincipal, () => deadline));
-  const exceptions = new DefaultKvsExceptionAccessor(storage);
+  const notes = new DefaultKvsReworkNoteAccessor(storage);
   const events = new DefaultKvsExceptionEventAccessor(storage);
   const lifecycle = new DefaultExceptionPolicyEngine();
   const gates = new DefaultGateEngine();
@@ -63,15 +63,15 @@ export function compose(storageProvider: StorageProvider | undefined, budgetMs: 
       budgetMs,
       siteConfig,
       snapshots: new DefaultKvsSnapshotAccessor(storage),
-      exceptions,
+      notes,
       events,
       lifecycle,
       gates,
       metrics,
       snapshot: new DefaultSnapshotEngine()
     }),
-    issues: new DefaultIssueEvidenceManager({ userJira, siteConfig, exceptions, events, lifecycle, gates, metrics, policy }),
-    exceptions: new DefaultExceptionManager({ userJira, siteConfig, exceptions, events, policy, lifecycle })
+    issues: new DefaultIssueEvidenceManager({ userJira, siteConfig, notes, events, lifecycle, gates, metrics, policy }),
+    exceptions: new DefaultExceptionManager({ userJira, siteConfig, notes, events, policy, lifecycle })
   };
 }
 

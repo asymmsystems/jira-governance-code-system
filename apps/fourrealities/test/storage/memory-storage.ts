@@ -4,7 +4,7 @@
  * FourRealities: in-memory StorageProvider for tests, with operation counts and value sizes
  */
 
-import { StorageProvider } from '../../src/accessor/default-kvs-exception-accessor';
+import { StorageProvider } from '../../src/contract/accessors';
 
 export class MemoryStorage implements StorageProvider {
   store = new Map<string, any>();

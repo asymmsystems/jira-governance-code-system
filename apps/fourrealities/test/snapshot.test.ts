@@ -7,7 +7,7 @@
 
 import { DefaultSnapshotManager } from '../src/manager/default-snapshot-manager';
 import { DefaultKvsSnapshotAccessor, SnapshotRepository } from '../src/accessor/default-kvs-snapshot-accessor';
-import { DefaultKvsExceptionAccessor } from '../src/accessor/default-kvs-exception-accessor';
+import { DefaultKvsReworkNoteAccessor } from '../src/accessor/default-kvs-rework-note-accessor';
 import { DefaultKvsExceptionEventAccessor } from '../src/accessor/default-kvs-exception-event-accessor';
 import { DefaultExceptionPolicyEngine } from '../src/engine/default-exception-policy-engine';
 import { DefaultKvsSiteConfigAccessor } from '../src/accessor/default-kvs-site-config-accessor';
@@ -27,7 +27,7 @@ function buildSnapshot(o: { projectKey: string; storage: any; request: any; dead
     budgetMs: 0,
     siteConfig: new DefaultKvsSiteConfigAccessor(o.storage, o.request),
     snapshots: new DefaultKvsSnapshotAccessor(o.storage),
-    exceptions: new DefaultKvsExceptionAccessor(o.storage),
+    notes: new DefaultKvsReworkNoteAccessor(o.storage),
     events: new DefaultKvsExceptionEventAccessor(o.storage),
     lifecycle: new DefaultExceptionPolicyEngine(),
     gates: new DefaultGateEngine(),

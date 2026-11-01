@@ -5,8 +5,8 @@
  * rework note (ADR-001 Patterns 3, 5, Option C). Orchestration only; rules live in the Engines.
  */
 
-import { CallerContext, ExceptionDecision, ExceptionProperty, GateExceptionEvent, GateExceptionState } from '../contract/data/models';
-import { ExceptionAccessor, ExceptionEventAccessor, JiraIssueAccessor, SiteConfigAccessor } from '../contract/accessors';
+import { CallerContext, ExceptionDecision, ExceptionProperty, GateExceptionEvent, GateExceptionState, ReworkNote } from '../contract/data/models';
+import { ExceptionEventAccessor, ReworkNoteAccessor, JiraIssueAccessor, SiteConfigAccessor } from '../contract/accessors';
 import { ExceptionPolicyEngine, PolicyEngine } from '../contract/engines';
 import { ExceptionManager } from '../contract/managers';
 
@@ -15,8 +15,7 @@ const DECISIONS: ExceptionDecision[] = ['APPROVE', 'REJECT', 'REVOKE', 'WITHDRAW
 export interface ExceptionManagerDeps {
   userJira: JiraIssueAccessor;
   siteConfig: SiteConfigAccessor;
-  /** v2 records: holds the rework note. */
-  exceptions: ExceptionAccessor;
+  notes: ReworkNoteAccessor;
   events: ExceptionEventAccessor;
   policy: PolicyEngine;
   lifecycle: ExceptionPolicyEngine;
@@ -71,15 +70,15 @@ export class DefaultExceptionManager implements ExceptionManager {
     }
 
     const accountId = String(caller.accountId || 'unknown-user');
-    const v2 = await this.d.exceptions.get(String(issueId));
     const events = await this.d.events.list(String(issueId));
+    const earlier = await this.d.notes.list(String(issueId));
 
     if (type === 'REWORK') {
-      const record = this.d.policy.mergeException(v2, { issueId: String(issueId), issueKey }, 'REWORK', { reason, notes, recordedBy: accountId, recordedAt: this.now() });
-      const property: ExceptionProperty = { schemaVersion: 3, issueId: String(issueId), issueKey, code: this.d.lifecycle.currentState(events), rework: record.rework };
+      const note: ReworkNote = { schemaVersion: 1, issueId: String(issueId), issueKey, reason, ...(notes ? { notes } : {}), recordedBy: accountId, recordedAt: this.now() };
+      const property: ExceptionProperty = { schemaVersion: 3, issueId: String(issueId), issueKey, code: this.d.lifecycle.currentState(events), ...this.reworkProjection([...earlier, note]) };
       const written = await this.writeProperty(String(issueId), property);
       if (written) return written;
-      await this.d.exceptions.save(record);
+      await this.d.notes.append(note);
       return { success: true, record: property };
     }
 
@@ -92,7 +91,7 @@ export class DefaultExceptionManager implements ExceptionManager {
       schemaVersion: 3, issueId: String(issueId), issueKey, gate: 'code', status: 'REQUESTED',
       at: this.now(), byAccountId: accountId, asRole: 'REQUESTER', reason, notes
     };
-    return this.commit(event, events, v2?.rework);
+    return this.commit(event, events, earlier);
   }
 
   async decide(caller: CallerContext, payload: any): Promise<Result> {
@@ -148,17 +147,24 @@ export class DefaultExceptionManager implements ExceptionManager {
       at: this.now(), byAccountId: caller.accountId, asRole: decision === 'WITHDRAW' ? 'REQUESTER' : 'APPROVER',
       reason: reason || 'Approved without comment.'
     };
-    return this.commit(event, events, (await this.d.exceptions.get(String(issueId)))?.rework);
+    return this.commit(event, events, await this.d.notes.list(String(issueId)));
   }
 
   /** Writes the property projection as the user, then appends the event (never before Jira accepts). */
-  private async commit(event: GateExceptionEvent, previous: GateExceptionEvent[], rework: ExceptionProperty['rework']): Promise<Result> {
+  private async commit(event: GateExceptionEvent, previous: GateExceptionEvent[], notes: ReworkNote[]): Promise<Result> {
     const state: GateExceptionState | undefined = this.d.lifecycle.currentState([...previous, event]);
-    const property: ExceptionProperty = { schemaVersion: 3, issueId: event.issueId, issueKey: event.issueKey, code: state, rework };
+    const property: ExceptionProperty = { schemaVersion: 3, issueId: event.issueId, issueKey: event.issueKey, code: state, ...this.reworkProjection(notes) };
     const written = await this.writeProperty(event.issueId, property);
     if (written) return written;
     await this.d.events.append(event);
     return { success: true, record: property };
+  }
+
+  /** The latest rework note and the count, for the property projection. */
+  private reworkProjection(notes: ReworkNote[]): Pick<ExceptionProperty, 'rework' | 'reworkNoteCount'> {
+    if (notes.length === 0) return {};
+    const { reason, notes: text, recordedBy, recordedAt } = notes[notes.length - 1];
+    return { rework: { reason, ...(text ? { notes: text } : {}), recordedBy, recordedAt }, reworkNoteCount: notes.length };
   }
 
   /** Undefined on success; else the error result. A 403 stays the user's: no retry as the app (FR-05). */

@@ -302,6 +302,6 @@ Status: approved. Part B in progress on branch `feature/fourrealities-research-b
 | B-29 | Volatility layering: contracts, Default implementations, one wiring point, architecture test; no behaviour change | ADR-002 | none |
 | B-30 | Gate exception lifecycle: append-only events; approve, reject and revoke by a project administrator (`ADMINISTER_PROJECTS`, checked as the user) who is not the requester or the assignee; withdraw by the requester; migration of v2 records | ADR-001 Patterns 3, 5 (Option C) | [MIGRATE] DONE 2026-11-01 |
 | B-31 | Evidence catalog as data (Knowledge Level); observation carries `method` and `evidence_ref` | ADR-001 Patterns 2, 4 | none; DONE 2026-11-01 |
-| B-32 | Rework notes as an append-only list | ADR-001 Pattern 6 | [MIGRATE] |
+| B-32 | Rework notes as an append-only list | ADR-001 Pattern 6 | [MIGRATE] DONE 2026-11-01 |
 
 Order: B-29, B-30, B-31, B-32, then B-17 to B-25.

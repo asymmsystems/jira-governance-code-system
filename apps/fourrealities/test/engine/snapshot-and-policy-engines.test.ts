@@ -72,12 +72,4 @@ describe('DefaultPolicyEngine', () => {
     expect(policy.exceptionInputError('Configuration change only', 'n'.repeat(1001))).toBe('Notes can be at most 1,000 characters.');
     expect(policy.exceptionInputError('Configuration change only', 'ok')).toBeUndefined();
   });
-
-  it('merges notes', () => {
-    const n = (r: string) => ({ reason: r, recordedBy: 'u', recordedAt: 't' });
-    const first = policy.mergeException(undefined, { issueId: '1', issueKey: 'A-1' }, 'CODE', n('code reason'));
-    const second = policy.mergeException(first, { issueId: '1', issueKey: 'A-1' }, 'REWORK', n('rework reason'));
-    expect(second).toEqual({ schemaVersion: 2, issueId: '1', issueKey: 'A-1', code: n('code reason'), rework: n('rework reason') });
-    expect(policy.mergeException(second, { issueId: '1', issueKey: 'A-1' }, 'CODE', n('new code')).code).toEqual(n('new code'));
-  });
 });

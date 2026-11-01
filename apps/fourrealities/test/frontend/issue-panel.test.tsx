@@ -118,16 +118,27 @@ describe('IssuePanel', () => {
     const n = { reason: 'Configuration change only', recordedBy: 'acc-1', recordedAt: '2026-11-01T09:00:00Z' };
     const state = { status: 'APPROVED' as const, issueKey: 'DEMO-10', requestedBy: 'dev-1', requestedAt: '2026-11-01T09:00:00Z', reason: 'Configuration change only', decidedBy: 'admin-1', decidedAt: '2026-11-02T08:00:00Z' };
     const r = await mount(row('DEMO-10', { intent: F, process: F, code: { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' }, audit: NA },
-      { reworkLoops: 1, codeException: state, exception: { schemaVersion: 2, issueId: '10', issueKey: 'DEMO-10', rework: n } }));
+      { reworkLoops: 1, codeException: state, reworkNotes: [n] }));
     const text = textOf(r.toJSON());
     expect(text).toMatch(/Requested by\s+on 2026-11-01: Configuration change only/);
     expect(text).toMatch(/Approved by\s+on 2026-11-02/);
     expect(text).toContain('Rework loops: 1.');
     expect(text).toMatch(/Rework reason\s+by/);
+    expect(text).not.toContain('rework reasons recorded');
     expect(findAll(r.root, 'User').map((u: any) => u.props.accountId)).toEqual(['acc-1', 'dev-1', 'admin-1']);
     expect(text).toContain('Code: Excepted');
     expect(() => findButton(r.root, 'Request Code exception')).toThrow('No button');
     findButton(r.root, 'Revoke exception');
+  });
+
+  it('B-32: says how many rework reasons exist and shows the latest', async () => {
+    const older = { reason: 'Earlier rework reason', recordedBy: 'acc-2', recordedAt: '2026-10-01T09:00:00Z' };
+    const latest = { reason: 'Requirement changed after review', recordedBy: 'acc-1', recordedAt: '2026-11-01T09:00:00Z' };
+    const r = await mount(row('DEMO-12', { intent: F, process: F, code: F, audit: NA }, { reworkLoops: 2, reworkNotes: [older, latest] }));
+    const text = textOf(r.toJSON());
+    expect(text).toContain('2 rework reasons recorded. The latest is shown.');
+    expect(text).toContain('Requirement changed after review');
+    expect(text).not.toContain('Earlier rework reason');
   });
 
   it('treats an empty change event as an empty field', async () => {

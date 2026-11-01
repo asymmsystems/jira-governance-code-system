@@ -96,7 +96,6 @@ export function normalizeRemoteLinks(raw: any[]): RemoteLink[] {
 
 export interface FactOptions {
   remoteLinks?: any[];
-  exception?: ExceptionRecord;
   siteHost?: string;
   /** Id of the Development field from the site configuration; null or absent when the site has none. */
   devFieldId?: string | null;
@@ -145,7 +144,6 @@ export function factsFromIssue(iss: any, options: FactOptions = {}): IssueFacts 
       ledgerseal: iss?.properties?.['ledgerseal-cert'],
       dod: iss?.properties?.['definitionguard-dod'],
       checklist: iss?.properties?.['checklist']
-    },
-    exception: options.exception
+    }
   };
 }

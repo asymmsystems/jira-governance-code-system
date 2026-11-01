@@ -17,7 +17,7 @@ const requested: GateExceptionEvent = {
 };
 const approved: GateExceptionEvent = { ...requested, status: 'APPROVED', at: '2026-11-01T11:00:00.000Z', byAccountId: 'admin-1', asRole: 'APPROVER', reason: 'ok' };
 
-function setup(o: { events?: GateExceptionEvent[]; admin?: boolean; assignee?: string; prCount?: number; put?: number; project?: any; permission?: any; rework?: any } = {}) {
+function setup(o: { events?: GateExceptionEvent[]; admin?: boolean; assignee?: string; prCount?: number; put?: number; project?: any; permission?: any; rework?: any[] } = {}) {
   const userJira: any = {
     serviceType: 'accessor',
     issueProject: jest.fn().mockResolvedValue(o.project || { status: 200, issueKey: 'DEMO-1', projectKey: 'DEMO', assigneeAccountId: o.assignee }),
@@ -26,17 +26,17 @@ function setup(o: { events?: GateExceptionEvent[]; admin?: boolean; assignee?: s
     putExceptionProperty: jest.fn().mockResolvedValue(o.put ?? 200)
   };
   const events: any = { serviceType: 'accessor', append: jest.fn(), list: jest.fn().mockResolvedValue(o.events || []), listAll: jest.fn(), migrateV2CodeNotes: jest.fn() };
-  const exceptions: any = { serviceType: 'accessor', get: jest.fn().mockResolvedValue(o.rework ? { schemaVersion: 2, issueId: '1', issueKey: 'DEMO-1', rework: o.rework } : undefined), save: jest.fn(), listByIssue: jest.fn() };
+  const notes: any = { serviceType: 'accessor', append: jest.fn(), list: jest.fn().mockResolvedValue(o.rework || []), listAll: jest.fn(), migrateV2ReworkNotes: jest.fn() };
   const siteConfig: any = { serviceType: 'accessor', get: jest.fn().mockResolvedValue({ devFieldId: 'customfield_10000', siteHost: 's', readAt: 't' }) };
-  const manager = new DefaultExceptionManager({ userJira, siteConfig, exceptions, events, policy: new DefaultPolicyEngine(), lifecycle: new DefaultExceptionPolicyEngine(), now: NOW });
-  return { manager, userJira, events, exceptions };
+  const manager = new DefaultExceptionManager({ userJira, siteConfig, notes, events, policy: new DefaultPolicyEngine(), lifecycle: new DefaultExceptionPolicyEngine(), now: NOW });
+  return { manager, userJira, events, notes };
 }
 
 const issueView = (accountId: string) => ({ issueId: '1', accountId });
 
 describe('DefaultExceptionManager.record (request)', () => {
   it('writes the property projection as the user, then appends a REQUESTED event', async () => {
-    const { manager, userJira, events } = setup({ rework: { reason: 'r', recordedBy: 'u', recordedAt: 't' } });
+    const { manager, userJira, events } = setup({ rework: [{ reason: 'r', recordedBy: 'u', recordedAt: 't' }] });
     expect(manager.serviceType).toBe('manager');
     const res = await manager.record(issueView('dev-1'), { type: 'CODE', reason: REASON, notes: 'CHG-1' });
     expect(res.success).toBe(true);
@@ -64,6 +64,40 @@ describe('DefaultExceptionManager.record (request)', () => {
     expect((await manager.record(issueView('dev-1'), { type: 'CODE', reason: REASON })).error)
       .toBe('You need the Edit issues permission on DEMO-1 to record an exception.');
     expect(events.append).not.toHaveBeenCalled();
+  });
+});
+
+describe('DefaultExceptionManager.record (rework note, ADR-001 Pattern 6)', () => {
+  const earlier = { schemaVersion: 1, issueId: '1', issueKey: 'DEMO-1', reason: 'Earlier rework reason', recordedBy: 'dev-2', recordedAt: '2026-10-01T00:00:00.000Z' };
+
+  it('appends a note after the property write, and keeps the earlier notes', async () => {
+    const { manager, userJira, notes, events } = setup({ rework: [earlier], events: [requested] });
+    const res = await manager.record(issueView('dev-1'), { type: 'REWORK', issueKey: 'DEMO-1', reason: 'Requirement changed after review', notes: 'PO request' });
+    expect(res.success).toBe(true);
+    expect(notes.append).toHaveBeenCalledTimes(1);
+    expect(notes.append.mock.calls[0][0]).toEqual({
+      schemaVersion: 1, issueId: '1', issueKey: 'DEMO-1', reason: 'Requirement changed after review', notes: 'PO request', recordedBy: 'dev-1', recordedAt: '2026-11-02T08:00:00.000Z'
+    });
+    expect(userJira.putExceptionProperty.mock.invocationCallOrder[0]).toBeLessThan(notes.append.mock.invocationCallOrder[0]);
+    const property = userJira.putExceptionProperty.mock.calls[0][1];
+    expect(property.rework).toEqual(expect.objectContaining({ reason: 'Requirement changed after review', recordedBy: 'dev-1' }));
+    expect(property.reworkNoteCount).toBe(2);
+    expect(property.code.status).toBe('REQUESTED');
+    expect(events.append).not.toHaveBeenCalled();
+  });
+
+  it('appends no note when Jira refuses the property write', async () => {
+    const { manager, notes } = setup({ put: 403 });
+    expect((await manager.record(issueView('dev-1'), { type: 'REWORK', reason: 'Requirement changed after review' })).success).toBe(false);
+    expect(notes.append).not.toHaveBeenCalled();
+  });
+
+  it('projects the latest rework note when a Code decision is recorded', async () => {
+    const { manager, userJira } = setup({ rework: [earlier], events: [requested] });
+    await manager.decide(issueView('admin-1'), { decision: 'APPROVE', reason: '' });
+    const property = userJira.putExceptionProperty.mock.calls[0][1];
+    expect(property.rework).toEqual(expect.objectContaining({ reason: 'Earlier rework reason' }));
+    expect(property.reworkNoteCount).toBe(1);
   });
 });
 

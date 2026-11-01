@@ -63,13 +63,21 @@ interface IssueRow {               // one row per issue, stored in snapshot chun
   risk: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | 'UNRATED';
   applicableGates: number;         // gates in FOUND or MISSING
   recoverablePoints: number;
-  exception?: ExceptionNote;       // shown in the panel
-  reworkNote?: ExceptionNote;
+  codeException?: GateExceptionState; // current Code exception state, shown in the panel
+  reworkNote?: ExceptionNote;      // the latest rework note
+  reworkNoteCount?: number;        // how many rework notes exist, when at least one
 }
 
 interface ExceptionNote { reason: string; notes?: string; recordedBy: string; recordedByName?: string; recordedAt: string; }
 
-interface ExceptionRecord {        // KVS fr:issue:{id}:exception (v2): holds the rework note; a v2 code note is migrated to events
+interface ReworkNote extends ExceptionNote { // KVS fr:note:{issueId}:{recordedAt}:{seq}, written once (ADR-001 Pattern 6)
+  schemaVersion: 1;
+  issueId: string;
+  issueKey: string;
+  migrated?: boolean;              // converted from a v2 record
+}
+
+interface ExceptionRecord {        // KVS fr:issue:{id}:exception (v2): read for migration only; no code writes it
   schemaVersion: 2;
   issueId: string;
   issueKey: string;
@@ -240,13 +248,14 @@ Audit and Process show "Source: LedgerSeal property ledgerseal-cert" or "Source:
 | `fr:p:{projectKey}:trend` | `TrendPoint[]`, at most 52 | under 52 KiB |
 | `fr:p:{projectKey}:summary` | `ProjectSummary` for the whole project | under 2 KiB |
 | `fr:projects` | registered project keys, at most 500 | under 8 KiB |
-| `fr:issue:{issueId}:exception` | `ExceptionRecord` (v2): the rework note | under 4 KiB (reason 500 chars, notes 1,000 chars) |
+| `fr:note:{issueId}:{recordedAt}:{seq}` | one `ReworkNote`, written once; a rework note never changes a gate | under 2 KiB each (reason 500 chars, notes 1,000 chars) |
+| `fr:issue:{issueId}:exception` | `ExceptionRecord` (v1 or v2), read for migration only | removed by the scheduled run |
 | `fr:ex:{issueId}:code:{at}:{seq}` | one `GateExceptionEvent`, written once | under 2 KiB each |
 | `fr:cfg:site` | `{ devFieldId: string or null, siteHost: string, readAt }` | under 1 KiB |
 
 The snapshot is rebuilt by writing new chunks, then the meta. A reader that finds a chunk missing treats the snapshot as absent and rebuilds.
 
-**Migration (B-03, B-08):** the v1 keys `fr:project:{key}:latest`, `fr:project:{key}:history` and `fr:issue:{id}:signals` are never read. The project keys are deleted on the first v2 build for that project. The `:signals` keys are deleted by the scheduled run, at most 100 per run. A v1 exception record (`{type, reason, ...}`) is read as `code` or `rework`. A v2 `code` note with no events reads as a REQUESTED and an APPROVED event by the note's author, marked migrated ("Approved before administrator approval was required"); the scheduled run writes those events and removes the `code` note, at most 100 per run.
+**Migration (B-03, B-08):** the v1 keys `fr:project:{key}:latest`, `fr:project:{key}:history` and `fr:issue:{id}:signals` are never read. The project keys are deleted on the first v2 build for that project. The `:signals` keys are deleted by the scheduled run, at most 100 per run. A v1 exception record (`{type, reason, ...}`) is read as `code` or `rework`. A v2 `code` note with no events reads as a REQUESTED and an APPROVED event by the note's author, marked migrated ("Approved before administrator approval was required"); the scheduled run writes those events and removes the `code` note, at most 100 per run. A v2 `rework` note with no notes reads as one note marked migrated; the scheduled run writes it under `fr:note:` and removes the `rework` note, at most 100 per run. A v2 record with no note left is deleted.
 
 ## Resolver contracts
 
@@ -258,7 +267,7 @@ All resolvers return `{ ok: true, ... }` or `{ ok: false, error: { code, message
 | `refreshProjectSnapshot` | none | As above, but always rebuilds within an 18 s budget. | same |
 | `getIssueAlignment` | none | Issue from context only. Reads the issue (fields, properties, changelog) and its remote links as the user. At most 3 Jira calls (the field list is cached in `fr:cfg:site`). | `{ row }` |
 | `linkDecision` | `issueId`, `url`, `title`, `summary?` | `url` is http or https; `title` 3 to 255 characters after trim. Project-key check (below). POST as the user. Re-reads the issue. | `{ row, linked: true }` |
-| `recordException` | `issueId`, `type` (`CODE` or `REWORK`), `reason`, `notes?` | Reason 15 to 500 characters after trim. Project-key check. `CODE` requests an exception and is rejected when a pull request exists or one is waiting or approved. PUT `fourrealities-exception` (current state projection) as the user; the event or note is stored only after a 2xx. | `{ success, record }` |
+| `recordException` | `issueId`, `type` (`CODE` or `REWORK`), `reason`, `notes?` | Reason 15 to 500 characters after trim. Project-key check. `CODE` requests an exception and is rejected when a pull request exists or one is waiting or approved. `REWORK` appends a note and never replaces an earlier one. PUT `fourrealities-exception` (current Code state, latest rework note, `reworkNoteCount`) as the user; the event or note is stored only after a 2xx. | `{ success, record }` |
 | `decideException` | `issueId`, `decision` (`APPROVE`, `REJECT`, `REVOKE`, `WITHDRAW`), `reason` | Signed-in user required. Reads the issue's project and assignee as the user, checks scope, checks `ADMINISTER_PROJECTS` as the user (not for Withdraw), applies the lifecycle table. Property first, then the event. | `{ success, record }` |
 
 **Project-key check:** in issue context the payload `issueId` must equal the context issue id. In project context the resolver reads the issue as the user and rejects the call unless its project key equals the context project key. A 403 or 404 from Jira is returned as `FORBIDDEN` or `NOT_FOUND`.

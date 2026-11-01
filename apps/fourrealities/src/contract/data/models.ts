@@ -140,10 +140,21 @@ export interface ExceptionProperty {
   issueId: string;
   issueKey: string;
   code?: GateExceptionState;
+  /** The latest rework note. */
   rework?: ExceptionNote;
+  reworkNoteCount?: number;
 }
 
-/** Stored in KVS at fr:issue:{issueId}:exception (v2). Holds the rework note; a v2 code note is migrated to events. */
+/** A rework reason (ADR-001 Pattern 6), stored once at fr:note:{issueId}:{recordedAt}:{seq}. It never changes a gate. */
+export interface ReworkNote extends ExceptionNote {
+  schemaVersion: 1;
+  issueId: string;
+  issueKey: string;
+  /** Converted from a v2 record. */
+  migrated?: boolean;
+}
+
+/** The v2 record at fr:issue:{issueId}:exception, read for migration only; no code writes it. */
 export interface ExceptionRecord {
   schemaVersion: 2;
   issueId: string;
@@ -184,7 +195,8 @@ export interface IssueFacts {
   /** present: the site has a Development field. summary: parsed pull request counts. */
   devField: { present: boolean; summary: DevFieldSummary };
   properties: { ledgerseal?: any; dod?: any; checklist?: any };
-  exception?: ExceptionRecord;
+  /** Rework notes, oldest first (ADR-001 Pattern 6). */
+  reworkNotes?: ExceptionNote[];
   /** Current Code exception state from the events (B-30); takes precedence over exception.code. */
   codeException?: GateExceptionState;
 }
@@ -207,7 +219,9 @@ export interface IssueRow {
   recoverablePoints: number;
   /** Current Code exception, whatever its status (shown in the panel). */
   codeException?: GateExceptionState;
+  /** The latest rework note, and how many exist when there is at least one. */
   reworkNote?: ExceptionNote;
+  reworkNoteCount?: number;
 }
 
 export interface GateCount {
@@ -316,6 +330,7 @@ export interface ScheduledRunResult {
   signalsDeleted: number;
   /** v2 code notes converted to migrated events in this run (at most 100). */
   exceptionsMigrated: number;
+  reworkNotesMigrated: number;
 }
 
 /** Who calls, from where: the parts of the Forge context that Managers use. */
