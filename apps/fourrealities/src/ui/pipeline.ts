@@ -41,7 +41,8 @@ export function driftText(row: GatesOnly): string {
     case 'intent':
       return isFound(gates.code) ? 'Code was merged, but it does not trace to a decision record.' : 'No decision record is linked.';
     case 'process':
-      return gates.process.reason === 'DOD_SHAPE_UNKNOWN' ? 'The Definition of Done record has a shape DefinitionGuard does not write.' : 'The Definition of Done is not complete.';
+      if (gates.process.reason === 'DOD_SHAPE_UNKNOWN') return 'The Definition of Done record has a shape DefinitionGuard does not write.';
+      return gates.process.reason === 'DOD_NONE' ? 'No Definition of Done record is on this issue.' : 'The Definition of Done is not complete.';
     case 'code':
       return gates.code.reason === 'PR_OPEN_AT_DONE' ? 'The issue is done, but its pull request is not merged.' : 'The issue is done, but no pull request is linked.';
     case 'audit':

@@ -32,6 +32,10 @@ describe('B-36: drift sentence from the first missing gate', () => {
     expect(driftText({ gates: gates({ intent: miss('INTENT_NONE'), code: FH }) })).toBe('Code was merged, but it does not trace to a decision record.');
     expect(driftText({ gates: gates({ intent: miss('INTENT_NONE') }) })).toBe('No decision record is linked.');
     expect(driftText({ gates: gates({ intent: F, process: miss('DOD_OPEN_DG'), code: FH }) })).toBe('The Definition of Done is not complete.');
+    // Found live on AUDT-1: with no DefinitionGuard record the sentence said "not complete".
+    expect(driftText({ gates: gates({ intent: F, process: miss('DOD_NONE') }) })).toBe('No Definition of Done record is on this issue.');
+    expect(driftText({ gates: gates({ intent: F, process: miss('DOD_OPEN_HC') }) })).toBe('The Definition of Done is not complete.');
+    expect(driftText({ gates: gates({ intent: F, process: miss('DOD_SHAPE_UNKNOWN') }) })).toBe('The Definition of Done record has a shape DefinitionGuard does not write.');
     expect(driftText({ gates: gates({ intent: F, code: miss('PR_NONE') }) })).toBe('The issue is done, but no pull request is linked.');
     expect(driftText({ gates: gates({ intent: F, code: miss('PR_OPEN_AT_DONE') }) })).toBe('The issue is done, but its pull request is not merged.');
     expect(driftText({ gates: gates({ intent: F, audit: miss('SEAL_NONE') }) })).toBe('The issue is not sealed in LedgerSeal.');
