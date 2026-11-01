@@ -1,7 +1,8 @@
+APPROVED 2026-11-01
 
 # Asymm Systems: In-Jira UI Standard
 
-- **Status:** Draft for owner approval (Phase 1).
+- **Status:** Approved by Fahim Farook on 2026-11-01.
 - **Date:** 2026-11-01
 - **Scope:** In-ticket and project dashboard UX standard for Asymm Systems Jira apps (FourRealities, LedgerSeal, DefinitionGuard).
 - **Author:** Fahim Farook
@@ -390,19 +391,16 @@ To ensure uniform adoption across FourRealities, LedgerSeal, and DefinitionGuard
 
 ---
 
-## 7. Open Questions for the Owner
+## 7. Open Questions and Owner Decisions
 
 ### Question 1: Button label for manual snapshot rebuild
 On the project dashboard, should the manual snapshot trigger button be labelled **"Refresh"** or **"Create snapshot"**?
-- **Option A (Recommended):** Keep **"Refresh"**. It matches native Jira conventions, avoids confusing users who might expect a saved bookmark or permanent artifact, and accurately conveys that a daily snapshot is already automated.
-- **Option B:** Change to **"Create snapshot"**. Matches the wording in the proposed external mockup.
+- **Decision: Option A (Approved by Fahim Farook on 2026-11-01).** Keep **"Refresh"**.
 
 ### Question 2: Default state of the findings section on the issue panel
 In the main issue panel, should the "Gate findings" detail section start **collapsed** or **expanded**?
-- **Option A (Recommended):** Start **collapsed**. The summary block already displays the overall status, the next step, and the four gate chips. Keeping details collapsed provides a compact, uncluttered experience on the ticket while allowing one-click expansion.
-- **Option B:** Start **expanded**. Displays all four gate detail rows immediately on load.
+- **Decision: Option A (Approved by Fahim Farook on 2026-11-01).** Start **collapsed**.
 
 ### Question 3: Priority actions scope on the project dashboard
 Should the "Priority actions" list display issues **project-wide** or respect the currently active filters (such as "My issues")?
-- **Option A (Recommended):** **Respect active filters**. When no filter is applied, it lists the top priority issues across the whole project. When a filter or preset (like "My issues") is selected, it lists priority actions only for that filtered subset.
-- **Option B:** Always **project-wide**. The top issues remain fixed regardless of table filter selections.
+- **Decision: Option A (Approved by Fahim Farook on 2026-11-01).** **Respect active filters**.

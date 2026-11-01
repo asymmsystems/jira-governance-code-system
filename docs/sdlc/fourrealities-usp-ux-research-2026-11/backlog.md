@@ -322,3 +322,13 @@ The owner's pasted consultation was reviewed item by item in chat; rejected item
 | B-40 | Inspect modal with previous and next; preset views (My issues, Critical and high, Audit prep, Needs a decision link) | consultation B3 | none |
 | B-41 | Link-decision modal with Confluence page search | consultation C | [MANIFEST] scope |
 | B-42 | "Request retrospective review" (comment as the user) | consultation C | none (write as user); DONE 2026-11-01 |
+
+## Added by the In-Jira UI Standard review (approved 2026-11-01, owner, in chat: "Aprooved now all")
+
+| ID | Title | Source | Flags |
+|---|---|---|---|
+| B-43 | Shared brand tokens and accessible layout primitives (`src/brand/brand.ts`, `src/brand/layout.tsx`), zero raw token strings outside `src/brand/` | UI Standard Phase 2 | DONE 2026-11-01 |
+| B-44 | Pure UI logic: audit readiness sentence, next step generator, priority actions ranking (respecting active filters), and gaps text (`src/ui/`) | UI Standard Phase 2 | DONE 2026-11-01 |
+| B-45 | Issue panel redesign: AppSurface, PanelHeader, SummaryBlock, single primary action, collapsible Gate findings (starts collapsed), and NoteBox | UI Standard Phase 2 | DONE 2026-11-01 |
+| B-46 | Project dashboard redesign: status banner, small reality cards, priority actions list, compact table with gaps summary, footnote, and Refresh | UI Standard Phase 2 | DONE 2026-11-01 |
+

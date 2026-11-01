@@ -4,9 +4,9 @@
  * FourRealities: pipeline, drift sentence, next action, alignment and score parts (B-33, B-36, B-37)
  */
 
-import { GateResult, IssueGates, ProjectSummary, TrendPoint } from '../../src/contract/data/models';
+import { GateResult, IssueGates, IssueRow, ProjectSummary, TrendPoint } from '../../src/contract/data/models';
 import {
-  GATE_QUESTION, alignmentText, driftText, heroDelta, nextActionText, pipelineTip, scoreParts, weakestGate
+  GATE_QUESTION, alignmentText, auditReadiness, driftText, heroDelta, issueGapsText, nextActionText, pipelineTip, scoreParts, weakestGate
 } from '../../src/ui/pipeline';
 
 const F: GateResult = { state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK' };
@@ -107,3 +107,58 @@ describe('B-37: alignment, score parts, weakest gate, hero delta', () => {
     expect(heroDelta([pt('2026-10-19', null), pt('2026-10-26', 60)])).toBe('Not enough data for a trend yet.');
   });
 });
+
+describe('B-44: audit readiness sentence and gaps text', () => {
+  const row = (issueKey: string, rai: number | null, g: Partial<IssueGates>): IssueRow => ({
+    issueId: '1', issueKey, summary: `Summary of ${issueKey}`, statusName: 'Done',
+    statusCategory: 'done', sprintNames: [], started: true, reworkLoops: 0,
+    rai, gates: gates(g), risk: 'LOW', applicableGates: 4, recoverablePoints: 0
+  });
+
+  it('summarises audit readiness across rated issues', () => {
+    expect(auditReadiness([])).toEqual({
+      status: 'Audit readiness: Incomplete',
+      summary: 'No issues found.',
+      nextStep: 'Create issues or adjust filters to review audit readiness.'
+    });
+
+    const unrated = row('DEMO-1', null, {});
+    expect(auditReadiness([unrated])).toEqual({
+      status: 'Audit readiness: Incomplete',
+      summary: '0 of 1 issues are rated.',
+      nextStep: 'Rate issues to assess delivery audit readiness.'
+    });
+
+    const partial1 = row('AUDT-1', 25, { intent: F, process: miss('DOD_NONE') });
+    const partial2 = row('AUDT-2', 25, { intent: F, process: miss('DOD_NONE'), code: miss('PR_NONE') });
+    expect(auditReadiness([partial1, partial2])).toEqual({
+      status: 'Audit readiness: Incomplete',
+      summary: 'Evidence found for 2 of 5 gates across 2 rated issues.',
+      nextStep: 'Next step: complete Definition of Done for 2 issues in DefinitionGuard.'
+    });
+
+    const singleMissingIntent = row('AUDT-1', 25, { intent: miss('INTENT_NONE') });
+    expect(auditReadiness([singleMissingIntent]).nextStep).toBe('Next step: link decision records for 1 issue.');
+
+    const singleMissingCode = row('AUDT-1', 25, { code: miss('PR_NONE') });
+    expect(auditReadiness([singleMissingCode]).nextStep).toBe('Next step: link pull requests or request Code exceptions for 1 issue.');
+
+    const singleMissingAudit = row('AUDT-1', 25, { audit: miss('SEAL_NONE') });
+    expect(auditReadiness([singleMissingAudit]).nextStep).toBe('Next step: seal 1 issue in LedgerSeal.');
+
+    const complete = row('AUDT-3', 100, { intent: F, process: F, code: F, audit: F });
+    expect(auditReadiness([complete])).toEqual({
+      status: 'Audit readiness: Complete',
+      summary: 'Evidence found for all 4 applicable gates across 1 rated issue.',
+      nextStep: 'All rated gates are evidenced.'
+    });
+  });
+
+  it('formats missing gates gaps text for triage rows', () => {
+    expect(issueGapsText(gates({ intent: miss('INTENT_NONE'), code: miss('PR_NONE') }))).toBe('2 gaps: Intent, Code');
+    expect(issueGapsText(gates({ process: miss('DOD_NONE') }))).toBe('1 gap: Process');
+    expect(issueGapsText(gates({ intent: F, process: F }))).toBe('None');
+    expect(issueGapsText(gates({}))).toBe('Not rated');
+  });
+});
+

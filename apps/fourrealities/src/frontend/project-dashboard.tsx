@@ -6,7 +6,6 @@
 
 import React, { useMemo, useState } from 'react';
 import {
-  Box,
   Button,
   DynamicTable,
   EmptyState,
@@ -26,23 +25,21 @@ import {
   Stack,
   Text,
   Textfield,
-  Tooltip,
-  xcss
+  Tooltip
 } from '@forge/react';
 import { router } from '@forge/bridge';
 import { GATE_NAMES, GateCount, GateName, IssueRow, ProjectDashboardView, RiskLevel } from '../contract/data/models';
 import { GATE_LABEL, raiText, rateText, riskAppearance } from '../ui/gate-text';
 import { DashboardFilters, FilterField, GATE_FILTER_OPTIONS, PRESETS, RISK_WORD, presetFilters, toggleRisk, NO_FILTERS, activeFilters, applyFilters, filterOptions, missingGateLabel } from '../ui/filters';
-import { triageOrder } from '../ui/triage';
+import { priorityActions, triageOrder } from '../ui/triage';
 import { TREND_WEEKS, chartData, recentWeeks, trendNotice, trendTableRows } from '../ui/trend';
 import { GatePipeline, GateRow } from './gate-row';
-import { GATE_QUESTION, driftText, heroDelta, weakestGate } from '../ui/pipeline';
+import { GATE_QUESTION, auditReadiness, driftText, heroDelta, weakestGate } from '../ui/pipeline';
+import { AppSurface, Card, SummaryBlock } from '../brand/layout';
 import { TextChange } from './modals';
 
 type Option<T extends string = string> = { label: string; value: T };
 const asOption = (value: string | null): Option | null => (value === null ? null : { label: value, value });
-
-const CARD = xcss({ borderColor: 'color.border', borderWidth: 'border.width', borderStyle: 'solid', borderRadius: 'radius.medium', padding: 'space.200' });
 
 const METRIC: Record<GateName, string> = {
   intent: 'Metric M11: share of rated issues traced to a decision record.',
@@ -64,7 +61,7 @@ export const RealityCard: React.FC<{ gate: GateName; count: GateCount; onShowMis
   const rate = of === 0 ? null : Math.round((count.found * 100) / of);
   const counted = of === 0 ? 'No issue is rated for this gate yet.' : `${count.found} of ${of} rated issues have evidence`;
   return (
-    <Box xcss={CARD}>
+    <Card>
       <Stack space="space.100" alignInline="start">
         <Inline space="space.100" alignBlock="center" shouldWrap>
           <Tooltip content={METRIC[gate]}>
@@ -77,7 +74,7 @@ export const RealityCard: React.FC<{ gate: GateName; count: GateCount; onShowMis
         <Text>{counted}</Text>
         {count.missing > 0 ? <Button appearance="subtle" onClick={onShowMissing}>{`Show ${count.missing} missing ${GATE_LABEL[gate]}`}</Button> : null}
       </Stack>
-    </Box>
+    </Card>
   );
 };
 
@@ -116,6 +113,8 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
   const selected = position >= 0 ? visible[position] : view.rows.find(r => r.issueId === selectedId) || null;
 
   const { summary } = view;
+  const readiness = auditReadiness(view.rows);
+  const topActions = priorityActions(visible, 5);
 
   if (view.rows.length === 0) {
     return (
@@ -175,31 +174,55 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
         <Button appearance="subtle" onClick={onRefresh}>Refresh</Button>
       </Inline>
 
+      <SummaryBlock>
+        <Stack space="space.050">
+          <Text>{readiness.status}</Text>
+          <Text>{readiness.summary}</Text>
+          <Text>{readiness.nextStep}</Text>
+        </Stack>
+      </SummaryBlock>
 
       <Inline space="space.150" shouldWrap>
         {GATE_NAMES.map(g => <RealityCard key={g} gate={g} count={summary.gates[g]} onShowMissing={() => set({ missingGate: g })} />)}
       </Inline>
 
-      {/* B-21 (H5): the gate rates come first, the score after them. */}
-      <Box xcss={CARD}>
-        <Stack space="space.100">
-          <Inline space="space.150" alignBlock="center" shouldWrap>
-            <Heading as="h2">{summary.averageRAI === null ? 'Alignment: not rated yet' : `Alignment ${summary.averageRAI}%`}</Heading>
-            <Text>{`across ${summary.ratedIssues} rated issues (${summary.unratedIssues} unrated)`}</Text>
-          </Inline>
-          <Text>{heroDelta(view.trend)}</Text>
-          {weakestGate(summary) ? <Text>{weakestGate(summary)}</Text> : null}
-          <Inline space="space.100" alignBlock="center" shouldWrap>
-            <Text>Risk:</Text>
-            {RISK_BUTTONS.map(([level, key]) => (
-              <Button key={level} appearance={filters.risks.includes(level) ? 'primary' : 'default'} onClick={() => set({ risks: toggleRisk(filters.risks, level) })}>
-                {`${RISK_WORD[level]} ${summary.riskDistribution[key]}`}
-              </Button>
-            ))}
-          </Inline>
-          <Text>Alignment is the share of rated gates with evidence found, averaged over rated issues.</Text>
-        </Stack>
-      </Box>
+      <Inline space="space.150" alignBlock="start" shouldWrap>
+        <Card>
+          <Stack space="space.100">
+            <Heading as="h4">Priority actions</Heading>
+            {topActions.length === 0 ? (
+              <Text>All issues have complete gate evidence.</Text>
+            ) : (
+              topActions.map((act, i) => (
+                <Inline key={act.issueKey} space="space.050" alignBlock="center" shouldWrap>
+                  <Text>{`${i + 1}. ${act.issueKey}: ${act.nextStep}`}</Text>
+                </Inline>
+              ))
+            )}
+          </Stack>
+        </Card>
+
+        {/* B-21 (H5): the gate rates come first, the score after them. */}
+        <Card>
+          <Stack space="space.100">
+            <Inline space="space.150" alignBlock="center" shouldWrap>
+              <Heading as="h2">{summary.averageRAI === null ? 'Alignment: not rated yet' : `Alignment ${summary.averageRAI}%`}</Heading>
+              <Text>{`across ${summary.ratedIssues} rated issues (${summary.unratedIssues} unrated)`}</Text>
+            </Inline>
+            <Text>{heroDelta(view.trend)}</Text>
+            {weakestGate(summary) ? <Text>{weakestGate(summary)}</Text> : null}
+            <Inline space="space.100" alignBlock="center" shouldWrap>
+              <Text>Risk:</Text>
+              {RISK_BUTTONS.map(([level, key]) => (
+                <Button key={level} appearance={filters.risks.includes(level) ? 'primary' : 'default'} onClick={() => set({ risks: toggleRisk(filters.risks, level) })}>
+                  {`${RISK_WORD[level]} ${summary.riskDistribution[key]}`}
+                </Button>
+              ))}
+            </Inline>
+            <Text>Alignment is the share of rated gates with evidence found, averaged over rated issues.</Text>
+          </Stack>
+        </Card>
+      </Inline>
 
       <TrendPanel view={view} />
 
@@ -244,6 +267,8 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
       </Inline>
 
       <DynamicTable head={head} rows={rows} rowsPerPage={25} emptyView={<Text>No issues match the filters.</Text>} />
+
+      <Text>Alignment is calculated across rated gates only.</Text>
 
       {selected ? (
         <Modal onClose={() => setSelectedId(null)} width="large">

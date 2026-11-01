@@ -219,3 +219,14 @@ AUDT-1 is left Done with label `fr-probe`.
   - Clean score card and bottom action bar.
 - 354 of 354 tests pass; all graders PASS; deployed to development as 3.10.0.
 
+### In-Jira UI Standard and Redesign (B-43 to B-46, Phase 1 & 2)
+
+- Phase 1 approved by owner on 2026-11-01 ("Aprooved now all", decisions: Refresh, Start collapsed, Respect active filters). Recorded in `docs/design/asymm-jira-ui-standard.md`.
+- B-43 brand primitives and layout components: created `src/brand/brand.ts` and `src/brand/layout.tsx`. Enforces strict one-border rule (`SubSection` with left indentation without nested borders).
+- B-44 pure UI logic: implemented `auditReadiness`, `issueGapsText`, and `priorityActions` (ranking filtered issues) in `src/ui/pipeline.ts` and `src/ui/triage.ts`.
+- B-45 issue panel redesign: restructured with `AppSurface`, `PanelHeader`, `SummaryBlock` (gate pipeline chips, drift sentence, next action, single primary action), collapsible `<Section title="Gate findings" count={4} defaultCollapsed={true}>`, and `ActionRow`.
+- B-46 project dashboard redesign: top Status Banner (status word, summary sentence, next step), Priority Actions tile side by side with reality cards, compact table with gaps summary, footnote, and Refresh button.
+- Architecture tests updated to 16 rules: verified zero raw token strings or hex colour codes outside `src/brand/`.
+- 373 of 373 tests pass; all graders PASS (grade_tdd: PASS 96.61, grade_security: PASS, grade_ui: PASS).
+
+

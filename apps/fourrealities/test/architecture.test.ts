@@ -58,9 +58,14 @@ describe('ADR-002 volatility layering', () => {
     expect(violations(f => f !== 'index.ts', s => !/\/default-[^/]+$/.test(s))).toEqual([]);
   });
 
-  it('the UI imports only contracts, UI code, React and the UI Kit bridge', () => {
+  it('the UI imports only contracts, UI code, brand primitives, React and the UI Kit bridge', () => {
     expect(violations(f => inside(f, 'frontend') || inside(f, 'ui'),
-      s => inside(s, 'contract') || inside(s, 'ui') || inside(s, 'frontend') || ['react', '@forge/react', '@forge/bridge'].includes(s))).toEqual([]);
+      s => inside(s, 'contract') || inside(s, 'ui') || inside(s, 'frontend') || inside(s, 'brand') || ['react', '@forge/react', '@forge/bridge'].includes(s))).toEqual([]);
+  });
+
+  it('brand components import only React, @forge/react and brand code', () => {
+    expect(violations(f => inside(f, 'brand'),
+      s => inside(s, 'brand') || ['react', '@forge/react'].includes(s))).toEqual([]);
   });
 
   it('contracts import only contracts', () => {
@@ -72,7 +77,7 @@ describe('ADR-002 volatility layering', () => {
   });
 
   it('B-22: React files export components, not logic functions', () => {
-    const logic = files.filter(f => inside(rel(f), 'frontend'))
+    const logic = files.filter(f => inside(rel(f), 'frontend') || (inside(rel(f), 'brand') && f.endsWith('.tsx')))
       .flatMap(f => Array.from(fs.readFileSync(f, 'utf8').matchAll(/^export (?:async )?function ([a-z]\w*)/gm)).map(m => `${rel(f)}: ${m[1]}`));
     expect(logic).toEqual([]);
   });
@@ -105,5 +110,14 @@ describe('ADR-002 volatility layering', () => {
 
   it('production code has no NODE_ENV branch', () => {
     expect(files.filter(f => fs.readFileSync(f, 'utf8').includes('NODE_ENV')).map(rel)).toEqual([]);
+  });
+
+  it('B-43: outside src/brand/, no source file uses raw Atlassian tokens or hex colors', () => {
+    const rawTokens = files.filter(f => !inside(rel(f), 'brand'))
+      .flatMap(f => fs.readFileSync(f, 'utf8').split('\n')
+        .map((line, i) => ({ line, at: `${rel(f)}:${i + 1}` }))
+        .filter(({ line }) => /(elevation\.|color\.background|color\.border|#[0-9a-fA-F]{3,6})/.test(line))
+        .map(({ at }) => at));
+    expect(rawTokens).toEqual([]);
   });
 });

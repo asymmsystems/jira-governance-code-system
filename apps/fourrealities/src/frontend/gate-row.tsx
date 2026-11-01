@@ -5,23 +5,15 @@
  */
 
 import React from 'react';
-import { Box, Inline, Lozenge, Stack, Text, Tooltip, xcss } from '@forge/react';
+import { Inline, Lozenge, Stack, Text, Tooltip } from '@forge/react';
 import { GATE_NAMES, GateName, GateResult, IssueGates } from '../contract/data/models';
 import { GATE_LABEL, appearanceOf, chipText, detailText, glyphOf, sourceLine, stateLabel } from '../ui/gate-text';
 import { pipelineTip } from '../ui/pipeline';
-
-const GATE_CARD = xcss({
-  borderColor: 'color.border',
-  borderWidth: 'border.width',
-  borderStyle: 'solid',
-  borderRadius: 'radius.medium',
-  padding: 'space.150',
-  backgroundColor: 'elevation.surface'
-});
+import { SubSection } from '../brand/layout';
 
 /** One gate: state with glyph and text, the source line, and one sentence of detail. */
 export const GateRow: React.FC<{ gate: GateName; result: GateResult; note?: React.ReactNode }> = ({ gate, result, note }) => (
-  <Box xcss={GATE_CARD}>
+  <SubSection>
     <Stack space="space.075" alignInline="start">
       <Lozenge maxWidth="100%" appearance={appearanceOf(result)}>
         {`${glyphOf(result)} ${GATE_LABEL[gate]}: ${stateLabel(result)}`}
@@ -30,7 +22,7 @@ export const GateRow: React.FC<{ gate: GateName; result: GateResult; note?: Reac
       <Text>{detailText(result)}</Text>
       {note || null}
     </Stack>
-  </Box>
+  </SubSection>
 );
 
 /** One pipeline chip: glyph, gate name and short state; the tooltip adds the source (B-33). */

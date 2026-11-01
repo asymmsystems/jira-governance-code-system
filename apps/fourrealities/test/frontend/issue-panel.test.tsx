@@ -17,9 +17,9 @@ jest.mock('@forge/bridge', () => require('./forge-mocks').bridgeMock());
 
 import { IssuePanel } from '../../src/frontend/issue-panel';
 
-async function mount(r: any, onReload = jest.fn(), onRow = jest.fn()) {
+async function mount(r: any, onReload = jest.fn(), onRow = jest.fn(), defaultCollapsed = false) {
   let renderer: any;
-  await act(async () => { renderer = TestRenderer.create(<IssuePanel row={r} onReload={onReload} onRow={onRow} />); });
+  await act(async () => { renderer = TestRenderer.create(<IssuePanel row={r} onReload={onReload} onRow={onRow} defaultCollapsed={defaultCollapsed} />); });
   return renderer;
 }
 
@@ -348,6 +348,24 @@ describe('IssuePanel', () => {
       const r = await mount(row('DEMO-31', { intent: F, process: F, code: M_CODE, audit: NA }));
       expect(() => findButton(r.root, 'Request retrospective review')).toThrow('No button');
     });
+
+    it('B-45: starts with findings section collapsed by default and expands on click', async () => {
+      let r: any;
+      await act(async () => {
+        r = TestRenderer.create(<IssuePanel row={row('DEMO-5', { intent: M_INTENT, process: F, code: NA, audit: F })} onReload={jest.fn()} onRow={jest.fn()} />);
+      });
+      const text = textOf(r.toJSON());
+      expect(text).toContain('Gate findings');
+      expect(text).toContain('Show details');
+      expect(text).not.toContain('Source: Jira issue links and remote links.');
+
+      await act(async () => {
+        findButton(r.root, 'Show details').props.onClick();
+      });
+      expect(textOf(r.toJSON())).toContain('Hide details');
+      expect(textOf(r.toJSON())).toContain('Source: Jira issue links and remote links.');
+    });
   });
 });
+
 

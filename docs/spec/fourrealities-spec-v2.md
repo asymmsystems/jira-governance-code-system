@@ -252,6 +252,16 @@ Approved by the owner on 2026-11-01 from a UX consultation review (backlog "Adde
 - **Retrospective review (B-42).** In the issue panel, when Code is FOUND with reason PR_MERGED, the panel offers "Request retrospective review". Opens a dialog with a comment text field (15 to 1,000 characters) and posts a Jira comment as the user without claiming a review occurred.
 - **Not built from the consultation, with the reason:** review-approval wording for Code (H11); a seal action in FourRealities, DoD checkboxes and "tamper-evident" wording (hard rules, T-05); title-overlap decision suggestions (FR-13); Custom UI (needs new dependencies). Trend by sprint is not built: weekly points are stored, and a sprint trend needs a new storage shape.
 
+## In-Jira UI Standard and Layout Redesign (B-43 to B-46)
+
+Approved by the owner on 2026-11-01 (`docs/design/asymm-jira-ui-standard.md`). The implementation standardises UX patterns across all Asymm Systems Jira apps (FourRealities, LedgerSeal, DefinitionGuard).
+
+- **Brand tokens and layout primitives (B-43):** Brand palette roles map to native Atlassian tokens in `src/brand/brand.ts`. Layout components in `src/brand/layout.tsx` enforce consistent spacing, borders, and typography. Zero raw token strings or hex colour codes are permitted in `src/` outside `src/brand/`.
+- **Strict one-border rule:** Nested bordered boxes are forbidden in UI Kit panels to avoid visual clutter. Panels use an outer bordered `Card` or `Section`. Nested details use `SubSection` with left indentation (`space.200`) and no border.
+- **Pure UI logic (B-44):** `auditReadiness` determines overall posture and next step. `issueGapsText` formats gap summaries. `priorityActions` ranks top action items respecting active filters.
+- **Issue panel anatomy (B-45):** Wrapped in `AppSurface`. Starts with `PanelHeader` carrying the module title and a subtle Refresh button. A `SummaryBlock` presents the gate pipeline chips, drift sentence, next action, and single primary action. Gate findings are contained in a collapsible `<Section title="Gate findings" count={4} defaultCollapsed={true}>`. Exception notes and rework logs render in a subtle `NoteBox`. Secondary actions sit at the bottom in an `ActionRow`.
+- **Project dashboard redesign (B-46):** Top Status Banner presents audit readiness status, summary sentence, and next step. Reality cards sit beside a Priority Actions tile that respects active filters. Snapshot button is labelled "Refresh". A quiet footnote states: "Alignment is calculated across rated gates only."
+
 ## Accessibility rules (B-20)
 
 Checked on every rendered view by `test/frontend/accessibility.test.tsx`: every `Inline` wraps (`shouldWrap`); every `Textfield` and `Select` has a `Label` whose `labelFor` is its `id`; every `Lozenge` sets `maxWidth="100%"`, so its text is not cut at the 200 px default; every gate glyph sits next to its text name; every button has text; every modal closes with `onClose` (Escape); no UI text or UI source file contains the em dash, box-drawing arrows or the middle dot. UI Kit gives no role or `aria-live` prop on `SectionMessage`, so whether the result message is announced is checked only in the live run.

@@ -328,5 +328,21 @@ describe('ProjectDashboard', () => {
     const modalButtons = modal.findAll((n: any) => n.type === 'ui-Button').map((b: any) => String(b.props.children));
     expect(modalButtons.sort()).toEqual(['Close', 'Next issue', 'Open issue', 'Previous issue']);
   });
+
+  it('B-46: shows status banner, priority actions respecting filters, and quiet footnote', async () => {
+    const r = await mount(dashboard(rows));
+    const text = textOf(r.toJSON());
+    expect(text).toContain('Audit readiness: Incomplete');
+    expect(text).toContain('Priority actions');
+    expect(text).toContain('1. DEMO-2: Next: link the decision record.');
+    expect(text).toContain('Alignment is calculated across rated gates only.');
+
+    // Respects active filters
+    await act(async () => { select(r, 'fr-filter-gate').props.onChange({ label: 'Code missing', value: 'code' }); });
+    const filteredText = textOf(r.toJSON());
+    expect(filteredText).toContain('1. DEMO-2: Next: link the decision record.');
+    expect(filteredText).not.toContain('DEMO-3:');
+  });
 });
+
 

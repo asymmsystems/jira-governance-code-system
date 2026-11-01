@@ -108,3 +108,103 @@ export function heroDelta(trend: TrendPoint[]): string {
   if (d === 0) return `No change since the week of ${prev.weekStart}`;
   return `${d > 0 ? '▲' : '▼'} ${Math.abs(d)} pts since the week of ${prev.weekStart}`;
 }
+
+export interface AuditReadinessSummary {
+  readonly status: string;
+  readonly summary: string;
+  readonly nextStep: string;
+}
+
+/** Delivery assurance status banner text across rated issues (B-44). */
+export function auditReadiness(issues: IssueRow[]): AuditReadinessSummary {
+  if (issues.length === 0) {
+    return {
+      status: 'Audit readiness: Incomplete',
+      summary: 'No issues found.',
+      nextStep: 'Create issues or adjust filters to review audit readiness.'
+    };
+  }
+
+  const rated = issues.filter(i => i.rai !== null);
+  const unrated = issues.filter(i => i.rai === null);
+
+  if (rated.length === 0) {
+    return {
+      status: 'Audit readiness: Incomplete',
+      summary: `0 of ${issues.length} issues are rated.`,
+      nextStep: 'Rate issues to assess delivery audit readiness.'
+    };
+  }
+
+  let applicableGates = 0;
+  let evidencedGates = 0;
+  const missingByGate: Record<GateName, number> = { intent: 0, process: 0, code: 0, audit: 0 };
+
+  for (const issue of rated) {
+    for (const g of GATE_NAMES) {
+      const state = issue.gates[g].state;
+      if (state !== 'NOT_APPLICABLE') {
+        applicableGates++;
+        if (state === 'FOUND' || state === 'EXCEPTED') {
+          evidencedGates++;
+        } else if (state === 'MISSING') {
+          missingByGate[g]++;
+        }
+      }
+    }
+  }
+
+  if (evidencedGates === applicableGates && applicableGates > 0) {
+    return {
+      status: 'Audit readiness: Complete',
+      summary: `Evidence found for all ${evidencedGates} applicable gates across ${rated.length} rated issue${rated.length === 1 ? '' : 's'}.`,
+      nextStep: 'All rated gates are evidenced.'
+    };
+  }
+
+  const mostMissing = GATE_NAMES
+    .map(g => ({ gate: g, count: missingByGate[g] }))
+    .filter(x => x.count > 0)
+    .sort((a, b) => b.count - a.count)[0];
+
+  let nextStep = 'Review gate evidence across rated issues.';
+  if (mostMissing) {
+    const { gate, count } = mostMissing;
+    const issueWord = count === 1 ? 'issue' : 'issues';
+    switch (gate) {
+      case 'intent':
+        nextStep = `Next step: link decision records for ${count} ${issueWord}.`;
+        break;
+      case 'process':
+        nextStep = `Next step: complete Definition of Done for ${count} ${issueWord} in DefinitionGuard.`;
+        break;
+      case 'code':
+        nextStep = `Next step: link pull requests or request Code exceptions for ${count} ${issueWord}.`;
+        break;
+      case 'audit':
+        nextStep = `Next step: seal ${count} ${issueWord} in LedgerSeal.`;
+        break;
+    }
+  }
+
+  const unratedNote = unrated.length > 0 ? ` (${unrated.length} unrated)` : '';
+  return {
+    status: 'Audit readiness: Incomplete',
+    summary: `Evidence found for ${evidencedGates} of ${applicableGates} gates across ${rated.length} rated issue${rated.length === 1 ? '' : 's'}${unratedNote}.`,
+    nextStep
+  };
+}
+
+/** Formats a compact summary of missing gates for a single issue row (B-44). */
+export function issueGapsText(gates: IssueGates): string {
+  const missing = GATE_NAMES.filter(g => gates[g].state === 'MISSING');
+  if (missing.length === 0) {
+    const hasRated = GATE_NAMES.some(g => gates[g].state !== 'NOT_APPLICABLE');
+    return hasRated ? 'None' : 'Not rated';
+  }
+  if (missing.length === 1) {
+    return `1 gap: ${GATE_LABEL[missing[0]]}`;
+  }
+  return `${missing.length} gaps: ${missing.map(g => GATE_LABEL[g]).join(', ')}`;
+}
+

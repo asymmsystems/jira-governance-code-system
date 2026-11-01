@@ -5,28 +5,14 @@
  */
 
 import React, { useState } from 'react';
-import { Box, Button, Heading, Inline, Lozenge, SectionMessage, Stack, Text, User, xcss } from '@forge/react';
+import { Box, Button, Inline, Lozenge, SectionMessage, Stack, Text, User } from '@forge/react';
 import { router } from '@forge/bridge';
 import { ExceptionDecision, ExceptionNote, GATE_NAMES, GateExceptionState, GateName, IssueRow } from '../contract/data/models';
 import { PanelAction, afterActionText, raiPartsText, raiText, recoveryText, riskAppearance } from '../ui/gate-text';
 import { GatePipeline, GateRow } from './gate-row';
 import { alignmentText, driftText, nextActionText, scoreParts } from '../ui/pipeline';
+import { ActionRow, AppSurface, NoteBox, PanelHeader, Section, SummaryBlock } from '../brand/layout';
 import { DecisionModal, ExceptionModal, LinkDecisionModal, ReviewModal } from './modals';
-
-const HERO_CARD = xcss({
-  borderColor: 'color.border',
-  borderWidth: 'border.width',
-  borderStyle: 'solid',
-  borderRadius: 'radius.medium',
-  padding: 'space.150',
-  backgroundColor: 'elevation.surface.sunken'
-});
-
-const NOTE_BOX = xcss({
-  backgroundColor: 'elevation.surface.sunken',
-  borderRadius: 'radius.medium',
-  padding: 'space.100'
-});
 
 /**
  * Opens the issue so the user can act in the producer app's own panel.
@@ -92,20 +78,20 @@ export const ExceptionStateLine: React.FC<{ state: GateExceptionState }> = ({ st
 function gateNote(gate: GateName, row: IssueRow): React.ReactNode {
   if (gate === 'code' && row.codeException) {
     return (
-      <Box xcss={NOTE_BOX}>
+      <NoteBox>
         <ExceptionStateLine state={row.codeException} />
-      </Box>
+      </NoteBox>
     );
   }
   if (gate === 'process' && row.reworkLoops > 0) {
     return (
-      <Box xcss={NOTE_BOX}>
+      <NoteBox>
         <Stack space="space.050">
           <Text>{`Rework loops: ${row.reworkLoops}.`}</Text>
           {(row.reworkNoteCount || 0) > 1 ? <Text>{`${row.reworkNoteCount} rework reasons recorded. The latest is shown.`}</Text> : null}
           {row.reworkNote ? <NoteLine label="Rework reason" note={row.reworkNote} /> : null}
         </Stack>
-      </Box>
+      </NoteBox>
     );
   }
   return undefined;
@@ -113,11 +99,25 @@ function gateNote(gate: GateName, row: IssueRow): React.ReactNode {
 
 type OpenModal = 'none' | 'link' | 'code' | 'rework' | 'review' | ExceptionDecision;
 
+export interface IssuePanelProps {
+  readonly row: IssueRow;
+  readonly onReload: () => void;
+  readonly onRow: (row: IssueRow) => void;
+  readonly compact?: boolean;
+  readonly defaultCollapsed?: boolean;
+}
+
 /**
  * onRow replaces the row in place after a write, so the panel stays mounted and its message
  * stays visible (B-17). onReload is the Refresh button only.
  */
-export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void; onRow: (row: IssueRow) => void; compact?: boolean }> = ({ row, onReload, onRow, compact = false }) => {
+export const IssuePanel: React.FC<IssuePanelProps> = ({
+  row,
+  onReload,
+  onRow,
+  compact = false,
+  defaultCollapsed = true
+}) => {
   const [open, setOpen] = useState<OpenModal>('none');
   const [message, setMessage] = useState<string | null>(null);
   const [why, setWhy] = useState<boolean>(false);
@@ -134,99 +134,106 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void; onRow: 
   // Compact view for the issue context sidebar (B-38): the glance, and the findings on demand.
   if (!expanded) {
     return (
-      <Stack space="space.100">
+      <AppSurface>
         {message ? (
           <SectionMessage appearance="information" title="Recorded">
             <Text>{message}</Text>
           </SectionMessage>
         ) : null}
-        <Box xcss={HERO_CARD}>
-          <Stack space="space.100">
-            <GatePipeline gates={row.gates} />
-            <Inline space="space.100" alignBlock="center" shouldWrap>
-              <Text>{alignmentText(row)}</Text>
-              {row.rai !== null ? <Lozenge maxWidth="100%" appearance={riskAppearance(row.risk)}>{`${row.risk} risk`}</Lozenge> : null}
-            </Inline>
-            <Text>{nextActionText(row) || driftText(row)}</Text>
-            <Button appearance="subtle" onClick={() => setExpanded(true)}>See all findings</Button>
-          </Stack>
-        </Box>
-      </Stack>
+        <SummaryBlock>
+          <GatePipeline gates={row.gates} />
+          <Inline space="space.100" alignBlock="center" shouldWrap>
+            <Text>{alignmentText(row)}</Text>
+            {row.rai !== null ? <Lozenge maxWidth="100%" appearance={riskAppearance(row.risk)}>{`${row.risk} risk`}</Lozenge> : null}
+          </Inline>
+          <Text>{nextActionText(row) || driftText(row)}</Text>
+          <Button appearance="subtle" onClick={() => setExpanded(true)}>See all findings</Button>
+        </SummaryBlock>
+      </AppSurface>
     );
   }
 
   return (
-    <Stack space="space.150">
+    <AppSurface>
       {message ? (
         <SectionMessage appearance="information" title="Recorded">
           <Text>{message}</Text>
         </SectionMessage>
       ) : null}
 
-      <Box xcss={HERO_CARD}>
-        <Stack space="space.100">
-          <Inline space="space.100" alignBlock="center" shouldWrap>
-            <Heading as="h4">Delivery evidence: {row.issueKey}</Heading>
+      <PanelHeader
+        title={`Delivery evidence: ${row.issueKey}`}
+        action={
+          <Inline space="space.050" alignBlock="center" shouldWrap>
             <Button appearance="subtle" onClick={onReload}>Refresh</Button>
             {compact ? <Button appearance="subtle" onClick={() => setExpanded(false)}>Hide findings</Button> : null}
           </Inline>
-          <GatePipeline gates={row.gates} />
-          <Text>{driftText(row)}</Text>
-          {nextActionText(row) ? <Text>{nextActionText(row)}</Text> : null}
-          {recoveryText(row) ? <Text>{recoveryText(row)}</Text> : null}
-        </Stack>
-      </Box>
+        }
+      />
 
-      <Box padding="space.050">
+      <SummaryBlock>
+        <GatePipeline gates={row.gates} />
+        <Text>{driftText(row)}</Text>
+        {nextActionText(row) ? <Text>{nextActionText(row)}</Text> : null}
+        {recoveryText(row) ? <Text>{recoveryText(row)}</Text> : null}
+
+        <ActionRow>
+          {row.gates.intent.state === 'MISSING' ? (
+            <Button appearance="primary" onClick={() => setOpen('link')}>Link decision record</Button>
+          ) : row.gates.code.state === 'MISSING' && row.gates.code.reason === 'PR_NONE' && row.codeException?.status !== 'REQUESTED' ? (
+            <Button appearance="primary" onClick={() => setOpen('code')}>Request Code exception</Button>
+          ) : null}
+          {needsProducer ? <ProducerLinks issueKey={row.issueKey} /> : null}
+        </ActionRow>
+      </SummaryBlock>
+
+      <Section title="Gate findings" count={4} defaultCollapsed={compact ? false : defaultCollapsed}>
         <Stack space="space.100">
           {GATE_NAMES.map(g => (
             <GateRow key={g} gate={g} result={row.gates[g]} note={gateNote(g, row)} />
           ))}
         </Stack>
-      </Box>
 
-      <Box xcss={HERO_CARD}>
-        <Stack space="space.100">
-          <Inline space="space.100" alignBlock="center" shouldWrap>
-            <Lozenge maxWidth="100%" appearance={riskAppearance(row.risk)}>{raiText(row)}</Lozenge>
-            <Text>{raiPartsText(row)}</Text>
-            {row.rai !== null ? (
-              <Button appearance="subtle" onClick={() => setWhy(!why)}>{why ? 'Hide the score parts' : `Why ${row.rai}%?`}</Button>
+        <Box padding="space.050">
+          <Stack space="space.100">
+            <Inline space="space.100" alignBlock="center" shouldWrap>
+              <Lozenge maxWidth="100%" appearance={riskAppearance(row.risk)}>{raiText(row)}</Lozenge>
+              <Text>{raiPartsText(row)}</Text>
+              {row.rai !== null ? (
+                <Button appearance="subtle" onClick={() => setWhy(!why)}>{why ? 'Hide the score parts' : `Why ${row.rai}%?`}</Button>
+              ) : null}
+            </Inline>
+            {why ? (
+              <Stack space="space.025">
+                {scoreParts(row).map(line => <Text key={line}>{line}</Text>)}
+              </Stack>
             ) : null}
-          </Inline>
-          {why ? (
-            <Stack space="space.025">
-              {scoreParts(row).map(line => <Text key={line}>{line}</Text>)}
-            </Stack>
-          ) : null}
-        </Stack>
-      </Box>
+          </Stack>
+        </Box>
 
-      <Inline space="space.100" alignBlock="center" shouldWrap>
-        {row.gates.intent.state === 'MISSING' ? (
-          <Button appearance="primary" onClick={() => setOpen('link')}>Link decision record</Button>
-        ) : null}
-        {row.gates.code.state === 'FOUND' && row.gates.code.reason === 'PR_MERGED' ? (
-          <Button appearance="default" onClick={() => setOpen('review')}>Request retrospective review</Button>
-        ) : null}
-        {row.gates.code.state === 'MISSING' && row.gates.code.reason === 'PR_NONE' && row.codeException?.status !== 'REQUESTED' ? (
-          <Button appearance="default" onClick={() => setOpen('code')}>Request Code exception</Button>
-        ) : null}
-        {row.codeException?.status === 'REQUESTED' ? (
-          <>
-            <Button appearance="default" onClick={() => setOpen('APPROVE')}>Approve exception</Button>
-            <Button appearance="default" onClick={() => setOpen('REJECT')}>Reject exception</Button>
-            <Button appearance="subtle" onClick={() => setOpen('WITHDRAW')}>Withdraw request</Button>
-          </>
-        ) : null}
-        {row.codeException?.status === 'APPROVED' ? (
-          <Button appearance="default" onClick={() => setOpen('REVOKE')}>Revoke exception</Button>
-        ) : null}
-        {row.reworkLoops > 0 ? (
-          <Button appearance="default" onClick={() => setOpen('rework')}>Add rework reason</Button>
-        ) : null}
-        {needsProducer ? <ProducerLinks issueKey={row.issueKey} /> : null}
-      </Inline>
+        <ActionRow>
+          {row.gates.intent.state === 'MISSING' && row.gates.code.state === 'MISSING' && row.gates.code.reason === 'PR_NONE' && row.codeException?.status !== 'REQUESTED' ? (
+            <Button appearance="default" onClick={() => setOpen('code')}>Request Code exception</Button>
+          ) : null}
+          {row.gates.code.state === 'FOUND' && row.gates.code.reason === 'PR_MERGED' ? (
+            <Button appearance="default" onClick={() => setOpen('review')}>Request retrospective review</Button>
+          ) : null}
+          {row.codeException?.status === 'REQUESTED' ? (
+            <>
+              <Button appearance="default" onClick={() => setOpen('APPROVE')}>Approve exception</Button>
+              <Button appearance="default" onClick={() => setOpen('REJECT')}>Reject exception</Button>
+              <Button appearance="subtle" onClick={() => setOpen('WITHDRAW')}>Withdraw request</Button>
+            </>
+          ) : null}
+          {row.codeException?.status === 'APPROVED' ? (
+            <Button appearance="default" onClick={() => setOpen('REVOKE')}>Revoke exception</Button>
+          ) : null}
+          {row.reworkLoops > 0 ? (
+            <Button appearance="default" onClick={() => setOpen('rework')}>Add rework reason</Button>
+          ) : null}
+          {needsProducer ? <ProducerLinks issueKey={row.issueKey} /> : null}
+        </ActionRow>
+      </Section>
 
       {open === 'link' ? (
         <LinkDecisionModal issueId={row.issueId} issueKey={row.issueKey} onClose={() => setOpen('none')} onDone={done('link')} />
@@ -252,6 +259,6 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void; onRow: 
           onDone={done('decision')}
         />
       ) : null}
-    </Stack>
+    </AppSurface>
   );
 };

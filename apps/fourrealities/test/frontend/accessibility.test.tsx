@@ -93,15 +93,15 @@ describe('B-20: accessibility on every view', () => {
   it('the issue panel and each of its modals', async () => {
     const state = { status: 'REQUESTED' as const, issueKey: 'DEMO-2', requestedBy: 'dev-1', requestedAt: '2026-11-01T00:00:00Z', reason: 'Configuration change only' };
     let r: any;
-    await act(async () => { r = TestRenderer.create(<IssuePanel row={row('DEMO-2', { intent: M_INTENT, process: M_DOD, code: M_CODE, audit: M_SEAL }, { reworkLoops: 1, codeException: state })} onReload={jest.fn()} onRow={jest.fn()} />); });
+    await act(async () => { r = TestRenderer.create(<IssuePanel row={row('DEMO-2', { intent: M_INTENT, process: M_DOD, code: M_CODE, audit: M_SEAL }, { reworkLoops: 1, codeException: state })} onReload={jest.fn()} onRow={jest.fn()} defaultCollapsed={false} />); });
     checkTree(r, 'issue panel');
     for (const open of ['Link decision record', 'Add rework reason', 'Approve exception', 'Reject exception', 'Withdraw request']) {
       await act(async () => { findButton(r.root, open).props.onClick(); });
       checkTree(r, open);
       await act(async () => { findButton(r.root, 'Cancel').props.onClick(); });
     }
-    const rMerged = await act(async () => {
-      r = TestRenderer.create(<IssuePanel row={row('DEMO-3', { intent: F, process: F, code: { state: 'FOUND', verification: 'HEURISTIC', reason: 'PR_MERGED' }, audit: NA })} onReload={jest.fn()} onRow={jest.fn()} />);
+    await act(async () => {
+      r = TestRenderer.create(<IssuePanel row={row('DEMO-3', { intent: F, process: F, code: { state: 'FOUND', verification: 'HEURISTIC', reason: 'PR_MERGED' }, audit: NA })} onReload={jest.fn()} onRow={jest.fn()} defaultCollapsed={false} />);
     });
     await act(async () => { findButton(r.root, 'Request retrospective review').props.onClick(); });
     checkTree(r, 'Request retrospective review');
