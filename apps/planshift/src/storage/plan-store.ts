@@ -13,7 +13,7 @@
  * the version the caller started from, the previous value is restored and a conflict is returned.
  */
 
-import { WbsTask, ColumnWidthConfig, ProjectMilestone } from '../domain/models';
+import { WbsTask, ColumnWidthConfig, ProjectMilestone, WorkEffortRecordBody, toWorkEffortRecord, fromWorkEffortRecord } from '../domain/models';
 import { StorageProvider } from './plan-repository';
 
 export interface StoredEntry extends Partial<WbsTask> {
@@ -21,6 +21,18 @@ export interface StoredEntry extends Partial<WbsTask> {
   issueId: string;
   version: number;
   sequenceNum?: number;
+}
+
+/** The KVS value of one issue: its WorkEffort record plus bookkeeping. */
+export interface StoredRecord extends WorkEffortRecordBody {
+  issueKey: string;
+  issueId: string;
+  version: number;
+}
+
+function toStoredEntry(rec: StoredRecord): StoredEntry {
+  if (!rec) return rec;
+  return { ...fromWorkEffortRecord(rec), issueKey: rec.issueKey, issueId: rec.issueId, version: rec.version } as StoredEntry;
 }
 
 export interface PlanSettings {
@@ -66,11 +78,11 @@ export class PlanStore {
 
   /** Every record of the project, by issue key. */
   async loadEntries(): Promise<Map<string, StoredEntry>> {
-    const rows = await this.storage.query!<StoredEntry>(this.prefix);
+    const rows = await this.storage.query!<StoredRecord>(this.prefix);
     const out = new Map<string, StoredEntry>();
     this.keyByIssue = new Map();
     for (const row of rows) {
-      out.set(row.value.issueKey, row.value);
+      out.set(row.value.issueKey, toStoredEntry(row.value));
       this.keyByIssue.set(row.value.issueKey, row.key);
     }
     return out;
@@ -87,27 +99,28 @@ export class PlanStore {
    */
   async putEntry(issueKey: string, issueId: string | undefined, entry: Partial<WbsTask>, baseVersion?: number): Promise<PutResult> {
     const key = await this.storageKeyFor(issueKey, issueId);
-    const existing = await this.storage.get<StoredEntry>(key);
+    const existing = await this.storage.get<StoredRecord>(key);
     const expected = baseVersion !== undefined ? baseVersion : (existing ? existing.version : 0);
     const current = existing ? existing.version : 0;
     if (current !== expected) {
-      return { ok: false, conflict: true, entry: existing as StoredEntry };
+      return { ok: false, conflict: true, entry: toStoredEntry(existing as StoredRecord) };
     }
-    const record: StoredEntry = {
-      ...(entry as Record<string, unknown>),
+    // The stored value is the WorkEffort record (B-24); Jira-owned fields are not part of it.
+    const record: StoredRecord = {
+      ...toWorkEffortRecord(issueKey, entry),
       issueKey,
       issueId: existing ? existing.issueId : (issueId || issueKey),
       version: expected + 1
-    } as StoredEntry;
-    const previous = await this.storage.swap!<StoredEntry>(key, record);
+    };
+    const previous = await this.storage.swap!<StoredRecord>(key, record);
     const previousVersion = previous ? previous.version : 0;
     if (previousVersion !== expected) {
       // Another writer saved first: put its value back and report the conflict.
       if (previous) await this.storage.set(key, previous);
-      return { ok: false, conflict: true, entry: previous as StoredEntry };
+      return { ok: false, conflict: true, entry: toStoredEntry(previous as StoredRecord) };
     }
     this.keyByIssue!.set(issueKey, key);
-    return { ok: true, entry: record };
+    return { ok: true, entry: toStoredEntry(record) };
   }
 
   async deleteEntry(issueKey: string): Promise<void> {

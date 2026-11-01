@@ -341,6 +341,7 @@ export interface WorkEffortAssoc {
   isViolated?: boolean;
   violationReason?: string;
   notes?: string;
+  jiraLinkId?: string; // the Jira "Blocks" link that CascadePlan created for this association
 }
 
 export interface WorkEffortPartyAssignment {
@@ -443,4 +444,151 @@ export function fromWorkEffort(
     contributingResources: otherParties.length > 0 ? otherParties : undefined,
     dependency
   };
+}
+
+/**
+ * Stored part of a WorkEffort: only app-owned planning data (INV-04). Name, status and the
+ * Jira estimate stay in Jira and are read live.
+ */
+export interface StoredWorkEffort {
+  workEffortId: string;
+  estimatedStartDate?: string;
+  estimatedCompletionDate?: string;
+  sequenceNum?: number;
+  targetPercentComplete?: number;
+  manualProgress?: boolean;
+  percentComplete?: number; // only when the user set progress by hand
+}
+
+/** Week-grid position and other planner view data kept with the record. */
+export interface WorkEffortGrid {
+  startWeek?: string;
+  endWeek?: string;
+  spanWeeks?: number;
+  weeklyAllocations?: Record<string, number>;
+  isBacklog?: boolean;
+  localSubtasks?: SubtaskItem[];
+}
+
+/** Parts of the estimate form that WorkEffortEstimate does not name. */
+export interface WorkEffortEstimateExtras {
+  hoursConversionRatio?: number;
+  tshirtSize?: TShirtSize;
+  subtasks?: SubtaskItem[];
+  subtasksSumHours?: number;
+  bufferHours?: number;
+}
+
+/**
+ * The stored form of one issue's planning data (spec 3.1, B-24): the Silverston / OFBiz / Moqui
+ * WorkEffort pattern with its associations, party assignments and estimate.
+ */
+export interface WorkEffortRecordBody {
+  effort: StoredWorkEffort;
+  assocs: WorkEffortAssoc[];
+  parties: WorkEffortPartyAssignment[];
+  estimate?: WorkEffortEstimate;
+  estimateExtras?: WorkEffortEstimateExtras;
+  grid?: WorkEffortGrid;
+  precedenceRemoved?: boolean; // the user removed the dependency; a Jira link must not bring it back
+}
+
+function normalizedHoursOf(cfg: TaskEffortConfig): number {
+  if (cfg.unit === 'STORY_POINTS') return Math.max(0, Math.round(cfg.rawEstimate * (cfg.hoursConversionRatio || DEFAULT_STORY_POINT_RATIO)));
+  if (cfg.unit === 'TSHIRT') return DEFAULT_TSHIRT_MAP[cfg.tshirtSize || 'M'];
+  return Math.max(0, Math.round(cfg.rawEstimate));
+}
+
+function defined<T extends object>(o: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(o)) if (v !== undefined) out[k] = v;
+  return out as T;
+}
+
+/**
+ * Converts the app-owned planning fields of a task into the stored WorkEffort record.
+ * Jira-owned fields in the input are ignored.
+ */
+export function toWorkEffortRecord(issueKey: string, entry: Partial<WbsTask>): WorkEffortRecordBody {
+  const effort: StoredWorkEffort = defined({
+    workEffortId: issueKey,
+    estimatedStartDate: entry.startDate,
+    estimatedCompletionDate: entry.endDate,
+    sequenceNum: entry.sequenceNum,
+    targetPercentComplete: entry.targetProgress,
+    manualProgress: entry.manualProgress,
+    percentComplete: entry.manualProgress === true ? entry.progress : undefined
+  });
+  const assocs: WorkEffortAssoc[] = [];
+  if (entry.dependency && entry.dependency.predecessorKey) {
+    assocs.push(defined({
+      workEffortIdFrom: entry.dependency.predecessorKey,
+      workEffortIdTo: issueKey,
+      workEffortAssocTypeId: 'FRACTIONAL_MILESTONE' as WorkEffortAssocType,
+      triggerPercent: entry.dependency.triggerPercent,
+      isTriggerSatisfied: false,
+      jiraLinkId: entry.dependency.jiraLinkId
+    }));
+  }
+  const parties: WorkEffortPartyAssignment[] = (entry.contributingResources || []).map(name => ({
+    workEffortId: issueKey, partyId: '', displayName: name, roleTypeId: 'CONTRIBUTOR' as WorkEffortRoleType
+  }));
+  const body: WorkEffortRecordBody = { effort, assocs, parties };
+  const cfg = entry.effortConfig;
+  if (cfg) {
+    body.estimate = {
+      workEffortId: issueKey, estimateUnit: cfg.unit, rawEstimate: cfg.rawEstimate, normalizedHours: normalizedHoursOf(cfg),
+      bufferType: cfg.bufferType, bufferValue: cfg.bufferValue, totalCalculatedHours: cfg.totalCalculatedHours
+    };
+    const extras = defined({ hoursConversionRatio: cfg.hoursConversionRatio, tshirtSize: cfg.tshirtSize, subtasks: cfg.subtasks,
+      subtasksSumHours: cfg.subtasksSumHours, bufferHours: cfg.bufferHours });
+    if (Object.keys(extras).length > 0) body.estimateExtras = extras;
+  }
+  const grid = defined({ startWeek: entry.startWeek, endWeek: entry.endWeek, spanWeeks: entry.spanWeeks,
+    weeklyAllocations: entry.weeklyAllocations, isBacklog: entry.isBacklog, localSubtasks: entry.subtasks });
+  if (Object.keys(grid).length > 0) body.grid = grid;
+  if (entry.dependency === null) body.precedenceRemoved = true;
+  return body;
+}
+
+/**
+ * Converts a stored WorkEffort record back into the app-owned planning fields of a task.
+ * A record written before B-24 (entry-shaped) is returned as it is.
+ */
+export function fromWorkEffortRecord(rec: WorkEffortRecordBody): Partial<WbsTask> {
+  if (!rec || !(rec as any).effort) return { ...(rec as any) };
+  const e = rec.effort;
+  const out: Partial<WbsTask> = defined({
+    startDate: e.estimatedStartDate,
+    endDate: e.estimatedCompletionDate,
+    sequenceNum: e.sequenceNum,
+    targetProgress: e.targetPercentComplete,
+    manualProgress: e.manualProgress,
+    progress: e.percentComplete,
+    ...(rec.grid ? defined({ startWeek: rec.grid.startWeek, endWeek: rec.grid.endWeek, spanWeeks: rec.grid.spanWeeks,
+      weeklyAllocations: rec.grid.weeklyAllocations, isBacklog: rec.grid.isBacklog, subtasks: rec.grid.localSubtasks }) : {})
+  });
+  const precedence = (rec.assocs || []).find(a => a.workEffortAssocTypeId === 'FRACTIONAL_MILESTONE' || a.workEffortAssocTypeId === 'PRECEDENCE');
+  if (precedence) {
+    out.dependency = defined({
+      predecessorId: precedence.workEffortIdFrom,
+      predecessorKey: precedence.workEffortIdFrom,
+      triggerPercent: precedence.triggerPercent as number,
+      isTriggerSatisfied: false,
+      jiraLinkId: precedence.jiraLinkId
+    });
+  } else if (rec.precedenceRemoved) {
+    out.dependency = null;
+  }
+  if (rec.parties && rec.parties.length > 0) out.contributingResources = rec.parties.map(p => p.displayName);
+  if (rec.estimate) {
+    const x = rec.estimateExtras || {};
+    out.effortConfig = defined({
+      unit: rec.estimate.estimateUnit, rawEstimate: rec.estimate.rawEstimate, tshirtSize: x.tshirtSize,
+      hoursConversionRatio: x.hoursConversionRatio, subtasks: x.subtasks as SubtaskItem[], subtasksSumHours: x.subtasksSumHours as number,
+      bufferType: rec.estimate.bufferType, bufferValue: rec.estimate.bufferValue, bufferHours: x.bufferHours as number,
+      totalCalculatedHours: rec.estimate.totalCalculatedHours
+    });
+  }
+  return out;
 }

@@ -10,6 +10,7 @@
  */
 
 import { StorageProvider } from '../../src/storage/plan-repository';
+import { fromWorkEffortRecord } from '../../src/domain/models';
 
 export class MemStorage implements StorageProvider {
   store = new Map<string, any>();
@@ -55,7 +56,7 @@ export async function entryOf(storage: MemStorage, issueKey: string, projectId =
   const records = await storage.query<any>(`cp:${projectId}:we:`);
   const rec = records.find(r => r.value.issueKey === issueKey);
   if (!rec) return undefined;
-  const out = { ...rec.value };
+  const out: any = fromWorkEffortRecord(rec.value);
   for (const f of BOOKKEEPING) delete out[f];
   return out;
 }
@@ -65,7 +66,9 @@ export async function entryOf(storage: MemStorage, issueKey: string, projectId =
  */
 export async function recordOf(storage: MemStorage, issueKey: string, projectId = 'TEST'): Promise<any> {
   const records = await storage.query<any>(`cp:${projectId}:we:`);
-  return records.find(r => r.value.issueKey === issueKey)?.value;
+  const raw = records.find(r => r.value.issueKey === issueKey)?.value;
+  if (!raw) return undefined;
+  return { ...fromWorkEffortRecord(raw), issueKey: raw.issueKey, issueId: raw.issueId, version: raw.version, note: raw.note };
 }
 
 /**
