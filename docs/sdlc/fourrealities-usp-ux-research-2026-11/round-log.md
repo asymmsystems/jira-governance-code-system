@@ -166,3 +166,17 @@ Findings from the live check:
 - **L3-3 (not resolved):** text entered by the browser tool in one burst (typing or many key events) kept only the last character in UI Kit text fields; single key presses and single input events worked. Fields were made uncontrolled (`ac58487`, deployed as 3.3.0) and the burst loss stayed. Whether fast human typing loses characters is not known.
 - **L3-4 (visual, open):** gate lozenges with `maxWidth="100%"` fill their container and read as bars.
 - Labels are announced with their fields (accessible names "Page address", "Page title"), as B-20 requires.
+
+## After the final report (2026-11-01, owner instructions in chat)
+
+| Item | Owner input | What changed | Tests | Commit | Deployed |
+|---|---|---|---|---|---|
+| L3-1 approver rule | "1. Rule - B" | Approve, reject, revoke need `ADMINISTER_PROJECTS` or the global `ADMINISTER`, one `mypermissions` call; texts name both roles; ADR-001 and spec v2 updated | 322 of 322; new end-to-end test with a Jira administrator who is not a project administrator | `f39f686` | 3.5.0 |
+| L3-4 lozenge bars | "you do these" | Cause: a `Stack` stretches its children. Gate stacks align to the start; accessibility test checks it (the first version of that check passed vacuously and was fixed to find the real parent) | 322 of 322 | `6d8567b` | 3.5.0 |
+| Open point 8 | "you do these" | Daily trigger reads the licence from `getAppContext()` through `DefaultForgeAppContextAccessor` and skips its run when inactive | 323 of 323 | `2fb80f3` | 3.5.0 |
+| Open point 7 | "you do these" | Harness times the daily run: 1,000 issues, 10 searches, 694 remote-link reads, 707 Jira calls, 19 ms with instant mocks; dashboard read view CPU at most 6.9 ms | harness 6 of 6 | harness only (`~/.cache/.../harness`) | n/a |
+| B-33, B-34, B-36 | "Approved all yor suggestions" | Four-gate pipeline chips with short state and tooltip; table Gates column as a pipeline, Alignment and Top finding columns; drift sentence and next action | 334 of 334; pipeline logic tests were written with the module, so no fail-first run for `src/ui/pipeline.ts` | `23c122e` | 3.6.0 |
+| B-35, B-37, B-39 | same | Bordered reality cards (question, rate, labelled progress bar, count, action only when missing, metric code in a tooltip); alignment box after the cards (H5 kept over the consultation's score-first hero), weekly delta with 10 rated issues minimum, weakest gate, risk buttons that filter; "Why n%?" in the panel | 339 of 339 | `73d3cb6` | 3.6.0, checked live on DEMO (screenshot `/tmp/claude-chrome-screenshots-r0BuFx/screenshot-1793523930948-6.jpg`) |
+| B-38, B-40 | same | Compact issue-context view with "See all findings"; Inspect with pipeline, drift sentence, Previous and Next; preset views (My issues, Critical and high, Audit prep, Needs a decision link); multi-level risk filter; column widths so the four chips fit on one line | 346 of 346 | `b0a0c4e` | 3.7.0, not yet checked live (browser tool disconnected) |
+
+Deviation: B-33 to B-40 were committed in three slices, not one item per commit, because they share `src/ui/pipeline.ts` and the pipeline component.
