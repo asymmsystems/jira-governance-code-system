@@ -92,24 +92,24 @@ Validator messages (exact text, each under 250 characters):
 
 ## 3. Size and time: baseline and budget
 
-Measured by T-01 on 2026-11-01 (host Node v26.13.0, 25 runs each, mocked Forge APIs, so no network time). Times are in-process compute only. Real resolver time adds 1 to 3 Jira REST calls, which this research did not measure.
+Measured by T-01 on 2026-11-01 (host Node v26.13.0, 25 runs each, mocked Forge APIs, so no network time). Times are in-process compute only. Real resolver time adds Jira REST calls, which this research did not measure. The baseline ran the v1 app (Part A); the "After" column ran the built app (Part B, branch `feature/ledgerseal-research-build`), through its real Jira client over a mocked REST layer (`results-after.json`).
 
 Fixtures: small = 765-byte issue. desc400 = a 400-paragraph description (107,190-byte issue JSON). comments100 = 100 comments (40,266 bytes). combined = both (146,691 bytes).
 
 | Measure | small | desc400 | comments100 | combined | Budget | After (Part B) |
 |---|---|---|---|---|---|---|
-| Seal compute, median / p95 (ms) | 0.14 / 0.34 | 3.0 / 4.4 | 1.3 / 2.2 | 3.9 / 6.0 | p95 at most 50 ms compute; end-to-end under 5 s, well inside the 25 s limit (FG-01) | |
-| Largest KVS value after seal (bytes) | 1,614 | 108,039 | 43,013 | 149,438 | No single value above 120 KiB (half of 240 KiB, FG-07) for the combined fixture | |
-| Verify (unchanged issue), median (ms) | 0.09 | 2.5 | 1.4 | 3.4 | p95 at most 50 ms compute | |
-| Verify (unchanged): KVS writes / property writes | 0 / 1 | 0 / 1 | 0 / 1 | 0 / 1 | 0 / 0 (LS-06). Each write spends the shared 65,000-point hourly REST pool (FG-30) | |
-| Verify response sent to the panel (bytes) | 1,917 | 108,342 | 43,316 | 149,741 | At most 16 KiB: send the view model, not the snapshot or the email (LS-17) | |
-| Validator (unchanged), median (ms) | 0.11 | 3.0 | 1.5 | 4.2 | p95 at most 50 ms compute | |
-| Property body on seal (bytes) | 287 | 287 | 287 | 287 | At most 2 KiB with signature (32,768-byte limit, FG-25) | |
-| After 500 views of a tampered issue: active certificate (bytes) | 154,653 | 261,078 | 196,052 | 302,477 | Same size as after the first incident (growth 0) | |
-| After 500 tampered views: history rows / incidents | 500 / 500 | 500 / 500 | 500 / 500 | 500 / 500 | 1 / 1 (one incident per distinct live hash) | |
-| After 500 tampered views: KVS writes / property writes | 1,500 / 500 | 1,500 / 500 | 1,500 / 500 | 1,500 / 500 | 1 / 1 in total | |
-| First view at which the active value passes 240 KiB | 798 | 450 | above 500 | 315 | Never | |
-| Verify time, first 25 vs last 25 tampered views, median (ms) | 0.24 vs 4.0 | 4.8 vs 7.7 | 2.0 vs 5.3 | 5.9 vs 9.7 | Flat (no growth with views) | |
+| Seal compute, median / p95 (ms) | 0.14 / 0.34 | 3.0 / 4.4 | 1.3 / 2.2 | 3.9 / 6.0 | p95 at most 50 ms compute; end-to-end under 5 s, well inside the 25 s limit (FG-01) | small 0.39 / 0.72; desc400 7.6 / 10.6; comments100 4.1 / 5.0; combined 10.2 / 16.7. Met |
+| Largest KVS value after seal (bytes) | 1,614 | 108,039 | 43,013 | 149,438 | No single value above 120 KiB (half of 240 KiB, FG-07) for the combined fixture | 1,795; 120,000; 43,994; 120,000 (combined in 3 parts). Met |
+| Verify (unchanged issue), median (ms) | 0.09 | 2.5 | 1.4 | 3.4 | p95 at most 50 ms compute | 0.31; 6.1; 3.4; 9.4 (p95 at most 10.0). Met |
+| Verify (unchanged): KVS writes / property writes | 0 / 1 | 0 / 1 | 0 / 1 | 0 / 1 | 0 / 0 (LS-06). Each write spends the shared 65,000-point hourly REST pool (FG-30) | 0 / 0 in every fixture. Met |
+| Verify response sent to the panel (bytes) | 1,917 | 108,342 | 43,316 | 149,741 | At most 16 KiB: send the view model, not the snapshot or the email (LS-17) | 1,192 in every fixture (1,556 when changed). Met |
+| Validator (unchanged), median (ms) | 0.11 | 3.0 | 1.5 | 4.2 | p95 at most 50 ms compute | 0.32; 7.8; 4.4; 12.2 (p95 at most 13.2). Met |
+| Property body on seal (bytes) | 287 | 287 | 287 | 287 | At most 2 KiB with signature (32,768-byte limit, FG-25) | 380 unsigned (probe); the signed body is under 2 KiB (`attestation.test.ts`). Met |
+| After 500 views of a tampered issue: active certificate (bytes) | 154,653 | 261,078 | 196,052 | 302,477 | Same size as after the first incident (growth 0) | Work effort 1,055 in every fixture; it grows 62 bytes at the first incident and not after. Met |
+| After 500 tampered views: history rows / incidents | 500 / 500 | 500 / 500 | 500 / 500 | 500 / 500 | 1 / 1 (one incident per distinct live hash) | 2 status rows (seal and one change) / 1 incident. Met |
+| After 500 tampered views: KVS writes / property writes | 1,500 / 500 | 1,500 / 500 | 1,500 / 500 | 1,500 / 500 | 1 / 1 in total | 2 / 1 in total (the change row and the work effort; one signed property write). Met |
+| First view at which the active value passes 240 KiB | 798 | 450 | above 500 | 315 | Never | Never. The largest value stays at 120,000 bytes or less. Met |
+| Verify time, first 25 vs last 25 tampered views, median (ms) | 0.24 vs 4.0 | 4.8 vs 7.7 | 2.0 vs 5.3 | 5.9 vs 9.7 | Flat (no growth with views) | 0.33 vs 0.27; 6.1 vs 7.0; 4.8 vs 4.8; 10.5 vs 10.6. Flat. Met |
 
 What the numbers mean:
 - Past the 240 KiB limit, `kvs.set` fails. Verify then throws, and the panel shows "Issue Not Sealed" (LS-06, LS-12). For the combined fixture this happens on the 315th view of a tampered issue.
