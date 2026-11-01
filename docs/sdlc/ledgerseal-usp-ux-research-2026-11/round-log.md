@@ -63,3 +63,9 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - `tsc --noEmit -p .`: exit 0.
 - `jest --coverage`: 8 of 8 suites, 77 of 77 tests pass. Global: statements 98.01, branches 90.24, functions 100, lines 98.41. Per file branches: `index.ts` 90.9, `canonicalizer.ts` 87.7, `workflow-validator.ts` 90, others 100. `src/frontend/**` is excluded.
 - The baseline passes, so no B-00 item is needed.
+
+### Loop 1: spec v2
+- `docs/spec/ledgerseal-spec.md` is unchanged (md5 `e022e8e72a5e922808d7dcb1fdad3c17`). v2 is a copy with every change: `docs/spec/ledgerseal-spec-v2.md`.
+- D-1 resolved by its approved fallback rule. `GET /rest/api/3/project/{key}/roledetails` requires Administer Jira or Administer projects from the caller (Jira REST v3 OpenAPI text, read 2026-11-01), so an approver cannot read their own role membership. The policy is the `ADMINISTER_PROJECTS` or `ADMINISTER` permission, checked as the user with `mypermissions` (permissions required: none; scope `read:jira-work`).
+- Forge facts read for the spec: KVS `keyPolicy: FAIL_IF_EXISTS` and `kvs.transact()` exist in the installed `@forge/kvs` 2.1.1; entity property index types are number, text, string, user and date; trigger events can arrive up to 3 minutes late; UI Kit panel icons may be a resource path (`resource:icons;icon.svg`, as FourRealities does).
+- `python3 loop-engine/graders/grade_spec.py apps/ledgerseal`: passed. The grader reads only the v1 file name (`docs/spec/{app}-spec.md`) and checks six section words, so this pass says nothing about v2. Spec v2 records the scope conflict with the v1 claim (section 5) and keeps `write:jira-work`.
