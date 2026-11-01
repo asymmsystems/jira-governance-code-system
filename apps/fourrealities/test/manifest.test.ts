@@ -15,6 +15,10 @@ describe('manifest.yml', () => {
     expect(manifest).toMatch(/- key: snapshot\s*\n\s*handler: index\.snapshot\s*\n\s*timeoutSeconds: 600/);
   });
 
+  it('B-23: turns on Marketplace licensing for the app', () => {
+    expect(manifest).toMatch(/\napp:\n(?:  .*\n)*  licensing:\n    enabled: true\n/);
+  });
+
   it('keeps the scopes the app uses, and declares no external egress', () => {
     const scopes = manifest.slice(manifest.indexOf('scopes:')).split('\n').filter(l => /^\s*- /.test(l)).map(l => l.trim().slice(2));
     expect(scopes).toEqual(['read:jira-work', 'write:jira-work', 'storage:app']);

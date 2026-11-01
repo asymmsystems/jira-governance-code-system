@@ -1113,3 +1113,35 @@ describe('B-17: writers return the re-evaluated row (FR-20)', () => {
     expect(res.row.gates.code.state).toBe('EXCEPTED');
   });
 });
+
+describe('B-23: an inactive licence stops every resolver before any read or write', () => {
+  const inactive = { extension: { issue: { id: '30009', key: 'DEMO-39' }, project: { key: 'DEMO' } }, accountId: 'acc-9', license: { isActive: false } };
+  const MESSAGE = 'The FourRealities licence for this site is not active. A site administrator can renew it in Manage apps.';
+  beforeEach(() => {
+    mockRequestJira.mockReset();
+    mockUserRequestJira.mockClear();
+    mockAppRequestJira.mockClear();
+  });
+
+  it('returns the licence error from the read resolvers and the write resolvers, and calls nothing', async () => {
+    const storage = new MockStorage();
+    for (const read of [getProjectDashboard, refreshProjectSnapshot, getIssueAlignment]) {
+      expect(await read({}, inactive as any, storage)).toEqual({ ok: false, error: { code: 'LICENSE_INACTIVE', message: MESSAGE } });
+    }
+    expect(await linkDecision({ issueId: '30009', url: 'https://x.example/a', title: 'ADR 1' }, inactive as any, storage)).toEqual({ success: false, error: MESSAGE });
+    expect(await recordException({ issueId: '30009', type: 'REWORK', reason: 'Requirement changed after review' }, inactive as any, storage)).toEqual({ success: false, error: MESSAGE });
+    expect(await decideException({ issueId: '30009', decision: 'APPROVE', reason: '' }, inactive as any, storage)).toEqual({ success: false, error: MESSAGE });
+    expect(mockUserRequestJira).not.toHaveBeenCalled();
+    expect(mockAppRequestJira).not.toHaveBeenCalled();
+  });
+
+  it('runs when the licence is active, and in development where Forge gives no licence', async () => {
+    const view = (license?: { isActive: boolean }) => ({ extension: { issue: { id: '30009', key: 'DEMO-39' } }, ...(license ? { license } : {}) });
+    mockRequestJira.mockResolvedValue({ status: 404, json: async () => ({}) });
+    for (const ctx of [view({ isActive: true }), view()]) {
+      const res: any = await getIssueAlignment({}, ctx as any, new MockStorage());
+      expect(res.error?.code).not.toBe('LICENSE_INACTIVE');
+    }
+    expect(mockUserRequestJira).toHaveBeenCalled();
+  });
+});

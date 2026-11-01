@@ -75,6 +75,16 @@ export function compose(storageProvider: StorageProvider | undefined, budgetMs: 
   };
 }
 
+export const LICENCE_INACTIVE_MESSAGE = 'The FourRealities licence for this site is not active. A site administrator can renew it in Manage apps.';
+
+/** True only when Forge says the licence is inactive; no licence (development) is allowed (D-10, B-23). */
+export function licenceInactive(context: ForgeContext | undefined): boolean {
+  return context?.license?.isActive === false;
+}
+
+const LICENCE_READ_ERROR = { ok: false as const, error: { code: 'LICENSE_INACTIVE' as const, message: LICENCE_INACTIVE_MESSAGE } };
+const LICENCE_WRITE_ERROR: WriteResult = { success: false, error: LICENCE_INACTIVE_MESSAGE };
+
 /** The parts of the Forge context that Managers use. */
 export function callerOf(context: ForgeContext | undefined): CallerContext {
   const issue = context?.extension?.issue;
@@ -91,11 +101,13 @@ export function callerOf(context: ForgeContext | undefined): CallerContext {
  * view never writes trend history. The project comes from the Forge context only.
  */
 export async function getProjectDashboard(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<ResolverResult<ProjectDashboardView>> {
+  if (licenceInactive(context)) return LICENCE_READ_ERROR;
   return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'app').projects.view(callerOf(context), false);
 }
 
 /** Rebuilds the project snapshot now ("Refresh"), inside the resolver time budget. */
 export async function refreshProjectSnapshot(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<ResolverResult<ProjectDashboardView>> {
+  if (licenceInactive(context)) return LICENCE_READ_ERROR;
   return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'app').projects.view(callerOf(context), true);
 }
 
@@ -112,6 +124,7 @@ export const snapshot = async (): Promise<void> => {
 
 /** Evaluates one Jira issue. The issue comes from the Forge context only. */
 export async function getIssueAlignment(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<ResolverResult<{ row: IssueRow }>> {
+  if (licenceInactive(context)) return LICENCE_READ_ERROR;
   return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user').issues.evaluate(callerOf(context));
 }
 
@@ -130,6 +143,7 @@ async function withRow(app: ReturnType<typeof compose>, caller: CallerContext, r
  * properties: that evidence belongs to the producer apps (one writer per fact).
  */
 export async function linkDecision(payload: LinkDecisionPayload | undefined, context?: ForgeContext, storageProvider?: StorageProvider): Promise<WriteResult> {
+  if (licenceInactive(context)) return { ...LICENCE_WRITE_ERROR };
   const app = compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user');
   const caller = callerOf(context);
   return withRow(app, caller, await app.issues.linkDecision(caller, payload));
@@ -137,6 +151,7 @@ export async function linkDecision(payload: LinkDecisionPayload | undefined, con
 
 /** Requests a Code exception, or records a rework note. */
 export async function recordException(payload: RecordExceptionPayload | undefined, context?: ForgeContext, storageProvider?: StorageProvider): Promise<WriteResult> {
+  if (licenceInactive(context)) return { ...LICENCE_WRITE_ERROR };
   const app = compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user');
   const caller = callerOf(context);
   return withRow(app, caller, await app.exceptions.record(caller, payload));
@@ -144,6 +159,7 @@ export async function recordException(payload: RecordExceptionPayload | undefine
 
 /** Approves, rejects, revokes or withdraws a Code exception (ADR-001, Option C). */
 export async function decideException(payload: DecideExceptionPayload | undefined, context?: ForgeContext, storageProvider?: StorageProvider): Promise<WriteResult> {
+  if (licenceInactive(context)) return { ...LICENCE_WRITE_ERROR };
   const app = compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user');
   const caller = callerOf(context);
   return withRow(app, caller, await app.exceptions.decide(caller, payload));

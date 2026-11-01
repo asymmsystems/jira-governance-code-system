@@ -22,10 +22,12 @@ export const FourRealitiesApp: React.FC = () => {
   const [dashboard, setDashboard] = useState<ProjectDashboardView | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [licenceInactive, setLicenceInactive] = useState<boolean>(false);
 
   const load = async (refresh = false) => {
     setLoading(true);
     setErrorMessage(null);
+    setLicenceInactive(false);
     try {
       const context = (await view.getContext().catch(() => null)) as ForgeContext | null;
       const issueView = Boolean(context?.extension?.issue);
@@ -33,6 +35,7 @@ export const FourRealitiesApp: React.FC = () => {
       const resolver = issueView ? 'getIssueAlignment' : refresh ? 'refreshProjectSnapshot' : 'getProjectDashboard';
       const res = (await invoke<Record<string, never>, LoadResult>(resolver, {})) as LoadResult | undefined;
       if (!res?.ok) {
+        setLicenceInactive(res?.error?.code === 'LICENSE_INACTIVE');
         setErrorMessage(errorText(res, 'Failed to load delivery evidence.'));
       } else if (issueView) {
         setRow(res.row || null);
@@ -56,6 +59,14 @@ export const FourRealitiesApp: React.FC = () => {
         <Spinner size="small" label="Loading" />
         <Text>Evaluating delivery evidence...</Text>
       </Inline>
+    );
+  }
+
+  if (licenceInactive) {
+    return (
+      <SectionMessage appearance="warning" title="Licence not active">
+        <Text>{errorMessage}</Text>
+      </SectionMessage>
     );
   }
 

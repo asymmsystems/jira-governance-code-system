@@ -261,7 +261,7 @@ Filters combine with AND. Each active filter has its own "Remove filter: ..." bu
 ## Manifest
 
 - Modules: `jira:projectPage`, `jira:issuePanel`, `jira:issueContext` (UI Kit, `render: native`), one resolver function, and a `scheduledTrigger` with `interval: day` that calls the `snapshot` function. The snapshot function sets `timeoutSeconds: 600`.
-- `app.licensing.enabled: true`. Each resolver returns `LICENSE_INACTIVE` when `context.license.isActive === false`. An undefined licence (development installs) is allowed.
+- `app.licensing.enabled: true`. Each resolver returns `LICENSE_INACTIVE` when `context.license.isActive === false`, before any Jira or storage call; the write resolvers return `{ success: false, error }` with the same text. An undefined licence (development installs) is allowed. The UI shows a warning `SectionMessage` titled "Licence not active" with the message "The FourRealities licence for this site is not active. A site administrator can renew it in Manage apps." The daily scheduled trigger has no resolver context and is not checked.
 - Scopes: `read:jira-work`, `write:jira-work`, `storage:app`. `write:jira-work` is needed for the user's remote link (`linkDecision`) and for the `fourrealities-exception` property (`recordException`).
 - Runtime `nodejs22.x`. No external egress.
 

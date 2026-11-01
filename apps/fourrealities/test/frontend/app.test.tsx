@@ -87,6 +87,17 @@ describe('FourRealitiesApp rendering', () => {
     expect(hookErrors).toEqual([]);
   });
 
+  it('B-23: shows an inactive licence as its own warning message, not as a Jira error', async () => {
+    bridgeState.context = { extension: { project: { key: 'DEMO' } } };
+    bridgeState.invoke.mockResolvedValue({ ok: false, error: { code: 'LICENSE_INACTIVE', message: 'The FourRealities licence for this site is not active.' } });
+    let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<FourRealitiesApp />); });
+    await settle(act);
+    const message = renderer.root.findAll((n: any) => n.type === 'ui-SectionMessage')[0];
+    expect(message.props).toEqual(expect.objectContaining({ appearance: 'warning', title: 'Licence not active' }));
+    expect(textOf(renderer.toJSON())).toContain('The FourRealities licence for this site is not active.');
+  });
+
   it('shows the resolver error message from an error envelope', async () => {
     bridgeState.context = { extension: { project: { key: 'DEMO' } } };
     bridgeState.invoke.mockResolvedValue({ ok: false, error: { code: 'FORBIDDEN', message: 'Live Jira sync failed (HTTP 403).' } });

@@ -368,6 +368,8 @@ export interface LedgerSealRecord {
 export interface ForgeContext {
   accountId?: string;
   extension?: { issue?: { id?: string | number; key?: string }; project?: { key?: string } };
+  /** Marketplace licence; Forge gives none on development installs (spec v2, D-10). */
+  license?: { isActive?: boolean };
 }
 
 /** Resolver payloads as sent by the UI. Every field is optional: the Managers validate them. */
