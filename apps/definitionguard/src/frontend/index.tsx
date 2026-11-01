@@ -29,7 +29,7 @@ type Evidence = { url?: string; note?: string };
 type HistoryPage = { auditTrail?: ChecklistAuditEvent[]; chain?: { ok: boolean; message: string; limit: string } };
 
 const Who: React.FC<{ who?: Attribution }> = ({ who }) =>
-  who ? (who.kind === 'user' ? <User accountId={who.accountId} /> : <Text>{who.text}</Text>) : null;
+  who ? (who.kind === 'user' ? <User accountId={who.accountId} /> : <Text as="span">{who.text}</Text>) : null;
 
 // Renders the view model from src/ui/panel-view-model.ts. All rules and wording live there.
 // Text fields are uncontrolled (no value prop): a controlled UI Kit Textfield loses keystrokes,
@@ -130,7 +130,7 @@ export const DefinitionGuardPanel: React.FC = () => {
 
       {vm && (
         <Inline space="space.100" alignBlock="center">
-          <Heading as="h4">Checklist items</Heading>
+          <Heading as="h5">Checklist items</Heading>
           <Lozenge appearance={vm.progress.appearance}>{vm.progress.text}</Lozenge>
         </Inline>
       )}
@@ -162,11 +162,9 @@ export const DefinitionGuardPanel: React.FC = () => {
               <Box paddingInlineStart="space.300">
                 <Inline space="space.050" alignBlock="center">
                   <Who who={item.attribution} />
-                  <Text size="small" color="color.text.subtle">
-                    {item.doneText === 'Waived by' ? 'waived this' : 'completed this'}
+                  <Text as="span" size="small" color="color.text.subtle">
+                    {item.doneText === 'Waived by' ? 'waived this' : 'completed this'} • {item.when}
                   </Text>
-                  <Text size="small" color="color.text.subtle">•</Text>
-                  <Text size="small" color="color.text.subtle">{item.when}</Text>
                 </Inline>
               </Box>
             )}
@@ -273,7 +271,7 @@ export const DefinitionGuardPanel: React.FC = () => {
 
       {history && (
         <Stack space="space.150">
-          <Heading as="h4">History</Heading>
+          <Heading as="h5">History</Heading>
           {history.chain && (
             <SectionMessage appearance={history.chain.ok ? 'information' : 'error'}>
               <Text>{history.chain.message}</Text>
@@ -286,8 +284,7 @@ export const DefinitionGuardPanel: React.FC = () => {
                 <Stack space="space.050">
                   <Inline space="space.100" alignBlock="center">
                     <User accountId={row.accountId} />
-                    <Text size="small" color="color.text.subtle">•</Text>
-                    <Text size="small" color="color.text.subtle">{row.when}</Text>
+                    <Text as="span" size="small" color="color.text.subtle">• {row.when}</Text>
                   </Inline>
                   <Box paddingInlineStart="space.400">
                     <Stack space="space.050">
@@ -306,18 +303,18 @@ export const DefinitionGuardPanel: React.FC = () => {
                           >
                             {row.actionVerb || row.actionText}
                           </Lozenge>
-                          <Text weight="medium">{row.itemTitle}</Text>
+                          <Text as="span" weight="medium">{row.itemTitle}</Text>
                         </Inline>
                       ) : (
                         <Lozenge appearance="default">{row.actionText}</Lozenge>
                       )}
                       {row.reason && (
-                        <Text size="small" color="color.text.subtle">Reason: {row.reason}</Text>
+                        <Text as="span" size="small" color="color.text.subtle">Reason: {row.reason}</Text>
                       )}
                       {row.evidence && (row.evidence.url || row.evidence.note) && (
                         <Stack space="space.025">
                           {row.evidence.url && <Link href={row.evidence.url} openNewTab>{row.evidence.url}</Link>}
-                          {row.evidence.note && <Text size="small">{row.evidence.note}</Text>}
+                          {row.evidence.note && <Text as="span" size="small">{row.evidence.note}</Text>}
                         </Stack>
                       )}
                     </Stack>
