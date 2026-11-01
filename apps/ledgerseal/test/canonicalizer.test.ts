@@ -113,7 +113,7 @@ describe('Canonicalizer', () => {
       expect(snapshot.attachments[1].id).toBe('att-99');
     });
 
-    it('skips volatile custom fields like Rank, Sprint, and Dev summary', () => {
+    it('skips Rank, Sprint and Development by schema type, and covers Resolution', () => {
       const rawIssue = {
         id: '10003',
         key: 'PROD-44',
@@ -122,14 +122,19 @@ describe('Canonicalizer', () => {
           customfield_10019: '0|i0001b:',
           customfield_10020: [{ id: 1, name: 'Sprint 1', state: 'active' }],
           customfield_10000: '{"pullrequest":{"dataType":"pullrequest"}}',
-          customfield_customrank: '123|abc:',
-          resolution: { name: 'Done' },
+          resolution: { id: '1', name: 'Done' },
           resolutiondate: '2026-10-29T10:00:00Z'
         }
       };
+      const schemas = [
+        { id: 'customfield_10019', name: 'Rank', schema: { custom: 'com.pyxis.greenhopper.jira:gh-lexo-rank' } },
+        { id: 'customfield_10020', name: 'Sprint', schema: { custom: 'com.pyxis.greenhopper.jira:gh-sprint' } },
+        { id: 'customfield_10000', name: 'Development', schema: { custom: 'com.atlassian.jira.plugins.jira-development-integration-plugin:devsummarycf' } }
+      ];
 
-      const snapshot = canonicalizeIssueState(rawIssue, '2026-10-28T12:00:00Z');
-      expect(snapshot.fields.map(f => f.id)).toEqual(['summary']);
+      const snapshot = canonicalizeIssueState(rawIssue, '2026-10-28T12:00:00Z', schemas);
+      expect(snapshot.fields.map(f => f.id)).toEqual(['resolution', 'summary']);
+      expect(snapshot.excluded?.map(e => e.name)).toEqual(['Development', 'Rank', 'Sprint', 'resolutiondate']);
     });
 
     it('normalizes assignee, issuelinks, and subtasks to stable values without mutable status or avatars', () => {
@@ -252,34 +257,31 @@ describe('Canonicalizer', () => {
       expect(snap.fields.map(f => f.id)).toEqual(['summary']);
     });
 
-    it('excludes JSM request metadata, SLA timers, CSAT ratings, and approvals (Fixes D-03)', () => {
+    it('excludes JSM SLA timers, satisfaction, participants and approvals by schema type, not by value (Fixes D-03, LS-05)', () => {
       const raw = {
         id: '1',
         key: 'DEMO-5',
         fields: {
           summary: 'JSM ticket',
-          customfield_10010: { requestType: { name: 'IT Help' }, currentStatus: { statusCategory: 3 } },
-          customfield_10027: { ongoingCycle: { breached: false }, sla: 'Time to response' },
-          customfield_10037: { rating: 5, satisfactionDate: '2026-10-29' },
-          customfield_10001: { approvals: [] },
-          customfield_approvers: { approvers: ['acc-1'] },
-          customfield_participants: { participants: ['acc-2'] },
-          customfield_req: { customerRequestType: 'Help' },
-          customfield_dev: { cachedValue: 'summary' },
-          customfield_branch: 'branch={main}',
-          customfield_timeline: [{ state: 'closed' }],
-          customfield_mysprint: 'sprint 1',
-          customfield_mysatisfaction: 'high',
-          customfield_myrank: 'rank-1',
-          customfield_mysla: 'sla-met',
-          customfield_prstring: 'merged pullrequest #42',
-          customfield_satisfactionDate: { satisfactionDate: '2026-10-30' },
-          slaField: { completedCycles: [] }
+          customfield_10027: { ongoingCycle: { breached: false } },
+          customfield_10037: { rating: 5 },
+          customfield_10031: [{ accountId: 'acc-2' }],
+          customfield_10032: [{ id: '1', finalDecision: 'pending' }],
+          customfield_10001: 'Approved budget 1000',
+          customfield_branch: 'branch={main}'
         }
       };
+      const schemas = [
+        { id: 'customfield_10027', name: 'Time to first response', schema: { custom: 'com.atlassian.servicedesk:sd-sla-field' } },
+        { id: 'customfield_10037', name: 'Satisfaction', schema: { custom: 'com.atlassian.servicedesk:sd-request-feedback' } },
+        { id: 'customfield_10031', name: 'Request participants', schema: { custom: 'com.atlassian.servicedesk:sd-request-participants' } },
+        { id: 'customfield_10032', name: 'Approvals', schema: { custom: 'com.atlassian.servicedesk.approvals-plugin:sd-approvals' } },
+        { id: 'customfield_10001', name: 'Budget notes', schema: { custom: 'com.atlassian.jira.plugin.system.customfieldtypes:textarea' } }
+      ];
 
-      const snap = canonicalizeIssueState(raw, '2026-10-28T12:00:00Z');
-      expect(snap.fields.map(f => f.id)).toEqual(['summary']);
+      const snap = canonicalizeIssueState(raw, '2026-10-28T12:00:00Z', schemas);
+      expect(snap.fields.map(f => f.id)).toEqual(['customfield_10001', 'customfield_branch', 'summary']);
+      expect(snap.excluded?.map(e => e.id)).toEqual(['customfield_10027', 'customfield_10031', 'customfield_10032', 'customfield_10037']);
     });
 
     it('normalizes empty arrays and null identically (Fixes D-03 components: null vs [])', () => {

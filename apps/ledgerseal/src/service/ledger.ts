@@ -8,7 +8,7 @@
  */
 
 import * as crypto from 'crypto';
-import { canonicalizeIssueState } from '../domain/canonicalizer';
+import { canonicalizeIssueState, FieldSchema } from '../domain/canonicalizer';
 import { computeSnapshotHash } from '../domain/crypto';
 import { buildEntry, verifyChain } from '../domain/history';
 import { CanonicalIssueSnapshot, FieldDiff, HistoryEntry, SealRecord, TamperAnalysis } from '../domain/models';
@@ -61,6 +61,23 @@ export function contextIssue(context: any): { id: string; key: string } | null {
 }
 
 const MAX_INCIDENT_CHANGES = 50;
+
+/**
+ * Reads the live issue and the field list, then canonicalises. Returns null when either read fails.
+ */
+export async function readLiveSnapshot(
+  jira: JiraClient,
+  issueIdOrKey: string,
+  at: string,
+  apply: (raw: any) => any = raw => raw
+): Promise<{ raw: any; snapshot: CanonicalIssueSnapshot } | null> {
+  const live = await jira.getIssue(issueIdOrKey);
+  if (!live.ok) return null;
+  const fields = await jira.getFields();
+  if (!fields.ok) return null;
+  const raw = apply(live.value);
+  return { raw, snapshot: canonicalizeIssueState(raw, at, fields.value as FieldSchema[]) };
+}
 
 /** The public `ledgerseal-cert` summary. Written on seal, reseal, revoke and each new incident only. */
 function propertyBody(record: SealRecord, status: string, tamperedFieldCount: number, at: string) {
@@ -188,12 +205,12 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   }
 
   // Fetch real live Jira issue. Never fall back to client-supplied payload.
-  const live = await deps.jira.getIssue(issue.id);
-  if (!live.ok) return fail('JIRA_UNREACHABLE');
+  const now = new Date().toISOString();
+  const live = await readLiveSnapshot(deps.jira, issue.id, now);
+  if (!live) return fail('JIRA_UNREACHABLE');
 
   const repo = new SealRepository(deps.storage);
-  const now = new Date().toISOString();
-  const snapshot = canonicalizeIssueState(live.value, now);
+  const snapshot = live.snapshot;
 
   let previous: SealRecord | null = null;
   const evaluation = await evaluate(repo, issue.id, snapshot, now);
@@ -237,7 +254,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   const record = withRecordHash({
     schemaVersion: 2,
     issueId: issue.id,
-    issueKey: String(live.value.key || issue.key),
+    issueKey: String(live.raw.key || issue.key),
     certificateId,
     state: 'ACTIVE',
     sealedAt: now,
@@ -249,7 +266,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
     snapshotHash,
     canonicalizerVersion: '1.0.0',
     coveredFields: snapshot.fields.map(f => ({ id: f.id, name: f.name })),
-    excludedFields: [],
+    excludedFields: snapshot.excluded || [],
     snapshotChunks: 1,
     everCompromised: previous ? previous.everCompromised : false,
     incidentCount: previous ? previous.incidentCount : 0,
@@ -272,14 +289,14 @@ export async function verifyIssueFlow(payload: any, context: any, deps: LedgerSe
     throw new Error('LedgerSeal: Missing issue context.');
   }
 
-  const live = await deps.jira.getIssue(issue.id);
-  if (!live.ok) {
+  const now = new Date().toISOString();
+  const live = await readLiveSnapshot(deps.jira, issue.id, now);
+  if (!live) {
     throw new Error('LedgerSeal: Unable to retrieve authentic issue state from Jira.');
   }
 
   const repo = new SealRepository(deps.storage);
-  const now = new Date().toISOString();
-  const liveSnapshot = canonicalizeIssueState(live.value, now);
+  const liveSnapshot = live.snapshot;
   const evaluation = await evaluate(repo, issue.id, liveSnapshot, now);
 
   if (evaluation.kind === 'NONE') return compareToSeal(null, liveSnapshot, now);
@@ -289,7 +306,11 @@ export async function verifyIssueFlow(payload: any, context: any, deps: LedgerSe
 
   // Writes only when this change is new (invariant 3); the property is updated inside.
   const { record } = await recordIncidentIfNew(deps, repo, evaluation, now);
-  return compact({ ...evaluation.analysis, seal: summarise(record) });
+  return {
+    ...compact({ ...evaluation.analysis, seal: summarise(record) }),
+    coveredFields: record.coveredFields,
+    excludedFields: record.excludedFields
+  };
 }
 
 /**

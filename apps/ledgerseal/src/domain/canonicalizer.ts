@@ -16,56 +16,80 @@ function isAdfContentArray(arr: any[]): boolean {
   return arr.length > 0 && arr.some(item => item && typeof item === 'object' && typeof item.type === 'string');
 }
 
+/** A field from GET /rest/api/3/field. Only id, name and schema are read. */
+export interface FieldSchema {
+  id: string;
+  name?: string;
+  schema?: { type?: string; items?: string; system?: string; custom?: string };
+}
+
+const STATUS_REASON = 'The gated transition changes the status. The status at seal is recorded.';
+const JIRA_TIME_REASON = 'Jira sets this time itself.';
+const DERIVED_REASON = 'Derived from work logs or sub-tasks.';
+
 /**
- * Checks whether a custom field represents volatile JSM, SLA, CSAT, board, sprint, or dev metadata.
+ * System fields outside the seal, with the reason the panel shows (spec v2 section 4.2).
+ * Matched on the field id, which equals schema.system for system fields.
  */
-function isVolatileOrJsmCustomField(key: string, val: any): boolean {
-  const lowerKey = key.toLowerCase();
+const SYSTEM_EXCLUDED: Record<string, string> = {
+  status: STATUS_REASON,
+  statuscategory: STATUS_REASON,
+  statusCategory: STATUS_REASON,
+  statuscategorychangedate: STATUS_REASON,
+  statusCategoryChangeDate: STATUS_REASON,
+  updated: JIRA_TIME_REASON,
+  lastViewed: JIRA_TIME_REASON,
+  created: JIRA_TIME_REASON,
+  watches: 'Interest counters, not content.',
+  votes: 'Interest counters, not content.',
+  workratio: DERIVED_REASON,
+  progress: DERIVED_REASON,
+  aggregateprogress: DERIVED_REASON,
+  timespent: DERIVED_REASON,
+  aggregatetimespent: DERIVED_REASON,
+  timeestimate: DERIVED_REASON,
+  aggregatetimeestimate: DERIVED_REASON,
+  aggregatetimeoriginalestimate: DERIVED_REASON,
+  resolutiondate: 'Set together with Resolution, which is covered.'
+};
 
-  const volatileKeys = new Set([
-    'customfield_10010',
-    'customfield_10027',
-    'customfield_10028',
-    'customfield_10050',
-    'customfield_10037',
-    'customfield_10000',
-    'customfield_10019',
-    'customfield_10020',
-    'customfield_10001',
-    'customfield_10002',
-    'customfield_10003',
-    'customfield_10004',
-    'customfield_10005'
-  ]);
+/**
+ * Custom field types outside the seal, matched on schema.custom (spec v2 section 4.2).
+ * Any other custom type is covered, so an unknown type can only cause a false alarm, never hide a change.
+ */
+const CUSTOM_EXCLUDED: Record<string, string> = {
+  'com.pyxis.greenhopper.jira:gh-lexo-rank': 'Rank changes on every board drag.',
+  'com.pyxis.greenhopper.jira:gh-sprint': 'Sprint changes when a sprint closes.',
+  'com.atlassian.servicedesk:sd-sla-field': 'SLA timers change by themselves.',
+  'com.atlassian.servicedesk:sd-request-feedback': 'Customer satisfaction is not request content.',
+  'com.atlassian.servicedesk:sd-request-feedback-date': 'Customer satisfaction is not request content.',
+  'com.atlassian.servicedesk:sd-request-participants': 'Participants change as people join.',
+  'com.atlassian.servicedesk.approvals-plugin:sd-approvals': 'Approvals change as approvers decide.',
+  'com.atlassian.jira.plugins.jira-development-integration-plugin:devsummarycf': 'Development summary changes with commits.',
+  'com.atlassian.jira.ext.charting:timeinstatus': 'Computed by Jira.',
+  'com.atlassian.jira.ext.charting:firstresponsedate': 'Computed by Jira.'
+};
 
-  if (volatileKeys.has(key)) {
-    return true;
-  }
+/** Hashed outside `fields` (top-level keys, attachments and comments), so never listed as excluded. */
+const COVERED_ELSEWHERE = new Set(['project', 'issuetype', 'attachment', 'comment']);
 
-  if (lowerKey.includes('sla') || lowerKey.includes('satisfaction') || lowerKey.includes('rank') || lowerKey.includes('sprint')) {
-    return true;
-  }
+function exclusionReason(key: string, schema: FieldSchema | undefined): string | null {
+  if (SYSTEM_EXCLUDED[key]) return SYSTEM_EXCLUDED[key];
+  const system = schema?.schema?.system;
+  if (system && SYSTEM_EXCLUDED[system]) return SYSTEM_EXCLUDED[system];
+  const custom = schema?.schema?.custom;
+  return custom && CUSTOM_EXCLUDED[custom] ? CUSTOM_EXCLUDED[custom] : null;
+}
 
-  // Value-based inspection for JSM structures
-  if (val && typeof val === 'object') {
-    if ('ongoingCycle' in val || 'completedCycles' in val) return true;
-    if ('requestType' in val || 'customerRequestType' in val) return true;
-    if ('rating' in val || 'satisfactionDate' in val) return true;
-    if ('approvals' in val || 'approvers' in val || 'participants' in val) return true;
-    if ('pullrequest' in val || 'cachedValue' in val) return true;
-  }
+function normalizeUser(val: any): { accountId: string; displayName: string } {
+  return {
+    accountId: val.accountId || 'unknown',
+    displayName: val.displayName || 'unknown'
+  };
+}
 
-  if (typeof val === 'string') {
-    if (val.startsWith('0|') || val.includes('pullrequest') || val.includes('branch={')) {
-      return true;
-    }
-  }
-
-  if (Array.isArray(val) && val.length > 0 && val[0]?.state) {
-    return true;
-  }
-
-  return false;
+function isUser(val: any): boolean {
+  return Boolean(val && typeof val === 'object' && !Array.isArray(val) && typeof val.accountId === 'string');
 }
 
 /**
@@ -75,14 +99,28 @@ function isVolatileOrJsmCustomField(key: string, val: any): boolean {
 function normalizeEntityField(key: string, val: any): any {
   if (!val || typeof val !== 'object') return null;
 
-  if (key === 'assignee') {
-    return {
-      accountId: val.accountId || 'unknown',
-      displayName: val.displayName || 'unknown'
-    };
+  if (key === 'assignee' || isUser(val)) {
+    return normalizeUser(val);
   }
 
-  if (key === 'priority') {
+  if (Array.isArray(val) && val.length > 0 && val.every(isUser)) {
+    return val.map(normalizeUser).sort((a, b) => codeUnitCompare(a.accountId, b.accountId));
+  }
+
+  if (key === 'worklog' && Array.isArray(val.worklogs)) {
+    const logs = val.worklogs
+      .map((w: any) => ({
+        id: String(w.id || ''),
+        authorAccountId: String(w.author?.accountId || ''),
+        started: String(w.started || ''),
+        timeSpentSeconds: Number(w.timeSpentSeconds || 0),
+        comment: canonicalizeValue(w.comment)
+      }))
+      .sort((a: any, b: any) => codeUnitCompare(a.id, b.id));
+    return logs.length > 0 ? logs : null;
+  }
+
+  if (key === 'priority' || key === 'resolution') {
     return {
       id: val.id || 'unknown',
       name: val.name || 'unknown'
@@ -90,7 +128,7 @@ function normalizeEntityField(key: string, val: any): any {
   }
 
   if (key === 'components' && Array.isArray(val)) {
-    const list = val.map(c => c.name || String(c)).filter(Boolean).sort(codeUnitCompare);
+    const list = val.map(c => (typeof c === 'string' ? c : String(c?.name || c?.id || ''))).filter(Boolean).sort(codeUnitCompare);
     return list.length > 0 ? list : null;
   }
 
@@ -100,7 +138,7 @@ function normalizeEntityField(key: string, val: any): any {
   }
 
   if (key === 'fixVersions' && Array.isArray(val)) {
-    const list = val.map(v => v.name || String(v)).filter(Boolean).sort(codeUnitCompare);
+    const list = val.map(v => (typeof v === 'string' ? v : String(v?.name || v?.id || ''))).filter(Boolean).sort(codeUnitCompare);
     return list.length > 0 ? list : null;
   }
 
@@ -211,7 +249,7 @@ export function canonicalizeValue(val: any, isAdfTextNode: boolean = false): any
 /**
  * Extracts and canonicalizes issue fields, attachments, and comments from raw Jira REST API response.
  */
-export function canonicalizeIssueState(rawIssue: any, capturedAt: string): CanonicalIssueSnapshot {
+export function canonicalizeIssueState(rawIssue: any, capturedAt: string, fieldSchemas: FieldSchema[] = []): CanonicalIssueSnapshot {
   const issueId = String(rawIssue?.id || '');
   const issueKey = String(rawIssue?.key || '');
   const fieldsObj = rawIssue?.fields || {};
@@ -222,44 +260,12 @@ export function canonicalizeIssueState(rawIssue: any, capturedAt: string): Canon
 
   const canonicalFields: CanonicalField[] = [];
 
-  // Exclude volatile, transient, and non-content fields to prevent false positive tamper warnings
-  const excludedFieldKeys = new Set([
-    'project',
-    'issuetype',
-    'status',
-    'statuscategory',
-    'statusCategory',
-    'statuscategorychangedate',
-    'statusCategoryChangeDate',
-    'resolution',
-    'resolutiondate',
-    'attachment',
-    'comment',
-    'worklog',
-    'created',
-    'creator',
-    'reporter',
-    'updated',
-    'updatedBy',
-    'lastViewed',
-    'watches',
-    'votes',
-    'rank',
-    'sprint',
-    'workratio',
-    'aggregateprogress',
-    'progress',
-    'timeestimate',
-    'timespent',
-    'timeoriginalestimate',
-    'aggregatetimeestimate',
-    'aggregatetimespent',
-    'aggregatetimeoriginalestimate'
-  ]);
+  const excluded: { id: string; name: string; reason: string }[] = [];
+  const schemaById = new Map(fieldSchemas.map(f => [f.id, f]));
 
   const fieldKeys = Object.keys(fieldsObj).sort(codeUnitCompare);
   for (const key of fieldKeys) {
-    if (excludedFieldKeys.has(key)) {
+    if (COVERED_ELSEWHERE.has(key)) {
       continue;
     }
 
@@ -269,8 +275,11 @@ export function canonicalizeIssueState(rawIssue: any, capturedAt: string): Canon
       continue;
     }
 
-    // Skip volatile JSM, SLA, CSAT, or board custom fields
-    if (isVolatileOrJsmCustomField(key, rawValue)) {
+    // Fields are chosen by schema type, never by id or value (spec v2 section 4.2)
+    const schema = schemaById.get(key);
+    const reason = exclusionReason(key, schema);
+    if (reason) {
+      excluded.push({ id: key, name: schema?.name || key, reason });
       continue;
     }
 
@@ -282,9 +291,10 @@ export function canonicalizeIssueState(rawIssue: any, capturedAt: string): Canon
       continue;
     }
 
-    // Derive readable field name
+    // Derive readable field name: the Jira name from the field list, else a built-in name, else the id
     let fieldName = key;
-    if (key === 'summary') fieldName = 'Summary';
+    if (schema?.name) fieldName = schema.name;
+    else if (key === 'summary') fieldName = 'Summary';
     else if (key === 'description') fieldName = 'Description';
     else if (key === 'priority') fieldName = 'Priority';
     else if (key === 'labels') fieldName = 'Labels';
@@ -336,6 +346,7 @@ export function canonicalizeIssueState(rawIssue: any, capturedAt: string): Canon
     fields: canonicalFields,
     attachments: canonicalAttachments,
     comments: canonicalComments,
+    excluded,
     capturedAt
   };
 }

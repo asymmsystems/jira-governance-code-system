@@ -120,3 +120,16 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - Code: `src/frontend/index.tsx` shows the signer with the UI Kit `User` component (FG-40), which respects the user's profile privacy.
 - Adversarial test: the audit flow.js step 3 spoof (`cfo@victim.example`, "CFO", `cfo-account`) leaves no trace in any stored value.
 - Results: `tsc` OK. 15 suites, 129 tests pass. Global branches 94.21% (no `.ts` source file changed). Graders all True.
+- B-04 commit: `5a2b798`.
+
+### B-05 Sealed field set chosen by schema type (LS-04, LS-05)
+- Tests first: `test/field-selection.test.ts`. First run: compile failures for the right reason (`canonicalizeIssueState` took no field list; no `excluded` on the snapshot).
+- Code:
+  - `src/domain/canonicalizer.ts`: the 13 hard-coded `customfield_` ids and every value heuristic are removed. Exclusion is by field id for system fields and by `schema.custom` for custom types, each with the reason the panel shows. Reporter, resolution and work log are covered, and users and work-log entries are normalised.
+  - `src/jira/jira-client.ts`: `getFields()`, read once per client; a failed read is not cached.
+  - `src/service/ledger.ts`: `readLiveSnapshot`, and the record stores `coveredFields` and `excludedFields`. Verify returns both. A field-list failure writes nothing.
+- Two v1 canonicalizer tests asserted the removed heuristics (excluding fields by `ongoingCycle`, `approvers`, `pullrequest`, `0|` values). They now assert schema-based exclusion.
+- A new sparse-object test found a defect: a component or version with no name was hashed as the text "[object Object]". It is fixed: the name, else the id, else nothing.
+- Adversarial test: the audit probe.js blind spots now break the seal (reporter, resolution, work log, `customfield_10001`, `customfield_10050`, text with "pullrequest", an option array with `.state`). Rank, Sprint, SLA, participants, satisfaction, status and Updated do not break it.
+- Open: the custom type keys in the exclusion list come from spec v2 and public sources (Reported). The browser extension was not connected in this session, so they are not yet checked against the DEMO `/rest/api/3/field` list. That check is in Loop 3. An unknown custom type stays covered, so a wrong key can only cause a false alarm, never hide a change.
+- Results: `tsc` OK. 16 suites, 138 tests pass. Global branches 97.92%. `canonicalizer.ts` 98.94% (baseline 87.7%), `jira-client.ts` 95.65%, `ledger.ts` 97.84%, `index.ts` 94.44%. Graders all True. No em dash.

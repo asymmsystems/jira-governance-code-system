@@ -33,6 +33,8 @@ export interface CanonicalIssueSnapshot {
   fields: CanonicalField[];
   attachments: CanonicalAttachment[];
   comments?: CanonicalComment[];
+  /** Fields with a value that the seal does not cover, and why (not hashed). */
+  excluded?: { id: string; name: string; reason: string }[];
   capturedAt: string;
 }
 

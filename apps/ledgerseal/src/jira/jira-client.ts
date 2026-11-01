@@ -29,6 +29,8 @@ export interface ChangelogEntry {
 
 export interface JiraClient {
   getIssue(issueIdOrKey: string): Promise<JiraResult<any>>;
+  /** The site's field list (GET /rest/api/3/field), read once per client. */
+  getFields(): Promise<JiraResult<any[]>>;
   getChangelog(issueId: string): Promise<JiraResult<ChangelogEntry[]>>;
   getUserName(accountId: string): Promise<string | null>;
   /** True when the calling user may seal, reseal or revoke on this issue (spec v2 section 7.1). */
@@ -101,9 +103,22 @@ export function createJiraClient(asApp: JiraRequester, asUser: JiraRequester | n
     return { ok: true, value: (await res.json()) as T };
   }
 
+  let fields: Promise<JiraResult<any[]>> | null = null;
+
   return {
     getIssue(issueIdOrKey) {
       return getJson<any>(asApp, route`/rest/api/3/issue/${issueIdOrKey}`);
+    },
+
+    getFields() {
+      // One field list per invocation; a failed read is not cached, so a retry can succeed
+      if (!fields) {
+        fields = getJson<any[]>(asApp, route`/rest/api/3/field`).then(res => {
+          if (!res.ok) fields = null;
+          return res;
+        });
+      }
+      return fields;
     },
 
     async getChangelog(issueId) {

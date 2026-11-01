@@ -16,6 +16,9 @@ export class FakeJira implements JiraClient {
   users: Record<string, string> = {};
   failIssueGet = false;
   failChangelog = false;
+  failFields = false;
+  fields: any[] = [];
+  fieldCalls = 0;
   permissionError: 'UNREACHABLE' | 'FORBIDDEN' | null = null;
   propertyWrites: { issueId: string; body: any }[] = [];
   permissionChecks: string[] = [];
@@ -29,6 +32,12 @@ export class FakeJira implements JiraClient {
   async getIssue(): Promise<JiraResult<any>> {
     if (this.failIssueGet) return { ok: false, error: 'UNREACHABLE' };
     return { ok: true, value: JSON.parse(JSON.stringify(this.issue)) };
+  }
+
+  async getFields(): Promise<JiraResult<any[]>> {
+    this.fieldCalls++;
+    if (this.failFields) return { ok: false, error: 'UNREACHABLE' };
+    return { ok: true, value: JSON.parse(JSON.stringify(this.fields)) };
   }
 
   async getChangelog(): Promise<JiraResult<ChangelogEntry[]>> {

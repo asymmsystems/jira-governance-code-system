@@ -5,7 +5,7 @@ import { canonicalizeIssueState } from './domain/canonicalizer';
 import { validateTransitionGate } from './validator/workflow-validator';
 import { SealRepository, StorageProvider } from './storage/seal-repository';
 import { createJiraClient } from './jira/jira-client';
-import { evaluate, historyFlow, LedgerSealDeps, recordIncidentIfNew, sealIssueFlow, verifyIssueFlow } from './service/ledger';
+import { evaluate, historyFlow, LedgerSealDeps, readLiveSnapshot, recordIncidentIfNew, sealIssueFlow, verifyIssueFlow } from './service/ledger';
 
 export { LedgerSealDeps } from './service/ledger';
 
@@ -60,19 +60,7 @@ export async function validateTransition(payload: any, context?: any, deps: Ledg
   const issueKey = payload?.issue?.key || payload?.issueKey;
   let issueId = String(payload?.issue?.id || payload?.issueId || '');
 
-  // If only key is provided (Atlassian documented standard), resolve to ID
-  let rawIssue: any = null;
-  if (issueId || issueKey) {
-    const live = await deps.jira.getIssue(issueId || issueKey);
-    if (live.ok) {
-      rawIssue = live.value;
-      issueId = String(live.value.id || issueId);
-    } else if (!issueId) {
-      issueId = String(issueKey);
-    }
-  }
-
-  if (!issueId) {
+  if (!issueId && !issueKey) {
     return {
       result: false,
       errorMessage: 'LedgerSeal Validator: Missing issue context.'
@@ -82,19 +70,17 @@ export async function validateTransition(payload: any, context?: any, deps: Ledg
   const repository = new SealRepository(deps.storage);
   const now = new Date().toISOString();
 
-  // Apply transition-screen modifiedFields if present
+  // Read the live issue and apply transition-screen modifiedFields if present
   const modifiedFields = payload?.transition?.modifiedFields;
-  if (modifiedFields && typeof modifiedFields === 'object' && rawIssue?.fields) {
-    rawIssue = {
-      ...rawIssue,
-      fields: {
-        ...rawIssue.fields,
-        ...modifiedFields
-      }
-    };
+  const live = await readLiveSnapshot(deps.jira, issueId || issueKey, now, raw =>
+    modifiedFields && typeof modifiedFields === 'object' && raw?.fields ? { ...raw, fields: { ...raw.fields, ...modifiedFields } } : raw
+  );
+  if (live?.raw?.id) {
+    issueId = String(live.raw.id);
   }
-
-  const liveSnapshot = canonicalizeIssueState(rawIssue || { id: issueId, key: issueKey || issueId }, now);
+  // If only key is provided and Jira cannot be read, fall back to the key
+  issueId = issueId || String(issueKey);
+  const liveSnapshot = live ? live.snapshot : canonicalizeIssueState({ id: issueId, key: issueKey || issueId }, now);
   const evaluation = await evaluate(repository, issueId, liveSnapshot, now);
 
   if (evaluation.kind === 'LEGACY') {
