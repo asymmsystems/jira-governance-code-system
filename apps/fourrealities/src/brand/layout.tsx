@@ -25,11 +25,65 @@ const CARD_STYLE = xcss({
   borderWidth: 'border.width',
   borderStyle: 'solid',
   borderRadius: 'radius.medium',
+  boxShadow: 'elevation.shadow.raised',
   padding: 'space.150'
 });
 
+const STATUS_BANNER_STYLE = xcss({
+  backgroundColor: 'color.background.accent.teal.subtlest',
+  borderColor: 'color.border.accent.teal',
+  borderWidth: 'border.width',
+  borderStyle: 'solid',
+  borderRadius: 'radius.medium',
+  boxShadow: 'elevation.shadow.raised',
+  padding: 'space.150'
+});
+
+const STATUS_NOTE_STYLE = xcss({
+  backgroundColor: 'elevation.surface',
+  borderColor: 'color.border.accent.teal.subtle',
+  borderWidth: 'border.width',
+  borderStyle: 'solid',
+  borderRadius: 'radius.medium',
+  padding: 'space.100'
+});
+
+const SUMMARY_BLOCK_STYLE = xcss({
+  backgroundColor: 'elevation.surface',
+  borderColor: 'color.border',
+  borderTopColor: 'color.border.accent.teal',
+  borderTopWidth: 'border.width.selected',
+  borderWidth: 'border.width',
+  borderStyle: 'solid',
+  borderRadius: 'radius.medium',
+  boxShadow: 'elevation.shadow.raised',
+  padding: 'space.150'
+});
+
+const GATE_CARD_BASE = {
+  backgroundColor: 'elevation.surface',
+  borderColor: 'color.border',
+  borderWidth: 'border.width',
+  borderStyle: 'solid',
+  borderTopWidth: 'border.width.selected',
+  borderRadius: 'radius.medium',
+  boxShadow: 'elevation.shadow.raised',
+  padding: 'space.150',
+  width: '23.5%',
+  minWidth: '220px',
+  flexGrow: 1
+} as const;
+
+const GATE_CARD_INTENT = xcss({ ...GATE_CARD_BASE, borderTopColor: 'color.border.accent.teal' });
+const GATE_CARD_PROCESS = xcss({ ...GATE_CARD_BASE, borderTopColor: 'color.border.accent.orange' });
+const GATE_CARD_CODE = xcss({ ...GATE_CARD_BASE, borderTopColor: 'color.border.accent.magenta' });
+const GATE_CARD_AUDIT = xcss({ ...GATE_CARD_BASE, borderTopColor: 'color.border.accent.green' });
+
 const NOTE_BOX_STYLE = xcss({
   backgroundColor: 'color.background.neutral',
+  borderColor: 'color.border',
+  borderWidth: 'border.width',
+  borderStyle: 'solid',
   borderRadius: 'radius.medium',
   padding: 'space.100'
 });
@@ -64,6 +118,25 @@ export function Column({ children }: ColumnProps): React.JSX.Element {
   );
 }
 
+export interface GateCardProps {
+  readonly gate: 'intent' | 'process' | 'code' | 'audit';
+  readonly children: React.ReactNode;
+}
+
+export function GateCard({ gate, children }: GateCardProps): React.JSX.Element {
+  const style =
+    gate === 'intent' ? GATE_CARD_INTENT :
+    gate === 'process' ? GATE_CARD_PROCESS :
+    gate === 'code' ? GATE_CARD_CODE :
+    GATE_CARD_AUDIT;
+
+  return (
+    <Box xcss={style}>
+      {children}
+    </Box>
+  );
+}
+
 export interface StatusBannerProps {
   readonly status: string;
   readonly statusWord: string;
@@ -72,22 +145,21 @@ export interface StatusBannerProps {
 }
 
 export function StatusBanner({
-  status,
   statusWord,
   summary,
   nextStep
 }: StatusBannerProps): React.JSX.Element {
   return (
-    <Box xcss={CARD_STYLE}>
+    <Box xcss={STATUS_BANNER_STYLE}>
       <Stack space="space.100" alignInline="start">
-        <Inline alignBlock="center" space="space.100" shouldWrap>
-          <Text>{status}</Text>
+        <Inline alignBlock="center" space="space.050" shouldWrap>
+          <Text>Audit readiness:</Text>
           <Badge>{statusWord}</Badge>
         </Inline>
         <Text>{summary}</Text>
-        <NoteBox>
+        <Box xcss={STATUS_NOTE_STYLE}>
           <Text>{nextStep.startsWith('Next step:') ? nextStep : `Next step: ${nextStep}`}</Text>
-        </NoteBox>
+        </Box>
       </Stack>
     </Box>
   );
@@ -118,7 +190,7 @@ export interface SummaryBlockProps {
 
 export function SummaryBlock({ children }: SummaryBlockProps): React.JSX.Element {
   return (
-    <Box xcss={CARD_STYLE}>
+    <Box xcss={SUMMARY_BLOCK_STYLE}>
       <Stack space="space.100">{children}</Stack>
     </Box>
   );

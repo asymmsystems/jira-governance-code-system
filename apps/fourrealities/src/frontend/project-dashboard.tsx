@@ -36,7 +36,7 @@ import { priorityActions, triageOrder } from '../ui/triage';
 import { TREND_WEEKS, chartData, recentWeeks, trendNotice, trendTableRows } from '../ui/trend';
 import { GatePipeline, GateRow } from './gate-row';
 import { GATE_QUESTION, auditReadiness, driftText, heroDelta, weakestGate } from '../ui/pipeline';
-import { AppSurface, Card, Column, StatusBanner, SubSection } from '../brand/layout';
+import { AppSurface, Card, Column, GateCard, StatusBanner, SubSection } from '../brand/layout';
 import { TextChange } from './modals';
 
 type Option<T extends string = string> = { label: string; value: T };
@@ -62,7 +62,7 @@ export const RealityCard: React.FC<{ gate: GateName; count: GateCount; onShowMis
   const rate = of === 0 ? null : Math.round((count.found * 100) / of);
   const counted = of === 0 ? 'No issue is rated for this gate yet.' : `${count.found} of ${of} rated issues have evidence`;
   return (
-    <Card>
+    <GateCard gate={gate}>
       <Stack space="space.100" alignInline="start">
         <Inline space="space.100" alignBlock="center" shouldWrap>
           <Tooltip content={METRIC[gate]}>
@@ -75,7 +75,7 @@ export const RealityCard: React.FC<{ gate: GateName; count: GateCount; onShowMis
         <Text>{counted}</Text>
         {count.missing > 0 ? <Button appearance="subtle" onClick={onShowMissing}>{`Show ${count.missing} missing ${GATE_LABEL[gate]}`}</Button> : null}
       </Stack>
-    </Card>
+    </GateCard>
   );
 };
 
@@ -238,13 +238,10 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
                     </Button>
                   ))}
                 </Inline>
-                <Text>Alignment is the share of rated gates with evidence found, averaged over rated issues.</Text>
               </Stack>
             </Card>
           </Column>
         </Inline>
-
-        <TrendPanel view={view} />
 
         <Card>
           <Stack space="space.100">
@@ -292,6 +289,8 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
         </Card>
 
         <DynamicTable head={head} rows={rows} rowsPerPage={25} emptyView={<Text>No issues match the filters.</Text>} />
+
+        <TrendPanel view={view} />
 
         <Text>Alignment is calculated across rated gates only.</Text>
 

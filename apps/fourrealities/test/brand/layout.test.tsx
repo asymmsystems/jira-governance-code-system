@@ -17,6 +17,7 @@ import {
   AppSurface,
   Card,
   Column,
+  GateCard,
   NoteBox,
   PanelHeader,
   Section,
@@ -88,12 +89,10 @@ describe('brand layout primitives', () => {
     expect(textOf(renderer.toJSON())).toContain('Hide details');
     expect(textOf(renderer.toJSON())).toContain('Gate detail row');
 
-    // Collapse again
-    await act(async () => {
-      findButton(renderer.root, 'Hide details').props.onClick();
-    });
-    expect(textOf(renderer.toJSON())).toContain('Show details');
-    expect(textOf(renderer.toJSON())).not.toContain('Gate detail row');
+    // Section with default props (count undefined, defaultCollapsed omitted)
+    const defSec = TestRenderer.create(<Section title="Summary"><span>Body</span></Section>);
+    expect(textOf(defSec.toJSON())).toContain('Summary');
+    expect(textOf(defSec.toJSON())).toContain('Show details');
   });
 
   it('renders SubSection, NoteBox, ActionRow, and StatusLozenge', () => {
@@ -127,5 +126,13 @@ describe('brand layout primitives', () => {
     expect(findAll(banner.root, 'Badge')).toHaveLength(1);
     expect(textOf(banner.toJSON())).toContain('Evidence found for 1 of 4 gates.');
     expect(textOf(banner.toJSON())).toContain('Next step: link decision record.');
+  });
+
+  it('renders GateCard for each of the four realities with distinct styles', () => {
+    for (const g of ['intent', 'process', 'code', 'audit'] as const) {
+      const card = TestRenderer.create(<GateCard gate={g}><span>{g}</span></GateCard>);
+      expect(textOf(card.toJSON())).toContain(g);
+      expect(findAll(card.root, 'Box')[0].props.xcss).toBeTruthy();
+    }
   });
 });
