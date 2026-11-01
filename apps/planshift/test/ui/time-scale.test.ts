@@ -8,7 +8,7 @@
  * CascadePlan: client-side time axis with zoom levels and an open-ended range (B-27).
  */
 
-import { ZOOMS, zoomById, zoomStep, mondayOf, initialRange, rangeDays, extendRange, edgeToExtend, headerCells, gridLines, anchorScroll, dateAt } from '../../src/ui/time-scale';
+import { shouldAutoCompact, ZOOMS, zoomById, zoomStep, mondayOf, initialRange, rangeDays, extendRange, edgeToExtend, headerCells, gridLines, anchorScroll, dateAt } from '../../src/ui/time-scale';
 
 describe('zoom levels (B-27 criteria 1 and 4)', () => {
   it('Day, Week, Month, Quarter, Year; days snap at Day and Week, weeks at Month and above', () => {
@@ -73,5 +73,15 @@ describe('scroll anchoring (B-27 criteria 1 and 3)', () => {
     expect(anchorScroll('2026-11-09', 300, '2026-10-26', 85 / 7)).toBeCloseTo(170 - 300);
     expect(dateAt(170, '2026-10-26', 85 / 7)).toBe('2026-11-09');
     expect(dateAt(-5, '2026-10-26', 40)).toBe('2026-10-25');
+  });
+});
+
+describe('automatic compact columns (owner decision 2026-11-01)', () => {
+  it('turns on when fewer than 6 weeks would be visible, only when the user has not chosen', () => {
+    expect(shouldAutoCompact(1280, 890, 85, null)).toBe(true);
+    expect(shouldAutoCompact(1440, 890, 85, null)).toBe(false);
+    expect(shouldAutoCompact(1280, 890, 85, 'off')).toBe(false);
+    expect(shouldAutoCompact(1920, 890, 85, 'on')).toBe(true);
+    expect(shouldAutoCompact(1920, 890, 85, null)).toBe(false);
   });
 });

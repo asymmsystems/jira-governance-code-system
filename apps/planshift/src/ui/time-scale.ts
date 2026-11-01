@@ -131,3 +131,15 @@ export function anchorScroll(anchorIso: string, viewportX: number, originIso: st
 export function dateAt(x: number, originIso: string, dayPx: number): string {
   return addDays(originIso, Math.floor(x / dayPx));
 }
+
+/** Fewer weeks than this with all data columns turns on compact columns at first render. */
+export const MIN_VISIBLE_WEEKS = 6;
+
+/**
+ * Compact columns: the user's own choice when there is one; otherwise on when the data columns would
+ * leave fewer than MIN_VISIBLE_WEEKS of timeline (owner decision 2026-11-01).
+ */
+export function shouldAutoCompact(viewportW: number, columnsW: number, weekPx: number, userChoice: string | null): boolean {
+  if (userChoice === 'on' || userChoice === 'off') return userChoice === 'on';
+  return (viewportW - columnsW) / weekPx < MIN_VISIBLE_WEEKS;
+}

@@ -23,7 +23,7 @@ import { html } from '../ui/safe-html';
 import { CanvasTimeline, ROW_H, BAR_H } from './canvas-timeline';
 import { barRect, daysBetween, visibleRange, handleOffsets, snapDays, previewMoves, xForDate } from '../ui/timeline-geometry';
 import { GRID_COLUMNS, navigate, rowCells, rowLevel, moveKey, moveAnnouncement } from '../ui/keyboard-grid';
-import { ZOOMS, zoomById, zoomStep, mondayOf, initialRange, rangeDays, extendRange, edgeToExtend, headerCells, gridLines, anchorScroll, dateAt } from '../ui/time-scale';
+import { shouldAutoCompact, ZOOMS, zoomById, zoomStep, mondayOf, initialRange, rangeDays, extendRange, edgeToExtend, headerCells, gridLines, anchorScroll, dateAt } from '../ui/time-scale';
 
 function getJiraBaseUrl() {
   if (currentPlan && currentPlan.siteUrl) {
@@ -212,6 +212,7 @@ function writePref(key, value) {
 }
 let zoomId = readPref(ZOOM_KEY, 'week');
 let compactColumns = readPref(COMPACT_KEY, 'off') === 'on';
+let compactDecided = false;
 let timeRange = null;
 function dayPx() {
   return zoomById(zoomId).dayPx;
@@ -1026,6 +1027,12 @@ function renderPlan() {
   renderTimelineHeader();
   renderTimelineRows();
   applyTimeAxis();
+  // Measured once the rows are in: the rendered data columns, padding and borders included.
+  if (decideCompactColumns()) {
+    renderTimelineHeader();
+    renderTimelineRows();
+    applyTimeAxis();
+  }
   setTimeout(syncGanttScrollWidth, 50);
   if (!hasInitialScrolledToToday) {
     hasInitialScrolledToToday = true;
@@ -1170,6 +1177,23 @@ function renderTimeStrip() {
     return el;
   });
   strip.replaceChildren(...cells);
+}
+
+/** At first render, compact columns follow the user's choice, or turn on when the timeline would be narrow. */
+function decideCompactColumns() {
+  if (compactDecided) return false;
+  compactDecided = true;
+  const wrapper = document.getElementById('ganttWrapper');
+  const track = document.querySelector('#ganttHeaderRow .timeline-header-cell');
+  if (!wrapper || !wrapper.clientWidth || !track) return false;
+  let choice = null;
+  try { choice = localStorage.getItem(COMPACT_KEY); } catch (e) {}
+  // The rendered width of the data columns, padding and borders included.
+  const next = shouldAutoCompact(wrapper.clientWidth, track.offsetLeft, 7 * dayPx(), choice);
+  const changed = next !== compactColumns;
+  compactColumns = next;
+  updateZoomButtons();
+  return changed;
 }
 
 /** Makes the range cover every scheduled date with a margin, before the first render. */

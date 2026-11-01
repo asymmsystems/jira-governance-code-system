@@ -7300,6 +7300,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function dateAt(x, originIso2, dayPx2) {
     return addDays(originIso2, Math.floor(x / dayPx2));
   }
+  var MIN_VISIBLE_WEEKS = 6;
+  function shouldAutoCompact(viewportW, columnsW, weekPx, userChoice) {
+    if (userChoice === "on" || userChoice === "off") return userChoice === "on";
+    return (viewportW - columnsW) / weekPx < MIN_VISIBLE_WEEKS;
+  }
 
   // src/frontend/legacy-planner.js
   function getJiraBaseUrl() {
@@ -7474,6 +7479,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   var zoomId = readPref(ZOOM_KEY, "week");
   var compactColumns = readPref(COMPACT_KEY, "off") === "on";
+  var compactDecided = false;
   var timeRange = null;
   function dayPx() {
     return zoomById(zoomId).dayPx;
@@ -8206,6 +8212,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
     renderTimelineHeader();
     renderTimelineRows();
     applyTimeAxis();
+    if (decideCompactColumns()) {
+      renderTimelineHeader();
+      renderTimelineRows();
+      applyTimeAxis();
+    }
     setTimeout(syncGanttScrollWidth, 50);
     if (!hasInitialScrolledToToday) {
       hasInitialScrolledToToday = true;
@@ -8329,6 +8340,23 @@ Please see https://iframe-resizer.com/upgrade for more details.
       return el2;
     });
     strip.replaceChildren(...cells);
+  }
+  function decideCompactColumns() {
+    if (compactDecided) return false;
+    compactDecided = true;
+    const wrapper = document.getElementById("ganttWrapper");
+    const track = document.querySelector("#ganttHeaderRow .timeline-header-cell");
+    if (!wrapper || !wrapper.clientWidth || !track) return false;
+    let choice = null;
+    try {
+      choice = localStorage.getItem(COMPACT_KEY);
+    } catch (e) {
+    }
+    const next = shouldAutoCompact(wrapper.clientWidth, track.offsetLeft, 7 * dayPx(), choice);
+    const changed = next !== compactColumns;
+    compactColumns = next;
+    updateZoomButtons();
+    return changed;
   }
   function coverPlanDates() {
     if (!timeRange) timeRange = initialRange(todayIso());
