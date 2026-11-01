@@ -7,7 +7,7 @@ import {
 } from './domain/checklist-engine';
 import { TransitionValidator } from './validator/transition-validator';
 import { StorageProvider } from './storage/checklist-repository';
-import { ChecklistStore, eventKey } from './storage/checklist-store';
+import { ChecklistStore } from './storage/checklist-store';
 import { applyEvent, createdEvent, emptyState } from './domain/event-log';
 import { ChecklistEvent, ChecklistState, IssueChecklistState, ChecklistAuditEvent } from './domain/models';
 import { checkIssuePermissions, EDIT_DENIED, RESET_DENIED } from './security/permissions';
@@ -205,19 +205,8 @@ const AUDIT_TYPE: Record<string, ChecklistAuditEvent['eventType']> = {
   RESET: 'RESET'
 };
 
-const RECENT_EVENTS = 10;
-
-async function recentEvents(storage: StorageProvider, state: ChecklistState): Promise<ChecklistEvent[]> {
-  const out: ChecklistEvent[] = [];
-  for (let seq = state.seq; seq > 0 && out.length < RECENT_EVENTS; seq--) {
-    const e = await storage.get<ChecklistEvent>(eventKey(state.issueId, seq));
-    if (e) out.unshift(e);
-  }
-  return out;
-}
-
 /** The panel response. Keeps the fields the panel reads; names are accountIds. */
-export function toPanelResponse(state: ChecklistState, events: ChecklistEvent[]): IssueChecklistState {
+export function toPanelResponse(state: ChecklistState, events: ChecklistEvent[] = []): IssueChecklistState {
   const items = toLegacyItems(state);
   return {
     issueId: state.issueId,
@@ -282,7 +271,24 @@ export async function getIssueChecklist(_payload: any, context?: any, storagePro
     state = applyEvent(base, createdEvent(base, await templateFor(c.issueId, c.issueType), c.actorAccountId, new Date().toISOString()));
     state = { ...state, seq: 0 };
   }
-  return toPanelResponse(state, state.seq > 0 ? await recentEvents(storage, state) : []);
+  return toPanelResponse(state);
+}
+
+/**
+ * One page of the issue's events (at most 100), oldest first, for the history view.
+ */
+export async function getChecklistHistory(payload: any, context?: any, storageProvider?: StorageProvider) {
+  const c = panelContext(context);
+  const store = new ChecklistStore(resolveStorage(storageProvider));
+  const cursor = typeof payload?.cursor === 'string' ? payload.cursor : undefined;
+  const page = await store.history(c.issueId, cursor);
+  const state = await store.load(c.issueId);
+  return {
+    events: page.events,
+    auditTrail: toPanelResponse(state || emptyState(c.issueId, c.issueKey, c.projectId), page.events).auditTrail,
+    nextCursor: page.nextCursor,
+    eventCount: state?.seq || 0
+  };
 }
 
 /**
@@ -315,7 +321,7 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
     { issueKey: c.issueKey, projectId: c.projectId }
   );
 
-  const response = toPanelResponse(state, await recentEvents(storage, state));
+  const response = toPanelResponse(state);
   await publishProperty(c.issueId, response);
   return response;
 }
@@ -339,7 +345,7 @@ export async function resetChecklist(_payload: any, context?: any, storageProvid
     { issueKey: c.issueKey, projectId: c.projectId }
   );
 
-  const response = toPanelResponse(state, await recentEvents(storage, state));
+  const response = toPanelResponse(state);
   await publishProperty(c.issueId, response);
   return response;
 }
@@ -367,6 +373,10 @@ resolver.define('toggleItem', async (req) => {
 
 resolver.define('resetChecklist', async (req) => {
   return await resetChecklist(req.payload, req.context);
+});
+
+resolver.define('getHistory', async (req) => {
+  return await getChecklistHistory(req.payload, req.context);
 });
 
 resolver.define('getAvailableTemplates', async () => {

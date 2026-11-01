@@ -68,7 +68,7 @@ With 500-character notes, 6 items: 8,859 / 45,940 / 299,441 bytes (T-13). The au
 | Measure | Budget | Why |
 |---|---|---|
 | Largest single KVS value, any number of toggles, 50 items | 32 KiB or less | 240 KiB hard limit (N-11), with margin |
-| One audit event value | 2 KiB or less (500-character evidence included) | Many events per transaction (25 operations, N-12) |
+| One audit event value | Change events: 2 KiB or less (500-character evidence included). CREATED, MIGRATED and RESYNC events carry the item list: 32 KiB or less (corrected in B-04) | Many events per transaction (25 operations, N-12) |
 | Panel load Jira calls | 0 user lookups; 1 or fewer calls in total | Names come from `User` (R-06); point quota (N-22) |
 | Panel load KVS reads | 1 state get plus 1 query page of at most 100 events (N-14) | Query maximum 100 |
 | Toggle Jira calls | 2 or fewer: 1 permission check, 1 property PUT | `/mypermissions` with the issue key (N-20) |

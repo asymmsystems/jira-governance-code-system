@@ -25,6 +25,7 @@ import {
 import { ChecklistEvent, ChecklistState, ChecklistTemplate, EventInput, IssueChecklistState } from '../domain/models';
 
 export const MAX_WRITE_ATTEMPTS = 3;
+export const HISTORY_PAGE = 100;
 const MAX_FOLD = 100;
 
 export const CONFLICT_MESSAGE = 'Someone else changed this checklist. Refresh and try again.';
@@ -64,6 +65,16 @@ export class ChecklistStore {
       state = applyEvent(state, next);
     }
     throw new Error('DefinitionGuard: event log is too far ahead of its cached state');
+  }
+
+  /**
+   * One page of events in seq order (at most HISTORY_PAGE). The KVS prefix query is eventually
+   * consistent, so the newest events may appear one read later; the gate never uses this.
+   */
+  public async history(issueId: string, cursor?: string): Promise<{ events: ChecklistEvent[]; nextCursor?: string }> {
+    const page = await this.storage.listByPrefix(eventPrefix(issueId), cursor, HISTORY_PAGE);
+    const events = (page.values as ChecklistEvent[]).slice().sort((a, b) => a.seq - b.seq);
+    return { events, nextCursor: page.nextCursor };
   }
 
   /** As load, but falls back to a state derived in memory from a v1 record (seq 0). Never writes. */

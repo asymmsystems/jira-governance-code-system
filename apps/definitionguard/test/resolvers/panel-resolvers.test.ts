@@ -87,12 +87,20 @@ describe('panel resolvers (v2 event log)', () => {
       await expect(getIssueChecklist({ issueId: 'payload-id' }, {}, storage)).rejects.toThrow('Missing issue context');
     });
 
-    it('returns the stored state and its recent events after changes', async () => {
+    it('returns the stored state after changes, and the history from getHistory', async () => {
       await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx(), storage);
       const res = await getIssueChecklist({}, ctx(), storage);
       expect(res.stateVersion).toBe(2);
       expect(res.items.find(i => i.id === 'item-unit-tests')).toMatchObject({ isCompleted: true, completedByAccountId: '712020:alice' });
-      expect(res.auditTrail!.map(e => e.eventType)).toEqual(['TEMPLATE_CONFIGURED', 'CHECK']);
+      expect(res.auditTrail).toEqual([]);
+      const history: any = await handler({ call: { functionKey: 'getHistory', payload: {} }, context: ctx() } as any);
+      expect(history.auditTrail.map((e: any) => e.eventType)).toEqual(['TEMPLATE_CONFIGURED', 'CHECK']);
+      expect(history.eventCount).toBe(2);
+    });
+
+    it('returns an empty history for an issue with no record', async () => {
+      const history: any = await handler({ call: { functionKey: 'getHistory', payload: { cursor: 7 } }, context: ctx('49999') } as any);
+      expect(history).toEqual({ events: [], auditTrail: [], nextCursor: undefined, eventCount: 0 });
     });
   });
 
@@ -158,7 +166,7 @@ describe('panel resolvers (v2 event log)', () => {
       const res = await resetChecklist({}, ctx(), storage);
       expect(storage.read(eventKey('40001', 3)).type).toBe('RESET');
       expect(res.items.every(i => !i.isCompleted)).toBe(true);
-      expect(res.auditTrail![res.auditTrail!.length - 1].eventType).toBe('RESET');
+      expect(res.stateVersion).toBe(3);
     });
 
     it('creates the record and records RESET on an issue with no record', async () => {

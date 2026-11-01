@@ -22,6 +22,7 @@ export const DefinitionGuardPanel: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState<boolean>(false);
   const [showAuditTrail, setShowAuditTrail] = useState<boolean>(false);
+  const [auditTrail, setAuditTrail] = useState<IssueChecklistState['auditTrail']>([]);
 
   useEffect(() => {
     loadChecklist();
@@ -76,6 +77,22 @@ export const DefinitionGuardPanel: React.FC = () => {
       setErrorMessage(err?.message || 'Failed to reset checklist.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleAuditTrail = async () => {
+    if (showAuditTrail) {
+      setShowAuditTrail(false);
+      return;
+    }
+    setErrorMessage(null);
+    try {
+      const page = (await invoke('getHistory', {})) as unknown as { auditTrail?: IssueChecklistState['auditTrail'] };
+      setAuditTrail(page?.auditTrail || []);
+      setShowAuditTrail(true);
+    } catch (err: any) {
+      console.error('Failed to load history', err);
+      setErrorMessage(err?.message || 'Failed to load history.');
     }
   };
 
@@ -208,10 +225,10 @@ export const DefinitionGuardPanel: React.FC = () => {
           </Button>
           <Button
             appearance="subtle"
-            onClick={() => setShowAuditTrail(!showAuditTrail)}
+            onClick={handleToggleAuditTrail}
             isDisabled={loading}
           >
-            {showAuditTrail ? 'Hide Audit Trail' : `Audit Trail (${checklist?.auditTrail?.length || 0})`}
+            {showAuditTrail ? 'Hide Audit Trail' : `Audit Trail (${checklist?.stateVersion || 0})`}
           </Button>
           <Button appearance="subtle" onClick={loadChecklist} isDisabled={loading}>
             Refresh
@@ -219,11 +236,11 @@ export const DefinitionGuardPanel: React.FC = () => {
         </Inline>
       </Box>
 
-      {showAuditTrail && checklist?.auditTrail && checklist.auditTrail.length > 0 && (
+      {showAuditTrail && auditTrail && auditTrail.length > 0 && (
         <Box padding="space.100">
           <Heading as="h4">Tamper-Evident Audit Trail</Heading>
           <Stack space="space.050">
-            {checklist.auditTrail.map((ev) => (
+            {auditTrail.map((ev) => (
               <Text key={ev.id}>
                 • [{formatTimestamp(ev.timestamp)}] {ev.actorName}: {ev.eventType} {ev.itemId ? `(Item: ${ev.itemId})` : ''} {ev.details ? `[${ev.details}]` : ''}
               </Text>

@@ -68,7 +68,8 @@ describe('B-02 permission checks', () => {
   it('allows a reset with ADMINISTER_PROJECTS', async () => {
     grant({ ADMINISTER_PROJECTS: true });
     const reset = await resetChecklist({}, ctx, storage);
-    expect(reset.auditTrail![reset.auditTrail!.length - 1].eventType).toBe('RESET');
+    expect(reset.items.every(i => !i.isCompleted)).toBe(true);
+    expect(storage.read('dg:evt:20001:00000002').type).toBe('RESET');
   });
 
   it('sends the permission check as the user, with the issue key, and never as the app', async () => {

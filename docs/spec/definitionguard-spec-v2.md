@@ -102,7 +102,7 @@ Forge KVS (`@forge/kvs`). Key prefixes:
 | Key | Value | Size bound |
 |---|---|---|
 | `dg:state:<issueId>` | `ChecklistState` | 32 KiB at 50 items with 200-char titles |
-| `dg:evt:<issueId>:<seq 8 digits>` | `ChecklistEvent` | 2 KiB with 500-char evidence |
+| `dg:evt:<issueId>:<seq 8 digits>` | `ChecklistEvent` | Change events (TICK, UNTICK, WAIVE, RESET): 2 KiB with 500-char evidence. CREATED, MIGRATED and RESYNC carry the item list: 32 KiB at 50 items |
 | `dg:tmpl:<projectId>:<issueTypeId>` | `ChecklistTemplate` | 32 KiB, checked on save |
 | `dg:proj:<projectId>` | `{ exemptStatusIds: string[], updatedAt, updatedByAccountId }` | 4 KiB |
 | `dg:checklist:<issueId>` | v1 record, read only, never written by v2 | as stored |
