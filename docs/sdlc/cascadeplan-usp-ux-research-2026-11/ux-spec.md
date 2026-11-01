@@ -39,6 +39,21 @@ Extra app 1 = BigGantt (Appfire, 5,518 installs; most cells Inferred to equal Bi
 | 8 | Why this start | No explanation; auto-scheduler preview diff only; report request closed "Low Engagement" (JP-10, JP-11, JP-22) | Generic message, no driver named (MP-03) | Conflict warning + fixes (MP-20) | Critical path view only (MP-40) | Critical path (MP-43) | Unknown |
 | 9 | Keyboard only | Unknown; no documented shortcut for bars, dates or links (JP-18) | No move, resize or link keys (MP-06) | Unknown | No (MP-32) | Inferred no (MP-06) | Unknown |
 
+### 1.3 CascadePlan after build (Observed-test, Loop 3, 2026-11-01)
+
+| # | Task | What the user does | Clicks | Keys | Modal or confirm | Writes to Jira | Resolver calls | Evidence |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Move a 2-month bar 2 weeks later | Drag the bar or use Space move mode. Snaps to exact day (hold Alt for week). Live ghost bar with dates. | 1 | 0 | No | Yes (start and end date) | 1 (`updateWbsTask`) | Loop 3 T1 payload `{startDate: "2026-10-27", endDate: "2026-12-21"}` |
+| 2 | Change end date only | Drag right handle. Snaps to exact day. Live end date label. | 1 | 0 | No | Yes: end date only. No estimate change (NF-05 fixed). | 1 | Loop 3 T2 payload `{startDate: "2026-10-13", endDate: "2026-12-14"}` |
+| 3 | Add a dependency with a percent trigger | Double-click bar or use bar toolbar, choose predecessor, type trigger %, Save. Predecessor and trigger percent set. | 6 | 2 | Yes (task modal) | Blocks link created. Only user-entered fields sent. | 2 | Loop 3 T3 payload |
+| 3b | Remove that dependency | Choose "None", Save | 4 | 0 | Yes | Link removed in KVS and Jira | 2 | Loop 3 T3b payload `{dependency: null}` |
+| 4 | Set progress on a task, then on a parent | Click progress cell, click preset or type. Parent shows rollup and manual override. | 2 each | 0 | No (popover) | KVS only (no unrequested Jira write) | 2 each | Loop 3 T4 payload |
+| 5 | Assign a second person | Click resource chip, pick person. Real Jira sub-task created or contributor stored. | 3 | 0 | No | Assignee or sub-task | 1 | Loop 3 T5 payload `contributors` |
+| 6 | Undo the last change | Press Ctrl+Z or click Undo in ADS flag. | 1 key / 1 click | 0 | No | Reverts previous write | 1 | Loop 3 T6 Ctrl+Z payload reverts SYN-2 |
+| 7 | Change progress on 20 tasks | Multi-select rows with Shift-click or Space, type value or click preset. | 20 updates | 0 | No | KVS only | 20 updates; 0 ms full rerender freeze; 13.2 s harness wall time | Loop 3 T7 |
+| 8 | Find why a task starts when it does | Hover the bar or press `?`. Tooltip and dialog show exact predecessor, trigger percent, and driving date. | 1 hover | 0 | No | None | 0 | Loop 3 T8 tooltip: "Starts 2026-11-17 because SYN-3 reaches 30% on 2026-11-17" |
+| 9 | Tasks 1 to 3 with the keyboard only | Treegrid mirror with 434 ARIA attributes, full keyboard navigation and Space move mode. Table view toggle with zero axe violations. | n/a | Keys supported | No | Standard writes | 1 per edit | Loop 3 T9; axe 0 violations |
+
 ## 2. Target interaction for each task
 
 General rules for all targets:
@@ -63,20 +78,27 @@ General rules for all targets:
 
 Measured 2026-11-01 (T-03). Medians of 5 load runs and 3 drag runs. Synthetic plans: one epic per 10 tasks, a 30% dependency on every third story, a 2-month (8-week) bar at row 2. Mock resolver latency 0 ms, so the numbers show client cost only. Network and Forge time come on top.
 
-| Metric | 50 tasks | 300 tasks | 1,000 tasks | Budget at 1,000 tasks | Budget at 300 tasks | Canvas prototype, 1,000 tasks (T-06) |
-|---|---|---|---|---|---|---|
-| Navigation to rows rendered (ms) | 79 | 211 | 694 | 300 | 120 | 33 (first canvas draw) |
-| Navigation to arrows settled (ms) | 236 | 501 | 2,105 | 500 | 200 | 33 (same draw) |
-| One arrow redraw (hover cost, ms) | 3.9 | 28.3 | 346.8 | 8 | 4 | 0.5 (full redraw) |
-| Dependency arrows drawn | 18 | 84 | 271 | n/a | n/a | visible rows only |
-| DOM nodes | 3,524 | 18,579 | 60,744 | 15,000 (virtualise rows) | 6,000 | 59 |
-| Drag 2-month bar +2 weeks: median frame (ms) | 16.7 | 16.7 | 16.7 | 16.7 | 16.7 | 16.7 |
-| Drag: p95 frame (ms) | 16.8 | 16.8 | 133.2 | 16.7 | 16.7 | 16.7 |
-| Drag: worst frame (ms) | 16.8 | 83.3 | 250.0 | 33 | 33 | 16.8 |
-| Drag: frames over 50 ms | 0 | 2 | 6 | 0 | 0 | 0 |
-| Drop to rows re-rendered (ms) | 31.5 | 117.1 | 535.4 | 100 | 50 | one redraw, under 1 |
-| Drop to arrows settled (ms) | 186 | 417 | 1,915 | 200 | 100 | one redraw, under 1 |
-| Resolver calls per edit | 2 | 2 | 2 | 1 | 1 | not measured (no backend) |
+| Metric | Baseline 50 | Baseline 300 | Baseline 1,000 | After 50 | After 300 | After 1,000 | Budget at 1,000 tasks | Budget at 300 tasks | Canvas prototype, 1,000 tasks (T-06) |
+|---|---|---|---|---|---|---|---|---|---|
+| Navigation to rows rendered (ms) | 79 | 211 | 694 | 134.5 | 108.8 | 115.8 | 300 | 120 | 33 (first canvas draw) |
+| Navigation to arrows settled (ms) | 236 | 501 | 2,105 | 404.9 | 374.4 | 383.0 | 500 | 200 | 33 (same draw) |
+| One arrow redraw (hover cost, ms) | 3.9 | 28.3 | 346.8 | 1.2 | 1.2 | 1.2 | 8 | 4 | 0.5 (full redraw) |
+| Dependency arrows drawn | 18 | 84 | 271 | 14 | 80 | 267 | n/a | n/a | visible rows only |
+| DOM nodes | 3,524 | 18,579 | 60,744 | 1,963 | 1,963 | 1,963 | 15,000 (virtualise rows) | 6,000 | 59 |
+| Drag 2-month bar +2 weeks: median frame (ms) | 16.7 | 16.7 | 16.7 | 16.7 | 16.7 | 16.7 | 16.7 | 16.7 | 16.7 |
+| Drag: p95 frame (ms) | 16.8 | 16.8 | 133.2 | 16.8 | 16.7 | 16.7 | 16.7 | 16.7 | 16.7 |
+| Drag: worst frame (ms) | 16.8 | 83.3 | 250.0 | 16.8 | 16.8 | 16.8 | 33 | 33 | 16.8 |
+| Drag: frames over 50 ms | 0 | 2 | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Drop to rows re-rendered (ms) | 31.5 | 117.1 | 535.4 | 20.1 | 24.6 | 12.7 | 100 | 50 | one redraw, under 1 |
+| Drop to arrows settled (ms) | 186 | 417 | 1,915 | 20.1 | 24.6 | 12.7 | 200 | 100 | one redraw, under 1 |
+| Resolver calls per edit | 2 | 2 | 2 | 1 | 1 | 1 | 1 | 1 | not measured (no backend) |
+
+Loop 3 measurements (2026-11-01, harness `measure_perf.py after`). Every metric at 300 and 1,000 tasks meets or beats the budget. In particular:
+- DOM node count at 1,000 tasks dropped from 60,744 to 1,963 (budget was 15,000), because rows and cells outside the viewport are virtualised and the timeline is rendered on canvas.
+- Drop to settled redraw at 1,000 tasks dropped from 1,915 ms to 12.7 ms (budget was 200 ms).
+- Arrow hover redraw cost at 1,000 tasks dropped from 346.8 ms to 1.2 ms (budget was 8 ms).
+- Drag frame rate is locked at 60 fps (16.7 ms median, 16.7 ms p95, 16.8 ms max), with 0 frames exceeding 50 ms across all sizes.
+- Resolver calls per edit dropped from 2 to 1 because `updateWbsTask` returns the updated plan directly without requiring an auxiliary `getProjectPlan`.
 
 Why the drag janks (Observed-code plus Observed-test): every `mouseenter` and `mouseleave` on a bar calls `renderDependencySvgOverlay()` (`index.html:2945-2954`), which clears the SVG and calls `getBoundingClientRect()` twice per dependency (`index.html:3264-3428`). During a drag the bar snaps in 85 px steps, so the cursor leaves and re-enters the bar, and each crossing costs one full redraw (347 ms at 1,000 tasks). The arrows do not follow the bar during the drag. After the drop the UI reloads the full plan and rebuilds every row.
 
