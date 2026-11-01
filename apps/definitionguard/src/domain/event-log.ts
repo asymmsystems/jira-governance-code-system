@@ -1,22 +1,32 @@
 /**
- * DefinitionGuard event log: pure functions that build, chain and fold checklist events.
+ * DefinitionGuard change log: pure functions that build, chain and fold change-log entries.
  *
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
  *
- * The state is a fold over the events. The first event (CREATED or MIGRATED) carries the
- * item list, so the state can always be rebuilt from the events alone. Each event stores
- * the hash of the previous one (prevHash), starting from a per-issue genesis hash.
+ * Each entry is one transaction of Silverston/OFBiz entity rows (spec v3 sections 3 and 7):
+ * WorkEffort, WorkEffortAssoc, WorkEffortStatus, Content, WorkEffortContent. The state is a fold
+ * over the entries. The first entry (Create or Migrate) carries every criterion, so the state can
+ * always be rebuilt from the entries alone. Each entry stores the hash of the previous one
+ * (prevHash), starting from a per-issue genesis hash.
  */
 import * as crypto from 'crypto';
 import {
-  ChecklistEvent,
-  ChecklistState,
-  ChecklistTemplate,
-  EventInput,
+  ChangeEntry,
+  CriterionState,
+  DodRow,
+  DodState,
+  DodStatusId,
+  DodTemplate,
+  EntryInput,
   IssueChecklistState,
-  ItemState
+  LegacyRef,
+  TemplateCriterion,
+  TransitionName
 } from './models';
+import { isValidChange, invalidChangeMessage } from './dod-status';
+import { DEFAULT_WAIVER_ROLE } from './roles';
+import { Evidence } from './evidence';
 
 /** JSON with sorted object keys and no spaces, so equal values always hash the same. */
 export function canonicalJson(value: unknown): string {
@@ -35,76 +45,74 @@ function sha256(text: string): string {
   return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
-/** The prevHash of event 1. Binds the chain to one issue. */
+/** The prevHash of entry 1. Binds the chain to one issue. */
 export function genesisHash(issueId: string): string {
   return sha256(`definitionguard:${issueId}`);
 }
 
-/** Hash of an event over every field except `hash`. */
-export function hashEvent(event: Omit<ChecklistEvent, 'hash'> & { hash?: string }): string {
-  const { hash: _ignored, ...rest } = event;
+/** Hash of an entry over every field except `hash`, rows included. */
+export function hashEntry(entry: Omit<ChangeEntry, 'hash'> & { hash?: string }): string {
+  const { hash: _ignored, ...rest } = entry;
   return sha256(canonicalJson(rest));
 }
 
-export function emptyState(issueId: string, issueKey: string, projectId: string): ChecklistState {
+export const issueWorkEffortId = (issueId: string) => `issue:${issueId}`;
+export const criterionWorkEffortId = (issueId: string, templateItemId: string) => `crit:${issueId}:${templateItemId}`;
+
+export function emptyState(issueId: string, issueKey: string, projectId: string): DodState {
   return {
-    schemaVersion: 2,
-    issueId,
-    issueKey,
-    projectId,
-    templateId: '',
-    templateVersion: 0,
-    items: [],
+    schemaVersion: 3,
+    issue: { workEffortId: issueWorkEffortId(issueId), workEffortTypeId: 'ISSUE', sourceReferenceId: issueId, workEffortName: issueKey, projectId },
+    template: { workEffortId: '', revisionNumber: 0, waiverRoleTypeId: DEFAULT_WAIVER_ROLE },
+    criteria: [],
     seq: 0,
     headHash: genesisHash(issueId)
   };
 }
 
-/** Builds the next event after `state`: seq + 1, chained to state.headHash. */
-export function makeEvent(state: ChecklistState, input: EventInput): ChecklistEvent {
-  const unsigned = { ...input, seq: state.seq + 1, issueId: state.issueId, prevHash: state.headHash };
-  return { ...unsigned, hash: hashEvent(unsigned) };
+/** Builds the next entry after `state`: seq + 1, chained to state.headHash. */
+export function makeEntry(state: DodState, input: EntryInput): ChangeEntry {
+  const unsigned = { ...input, seq: state.seq + 1, issueId: state.issue.sourceReferenceId, prevHash: state.headHash };
+  return { ...unsigned, hash: hashEntry(unsigned) };
 }
 
-export function itemsFromTemplate(template: ChecklistTemplate): ItemState[] {
-  return template.items.map(t => {
-    const item: ItemState = { id: t.id, title: t.title, isMandatory: t.isMandatory, category: t.category, status: 'OPEN' };
-    if (t.evidenceRequired) item.evidenceRequired = true;
-    if (t.notAssignee) item.notAssignee = true;
-    if (t.requiredPermission) item.requiredPermission = t.requiredPermission;
-    return item;
-  });
+/** WorkEffort rows for the issue and its criteria, the template link and the breakdown links. */
+function structureRows(state: DodState, templateId: string, revisionNumber: number, waiverRoleTypeId: DodTemplate['waiverRoleTypeId'], criteria: TemplateCriterion[], at: string): DodRow[] {
+  const issueId = state.issue.sourceReferenceId;
+  const rows: DodRow[] = [
+    { entity: 'WorkEffort', ...state.issue },
+    { entity: 'WorkEffortAssoc', workEffortIdFrom: templateId, workEffortIdTo: state.issue.workEffortId, workEffortAssocTypeId: 'WORK_EFF_TEMPLATE', revisionNumber, waiverRoleTypeId, fromDate: at }
+  ];
+  for (const c of criteria) {
+    const { sequenceNum: _s, ...fields } = c;
+    rows.push({ entity: 'WorkEffort', workEffortId: criterionWorkEffortId(issueId, c.templateItemId), workEffortTypeId: 'DOD_CRITERION', ...fields, sequenceNum: c.sequenceNum });
+    rows.push({ entity: 'WorkEffortAssoc', workEffortIdFrom: state.issue.workEffortId, workEffortIdTo: criterionWorkEffortId(issueId, c.templateItemId), workEffortAssocTypeId: 'WORK_EFF_BREAKDOWN', sequenceNum: c.sequenceNum, fromDate: at });
+  }
+  return rows;
 }
 
-export function createdEvent(state: ChecklistState, template: ChecklistTemplate, actorAccountId: string, at: string): ChecklistEvent {
-  return makeEvent(state, {
-    type: 'CREATED',
+export function createEntry(state: DodState, template: DodTemplate, actorPartyId: string, at: string): ChangeEntry {
+  return makeEntry(state, {
+    transitionName: 'Create',
     at,
-    actorAccountId,
-    issueKey: state.issueKey,
-    projectId: state.projectId,
-    items: itemsFromTemplate(template),
-    templateId: template.id,
-    templateVersion: template.version || 1,
-    ...(template.waiverPermission ? { waiverPermission: template.waiverPermission } : {})
+    actorPartyId,
+    rows: structureRows(state, template.workEffortId, template.revisionNumber, template.waiverRoleTypeId, template.criteria, at)
   });
 }
 
-/** Item states taken from a v1 record (dg:checklist:<issueId>). A v1 display name is kept only when no accountId exists. */
-export function itemsFromLegacy(legacy: IssueChecklistState): ItemState[] {
-  return legacy.items.map(i => ({
-    id: i.id,
-    title: i.title,
+/** Criteria taken from a v1 record (dg:checklist:<issueId>), as template criteria. */
+function legacyCriteria(legacy: IssueChecklistState): TemplateCriterion[] {
+  return legacy.items.map((i, idx) => ({
+    templateItemId: i.id,
+    workEffortName: i.title,
+    sequenceNum: idx + 1,
+    purposeTypeId: i.category,
     isMandatory: i.isMandatory,
-    category: i.category,
-    status: i.isCompleted ? 'DONE' as const : 'OPEN' as const,
-    byAccountId: i.isCompleted ? i.completedByAccountId : undefined,
-    legacyName: i.isCompleted && !i.completedByAccountId && i.completedBy ? i.completedBy : undefined,
-    at: i.isCompleted ? i.completedAt : undefined
+    evidenceRequired: false
   }));
 }
 
-export function legacyRefOf(legacy: IssueChecklistState) {
+export function legacyRefOf(legacy: IssueChecklistState): LegacyRef {
   return {
     stateVersion: legacy.stateVersion || 1,
     eventCount: legacy.auditTrail?.length || 0,
@@ -112,89 +120,171 @@ export function legacyRefOf(legacy: IssueChecklistState) {
   };
 }
 
-/** A state derived in memory from a v1 record. seq 0: nothing is stored yet. */
-export function stateFromLegacy(legacy: IssueChecklistState, projectId: string): ChecklistState {
-  return {
-    ...emptyState(legacy.issueId, legacy.issueKey, projectId),
-    templateId: legacy.templateId || '',
-    templateVersion: 1,
-    items: itemsFromLegacy(legacy),
-    legacy: legacyRefOf(legacy)
-  };
-}
-
-export function migratedEvent(state: ChecklistState, legacy: IssueChecklistState, actorAccountId: string, at: string): ChecklistEvent {
-  return makeEvent(state, {
-    type: 'MIGRATED',
-    at,
-    actorAccountId,
-    issueKey: state.issueKey || legacy.issueKey,
-    projectId: state.projectId,
-    items: itemsFromLegacy(legacy),
-    templateId: legacy.templateId || '',
-    templateVersion: 1,
-    legacy: legacyRefOf(legacy)
+/** WorkEffortStatus rows for the completed v1 items. A v1 display name is kept only when no accountId exists. */
+function legacyStatusRows(state: DodState, legacy: IssueChecklistState, at: string): DodRow[] {
+  return legacy.items.filter(i => i.isCompleted).map(i => {
+    const row: DodRow = {
+      entity: 'WorkEffortStatus',
+      workEffortId: criterionWorkEffortId(state.issue.sourceReferenceId, i.id),
+      statusId: 'DOD_DONE',
+      statusDatetime: i.completedAt || at,
+      setByPartyId: i.completedByAccountId || ''
+    };
+    if (!i.completedByAccountId && i.completedBy) row.setByLegacyName = i.completedBy;
+    return row;
   });
 }
 
+function migrateRows(state: DodState, legacy: IssueChecklistState, at: string): DodRow[] {
+  return [
+    ...structureRows(state, legacy.templateId || '', 1, DEFAULT_WAIVER_ROLE, legacyCriteria(legacy), at),
+    ...legacyStatusRows(state, legacy, at),
+    { entity: 'LegacyImport', legacy: legacyRefOf(legacy) }
+  ];
+}
+
+export function migrateEntry(state: DodState, legacy: IssueChecklistState, actorPartyId: string, at: string): ChangeEntry {
+  const base = { ...state, issue: { ...state.issue, workEffortName: state.issue.workEffortName || legacy.issueKey } };
+  return makeEntry(state, { transitionName: 'Migrate', at, actorPartyId, rows: migrateRows(base, legacy, at) });
+}
+
+/** A state derived in memory from a v1 record. seq 0: nothing is stored yet. */
+export function stateFromLegacy(legacy: IssueChecklistState, projectId: string): DodState {
+  const base = emptyState(legacy.issueId, legacy.issueKey, projectId);
+  const derived = foldRows(base, 'Migrate', 0, migrateRows(base, legacy, ''));
+  return { ...derived, seq: 0, headHash: base.headHash };
+}
+
+export interface StatusChange {
+  templateItemId: string;
+  statusIdTo: DodStatusId;
+  transitionName: TransitionName;
+  actorPartyId: string;
+  at: string;
+  reason?: string;
+  evidence?: Evidence;
+}
+
 /**
- * Applies one event to the state and returns the new state. Pure.
- * Throws when the event does not follow the state (wrong seq, issue or prevHash).
+ * The entry for one criterion's status change: a WorkEffortStatus row, and for evidence a
+ * Content row with a WorkEffortContent link from the same moment (spec v3 D3-05).
+ * Throws with a user message when StatusValidChange does not allow the change.
  */
-export function applyEvent(state: ChecklistState, event: ChecklistEvent): ChecklistState {
-  if (event.seq !== state.seq + 1) {
-    throw new Error(`DefinitionGuard: event sequence ${event.seq} does not follow ${state.seq}`);
+export function statusEntry(state: DodState, change: StatusChange): EntryInput {
+  const criterion = state.criteria.find(c => c.templateItemId === change.templateItemId);
+  if (!criterion) {
+    throw new Error(`Checklist item with id '${change.templateItemId}' not found on issue ${state.issue.workEffortName}`);
   }
-  if (event.issueId !== state.issueId) {
-    throw new Error('DefinitionGuard: event belongs to another issue');
+  if (!isValidChange(criterion.currentStatusId, change.statusIdTo, change.transitionName)) {
+    throw new Error(invalidChangeMessage(criterion.currentStatusId, change.transitionName));
   }
-  if (event.prevHash !== state.headHash) {
-    throw new Error(`DefinitionGuard: event ${event.seq} prevHash does not match`);
+  const status: DodRow = { entity: 'WorkEffortStatus', workEffortId: criterion.workEffortId, statusId: change.statusIdTo, statusDatetime: change.at, setByPartyId: change.actorPartyId };
+  if (change.reason) status.reason = change.reason;
+  const rows: DodRow[] = [status];
+  if (change.evidence) {
+    const contentId = `content:${state.issue.sourceReferenceId}:${state.seq + 1}`;
+    const content: DodRow = { entity: 'Content', contentId, contentTypeId: 'DOD_EVIDENCE' };
+    if (change.evidence.url) content.objectInfo = change.evidence.url;
+    if (change.evidence.note) content.textData = change.evidence.note;
+    rows.push(content, { entity: 'WorkEffortContent', workEffortId: criterion.workEffortId, contentId, workEffortContentTypeId: 'DOD_EVIDENCE', fromDate: change.at });
   }
+  return { transitionName: change.transitionName, at: change.at, actorPartyId: change.actorPartyId, rows };
+}
 
-  const next: ChecklistState = {
-    ...state,
-    seq: event.seq,
-    headHash: event.hash,
-    lastModifiedAt: event.at,
-    lastModifiedByAccountId: event.actorAccountId
+/** Reset: one WorkEffortStatus row back to DOD_OPEN for every criterion that is not open. */
+export function resetEntry(state: DodState, actorPartyId: string, at: string): EntryInput {
+  return {
+    transitionName: 'Reset',
+    at,
+    actorPartyId,
+    rows: state.criteria
+      .filter(c => c.currentStatusId !== 'DOD_OPEN')
+      .map(c => ({ entity: 'WorkEffortStatus' as const, workEffortId: c.workEffortId, statusId: 'DOD_OPEN' as const, statusDatetime: at, setByPartyId: actorPartyId, reason: 'Checklist reset' }))
   };
+}
 
-  switch (event.type) {
-    case 'CREATED':
-    case 'MIGRATED':
-    case 'RESYNC':
-      next.items = (event.items || []).map(i => ({ ...i }));
-      next.templateId = event.templateId || state.templateId;
-      next.templateVersion = event.templateVersion || state.templateVersion;
-      if (event.legacy) next.legacy = event.legacy;
-      if (event.waiverPermission) next.waiverPermission = event.waiverPermission;
-      if (event.issueKey) next.issueKey = event.issueKey;
-      if (event.projectId) next.projectId = event.projectId;
-      break;
-    case 'TICK':
-    case 'UNTICK':
-    case 'WAIVE':
-      next.items = state.items.map(i => {
-        if (i.id !== event.itemId) return i;
-        if (event.type === 'UNTICK') {
-          return { ...i, status: 'OPEN' as const, byAccountId: undefined, at: undefined, eventSeq: event.seq, hasEvidence: undefined };
-        }
-        return {
-          ...i,
-          status: event.type === 'WAIVE' ? 'WAIVED' as const : 'DONE' as const,
-          byAccountId: event.actorAccountId,
-          at: event.at,
-          eventSeq: event.seq,
-          hasEvidence: event.evidence ? true : undefined
-        };
-      });
-      break;
-    case 'RESET':
-      next.items = state.items.map(i => ({ ...i, status: 'OPEN' as const, byAccountId: undefined, at: undefined, eventSeq: event.seq, hasEvidence: undefined }));
-      break;
+/** Applies the rows of one entry. Criterion rows replace the criterion list (Create, Migrate, Resync). */
+function foldRows(state: DodState, transitionName: TransitionName, seq: number, rows: DodRow[]): DodState {
+  const next: DodState = { ...state, issue: { ...state.issue }, template: { ...state.template }, criteria: state.criteria.map(c => ({ ...c })) };
+  const criterionRows = rows.filter(r => r.entity === 'WorkEffort' && r.workEffortTypeId === 'DOD_CRITERION');
+  if (criterionRows.length > 0) {
+    const previous = new Map(next.criteria.map(c => [c.workEffortId, c]));
+    next.criteria = criterionRows.map(r => {
+      const { entity: _e, workEffortTypeId: _t, ...fields } = r as any;
+      const old = previous.get(fields.workEffortId);
+      return old
+        ? { ...fields, currentStatusId: old.currentStatusId, lastStatusUpdate: old.lastStatusUpdate, lastStatusByPartyId: old.lastStatusByPartyId, lastStatusSeq: old.lastStatusSeq, evidenceContentId: old.evidenceContentId, legacyName: old.legacyName }
+        : { ...fields, currentStatusId: 'DOD_OPEN' };
+    }) as CriterionState[];
   }
+  const byId = new Map(next.criteria.map(c => [c.workEffortId, c]));
+  for (const row of rows) {
+    switch (row.entity) {
+      case 'WorkEffort':
+        if (row.workEffortTypeId === 'ISSUE') {
+          next.issue = { workEffortId: row.workEffortId, workEffortTypeId: 'ISSUE', sourceReferenceId: row.sourceReferenceId, workEffortName: row.workEffortName, projectId: row.projectId };
+        }
+        break;
+      case 'WorkEffortAssoc':
+        if (row.workEffortAssocTypeId === 'WORK_EFF_TEMPLATE') {
+          next.template = { workEffortId: row.workEffortIdFrom, revisionNumber: row.revisionNumber || 1, waiverRoleTypeId: row.waiverRoleTypeId || DEFAULT_WAIVER_ROLE };
+        } else {
+          const c = byId.get(row.workEffortIdTo);
+          if (c && row.sequenceNum !== undefined) c.sequenceNum = row.sequenceNum;
+        }
+        break;
+      case 'WorkEffortStatus': {
+        const c = byId.get(row.workEffortId);
+        if (!c) throw new Error(`DefinitionGuard: status for unknown criterion ${row.workEffortId}`);
+        if (transitionName !== 'Migrate' && !isValidChange(c.currentStatusId, row.statusId, transitionName)) {
+          throw new Error(`DefinitionGuard: ${c.currentStatusId} to ${row.statusId} is not a valid ${transitionName}`);
+        }
+        c.currentStatusId = row.statusId;
+        c.lastStatusUpdate = row.statusId === 'DOD_OPEN' ? undefined : row.statusDatetime;
+        c.lastStatusByPartyId = row.statusId === 'DOD_OPEN' ? undefined : row.setByPartyId || undefined;
+        c.lastStatusSeq = seq;
+        c.evidenceContentId = undefined;
+        c.legacyName = row.setByLegacyName;
+        break;
+      }
+      case 'WorkEffortContent': {
+        const c = byId.get(row.workEffortId);
+        if (c && c.currentStatusId === 'DOD_DONE' && c.lastStatusUpdate === row.fromDate) c.evidenceContentId = row.contentId;
+        break;
+      }
+      case 'LegacyImport':
+        next.legacy = row.legacy;
+        break;
+      case 'Content':
+        break;
+    }
+  }
+  next.criteria.sort((a, b) => a.sequenceNum - b.sequenceNum);
   return next;
+}
+
+/**
+ * Applies one entry to the state and returns the new state. Pure.
+ * Throws when the entry does not follow the state (wrong seq, issue or prevHash), or when a
+ * status row is not a valid change.
+ */
+export function applyEntry(state: DodState, entry: ChangeEntry): DodState {
+  if (entry.seq !== state.seq + 1) {
+    throw new Error(`DefinitionGuard: entry sequence ${entry.seq} does not follow ${state.seq}`);
+  }
+  if (entry.issueId !== state.issue.sourceReferenceId) {
+    throw new Error('DefinitionGuard: entry belongs to another issue');
+  }
+  if (entry.prevHash !== state.headHash) {
+    throw new Error(`DefinitionGuard: entry ${entry.seq} prevHash does not match`);
+  }
+  return {
+    ...foldRows(state, entry.transitionName, entry.seq, entry.rows),
+    seq: entry.seq,
+    headHash: entry.hash,
+    lastModifiedAt: entry.at,
+    lastModifiedByPartyId: entry.actorPartyId
+  };
 }
 
 export interface ChainCheck {
@@ -210,12 +300,12 @@ export const CHAIN_LIMIT_NOTE =
   "who can rewrite all of the app's stored data and the chain with it, and that includes the app vendor.";
 
 /**
- * Re-hashes every event in seq order. Reports the first event that is missing, belongs to
+ * Re-hashes every entry in seq order. Reports the first entry that is missing, belongs to
  * another issue, breaks the chain, or no longer matches its hash. With `state`, also checks
  * that the chain reaches the stored head (no truncated or replaced tail).
  */
-export function verifyChain(issueId: string, events: ChecklistEvent[], state?: ChecklistState): ChainCheck {
-  const sorted = [...events].sort((a, b) => a.seq - b.seq);
+export function verifyChain(issueId: string, entries: ChangeEntry[], state?: DodState): ChainCheck {
+  const sorted = [...entries].sort((a, b) => a.seq - b.seq);
   let expectedPrev = genesisHash(issueId);
   let checked = 0;
   for (let i = 0; i < sorted.length; i++) {
@@ -224,7 +314,7 @@ export function verifyChain(issueId: string, events: ChecklistEvent[], state?: C
     if (e.seq !== seq) return { ok: false, checked, brokenAt: seq, reason: 'event missing' };
     if (e.issueId !== issueId) return { ok: false, checked, brokenAt: seq, reason: 'event belongs to another issue' };
     if (e.prevHash !== expectedPrev) return { ok: false, checked, brokenAt: seq, reason: 'chain broken' };
-    if (hashEvent(e) !== e.hash) return { ok: false, checked, brokenAt: seq, reason: 'content changed' };
+    if (hashEntry(e) !== e.hash) return { ok: false, checked, brokenAt: seq, reason: 'content changed' };
     expectedPrev = e.hash;
     checked++;
   }

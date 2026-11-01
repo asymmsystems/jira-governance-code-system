@@ -66,12 +66,12 @@ describe('B-11 evidence on ticks', () => {
     await new TemplateStore(storage).save('10000', '10004', template, '712020:admin');
   });
 
-  it('stores evidence in the TICK event and only a flag in the state', async () => {
+  it('stores evidence as Content in the Complete entry and only its id in the state', async () => {
     await toggleChecklistItem({ itemId: 'docs', isCompleted: true, evidence: { url: 'https://wiki.example/page', note: 'Updated' } }, ctx, storage);
-    expect(storage.read(eventKey('93001', 2)).evidence).toEqual({ url: 'https://wiki.example/page', note: 'Updated' });
-    const item = storage.read(stateKey('93001')).items.find((i: any) => i.id === 'docs');
-    expect(item).toMatchObject({ status: 'DONE', hasEvidence: true, eventSeq: 2 });
-    expect(item.evidence).toBeUndefined();
+    expect(storage.read(eventKey('93001', 2)).rows).toContainEqual({ entity: 'Content', contentId: 'content:93001:2', contentTypeId: 'DOD_EVIDENCE', objectInfo: 'https://wiki.example/page', textData: 'Updated' });
+    const c = storage.read(stateKey('93001')).criteria.find((x: any) => x.templateItemId === 'docs');
+    expect(c).toMatchObject({ currentStatusId: 'DOD_DONE', evidenceContentId: 'content:93001:2', lastStatusSeq: 2 });
+    expect(c.objectInfo).toBeUndefined();
   });
 
   it('rejects bad evidence and writes nothing', async () => {
@@ -97,7 +97,7 @@ describe('B-11 evidence on ticks', () => {
     expect(await validateTransition({ issue: { id: '93001' }, transition: { to: { id: '10001' } } }, {}, storage)).toEqual({ result: true });
     // A stored tick without evidence (for example from before the item required evidence) does not count.
     const st = storage.read(stateKey('93001'));
-    st.items.find((i: any) => i.id === 'security-scan').hasEvidence = false;
+    delete st.criteria.find((x: any) => x.templateItemId === 'security-scan').evidenceContentId;
     storage.put(stateKey('93001'), st);
     const res = await validateTransition({ issue: { id: '93001' }, transition: { to: { id: '10001' } } }, {}, storage);
     expect(res.result).toBe(false);

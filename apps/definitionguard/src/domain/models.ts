@@ -112,27 +112,62 @@ export interface TransitionValidationResult {
 }
 
 // ---------------------------------------------------------------------------
-// v2: append-only event log (docs/spec/definitionguard-spec-v2.md)
+// v3: Silverston-aligned model (docs/spec/definitionguard-spec-v3.md).
+// Entity and field names follow Apache OFBiz, which implements Silverston's
+// Data Model Resource Book. Section 3 of the spec maps every concept.
 // ---------------------------------------------------------------------------
 
-export type ItemStatus = 'OPEN' | 'DONE' | 'WAIVED';
+/** StatusItem ids of StatusType DOD_CRITERION_STATUS. */
+export type DodStatusId = 'DOD_OPEN' | 'DOD_DONE' | 'DOD_WAIVED';
 
-export type ChecklistEventType = 'CREATED' | 'MIGRATED' | 'TICK' | 'UNTICK' | 'WAIVE' | 'RESET' | 'RESYNC';
+/** StatusValidChange transition names, plus the change-log entries that are not status changes. */
+export type TransitionName = 'Create' | 'Migrate' | 'Complete' | 'Reopen' | 'Waive' | 'Reset' | 'Resync';
 
-export interface ItemState {
-  id: string;
-  title: string;
-  isMandatory: boolean;
-  category: ChecklistCategory;
-  status: ItemStatus;
-  byAccountId?: string;
-  legacyName?: string;          // v1 display name, kept only when v1 recorded no accountId
-  at?: string;
-  eventSeq?: number;
-  evidenceRequired?: boolean;   // from the template (B-11)
-  hasEvidence?: boolean;        // the DONE event carried evidence (B-11)
-  notAssignee?: boolean;        // from the template (B-12)
-  requiredPermission?: string;  // from the template (B-12)
+/** RoleType ids. Parties hold them through Jira, read live (spec v3 section 6). */
+export type RoleTypeId = 'ASSIGNEE' | 'PROJECT_ADMIN' | `JIRA_PERM_${string}`;
+
+/** A criterion as it appears in a template: a DOD_CRITERION WorkEffort under a DOD_TEMPLATE WorkEffort. */
+export interface TemplateCriterion {
+  templateItemId: string;
+  workEffortName: string;
+  description?: string;
+  sequenceNum: number;
+  purposeTypeId: ChecklistCategory;        // WorkEffort.workEffortPurposeTypeId
+  isMandatory: boolean;                    // WorkEffortAttribute "mandatory"
+  evidenceRequired: boolean;               // WorkEffortAttribute "evidenceRequired"
+  requiredRoleTypeId?: RoleTypeId;
+  excludedRoleTypeId?: 'ASSIGNEE';
+}
+
+/** A WorkEffort of type DOD_TEMPLATE with its criteria (WORK_EFF_BREAKDOWN children). */
+export interface DodTemplate {
+  workEffortId: string;
+  workEffortTypeId: 'DOD_TEMPLATE';
+  workEffortName: string;
+  description: string;
+  revisionNumber: number;
+  waiverRoleTypeId: RoleTypeId;
+  criteria: TemplateCriterion[];
+}
+
+/** The Jira issue as a WorkEffort, held by reference: Jira owns the issue. */
+export interface IssueWorkEffort {
+  workEffortId: string;
+  workEffortTypeId: 'ISSUE';
+  sourceReferenceId: string;               // Jira issue id
+  workEffortName: string;                  // Jira issue key
+  projectId: string;
+}
+
+/** A DOD_CRITERION WorkEffort under the issue WorkEffort, with its current status (cached). */
+export interface CriterionState extends TemplateCriterion {
+  workEffortId: string;
+  currentStatusId: DodStatusId;
+  lastStatusUpdate?: string;
+  lastStatusByPartyId?: string;
+  lastStatusSeq?: number;
+  evidenceContentId?: string;              // WorkEffortContent DOD_EVIDENCE for the current DONE
+  legacyName?: string;                     // v1 display name, only when v1 recorded no accountId
 }
 
 export interface LegacyRef {
@@ -141,44 +176,40 @@ export interface LegacyRef {
   checklistHash: string;
 }
 
-/** Cache of the event log, stored at dg:state:<issueId>. */
-export interface ChecklistState {
-  schemaVersion: 2;
-  issueId: string;
-  issueKey: string;
-  projectId: string;
-  templateId: string;
-  templateVersion: number;
-  items: ItemState[];
+/** Cache of the change log, stored at dg:state:<issueId>. */
+export interface DodState {
+  schemaVersion: 3;
+  issue: IssueWorkEffort;
+  template: { workEffortId: string; revisionNumber: number; waiverRoleTypeId: RoleTypeId };
+  criteria: CriterionState[];
   seq: number;
   headHash: string;
   lastModifiedAt?: string;
-  lastModifiedByAccountId?: string;
+  lastModifiedByPartyId?: string;
   legacy?: LegacyRef;
-  waiverPermission?: string;    // from the template; default ADMINISTER_PROJECTS
 }
 
-/** One change, stored at dg:evt:<issueId>:<seq as 8 digits>. Never changed after it is written. */
-export interface ChecklistEvent {
+/** One entity row inside a change-log entry. */
+export type DodRow =
+  | ({ entity: 'WorkEffort'; workEffortId: string; workEffortTypeId: 'ISSUE'; workEffortName: string; sourceReferenceId: string; projectId: string })
+  | ({ entity: 'WorkEffort'; workEffortId: string; workEffortTypeId: 'DOD_CRITERION' } & TemplateCriterion)
+  | { entity: 'WorkEffortAssoc'; workEffortIdFrom: string; workEffortIdTo: string; workEffortAssocTypeId: 'WORK_EFF_BREAKDOWN' | 'WORK_EFF_TEMPLATE'; sequenceNum?: number; revisionNumber?: number; waiverRoleTypeId?: RoleTypeId; fromDate: string; thruDate?: string }
+  | { entity: 'WorkEffortStatus'; workEffortId: string; statusId: DodStatusId; statusDatetime: string; setByPartyId: string; reason?: string; setByLegacyName?: string }
+  | { entity: 'Content'; contentId: string; contentTypeId: 'DOD_EVIDENCE'; objectInfo?: string; textData?: string }
+  | { entity: 'WorkEffortContent'; workEffortId: string; contentId: string; workEffortContentTypeId: 'DOD_EVIDENCE'; fromDate: string }
+  | { entity: 'LegacyImport'; legacy: LegacyRef };
+
+/** One transaction of entity rows, stored at dg:evt:<issueId>:<seq as 8 digits>. Never changed after it is written. */
+export interface ChangeEntry {
   seq: number;
   issueId: string;
-  type: ChecklistEventType;
+  transitionName: TransitionName;
   at: string;
-  actorAccountId: string;
-  itemId?: string;
-  itemTitle?: string;
-  evidence?: { url?: string; note?: string };  // TICK: link and or note
-  reason?: string;              // WAIVE: why the item does not apply
-  waiverPermission?: string;    // CREATED, RESYNC: from the template
-  items?: ItemState[];          // CREATED, MIGRATED, RESYNC: the item list
-  issueKey?: string;            // CREATED, MIGRATED: lets a rebuild from events restore the state
-  projectId?: string;
-  templateId?: string;
-  templateVersion?: number;
-  legacy?: LegacyRef;           // MIGRATED
+  actorPartyId: string;                    // the Jira accountId (PartyIdentification JIRA_ACCOUNT_ID)
+  rows: DodRow[];
   prevHash: string;
   hash: string;
 }
 
-/** What a resolver asks the log to record; seq, prevHash and hash are added by makeEvent. */
-export type EventInput = Omit<ChecklistEvent, 'seq' | 'issueId' | 'prevHash' | 'hash'>;
+/** What a resolver asks the log to record; seq, issueId, prevHash and hash are added by makeEntry. */
+export type EntryInput = Pick<ChangeEntry, 'transitionName' | 'at' | 'actorPartyId' | 'rows'>;

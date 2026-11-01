@@ -15,7 +15,7 @@ import * as crypto from 'crypto';
 import api, { route } from '@forge/api';
 import { canonicalJson } from '../domain/event-log';
 import { evaluateGate } from '../domain/gate-rule';
-import { ChecklistState } from '../domain/models';
+import { DodState } from '../domain/models';
 
 export const PROPERTY_KEY = 'definitionguard-dod';
 export const MAX_TRIES = 3;
@@ -40,20 +40,20 @@ export interface SignedAttestation extends Attestation {
   sig: string | null;
 }
 
-export function buildAttestation(state: ChecklistState, issuedAt: string): Attestation {
+export function buildAttestation(state: DodState, issuedAt: string): Attestation {
   const gate = evaluateGate(state);
-  const mandatory = state.items.filter(i => i.isMandatory);
+  const mandatory = state.criteria.filter(c => c.isMandatory);
   return {
     schemaVersion: 2,
-    issueId: state.issueId,
-    templateId: state.templateId,
-    templateVersion: state.templateVersion,
+    issueId: state.issue.sourceReferenceId,
+    templateId: state.template.workEffortId,
+    templateVersion: state.template.revisionNumber,
     stateVersion: state.seq,
     mandatoryTotal: mandatory.length,
     mandatoryCompleted: mandatory.length - gate.openMandatory.length,
-    openMandatoryItemIds: gate.openMandatory.map(i => i.id),
+    openMandatoryItemIds: gate.openMandatory.map(c => c.templateItemId),
     isFullySatisfied: gate.satisfied,
-    lastModifiedByAccountId: state.lastModifiedByAccountId || '',
+    lastModifiedByAccountId: state.lastModifiedByPartyId || '',
     headHash: state.headHash,
     issuedAt
   };
@@ -97,13 +97,13 @@ export const retryPolicy = {
  * Writes the property as the app. Retries on 429 and 5xx (Retry-After honoured, else 1 s, 2 s),
  * up to MAX_TRIES. Never throws: a failed write leaves app storage authoritative.
  */
-export async function publishAttestation(state: ChecklistState, issuedAt: string): Promise<{ ok: boolean; attempts: number; status?: number }> {
+export async function publishAttestation(state: DodState, issuedAt: string): Promise<{ ok: boolean; attempts: number; status?: number }> {
   const body = JSON.stringify(signIfConfigured(buildAttestation(state, issuedAt)));
   let status = 0;
   for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
     let res: any;
     try {
-      res = await api.asApp().requestJira(route`/rest/api/3/issue/${state.issueId}/properties/${PROPERTY_KEY}`, {
+      res = await api.asApp().requestJira(route`/rest/api/3/issue/${state.issue.sourceReferenceId}/properties/${PROPERTY_KEY}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body

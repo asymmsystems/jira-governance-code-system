@@ -17,7 +17,8 @@ jest.mock('@forge/kvs', () => ({ kvs: {}, WhereConditions: { beginsWith: (v: str
 
 import { buildAttestation, signAttestation, verifyAttestation, publishAttestation, retryPolicy, PROPERTY_KEY } from '../../src/integrity/attestation';
 import { toggleChecklistItem, waiveChecklistItem, resetChecklist, validateTransition } from '../../src/index';
-import { createdEvent, emptyState, applyEvent, makeEvent } from '../../src/domain/event-log';
+import { createEntry, emptyState, applyEntry, makeEntry, statusEntry } from '../../src/domain/event-log';
+import { toDodTemplate } from '../../src/domain/dod-template';
 import { DEFAULT_DEFINITION_OF_DONE } from '../../src/domain/checklist-engine';
 import { ChecklistTemplate } from '../../src/domain/models';
 
@@ -28,8 +29,8 @@ const T = '2026-11-01T00:00:00.000Z';
 
 function sampleState(template: ChecklistTemplate = DEFAULT_DEFINITION_OF_DONE) {
   let st = emptyState('95001', 'DEMO-95001', '10000');
-  st = applyEvent(st, createdEvent(st, template, 'creator', T));
-  st = applyEvent(st, makeEvent(st, { type: 'TICK', itemId: template.items[0].id, at: T, actorAccountId: '712020:dev' }));
+  st = applyEntry(st, createEntry(st, toDodTemplate(template), 'creator', T));
+  st = applyEntry(st, makeEntry(st, statusEntry(st, { templateItemId: template.items[0].id, statusIdTo: 'DOD_DONE', transitionName: 'Complete', actorPartyId: '712020:dev', at: T })));
   return st;
 }
 

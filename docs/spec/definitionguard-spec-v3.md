@@ -1,7 +1,7 @@
 # DefinitionGuard: Architecture Specification v3 (Silverston-aligned domain model)
 
 - **Date:** 2026-11-01
-- **Status:** DRAFT for owner approval. Owner decision 2026-11-01: "C", restructure the domain and storage model to follow the Silverston patterns before B-16. No code follows this spec until the owner approves it.
+- **Status:** APPROVED 2026-11-01 by the owner, in chat: "approved. A." (decision D3-01 option A). Owner decision 2026-11-01: "C", restructure the domain and storage model to follow the Silverston patterns before B-16.
 - **Freezes:** `docs/spec/definitionguard-spec-v2.md` stays as written. v3 replaces only these v2 sections: Domain Model, Storage Schema (record shapes), Gate rule (inputs), and Decisions D-01, D-03, D-13 (see section 9). Everything else in v2 still holds: invariants, write protocol, permission checks, integrity design, resolver contracts, manifest.
 - **Backlog:** new item B-21 "Silverston-aligned domain and storage model" (owner decision), before B-16.
 

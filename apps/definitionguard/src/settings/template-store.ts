@@ -5,22 +5,23 @@
  * @author Fahim Farook
  *
  * Key: dg:tmpl:<projectId>:<issueTypeId>. Ids, not keys or names, so a rename keeps the template.
+ * The stored form is a DOD_TEMPLATE WorkEffort (spec v3); the settings page edits the payload form.
  */
 import { StorageProvider } from '../storage/checklist-repository';
 import { getTemplateForCategory } from '../domain/checklist-engine';
-import { ChecklistCategory, ChecklistTemplate, ChecklistItemTemplate } from '../domain/models';
+import { toDodTemplate } from '../domain/dod-template';
+import { ChecklistCategory, ChecklistItemTemplate, DodTemplate } from '../domain/models';
 
 export const MAX_TEMPLATE_BYTES = 32 * 1024;
 export const MAX_ITEMS = 50;
 
 export const templateKey = (projectId: string, issueTypeId: string) => `dg:tmpl:${projectId}:${issueTypeId}`;
 
-export interface StoredTemplate extends ChecklistTemplate {
-  version: number;
+export interface StoredTemplate extends DodTemplate {
   projectId: string;
   issueTypeId: string;
-  updatedAt: string;
-  updatedByAccountId: string;
+  lastModifiedDate: string;
+  lastModifiedByPartyId: string;
 }
 
 const CATEGORIES: ChecklistCategory[] = ['CODE_QUALITY', 'SECURITY', 'TESTING', 'COMPLIANCE', 'DOCUMENTATION'];
@@ -103,23 +104,20 @@ export class TemplateStore {
     return await this.storage.get<StoredTemplate>(templateKey(projectId, issueTypeId));
   }
 
-  /** Validates, then saves with version + 1. Throws with every problem when invalid. */
+  /** Validates, then saves with revisionNumber + 1. Throws with every problem when invalid. */
   public async save(projectId: string, issueTypeId: string, input: any, actorAccountId: string): Promise<StoredTemplate> {
     const errors = validateTemplate(input);
     if (errors.length > 0) throw new Error(errors.join(' '));
     const previous = await this.get(projectId, issueTypeId);
-    const saved: StoredTemplate = {
+    const dod = toDodTemplate({
       id: `project-${projectId}-${issueTypeId}`,
       name: input.name.trim(),
       description: input.description || '',
-      items: input.items.map(normaliseItem),
-      version: (previous?.version || 0) + 1,
-      projectId,
-      issueTypeId,
-      updatedAt: new Date().toISOString(),
-      updatedByAccountId: actorAccountId
-    };
-    if (input.waiverPermission) saved.waiverPermission = input.waiverPermission;
+      version: (previous?.revisionNumber || 0) + 1,
+      waiverPermission: input.waiverPermission,
+      items: input.items.map(normaliseItem)
+    });
+    const saved: StoredTemplate = { ...dod, projectId, issueTypeId, lastModifiedDate: new Date().toISOString(), lastModifiedByPartyId: actorAccountId };
     await this.storage.set(templateKey(projectId, issueTypeId), saved);
     return saved;
   }
@@ -134,7 +132,7 @@ export async function resolveTemplate(
   projectId: string,
   issueTypeId: string,
   issueTypeName?: string
-): Promise<ChecklistTemplate> {
+): Promise<DodTemplate> {
   const custom = await new TemplateStore(storage).get(projectId, issueTypeId);
-  return custom || getTemplateForCategory(issueTypeName);
+  return custom || toDodTemplate(getTemplateForCategory(issueTypeName));
 }

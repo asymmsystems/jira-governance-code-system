@@ -69,7 +69,7 @@ describe('B-02 permission checks', () => {
     grant({ ADMINISTER_PROJECTS: true });
     const reset = await resetChecklist({}, ctx, storage);
     expect(reset.items.every(i => !i.isCompleted)).toBe(true);
-    expect(storage.read('dg:evt:20001:00000002').type).toBe('RESET');
+    expect(storage.read('dg:evt:20001:00000002').transitionName).toBe('Reset');
   });
 
   it('sends the permission check as the user, with the issue key, and never as the app', async () => {

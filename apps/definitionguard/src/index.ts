@@ -9,14 +9,14 @@ import { ProjectConfigStore } from './settings/project-config';
 import { StorageProvider } from './storage/checklist-repository';
 import { resolveStorage } from './storage/forge-storage';
 import { ChecklistStore, eventKey } from './storage/checklist-store';
-import { applyEvent, createdEvent, emptyState, chainMessage, verifyChain, CHAIN_LIMIT_NOTE } from './domain/event-log';
-import { ChecklistEvent, ChecklistState, IssueChecklistState, ChecklistAuditEvent } from './domain/models';
+import { applyEntry, createEntry, emptyState, statusEntry, resetEntry, chainMessage, verifyChain, CHAIN_LIMIT_NOTE } from './domain/event-log';
+import { ChangeEntry, DodState, DodTemplate, IssueChecklistState, ChecklistAuditEvent } from './domain/models';
+import { permissionKeyOf } from './domain/roles';
 import { checkIssuePermissions, getIssuePermissions, permissionLabel, PermissionDeniedError, EDIT_DENIED, RESET_DENIED } from './security/permissions';
 import { resolveTemplate } from './settings/template-store';
 import { assertLicensed, isLicenceInactive, VALIDATOR_LICENCE_INACTIVE } from './security/licence';
 import { validateEvidence, EVIDENCE_REQUIRED } from './domain/evidence';
 import { publishAttestation } from './integrity/attestation';
-import { ChecklistTemplate } from './domain/models';
 
 export { settingsHandler } from './settings/settings-resolvers';
 
@@ -52,27 +52,30 @@ async function fetchIssueForValidator(issueIdOrKey: string): Promise<any> {
 }
 
 /** A checklist built in memory from a template. Nothing is stored. */
-function stateFromTemplate(issueId: string, issueKey: string, projectId: string, template: ChecklistTemplate): ChecklistState {
+function stateFromTemplate(issueId: string, issueKey: string, projectId: string, template: DodTemplate): DodState {
   const base = emptyState(issueId, issueKey, projectId);
-  return applyEvent(base, createdEvent(base, template, 'system', new Date().toISOString()));
+  return applyEntry(base, createEntry(base, template, 'system', new Date().toISOString()));
 }
 
-/** The v1 item shape that TransitionValidator and the current panel read. */
-function toLegacyItems(state: ChecklistState) {
-  return state.items.map(i => ({
-    id: i.id,
-    title: i.title,
-    isMandatory: i.isMandatory,
-    category: i.category,
-    isCompleted: i.status !== 'OPEN',
-    completedBy: i.status !== 'OPEN' ? i.byAccountId : undefined,
-    completedByAccountId: i.status !== 'OPEN' ? i.byAccountId : undefined,
-    completedAt: i.status !== 'OPEN' ? i.at : undefined,
-    completedByLegacyName: i.status !== 'OPEN' ? i.legacyName : undefined,
-    waived: i.status === 'WAIVED',
-    evidenceRequired: Boolean(i.evidenceRequired),
-    hasEvidence: Boolean(i.hasEvidence)
-  }));
+/** The panel's item shape (frozen contract), from the criteria. */
+function toLegacyItems(state: DodState) {
+  return state.criteria.map(c => {
+    const closed = c.currentStatusId !== 'DOD_OPEN';
+    return {
+      id: c.templateItemId,
+      title: c.workEffortName,
+      isMandatory: c.isMandatory,
+      category: c.purposeTypeId,
+      isCompleted: closed,
+      completedBy: closed ? c.lastStatusByPartyId : undefined,
+      completedByAccountId: closed ? c.lastStatusByPartyId : undefined,
+      completedAt: closed ? c.lastStatusUpdate : undefined,
+      completedByLegacyName: closed ? c.legacyName : undefined,
+      waived: c.currentStatusId === 'DOD_WAIVED',
+      evidenceRequired: c.evidenceRequired,
+      hasEvidence: Boolean(c.evidenceContentId)
+    };
+  });
 }
 
 /**
@@ -136,7 +139,7 @@ async function evaluateTransition(payload: any, context?: any, storageProvider?:
   // Separation of duties holds at the moment of Done: re-check not-the-assignee items
   // against the current assignee, read from the Jira issue (never from an issue property).
   let assigneeAccountId: string | undefined;
-  if (state.items.some(i => i.notAssignee && i.status === 'DONE')) {
+  if (state.criteria.some(c => c.excludedRoleTypeId === 'ASSIGNEE' && c.currentStatusId === 'DOD_DONE')) {
     live = live?.fields && 'assignee' in live.fields ? live : await fetchIssueForValidator(issueId);
     assigneeAccountId = live?.fields?.assignee?.accountId;
   }
@@ -158,7 +161,7 @@ async function evaluateTransition(payload: any, context?: any, storageProvider?:
     if (status?.statusCategory?.key !== 'done') {
       return { result: true };
     }
-    let projectId = state.projectId || String(context?.extension?.project?.id || '');
+    let projectId = state.issue.projectId || String(context?.extension?.project?.id || '');
     if (!projectId) {
       live = live || await fetchIssueForValidator(issueId);
       projectId = String(live?.fields?.project?.id || '');
@@ -189,48 +192,58 @@ function panelContext(context: any) {
   };
 }
 
-const AUDIT_TYPE: Record<string, ChecklistAuditEvent['eventType']> = {
-  CREATED: 'TEMPLATE_CONFIGURED',
-  MIGRATED: 'TEMPLATE_CONFIGURED',
-  RESYNC: 'TEMPLATE_CONFIGURED',
-  TICK: 'CHECK',
-  WAIVE: 'WAIVE',
-  UNTICK: 'UNCHECK',
-  RESET: 'RESET'
+const AUDIT_TYPE: Record<ChangeEntry['transitionName'], ChecklistAuditEvent['eventType']> = {
+  Create: 'TEMPLATE_CONFIGURED',
+  Migrate: 'TEMPLATE_CONFIGURED',
+  Resync: 'TEMPLATE_CONFIGURED',
+  Complete: 'CHECK',
+  Waive: 'WAIVE',
+  Reopen: 'UNCHECK',
+  Reset: 'RESET'
 };
 
-/** The panel response. Keeps the fields the panel reads; names are accountIds. */
-export function toPanelResponse(state: ChecklistState, events: ChecklistEvent[] = []): IssueChecklistState {
+/** One history row per change-log entry, in the panel's audit shape (frozen contract). */
+function auditRow(state: DodState, e: ChangeEntry): ChecklistAuditEvent {
+  const row: ChecklistAuditEvent = {
+    id: `evt-${e.seq}`,
+    timestamp: e.at,
+    eventType: AUDIT_TYPE[e.transitionName],
+    actorName: e.actorPartyId,
+    actorAccountId: e.actorPartyId
+  };
+  if (e.transitionName === 'Complete' || e.transitionName === 'Reopen' || e.transitionName === 'Waive') {
+    const status = e.rows.find(r => r.entity === 'WorkEffortStatus') as Extract<ChangeEntry['rows'][number], { entity: 'WorkEffortStatus' }>;
+    const criterion = state.criteria.find(c => c.workEffortId === status.workEffortId);
+    row.itemId = criterion?.templateItemId || status.workEffortId.split(':').pop();
+    row.itemTitle = criterion?.workEffortName || row.itemId;
+    if (status.reason) row.details = status.reason;
+    const content = e.rows.find(r => r.entity === 'Content') as Extract<ChangeEntry['rows'][number], { entity: 'Content' }> | undefined;
+    if (content) row.evidence = { ...(content.objectInfo ? { url: content.objectInfo } : {}), ...(content.textData ? { note: content.textData } : {}) };
+  }
+  return row;
+}
+
+/** The panel response (frozen contract). Names are accountIds; the panel renders them. */
+export function toPanelResponse(state: DodState, entries: ChangeEntry[] = []): IssueChecklistState {
   const items = toLegacyItems(state);
   const gate = evaluateGate(state);
   return {
-    issueId: state.issueId,
-    issueKey: state.issueKey,
-    templateId: state.templateId,
+    issueId: state.issue.sourceReferenceId,
+    issueKey: state.issue.workEffortName,
+    templateId: state.template.workEffortId,
     items,
     lastModifiedAt: state.lastModifiedAt || '',
-    lastModifiedBy: state.lastModifiedByAccountId || '',
+    lastModifiedBy: state.lastModifiedByPartyId || '',
     isFullySatisfied: gate.satisfied,
-    openMandatoryTitles: gate.openMandatory.map(i => i.title),
+    openMandatoryTitles: gate.openMandatory.map(c => c.workEffortName),
     checklistHash: state.headHash,
     stateVersion: state.seq,
-    auditTrail: events.map(e => ({
-      id: `evt-${e.seq}`,
-      timestamp: e.at,
-      eventType: AUDIT_TYPE[e.type],
-      actorName: e.actorAccountId,
-      actorAccountId: e.actorAccountId,
-      itemId: e.itemId,
-      itemTitle: e.itemTitle,
-      evidence: e.evidence,
-      details: e.reason
-    }))
+    auditTrail: entries.map(e => auditRow(state, e))
   };
 }
 
-
 /** The template for a panel action: ids from the context, else from one issue lookup. */
-async function templateFor(storage: StorageProvider, c: ReturnType<typeof panelContext>): Promise<ChecklistTemplate> {
+async function templateFor(storage: StorageProvider, c: ReturnType<typeof panelContext>): Promise<DodTemplate> {
   let { projectId, issueTypeId, issueType } = c;
   if (!projectId || !issueTypeId) {
     const live = await fetchLiveJiraIssue(c.issueId);
@@ -253,7 +266,7 @@ export async function getIssueChecklist(_payload: any, context?: any, storagePro
   let state = await store.loadOrLegacy(c.issueId, c.projectId);
   if (!state) {
     const base = emptyState(c.issueId, c.issueKey, c.projectId);
-    state = applyEvent(base, createdEvent(base, await templateFor(storage, c), c.actorAccountId, new Date().toISOString()));
+    state = applyEntry(base, createEntry(base, await templateFor(storage, c), c.actorAccountId, new Date().toISOString()));
     state = { ...state, seq: 0 };
   }
   return toPanelResponse(state);
@@ -282,7 +295,7 @@ export const ASSIGNEE_DENIED = 'The assignee cannot complete this item. Ask a re
 export const WAIVER_REASON_INVALID = 'Give a reason of 10 to 500 characters for the waiver.';
 
 /** The stored checklist, or the one a first change would create, built in memory. */
-async function currentState(storage: StorageProvider, store: ChecklistStore, c: ReturnType<typeof panelContext>): Promise<ChecklistState> {
+async function currentState(storage: StorageProvider, store: ChecklistStore, c: ReturnType<typeof panelContext>): Promise<DodState> {
   const stored = await store.loadOrLegacy(c.issueId, c.projectId);
   if (stored) return stored;
   return stateFromTemplate(c.issueId, c.issueKey, c.projectId, await templateFor(storage, c));
@@ -319,23 +332,19 @@ export async function waiveChecklistItem(payload: any, context?: any, storagePro
   const store = new ChecklistStore(storage);
   const at = new Date().toISOString();
   const current = await currentState(storage, store, c);
-  if (!current.items.some(i => i.id === itemId)) {
-    throw new Error(`Checklist item with id '${itemId}' not found on issue ${current.issueKey}`);
+  if (!current.criteria.some(x => x.templateItemId === itemId)) {
+    throw new Error(`Checklist item with id '${itemId}' not found on issue ${current.issue.workEffortName}`);
   }
-  const waiverPermission = current.waiverPermission || 'ADMINISTER_PROJECTS';
+  // Refuse an invalid change before the permission call (StatusValidChange, spec v3 section 5).
+  statusEntry(current, { templateItemId: itemId, statusIdTo: 'DOD_WAIVED', transitionName: 'Waive', actorPartyId: c.actorAccountId, at, reason });
+  const waiverPermission = permissionKeyOf(current.template.waiverRoleTypeId);
   await checkIssuePermissions(c.issueKey, [waiverPermission],
     `Only users with the ${permissionLabel(waiverPermission)} Jira permission can waive this item.`);
 
   const state = await store.mutate(
     c.issueId,
     base => store.initFromLegacyOr(base, () => templateFor(storage, c), c.actorAccountId, at),
-    st => {
-      const item = st.items.find(i => i.id === itemId);
-      if (!item) {
-        throw new Error(`Checklist item with id '${itemId}' not found on issue ${st.issueKey}`);
-      }
-      return [{ type: 'WAIVE', itemId, itemTitle: item.title, reason, actorAccountId: c.actorAccountId, at }];
-    },
+    st => [statusEntry(st, { templateItemId: itemId, statusIdTo: 'DOD_WAIVED', transitionName: 'Waive', actorPartyId: c.actorAccountId, at, reason })],
     { issueKey: c.issueKey, projectId: c.projectId }
   );
 
@@ -353,13 +362,16 @@ export async function getItemEvidence(payload: any, context?: any, storageProvid
   const storage = resolveStorage(storageProvider);
   const state = await new ChecklistStore(storage).load(c.issueId);
   if (!state) return { itemId, evidence: undefined };
-  const item = state.items.find(i => i.id === itemId);
-  if (!item) {
-    throw new Error(`Checklist item with id '${itemId}' not found on issue ${state.issueKey}`);
+  const criterion = state.criteria.find(x => x.templateItemId === itemId);
+  if (!criterion) {
+    throw new Error(`Checklist item with id '${itemId}' not found on issue ${state.issue.workEffortName}`);
   }
-  if (!item.hasEvidence || !item.eventSeq) return { itemId, evidence: undefined };
-  const event = await storage.get<ChecklistEvent>(eventKey(c.issueId, item.eventSeq));
-  return { itemId, evidence: event?.evidence };
+  if (!criterion.evidenceContentId || !criterion.lastStatusSeq) return { itemId, evidence: undefined };
+  const entry = await storage.get<ChangeEntry>(eventKey(c.issueId, criterion.lastStatusSeq));
+  const content = entry?.rows.find(r => r.entity === 'Content' && r.contentId === criterion.evidenceContentId) as
+    Extract<ChangeEntry['rows'][number], { entity: 'Content' }> | undefined;
+  if (!content) return { itemId, evidence: undefined };
+  return { itemId, evidence: { ...(content.objectInfo ? { url: content.objectInfo } : {}), ...(content.textData ? { note: content.textData } : {}) } };
 }
 
 export const EXPORT_DENIED = 'Only a project admin can export this history.';
@@ -383,7 +395,7 @@ export async function exportChecklistHistory(_payload: any, context?: any, stora
     exportedAt: new Date().toISOString(),
     exportedByAccountId: c.actorAccountId,
     state: state
-      ? { stateVersion: state.seq, templateId: state.templateId, templateVersion: state.templateVersion, headHash: state.headHash, legacy: state.legacy }
+      ? { stateVersion: state.seq, templateId: state.template.workEffortId, templateVersion: state.template.revisionNumber, headHash: state.headHash, legacy: state.legacy }
       : null,
     chain: { ...check, message: chainMessage(check) },
     limit: CHAIN_LIMIT_NOTE,
@@ -416,24 +428,38 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
 
   // The item's rules decide which permissions to check, so read the current checklist first.
   const current = await currentState(storage, store, c);
-  const target = current.items.find(i => i.id === itemId);
+  const target = current.criteria.find(x => x.templateItemId === itemId);
   if (!target) {
-    throw new Error(`Checklist item with id '${itemId}' not found on issue ${current.issueKey}`);
+    throw new Error(`Checklist item with id '${itemId}' not found on issue ${current.issue.workEffortName}`);
   }
-  const waiverPermission = current.waiverPermission || 'ADMINISTER_PROJECTS';
-  const reopensWaiver = !isCompleted && target.status === 'WAIVED';
+  const change = (st: DodState) => statusEntry(st, {
+    templateItemId: itemId,
+    statusIdTo: isCompleted ? 'DOD_DONE' : 'DOD_OPEN',
+    transitionName: isCompleted ? 'Complete' : 'Reopen',
+    actorPartyId: c.actorAccountId,
+    at,
+    evidence
+  });
+  // Refuse an invalid change (StatusValidChange) and missing evidence before any Jira call.
+  change(current);
+  if (isCompleted && target.evidenceRequired && !evidence) {
+    throw new Error(EVIDENCE_REQUIRED);
+  }
+  const waiverPermission = permissionKeyOf(current.template.waiverRoleTypeId);
+  const requiredPermission = target.requiredRoleTypeId ? permissionKeyOf(target.requiredRoleTypeId) : undefined;
+  const reopensWaiver = !isCompleted && target.currentStatusId === 'DOD_WAIVED';
   const keys = ['EDIT_ISSUES'];
-  if (isCompleted && target.requiredPermission) keys.push(target.requiredPermission);
+  if (isCompleted && requiredPermission) keys.push(requiredPermission);
   if (reopensWaiver) keys.push(waiverPermission);
   const granted = await getIssuePermissions(c.issueKey, [...new Set(keys)]);
   if (!granted.EDIT_ISSUES) throw new PermissionDeniedError(EDIT_DENIED);
-  if (isCompleted && target.requiredPermission && !granted[target.requiredPermission]) {
-    throw new PermissionDeniedError(`You need the ${permissionLabel(target.requiredPermission)} Jira permission to complete this item.`);
+  if (isCompleted && requiredPermission && !granted[requiredPermission]) {
+    throw new PermissionDeniedError(`You need the ${permissionLabel(requiredPermission)} Jira permission to complete this item.`);
   }
   if (reopensWaiver && !granted[waiverPermission]) {
     throw new PermissionDeniedError(`Only users with the ${permissionLabel(waiverPermission)} Jira permission can reopen a waived item.`);
   }
-  if (isCompleted && target.notAssignee && (await currentAssignee(c.issueKey)) === c.actorAccountId) {
+  if (isCompleted && target.excludedRoleTypeId === 'ASSIGNEE' && (await currentAssignee(c.issueKey)) === c.actorAccountId) {
     throw new PermissionDeniedError(ASSIGNEE_DENIED);
   }
 
@@ -441,14 +467,11 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
     c.issueId,
     base => store.initFromLegacyOr(base, () => templateFor(storage, c), c.actorAccountId, at),
     st => {
-      const item = st.items.find(i => i.id === itemId);
-      if (!item) {
-        throw new Error(`Checklist item with id '${itemId}' not found on issue ${st.issueKey}`);
-      }
-      if (isCompleted && item.evidenceRequired && !evidence) {
+      const item = st.criteria.find(x => x.templateItemId === itemId);
+      if (isCompleted && item?.evidenceRequired && !evidence) {
         throw new Error(EVIDENCE_REQUIRED);
       }
-      return [{ type: isCompleted ? 'TICK' : 'UNTICK', itemId, itemTitle: item.title, actorAccountId: c.actorAccountId, at, ...(evidence ? { evidence } : {}) }];
+      return [change(st)];
     },
     { issueKey: c.issueKey, projectId: c.projectId }
   );
@@ -473,7 +496,7 @@ export async function resetChecklist(_payload: any, context?: any, storageProvid
   const state = await store.mutate(
     c.issueId,
     base => store.initFromLegacyOr(base, () => templateFor(storage, c), c.actorAccountId, at),
-    () => [{ type: 'RESET', actorAccountId: c.actorAccountId, at }],
+    st => [resetEntry(st, c.actorAccountId, at)],
     { issueKey: c.issueKey, projectId: c.projectId }
   );
 

@@ -18,7 +18,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getIssueChecklist, toggleChecklistItem, resetChecklist } from '../../src/index';
 import { attributionOf } from '../../src/ui/panel-view-model';
-import { itemsFromLegacy } from '../../src/domain/event-log';
+import { stateFromLegacy } from '../../src/domain/event-log';
 import { ChecklistEngine, DEFAULT_DEFINITION_OF_DONE } from '../../src/domain/checklist-engine';
 
 const ctx = { accountId: '712020:alice', extension: { issue: { id: '90001', key: 'DEMO-90001', type: 'Task', typeId: '10004' }, project: { id: '10000', key: 'DEMO' } } };
@@ -78,9 +78,9 @@ describe('B-07 attribution', () => {
   it('keeps a v1 display name as text when the v1 record has no accountId', () => {
     let legacy = ChecklistEngine.initializeState('90002', 'DEMO-90002', DEFAULT_DEFINITION_OF_DONE, 'system');
     legacy = ChecklistEngine.toggleItem(legacy, { issueId: '90002', issueKey: 'DEMO-90002', itemId: 'item-unit-tests', isCompleted: true, userId: 'Old Name' });
-    const items = itemsFromLegacy(legacy);
-    expect(items[0]).toMatchObject({ status: 'DONE', legacyName: 'Old Name' });
-    expect(items[0].byAccountId).toBeUndefined();
+    const c = stateFromLegacy(legacy, '10000').criteria[0];
+    expect(c).toMatchObject({ currentStatusId: 'DOD_DONE', legacyName: 'Old Name' });
+    expect(c.lastStatusByPartyId).toBeUndefined();
   });
 
   it('no source file calls the Jira user API', () => {

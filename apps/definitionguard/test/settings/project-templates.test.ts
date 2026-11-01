@@ -122,9 +122,10 @@ describe('B-06 settings resolvers', () => {
     const stored = storage.read(templateKey('10000', '10004'));
     expect(first.template.version).toBe(1);
     expect(second.template.version).toBe(2);
-    expect(stored).toMatchObject({ version: 2, updatedByAccountId: '712020:admin-2', projectId: '10000', issueTypeId: '10004' });
-    expect(typeof stored.updatedAt).toBe('string');
-    expect(stored.id).toBe('project-10000-10004');
+    expect(stored).toMatchObject({ workEffortTypeId: 'DOD_TEMPLATE', revisionNumber: 2, lastModifiedByPartyId: '712020:admin-2', projectId: '10000', issueTypeId: '10004' });
+    expect(typeof stored.lastModifiedDate).toBe('string');
+    expect(stored.workEffortId).toBe('project-10000-10004');
+    expect(stored.criteria.map((c: any) => c.templateItemId)).toEqual(['security-signoff', 'docs']);
   });
 
   it('lists the project issue types and the saved templates', async () => {

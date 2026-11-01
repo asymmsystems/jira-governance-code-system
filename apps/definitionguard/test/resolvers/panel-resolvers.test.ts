@@ -56,7 +56,7 @@ function allow(extra?: (c: JiraCall) => any) {
   };
 }
 
-describe('panel resolvers (v2 event log)', () => {
+describe('panel resolvers (v3 change log)', () => {
   let storage: CountingStorage;
 
   beforeEach(() => {
@@ -104,25 +104,36 @@ describe('panel resolvers (v2 event log)', () => {
   });
 
   describe('toggleItem', () => {
-    it('writes a CREATED event, a TICK event and the state on the first change', async () => {
+    it('writes a Create entry, a Complete entry and the state on the first change', async () => {
       const res = await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx(), storage);
-      expect(storage.read(eventKey('40001', 1)).type).toBe('CREATED');
-      expect(storage.read(eventKey('40001', 2))).toMatchObject({ type: 'TICK', itemId: 'item-unit-tests', actorAccountId: '712020:alice' });
+      expect(storage.read(eventKey('40001', 1)).transitionName).toBe('Create');
+      expect(storage.read(eventKey('40001', 2))).toMatchObject({ transitionName: 'Complete', actorPartyId: '712020:alice' });
+      expect(storage.read(eventKey('40001', 2)).rows[0]).toMatchObject({ entity: 'WorkEffortStatus', workEffortId: 'crit:40001:item-unit-tests', statusId: 'DOD_DONE' });
       expect(storage.read(stateKey('40001')).seq).toBe(2);
       expect(res.checklistHash).toBe(storage.read(eventKey('40001', 2)).hash);
     });
 
-    it('records an untick as UNTICK and clears the item', async () => {
+    it('records an untick as a Reopen entry and clears the item', async () => {
       await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx(), storage);
       const res = await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: false }, ctx(), storage);
-      expect(storage.read(eventKey('40001', 3)).type).toBe('UNTICK');
+      expect(storage.read(eventKey('40001', 3)).transitionName).toBe('Reopen');
       expect(res.items.find(i => i.id === 'item-unit-tests')!.isCompleted).toBe(false);
     });
 
     it('stores the accountId, not a display name, and makes no user lookup', async () => {
       await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx(), storage);
-      expect(storage.read(stateKey('40001')).items[0].byAccountId).toBe('712020:alice');
+      expect(storage.read(stateKey('40001')).criteria[0].lastStatusByPartyId).toBe('712020:alice');
       expect(jira.callsTo('/rest/api/3/user')).toEqual([]);
+    });
+
+    it('refuses a change that StatusValidChange does not allow, before any Jira call or write (B-21)', async () => {
+      await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx(), storage);
+      storage.sets = [];
+      jira.calls = [];
+      await expect(toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx(), storage)).rejects.toThrow('This item is already done.');
+      await expect(toggleChecklistItem({ itemId: 'item-peer-review', isCompleted: false }, ctx(), storage)).rejects.toThrow('This item is already open.');
+      expect(storage.sets).toEqual([]);
+      expect(jira.calls).toEqual([]);
     });
 
     it('rejects an unknown item and writes nothing', async () => {
@@ -160,17 +171,17 @@ describe('panel resolvers (v2 event log)', () => {
       storage.put(legacyKey('40003'), legacy);
       const before = storage.store.get(legacyKey('40003'));
       const res = await toggleChecklistItem({ itemId: 'item-peer-review', isCompleted: true }, ctx('40003'), storage);
-      expect(storage.read(eventKey('40003', 1)).type).toBe('MIGRATED');
+      expect(storage.read(eventKey('40003', 1)).transitionName).toBe('Migrate');
       expect(res.items.filter(i => i.isCompleted).map(i => i.id).sort()).toEqual(['item-peer-review', 'item-unit-tests']);
       expect(storage.store.get(legacyKey('40003'))).toBe(before);
     });
   });
 
   describe('resetChecklist', () => {
-    it('records a RESET event and opens every item', async () => {
+    it('records a Reset entry and opens every item', async () => {
       await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx(), storage);
       const res = await resetChecklist({}, ctx(), storage);
-      expect(storage.read(eventKey('40001', 3)).type).toBe('RESET');
+      expect(storage.read(eventKey('40001', 3)).transitionName).toBe('Reset');
       expect(res.items.every(i => !i.isCompleted)).toBe(true);
       expect(res.stateVersion).toBe(3);
     });
@@ -178,7 +189,7 @@ describe('panel resolvers (v2 event log)', () => {
     it('creates the record and records RESET on an issue with no record', async () => {
       const res = await resetChecklist({}, ctx('40004', 'Bug'), storage);
       expect(res.templateId).toBe(BUG_DEFINITION_OF_DONE.id);
-      expect(storage.read(eventKey('40004', 2)).type).toBe('RESET');
+      expect(storage.read(eventKey('40004', 2)).transitionName).toBe('Reset');
     });
   });
 

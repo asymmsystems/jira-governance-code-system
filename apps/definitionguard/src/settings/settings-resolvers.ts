@@ -13,7 +13,9 @@ import { StorageProvider } from '../storage/checklist-repository';
 import { resolveStorage } from '../storage/forge-storage';
 import { checkProjectPermissions } from '../security/permissions';
 import { assertLicensed } from '../security/licence';
-import { TemplateStore, StoredTemplate } from './template-store';
+import { TemplateStore } from './template-store';
+import { toTemplateView } from '../domain/dod-template';
+import { ChecklistTemplate } from '../domain/models';
 import { ProjectConfigStore } from './project-config';
 
 export const TEMPLATE_DENIED = 'Only a project admin can change DefinitionGuard templates.';
@@ -63,10 +65,10 @@ export async function getSettings(_payload: any, context?: any, storageProvider?
   const storage = resolveStorage(storageProvider);
   const store = new TemplateStore(storage);
   const issueTypes = await projectIssueTypes(c.projectId);
-  const templates: Record<string, StoredTemplate> = {};
+  const templates: Record<string, ChecklistTemplate> = {};
   for (const t of issueTypes) {
     const saved = await store.get(c.projectId, t.id);
-    if (saved) templates[t.id] = saved;
+    if (saved) templates[t.id] = toTemplateView(saved);
   }
   const doneStatuses = await projectDoneStatuses(c.projectId);
   const config = await new ProjectConfigStore(storage).get(c.projectId);
@@ -97,7 +99,7 @@ export async function saveTemplate(payload: any, context?: any, storageProvider?
   }
   const store = new TemplateStore(resolveStorage(storageProvider));
   const template = await store.save(c.projectId, issueTypeId, payload?.template, c.actorAccountId);
-  return { template };
+  return { template: toTemplateView(template) };
 }
 
 const resolver = new Resolver();

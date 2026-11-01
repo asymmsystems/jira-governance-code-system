@@ -15,7 +15,8 @@ jest.mock('@forge/api', () => {
 jest.mock('@forge/kvs', () => ({ kvs: {}, WhereConditions: { beginsWith: (v: string) => v } }));
 
 import { ChecklistStore, stateKey, eventKey } from '../../src/storage/checklist-store';
-import { createdEvent } from '../../src/domain/event-log';
+import { createEntry, statusEntry } from '../../src/domain/event-log';
+import { toDodTemplate } from '../../src/domain/dod-template';
 import { getIssueChecklist, getChecklistHistory, validateTransition } from '../../src/index';
 import { ChecklistTemplate } from '../../src/domain/models';
 
@@ -44,13 +45,14 @@ function largestValue(storage: CountingStorage, issueId: string): number {
 }
 
 async function toggles(store: ChecklistStore, issueId: string, tmpl: ChecklistTemplate, n: number) {
+  const dod = toDodTemplate(tmpl);
   for (let k = 0; k < n; k++) {
     const item = tmpl.items[k % tmpl.items.length];
     const tick = Math.floor(k / tmpl.items.length) % 2 === 0;
     await store.mutate(
       issueId,
-      async base => [createdEvent(base, tmpl, ACTOR, T)],
-      () => [{ type: tick ? 'TICK' : 'UNTICK', itemId: item.id, itemTitle: item.title, actorAccountId: ACTOR, at: T }],
+      async base => [createEntry(base, dod, ACTOR, T)],
+      st => [statusEntry(st, { templateItemId: item.id, statusIdTo: tick ? 'DOD_DONE' : 'DOD_OPEN', transitionName: tick ? 'Complete' : 'Reopen', actorPartyId: ACTOR, at: T })],
       { issueKey: `DEMO-${issueId}`, projectId: '10000' }
     );
   }
@@ -76,8 +78,9 @@ describe('B-04 size budget', () => {
     const storage = new CountingStorage();
     await toggles(new ChecklistStore(storage), '60003', template(6), 30);
     const st = storage.read(stateKey('60003'));
-    for (const item of st.items) expect(item.history).toBeUndefined();
+    for (const c of st.criteria) expect(c.history).toBeUndefined();
     expect(st.auditTrail).toBeUndefined();
+    expect(st.items).toBeUndefined();
   });
 
   it('still accepts a toggle after 5,000 prior events', async () => {

@@ -16,22 +16,24 @@ jest.mock('@forge/api', () => {
 });
 jest.mock('@forge/kvs', () => ({ kvs: {}, WhereConditions: { beginsWith: (v: string) => v } }));
 
-import { verifyChain, chainMessage, CHAIN_LIMIT_NOTE, createdEvent, emptyState, hashEvent, genesisHash, makeEvent, applyEvent } from '../../src/domain/event-log';
+import { verifyChain, chainMessage, CHAIN_LIMIT_NOTE, createEntry, emptyState, hashEntry, genesisHash, makeEntry, applyEntry, statusEntry } from '../../src/domain/event-log';
+import { toDodTemplate } from '../../src/domain/dod-template';
 import { ChecklistStore, eventKey, stateKey } from '../../src/storage/checklist-store';
 import { getChecklistHistory, validateTransition } from '../../src/index';
 import { DEFAULT_DEFINITION_OF_DONE } from '../../src/domain/checklist-engine';
-import { ChecklistEvent, ChecklistState } from '../../src/domain/models';
+import { ChangeEntry, DodState } from '../../src/domain/models';
 
 const T = '2026-11-01T00:00:00.000Z';
 
-function chain(issueId: string, n: number): { events: ChecklistEvent[]; state: ChecklistState } {
+function chain(issueId: string, n: number): { events: ChangeEntry[]; state: DodState } {
   let state = emptyState(issueId, `DEMO-${issueId}`, '10000');
-  const events: ChecklistEvent[] = [];
-  const e1 = createdEvent(state, DEFAULT_DEFINITION_OF_DONE, 'a', T);
-  state = applyEvent(state, e1); events.push(e1);
+  const events: ChangeEntry[] = [];
+  const e1 = createEntry(state, toDodTemplate(DEFAULT_DEFINITION_OF_DONE), 'a', T);
+  state = applyEntry(state, e1); events.push(e1);
   for (let k = 0; k < n; k++) {
-    const e = makeEvent(state, { type: k % 2 ? 'UNTICK' : 'TICK', itemId: 'item-unit-tests', at: T, actorAccountId: 'a' });
-    state = applyEvent(state, e); events.push(e);
+    const done = k % 2 === 0;
+    const e = makeEntry(state, statusEntry(state, { templateItemId: 'item-unit-tests', statusIdTo: done ? 'DOD_DONE' : 'DOD_OPEN', transitionName: done ? 'Complete' : 'Reopen', actorPartyId: 'a', at: T }));
+    state = applyEntry(state, e); events.push(e);
   }
   return { events, state };
 }
@@ -46,14 +48,14 @@ describe('B-05 verifyChain', () => {
     const { events } = chain('70001', 1);
     expect(events[0].prevHash).toBe(genesisHash('70001'));
     expect(events[1].prevHash).toBe(events[0].hash);
-    expect(hashEvent({ ...events[1], issueId: '70002' })).not.toBe(events[1].hash);
-    expect(hashEvent({ ...events[1], seq: 9 })).not.toBe(events[1].hash);
-    expect(hashEvent({ ...events[1], prevHash: 'x' })).not.toBe(events[1].hash);
+    expect(hashEntry({ ...events[1], issueId: '70002' })).not.toBe(events[1].hash);
+    expect(hashEntry({ ...events[1], seq: 9 })).not.toBe(events[1].hash);
+    expect(hashEntry({ ...events[1], prevHash: 'x' })).not.toBe(events[1].hash);
   });
 
   it('reports the first broken event when an old event is edited', () => {
     const { events, state } = chain('70001', 5);
-    events[2] = { ...events[2], actorAccountId: 'mallory' };
+    events[2] = { ...events[2], actorPartyId: 'mallory' };
     expect(verifyChain('70001', events, state)).toMatchObject({ ok: false, brokenAt: 3, reason: 'content changed' });
   });
 
@@ -85,8 +87,8 @@ describe('B-05 verifyChain', () => {
 
   it('reports a recomputed but unchained replacement of the last event', () => {
     const { events, state } = chain('70001', 2);
-    const forged = { ...events[2], actorAccountId: 'mallory' };
-    forged.hash = hashEvent(forged);
+    const forged = { ...events[2], actorPartyId: 'mallory' };
+    forged.hash = hashEntry(forged);
     events[2] = forged;
     expect(verifyChain('70001', events, state)).toMatchObject({ ok: false, brokenAt: 3, reason: 'does not match the stored head' });
   });
@@ -134,7 +136,7 @@ describe('B-05 store and resolvers', () => {
   it('getHistory reports a broken chain', async () => {
     const storage = new CountingStorage();
     const { events } = seed(storage, 3);
-    storage.put(eventKey('70003', 2), { ...events[1], actorAccountId: 'mallory' });
+    storage.put(eventKey('70003', 2), { ...events[1], actorPartyId: 'mallory' });
     const h: any = await getChecklistHistory({}, ctx, storage);
     expect(h.chain.ok).toBe(false);
     expect(h.chain.message).toContain('History check failed at event 2');
@@ -144,7 +146,7 @@ describe('B-05 store and resolvers', () => {
     const storage = new CountingStorage();
     const { events } = seed(storage, 3);
     const before = await validateTransition({ issue: { id: '70003' } }, {}, storage);
-    storage.put(eventKey('70003', 1), { ...events[0], actorAccountId: 'mallory' });
+    storage.put(eventKey('70003', 1), { ...events[0], actorPartyId: 'mallory' });
     const after = await validateTransition({ issue: { id: '70003' } }, {}, storage);
     expect(after).toEqual(before);
     expect(after.result).toBe(false);

@@ -20,7 +20,7 @@ import { validateTransition, toggleChecklistItem, getIssueChecklist, VALIDATOR_F
 import { getSettings, saveExemptions } from '../../src/settings/settings-resolvers';
 import { projectConfigKey } from '../../src/settings/project-config';
 import { DEFAULT_DEFINITION_OF_DONE } from '../../src/domain/checklist-engine';
-import { ItemState } from '../../src/domain/models';
+import { CriterionState } from '../../src/domain/models';
 
 const project = { id: '10000', key: 'DEMO' };
 const issue = { id: '92001', key: 'DEMO-92001', type: 'Task', typeId: '10004' };
@@ -42,39 +42,42 @@ function respond(opts: { statusFails?: boolean } = {}) {
 }
 
 const move = (to?: string) => ({ issue: { id: '92001', key: 'DEMO-92001' }, ...(to ? { transition: { from: { id: '3' }, to: { id: to } } } : {}) });
-const item = (p: Partial<ItemState>): ItemState => ({ id: 'x', title: 'X', isMandatory: true, category: 'TESTING', status: 'OPEN', ...p });
+const item = (p: Partial<CriterionState>): CriterionState => ({
+  workEffortId: 'crit:1:x', templateItemId: 'x', workEffortName: 'X', sequenceNum: 1, purposeTypeId: 'TESTING',
+  isMandatory: true, evidenceRequired: false, currentStatusId: 'DOD_OPEN', ...p
+});
 
 describe('B-10 evaluateGate (one rule)', () => {
-  it('counts DONE and WAIVED mandatory items as done, and ignores optional items', () => {
-    const g = evaluateGate({ items: [item({ id: 'a', status: 'DONE' }), item({ id: 'b', status: 'WAIVED' }), item({ id: 'c', isMandatory: false })] } as any);
+  it('counts DOD_DONE and DOD_WAIVED mandatory criteria as done, and ignores optional ones', () => {
+    const g = evaluateGate({ criteria: [item({ templateItemId: 'a', currentStatusId: 'DOD_DONE' }), item({ templateItemId: 'b', currentStatusId: 'DOD_WAIVED' }), item({ templateItemId: 'c', isMandatory: false })] });
     expect(g).toEqual({ satisfied: true, openMandatory: [] });
   });
 
   it('lists open mandatory items in template order', () => {
-    const g = evaluateGate({ items: [item({ id: 'a', title: 'A' }), item({ id: 'b', status: 'DONE' }), item({ id: 'c', title: 'C' })] } as any);
+    const g = evaluateGate({ criteria: [item({ templateItemId: 'a', workEffortName: 'A' }), item({ templateItemId: 'b', currentStatusId: 'DOD_DONE' }), item({ templateItemId: 'c', workEffortName: 'C' })] });
     expect(g.satisfied).toBe(false);
-    expect(g.openMandatory.map(i => i.title)).toEqual(['A', 'C']);
+    expect(g.openMandatory.map(c => c.workEffortName)).toEqual(['A', 'C']);
   });
 
   it('counts zero mandatory items as satisfied', () => {
-    expect(evaluateGate({ items: [item({ isMandatory: false })] } as any).satisfied).toBe(true);
-    expect(evaluateGate({ items: [] } as any).satisfied).toBe(true);
+    expect(evaluateGate({ criteria: [item({ isMandatory: false })] }).satisfied).toBe(true);
+    expect(evaluateGate({ criteria: [] }).satisfied).toBe(true);
   });
 
   it('needs evidence on a DONE item that requires it', () => {
-    expect(evaluateGate({ items: [item({ status: 'DONE', evidenceRequired: true })] } as any).satisfied).toBe(false);
-    expect(evaluateGate({ items: [item({ status: 'DONE', evidenceRequired: true, hasEvidence: true })] } as any).satisfied).toBe(true);
+    expect(evaluateGate({ criteria: [item({ currentStatusId: 'DOD_DONE', evidenceRequired: true })] }).satisfied).toBe(false);
+    expect(evaluateGate({ criteria: [item({ currentStatusId: 'DOD_DONE', evidenceRequired: true, evidenceContentId: 'content:1:2' })] }).satisfied).toBe(true);
   });
 
   it('treats a notAssignee item done by the current assignee as open', () => {
-    const st = { items: [item({ status: 'DONE', notAssignee: true, byAccountId: 'dev' })] } as any;
+    const st = { criteria: [item({ currentStatusId: 'DOD_DONE', excludedRoleTypeId: 'ASSIGNEE', lastStatusByPartyId: 'dev' })] };
     expect(evaluateGate(st, 'dev').satisfied).toBe(false);
     expect(evaluateGate(st, 'reviewer').satisfied).toBe(true);
     expect(evaluateGate(st).satisfied).toBe(true);
   });
 
   it('words the block message with every open item and a next step', () => {
-    expect(blockMessage([item({ title: 'A' }), item({ title: 'B' })]))
+    expect(blockMessage([item({ workEffortName: 'A' }), item({ workEffortName: 'B' })]))
       .toBe('Definition of Done is not complete. Open mandatory items: A; B. Open the DefinitionGuard panel on this issue to finish them.');
   });
 });

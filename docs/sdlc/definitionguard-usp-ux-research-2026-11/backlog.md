@@ -39,7 +39,7 @@ APPROVED 2026-11-01 B-01..B-20 (owner, in chat: "APPROVED now all"; read as ever
 | 18 | B-18 | Jira call hygiene: no redundant lookups, 429 backoff | Scale budget | audit 2.1 row "429", DG-08 | S | none |
 | 19 | B-19 | Hygiene, dead code, test truthfulness | Quality | DG-13, DG-16, copyright header | S | `[DEP]`, `[SCOPE]` |
 | 20 | B-20 | Team-managed projects | H12 | NF-02 context | S | `[SCOPE]` |
-| 15a | B-21 | Silverston-aligned domain and storage model (owner decision "C", 2026-11-01); runs before B-16 | Owner decision | spec v3; replaces v2 D-01, D-03, D-13 | L | waits for owner approval of `docs/spec/definitionguard-spec-v3.md` |
+| 15a | B-21 | Silverston-aligned domain and storage model (owner decision "C", 2026-11-01); runs before B-16 | Owner decision | spec v3; replaces v2 D-01, D-03, D-13 | L | spec v3 approved 2026-11-01 (option A) |
 
 ## Items
 
@@ -263,7 +263,7 @@ APPROVED 2026-11-01 B-01..B-20 (owner, in chat: "APPROVED now all"; read as ever
 
 ### B-21. Silverston-aligned domain and storage model
 - **Serves:** owner decision 2026-11-01: restructure the model to follow the Silverston patterns (as Apache OFBiz implements them) before B-16.
-- **Design:** `docs/spec/definitionguard-spec-v3.md` (DRAFT). Build starts only after the owner approves it.
+- **Design:** `docs/spec/definitionguard-spec-v3.md`, approved 2026-11-01 ("approved. A.").
 - **Acceptance criteria:**
   1. Criteria are DOD_CRITERION WorkEfforts under the issue WorkEffort (WORK_EFF_BREAKDOWN, sequenceNum); the template link is WORK_EFF_TEMPLATE with revisionNumber. Test: Unit.
   2. Every status change is a WorkEffortStatus row (statusId, statusDatetime, setByPartyId, reason) inside a change-log entry; StatusValidChange is enforced and an invalid change is refused before any write. Test: Unit, Resolver (negative).

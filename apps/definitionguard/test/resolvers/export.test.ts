@@ -16,7 +16,8 @@ jest.mock('@forge/kvs', () => ({ kvs: {}, WhereConditions: { beginsWith: (v: str
 
 import { exportChecklistHistory, toggleChecklistItem, waiveChecklistItem, handler, setGlobalStorageProvider } from '../../src/index';
 import { historyRows, formatLocal } from '../../src/ui/panel-view-model';
-import { CHAIN_LIMIT_NOTE, createdEvent, emptyState, applyEvent, makeEvent } from '../../src/domain/event-log';
+import { CHAIN_LIMIT_NOTE, createEntry, emptyState, applyEntry, makeEntry, statusEntry } from '../../src/domain/event-log';
+import { toDodTemplate } from '../../src/domain/dod-template';
 import { eventKey, stateKey } from '../../src/storage/checklist-store';
 import { retryPolicy } from '../../src/integrity/attestation';
 import { DEFAULT_DEFINITION_OF_DONE } from '../../src/domain/checklist-engine';
@@ -60,26 +61,28 @@ describe('B-15 export', () => {
       chain: { ok: true, checked: 3, message: 'History checked: 3 events, chain intact.' },
       limit: CHAIN_LIMIT_NOTE
     });
-    expect(doc.events.map((e: any) => e.type)).toEqual(['CREATED', 'TICK', 'WAIVE']);
-    expect(doc.events[1].evidence).toEqual({ url: 'https://ci.example/1' });
-    expect(doc.events[2].reason).toBe('Pair-programmed and reviewed live.');
+    expect(doc.events.map((e: any) => e.transitionName)).toEqual(['Create', 'Complete', 'Waive']);
+    expect(doc.events[1].rows).toContainEqual(expect.objectContaining({ entity: 'Content', contentTypeId: 'DOD_EVIDENCE', objectInfo: 'https://ci.example/1' }));
+    expect(doc.events[1].rows).toContainEqual(expect.objectContaining({ entity: 'WorkEffortContent', workEffortContentTypeId: 'DOD_EVIDENCE' }));
+    expect(doc.events[2].rows[0]).toMatchObject({ entity: 'WorkEffortStatus', statusId: 'DOD_WAIVED', reason: 'Pair-programmed and reviewed live.', setByPartyId: '712020:lead' });
     expect(res.fileName).toBe('DEMO-96001-definitionguard-history.json');
   });
 
   it('reports a broken chain in the export', async () => {
     await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, as('712020:dev'), storage);
-    storage.put(eventKey('96001', 2), { ...storage.read(eventKey('96001', 2)), actorAccountId: 'mallory' });
+    storage.put(eventKey('96001', 2), { ...storage.read(eventKey('96001', 2)), actorPartyId: 'mallory' });
     const doc = JSON.parse((await exportChecklistHistory({}, as('712020:lead'), storage) as any).text);
     expect(doc.chain).toMatchObject({ ok: false, brokenAt: 2 });
   });
 
   it('exports 1,000 events, reading them in pages of at most 100', async () => {
     let st = emptyState('96001', 'DEMO-96001', '10000');
-    const e1 = createdEvent(st, DEFAULT_DEFINITION_OF_DONE, 'a', 't');
-    st = applyEvent(st, e1); storage.put(eventKey('96001', 1), e1);
+    const e1 = createEntry(st, toDodTemplate(DEFAULT_DEFINITION_OF_DONE), 'a', 't');
+    st = applyEntry(st, e1); storage.put(eventKey('96001', 1), e1);
     for (let n = 2; n <= 1000; n++) {
-      const e = makeEvent(st, { type: n % 2 ? 'UNTICK' : 'TICK', itemId: 'item-unit-tests', at: 't', actorAccountId: 'a' });
-      st = applyEvent(st, e); storage.put(eventKey('96001', n), e);
+      const done = n % 2 === 0;
+      const e = makeEntry(st, statusEntry(st, { templateItemId: 'item-unit-tests', statusIdTo: done ? 'DOD_DONE' : 'DOD_OPEN', transitionName: done ? 'Complete' : 'Reopen', actorPartyId: 'a', at: 't' }));
+      st = applyEntry(st, e); storage.put(eventKey('96001', n), e);
     }
     storage.put(stateKey('96001'), st);
     const pages: Array<number | undefined> = [];
