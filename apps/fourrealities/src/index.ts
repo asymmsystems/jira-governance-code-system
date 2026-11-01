@@ -11,6 +11,11 @@ import { MetricsEngine } from './domain/metrics-engine';
 import { MetricsRepository, StorageProvider } from './storage/metrics-repository';
 import { factsFromIssue, normalizeException, PROPERTY_KEYS } from './jira/issue-facts';
 import { getSiteConfig } from './jira/site-config';
+import { readRemoteLinks } from './jira/remote-links';
+import { isStarted } from './domain/gates';
+
+/** Time a resolver may spend reading remote links, inside the 25 s Forge limit. */
+export const RESOLVER_LINK_BUDGET_MS = 18_000;
 import { parseDevField } from './jira/dev-field';
 import {
   ExceptionRecord,
@@ -124,8 +129,11 @@ export async function getProjectDashboard(
   const storage = resolveStorage(storageProvider);
   const repository = new MetricsRepository(storage);
   let devFieldId: string | null;
+  let siteHost: string | undefined;
   try {
-    devFieldId = (await getSiteConfig(storage, asAppRequest)).devFieldId;
+    const config = await getSiteConfig(storage, asAppRequest);
+    devFieldId = config.devFieldId;
+    siteHost = config.siteHost || undefined;
   } catch (err: any) {
     return jiraError(undefined, `Live Jira sync failed (${err?.message}).`);
   }
@@ -134,10 +142,17 @@ export async function getProjectDashboard(
     return jiraError(status, `Live Jira sync failed (${error}).`);
   }
 
+  // Remote links are read for started issues only, 8 at a time, inside the time budget.
+  // Issues not reached show Intent "Needs re-check" (spec v2, Snapshot schedule).
+  const started = issues.filter(iss => isStarted(factsFromIssue(iss))).map(iss => String(iss.id));
+  const links = await readRemoteLinks(started, asAppRequest, Date.now() + RESOLVER_LINK_BUDGET_MS);
+
   const rows: IssueRow[] = [];
   for (const iss of issues) {
     const exception = normalizeException(await repository.getIssueException(String(iss.id)));
-    rows.push(MetricsEngine.buildRow(factsFromIssue(iss, { exception, devFieldId })));
+    const id = String(iss.id);
+    const remoteLinks = links.get(id) ?? (started.includes(id) ? undefined : []);
+    rows.push(MetricsEngine.buildRow(factsFromIssue(iss, { exception, devFieldId, siteHost, remoteLinks })));
   }
 
   return {
@@ -173,7 +188,7 @@ export async function getIssueAlignment(
   // Signals come from Jira only. There is no cached fallback: a failed read is reported.
   // Every read runs as the viewer, so the panel never shows what the viewer cannot see (FR-18).
   try {
-    const { devFieldId } = await getSiteConfig(storage, asUserRequest);
+    const { devFieldId, siteHost } = await getSiteConfig(storage, asUserRequest);
     const [issueRes, remoteLinksRes] = await Promise.all([
       api.asUser().requestJira(
         route`/rest/api/3/issue/${issueId}?fields=${issueFields(devFieldId)}&properties=${PROPERTY_KEYS.join(',')}&expand=changelog`
@@ -194,7 +209,7 @@ export async function getIssueAlignment(
       } catch {}
     }
 
-    return { ok: true, row: MetricsEngine.buildRow(factsFromIssue(iss, { remoteLinks, exception, devFieldId })) };
+    return { ok: true, row: MetricsEngine.buildRow(factsFromIssue(iss, { remoteLinks, exception, devFieldId, siteHost: siteHost || undefined })) };
   } catch (err: any) {
     return jiraError(undefined, `FourRealities: Failed to query Jira for issue '${issueKey}': ${err?.message || 'network error'}`);
   }

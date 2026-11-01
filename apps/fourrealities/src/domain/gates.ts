@@ -16,37 +16,42 @@ export function isDone(f: IssueFacts): boolean {
   return f.statusCategory === 'done';
 }
 
-const INTENT_TITLE_WORDS = ['adr', 'rfc', 'spec', 'decision', 'architecture', 'blueprint', 'design doc', 'tech spec', 'requirement'];
-const INTENT_URL_WORDS = ['/adr', '/rfc', '/spec', 'architecture', 'decision', 'blueprint', 'design-doc'];
-const INTENT_LINK_TYPE_WORDS = ['document', 'specif', 'implement', 'verif', 'satisf', 'decision', 'design'];
-const INTENT_ISSUE_TYPE_WORDS = ['architecture', 'adr', 'spec', 'rfc', 'requirement', 'documentation', 'decision'];
+/** Issue types that record a decision or a specification. Compared by exact name, without case. */
+export const INTENT_ISSUE_TYPES = ['adr', 'architecture decision', 'decision', 'decision record', 'spec', 'specification', 'requirement'];
+
+const CONFLUENCE_APP_TYPE = 'com.atlassian.confluence';
+
+function isSameSiteConfluencePage(url: string | undefined, siteHost: string | undefined): boolean {
+  if (!url || !siteHost) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.host === siteHost && parsed.pathname.startsWith('/wiki/');
+  } catch {
+    return false;
+  }
+}
 
 /**
- * Intent: keyword rule carried over from v1, labelled HEURISTIC. Backlog B-15 replaces it
- * with the link-structure rule.
+ * Intent: a Confluence page on this site, or an issue of a decision or specification type,
+ * is linked. FourRealities reads the link itself (VERIFIED) and does not read the page.
+ * Title keywords never count (FR-13).
  */
 export function evaluateIntent(f: IssueFacts): GateResult {
-  const remoteHit = (f.remoteLinks || []).some(rl => {
-    const title = String(rl.title || '').toLowerCase();
-    const url = String(rl.url || '').toLowerCase();
-    return INTENT_TITLE_WORDS.some(w => title.includes(w)) || INTENT_URL_WORDS.some(w => url.includes(w));
-  });
-  const linkHit = f.issueLinks.some(l => {
-    const inward = String(l.linkInward || '').toLowerCase();
-    const outward = String(l.linkOutward || '').toLowerCase();
-    const summary = String(l.summary || '').toLowerCase();
-    const typeName = String(l.typeName || '').toLowerCase();
-    return INTENT_LINK_TYPE_WORDS.some(w => inward.includes(w) || outward.includes(w))
-      || ['[adr]', '[spec]', '[arch]', '[rfc]'].some(p => summary.startsWith(p))
-      || ['architecture decision', 'software design', 'design document'].some(p => summary.includes(p))
-      || INTENT_ISSUE_TYPE_WORDS.some(w => typeName.includes(w));
-  });
-  if (remoteHit || linkHit) {
-    return { state: 'FOUND', verification: 'HEURISTIC', reason: 'INTENT_KEYWORD_LINK' };
+  const page = (f.remoteLinks || []).find(rl =>
+    rl.applicationType === CONFLUENCE_APP_TYPE || isSameSiteConfluencePage(rl.url, f.siteHost));
+  if (page) {
+    return { state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK', args: { title: String(page.title || page.url || '') } };
   }
-  return isStarted(f)
-    ? { state: 'MISSING', reason: 'INTENT_NONE' }
-    : { state: 'NOT_APPLICABLE', reason: 'NOT_STARTED' };
+  const decision = f.issueLinks.find(l => INTENT_ISSUE_TYPES.includes(String(l.typeName || '').trim().toLowerCase()));
+  if (decision) {
+    return { state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_DECISION_ISSUE', args: { key: String(decision.key || ''), type: String(decision.typeName) } };
+  }
+  if (!isStarted(f)) {
+    return { state: 'NOT_APPLICABLE', reason: 'NOT_STARTED' };
+  }
+  return f.remoteLinks === undefined
+    ? { state: 'NEEDS_RECHECK', reason: 'INTENT_LINKS_NOT_READ' }
+    : { state: 'MISSING', reason: 'INTENT_NONE' };
 }
 
 const HEX64 = /^[0-9a-f]{64}$/i;

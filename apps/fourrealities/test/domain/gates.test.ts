@@ -28,22 +28,47 @@ describe('every gate result carries a state and a reason', () => {
   });
 });
 
-describe('Intent (keyword heuristic until B-15)', () => {
-  it('labels a keyword match as HEURISTIC, never VERIFIED', () => {
-    const r = evaluateIntent(makeFacts({ remoteLinks: [{ title: 'ADR-1 Settlement', url: 'https://x.example/doc' }] }));
-    expect(r).toEqual({ state: 'FOUND', verification: 'HEURISTIC', reason: 'INTENT_KEYWORD_LINK' });
+describe('B-15: Intent from link structure, never title keywords', () => {
+  const SITE = 'asymmsystems.atlassian.net';
+  const intent = (o: any) => evaluateIntent(makeFacts({ siteHost: SITE, ...o }));
+
+  it('finds a Confluence app link, verified by FourRealities, with its title', () => {
+    expect(intent({ remoteLinks: [{ url: 'https://other.example/x', title: 'Payment flow', applicationType: 'com.atlassian.confluence' }] }))
+      .toEqual({ state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK', args: { title: 'Payment flow' } });
   });
 
-  it('matches link types, summaries and issue types', () => {
-    expect(evaluateIntent(makeFacts({ issueLinks: [{ linkOutward: 'implements' }] })).state).toBe('FOUND');
-    expect(evaluateIntent(makeFacts({ issueLinks: [{ summary: '[ADR] Sharding' }] })).state).toBe('FOUND');
-    expect(evaluateIntent(makeFacts({ issueLinks: [{ typeName: 'Architecture Decision' }] })).state).toBe('FOUND');
-    expect(evaluateIntent(makeFacts({ remoteLinks: [{ url: 'https://x.example/rfc/9' }] })).state).toBe('FOUND');
+  it('finds a web link to a Confluence page on this site', () => {
+    expect(intent({ remoteLinks: [{ url: `https://${SITE}/wiki/spaces/ARCH/pages/123`, title: 'Settlement' }] }).reason).toBe('INTENT_CONFLUENCE_LINK');
   });
 
-  it('is MISSING once started and NOT_APPLICABLE before', () => {
-    expect(evaluateIntent(makeFacts({ remoteLinks: undefined })).state).toBe('MISSING');
-    expect(evaluateIntent(makeFacts({ statusCategory: 'new', statusChanges: 0 }))).toEqual({ state: 'NOT_APPLICABLE', reason: 'NOT_STARTED' });
+  it('rejects the DEMO-26 placeholder on another host, and keyword titles anywhere', () => {
+    expect(intent({ remoteLinks: [{ url: 'https://confluence.atlassian.net/wiki/spaces/ARCH/pages/ADR-014', title: 'ADR-014: Architecture Decision Record' }] }).state).toBe('MISSING');
+    expect(intent({ remoteLinks: [{ url: 'https://example.com', title: 'ADR: Architecture Decision for DEMO-1' }] }).state).toBe('MISSING');
+    expect(intent({ remoteLinks: [{ url: 'https://example.com/spec', title: 'Inspection report' }] }).state).toBe('MISSING');
+    expect(intent({ remoteLinks: [{ url: `https://${SITE}/browse/DEMO-1`, title: 'Decision' }] }).state).toBe('MISSING');
+    expect(intent({ remoteLinks: [{ url: 'not a url', title: 'x' }] }).state).toBe('MISSING');
+  });
+
+  it('finds an issue link to a decision or specification issue type, matched exactly', () => {
+    expect(intent({ issueLinks: [{ key: 'DEMO-2', typeName: 'Architecture Decision' }] }))
+      .toEqual({ state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_DECISION_ISSUE', args: { key: 'DEMO-2', type: 'Architecture Decision' } });
+    expect(intent({ issueLinks: [{ key: 'DEMO-3', typeName: 'adr' }] }).state).toBe('FOUND');
+    expect(intent({ issueLinks: [{ key: 'DEMO-4', typeName: 'Story', summary: '[ADR] Sharding', linkOutward: 'implements' }] }).state).toBe('MISSING');
+    expect(intent({ issueLinks: [{ key: 'DEMO-5', typeName: 'Specification Review' }] }).state).toBe('MISSING');
+  });
+
+  it('needs a re-check when remote links were not read and no issue link qualifies', () => {
+    expect(intent({ remoteLinks: undefined })).toEqual({ state: 'NEEDS_RECHECK', reason: 'INTENT_LINKS_NOT_READ' });
+    expect(intent({ remoteLinks: undefined, issueLinks: [{ key: 'DEMO-2', typeName: 'Decision' }] }).state).toBe('FOUND');
+  });
+
+  it('is not applicable before work starts, unless a decision is already linked', () => {
+    expect(intent({ statusCategory: 'new', statusChanges: 0, remoteLinks: undefined })).toEqual({ state: 'NOT_APPLICABLE', reason: 'NOT_STARTED' });
+    expect(intent({ statusCategory: 'new', statusChanges: 0, issueLinks: [{ key: 'DEMO-2', typeName: 'Decision' }] }).state).toBe('FOUND');
+  });
+
+  it('counts only app links when the site host is unknown', () => {
+    expect(evaluateIntent(makeFacts({ remoteLinks: [{ url: 'https://x.atlassian.net/wiki/a', title: 't' }] })).state).toBe('MISSING');
   });
 });
 

@@ -14,13 +14,26 @@ const DEV_FIELD_TYPE = 'com.atlassian.jira.plugins.jira-development-integration-
 export interface SiteConfig {
   /** Id of the Development field, or null when the site has none. */
   devFieldId: string | null;
+  /** Host name of this Jira site, used to recognise Confluence pages on the same site. */
+  siteHost: string | null;
   readAt: string;
 }
 
 export type JiraRequest = (path: string) => Promise<{ status: number; json: () => Promise<any> }>;
 
+/** Host of the site from serverInfo; null when it cannot be read. Not fatal: only same-site links depend on it. */
+async function readSiteHost(request: JiraRequest): Promise<string | null> {
+  try {
+    const res = await request('/rest/api/3/serverInfo');
+    if (res.status !== 200) return null;
+    return new URL(String((await res.json())?.baseUrl)).host || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Returns the cached site configuration, or reads the field list and caches it.
+ * Returns the cached site configuration, or reads the field list and the site host and caches them.
  * The Development field is found by its custom type or by its name, never by a fixed id.
  */
 export async function getSiteConfig(storage: StorageProvider, request: JiraRequest, now: number = Date.now()): Promise<SiteConfig> {
@@ -35,7 +48,7 @@ export async function getSiteConfig(storage: StorageProvider, request: JiraReque
   const fields = await res.json();
   const list: any[] = Array.isArray(fields) ? fields : [];
   const dev = list.find(f => f?.schema?.custom === DEV_FIELD_TYPE) || list.find(f => f?.name === 'Development');
-  const config: SiteConfig = { devFieldId: dev?.id ? String(dev.id) : null, readAt: new Date(now).toISOString() };
+  const config: SiteConfig = { devFieldId: dev?.id ? String(dev.id) : null, siteHost: await readSiteHost(request), readAt: new Date(now).toISOString() };
   await storage.set(SITE_CONFIG_KEY, config);
   return config;
 }

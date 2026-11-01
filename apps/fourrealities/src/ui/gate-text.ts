@@ -60,7 +60,6 @@ const SOURCE: Record<GateReason, string> = {
   NOT_DONE: 'Jira status',
   INTENT_CONFLUENCE_LINK: 'Jira remote link to Confluence',
   INTENT_DECISION_ISSUE: 'Jira issue link',
-  INTENT_KEYWORD_LINK: 'Jira link titles (keyword match)',
   INTENT_LINKS_NOT_READ: 'Jira remote links',
   INTENT_NONE: 'Jira issue links and remote links',
   DOD_COMPLETE_DG: 'DefinitionGuard property definitionguard-dod',
@@ -107,7 +106,6 @@ export function detailText(result: GateResult): string {
     case 'NOT_DONE': return 'This gate applies when the issue is done.';
     case 'INTENT_CONFLUENCE_LINK': return `Confluence page linked: ${arg(result, 'title')}. FourRealities does not read the page content.`;
     case 'INTENT_DECISION_ISSUE': return `Decision issue linked: ${arg(result, 'key')} (${arg(result, 'type')}).`;
-    case 'INTENT_KEYWORD_LINK': return 'A link title or URL contains a decision keyword. FourRealities does not check the target.';
     case 'INTENT_LINKS_NOT_READ': return 'Remote links were not read in this snapshot. Refresh to read them.';
     case 'INTENT_NONE': return 'No Confluence page or decision issue is linked.';
     case 'DOD_COMPLETE_DG': return `DefinitionGuard reports the Definition of Done is complete (${arg(result, 'completed')} of ${arg(result, 'total')} items).`;

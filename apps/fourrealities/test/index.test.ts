@@ -48,7 +48,7 @@ jest.mock('@forge/kvs', () => ({
 
 /** Starts with a cached site configuration, so tests do not need a field-list call. */
 class MockStorage implements StorageProvider {
-  private store: Map<string, any> = new Map([['fr:cfg:site', { devFieldId: 'customfield_10000', readAt: new Date().toISOString() }]]);
+  private store: Map<string, any> = new Map([['fr:cfg:site', { devFieldId: 'customfield_10000', siteHost: 'asymmsystems.atlassian.net', readAt: new Date().toISOString() }]]);
 
   async get<T>(key: string): Promise<T | undefined> {
     return this.store.get(key);
@@ -670,11 +670,13 @@ describe('B-10: one Code-gate path from the Development field', () => {
     await storage.delete('fr:cfg:site');
     mockRequestJira
       .mockResolvedValueOnce({ status: 200, json: async () => [{ id: 'customfield_10042', name: 'Development' }] })
+      .mockResolvedValueOnce({ status: 200, json: async () => ({ baseUrl: 'https://asymmsystems.atlassian.net' }) })
       .mockResolvedValueOnce({ status: 200, json: async () => ({ ...issue, fields: { ...issue.fields, customfield_10042: merged } }) })
       .mockResolvedValueOnce({ status: 200, json: async () => [] });
     const res: any = await getIssueAlignment({}, { extension: { issue: { id: '40001', key: 'DEMO-40' } } }, storage);
     expect(mockUserRequestJira.mock.calls[0][0]).toBe('/rest/api/3/field');
-    expect(String(mockUserRequestJira.mock.calls[1][0])).toContain('customfield_10042');
+    expect(mockUserRequestJira.mock.calls[1][0]).toBe('/rest/api/3/serverInfo');
+    expect(String(mockUserRequestJira.mock.calls[2][0])).toContain('customfield_10042');
     expect(res.row.gates.code.reason).toBe('PR_MERGED');
   });
 
@@ -733,3 +735,41 @@ describe('B-10: one Code-gate path from the Development field', () => {
   });
 });
 
+
+describe('B-15: Intent from link structure on both views', () => {
+  const page = [{ object: { url: 'https://asymmsystems.atlassian.net/wiki/spaces/ARCH/pages/1', title: 'ADR-7 Settlement' } }];
+  const started = { id: '50001', key: 'DEMO-50', fields: { summary: 'S', status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } } }, properties: {} };
+  const todo = { id: '50002', key: 'DEMO-51', fields: { summary: 'T', status: { name: 'To Do', statusCategory: { key: 'new' } } }, properties: {}, changelog: { histories: [] } };
+  beforeEach(() => {
+    mockRequestJira.mockReset();
+    mockAppRequestJira.mockClear();
+    mockUserRequestJira.mockClear();
+  });
+
+  it('reads remote links for started issues only and agrees with the issue panel', async () => {
+    mockRequestJira.mockImplementation(async (path: string) => {
+      if (path.startsWith('/rest/api/3/search/jql')) return { status: 200, json: async () => ({ issues: [started, todo] }) };
+      if (path === '/rest/api/3/issue/50001/remotelink') return { status: 200, json: async () => page };
+      if (path.startsWith('/rest/api/3/issue/50001?')) return { status: 200, json: async () => started };
+      return { status: 404, json: async () => ({}) };
+    });
+    const dash: any = await getProjectDashboard({}, { extension: { project: { key: 'DEMO' } } }, new MockStorage());
+    const remoteCalls = mockAppRequestJira.mock.calls.map(c => String(c[0])).filter(p => p.endsWith('/remotelink'));
+    expect(remoteCalls).toEqual(['/rest/api/3/issue/50001/remotelink']);
+    const byKey = Object.fromEntries(dash.rows.map((r: any) => [r.issueKey, r.gates.intent]));
+    expect(byKey['DEMO-50']).toEqual({ state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK', args: { title: 'ADR-7 Settlement' } });
+    expect(byKey['DEMO-51']).toEqual({ state: 'NOT_APPLICABLE', reason: 'NOT_STARTED' });
+
+    const panel: any = await getIssueAlignment({}, { extension: { issue: { id: '50001', key: 'DEMO-50' } } }, new MockStorage());
+    expect(panel.row.gates.intent).toEqual(byKey['DEMO-50']);
+  });
+
+  it('shows Needs re-check on the dashboard when a remote link read fails', async () => {
+    mockRequestJira.mockImplementation(async (path: string) => {
+      if (path.startsWith('/rest/api/3/search/jql')) return { status: 200, json: async () => ({ issues: [started] }) };
+      return { status: 500, json: async () => ({}) };
+    });
+    const dash: any = await getProjectDashboard({}, { extension: { project: { key: 'DEMO' } } }, new MockStorage());
+    expect(dash.rows[0].gates.intent).toEqual({ state: 'NEEDS_RECHECK', reason: 'INTENT_LINKS_NOT_READ' });
+  });
+});

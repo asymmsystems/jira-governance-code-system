@@ -8,7 +8,7 @@ import { GateReason, GateResult } from '../../src/domain/models';
 import { appearanceOf, chipText, detailText, glyphOf, raiText, rateText, riskAppearance, sourceLine, stateLabel } from '../../src/ui/gate-text';
 
 const ALL_REASONS: GateReason[] = [
-  'NOT_STARTED', 'NOT_DONE', 'INTENT_CONFLUENCE_LINK', 'INTENT_DECISION_ISSUE', 'INTENT_KEYWORD_LINK', 'INTENT_LINKS_NOT_READ',
+  'NOT_STARTED', 'NOT_DONE', 'INTENT_CONFLUENCE_LINK', 'INTENT_DECISION_ISSUE', 'INTENT_LINKS_NOT_READ',
   'INTENT_NONE', 'DOD_COMPLETE_DG', 'DOD_OPEN_DG', 'DOD_SHAPE_UNKNOWN', 'DOD_COMPLETE_HC', 'DOD_OPEN_HC', 'DOD_NONE',
   'CODE_EXCEPTED', 'PR_MERGED', 'PR_OPEN', 'PR_OPEN_AT_DONE', 'PR_NONE', 'NO_DEV_TOOL', 'SEAL_VALID_LS',
   'SEAL_BROKEN_LS', 'SEAL_OTHER_LS', 'SEAL_SHAPE_UNKNOWN', 'SEAL_NONE', 'CHANGED_SINCE_ATTESTATION'
