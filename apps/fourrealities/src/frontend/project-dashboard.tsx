@@ -13,6 +13,7 @@ import {
   Heading,
   Label,
   Inline,
+  LineChart,
   Lozenge,
   Modal,
   ModalBody,
@@ -29,6 +30,7 @@ import { router } from '@forge/bridge';
 import { GATE_NAMES, GateName, IssueRow, ProjectDashboardView } from '../contract/data/models';
 import { GATE_LABEL, raiText, rateText, riskAppearance } from '../ui/gate-text';
 import { DashboardFilters, FilterField, GATE_FILTER_OPTIONS, NO_FILTERS, activeFilters, applyFilters, filterOptions, missingGateLabel } from '../ui/filters';
+import { TREND_WEEKS, chartData, recentWeeks, trendNotice, trendTableRows } from '../ui/trend';
 import { GateChips, GateRow } from './gate-row';
 
 type Option<T extends string = string> = { label: string; value: T };
@@ -42,6 +44,28 @@ const RATE_OF: Record<GateName, (v: ProjectDashboardView) => number | null> = {
 };
 
 const RISK_RANK: Record<IssueRow['risk'], number> = { CRITICAL: 1, HIGH: 2, MEDIUM: 3, LOW: 4, UNRATED: 5 };
+
+/**
+ * Weekly trend for the whole project (spec v2, D-4): a text table first, so the numbers are
+ * readable in order, then a line chart of the same numbers.
+ */
+export const TrendPanel: React.FC<{ view: ProjectDashboardView }> = ({ view }) => {
+  const points = recentWeeks(view.trend);
+  const notice = trendNotice(points, view.generatedAt);
+  return (
+    <Stack space="space.100">
+      <Heading as="h4">{`Trend: last ${TREND_WEEKS} weeks (whole project)`}</Heading>
+      {notice ? <Text>{notice}</Text> : (
+        <>
+          {trendTableRows(points).map(t => (
+            <Text key={t.week}>{`${t.week}: ${t.rai}; ${t.intent}; ${t.process}; ${t.code}; ${t.audit}.`}</Text>
+          ))}
+          <LineChart data={chartData(points)} xAccessor="week" yAccessor="percent" colorAccessor="series" title="Evidence found, percent of rated" />
+        </>
+      )}
+    </Stack>
+  );
+};
 
 /** Rows sorted for triage: most missing evidence first, then lowest RAI. */
 export function triageOrder(rows: IssueRow[]): IssueRow[] {
@@ -138,6 +162,8 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
           ? `RAI: n/a. No issue is rated yet (${summary.unratedIssues} unrated).`
           : `RAI ${summary.averageRAI}% across ${summary.ratedIssues} rated issues (${summary.unratedIssues} unrated). RAI is the share of rated gates with evidence found.`}
       </Text>
+
+      <TrendPanel view={view} />
 
       <Inline space="space.100" alignBlock="end" shouldWrap>
         <Stack space="space.050">

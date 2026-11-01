@@ -232,6 +232,10 @@ Audit and Process show "Source: LedgerSeal property ledgerseal-cert" or "Source:
 - **averageRAI** = rounded mean RAI over rated issues; `null` when none is rated.
 - Counts shown in the UI come from the gate counts, never from a rounded percentage.
 
+## Project dashboard trend (B-19)
+
+The trend panel shows the last four weekly trend points, oldest first, labelled "whole project" (D-4: the trend is not filtered per viewer). It shows a text line per week first, then a UI Kit `LineChart` of the same numbers (`src/ui/trend.ts`). Each rate keeps its parts: "Week of 2026-10-26: RAI 64% (30 rated issues); Intent 12 of 40 rated (30%); ...". A gate with no rated issue in a week reads "n/a (0 rated)" and has no chart point. With fewer than two points the panel says "Trend starts after two weekly snapshots. Next snapshot: <Monday after this week>." and draws no chart.
+
 ## Project dashboard filters (B-18)
 
 The filter bar sits above the triage table, in this tab order: Search (key or summary), Assignee, Sprint, Gate. Each is a labelled control. Filtering runs on the visible snapshot rows in the browser (`src/ui/filters.ts`); it makes no Jira call.

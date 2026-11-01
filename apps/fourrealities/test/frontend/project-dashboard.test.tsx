@@ -108,6 +108,35 @@ describe('ProjectDashboard', () => {
     expect(() => findButton(r.root, 'Clear all filters')).toThrow('No button');
   });
 
+  const point = (weekStart: string, found: number, missing: number) => ({
+    weekStart, generatedAt: `${weekStart}T06:00:00.000Z`, ratedIssues: found + missing, averageRAI: Math.round((found * 100) / (found + missing)),
+    gates: { intent: { found, missing }, process: { found, missing }, code: { found: 0, missing: 0 }, audit: { found, missing } },
+    startedIssues: found + missing, reworkIssues: 0
+  });
+
+  it('B-19: shows the four-week trend as a text table first, then a line chart, labelled project-wide', async () => {
+    const trend = [point('2026-10-05', 1, 9), point('2026-10-12', 2, 8), point('2026-10-19', 3, 7), point('2026-10-26', 4, 6), point('2026-11-02', 5, 5)];
+    const r = await mount(dashboard(rows, { trend }));
+    const text = textOf(r.toJSON());
+    expect(text).toContain('Trend: last 4 weeks (whole project)');
+    expect(text).toContain('Week of 2026-10-12');
+    expect(text).not.toContain('Week of 2026-10-05');
+    expect(text).toContain('Intent 5 of 10 rated (50%)');
+    expect(text).toContain('Code n/a (0 rated)');
+    const chart = findAll(r.root, 'LineChart')[0];
+    expect(chart.props).toEqual(expect.objectContaining({ xAccessor: 'week', yAccessor: 'percent', colorAccessor: 'series', title: 'Evidence found, percent of rated' }));
+    expect(chart.props.data.filter((d: any) => d.series === 'Intent')).toHaveLength(4);
+    // Tree order: the text table comes before the chart.
+    const order = r.root.findAll((n: any) => n.type === 'ui-LineChart' || (n.type === 'ui-Text' && String(n.props.children).startsWith('Week of 2026-10-12')));
+    expect(order.map((n: any) => n.type)).toEqual(['ui-Text', 'ui-LineChart']);
+  });
+
+  it('B-19: says when the trend starts and draws no chart with fewer than two weeks', async () => {
+    const r = await mount(dashboard(rows, { trend: [point('2026-10-26', 1, 1)] }));
+    expect(textOf(r.toJSON())).toContain('Trend starts after two weekly snapshots. Next snapshot: 2026-11-02.');
+    expect(findAll(r.root, 'LineChart')).toHaveLength(0);
+  });
+
   it('B-18: hides the Sprint filter, not empty, for a project without sprints', async () => {
     const r = await mount(dashboard(rows));
     expect(findAll(r.root, 'Select', p => p.id === 'fr-filter-sprint')).toHaveLength(0);
