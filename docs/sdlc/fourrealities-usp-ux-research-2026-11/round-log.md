@@ -1,0 +1,79 @@
+# FourRealities research and build: round log
+
+Each entry gives the date, what changed and the evidence. Test IDs (T-xx) are cited in the other three files.
+
+## Round 0: setup (2026-11-01)
+
+- Read in full: the portfolio audit (all sections), `appendix-fourrealities.md`, `docs/spec/fourrealities-spec.md`, `docs/marketplace/fourrealities-listing.md`, every file under `apps/fourrealities/src` and `apps/fourrealities/test`, `manifest.yml`, `package.json`, `jest.config.js`, `tsconfig.json`, `loop-engine/README.md`, `loop-engine/agents/*.md` and `loop-engine/graders/*.py`.
+- **T-00, md5 check.** The md5 of all 11 FourRealities source, test and config files equals `snapshot-md5.txt`. So every audit finding (FR-01 to FR-26) still applies to the code. Command: `md5sum` against the audit snapshot.
+- Git: the repo is on branch `feature/cascadeplan-research-build`. The working tree has uncommitted changes under `apps/planshift` and four untracked agent files under `loop-engine/agents/`. None are under `apps/fourrealities`. Part A changed nothing under `apps/`.
+- Scratch folder: `~/.cache/gemini-earning-fourrealities-research/` (`harness/`, `probes/`, `sources/`).
+
+## Round 1: collect (2026-11-01)
+
+### Observed-test evidence produced in this round
+
+| ID | What | Result | Files |
+|---|---|---|---|
+| T-01 | Baseline `npx tsc --noEmit -p .` (host node v26.13.0) | Exit 0, no errors, 3.3 s | `probes/tsc-baseline.txt` |
+| T-02 | Baseline `npx jest --coverage` (coverage written to the cache, not to `apps/`) | 3 suites, 54 of 54 tests pass, 7.0 s. All files 98.62 / 90.33 / 92.18 / 98.71. `index.ts` 97.67 / 88.46 / 88.09 / 97.9. `metrics-engine.ts` branch 93.46. `metrics-repository.ts` 100. Identical to the audit run. | `probes/jest-baseline.txt`, `probes/cov-baseline/` |
+| T-03 | FR-01 render probe. Renders the real `FourRealitiesApp` with `react-test-renderer` 18.3.1. UI Kit components and `@forge/bridge` are mocked. | Project page: React throws "Rendered more hooks than during the previous render." at `src/frontend/index.tsx:585`, raised from `setLoading` in `init` (`:182`). The tree then renders `null`. Issue panel with a failing `getIssueAlignment`: same error, same blank result. The probe asserts the desired behaviour, so it fails today for the right reason. | `probes/fr01-render.test.tsx`, `probes/results/fr01-render.json` |
+| T-04 | Resolver harness. Calls `getProjectDashboard` 11 times (11 page views) at 50, 300 and 1,000 issues, and `getIssueAlignment` once. The mocked Jira follows the enhanced `/search/jql` contract that the audit saw live (`startAt` ignored, no `total`). The KVS mock rejects a value above 240 KiB. | See `ux-spec.md` section 3. Short form: at 50 issues the history value passes 240 KiB on view 7 (272,855 bytes). At 300 and 1,000 issues the dashboard reads 200 rows that hold only 100 unique issues (FR-08), and view 2 fails (314,377 bytes). After the first failure every later view fails. KVS reads per view are N + 2, one by one (52 at 50 issues, 202 at 200 rows). Every Jira call runs as the app. | `harness/resolver-perf.test.ts`, `harness/results/resolver-baseline.json` |
+| T-05 | Live, read-only (GET calls and one page view) on `asymmsystems.atlassian.net` | The DEMO project page still shows only its title. The app iframe is hidden with height 0 after 20 s. DEMO-26 still carries `ledgerseal-cert` `{status: SEAL_VALID, valid: true, sealedAt, isCompromised: false}` and `definitionguard-dod` `{isFullySatisfied: true, satisfied: true, completedAt}`, and no `fourrealities-exception`. 17 of the 34 issues in DEMO and TEST carry `ledgerseal-cert` or `definitionguard-dod`. **New:** the site now has a third project, AUDT ("Audit Test Software"), a classic Jira Software project with Scrum board 4 and 0 issues. | `probes/live-demo-project-page-2026-11-01.jpg` |
+
+### Side effects of Part A on the live site
+
+- The DEMO project page view ran `getProjectDashboard`. That resolver writes `fr:project:DEMO:latest` and `fr:project:DEMO:history` in FourRealities app storage on every view (Observed-code `src/index.ts:339`). This is app storage, not Jira. The effect is Inferred, because the audit cannot read app storage.
+- No Jira write. No issue panel was opened, so no LedgerSeal panel ran (LS-06).
+
+### Collect: web sources
+
+Four research agents ran in parallel with WebSearch and WebFetch only (GET, no sign-up, no login, no posting, no email sent). Their source files are in `~/.cache/gemini-earning-fourrealities-research/sources/`:
+
+| File | IDs | Rows |
+|---|---|---|
+| `native-atlassian.md` | NA-01 to NA-35 | 35 |
+| `dod-and-audit-apps.md` | DD-01 to DD-29, AU-01 to AU-34 | 63 |
+| `traceability-and-metrics.md` | TR-01 to TR-14, EM-01 to EM-22, EX-01 to EX-17 | 53 |
+| `metrics-buyers-pricing.md` | CM-01 to CM-12, BY-01 to BY-10, PR-01 to PR-16, EV-01 to EV-11 | 49 |
+
+Forge limits FL-01 to FL-03 are reused from the CascadePlan research of the same day (its RS-18, RS-19, RS-21).
+
+Limits: G2, Capterra and TrustRadius returned HTTP 403. Atlassian Community pages returned titles only. No source gave click or keystroke counts. Six sources failed (ACM, PCAOB, NIST CPRT, OECD/JRC, trustnetinc); substitutes are named in the metrics source file.
+
+### Synthesise
+
+- Hypothesis verdicts H1 to H9, plus new H10 and H11: `research-brief.md` section 3.
+- USP table U1 to U9: `research-brief.md` section 4.1. Before refute, U1 and U3 passed with conditions.
+- UX benchmark and target interactions: `ux-spec.md` sections 1 and 2.
+
+### Refute
+
+| Candidate | Search | Result |
+|---|---|---|
+| U1 | Per-item requirement, PR and approval evidence products (RF-01, RF-02) | Partly refuted: Ketryx (291 installs) does this for FDA-regulated teams, as an external platform. Gap narrowed; verdict kept. |
+| U3 | Native 2026 JQL for Confluence-linked issues; Marketplace JQL apps (RF-04 to RF-06) | Refuted: JQL Search Extensions (3,842 installs) and ScriptRunner already answer the query. Verdict changed to Fail. |
+| U4 | Teamwork Graph GA date (RF-03) | Still Early Access, test sites only. Feasibility failure confirmed. |
+
+## Round 2: revise (2026-11-01)
+
+- U3 changed from conditional pass to Fail (Gap). H2 stays Partly true: the need for remote-link search is stated, but Marketplace apps meet it.
+- U1 kept as the only conditional pass, with a narrower gap statement (general software teams, no egress).
+- Items still Unknown after round 2: H6, H9 demand, H2 for decision records, all competitor click counts.
+
+## Round 3: Unknown items only (2026-11-01)
+
+- One extended search for buyer demand for one per-issue evidence view, or for linked Confluence evidence before closing.
+- Result: no direct request. One indirect signal: a review dated 2026-10-28 keeps "Pull request merged, with at least one approving review" as a hand-ticked DoD item (RF-07). This supports U1 condition 2 as "Partly" and changes no verdict.
+- No verdict changed in round 3, so the research loop stops. H6 and H9 demand stay Unknown.
+
+## Outputs of Part A (2026-11-01, uncommitted)
+
+- `docs/sdlc/fourrealities-usp-ux-research-2026-11/research-brief.md`
+- `docs/sdlc/fourrealities-usp-ux-research-2026-11/ux-spec.md`
+- `docs/sdlc/fourrealities-usp-ux-research-2026-11/backlog.md`
+- `docs/sdlc/fourrealities-usp-ux-research-2026-11/round-log.md`
+
+## Build items
+
+None yet. Part B waits for the owner's `APPROVED` line in `backlog.md`.
