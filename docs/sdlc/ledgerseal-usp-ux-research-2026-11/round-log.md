@@ -289,7 +289,7 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
   - `src/frontend/view-model.ts` is pure, with no React or bridge import. It maps the resolver result to the state, title, lozenge, message lines, actions, ask text and change rows. The states are LOADING, NOT_SEALED, SEALED, CHANGED, CHANGED_BACK, REVOKED, RECORD_INVALID, LEGACY, ERROR and LICENSE_INACTIVE. Times are in the viewer's locale with the zone, and the full hash comes with a short form.
   - `src/service/ledger.ts` adds the viewer's `rights` to the panel response. They come from the approver permission (as the user) and, on a changed issue, from whether the viewer authored a change. Both are reads.
   - `src/frontend/index.tsx` only maps the view model to UI Kit components:
-    - the signer, reviser and change authors with `User`;
+    - the signer, revoker and change authors with `User`;
     - change rows with "Show full value";
     - covered and excluded fields;
     - history from `seal-history-api`;
@@ -299,3 +299,14 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - No new package was needed: the view model is tested in the existing node environment ([DEP] not triggered).
 - `claims.test.ts` and `identity.test.ts` now read the panel text from both UI files.
 - Results: `tsc` OK. 27 suites, 247 tests pass. Global branches 94.91%. `view-model.ts` 91.20%, `ledger.ts` 92.39%. Graders all True. No em dash.
+- B-15 commit: `1c4b392`.
+
+### B-16 Revoke (LS-13)
+- Tests first: `test/revoke.test.ts`. First run: failed for the right reason (`revokeSeal` not exported).
+- Code:
+  - `src/service/ledger.ts` `revokeFlow`: identity, an approver permission checked as the user, a reason of 1 to 500 characters, and a consistent seal. The change must be allowed by `StatusValidChange`.
+  - It writes an `LS_REVOKED` status row (set by the approver, with the reason), ends the current assignment at the revoke time, rebinds the assignment hash in the work effort, and writes a signed SEAL_REVOKED attestation.
+  - `src/storage/seal-repository.ts` `saveRevocation` (one transaction). `src/index.ts` adds the `revoke-seal-api` resolver.
+- Defect found by the new tests and fixed: a reseal after a revoke overwrote the revoke's end date on the old assignment. A reseal now ends only an assignment that is still open.
+- Adversarial test: T-02 A10 (no revoke path) is closed. The resolver is reachable, a non-approver gets `NOT_APPROVER` and writes nothing, and a second revoke is refused by the state table.
+- Results: `tsc` OK. 28 suites, 254 tests pass. Global branches 94.64%. `ledger.ts` 91.48%, `index.ts` 91.42%, `seal-repository.ts` 94.73%. Graders all True. No em dash.

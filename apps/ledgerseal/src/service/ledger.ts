@@ -387,7 +387,8 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
     lastIncidentHash: null
   });
   // A reseal ends the previous assignment at this time (Silverston thruDate)
-  const ended = previous ? { ...previous.assignment, thruDate: now } : null;
+  // A revoked seal already ended at the revoke time; keep that date
+  const ended = previous && previous.assignment.thruDate === null ? { ...previous.assignment, thruDate: now } : null;
   await repo.saveSeal(workEffort, assignment, [JSON.stringify(snapshot)], ended);
 
   // Publish public audit property to Jira issue without PII
@@ -581,4 +582,58 @@ export async function evidenceFlow(payload: any, context: any, deps: LedgerSealD
     history,
     verification: VERIFICATION_STEPS
   };
+}
+
+/**
+ * Revokes the current seal (spec v2 section 7.5): an approver gives a reason, the seal ends, and the gate closes.
+ */
+export async function revokeFlow(payload: any, context: any, deps: LedgerSealDeps) {
+  const accountId = context?.accountId ? String(context.accountId) : '';
+  if (!accountId) return fail('NO_IDENTITY');
+  const issue = contextIssue(context);
+  if (!issue) return fail('MISSING_ISSUE');
+  const reason = validReason(payload?.reason);
+  if (!reason) return fail('REASON_REQUIRED', 'Give a reason for revoking the seal (1 to 500 characters).');
+
+  const permission = await deps.jira.hasApproverPermission(issue.id);
+  if (!permission.ok) return fail(permission.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
+  if (!permission.value) return fail('NOT_APPROVER');
+
+  const repo = new SealRepository(deps.storage);
+  const seal = await repo.getSeal(issue.id);
+  if (!seal) return fail('NOT_SEALED', 'This issue is not sealed, so there is nothing to revoke.');
+  if (seal === 'missing' || !isConsistent(seal)) return fail('INVALID_REQUEST', 'The seal record failed its integrity check, so it cannot be revoked. Seal the issue again.');
+  const we = seal.workEffort;
+  const transitionName = canChange(we.currentStatusId, 'LS_REVOKED');
+  if (!transitionName) return fail('INVALID_REQUEST', 'This seal is already revoked.');
+
+  const now = new Date().toISOString();
+  const row = buildStatusRow(we.statusHead, {
+    workEffortId: we.workEffortId,
+    statusId: 'LS_REVOKED',
+    statusDatetime: now,
+    setByPartyId: accountId,
+    reason,
+    transitionName,
+    data: { certificateId: we.currentContentId }
+  });
+  if (!(await repo.appendStatus(row))) return fail('CONFLICT');
+
+  const ended = { ...seal.assignment, thruDate: now };
+  const updated: LoadedSeal = {
+    assignment: ended,
+    sealingRow: seal.sealingRow,
+    headRow: row,
+    workEffort: withRecordHash({
+      ...we,
+      currentStatusId: 'LS_REVOKED',
+      lastStatusUpdate: now,
+      revisionNumber: row.seq,
+      statusHead: { seq: row.seq, entryHash: row.entryHash },
+      currentAssignment: { ...we.currentAssignment, assignmentHash: assignmentHash(ended) }
+    })
+  };
+  await repo.saveRevocation(updated.workEffort, ended);
+  await writeAttestation(deps, updated, 'SEAL_REVOKED', now);
+  return { ok: true as const, revokedAt: now };
 }

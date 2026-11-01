@@ -126,6 +126,14 @@ export class SealRepository {
     await this.storage.commit(items);
   }
 
+  /** Saves a revoke in one transaction: the ended assignment and the work effort. */
+  async saveRevocation(workEffort: SealedWorkEffort, endedAssignment: WorkEffortPartyAssignment): Promise<void> {
+    await this.storage.commit([
+      { key: this.getAssignmentKey(endedAssignment.workEffortId, endedAssignment.fromDate), value: endedAssignment },
+      { key: this.getWorkEffortKey(workEffort.workEffortId), value: workEffort }
+    ]);
+  }
+
   /** Saves the work effort alone (a change incident updates only its current values). */
   async saveWorkEffort(workEffort: SealedWorkEffort): Promise<void> {
     await this.storage.commit([{ key: this.getWorkEffortKey(workEffort.workEffortId), value: workEffort }]);

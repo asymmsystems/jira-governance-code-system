@@ -14,6 +14,7 @@ import {
   rawComments,
   readLiveSnapshot,
   recordIncidentIfNew,
+  revokeFlow,
   sealIssueFlow,
   verifyIssueFlow
 } from './service/ledger';
@@ -175,6 +176,13 @@ export async function getSealHistory(payload: any, context?: any, deps: LedgerSe
 }
 
 /**
+ * API handler to revoke a seal with a reason (spec v2 section 7.5).
+ */
+export async function revokeSeal(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return revokeFlow(payload, context, deps);
+}
+
+/**
  * API handler for the auditor evidence export (spec v2 section 11).
  */
 export async function getSealEvidence(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
@@ -211,6 +219,10 @@ resolver.define('seal-issue-api', async (req) => {
 
 resolver.define('seal-history-api', async (req) => {
   return await getSealHistory(req.payload, req.context);
+});
+
+resolver.define('revoke-seal-api', async (req) => {
+  return await revokeSeal(req.payload, req.context);
 });
 
 resolver.define('seal-evidence-api', async (req) => {
