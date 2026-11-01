@@ -234,3 +234,17 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - Adversarial test: T-02 A7 now covers a rewritten assignment and a rewritten sealing row as well as a rewritten work effort.
 - No migration: the `ls2:` layout was never deployed.
 - Results: `tsc` OK. 23 suites, 187 tests pass (every B-01 to B-11 test included). Global branches 96.7%. `status.ts` and `seal-record.ts` 100%, `seal-repository.ts` 94.73%, `history.ts` 94.11%, `ledger.ts` 93.54%, `index.ts` 93.93%. Graders all True. README storage table and numbers updated. No em dash.
+- B-21 commit: `a2f2dff`.
+
+### B-12 Change list with who and when (LS-16 UI, G-06, G-07, NF-01)
+- Tests: `test/change-list.test.ts`, written before ADR-01.
+  - First run, on the B-11 code: 7 of 7 failed for the right reasons.
+  - After B-21, with one comment test cleaned up (leftover setup) and a removed-comment case added: 8 of 8 failed on the new model.
+- Code:
+  - `src/domain/tamper-detector.ts` names changes outside the fields (issue key, project, issue type; NF-01) and lists each added, edited and removed comment as its own row.
+  - `src/domain/display.ts` gives a block-level summary of a rich text change ("Paragraph 1 changed. Paragraph 4 added.").
+  - `src/service/ledger.ts` flags values over 200 characters, attributes comment rows from the comment's author or editor and time, and fills `changedBy` and `changedAt` on every row from the recorded incident, so later views show the same names when the change log is down.
+- AC4 (at most 5 names in the validator message) was built and tested in B-10 (`changedItemsMessage`).
+- Contract changes: "Comments / Discussion: n comment(s)" is replaced by per-comment rows, and two older tests now assert the per-comment rows.
+- Adversarial test: T-03 C05 (an issue type change with no field named) now names "Issue type", and the validator message says "1 field changed after approval (Issue type)".
+- Results: `tsc` OK. 24 suites, 195 tests pass. Global branches 95.85%. `tamper-detector.ts` 100%, `display.ts` 95.83%, `ledger.ts` 91.09%, `index.ts` 93.93%. Graders all True. No em dash.

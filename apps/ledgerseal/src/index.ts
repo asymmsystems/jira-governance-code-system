@@ -10,6 +10,7 @@ import {
   historyFlow,
   issueChangedFlow,
   LedgerSealDeps,
+  rawComments,
   readLiveSnapshot,
   recordIncidentIfNew,
   sealIssueFlow,
@@ -94,7 +95,7 @@ export async function validateTransition(payload: any, context?: any, deps: Ledg
   }
   issueId = String(live.raw.id || issueId);
   const liveSnapshot = live.snapshot;
-  const evaluation = await evaluate(repository, issueId, liveSnapshot, now);
+  const evaluation = await evaluate(repository, issueId, liveSnapshot, now, rawComments(live.raw));
 
   if (evaluation.kind === 'LEGACY') {
     return {

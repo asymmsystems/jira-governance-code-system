@@ -16,7 +16,7 @@ import { authorsSince } from '../domain/policy';
 import { assignmentHash, isConsistent, LoadedSeal, summarise, withRecordHash } from '../domain/seal-record';
 import { canChange, LedgerSealStatusId, roleForMeaning } from '../domain/status';
 import { compareToSeal, SealedState } from '../domain/tamper-detector';
-import { capped } from '../domain/display';
+import { capped, LONG_VALUE_CHARS, richTextSummary } from '../domain/display';
 import { AttestationSource, AttestationStatus, buildAttestation, Signer } from '../domain/attestation';
 import { DECLARATION, isMeaning, matchesDeclaration, validReason } from '../domain/declaration';
 import { ChangelogEntry, JiraClient } from '../jira/jira-client';
@@ -70,6 +70,11 @@ export function contextIssue(context: any): { id: string; key: string } | null {
 }
 
 const MAX_INCIDENT_CHANGES = 50;
+
+/** The live comments as Jira returned them (readLiveSnapshot puts them on the issue). */
+export function rawComments(raw: any): any[] {
+  return Array.isArray(raw?.fields?.comment?.comments) ? raw.fields.comment.comments : [];
+}
 
 /**
  * Reads the live issue and the field list, then canonicalises. Returns null when either read fails.
@@ -130,7 +135,17 @@ function compact(analysis: TamperAnalysis): TamperAnalysis {
     tamperedFields: analysis.tamperedFields.map(diff => {
       const was = capped(diff.sealedValue);
       const now = capped(diff.liveValue);
-      return { ...diff, sealedValue: was.text, liveValue: now.text, sealedTruncated: was.truncated, liveTruncated: now.truncated };
+      const detail = richTextSummary(diff.sealedValue, diff.liveValue);
+      return {
+        ...diff,
+        sealedValue: was.text,
+        liveValue: now.text,
+        sealedTruncated: was.truncated,
+        liveTruncated: now.truncated,
+        sealedLong: was.text.length > LONG_VALUE_CHARS,
+        liveLong: now.text.length > LONG_VALUE_CHARS,
+        ...(detail ? { detail } : {})
+      };
     })
   };
 }
@@ -140,6 +155,8 @@ export interface SealEvaluation {
   seal: LoadedSeal;
   sealedSnapshot: CanonicalIssueSnapshot;
   analysis: TamperAnalysis;
+  /** The live comments as Jira returned them, to name who added or edited each comment. */
+  liveComments: any[];
 }
 
 /** RECORD_INVALID carries the work effort when it could be read, so a reseal can continue its chain. */
@@ -152,7 +169,13 @@ export type Evaluation =
 /**
  * Compares the live issue with the stored seal. Reads only.
  */
-export async function evaluate(repo: SealRepository, issueId: string, live: CanonicalIssueSnapshot, at: string): Promise<Evaluation> {
+export async function evaluate(
+  repo: SealRepository,
+  issueId: string,
+  live: CanonicalIssueSnapshot,
+  at: string,
+  liveComments: any[] = []
+): Promise<Evaluation> {
   const seal = await repo.getSeal(issueId);
   if (!seal) {
     return (await repo.getLegacyCertificate(issueId)) ? { kind: 'LEGACY' } : { kind: 'NONE' };
@@ -170,13 +193,19 @@ export async function evaluate(repo: SealRepository, issueId: string, live: Cano
     compromised: we.currentStatusId === 'LS_CHANGED'
   };
   const analysis = { ...compareToSeal(sealed, live, at), seal: summarise(seal) };
-  return { kind: 'SEAL', seal, sealedSnapshot, analysis };
+  return { kind: 'SEAL', seal, sealedSnapshot, analysis, liveComments };
 }
 
-/** Who changed each field after the seal, from the change log. */
-function attribute(diffs: FieldDiff[], changelog: ChangelogEntry[], sinceIso: string) {
+/** Who changed each item after the seal: comments from the comment itself, fields from the change log. */
+function attribute(diffs: FieldDiff[], changelog: ChangelogEntry[], sinceIso: string, liveComments: any[] = []) {
   const since = Date.parse(sinceIso);
+  const comments = new Map(liveComments.map(c => [`comment:${c.id}`, c]));
   return diffs.slice(0, MAX_INCIDENT_CHANGES).map(diff => {
+    const comment = comments.get(diff.fieldId);
+    if (comment) {
+      const by = comment.updated ? comment.updateAuthor?.accountId : comment.author?.accountId;
+      return { fieldId: diff.fieldId, fieldName: diff.fieldName, changedBy: by ? [String(by)] : [], changedAt: comment.updated ?? comment.created ?? null };
+    }
     const entries = changelog.filter(
       e => !(Date.parse(e.created) <= since) && e.items.some(item => item.fieldId === diff.fieldId || item.field === diff.fieldId)
     );
@@ -204,7 +233,7 @@ export async function recordIncidentIfNew(
     return { seal, recorded: false };
   }
   const changelog = await deps.jira.getChangelog(we.workEffortId);
-  const changes = attribute(analysis.tamperedFields, changelog.ok ? changelog.value : [], seal.assignment.fromDate);
+  const changes = attribute(analysis.tamperedFields, changelog.ok ? changelog.value : [], seal.assignment.fromDate, evaluation.liveComments);
   const row = buildStatusRow(we.statusHead, {
     workEffortId: we.workEffortId,
     statusId: 'LS_CHANGED',
@@ -264,7 +293,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   let previous: LoadedSeal | null = null;
   let previousWorkEffort: SealedWorkEffort | null = null;
   let previousState: LedgerSealStatusId | 'RECORD_INVALID' | null = null;
-  const evaluation = await evaluate(repo, issue.id, snapshot, now);
+  const evaluation = await evaluate(repo, issue.id, snapshot, now, rawComments(live.raw));
   if (evaluation.kind === 'SEAL') {
     previous = evaluation.seal;
     previousWorkEffort = previous.workEffort;
@@ -379,18 +408,19 @@ export async function verifyIssueFlow(payload: any, context: any, deps: LedgerSe
   // A read failure is reported as an error, never as "not sealed" (invariant 8)
   if (!live) return errorResult('JIRA_UNREACHABLE', now);
   try {
-    return await verifyAgainstSeal(deps, issue.id, live.snapshot, now);
+    return await verifyAgainstSeal(deps, issue.id, live, now);
   } catch (err) {
     console.error('LedgerSeal: verify failed', err);
     return errorResult('STORAGE', now);
   }
 }
 
-async function verifyAgainstSeal(deps: LedgerSealDeps, issueId: string, liveSnapshot: CanonicalIssueSnapshot, now: string) {
+async function verifyAgainstSeal(deps: LedgerSealDeps, issueId: string, live: { raw: any; snapshot: CanonicalIssueSnapshot }, now: string) {
+  const liveSnapshot = live.snapshot;
   const issue = { id: issueId };
 
   const repo = new SealRepository(deps.storage);
-  const evaluation = await evaluate(repo, issue.id, liveSnapshot, now);
+  const evaluation = await evaluate(repo, issue.id, liveSnapshot, now, rawComments(live.raw));
 
   if (evaluation.kind === 'NONE') return compareToSeal(null, liveSnapshot, now);
   if (evaluation.kind === 'LEGACY' || evaluation.kind === 'RECORD_INVALID') {
@@ -400,8 +430,18 @@ async function verifyAgainstSeal(deps: LedgerSealDeps, issueId: string, liveSnap
   // Writes only when this change is new (invariant 3); the property is updated inside.
   const { seal } = await recordIncidentIfNew(deps, repo, evaluation, now);
   const sealed = evaluation.sealedSnapshot;
+  const analysis = compact({ ...evaluation.analysis, seal: summarise(seal) });
+  // Who changed each item and when, from the recorded incident, so every later view shows the same names
+  const we = seal.workEffort;
+  const incident = we.currentStatusId === 'LS_CHANGED' ? await repo.getStatusRow(we.workEffortId, we.statusHead.seq) : null;
+  const recorded = new Map(((incident?.data?.changes as any[]) || []).map(c => [c.fieldId, c]));
+  analysis.tamperedFields = analysis.tamperedFields.map(diff => ({
+    ...diff,
+    changedBy: recorded.get(diff.fieldId)?.changedBy ?? [],
+    changedAt: recorded.get(diff.fieldId)?.changedAt ?? null
+  }));
   return {
-    ...compact({ ...evaluation.analysis, seal: summarise(seal) }),
+    ...analysis,
     coveredFields: sealed.fields.map(f => ({ id: f.id, name: f.name })),
     excludedFields: sealed.excluded || []
   };
@@ -454,7 +494,7 @@ export async function issueChangedFlow(event: any, deps: LedgerSealDeps): Promis
     if (!(await repo.getWorkEffort(issueId))) return { recorded: false };
     const live = await readLiveSnapshot(deps.jira, issueId, now);
     if (!live) return { recorded: false };
-    const evaluation = await evaluate(repo, issueId, live.snapshot, now);
+    const evaluation = await evaluate(repo, issueId, live.snapshot, now, rawComments(live.raw));
     if (evaluation.kind !== 'SEAL') return { recorded: false };
     const { recorded } = await recordIncidentIfNew(deps, repo, evaluation, now);
     return { recorded };

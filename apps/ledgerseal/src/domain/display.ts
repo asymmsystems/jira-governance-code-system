@@ -31,3 +31,40 @@ export function capped(value: unknown, max: number = MAX_VALUE_CHARS): { text: s
   const text = plainText(value);
   return text.length > max ? { text: text.slice(0, max), truncated: true } : { text, truncated: false };
 }
+
+/** Values longer than this show a "Show full value" toggle in the panel. */
+export const LONG_VALUE_CHARS = 200;
+
+const BLOCK_NAMES: Record<string, string> = {
+  paragraph: 'Paragraph',
+  heading: 'Heading',
+  bulletList: 'List',
+  orderedList: 'List',
+  table: 'Table',
+  codeBlock: 'Code block',
+  panel: 'Panel',
+  blockquote: 'Quote'
+};
+
+function isDoc(value: unknown): value is { type: 'doc'; content: any[] } {
+  return Boolean(value && typeof value === 'object' && (value as any).type === 'doc' && Array.isArray((value as any).content));
+}
+
+/**
+ * Says which top-level blocks of a rich text value changed, for example "Paragraph 1 changed. Paragraph 4 added.".
+ * Returns null unless at least one side is a rich text document.
+ */
+export function richTextSummary(was: unknown, now: unknown): string | null {
+  if (!isDoc(was) && !isDoc(now)) return null;
+  const before = isDoc(was) ? was.content : [];
+  const after = isDoc(now) ? now.content : [];
+  const parts: string[] = [];
+  for (let i = 0; i < Math.max(before.length, after.length); i++) {
+    const block = after[i] ?? before[i];
+    const name = `${BLOCK_NAMES[block?.type] ?? 'Block'} ${i + 1}`;
+    if (i >= before.length) parts.push(`${name} added`);
+    else if (i >= after.length) parts.push(`${name} removed`);
+    else if (JSON.stringify(before[i]) !== JSON.stringify(after[i])) parts.push(`${name} changed`);
+  }
+  return parts.length > 0 ? parts.join('. ') + '.' : null;
+}

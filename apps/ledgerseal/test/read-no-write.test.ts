@@ -88,6 +88,6 @@ describe('B-03 a read never writes', () => {
     expect(Buffer.byteLength(text, 'utf8')).toBeLessThanOrEqual(16 * 1024);
     expect(text).not.toContain('snapshot"');
     expect(text).not.toContain('@example.com');
-    expect((response as any).tamperedFields.map((f: any) => f.fieldName)).toEqual(['Description', 'Comments / Discussion']);
+    expect((response as any).tamperedFields.map((f: any) => f.fieldName)).toEqual(['Description', 'Comment edited']);
   });
 });

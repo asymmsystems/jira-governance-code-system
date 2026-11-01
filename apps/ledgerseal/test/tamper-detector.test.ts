@@ -176,6 +176,6 @@ describe('Tamper Detector', () => {
 
     const analysis = analyzeTamperState(certWithComments, liveWithDifferentComment, '2026-10-28T12:05:00Z');
     expect(analysis.status).toBe('SEAL_BROKEN');
-    expect(analysis.tamperedFields.some(f => f.fieldId === 'comment')).toBe(true);
+    expect(analysis.tamperedFields.some(f => f.fieldId === 'comment:c-1' && f.fieldName === 'Comment edited')).toBe(true);
   });
 });

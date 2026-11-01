@@ -88,6 +88,14 @@ export interface FieldDiff {
   /** Set on panel responses when the display text was cut (spec v2 section 3.4). */
   sealedTruncated?: boolean;
   liveTruncated?: boolean;
+  /** Set on panel responses: the value is longer than 200 characters, so the panel collapses it. */
+  sealedLong?: boolean;
+  liveLong?: boolean;
+  /** Set on panel responses: which rich text blocks changed. */
+  detail?: string;
+  /** Set on panel responses: who changed the item after the seal, and when (from the change log or the comment). */
+  changedBy?: string[];
+  changedAt?: string | null;
 }
 
 export interface AttachmentDiff {
