@@ -7222,6 +7222,25 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return [...byName.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([name, hours]) => ({ name, hours: hours.map((h) => Math.round(h * 10) / 10) }));
   }
 
+  // src/ui/first-run.ts
+  function emptyState(plan) {
+    if (!plan || plan.tasks && plan.tasks.length > 0) return null;
+    const waiting = (plan.backlogTasks || []).length;
+    if (waiting > 0) {
+      return {
+        title: "Nothing is scheduled yet",
+        text: `${waiting === 1 ? "1 issue is" : `${waiting} issues are`} waiting in the backlog. Drag issues onto the timeline to plan them.`,
+        action: { id: "schedule", label: "Schedule your first issues" }
+      };
+    }
+    return { title: "This project has no issues yet", text: "Create an issue to start the plan. It is created in Jira.", action: { id: "create", label: "Create an issue" } };
+  }
+  function showLinkHint(plan, stored) {
+    if (!plan || stored === "done") return false;
+    const scheduled = (plan.tasks || []).filter((t) => t.startDate);
+    return scheduled.length >= 2 && !scheduled.some((t) => t.dependency && t.dependency.predecessorKey);
+  }
+
   // src/ui/time-scale.ts
   var ZOOMS = [
     { id: "day", label: "Day", dayPx: 40, snap: "day" },
@@ -7688,6 +7707,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
       }
       if (e.key === "Escape" && !openModal() && !document.getElementById("barToolbar")?.hidden) {
         closeBarToolbar();
+        return;
+      }
+      if (e.key === "Escape" && !document.getElementById("helpPopup")?.hidden) {
+        closeHelp();
         return;
       }
       if (e.key === "Escape" && isChangesPanelOpen()) {
@@ -8241,7 +8264,25 @@ Please see https://iframe-resizer.com/upgrade for more details.
       setTimeout(scrollToToday, 250);
     }
   }
+  var HINT_KEY = "cascadeplan_hint_link";
+  function updateLinkHint() {
+    const hint = document.getElementById("linkHint");
+    if (!hint || !currentPlan) return;
+    if ((currentPlan.tasks || []).some((t) => t.dependency && t.dependency.predecessorKey)) writePref(HINT_KEY, "done");
+    hint.hidden = !showLinkHint(currentPlan, readPref(HINT_KEY, null));
+  }
+  function openHelp() {
+    const pop = document.getElementById("helpPopup");
+    if (!pop) return;
+    pop.hidden = false;
+    document.getElementById("btnCloseHelp")?.focus();
+  }
+  function closeHelp() {
+    const pop = document.getElementById("helpPopup");
+    if (pop) pop.hidden = true;
+  }
   function renderPlanSummary() {
+    updateLinkHint();
     const projectBadge = document.getElementById("projectBadge");
     projectBadge.textContent = `Project: ${currentPlan.projectKey}`;
     projectBadge.hidden = false;
@@ -9218,7 +9259,25 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (gridRoot) gridRoot.replaceChildren();
     const cols = getVisibleColKeys().length + 1;
     if (!currentPlan.tasks || currentPlan.tasks.length === 0) {
-      tbody.innerHTML = html`<tr><td colspan="${cols}" style="text-align:center; padding:30px; color: var(--cp-text-subtle);">No scheduled tasks in project. Drag issues from the Backlog Tray or click "+ Add Task / Issue" to schedule.</td></tr>`;
+      const es = emptyState(currentPlan);
+      tbody.innerHTML = html`<tr><td colspan="${cols}" class="empty-state-cell">
+      <div class="empty-state" role="region" aria-labelledby="emptyStateTitle">
+        <h2 id="emptyStateTitle">${es.title}</h2>
+        <p>${es.text}</p>
+        <div class="empty-state-actions">
+          <button class="btn btn-primary" id="emptyStateAction" type="button" data-action="${es.action.id}">${es.action.label}</button>
+          <button class="btn btn-link help-link" id="emptyStateHelp" type="button">How CascadePlan works</button>
+        </div>
+      </div></td></tr>`;
+      tbody.querySelector("#emptyStateAction").addEventListener("click", (e) => {
+        if (e.currentTarget.dataset.action === "schedule") {
+          document.getElementById("backlogTray").classList.remove("collapsed");
+          document.querySelector(".backlog-card")?.focus();
+        } else {
+          openCreateTaskModal();
+        }
+      });
+      tbody.querySelector("#emptyStateHelp").addEventListener("click", openHelp);
       drawTimeline();
       return;
     }
@@ -10301,13 +10360,14 @@ Click to manage or assign.`;
     document.getElementById("depTitle").textContent = `${key} starts when`;
     document.getElementById("depSearch").value = "";
     document.getElementById("depTrigger").value = "100";
-    document.getElementById("depChosen").textContent = "No issue chosen";
     renderDependencyOptions();
     pop.hidden = false;
     const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { bottom: 120, left: 120 };
     pop.style.top = `${Math.max(8, Math.min(window.innerHeight - pop.offsetHeight - 8, r.bottom + 6))}px`;
     pop.style.left = `${Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, r.left))}px`;
-    document.getElementById("depSearch").focus();
+    const trig = document.getElementById("depTrigger");
+    trig.focus();
+    trig.select();
   }
   function closeDependencyPopup() {
     const pop = document.getElementById("depPopup");
@@ -10316,13 +10376,10 @@ Click to manage or assign.`;
     focusGridCell();
   }
   function chooseDependency(i) {
-    const t = depState.options[i];
+    const t = depState && depState.options[i];
     if (!t) return;
     depState.chosen = t.key;
-    document.getElementById("depChosen").textContent = `Waits for ${t.key}`;
-    const trig = document.getElementById("depTrigger");
-    trig.focus();
-    trig.select();
+    saveDependency();
   }
   async function saveDependency() {
     if (!depState || !depState.chosen) return;
@@ -10394,13 +10451,19 @@ Click to manage or assign.`;
     if (trig) trig.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        saveDependency();
+        document.getElementById("depSearch").focus();
       } else if (e.key === "Escape") {
         e.preventDefault();
         closeDependencyPopup();
       }
     });
-    document.getElementById("btnDepSave")?.addEventListener("click", saveDependency);
+    document.getElementById("btnDepSave")?.addEventListener("click", () => chooseDependency(Math.max(0, depState ? depState.active : 0)));
+    document.getElementById("btnCloseHelp")?.addEventListener("click", closeHelp);
+    document.getElementById("btnHintHelp")?.addEventListener("click", openHelp);
+    document.getElementById("btnHintDismiss")?.addEventListener("click", () => {
+      writePref(HINT_KEY, "done");
+      document.getElementById("linkHint").hidden = true;
+    });
     document.getElementById("btnDepCancel")?.addEventListener("click", closeDependencyPopup);
     document.addEventListener("click", (e) => {
       const tb = document.getElementById("barToolbar");

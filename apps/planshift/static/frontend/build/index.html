@@ -136,6 +136,13 @@
           </div>
         </div>
 
+        <!-- First-link hint (B-25): shown until the plan has a link or it is dismissed -->
+        <div id="linkHint" class="link-hint" role="note" hidden>
+          <span>Tip: make a percent link in 3 clicks. Click a bar, choose <strong>Add dependency</strong>, then click the issue it waits for.</span>
+          <button class="btn btn-link btn-sm" type="button" id="btnHintHelp">How CascadePlan works</button>
+          <button class="btn btn-subtle btn-sm" type="button" id="btnHintDismiss" aria-label="Dismiss tip">✕</button>
+        </div>
+
         <!-- Top Synchronized Horizontal Scrollbar -->
         <div class="gantt-top-scrollbar" id="ganttTopScrollbar" title="Scroll timeline horizontally">
           <div class="gantt-top-scrollbar-inner" id="ganttTopScrollbarInner"></div>
@@ -206,13 +213,26 @@
       <strong id="depTitle">Starts when</strong>
       <button class="btn btn-subtle btn-sm" id="btnDepCancel" type="button" aria-label="Close">✕</button>
     </div>
-    <label class="form-label" for="depSearch">Issue it waits for</label>
+    <label class="form-label" for="depTrigger">Starts when that issue reaches (percent)</label>
+    <input id="depTrigger" class="form-input" type="number" min="0" max="100" step="5" value="100">
+    <label class="form-label" for="depSearch">Issue it waits for (choose one to add the link)</label>
     <input id="depSearch" class="form-input" type="search" role="combobox" aria-expanded="true" aria-controls="depList" aria-autocomplete="list" autocomplete="off">
     <ul id="depList" class="dep-list" role="listbox" aria-label="Issues"></ul>
-    <p id="depChosen" class="dep-chosen">No issue chosen</p>
-    <label class="form-label" for="depTrigger">Trigger percent of that issue</label>
-    <input id="depTrigger" class="form-input" type="number" min="0" max="100" step="5" value="100">
     <div class="why-fixes"><button class="btn btn-primary btn-sm" id="btnDepSave" type="button">Add dependency</button></div>
+  </div>
+
+  <!-- Help (B-25) -->
+  <div id="helpPopup" class="why-popup help-popup" role="dialog" aria-labelledby="helpTitle" hidden>
+    <div class="why-header">
+      <strong id="helpTitle">How CascadePlan works</strong>
+      <button class="btn btn-subtle btn-sm" id="btnCloseHelp" type="button" aria-label="Close">✕</button>
+    </div>
+    <ul class="help-list">
+      <li>Your Jira issues are the plan. Drag an issue from the backlog onto the timeline to give it dates.</li>
+      <li>A percent link says when work can start: "B starts when A reaches 30%". Click a bar, then Add dependency.</li>
+      <li>When A slips, CascadePlan moves B and shows why. Every change to Jira is listed under Changes, and Ctrl+Z undoes it.</li>
+      <li>The keyboard works everywhere: Tab to the schedule, arrows to move, Space to move a bar, ? to see why a date is set.</li>
+    </ul>
   </div>
 
   <!-- Flags (B-14): write results with Undo -->

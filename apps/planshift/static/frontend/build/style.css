@@ -1166,6 +1166,19 @@ body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-
   .task-row.is-grid-focused > td { outline: 2px solid Highlight; }
 }
 
+/* First run (B-25). */
+.empty-state-cell { padding: 0; }
+.empty-state { position: sticky; left: 0; max-width: 560px; padding: 32px 24px; }
+.empty-state h2 { font-size: 18px; margin: 0 0 8px; color: var(--cp-text); }
+.empty-state p { margin: 0 0 16px; color: var(--cp-text-subtle); }
+.empty-state-actions { display: flex; gap: 12px; align-items: center; }
+.btn-link { background: none; border: none; color: var(--cp-link); text-decoration: underline; cursor: pointer; padding: 4px; font: inherit; }
+.link-hint { display: flex; align-items: center; gap: 8px; margin: 6px 16px; padding: 8px 12px; border-radius: 6px;
+  background: var(--cp-bg-information); color: var(--cp-text); border: 1px solid var(--cp-border); font-size: 12px; }
+.link-hint[hidden] { display: none; }
+.link-hint span { flex: 1; }
+.help-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+
 /* Flags and the unsaved-form prompt (B-14). */
 .flag-group { position: fixed; z-index: 1400; left: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; max-width: calc(100vw - 32px); }
 .flag { display: flex; align-items: center; gap: 8px; width: 400px; max-width: 100%; padding: 10px 12px; border-radius: 6px;

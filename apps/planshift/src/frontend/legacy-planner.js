@@ -24,6 +24,7 @@ import { CanvasTimeline, ROW_H, BAR_H } from './canvas-timeline';
 import { barRect, daysBetween, visibleRange, handleOffsets, snapDays, previewMoves, xForDate } from '../ui/timeline-geometry';
 import { GRID_COLUMNS, navigate, rowCells, rowLevel, moveKey, moveAnnouncement } from '../ui/keyboard-grid';
 import { weeklyHours } from '../ui/weekly-hours';
+import { emptyState, showLinkHint } from '../ui/first-run';
 import { addDays as addDaysIso } from '../domain/schedule-engine';
 import { shouldAutoCompact, ZOOMS, zoomById, zoomStep, mondayOf, initialRange, rangeDays, extendRange, edgeToExtend, headerCells, gridLines, anchorScroll, dateAt } from '../ui/time-scale';
 
@@ -419,6 +420,10 @@ function setupEventListeners() {
     }
     if (e.key === 'Escape' && !openModal() && !document.getElementById('barToolbar')?.hidden) {
       closeBarToolbar();
+      return;
+    }
+    if (e.key === 'Escape' && !document.getElementById('helpPopup')?.hidden) {
+      closeHelp();
       return;
     }
     if (e.key === 'Escape' && isChangesPanelOpen()) {
@@ -1043,8 +1048,31 @@ function renderPlan() {
   }
 }
 
+const HINT_KEY = 'cascadeplan_hint_link';
+
+/** The first-link hint (B-25): shown until the plan has a link or the user dismisses it. */
+function updateLinkHint() {
+  const hint = document.getElementById('linkHint');
+  if (!hint || !currentPlan) return;
+  if ((currentPlan.tasks || []).some(t => t.dependency && t.dependency.predecessorKey)) writePref(HINT_KEY, 'done');
+  hint.hidden = !showLinkHint(currentPlan, readPref(HINT_KEY, null));
+}
+
+function openHelp() {
+  const pop = document.getElementById('helpPopup');
+  if (!pop) return;
+  pop.hidden = false;
+  document.getElementById('btnCloseHelp')?.focus();
+}
+
+function closeHelp() {
+  const pop = document.getElementById('helpPopup');
+  if (pop) pop.hidden = true;
+}
+
 /** Header badges, backlog count, truncation note and legend. */
 function renderPlanSummary() {
+  updateLinkHint();
   // Badges are empty and hidden until real values arrive (B-18: no fixed text before load).
   const projectBadge = document.getElementById('projectBadge');
   projectBadge.textContent = `Project: ${currentPlan.projectKey}`;
@@ -2223,7 +2251,26 @@ function renderTimelineRows() {
   const cols = getVisibleColKeys().length + 1;
 
   if (!currentPlan.tasks || currentPlan.tasks.length === 0) {
-    tbody.innerHTML = html`<tr><td colspan="${cols}" style="text-align:center; padding:30px; color: var(--cp-text-subtle);">No scheduled tasks in project. Drag issues from the Backlog Tray or click "+ Add Task / Issue" to schedule.</td></tr>`;
+    // First run: one primary action and a link to help, no setup step (B-25).
+    const es = emptyState(currentPlan);
+    tbody.innerHTML = html`<tr><td colspan="${cols}" class="empty-state-cell">
+      <div class="empty-state" role="region" aria-labelledby="emptyStateTitle">
+        <h2 id="emptyStateTitle">${es.title}</h2>
+        <p>${es.text}</p>
+        <div class="empty-state-actions">
+          <button class="btn btn-primary" id="emptyStateAction" type="button" data-action="${es.action.id}">${es.action.label}</button>
+          <button class="btn btn-link help-link" id="emptyStateHelp" type="button">How CascadePlan works</button>
+        </div>
+      </div></td></tr>`;
+    tbody.querySelector('#emptyStateAction').addEventListener('click', (e) => {
+      if (e.currentTarget.dataset.action === 'schedule') {
+        document.getElementById('backlogTray').classList.remove('collapsed');
+        document.querySelector('.backlog-card')?.focus();
+      } else {
+        openCreateTaskModal();
+      }
+    });
+    tbody.querySelector('#emptyStateHelp').addEventListener('click', openHelp);
     drawTimeline();
     return;
   }
@@ -3426,13 +3473,14 @@ function openDependencyPopup(key, anchor) {
   document.getElementById('depTitle').textContent = `${key} starts when`;
   document.getElementById('depSearch').value = '';
   document.getElementById('depTrigger').value = '100';
-  document.getElementById('depChosen').textContent = 'No issue chosen';
   renderDependencyOptions();
   pop.hidden = false;
   const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { bottom: 120, left: 120 };
   pop.style.top = `${Math.max(8, Math.min(window.innerHeight - pop.offsetHeight - 8, r.bottom + 6))}px`;
   pop.style.left = `${Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, r.left))}px`;
-  document.getElementById('depSearch').focus();
+  const trig = document.getElementById('depTrigger');
+  trig.focus();
+  trig.select();
 }
 
 function closeDependencyPopup() {
@@ -3442,14 +3490,12 @@ function closeDependencyPopup() {
   focusGridCell();
 }
 
+/** Choosing an issue creates the link with the trigger percent above the list (B-25: 3 actions). */
 function chooseDependency(i) {
-  const t = depState.options[i];
+  const t = depState && depState.options[i];
   if (!t) return;
   depState.chosen = t.key;
-  document.getElementById('depChosen').textContent = `Waits for ${t.key}`;
-  const trig = document.getElementById('depTrigger');
-  trig.focus();
-  trig.select();
+  saveDependency();
 }
 
 async function saveDependency() {
@@ -3504,10 +3550,16 @@ function initKeyboard() {
   }
   const trig = document.getElementById('depTrigger');
   if (trig) trig.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); saveDependency(); }
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('depSearch').focus(); }
     else if (e.key === 'Escape') { e.preventDefault(); closeDependencyPopup(); }
   });
-  document.getElementById('btnDepSave')?.addEventListener('click', saveDependency);
+  document.getElementById('btnDepSave')?.addEventListener('click', () => chooseDependency(Math.max(0, depState ? depState.active : 0)));
+  document.getElementById('btnCloseHelp')?.addEventListener('click', closeHelp);
+  document.getElementById('btnHintHelp')?.addEventListener('click', openHelp);
+  document.getElementById('btnHintDismiss')?.addEventListener('click', () => {
+    writePref(HINT_KEY, 'done');
+    document.getElementById('linkHint').hidden = true;
+  });
   document.getElementById('btnDepCancel')?.addEventListener('click', closeDependencyPopup);
   document.addEventListener('click', (e) => {
     const tb = document.getElementById('barToolbar');
