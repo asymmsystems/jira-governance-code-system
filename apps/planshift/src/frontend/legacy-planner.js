@@ -9,7 +9,11 @@
  * Parts are replaced by the canvas timeline and the pure modules in later items.
  */
 
-import { callResolver, openIssueInNewTab } from './bridge';
+import { callResolver as rawCallResolver, openIssueInNewTab } from './bridge';
+import { showFlag } from './flag';
+import { classifyResult } from '../ui/result';
+import { UndoStack } from '../ui/undo-stack';
+import { snapshotPlan, buildUndoEntry, actionLabel } from '../ui/undo-plan';
 import { initErrorBanner } from './banner';
 import { enableTheme, onThemeChange } from './theme';
 import { openWhyPopup, closeWhyPopup, isWhyPopupOpen, initWhyPopup } from './why-popup';
@@ -55,6 +59,90 @@ function openJiraIssueInNewTab(issueKey, event) {
   if (!event || !event.target || (event.target.tagName !== 'A' && !event.target.closest('a'))) {
     window.open(fullUrl, '_blank', 'noopener,noreferrer');
   }
+}
+
+// Undo (B-14): every undoable write is recorded with its inverse when the next plan arrives.
+const UNDOABLE = new Set(['updateWbsTask', 'unscheduleTask', 'scheduleBacklogTask']);
+const undoStack = new UndoStack(20);
+let pendingUndo = null;
+let replayingUndo = false;
+
+async function callResolver(fn, payload = {}) {
+  if (!UNDOABLE.has(fn) || replayingUndo) return rawCallResolver(fn, payload);
+  if (!pendingUndo) pendingUndo = { before: snapshotPlan(currentPlan), fn, payload };
+  const res = await rawCallResolver(fn, payload);
+  const verdict = classifyResult(res);
+  if (verdict.failed) {
+    pendingUndo = null;
+    // A failed write stays on screen until the user closes it (UP-46, UP-69).
+    showFlag({ text: verdict.message || 'The change was not saved.', error: true });
+  } else {
+    pendingUndo.done = true;
+  }
+  return res;
+}
+
+/** Called when a new plan is shown: records the finished write and offers Undo in a Flag. */
+function settleUndo() {
+  const p = pendingUndo;
+  if (!p || !p.done || !currentPlan) return;
+  pendingUndo = null;
+  const entry = buildUndoEntry(p.before, snapshotPlan(currentPlan), p.payload.taskId);
+  if (!entry) return;
+  entry.label = actionLabel(p.fn, p.payload, entry);
+  undoStack.push(entry);
+  showFlag({ text: `${entry.label}.`, action: { label: 'Undo', run: undoLast } });
+}
+
+function findAnyTask(key) {
+  return findTask(key) || (currentPlan?.backlogTasks || []).find(t => t.key === key);
+}
+
+/** Applies undo or redo operations in order, with each task's current version. */
+async function replayUndo(ops) {
+  replayingUndo = true;
+  let ok = true;
+  try {
+    for (const op of ops) {
+      let res;
+      if (op.kind === 'unschedule') {
+        res = await rawCallResolver('unscheduleTask', { taskId: op.key });
+      } else if (op.kind === 'schedule') {
+        res = await rawCallResolver('scheduleBacklogTask', { taskId: op.key, startWeek: op.updates.startWeek, spanWeeks: op.updates.spanWeeks || 1 });
+        if (!classifyResult(res).failed && op.updates.startDate) {
+          res = await rawCallResolver('updateWbsTask', { taskId: op.key, updates: { startDate: op.updates.startDate, endDate: op.updates.endDate } });
+        }
+      } else {
+        const t = findAnyTask(op.key);
+        res = await rawCallResolver('updateWbsTask', { taskId: op.key, updates: op.updates, expectedVersion: (t && t.version) || 0 });
+      }
+      const verdict = classifyResult(res);
+      if (verdict.failed) {
+        showFlag({ text: verdict.message || 'The undo was not saved.', error: true });
+        ok = false;
+        break;
+      }
+      // The next operation needs the new version of each record.
+      if (res && Array.isArray(res.tasks)) currentPlan = res;
+      else if (res && res.plan && Array.isArray(res.plan.tasks)) currentPlan = res.plan;
+    }
+  } finally {
+    replayingUndo = false;
+  }
+  await loadProjectPlan();
+  return ok;
+}
+
+async function undoLast() {
+  const entry = undoStack.undo();
+  if (!entry) return;
+  if (await replayUndo(entry.restore)) showFlag({ text: `Undone: ${entry.label}.`, action: { label: 'Redo', run: redoLast } });
+}
+
+async function redoLast() {
+  const entry = undoStack.redo();
+  if (!entry) return;
+  if (await replayUndo(entry.reapply)) showFlag({ text: `Redone: ${entry.label}.`, action: { label: 'Undo', run: undoLast } });
 }
 
 /** Shows an estimate in hours, or "Unestimated" when Jira has none (B-03). */
@@ -255,15 +343,22 @@ function setupEventListeners() {
   // Dismiss Modals on Backdrop Click
   document.querySelectorAll('.modal-backdrop').forEach(modal => {
     modal.addEventListener('click', (e) => {
-      if (e.target === modal) {
-        modal.style.display = 'none';
-      }
+      if (e.target === modal) closeModalAsking(modal);
     });
+    // Any edit in a form marks it unsaved until it closes (B-14 criterion 7).
+    modal.addEventListener('input', () => { modal.dataset.dirty = '1'; });
+    modal.addEventListener('change', () => { modal.dataset.dirty = '1'; });
   });
 
   // Dismiss Modals and Popovers on Escape Key
   window.addEventListener('keydown', (e) => {
-    const inField = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT');
+    const inField = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable);
+    // Ctrl+Z / Ctrl+Shift+Z (Cmd on macOS) in the planner; text fields keep their own undo (WCAG 2.1.4).
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'z' || e.key === 'Z') && !inField && !openModal()) {
+      e.preventDefault();
+      if (e.shiftKey) redoLast(); else undoLast();
+      return;
+    }
     if (e.key === '?' && !inField) {
       const key = pinnedDependencyTaskId || hoveredTaskId;
       const bar = key && document.querySelector(`.bar-hit[data-task-id="${CSS.escape(key)}"]`);
@@ -279,9 +374,11 @@ function setupEventListeners() {
       return;
     }
     if (e.key === 'Escape') {
-      document.querySelectorAll('.modal-backdrop').forEach(modal => {
-        modal.style.display = 'none';
-      });
+      const modal = openModal();
+      if (modal) {
+        closeModalAsking(modal);
+        return;
+      }
       closeAllPopovers();
       if (colPopover) colPopover.style.display = 'none';
       if (pinnedDependencyTaskId) {
@@ -863,6 +960,7 @@ async function loadProjectPlan() {
     }
     updateColumnManagerUI();
     renderPlan();
+    settleUndo();
   } else {
     if (errBanner) {
       errBanner.style.display = 'flex';
@@ -1759,7 +1857,7 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
       });
 
       if (res && res.success === false) {
-        alert(res.error || 'Failed to create task in Jira.');
+        showFlag({ text: res.error || 'Failed to create task in Jira.', error: true });
         input.disabled = false;
         saveBtn.disabled = false;
         saveBtn.textContent = 'Add';
@@ -1769,7 +1867,7 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
 
       await loadProjectPlan();
     } catch (err) {
-      alert(err?.message || 'Error creating task.');
+      showFlag({ text: err?.message || 'Error creating task.', error: true });
       input.disabled = false;
       saveBtn.disabled = false;
       saveBtn.textContent = 'Add';
@@ -2039,6 +2137,7 @@ function applyPlanInPlace(plan) {
   const computed = computeRowTasks();
   if (computed.rows.map(r => r.task.key).join('\n') !== before) {
     renderPlan();
+    settleUndo();
     return;
   }
   rowTasks = computed.rows;
@@ -2050,6 +2149,7 @@ function applyPlanInPlace(plan) {
     if (hit && byKey.has(key)) positionBarHit(hit, byKey.get(key));
   }
   drawTimeline(true);
+  settleUndo();
 }
 
 
@@ -3365,7 +3465,49 @@ async function executeCreateEpic() {
 }
 
 function closeModal(id) {
-  document.getElementById(id).style.display = 'none';
+  hideModal(document.getElementById(id));
+}
+
+function hideModal(modal) {
+  modal.style.display = 'none';
+  modal.dataset.dirty = '';
+  const prompt = modal.querySelector('.discard-prompt');
+  if (prompt) prompt.remove();
+}
+
+function openModal() {
+  return [...document.querySelectorAll('.modal-backdrop')].find(m => m.style.display === 'flex' || m.style.display === 'block') || null;
+}
+
+/** Escape or a backdrop click: a form with unsaved edits asks first, inside the form (no browser dialog). */
+function closeModalAsking(modal) {
+  if (!modal.dataset.dirty) {
+    hideModal(modal);
+    return;
+  }
+  const card = modal.querySelector('.modal-card') || modal;
+  let prompt = card.querySelector('.discard-prompt');
+  if (!prompt) {
+    prompt = document.createElement('div');
+    prompt.className = 'discard-prompt';
+    prompt.setAttribute('role', 'alertdialog');
+    prompt.setAttribute('aria-label', 'Unsaved changes');
+    const text = document.createElement('span');
+    text.textContent = 'Discard unsaved changes?';
+    const discard = document.createElement('button');
+    discard.type = 'button';
+    discard.className = 'btn btn-outline btn-sm';
+    discard.textContent = 'Discard';
+    discard.addEventListener('click', () => hideModal(modal));
+    const keep = document.createElement('button');
+    keep.type = 'button';
+    keep.className = 'btn btn-primary btn-sm';
+    keep.textContent = 'Keep editing';
+    keep.addEventListener('click', () => prompt.remove());
+    prompt.append(text, discard, keep);
+    card.prepend(prompt);
+  }
+  prompt.querySelector('.btn-primary').focus();
 }
 
 // Utilization & Heatmap Views

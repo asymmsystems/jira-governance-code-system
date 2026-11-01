@@ -52,3 +52,12 @@ describe('Custom UI resource (B-01)', () => {
     expect(manifest).not.toMatch(/scripts\s*:/);
   });
 });
+
+describe('no browser dialogs (B-14 criteria 4 and 6)', () => {
+  it('the planner uses no confirm, alert or prompt dialog', () => {
+    // A confirm Modal is allowed only for an action the Jira API cannot undo, naming the consequence.
+    // No current action is one: every write is undone through the undo stack, so the list is empty.
+    const all = frontendSources().map(f => fs.readFileSync(f, 'utf8')).join('\n');
+    expect(all.match(/\b(?:window\.)?(?:confirm|alert|prompt)\s*\(/g) || []).toEqual([]);
+  });
+});

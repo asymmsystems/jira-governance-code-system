@@ -4777,7 +4777,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       var bridge_1 = require_bridge();
       var errors_1 = require_errors();
       var callBridge = (0, bridge_1.getCallBridge)();
-      var showFlag = (options) => {
+      var showFlag2 = (options) => {
         var _a;
         if (!options.id) {
           throw new errors_1.BridgeAPIError('"id" must be defined in flag options');
@@ -4793,7 +4793,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
           }
         };
       };
-      exports.showFlag = showFlag;
+      exports.showFlag = showFlag2;
     }
   });
 
@@ -6192,6 +6192,185 @@ Please see https://iframe-resizer.com/upgrade for more details.
     void import_bridge.router.open(`/browse/${encodeURIComponent(issueKey)}`);
   }
 
+  // src/frontend/flag.ts
+  var FLAG_MS = 1e4;
+  var MAX_FLAGS = 3;
+  function showFlag(opts) {
+    const group = document.getElementById("flagGroup");
+    if (!group) return null;
+    const flag = document.createElement("div");
+    flag.className = "flag" + (opts.error ? " flag-error" : "");
+    flag.setAttribute("role", opts.error ? "alert" : "status");
+    const text = document.createElement("span");
+    text.className = "flag-text";
+    text.textContent = opts.text;
+    flag.appendChild(text);
+    if (opts.action) {
+      const act = document.createElement("button");
+      act.type = "button";
+      act.className = "btn btn-outline btn-sm flag-action";
+      act.textContent = opts.action.label;
+      const run = opts.action.run;
+      act.addEventListener("click", () => {
+        flag.remove();
+        run();
+      });
+      flag.appendChild(act);
+    }
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "btn btn-subtle btn-sm flag-close";
+    close.setAttribute("aria-label", "Dismiss");
+    close.textContent = "\u2715";
+    close.addEventListener("click", () => flag.remove());
+    flag.appendChild(close);
+    if (!opts.error) {
+      let timer = 0;
+      const start = () => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => flag.remove(), FLAG_MS);
+      };
+      const hold = () => window.clearTimeout(timer);
+      flag.addEventListener("mouseenter", hold);
+      flag.addEventListener("focusin", hold);
+      flag.addEventListener("mouseleave", () => {
+        if (!flag.contains(document.activeElement)) start();
+      });
+      flag.addEventListener("focusout", (e) => {
+        if (!flag.contains(e.relatedTarget)) start();
+      });
+      start();
+    }
+    group.appendChild(flag);
+    while (group.children.length > MAX_FLAGS) group.firstElementChild.remove();
+    return flag;
+  }
+
+  // src/ui/undo-stack.ts
+  var UndoStack = class {
+    constructor(limit) {
+      this.limit = limit;
+      __publicField(this, "done", []);
+      __publicField(this, "undone", []);
+      if (!Number.isInteger(limit) || limit < 1) {
+        throw new Error("UndoStack limit must be a positive integer");
+      }
+    }
+    /** Records a new action. A new action clears the redo branch. */
+    push(entry) {
+      this.done.push(entry);
+      if (this.done.length > this.limit) this.done.shift();
+      this.undone.length = 0;
+    }
+    /** Returns the latest action to revert, or undefined when there is none. */
+    undo() {
+      const entry = this.done.pop();
+      if (entry !== void 0) this.undone.push(entry);
+      return entry;
+    }
+    /** Returns the latest reverted action to apply again, or undefined. */
+    redo() {
+      const entry = this.undone.pop();
+      if (entry !== void 0) this.done.push(entry);
+      return entry;
+    }
+    canUndo() {
+      return this.done.length > 0;
+    }
+    canRedo() {
+      return this.undone.length > 0;
+    }
+    size() {
+      return this.done.length;
+    }
+  };
+
+  // src/ui/undo-plan.ts
+  var PLAIN = ["targetProgress", "status", "summary", "effortHours", "epicKey"];
+  function snap(t, scheduled) {
+    const dep = t.dependency && t.dependency.predecessorKey ? { predecessorKey: t.dependency.predecessorKey, triggerPercent: t.dependency.triggerPercent } : null;
+    return {
+      key: t.key,
+      scheduled,
+      startDate: t.startDate,
+      endDate: t.endDate,
+      startWeek: t.startWeek,
+      spanWeeks: t.spanWeeks,
+      progress: t.progress,
+      manualProgress: t.manualProgress,
+      targetProgress: t.targetProgress,
+      dependency: dep,
+      summary: t.summary,
+      effortHours: t.effortHours,
+      status: t.status,
+      epicKey: t.epicKey,
+      resourceAccountId: t.resourceAccountId,
+      parentKey: t.parentKey
+    };
+  }
+  function snapshotPlan(plan) {
+    const out = /* @__PURE__ */ new Map();
+    for (const t of plan && plan.backlogTasks || []) out.set(t.key, snap(t, false));
+    for (const t of plan && plan.tasks || []) out.set(t.key, snap(t, true));
+    return out;
+  }
+  function updatesTo(from, to, rollUpOnly) {
+    const u = {};
+    if (!rollUpOnly && (from.startDate !== to.startDate || from.endDate !== to.endDate)) {
+      u.startDate = to.startDate;
+      u.endDate = to.endDate;
+    }
+    if (from.progress !== to.progress && (to.manualProgress || !rollUpOnly)) {
+      if (to.manualProgress) u.progress = to.progress;
+      else u.manualProgress = false;
+    }
+    for (const f of PLAIN) if (from[f] !== to[f]) u[f] = to[f];
+    if (from.resourceAccountId !== to.resourceAccountId) u.resourceAccountId = to.resourceAccountId || "unassigned";
+    if (JSON.stringify(from.dependency) !== JSON.stringify(to.dependency)) u.dependency = to.dependency;
+    return u;
+  }
+  function scheduleOp(s) {
+    return { kind: "schedule", key: s.key, updates: { startWeek: s.startWeek, spanWeeks: s.spanWeeks, startDate: s.startDate, endDate: s.endDate } };
+  }
+  function buildUndoEntry(before, after, targetKey) {
+    const changed = [...after.keys()].filter((k) => before.has(k) && JSON.stringify(before.get(k)) !== JSON.stringify(after.get(k)));
+    const parents = new Set(changed.map((k) => after.get(k).parentKey).filter(Boolean));
+    const keys = [];
+    const restore = [];
+    const reapply = [];
+    const ordered = changed.includes(targetKey) ? [targetKey, ...changed.filter((k) => k !== targetKey)] : changed;
+    for (const k of ordered) {
+      const b = before.get(k);
+      const a = after.get(k);
+      if (b.scheduled !== a.scheduled) {
+        keys.push(k);
+        restore.push(b.scheduled ? scheduleOp(b) : { kind: "unschedule", key: k });
+        reapply.push(a.scheduled ? scheduleOp(a) : { kind: "unschedule", key: k });
+        continue;
+      }
+      const rollUpOnly = parents.has(k);
+      const back = updatesTo(a, b, rollUpOnly);
+      if (Object.keys(back).length === 0) continue;
+      keys.push(k);
+      restore.push({ kind: "update", key: k, updates: back });
+      reapply.push({ kind: "update", key: k, updates: updatesTo(b, a, rollUpOnly) });
+    }
+    return keys.length ? { keys, restore, reapply } : null;
+  }
+  function actionLabel(fn, payload, entry) {
+    const key = payload.taskId || entry.keys[0];
+    const u = payload.updates || {};
+    const others = entry.keys.filter((k) => k !== key).length;
+    const dependents = others ? ` and ${others} dependent${others > 1 ? "s" : ""}` : "";
+    if (fn === "unscheduleTask") return `Moved ${key} to the backlog`;
+    if (fn === "scheduleBacklogTask") return `Scheduled ${key}`;
+    if (fn !== "updateWbsTask") return `Changed ${key}`;
+    if ("dependency" in u) return u.dependency ? `Linked ${key} to ${u.dependency.predecessorKey} at ${u.dependency.triggerPercent}%` : `Removed the link of ${key}`;
+    if (u.startDate || u.endDate || u.startWeek) return `Moved ${key}${dependents}`;
+    if (u.progress !== void 0) return `Set ${key} to ${u.progress}%`;
+    return `Changed ${key}`;
+  }
+
   // src/frontend/theme.ts
   var import_bridge2 = __toESM(require_out3());
   async function enableTheme() {
@@ -6951,6 +7130,78 @@ Please see https://iframe-resizer.com/upgrade for more details.
       window.open(fullUrl, "_blank", "noopener,noreferrer");
     }
   }
+  var UNDOABLE = /* @__PURE__ */ new Set(["updateWbsTask", "unscheduleTask", "scheduleBacklogTask"]);
+  var undoStack = new UndoStack(20);
+  var pendingUndo = null;
+  var replayingUndo = false;
+  async function callResolver2(fn, payload = {}) {
+    if (!UNDOABLE.has(fn) || replayingUndo) return callResolver(fn, payload);
+    if (!pendingUndo) pendingUndo = { before: snapshotPlan(currentPlan), fn, payload };
+    const res = await callResolver(fn, payload);
+    const verdict = classifyResult(res);
+    if (verdict.failed) {
+      pendingUndo = null;
+      showFlag({ text: verdict.message || "The change was not saved.", error: true });
+    } else {
+      pendingUndo.done = true;
+    }
+    return res;
+  }
+  function settleUndo() {
+    const p = pendingUndo;
+    if (!p || !p.done || !currentPlan) return;
+    pendingUndo = null;
+    const entry = buildUndoEntry(p.before, snapshotPlan(currentPlan), p.payload.taskId);
+    if (!entry) return;
+    entry.label = actionLabel(p.fn, p.payload, entry);
+    undoStack.push(entry);
+    showFlag({ text: `${entry.label}.`, action: { label: "Undo", run: undoLast } });
+  }
+  function findAnyTask(key) {
+    return findTask(key) || (currentPlan?.backlogTasks || []).find((t) => t.key === key);
+  }
+  async function replayUndo(ops) {
+    replayingUndo = true;
+    let ok = true;
+    try {
+      for (const op of ops) {
+        let res;
+        if (op.kind === "unschedule") {
+          res = await callResolver("unscheduleTask", { taskId: op.key });
+        } else if (op.kind === "schedule") {
+          res = await callResolver("scheduleBacklogTask", { taskId: op.key, startWeek: op.updates.startWeek, spanWeeks: op.updates.spanWeeks || 1 });
+          if (!classifyResult(res).failed && op.updates.startDate) {
+            res = await callResolver("updateWbsTask", { taskId: op.key, updates: { startDate: op.updates.startDate, endDate: op.updates.endDate } });
+          }
+        } else {
+          const t = findAnyTask(op.key);
+          res = await callResolver("updateWbsTask", { taskId: op.key, updates: op.updates, expectedVersion: t && t.version || 0 });
+        }
+        const verdict = classifyResult(res);
+        if (verdict.failed) {
+          showFlag({ text: verdict.message || "The undo was not saved.", error: true });
+          ok = false;
+          break;
+        }
+        if (res && Array.isArray(res.tasks)) currentPlan = res;
+        else if (res && res.plan && Array.isArray(res.plan.tasks)) currentPlan = res.plan;
+      }
+    } finally {
+      replayingUndo = false;
+    }
+    await loadProjectPlan();
+    return ok;
+  }
+  async function undoLast() {
+    const entry = undoStack.undo();
+    if (!entry) return;
+    if (await replayUndo(entry.restore)) showFlag({ text: `Undone: ${entry.label}.`, action: { label: "Redo", run: redoLast } });
+  }
+  async function redoLast() {
+    const entry = undoStack.redo();
+    if (!entry) return;
+    if (await replayUndo(entry.reapply)) showFlag({ text: `Redone: ${entry.label}.`, action: { label: "Undo", run: undoLast } });
+  }
   function formatEffort(hours) {
     return hours > 0 ? `${hours}h` : "Unestimated";
   }
@@ -6958,7 +7209,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     openWhyPopup(currentPlan?.tasks || [], taskKey, anchorRect, {
       apply: async (key, updates) => {
         const t = (currentPlan?.tasks || []).find((x) => x.key === key);
-        await callResolver("updateWbsTask", { taskId: key, updates, expectedVersion: t && t.version || 0 });
+        await callResolver2("updateWbsTask", { taskId: key, updates, expectedVersion: t && t.version || 0 });
         await loadProjectPlan();
       },
       focusTask: (key) => {
@@ -7074,7 +7325,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         try {
           const data = JSON.parse(dataStr);
           if (data.fromTimeline && data.taskId) {
-            await callResolver("unscheduleTask", { taskId: data.taskId });
+            await callResolver2("unscheduleTask", { taskId: data.taskId });
             await loadProjectPlan();
           }
         } catch {
@@ -7126,13 +7377,23 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (retryBtn) retryBtn.addEventListener("click", loadProjectPlan);
     document.querySelectorAll(".modal-backdrop").forEach((modal) => {
       modal.addEventListener("click", (e) => {
-        if (e.target === modal) {
-          modal.style.display = "none";
-        }
+        if (e.target === modal) closeModalAsking(modal);
+      });
+      modal.addEventListener("input", () => {
+        modal.dataset.dirty = "1";
+      });
+      modal.addEventListener("change", () => {
+        modal.dataset.dirty = "1";
       });
     });
     window.addEventListener("keydown", (e) => {
-      const inField = e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT");
+      const inField = e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT" || e.target.isContentEditable);
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "z" || e.key === "Z") && !inField && !openModal()) {
+        e.preventDefault();
+        if (e.shiftKey) redoLast();
+        else undoLast();
+        return;
+      }
       if (e.key === "?" && !inField) {
         const key = pinnedDependencyTaskId || hoveredTaskId;
         const bar = key && document.querySelector(`.bar-hit[data-task-id="${CSS.escape(key)}"]`);
@@ -7151,9 +7412,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
         return;
       }
       if (e.key === "Escape") {
-        document.querySelectorAll(".modal-backdrop").forEach((modal) => {
-          modal.style.display = "none";
-        });
+        const modal = openModal();
+        if (modal) {
+          closeModalAsking(modal);
+          return;
+        }
         closeAllPopovers();
         if (colPopover) colPopover.style.display = "none";
         if (pinnedDependencyTaskId) {
@@ -7240,7 +7503,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         const pct = parseInt(btn.dataset.pct, 10);
         if (progPopover) progPopover.style.display = "none";
         if (!activeProgressTaskKey) return;
-        await callResolver("updateWbsTask", {
+        await callResolver2("updateWbsTask", {
           taskId: activeProgressTaskKey,
           updates: { progress: pct, manualProgress: true }
         });
@@ -7255,7 +7518,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         if (!activeProgressTaskKey) return;
         const task = (currentPlan?.tasks || []).find((t) => t.key === activeProgressTaskKey);
         const rollupPct = task?.rollupStats ? task.rollupStats.progressPct : 0;
-        await callResolver("updateWbsTask", {
+        await callResolver2("updateWbsTask", {
           taskId: activeProgressTaskKey,
           updates: { progress: rollupPct, manualProgress: false }
         });
@@ -7269,7 +7532,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         const val = parseInt(progNumInput?.value || progSlider?.value || "0", 10);
         if (progPopover) progPopover.style.display = "none";
         if (!activeProgressTaskKey) return;
-        await callResolver("updateWbsTask", {
+        await callResolver2("updateWbsTask", {
           taskId: activeProgressTaskKey,
           updates: { progress: Math.max(0, Math.min(100, val)), manualProgress: true }
         });
@@ -7306,7 +7569,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         const pct = parseInt(btn.dataset.pct, 10);
         if (targetPopover) targetPopover.style.display = "none";
         if (!activeTargetTaskKey) return;
-        await callResolver("updateWbsTask", {
+        await callResolver2("updateWbsTask", {
           taskId: activeTargetTaskKey,
           updates: { targetProgress: pct }
         });
@@ -7320,7 +7583,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         const val = parseInt(targetNumInput?.value || targetSlider?.value || "0", 10);
         if (targetPopover) targetPopover.style.display = "none";
         if (!activeTargetTaskKey) return;
-        await callResolver("updateWbsTask", {
+        await callResolver2("updateWbsTask", {
           taskId: activeTargetTaskKey,
           updates: { targetProgress: Math.max(0, Math.min(100, val)) }
         });
@@ -7535,7 +7798,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     hiddenColumns.clear();
     columnWidths = { ...DEFAULT_COLUMN_WIDTHS };
     onColumnsChanged();
-    callResolver("saveColumnWidths", { columnWidths });
+    callResolver2("saveColumnWidths", { columnWidths });
   }
   function onColumnsChanged() {
     try {
@@ -7544,7 +7807,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       }
     } catch (e) {
     }
-    callResolver("saveHiddenColumns", { hiddenColumns: Array.from(hiddenColumns) });
+    callResolver2("saveHiddenColumns", { hiddenColumns: Array.from(hiddenColumns) });
     updateColumnManagerUI();
     renderTimelineHeader();
     renderTimelineRows();
@@ -7650,7 +7913,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const errBanner = document.getElementById("plannerErrorBanner");
     if (loader) loader.style.display = "flex";
     if (errBanner) errBanner.style.display = "none";
-    const plan = await callResolver("getProjectPlan", {});
+    const plan = await callResolver2("getProjectPlan", {});
     if (loader) loader.style.display = "none";
     if (plan && Array.isArray(plan.tasks)) {
       currentPlan = plan;
@@ -7668,6 +7931,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       }
       updateColumnManagerUI();
       renderPlan();
+      settleUndo();
     } else {
       if (errBanner) {
         errBanner.style.display = "flex";
@@ -7816,7 +8080,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         window.removeEventListener("mousemove", onMouseMove);
         window.removeEventListener("mouseup", onMouseUp);
         syncGanttScrollWidth();
-        callResolver("saveColumnWidths", { columnWidths });
+        callResolver2("saveColumnWidths", { columnWidths });
       }
       window.addEventListener("mousemove", onMouseMove);
       window.addEventListener("mouseup", onMouseUp);
@@ -7981,7 +8245,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       curTask.resource = primaryName;
       curTask.resourceAccountId = primaryAccountId;
       curTask.contributingResources = contributingList;
-      await callResolver("updateWbsTask", {
+      await callResolver2("updateWbsTask", {
         taskId: curTask.key,
         updates: {
           resource: primaryName,
@@ -8141,7 +8405,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         e.stopPropagation();
         popover.style.display = "none";
         const status = item.dataset.status;
-        await callResolver("updateWbsTask", {
+        await callResolver2("updateWbsTask", {
           taskId: activePickerTaskKey,
           updates: { status }
         });
@@ -8183,7 +8447,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
             }
             return;
           }
-          await callResolver("updateWbsTask", {
+          await callResolver2("updateWbsTask", {
             taskId: activePickerTaskKey,
             updates: { epic: "", epicKey: "" }
           });
@@ -8210,7 +8474,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
             }
             return;
           }
-          await callResolver("updateWbsTask", {
+          await callResolver2("updateWbsTask", {
             taskId: activePickerTaskKey,
             updates: { epic: ep.summary, epicKey: ep.key }
           });
@@ -8424,7 +8688,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const parsedHours = parseInt(hoursInput.value, 10);
       const hours = isNaN(parsedHours) ? void 0 : parsedHours;
       try {
-        const res = await callResolver("createInlineTask", {
+        const res = await callResolver2("createInlineTask", {
           summary,
           epic: selectedEpic || "General",
           epicKey: selectedEpicKey || void 0,
@@ -8436,7 +8700,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
           targetIndex: insertIndex
         });
         if (res && res.success === false) {
-          alert(res.error || "Failed to create task in Jira.");
+          showFlag({ text: res.error || "Failed to create task in Jira.", error: true });
           input.disabled = false;
           saveBtn.disabled = false;
           saveBtn.textContent = "Add";
@@ -8445,7 +8709,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         }
         await loadProjectPlan();
       } catch (err) {
-        alert(err?.message || "Error creating task.");
+        showFlag({ text: err?.message || "Error creating task.", error: true });
         input.disabled = false;
         saveBtn.disabled = false;
         saveBtn.textContent = "Add";
@@ -8641,6 +8905,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const computed = computeRowTasks();
     if (computed.rows.map((r) => r.task.key).join("\n") !== before) {
       renderPlan();
+      settleUndo();
       return;
     }
     rowTasks = computed.rows;
@@ -8652,6 +8917,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       if (hit && byKey.has(key)) positionBarHit(hit, byKey.get(key));
     }
     drawTimeline(true);
+    settleUndo();
   }
   function buildTaskRow(task, rowIdx) {
     const isEpic = Boolean(task.isEpic || task.hierarchyLevel === 1);
@@ -8863,7 +9129,7 @@ Click to manage or assign.`;
           const newSummary = input.value.trim();
           if (newSummary && newSummary !== origSummary) {
             task.summary = newSummary;
-            await callResolver("updateWbsTask", {
+            await callResolver2("updateWbsTask", {
               taskId: task.key,
               updates: { summary: newSummary }
             });
@@ -8908,7 +9174,7 @@ Click to manage or assign.`;
           const val = parseInt(input.value, 10);
           if (!isNaN(val) && val >= 0 && val !== origHours) {
             task.effortHours = val;
-            await callResolver("updateWbsTask", {
+            await callResolver2("updateWbsTask", {
               taskId: task.key,
               updates: { effortHours: val }
             });
@@ -9024,7 +9290,7 @@ Click to manage or assign.`;
     if (unschedBtn) {
       unschedBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        await callResolver("unscheduleTask", { taskId: task.key });
+        await callResolver2("unscheduleTask", { taskId: task.key });
         await loadProjectPlan();
       });
     }
@@ -9088,10 +9354,10 @@ Click to manage or assign.`;
         const data = JSON.parse(dataStr);
         const targetIndex = isTop ? rowIdx : rowIdx + 1;
         if (data.fromReorder) {
-          await callResolver("reorderWbsTasks", { taskId: data.taskId, targetIndex });
+          await callResolver2("reorderWbsTasks", { taskId: data.taskId, targetIndex });
         } else if (data.taskId) {
           const curWk = (currentPlan?.weeks || []).find((w) => w.isCurrentWeek)?.weekKey || currentPlan?.weeks[0]?.weekKey;
-          await callResolver("scheduleBacklogTask", {
+          await callResolver2("scheduleBacklogTask", {
             taskId: data.taskId,
             startWeek: curWk,
             spanWeeks: 3,
@@ -9128,10 +9394,10 @@ Click to manage or assign.`;
       if (dataStr) {
         const data = JSON.parse(dataStr);
         if (data.fromReorder) {
-          await callResolver("reorderWbsTasks", { taskId: data.taskId, targetIndex });
+          await callResolver2("reorderWbsTasks", { taskId: data.taskId, targetIndex });
         } else {
           const curWk = (currentPlan?.weeks || []).find((w) => w.isCurrentWeek)?.weekKey || currentPlan?.weeks[0]?.weekKey;
-          await callResolver("scheduleBacklogTask", {
+          await callResolver2("scheduleBacklogTask", {
             taskId: data.taskId,
             startWeek: curWk,
             spanWeeks: 3,
@@ -9177,9 +9443,9 @@ Click to manage or assign.`;
       if (!dataStr) return;
       const data = JSON.parse(dataStr);
       if (data.fromReorder) {
-        await callResolver("reorderWbsTasks", { taskId: data.taskId, targetIndex: rowIdx });
+        await callResolver2("reorderWbsTasks", { taskId: data.taskId, targetIndex: rowIdx });
       } else {
-        await callResolver("scheduleBacklogTask", {
+        await callResolver2("scheduleBacklogTask", {
           taskId: data.taskId,
           startWeek: currentPlan.weeks[i].weekKey,
           spanWeeks: 3,
@@ -9330,7 +9596,7 @@ Click to manage or assign.`;
         const newDays = daysBetween(mine.start, mine.end) + 1;
         updates.effortHours = Math.max(1, Math.round(task.effortHours * newDays / oldDays));
       }
-      const res = await callResolver("updateWbsTask", { taskId: key, updates, expectedVersion: task.version || 0 });
+      const res = await callResolver2("updateWbsTask", { taskId: key, updates, expectedVersion: task.version || 0 });
       timeline.drag = null;
       if (res && Array.isArray(res.tasks)) {
         applyPlanInPlace(res);
@@ -9508,7 +9774,7 @@ Click to manage or assign.`;
     const summary = document.getElementById("newSubtaskSummary").value.trim();
     const hours = parseInt(document.getElementById("newSubtaskHours").value, 10) || 8;
     if (!summary || !activeTaskId) return;
-    await callResolver("addSubtaskToTask", {
+    await callResolver2("addSubtaskToTask", {
       parentTaskId: activeTaskId,
       subtask: { summary, estimateValue: hours, estimateUnit: "HOURS" },
       bufferType: document.getElementById("editBufferTypeSelect").value,
@@ -9533,7 +9799,7 @@ Click to manage or assign.`;
       addBtn.textContent = "Allocating...";
     }
     try {
-      const res = await callResolver("createSubtaskForResource", {
+      const res = await callResolver2("createSubtaskForResource", {
         parentTaskId: activeTaskId,
         assigneeAccountId,
         assigneeName,
@@ -9576,7 +9842,7 @@ Click to manage or assign.`;
       btn.textContent = "Moving to Backlog...";
     }
     try {
-      await callResolver("unscheduleTask", { taskId: activeTaskId });
+      await callResolver2("unscheduleTask", { taskId: activeTaskId });
       closeModal("taskDetailModal");
       await loadProjectPlan();
     } catch (err) {
@@ -9673,7 +9939,7 @@ Click to manage or assign.`;
       btn.textContent = "Saving...";
     }
     try {
-      const res = await callResolver("updateWbsTask", { taskId: activeTaskId, updates, expectedVersion: curTask.version || 0 });
+      const res = await callResolver2("updateWbsTask", { taskId: activeTaskId, updates, expectedVersion: curTask.version || 0 });
       if (res && res.error) {
         if (errEl) {
           errEl.textContent = res.error;
@@ -9762,7 +10028,7 @@ Click to manage or assign.`;
       btn.textContent = "Creating in Jira...";
     }
     try {
-      const res = await callResolver("createInlineTask", {
+      const res = await callResolver2("createInlineTask", {
         summary,
         epic,
         resource,
@@ -9829,7 +10095,7 @@ Click to manage or assign.`;
       btn.textContent = "Creating Epic...";
     }
     try {
-      const res = await callResolver("createJiraEpic", { summary });
+      const res = await callResolver2("createJiraEpic", { summary });
       if (res && res.success === false) {
         if (errEl) {
           errEl.textContent = res.error || "Failed to create epic in Jira.";
@@ -9854,12 +10120,50 @@ Click to manage or assign.`;
     }
   }
   function closeModal(id) {
-    document.getElementById(id).style.display = "none";
+    hideModal(document.getElementById(id));
+  }
+  function hideModal(modal) {
+    modal.style.display = "none";
+    modal.dataset.dirty = "";
+    const prompt = modal.querySelector(".discard-prompt");
+    if (prompt) prompt.remove();
+  }
+  function openModal() {
+    return [...document.querySelectorAll(".modal-backdrop")].find((m) => m.style.display === "flex" || m.style.display === "block") || null;
+  }
+  function closeModalAsking(modal) {
+    if (!modal.dataset.dirty) {
+      hideModal(modal);
+      return;
+    }
+    const card = modal.querySelector(".modal-card") || modal;
+    let prompt = card.querySelector(".discard-prompt");
+    if (!prompt) {
+      prompt = document.createElement("div");
+      prompt.className = "discard-prompt";
+      prompt.setAttribute("role", "alertdialog");
+      prompt.setAttribute("aria-label", "Unsaved changes");
+      const text = document.createElement("span");
+      text.textContent = "Discard unsaved changes?";
+      const discard = document.createElement("button");
+      discard.type = "button";
+      discard.className = "btn btn-outline btn-sm";
+      discard.textContent = "Discard";
+      discard.addEventListener("click", () => hideModal(modal));
+      const keep = document.createElement("button");
+      keep.type = "button";
+      keep.className = "btn btn-primary btn-sm";
+      keep.textContent = "Keep editing";
+      keep.addEventListener("click", () => prompt.remove());
+      prompt.append(text, discard, keep);
+      card.prepend(prompt);
+    }
+    prompt.querySelector(".btn-primary").focus();
   }
   async function renderUtilizationView() {
     const cont = document.getElementById("utilizationProfilesContent");
     cont.innerHTML = '<div style="color: var(--cp-text-subtle);">Loading utilization profiles...</div>';
-    const res = await callResolver("getPortfolioResourceHeatmap", {});
+    const res = await callResolver2("getPortfolioResourceHeatmap", {});
     if (!res || !res.rows) {
       cont.innerHTML = "<div>No resource allocation data available.</div>";
       return;
@@ -9890,7 +10194,7 @@ Click to manage or assign.`;
   async function renderHeatmapView() {
     const cont = document.getElementById("heatmapContent");
     cont.innerHTML = '<div style="color: var(--cp-text-subtle);">Loading capacity heatmap...</div>';
-    const res = await callResolver("getPortfolioResourceHeatmap", {});
+    const res = await callResolver2("getPortfolioResourceHeatmap", {});
     if (!res || !res.rows) {
       cont.innerHTML = "<div>No capacity data available.</div>";
       return;

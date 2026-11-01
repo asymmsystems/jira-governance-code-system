@@ -1135,6 +1135,16 @@ body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-
 .write-preview { position: fixed; z-index: 1200; left: 50%; bottom: 16px; transform: translateX(-50%); max-width: calc(100vw - 32px);
   background: var(--cp-bg-neutral-bold); color: var(--cp-text-inverse); border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 600; }
 .write-preview[hidden] { display: none; }
+
+/* Flags and the unsaved-form prompt (B-14). */
+.flag-group { position: fixed; z-index: 1400; left: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; max-width: calc(100vw - 32px); }
+.flag { display: flex; align-items: center; gap: 8px; width: 400px; max-width: 100%; padding: 10px 12px; border-radius: 6px;
+  background: var(--cp-surface-overlay); color: var(--cp-text); border: 1px solid var(--cp-border); border-left: 4px solid var(--cp-border-success);
+  box-shadow: 0 8px 16px rgba(9, 30, 66, 0.25); font-size: 13px; }
+.flag-error { border-left-color: var(--cp-border-danger); }
+.flag-text { flex: 1; }
+.discard-prompt { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--cp-bg-warning); color: var(--cp-text); border-bottom: 1px solid var(--cp-border); }
+.discard-prompt span { flex: 1; font-weight: 600; }
 .why-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 .why-reason { margin: 0 0 8px; }
 .why-chain { margin: 0 0 8px 18px; padding: 0; }
