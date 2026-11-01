@@ -19,7 +19,9 @@ import ForgeReconciler, {
   User,
   Link,
   Textfield,
-  CodeBlock
+  CodeBlock,
+  ButtonGroup,
+  xcss
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
 import { IssueChecklistState, ChecklistAuditEvent } from '../domain/models';
@@ -30,6 +32,15 @@ type HistoryPage = { auditTrail?: ChecklistAuditEvent[]; chain?: { ok: boolean; 
 
 const Who: React.FC<{ who?: Attribution }> = ({ who }) =>
   who ? (who.kind === 'user' ? <User accountId={who.accountId} /> : <Text as="span">{who.text}</Text>) : null;
+
+const cardBox = xcss({
+  backgroundColor: 'color.background.neutral.subtle',
+  borderWidth: 'border.width',
+  borderStyle: 'solid',
+  borderColor: 'color.border',
+  borderRadius: 'radius.large',
+  padding: 'space.150'
+});
 
 // Renders the view model from src/ui/panel-view-model.ts. All rules and wording live there.
 // Text fields are uncontrolled (no value prop): a controlled UI Kit Textfield loses keystrokes,
@@ -130,7 +141,7 @@ export const DefinitionGuardPanel: React.FC = () => {
 
       {vm && (
         <Inline space="space.100" alignBlock="center">
-          <Heading as="h5">Checklist items</Heading>
+          <Heading as="h5">Definition of Done items</Heading>
           <Lozenge appearance={vm.progress.appearance}>{vm.progress.text}</Lozenge>
         </Inline>
       )}
@@ -207,12 +218,12 @@ export const DefinitionGuardPanel: React.FC = () => {
 
             {evidenceFor !== item.id && waiveFor !== item.id && (item.canAddEvidence || item.canWaive || item.canShowEvidence) && (
               <Box paddingInlineStart="space.300">
-                <Inline space="space.100" alignBlock="center">
-                  {item.canAddEvidence && <Button appearance="subtle" spacing="compact" onClick={() => setEvidenceFor(item.id)}>Tick with evidence</Button>}
-                  {item.canWaive && <Button appearance="subtle" spacing="compact" onClick={() => setWaiveFor(item.id)}>Waive</Button>}
+                <ButtonGroup>
+                  {item.canAddEvidence && <Button appearance="default" spacing="compact" onClick={() => setEvidenceFor(item.id)}>Tick with evidence</Button>}
+                  {item.canWaive && <Button appearance="default" spacing="compact" onClick={() => setWaiveFor(item.id)}>Waive</Button>}
                   {item.canShowEvidence && shownEvidence[item.id] === undefined && (
                     <Button
-                      appearance="subtle"
+                      appearance="default"
                       spacing="compact"
                       onClick={() => run('load the evidence', item.id, async () => {
                         const res = (await invoke('getEvidence', { itemId: item.id })) as unknown as { evidence?: Evidence };
@@ -222,7 +233,7 @@ export const DefinitionGuardPanel: React.FC = () => {
                       Show evidence
                     </Button>
                   )}
-                </Inline>
+                </ButtonGroup>
                 {shownEvidence[item.id] && (
                   <Box paddingBlockStart="space.050">
                     <Stack space="space.050">
@@ -238,92 +249,104 @@ export const DefinitionGuardPanel: React.FC = () => {
       </Stack>
 
       <Box paddingBlockStart="space.100">
-        <Inline space="space.050" alignBlock="center" shouldWrap>
-          <Button appearance="subtle" spacing="compact" isDisabled={loading || busyId !== null || showResetConfirm} onClick={() => setShowResetConfirm(true)}>
+        <ButtonGroup>
+          <Button appearance="default" spacing="compact" isDisabled={loading || busyId !== null || showResetConfirm} onClick={() => setShowResetConfirm(true)}>
             Reset checklist
           </Button>
           <Button
-            appearance="subtle"
+            appearance="default"
             spacing="compact"
             isDisabled={loading}
             onClick={() => (history ? setHistory(null) : run('load the history', 'history', async () => setHistory((await invoke('getHistory', {})) as unknown as HistoryPage)))}
           >
-            {history ? 'Hide history' : 'History'}
+            {history ? 'Hide history' : 'Checklist history'}
           </Button>
           <Button
-            appearance="subtle"
+            appearance="default"
             spacing="compact"
             isDisabled={loading}
             onClick={() => (exported ? setExported(null) : run('export the history', 'export', async () => setExported((await invoke('exportHistory', {})) as unknown as { fileName: string; text: string })))}
           >
             {exported ? 'Hide export' : 'Export history'}
           </Button>
-          <Button appearance="subtle" spacing="compact" isDisabled={loading} onClick={loadChecklist}>Refresh</Button>
-        </Inline>
+          <Button appearance="default" spacing="compact" isDisabled={loading} onClick={loadChecklist}>Refresh</Button>
+        </ButtonGroup>
       </Box>
 
       {exported && (
-        <Stack space="space.100">
-          <Text>Copy this JSON and save it as {exported.fileName}. It holds every event and the result of the history check.</Text>
-          <CodeBlock language="json" text={exported.text} />
-        </Stack>
+        <Box xcss={cardBox}>
+          <Stack space="space.100">
+            <Heading as="h5">Checklist history export</Heading>
+            <Text>Copy this JSON and save it as {exported.fileName}. It holds every event and the result of the history check.</Text>
+            <CodeBlock language="json" text={exported.text} />
+          </Stack>
+        </Box>
       )}
 
       {history && (
-        <Stack space="space.150">
-          <Heading as="h5">History</Heading>
-          {history.chain && (
-            <SectionMessage appearance={history.chain.ok ? 'information' : 'error'}>
-              <Text>{history.chain.message}</Text>
-              <Text>{history.chain.limit}</Text>
-            </SectionMessage>
-          )}
-          <Stack space="space.200">
-            {historyRows(history.auditTrail).map(row => (
-              <Box key={row.key} paddingBlock="space.050">
-                <Stack space="space.050">
-                  <Inline space="space.100" alignBlock="center">
-                    <User accountId={row.accountId} />
-                    <Text as="span" size="small" color="color.text.subtle">• {row.when}</Text>
-                  </Inline>
-                  <Box paddingInlineStart="space.400">
-                    <Stack space="space.050">
-                      {row.itemTitle ? (
-                        <Inline space="space.100" alignBlock="center">
-                          <Lozenge
-                            appearance={
-                              row.eventType === 'CHECK'
-                                ? 'success'
-                                : row.eventType === 'WAIVE'
-                                ? 'inprogress'
-                                : row.eventType === 'UNCHECK'
-                                ? 'moved'
-                                : 'default'
-                            }
-                          >
-                            {row.actionVerb || row.actionText}
-                          </Lozenge>
-                          <Text as="span" weight="medium">{row.itemTitle}</Text>
-                        </Inline>
-                      ) : (
-                        <Lozenge appearance="default">{row.actionText}</Lozenge>
-                      )}
-                      {row.reason && (
-                        <Text as="span" size="small" color="color.text.subtle">Reason: {row.reason}</Text>
-                      )}
-                      {row.evidence && (row.evidence.url || row.evidence.note) && (
-                        <Stack space="space.025">
-                          {row.evidence.url && <Link href={row.evidence.url} openNewTab>{row.evidence.url}</Link>}
-                          {row.evidence.note && <Text as="span" size="small">{row.evidence.note}</Text>}
-                        </Stack>
-                      )}
-                    </Stack>
-                  </Box>
-                </Stack>
-              </Box>
-            ))}
+        <Box xcss={cardBox}>
+          <Stack space="space.150">
+            <Inline space="space.100" alignBlock="center">
+              <Heading as="h5">Checklist audit history</Heading>
+              {history.chain && (
+                <Lozenge appearance={history.chain.ok ? 'success' : 'removed'}>
+                  {history.chain.ok ? 'Chain intact' : 'Chain broken'}
+                </Lozenge>
+              )}
+            </Inline>
+            {history.chain && (
+              <SectionMessage appearance={history.chain.ok ? 'information' : 'error'}>
+                <Text>{history.chain.message}</Text>
+                <Text>{history.chain.limit}</Text>
+              </SectionMessage>
+            )}
+            <Stack space="space.200">
+              {historyRows(history.auditTrail).map(row => (
+                <Box key={row.key} paddingBlock="space.050">
+                  <Stack space="space.050">
+                    <Inline space="space.100" alignBlock="center">
+                      <User accountId={row.accountId} />
+                      <Text as="span" size="small" color="color.text.subtle">• {row.when}</Text>
+                    </Inline>
+                    <Box paddingInlineStart="space.400">
+                      <Stack space="space.050">
+                        {row.itemTitle ? (
+                          <Inline space="space.100" alignBlock="center">
+                            <Lozenge
+                              appearance={
+                                row.eventType === 'CHECK'
+                                  ? 'success'
+                                  : row.eventType === 'WAIVE'
+                                  ? 'inprogress'
+                                  : row.eventType === 'UNCHECK'
+                                  ? 'moved'
+                                  : 'default'
+                              }
+                            >
+                              {row.actionVerb || row.actionText}
+                            </Lozenge>
+                            <Text as="span" weight="medium">{row.itemTitle}</Text>
+                          </Inline>
+                        ) : (
+                          <Lozenge appearance="default">{row.actionText}</Lozenge>
+                        )}
+                        {row.reason && (
+                          <Text as="span" size="small" color="color.text.subtle">Reason: {row.reason}</Text>
+                        )}
+                        {row.evidence && (row.evidence.url || row.evidence.note) && (
+                          <Stack space="space.025">
+                            {row.evidence.url && <Link href={row.evidence.url} openNewTab>{row.evidence.url}</Link>}
+                            {row.evidence.note && <Text as="span" size="small">{row.evidence.note}</Text>}
+                          </Stack>
+                        )}
+                      </Stack>
+                    </Box>
+                  </Stack>
+                </Box>
+              ))}
+            </Stack>
           </Stack>
-        </Stack>
+        </Box>
       )}
     </Stack>
   );
