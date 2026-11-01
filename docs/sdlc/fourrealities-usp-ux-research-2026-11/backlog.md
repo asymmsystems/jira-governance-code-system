@@ -36,7 +36,7 @@ Status: approved. Part B in progress on branch `feature/fourrealities-research-b
 | B-15 | Intent gate from link structure, same rule on both views | U1 | FR-13, NF-03 | M | none |
 | B-16 | Honest gate states with a named source on every gate | U1, U2, tasks 2, 8 | FR-04 (UI), FR-23 (part) | M | none |
 | B-17 | Feedback from the re-evaluated state | Task 3 | FR-20 | S | none; DONE 2026-11-01 |
-| B-18 | Assignee, sprint and gate filters | Task 5 | NF-01 | S | none |
+| B-18 | Assignee, sprint and gate filters | Task 5 | NF-01 | S | none; DONE 2026-11-01 |
 | B-19 | Four-week trend with denominators | Task 6 | FR-15, FR-16 | M | depends on B-08 |
 | B-20 | Accessibility and narrow-width layout | Task 8 | FR-23, NF-04 | S | none |
 | B-21 | RAI shown as a secondary number, with its parts | H5 | FR-15 (label), H5 | S | none |

@@ -232,6 +232,18 @@ Audit and Process show "Source: LedgerSeal property ledgerseal-cert" or "Source:
 - **averageRAI** = rounded mean RAI over rated issues; `null` when none is rated.
 - Counts shown in the UI come from the gate counts, never from a rounded percentage.
 
+## Project dashboard filters (B-18)
+
+The filter bar sits above the triage table, in this tab order: Search (key or summary), Assignee, Sprint, Gate. Each is a labelled control. Filtering runs on the visible snapshot rows in the browser (`src/ui/filters.ts`); it makes no Jira call.
+
+| Filter | Values | Rule |
+|---|---|---|
+| Assignee | assignee names in name order, then "Unassigned" when a row has no assignee | exact name |
+| Sprint | sprint names on the rows, in name order | the row is in that sprint; the control is hidden when no row has a sprint |
+| Gate | "Intent missing", "Process missing", "Code missing", "Audit missing" | that gate is MISSING; the "Show Gate missing (n)" buttons set the same filter |
+
+Filters combine with AND. Each active filter has its own "Remove filter: ..." button; "Clear all filters" appears when two or more are active and keeps the search text. The count reads "Showing n of m issues".
+
 ## Manifest
 
 - Modules: `jira:projectPage`, `jira:issuePanel`, `jira:issueContext` (UI Kit, `render: native`), one resolver function, and a `scheduledTrigger` with `interval: day` that calls the `snapshot` function. The snapshot function sets `timeoutSeconds: 600`.

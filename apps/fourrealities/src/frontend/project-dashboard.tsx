@@ -20,6 +20,7 @@ import {
   ModalHeader,
   ModalTitle,
   SectionMessage,
+  Select,
   Stack,
   Text,
   Textfield
@@ -27,7 +28,11 @@ import {
 import { router } from '@forge/bridge';
 import { GATE_NAMES, GateName, IssueRow, ProjectDashboardView } from '../contract/data/models';
 import { GATE_LABEL, raiText, rateText, riskAppearance } from '../ui/gate-text';
+import { DashboardFilters, FilterField, GATE_FILTER_OPTIONS, NO_FILTERS, activeFilters, applyFilters, filterOptions, missingGateLabel } from '../ui/filters';
 import { GateChips, GateRow } from './gate-row';
+
+type Option<T extends string = string> = { label: string; value: T };
+const asOption = (value: string | null): Option | null => (value === null ? null : { label: value, value });
 
 const RATE_OF: Record<GateName, (v: ProjectDashboardView) => number | null> = {
   intent: v => v.summary.m11IntentRate,
@@ -46,16 +51,14 @@ export function triageOrder(rows: IssueRow[]): IssueRow[] {
 }
 
 export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh: () => void }> = ({ view, onRefresh }) => {
-  const [search, setSearch] = useState('');
-  const [missingGate, setMissingGate] = useState<GateName | 'ALL'>('ALL');
+  const [filters, setFilters] = useState<DashboardFilters>(NO_FILTERS);
   const [selected, setSelected] = useState<IssueRow | null>(null);
 
-  const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return triageOrder(view.rows).filter(r =>
-      (missingGate === 'ALL' || r.gates[missingGate].state === 'MISSING') &&
-      (!q || r.issueKey.toLowerCase().includes(q) || r.summary.toLowerCase().includes(q)));
-  }, [view.rows, search, missingGate]);
+  const options = useMemo(() => filterOptions(view.rows), [view.rows]);
+  const visible = useMemo(() => applyFilters(triageOrder(view.rows), filters), [view.rows, filters]);
+  const set = (patch: Partial<DashboardFilters>) => setFilters(f => ({ ...f, ...patch }));
+  const remove = (field: FilterField) => set({ [field]: null });
+  const active = activeFilters(filters);
 
   const { summary } = view;
 
@@ -123,7 +126,7 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
                 <Heading as="h4">{GATE_LABEL[g]}</Heading>
                 <Text>{`${rateText(RATE_OF[g](view))} evidence found`}</Text>
                 <Text>{`${c.found} of ${c.found + c.missing} rated issues`}</Text>
-                <Button appearance="subtle" onClick={() => setMissingGate(g)}>{`Show ${GATE_LABEL[g]} missing (${c.missing})`}</Button>
+                <Button appearance="subtle" onClick={() => set({ missingGate: g })}>{`Show ${GATE_LABEL[g]} missing (${c.missing})`}</Button>
               </Stack>
             </Box>
           );
@@ -136,16 +139,40 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
           : `RAI ${summary.averageRAI}% across ${summary.ratedIssues} rated issues (${summary.unratedIssues} unrated). RAI is the share of rated gates with evidence found.`}
       </Text>
 
-      <Inline space="space.100" alignBlock="center" shouldWrap>
-        <Label labelFor="fr-search">Search key or summary</Label>
-        <Textfield id="fr-search" value={search} onChange={(e: any) => setSearch(e.target?.value || '')} />
-        {missingGate !== 'ALL' ? (
-          <Button appearance="subtle" onClick={() => setMissingGate('ALL')}>{`Clear filter: ${GATE_LABEL[missingGate]} missing`}</Button>
+      <Inline space="space.100" alignBlock="end" shouldWrap>
+        <Stack space="space.050">
+          <Label labelFor="fr-search">Search key or summary</Label>
+          <Textfield id="fr-search" value={filters.search} onChange={(e: any) => set({ search: e.target?.value || '' })} />
+        </Stack>
+        <Stack space="space.050">
+          <Label labelFor="fr-filter-assignee">Assignee</Label>
+          <Select id="fr-filter-assignee" isClearable placeholder="Any assignee" options={options.assignees.map(a => ({ label: a, value: a }))}
+            value={asOption(filters.assignee)} onChange={(o: Option | null) => set({ assignee: o?.value ?? null })} />
+        </Stack>
+        {options.sprints.length > 0 ? (
+          <Stack space="space.050">
+            <Label labelFor="fr-filter-sprint">Sprint</Label>
+            <Select id="fr-filter-sprint" isClearable placeholder="Any sprint" options={options.sprints.map(s => ({ label: s, value: s }))}
+              value={asOption(filters.sprint)} onChange={(o: Option | null) => set({ sprint: o?.value ?? null })} />
+          </Stack>
         ) : null}
+        <Stack space="space.050">
+          <Label labelFor="fr-filter-gate">Gate</Label>
+          <Select id="fr-filter-gate" isClearable placeholder="Any gate" options={GATE_FILTER_OPTIONS}
+            value={filters.missingGate ? { label: missingGateLabel(filters.missingGate), value: filters.missingGate } : null}
+            onChange={(o: Option<GateName> | null) => set({ missingGate: o?.value ?? null })} />
+        </Stack>
+      </Inline>
+
+      <Inline space="space.100" alignBlock="center" shouldWrap>
+        {active.map(a => (
+          <Button key={a.field} appearance="subtle" onClick={() => remove(a.field)}>{`Remove filter: ${a.label}`}</Button>
+        ))}
+        {active.length > 1 ? <Button appearance="subtle" onClick={() => setFilters(f => ({ ...NO_FILTERS, search: f.search }))}>Clear all filters</Button> : null}
         <Text>{`Showing ${visible.length} of ${view.rows.length} issues`}</Text>
       </Inline>
 
-      <DynamicTable head={head} rows={rows} rowsPerPage={25} emptyView={<Text>No issues match the filter.</Text>} />
+      <DynamicTable head={head} rows={rows} rowsPerPage={25} emptyView={<Text>No issues match the filters.</Text>} />
 
       {selected ? (
         <Modal onClose={() => setSelected(null)} width="large">

@@ -64,8 +64,54 @@ describe('ProjectDashboard', () => {
     await act(async () => { findAll(r.root, 'Textfield', p => p.id === 'fr-search')[0].props.onChange({ target: { value: 'demo-3' } }); });
     expect(tableKeys(r)).toEqual(['DEMO-3']);
     await act(async () => { findAll(r.root, 'Textfield', p => p.id === 'fr-search')[0].props.onChange({ target: {} }); });
-    await act(async () => { findButton(r.root, 'Clear filter: Intent missing').props.onClick(); });
+    await act(async () => { findButton(r.root, 'Remove filter: Intent missing').props.onClick(); });
     expect(tableKeys(r)).toHaveLength(4);
+  });
+
+  const select = (r: any, id: string) => findAll(r.root, 'Select', p => p.id === id)[0];
+
+  it('B-18: filters by assignee, sprint and gate with labelled selects, and removes each filter on its own', async () => {
+    const sprintRows = [
+      row('DEMO-1', { intent: F, process: F, code: NA, audit: F }, { sprintNames: ['Sprint 1'] }),
+      row('DEMO-2', { intent: M_INTENT, process: M_DOD, code: M_CODE, audit: M_SEAL }, { assigneeName: undefined, sprintNames: ['Sprint 2'] }),
+      row('DEMO-3', { intent: M_INTENT, process: F, code: NA, audit: NA }, { assigneeName: 'Bo Chen', sprintNames: ['Sprint 2'] })
+    ];
+    const r = await mount(dashboard(sprintRows));
+    expect(findAll(r.root, 'Label').map((l: any) => l.props.labelFor)).toEqual(['fr-search', 'fr-filter-assignee', 'fr-filter-sprint', 'fr-filter-gate']);
+    expect(select(r, 'fr-filter-assignee').props.options.map((o: any) => o.label)).toEqual(['Ana Silva', 'Bo Chen', 'Unassigned']);
+    expect(select(r, 'fr-filter-sprint').props.options.map((o: any) => o.label)).toEqual(['Sprint 1', 'Sprint 2']);
+    expect(select(r, 'fr-filter-gate').props.options.map((o: any) => o.label)).toEqual(['Intent missing', 'Process missing', 'Code missing', 'Audit missing']);
+
+    await act(async () => { select(r, 'fr-filter-sprint').props.onChange({ label: 'Sprint 2', value: 'Sprint 2' }); });
+    expect(tableKeys(r)).toEqual(['DEMO-2', 'DEMO-3']);
+    await act(async () => { select(r, 'fr-filter-assignee').props.onChange({ label: 'Unassigned', value: 'Unassigned' }); });
+    expect(tableKeys(r)).toEqual(['DEMO-2']);
+    await act(async () => { select(r, 'fr-filter-gate').props.onChange({ label: 'Code missing', value: 'code' }); });
+    expect(tableKeys(r)).toEqual(['DEMO-2']);
+    expect(select(r, 'fr-filter-assignee').props.value).toEqual({ label: 'Unassigned', value: 'Unassigned' });
+    const text = textOf(r.toJSON());
+    expect(text).toContain('Showing 1 of 3 issues');
+
+    await act(async () => { findButton(r.root, 'Remove filter: Assignee: Unassigned').props.onClick(); });
+    expect(tableKeys(r)).toEqual(['DEMO-2']);
+    await act(async () => { findButton(r.root, 'Remove filter: Code missing').props.onClick(); });
+    expect(tableKeys(r)).toEqual(['DEMO-2', 'DEMO-3']);
+    await act(async () => { select(r, 'fr-filter-sprint').props.onChange(null); });
+    expect(tableKeys(r)).toHaveLength(3);
+
+    await act(async () => { select(r, 'fr-filter-gate').props.onChange({ label: 'Intent missing', value: 'intent' }); });
+    await act(async () => { select(r, 'fr-filter-sprint').props.onChange({ label: 'Sprint 1', value: 'Sprint 1' }); });
+    expect(tableKeys(r)).toEqual([]);
+    expect(textOf(TestRenderer.create(findAll(r.root, 'DynamicTable')[0].props.emptyView).toJSON())).toBe('No issues match the filters.');
+    await act(async () => { findButton(r.root, 'Clear all filters').props.onClick(); });
+    expect(tableKeys(r)).toHaveLength(3);
+    expect(() => findButton(r.root, 'Clear all filters')).toThrow('No button');
+  });
+
+  it('B-18: hides the Sprint filter, not empty, for a project without sprints', async () => {
+    const r = await mount(dashboard(rows));
+    expect(findAll(r.root, 'Select', p => p.id === 'fr-filter-sprint')).toHaveLength(0);
+    expect(findAll(r.root, 'Label').map((l: any) => l.props.labelFor)).toEqual(['fr-search', 'fr-filter-assignee', 'fr-filter-gate']);
   });
 
   it('opens Inspect with gate rows and only an Open issue action', async () => {
