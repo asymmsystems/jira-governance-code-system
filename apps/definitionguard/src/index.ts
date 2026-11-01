@@ -11,7 +11,7 @@ import { resolveStorage } from './storage/forge-storage';
 import { ChecklistStore, eventKey } from './storage/checklist-store';
 import { applyEvent, createdEvent, emptyState, chainMessage, CHAIN_LIMIT_NOTE } from './domain/event-log';
 import { ChecklistEvent, ChecklistState, IssueChecklistState, ChecklistAuditEvent } from './domain/models';
-import { checkIssuePermissions, EDIT_DENIED, RESET_DENIED } from './security/permissions';
+import { checkIssuePermissions, getIssuePermissions, permissionLabel, PermissionDeniedError, EDIT_DENIED, RESET_DENIED } from './security/permissions';
 import { resolveTemplate } from './settings/template-store';
 import { assertLicensed, isLicenceInactive, VALIDATOR_LICENCE_INACTIVE } from './security/licence';
 import { validateEvidence, EVIDENCE_REQUIRED } from './domain/evidence';
@@ -43,7 +43,7 @@ export const VALIDATOR_FAILURE_MESSAGE =
  * so the validator blocks instead of guessing (fail closed).
  */
 async function fetchIssueForValidator(issueIdOrKey: string): Promise<any> {
-  const res = await api.asApp().requestJira(route`/rest/api/3/issue/${issueIdOrKey}?fields=issuetype,project`);
+  const res = await api.asApp().requestJira(route`/rest/api/3/issue/${issueIdOrKey}?fields=issuetype,project,assignee`);
   if (res.status !== 200) {
     throw new Error(`DefinitionGuard: issue lookup returned ${res.status}`);
   }
@@ -68,6 +68,7 @@ function toLegacyItems(state: ChecklistState) {
     completedByAccountId: i.status !== 'OPEN' ? i.byAccountId : undefined,
     completedAt: i.status !== 'OPEN' ? i.at : undefined,
     completedByLegacyName: i.status !== 'OPEN' ? i.legacyName : undefined,
+    waived: i.status === 'WAIVED',
     evidenceRequired: Boolean(i.evidenceRequired),
     hasEvidence: Boolean(i.hasEvidence)
   }));
@@ -131,7 +132,15 @@ async function evaluateTransition(payload: any, context?: any, storageProvider?:
     state = stateFromTemplate(issueId, String(issueKey || issueId), projectId, template);
   }
 
-  const gate = evaluateGate(state);
+  // Separation of duties holds at the moment of Done: re-check not-the-assignee items
+  // against the current assignee, read from the Jira issue (never from an issue property).
+  let assigneeAccountId: string | undefined;
+  if (state.items.some(i => i.notAssignee && i.status === 'DONE')) {
+    live = live?.fields && 'assignee' in live.fields ? live : await fetchIssueForValidator(issueId);
+    assigneeAccountId = live?.fields?.assignee?.accountId;
+  }
+
+  const gate = evaluateGate(state, assigneeAccountId);
   if (gate.satisfied) {
     return { result: true };
   }
@@ -184,7 +193,7 @@ const AUDIT_TYPE: Record<string, ChecklistAuditEvent['eventType']> = {
   MIGRATED: 'TEMPLATE_CONFIGURED',
   RESYNC: 'TEMPLATE_CONFIGURED',
   TICK: 'CHECK',
-  WAIVE: 'CHECK',
+  WAIVE: 'WAIVE',
   UNTICK: 'UNCHECK',
   RESET: 'RESET'
 };
@@ -212,7 +221,8 @@ export function toPanelResponse(state: ChecklistState, events: ChecklistEvent[] 
       actorAccountId: e.actorAccountId,
       itemId: e.itemId,
       itemTitle: e.itemTitle,
-      evidence: e.evidence
+      evidence: e.evidence,
+      details: e.reason
     }))
   };
 }
@@ -283,6 +293,72 @@ export async function getChecklistHistory(payload: any, context?: any, storagePr
   };
 }
 
+export const ASSIGNEE_DENIED = 'The assignee cannot complete this item. Ask a reviewer.';
+export const WAIVER_REASON_INVALID = 'Give a reason of 10 to 500 characters for the waiver.';
+
+/** The stored checklist, or the one a first change would create, built in memory. */
+async function currentState(storage: StorageProvider, store: ChecklistStore, c: ReturnType<typeof panelContext>): Promise<ChecklistState> {
+  const stored = await store.loadOrLegacy(c.issueId, c.projectId);
+  if (stored) return stored;
+  return stateFromTemplate(c.issueId, c.issueKey, c.projectId, await templateFor(storage, c));
+}
+
+/** The current assignee, read as the user. Throws when it cannot be read (fail closed). */
+async function currentAssignee(issueKey: string): Promise<string | undefined> {
+  let res: any;
+  try {
+    res = await api.asUser().requestJira(route`/rest/api/3/issue/${issueKey}?fields=assignee`);
+  } catch {
+    res = { status: 0 };
+  }
+  if (res.status !== 200) {
+    throw new Error('DefinitionGuard could not read the assignee, so the change was not saved. Try again.');
+  }
+  return (await res.json())?.fields?.assignee?.accountId;
+}
+
+/**
+ * Waives an item with a reason. Needs the template's waiver permission (default Administer projects).
+ * A waived mandatory item counts as done for the gate.
+ */
+export async function waiveChecklistItem(payload: any, context?: any, storageProvider?: StorageProvider): Promise<IssueChecklistState> {
+  const c = panelContext(context);
+  const itemId = String(payload?.itemId || '');
+  const reason = typeof payload?.reason === 'string' ? payload.reason.trim() : '';
+  if (reason.length < 10 || reason.length > 500) {
+    throw new Error(WAIVER_REASON_INVALID);
+  }
+  assertLicensed(context);
+
+  const storage = resolveStorage(storageProvider);
+  const store = new ChecklistStore(storage);
+  const at = new Date().toISOString();
+  const current = await currentState(storage, store, c);
+  if (!current.items.some(i => i.id === itemId)) {
+    throw new Error(`Checklist item with id '${itemId}' not found on issue ${current.issueKey}`);
+  }
+  const waiverPermission = current.waiverPermission || 'ADMINISTER_PROJECTS';
+  await checkIssuePermissions(c.issueKey, [waiverPermission],
+    `Only users with the ${permissionLabel(waiverPermission)} Jira permission can waive this item.`);
+
+  const state = await store.mutate(
+    c.issueId,
+    base => store.initFromLegacyOr(base, () => templateFor(storage, c), c.actorAccountId, at),
+    st => {
+      const item = st.items.find(i => i.id === itemId);
+      if (!item) {
+        throw new Error(`Checklist item with id '${itemId}' not found on issue ${st.issueKey}`);
+      }
+      return [{ type: 'WAIVE', itemId, itemTitle: item.title, reason, actorAccountId: c.actorAccountId, at }];
+    },
+    { issueKey: c.issueKey, projectId: c.projectId }
+  );
+
+  const response = toPanelResponse(state);
+  await publishProperty(c.issueId, response);
+  return response;
+}
+
 /**
  * The evidence recorded with an item's current tick, read from its event on request.
  * The state keeps only a flag, so the state value stays small (spec v2, D-13).
@@ -319,11 +395,33 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
   const evidence = isCompleted ? checked.evidence : undefined;
 
   assertLicensed(context);
-  await checkIssuePermissions(c.issueKey, ['EDIT_ISSUES'], EDIT_DENIED);
 
   const storage = resolveStorage(storageProvider);
   const store = new ChecklistStore(storage);
   const at = new Date().toISOString();
+
+  // The item's rules decide which permissions to check, so read the current checklist first.
+  const current = await currentState(storage, store, c);
+  const target = current.items.find(i => i.id === itemId);
+  if (!target) {
+    throw new Error(`Checklist item with id '${itemId}' not found on issue ${current.issueKey}`);
+  }
+  const waiverPermission = current.waiverPermission || 'ADMINISTER_PROJECTS';
+  const reopensWaiver = !isCompleted && target.status === 'WAIVED';
+  const keys = ['EDIT_ISSUES'];
+  if (isCompleted && target.requiredPermission) keys.push(target.requiredPermission);
+  if (reopensWaiver) keys.push(waiverPermission);
+  const granted = await getIssuePermissions(c.issueKey, [...new Set(keys)]);
+  if (!granted.EDIT_ISSUES) throw new PermissionDeniedError(EDIT_DENIED);
+  if (isCompleted && target.requiredPermission && !granted[target.requiredPermission]) {
+    throw new PermissionDeniedError(`You need the ${permissionLabel(target.requiredPermission)} Jira permission to complete this item.`);
+  }
+  if (reopensWaiver && !granted[waiverPermission]) {
+    throw new PermissionDeniedError(`Only users with the ${permissionLabel(waiverPermission)} Jira permission can reopen a waived item.`);
+  }
+  if (isCompleted && target.notAssignee && (await currentAssignee(c.issueKey)) === c.actorAccountId) {
+    throw new PermissionDeniedError(ASSIGNEE_DENIED);
+  }
 
   const state = await store.mutate(
     c.issueId,
@@ -394,6 +492,10 @@ resolver.define('toggleItem', async (req) => {
 
 resolver.define('resetChecklist', async (req) => {
   return await resetChecklist(req.payload, req.context);
+});
+
+resolver.define('waiveItem', async (req) => {
+  return await waiveChecklistItem(req.payload, req.context);
 });
 
 resolver.define('getEvidence', async (req) => {

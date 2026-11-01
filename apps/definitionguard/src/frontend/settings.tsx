@@ -23,6 +23,7 @@ import ForgeReconciler, {
 import { invoke } from '@forge/bridge';
 import {
   CATEGORY_OPTIONS,
+  PERMISSION_OPTIONS,
   EditorState,
   addItem,
   editorFromTemplate,
@@ -160,6 +161,24 @@ export const SettingsPage: React.FC = () => {
                   isChecked={item.isMandatory}
                   onChange={() => setEditor(updateItem(editor, item.key, { isMandatory: !item.isMandatory }))}
                 />
+                <Checkbox
+                  label="Evidence required"
+                  isChecked={Boolean(item.evidenceRequired)}
+                  onChange={() => setEditor(updateItem(editor, item.key, { evidenceRequired: !item.evidenceRequired }))}
+                />
+                <Checkbox
+                  label="Not the assignee"
+                  isChecked={Boolean(item.notAssignee)}
+                  onChange={() => setEditor(updateItem(editor, item.key, { notAssignee: !item.notAssignee }))}
+                />
+                <Box>
+                  <Select
+                    inputId={`dg-permission-${item.key}`}
+                    options={PERMISSION_OPTIONS}
+                    value={PERMISSION_OPTIONS.find(o => o.value === (item.requiredPermission || ''))}
+                    onChange={(o: any) => setEditor(updateItem(editor, item.key, { requiredPermission: o?.value || undefined }))}
+                  />
+                </Box>
                 <Box>
                   <Select
                     inputId={`dg-category-${item.key}`}

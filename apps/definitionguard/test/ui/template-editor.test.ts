@@ -4,7 +4,7 @@
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
  */
-import { itemIdFor, editorFromTemplate, addItem, removeItem, updateItem, moveItem, toTemplatePayload, CATEGORY_OPTIONS } from '../../src/ui/template-editor';
+import { itemIdFor, editorFromTemplate, addItem, removeItem, updateItem, moveItem, toTemplatePayload, CATEGORY_OPTIONS, PERMISSION_OPTIONS } from '../../src/ui/template-editor';
 import { validateTemplate } from '../../src/settings/template-store';
 import { BUG_DEFINITION_OF_DONE } from '../../src/domain/checklist-engine';
 
@@ -45,6 +45,12 @@ describe('template editor', () => {
     const payload = toTemplatePayload(e);
     expect(payload.items[0]).toEqual({ id: 'peer-review', title: 'Peer review', isMandatory: true, category: 'TESTING', description: 'PR link', evidenceRequired: true, notAssignee: true, requiredPermission: 'RESOLVE_ISSUES' });
     expect(validateTemplate(payload)).toEqual([]);
+  });
+
+  it('offers only permission keys the validator accepts', () => {
+    for (const o of PERMISSION_OPTIONS.filter(x => x.value)) {
+      expect(validateTemplate({ name: 'n', items: [{ id: 'a', title: 'a', isMandatory: true, category: 'TESTING', requiredPermission: o.value }] })).toEqual([]);
+    }
   });
 
   it('offers every category the validator accepts', () => {

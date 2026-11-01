@@ -80,3 +80,9 @@ export async function checkIssuePermissions(issueKey: string, keys: JiraPermissi
 
 export const EDIT_DENIED = 'You need Edit issues permission to change this checklist.';
 export const RESET_DENIED = 'Only a project admin can reset this checklist.';
+
+/** A Jira permission key in plain words, for messages: RESOLVE_ISSUES becomes "Resolve issues". */
+export function permissionLabel(key: JiraPermissionKey): string {
+  const words = key.toLowerCase().split('_').join(' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}

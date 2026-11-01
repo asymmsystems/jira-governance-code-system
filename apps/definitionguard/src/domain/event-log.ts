@@ -70,6 +70,8 @@ export function itemsFromTemplate(template: ChecklistTemplate): ItemState[] {
   return template.items.map(t => {
     const item: ItemState = { id: t.id, title: t.title, isMandatory: t.isMandatory, category: t.category, status: 'OPEN' };
     if (t.evidenceRequired) item.evidenceRequired = true;
+    if (t.notAssignee) item.notAssignee = true;
+    if (t.requiredPermission) item.requiredPermission = t.requiredPermission;
     return item;
   });
 }
@@ -83,7 +85,8 @@ export function createdEvent(state: ChecklistState, template: ChecklistTemplate,
     projectId: state.projectId,
     items: itemsFromTemplate(template),
     templateId: template.id,
-    templateVersion: template.version || 1
+    templateVersion: template.version || 1,
+    ...(template.waiverPermission ? { waiverPermission: template.waiverPermission } : {})
   });
 }
 
@@ -165,6 +168,7 @@ export function applyEvent(state: ChecklistState, event: ChecklistEvent): Checkl
       next.templateId = event.templateId || state.templateId;
       next.templateVersion = event.templateVersion || state.templateVersion;
       if (event.legacy) next.legacy = event.legacy;
+      if (event.waiverPermission) next.waiverPermission = event.waiverPermission;
       if (event.issueKey) next.issueKey = event.issueKey;
       if (event.projectId) next.projectId = event.projectId;
       break;

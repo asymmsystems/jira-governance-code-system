@@ -14,6 +14,14 @@ export const CATEGORY_OPTIONS: Array<{ label: string; value: ChecklistCategory }
   { label: 'Documentation', value: 'DOCUMENTATION' }
 ];
 
+/** Extra Jira permission an item can require, besides Edit issues. '' means none. */
+export const PERMISSION_OPTIONS: Array<{ label: string; value: string }> = [
+  { label: 'No extra permission', value: '' },
+  { label: 'Resolve issues', value: 'RESOLVE_ISSUES' },
+  { label: 'Transition issues', value: 'TRANSITION_ISSUES' },
+  { label: 'Administer projects', value: 'ADMINISTER_PROJECTS' }
+];
+
 export interface EditorItem extends ChecklistItemTemplate {
   key: string; // stable React key, not saved
 }

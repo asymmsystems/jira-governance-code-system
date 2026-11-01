@@ -37,7 +37,7 @@ export interface ChecklistItemAuditEntry {
 export interface ChecklistAuditEvent {
   id: string;
   timestamp: string;
-  eventType: 'CHECK' | 'UNCHECK' | 'RESET' | 'TEMPLATE_CONFIGURED';
+  eventType: 'CHECK' | 'UNCHECK' | 'RESET' | 'TEMPLATE_CONFIGURED' | 'WAIVE';
   actorName: string;
   actorAccountId: string;
   itemId?: string;
@@ -57,6 +57,7 @@ export interface ChecklistItemInstance {
   completedByLegacyName?: string;  // v2 panel response: v1 name when no accountId exists
   evidenceRequired?: boolean;      // v2 panel response
   hasEvidence?: boolean;           // v2 panel response
+  waived?: boolean;                // v2 panel response
   completedAt?: string;
   notes?: string;
   history?: ChecklistItemAuditEntry[];
@@ -131,6 +132,7 @@ export interface ItemState {
   evidenceRequired?: boolean;   // from the template (B-11)
   hasEvidence?: boolean;        // the DONE event carried evidence (B-11)
   notAssignee?: boolean;        // from the template (B-12)
+  requiredPermission?: string;  // from the template (B-12)
 }
 
 export interface LegacyRef {
@@ -153,6 +155,7 @@ export interface ChecklistState {
   lastModifiedAt?: string;
   lastModifiedByAccountId?: string;
   legacy?: LegacyRef;
+  waiverPermission?: string;    // from the template; default ADMINISTER_PROJECTS
 }
 
 /** One change, stored at dg:evt:<issueId>:<seq as 8 digits>. Never changed after it is written. */
@@ -165,6 +168,8 @@ export interface ChecklistEvent {
   itemId?: string;
   itemTitle?: string;
   evidence?: { url?: string; note?: string };  // TICK: link and or note
+  reason?: string;              // WAIVE: why the item does not apply
+  waiverPermission?: string;    // CREATED, RESYNC: from the template
   items?: ItemState[];          // CREATED, MIGRATED, RESYNC: the item list
   issueKey?: string;            // CREATED, MIGRATED: lets a rebuild from events restore the state
   projectId?: string;

@@ -28,6 +28,8 @@ export const DefinitionGuardPanel: React.FC = () => {
   const [showAuditTrail, setShowAuditTrail] = useState<boolean>(false);
   const [auditTrail, setAuditTrail] = useState<IssueChecklistState['auditTrail']>([]);
   const [evidenceFor, setEvidenceFor] = useState<string | null>(null);
+  const [waiveFor, setWaiveFor] = useState<string | null>(null);
+  const [waiveReason, setWaiveReason] = useState<string>('');
   const [evUrl, setEvUrl] = useState<string>('');
   const [evNote, setEvNote] = useState<string>('');
   const [shownEvidence, setShownEvidence] = useState<Record<string, { url?: string; note?: string } | null>>({});
@@ -83,6 +85,21 @@ export const DefinitionGuardPanel: React.FC = () => {
       return;
     }
     handleToggle(itemId, currentCompleted);
+  };
+
+  const handleWaive = async (itemId: string) => {
+    setTogglingId(itemId);
+    setErrorMessage(null);
+    try {
+      const updated = await invoke<IssueChecklistState>('waiveItem', { itemId, reason: waiveReason });
+      if (updated) setChecklist(updated as IssueChecklistState);
+      setWaiveFor(null);
+      setWaiveReason('');
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'The item was not waived.');
+    } finally {
+      setTogglingId(null);
+    }
   };
 
   const showEvidence = async (itemId: string) => {
@@ -241,9 +258,24 @@ export const DefinitionGuardPanel: React.FC = () => {
                 </Stack>
               </Box>
             )}
-            {!item.isCompleted && !item.evidenceRequired && evidenceFor !== item.id && (
+            {!item.isCompleted && evidenceFor !== item.id && waiveFor !== item.id && (
               <Box paddingInlineStart="space.200">
-                <Button appearance="subtle" onClick={() => setEvidenceFor(item.id)}>Tick with evidence</Button>
+                <Inline space="space.100">
+                  {!item.evidenceRequired && <Button appearance="subtle" onClick={() => setEvidenceFor(item.id)}>Tick with evidence</Button>}
+                  {item.isMandatory && <Button appearance="subtle" onClick={() => setWaiveFor(item.id)}>Waive</Button>}
+                </Inline>
+              </Box>
+            )}
+            {waiveFor === item.id && (
+              <Box paddingInlineStart="space.200">
+                <Stack space="space.050">
+                  <Text>Why does this item not apply? The reason is kept in the history.</Text>
+                  <Textfield id={`dg-waive-${item.id}`} placeholder="Reason (10 to 500 characters)" maxLength={500} value={waiveReason} onChange={(e: any) => setWaiveReason(e.target.value)} />
+                  <Inline space="space.100">
+                    <Button appearance="warning" isDisabled={togglingId === item.id || waiveReason.trim().length < 10} onClick={() => handleWaive(item.id)}>Waive item</Button>
+                    <Button appearance="subtle" onClick={() => setWaiveFor(null)}>Cancel</Button>
+                  </Inline>
+                </Stack>
               </Box>
             )}
             {item.isCompleted && item.hasEvidence && (
