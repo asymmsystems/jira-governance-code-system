@@ -89,7 +89,7 @@ export function createdEvent(state: ChecklistState, template: ChecklistTemplate,
   });
 }
 
-/** Item states taken from a v1 record (dg:checklist:<issueId>). Display names are not carried over. */
+/** Item states taken from a v1 record (dg:checklist:<issueId>). A v1 display name is kept only when no accountId exists. */
 export function itemsFromLegacy(legacy: IssueChecklistState): ItemState[] {
   return legacy.items.map(i => ({
     id: i.id,
@@ -98,6 +98,7 @@ export function itemsFromLegacy(legacy: IssueChecklistState): ItemState[] {
     category: i.category,
     status: i.isCompleted ? 'DONE' as const : 'OPEN' as const,
     byAccountId: i.isCompleted ? i.completedByAccountId : undefined,
+    legacyName: i.isCompleted && !i.completedByAccountId && i.completedBy ? i.completedBy : undefined,
     at: i.isCompleted ? i.completedAt : undefined
   }));
 }

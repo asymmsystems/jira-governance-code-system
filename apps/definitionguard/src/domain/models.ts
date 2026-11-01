@@ -53,6 +53,7 @@ export interface ChecklistItemInstance {
   category: ChecklistCategory;
   completedBy?: string;
   completedByAccountId?: string;
+  completedByLegacyName?: string;  // v2 panel response: v1 name when no accountId exists
   completedAt?: string;
   notes?: string;
   history?: ChecklistItemAuditEntry[];
@@ -120,6 +121,7 @@ export interface ItemState {
   category: ChecklistCategory;
   status: ItemStatus;
   byAccountId?: string;
+  legacyName?: string;          // v1 display name, kept only when v1 recorded no accountId
   at?: string;
   eventSeq?: number;
 }

@@ -33,7 +33,6 @@ import {
   setGlobalStorageProvider,
   resolveStorage,
   fetchLiveJiraIssue,
-  fetchJiraUser,
   renderIssuePanel
 } from '../../src/index';
 import { eventKey, stateKey, legacyKey } from '../../src/storage/checklist-store';
@@ -211,15 +210,6 @@ describe('panel resolvers (v2 event log)', () => {
       expect(await fetchLiveJiraIssue('DEMO-404')).toBeNull();
       allow(() => ({ status: 0, throws: 'down' }));
       expect(await fetchLiveJiraIssue('DEMO-ERR')).toBeNull();
-    });
-
-    it('fetchJiraUser returns the display name, or the accountId when missing or failing', async () => {
-      allow(() => ({ status: 200, body: { displayName: 'Mock User' } }));
-      expect(await fetchJiraUser('acc-1')).toBe('Mock User');
-      allow(() => ({ status: 200, body: {} }));
-      expect(await fetchJiraUser('acc-2')).toBe('acc-2');
-      allow(() => ({ status: 0, throws: 'down' }));
-      expect(await fetchJiraUser('acc-3')).toBe('acc-3');
     });
 
     it('dispatches getChecklist, toggleItem, resetChecklist and getAvailableTemplates', async () => {

@@ -31,20 +31,6 @@ export async function fetchLiveJiraIssue(issueIdOrKey: string): Promise<any | nu
   return null;
 }
 
-/**
- * Fetches the authentic Jira user display name.
- */
-export async function fetchJiraUser(accountId: string): Promise<string> {
-  try {
-    const res = await api.asApp().requestJira(route`/rest/api/3/user?accountId=${accountId}`);
-    if (res.status === 200) {
-      const data = await res.json();
-      return data.displayName || accountId;
-    }
-  } catch {}
-  return accountId;
-}
-
 export const VALIDATOR_FAILURE_MESSAGE =
   'DefinitionGuard could not check the Definition of Done, so this move is blocked. ' +
   'Try again. If it keeps failing, ask your Jira admin.';
@@ -77,7 +63,8 @@ function toLegacyItems(state: ChecklistState) {
     isCompleted: i.status !== 'OPEN',
     completedBy: i.status !== 'OPEN' ? i.byAccountId : undefined,
     completedByAccountId: i.status !== 'OPEN' ? i.byAccountId : undefined,
-    completedAt: i.status !== 'OPEN' ? i.at : undefined
+    completedAt: i.status !== 'OPEN' ? i.at : undefined,
+    completedByLegacyName: i.status !== 'OPEN' ? i.legacyName : undefined
   }));
 }
 

@@ -10,10 +10,12 @@ import ForgeReconciler, {
   Checkbox,
   Box,
   Spinner,
-  Badge
+  Badge,
+  User
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
 import { IssueChecklistState } from '../domain/models';
+import { attributionOf } from '../ui/panel-view-model';
 
 export const DefinitionGuardPanel: React.FC = () => {
   const [checklist, setChecklist] = useState<IssueChecklistState | null>(null);
@@ -202,13 +204,18 @@ export const DefinitionGuardPanel: React.FC = () => {
                 )}
               </Box>
             </Inline>
-            {item.isCompleted && item.completedBy && (
-              <Box paddingInlineStart="space.200">
-                <Text>
-                  Completed by {item.completedBy} at {formatTimestamp(item.completedAt)}
-                </Text>
-              </Box>
-            )}
+            {item.isCompleted && (() => {
+              const who = attributionOf({ byAccountId: item.completedByAccountId, legacyName: item.completedByLegacyName });
+              return who ? (
+                <Box paddingInlineStart="space.200">
+                  <Inline space="space.050" alignBlock="center">
+                    <Text>Completed by</Text>
+                    {who.kind === 'user' ? <User accountId={who.accountId} /> : <Text>{who.text}</Text>}
+                    <Text>at {formatTimestamp(item.completedAt)}</Text>
+                  </Inline>
+                </Box>
+              ) : null;
+            })()}
             {!item.isCompleted && item.history && item.history.length > 0 && item.history[item.history.length - 1].action === 'UNTICK' && (
               <Box paddingInlineStart="space.200">
                 <Text>
@@ -253,9 +260,11 @@ export const DefinitionGuardPanel: React.FC = () => {
           )}
           <Stack space="space.050">
             {auditTrail.map((ev) => (
-              <Text key={ev.id}>
-                • [{formatTimestamp(ev.timestamp)}] {ev.actorName}: {ev.eventType} {ev.itemId ? `(Item: ${ev.itemId})` : ''} {ev.details ? `[${ev.details}]` : ''}
-              </Text>
+              <Inline key={ev.id} space="space.050" alignBlock="center">
+                <Text>[{formatTimestamp(ev.timestamp)}]</Text>
+                <User accountId={ev.actorAccountId} />
+                <Text>{ev.eventType} {ev.itemTitle ? `(${ev.itemTitle})` : ''}</Text>
+              </Inline>
             ))}
           </Stack>
         </Box>
