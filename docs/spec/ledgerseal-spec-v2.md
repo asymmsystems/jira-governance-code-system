@@ -272,8 +272,9 @@ Trigger events can arrive up to 3 minutes late (Forge trigger module page). The 
 
 The `ls2:` layout of B-02 to B-11 was never deployed and is not read.
 
-- KVS value limit: 240 KiB (FG-07). The part size is measured in UTF-8 bytes, at most 120,000 bytes, so every part stays under half the limit (B-17). A split never cuts a UTF-16 surrogate pair.
-- A seal or reseal writes its snapshot parts and the seal record in one `kvs.transact()` of at most 25 operations (FG-08). A snapshot over 23 parts (about 2.7 MB) fails with `SNAPSHOT_TOO_LARGE` and nothing is written.
+- KVS value limit: 240 KiB (FG-07). A part is at most 120,000 UTF-8 bytes as stored, counting the JSON escaping of the stored string, so every part stays under half the limit (B-17). A split never cuts a character.
+- A seal claims its status row first and then commits the rest. If that commit fails, the app removes the claimed row, so the next writer is not blocked by an orphan row.
+- A seal or reseal writes its snapshot parts, its assignments and the work effort in one `kvs.transact()` of at most 25 operations (FG-08). A snapshot over 22 parts (about 2.6 MB) fails with `SNAPSHOT_TOO_LARGE` before anything is written.
 - Concurrency: every write that changes the seal record first creates history entry `head.seq + 1` with `FAIL_IF_EXISTS`. If the key exists, another writer won, and the call returns `CONFLICT` (B-17).
 - Measured sizes (T-01, after Part B) are in `ux-spec.md` section 3, column "After".
 - **Migration (D-3):** a v1 record is read as `LEGACY`. The app never writes or deletes v1 keys. A reseal writes a `ls3:` work effort, and from then on it wins.

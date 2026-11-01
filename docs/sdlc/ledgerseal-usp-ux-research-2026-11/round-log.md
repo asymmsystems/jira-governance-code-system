@@ -310,3 +310,16 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - Defect found by the new tests and fixed: a reseal after a revoke overwrote the revoke's end date on the old assignment. A reseal now ends only an assignment that is still open.
 - Adversarial test: T-02 A10 (no revoke path) is closed. The resolver is reachable, a non-approver gets `NOT_APPROVER` and writes nothing, and a second revoke is refused by the state table.
 - Results: `tsc` OK. 28 suites, 254 tests pass. Global branches 94.64%. `ledger.ts` 91.48%, `index.ts` 91.42%, `seal-repository.ts` 94.73%. Graders all True. No em dash.
+- B-16 commit: `f3a1f8a`.
+
+### B-17 Bounded storage and concurrency control (LS-07)
+- Tests first: `test/bounded-storage.test.ts`. First run: failed for the right reason (`splitUtf8` and `MAX_PART_BYTES` missing).
+- Code:
+  - `src/storage/seal-repository.ts`: `splitUtf8` cuts the snapshot into parts of at most 120,000 bytes as stored, never inside a character; `MAX_CONTENT_PARTS` is 22; `removeStatus` is added.
+  - `src/service/ledger.ts`: an oversized snapshot fails with `SNAPSHOT_TOO_LARGE` before anything is written. Seal, incident and revoke wrap their transaction in `commitAfterClaim`, which removes the claimed status row if the transaction fails.
+- Defects found while writing these tests, and fixed:
+  1. A failed transaction after a claimed status row would have left an orphan row, so every later write returned `CONFLICT`. The claimed row is now removed on failure.
+  2. The first part-size rule counted raw UTF-8 bytes. KVS stores each part as a JSON string, so escaped quotes made the stored value 125,723 bytes, over the 120 KiB budget. Characters are now counted at their JSON-escaped size.
+- Adversarial test: the T-01 / LS-07 combined fixture (400 paragraphs and 100 comments) now stores in several parts, each under 120 KiB, in one transaction of at most 25 operations. Two concurrent seals give one OK and one `CONFLICT` with the reload message.
+- Spec v2 section 6 states the stored-size rule and the claim removal.
+- Results: `tsc` OK. 29 suites, 260 tests pass. Global branches 94.67%. `seal-repository.ts` 95.45%, `ledger.ts` 91.53%. Graders all True. No em dash.

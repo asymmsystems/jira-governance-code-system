@@ -19,6 +19,33 @@ export interface StorageProvider {
 
 export const HISTORY_PAGE_SIZE = 50;
 
+/** Largest snapshot part in UTF-8 bytes: half the 240 KiB KVS value limit (spec v2 section 6, B-17). */
+export const MAX_PART_BYTES = 120000;
+/** A seal transaction holds the parts, two assignments and the work effort, within 25 operations. */
+export const MAX_CONTENT_PARTS = 22;
+
+/**
+ * Splits text into parts of at most `maxBytes` UTF-8 bytes as stored, never inside a character.
+ * KVS stores each part as a JSON string, so a character counts at its JSON-escaped size (a quote counts 2).
+ */
+export function splitUtf8(text: string, maxBytes: number): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let size = 2; // the two quotes around a stored JSON string
+  for (const char of text) {
+    const bytes = Buffer.byteLength(JSON.stringify(char), 'utf8') - 2;
+    if (size + bytes > maxBytes && current.length > 0) {
+      parts.push(current);
+      current = '';
+      size = 2;
+    }
+    current += char;
+    size += bytes;
+  }
+  parts.push(current);
+  return parts;
+}
+
 export class SealRepository {
   constructor(private storage: StorageProvider) {}
 
@@ -124,6 +151,14 @@ export class SealRepository {
     items.push({ key: this.getAssignmentKey(assignment.workEffortId, assignment.fromDate), value: assignment });
     items.push({ key: this.getWorkEffortKey(workEffort.workEffortId), value: workEffort });
     await this.storage.commit(items);
+  }
+
+  /**
+   * Removes a status row this writer created when the transaction that should follow it failed.
+   * Without this, the orphan row would make every later write return CONFLICT.
+   */
+  async removeStatus(row: WorkEffortStatus): Promise<void> {
+    await this.storage.delete(this.getStatusKey(row.workEffortId, row.seq));
   }
 
   /** Saves a revoke in one transaction: the ended assignment and the work effort. */

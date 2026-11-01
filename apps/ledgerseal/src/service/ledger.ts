@@ -20,7 +20,7 @@ import { capped, LONG_VALUE_CHARS, richTextSummary } from '../domain/display';
 import { AttestationSource, AttestationStatus, buildAttestation, Signer } from '../domain/attestation';
 import { DECLARATION, isMeaning, matchesDeclaration, validReason } from '../domain/declaration';
 import { ChangelogEntry, JiraClient } from '../jira/jira-client';
-import { HISTORY_PAGE_SIZE, SealRepository, StorageProvider } from '../storage/seal-repository';
+import { HISTORY_PAGE_SIZE, MAX_CONTENT_PARTS, MAX_PART_BYTES, SealRepository, splitUtf8, StorageProvider } from '../storage/seal-repository';
 
 export interface LedgerSealDeps {
   jira: JiraClient;
@@ -39,7 +39,8 @@ export type SealErrorCode =
   | 'DECLARATION_MISMATCH'
   | 'REASON_REQUIRED'
   | 'CONFLICT'
-  | 'NOT_SEALED';
+  | 'NOT_SEALED'
+  | 'SNAPSHOT_TOO_LARGE';
 
 export interface SealFailure {
   ok: false;
@@ -57,7 +58,8 @@ const MESSAGES: Record<SealErrorCode, string> = {
   DECLARATION_MISMATCH: 'The declaration changed since this form opened. Reload the page and try again.',
   REASON_REQUIRED: 'Give a reason for approving these changes (1 to 500 characters).',
   CONFLICT: 'Someone else sealed this issue a moment ago. Reload to see the new seal.',
-  NOT_SEALED: 'This issue is not sealed, so there is no evidence to export.'
+  NOT_SEALED: 'This issue is not sealed, so there is no evidence to export.',
+  SNAPSHOT_TOO_LARGE: 'This issue is too large to seal (over about 2.6 MB of content). Nothing was saved.'
 };
 
 export function fail(code: SealErrorCode, message: string = MESSAGES[code]): SealFailure {
@@ -104,6 +106,19 @@ export async function readLiveSnapshot(
   }
   const raw = apply({ ...live.value, fields: issueFields });
   return { raw, snapshot: canonicalizeIssueState(raw, at, fields.value as FieldSchema[]) };
+}
+
+/**
+ * Runs the transaction that follows a claimed status row. If it fails, the claimed row is removed again,
+ * so the chain head and the newest row never disagree, and the error is passed on.
+ */
+async function commitAfterClaim(repo: SealRepository, row: WorkEffortStatus, commit: () => Promise<void>): Promise<void> {
+  try {
+    await commit();
+  } catch (err) {
+    await repo.removeStatus(row);
+    throw err;
+  }
 }
 
 /**
@@ -262,7 +277,7 @@ export async function recordIncidentIfNew(
       lastIncidentHash: liveHash
     })
   };
-  await repo.saveWorkEffort(updated.workEffort);
+  await commitAfterClaim(repo, row, () => repo.saveWorkEffort(updated.workEffort));
   await writeAttestation(deps, updated, 'SEAL_BROKEN', at);
   return { seal: updated, recorded: true };
 }
@@ -327,6 +342,9 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   const reason = previousState ? validReason(signature.reason) : null;
   const certificateId = crypto.randomUUID();
   const snapshotHash = computeSnapshotHash(snapshot);
+  // Bounded values (B-17): each part under half the KVS limit, all parts in one transaction
+  const contentParts = splitUtf8(JSON.stringify(snapshot), MAX_PART_BYTES);
+  if (contentParts.length > MAX_CONTENT_PARTS) return fail('SNAPSHOT_TOO_LARGE');
 
   const row = buildStatusRow(previousWorkEffort ? previousWorkEffort.statusHead : null, {
     workEffortId: issue.id,
@@ -380,7 +398,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
       canonicalizerVersion: CANONICALIZER_VERSION,
       declarationVersion: DECLARATION.version,
       statusAtSeal: snapshot.status,
-      snapshotParts: 1
+      snapshotParts: contentParts.length
     },
     everCompromised: previousWorkEffort ? previousWorkEffort.everCompromised : false,
     incidentCount: previousWorkEffort ? previousWorkEffort.incidentCount : 0,
@@ -389,7 +407,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   // A reseal ends the previous assignment at this time (Silverston thruDate)
   // A revoked seal already ended at the revoke time; keep that date
   const ended = previous && previous.assignment.thruDate === null ? { ...previous.assignment, thruDate: now } : null;
-  await repo.saveSeal(workEffort, assignment, [JSON.stringify(snapshot)], ended);
+  await commitAfterClaim(repo, row, () => repo.saveSeal(workEffort, assignment, contentParts, ended));
 
   // Publish public audit property to Jira issue without PII
   await writeAttestation(deps, { workEffort, assignment, sealingRow: row }, 'SEAL_VALID', now);
@@ -633,7 +651,7 @@ export async function revokeFlow(payload: any, context: any, deps: LedgerSealDep
       currentAssignment: { ...we.currentAssignment, assignmentHash: assignmentHash(ended) }
     })
   };
-  await repo.saveRevocation(updated.workEffort, ended);
+  await commitAfterClaim(repo, row, () => repo.saveRevocation(updated.workEffort, ended));
   await writeAttestation(deps, updated, 'SEAL_REVOKED', now);
   return { ok: true as const, revokedAt: now };
 }
