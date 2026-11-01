@@ -115,6 +115,17 @@ export interface AttachmentDiff {
 
 export type TamperStatus = 'SEAL_VALID' | 'SEAL_BROKEN' | 'SEAL_COMPROMISED' | 'NO_SEAL' | 'SEAL_REVOKED' | 'LEGACY' | 'RECORD_INVALID' | 'ERROR';
 
+/**
+ * Who may approve, besides project admins and Jira admins: group parties in the LS_APPROVER role
+ * (Silverston PartyRole, ADR-01). Set by a Jira admin on the admin page; names come from Jira, not the payload.
+ */
+export interface ApproverPolicy {
+  roleTypeId: 'LS_APPROVER';
+  parties: { partyId: string; partyTypeId: 'GROUP'; name: string }[];
+  fromDate: string;
+  setByPartyId: string;
+}
+
 export interface ViewerRights {
   canSeal: boolean;
   canApproveChanges: boolean;
@@ -149,6 +160,8 @@ export interface TamperAnalysis {
   coveredFields?: { id: string; name: string }[];
   excludedFields?: { id: string; name: string; reason: string }[];
   rights?: ViewerRights;
+  /** Names of the approver groups, for the "who can seal" text. */
+  approverGroups?: string[];
   liveHash?: string;
   sealedHash?: string;
   tamperedFields: FieldDiff[];

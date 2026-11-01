@@ -1,6 +1,6 @@
 # LedgerSeal: tamper-evident approval seal for Jira
 
-LedgerSeal lets a project admin seal a Jira issue. A seal records a SHA-256 hash of the issue's covered fields, comments and attachments, who sealed it, when, the meaning (Approved, Reviewed or Verified) and the declaration text they agreed to.
+LedgerSeal lets an approver seal a Jira issue. Approvers are project admins, Jira admins, and members of the approver groups a Jira admin chooses on the "LedgerSeal approvers" admin page. A seal records a SHA-256 hash of the issue's covered fields, comments and attachments, who sealed it, when, the meaning (Approved, Reviewed or Verified) and the declaration text they agreed to.
 
 After that, LedgerSeal:
 - shows which covered fields changed since the seal, with the old and the new value and who changed them;
@@ -26,12 +26,13 @@ Built on Atlassian Forge. The app backend makes no outbound network calls, and t
 |---|---|
 | `jira:issuePanel` `ledgerseal-panel` | UI Kit panel: seal, approve changes, history |
 | `jira:workflowValidator` `ledgerseal-validator` | Blocks a transition unless the issue is sealed and unchanged |
+| `jira:adminPage` `ledgerseal-admin` | Jira admins choose the approver groups |
 
 | Scope | Why |
 |---|---|
 | `read:jira-work` | Read the issue, comments, change log, field list and the user's own permissions |
 | `write:jira-work` | Write the app's own `ledgerseal-cert` issue property. The app never edits issue fields |
-| `read:jira-user` | Read the signer's display name |
+| `read:jira-user` | Read the signer's display name, the caller's own groups, and groups for the admin page |
 | `storage:app` | Keep seal records and history |
 
 ## Storage (Forge KVS)
@@ -44,6 +45,7 @@ Seals are stored on the Silverston WorkEffort, Party and Status patterns (ADR-01
 | `ls3:wepa:{issueId}:{fromDate}` | One seal: the signer (party), the meaning (role) and the time window |
 | `ls3:wes:{issueId}:{seq}` | One state change, created once, holding the hash of the row before it |
 | `ls3:content:{contentId}:{part}` | The sealed snapshot, in parts |
+| `ls3:partyrole:LS_APPROVER` | The approver groups (party role), set on the admin page |
 | `cert:active:{issueId}` | Old-format records, read only |
 
 ## Find issues by seal state (JQL)
@@ -78,8 +80,8 @@ Measured on the last change to this file:
 
 | Measure | Value |
 |---|---|
-| Tests | 277 in 32 suites |
-| Branch coverage (all files in `src/` except the UI Kit component file; the panel view model is included) | 94.90% |
+| Tests | 306 in 35 suites |
+| Branch coverage (all files in `src/` except the UI Kit component files; both view models are included) | 95.29% |
 
 ```bash
 npm install

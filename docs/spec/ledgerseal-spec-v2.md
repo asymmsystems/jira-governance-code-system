@@ -274,6 +274,7 @@ Trigger events can arrive up to 3 minutes late (Forge trigger module page). The 
 | `ls3:wes:{issueId}:{seq}` (`seq` zero-padded to 6 digits) | `WorkEffortStatus`, created once | under 8 KiB (at most 50 changed field names) |
 | `ls3:wepa:{issueId}:{fromDate}` | `WorkEffortPartyAssignment` | under 2 KiB |
 | `ls3:content:{contentId}:{part}` | part `part` (0-based) of the canonical snapshot JSON string, with its covered and excluded field lists | 120,000 UTF-8 bytes |
+| `ls3:partyrole:LS_APPROVER` | `ApproverPolicy`: the approver groups as party role (section 7.1) | under 4 KiB (at most 20 groups) |
 | `cert:active:{issueId}` (v1) | legacy certificate, read only | not written |
 
 The `ls2:` layout of B-02 to B-11 was never deployed and is not read.
@@ -292,8 +293,13 @@ The `ls2:` layout of B-02 to B-11 was never deployed and is not read.
 ### 7.1 Approver policy (D-1)
 - A user may seal, reseal and revoke if `GET /rest/api/3/mypermissions?issueId={id}&permissions=ADMINISTER_PROJECTS,ADMINISTER`, called `asUser()`, reports either permission (FG-35, FG-36).
 - Why not a project role: `GET /rest/api/3/project/{key}/roledetails` requires the caller to have Administer Jira or Administer projects (Jira REST v3 docs, read 2026-11-01). So an approver cannot check their own role membership through it. The approved D-1 rule falls back to option (c).
-- The panel says: "Who can seal: project admins and Jira admins."
-- A group or role policy needs a settings page. That is follow-up work, not in B-01 to B-20.
+- Approver groups (option (b) of D-1, added 2026-11-01 on owner instruction). A Jira admin chooses up to 20 groups on the LedgerSeal admin page (`jira:adminPage` `ledgerseal-admin`). Members of those groups may also seal, reseal and revoke.
+  - Only a Jira admin (`mypermissions?permissions=ADMINISTER`, as user) may read, search or change the groups, or gets `NOT_ADMIN`.
+  - The payload gives group ids only. Each id must exist in Jira (`/rest/api/3/group/bulk`, as user), and the stored name is Jira's. The admin comes from context.
+  - Stored as the Silverston party role `LS_APPROVER` with group parties, `fromDate` and `setByPartyId` (key `ls3:partyrole:LS_APPROVER`).
+  - The check: project or Jira admin first. Only when that fails and a policy names groups, the caller's groups are read (`/rest/api/3/myself?expand=groups`, as user). A failed read fails closed with `JIRA_UNREACHABLE`.
+  - No new scope: these reads use `read:jira-work` and `read:jira-user`.
+- The panel says: "Who can seal: project admins and Jira admins." With groups: "Who can seal: project admins, Jira admins and members of {names}."
 
 ### 7.2 Separation of duties (B-01)
 On a reseal after a change, LedgerSeal reads the change log since `sealedAt` (`/rest/api/3/issue/{id}/changelog`, paged), the comments created or edited since then, and the attachments added since then. If the caller is the author of any of them, the reseal fails with `SELF_APPROVAL`. The same check applies to a seal after a revoke, from the `fromDate` of the revoked seal, and a reason is required when the issue changed since that seal. So a revoke cannot be used to approve one's own change.

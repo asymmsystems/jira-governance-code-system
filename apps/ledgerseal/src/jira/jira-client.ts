@@ -39,7 +39,28 @@ export interface JiraClient {
   getUserName(accountId: string): Promise<string | null>;
   /** True when the calling user may seal, reseal or revoke on this issue (spec v2 section 7.1). */
   hasApproverPermission(issueId: string): Promise<JiraResult<boolean>>;
+  /** Group ids of the calling user, for the approver group policy. */
+  getMyGroupIds(): Promise<JiraResult<string[]>>;
+  /** True when the calling user is a Jira admin (global Administer Jira permission). */
+  isJiraAdmin(): Promise<JiraResult<boolean>>;
+  /** Groups whose name matches the query, for the admin page. */
+  findGroups(query: string): Promise<JiraResult<JiraGroup[]>>;
+  /** The groups with these ids, with the names Jira has. Unknown ids are left out. */
+  getGroups(groupIds: string[]): Promise<JiraResult<JiraGroup[]>>;
   putSealProperty(issueId: string, body: unknown): Promise<boolean>;
+}
+
+export interface JiraGroup {
+  groupId: string;
+  name: string;
+}
+
+/** Keeps only groups that have both an id and a name; old groups without an id cannot be named in a policy. */
+function groupsOf(items: unknown): JiraGroup[] {
+  if (!Array.isArray(items)) return [];
+  return items
+    .filter((g: any) => typeof g?.groupId === 'string' && g.groupId && typeof g?.name === 'string')
+    .map((g: any) => ({ groupId: g.groupId, name: g.name }));
 }
 
 /** The part of a Forge `requestJira` response the client reads. */
@@ -171,6 +192,39 @@ export function createJiraClient(asApp: JiraRequester, asUser: JiraRequester | n
       if (!res.ok) return res;
       const perms = res.value?.permissions || {};
       return { ok: true, value: Boolean(perms.ADMINISTER_PROJECTS?.havePermission || perms.ADMINISTER?.havePermission) };
+    },
+
+    // Group and admin reads run as the user, so they see only what that user may see
+    async getMyGroupIds() {
+      if (!asUser) return { ok: false, error: 'FORBIDDEN' };
+      const res = await getJson<any>(asUser, route`/rest/api/3/myself?expand=groups`);
+      if (!res.ok) return res;
+      return { ok: true, value: groupsOf(res.value?.groups?.items).map(g => g.groupId) };
+    },
+
+    async isJiraAdmin() {
+      if (!asUser) return { ok: false, error: 'FORBIDDEN' };
+      const res = await getJson<any>(asUser, route`/rest/api/3/mypermissions?permissions=${'ADMINISTER'}`);
+      if (!res.ok) return res;
+      return { ok: true, value: Boolean(res.value?.permissions?.ADMINISTER?.havePermission) };
+    },
+
+    async findGroups(query) {
+      if (!asUser) return { ok: false, error: 'FORBIDDEN' };
+      const res = await getJson<any>(asUser, route`/rest/api/3/groups/picker?query=${query}&maxResults=${20}`);
+      if (!res.ok) return res;
+      return { ok: true, value: groupsOf(res.value?.groups) };
+    },
+
+    async getGroups(groupIds) {
+      if (!asUser) return { ok: false, error: 'FORBIDDEN' };
+      const found: JiraGroup[] = [];
+      for (const groupId of groupIds) {
+        const res = await getJson<any>(asUser, route`/rest/api/3/group/bulk?groupId=${groupId}`);
+        if (!res.ok) return res;
+        found.push(...groupsOf(res.value?.values));
+      }
+      return { ok: true, value: found };
     },
 
     async putSealProperty(issueId, body) {

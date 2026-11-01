@@ -20,6 +20,7 @@ import { capped, LONG_VALUE_CHARS, richTextSummary } from '../domain/display';
 import { AttestationSource, AttestationStatus, buildAttestation, Signer } from '../domain/attestation';
 import { DECLARATION, isMeaning, matchesDeclaration, validReason } from '../domain/declaration';
 import { ChangelogEntry, JiraClient } from '../jira/jira-client';
+import { approverGroupNames, isApprover } from './approver';
 import { HISTORY_PAGE_SIZE, MAX_CONTENT_PARTS, MAX_PART_BYTES, SealRepository, splitUtf8, StorageProvider } from '../storage/seal-repository';
 
 export interface LedgerSealDeps {
@@ -41,7 +42,8 @@ export type SealErrorCode =
   | 'CONFLICT'
   | 'NOT_SEALED'
   | 'SNAPSHOT_TOO_LARGE'
-  | 'LICENSE_INACTIVE';
+  | 'LICENSE_INACTIVE'
+  | 'NOT_ADMIN';
 
 export interface SealFailure {
   ok: false;
@@ -61,7 +63,8 @@ const MESSAGES: Record<SealErrorCode, string> = {
   CONFLICT: 'Someone else sealed this issue a moment ago. Reload to see the new seal.',
   NOT_SEALED: 'This issue is not sealed, so there is no evidence to export.',
   SNAPSHOT_TOO_LARGE: 'This issue is too large to seal (over about 2.6 MB of content). Nothing was saved.',
-  LICENSE_INACTIVE: 'The LedgerSeal licence is not active. Ask your Jira admin to renew it.'
+  LICENSE_INACTIVE: 'The LedgerSeal licence is not active. Ask your Jira admin to renew it.',
+  NOT_ADMIN: 'Only a Jira admin can change who can seal.'
 };
 
 export function fail(code: SealErrorCode, message: string = MESSAGES[code]): SealFailure {
@@ -318,7 +321,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   const signature = payload?.signature;
   if (!signature) return fail('INVALID_REQUEST');
 
-  const permission = await deps.jira.hasApproverPermission(issue.id);
+  const permission = await isApprover(deps.jira, deps.storage, issue.id);
   if (!permission.ok) return fail(permission.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
   if (!permission.value) return fail('NOT_APPROVER');
 
@@ -472,7 +475,11 @@ export async function verifyIssueFlow(payload: any, context: any, deps: LedgerSe
     console.error('LedgerSeal: verify failed', err);
     return errorResult('STORAGE', now);
   }
-  return { ...result, rights: await viewerRights(deps, issue.id, String(context.accountId), result) };
+  return {
+    ...result,
+    rights: await viewerRights(deps, issue.id, String(context.accountId), result),
+    approverGroups: await approverGroupNames(deps.storage)
+  };
 }
 
 const CHANGED_STATES = new Set(['SEAL_BROKEN', 'SEAL_COMPROMISED']);
@@ -483,7 +490,7 @@ const SEALED_STATES = new Set(['SEAL_VALID', 'SEAL_BROKEN', 'SEAL_COMPROMISED'])
  * A failed permission check gives no rights; a failed change log read blocks approving changes.
  */
 async function viewerRights(deps: LedgerSealDeps, issueId: string, accountId: string, result: TamperAnalysis) {
-  const permission = await deps.jira.hasApproverPermission(issueId);
+  const permission = await isApprover(deps.jira, deps.storage, issueId);
   const permitted = permission.ok && permission.value;
   const changed = CHANGED_STATES.has(result.status);
   let blockedBySelfChange = false;
@@ -650,7 +657,7 @@ export async function revokeFlow(payload: any, context: any, deps: LedgerSealDep
   const reason = validReason(payload?.reason);
   if (!reason) return fail('REASON_REQUIRED', 'Give a reason for revoking the seal (1 to 500 characters).');
 
-  const permission = await deps.jira.hasApproverPermission(issue.id);
+  const permission = await isApprover(deps.jira, deps.storage, issue.id);
   if (!permission.ok) return fail(permission.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
   if (!permission.value) return fail('NOT_APPROVER');
 

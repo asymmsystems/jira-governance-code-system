@@ -25,7 +25,7 @@ LedgerSeal ties the approval to the issue content, and keeps the evidence.
 2. **Changes after approval, with who and when:**
    When a covered item changes, the panel shows "Changed after approval", the item, the old and new value, who changed it and when. LedgerSeal records the change when the issue update event arrives, even if no one opens the issue.
 3. **Separation of duties:**
-   Only project admins and Jira admins can seal, reseal or revoke. A user who changed the issue cannot approve that change, and cannot get around this by revoking and sealing again. A reseal after a change needs a reason.
+   Only project admins, Jira admins and members of the approver groups a Jira admin chooses can seal, reseal or revoke. A user who changed the issue cannot approve that change, and cannot get around this by revoking and sealing again. A reseal after a change needs a reason.
 4. **History that a reseal does not hide:**
    LedgerSeal keeps every seal, change incident, reseal and revoke in a hash-chained history. An issue that changed after approval stays marked as changed after approval, also after a reseal.
 5. **Workflow transition validator:**
@@ -47,7 +47,6 @@ The signer's Jira account and name, the time, the meaning (Approved, Reviewed or
 This is a product description, not legal advice.
 
 ### Known limits
-- The approver policy is fixed: project admins and Jira admins. A group or role policy is planned.
 - A change of status or resolution does not break a seal, so the validator can gate a transition. A manual resolution change after approval is not flagged; Jira's change log still records it.
 - Some fields are not covered, such as rank, sprint, SLA timers, sentiment and forms counts. The panel lists each one and the reason.
 - Attachments are covered by their id, name, size and type, not by file content. Jira gives a replaced file a new id.

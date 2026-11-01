@@ -17,6 +17,7 @@ import {
   sealIssueFlow,
   verifyIssueFlow
 } from './service/ledger';
+import { getPolicyFlow, searchGroupsFlow, setPolicyFlow } from './service/policy-admin';
 
 export { LedgerSealDeps } from './service/ledger';
 
@@ -188,6 +189,21 @@ export async function getSealEvidence(payload: any, context?: any, deps: LedgerS
 }
 
 /**
+ * Admin page handlers for the approver groups (spec v2 section 7.1). Jira admins only.
+ */
+export async function getApproverPolicy(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return getPolicyFlow(context, deps);
+}
+
+export async function setApproverPolicy(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return setPolicyFlow(payload, context, deps);
+}
+
+export async function searchApproverGroups(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return searchGroupsFlow(payload, context, deps);
+}
+
+/**
  * Product event trigger: issue updated, commented, attachment and work log events.
  */
 export async function onIssueChanged(event: any, context?: any, deps: LedgerSealDeps = forgeDeps(false)) {
@@ -215,6 +231,18 @@ resolver.define('revoke-seal-api', async (req) => {
 
 resolver.define('seal-evidence-api', async (req) => {
   return await getSealEvidence(req.payload, req.context);
+});
+
+resolver.define('approver-policy-get-api', async (req) => {
+  return await getApproverPolicy(req.payload, req.context);
+});
+
+resolver.define('approver-policy-set-api', async (req) => {
+  return await setApproverPolicy(req.payload, req.context);
+});
+
+resolver.define('approver-group-search-api', async (req) => {
+  return await searchApproverGroups(req.payload, req.context);
 });
 
 export const handler = resolver.getDefinitions();
