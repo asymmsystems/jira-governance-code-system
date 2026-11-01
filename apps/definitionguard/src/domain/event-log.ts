@@ -67,13 +67,11 @@ export function makeEvent(state: ChecklistState, input: EventInput): ChecklistEv
 }
 
 export function itemsFromTemplate(template: ChecklistTemplate): ItemState[] {
-  return template.items.map(t => ({
-    id: t.id,
-    title: t.title,
-    isMandatory: t.isMandatory,
-    category: t.category,
-    status: 'OPEN' as const
-  }));
+  return template.items.map(t => {
+    const item: ItemState = { id: t.id, title: t.title, isMandatory: t.isMandatory, category: t.category, status: 'OPEN' };
+    if (t.evidenceRequired) item.evidenceRequired = true;
+    return item;
+  });
 }
 
 export function createdEvent(state: ChecklistState, template: ChecklistTemplate, actorAccountId: string, at: string): ChecklistEvent {
@@ -176,19 +174,20 @@ export function applyEvent(state: ChecklistState, event: ChecklistEvent): Checkl
       next.items = state.items.map(i => {
         if (i.id !== event.itemId) return i;
         if (event.type === 'UNTICK') {
-          return { ...i, status: 'OPEN' as const, byAccountId: undefined, at: undefined, eventSeq: event.seq };
+          return { ...i, status: 'OPEN' as const, byAccountId: undefined, at: undefined, eventSeq: event.seq, hasEvidence: undefined };
         }
         return {
           ...i,
           status: event.type === 'WAIVE' ? 'WAIVED' as const : 'DONE' as const,
           byAccountId: event.actorAccountId,
           at: event.at,
-          eventSeq: event.seq
+          eventSeq: event.seq,
+          hasEvidence: event.evidence ? true : undefined
         };
       });
       break;
     case 'RESET':
-      next.items = state.items.map(i => ({ ...i, status: 'OPEN' as const, byAccountId: undefined, at: undefined, eventSeq: event.seq }));
+      next.items = state.items.map(i => ({ ...i, status: 'OPEN' as const, byAccountId: undefined, at: undefined, eventSeq: event.seq, hasEvidence: undefined }));
       break;
   }
   return next;

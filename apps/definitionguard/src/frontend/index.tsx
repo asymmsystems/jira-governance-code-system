@@ -11,7 +11,9 @@ import ForgeReconciler, {
   Box,
   Spinner,
   Badge,
-  User
+  User,
+  Link,
+  Textfield
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
 import { IssueChecklistState } from '../domain/models';
@@ -25,6 +27,10 @@ export const DefinitionGuardPanel: React.FC = () => {
   const [showResetConfirm, setShowResetConfirm] = useState<boolean>(false);
   const [showAuditTrail, setShowAuditTrail] = useState<boolean>(false);
   const [auditTrail, setAuditTrail] = useState<IssueChecklistState['auditTrail']>([]);
+  const [evidenceFor, setEvidenceFor] = useState<string | null>(null);
+  const [evUrl, setEvUrl] = useState<string>('');
+  const [evNote, setEvNote] = useState<string>('');
+  const [shownEvidence, setShownEvidence] = useState<Record<string, { url?: string; note?: string } | null>>({});
   const [chainCheck, setChainCheck] = useState<{ ok: boolean; message: string; limit: string } | null>(null);
 
   useEffect(() => {
@@ -47,22 +53,44 @@ export const DefinitionGuardPanel: React.FC = () => {
     }
   };
 
-  const handleToggle = async (itemId: string, currentCompleted: boolean) => {
+  const handleToggle = async (itemId: string, currentCompleted: boolean, evidence?: { url?: string; note?: string }) => {
     setTogglingId(itemId);
     setErrorMessage(null);
     try {
       const updated = await invoke<IssueChecklistState>('toggleItem', {
         itemId,
-        isCompleted: !currentCompleted
+        isCompleted: !currentCompleted,
+        ...(evidence ? { evidence } : {})
       });
       if (updated) {
         setChecklist(updated as IssueChecklistState);
       }
+      setEvidenceFor(null);
+      setEvUrl('');
+      setEvNote('');
     } catch (err: any) {
       console.error('Failed to toggle item', err);
       setErrorMessage(err?.message || 'Failed to toggle item.');
     } finally {
       setTogglingId(null);
+    }
+  };
+
+  // Ticking an item that needs evidence opens the inline evidence form first.
+  const startToggle = (itemId: string, currentCompleted: boolean, evidenceRequired?: boolean) => {
+    if (!currentCompleted && evidenceRequired) {
+      setEvidenceFor(itemId);
+      return;
+    }
+    handleToggle(itemId, currentCompleted);
+  };
+
+  const showEvidence = async (itemId: string) => {
+    try {
+      const res = (await invoke('getEvidence', { itemId })) as unknown as { evidence?: { url?: string; note?: string } };
+      setShownEvidence({ ...shownEvidence, [itemId]: res?.evidence || null });
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to load the evidence.');
     }
   };
 
@@ -183,7 +211,7 @@ export const DefinitionGuardPanel: React.FC = () => {
                 value={item.id}
                 isChecked={item.isCompleted}
                 isDisabled={togglingId === item.id}
-                onChange={() => handleToggle(item.id, item.isCompleted)}
+                onChange={() => startToggle(item.id, item.isCompleted, item.evidenceRequired)}
                 label={item.title}
               />
               <Box>
@@ -194,6 +222,42 @@ export const DefinitionGuardPanel: React.FC = () => {
                 )}
               </Box>
             </Inline>
+            {evidenceFor === item.id && (
+              <Box paddingInlineStart="space.200">
+                <Stack space="space.050">
+                  <Text>{item.evidenceRequired ? 'This item needs evidence. Add a link, a note, or both.' : 'Add a link, a note, or both.'}</Text>
+                  <Textfield id={`dg-ev-url-${item.id}`} placeholder="https://..." value={evUrl} onChange={(e: any) => setEvUrl(e.target.value)} />
+                  <Textfield id={`dg-ev-note-${item.id}`} placeholder="Note (500 characters or less)" maxLength={500} value={evNote} onChange={(e: any) => setEvNote(e.target.value)} />
+                  <Inline space="space.100">
+                    <Button
+                      appearance="primary"
+                      isDisabled={togglingId === item.id || (!evUrl.trim() && !evNote.trim())}
+                      onClick={() => handleToggle(item.id, false, { url: evUrl.trim() || undefined, note: evNote.trim() || undefined })}
+                    >
+                      Save and tick
+                    </Button>
+                    <Button appearance="subtle" onClick={() => setEvidenceFor(null)}>Cancel</Button>
+                  </Inline>
+                </Stack>
+              </Box>
+            )}
+            {!item.isCompleted && !item.evidenceRequired && evidenceFor !== item.id && (
+              <Box paddingInlineStart="space.200">
+                <Button appearance="subtle" onClick={() => setEvidenceFor(item.id)}>Tick with evidence</Button>
+              </Box>
+            )}
+            {item.isCompleted && item.hasEvidence && (
+              <Box paddingInlineStart="space.200">
+                {shownEvidence[item.id] === undefined ? (
+                  <Button appearance="subtle" onClick={() => showEvidence(item.id)}>Show evidence</Button>
+                ) : (
+                  <Stack space="space.050">
+                    {shownEvidence[item.id]?.url && <Link href={shownEvidence[item.id]!.url!} openNewTab>{shownEvidence[item.id]!.url}</Link>}
+                    {shownEvidence[item.id]?.note && <Text>{shownEvidence[item.id]!.note}</Text>}
+                  </Stack>
+                )}
+              </Box>
+            )}
             {item.isCompleted && (() => {
               const who = attributionOf({ byAccountId: item.completedByAccountId, legacyName: item.completedByLegacyName });
               return who ? (

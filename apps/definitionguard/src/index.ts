@@ -8,12 +8,13 @@ import { evaluateGate, blockMessage } from './domain/gate-rule';
 import { ProjectConfigStore } from './settings/project-config';
 import { StorageProvider } from './storage/checklist-repository';
 import { resolveStorage } from './storage/forge-storage';
-import { ChecklistStore } from './storage/checklist-store';
+import { ChecklistStore, eventKey } from './storage/checklist-store';
 import { applyEvent, createdEvent, emptyState, chainMessage, CHAIN_LIMIT_NOTE } from './domain/event-log';
 import { ChecklistEvent, ChecklistState, IssueChecklistState, ChecklistAuditEvent } from './domain/models';
 import { checkIssuePermissions, EDIT_DENIED, RESET_DENIED } from './security/permissions';
 import { resolveTemplate } from './settings/template-store';
 import { assertLicensed, isLicenceInactive, VALIDATOR_LICENCE_INACTIVE } from './security/licence';
+import { validateEvidence, EVIDENCE_REQUIRED } from './domain/evidence';
 import { ChecklistTemplate } from './domain/models';
 
 export { settingsHandler } from './settings/settings-resolvers';
@@ -66,7 +67,9 @@ function toLegacyItems(state: ChecklistState) {
     completedBy: i.status !== 'OPEN' ? i.byAccountId : undefined,
     completedByAccountId: i.status !== 'OPEN' ? i.byAccountId : undefined,
     completedAt: i.status !== 'OPEN' ? i.at : undefined,
-    completedByLegacyName: i.status !== 'OPEN' ? i.legacyName : undefined
+    completedByLegacyName: i.status !== 'OPEN' ? i.legacyName : undefined,
+    evidenceRequired: Boolean(i.evidenceRequired),
+    hasEvidence: Boolean(i.hasEvidence)
   }));
 }
 
@@ -208,7 +211,8 @@ export function toPanelResponse(state: ChecklistState, events: ChecklistEvent[] 
       actorName: e.actorAccountId,
       actorAccountId: e.actorAccountId,
       itemId: e.itemId,
-      itemTitle: e.itemTitle
+      itemTitle: e.itemTitle,
+      evidence: e.evidence
     }))
   };
 }
@@ -280,6 +284,25 @@ export async function getChecklistHistory(payload: any, context?: any, storagePr
 }
 
 /**
+ * The evidence recorded with an item's current tick, read from its event on request.
+ * The state keeps only a flag, so the state value stays small (spec v2, D-13).
+ */
+export async function getItemEvidence(payload: any, context?: any, storageProvider?: StorageProvider) {
+  const c = panelContext(context);
+  const itemId = String(payload?.itemId || '');
+  const storage = resolveStorage(storageProvider);
+  const state = await new ChecklistStore(storage).load(c.issueId);
+  if (!state) return { itemId, evidence: undefined };
+  const item = state.items.find(i => i.id === itemId);
+  if (!item) {
+    throw new Error(`Checklist item with id '${itemId}' not found on issue ${state.issueKey}`);
+  }
+  if (!item.hasEvidence || !item.eventSeq) return { itemId, evidence: undefined };
+  const event = await storage.get<ChecklistEvent>(eventKey(c.issueId, item.eventSeq));
+  return { itemId, evidence: event?.evidence };
+}
+
+/**
  * Toggles a checklist item's completion state and records it as an event.
  */
 export async function toggleChecklistItem(payload: any, context?: any, storageProvider?: StorageProvider): Promise<IssueChecklistState> {
@@ -289,6 +312,11 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
   if (!itemId) {
     throw new Error('DefinitionGuard: Missing itemId.');
   }
+  const checked = validateEvidence(payload?.evidence);
+  if (!checked.ok) {
+    throw new Error(checked.error);
+  }
+  const evidence = isCompleted ? checked.evidence : undefined;
 
   assertLicensed(context);
   await checkIssuePermissions(c.issueKey, ['EDIT_ISSUES'], EDIT_DENIED);
@@ -305,7 +333,10 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
       if (!item) {
         throw new Error(`Checklist item with id '${itemId}' not found on issue ${st.issueKey}`);
       }
-      return [{ type: isCompleted ? 'TICK' : 'UNTICK', itemId, itemTitle: item.title, actorAccountId: c.actorAccountId, at }];
+      if (isCompleted && item.evidenceRequired && !evidence) {
+        throw new Error(EVIDENCE_REQUIRED);
+      }
+      return [{ type: isCompleted ? 'TICK' : 'UNTICK', itemId, itemTitle: item.title, actorAccountId: c.actorAccountId, at, ...(evidence ? { evidence } : {}) }];
     },
     { issueKey: c.issueKey, projectId: c.projectId }
   );
@@ -363,6 +394,10 @@ resolver.define('toggleItem', async (req) => {
 
 resolver.define('resetChecklist', async (req) => {
   return await resetChecklist(req.payload, req.context);
+});
+
+resolver.define('getEvidence', async (req) => {
+  return await getItemEvidence(req.payload, req.context);
 });
 
 resolver.define('getHistory', async (req) => {

@@ -43,6 +43,7 @@ export interface ChecklistAuditEvent {
   itemId?: string;
   itemTitle?: string;
   details?: string;
+  evidence?: { url?: string; note?: string };  // v2 history view
 }
 
 export interface ChecklistItemInstance {
@@ -54,6 +55,8 @@ export interface ChecklistItemInstance {
   completedBy?: string;
   completedByAccountId?: string;
   completedByLegacyName?: string;  // v2 panel response: v1 name when no accountId exists
+  evidenceRequired?: boolean;      // v2 panel response
+  hasEvidence?: boolean;           // v2 panel response
   completedAt?: string;
   notes?: string;
   history?: ChecklistItemAuditEntry[];
@@ -161,6 +164,7 @@ export interface ChecklistEvent {
   actorAccountId: string;
   itemId?: string;
   itemTitle?: string;
+  evidence?: { url?: string; note?: string };  // TICK: link and or note
   items?: ItemState[];          // CREATED, MIGRATED, RESYNC: the item list
   issueKey?: string;            // CREATED, MIGRATED: lets a rebuild from events restore the state
   projectId?: string;
