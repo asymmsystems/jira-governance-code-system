@@ -53,7 +53,7 @@ Seven writes, all to AUDT-1, each listed in `round-log.md` (Loop 3). Results: th
 
 - **Owner decisions applied:** 1B (a Jira administrator may also approve; checked live: the administrator check passes and the requester rule still refuses), the lozenge width fix, the licence check in the daily snapshot, and the benchmark timing (dashboard read view at most 6.9 ms CPU at 1,000 issues; daily run 10 searches and 694 remote-link reads at 1,000 issues).
 - **UX redesign B-33 to B-40** (owner approved the consultation review): four-gate pipeline, compact table rows with Alignment and Top finding, reality cards, alignment box with weekly delta, weakest gate and risk filter, "Why n%?", compact issue-context view, Inspect with Previous and Next, preset views. Checked live on DEMO and AUDT-1.
-- **Live fixes:** withdrawal text, request dialog title, missing-DoD drift sentence.
-- **Now:** 353 tests pass; graders PASS; development version 3.9.0; ten writes on AUDT-1, all in `round-log.md`.
+- **Now:** 354 tests pass; graders PASS; development version 3.10.0; ten writes on AUDT-1, all in `round-log.md`.
+- **UI polish and unified titles (3.10.0):** module titles unified to "Four Realities" in `manifest.yml`; arrow glyphs removed from `GatePipeline` for clean vertical alignment and natural wrapping; styled card containers and sunken callout boxes added to the issue panel and gate rows.
 - **B-42 completed:** "Request retrospective review" in the issue panel when Code is FOUND with reason PR_MERGED, posting an ADF comment to Jira as the user.
 - **Still open:** B-41 (Confluence search; needs a scope and the owner's consent to upgrade the install), a fast human typing test, a second-person approval test, the HeroCoders check (B-25), merge and push (no remote), production and Marketplace (owner only). The next agent's instructions are in `handover-gemini.md`.

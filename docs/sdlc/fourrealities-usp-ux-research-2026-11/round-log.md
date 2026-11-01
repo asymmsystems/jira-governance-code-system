@@ -179,6 +179,7 @@ Findings from the live check:
 | B-35, B-37, B-39 | same | Bordered reality cards (question, rate, labelled progress bar, count, action only when missing, metric code in a tooltip); alignment box after the cards (H5 kept over the consultation's score-first hero), weekly delta with 10 rated issues minimum, weakest gate, risk buttons that filter; "Why n%?" in the panel | 339 of 339 | `73d3cb6` | 3.6.0, checked live on DEMO (screenshot `/tmp/claude-chrome-screenshots-r0BuFx/screenshot-1793523930948-6.jpg`) |
 | B-38, B-40 | same | Compact issue-context view with "See all findings"; Inspect with pipeline, drift sentence, Previous and Next; preset views (My issues, Critical and high, Audit prep, Needs a decision link); multi-level risk filter; column widths so the four chips fit on one line | 346 of 346 | `b0a0c4e` | 3.7.0, not yet checked live (browser tool disconnected) |
 | B-42 retrospective review | "Approved" | Offer "Request retrospective review" in the issue panel when Code is FOUND with reason PR_MERGED; modal with comment text field (15 to 1,000 characters); posts ADF comment to Jira as user; does not change any gate | 353 of 353 | `0fee151` | 3.9.0 |
+| UI polish and unified titles | "How about Four Realities? Agreed the UX improvements" | Unify module titles to Four Realities; remove arrow glyphs from GatePipeline; add styled card containers for issue summary and gate rows | 354 of 354 | `c195fbb` | 3.10.0 |
 
 Deviation: B-33 to B-40 were committed in three slices, not one item per commit, because they share `src/ui/pipeline.ts` and the pipeline component.
 
@@ -206,4 +207,15 @@ AUDT-1 is left Done with label `fr-probe`.
 - Posts ADF comment via `POST /rest/api/3/issue/{issueId}/comment` as the user.
 - Status message confirms review requested without changing gate states.
 - 353 of 353 tests pass; all graders PASS; deployed to development as 3.9.0.
+
+### Deployed 3.10.0 (Unified titles, arrowless pipeline, and card styling)
+
+- Unified both `jira:issuePanel` and `jira:issueContext` module titles to "Four Realities" in `manifest.yml`.
+- Removed arrow glyphs from `GatePipeline` across all surfaces to ensure clean alignment and natural wrapping without orphan arrows.
+- Added card styling to `IssuePanel` and `GateRow`:
+  - Hero summary card with subtle sunken background (`elevation.surface.sunken`), rounded corners, and border.
+  - Bordered card containers (`GATE_CARD`) for each gate row (Intent, Process, Code, Audit).
+  - Sunken callout boxes (`NOTE_BOX`) for exception history and rework notes.
+  - Clean score card and bottom action bar.
+- 354 of 354 tests pass; all graders PASS; deployed to development as 3.10.0.
 
