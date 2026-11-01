@@ -34,6 +34,8 @@ const Who: React.FC<{ who?: Attribution }> = ({ who }) =>
   who ? (who.kind === 'user' ? <User accountId={who.accountId} /> : <Text>{who.text}</Text>) : null;
 
 // Renders the view model from src/ui/panel-view-model.ts. All rules and wording live there.
+// Text fields are uncontrolled (no value prop): a controlled UI Kit Textfield loses keystrokes,
+// because each key makes a round trip through the bridge (seen live on DEMO-35, 2026-11-01).
 export const DefinitionGuardPanel: React.FC = () => {
   const [checklist, setChecklist] = useState<IssueChecklistState | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -171,8 +173,8 @@ export const DefinitionGuardPanel: React.FC = () => {
               <Box paddingInlineStart="space.200">
                 <Stack space="space.050">
                   <Text>{item.needsEvidence ? 'This item needs evidence. Add a link, a note, or both.' : 'Add a link, a note, or both.'}</Text>
-                  <Textfield id={`dg-ev-url-${item.id}`} placeholder="https://..." value={evUrl} onChange={(e: any) => setEvUrl(e.target.value)} />
-                  <Textfield id={`dg-ev-note-${item.id}`} placeholder="Note (500 characters or less)" maxLength={500} value={evNote} onChange={(e: any) => setEvNote(e.target.value)} />
+                  <Textfield id={`dg-ev-url-${item.id}`} placeholder="https://..." onChange={(e: any) => setEvUrl(e.target.value)} />
+                  <Textfield id={`dg-ev-note-${item.id}`} placeholder="Note (500 characters or less)" maxLength={500} onChange={(e: any) => setEvNote(e.target.value)} />
                   <Inline space="space.100">
                     <Button
                       appearance="primary"
@@ -191,7 +193,7 @@ export const DefinitionGuardPanel: React.FC = () => {
               <Box paddingInlineStart="space.200">
                 <Stack space="space.050">
                   <Text>Why does this item not apply? The reason is kept in the history.</Text>
-                  <Textfield id={`dg-waive-${item.id}`} placeholder="Reason (10 to 500 characters)" maxLength={500} value={waiveReason} onChange={(e: any) => setWaiveReason(e.target.value)} />
+                  <Textfield id={`dg-waive-${item.id}`} placeholder="Reason (10 to 500 characters)" maxLength={500} onChange={(e: any) => setWaiveReason(e.target.value)} />
                   <Inline space="space.100">
                     <Button appearance="warning" isDisabled={busyId === item.id || waiveReason.trim().length < 10} onClick={() => change('waiveItem', { itemId: item.id, reason: waiveReason }, item.id, 'waive the item')}>
                       Waive item

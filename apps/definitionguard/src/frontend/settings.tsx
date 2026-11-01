@@ -45,11 +45,14 @@ type Settings = {
   exemptStatusIds: string[];
 };
 
+// Text fields are uncontrolled (defaultValue, remounted by key): a controlled UI Kit Textfield
+// loses keystrokes, because each key makes a round trip through the bridge (seen live, 2026-11-01).
 export const SettingsPage: React.FC = () => {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [issueTypeId, setIssueTypeId] = useState<string>('');
   const [editor, setEditor] = useState<EditorState>(editorFromTemplate());
   const [newTitle, setNewTitle] = useState<string>('');
+  const [newItemRound, setNewItemRound] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState<boolean>(false);
@@ -179,9 +182,10 @@ export const SettingsPage: React.FC = () => {
       />
 
       <Textfield
+        key={`dg-template-name-${issueTypeId}`}
         id="dg-template-name"
         placeholder="Template name, for example Team DoD"
-        value={editor.name}
+        defaultValue={editor.name}
         onChange={(e: any) => setEditor({ ...editor, name: e.target.value })}
       />
 
@@ -191,7 +195,7 @@ export const SettingsPage: React.FC = () => {
             <Stack space="space.050">
               <Textfield
                 id={`dg-title-${item.key}`}
-                value={item.title}
+                defaultValue={item.title}
                 onChange={(e: any) => setEditor(updateItem(editor, item.key, { title: e.target.value }))}
               />
               <Inline space="space.150" alignBlock="center" shouldWrap>
@@ -236,12 +240,13 @@ export const SettingsPage: React.FC = () => {
       </Stack>
 
       <Inline space="space.100" alignBlock="center">
-        <Textfield id="dg-new-item" placeholder="New item title" value={newTitle} onChange={(e: any) => setNewTitle(e.target.value)} />
+        <Textfield key={`dg-new-item-${newItemRound}`} id="dg-new-item" placeholder="New item title" onChange={(e: any) => setNewTitle(e.target.value)} />
         <Button
           isDisabled={newTitle.trim().length === 0}
           onClick={() => {
             setEditor(addItem(editor, newTitle.trim()));
             setNewTitle('');
+            setNewItemRound(newItemRound + 1); // remounts the uncontrolled field empty
           }}
         >
           Add item

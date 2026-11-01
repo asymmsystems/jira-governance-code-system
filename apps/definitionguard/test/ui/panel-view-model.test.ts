@@ -124,6 +124,15 @@ describe('B-13 panelErrorText', () => {
 });
 
 describe('B-13 the panel UI only renders', () => {
+  it('no UI text field is controlled (a controlled UI Kit Textfield loses keystrokes, seen live)', () => {
+    for (const f of ['index.tsx', 'settings.tsx']) {
+      const src = fs.readFileSync(path.join(__dirname, '../../src/frontend', f), 'utf8');
+      const fields = src.split('<Textfield').slice(1).map(x => x.slice(0, x.indexOf('/>')));
+      expect(fields.length).toBeGreaterThan(0);
+      for (const field of fields) expect(field).not.toMatch(/\svalue=\{/);
+    }
+  });
+
   it('settings.tsx shows no raw err.message either', () => {
     expect(fs.readFileSync(path.join(__dirname, '../../src/frontend/settings.tsx'), 'utf8')).not.toMatch(/err\??\.message/);
   });
