@@ -16,6 +16,7 @@ Read this whole prompt before you act. When this prompt and a file disagree, the
   - `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build` on `feature/fourrealities-research-build`: FourRealities. Not yours.
   - `/home/fahimfarookme/Documents/projects/gemini-earning-ls-build` on `feature/ledgerseal-research-build`: LedgerSeal. Not yours.
   - `/home/fahimfarookme/Documents/projects/gemini-earning-dg-build`: DefinitionGuard. YOURS. Work only here.
+- Restore point: the tag `definitionguard-handover-2026-11-01` and the branch `snapshot/definitionguard-handover-2026-11-01` mark the state you start from. Never move, delete, rebase or force-update either of them, and never rewrite any commit they contain.
 - Never change any file under `apps/planshift`, `apps/fourrealities` or `apps/ledgerseal`, and never run `git stash`, `git reset`, `git checkout` or `git clean` in a worktree that is not yours. The stash stack is shared by all worktrees.
 - App: `apps/definitionguard`. `node_modules` there is a symbolic link to `/home/fahimfarookme/Documents/projects/gemini-earning/apps/ledgerseal/node_modules`, shared with LedgerSeal and CascadePlan. Never run `npm install`, `npm update` or anything that changes it. Ask the owner first if a dependency seems needed.
 - Your shell runs inside a VS Code Flatpak sandbox. Run host tools (node, npx, jest, tsc, forge) through `flatpak-spawn --host sh -c 'cd <absolute path> && <command>'`. Use absolute paths; never chain `cd ..`.
