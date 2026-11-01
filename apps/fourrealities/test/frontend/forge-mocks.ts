@@ -33,7 +33,7 @@ export const bridgeState: {
 export function bridgeMock(): any {
   return {
     invoke: (...args: any[]) => bridgeState.invoke(...args),
-    view: { getContext: () => Promise.resolve(bridgeState.context) },
+    view: { getContext: () => (bridgeState.context instanceof Error ? Promise.reject(bridgeState.context) : Promise.resolve(bridgeState.context)) },
     router: { open: (...args: any[]) => bridgeState.routerOpen(...args) }
   };
 }

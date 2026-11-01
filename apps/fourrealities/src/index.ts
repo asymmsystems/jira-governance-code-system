@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
- * @author Asymm Systems Team
+ * @author Fahim Farook
  * FourRealities: Main Atlassian Forge Entry Point & Resolvers
  */
 
@@ -9,11 +9,13 @@ import { kvs } from '@forge/kvs';
 import api, { route } from '@forge/api';
 import { MetricsEngine } from './domain/metrics-engine';
 import { MetricsRepository, StorageProvider } from './storage/metrics-repository';
+import { factsFromIssue, normalizeException, PROPERTY_KEYS } from './jira/issue-facts';
 import {
-  RealitySignals,
-  ProjectAuditSnapshot,
-  IssueIntegrityScore,
-  IssueExceptionRecord
+  IssueExceptionRecord,
+  IssueRow,
+  ProjectDashboardView,
+  ResolverError,
+  ResolverResult
 } from './domain/models';
 
 class ForgeKvsProvider implements StorageProvider {
@@ -50,216 +52,20 @@ export function resolveStorage(customProvider?: StorageProvider): StorageProvide
   return new ForgeKvsProvider();
 }
 
-/**
- * Analyzes issue changelog histories for status transitions and rework bounces.
- * Detects regressions from review/testing/done stages back into development.
- */
-export function analyzeIssueChangelog(changelog: any): { transitionCount: number; regressionCount: number } {
-  if (!changelog || !Array.isArray(changelog.histories)) {
-    return { transitionCount: 1, regressionCount: 0 };
-  }
+/** Fields every issue read requests. */
+const ISSUE_FIELDS = 'summary,status,issuetype,issuelinks,assignee,updated,customfield_10000,customfield_10020,sprint';
 
-  let transitionCount = 0;
-  let regressionCount = 0;
-
-  // Stages that indicate verification or completion
-  const reviewCategoryWords = ['review', 'in review', 'qa', 'testing', 'verification', 'uat', 'test'];
-  const doneCategoryWords = ['done', 'resolved', 'closed', 'complete', 'completed', 'shipped'];
-
-  // Stages that indicate development rework or reopening
-  const reworkTargetWords = ['in progress', 'to do', 'open', 'backlog', 'reopened', 'draft'];
-
-  for (const history of changelog.histories) {
-    if (!Array.isArray(history.items)) continue;
-    for (const item of history.items) {
-      if (item.field === 'status') {
-        transitionCount++;
-        const fromStatus = String(item.fromString || '').toLowerCase();
-        const toStatus = String(item.toString || '').toLowerCase();
-
-        const wasInReviewOrTesting = reviewCategoryWords.some(w => fromStatus.includes(w));
-        const wasDone = doneCategoryWords.some(w => fromStatus.includes(w));
-        const becameRework = reworkTargetWords.some(w => toStatus.includes(w));
-
-        // Rework bounce: moved from review/testing or done back to open/in progress
-        if ((wasInReviewOrTesting || wasDone) && becameRework) {
-          regressionCount++;
-        }
-      }
-    }
-  }
-
-  return {
-    transitionCount: Math.max(1, transitionCount),
-    regressionCount
-  };
+function jiraError(status: number | undefined, message: string): { ok: false; error: ResolverError } {
+  if (status === 403) return { ok: false, error: { code: 'FORBIDDEN', message, status } };
+  if (status === 404) return { ok: false, error: { code: 'NOT_FOUND', message, status } };
+  if (status === 429) return { ok: false, error: { code: 'RATE_LIMITED', message, status } };
+  return { ok: false, error: { code: 'JIRA_ERROR', message, status } };
 }
 
 /**
- * Validates authentic architectural documentation/intent traceability.
- * Requires genuine ADR, RFC, technical specification, design doc, or PRD links.
+ * Queries live Jira issues using search/jql. Returns raw issues with the producers' properties.
  */
-export function evaluateDocumentedIntent(issuelinks?: any[] | null, remotelinks?: any[] | null): boolean {
-  if (Array.isArray(remotelinks) && remotelinks.length > 0) {
-    for (const rl of remotelinks) {
-      const url = String(rl.object?.url || rl.url || '').toLowerCase();
-      const title = String(rl.object?.title || rl.title || '').toLowerCase();
-
-      const isArchitectureSpec =
-        title.includes('adr') ||
-        title.includes('rfc') ||
-        title.includes('spec') ||
-        title.includes('decision') ||
-        title.includes('architecture') ||
-        title.includes('blueprint') ||
-        title.includes('design doc') ||
-        title.includes('tech spec') ||
-        title.includes('requirement');
-
-      const isSpecUrl =
-        url.includes('/adr') ||
-        url.includes('/rfc') ||
-        url.includes('/spec') ||
-        url.includes('architecture') ||
-        url.includes('decision') ||
-        url.includes('blueprint') ||
-        url.includes('design-doc');
-
-      if (isArchitectureSpec || isSpecUrl) {
-        return true;
-      }
-    }
-  }
-
-  if (!Array.isArray(issuelinks) || issuelinks.length === 0) {
-    return false;
-  }
-
-  const docLinkKeywords = ['document', 'specif', 'implement', 'verif', 'satisf', 'decision', 'design'];
-  const docTypeKeywords = ['architecture', 'adr', 'spec', 'rfc', 'requirement', 'documentation', 'decision'];
-
-  for (const link of issuelinks) {
-    const linkTypeInward = String(link.type?.inward || '').toLowerCase();
-    const linkTypeOutward = String(link.type?.outward || '').toLowerCase();
-    const isDocLinkType = docLinkKeywords.some(kw => linkTypeInward.includes(kw) || linkTypeOutward.includes(kw));
-    if (isDocLinkType) {
-      return true;
-    }
-
-    const linkedIssue = link.inwardIssue || link.outwardIssue;
-    if (linkedIssue) {
-      const summary = String(linkedIssue.fields?.summary || '').toLowerCase();
-      const typeName = String(linkedIssue.fields?.issuetype?.name || '').toLowerCase();
-
-      if (
-        summary.startsWith('[adr]') ||
-        summary.startsWith('[spec]') ||
-        summary.startsWith('[arch]') ||
-        summary.startsWith('[rfc]') ||
-        summary.includes('architecture decision') ||
-        summary.includes('software design') ||
-        summary.includes('design document')
-      ) {
-        return true;
-      }
-
-      if (docTypeKeywords.some(kw => typeName.includes(kw))) {
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
-/**
- * Shared extraction pipeline converting Jira issue payload to authentic RealitySignals.
- */
-export function extractSignalsFromIssue(
-  iss: any,
-  remoteLinks?: any[],
-  devStatusPullRequests?: any[],
-  storedException?: IssueExceptionRecord
-): RealitySignals {
-  const certProp = iss.properties?.['ledgerseal-cert'] || iss.properties?.['ledgersealCert'];
-  const dodProp = iss.properties?.['definitionguard-dod'] || iss.properties?.['definitionguardDod'];
-  const links = iss.fields?.issuelinks;
-  const hasDocumentedIntent = evaluateDocumentedIntent(links, remoteLinks);
-  const { transitionCount, regressionCount } = analyzeIssueChangelog(iss.changelog);
-
-  let prCount = 0;
-  let hasApprovedReview = false;
-
-  // 1. Check Dev Status PR review approval
-  if (Array.isArray(devStatusPullRequests) && devStatusPullRequests.length > 0) {
-    prCount = devStatusPullRequests.length;
-    hasApprovedReview = devStatusPullRequests.some(pr =>
-      (Array.isArray(pr.reviewers) && pr.reviewers.some((r: any) => r.approvalStatus === 'APPROVED')) ||
-      pr.status === 'APPROVED'
-    );
-  }
-
-  // 2. Check development field heuristic if dev-status returned no PRs
-  if (prCount === 0) {
-    const devField = iss.fields?.customfield_10000;
-    if (typeof devField === 'string' && devField.includes('pullrequest')) {
-      prCount = 1;
-      // Approved status required; merely MERGED without approval is not credited
-      if (devField.includes('APPROVED')) {
-        hasApprovedReview = true;
-      }
-    }
-  }
-
-  // 3. Authenticate cryptographic seal (requires valid snapshotHash and certificateId)
-  const isSealed = Boolean(
-    certProp &&
-    (certProp.status === 'SEAL_VALID' || certProp.valid === true) &&
-    !certProp.isCompromised &&
-    certProp.snapshotHash
-  );
-
-  // 4. Authenticate DoD satisfaction
-  const isDoDSatisfied = Boolean(
-    dodProp &&
-    (dodProp.isFullySatisfied === true || dodProp.satisfied === true)
-  );
-
-  // 5. Dynamic sprint name detection
-  const sprintObj = iss.fields?.sprint || iss.fields?.customfield_10020?.[0];
-  const sprintName = sprintObj?.name;
-
-  return {
-    issueId: String(iss.id),
-    issueKey: String(iss.key),
-    summary: iss.fields?.summary || '',
-    status: iss.fields?.status?.name || 'In Progress',
-    statusCategory: iss.fields?.status?.statusCategory?.name || 'In Progress',
-    assigneeName: iss.fields?.assignee?.displayName,
-    sprintName,
-    hasDocumentedIntent,
-    transitionCount,
-    regressionCount,
-    reworkReason: storedException?.type === 'REWORK' ? storedException.reason : undefined,
-    prCount,
-    hasApprovedReview,
-    codeExceptionReason: storedException?.type === 'CODE' ? storedException.reason : undefined,
-    hasCryptographicSeal: isSealed,
-    sealCertificateId: certProp?.certificateId,
-    sealSnapshotHash: certProp?.snapshotHash,
-    isDoDSatisfied,
-    dodCompletedCount: dodProp?.completedCount,
-    dodTotalCount: dodProp?.totalCount
-  };
-}
-
-/**
- * Queries live Jira issues using search/jql with pagination support up to 100+ issues.
- */
-export async function fetchLiveProjectAudit(
-  projectKey: string,
-  repository?: MetricsRepository
-): Promise<{ signals: RealitySignals[]; error?: string }> {
+export async function fetchProjectIssues(projectKey: string): Promise<{ issues: any[]; status?: number; error?: string }> {
   try {
     const allIssues: any[] = [];
     let startAt = 0;
@@ -269,11 +75,11 @@ export async function fetchLiveProjectAudit(
     // Paginate Jira search up to 2 pages (200 issues) for comprehensive audit
     while (!isLast && allIssues.length < 200) {
       const res = await api.asApp().requestJira(
-        route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&startAt=${startAt}&maxResults=${maxResults}&fields=summary,status,issuetype,issuelinks,assignee,customfield_10000,customfield_10020,sprint&properties=ledgerseal-cert,ledgersealCert,definitionguard-dod,definitionguardDod&expand=changelog`
+        route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&startAt=${startAt}&maxResults=${maxResults}&fields=${ISSUE_FIELDS}&properties=${PROPERTY_KEYS.join(',')}&expand=changelog`
       );
 
       if (res.status !== 200) {
-        return { signals: [], error: `Jira search/jql failed with HTTP ${res.status}` };
+        return { issues: [], status: res.status, error: `Jira search/jql failed with HTTP ${res.status}` };
       }
 
       const data = await res.json();
@@ -286,110 +92,74 @@ export async function fetchLiveProjectAudit(
         startAt += maxResults;
       }
     }
-
-    const signals: RealitySignals[] = [];
-    for (const iss of allIssues) {
-      let storedException: IssueExceptionRecord | undefined = undefined;
-      if (repository) {
-        storedException = await repository.getIssueException(String(iss.id));
-      }
-      signals.push(extractSignalsFromIssue(iss, undefined, undefined, storedException));
-    }
-
-    return { signals };
+    return { issues: allIssues };
   } catch (err: any) {
-    return { signals: [], error: err?.message || 'Network error querying Jira search/jql' };
+    return { issues: [], error: err?.message || 'Network error querying Jira search/jql' };
   }
 }
 
 /**
- * Retrieves the project-level audit dashboard and reality alignment summary.
+ * Builds the project dashboard view from live Jira issues. The project comes from the Forge
+ * context only. A page view stores nothing.
  */
 export async function getProjectDashboard(
   payload: any,
   context?: any,
   storageProvider?: StorageProvider
-): Promise<ProjectAuditSnapshot> {
-  const contextProject = context?.extension?.project?.key;
-  const projectKey = String(contextProject || payload?.projectKey || 'DEFAULT');
-  const userId = String(context?.accountId || payload?.userId || 'anonymous');
+): Promise<ResolverResult<ProjectDashboardView>> {
+  const projectKey = context?.extension?.project?.key;
+  if (!projectKey) {
+    return { ok: false, error: { code: 'INVALID_INPUT', message: 'FourRealities: open this page from a Jira project.' } };
+  }
 
   const storage = resolveStorage(storageProvider);
   const repository = new MetricsRepository(storage);
-
-  // Retrieve authentic previous snapshot from storage history
-  const previousSnapshot = await repository.getPreviousProjectSnapshot(projectKey);
-
-  // Attempt live Jira query for authentic project issues
-  const { signals: liveSignals, error: syncError } = await fetchLiveProjectAudit(projectKey, repository);
-
-  // If live Jira returned authentic signals without error
-  if (!syncError) {
-    const issueScores = liveSignals.map(s => MetricsEngine.evaluateIssue(s));
-    const summary = MetricsEngine.summarizeProject(liveSignals, previousSnapshot);
-    const snapshot: ProjectAuditSnapshot = {
-      snapshotId: `snap-${Date.now()}`,
-      projectKey,
-      generatedAt: new Date().toISOString(),
-      generatedBy: userId,
-      summary,
-      issueScores
-    };
-    await repository.saveProjectSnapshot(snapshot);
-    return snapshot;
+  const { issues, status, error } = await fetchProjectIssues(String(projectKey));
+  if (error) {
+    return jiraError(status, `Live Jira sync failed (${error}).`);
   }
 
-  // If sync error occurred, check if cached snapshot exists and flag warning
-  const existing = await repository.getLatestProjectSnapshot(projectKey);
-  if (existing) {
-    return {
-      ...existing,
-      warning: `Live Jira sync failed (${syncError}). Displaying cached snapshot.`
-    };
+  const rows: IssueRow[] = [];
+  for (const iss of issues) {
+    const exception = normalizeException(await repository.getIssueException(String(iss.id)));
+    rows.push(MetricsEngine.buildRow(factsFromIssue(iss, { exception })));
   }
 
-  // If no cached snapshot exists, return initial baseline with error warning
-  const now = new Date().toISOString();
-  const emptySummary = MetricsEngine.summarizeProject([]);
-  const initialSnapshot: ProjectAuditSnapshot = {
-    snapshotId: `snap-${Date.now()}`,
-    projectKey,
-    generatedAt: now,
-    generatedBy: userId,
-    summary: emptySummary,
-    issueScores: [],
-    warning: `Live Jira sync failed (${syncError}). No cached snapshot available.`
+  return {
+    ok: true,
+    projectKey: String(projectKey),
+    generatedAt: new Date().toISOString(),
+    summary: MetricsEngine.summarize(rows),
+    rows,
+    trend: []
   };
-
-  await repository.saveProjectSnapshot(initialSnapshot);
-  return initialSnapshot;
 }
 
 /**
- * Retrieves reality alignment metrics for a single Jira issue.
+ * Evaluates one Jira issue. The issue comes from the Forge context only.
  */
 export async function getIssueAlignment(
   payload: any,
   context?: any,
   storageProvider?: StorageProvider
-): Promise<IssueIntegrityScore> {
+): Promise<ResolverResult<{ row: IssueRow }>> {
   const contextIssue = context?.extension?.issue;
-  const issueId = String(contextIssue?.id || payload?.issueId || payload?.issue?.id || '');
-  const issueKey = String(contextIssue?.key || payload?.issueKey || payload?.issue?.key || issueId);
+  const issueId = contextIssue?.id ? String(contextIssue.id) : '';
+  const issueKey = String(contextIssue?.key || issueId);
 
-  if (!issueId || issueId === 'default-issue') {
-    throw new Error('FourRealities: Missing issueId.');
+  if (!issueId) {
+    return { ok: false, error: { code: 'INVALID_INPUT', message: 'FourRealities: open this panel from a Jira issue.' } };
   }
 
   const storage = resolveStorage(storageProvider);
   const repository = new MetricsRepository(storage);
-  const storedException = await repository.getIssueException(issueId);
+  const exception = normalizeException(await repository.getIssueException(issueId));
 
-  // Attempt to fetch authentic live Jira issue state and entity properties
+  // Signals come from Jira only. There is no cached fallback: a failed read is reported.
   try {
     const [issueRes, remoteLinksRes, stashDevRes, githubDevRes, bitbucketDevRes] = await Promise.all([
       api.asApp().requestJira(
-        route`/rest/api/3/issue/${issueId}?fields=summary,status,issuetype,issuelinks,assignee,customfield_10000,customfield_10020,sprint&properties=ledgerseal-cert,ledgersealCert,definitionguard-dod,definitionguardDod&expand=changelog`
+        route`/rest/api/3/issue/${issueId}?fields=${ISSUE_FIELDS}&properties=${PROPERTY_KEYS.join(',')}&expand=changelog`
       ),
       api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/remotelink`).catch(() => null),
       api.asApp().requestJira(route`/rest/dev-status/latest/issue/detail?issueId=${issueId}&applicationType=stash&dataType=pullrequest`).catch(() => null),
@@ -397,43 +167,38 @@ export async function getIssueAlignment(
       api.asApp().requestJira(route`/rest/dev-status/latest/issue/detail?issueId=${issueId}&applicationType=bitbucket&dataType=pullrequest`).catch(() => null)
     ]);
 
-    if (issueRes.status === 200) {
-      const iss = await issueRes.json();
-      if (iss?.id || iss?.key) {
-        let remoteLinks: any[] = [];
-        if (remoteLinksRes && remoteLinksRes.status === 200) {
-          try {
-            remoteLinks = await remoteLinksRes.json();
-          } catch {}
-        }
+    if (issueRes.status !== 200) {
+      return jiraError(issueRes.status, `FourRealities: Jira returned HTTP ${issueRes.status} for issue '${issueKey}'.`);
+    }
+    const iss = await issueRes.json();
 
-        const pullRequests: any[] = [];
-        for (const devRes of [stashDevRes, githubDevRes, bitbucketDevRes]) {
-          if (devRes && devRes.status === 200) {
-            try {
-              const devData = await devRes.json();
-              if (Array.isArray(devData.detail)) {
-                for (const item of devData.detail) {
-                  if (Array.isArray(item.pullRequests)) {
-                    pullRequests.push(...item.pullRequests);
-                  }
-                }
+    let remoteLinks: any[] = [];
+    if (remoteLinksRes && remoteLinksRes.status === 200) {
+      try {
+        const body = await remoteLinksRes.json();
+        remoteLinks = Array.isArray(body) ? body : [];
+      } catch {}
+    }
+
+    const pullRequests: any[] = [];
+    for (const devRes of [stashDevRes, githubDevRes, bitbucketDevRes]) {
+      if (devRes && devRes.status === 200) {
+        try {
+          const devData = await devRes.json();
+          if (Array.isArray(devData.detail)) {
+            for (const item of devData.detail) {
+              if (Array.isArray(item.pullRequests)) {
+                pullRequests.push(...item.pullRequests);
               }
-            } catch {}
+            }
           }
-        }
-
-        const signals = extractSignalsFromIssue(iss, remoteLinks, pullRequests, storedException);
-        return MetricsEngine.evaluateIssue(signals);
+        } catch {}
       }
     }
-    throw new Error(`FourRealities: Jira returned HTTP ${issueRes.status} for issue '${issueKey}'.`);
+
+    return { ok: true, row: MetricsEngine.buildRow(factsFromIssue(iss, { remoteLinks, pullRequests, exception })) };
   } catch (err: any) {
-    // Signals come from Jira only. There is no cached fallback: a failed read is reported.
-    if (String(err?.message || '').startsWith('FourRealities:')) {
-      throw err;
-    }
-    throw new Error(`FourRealities: Failed to query Jira for issue '${issueKey}': ${err?.message || 'network error'}`);
+    return jiraError(undefined, `FourRealities: Failed to query Jira for issue '${issueKey}': ${err?.message || 'network error'}`);
   }
 }
 
@@ -624,14 +389,11 @@ export async function renderIssueContext(context: any) {
 const resolver = new Resolver();
 
 resolver.define('getProjectDashboard', async (req) => {
-  const projectKey = req.payload?.projectKey || req.context?.extension?.project?.key || 'DEFAULT';
-  return await getProjectDashboard({ ...req.payload, projectKey }, req.context);
+  return await getProjectDashboard(req.payload, req.context);
 });
 
 resolver.define('getIssueAlignment', async (req) => {
-  const issueId = req.payload?.issueId || req.context?.extension?.issue?.id || 'default-issue';
-  const issueKey = req.payload?.issueKey || req.context?.extension?.issue?.key || issueId;
-  return await getIssueAlignment({ ...req.payload, issueId, issueKey }, req.context);
+  return await getIssueAlignment(req.payload, req.context);
 });
 
 resolver.define('linkDecision', async (req) => {

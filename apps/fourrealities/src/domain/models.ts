@@ -1,118 +1,84 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
- * @author Asymm Systems Team
- * FourRealities: Domain Models for Cross-Reality Delivery Integrity
+ * @author Fahim Farook
+ * FourRealities: Domain Models for Cross-Reality Delivery Integrity (specification v2)
  */
+
+export type GateName = 'intent' | 'process' | 'code' | 'audit';
+
+export const GATE_NAMES: GateName[] = ['intent', 'process', 'code', 'audit'];
+
+/**
+ * Evidence state of one gate. FOUND and MISSING are scored; the other states are excluded
+ * from every score and rate.
+ */
+export type GateState = 'FOUND' | 'MISSING' | 'EXCEPTED' | 'NEEDS_RECHECK' | 'NOT_APPLICABLE';
+
+/**
+ * How FourRealities knows a FOUND fact: it read the fact itself (VERIFIED), another app
+ * reports it and nothing verifies it (NOT_VERIFIED), or it is inferred (HEURISTIC).
+ */
+export type Verification = 'VERIFIED' | 'NOT_VERIFIED' | 'HEURISTIC';
+
+/** Reason codes. The UI turns each code into a source line and plain text. */
+export type GateReason =
+  | 'NOT_STARTED'
+  | 'NOT_DONE'
+  | 'INTENT_CONFLUENCE_LINK'
+  | 'INTENT_DECISION_ISSUE'
+  | 'INTENT_KEYWORD_LINK'
+  | 'INTENT_LINKS_NOT_READ'
+  | 'INTENT_NONE'
+  | 'DOD_COMPLETE_DG'
+  | 'DOD_OPEN_DG'
+  | 'DOD_SHAPE_UNKNOWN'
+  | 'DOD_COMPLETE_HC'
+  | 'DOD_OPEN_HC'
+  | 'DOD_NONE'
+  | 'CODE_EXCEPTED'
+  | 'PR_APPROVED'
+  | 'PR_MERGED'
+  | 'PR_OPEN'
+  | 'PR_OPEN_AT_DONE'
+  | 'PR_NONE'
+  | 'NO_DEV_TOOL'
+  | 'SEAL_VALID_LS'
+  | 'SEAL_BROKEN_LS'
+  | 'SEAL_OTHER_LS'
+  | 'SEAL_SHAPE_UNKNOWN'
+  | 'SEAL_NONE'
+  | 'CHANGED_SINCE_ATTESTATION';
+
+export interface GateResult {
+  state: GateState;
+  verification?: Verification;
+  reason: GateReason;
+  args?: Record<string, string | number>;
+}
+
+export type IssueGates = Record<GateName, GateResult>;
+
+export type StatusCategory = 'new' | 'indeterminate' | 'done';
 
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | 'UNRATED';
 
-export type GateStatus = 'PASSED' | 'ATTENTION' | 'BLOCKED' | 'HOLLOW';
-
-export interface IssueGates {
-  intent: GateStatus;
-  process: GateStatus;
-  code: GateStatus;
-  audit: GateStatus;
+export interface ExceptionNote {
+  reason: string;
+  notes?: string;
+  recordedBy: string;
+  recordedAt: string;
 }
 
-export interface RealityGateCounts {
-  passed: number;
-  attention: number;
-  blocked: number;
-  hollow: number;
-}
-
-export interface RealitySignals {
+/** Stored in KVS at fr:issue:{issueId}:exception and in the fourrealities-exception property. */
+export interface ExceptionRecord {
+  schemaVersion: 2;
   issueId: string;
   issueKey: string;
-  summary?: string;
-  status?: string;
-  statusCategory?: string; // 'To Do' | 'In Progress' | 'Done'
-  assigneeName?: string;
-  sprintName?: string;
-  hasDocumentedIntent: boolean;
-  intentDocumentTitle?: string;
-  intentDocumentUrl?: string;
-  transitionCount: number;
-  regressionCount: number; // Workflow rework loops: Bounces back from QA/Review to In Progress
-  reworkReason?: string;
-  prCount: number;
-  hasApprovedReview: boolean; // Verified peer review approval (not merely merged)
-  codeExceptionReason?: string; // Exception: e.g. "No code change: Configuration/Documentation"
-  hasCryptographicSeal: boolean; // LedgerSeal active
-  sealCertificateId?: string;
-  sealSnapshotHash?: string;
-  isDoDSatisfied: boolean; // DefinitionGuard complete
-  dodCompletedCount?: number;
-  dodTotalCount?: number;
+  code?: ExceptionNote;
+  rework?: ExceptionNote;
 }
 
-export interface IssueIntegrityScore {
-  issueId: string;
-  issueKey: string;
-  summary?: string;
-  status?: string;
-  statusCategory?: string;
-  assigneeName?: string;
-  sprintName?: string;
-  isEvaluated: boolean; // False if all gates are HOLLOW (early planning stage)
-  applicableGateCount: number;
-  intentScore: number; // 0 - 100
-  processScore: number; // 0 - 100
-  codeScore: number; // 0 - 100
-  auditScore: number; // 0 - 100
-  realityAlignmentIndex: number; // Composite RAI 0 - 100 (scored only over applicable gates)
-  riskLevel: RiskLevel;
-  gates: IssueGates;
-  synthesizedFinding: string;
-  recoverablePoints: number;
-  findings: string[];
-  whyScoreExplanation: string; // Plain-English score attribution
-}
-
-export interface MetricSummary {
-  m11TraceabilityRate: number; // % of issues with documented architecture intent
-  m29ReviewComplianceRate: number; // % of issues with approved peer review
-  m30ReworkLoopRate: number; // % of issues experiencing rework bounce
-  m40AuditComplianceRate: number; // % of DONE issues sealed & verified
-  averageRAI: number; // Mean Reality Alignment Index (0 - 100)
-  totalAuditedIssues: number;
-  doneCount: number; // Total count of completed (Done) issues
-  sealedDoneCount: number; // Count of completed issues that are sealed
-  healthyIssueCount: number;
-  atRiskIssueCount: number;
-  highRiskIssueKeys: string[];
-  // UX Enhancement Fields
-  gateBreakdown: {
-    intent: RealityGateCounts;
-    process: RealityGateCounts;
-    code: RealityGateCounts;
-    audit: RealityGateCounts;
-  };
-  weakestGate: 'intent' | 'process' | 'code' | 'audit';
-  sprintDelta?: number; // Delta vs previous snapshot, undefined if <2 snapshots
-  sprintName: string; // Dynamic sprint name or "Active Delivery"
-  hasTrendHistory: boolean;
-  trendNotice?: string; // Honest notice when trend history is not yet available
-  biggestMover?: string; // Calculated dynamically from historical gate delta
-  riskDistribution: {
-    low: number;
-    medium: number;
-    high: number;
-    critical: number;
-  };
-}
-
-export interface ProjectAuditSnapshot {
-  snapshotId: string;
-  projectKey: string;
-  generatedAt: string;
-  generatedBy: string;
-  summary: MetricSummary;
-  issueScores: IssueIntegrityScore[];
-  warning?: string;
-}
-
+/** The v1 exception record shape, read for migration only. */
 export interface IssueExceptionRecord {
   issueId: string;
   issueKey: string;
@@ -122,3 +88,111 @@ export interface IssueExceptionRecord {
   recordedBy: string;
   recordedAt: string;
 }
+
+/** Facts about one issue, parsed from Jira. Gate rules read only these facts. */
+export interface IssueFacts {
+  issueId: string;
+  issueKey: string;
+  summary: string;
+  statusName: string;
+  statusCategory: StatusCategory;
+  assigneeName?: string;
+  sprintNames: string[];
+  updated?: string;
+  statusChanges: number;
+  reworkLoops: number;
+  issueLinks: Array<{ key?: string; summary?: string; typeName?: string; linkInward?: string; linkOutward?: string }>;
+  /** undefined means the remote links were not read. */
+  remoteLinks?: Array<{ url?: string; title?: string; applicationType?: string }>;
+  siteHost?: string;
+  devField: { present: boolean; raw?: string };
+  pullRequests?: any[];
+  properties: { ledgerseal?: any; dod?: any; checklist?: any };
+  exception?: ExceptionRecord;
+}
+
+/** One issue as shown in the dashboard and the issue panel. */
+export interface IssueRow {
+  issueId: string;
+  issueKey: string;
+  summary: string;
+  statusName: string;
+  statusCategory: StatusCategory;
+  assigneeName?: string;
+  sprintNames: string[];
+  started: boolean;
+  gates: IssueGates;
+  reworkLoops: number;
+  rai: number | null;
+  risk: RiskLevel;
+  applicableGates: number;
+  recoverablePoints: number;
+  exception?: ExceptionNote;
+  reworkNote?: ExceptionNote;
+}
+
+export interface GateCount {
+  found: number;
+  missing: number;
+  excepted: number;
+  recheck: number;
+  notApplicable: number;
+}
+
+export interface ProjectSummary {
+  totalIssues: number;
+  ratedIssues: number;
+  unratedIssues: number;
+  averageRAI: number | null;
+  gates: Record<GateName, GateCount>;
+  m11IntentRate: number | null;
+  m29PullRequestRate: number | null;
+  m30ReworkRate: number | null;
+  dodRate: number | null;
+  sealRate: number | null;
+  startedIssues: number;
+  reworkIssues: number;
+  riskDistribution: { low: number; medium: number; high: number; critical: number; unrated: number };
+}
+
+export interface TrendPoint {
+  weekStart: string;
+  generatedAt: string;
+  ratedIssues: number;
+  averageRAI: number | null;
+  gates: Record<GateName, { found: number; missing: number }>;
+  startedIssues: number;
+  reworkIssues: number;
+}
+
+export interface SnapshotMeta {
+  schemaVersion: 2;
+  projectKey: string;
+  snapshotId: string;
+  generatedAt: string;
+  generatedBy: string;
+  chunkCount: number;
+  shownCount: number;
+  totalKnown: number | null;
+  capped: boolean;
+  remoteLinksRead: number;
+}
+
+/** Response of getProjectDashboard and refreshProjectSnapshot. */
+export interface ProjectDashboardView {
+  projectKey: string;
+  generatedAt: string;
+  summary: ProjectSummary;
+  rows: IssueRow[];
+  trend: TrendPoint[];
+  meta?: SnapshotMeta;
+  warning?: string;
+}
+
+export type ResolverError = {
+  code: 'INVALID_INPUT' | 'FORBIDDEN' | 'NOT_FOUND' | 'JIRA_ERROR' | 'RATE_LIMITED' | 'LICENSE_INACTIVE';
+  message: string;
+  status?: number;
+};
+
+export type ResolverResult<T> = ({ ok: true } & T) | { ok: false; error: ResolverError };

@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: render tests for the UI Kit entry component (loading, loaded, error, refresh)
+ * FourRealities: render tests for the UI Kit root component (loading, loaded, error, refresh)
  */
 
 import * as React from 'react';
@@ -10,27 +10,13 @@ import * as React from 'react';
 const TestRenderer = require('react-test-renderer');
 const { act } = TestRenderer;
 import { bridgeState, textOf, findButton, settle } from './forge-mocks';
+import { dashboard, row, F, M_INTENT, M_SEAL, NA } from './rows';
 
 jest.mock('@forge/react', () => require('./forge-mocks').reactMock());
 jest.mock('@forge/bridge', () => require('./forge-mocks').bridgeMock());
 
 import { FourRealitiesApp } from '../../src/frontend/index';
-
-const emptySummary = {
-  m11TraceabilityRate: 0, m29ReviewComplianceRate: 0, m30ReworkLoopRate: 0, m40AuditComplianceRate: 0,
-  averageRAI: 0, totalAuditedIssues: 0, doneCount: 0, sealedDoneCount: 0, healthyIssueCount: 0,
-  atRiskIssueCount: 0, highRiskIssueKeys: [],
-  gateBreakdown: {
-    intent: { passed: 0, attention: 0, blocked: 0, hollow: 0 },
-    process: { passed: 0, attention: 0, blocked: 0, hollow: 0 },
-    code: { passed: 0, attention: 0, blocked: 0, hollow: 0 },
-    audit: { passed: 0, attention: 0, blocked: 0, hollow: 0 }
-  },
-  weakestGate: 'audit', sprintName: 'Active Delivery', hasTrendHistory: false,
-  riskDistribution: { low: 0, medium: 0, high: 0, critical: 0 }
-};
-
-const snapshot = { snapshotId: 's1', projectKey: 'DEMO', generatedAt: '2026-11-01T00:00:00Z', generatedBy: 'acc', summary: emptySummary, issueScores: [] };
+import { errorText } from '../../src/frontend/app';
 
 describe('FourRealitiesApp rendering', () => {
   let hookErrors: string[];
@@ -43,6 +29,7 @@ describe('FourRealitiesApp rendering', () => {
       if (/order of Hooks|Rendered (more|fewer) hooks|error occurred/.test(text)) hookErrors.push(text);
     });
     bridgeState.invoke.mockReset();
+    bridgeState.routerOpen.mockClear();
   });
 
   afterEach(() => errorSpy.mockRestore());
@@ -54,14 +41,14 @@ describe('FourRealitiesApp rendering', () => {
 
     let renderer: any;
     await act(async () => { renderer = TestRenderer.create(<FourRealitiesApp />); });
-    expect(textOf(renderer.toJSON())).toContain('Evaluating');
+    expect(textOf(renderer.toJSON())).toContain('Evaluating delivery evidence');
 
-    await act(async () => { resolveInvoke(snapshot); });
+    await act(async () => { resolveInvoke({ ok: true, ...dashboard([row('DEMO-1', { intent: F, process: NA, code: NA, audit: NA })]) }); });
     await settle(act);
 
     expect(hookErrors).toEqual([]);
-    expect(renderer.toJSON()).not.toBeNull();
-    expect(textOf(renderer.toJSON())).toContain('Delivery Alignment Index');
+    expect(bridgeState.invoke).toHaveBeenCalledWith('getProjectDashboard', {});
+    expect(textOf(renderer.toJSON())).toMatch(/Delivery evidence:\s+DEMO/);
   });
 
   it('shows an error in the issue panel when getIssueAlignment fails, not the dashboard', async () => {
@@ -75,12 +62,22 @@ describe('FourRealitiesApp rendering', () => {
     expect(hookErrors).toEqual([]);
     const text = textOf(renderer.toJSON());
     expect(text).toContain('Failed to query Jira for issue DEMO-1');
-    expect(text).not.toContain('Delivery Alignment Index');
+    expect(text).not.toMatch(/Delivery evidence:\s+DEMO/);
+  });
+
+  it('shows the resolver error message from an error envelope', async () => {
+    bridgeState.context = { extension: { project: { key: 'DEMO' } } };
+    bridgeState.invoke.mockResolvedValue({ ok: false, error: { code: 'FORBIDDEN', message: 'Live Jira sync failed (HTTP 403).' } });
+
+    let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<FourRealitiesApp />); });
+    await settle(act);
+    expect(textOf(renderer.toJSON())).toContain('Live Jira sync failed (HTTP 403).');
   });
 
   it('reloads after Refresh without a hook error', async () => {
     bridgeState.context = { extension: { project: { key: 'DEMO' } } };
-    bridgeState.invoke.mockResolvedValue(snapshot);
+    bridgeState.invoke.mockResolvedValue({ ok: true, ...dashboard([row('DEMO-1', { intent: F, process: NA, code: NA, audit: NA })]) });
 
     let renderer: any;
     await act(async () => { renderer = TestRenderer.create(<FourRealitiesApp />); });
@@ -91,19 +88,12 @@ describe('FourRealitiesApp rendering', () => {
 
     expect(hookErrors).toEqual([]);
     expect(bridgeState.invoke).toHaveBeenCalledTimes(2);
-    expect(textOf(renderer.toJSON())).toContain('Delivery Alignment Index');
+    expect(textOf(renderer.toJSON())).toMatch(/Delivery evidence:\s+DEMO/);
   });
 
   it('links to the producer panels and offers no seal or DoD action (B-02)', async () => {
     bridgeState.context = { extension: { issue: { id: '10001', key: 'DEMO-1' } } };
-    bridgeState.invoke.mockResolvedValue({
-      issueId: '10001', issueKey: 'DEMO-1', summary: 'Done work', status: 'Done', statusCategory: 'Done',
-      isEvaluated: true, applicableGateCount: 4, intentScore: 0, processScore: 100, codeScore: 0, auditScore: 0,
-      realityAlignmentIndex: 25, riskLevel: 'CRITICAL',
-      gates: { intent: 'BLOCKED', process: 'PASSED', code: 'BLOCKED', audit: 'BLOCKED' },
-      synthesizedFinding: 'x', recoverablePoints: 25, findings: [], whyScoreExplanation: 'Why'
-    });
-    bridgeState.routerOpen.mockClear();
+    bridgeState.invoke.mockResolvedValue({ ok: true, row: row('DEMO-1', { intent: M_INTENT, process: F, code: NA, audit: M_SEAL }) });
 
     let renderer: any;
     await act(async () => { renderer = TestRenderer.create(<FourRealitiesApp />); });
@@ -117,5 +107,20 @@ describe('FourRealitiesApp rendering', () => {
     expect(bridgeState.routerOpen).toHaveBeenLastCalledWith('/browse/DEMO-1');
     await act(async () => { findButton(renderer.root, 'DefinitionGuard Checklist').props.onClick(); });
     expect(bridgeState.routerOpen).toHaveBeenLastCalledWith('/browse/DEMO-1');
+  });
+
+  it('falls back to a generic error text', () => {
+    expect(errorText(undefined, 'fallback')).toBe('fallback');
+    expect(errorText({ message: 'm' }, 'fallback')).toBe('m');
+  });
+
+  it('treats an unreadable context as the project page', async () => {
+    bridgeState.context = new Error('no context');
+    bridgeState.invoke.mockResolvedValue({ ok: false, error: { code: 'INVALID_INPUT', message: 'FourRealities: open this page from a Jira project.' } });
+    let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<FourRealitiesApp />); });
+    await settle(act);
+    expect(bridgeState.invoke).toHaveBeenCalledWith('getProjectDashboard', {});
+    expect(textOf(renderer.toJSON())).toContain('open this page from a Jira project');
   });
 });

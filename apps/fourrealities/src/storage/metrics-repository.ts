@@ -1,10 +1,10 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
- * @author Asymm Systems Team
+ * @author Fahim Farook
  * FourRealities: Metrics & Audit Snapshot Storage Repository
  */
 
-import { ProjectAuditSnapshot, IssueExceptionRecord } from '../domain/models';
+import { ExceptionRecord, IssueExceptionRecord } from '../domain/models';
 
 export interface StorageProvider {
   get<T>(key: string): Promise<T | undefined>;
@@ -19,45 +19,12 @@ export class MetricsRepository {
     this.storage = storage;
   }
 
-  private getProjectKey(projectKey: string): string {
-    return `fr:project:${projectKey}:latest`;
-  }
-
-  private getProjectHistoryKey(projectKey: string): string {
-    return `fr:project:${projectKey}:history`;
-  }
-
   private getIssueKey(issueId: string): string {
     return `fr:issue:${issueId}:signals`;
   }
 
   private getExceptionKey(issueId: string): string {
     return `fr:issue:${issueId}:exception`;
-  }
-
-  public async saveProjectSnapshot(snapshot: ProjectAuditSnapshot): Promise<void> {
-    await this.storage.set(this.getProjectKey(snapshot.projectKey), snapshot);
-
-    // Maintain historical snapshots for authentic trend calculation (capped at 10)
-    const history = (await this.storage.get<ProjectAuditSnapshot[]>(this.getProjectHistoryKey(snapshot.projectKey))) || [];
-    history.push(snapshot);
-    if (history.length > 10) {
-      history.shift();
-    }
-    await this.storage.set(this.getProjectHistoryKey(snapshot.projectKey), history);
-  }
-
-  public async getLatestProjectSnapshot(projectKey: string): Promise<ProjectAuditSnapshot | undefined> {
-    return await this.storage.get<ProjectAuditSnapshot>(this.getProjectKey(projectKey));
-  }
-
-  public async getPreviousProjectSnapshot(projectKey: string): Promise<ProjectAuditSnapshot | undefined> {
-    const history = await this.storage.get<ProjectAuditSnapshot[]>(this.getProjectHistoryKey(projectKey));
-    if (!history || history.length < 2) {
-      return undefined;
-    }
-    // Second-to-last snapshot represents the previous baseline
-    return history[history.length - 2];
   }
 
   /**
@@ -71,7 +38,8 @@ export class MetricsRepository {
     await this.storage.set(this.getExceptionKey(record.issueId), record);
   }
 
-  public async getIssueException(issueId: string): Promise<IssueExceptionRecord | undefined> {
-    return await this.storage.get<IssueExceptionRecord>(this.getExceptionKey(issueId));
+  /** Returns the stored record as written: v1 or v2. Callers normalise it. */
+  public async getIssueException(issueId: string): Promise<IssueExceptionRecord | ExceptionRecord | undefined> {
+    return await this.storage.get<IssueExceptionRecord | ExceptionRecord>(this.getExceptionKey(issueId));
   }
 }
