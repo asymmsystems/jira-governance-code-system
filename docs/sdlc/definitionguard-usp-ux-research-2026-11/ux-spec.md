@@ -3,23 +3,23 @@
 - **Date:** 2026-11-01
 - **Source:** `research-brief.md` in this folder (source IDs M-, N-, R-, L-, T-). Finding IDs DG-01 to DG-16 and PX-01 to PX-04 come from `docs/sdlc/portfolio-audit-2026-10-31/`.
 - **Method for counts:** DefinitionGuard counts come from the code (Observed-code) and the live workflow data (Observed-live). The live panel was not opened, because a first panel load writes KVS and the entity property (Observed-code `index.ts:153-168`). Competitor counts come from vendor documentation (Reported) as counted by the research notes. A click count from documentation is Inferred: docs rarely show every click. No free trial was used.
-- **Part B** adds an "After" column to sections 1 and 3.
+- **Part B** added an "After" column to sections 1 and 3 (2026-11-01). After counts come from the built code and its tests; live checks are recorded in `round-log.md`.
 
 ## 1. Benchmark (baseline)
 
 Legend: **C** clicks, **K** keystrokes (typing excluded unless stated), **Adm** admin needed, **Mod** modal or confirm step. "Not possible" means the product has no feature for the task (source given).
 
-| # | Task | DefinitionGuard today | TitanApps Pro | HeroCoders Pro / Ent | Appbox | SolDevelo | Native Jira |
-|---|---|---|---|---|---|---|---|
-| 1 | Install and get the first blocked transition | About 12 C (install about 3, attach validator about 8, one transition attempt 1), Adm yes, Mod no. No template step. Inferred from Observed-code `manifest.yml:11-15` and N-30. Live: no workflow has the validator (L-01) | About 14 steps, needs Pro (M-50, M-31, M-30). Adm yes | About 8 to 9 steps; items mandatory by default (M-60, M-63). Adm yes | About 7 steps (M-80). Adm yes | About 7 steps, global admin (M-90). Adm yes | Not possible for "all mandatory items" (N-38) |
-| 2 | Team DoD with mandatory and optional items for one issue type | Not possible (DG-04). Only 6 fixed templates chosen by issue-type name (Observed-code `checklist-engine.ts:266-301`) | Template per project and issue type, admin (M-38, M-36). Count Unknown | Space admin sets defaults (M-66, M-77). Count Unknown | JQL auto-assign, project admin (M-83, M-84). Count Unknown | Issue type or JQL, admins (M-94, M-93). Count Unknown | Not possible (N-36) |
-| 3 | Attach the gate to every move into Done, and find the ones without it | Manual, per transition: 8 transitions in 3 workflows on DEMO (L-06), so about 8 x 8 = 64 C. No check for missing ones (DG-07). Adm yes | Manual per transition (M-30). No check found (Unknown) | Manual per transition (M-60). No check found (Unknown) | Manual (M-80). Unknown | Manual (M-90). Unknown | Manual (N-30) |
-| 4 | Tick a mandatory item and attach evidence | Tick: 1 C. Evidence: not possible (DG-11) | Links and details in items (M-05, M-100). Count Unknown | Description and URLs (M-63). Count Unknown | Links (M-87). Count Unknown | Unknown | Action items in text fields (N-33) |
-| 5 | Move to Done with one open mandatory item: what the user sees | Jira shows the validator message, which names the items: "Definition of Done incomplete: 1 mandatory item(s) must be satisfied before transition. Pending items: ..." (T-05, Observed-code `transition-validator.ts:44-51`). Live: not seen, no validator attached (L-01). Panel shows a count only (DG-15) | Error message, custom text possible (M-30). Names items: Unknown | Unknown | Unknown | Probably generic (M-90, Inferred) | Validator message (N-01); a condition hides the transition with no reason (N-47) |
-| 6 | Waive an item with a reason, authorised role only | Not possible (Observed-code `models.ts:35`) | Unknown; "Skipped" status (M-32) | Unknown; "skipped" (M-72) | Unknown | Unknown | Not possible (Inferred, N-30) |
-| 7 | Prove later who ticked what, when, with what evidence; export | Panel: 1 C "Audit Trail". Shows rewritten names (T-12), item ids not titles, UTC times (DG-15). No evidence. No export | History tab (M-35). Acting user in Jira history "Coming soon" (M-48) | History tab, PDF export; admins can clear it (M-68) | History must be switched on (M-82) | Hover shows last action only (M-91, M-92) | Issue history; Action items Unknown |
-| 8 | Change the template; effect on open issues | Not possible; open issues never change (DG-12) | Snapshot; Linked Templates propagate (M-39) | Pro: copy (M-67). Ent: global checklists reach open issues, not Done ones (M-67) | Unknown | No effect on existing issues (M-95) | Not applicable |
-| 9 | Tasks 4 and 5 by keyboard only, and with a screen reader | Tab to the UI Kit Checkbox, Space to tick (Inferred: ADS checkbox). The MANDATORY lozenge is outside the checkbox label, so a screen reader reads the title without "mandatory" (Inferred, Observed-code `index.tsx:167-179`). Not tested live | Keyboard shortcuts (M-45) | "screen-reader compatible" listing claim (M-13) | Unknown | Unknown | Jira transition dialog keyboard support: Unknown |
+| # | Task | DefinitionGuard baseline | DefinitionGuard after build (B-01 to B-21; counts from the code, live check in round-log) | TitanApps Pro | HeroCoders Pro / Ent | Appbox | SolDevelo | Native Jira |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Install and get the first blocked transition | About 12 C (install about 3, attach validator about 8, one transition attempt 1), Adm yes, Mod no. No template step. Inferred from Observed-code `manifest.yml:11-15` and N-30. Live: no workflow has the validator (L-01) | About 3 C to install plus about 8 C per transition to attach (still manual: no supported API, H11). The settings page lists which completion transitions lack the gate (B-17). No template step needed. Adm yes | About 14 steps, needs Pro (M-50, M-31, M-30). Adm yes | About 8 to 9 steps; items mandatory by default (M-60, M-63). Adm yes | About 7 steps (M-80). Adm yes | About 7 steps, global admin (M-90). Adm yes | Not possible for "all mandatory items" (N-38) |
+| 2 | Team DoD with mandatory and optional items for one issue type | Not possible (DG-04). Only 6 fixed templates chosen by issue-type name (Observed-code `checklist-engine.ts:266-301`) | Settings page (B-06): choose issue type 1 C, name (typing), per item: type title + 1 C "Add item", then Mandatory, Evidence required, Not the assignee, permission, category as needed; "Save template" 1 C. About 4 C per item. Project admin only | Template per project and issue type, admin (M-38, M-36). Count Unknown | Space admin sets defaults (M-66, M-77). Count Unknown | JQL auto-assign, project admin (M-83, M-84). Count Unknown | Issue type or JQL, admins (M-94, M-93). Count Unknown | Not possible (N-36) |
+| 3 | Attach the gate to every move into Done, and find the ones without it | Manual, per transition: 8 transitions in 3 workflows on DEMO (L-06), so about 8 x 8 = 64 C. No check for missing ones (DG-07). Adm yes | Attach: manual, about 8 C per transition. Find the gaps: 0 C, the settings page shows "N of M completion transitions are gated" and lists each missing one, exempt statuses excluded (B-10, B-17) | Manual per transition (M-30). No check found (Unknown) | Manual per transition (M-60). No check found (Unknown) | Manual (M-80). Unknown | Manual (M-90). Unknown | Manual (N-30) |
+| 4 | Tick a mandatory item and attach evidence | Tick: 1 C. Evidence: not possible (DG-11) | Evidence-required item: 1 C on the checkbox opens the form, type a link or note, 1 C "Save and tick" = 2 C. Other items: "Tick with evidence" 1 C, type, 1 C. No modal (B-11) | Links and details in items (M-05, M-100). Count Unknown | Description and URLs (M-63). Count Unknown | Links (M-87). Count Unknown | Unknown | Action items in text fields (N-33) |
+| 5 | Move to Done with one open mandatory item: what the user sees | Jira shows the validator message, which names the items: "Definition of Done incomplete: 1 mandatory item(s) must be satisfied before transition. Pending items: ..." (T-05, Observed-code `transition-validator.ts:44-51`). Live: not seen, no validator attached (L-01). Panel shows a count only (DG-15) | Validator message names every open mandatory item and says to open the DefinitionGuard panel; moves into non-Done or exempt statuses pass; any error blocks (B-01, B-10). Panel shows the same rule and names the items (B-13) | Error message, custom text possible (M-30). Names items: Unknown | Unknown | Unknown | Probably generic (M-90, Inferred) | Validator message (N-01); a condition hides the transition with no reason (N-47) |
+| 6 | Waive an item with a reason, authorised role only | Not possible (Observed-code `models.ts:35`) | "Waive" 1 C, reason (10 to 500 characters), "Waive item" 1 C = 2 C. Needs the template waiver permission (default Administer projects); reason kept in history (B-12) | Unknown; "Skipped" status (M-32) | Unknown; "skipped" (M-72) | Unknown | Unknown | Not possible (Inferred, N-30) |
+| 7 | Prove later who ticked what, when, with what evidence; export | Panel: 1 C "Audit Trail". Shows rewritten names (T-12), item ids not titles, UTC times (DG-15). No evidence. No export | "History" 1 C: each change with item title, user (UI Kit User), local time, evidence, waiver reason, and the chain check with its limit (B-05, B-15). "Export history" 1 C: JSON to copy, project admins only | History tab (M-35). Acting user in Jira history "Coming soon" (M-48) | History tab, PDF export; admins can clear it (M-68) | History must be switched on (M-82) | Hover shows last action only (M-91, M-92) | Issue history; Action items Unknown |
+| 8 | Change the template; effect on open issues | Not possible; open issues never change (DG-12) | Save a new template revision: open issues keep their revision; "Re-sync open issues" 1 C updates them, keeping ticks on unchanged items (B-16) | Snapshot; Linked Templates propagate (M-39) | Pro: copy (M-67). Ent: global checklists reach open issues, not Done ones (M-67) | Unknown | No effect on existing issues (M-95) | Not applicable |
+| 9 | Tasks 4 and 5 by keyboard only, and with a screen reader | Tab to the UI Kit Checkbox, Space to tick (Inferred: ADS checkbox). The MANDATORY lozenge is outside the checkbox label, so a screen reader reads the title without "mandatory" (Inferred, Observed-code `index.tsx:167-179`). Not tested live | Each checkbox accessible name includes mandatory or optional and its state, for example "Peer review approved (mandatory, open)" (B-13). Keyboard and screen reader not yet checked live | Keyboard shortcuts (M-45) | "screen-reader compatible" listing claim (M-13) | Unknown | Unknown | Jira transition dialog keyboard support: Unknown |
 
 ## 2. Target interactions
 
@@ -41,29 +41,31 @@ Rules for every task: the validator decides from app storage only, never from th
 
 Harness: `~/.cache/gemini-earning-definitionguard-research/harness/` (T-01 to T-13), mocked `asApp()` and `asUser()` as separate mocks, storage mock that serialises on every call. Bytes are UTF-8 JSON bytes of the stored value. Real KVS rejects any value above 240 KiB (N-11), so values above that line are what the code would try to write.
 
-### 3.1 Stored record size (bytes, `dg:checklist:<issueId>`, no notes)
+### 3.1 Largest stored value (bytes)
 
-| Items | 10 toggles | 100 toggles | 1,000 toggles | Toggles to pass 32 KiB | Toggles to pass 240 KiB |
-|---|---|---|---|---|---|
-| 6 | 5,657 | 42,998 | 296,501 (over the limit) | 76 | 817 |
-| 20 | 8,873 | 47,423 | 347,095 (over the limit) | 67 | 623 |
-| 50 | 13,439 | 49,780 | 421,301 (over the limit) | 45 | 564 |
+Baseline: the v1 record `dg:checklist:<issueId>`, no notes. After: the largest single value of the v3 layout, which is the state cache or one change-log entry (`harness/results/after-all.json`). The Create entry carries every criterion, so it sets the size; toggles no longer grow any value.
 
-With 500-character notes, 6 items: 8,859 / 45,940 / 299,441 bytes (T-13). The audit's probe 16 gave 76 and 814 for 6 items; this harness gives 76 and 817 through the resolver path.
+| Items | Baseline 10 / 100 / 1,000 toggles | Baseline toggles to pass 32 KiB / 240 KiB | After 10 / 100 / 1,000 toggles | After toggles to pass 32 KiB / 240 KiB |
+|---|---|---|---|---|
+| 6 | 5,657 / 42,998 / 296,501 (over the limit) | 76 / 817 | 3,766 / 3,766 / 3,766 | never / never |
+| 20 | 8,873 / 47,423 / 347,095 (over the limit) | 67 / 623 | 10,662 / 10,662 / 10,662 | never / never |
+| 50 | 13,439 / 49,780 / 421,301 (over the limit) | 45 / 564 | 25,458 / 25,458 / 25,458 | never / never |
+
+With 500-character notes and evidence, 6 items: baseline 8,859 / 45,940 / 299,441 bytes; after 3,766 at every count (evidence lives in its own change entry, 2 KiB or less, B-11). The size-budget test with 50 items and 200-character titles keeps every value at 32 KiB or less (`test/storage/size-budget.test.ts`).
 
 ### 3.2 Calls per operation
 
-| Operation | Jira calls | KVS operations | Source |
-|---|---|---|---|
-| Panel load, existing record, names resolve | 0 | 1 get, 0 set | T-02 |
-| Panel load, user lookup failing, 6 items after 200 toggles | 154 user lookups (every load) | 1 get | T-03 |
-| First panel load, new issue | 2 (issue, property PUT) | 1 set | T-02 |
-| Toggle | 2 (user lookup, property PUT) at every size | 1 get, 1 set | T-02 |
-| Validator, record exists | 0 | 1 get | T-07 |
-| Validator, no record | 1 (issue) | 1 get, 1 set | T-05 |
-| Resolver CPU per toggle (mock only, not platform time) | 0.14 ms at 6 x 10 to 2.09 ms at 50 x 1,000 | | T-02 |
+| Operation | Baseline Jira calls | Baseline KVS | After Jira calls | After KVS | Source |
+|---|---|---|---|---|---|
+| Panel load, existing record, names resolve | 0 | 1 get | 0 | 2 gets (state and head probe), 0 sets | T-02, after-all |
+| Panel load, user lookup failing, 6 items after 200 toggles | 154 user lookups (every load) | 1 get | 0 (no user lookup exists) | 2 gets | T-03, after-all |
+| First panel load, new issue | 2 (issue, property PUT) | 1 set | 1 (issue lookup, only when the context lacks the ids) | 0 sets | T-02, after-all |
+| Toggle | 2 (user lookup, property PUT) | 1 get, 1 set | 2 (permission check as the user, property PUT); +1 assignee read for a not-the-assignee item | 3 gets, 1 FAIL_IF_EXISTS set, 1 set | after-all, `test/jira/jira-client.test.ts` |
+| Validator, record exists | 0 | 1 get | 0 when satisfied; 1 status lookup when not; +1 issue read for a not-the-assignee item | 2 gets | gate-rule and validator tests |
+| Validator, no record | 1 (issue) | 1 get, 1 set | 0 to 2 (issue ids when the context lacks them, then the status) | 3 gets, 0 sets | T-05, after-all |
+| Two concurrent ticks | 1 of 2 kept | | 2 of 2 kept | | T-09, after-all |
 
-### 3.3 Budgets for Part B
+### 3.3 Budgets for Part B (all met in the harness and the tests)
 
 | Measure | Budget | Why |
 |---|---|---|
