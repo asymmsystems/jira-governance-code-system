@@ -168,3 +168,17 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - Limit (unchanged, stated in spec v2 section 8): a writer with app-storage access who recomputes every hash is not detected by this check. B-09 adds a signature on the public property.
 - Adversarial test: T-02 A7 (a rewritten signer in KVS) now gives `RECORD_INVALID`, and the forged name is not shown.
 - Results: `tsc` OK. 19 suites, 155 tests pass. Global branches 97.42%. `ledger.ts` 97.08%. Graders all True. No em dash.
+- B-08 commit: `006bcc8`.
+
+### B-09 Signed attestation in `ledgerseal-cert` (LS-10 part 2, H11) [VAR]
+- Tests first: `test/attestation.test.ts`. First run: failed for the right reason (`src/domain/attestation` missing).
+- Code:
+  - `src/domain/attestation.ts` builds the schema v2 body (audit section 5.1), signs the canonical JSON of every other field with Ed25519 through Node's built-in `crypto` (no npm package), and verifies it against public keys by `keyId`, checking `issueId`.
+  - `src/service/ledger.ts` writes the signed attestation on seal, reseal and each new incident. `src/index.ts` reads the signer from `LEDGERSEAL_SIGNING_KEY` and `LEDGERSEAL_KEY_ID` only. With no key, the body is written without `keyId` and `sig`.
+- Key handling:
+  - A development key pair was generated on the host with Node `crypto` into `~/.cache/gemini-earning-ledgerseal-research/keys/` (directory 700, file 600). The private key was never printed.
+  - The public key is committed as `apps/ledgerseal/keys/ls-dev-2026-11.pub.pem`, with `keys/README.md`. The Forge variable is set in Loop 3.
+  - Tests make their own key at test start. A test fails if any file under `src`, `test`, `keys` or `verifier` holds a private key.
+- Contract change: the B-03 test now asserts the v2 fields. `everCompromised` (a string) and `incidentCount` replace the v1 `isCompromised` and `tamperedFieldCount`.
+- Adversarial tests: a changed field, a value copied to another issue, an unknown key id, a missing signature, and a FourRealities-style forged v1 body (FR-02 shape) all fail verification.
+- Results: `tsc` OK. 20 suites, 162 tests pass. Global branches 97.12%. `attestation.ts` 93.33%, `ledger.ts` 96.22%, `index.ts` 93.75%. Graders all True. No em dash.

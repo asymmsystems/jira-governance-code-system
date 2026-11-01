@@ -16,6 +16,7 @@ import { authorsSince } from '../domain/policy';
 import { hasValidRecordHash, summarise, withRecordHash } from '../domain/seal-record';
 import { compareToSeal, SealedState } from '../domain/tamper-detector';
 import { capped } from '../domain/display';
+import { AttestationStatus, buildAttestation, Signer } from '../domain/attestation';
 import { DECLARATION, isMeaning, matchesDeclaration, validReason } from '../domain/declaration';
 import { ChangelogEntry, JiraClient } from '../jira/jira-client';
 import { HISTORY_PAGE_SIZE, SealRepository, StorageProvider } from '../storage/seal-repository';
@@ -23,6 +24,8 @@ import { HISTORY_PAGE_SIZE, SealRepository, StorageProvider } from '../storage/s
 export interface LedgerSealDeps {
   jira: JiraClient;
   storage: StorageProvider;
+  /** Signs the ledgerseal-cert attestation. Absent or null: the attestation is written unsigned. */
+  signer?: Signer | null;
 }
 
 export type SealErrorCode =
@@ -95,17 +98,13 @@ export async function readLiveSnapshot(
   return { raw, snapshot: canonicalizeIssueState(raw, at, fields.value as FieldSchema[]) };
 }
 
-/** The public `ledgerseal-cert` summary. Written on seal, reseal, revoke and each new incident only. */
-function propertyBody(record: SealRecord, status: string, tamperedFieldCount: number, at: string) {
-  return {
-    status,
-    certificateId: record.certificateId,
-    snapshotHash: record.snapshotHash,
-    sealedAt: record.sealedAt,
-    tamperedFieldCount,
-    isCompromised: record.everCompromised,
-    lastVerifiedAt: at
-  };
+/**
+ * Writes the signed ledgerseal-cert attestation. Called on seal, reseal, revoke and each new incident only.
+ * The property is an output for other tools; LedgerSeal itself never reads it.
+ */
+async function writeAttestation(deps: LedgerSealDeps, record: SealRecord, status: AttestationStatus, at: string): Promise<void> {
+  const written = await deps.jira.putSealProperty(record.issueId, buildAttestation(record, status, at, deps.signer ?? null));
+  if (!written) console.error(`LedgerSeal: could not write the ledgerseal-cert property on issue ${record.issueId}`);
 }
 
 /** Turns stored values into short display text, so the panel never receives the snapshot. */
@@ -200,7 +199,7 @@ export async function recordIncidentIfNew(
     head: { seq: entry.seq, entryHash: entry.entryHash }
   });
   await repo.saveSeal(updated);
-  await deps.jira.putSealProperty(record.issueId, propertyBody(updated, 'SEAL_BROKEN', analysis.tamperedFields.length + analysis.tamperedAttachments.length, at));
+  await writeAttestation(deps, updated, 'SEAL_BROKEN', at);
   return { record: updated, recorded: true };
 }
 
@@ -303,7 +302,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   await repo.saveSeal(record, [JSON.stringify(snapshot)]);
 
   // Publish public audit property to Jira issue without PII
-  await deps.jira.putSealProperty(issue.id, propertyBody(record, 'SEAL_VALID', 0, now));
+  await writeAttestation(deps, record, 'SEAL_VALID', now);
 
   return { ok: true as const, certificateId, snapshotHash, sealedAt: now };
 }

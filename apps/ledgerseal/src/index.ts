@@ -4,6 +4,7 @@ import { kvs } from '@forge/kvs';
 import { validateTransitionGate } from './validator/workflow-validator';
 import { SealRepository, StorageProvider } from './storage/seal-repository';
 import { createJiraClient } from './jira/jira-client';
+import { signerFromEnvironment } from './domain/attestation';
 import { evaluate, historyFlow, LedgerSealDeps, readLiveSnapshot, recordIncidentIfNew, sealIssueFlow, verifyIssueFlow } from './service/ledger';
 
 export { LedgerSealDeps } from './service/ledger';
@@ -45,7 +46,8 @@ class ForgeKvsProvider implements StorageProvider {
 export function forgeDeps(asUser: boolean): LedgerSealDeps {
   return {
     jira: createJiraClient(api.asApp(), asUser ? api.asUser() : null),
-    storage: new ForgeKvsProvider()
+    storage: new ForgeKvsProvider(),
+    signer: signerFromEnvironment(process.env)
   };
 }
 

@@ -70,9 +70,10 @@ describe('B-03 a read never writes', () => {
     expect(storage.sets.length - sets).toBe(2); // the incident entry and the updated record
     expect(jira.propertyWrites.length - writes).toBe(1);
     expect(jira.propertyWrites[jira.propertyWrites.length - 1].body).toMatchObject({
+      schemaVersion: 2,
       status: 'SEAL_BROKEN',
-      tamperedFieldCount: 1,
-      isCompromised: true
+      everCompromised: 'true',
+      incidentCount: 1
     });
     expect(storage.bytes('ls2:seal:10001') - sizeAfterSeal).toBeLessThan(200);
   });
