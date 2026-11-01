@@ -2,7 +2,7 @@
 
 Read `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/sdlc/fourrealities-usp-ux-research-2026-11/handover-gemini.md` first. Every rule, command and pitfall there still applies. This prompt adds one task in two phases. **Phase 1 is a design document that the owner must approve. Do not build until line 1 of that document reads `APPROVED <date>`.** The owner's process is design first, approval, then build.
 
-Work only in the worktree `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build` (branch `feature/fourrealities-research-build`). The app is `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities`. Paths below that start with `src/` or `test/` are inside the app; paths that start with `docs/` are inside the worktree.
+Work only in the worktree `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build` (branch `feature/fourrealities-research-build`). The app is `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities`. Every path below is a full path.
 
 ## 0. Inputs from the owner (2026-11-01)
 
@@ -23,7 +23,7 @@ Work only in the worktree `/home/fahimfarookme/Documents/projects/gemini-earning
 
 ## 1. Facts you must design around (checked 2026-11-01)
 
-1. **UI Kit (native render) accepts no hex colours.** `Box` `xcss` takes only Atlassian design tokens, for example `elevation.surface.sunken`, `color.background.neutral`, `color.background.accent.blue.subtlest`, `color.border`, `radius.medium`, `space.150`. The token list is in `node_modules/@atlaskit/forge-react-types/dist/types/components/__generated__/tokens.codegen.d.ts`. Tokens follow Jira's light and dark themes. A hex background would break dark mode.
+1. **UI Kit (native render) accepts no hex colours.** `Box` `xcss` takes only Atlassian design tokens, for example `elevation.surface.sunken`, `color.background.neutral`, `color.background.accent.blue.subtlest`, `color.border`, `radius.medium`, `space.150`. The token list is in `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities/node_modules/@atlaskit/forge-react-types/dist/types/components/__generated__/tokens.codegen.d.ts`. Tokens follow Jira's light and dark themes. A hex background would break dark mode.
 2. **So the brand palette maps to the nearest tokens inside Jira.** #F9F7F6 maps to `elevation.surface.sunken` (Jira's own light grey). Teal maps to the `color.background.accent.teal.*` tokens, rose to `accent.magenta`, sage to `accent.lime` or `accent.green`, and sand to `accent.yellow` or `accent.orange` (check each name in the token file). The exact hex values are possible only in Custom UI, which needs a bundled React app and npm dependencies; that is a separate owner decision. Do not propose it as part of this task.
 3. **Brand contrast (WCAG 2.2 AA).** I measured each colour against white:
    - Teal #5295A3 is 3.39:1, rose #BA6E8F is 3.67:1, and sage #8FA96D is 2.60:1. None of them may be used for body text on white, because body text needs 4.5:1. Teal and rose pass only for large text and icons, which need 3:1. Sage fails even that.
@@ -67,13 +67,13 @@ You may adjust a shade, but record its contrast numbers in the standard. Never u
 
 ### Variables, never raw values
 
-1. **Brand definitions.** Define the brand once, as named variables, in a brand module such as `src/brand/brand.ts`. It has three layers:
+1. **Brand definitions.** Define the brand once, as named variables, in a brand module such as `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities/src/brand/brand.ts`. It has three layers:
    - **Palette:** the hex values above, for documentation and for any future Custom UI.
    - **Semantic roles,** for example `surface.app`, `surface.section`, `surface.note`, `border.section`, `text.primary`, `text.secondary`, `status.found`, `status.missing`, `status.excepted`, `status.notApplicable`, `action.primary`, `space.section`, `radius.section`.
    - **UI Kit mapping:** each role mapped to the nearest Atlassian token (for example `surface.app` maps to `elevation.surface.sunken`, `status.found` to the `success` lozenge and the lime or green accent token).
-2. **No raw values in components.** Components use only the semantic roles. They never contain a hex value, and never a token string such as `'color.border'` or `'space.150'`. Add an architecture-test rule: outside the brand module, no file in `src/` contains `#` followed by a hex colour, or a string that starts with `color.`, `elevation.`, `space.` or `radius.`.
-3. **Shared layout components.** Put them next to the brand module (for example `src/brand/layout.tsx`): `AppSurface`, `PanelHeader`, `SummaryBlock`, `Section` (collapsible), `NoteBox`, `ActionRow` (one primary button only), `StatusLozenge`. They read only the semantic roles.
-4. **Reuse by the other apps.** Write the brand module and the layout components so they can move, unchanged, into a shared package later, for example `packages/asymm-jira-ui`:
+2. **No raw values in components.** Components use only the semantic roles. They never contain a hex value, and never a token string such as `'color.border'` or `'space.150'`. Add an architecture-test rule: outside the brand module, no file in `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities/src/` contains `#` followed by a hex colour, or a string that starts with `color.`, `elevation.`, `space.` or `radius.`.
+3. **Shared layout components.** Put them next to the brand module (for example `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities/src/brand/layout.tsx`): `AppSurface`, `PanelHeader`, `SummaryBlock`, `Section` (collapsible), `NoteBox`, `ActionRow` (one primary button only), `StatusLozenge`. They read only the semantic roles.
+4. **Reuse by the other apps.** Write the brand module and the layout components so they can move, unchanged, into a shared package later, for example `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/packages/asymm-jira-ui`:
    - no import from FourRealities code;
    - its own tests;
    - a short README with the roles and the components.
@@ -88,7 +88,7 @@ Write `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/desig
 1. **Panel anatomy for every app inside a Jira issue (issue panel).** Recommended baseline, which you may improve with reasons:
    - **Header row:** app name (the manifest title), one status lozenge (for example "Incomplete", "Sealed", "DoD complete"), and a subtle "Refresh" button on the right.
    - **Summary block:** the status sentence, the next step, and the gate chips on one line. This is always visible. The issue-context sidebar glance shows this block only.
-   - **Detail sections:** each one starts collapsed and has a single clickable header row: a chevron-style button ("Show details" / "Hide details", or the section name), the section name and a count badge. The panels have no accordion component, so build the toggle from a subtle `Button` plus state, as `IssuePanel` does today.
+   - **Detail sections:** each one starts collapsed and has a single clickable header row: a chevron-style button ("Show details" / "Hide details", or the section name), the section name and a count badge. The panels have no accordion component, so build the toggle from a subtle `Button` plus state, as `IssuePanel` in `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities/src/frontend/issue-panel.tsx` does today.
    - **Surfaces:** the whole app area sits on `elevation.surface.sunken` (the token for the #F9F7F6 idea). Each section is a `Box` on `elevation.surface` with border `color.border`, radius `radius.medium` and padding `space.150`. Use one border level only: a sub-section inside a section is indented with `space.200` left padding, with no second border. Notes (who requested, who approved, rework reasons) use `color.background.neutral` with `space.100` padding.
    - **Buttons:**
      - Exactly one `primary` button per panel: the next step.
@@ -119,14 +119,14 @@ Then stop and tell the owner where the document is.
 
 Only after `APPROVED` is line 1 of the document:
 
-1. **Pure logic first.** Put it in `src/ui/`, test-first:
+1. **Pure logic first.** Put it in `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities/src/ui/`, test-first:
    - a status word and sentence from the summary ("Audit readiness: Incomplete; evidence found for n of 4 gates across m issues"). A project with no rated gates is never "Complete".
    - priority actions: the issues with the most missing gates, at most 5, each with one action text.
    - "n gaps" text for each row.
-2. **Brand module and components.** Build the brand module and the shared layout components from section 1b, test-first, in `src/brand/`. Every FourRealities component uses them and only them for colour, spacing and borders. Add the architecture-test rule against raw colour and token values. The accessibility test must still pass. Extend it to check: one primary button per panel, at most one border level, sections collapsed by default except the summary.
+2. **Brand module and components.** Build the brand module and the shared layout components from section 1b, test-first, in `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities/src/brand/`. Every FourRealities component uses them and only them for colour, spacing and borders. Add the architecture-test rule against raw colour and token values in `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities/test/architecture.test.ts`. The accessibility test `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities/test/frontend/accessibility.test.tsx` must still pass. Extend it to check: one primary button per panel, at most one border level, sections collapsed by default except the summary.
 3. **Project page.** Status banner, then the four gate cards (small; status lozenge, question, evidence line, one action), then priority actions next to coverage at a glance, then filters, preset chips and the compact issue table. Keep the trend panel below the table. Remove the large alignment box: its content moves into the banner and the coverage tile.
 4. **Issue panel and glance.** The summary block is always shown. The gate details are one collapsible section with the four rows inside it (sub-rows indented, not boxed). Exceptions and rework notes use `NoteBox`. The glance in `jira:issueContext` shows only the summary block.
-5. **Delivery.** Update spec v2, the backlog (add the items as B-43 onwards), the round log and the final report. Deploy to development, check the result live on DEMO (read-only) and on AUDT-1 (any writes recorded), save screenshots, commit one item per commit, and report to the owner with the screenshots' paths.
+5. **Delivery.** Update `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/spec/fourrealities-spec-v2.md`, `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/sdlc/fourrealities-usp-ux-research-2026-11/backlog.md` (add the items as B-43 onwards), `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/sdlc/fourrealities-usp-ux-research-2026-11/round-log.md` and `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/sdlc/fourrealities-usp-ux-research-2026-11/final-report.md`. Deploy to development, check the result live on DEMO (read-only) and on AUDT-1 (any writes recorded), save screenshots, commit one item per commit, and report to the owner with the screenshots' paths.
 
 ## 4. Not in this task
 - Custom UI and npm dependencies.
