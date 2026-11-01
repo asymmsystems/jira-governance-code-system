@@ -8,7 +8,7 @@ modules:
         function: resolver
   jira:issuePanel:
     - key: fourrealities-issue-panel
-      title: Reality Alignment
+      title: Four Realities
       icon: resource:icons;icon.svg
       render: native
       resource: main
@@ -16,8 +16,8 @@ modules:
         function: resolver
   jira:issueContext:
     - key: fourrealities-issue-context
-      title: Delivery Integrity
-      label: Delivery Integrity
+      title: Four Realities
+      label: Four Realities
       render: native
       resource: main
       resolver:

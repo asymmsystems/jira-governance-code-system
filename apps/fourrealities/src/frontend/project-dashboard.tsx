@@ -145,7 +145,7 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
     cells: [
       { key: r.issueKey, content: <Text>{r.issueKey}</Text> },
       { key: r.summary, content: <Text>{r.summary}</Text> },
-      { key: 'gates', content: <GatePipeline gates={r.gates} arrows={false} /> },
+      { key: 'gates', content: <GatePipeline gates={r.gates} /> },
       { key: r.rai === null ? '999' : String(r.rai).padStart(3, '0'), content: <Lozenge maxWidth="100%" appearance={riskAppearance(r.risk)}>{raiText(r)}</Lozenge> },
       { key: 'finding', content: <Text>{driftText(r)}</Text> },
       { key: r.assigneeName || 'Unassigned', content: <Text>{r.assigneeName || 'Unassigned'}</Text> },

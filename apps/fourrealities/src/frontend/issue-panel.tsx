@@ -5,13 +5,28 @@
  */
 
 import React, { useState } from 'react';
-import { Box, Button, Heading, Inline, Lozenge, SectionMessage, Stack, Text, User } from '@forge/react';
+import { Box, Button, Heading, Inline, Lozenge, SectionMessage, Stack, Text, User, xcss } from '@forge/react';
 import { router } from '@forge/bridge';
 import { ExceptionDecision, ExceptionNote, GATE_NAMES, GateExceptionState, GateName, IssueRow } from '../contract/data/models';
 import { PanelAction, afterActionText, raiPartsText, raiText, recoveryText, riskAppearance } from '../ui/gate-text';
 import { GatePipeline, GateRow } from './gate-row';
 import { alignmentText, driftText, nextActionText, scoreParts } from '../ui/pipeline';
 import { DecisionModal, ExceptionModal, LinkDecisionModal, ReviewModal } from './modals';
+
+const HERO_CARD = xcss({
+  borderColor: 'color.border',
+  borderWidth: 'border.width',
+  borderStyle: 'solid',
+  borderRadius: 'radius.medium',
+  padding: 'space.150',
+  backgroundColor: 'elevation.surface.sunken'
+});
+
+const NOTE_BOX = xcss({
+  backgroundColor: 'elevation.surface.sunken',
+  borderRadius: 'radius.medium',
+  padding: 'space.100'
+});
 
 /**
  * Opens the issue so the user can act in the producer app's own panel.
@@ -76,15 +91,21 @@ export const ExceptionStateLine: React.FC<{ state: GateExceptionState }> = ({ st
 
 function gateNote(gate: GateName, row: IssueRow): React.ReactNode {
   if (gate === 'code' && row.codeException) {
-    return <ExceptionStateLine state={row.codeException} />;
+    return (
+      <Box xcss={NOTE_BOX}>
+        <ExceptionStateLine state={row.codeException} />
+      </Box>
+    );
   }
   if (gate === 'process' && row.reworkLoops > 0) {
     return (
-      <Stack space="space.050">
-        <Text>{`Rework loops: ${row.reworkLoops}.`}</Text>
-        {(row.reworkNoteCount || 0) > 1 ? <Text>{`${row.reworkNoteCount} rework reasons recorded. The latest is shown.`}</Text> : null}
-        {row.reworkNote ? <NoteLine label="Rework reason" note={row.reworkNote} /> : null}
-      </Stack>
+      <Box xcss={NOTE_BOX}>
+        <Stack space="space.050">
+          <Text>{`Rework loops: ${row.reworkLoops}.`}</Text>
+          {(row.reworkNoteCount || 0) > 1 ? <Text>{`${row.reworkNoteCount} rework reasons recorded. The latest is shown.`}</Text> : null}
+          {row.reworkNote ? <NoteLine label="Rework reason" note={row.reworkNote} /> : null}
+        </Stack>
+      </Box>
     );
   }
   return undefined;
@@ -119,13 +140,17 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void; onRow: 
             <Text>{message}</Text>
           </SectionMessage>
         ) : null}
-        <GatePipeline gates={row.gates} arrows={false} />
-        <Inline space="space.100" alignBlock="center" shouldWrap>
-          <Text>{alignmentText(row)}</Text>
-          {row.rai !== null ? <Lozenge maxWidth="100%" appearance={riskAppearance(row.risk)}>{`${row.risk} risk`}</Lozenge> : null}
-        </Inline>
-        <Text>{nextActionText(row) || driftText(row)}</Text>
-        <Button appearance="subtle" onClick={() => setExpanded(true)}>See all findings</Button>
+        <Box xcss={HERO_CARD}>
+          <Stack space="space.100">
+            <GatePipeline gates={row.gates} />
+            <Inline space="space.100" alignBlock="center" shouldWrap>
+              <Text>{alignmentText(row)}</Text>
+              {row.rai !== null ? <Lozenge maxWidth="100%" appearance={riskAppearance(row.risk)}>{`${row.risk} risk`}</Lozenge> : null}
+            </Inline>
+            <Text>{nextActionText(row) || driftText(row)}</Text>
+            <Button appearance="subtle" onClick={() => setExpanded(true)}>See all findings</Button>
+          </Stack>
+        </Box>
       </Stack>
     );
   }
@@ -138,37 +163,44 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void; onRow: 
         </SectionMessage>
       ) : null}
 
-      <Inline space="space.100" alignBlock="center" shouldWrap>
-        <Heading as="h4">Delivery evidence: {row.issueKey}</Heading>
-        <Button appearance="subtle" onClick={onReload}>Refresh</Button>
-        {compact ? <Button appearance="subtle" onClick={() => setExpanded(false)}>Hide findings</Button> : null}
-      </Inline>
+      <Box xcss={HERO_CARD}>
+        <Stack space="space.100">
+          <Inline space="space.100" alignBlock="center" shouldWrap>
+            <Heading as="h4">Delivery evidence: {row.issueKey}</Heading>
+            <Button appearance="subtle" onClick={onReload}>Refresh</Button>
+            {compact ? <Button appearance="subtle" onClick={() => setExpanded(false)}>Hide findings</Button> : null}
+          </Inline>
+          <GatePipeline gates={row.gates} />
+          <Text>{driftText(row)}</Text>
+          {nextActionText(row) ? <Text>{nextActionText(row)}</Text> : null}
+          {recoveryText(row) ? <Text>{recoveryText(row)}</Text> : null}
+        </Stack>
+      </Box>
 
-      <GatePipeline gates={row.gates} />
-      <Text>{driftText(row)}</Text>
-      {nextActionText(row) ? <Text>{nextActionText(row)}</Text> : null}
-      {recoveryText(row) ? <Text>{recoveryText(row)}</Text> : null}
-
-      <Box padding="space.100">
-        <Stack space="space.150">
+      <Box padding="space.050">
+        <Stack space="space.100">
           {GATE_NAMES.map(g => (
             <GateRow key={g} gate={g} result={row.gates[g]} note={gateNote(g, row)} />
           ))}
         </Stack>
       </Box>
 
-      <Inline space="space.100" alignBlock="center" shouldWrap>
-        <Lozenge maxWidth="100%" appearance={riskAppearance(row.risk)}>{raiText(row)}</Lozenge>
-        <Text>{raiPartsText(row)}</Text>
-        {row.rai !== null ? (
-          <Button appearance="subtle" onClick={() => setWhy(!why)}>{why ? 'Hide the score parts' : `Why ${row.rai}%?`}</Button>
-        ) : null}
-      </Inline>
-      {why ? (
-        <Stack space="space.025">
-          {scoreParts(row).map(line => <Text key={line}>{line}</Text>)}
+      <Box xcss={HERO_CARD}>
+        <Stack space="space.100">
+          <Inline space="space.100" alignBlock="center" shouldWrap>
+            <Lozenge maxWidth="100%" appearance={riskAppearance(row.risk)}>{raiText(row)}</Lozenge>
+            <Text>{raiPartsText(row)}</Text>
+            {row.rai !== null ? (
+              <Button appearance="subtle" onClick={() => setWhy(!why)}>{why ? 'Hide the score parts' : `Why ${row.rai}%?`}</Button>
+            ) : null}
+          </Inline>
+          {why ? (
+            <Stack space="space.025">
+              {scoreParts(row).map(line => <Text key={line}>{line}</Text>)}
+            </Stack>
+          ) : null}
         </Stack>
-      ) : null}
+      </Box>
 
       <Inline space="space.100" alignBlock="center" shouldWrap>
         {row.gates.intent.state === 'MISSING' ? (

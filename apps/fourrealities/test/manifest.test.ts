@@ -24,4 +24,9 @@ describe('manifest.yml', () => {
     expect(scopes).toEqual(['read:jira-work', 'write:jira-work', 'storage:app']);
     expect(manifest).not.toMatch(/external:/);
   });
+
+  it('unifies issue panel and issue context module titles to Four Realities', () => {
+    expect(manifest).toMatch(/jira:issuePanel:\s*\n\s*- key: fourrealities-issue-panel\s*\n\s*title: Four Realities/);
+    expect(manifest).toMatch(/jira:issueContext:\s*\n\s*- key: fourrealities-issue-context\s*\n\s*title: Four Realities\s*\n\s*label: Four Realities/);
+  });
 });

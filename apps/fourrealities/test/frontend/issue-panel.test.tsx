@@ -48,7 +48,7 @@ describe('IssuePanel', () => {
     const r = await mount(row('DEMO-5', { intent: M_INTENT, process: F, code: M_CODE, audit: NA }));
     const pipeline = findAll(r.root, 'Inline').find((n: any) => findAll(n, 'Tooltip').length === 4);
     expect(findAll(pipeline, 'Lozenge').map((l: any) => String(l.props.children))).toEqual(['✕ Intent: missing', '● Process: found', '✕ Code: missing', '○ Audit: n/a']);
-    expect(findAll(pipeline, 'Text').map((t: any) => t.props.children)).toEqual(['→', '→', '→']);
+    expect(findAll(pipeline, 'Text')).toHaveLength(0);
     const text = textOf(r.toJSON());
     expect(text).toContain('No decision record is linked.');
     expect(text).toContain('Next: link the decision record.');
