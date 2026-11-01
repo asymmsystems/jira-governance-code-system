@@ -63,7 +63,7 @@ describe('IssuePanel', () => {
     const r = await mount(row('DEMO-7', { intent: M_INTENT, process: NA, code: NA, audit: NA }), onReload, onRow);
     await act(async () => { findButton(r.root, 'Link decision record').props.onClick(); });
     const fields = findAll(r.root, 'Textfield');
-    expect(fields.map((f: any) => f.props.value)).toEqual(['', '']);
+    expect(fields.map((f: any) => ['value' in f.props, f.props.defaultValue])).toEqual([[false, undefined], [false, undefined]]);
     expect(findAll(r.root, 'Label').map((l: any) => l.props.labelFor)).toEqual(['fr-link-url', 'fr-link-title']);
 
     await act(async () => { type(r, 'fr-link-url', 'https://s.atlassian.net/wiki/x'); type(r, 'fr-link-title', 'ADR-7'); });
@@ -101,7 +101,7 @@ describe('IssuePanel', () => {
     expect(textOf(r.toJSON())).toContain('Rework loops: 2.');
 
     await act(async () => { findButton(r.root, 'Request Code exception').props.onClick(); });
-    expect(findAll(r.root, 'Textfield').map((f: any) => f.props.value)).toEqual(['', '']);
+    expect(findAll(r.root, 'Textfield').map((f: any) => f.props.defaultValue)).toEqual([undefined, undefined]);
     await act(async () => { type(r, 'fr-exception-reason', 'Configuration change only'); type(r, 'fr-exception-notes', 'CHG-1'); });
     bridgeState.invoke.mockResolvedValueOnce({ success: false, error: 'Reason too short' });
     await act(async () => { findButton(r.root, 'Save exception').props.onClick(); });
@@ -160,7 +160,9 @@ describe('IssuePanel', () => {
       findAll(r.root, 'Textfield', p => p.id === 'fr-link-url')[0].props.onChange({});
       findAll(r.root, 'Textfield', p => p.id === 'fr-link-title')[0].props.onChange({});
     });
-    expect(findAll(r.root, 'Textfield').map((f: any) => f.props.value)).toEqual(['', '']);
+    bridgeState.invoke.mockResolvedValueOnce({ success: false, error: 'Invalid specification URL provided.' });
+    await act(async () => { findButton(r.root, 'Add link').props.onClick(); });
+    expect(bridgeState.invoke).toHaveBeenLastCalledWith('linkDecision', { issueId: '11', issueKey: 'DEMO-11', url: '', title: '' });
     await act(async () => { findButton(r.root, 'Cancel').props.onClick(); });
     await act(async () => { findButton(r.root, 'Request Code exception').props.onClick(); });
     await act(async () => {

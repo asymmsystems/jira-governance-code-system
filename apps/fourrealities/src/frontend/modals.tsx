@@ -66,9 +66,9 @@ export const LinkDecisionModal: React.FC<ModalProps> = ({ issueId, issueKey, onC
             </SectionMessage>
           ) : null}
           <Label labelFor="fr-link-url">Page address</Label>
-          <Textfield id="fr-link-url" value={url} onChange={(e: TextChange) => setUrl(e.target?.value || '')} />
+          <Textfield id="fr-link-url" onChange={(e: TextChange) => setUrl(e.target?.value || '')} />
           <Label labelFor="fr-link-title">Page title</Label>
-          <Textfield id="fr-link-title" value={title} onChange={(e: TextChange) => setTitle(e.target?.value || '')} />
+          <Textfield id="fr-link-title" onChange={(e: TextChange) => setTitle(e.target?.value || '')} />
         </Stack>
       </ModalBody>
       <ModalFooter>
@@ -116,9 +116,9 @@ export const ExceptionModal: React.FC<ModalProps & { type: 'CODE' | 'REWORK' }> 
             </SectionMessage>
           ) : null}
           <Label labelFor="fr-exception-reason">Reason</Label>
-          <Textfield id="fr-exception-reason" value={reason} onChange={(e: TextChange) => setReason(e.target?.value || '')} />
+          <Textfield id="fr-exception-reason" onChange={(e: TextChange) => setReason(e.target?.value || '')} />
           <Label labelFor="fr-exception-notes">Notes (optional)</Label>
-          <Textfield id="fr-exception-notes" value={notes} onChange={(e: TextChange) => setNotes(e.target?.value || '')} />
+          <Textfield id="fr-exception-notes" onChange={(e: TextChange) => setNotes(e.target?.value || '')} />
         </Stack>
       </ModalBody>
       <ModalFooter>
@@ -169,7 +169,7 @@ export const DecisionModal: React.FC<ModalProps & { decision: ExceptionDecision 
             </SectionMessage>
           ) : null}
           <Label labelFor="fr-decision-reason">{text.field}</Label>
-          <Textfield id="fr-decision-reason" value={reason} onChange={(e: TextChange) => setReason(e.target?.value || '')} />
+          <Textfield id="fr-decision-reason" onChange={(e: TextChange) => setReason(e.target?.value || '')} />
         </Stack>
       </ModalBody>
       <ModalFooter>
