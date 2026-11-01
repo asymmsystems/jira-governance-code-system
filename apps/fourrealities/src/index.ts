@@ -9,7 +9,8 @@ import { kvs } from '@forge/kvs';
 import api, { route } from '@forge/api';
 import { MetricsEngine } from './domain/metrics-engine';
 import { MetricsRepository, StorageProvider } from './storage/metrics-repository';
-import { DEFAULT_DEV_FIELD_ID, factsFromIssue, normalizeException, PROPERTY_KEYS } from './jira/issue-facts';
+import { factsFromIssue, normalizeException, PROPERTY_KEYS } from './jira/issue-facts';
+import { getSiteConfig } from './jira/site-config';
 import { parseDevField } from './jira/dev-field';
 import {
   ExceptionRecord,
@@ -53,8 +54,15 @@ export function resolveStorage(customProvider?: StorageProvider): StorageProvide
   return new ForgeKvsProvider();
 }
 
-/** Fields every issue read requests. */
-const ISSUE_FIELDS = 'summary,status,issuetype,issuelinks,assignee,updated,customfield_10000,customfield_10020,sprint';
+/** Fields every issue read requests, plus the site's Development field when it has one. */
+const BASE_FIELDS = 'summary,status,issuetype,issuelinks,assignee,updated,customfield_10020,sprint';
+
+export function issueFields(devFieldId: string | null): string {
+  return devFieldId ? `${BASE_FIELDS},${devFieldId}` : BASE_FIELDS;
+}
+
+const asUserRequest = (path: string) => api.asUser().requestJira(route`${path}`);
+const asAppRequest = (path: string) => api.asApp().requestJira(route`${path}`);
 
 function jiraError(status: number | undefined, message: string): { ok: false; error: ResolverError } {
   if (status === 403) return { ok: false, error: { code: 'FORBIDDEN', message, status } };
@@ -66,7 +74,7 @@ function jiraError(status: number | undefined, message: string): { ok: false; er
 /**
  * Queries live Jira issues using search/jql. Returns raw issues with the producers' properties.
  */
-export async function fetchProjectIssues(projectKey: string): Promise<{ issues: any[]; status?: number; error?: string }> {
+export async function fetchProjectIssues(projectKey: string, devFieldId: string | null = null): Promise<{ issues: any[]; status?: number; error?: string }> {
   try {
     const allIssues: any[] = [];
     let startAt = 0;
@@ -76,7 +84,7 @@ export async function fetchProjectIssues(projectKey: string): Promise<{ issues: 
     // Paginate Jira search up to 2 pages (200 issues) for comprehensive audit
     while (!isLast && allIssues.length < 200) {
       const res = await api.asApp().requestJira(
-        route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&startAt=${startAt}&maxResults=${maxResults}&fields=${ISSUE_FIELDS}&properties=${PROPERTY_KEYS.join(',')}&expand=changelog`
+        route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&startAt=${startAt}&maxResults=${maxResults}&fields=${issueFields(devFieldId)}&properties=${PROPERTY_KEYS.join(',')}&expand=changelog`
       );
 
       if (res.status !== 200) {
@@ -115,7 +123,13 @@ export async function getProjectDashboard(
 
   const storage = resolveStorage(storageProvider);
   const repository = new MetricsRepository(storage);
-  const { issues, status, error } = await fetchProjectIssues(String(projectKey));
+  let devFieldId: string | null;
+  try {
+    devFieldId = (await getSiteConfig(storage, asAppRequest)).devFieldId;
+  } catch (err: any) {
+    return jiraError(undefined, `Live Jira sync failed (${err?.message}).`);
+  }
+  const { issues, status, error } = await fetchProjectIssues(String(projectKey), devFieldId);
   if (error) {
     return jiraError(status, `Live Jira sync failed (${error}).`);
   }
@@ -123,7 +137,7 @@ export async function getProjectDashboard(
   const rows: IssueRow[] = [];
   for (const iss of issues) {
     const exception = normalizeException(await repository.getIssueException(String(iss.id)));
-    rows.push(MetricsEngine.buildRow(factsFromIssue(iss, { exception })));
+    rows.push(MetricsEngine.buildRow(factsFromIssue(iss, { exception, devFieldId })));
   }
 
   return {
@@ -157,15 +171,14 @@ export async function getIssueAlignment(
   const exception = normalizeException(await repository.getIssueException(issueId));
 
   // Signals come from Jira only. There is no cached fallback: a failed read is reported.
+  // Every read runs as the viewer, so the panel never shows what the viewer cannot see (FR-18).
   try {
-    const [issueRes, remoteLinksRes, stashDevRes, githubDevRes, bitbucketDevRes] = await Promise.all([
-      api.asApp().requestJira(
-        route`/rest/api/3/issue/${issueId}?fields=${ISSUE_FIELDS}&properties=${PROPERTY_KEYS.join(',')}&expand=changelog`
+    const { devFieldId } = await getSiteConfig(storage, asUserRequest);
+    const [issueRes, remoteLinksRes] = await Promise.all([
+      api.asUser().requestJira(
+        route`/rest/api/3/issue/${issueId}?fields=${issueFields(devFieldId)}&properties=${PROPERTY_KEYS.join(',')}&expand=changelog`
       ),
-      api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/remotelink`).catch(() => null),
-      api.asApp().requestJira(route`/rest/dev-status/latest/issue/detail?issueId=${issueId}&applicationType=stash&dataType=pullrequest`).catch(() => null),
-      api.asApp().requestJira(route`/rest/dev-status/latest/issue/detail?issueId=${issueId}&applicationType=github&dataType=pullrequest`).catch(() => null),
-      api.asApp().requestJira(route`/rest/dev-status/latest/issue/detail?issueId=${issueId}&applicationType=bitbucket&dataType=pullrequest`).catch(() => null)
+      api.asUser().requestJira(route`/rest/api/3/issue/${issueId}/remotelink`).catch(() => null)
     ]);
 
     if (issueRes.status !== 200) {
@@ -181,23 +194,7 @@ export async function getIssueAlignment(
       } catch {}
     }
 
-    const pullRequests: any[] = [];
-    for (const devRes of [stashDevRes, githubDevRes, bitbucketDevRes]) {
-      if (devRes && devRes.status === 200) {
-        try {
-          const devData = await devRes.json();
-          if (Array.isArray(devData.detail)) {
-            for (const item of devData.detail) {
-              if (Array.isArray(item.pullRequests)) {
-                pullRequests.push(...item.pullRequests);
-              }
-            }
-          }
-        } catch {}
-      }
-    }
-
-    return { ok: true, row: MetricsEngine.buildRow(factsFromIssue(iss, { remoteLinks, pullRequests, exception })) };
+    return { ok: true, row: MetricsEngine.buildRow(factsFromIssue(iss, { remoteLinks, exception, devFieldId })) };
   } catch (err: any) {
     return jiraError(undefined, `FourRealities: Failed to query Jira for issue '${issueKey}': ${err?.message || 'network error'}`);
   }
@@ -341,15 +338,16 @@ export async function recordException(
     if (scopeError) {
       return { success: false, error: scopeError };
     }
-    if (type === 'CODE') {
+    const { devFieldId } = type === 'CODE' ? await getSiteConfig(resolveStorage(storageProvider), asUserRequest) : { devFieldId: null };
+    if (devFieldId) {
       // A Code exception may not hide a pull request (FR-10).
-      const res = await api.asUser().requestJira(route`/rest/api/3/issue/${issueId}?fields=${DEFAULT_DEV_FIELD_ID}`);
+      const res = await api.asUser().requestJira(route`/rest/api/3/issue/${issueId}?fields=${devFieldId}`);
       if (res.status !== 200) {
         return { success: false, error: `Jira returned HTTP ${res.status} reading issue ${issueId}.` };
       }
       const iss = await res.json();
       issueKey = String(iss?.key || issueKey);
-      const dev = iss?.fields?.[DEFAULT_DEV_FIELD_ID];
+      const dev = iss?.fields?.[devFieldId];
       if (parseDevField(typeof dev === 'string' ? dev : undefined).count > 0) {
         return { success: false, error: `A pull request is linked to ${issueKey}. A Code exception applies only to work with no pull request.` };
       }

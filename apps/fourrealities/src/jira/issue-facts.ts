@@ -9,8 +9,6 @@ import { ExceptionRecord, IssueExceptionRecord, IssueFacts, StatusCategory } fro
 /** Issue properties read in one search or issue call. Only the producers' own keys. */
 export const PROPERTY_KEYS = ['ledgerseal-cert', 'definitionguard-dod', 'checklist'];
 
-export const DEFAULT_DEV_FIELD_ID = 'customfield_10000';
-
 /**
  * Analyzes issue changelog histories for status transitions and rework bounces.
  * Detects regressions from review/testing/done stages back into development.
@@ -88,9 +86,9 @@ export function normalizeException(record: any): ExceptionRecord | undefined {
 
 export interface FactOptions {
   remoteLinks?: any[];
-  pullRequests?: any[];
   exception?: ExceptionRecord;
   siteHost?: string;
+  /** Id of the Development field from the site configuration; null or absent when the site has none. */
   devFieldId?: string | null;
 }
 
@@ -102,8 +100,9 @@ export function factsFromIssue(iss: any, options: FactOptions = {}): IssueFacts 
     ...(fields.sprint?.name ? [String(fields.sprint.name)] : []),
     ...sprintField.map((s: any) => s?.name).filter(Boolean).map(String)
   ];
-  const devFieldId = options.devFieldId === undefined ? DEFAULT_DEV_FIELD_ID : options.devFieldId;
-  const devPresent = devFieldId !== null && Object.prototype.hasOwnProperty.call(fields, devFieldId);
+  const devFieldId = options.devFieldId ?? null;
+  // Present means the site has a Development field; an issue response may omit an empty value.
+  const devPresent = devFieldId !== null;
   const devRaw = devPresent ? fields[devFieldId as string] : undefined;
 
   return {
@@ -134,7 +133,6 @@ export function factsFromIssue(iss: any, options: FactOptions = {}): IssueFacts 
     })),
     siteHost: options.siteHost,
     devField: { present: devPresent, raw: typeof devRaw === 'string' ? devRaw : undefined },
-    pullRequests: options.pullRequests,
     properties: {
       ledgerseal: iss?.properties?.['ledgerseal-cert'],
       dod: iss?.properties?.['definitionguard-dod'],

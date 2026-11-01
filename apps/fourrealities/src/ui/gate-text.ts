@@ -70,7 +70,6 @@ const SOURCE: Record<GateReason, string> = {
   DOD_OPEN_HC: 'Checklists for Jira (HeroCoders) property checklist',
   DOD_NONE: 'DefinitionGuard property definitionguard-dod',
   CODE_EXCEPTED: 'FourRealities exception record',
-  PR_APPROVED: 'Jira development information',
   PR_MERGED: 'Jira Development field',
   PR_OPEN: 'Jira Development field',
   PR_OPEN_AT_DONE: 'Jira Development field',
@@ -118,7 +117,6 @@ export function detailText(result: GateResult): string {
     case 'DOD_OPEN_HC': return `Checklists for Jira reports ${arg(result, 'open')} open mandatory items.`;
     case 'DOD_NONE': return 'No Definition of Done record on this issue.';
     case 'CODE_EXCEPTED': return 'An exception is recorded for this gate.';
-    case 'PR_APPROVED': return 'A pull request with an approval is linked.';
     case 'PR_MERGED': return 'Pull request merged. Approval is not readable by apps.';
     case 'PR_OPEN': return 'Pull request open. Approval is not readable by apps.';
     case 'PR_OPEN_AT_DONE': return 'The issue is done and its pull request is not merged.';

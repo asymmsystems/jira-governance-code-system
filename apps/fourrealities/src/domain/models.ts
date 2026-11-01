@@ -36,7 +36,6 @@ export type GateReason =
   | 'DOD_OPEN_HC'
   | 'DOD_NONE'
   | 'CODE_EXCEPTED'
-  | 'PR_APPROVED'
   | 'PR_MERGED'
   | 'PR_OPEN'
   | 'PR_OPEN_AT_DONE'
@@ -106,7 +105,6 @@ export interface IssueFacts {
   remoteLinks?: Array<{ url?: string; title?: string; applicationType?: string }>;
   siteHost?: string;
   devField: { present: boolean; raw?: string };
-  pullRequests?: any[];
   properties: { ledgerseal?: any; dod?: any; checklist?: any };
   exception?: ExceptionRecord;
 }

@@ -66,7 +66,7 @@ describe('factsFromIssue', () => {
   };
 
   it('parses status, people, sprints, links, properties and the Development field', () => {
-    const f = factsFromIssue(iss, { remoteLinks: [{ object: { url: 'https://s.atlassian.net/wiki/x', title: 'ADR-1' }, application: { type: 'com.atlassian.confluence' } }], siteHost: 's.atlassian.net' });
+    const f = factsFromIssue(iss, { remoteLinks: [{ object: { url: 'https://s.atlassian.net/wiki/x', title: 'ADR-1' }, application: { type: 'com.atlassian.confluence' } }], siteHost: 's.atlassian.net', devFieldId: 'customfield_10000' });
     expect(f.issueKey).toBe('DEMO-26');
     expect(f.statusCategory).toBe('indeterminate');
     expect(f.sprintNames).toEqual(['Sprint 3', 'Sprint 4']);

@@ -53,14 +53,6 @@ describe('Code', () => {
     expect(r).toEqual({ state: 'EXCEPTED', reason: 'CODE_EXCEPTED' });
   });
 
-  it('reads approvals from pull request data and the Development field', () => {
-    expect(evaluateCode(makeFacts({ pullRequests: [{ reviewers: [{ approvalStatus: 'APPROVED' }] }] })).state).toBe('FOUND');
-    expect(evaluateCode(makeFacts({ pullRequests: [{ status: 'APPROVED' }] })).verification).toBe('HEURISTIC');
-    expect(evaluateCode(makeFacts({ pullRequests: [{ reviewers: [] }] })).state).toBe('MISSING');
-    expect(evaluateCode(makeFacts({ devField: { present: true, raw: '{pullrequest={state=MERGED}, APPROVED}' } })).state).toBe('FOUND');
-    expect(evaluateCode(makeFacts({ devField: { present: true, raw: '{pullrequest={state=MERGED}}' } })).state).toBe('MISSING');
-  });
-
   it('is MISSING with no PR when done, NOT_APPLICABLE before done', () => {
     expect(evaluateCode(makeFacts())).toEqual({ state: 'MISSING', reason: 'PR_NONE' });
     expect(evaluateCode(makeFacts({ statusCategory: 'indeterminate' })).state).toBe('NOT_APPLICABLE');
@@ -187,5 +179,39 @@ describe('B-06: exceptions and rework notes', () => {
     const base = evaluateGates(makeFacts({ reworkLoops: 2 }));
     const withNote = evaluateGates(makeFacts({ reworkLoops: 2, exception: ex(undefined, note) }));
     expect(withNote).toEqual(base);
+  });
+});
+
+describe('B-10: Code gate from the Development field, labelled heuristic', () => {
+  const dev = (state: string, count = 1) => ({ present: true, raw: `{pullrequest={dataType=pullrequest, state=${state}, stateCount=${count}}}` });
+
+  it('reads a merged pull request as found (heuristic), never approved', () => {
+    expect(evaluateCode(makeFacts({ devField: dev('MERGED', 2) })))
+      .toEqual({ state: 'FOUND', verification: 'HEURISTIC', reason: 'PR_MERGED', args: { count: 2 } });
+    expect(evaluateCode(makeFacts({ statusCategory: 'indeterminate', devField: dev('MERGED') })).reason).toBe('PR_MERGED');
+  });
+
+  it('reads an open pull request as missing at done and found (heuristic) before done', () => {
+    expect(evaluateCode(makeFacts({ devField: dev('OPEN') }))).toEqual({ state: 'MISSING', reason: 'PR_OPEN_AT_DONE' });
+    expect(evaluateCode(makeFacts({ statusCategory: 'indeterminate', devField: dev('OPEN') })))
+      .toEqual({ state: 'FOUND', verification: 'HEURISTIC', reason: 'PR_OPEN' });
+  });
+
+  it('treats only declined pull requests, or none, as no pull request', () => {
+    expect(evaluateCode(makeFacts({ devField: dev('DECLINED') }))).toEqual({ state: 'MISSING', reason: 'PR_NONE' });
+    expect(evaluateCode(makeFacts({ devField: { present: true } }))).toEqual({ state: 'MISSING', reason: 'PR_NONE' });
+    expect(evaluateCode(makeFacts({ statusCategory: 'indeterminate', devField: dev('DECLINED') }))).toEqual({ state: 'NOT_APPLICABLE', reason: 'NOT_DONE' });
+  });
+
+  it('is not applicable when the site has no Development field', () => {
+    expect(evaluateCode(makeFacts({ devField: { present: false } }))).toEqual({ state: 'NOT_APPLICABLE', reason: 'NO_DEV_TOOL' });
+  });
+
+  it('never returns VERIFIED for the Code gate', () => {
+    for (const s of ['MERGED', 'OPEN', 'DECLINED']) {
+      for (const statusCategory of ['indeterminate', 'done'] as const) {
+        expect(evaluateCode(makeFacts({ statusCategory, devField: dev(s) })).verification).not.toBe('VERIFIED');
+      }
+    }
   });
 });

@@ -107,27 +107,27 @@ export function evaluateProcess(f: IssueFacts): GateResult {
 }
 
 /**
- * Code: a recorded exception is its own state, never a pass. The pull request rule is the
- * v1 approval heuristic until backlog B-10.
+ * Code: pull request state from the Jira Development field, labelled HEURISTIC. Apps cannot
+ * read review approvals (research H11), so a merged pull request is never shown as approved.
+ * A Code exception applies only to work with no pull request (FR-10).
  */
 export function evaluateCode(f: IssueFacts): GateResult {
-  const prs = f.pullRequests || [];
-  const hasPullRequest = prs.length > 0 || parseDevField(f.devField.raw).count > 0;
-  // An exception applies only to work with no pull request; once one exists it is ignored (FR-10).
-  if (f.exception?.code && !hasPullRequest) {
+  if (!f.devField.present) {
+    return { state: 'NOT_APPLICABLE', reason: 'NO_DEV_TOOL' };
+  }
+  const pr = parseDevField(f.devField.raw);
+  const merged = pr.mergedCount > 0 || (pr.state === 'MERGED' && pr.count > 0);
+  const open = !merged && (pr.openCount > 0 || (pr.state === 'OPEN' && pr.count > 0));
+  if (f.exception?.code && pr.count === 0) {
     return { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' };
   }
-  let prCount = prs.length;
-  let approved = prs.some(pr =>
-    (Array.isArray(pr.reviewers) && pr.reviewers.some((r: any) => r.approvalStatus === 'APPROVED')) || pr.status === 'APPROVED');
-  if (prCount === 0 && typeof f.devField.raw === 'string' && f.devField.raw.includes('pullrequest')) {
-    prCount = 1;
-    approved = f.devField.raw.includes('APPROVED');
+  if (merged) {
+    return { state: 'FOUND', verification: 'HEURISTIC', reason: 'PR_MERGED', args: { count: pr.count } };
   }
-  if (prCount > 0) {
-    return approved
-      ? { state: 'FOUND', verification: 'HEURISTIC', reason: 'PR_APPROVED' }
-      : { state: 'MISSING', reason: 'PR_OPEN_AT_DONE' };
+  if (open) {
+    return isDone(f)
+      ? { state: 'MISSING', reason: 'PR_OPEN_AT_DONE' }
+      : { state: 'FOUND', verification: 'HEURISTIC', reason: 'PR_OPEN' };
   }
   return isDone(f)
     ? { state: 'MISSING', reason: 'PR_NONE' }

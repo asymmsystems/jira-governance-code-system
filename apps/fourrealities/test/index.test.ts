@@ -46,8 +46,9 @@ jest.mock('@forge/kvs', () => ({
   }
 }));
 
+/** Starts with a cached site configuration, so tests do not need a field-list call. */
 class MockStorage implements StorageProvider {
-  private store: Map<string, any> = new Map();
+  private store: Map<string, any> = new Map([['fr:cfg:site', { devFieldId: 'customfield_10000', readAt: new Date().toISOString() }]]);
 
   async get<T>(key: string): Promise<T | undefined> {
     return this.store.get(key);
@@ -167,18 +168,6 @@ describe('FourRealities Index / Forge Handlers', () => {
       expect(res.ok).toBe(true);
       expect(res.row.issueKey).toBe('W-1');
       expect(setSpy).not.toHaveBeenCalled();
-    });
-
-    it('scores pull requests from dev-status data', async () => {
-      mockRequestJira
-        .mockResolvedValueOnce({ status: 200, json: async () => doneIssue('dev-1', 'DEV-1') })
-        .mockResolvedValueOnce({ status: 200, json: async () => ([]) })
-        .mockResolvedValueOnce({ status: 200, json: async () => ({ detail: [{ pullRequests: [{ id: 'pr-1', reviewers: [{ approvalStatus: 'APPROVED' }] }] }, {}] }) })
-        .mockResolvedValueOnce({ status: 200, json: async () => { throw new Error('bad json'); } })
-        .mockResolvedValueOnce({ status: 404 });
-      const res: any = await getIssueAlignment({}, ctx('dev-1', 'DEV-1'), mockStorage);
-      expect(res.row.gates.code.state).toBe('FOUND');
-      expect(res.row.gates.code.verification).toBe('HEURISTIC');
     });
 
     it('keeps going when the remote link body is not JSON', async () => {
@@ -399,7 +388,7 @@ describe('B-02: no writes into sibling app keys', () => {
 });
 
 describe('getIssueAlignment with failing secondary calls', () => {
-  it('scores the issue from the issue read when remote links and dev-status reject', async () => {
+  it('scores the issue from the issue read when the remote link read rejects', async () => {
     const storage = new MockStorage();
     mockRequestJira.mockReset();
     mockRequestJira
@@ -411,10 +400,7 @@ describe('getIssueAlignment with failing secondary calls', () => {
           properties: {}
         })
       })
-      .mockRejectedValueOnce(new Error('remote link failure'))
-      .mockRejectedValueOnce(new Error('stash failure'))
-      .mockRejectedValueOnce(new Error('github failure'))
-      .mockRejectedValueOnce(new Error('bitbucket failure'));
+      .mockRejectedValueOnce(new Error('remote link failure'));
 
     const res: any = await getIssueAlignment({}, { extension: { issue: { id: 'sec-1', key: 'SEC-1' } } }, storage);
     expect(res.row.issueKey).toBe('SEC-1');
@@ -656,3 +642,94 @@ describe('B-06: recordException fallbacks', () => {
     expect(res).toEqual({ success: false, error: 'Failed to check the issue.' });
   });
 });
+
+describe('B-10: one Code-gate path from the Development field', () => {
+  const merged = '{pullrequest={dataType=pullrequest, state=MERGED, stateCount=1}}';
+  const issue = { id: '40001', key: 'DEMO-40', fields: { summary: 'S', status: { name: 'Done', statusCategory: { key: 'done' } }, customfield_10000: merged }, properties: {} };
+  beforeEach(() => {
+    mockRequestJira.mockReset();
+    mockAppRequestJira.mockClear();
+    mockUserRequestJira.mockClear();
+  });
+
+  it('reads the issue and its remote links as the user, with no dev-status call', async () => {
+    mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => issue }).mockResolvedValueOnce({ status: 200, json: async () => [] });
+    const res: any = await getIssueAlignment({}, { extension: { issue: { id: '40001', key: 'DEMO-40' } } }, new MockStorage());
+    expect(res.row.gates.code).toEqual({ state: 'FOUND', verification: 'HEURISTIC', reason: 'PR_MERGED', args: { count: 1 } });
+    const paths = mockUserRequestJira.mock.calls.map(c => String(c[0]));
+    expect(paths).toHaveLength(2);
+    expect(paths[0]).toContain('/rest/api/3/issue/40001?fields=');
+    expect(paths[0]).toContain('customfield_10000');
+    expect(paths[1]).toBe('/rest/api/3/issue/40001/remotelink');
+    expect(paths.some(p => p.includes('dev-status'))).toBe(false);
+    expect(mockAppRequestJira).not.toHaveBeenCalled();
+  });
+
+  it('looks up the Development field by name when it is not cached', async () => {
+    const storage = new MockStorage();
+    await storage.delete('fr:cfg:site');
+    mockRequestJira
+      .mockResolvedValueOnce({ status: 200, json: async () => [{ id: 'customfield_10042', name: 'Development' }] })
+      .mockResolvedValueOnce({ status: 200, json: async () => ({ ...issue, fields: { ...issue.fields, customfield_10042: merged } }) })
+      .mockResolvedValueOnce({ status: 200, json: async () => [] });
+    const res: any = await getIssueAlignment({}, { extension: { issue: { id: '40001', key: 'DEMO-40' } } }, storage);
+    expect(mockUserRequestJira.mock.calls[0][0]).toBe('/rest/api/3/field');
+    expect(String(mockUserRequestJira.mock.calls[1][0])).toContain('customfield_10042');
+    expect(res.row.gates.code.reason).toBe('PR_MERGED');
+  });
+
+  it('shows Not applicable when the site has no Development field', async () => {
+    const storage = new MockStorage();
+    await storage.set('fr:cfg:site', { devFieldId: null, readAt: new Date().toISOString() });
+    mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => issue }).mockResolvedValueOnce({ status: 200, json: async () => [] });
+    const res: any = await getIssueAlignment({}, { extension: { issue: { id: '40001', key: 'DEMO-40' } } }, storage);
+    expect(res.row.gates.code).toEqual({ state: 'NOT_APPLICABLE', reason: 'NO_DEV_TOOL' });
+    expect(String(mockUserRequestJira.mock.calls[0][0])).not.toContain('customfield_10000');
+  });
+
+  it('returns a Jira error when the field list cannot be read', async () => {
+    const storage = new MockStorage();
+    await storage.delete('fr:cfg:site');
+    mockRequestJira.mockResolvedValueOnce({ status: 500, json: async () => ({}) });
+    const res: any = await getIssueAlignment({}, { extension: { issue: { id: '40001', key: 'DEMO-40' } } }, storage);
+    expect(res.ok).toBe(false);
+    expect(res.error.message).toContain('Jira returned HTTP 500 reading the field list.');
+  });
+
+  it('gives the same Code state on the dashboard and in the issue panel', async () => {
+    mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => ({ issues: [issue] }) });
+    const dash: any = await getProjectDashboard({}, { extension: { project: { key: 'DEMO' } } }, new MockStorage());
+    expect(String(mockAppRequestJira.mock.calls[0][0])).toContain('customfield_10000');
+    mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => issue }).mockResolvedValueOnce({ status: 200, json: async () => [] });
+    const panel: any = await getIssueAlignment({}, { extension: { issue: { id: '40001', key: 'DEMO-40' } } }, new MockStorage());
+    expect(dash.rows[0].gates.code).toEqual(panel.row.gates.code);
+  });
+
+  it('checks the discovered Development field before recording a Code exception', async () => {
+    const storage = new MockStorage();
+    await storage.set('fr:cfg:site', { devFieldId: 'customfield_10042', readAt: new Date().toISOString() });
+    mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => ({ key: 'DEMO-40', fields: { customfield_10042: merged } }) });
+    const res = await recordException({ issueId: '40001', type: 'CODE', reason: 'Configuration change only' }, { extension: { issue: { id: '40001' } } }, storage);
+    expect(mockUserRequestJira.mock.calls[0][0]).toBe('/rest/api/3/issue/40001?fields=customfield_10042');
+    expect(res.error).toContain('A pull request is linked to DEMO-40');
+  });
+
+  it('records a Code exception without a field read when the site has no Development field', async () => {
+    const storage = new MockStorage();
+    await storage.set('fr:cfg:site', { devFieldId: null, readAt: new Date().toISOString() });
+    mockRequestJira.mockResolvedValueOnce({ status: 200 });
+    const res = await recordException({ issueId: '40001', type: 'CODE', reason: 'Configuration change only' }, { extension: { issue: { id: '40001' } } }, storage);
+    expect(res.success).toBe(true);
+    expect(mockUserRequestJira).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a Jira error on the dashboard when the field list cannot be read', async () => {
+    const storage = new MockStorage();
+    await storage.delete('fr:cfg:site');
+    mockRequestJira.mockResolvedValueOnce({ status: 503, json: async () => ({}) });
+    const res: any = await getProjectDashboard({}, { extension: { project: { key: 'DEMO' } } }, storage);
+    expect(res).toEqual({ ok: false, error: { code: 'JIRA_ERROR', message: 'Live Jira sync failed (Jira returned HTTP 503 reading the field list.).', status: undefined } });
+    expect(mockAppRequestJira.mock.calls[0][0]).toBe('/rest/api/3/field');
+  });
+});
+
