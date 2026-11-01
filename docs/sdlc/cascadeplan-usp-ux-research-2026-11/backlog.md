@@ -48,6 +48,7 @@ APPROVED 2026-11-01 B-01..B-27 (owner, in chat: "APPROVED today full"; bundler c
 | 25 | B-20 | Estimation unit stored per task, or claim dropped | Claim honesty | NF-09, H5 | S | `[MIGRATE]` if stored |
 | 26 | B-21 | Licensing check | Paid listing | CP-22 | S | `[SCOPE]` |
 | 27 | B-22 | Test suite asserts behaviour, not defaults | Quality | CP-27 | S | none |
+| 28 | B-28 | WorkEffort model conformance (Silverston pattern) and record migration | Owner request 2026-11-01; `silverston-conformance.md` | B-24 | L | `[MIGRATE]` approved 2026-11-01 |
 
 Opportunity IDs O1 to O10 come from `ux-spec.md` section 5.2 (research round 3).
 
@@ -316,6 +317,18 @@ Opportunity IDs O1 to O10 come from `ux-spec.md` section 5.2 (research round 3).
   5. The timescale header and the issue columns stay frozen while scrolling. (Playwright.)
   6. The data columns can collapse to Key and Summary, so at 1,280 px at least 12 weeks are visible at Week zoom. (Playwright.)
 - **Size:** S.
+
+### B-28. WorkEffort model conformance (Silverston pattern) and record migration
+- **Serves:** a correct data model under B-19, B-20 and B-25. Findings F1 to F7 and F9 in `silverston-conformance.md` (2026-11-01). Approved by the owner on 2026-11-01 ("approved"), including the `[MIGRATE]` step; built before B-27.
+- **Acceptance criteria:**
+  1. A dependency is stored as a `WorkEffortAssoc` of type `WORK_EFF_PRECEDENCY` (a subtype of `WORK_EFF_DEPENDENCY`), with `fromDate`, an optional `thruDate`, and `attrs: { triggerPercent, jiraLinkId }`. No engine output (`isTriggerSatisfied`, `isViolated`, `violationReason`) is stored. (Unit.)
+  2. Removing a link sets its `thruDate`; the record is kept, and a Jira "Blocks" link from that predecessor is not imported again. `precedenceRemoved` is gone. (Unit + Resolver.)
+  3. An issue can have several predecessors: the record keeps every active link, the plan returns `dependencies[]` (with `dependency` as the first), and the engine uses all of them. Jira "Blocks" links from other predecessors are imported as 100% links. (Resolver.)
+  4. A second person is stored as `WorkEffortPartyAssignment` with `partyId` = the Atlassian account id, `roleTypeId: 'CONTRIBUTOR'` and `fromDate`; the name shown is read live from Jira. (Unit + Resolver.)
+  5. A parent's dates are derived on load from its dated children and never stored; a parent bar has no drag handles. (Resolver + Playwright.)
+  6. A one-time migration rewrites every record in the old shape, under the version check and a `modelVersion` flag. It is idempotent and loses nothing: an old "removed" flag becomes ended links for the Jira links it suppressed, and a contributor name with no single matching Jira user is kept as `legacyName`. (Resolver.)
+  7. `toWorkEffort`, `fromWorkEffort` and the unused types, statuses and roles are removed, and spec 3.1 and 3.2 describe the stored model. (Unit: static check.)
+- **Size:** L.
 
 ### B-24. WorkEffort becomes the real domain and storage model
 - **Serves:** owner decision "keep the Silverston WorkEffort model" (research-brief 4.3).

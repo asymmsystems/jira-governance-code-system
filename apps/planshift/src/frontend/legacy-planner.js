@@ -1341,19 +1341,17 @@ function openResourcePicker(targetEl, taskKey) {
     const primaryName = lead ? lead.name : 'Unassigned';
     const primaryAccountId = lead ? (lead.accountId || (currentPlan?.availableUsers || []).find(u => u.displayName === lead.name)?.accountId) : 'unassigned';
     const contributingList = assignedResources.map(r => r.name);
+    // People are stored by account id (B-28); names go only when an id is unknown.
+    const ids = assignedResources.map(r => r.accountId || (currentPlan?.availableUsers || []).find(u => u.displayName === r.name)?.accountId);
 
     curTask.resource = primaryName;
     curTask.resourceAccountId = primaryAccountId;
     curTask.contributingResources = contributingList;
 
-    await callResolver('updateWbsTask', {
-      taskId: curTask.key,
-      updates: {
-        resource: primaryName,
-        resourceAccountId: primaryAccountId,
-        contributingResources: contributingList
-      }
-    });
+    const updates = { resource: primaryName, resourceAccountId: primaryAccountId };
+    if (ids.every(Boolean)) updates.contributors = ids.map(accountId => ({ accountId }));
+    else updates.contributingResources = contributingList;
+    await callResolver('updateWbsTask', { taskId: curTask.key, updates });
 
     renderTimelineRows();
   }
@@ -2777,13 +2775,13 @@ function createBarHit(task, isEpic) {
   if (!task.startDate) return null;
   const key = task.key;
   const hit = document.createElement('div');
-  hit.className = 'bar-hit' + (isEpic ? ' is-epic' : '');
+  hit.className = 'bar-hit' + (isEpic || task.datesFromChildren ? ' is-epic' : '');
   hit.dataset.taskId = key;
   // Pointer only: keyboard and screen readers use the treegrid in the canvas (one tab stop, B-15).
   hit.setAttribute('aria-hidden', 'true');
 
-  // Resize handles and drag (only on non-epic items).
-  if (!isEpic) {
+  // Resize handles and drag (not on epics, and not on a parent whose dates follow its children, B-28).
+  if (!isEpic && !task.datesFromChildren) {
     for (const edge of ['left', 'right']) {
       const handle = document.createElement('div');
       handle.className = `bar-handle bar-handle-${edge}`;
@@ -3072,6 +3070,11 @@ function onGridKey(e) {
   }
   if (!task) return;
   if (e.key === ' ' && task.startDate && !(task.isEpic || task.hierarchyLevel === 1)) {
+    if (task.datesFromChildren) {
+      e.preventDefault();
+      announce(`${task.key} follows the dates of its children. Move a child instead.`);
+      return;
+    }
     e.preventDefault();
     startMoveMode(task);
   } else if (e.key === 'Enter') {
@@ -3183,6 +3186,10 @@ async function toolbarAction(action, key, btn) {
   const task = findTask(key);
   if (!task) return;
   closeBarToolbar();
+  if ((action === 'earlier' || action === 'later') && task.datesFromChildren) {
+    showFlag({ text: `${key} follows the dates of its children. Move a child instead.` });
+    return;
+  }
   if (action === 'earlier' || action === 'later') {
     const days = action === 'later' ? 7 : -7;
     const mine = showShiftPreview(key, days, days, (m) => `${key} ➔ ${m.start}`);

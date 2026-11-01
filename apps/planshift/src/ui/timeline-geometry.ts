@@ -65,6 +65,7 @@ interface PreviewTask {
   progress?: number;
   status?: string;
   dependency?: { predecessorKey?: string; triggerPercent?: number } | null;
+  dependencies?: Array<{ predecessorKey?: string; triggerPercent?: number }>;
 }
 
 /**
@@ -86,9 +87,10 @@ export function previewMoves(tasks: PreviewTask[], key: string, startShift: numb
     const moved = t.key === key;
     efforts.set(t.key, { workEffortId: t.key, estimatedStartDate: moved ? start : t.startDate, estimatedCompletionDate: moved ? end : (t.endDate || t.startDate),
       percentComplete: t.progress || 0, started: t.status === 'IN_PROGRESS' || t.status === 'COMPLETED' });
-    if (t.dependency && t.dependency.predecessorKey && typeof t.dependency.triggerPercent === 'number') {
-      links.push({ workEffortIdFrom: t.dependency.predecessorKey, workEffortIdTo: t.key, workEffortAssocTypeId: 'FRACTIONAL_MILESTONE',
-        triggerPercent: t.dependency.triggerPercent, isTriggerSatisfied: false });
+    for (const d of t.dependencies || (t.dependency ? [t.dependency] : [])) {
+      if (d.predecessorKey && typeof d.triggerPercent === 'number') {
+        links.push({ workEffortIdFrom: d.predecessorKey, workEffortIdTo: t.key, workEffortAssocTypeId: 'WORK_EFF_PRECEDENCY', triggerPercent: d.triggerPercent });
+      }
     }
   }
   try {

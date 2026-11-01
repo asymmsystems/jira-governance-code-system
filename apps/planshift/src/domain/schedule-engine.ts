@@ -8,18 +8,26 @@
  * CascadePlan: the schedule engine (spec section 3.3; B-11, INV-09, INV-10, INV-11).
  *
  * One function computes the earliest start for the auto-move, the violation check, the cascade,
- * the preview and the reason text. Input is the WorkEffort model (B-24): efforts with dates and
- * percent complete, and FRACTIONAL_MILESTONE associations with a trigger percent.
+ * the preview and the reason text. Input follows the WorkEffort model (B-24, B-28): efforts with dates
+ * and percent complete, and WORK_EFF_PRECEDENCY associations with a trigger percent attribute.
  * All dates are UTC calendar days in YYYY-MM-DD form; every division rounds up to a whole day.
  */
 
-import { WorkEffort, WorkEffortAssoc } from './models';
-
-export type ScheduleEffort = Pick<WorkEffort, 'workEffortId' | 'estimatedStartDate' | 'estimatedCompletionDate' | 'percentComplete'> & {
+export interface ScheduleEffort {
+  workEffortId: string;
+  estimatedStartDate?: string;
+  estimatedCompletionDate?: string;
+  percentComplete: number;
   started?: boolean; // Jira status says work has begun, even at 0%
-};
+}
 
-export type ScheduleLink = Pick<WorkEffortAssoc, 'workEffortIdFrom' | 'workEffortIdTo' | 'workEffortAssocTypeId' | 'triggerPercent' | 'isTriggerSatisfied'>;
+/** An active WORK_EFF_PRECEDENCY association with its triggerPercent attribute. */
+export interface ScheduleLink {
+  workEffortIdFrom: string;
+  workEffortIdTo: string;
+  workEffortAssocTypeId: 'WORK_EFF_PRECEDENCY';
+  triggerPercent: number;
+}
 
 export interface EarliestStart {
   basis: 'planned' | 'observed' | 'satisfied';

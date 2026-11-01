@@ -33,34 +33,53 @@ This specification covers the approved backlog. It fixes the release blockers (n
 
 ## 3. Domain Model
 
-### 3.1 Storage model: WorkEffort (owner decision, B-24)
+### 3.1 Storage model: WorkEffort (owner decision, B-24; pattern conformance B-28)
 
-The Silverston / OFBiz / Moqui WorkEffort pattern is the storage model. `models.ts` already defines the types; this spec makes them the stored form.
+The Silverston WorkEffort pattern is the storage model. The reference implementation is Apache OFBiz `workeffort-entitymodel.xml` (see `docs/sdlc/cascadeplan-usp-ux-research-2026-11/silverston-conformance.md`). Only app-owned planning data is stored (INV-04). The hierarchy, name, status, assignee and the names of people stay in Jira and are read live.
 
 | Type | Role | Stored fields |
 |---|---|---|
-| `WorkEffort` | One per Jira issue on the plan | `workEffortId` (issue key), `issueId`, `estimatedStartDate`, `estimatedCompletionDate`, `sequenceNum`, `manualProgress`, `percentComplete` (only when the user set progress by hand, on a task or a parent) |
-| `WorkEffortAssoc` | Precedence link into this effort | `workEffortIdFrom` (predecessor key), `workEffortIdTo`, `workEffortAssocTypeId` (`FRACTIONAL_MILESTONE`), `triggerPercent` (0 to 100), `jiraLinkId` (the "Blocks" link CascadePlan created, if any) |
-| `WorkEffortPartyAssignment` | Second people on a task (U3) | `partyId` (account id), `displayName`, `roleTypeId` (`CONTRIBUTOR`), `subtaskKey` |
-| `WorkEffortEstimate` | Estimate as the user entered it | `estimateUnit`, `rawEstimate`, `normalizedHours` |
+| `WorkEffort` | One per Jira issue on the plan | `workEffortId` (issue key), `estimatedStartDate`, `estimatedCompletionDate`, `sequenceNum` (row order; there is no stored breakdown association, so order sits on the effort), `targetPercentComplete`, `manualProgress`, `percentComplete` (only when the user set progress by hand) |
+| `WorkEffortAssoc` | Precedency link into this effort | `workEffortIdFrom` (predecessor key), `workEffortIdTo`, `workEffortAssocTypeId` = `WORK_EFF_PRECEDENCY` (a subtype of `WORK_EFF_DEPENDENCY`), `fromDate`, optional `thruDate`, `attrs: { triggerPercent (0 to 100), jiraLinkId }` (association attributes; `jiraLinkId` is the "Blocks" link CascadePlan created, if any) |
+| `WorkEffortPartyAssignment` | A second person on a task (U3) | `partyId` (Atlassian account id), `roleTypeId` = `CONTRIBUTOR` (an extension role), `fromDate`, optional `thruDate`, optional `subtaskKey`; `legacyName` only for an old name that matched no single Jira user |
+| `WorkEffortEstimate` | Extension: the estimate as the user entered it | `estimateUnit`, `rawEstimate`, `normalizedHours`, buffer |
 
-Not stored: summary, status, assignee, Jira original estimate, time spent, and computed progress (INV-04).
+Rules:
+- A link is active until its `thruDate`. Removing a link sets `thruDate` and keeps the record, so a Jira "Blocks" link from that predecessor is not imported again.
+- An issue can have any number of active links. Every Jira "Blocks" predecessor that is neither stored nor ended is imported live as a 100% link and is not stored.
+- No engine output (trigger satisfied, violation, reason) is stored. The engine computes it on every load (INV-09).
+- A parent's dates are derived on load from its dated children: the earliest child start to the latest child end. They are never stored, and a parent bar cannot be dragged.
 
-`WorkEffortRecord` (one KVS value per issue):
+Not stored: summary, status, assignee, the names of people, Jira original estimate, time spent, computed progress, and parent dates (INV-04).
+
+`WorkEffortRecord` (one KVS value per issue, key `cp:<projectId>:we:<issueId>`):
 
 ```ts
 interface WorkEffortRecord {
+  model: 2;                           // record model (B-28)
   effort: WorkEffort;
-  assocs: WorkEffortAssoc[];          // precedence links INTO this effort
+  assocs: WorkEffortAssoc[];          // precedency links INTO this effort, active and ended
   parties: WorkEffortPartyAssignment[];
   estimate?: WorkEffortEstimate;
+  grid?: WorkEffortGrid;              // planner view data (week grid, backlog flag); B-18 reduces it
+  issueKey: string;
+  issueId: string;
   version: number;                    // incremented on every write
 }
 ```
 
+Migration (B-28): a record without `model: 2` (the B-24 shape) is rewritten once by `migrateIfNeeded`, under the version check. Settings `modelVersion: 2` marks the project as done.
+- An old link becomes an active link from the migration day.
+- An old "removed" flag becomes ended links for the Jira links it suppressed.
+- An old name becomes the account id of the one Jira user with that name, or a `legacyName`.
+
+Nothing is deleted.
+
 ### 3.2 View model
 
-`WbsTask` stays as the view model the UI receives. It is built by merging the live Jira issue with its `WorkEffortRecord` (B-24 criterion 2). `toWorkEffort` and `fromWorkEffort` convert between the two and round-trip every stored field.
+`WbsTask` stays as the view model the UI receives. It is built by merging the live Jira issue with its stored record.
+- `toWorkEffortRecord` and `fromWorkEffortRecord` convert between the two and round-trip every stored field.
+- The view adds live fields: `dependencies[]` (every active link, stored or imported), with `dependency` as the first; `contributingResources` (names read live); `jiraBlockedBy`; and `datesFromChildren`.
 
 ### 3.3 Schedule engine equations (B-11)
 

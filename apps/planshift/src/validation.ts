@@ -84,6 +84,13 @@ export function validateTaskUpdates(updates: Record<string, unknown>): void {
     if (!Array.isArray(c) || c.length > 20) fail('contributingResources', 'contributingResources must be a list of at most 20 names');
     c.forEach(n => text('contributingResources', n));
   }
+  if (u.contributors !== undefined) {
+    const c = u.contributors;
+    if (!Array.isArray(c) || c.length > 20) fail('contributors', 'contributors must be a list of at most 20 people');
+    c.forEach(p => {
+      if (!isObject(p) || typeof p.accountId !== 'string' || !ACCOUNT_ID.test(p.accountId)) fail('contributors', 'each contributor needs a Jira account id');
+    });
+  }
   if (u.effortHours !== undefined) numberIn('effortHours', u.effortHours, 0, 10000);
   // Progress values outside 0 to 100 are clamped by the resolver; only the type is checked here.
   if (u.progress !== undefined) numberIn('progress', u.progress, -Infinity, Infinity);

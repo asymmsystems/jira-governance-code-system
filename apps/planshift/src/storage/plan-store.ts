@@ -40,6 +40,7 @@ export interface PlanSettings {
   hiddenColumns?: string[];
   milestones?: ProjectMilestone[];
   migratedAt?: string;
+  modelVersion?: number; // WorkEffort record model of every record (B-28)
 }
 
 export interface PutResult {
@@ -146,7 +147,7 @@ export class PlanStore {
    * milestones, ps:plan, ps:<key>:task:*). Writes every new record first, then deletes the old keys.
    * Returns true when legacy data was migrated.
    */
-  async ensureMigrated(idByKey: Map<string, string>): Promise<boolean> {
+  async ensureMigrated(idByKey: Map<string, string>, convert: (issueKey: string, entry: Partial<WbsTask>) => Partial<WbsTask> = (_k, e) => e): Promise<boolean> {
     const settings = await this.getSettings();
     if (settings.migratedAt) return false;
     const k = this.projectKey;
@@ -163,7 +164,7 @@ export class PlanStore {
       if (entry.manualProgress !== true) delete entry.progress;
       const pos = order.indexOf(issueKey);
       if (pos !== -1) entry.sequenceNum = (pos + 1) * 1000;
-      await this.putEntry(issueKey, idByKey.get(issueKey), entry as Partial<WbsTask>);
+      await this.putEntry(issueKey, idByKey.get(issueKey), convert(issueKey, entry as Partial<WbsTask>));
     }
     const patch: Partial<PlanSettings> = { migratedAt: new Date().toISOString() };
     if (widths) patch.columnWidths = widths;

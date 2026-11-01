@@ -87,7 +87,8 @@ describe('KVS holds app-owned data only (B-04)', () => {
       isSubtask: true, hierarchyLevel: -1 } as any;
     const once = stripJiraOwnedFields(entry);
     expect(once).toEqual({ startWeek: 'w', endWeek: 'x', startDate: '2026-11-04', endDate: '2026-11-10', spanWeeks: 1,
-      weeklyAllocations: { w: 100 }, dependency: entry.dependency, contributingResources: ['Bo'], targetProgress: 10, version: 3 });
+      weeklyAllocations: { w: 100 }, dependency: entry.dependency, targetProgress: 10, version: 3 });
+    // Names of second people are Jira-owned and read live; people are stored as contributors by account id (B-28).
     expect(stripJiraOwnedFields(once)).toEqual(once);
     expect(stripJiraOwnedFields({ progress: 30, manualProgress: true } as any)).toEqual({ progress: 30, manualProgress: true });
   });

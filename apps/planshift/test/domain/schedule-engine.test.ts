@@ -22,7 +22,7 @@ import {
 const eff = (id: string, start: string, end: string, percentComplete = 0): ScheduleEffort =>
   ({ workEffortId: id, estimatedStartDate: start, estimatedCompletionDate: end, percentComplete });
 const link = (from: string, to: string, triggerPercent: number): ScheduleLink =>
-  ({ workEffortIdFrom: from, workEffortIdTo: to, workEffortAssocTypeId: 'FRACTIONAL_MILESTONE', triggerPercent, isTriggerSatisfied: false });
+  ({ workEffortIdFrom: from, workEffortIdTo: to, workEffortAssocTypeId: 'WORK_EFF_PRECEDENCY', triggerPercent });
 const TODAY = '2026-11-04';
 
 describe('earliestStart (spec 3.3)', () => {

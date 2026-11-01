@@ -26,7 +26,7 @@ describe('PlanStore (B-09)', () => {
     expect([...storage.store.keys()].sort()).toEqual(['cp:10000:we:101', 'cp:10000:we:102']);
     const rec = await storage.get<any>('cp:10000:we:101');
     // The stored value is the WorkEffort record (B-24) plus bookkeeping fields.
-    expect(rec).toEqual({ issueKey: 'TEST-1', issueId: '101', version: 1, effort: { workEffortId: 'TEST-1' },
+    expect(rec).toEqual({ model: 2, issueKey: 'TEST-1', issueId: '101', version: 1, effort: { workEffortId: 'TEST-1' },
       assocs: [], parties: [], grid: { startWeek: 'w1', spanWeeks: 2 } });
   });
 

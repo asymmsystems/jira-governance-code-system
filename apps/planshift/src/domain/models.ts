@@ -5,6 +5,8 @@
  * visual Gantt with "Today" line and milestones, resizable columns, and fractional dependencies.
  */
 
+import type { EndedLink, Contributor } from './work-effort-links';
+
 export type TaskStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
 
 export type EstimateUnit = 'HOURS' | 'STORY_POINTS' | 'TSHIRT';
@@ -61,6 +63,7 @@ export interface TaskDependency {
   earliestStartReason?: string;
   notes?: string;
   jiraLinkId?: string; // id of the "Blocks" link that CascadePlan created for this dependency
+  since?: string;        // fromDate of the stored association (B-28)
   driverKey?: string;    // the predecessor that sets the earliest start (B-11)
   fixSuggestion?: string; // what the user can change to resolve a violation (B-11, B-12)
   triggerDate?: string;   // the day the driver reaches its trigger (B-12)
@@ -91,7 +94,13 @@ export interface WbsTask {
   endWeek?: string;       // weekKey, e.g. "26-Aug"
   spanWeeks?: number;     // number of weeks duration
   weeklyAllocations?: Record<string, number>; // weekKey -> % of week effort (e.g. { '15-Jul': 50 })
-  dependency?: TaskDependency | null; // null: the user removed it; a Jira link must not bring it back
+  dependency?: TaskDependency | null; // the first active link; null in an update removes every link
+  dependencies?: TaskDependency[];    // every active precedency link (B-28)
+  endedLinks?: EndedLink[];           // links the user removed; their Jira links are not imported again
+  contributors?: Contributor[];       // second people by account id (B-28); names are read live
+  jiraBlockedBy?: Array<{ key: string; id: string }>; // Jira "Blocks" predecessors, read live, never stored
+  datesFromChildren?: boolean;        // a parent whose dates are derived from its children (B-28)
+  model?: number;                     // stored record model; 1 = before B-28, read for the migration only
   isBacklog?: boolean;
   subtasks?: SubtaskItem[];
   parentId?: string;
@@ -308,62 +317,40 @@ export const DEFAULT_STORY_POINT_RATIO = 8; // 1 pt = 8 hours
 export const CURRENT_WEEK_INDEX = 6; // '26-Aug'
 
 /**
- * Universal Data Models for Project Management (Silverston / OFBiz / Moqui Pattern)
- * Provides canonical enterprise data modeling alignment for work efforts, associations,
- * party assignments, and estimation standards.
+ * WorkEffort model (Silverston pattern; reference: Apache OFBiz workeffort-entitymodel.xml, see
+ * silverston-conformance.md). Only app-owned planning data is stored (INV-04); the hierarchy, name,
+ * status and assignee stay in Jira.
  */
-export type WorkEffortType = 'PROJECT' | 'PHASE' | 'PROGRAM' | 'EPIC' | 'TASK' | 'ACTIVITY' | 'MILESTONE';
+export const WORK_EFFORT_MODEL = 2;
 
-export type WorkEffortStatus = 'WE_PLANNED' | 'WE_IN_PROGRESS' | 'WE_ON_HOLD' | 'WE_COMPLETE' | 'WE_CANCELLED';
+/** OFBiz WorkEffortAssocType; a percent trigger is a WORK_EFF_PRECEDENCY with a triggerPercent attribute. */
+export type WorkEffortAssocType = 'WORK_EFF_BREAKDOWN' | 'WORK_EFF_DEPENDENCY' | 'WORK_EFF_PRECEDENCY' | 'WORK_EFF_CONCURRENCY';
 
-export type WorkEffortAssocType = 'WORK_BREAKDOWN' | 'PRECEDENCE' | 'FRACTIONAL_MILESTONE' | 'DEPENDENCY';
+/** An extension role (RoleType is open in the pattern): a second person on a task. */
+export type WorkEffortRoleType = 'CONTRIBUTOR';
 
-export type WorkEffortRoleType = 'PRIMARY_ASSIGNEE' | 'CONTRIBUTOR' | 'QA_LEAD' | 'REVIEWER' | 'STAKEHOLDER';
-
-export interface WorkEffort {
-  workEffortId: string;
-  workEffortTypeId: WorkEffortType;
-  workEffortName: string;
-  description?: string;
-  currentStatusId: WorkEffortStatus;
-  estimatedStartDate?: string;
-  estimatedCompletionDate?: string;
-  actualStartDate?: string;
-  actualCompletionDate?: string;
-  estimatedHours: number;
-  actualHours?: number;
-  percentComplete: number;
-  targetPercentComplete: number;
-  manualProgress?: boolean;
-  sequenceNum?: number;
-  workEffortParentId?: string;
-}
-
+/** Time-bound association: the link is active until thruDate. Extra facts are attributes. */
 export interface WorkEffortAssoc {
   workEffortIdFrom: string;
   workEffortIdTo: string;
   workEffortAssocTypeId: WorkEffortAssocType;
-  sequenceNum?: number;
-  triggerPercent?: number;
-  lagTimeDays?: number;
-  isTriggerSatisfied: boolean;
-  isViolated?: boolean;
-  violationReason?: string;
-  notes?: string;
-  jiraLinkId?: string; // the Jira "Blocks" link that CascadePlan created for this association
+  fromDate: string;
+  thruDate?: string;
+  attrs: { triggerPercent: number; jiraLinkId?: string };
 }
 
+/** Keyed by partyId (Atlassian account id), role and fromDate; legacyName only for an unmatched old name. */
 export interface WorkEffortPartyAssignment {
   workEffortId: string;
-  partyId: string;
-  displayName: string;
+  partyId?: string;
+  legacyName?: string;
   roleTypeId: WorkEffortRoleType;
-  allocatedHours?: number;
-  capacityPercent?: number;
-  fromDate?: string;
+  fromDate: string;
   thruDate?: string;
+  subtaskKey?: string;
 }
 
+/** Extension: the estimate as the user entered it (mixed units have no home in the pattern). */
 export interface WorkEffortEstimate {
   workEffortId: string;
   estimateUnit: EstimateUnit;
@@ -372,87 +359,6 @@ export interface WorkEffortEstimate {
   bufferType: BufferType;
   bufferValue: number;
   totalCalculatedHours: number;
-}
-
-/**
- * Converts a CascadePlan WbsTask into a canonical Silverston / Moqui WorkEffort entity.
- */
-export function toWorkEffort(task: WbsTask): WorkEffort {
-  let statusId: WorkEffortStatus = 'WE_PLANNED';
-  if (task.status === 'COMPLETED') statusId = 'WE_COMPLETE';
-  else if (task.status === 'IN_PROGRESS') statusId = 'WE_IN_PROGRESS';
-
-  let typeId: WorkEffortType = 'TASK';
-  if (task.isEpic || task.hierarchyLevel === 1) typeId = 'EPIC';
-  else if (task.isSubtask || task.hierarchyLevel === -1) typeId = 'ACTIVITY';
-
-  return {
-    workEffortId: task.key || task.id,
-    workEffortTypeId: typeId,
-    workEffortName: task.summary,
-    currentStatusId: statusId,
-    estimatedStartDate: task.startDate,
-    estimatedCompletionDate: task.endDate,
-    estimatedHours: task.effortHours || 0,
-    percentComplete: task.progress || 0,
-    targetPercentComplete: task.targetProgress || 0,
-    manualProgress: task.manualProgress,
-    sequenceNum: task.orderIndex,
-    workEffortParentId: task.parentKey || task.parentId
-  };
-}
-
-/**
- * Converts a canonical Silverston / Moqui WorkEffort entity back into a CascadePlan WbsTask.
- */
-export function fromWorkEffort(
-  we: WorkEffort,
-  assocs?: WorkEffortAssoc[],
-  parties?: WorkEffortPartyAssignment[]
-): Partial<WbsTask> {
-  let status: TaskStatus = 'NOT_STARTED';
-  if (we.currentStatusId === 'WE_COMPLETE') status = 'COMPLETED';
-  else if (we.currentStatusId === 'WE_IN_PROGRESS') status = 'IN_PROGRESS';
-
-  const isEpic = we.workEffortTypeId === 'EPIC';
-  const isSubtask = we.workEffortTypeId === 'ACTIVITY';
-
-  const primaryParty = (parties || []).find(p => p.roleTypeId === 'PRIMARY_ASSIGNEE');
-  const otherParties = (parties || []).filter(p => p.roleTypeId !== 'PRIMARY_ASSIGNEE').map(p => p.displayName);
-
-  let dependency: TaskDependency | undefined;
-  const precAssoc = (assocs || []).find(a => a.workEffortIdTo === we.workEffortId && (a.workEffortAssocTypeId === 'PRECEDENCE' || a.workEffortAssocTypeId === 'FRACTIONAL_MILESTONE'));
-  if (precAssoc) {
-    dependency = {
-      predecessorId: precAssoc.workEffortIdFrom,
-      predecessorKey: precAssoc.workEffortIdFrom,
-      triggerPercent: precAssoc.triggerPercent !== undefined ? precAssoc.triggerPercent : 30,
-      isTriggerSatisfied: precAssoc.isTriggerSatisfied,
-      isViolated: precAssoc.isViolated,
-      violationReason: precAssoc.violationReason
-    };
-  }
-
-  return {
-    id: we.workEffortId,
-    key: we.workEffortId,
-    summary: we.workEffortName,
-    status,
-    effortHours: we.estimatedHours,
-    progress: we.percentComplete,
-    targetProgress: we.targetPercentComplete,
-    manualProgress: we.manualProgress,
-    startDate: we.estimatedStartDate || '',
-    endDate: we.estimatedCompletionDate || '',
-    isEpic,
-    isSubtask,
-    hierarchyLevel: isEpic ? 1 : (isSubtask ? -1 : 0),
-    parentKey: we.workEffortParentId,
-    resource: primaryParty ? primaryParty.displayName : 'Unassigned',
-    resourceAccountId: primaryParty ? primaryParty.partyId : undefined,
-    contributingResources: otherParties.length > 0 ? otherParties : undefined,
-    dependency
-  };
 }
 
 /**
@@ -493,13 +399,13 @@ export interface WorkEffortEstimateExtras {
  * WorkEffort pattern with its associations, party assignments and estimate.
  */
 export interface WorkEffortRecordBody {
+  model: number;
   effort: StoredWorkEffort;
   assocs: WorkEffortAssoc[];
   parties: WorkEffortPartyAssignment[];
   estimate?: WorkEffortEstimate;
   estimateExtras?: WorkEffortEstimateExtras;
   grid?: WorkEffortGrid;
-  precedenceRemoved?: boolean; // the user removed the dependency; a Jira link must not bring it back
 }
 
 function normalizedHoursOf(cfg: TaskEffortConfig): number {
@@ -518,7 +424,7 @@ function defined<T extends object>(o: T): T {
  * Converts the app-owned planning fields of a task into the stored WorkEffort record.
  * Jira-owned fields in the input are ignored.
  */
-export function toWorkEffortRecord(issueKey: string, entry: Partial<WbsTask>): WorkEffortRecordBody {
+export function toWorkEffortRecord(issueKey: string, entry: Partial<WbsTask>, today: string = new Date().toISOString().slice(0, 10)): WorkEffortRecordBody {
   const effort: StoredWorkEffort = defined({
     workEffortId: issueKey,
     estimatedStartDate: entry.startDate,
@@ -528,21 +434,20 @@ export function toWorkEffortRecord(issueKey: string, entry: Partial<WbsTask>): W
     manualProgress: entry.manualProgress,
     percentComplete: entry.manualProgress === true ? entry.progress : undefined
   });
-  const assocs: WorkEffortAssoc[] = [];
-  if (entry.dependency && entry.dependency.predecessorKey) {
-    assocs.push(defined({
-      workEffortIdFrom: entry.dependency.predecessorKey,
-      workEffortIdTo: issueKey,
-      workEffortAssocTypeId: 'FRACTIONAL_MILESTONE' as WorkEffortAssocType,
-      triggerPercent: entry.dependency.triggerPercent,
-      isTriggerSatisfied: false,
-      jiraLinkId: entry.dependency.jiraLinkId
-    }));
-  }
-  const parties: WorkEffortPartyAssignment[] = (entry.contributingResources || []).map(name => ({
-    workEffortId: issueKey, partyId: '', displayName: name, roleTypeId: 'CONTRIBUTOR' as WorkEffortRoleType
+  const link = (from: string, fromDate: string, triggerPercent: number, jiraLinkId?: string, thruDate?: string): WorkEffortAssoc => defined({
+    workEffortIdFrom: from, workEffortIdTo: issueKey, workEffortAssocTypeId: 'WORK_EFF_PRECEDENCY' as WorkEffortAssocType,
+    fromDate, thruDate, attrs: defined({ triggerPercent, jiraLinkId })
+  });
+  const active = entry.dependencies || (entry.dependency && entry.dependency.predecessorKey ? [entry.dependency] : []);
+  const assocs: WorkEffortAssoc[] = [
+    ...active.map(d => link(d.predecessorKey, d.since || today, d.triggerPercent, d.jiraLinkId)),
+    ...(entry.endedLinks || []).map(e => link(e.predecessorKey, e.since || e.until, typeof e.triggerPercent === 'number' ? e.triggerPercent : 100, e.jiraLinkId, e.until))
+  ];
+  const parties: WorkEffortPartyAssignment[] = (entry.contributors || []).map(c => defined({
+    workEffortId: issueKey, partyId: c.accountId, legacyName: c.accountId ? undefined : c.legacyName,
+    roleTypeId: 'CONTRIBUTOR' as WorkEffortRoleType, fromDate: c.since || today, subtaskKey: c.subtaskKey
   }));
-  const body: WorkEffortRecordBody = { effort, assocs, parties };
+  const body: WorkEffortRecordBody = { model: WORK_EFFORT_MODEL, effort, assocs, parties };
   const cfg = entry.effortConfig;
   if (cfg) {
     body.estimate = {
@@ -556,7 +461,6 @@ export function toWorkEffortRecord(issueKey: string, entry: Partial<WbsTask>): W
   const grid = defined({ startWeek: entry.startWeek, endWeek: entry.endWeek, spanWeeks: entry.spanWeeks,
     weeklyAllocations: entry.weeklyAllocations, isBacklog: entry.isBacklog, localSubtasks: entry.subtasks });
   if (Object.keys(grid).length > 0) body.grid = grid;
-  if (entry.dependency === null) body.precedenceRemoved = true;
   return body;
 }
 
@@ -565,7 +469,7 @@ export function toWorkEffortRecord(issueKey: string, entry: Partial<WbsTask>): W
  * A record written before B-24 (entry-shaped) is returned as it is.
  */
 export function fromWorkEffortRecord(rec: WorkEffortRecordBody): Partial<WbsTask> {
-  if (!rec || !(rec as any).effort) return { ...(rec as any) };
+  if (!rec || !(rec as any).effort) return { model: 1, ...(rec as any) };
   const e = rec.effort;
   const out: Partial<WbsTask> = defined({
     startDate: e.estimatedStartDate,
@@ -577,19 +481,30 @@ export function fromWorkEffortRecord(rec: WorkEffortRecordBody): Partial<WbsTask
     ...(rec.grid ? defined({ startWeek: rec.grid.startWeek, endWeek: rec.grid.endWeek, spanWeeks: rec.grid.spanWeeks,
       weeklyAllocations: rec.grid.weeklyAllocations, isBacklog: rec.grid.isBacklog, subtasks: rec.grid.localSubtasks }) : {})
   });
-  const precedence = (rec.assocs || []).find(a => a.workEffortAssocTypeId === 'FRACTIONAL_MILESTONE' || a.workEffortAssocTypeId === 'PRECEDENCE');
-  if (precedence) {
-    out.dependency = defined({
-      predecessorId: precedence.workEffortIdFrom,
-      predecessorKey: precedence.workEffortIdFrom,
-      triggerPercent: precedence.triggerPercent as number,
-      isTriggerSatisfied: false,
-      jiraLinkId: precedence.jiraLinkId
-    });
-  } else if (rec.precedenceRemoved) {
-    out.dependency = null;
+  if (rec.model === WORK_EFFORT_MODEL) {
+    const toDep = (a: WorkEffortAssoc): TaskDependency => defined({ predecessorId: a.workEffortIdFrom, predecessorKey: a.workEffortIdFrom,
+      triggerPercent: a.attrs.triggerPercent, isTriggerSatisfied: false, jiraLinkId: a.attrs.jiraLinkId, since: a.fromDate });
+    const active = rec.assocs.filter(a => !a.thruDate).map(toDep);
+    const ended = rec.assocs.filter(a => a.thruDate).map(a => defined({ predecessorKey: a.workEffortIdFrom, triggerPercent: a.attrs.triggerPercent,
+      since: a.fromDate, until: a.thruDate as string, jiraLinkId: a.attrs.jiraLinkId }));
+    if (active.length) {
+      out.dependencies = active;
+      out.dependency = active[0];
+    }
+    if (ended.length) out.endedLinks = ended;
+    if (rec.parties.length) out.contributors = rec.parties.map(p => defined({ accountId: p.partyId, legacyName: p.legacyName, since: p.fromDate, subtaskKey: p.subtaskKey }));
+  } else {
+    // Model 1 (B-24 shape), read so that the migration can convert it (B-28).
+    out.model = 1;
+    const old: any = (rec.assocs || []).find((a: any) => a.workEffortAssocTypeId === 'FRACTIONAL_MILESTONE' || a.workEffortAssocTypeId === 'PRECEDENCE');
+    if (old) {
+      out.dependency = defined({ predecessorId: old.workEffortIdFrom, predecessorKey: old.workEffortIdFrom, triggerPercent: old.triggerPercent as number,
+        isTriggerSatisfied: false, jiraLinkId: old.jiraLinkId });
+    } else if ((rec as any).precedenceRemoved) {
+      out.dependency = null;
+    }
+    if (rec.parties && rec.parties.length > 0) out.contributingResources = rec.parties.map((p: any) => p.displayName);
   }
-  if (rec.parties && rec.parties.length > 0) out.contributingResources = rec.parties.map(p => p.displayName);
   if (rec.estimate) {
     const x = rec.estimateExtras || {};
     out.effortConfig = defined({

@@ -6726,14 +6726,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
         percentComplete: t.progress || 0,
         started: t.status === "IN_PROGRESS" || t.status === "COMPLETED"
       });
-      if (t.dependency && t.dependency.predecessorKey && typeof t.dependency.triggerPercent === "number") {
-        links.push({
-          workEffortIdFrom: t.dependency.predecessorKey,
-          workEffortIdTo: t.key,
-          workEffortAssocTypeId: "FRACTIONAL_MILESTONE",
-          triggerPercent: t.dependency.triggerPercent,
-          isTriggerSatisfied: false
-        });
+      for (const d of t.dependencies || (t.dependency ? [t.dependency] : [])) {
+        if (d.predecessorKey && typeof d.triggerPercent === "number") {
+          links.push({ workEffortIdFrom: d.predecessorKey, workEffortIdTo: t.key, workEffortAssocTypeId: "WORK_EFF_PRECEDENCY", triggerPercent: d.triggerPercent });
+        }
       }
     }
     try {
@@ -8366,17 +8362,14 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const primaryName = lead ? lead.name : "Unassigned";
       const primaryAccountId = lead ? lead.accountId || (currentPlan?.availableUsers || []).find((u) => u.displayName === lead.name)?.accountId : "unassigned";
       const contributingList = assignedResources.map((r) => r.name);
+      const ids = assignedResources.map((r) => r.accountId || (currentPlan?.availableUsers || []).find((u) => u.displayName === r.name)?.accountId);
       curTask.resource = primaryName;
       curTask.resourceAccountId = primaryAccountId;
       curTask.contributingResources = contributingList;
-      await callResolver2("updateWbsTask", {
-        taskId: curTask.key,
-        updates: {
-          resource: primaryName,
-          resourceAccountId: primaryAccountId,
-          contributingResources: contributingList
-        }
-      });
+      const updates = { resource: primaryName, resourceAccountId: primaryAccountId };
+      if (ids.every(Boolean)) updates.contributors = ids.map((accountId) => ({ accountId }));
+      else updates.contributingResources = contributingList;
+      await callResolver2("updateWbsTask", { taskId: curTask.key, updates });
       renderTimelineRows();
     }
     async function toggleResource(user) {
@@ -9604,10 +9597,10 @@ Click to manage or assign.`;
     if (!task.startDate) return null;
     const key = task.key;
     const hit = document.createElement("div");
-    hit.className = "bar-hit" + (isEpic ? " is-epic" : "");
+    hit.className = "bar-hit" + (isEpic || task.datesFromChildren ? " is-epic" : "");
     hit.dataset.taskId = key;
     hit.setAttribute("aria-hidden", "true");
-    if (!isEpic) {
+    if (!isEpic && !task.datesFromChildren) {
       for (const edge of ["left", "right"]) {
         const handle = document.createElement("div");
         handle.className = `bar-handle bar-handle-${edge}`;
@@ -9869,6 +9862,11 @@ Click to manage or assign.`;
     }
     if (!task) return;
     if (e.key === " " && task.startDate && !(task.isEpic || task.hierarchyLevel === 1)) {
+      if (task.datesFromChildren) {
+        e.preventDefault();
+        announce(`${task.key} follows the dates of its children. Move a child instead.`);
+        return;
+      }
       e.preventDefault();
       startMoveMode(task);
     } else if (e.key === "Enter") {
@@ -9967,6 +9965,10 @@ Click to manage or assign.`;
     const task = findTask(key);
     if (!task) return;
     closeBarToolbar();
+    if ((action === "earlier" || action === "later") && task.datesFromChildren) {
+      showFlag({ text: `${key} follows the dates of its children. Move a child instead.` });
+      return;
+    }
     if (action === "earlier" || action === "later") {
       const days = action === "later" ? 7 : -7;
       const mine = showShiftPreview(key, days, days, (m) => `${key} \u2794 ${m.start}`);

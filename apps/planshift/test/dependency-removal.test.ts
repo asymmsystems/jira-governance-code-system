@@ -93,15 +93,20 @@ describe('dependency removal (B-06)', () => {
     links.push({ id: '7', pred: 'TEST-9', succ: 'TEST-2' });
     await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2', updates: { dependency: dep } });
     await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2', updates: { dependency: null } });
-    expect((await stored()).dependency).toBeNull();
+    // Every active link ends, the imported Jira link from TEST-9 too; only the link CascadePlan created is deleted (B-28).
+    const after = await stored();
+    expect(after.dependency).toBeUndefined();
+    expect(after.endedLinks.map((e: any) => [e.predecessorKey, e.jiraLinkId]).sort()).toEqual([['TEST-1', '100'], ['TEST-9', undefined]]);
     expect(deletes()).toEqual(['/rest/api/3/issueLink/100']);
     expect(links).toEqual([{ id: '7', pred: 'TEST-9', succ: 'TEST-2' }]);
+    expect((await getProjectPlan('TEST', storage)).tasks.find(t => t.key === 'TEST-2')!.dependency).toBeUndefined();
   });
 
   it('an empty dependency object also removes it', async () => {
     await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2', updates: { dependency: dep } });
     await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2', updates: { dependency: { predecessorId: '', predecessorKey: '', triggerPercent: 0, isTriggerSatisfied: false } } });
-    expect((await stored()).dependency).toBeNull();
+    expect((await stored()).dependency).toBeUndefined();
+    expect((await stored()).endedLinks.map((e: any) => e.predecessorKey)).toEqual(['TEST-1']);
     expect(links).toEqual([]);
   });
 
