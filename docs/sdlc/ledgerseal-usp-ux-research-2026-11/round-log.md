@@ -110,3 +110,13 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
   - `src/domain/display.ts`: display text, cut at 2,000 characters with a flag.
 - Adversarial test: the T-01 tampered-view scenario (500 views) now makes one incident entry, one record update and one property write. The record grows by less than 200 bytes.
 - Results: `tsc` OK. 14 suites, 126 tests pass. Global branches 94.21%. `ledger.ts` 98.86%, `display.ts` 100%, `index.ts` 94.73%. Graders all True. No em dash.
+- B-03 commit: `31e6b74`.
+
+### B-04 Identity from context only (LS-03, LS-17)
+- Tests: `test/identity.test.ts`.
+- First run: 2 of 3 passed and 1 failed.
+  - The two that passed: a spoofed payload signer is ignored, and the panel gets the account id with no email. B-01 already takes the signer from context, and the B-02 record has no email field, so these had no red phase.
+  - The UI test failed for the right reason: the panel printed the account id as text and had no `User` component.
+- Code: `src/frontend/index.tsx` shows the signer with the UI Kit `User` component (FG-40), which respects the user's profile privacy.
+- Adversarial test: the audit flow.js step 3 spoof (`cfo@victim.example`, "CFO", `cfo-account`) leaves no trace in any stored value.
+- Results: `tsc` OK. 15 suites, 129 tests pass. Global branches 94.21% (no `.ts` source file changed). Graders all True.

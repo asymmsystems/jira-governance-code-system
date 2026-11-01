@@ -11,7 +11,8 @@ import ForgeReconciler, {
   Label,
   Checkbox,
   Box,
-  Spinner
+  Spinner,
+  User
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
 import { TamperAnalysis } from '../domain/models';
@@ -200,9 +201,10 @@ export const LedgerSealPanel: React.FC = () => {
           <Stack space="space.050">
             <Heading as="h5">Audit Certificate Details</Heading>
             <Text>Certificate ID: {analysis.seal.certificateId}</Text>
-            <Text>
-              Signer: {analysis.seal.sealedByName} (Account: {analysis.seal.sealedByAccountId})
-            </Text>
+            <Inline space="space.050" alignBlock="center">
+              <Text>Signer:</Text>
+              <User accountId={analysis.seal.sealedByAccountId} />
+            </Inline>
             <Text>Meaning: {analysis.seal.meaning}</Text>
             <Text>Digest: {analysis.sealedHash}</Text>
             <Button appearance="subtle" onClick={() => setShowDetails(!showDetails)}>
