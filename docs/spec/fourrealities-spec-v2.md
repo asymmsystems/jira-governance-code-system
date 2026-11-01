@@ -140,6 +140,7 @@ Every name the gates match on is data in one catalog (`src/contract/data/catalog
 | `CONFLUENCE_PAGE_LINK` | Intent | VERIFIED | the link URL |
 | `DECISION_ISSUE_LINK` | Intent | VERIFIED | the linked issue key |
 | `DEFINITIONGUARD_PROPERTY` | Process | NOT_VERIFIED | the checklist hash, when the shape is DefinitionGuard's |
+| `HEROCODERS_CHECKLIST_PROPERTY` | Process | NOT_VERIFIED | the property's `progressText` (B-25) |
 | `DEVELOPMENT_FIELD` | Code | HEURISTIC | `pull requests: n` |
 | `GATE_EXCEPTION` | Code | (EXCEPTED) | `approved <time>` |
 | `LEDGERSEAL_PROPERTY` | Audit | NOT_VERIFIED | the certificate id, when the shape is LedgerSeal's |
@@ -167,6 +168,7 @@ A gate result is an observation: `method` names the source whose record it rests
 | `definitionguard-dod` present with another shape | MISSING | | `DOD_SHAPE_UNKNOWN` |
 | No `definitionguard-dod`; HeroCoders `checklist` has a numeric `uncheckedMandatoryItems` equal to 0 | FOUND | NOT_VERIFIED | `DOD_COMPLETE_HC` |
 | HeroCoders `checklist` with `uncheckedMandatoryItems > 0` | MISSING (Done) or NOT_APPLICABLE | | `DOD_OPEN_HC` (args: open) |
+| HeroCoders `checklist` whose `uncheckedMandatoryItems` is not a non-negative integer | as if absent | | `DOD_NONE` or `NOT_DONE` |
 | No record, Done | MISSING | | `DOD_NONE` |
 | No complete record, not Done | NOT_APPLICABLE | | `NOT_DONE` |
 | A FOUND record carries `issuedAt` older than the issue's `updated` | NEEDS_RECHECK | | `CHANGED_SINCE_ATTESTATION` |

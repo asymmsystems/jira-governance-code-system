@@ -250,3 +250,29 @@ describe('B-10: Code gate from the Development field, labelled heuristic', () =>
     }
   });
 });
+
+describe('B-25: HeroCoders checklist property as a labelled Process hint', () => {
+  const { sourceLine } = require('../../src/ui/gate-text');
+  // Shape from the vendor documentation (DD-21): uncheckedMandatoryItems is a top-level number.
+  const hc = (uncheckedMandatoryItems: unknown) => ({ completedText: 'Not Completed', allMandatoryItems: 3, uncheckedMandatoryItems, progressText: 'Checklist: 2/4' });
+
+  it('reads no open mandatory items as found, not verified, with its own source', () => {
+    const r = evaluateProcess(makeFacts({ properties: { checklist: hc(0) } }));
+    expect(judged(r)).toEqual({ state: 'FOUND', verification: 'NOT_VERIFIED', reason: 'DOD_COMPLETE_HC' });
+    expect(r).toMatchObject({ method: 'HEROCODERS_CHECKLIST_PROPERTY', evidenceRef: 'Checklist: 2/4' });
+    expect(sourceLine(r)).toBe('Source: Checklists for Jira (HeroCoders) property checklist, not verified by FourRealities.');
+  });
+
+  it('reads open mandatory items as missing when done and not applicable before', () => {
+    expect(judged(evaluateProcess(makeFacts({ properties: { checklist: hc(2) } })))).toEqual({ state: 'MISSING', reason: 'DOD_OPEN_HC', args: { open: 2 } });
+    expect(evaluateProcess(makeFacts({ statusCategory: 'indeterminate', properties: { checklist: hc(2) } })).state).toBe('NOT_APPLICABLE');
+  });
+
+  it('uses DefinitionGuard first, and ignores a checklist without a numeric count', () => {
+    const dod = { isFullySatisfied: false, completedCount: 1, totalCount: 3, checklistHash: 'a'.repeat(64) };
+    expect(evaluateProcess(makeFacts({ properties: { dod, checklist: hc(0) } })).reason).toBe('DOD_OPEN_DG');
+    for (const bad of [hc('0'), hc(-1), hc(1.5), { progressText: 'x' }, 'text']) {
+      expect(evaluateProcess(makeFacts({ properties: { checklist: bad } })).reason).toBe('DOD_NONE');
+    }
+  });
+});

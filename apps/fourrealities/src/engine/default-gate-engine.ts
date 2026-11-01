@@ -4,7 +4,7 @@
  * FourRealities: gate evaluation. Pure functions from issue facts to gate results (spec v2, Gates).
  */
 
-import { DefinitionGuardRecord, GateResult, IssueFacts, IssueGates, LedgerSealRecord } from '../contract/data/models';
+import { DefinitionGuardRecord, GateResult, HeroCodersChecklistRecord, IssueFacts, IssueGates, LedgerSealRecord } from '../contract/data/models';
 import { DEFAULT_CATALOG, EVIDENCE_REF_MAX, EvidenceCatalog } from '../contract/data/catalog';
 import { GateEngine } from '../contract/engines';
 
@@ -81,6 +81,11 @@ export function isDefinitionGuardShape(value: unknown): value is DefinitionGuard
     && typeof dod.checklistHash === 'string' && HEX64.test(dod.checklistHash);
 }
 
+/** The HeroCoders checklist property with a usable count of open mandatory items. */
+export function isHeroCodersChecklistShape(value: unknown): value is HeroCodersChecklistRecord {
+  return Boolean(value) && typeof value === 'object' && isCount((value as { uncheckedMandatoryItems?: unknown }).uncheckedMandatoryItems);
+}
+
 /** The shape LedgerSeal writes: status, UUID certificate id, SHA-256 hex hash, ISO seal date. */
 export function isLedgerSealShape(value: unknown): value is LedgerSealRecord {
   const cert = (value || {}) as Partial<Record<keyof LedgerSealRecord, unknown>>;
@@ -99,8 +104,9 @@ function isStale(record: { issuedAt?: string }, f: IssueFacts): boolean {
 }
 
 /**
- * Process: the Definition of Done record from DefinitionGuard, read as a hint only.
- * FourRealities never verifies it, so it never shows as verified (spec v2, Process).
+ * Process: the Definition of Done record from DefinitionGuard, else the HeroCoders checklist
+ * property, read as a hint only. FourRealities never verifies either, so neither shows as
+ * verified (spec v2, Process; B-25).
  */
 export function evaluateProcess(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG): GateResult {
   const dod = f.properties.dod;
@@ -116,6 +122,13 @@ export function evaluateProcess(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATA
         : seen({ state: 'FOUND', reason: 'DOD_COMPLETE_DG', args }, dod.checklistHash);
     }
     return isDone(f) ? seen({ state: 'MISSING', reason: 'DOD_OPEN_DG', args }, dod.checklistHash) : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
+  }
+  const checklist = f.properties.checklist;
+  if (isHeroCodersChecklistShape(checklist)) {
+    const open = checklist.uncheckedMandatoryItems;
+    const seen = (result: GateResult) => observed(c, 'HEROCODERS_CHECKLIST_PROPERTY', result, checklist.progressText);
+    if (open === 0) return seen({ state: 'FOUND', reason: 'DOD_COMPLETE_HC' });
+    return isDone(f) ? seen({ state: 'MISSING', reason: 'DOD_OPEN_HC', args: { open } }) : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
   }
   return isDone(f)
     ? { state: 'MISSING', reason: 'DOD_NONE' }

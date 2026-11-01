@@ -155,3 +155,13 @@ describe('B-24: a 200 with an empty body', () => {
     expect((await visibleIssueIds('DEMO', noIssues, Date.now() + 10_000)).ids.size).toBe(0);
   });
 });
+
+describe('B-25: the checklist property comes in the same search call', () => {
+  it('asks for the DefinitionGuard, LedgerSeal and HeroCoders properties in one request', async () => {
+    const request = jest.fn(async () => ({ status: 200, json: async () => ({ issues: [], isLast: true }) }));
+    await searchProjectIssues('DEMO', null, request, Date.now() + 10_000);
+    expect(request).toHaveBeenCalledTimes(1);
+    const props = new URL('https://x' + pathOf((request.mock.calls[0] as any[])[0])).searchParams.get('properties');
+    expect(props?.split(',')).toEqual(['ledgerseal-cert', 'definitionguard-dod', 'checklist']);
+  });
+});

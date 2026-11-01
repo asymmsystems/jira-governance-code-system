@@ -36,6 +36,7 @@ export const DEFAULT_CATALOG: EvidenceCatalog = {
     CONFLUENCE_PAGE_LINK: { gate: 'intent', verification: 'VERIFIED' },
     DECISION_ISSUE_LINK: { gate: 'intent', verification: 'VERIFIED' },
     DEFINITIONGUARD_PROPERTY: { gate: 'process', verification: 'NOT_VERIFIED' },
+    HEROCODERS_CHECKLIST_PROPERTY: { gate: 'process', verification: 'NOT_VERIFIED' },
     DEVELOPMENT_FIELD: { gate: 'code', verification: 'HEURISTIC' },
     GATE_EXCEPTION: { gate: 'code' },
     LEDGERSEAL_PROPERTY: { gate: 'audit', verification: 'NOT_VERIFIED' }

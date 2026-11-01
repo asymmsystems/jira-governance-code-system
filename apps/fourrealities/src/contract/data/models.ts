@@ -345,6 +345,15 @@ export interface DefinitionGuardRecord {
   issuedAt?: string;
 }
 
+/**
+ * The parts of the Checklists for Jira (HeroCoders) property checklist that FourRealities reads
+ * (vendor documentation DD-21; verify on a site with the app before release).
+ */
+export interface HeroCodersChecklistRecord {
+  uncheckedMandatoryItems: number;
+  progressText?: string;
+}
+
 /** The record LedgerSeal writes at ledgerseal-cert, after the gate engine checks its shape. */
 export interface LedgerSealRecord {
   status: string;
