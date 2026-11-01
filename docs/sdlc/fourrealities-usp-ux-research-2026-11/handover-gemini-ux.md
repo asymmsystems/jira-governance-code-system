@@ -1,6 +1,8 @@
 # Prompt for Gemini: in-Jira UX standard and FourRealities redesign
 
-Read `handover-gemini.md` (same folder) first. Every rule, command and pitfall there still applies. This prompt adds one task in two phases. **Phase 1 is a design document that the owner must approve. Do not build until line 1 of that document reads `APPROVED <date>`.** The owner's process is design first, approval, then build.
+Read `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/sdlc/fourrealities-usp-ux-research-2026-11/handover-gemini.md` first. Every rule, command and pitfall there still applies. This prompt adds one task in two phases. **Phase 1 is a design document that the owner must approve. Do not build until line 1 of that document reads `APPROVED <date>`.** The owner's process is design first, approval, then build.
+
+Work only in the worktree `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build` (branch `feature/fourrealities-research-build`). The app is `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities`. Paths below that start with `src/` or `test/` are inside the app; paths that start with `docs/` are inside the worktree.
 
 ## 0. Inputs from the owner (2026-11-01)
 
@@ -81,7 +83,7 @@ You may adjust a shade, but record its contrast numbers in the standard. Never u
 
 ## 2. Phase 1: write the standard (no code)
 
-Write `docs/design/asymm-jira-ui-standard.md` for the owner's approval. Leave line 1 empty for the owner's APPROVED line. It must cover the following, each with a short ASCII wireframe:
+Write `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/design/asymm-jira-ui-standard.md` for the owner's approval. Leave line 1 empty for the owner's APPROVED line. It must cover the following, each with a short ASCII wireframe:
 
 1. **Panel anatomy for every app inside a Jira issue (issue panel).** Recommended baseline, which you may improve with reasons:
    - **Header row:** app name (the manifest title), one status lozenge (for example "Incomplete", "Sealed", "DoD complete"), and a subtle "Refresh" button on the right.
