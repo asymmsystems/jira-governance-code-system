@@ -32,6 +32,7 @@ import {
   toTemplatePayload,
   updateItem
 } from '../ui/template-editor';
+import { panelErrorText } from '../ui/panel-view-model';
 
 type Settings = {
   projectKey: string;
@@ -60,8 +61,8 @@ export const SettingsPage: React.FC = () => {
       const first = issueTypeId || s.issueTypes[0]?.id || '';
       setIssueTypeId(first);
       setEditor(editorFromTemplate(s.templates[first]));
-    } catch (err: any) {
-      setError(err?.message || 'DefinitionGuard could not load the settings. Refresh the page.');
+    } catch (err) {
+      setError(panelErrorText(err, 'load the settings'));
     }
   };
 
@@ -83,8 +84,8 @@ export const SettingsPage: React.FC = () => {
       const res = (await invoke('saveTemplate', { issueTypeId, template: toTemplatePayload(editor) })) as unknown as { template: any };
       setNotice(`Template "${res.template.name}" version ${res.template.version} saved. New checklists for this issue type use it.`);
       await load();
-    } catch (err: any) {
-      setError(err?.message || 'The template was not saved. Try again.');
+    } catch (err) {
+      setError(panelErrorText(err, 'save the template'));
     } finally {
       setSaving(false);
     }
@@ -98,8 +99,8 @@ export const SettingsPage: React.FC = () => {
       await invoke('saveExemptions', { exemptStatusIds: exempt });
       setNotice('Saved. Moves into the ticked statuses are not gated, for example Canceled or Declined.');
       await load();
-    } catch (err: any) {
-      setError(err?.message || 'The statuses were not saved. Try again.');
+    } catch (err) {
+      setError(panelErrorText(err, 'save the statuses'));
     } finally {
       setSaving(false);
     }
