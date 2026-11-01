@@ -21,17 +21,11 @@ export class PermissionDeniedError extends Error {
 export const PERMISSION_CHECK_FAILED =
   'DefinitionGuard could not check your Jira permissions, so the change was not saved. Try again.';
 
-/**
- * Returns the granted state of each requested permission on the issue, as the calling user.
- * Throws PermissionDeniedError when the check itself fails.
- */
-export async function getIssuePermissions(issueKey: string, keys: JiraPermissionKey[]): Promise<Record<string, boolean>> {
-  if (!issueKey || keys.length === 0) {
-    throw new PermissionDeniedError(PERMISSION_CHECK_FAILED);
-  }
+/** Calls /mypermissions as the user for one route and reads the requested keys. Any failure denies. */
+async function fetchGranted(request: () => Promise<any>, keys: JiraPermissionKey[]): Promise<Record<string, boolean>> {
   let res: any;
   try {
-    res = await api.asUser().requestJira(route`/rest/api/3/mypermissions?issueKey=${issueKey}&permissions=${keys.join(',')}`);
+    res = await request();
   } catch {
     throw new PermissionDeniedError(PERMISSION_CHECK_FAILED);
   }
@@ -44,6 +38,34 @@ export async function getIssuePermissions(issueKey: string, keys: JiraPermission
     granted[key] = body?.permissions?.[key]?.havePermission === true;
   }
   return granted;
+}
+
+/**
+ * Returns the granted state of each requested permission on the issue, as the calling user.
+ * Throws PermissionDeniedError when the check itself fails.
+ */
+export async function getIssuePermissions(issueKey: string, keys: JiraPermissionKey[]): Promise<Record<string, boolean>> {
+  if (!issueKey || keys.length === 0) {
+    throw new PermissionDeniedError(PERMISSION_CHECK_FAILED);
+  }
+  return fetchGranted(() => api.asUser().requestJira(route`/rest/api/3/mypermissions?issueKey=${issueKey}&permissions=${keys.join(',')}`), keys);
+}
+
+/**
+ * Project-level permissions for the calling user (settings page). Same fail-closed rules.
+ */
+export async function getProjectPermissions(projectKey: string, keys: JiraPermissionKey[]): Promise<Record<string, boolean>> {
+  if (!projectKey || keys.length === 0) {
+    throw new PermissionDeniedError(PERMISSION_CHECK_FAILED);
+  }
+  return fetchGranted(() => api.asUser().requestJira(route`/rest/api/3/mypermissions?projectKey=${projectKey}&permissions=${keys.join(',')}`), keys);
+}
+
+export async function checkProjectPermissions(projectKey: string, keys: JiraPermissionKey[], deniedMessage: string): Promise<void> {
+  const granted = await getProjectPermissions(projectKey, keys);
+  if (!keys.every(k => granted[k])) {
+    throw new PermissionDeniedError(deniedMessage);
+  }
 }
 
 /**

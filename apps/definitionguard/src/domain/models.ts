@@ -11,6 +11,9 @@ export interface ChecklistItemTemplate {
   description?: string;
   isMandatory: boolean;
   category: ChecklistCategory;
+  evidenceRequired?: boolean;   // v2: a tick needs a link or a note
+  requiredPermission?: string;  // v2: Jira permission key needed to tick, besides EDIT_ISSUES
+  notAssignee?: boolean;        // v2: the current assignee may not complete it
 }
 
 export interface ChecklistTemplate {
@@ -19,6 +22,8 @@ export interface ChecklistTemplate {
   description: string;
   projectKey?: string;
   issueType?: string;
+  version?: number;             // v2: increases on every save of a project template
+  waiverPermission?: string;    // v2: Jira permission key needed to waive; default ADMINISTER_PROJECTS
   items: ChecklistItemTemplate[];
 }
 

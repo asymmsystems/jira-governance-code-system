@@ -124,7 +124,8 @@ export const DefinitionGuardPanel: React.FC = () => {
   const completedMandatory = mandatoryItems.filter(i => i.isCompleted).length;
   const totalCompleted = checklist?.items.filter(i => i.isCompleted).length || 0;
   const totalItems = checklist?.items.length || 0;
-  const isGateOpen = checklist ? (mandatoryItems.length > 0 && mandatoryItems.length === completedMandatory) : false;
+  // Same rule as the validator: satisfied when every mandatory item is done (zero mandatory items counts as satisfied).
+  const isGateOpen = checklist ? checklist.isFullySatisfied : false;
 
   return (
     <Stack space="space.150">

@@ -94,8 +94,8 @@ describe('B-01 validator fails closed and never writes', () => {
     expect(res.errorMessage).toContain(BLOCKED_ON_ERROR);
   });
 
-  it('uses the issue type from the context and makes no Jira call', async () => {
-    const res = await validateTransition({ issue: { id: '10009', key: 'DEMO-9' } }, { extension: { issue: { type: 'Bug' } } }, storage);
+  it('uses the issue type and project ids from the context and makes no Jira call', async () => {
+    const res = await validateTransition({ issue: { id: '10009', key: 'DEMO-9' } }, { extension: { issue: { type: 'Bug', typeId: '10005' }, project: { id: '10000' } } }, storage);
     expect(res.result).toBe(false);
     expect(res.errorMessage).toContain(BUG_DEFINITION_OF_DONE.items[0].title);
     expect(jira.calls).toEqual([]);

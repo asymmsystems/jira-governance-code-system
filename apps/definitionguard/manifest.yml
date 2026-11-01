@@ -8,6 +8,13 @@ modules:
       resource: main
       resolver:
         function: resolver
+  jira:projectSettingsPage:
+    - key: definitionguard-project-settings
+      title: DefinitionGuard
+      render: native
+      resource: settings
+      resolver:
+        function: settings-resolver
   jira:workflowValidator:
     - key: definitionguard-workflow-validator
       name: DefinitionGuard DoD Enforcement
@@ -18,10 +25,14 @@ modules:
       handler: index.handler
     - key: validateTransition
       handler: index.validateTransition
+    - key: settings-resolver
+      handler: index.settingsHandler
 
 resources:
   - key: main
     path: src/frontend/index.tsx
+  - key: settings
+    path: src/frontend/settings.tsx
 
 app:
   id: ari:cloud:ecosystem::app/73e4f63d-7d60-450c-96d5-f81ca68a709c

@@ -85,7 +85,7 @@ export function createdEvent(state: ChecklistState, template: ChecklistTemplate,
     projectId: state.projectId,
     items: itemsFromTemplate(template),
     templateId: template.id,
-    templateVersion: (template as any).version || 1
+    templateVersion: template.version || 1
   });
 }
 

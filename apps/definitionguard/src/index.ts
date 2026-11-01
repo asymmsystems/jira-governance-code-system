@@ -1,75 +1,29 @@
 import api, { route } from '@forge/api';
 import Resolver from '@forge/resolver';
-import { kvs, WhereConditions } from '@forge/kvs';
 import {
   getTemplateForCategory,
   getAvailableTemplates
 } from './domain/checklist-engine';
 import { TransitionValidator } from './validator/transition-validator';
 import { StorageProvider } from './storage/checklist-repository';
+import { resolveStorage } from './storage/forge-storage';
 import { ChecklistStore } from './storage/checklist-store';
 import { applyEvent, createdEvent, emptyState, chainMessage, CHAIN_LIMIT_NOTE } from './domain/event-log';
 import { ChecklistEvent, ChecklistState, IssueChecklistState, ChecklistAuditEvent } from './domain/models';
 import { checkIssuePermissions, EDIT_DENIED, RESET_DENIED } from './security/permissions';
+import { resolveTemplate } from './settings/template-store';
+import { ChecklistTemplate } from './domain/models';
 
-class ForgeKvsProvider implements StorageProvider {
-  async get<T>(key: string): Promise<T | undefined> {
-    const val = await kvs.get(key);
-    return val as T;
-  }
+export { settingsHandler } from './settings/settings-resolvers';
 
-  async set(key: string, value: any): Promise<void> {
-    await kvs.set(key, value);
-  }
-
-  async delete(key: string): Promise<void> {
-    await kvs.delete(key);
-  }
-
-  async setIfAbsent(key: string, value: any): Promise<boolean> {
-    try {
-      await kvs.set(key, value, { keyPolicy: 'FAIL_IF_EXISTS' });
-      return true;
-    } catch (err) {
-      // A failed FAIL_IF_EXISTS write is a lost race only if the key now exists (strict read).
-      if ((await kvs.get(key)) !== undefined) return false;
-      throw err;
-    }
-  }
-
-  async listByPrefix(prefix: string, cursor?: string, limit = 100): Promise<{ values: any[]; nextCursor?: string }> {
-    let query = kvs.query().where('key', WhereConditions.beginsWith(prefix)).limit(limit);
-    if (cursor) query = query.cursor(cursor);
-    const page = await query.getMany<any>();
-    return { values: page.results.map(r => r.value), nextCursor: page.nextCursor };
-  }
-}
-
-let globalStorageProvider: StorageProvider | null = null;
-
-export function setGlobalStorageProvider(provider: StorageProvider | null): void {
-  globalStorageProvider = provider;
-}
-
-export function resolveStorage(customProvider?: StorageProvider): StorageProvider {
-  if (customProvider) {
-    return customProvider;
-  }
-  if (globalStorageProvider) {
-    return globalStorageProvider;
-  }
-  if (process.env.NODE_ENV === 'test') {
-    throw new Error('DefinitionGuard: StorageProvider must be initialized.');
-  }
-  return new ForgeKvsProvider();
-}
+export { setGlobalStorageProvider, resolveStorage } from './storage/forge-storage';
 
 /**
  * Fetches the authentic Jira issue representation to determine issue type.
  */
 export async function fetchLiveJiraIssue(issueIdOrKey: string): Promise<any | null> {
   try {
-    const res = await api.asApp().requestJira(route`/rest/api/3/issue/${issueIdOrKey}?fields=issuetype,status`);
+    const res = await api.asApp().requestJira(route`/rest/api/3/issue/${issueIdOrKey}?fields=issuetype,project,status`);
     if (res.status === 200) {
       return await res.json();
     }
@@ -100,17 +54,17 @@ export const VALIDATOR_FAILURE_MESSAGE =
  * so the validator blocks instead of guessing (fail closed).
  */
 async function fetchIssueForValidator(issueIdOrKey: string): Promise<any> {
-  const res = await api.asApp().requestJira(route`/rest/api/3/issue/${issueIdOrKey}?fields=issuetype`);
+  const res = await api.asApp().requestJira(route`/rest/api/3/issue/${issueIdOrKey}?fields=issuetype,project`);
   if (res.status !== 200) {
     throw new Error(`DefinitionGuard: issue lookup returned ${res.status}`);
   }
   return await res.json();
 }
 
-/** A checklist built in memory from the issue-type template. Nothing is stored. */
-function stateFromTemplate(issueId: string, issueKey: string, projectId: string, issueType?: string): ChecklistState {
+/** A checklist built in memory from a template. Nothing is stored. */
+function stateFromTemplate(issueId: string, issueKey: string, projectId: string, template: ChecklistTemplate): ChecklistState {
   const base = emptyState(issueId, issueKey, projectId);
-  return applyEvent(base, createdEvent(base, getTemplateForCategory(issueType || 'Task'), 'system', new Date().toISOString()));
+  return applyEvent(base, createdEvent(base, template, 'system', new Date().toISOString()));
 }
 
 /** The v1 item shape that TransitionValidator and the current panel read. */
@@ -164,15 +118,21 @@ async function evaluateTransition(payload: any, context?: any, storageProvider?:
   const store = new ChecklistStore(resolveStorage(storageProvider));
   let state = await store.loadOrLegacy(issueId);
 
-  // No checklist yet: apply the issue-type template in memory and block on it (Fixes D-14).
-  // Nothing is stored; the first change on the panel creates the record.
+  // No checklist yet: apply the template in memory and block on it (Fixes D-14).
+  // The project template for the issue type comes first, then the built-in one. Nothing is stored.
   if (!state) {
-    let issueType = context?.extension?.issue?.type;
-    if (!issueType) {
+    const ctxIssue = context?.extension?.issue;
+    let projectId = String(context?.extension?.project?.id || '');
+    let issueTypeId = String(ctxIssue?.typeId || '');
+    let issueType = ctxIssue?.type;
+    if (!projectId || !issueTypeId) {
       live = live || await fetchIssueForValidator(issueId);
-      issueType = live?.fields?.issuetype?.name;
+      projectId = projectId || String(live?.fields?.project?.id || '');
+      issueTypeId = issueTypeId || String(live?.fields?.issuetype?.id || '');
+      issueType = issueType || live?.fields?.issuetype?.name;
     }
-    state = stateFromTemplate(issueId, String(issueKey || issueId), '', issueType);
+    const template = await resolveTemplate(resolveStorage(storageProvider), projectId, issueTypeId, issueType || 'Task');
+    state = stateFromTemplate(issueId, String(issueKey || issueId), projectId, template);
   }
 
   const validation = TransitionValidator.validate({ ...state, items: toLegacyItems(state) } as any);
@@ -190,6 +150,7 @@ function panelContext(context: any) {
     issueId,
     issueKey: String(issue?.key || issueId),
     issueType: issue?.type as string | undefined,
+    issueTypeId: String(issue?.typeId || ''),
     projectId: String(context?.extension?.project?.id || ''),
     actorAccountId: String(context?.accountId || 'unknown')
   };
@@ -247,13 +208,16 @@ async function publishProperty(issueId: string, response: IssueChecklistState): 
   } catch {}
 }
 
-async function templateFor(issueId: string, issueType?: string) {
-  let type = issueType;
-  if (!type) {
-    const live = await fetchLiveJiraIssue(issueId);
-    type = live?.fields?.issuetype?.name;
+/** The template for a panel action: ids from the context, else from one issue lookup. */
+async function templateFor(storage: StorageProvider, c: ReturnType<typeof panelContext>): Promise<ChecklistTemplate> {
+  let { projectId, issueTypeId, issueType } = c;
+  if (!projectId || !issueTypeId) {
+    const live = await fetchLiveJiraIssue(c.issueId);
+    projectId = projectId || String(live?.fields?.project?.id || '');
+    issueTypeId = issueTypeId || String(live?.fields?.issuetype?.id || '');
+    issueType = issueType || live?.fields?.issuetype?.name;
   }
-  return getTemplateForCategory(type);
+  return resolveTemplate(storage, projectId, issueTypeId, issueType);
 }
 
 /**
@@ -268,7 +232,7 @@ export async function getIssueChecklist(_payload: any, context?: any, storagePro
   let state = await store.loadOrLegacy(c.issueId, c.projectId);
   if (!state) {
     const base = emptyState(c.issueId, c.issueKey, c.projectId);
-    state = applyEvent(base, createdEvent(base, await templateFor(c.issueId, c.issueType), c.actorAccountId, new Date().toISOString()));
+    state = applyEvent(base, createdEvent(base, await templateFor(storage, c), c.actorAccountId, new Date().toISOString()));
     state = { ...state, seq: 0 };
   }
   return toPanelResponse(state);
@@ -312,7 +276,7 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
 
   const state = await store.mutate(
     c.issueId,
-    base => store.initFromLegacyOr(base, () => templateFor(c.issueId, c.issueType), c.actorAccountId, at),
+    base => store.initFromLegacyOr(base, () => templateFor(storage, c), c.actorAccountId, at),
     st => {
       const item = st.items.find(i => i.id === itemId);
       if (!item) {
@@ -342,7 +306,7 @@ export async function resetChecklist(_payload: any, context?: any, storageProvid
 
   const state = await store.mutate(
     c.issueId,
-    base => store.initFromLegacyOr(base, () => templateFor(c.issueId, c.issueType), c.actorAccountId, at),
+    base => store.initFromLegacyOr(base, () => templateFor(storage, c), c.actorAccountId, at),
     () => [{ type: 'RESET', actorAccountId: c.actorAccountId, at }],
     { issueKey: c.issueKey, projectId: c.projectId }
   );
