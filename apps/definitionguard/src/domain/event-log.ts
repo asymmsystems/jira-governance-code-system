@@ -192,3 +192,48 @@ export function applyEvent(state: ChecklistState, event: ChecklistEvent): Checkl
   }
   return next;
 }
+
+export interface ChainCheck {
+  ok: boolean;
+  checked: number;
+  brokenAt?: number;
+  reason?: string;
+}
+
+/** Shown with every check result, in the panel and in exports. */
+export const CHAIN_LIMIT_NOTE =
+  "This check shows edits, removals and reordering of the stored history. It does not stop someone " +
+  "who can rewrite all of the app's stored data and the chain with it, and that includes the app vendor.";
+
+/**
+ * Re-hashes every event in seq order. Reports the first event that is missing, belongs to
+ * another issue, breaks the chain, or no longer matches its hash. With `state`, also checks
+ * that the chain reaches the stored head (no truncated or replaced tail).
+ */
+export function verifyChain(issueId: string, events: ChecklistEvent[], state?: ChecklistState): ChainCheck {
+  const sorted = [...events].sort((a, b) => a.seq - b.seq);
+  let expectedPrev = genesisHash(issueId);
+  let checked = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    const e = sorted[i];
+    const seq = i + 1;
+    if (e.seq !== seq) return { ok: false, checked, brokenAt: seq, reason: 'event missing' };
+    if (e.issueId !== issueId) return { ok: false, checked, brokenAt: seq, reason: 'event belongs to another issue' };
+    if (e.prevHash !== expectedPrev) return { ok: false, checked, brokenAt: seq, reason: 'chain broken' };
+    if (hashEvent(e) !== e.hash) return { ok: false, checked, brokenAt: seq, reason: 'content changed' };
+    expectedPrev = e.hash;
+    checked++;
+  }
+  if (state) {
+    if (sorted.length < state.seq) return { ok: false, checked, brokenAt: sorted.length + 1, reason: 'event missing' };
+    if (state.seq > 0 && expectedPrev !== state.headHash) {
+      return { ok: false, checked: checked - 1, brokenAt: sorted.length, reason: 'does not match the stored head' };
+    }
+  }
+  return { ok: true, checked };
+}
+
+export function chainMessage(check: ChainCheck): string {
+  if (check.ok) return `History checked: ${check.checked} events, chain intact.`;
+  return `History check failed at event ${check.brokenAt} (${check.reason}). Ask your Jira admin to review this issue.`;
+}

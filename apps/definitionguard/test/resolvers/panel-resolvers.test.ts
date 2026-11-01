@@ -100,7 +100,7 @@ describe('panel resolvers (v2 event log)', () => {
 
     it('returns an empty history for an issue with no record', async () => {
       const history: any = await handler({ call: { functionKey: 'getHistory', payload: { cursor: 7 } }, context: ctx('49999') } as any);
-      expect(history).toEqual({ events: [], auditTrail: [], nextCursor: undefined, eventCount: 0 });
+      expect(history).toMatchObject({ events: [], auditTrail: [], eventCount: 0, chain: { ok: true, checked: 0 } });
     });
   });
 

@@ -8,7 +8,7 @@ import {
 import { TransitionValidator } from './validator/transition-validator';
 import { StorageProvider } from './storage/checklist-repository';
 import { ChecklistStore } from './storage/checklist-store';
-import { applyEvent, createdEvent, emptyState } from './domain/event-log';
+import { applyEvent, createdEvent, emptyState, chainMessage, CHAIN_LIMIT_NOTE } from './domain/event-log';
 import { ChecklistEvent, ChecklistState, IssueChecklistState, ChecklistAuditEvent } from './domain/models';
 import { checkIssuePermissions, EDIT_DENIED, RESET_DENIED } from './security/permissions';
 
@@ -283,8 +283,10 @@ export async function getChecklistHistory(payload: any, context?: any, storagePr
   const cursor = typeof payload?.cursor === 'string' ? payload.cursor : undefined;
   const page = await store.history(c.issueId, cursor);
   const state = await store.load(c.issueId);
+  const check = await store.verify(c.issueId);
   return {
     events: page.events,
+    chain: { ...check, message: chainMessage(check), limit: CHAIN_LIMIT_NOTE },
     auditTrail: toPanelResponse(state || emptyState(c.issueId, c.issueKey, c.projectId), page.events).auditTrail,
     nextCursor: page.nextCursor,
     eventCount: state?.seq || 0

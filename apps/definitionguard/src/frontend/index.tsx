@@ -23,6 +23,7 @@ export const DefinitionGuardPanel: React.FC = () => {
   const [showResetConfirm, setShowResetConfirm] = useState<boolean>(false);
   const [showAuditTrail, setShowAuditTrail] = useState<boolean>(false);
   const [auditTrail, setAuditTrail] = useState<IssueChecklistState['auditTrail']>([]);
+  const [chainCheck, setChainCheck] = useState<{ ok: boolean; message: string; limit: string } | null>(null);
 
   useEffect(() => {
     loadChecklist();
@@ -87,8 +88,12 @@ export const DefinitionGuardPanel: React.FC = () => {
     }
     setErrorMessage(null);
     try {
-      const page = (await invoke('getHistory', {})) as unknown as { auditTrail?: IssueChecklistState['auditTrail'] };
+      const page = (await invoke('getHistory', {})) as unknown as {
+        auditTrail?: IssueChecklistState['auditTrail'];
+        chain?: { ok: boolean; message: string; limit: string };
+      };
       setAuditTrail(page?.auditTrail || []);
+      setChainCheck(page?.chain || null);
       setShowAuditTrail(true);
     } catch (err: any) {
       console.error('Failed to load history', err);
@@ -151,7 +156,7 @@ export const DefinitionGuardPanel: React.FC = () => {
         <SectionMessage appearance="warning" title="Confirm Checklist Reset (D-13)">
           <Stack space="space.100">
             <Text>
-              Resetting will mark all items incomplete and append a permanent audit record to the tamper-evident history.
+              Resetting will mark all items incomplete and add a record to the checklist history.
             </Text>
             <Inline space="space.100">
               <Button appearance="danger" onClick={handleResetChecklist} isDisabled={loading}>
@@ -238,7 +243,13 @@ export const DefinitionGuardPanel: React.FC = () => {
 
       {showAuditTrail && auditTrail && auditTrail.length > 0 && (
         <Box padding="space.100">
-          <Heading as="h4">Tamper-Evident Audit Trail</Heading>
+          <Heading as="h4">Audit Trail</Heading>
+          {chainCheck && (
+            <SectionMessage appearance={chainCheck.ok ? 'information' : 'error'}>
+              <Text>{chainCheck.message}</Text>
+              <Text>{chainCheck.limit}</Text>
+            </SectionMessage>
+          )}
           <Stack space="space.050">
             {auditTrail.map((ev) => (
               <Text key={ev.id}>

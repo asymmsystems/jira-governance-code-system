@@ -20,7 +20,9 @@ import {
   emptyState,
   makeEvent,
   migratedEvent,
-  stateFromLegacy
+  stateFromLegacy,
+  verifyChain,
+  ChainCheck
 } from '../domain/event-log';
 import { ChecklistEvent, ChecklistState, ChecklistTemplate, EventInput, IssueChecklistState } from '../domain/models';
 
@@ -75,6 +77,28 @@ export class ChecklistStore {
     const page = await this.storage.listByPrefix(eventPrefix(issueId), cursor, HISTORY_PAGE);
     const events = (page.values as ChecklistEvent[]).slice().sort((a, b) => a.seq - b.seq);
     return { events, nextCursor: page.nextCursor };
+  }
+
+  /**
+   * Verifies the whole chain against the stored head. Reads every history page, then fills any
+   * seq the eventually consistent query missed with strict reads, so a gap is a real gap.
+   */
+  public async verify(issueId: string): Promise<ChainCheck> {
+    const state = await this.load(issueId);
+    const events: ChecklistEvent[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await this.history(issueId, cursor);
+      events.push(...page.events);
+      cursor = page.nextCursor;
+    } while (cursor);
+    const seen = new Set(events.map(e => e.seq));
+    for (let seq = 1; state && seq <= state.seq; seq++) {
+      if (seen.has(seq)) continue;
+      const e = await this.storage.get<ChecklistEvent>(eventKey(issueId, seq));
+      if (e) events.push(e);
+    }
+    return verifyChain(issueId, events, state);
   }
 
   /** As load, but falls back to a state derived in memory from a v1 record (seq 0). Never writes. */
