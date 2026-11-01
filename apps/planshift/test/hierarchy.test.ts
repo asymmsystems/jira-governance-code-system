@@ -9,7 +9,7 @@
  */
 
 import { getProjectPlan, setGlobalStorageProvider, getTimelineWeeks } from '../src/index';
-import { StorageProvider } from '../src/storage/plan-repository';
+import { MemStorage, entryOf } from './helpers/mem-storage';
 
 const mockRequestJira = jest.fn();
 jest.mock('@forge/api', () => ({
@@ -22,12 +22,6 @@ jest.mock('@forge/api', () => ({
 }));
 jest.mock('@forge/kvs', () => ({ kvs: { get: jest.fn(), set: jest.fn(), delete: jest.fn() } }));
 
-class MemStorage implements StorageProvider {
-  store = new Map<string, any>();
-  async get<T>(key: string): Promise<T | undefined> { return this.store.get(key); }
-  async set(key: string, value: any): Promise<void> { this.store.set(key, JSON.parse(JSON.stringify(value))); }
-  async delete(key: string): Promise<void> { this.store.delete(key); }
-}
 
 const type = (name: string, level: number) => ({ name, hierarchyLevel: level, subtask: level === -1 });
 const status = { statusCategory: { key: 'new' } };

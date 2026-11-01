@@ -32,7 +32,8 @@ import {
   resolveProjectIssueType
 } from '../src/index';
 import api from '@forge/api';
-import { StorageProvider, PlanRepository } from '../src/storage/plan-repository';
+import { PlanRepository } from '../src/storage/plan-repository';
+import { MemStorage, entryOf, clearRecords } from './helpers/mem-storage';
 import { EstimateUnit, ProjectMilestone, ColumnWidthConfig } from '../src/domain/models';
 
 const mockRequestJira = jest.fn();
@@ -67,21 +68,7 @@ jest.mock('@forge/kvs', () => ({
   }
 }));
 
-class MockStorage implements StorageProvider {
-  private store = new Map<string, any>();
-
-  async get<T>(key: string): Promise<T | undefined> {
-    return this.store.get(key);
-  }
-
-  async set(key: string, value: any): Promise<void> {
-    this.store.set(key, JSON.parse(JSON.stringify(value)));
-  }
-
-  async delete(key: string): Promise<void> {
-    this.store.delete(key);
-  }
-}
+class MockStorage extends MemStorage {}
 
 describe('CascadePlan Index & Resolver Tests', () => {
   let mockStorage: MockStorage;
@@ -184,6 +171,8 @@ describe('CascadePlan Index & Resolver Tests', () => {
         json: async () => ({})
       };
     });
+
+    await mockStorage.delete('cp:TEST:settings');
 
     await mockStorage.set('scheduleMap:TEST', {
       'TEST-1': {
@@ -313,59 +302,6 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(plan.isLiveSynced).toBe(false);
     });
 
-    it('retrieves plan from PlanRepository fallback when live issues and schedule map are empty', async () => {
-      const emptyStorage = new MockStorage();
-      const repo = new PlanRepository(emptyStorage);
-      await repo.saveProjectPlan({
-        planId: 'plan-EMPTY',
-        projectKey: 'EMPTY',
-        projectName: 'Project EMPTY',
-        overallProjectCompletion: 0,
-        overallTargetCompletion: 0,
-        weeks: DEFAULT_WEEKS,
-        tasks: [
-          {
-            id: 't-cached',
-            key: 'EMPTY-1',
-            summary: 'Cached Task',
-            epic: 'Infra',
-            story: 'Core',
-            effortHours: 16,
-            resource: 'Resource 1',
-            progress: 10,
-            targetProgress: 20,
-            status: 'IN_PROGRESS',
-            startDate: '2026-08-05',
-            endDate: '2026-08-26',
-            startWeek: '05-Aug',
-            endWeek: '26-Aug',
-            spanWeeks: 4,
-            weeklyAllocations: { '05-Aug': 25, '12-Aug': 25, '19-Aug': 25, '26-Aug': 25 },
-            subtasks: []
-          }
-        ],
-        milestones: DEFAULT_MILESTONES,
-        columnWidths: DEFAULT_COLUMN_WIDTHS,
-        availableEpics: [],
-        availableUsers: [],
-        lastUpdated: new Date().toISOString()
-      });
-
-      mockRequestJira.mockImplementation(async (routeStr: any) => {
-        const url = String(routeStr);
-        if (url.includes('/rest/api/3/search/jql')) {
-          return { status: 200, json: async () => ({ issues: [] }) };
-        }
-        return { status: 200, json: async () => [] };
-      });
-
-      const plan = await getProjectPlan('EMPTY', emptyStorage);
-      expect(plan.tasks.length).toBe(1);
-      expect(plan.tasks[0].key).toBe('EMPTY-1');
-    });
-  });
-
-  describe('scheduleBacklogTask', () => {
     it('schedules an unassigned backlog task onto the timeline', async () => {
       const updatedPlan = await scheduleBacklogTask(
         {
@@ -423,8 +359,9 @@ describe('CascadePlan Index & Resolver Tests', () => {
       );
 
       expect(res.success).toBe(true);
-      const updatedOrder = await mockStorage.get<string[]>('taskOrder:TEST');
-      expect(updatedOrder).toEqual(['TEST-1', 'TEST-50', 'TEST-2', 'TEST-3']);
+      // Row order comes from stored sequence numbers (B-09).
+      const order = res.plan!.tasks.map(t => t.key).filter(k => ['TEST-1', 'TEST-2', 'TEST-50'].includes(k));
+      expect(order).toEqual(['TEST-1', 'TEST-50', 'TEST-2']);
     });
 
     it('handles Jira API errors accurately and returns error without synthetic issue generation', async () => {
@@ -1622,12 +1559,10 @@ describe('CascadePlan Index & Resolver Tests', () => {
       const plan = await unscheduleTask({ taskId: 'TEST-1', projectKey: 'TEST' });
       expect(plan.projectKey).toBe('TEST');
 
-      const scheduleMap = (await mockStorage.get<Record<string, any>>('scheduleMap:TEST')) || {};
-      expect(scheduleMap['TEST-1'].isBacklog).toBe(true);
-      expect(scheduleMap['TEST-1'].startWeek).toBeUndefined();
-
-      const taskOrder = (await mockStorage.get<string[]>('taskOrder:TEST')) || [];
-      expect(taskOrder).not.toContain('TEST-1');
+      const entry = await entryOf(mockStorage, 'TEST-1');
+      expect(entry.isBacklog).toBe(true);
+      expect(entry.startWeek).toBeUndefined();
+      expect(plan.tasks.some(t => t.key === 'TEST-1')).toBe(false);
     });
 
     it('unscheduleTask handles unscheduling a task that had no prior schedule override', async () => {
@@ -1639,16 +1574,14 @@ describe('CascadePlan Index & Resolver Tests', () => {
       await mockStorage.set('taskOrder:TEST', ['TEST-1', 'TEST-2']);
       const plan = await reorderWbsTasks({ taskId: 'TEST-2', targetIndex: 0, projectKey: 'TEST' });
       expect(plan.projectKey).toBe('TEST');
-      const taskOrder = (await mockStorage.get<string[]>('taskOrder:TEST')) || [];
-      expect(taskOrder).toEqual(['TEST-2', 'TEST-1']);
+      expect(plan.tasks.map(t => t.key)).toEqual(['TEST-2', 'TEST-1']);
     });
 
     it('reorderWbsTasks builds initial task order from live issues if taskOrder is empty', async () => {
       await mockStorage.delete('taskOrder:TEST');
       const plan = await reorderWbsTasks({ taskId: 'TEST-2', targetIndex: 0, projectKey: 'TEST' });
       expect(plan.projectKey).toBe('TEST');
-      const taskOrder = (await mockStorage.get<string[]>('taskOrder:TEST')) || [];
-      expect(taskOrder[0]).toBe('TEST-2');
+      expect(plan.tasks[0].key).toBe('TEST-2');
     });
 
     it('createSubtaskForResource creates Jira subtask and assigns dedicated team member', async () => {
@@ -1663,7 +1596,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
         return { status: 200, json: async () => ({}) };
       });
 
-      await mockStorage.delete('scheduleMap:TEST');
+      await clearRecords(mockStorage);
       const res = await createSubtaskForResource({
         parentTaskId: 'TEST-1',
         assigneeAccountId: 'user-jane',
@@ -1680,7 +1613,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(JSON.parse(createCall[1].body).fields.assignee).toEqual({ accountId: 'user-jane' });
 
       // Test with empty scheduleMap
-      await mockStorage.delete('scheduleMap:TEST');
+      await clearRecords(mockStorage);
       const addSubRes = await addSubtaskToTask({
         projectKey: 'TEST',
         parentTaskId: 'TEST-1',
@@ -1688,8 +1621,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
       }, mockStorage);
       expect(addSubRes.projectKey).toBe('TEST');
 
-      const scheduleMap = (await mockStorage.get<Record<string, any>>('scheduleMap:TEST')) || {};
-      expect(scheduleMap['TEST-1']).toBeDefined();
+      expect(await entryOf(mockStorage, 'TEST-1')).toBeDefined();
     });
 
     it('createSubtaskForResource retries with Subtask if Sub-task type fails', async () => {
@@ -1777,7 +1709,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(resEmpty.error).toContain('Failed to create subtask');
 
       // Test unscheduleTask when scheduleMap does not exist in storage
-      await mockStorage.delete('scheduleMap:TEST');
+      await clearRecords(mockStorage);
       const unschedEmpty = await unscheduleTask({
         projectKey: 'TEST',
         taskId: 'TEST-1'
@@ -1796,11 +1728,11 @@ describe('CascadePlan Index & Resolver Tests', () => {
       });
       expect(plan.projectKey).toBe('TEST');
 
-      const taskOrder = (await mockStorage.get<string[]>('taskOrder:TEST')) || [];
-      expect(taskOrder).toEqual(['TEST-1', 'TEST-3', 'TEST-2']);
+      expect(plan.tasks.map(t => t.key)).toEqual(['TEST-1', 'TEST-3', 'TEST-2']);
     });
 
     it('updateWbsTask cascades schedule shifts downstream when predecessor changes', async () => {
+      await mockStorage.delete('cp:TEST:settings');
       await mockStorage.set('scheduleMap:TEST', {
         'TEST-1': { startWeek: '15-Jul', spanWeeks: 2, effortHours: 20 },
         'TEST-2': {
@@ -1818,8 +1750,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
       });
       expect(plan.projectKey).toBe('TEST');
 
-      const scheduleMap = (await mockStorage.get<Record<string, any>>('scheduleMap:TEST')) || {};
-      expect(scheduleMap['TEST-2'].startWeek).toBeDefined();
+      expect((await entryOf(mockStorage, 'TEST-2')).startWeek).toBeDefined();
     });
 
     it('handler invokes unscheduleTask, reorderWbsTasks, and createSubtaskForResource resolvers', async () => {
@@ -2034,7 +1965,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
     });
 
     it('saves task dependency when scheduleMap key does not yet exist', async () => {
-      await mockStorage.delete('scheduleMap:TEST');
+      await clearRecords(mockStorage);
       const plan = await saveTaskDependency({
         projectKey: 'TEST',
         taskId: 'TEST-2',
@@ -2055,6 +1986,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
       const w2 = initialPlan.weeks[2];
 
       // Setup scheduleMap with parent and subtask
+      await mockStorage.delete('cp:TEST:settings');
       await mockStorage.set('scheduleMap:TEST', {
         'TEST-1': {
           startWeek: w0.weekKey,
@@ -2116,6 +2048,8 @@ describe('CascadePlan Index & Resolver Tests', () => {
       const w0 = initialPlan.weeks[0];
       const w1 = initialPlan.weeks[1];
 
+      await mockStorage.delete('cp:TEST:settings');
+
       await mockStorage.set('scheduleMap:TEST', {
         'TEST-1': {
           startWeek: w0.weekKey,
@@ -2163,6 +2097,8 @@ describe('CascadePlan Index & Resolver Tests', () => {
     it('handles subtask updates when parent task is missing from plan', async () => {
       const initialPlan = await getProjectPlan('TEST', mockStorage);
       const w0 = initialPlan.weeks[0];
+
+      await mockStorage.delete('cp:TEST:settings');
 
       await mockStorage.set('scheduleMap:TEST', {
         'TEST-SUB99': {
@@ -2246,6 +2182,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
 
     it('merges scheduled Epics from tasks into availableEpics', async () => {
       // TEST-4 is an Epic in Jira; once scheduled it joins the epic list.
+      await mockStorage.delete('cp:TEST:settings');
       await mockStorage.set('scheduleMap:TEST', {
         'TEST-4': {
           startWeek: DEFAULT_WEEKS[0].weekKey,
@@ -2431,6 +2368,8 @@ describe('CascadePlan Index & Resolver Tests', () => {
         return { status: 200, json: async () => ({}) };
       });
 
+      await mockStorage.delete('cp:TEST:settings');
+
       await mockStorage.set('scheduleMap:TEST', {
         'TEST-EPIC-1': {
           startWeek: DEFAULT_WEEKS[0].weekKey,
@@ -2504,6 +2443,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
       });
 
       // Schedule all three without dependency in scheduleMap
+      await mockStorage.delete('cp:TEST:settings');
       await mockStorage.set('scheduleMap:TEST', {
         'TEST-P1': {
           startWeek: DEFAULT_WEEKS[0].weekKey,

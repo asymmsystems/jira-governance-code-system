@@ -15,7 +15,7 @@ import {
   setGlobalStorageProvider,
   getTimelineWeeks
 } from '../src/index';
-import { StorageProvider } from '../src/storage/plan-repository';
+import { MemStorage, entryOf } from './helpers/mem-storage';
 
 const mockRequestJira = jest.fn();
 jest.mock('@forge/api', () => ({
@@ -28,12 +28,6 @@ jest.mock('@forge/api', () => ({
 }));
 jest.mock('@forge/kvs', () => ({ kvs: { get: jest.fn(), set: jest.fn(), delete: jest.fn() } }));
 
-class MemStorage implements StorageProvider {
-  store = new Map<string, any>();
-  async get<T>(key: string): Promise<T | undefined> { return this.store.get(key); }
-  async set(key: string, value: any): Promise<void> { this.store.set(key, JSON.parse(JSON.stringify(value))); }
-  async delete(key: string): Promise<void> { this.store.delete(key); }
-}
 
 const issue = (key: string, extra: any = {}) => ({
   id: key.split('-')[1], key,
@@ -71,7 +65,7 @@ describe('no unrequested Jira writes (B-03)', () => {
     expect(put.fields.timetracking).toBeUndefined();
     expect(put.fields.assignee).toBeUndefined();
     expect(put.fields.duedate).toBeDefined();
-    const stored = (await storage.get<any>('scheduleMap:TEST'))['TEST-1'];
+    const stored = (await entryOf(storage, 'TEST-1'));
     expect(stored.effortHours).toBeUndefined();
     expect(stored.resource).toBeUndefined();
   });
@@ -87,7 +81,7 @@ describe('no unrequested Jira writes (B-03)', () => {
     const post = mockRequestJira.mock.calls.find(c => c[1]?.method === 'POST' && String(c[0]).endsWith('/rest/api/3/issue'));
     expect(JSON.parse(post[1].body).fields.timetracking).toBeUndefined();
     for (const p of puts()) expect(p.fields.timetracking).toBeUndefined();
-    expect((await storage.get<any>('scheduleMap:TEST'))['TEST-9'].effortHours).toBeUndefined();
+    expect((await entryOf(storage, 'TEST-9')).effortHours).toBeUndefined();
   });
 
   it('dates picked in the modal reach Jira unchanged', async () => {
@@ -96,7 +90,7 @@ describe('no unrequested Jira writes (B-03)', () => {
     const end = new Date(start); end.setUTCDate(end.getUTCDate() + 8);
     const s = start.toISOString().slice(0, 10); const e = end.toISOString().slice(0, 10);
     await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { startDate: s, endDate: e, startWeek: weeks[6].weekKey } });
-    const stored = (await storage.get<any>('scheduleMap:TEST'))['TEST-1'];
+    const stored = (await entryOf(storage, 'TEST-1'));
     expect(stored.startDate).toBe(s);
     expect(stored.endDate).toBe(e);
     expect(stored.startWeek).toBe(weeks[6].weekKey);
@@ -109,7 +103,7 @@ describe('no unrequested Jira writes (B-03)', () => {
     const iso = (d: Date) => d.toISOString().slice(0, 10);
     await storage.set('scheduleMap:TEST', { 'TEST-1': { startWeek: weeks[5].weekKey, spanWeeks: 1, startDate: iso(s0), endDate: iso(e0) } });
     await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { startWeek: weeks[6].weekKey } });
-    const stored = (await storage.get<any>('scheduleMap:TEST'))['TEST-1'];
+    const stored = (await entryOf(storage, 'TEST-1'));
     const plus7 = (d: Date) => { const x = new Date(d); x.setUTCDate(x.getUTCDate() + 7); return iso(x); };
     expect(stored.startDate).toBe(plus7(s0));
     expect(stored.endDate).toBe(plus7(e0));
@@ -122,7 +116,7 @@ describe('no unrequested Jira writes (B-03)', () => {
     const e0 = new Date(s0); e0.setUTCDate(e0.getUTCDate() + 3);
     await storage.set('scheduleMap:TEST', { 'TEST-2': { startWeek: weeks[5].weekKey, spanWeeks: 1, startDate: iso(s0), endDate: iso(e0) } });
     await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2', updates: { startWeek: weeks[5].weekKey, spanWeeks: 2 } });
-    const stored = (await storage.get<any>('scheduleMap:TEST'))['TEST-2'];
+    const stored = (await entryOf(storage, 'TEST-2'));
     const e1 = new Date(e0); e1.setUTCDate(e1.getUTCDate() + 7);
     expect(stored.startDate).toBe(iso(s0));
     expect(stored.endDate).toBe(iso(e1));

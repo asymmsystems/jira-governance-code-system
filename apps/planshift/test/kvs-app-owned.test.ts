@@ -9,7 +9,7 @@
  */
 
 import { getProjectPlan, updateWbsTask, setGlobalStorageProvider, stripJiraOwnedFields, getTimelineWeeks } from '../src/index';
-import { StorageProvider } from '../src/storage/plan-repository';
+import { MemStorage, entryOf } from './helpers/mem-storage';
 
 const mockRequestJira = jest.fn();
 jest.mock('@forge/api', () => ({
@@ -22,13 +22,6 @@ jest.mock('@forge/api', () => ({
 }));
 jest.mock('@forge/kvs', () => ({ kvs: { get: jest.fn(), set: jest.fn(), delete: jest.fn() } }));
 
-class MemStorage implements StorageProvider {
-  store = new Map<string, any>();
-  sets: string[] = [];
-  async get<T>(key: string): Promise<T | undefined> { return this.store.get(key); }
-  async set(key: string, value: any): Promise<void> { this.sets.push(key); this.store.set(key, JSON.parse(JSON.stringify(value))); }
-  async delete(key: string): Promise<void> { this.store.delete(key); }
-}
 
 const weeks = getTimelineWeeks().weeks;
 const LIVE = [
@@ -103,11 +96,12 @@ describe('KVS holds app-owned data only (B-04)', () => {
     await storage.set('scheduleMap:TEST', { 'TEST-1': { startWeek: weeks[5].weekKey, spanWeeks: 2, summary: 'Old', resource: 'Old' } });
     storage.sets = [];
     const first = await getProjectPlan('TEST', storage);
-    expect((await storage.get<any>('scheduleMap:TEST'))['TEST-1']).toEqual({ startWeek: weeks[5].weekKey, spanWeeks: 2 });
-    const writesAfterFirst = storage.sets.filter(k => k === 'scheduleMap:TEST').length;
+    expect(await entryOf(storage, 'TEST-1')).toEqual({ startWeek: weeks[5].weekKey, spanWeeks: 2 });
+    expect(storage.store.has('scheduleMap:TEST')).toBe(false);
+    // After the one-time migration, a plan load writes nothing (B-09, INV-07).
+    storage.sets = [];
     const second = await getProjectPlan('TEST', storage);
-    expect(storage.sets.filter(k => k === 'scheduleMap:TEST').length).toBe(writesAfterFirst);
-    expect(writesAfterFirst).toBe(1);
+    expect(storage.sets).toEqual([]);
     const pick = (p: any) => p.tasks.map((t: any) => [t.key, t.summary, t.startWeek, t.spanWeeks]);
     expect(pick(second)).toEqual(pick(first));
   });
@@ -116,7 +110,7 @@ describe('KVS holds app-owned data only (B-04)', () => {
     await storage.set('scheduleMap:TEST', { 'TEST-1': { startWeek: weeks[5].weekKey, spanWeeks: 1 } });
     await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { summary: 'Renamed' } });
     expect(puts('TEST-1')[0]).toEqual({ summary: 'Renamed' });
-    const stored = (await storage.get<any>('scheduleMap:TEST'))['TEST-1'];
+    const stored = (await entryOf(storage, 'TEST-1'));
     expect(stored.summary).toBeUndefined();
     expect(stored.manualProgress).toBeUndefined();
   });
@@ -125,7 +119,7 @@ describe('KVS holds app-owned data only (B-04)', () => {
     await storage.set('scheduleMap:TEST', { 'TEST-1': { startWeek: weeks[5].weekKey, spanWeeks: 1 } });
     await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { epic: 'Platform', epicKey: 'TEST-2' } });
     expect(puts('TEST-1')[0]).toEqual({ parent: { key: 'TEST-2' } });
-    const stored = (await storage.get<any>('scheduleMap:TEST'))['TEST-1'];
+    const stored = (await entryOf(storage, 'TEST-1'));
     expect(stored.epic).toBeUndefined();
     expect(stored.epicKey).toBeUndefined();
   });
@@ -139,7 +133,7 @@ describe('KVS holds app-owned data only (B-04)', () => {
   it('setting progress by hand marks it manual; other edits do not', async () => {
     await storage.set('scheduleMap:TEST', { 'TEST-1': { startWeek: weeks[5].weekKey, spanWeeks: 1 } });
     await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { progress: 30 } });
-    const stored = (await storage.get<any>('scheduleMap:TEST'))['TEST-1'];
+    const stored = (await entryOf(storage, 'TEST-1'));
     expect(stored.progress).toBe(30);
     expect(stored.manualProgress).toBe(true);
   });
@@ -150,6 +144,6 @@ describe('KVS holds app-owned data only (B-04)', () => {
       'TEST-3': { startWeek: weeks[5].weekKey, spanWeeks: 1 }
     });
     await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-3', updates: { startWeek: weeks[6].weekKey } });
-    expect((await storage.get<any>('scheduleMap:TEST'))['TEST-2'].progress).toBeUndefined();
+    expect((await entryOf(storage, 'TEST-2')).progress).toBeUndefined();
   });
 });

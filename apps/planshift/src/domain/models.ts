@@ -100,6 +100,7 @@ export interface WbsTask {
   manualProgress?: boolean;
   isExpanded?: boolean;
   orderIndex?: number;
+  sequenceNum?: number; // stored row order with gaps (B-09)
   version?: number;
 }
 
@@ -226,6 +227,7 @@ export interface PortfolioResourceHeatmapRow {
 
 export interface InlineTaskCreateRequest {
   projectKey: string;
+  projectId?: string; // from the Forge context; keys records by project id (B-09)
   epic?: string;
   epicKey?: string;
   story?: string;
@@ -247,6 +249,7 @@ export interface InlineTaskCreateRequest {
 
 export interface ScheduleBacklogRequest {
   projectKey: string;
+  projectId?: string; // from the Forge context; keys records by project id (B-09)
   taskId: string;
   startWeek: string;
   spanWeeks?: number;
@@ -257,11 +260,13 @@ export interface ScheduleBacklogRequest {
 
 export interface UnscheduleTaskRequest {
   projectKey: string;
+  projectId?: string; // from the Forge context; keys records by project id (B-09)
   taskId: string;
 }
 
 export interface CreateSubtaskForResourceRequest {
   projectKey: string;
+  projectId?: string; // from the Forge context; keys records by project id (B-09)
   parentKey?: string;
   parentTaskId?: string;
   summary?: string;
@@ -276,6 +281,7 @@ export interface CreateSubtaskForResourceRequest {
 
 export interface ReorderTasksRequest {
   projectKey: string;
+  projectId?: string; // from the Forge context; keys records by project id (B-09)
   taskId: string;
   targetIndex: number;
 }

@@ -2595,7 +2595,7 @@ function setupBarResizeHandle(handle, task, edge) {
         task.startWeek = newStartWeek;
         task.spanWeeks = targetSpan;
 
-        await callResolver('updateWbsTask', { taskId: task.key, updates });
+        await callResolver('updateWbsTask', { taskId: task.key, updates, expectedVersion: task.version || 0 });
         await loadProjectPlan();
       } else {
         bar.style.left = origLeftPx + 'px';
@@ -2662,7 +2662,8 @@ function setupBarDrag(bar, task) {
         task.startWeek = newStartWeek;
         await callResolver('updateWbsTask', {
           taskId: task.key,
-          updates: { startWeek: newStartWeek }
+          updates: { startWeek: newStartWeek },
+          expectedVersion: task.version || 0
         });
         await loadProjectPlan();
       } else {
@@ -3214,7 +3215,7 @@ async function saveTaskModalChanges() {
   if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
 
   try {
-    const res = await callResolver('updateWbsTask', { taskId: activeTaskId, updates });
+    const res = await callResolver('updateWbsTask', { taskId: activeTaskId, updates, expectedVersion: curTask.version || 0 });
     if (res && res.error) {
       if (errEl) {
         errEl.textContent = res.error;

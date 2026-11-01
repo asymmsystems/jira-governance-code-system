@@ -6,7 +6,7 @@
 
 import api, { route } from '@forge/api';
 import Resolver from '@forge/resolver';
-import { kvs } from '@forge/kvs';
+import { kvs, WhereConditions } from '@forge/kvs';
 import {
   ProjectPlanState,
   WbsTask,
@@ -32,7 +32,8 @@ import {
   DEFAULT_STORY_POINT_RATIO
 } from './domain/models';
 import { PlannerEngine } from './domain/planner-engine';
-import { PlanRepository, StorageProvider } from './storage/plan-repository';
+import { StorageProvider } from './storage/plan-repository';
+import { PlanStore, StoredEntry, sequenceBetween } from './storage/plan-store';
 import {
   ValidationError,
   assertIssueKey,
@@ -56,6 +57,24 @@ class ForgeKvsProvider implements StorageProvider {
 
   async delete(key: string): Promise<void> {
     await kvs.delete(key);
+  }
+
+  async query<T>(prefix: string): Promise<Array<{ key: string; value: T }>> {
+    const out: Array<{ key: string; value: T }> = [];
+    let cursor: string | undefined;
+    do {
+      let q = kvs.query().where('key', WhereConditions.beginsWith(prefix)).limit(100);
+      if (cursor) q = q.cursor(cursor);
+      const page = await q.getMany<T>();
+      for (const r of page.results) out.push({ key: r.key, value: r.value });
+      cursor = page.nextCursor;
+    } while (cursor);
+    return out;
+  }
+
+  async swap<T>(key: string, value: T): Promise<T | undefined> {
+    const res = await kvs.set<T, T>(key, value, { keyPolicy: 'OVERRIDE', returnValue: 'PREVIOUS' });
+    return res ? res.value : undefined;
   }
 }
 
@@ -84,19 +103,22 @@ export function getJiraCaller() {
 /**
  * Throws ValidationError unless Jira reports the issue as part of the given project (INV-15).
  */
-export async function verifyIssueInProject(issueKey: unknown, projectKey: string, field: string): Promise<void> {
+export async function verifyIssueInProject(issueKey: unknown, projectKey: string, field: string): Promise<string | undefined> {
   assertIssueKey(issueKey, field);
   let projectOfIssue: string | undefined;
+  let issueId: string | undefined;
   try {
     const res = await getJiraCaller().requestJira(route`/rest/api/3/issue/${issueKey}?fields=project`);
     if (res && res.status === 200) {
       const data = await res.json();
       projectOfIssue = data?.fields?.project?.key;
+      issueId = data?.id !== undefined ? String(data.id) : undefined;
     }
   } catch {}
   if (projectOfIssue !== projectKey) {
     throw new ValidationError(field, `${issueKey} is not in project ${projectKey}`);
   }
+  return issueId;
 }
 
 /**
@@ -161,11 +183,6 @@ export function stripJiraOwnedFields(entry: Partial<WbsTask>): Partial<WbsTask> 
   return out as Partial<WbsTask>;
 }
 
-function hasJiraOwnedFields(map: Record<string, Partial<WbsTask>>): boolean {
-  return Object.values(map).some(e => e && (JIRA_OWNED_FIELDS.some(f => (e as any)[f] !== undefined) ||
-    (e.progress !== undefined && e.manualProgress !== true)));
-}
-
 function isIsoDate(v: unknown): v is string {
   return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 }
@@ -189,6 +206,48 @@ function evenAllocations(weeks: WeeklySprintColumn[], startIdx: number, span: nu
     allocations[weeks[i].weekKey] = Math.round(100 / span);
   }
   return allocations;
+}
+
+/**
+ * The planning store of a project. Records are keyed by the project id from the Forge context;
+ * direct callers without a context use the project key (B-09).
+ */
+export function openStore(storage: StorageProvider, projectKey: string, projectId?: string): PlanStore {
+  return new PlanStore(storage, projectId || projectKey, projectKey);
+}
+
+/**
+ * Runs the one-time migration from the legacy keys, using live Jira ids for the new records.
+ */
+export async function migrateIfNeeded(store: PlanStore, projectKey: string): Promise<void> {
+  const settings = await store.getSettings();
+  if (settings.migratedAt) return;
+  const live = await fetchLiveJiraIssues(projectKey, {});
+  const idByKey = new Map<string, string>();
+  for (const t of [...live.tasks, ...live.backlogTasks]) idByKey.set(t.key, t.id);
+  await store.ensureMigrated(idByKey);
+}
+
+/**
+ * Sequence number for a row inserted at targetIndex among the ordered scheduled entries.
+ */
+function sequenceForIndex(entries: Map<string, StoredEntry>, issueKey: string, targetIndex?: number): number {
+  const seqs = [...entries.values()]
+    .filter(e => e.issueKey !== issueKey && typeof e.sequenceNum === 'number' && e.startWeek)
+    .map(e => e.sequenceNum as number)
+    .sort((a, b) => a - b);
+  if (typeof targetIndex !== 'number' || targetIndex < 0 || targetIndex >= seqs.length) {
+    return sequenceBetween(seqs[seqs.length - 1], undefined);
+  }
+  return sequenceBetween(seqs[targetIndex - 1], seqs[targetIndex]);
+}
+
+function conflictResult(issueKey: string): any {
+  return {
+    ok: false, success: false, error: 'conflict', conflict: true,
+    message: `Someone else changed ${issueKey} a moment ago. Reload to see the latest plan, then try again.`,
+    jiraSync: { ok: true, writes: [] }
+  };
 }
 
 export function getTimelineWeeks(referenceDate: Date = new Date()): { weeks: WeeklySprintColumn[]; currentWeekIndex: number } {
@@ -468,7 +527,8 @@ export async function fetchLiveJiraIssues(
           isEpic,
           hierarchyLevel,
           parentKey,
-          parentId
+          parentId,
+          version: stored?.version
         };
 
         if (wbsItem.startWeek) {
@@ -493,25 +553,23 @@ export async function getProjectPlan(
   projectKey: string,
   storageProvider?: StorageProvider,
   referenceDate: Date = new Date(),
-  siteUrl?: string
+  siteUrl?: string,
+  projectId?: string
 ): Promise<ProjectPlanState> {
   const storage = resolveStorage(storageProvider);
-  const repository = new PlanRepository(storage);
+  const store = openStore(storage, projectKey, projectId);
+  await migrateIfNeeded(store, projectKey);
 
   const dynamicTimeline = getTimelineWeeks(referenceDate);
   const activeWeeks = dynamicTimeline.weeks;
 
-  let storedScheduleMap = (await storage.get<Record<string, Partial<WbsTask>>>(`scheduleMap:${projectKey}`)) || {};
-  if (hasJiraOwnedFields(storedScheduleMap)) {
-    // One-time migration: entries written before B-04 held Jira-owned fields (approved [MIGRATE]).
-    const migrated: Record<string, Partial<WbsTask>> = {};
-    for (const [k, v] of Object.entries(storedScheduleMap)) migrated[k] = stripJiraOwnedFields(v);
-    await storage.set(`scheduleMap:${projectKey}`, migrated);
-    storedScheduleMap = migrated;
-  }
-  const storedMilestones = (await storage.get<ProjectMilestone[]>(`milestones:${projectKey}`)) || [];
-  const storedWidths = (await storage.get<ColumnWidthConfig>(`colWidths:${projectKey}`)) || DEFAULT_COLUMN_WIDTHS;
-  const storedHiddenColumns = (await storage.get<string[]>(`hiddenColumns:${projectKey}`)) || [];
+  // getProjectPlan only reads; it writes nothing to KVS (INV-07).
+  const entries = await store.loadEntries();
+  const storedScheduleMap: Record<string, Partial<WbsTask>> = Object.fromEntries(entries);
+  const settings = await store.getSettings();
+  const storedMilestones = settings.milestones || [];
+  const storedWidths = settings.columnWidths || DEFAULT_COLUMN_WIDTHS;
+  const storedHiddenColumns = settings.hiddenColumns || [];
 
   // Query live Jira issues and assignees
   const [liveData, availableUsers, availableEpics] = await Promise.all([
@@ -521,16 +579,7 @@ export async function getProjectPlan(
   ]);
 
   let tasks = liveData.tasks;
-  let backlogTasks = liveData.backlogTasks;
-
-  // Fallback to repository stored plan if live sync returns empty and stored exists
-  if (tasks.length === 0 && backlogTasks.length === 0) {
-    const existingPlan = await repository.getProjectPlan(projectKey);
-    if (existingPlan) {
-      tasks = existingPlan.tasks;
-      backlogTasks = existingPlan.backlogTasks || [];
-    }
-  }
+  const backlogTasks = liveData.backlogTasks;
 
   // Restore any scheduled tasks from storedScheduleMap not returned by live sync
   for (const [key, stored] of Object.entries(storedScheduleMap)) {
@@ -581,27 +630,13 @@ export async function getProjectPlan(
     }
   }
 
-  // Order tasks according to stored taskOrder and organize into WbsHierarchy
-  const taskOrder = (await storage.get<string[]>(`taskOrder:${projectKey}`)) || [];
-  const knownOrderKeys = new Set(taskOrder);
-  const updatedTaskOrder = [...taskOrder];
-  for (const t of tasks) {
-    if (!knownOrderKeys.has(t.key)) {
-      updatedTaskOrder.push(t.key);
-      knownOrderKeys.add(t.key);
-    }
-  }
-  if (updatedTaskOrder.length !== taskOrder.length) {
-    await storage.set(`taskOrder:${projectKey}`, updatedTaskOrder);
-  }
-
-  if (updatedTaskOrder.length > 0) {
-    tasks.sort((a, b) => {
-      const idxA = updatedTaskOrder.indexOf(a.key);
-      const idxB = updatedTaskOrder.indexOf(b.key);
-      return idxA - idxB;
-    });
-  }
+  // Order rows by the stored sequence number; rows without one keep Jira's order after them.
+  const position = new Map(tasks.map((t, i) => [t.key, i]));
+  const seqOf = (k: string) => {
+    const s = entries.get(k)?.sequenceNum;
+    return typeof s === 'number' ? s : Number.POSITIVE_INFINITY;
+  };
+  tasks.sort((a, b) => (seqOf(a.key) - seqOf(b.key)) || ((position.get(a.key) as number) - (position.get(b.key) as number)));
   tasks = PlannerEngine.buildWbsHierarchy(tasks, activeWeeks);
   tasks.forEach((t, i) => { t.orderIndex = i; });
 
@@ -633,7 +668,6 @@ export async function getProjectPlan(
     siteUrl: siteUrl || (process.env.JIRA_BASE_URL || undefined)
   };
 
-  await repository.saveProjectPlan(planState);
   return planState;
 }
 
@@ -644,11 +678,12 @@ export async function scheduleBacklogTask(
   request: ScheduleBacklogRequest,
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState> {
-  const { projectKey, taskId, startWeek, spanWeeks = 3, effortHours, resource, targetIndex } = request;
-  await verifyIssueInProject(taskId, projectKey, 'taskId');
+  const { projectKey, projectId, taskId, startWeek, spanWeeks = 3, effortHours, resource, targetIndex } = request;
+  const issueId = await verifyIssueInProject(taskId, projectKey, 'taskId');
   const storage = resolveStorage(storageProvider);
-
-  const scheduleMap = (await storage.get<Record<string, Partial<WbsTask>>>(`scheduleMap:${projectKey}`)) || {};
+  const store = openStore(storage, projectKey, projectId);
+  await migrateIfNeeded(store, projectKey);
+  const entries = await store.loadEntries();
 
   const startIdx = Math.max(0, DEFAULT_WEEKS.findIndex(w => w.weekKey === startWeek));
   const endIdx = Math.min(DEFAULT_WEEKS.length - 1, startIdx + spanWeeks - 1);
@@ -659,32 +694,21 @@ export async function scheduleBacklogTask(
     allocations[DEFAULT_WEEKS[i].weekKey] = Math.round(100 / spanWeeks);
   }
 
-  const current = scheduleMap[taskId] || {};
-  scheduleMap[taskId] = {
-    ...current,
+  const current = entries.get(taskId);
+  // Estimate and assignee are Jira-owned: an entered estimate goes to Jira, never to KVS (INV-04).
+  const entry = stripJiraOwnedFields({
+    ...(current || {}),
     startWeek,
     endWeek,
     spanWeeks,
     startDate: DEFAULT_WEEKS[startIdx].startDate,
     endDate: DEFAULT_WEEKS[endIdx].endDate,
-    weeklyAllocations: allocations
-  };
-  // Estimate and assignee are Jira-owned: an entered estimate goes to Jira, never to KVS (INV-04).
-  scheduleMap[taskId] = stripJiraOwnedFields(scheduleMap[taskId]);
+    weeklyAllocations: allocations,
+    sequenceNum: sequenceForIndex(entries, taskId, targetIndex)
+  });
   void resource;
-
-  await storage.set(`scheduleMap:${projectKey}`, scheduleMap);
-
-  // If targetIndex is specified, insert into taskOrder
-  const taskOrder = (await storage.get<string[]>(`taskOrder:${projectKey}`)) || [];
-  const filteredOrder = taskOrder.filter(k => k !== taskId);
-  if (typeof targetIndex === 'number' && targetIndex >= 0) {
-    const insertIdx = Math.min(filteredOrder.length, targetIndex);
-    filteredOrder.splice(insertIdx, 0, taskId);
-  } else {
-    filteredOrder.push(taskId);
-  }
-  await storage.set(`taskOrder:${projectKey}`, filteredOrder);
+  const put = await store.putEntry(taskId, issueId, entry, current ? current.version : 0);
+  if (!put.ok) return conflictResult(taskId);
 
   // Sync scheduled due date and effort back to Jira issue
   const log = new SyncLog();
@@ -693,7 +717,7 @@ export async function scheduleBacklogTask(
     effortHours
   }, log);
 
-  return Object.assign(await getProjectPlan(projectKey, storage), { ok: true, jiraSync: log.report() });
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId), { ok: true, jiraSync: log.report() });
 }
 
 /**
@@ -746,7 +770,7 @@ export async function createInlineTask(
 ): Promise<{ success: boolean; ok: boolean; jiraSync: JiraSyncReport; task?: WbsTask; plan?: ProjectPlanState; error?: string }> {
   const currentWeekKey = DEFAULT_WEEKS.find(w => w.isCurrentWeek)?.weekKey || DEFAULT_WEEKS[0].weekKey;
   const {
-    projectKey, epic, epicKey, story, summary, effortHours,
+    projectKey, projectId, epic, epicKey, story, summary, effortHours,
     resource = 'Unassigned', resourceAccountId, startWeek, spanWeeks = 3, targetIndex
   } = request;
 
@@ -816,7 +840,9 @@ export async function createInlineTask(
   }
 
   const storage = resolveStorage(storageProvider);
-  const scheduleMap = (await storage.get<Record<string, Partial<WbsTask>>>(`scheduleMap:${projectKey}`)) || {};
+  const store = openStore(storage, projectKey, projectId);
+  await migrateIfNeeded(store, projectKey);
+  const entries = await store.loadEntries();
 
   const assignedStartWeek = startWeek || currentWeekKey;
   const startIdx = Math.max(0, DEFAULT_WEEKS.findIndex(w => w.weekKey === assignedStartWeek));
@@ -828,28 +854,16 @@ export async function createInlineTask(
     allocations[DEFAULT_WEEKS[i].weekKey] = Math.round(100 / spanWeeks);
   }
 
-  scheduleMap[jiraIssueKey] = {
+  await store.putEntry(jiraIssueKey, jiraIssueId, {
     startWeek: assignedStartWeek,
     endWeek,
     spanWeeks,
     startDate: DEFAULT_WEEKS[startIdx].startDate,
     endDate: DEFAULT_WEEKS[endIdx].endDate,
-    weeklyAllocations: allocations
-  };
+    weeklyAllocations: allocations,
+    sequenceNum: sequenceForIndex(entries, jiraIssueKey, targetIndex)
+  });
   void epic; void story; void resource;
-
-  await storage.set(`scheduleMap:${projectKey}`, scheduleMap);
-
-  // If targetIndex is specified, insert into taskOrder at targetIndex and shift rest down
-  const taskOrder = (await storage.get<string[]>(`taskOrder:${projectKey}`)) || [];
-  const filteredOrder = taskOrder.filter(k => k !== jiraIssueKey);
-  if (typeof targetIndex === 'number' && targetIndex >= 0) {
-    const insertIdx = Math.min(filteredOrder.length, targetIndex);
-    filteredOrder.splice(insertIdx, 0, jiraIssueKey);
-  } else {
-    filteredOrder.push(jiraIssueKey);
-  }
-  await storage.set(`taskOrder:${projectKey}`, filteredOrder);
 
   // Sync scheduled due date and effort back to Jira
   const log = new SyncLog();
@@ -860,7 +874,7 @@ export async function createInlineTask(
     epicKey
   }, log);
 
-  const plan = await getProjectPlan(projectKey, storage);
+  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId);
   const createdTask = plan.tasks.find(t => t.key === jiraIssueKey) || plan.tasks[0];
 
   return { success: true, ok: true, jiraSync: log.report(), task: createdTask, plan };
@@ -1159,20 +1173,31 @@ export async function removeMirroredLink(linkId: string): Promise<boolean> {
  * Updates a task schedule, dates, effort, progress, or resource.
  */
 export async function updateWbsTask(
-  payload: { projectKey: string; taskId: string; updates: Partial<WbsTask> },
+  payload: { projectKey: string; projectId?: string; taskId: string; updates: Partial<WbsTask>; expectedVersion?: number },
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState> {
-  const { projectKey, taskId, updates } = payload;
+  const { projectKey, projectId, taskId, updates, expectedVersion } = payload;
   validateTaskUpdates(updates as Record<string, unknown>);
+  if (expectedVersion !== undefined && (!Number.isInteger(expectedVersion) || expectedVersion < 0)) {
+    throw new ValidationError('expectedVersion', 'expectedVersion must be a whole number of at least 0');
+  }
   const storage = resolveStorage(storageProvider);
   const log = new SyncLog();
 
-  const plan = await getProjectPlan(projectKey, storage);
+  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId);
   const targetTask = plan.tasks.find(t => t.id === taskId || t.key === taskId) ||
     (plan.backlogTasks || []).find(t => t.id === taskId || t.key === taskId);
   if (!targetTask) {
     throw new Error(`Task '${taskId}' not found in project plan`);
   }
+  const store = openStore(storage, projectKey, projectId);
+  const entries = await store.loadEntries();
+  const baseVersion = entries.get(targetTask.key)?.version ?? 0;
+  if (expectedVersion !== undefined && expectedVersion !== baseVersion) {
+    // The user edited an older copy: refuse before any Jira write (INV-08).
+    return conflictResult(targetTask.key);
+  }
+  const idByKey = new Map([...plan.tasks, ...(plan.backlogTasks || [])].map(t => [t.key, t.id]));
   const planKeys = new Set([...plan.tasks, ...(plan.backlogTasks || [])].map(t => t.key));
   if (updates.dependency && updates.dependency.predecessorKey && !planKeys.has(updates.dependency.predecessorKey)) {
     throw new ValidationError('dependency.predecessorKey', `${updates.dependency.predecessorKey} is not in project ${projectKey}`);
@@ -1314,9 +1339,10 @@ export async function updateWbsTask(
     }
   }
 
-  const scheduleMap = (await storage.get<Record<string, Partial<WbsTask>>>(`scheduleMap:${projectKey}`)) || {};
+  const scheduleMap: Record<string, Partial<WbsTask>> = Object.fromEntries(entries);
   const current = scheduleMap[targetTask.key] || {};
-  const currentVersion = (current as any).version || 0;
+  const changedKeys = new Set<string>([targetTask.key]);
+  const pendingSyncs: Array<{ key: string; updates: Partial<WbsTask> }> = [];
 
   // Preserve existing dependency if updates didn't explicitly modify or clear it
   if (sanitized.dependency === undefined && current.dependency === undefined && targetTask.dependency) {
@@ -1335,8 +1361,7 @@ export async function updateWbsTask(
 
   scheduleMap[targetTask.key] = stripJiraOwnedFields({
     ...current,
-    ...sanitized,
-    version: currentVersion + 1
+    ...sanitized
   });
 
   // Cascade schedule shifts to dependent tasks
@@ -1358,7 +1383,8 @@ export async function updateWbsTask(
           endDate: affTask.endDate,
           weeklyAllocations: affTask.weeklyAllocations
         };
-        await syncTaskToJira(affKey, { endDate: affTask.endDate }, log);
+        changedKeys.add(affKey);
+        pendingSyncs.push({ key: affKey, updates: { endDate: affTask.endDate } });
       }
     }
   }
@@ -1403,18 +1429,26 @@ export async function updateWbsTask(
         };
         // A computed roll-up is derived on every load and is not stored (INV-04).
         void totalHours; void completedHours;
-        await syncTaskToJira(pKey, { endDate: activeWeeks[maxEndIdx].endDate }, log);
+        changedKeys.add(pKey);
+        pendingSyncs.push({ key: pKey, updates: { endDate: activeWeeks[maxEndIdx].endDate } });
       }
     }
   }
 
-  await storage.set(`scheduleMap:${projectKey}`, scheduleMap);
-  await storage.set(`ps:${projectKey}:task:${targetTask.key}`, scheduleMap[targetTask.key]);
+  // KVS first, with a version check per record; Jira only after the target record is saved.
+  const targetPut = await store.putEntry(targetTask.key, targetTask.id, stripJiraOwnedFields(scheduleMap[targetTask.key]), baseVersion);
+  if (!targetPut.ok) return conflictResult(targetTask.key);
+  for (const key of changedKeys) {
+    if (key === targetTask.key) continue;
+    const put = await store.putEntry(key, idByKey.get(key), stripJiraOwnedFields(scheduleMap[key]), entries.get(key)?.version ?? 0);
+    if (!put.ok) log.record(key, ['plan'], { synced: false, error: 'changed by someone else; not moved' });
+  }
+  for (const s of pendingSyncs) await syncTaskToJira(s.key, s.updates, log);
 
   // Two-way sync: write-back changed fields to Jira
   await syncTaskToJira(targetTask.key, sanitized, log);
 
-  return Object.assign(await getProjectPlan(projectKey, storage), { ok: true, jiraSync: log.report() });
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId), { ok: true, jiraSync: log.report() });
 }
 
 /**
@@ -1424,27 +1458,21 @@ export async function unscheduleTask(
   payload: UnscheduleTaskRequest,
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState> {
-  const { projectKey, taskId } = payload;
-  await verifyIssueInProject(taskId, projectKey, 'taskId');
+  const { projectKey, projectId, taskId } = payload;
+  const issueId = await verifyIssueInProject(taskId, projectKey, 'taskId');
   const storage = resolveStorage(storageProvider);
-
-  const scheduleMap = (await storage.get<Record<string, Partial<WbsTask>>>(`scheduleMap:${projectKey}`)) || {};
-  if (scheduleMap[taskId]) {
-    delete scheduleMap[taskId].startWeek;
-    delete scheduleMap[taskId].endWeek;
-    delete scheduleMap[taskId].startDate;
-    delete scheduleMap[taskId].endDate;
-    delete scheduleMap[taskId].weeklyAllocations;
-    scheduleMap[taskId].isBacklog = true;
-    await storage.set(`scheduleMap:${projectKey}`, scheduleMap);
+  const store = openStore(storage, projectKey, projectId);
+  await migrateIfNeeded(store, projectKey);
+  const current = (await store.loadEntries()).get(taskId);
+  if (current) {
+    const entry: Partial<WbsTask> = { ...current };
+    for (const f of ['startWeek', 'endWeek', 'startDate', 'endDate', 'weeklyAllocations', 'sequenceNum'] as const) delete entry[f];
+    entry.isBacklog = true;
+    const put = await store.putEntry(taskId, issueId, stripJiraOwnedFields(entry), current.version);
+    if (!put.ok) return conflictResult(taskId);
   }
 
-  // Also remove from taskOrder
-  const taskOrder = (await storage.get<string[]>(`taskOrder:${projectKey}`)) || [];
-  const updatedOrder = taskOrder.filter(k => k !== taskId);
-  await storage.set(`taskOrder:${projectKey}`, updatedOrder);
-
-  return Object.assign(await getProjectPlan(projectKey, storage), { ok: true, jiraSync: noJiraWrites() });
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId), { ok: true, jiraSync: noJiraWrites() });
 }
 
 /**
@@ -1454,15 +1482,35 @@ export async function reorderWbsTasks(
   payload: ReorderTasksRequest,
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState> {
-  const { projectKey, taskId, targetIndex } = payload;
+  const { projectKey, projectId, taskId, targetIndex } = payload;
   const storage = resolveStorage(storageProvider);
 
-  const plan = await getProjectPlan(projectKey, storage);
+  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId);
   const reordered = PlannerEngine.reorderTasks(plan.tasks, taskId, targetIndex);
-  const newOrder = Array.from(new Set(reordered.map(t => t.key).filter(Boolean)));
-
-  await storage.set(`taskOrder:${projectKey}`, newOrder);
-  return Object.assign(await getProjectPlan(projectKey, storage), { ok: true, jiraSync: noJiraWrites() });
+  const store = openStore(storage, projectKey, projectId);
+  const entries = await store.loadEntries();
+  const pos = reordered.findIndex(t => t.key === taskId || t.id === taskId);
+  if (pos !== -1) {
+    const movedKey = reordered[pos].key;
+    // Scheduled rows always have a record. Rows without a sequence number get one first,
+    // in their current order (one write per such row, once).
+    let last: number | undefined;
+    for (const row of reordered) {
+      const e = entries.get(row.key);
+      if (row.key === movedKey || !e) continue;
+      if (typeof e.sequenceNum === 'number') { last = e.sequenceNum; continue; }
+      const seq = sequenceBetween(last, undefined);
+      const put = await store.putEntry(row.key, row.id, { ...e, sequenceNum: seq }, e.version);
+      entries.set(row.key, put.entry);
+      last = seq;
+    }
+    const seqAt = (i: number) => (i >= 0 && i < reordered.length ? entries.get(reordered[i].key)?.sequenceNum : undefined);
+    const moved = entries.get(movedKey);
+    if (moved) {
+      await store.putEntry(movedKey, reordered[pos].id, { ...moved, sequenceNum: sequenceBetween(seqAt(pos - 1), seqAt(pos + 1)) }, moved.version);
+    }
+  }
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId), { ok: true, jiraSync: noJiraWrites() });
 }
 
 /**
@@ -1474,6 +1522,7 @@ export async function createSubtaskForResource(
   storageProvider?: StorageProvider
 ): Promise<{ success: boolean; ok: boolean; jiraSync: JiraSyncReport; subtask?: WbsTask; plan?: ProjectPlanState; error?: string }> {
   const projectKey = payload.projectKey;
+  const projectId = payload.projectId;
   const parentKey = payload.parentKey || payload.parentTaskId;
   const resource = payload.resource || payload.assigneeName || 'Unassigned';
   const resourceAccountId = payload.resourceAccountId || payload.assigneeAccountId;
@@ -1545,17 +1594,16 @@ export async function createSubtaskForResource(
     allocations[activeWeeks[i].weekKey] = Math.round(100 / spanWeeks);
   }
 
-  const scheduleMap = (await storage.get<Record<string, Partial<WbsTask>>>(`scheduleMap:${projectKey}`)) || {};
-  scheduleMap[createdKey] = {
+  const store = openStore(storage, projectKey, projectId);
+  await migrateIfNeeded(store, projectKey);
+  await store.putEntry(createdKey, createdId, {
     startWeek: assignedStart,
     endWeek: activeWeeks[eIdx].weekKey,
     startDate: activeWeeks[sIdx].startDate,
     endDate: activeWeeks[eIdx].endDate,
     spanWeeks,
     weeklyAllocations: allocations
-  };
-
-  await storage.set(`scheduleMap:${projectKey}`, scheduleMap);
+  });
 
   // Sync estimate & duedate to newly created subtask
   const log = new SyncLog();
@@ -1566,7 +1614,7 @@ export async function createSubtaskForResource(
     resourceAccountId
   }, log);
 
-  const plan = await getProjectPlan(projectKey, storage);
+  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId);
   const subtask = plan.tasks.find(t => t.key === createdKey);
   return { success: true, ok: true, jiraSync: log.report(), subtask, plan };
 }
@@ -1577,6 +1625,7 @@ export async function createSubtaskForResource(
 export async function addSubtaskToTask(
   payload: {
     projectKey: string;
+    projectId?: string;
     parentTaskId: string;
     subtask: { summary: string; estimateValue: number; estimateUnit: EstimateUnit };
     bufferType?: 'PERCENTAGE' | 'FIXED_HOURS' | 'NONE';
@@ -1584,12 +1633,13 @@ export async function addSubtaskToTask(
   },
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState> {
-  const { projectKey, parentTaskId, subtask, bufferType = 'NONE', bufferValue = 0 } = payload;
-  await verifyIssueInProject(parentTaskId, projectKey, 'parentTaskId');
+  const { projectKey, projectId, parentTaskId, subtask, bufferType = 'NONE', bufferValue = 0 } = payload;
+  const parentId = await verifyIssueInProject(parentTaskId, projectKey, 'parentTaskId');
   const storage = resolveStorage(storageProvider);
-
-  const scheduleMap = (await storage.get<Record<string, Partial<WbsTask>>>(`scheduleMap:${projectKey}`)) || {};
-  const current = scheduleMap[parentTaskId] || {};
+  const store = openStore(storage, projectKey, projectId);
+  await migrateIfNeeded(store, projectKey);
+  const stored = (await store.loadEntries()).get(parentTaskId);
+  const current: Partial<WbsTask> = stored || {};
   const existingSubtasks: SubtaskItem[] = (current.subtasks || []);
 
   const normalized = PlannerEngine.normalizeEstimateToHours(subtask.estimateUnit, subtask.estimateValue);
@@ -1611,29 +1661,27 @@ export async function addSubtaskToTask(
     bufferValue
   });
 
-  scheduleMap[parentTaskId] = {
+  const put = await store.putEntry(parentTaskId, parentId, stripJiraOwnedFields({
     ...current,
     subtasks: updatedSubtasks,
-    effortHours: effortConfig.totalCalculatedHours,
     effortConfig
-  };
-
-  await storage.set(`scheduleMap:${projectKey}`, scheduleMap);
-  return Object.assign(await getProjectPlan(projectKey, storage), { ok: true, jiraSync: noJiraWrites() });
+  }), stored ? stored.version : 0);
+  if (!put.ok) return conflictResult(parentTaskId);
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId), { ok: true, jiraSync: noJiraWrites() });
 }
 
 /**
  * Saves an inter-task fractional dependency.
  */
 export async function saveTaskDependency(
-  payload: { projectKey: string; taskId: string; dependency: TaskDependency },
+  payload: { projectKey: string; projectId?: string; taskId: string; dependency: TaskDependency },
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState> {
-  const { projectKey, taskId, dependency } = payload;
+  const { projectKey, projectId, taskId, dependency } = payload;
   validateDependencyPayload(dependency);
   const storage = resolveStorage(storageProvider);
 
-  const plan = await getProjectPlan(projectKey, storage);
+  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId);
   const planKeys = new Set([...plan.tasks, ...(plan.backlogTasks || [])].map(t => t.key));
   if (!planKeys.has(dependency.predecessorKey)) {
     throw new ValidationError('dependency.predecessorKey', `${dependency.predecessorKey} is not in project ${projectKey}`);
@@ -1662,30 +1710,28 @@ export async function saveTaskDependency(
   const ownedLinkId = mirror.created ? mirror.linkId
     : (previous && previous.predecessorKey === dependency.predecessorKey ? previous.jiraLinkId : undefined);
 
-  const scheduleMap = (await storage.get<Record<string, Partial<WbsTask>>>(`scheduleMap:${projectKey}`)) || {};
-  const current = scheduleMap[targetTask.key] || {};
-  scheduleMap[targetTask.key] = {
-    ...current,
+  const store = openStore(storage, projectKey, projectId);
+  const stored = (await store.loadEntries()).get(targetTask.key);
+  const put = await store.putEntry(targetTask.key, targetTask.id, stripJiraOwnedFields({
+    ...(stored || {}),
     dependency: ownedLinkId ? { ...dependency, jiraLinkId: ownedLinkId } : dependency
-  };
+  }), stored ? stored.version : 0);
+  if (!put.ok) return conflictResult(targetTask.key);
 
-  await storage.set(`scheduleMap:${projectKey}`, scheduleMap);
-  await storage.set(`ps:${projectKey}:task:${targetTask.key}`, scheduleMap[targetTask.key]);
-
-  return Object.assign(await getProjectPlan(projectKey, storage), { ok: true, jiraSync: log.report() });
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId), { ok: true, jiraSync: log.report() });
 }
 
 /**
  * Saves column width configurations.
  */
 export async function saveColumnWidths(
-  payload: { projectKey: string; columnWidths: ColumnWidthConfig },
+  payload: { projectKey: string; projectId?: string; columnWidths: ColumnWidthConfig },
   storageProvider?: StorageProvider
 ): Promise<{ success: boolean; ok: boolean; jiraSync: JiraSyncReport; columnWidths: ColumnWidthConfig }> {
-  const { projectKey, columnWidths } = payload;
+  const { projectKey, projectId, columnWidths } = payload;
   validateColumnWidths(columnWidths as unknown as Record<string, unknown>);
-  const storage = resolveStorage(storageProvider);
-  await storage.set(`colWidths:${projectKey}`, columnWidths);
+  const store = openStore(resolveStorage(storageProvider), projectKey, projectId);
+  await store.saveSettings({ columnWidths });
   return { success: true, ok: true, jiraSync: noJiraWrites(), columnWidths };
 }
 
@@ -1693,14 +1739,14 @@ export async function saveColumnWidths(
  * Saves hidden columns configuration.
  */
 export async function saveHiddenColumns(
-  payload: { projectKey: string; hiddenColumns: string[] },
+  payload: { projectKey: string; projectId?: string; hiddenColumns: string[] },
   storageProvider?: StorageProvider
 ): Promise<{ success: boolean; ok: boolean; jiraSync: JiraSyncReport; hiddenColumns: string[] }> {
-  const { projectKey, hiddenColumns } = payload;
+  const { projectKey, projectId, hiddenColumns } = payload;
   validateHiddenColumns(hiddenColumns);
-  const storage = resolveStorage(storageProvider);
+  const store = openStore(resolveStorage(storageProvider), projectKey, projectId);
   const cols = Array.isArray(hiddenColumns) ? hiddenColumns : [];
-  await storage.set(`hiddenColumns:${projectKey}`, cols);
+  await store.saveSettings({ hiddenColumns: cols });
   return { success: true, ok: true, jiraSync: noJiraWrites(), hiddenColumns: cols };
 }
 
@@ -1708,16 +1754,16 @@ export async function saveHiddenColumns(
  * Saves a milestone marker.
  */
 export async function saveProjectMilestone(
-  payload: { projectKey: string; milestone: ProjectMilestone },
+  payload: { projectKey: string; projectId?: string; milestone: ProjectMilestone },
   storageProvider?: StorageProvider
 ): Promise<{ success: boolean; ok: boolean; jiraSync: JiraSyncReport; milestones: ProjectMilestone[] }> {
-  const { projectKey, milestone } = payload;
+  const { projectKey, projectId, milestone } = payload;
   validateMilestone(milestone as unknown as Record<string, unknown>);
-  const storage = resolveStorage(storageProvider);
-  const current = (await storage.get<ProjectMilestone[]>(`milestones:${projectKey}`)) || DEFAULT_MILESTONES;
-  const filtered = current.filter(m => m.id !== milestone.id);
+  const store = openStore(resolveStorage(storageProvider), projectKey, projectId);
+  const current = (await store.getSettings()).milestones || DEFAULT_MILESTONES;
+  const filtered = current.filter(m => m.id !== milestone.id).slice(-99);
   filtered.push(milestone);
-  await storage.set(`milestones:${projectKey}`, filtered);
+  await store.saveSettings({ milestones: filtered });
   return { success: true, ok: true, jiraSync: noJiraWrites(), milestones: filtered };
 }
 
@@ -1731,14 +1777,9 @@ export async function getPortfolioResourceHeatmap(
   referenceDate?: Date
 ): Promise<{ rows: PortfolioResourceHeatmapRow[]; weeks: WeeklySprintColumn[] }> {
   const storage = resolveStorage(storageProvider);
-  const repository = new PlanRepository(storage);
 
   const plan = await getProjectPlan(projectKey, storage, referenceDate);
-  let metadata = await repository.getResourceMetadata(projectKey);
-  if (!metadata) {
-    metadata = DEFAULT_RESOURCE_METADATA;
-    await repository.saveResourceMetadata(projectKey, metadata);
-  }
+  const metadata = DEFAULT_RESOURCE_METADATA;
 
   const activeWeekIdx = Math.max(0, plan.weeks.findIndex(w => w.isCurrentWeek));
 
@@ -1764,6 +1805,14 @@ export function extractProjectKey(req: any): string {
   return req?.payload?.projectKey || 'DEMO';
 }
 
+/**
+ * Project id from the trusted Forge context; records are keyed by it (B-09).
+ */
+export function extractProjectId(req: any): string | undefined {
+  const id = req?.context?.extension?.project?.id;
+  return id !== undefined && id !== null && String(id).trim().length > 0 ? String(id) : undefined;
+}
+
 export function extractSiteUrl(req: any): string | undefined {
   const contextUrl = req?.context?.siteUrl;
   if (contextUrl && typeof contextUrl === 'string' && contextUrl.trim().length > 0) {
@@ -1775,38 +1824,38 @@ export function extractSiteUrl(req: any): string | undefined {
 // Register Forge Resolvers
 const resolver = new Resolver();
 
-resolver.define('getProjectPlan', async (req) => withValidation(() => getProjectPlan(extractProjectKey(req), undefined, new Date(), extractSiteUrl(req))));
+resolver.define('getProjectPlan', async (req) => withValidation(() => getProjectPlan(extractProjectKey(req), undefined, new Date(), extractSiteUrl(req), extractProjectId(req))));
 
-resolver.define('scheduleBacklogTask', async (req) => withValidation(() => scheduleBacklogTask({ ...req.payload, projectKey: extractProjectKey(req) })));
+resolver.define('scheduleBacklogTask', async (req) => withValidation(() => scheduleBacklogTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('createInlineTask', async (req) => withValidation(() => createInlineTask({ ...req.payload, projectKey: extractProjectKey(req) })));
+resolver.define('createInlineTask', async (req) => withValidation(() => createInlineTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('createJiraEpic', async (req) => withValidation(() => createJiraEpic({ ...req.payload, projectKey: extractProjectKey(req) })));
+resolver.define('createJiraEpic', async (req) => withValidation(() => createJiraEpic({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
 resolver.define('updateWbsTask', async (req) => {
   try {
-    return await withValidation(() => updateWbsTask({ ...req.payload, projectKey: extractProjectKey(req) }));
+    return await withValidation(() => updateWbsTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) }));
   } catch (err: any) {
     return { success: false, error: err?.message || 'Failed to update task' };
   }
 });
 
-resolver.define('addSubtaskToTask', async (req) => withValidation(() => addSubtaskToTask({ ...req.payload, projectKey: extractProjectKey(req) })));
+resolver.define('addSubtaskToTask', async (req) => withValidation(() => addSubtaskToTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('saveTaskDependency', async (req) => withValidation(() => saveTaskDependency({ ...req.payload, projectKey: extractProjectKey(req) })));
+resolver.define('saveTaskDependency', async (req) => withValidation(() => saveTaskDependency({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('saveColumnWidths', async (req) => withValidation(() => saveColumnWidths({ ...req.payload, projectKey: extractProjectKey(req) })));
+resolver.define('saveColumnWidths', async (req) => withValidation(() => saveColumnWidths({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('saveHiddenColumns', async (req) => withValidation(() => saveHiddenColumns({ ...req.payload, projectKey: extractProjectKey(req) })));
+resolver.define('saveHiddenColumns', async (req) => withValidation(() => saveHiddenColumns({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('saveProjectMilestone', async (req) => withValidation(() => saveProjectMilestone({ ...req.payload, projectKey: extractProjectKey(req) })));
+resolver.define('saveProjectMilestone', async (req) => withValidation(() => saveProjectMilestone({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
 resolver.define('getPortfolioResourceHeatmap', async (req) => withValidation(() => getPortfolioResourceHeatmap(extractProjectKey(req), req.payload?.filters)));
 
-resolver.define('unscheduleTask', async (req) => withValidation(() => unscheduleTask({ ...req.payload, projectKey: extractProjectKey(req) })));
+resolver.define('unscheduleTask', async (req) => withValidation(() => unscheduleTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('reorderWbsTasks', async (req) => withValidation(() => reorderWbsTasks({ ...req.payload, projectKey: extractProjectKey(req) })));
+resolver.define('reorderWbsTasks', async (req) => withValidation(() => reorderWbsTasks({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('createSubtaskForResource', async (req) => withValidation(() => createSubtaskForResource({ ...req.payload, projectKey: extractProjectKey(req) })));
+resolver.define('createSubtaskForResource', async (req) => withValidation(() => createSubtaskForResource({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
 export const handler = resolver.getDefinitions();

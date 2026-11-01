@@ -22,7 +22,7 @@ import {
   withValidation
 } from '../src/index';
 import { ValidationError } from '../src/validation';
-import { StorageProvider } from '../src/storage/plan-repository';
+import { MemStorage, entryOf } from './helpers/mem-storage';
 
 const mockRequestJira = jest.fn();
 jest.mock('@forge/api', () => ({
@@ -35,12 +35,11 @@ jest.mock('@forge/api', () => ({
 }));
 jest.mock('@forge/kvs', () => ({ kvs: { get: jest.fn(), set: jest.fn(), delete: jest.fn() } }));
 
-class RecordingStorage implements StorageProvider {
-  store = new Map<string, any>();
+class RecordingStorage extends MemStorage {
   writes: string[] = [];
-  async get<T>(key: string): Promise<T | undefined> { return this.store.get(key); }
-  async set(key: string, value: any): Promise<void> { this.writes.push(key); this.store.set(key, JSON.parse(JSON.stringify(value))); }
-  async delete(key: string): Promise<void> { this.writes.push(`delete:${key}`); this.store.delete(key); }
+  async set(key: string, value: any): Promise<void> { this.writes.push(key); return super.set(key, value); }
+  async delete(key: string): Promise<void> { this.writes.push(`delete:${key}`); return super.delete(key); }
+  async swap<T>(key: string, value: T): Promise<T | undefined> { this.writes.push(key); return super.swap(key, value); }
 }
 
 const ISSUES = [
