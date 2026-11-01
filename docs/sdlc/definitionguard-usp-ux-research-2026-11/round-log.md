@@ -81,6 +81,12 @@ No live write was made. No DefinitionGuard or LedgerSeal panel was opened.
 | B-14 | `612a7b8` | `test/integrity/attestation.test.ts` (11) | 235 pass | `[ENV]` key not yet set: generated and set at deploy time |
 | B-15 | `3161643` | `test/resolvers/export.test.ts` (8) | 242 pass | UI Kit has no file download, so the export is copyable JSON in a `CodeBlock` (criterion 4, to confirm live) |
 | B-21 | `15b0950` | `test/domain/event-log.test.ts` rewritten (25); raw-record tests ported to v3 rows; a resolver refusal test | 254 pass; every changed file at or above 90% branch | See "Owner review and B-21" below |
+| B-16 | `7948031` | `test/settings/resync.test.ts` (9) | 264 pass | Re-sync pages 25 issues per call (JQL, nextPageToken); a removed criterion's breakdown link is ended with thruDate, never deleted |
+| B-17 | `927bbeb` | `test/settings/coverage.test.ts` (10) | 274 pass | `[SCOPE]` only `read:workflow:jira` (read only), not `manage:jira-configuration` and not `read:workflow-scheme:jira` as spec v2 D-10 expected: `workflows/search?projectId=` alone returns the project's workflows (live GET on DEMO, L-07: 3 workflows). The validator rule shape in that response is Inferred until a workflow carries it |
+| B-18 | `1b0d022` | `test/jira/jira-client.test.ts` (8) | 282 pass | A source-scan test fails if a Jira read bypasses the retry helper |
+| B-19 | `3ad0509` | `test/hygiene.test.ts` (15), v1 engine edge cases; transition-validator and repository tests removed with their modules | 291 pass | `[DEP]` `@forge/storage` removed from package.json, no npm install. `[SCOPE]` bundled icon. The new per-file threshold caught the v1 engine at 86.53% branch; edge-case tests added |
+| B-20 | `14a0b77` | `test/manifest.test.ts` (2) | 293 pass | The first red run failed for the wrong reason (a slice bug in the test); fixed. Red for the real criterion confirmed by inspection: the committed manifest had no projectTypes. Not testable live: the site has no team-managed project (L-02) |
+| B-08 | `754f5ec` | `test/listing.test.ts` (6) | 299 pass | Written after the build, before the live checks; the listing claims only what passed 4.5 and 11.2. The "no marketing words" test caught the word "compliant" in a disclaimer; reworded |
 
 Every item: `tsc` exit 0, Jest all pass, 90% branch or more on each changed source file, the three graders pass, and no em dash in a changed file.
 
@@ -93,3 +99,12 @@ Every item: `tsc` exit 0, Jest all pass, 90% branch or more on each changed sour
 - **B-21** (`15b0950`): the panel response, resolver payloads, settings payload, property schema and validator messages were frozen, and the UI, view-model, validator and licence test files did not change (git diff empty).
 - **Harness after B-21** (`results/after-B-21.json`, 16 of 16): the largest value is 3,766 / 10,662 / 25,458 bytes at 6 / 20 / 50 items, at any toggle count. A panel load makes 2 KVS reads, no Jira call and no write. A toggle makes 2 Jira calls. Both concurrent ticks are kept. The panel and the validator agree on zero mandatory items.
 - **Harness changes:** the harness now reads v2 and v3 records, records the B-10 behaviour change instead of asserting the baseline, and uses round-based toggles, because v3 refuses a repeated status.
+
+## Loop 3 (2026-11-01)
+
+1. **12.1 Benchmark and scale:** `ux-spec.md` sections 1 and 3 have the After column (`fb99be3`). Harness `results/after-all.json`: 16 of 16 pass.
+2. **12.2 `forge lint`:** 0 errors, 0 warnings, 1 approval: "This deployment triggers a major version upgrade ... because: Change due to scope modification". Expected: the scopes changed under the approved `[SCOPE]` flags.
+3. **`[ENV]` signing key:** an Ed25519 key pair was generated on the host. The private key went straight into the encrypted Forge variable `DG_SIGNING_KEY` in the development environment and was never written to disk or printed. `DG_SIGNING_KEY_ID` = `dg-dev-2026-11`. The public key is `docs/marketplace/definitionguard-public-key.pem` (`754f5ec`).
+4. **12.3 `forge deploy -e development`:** the first run stopped: "The deploy failed due to 1 approval requested. Run forge deploy --approve MAJOR_VERSION_RULE". The second run with `--approve MAJOR_VERSION_RULE`: "Deployed DefinitionGuard to the development environment with 1 approval acknowledged." Version 4.0.0. Forge: "We've detected new scopes or egress URLs in your app. Run forge install --upgrade". Forge also reports that version 4.0.0 "is eligible for the Runs on Atlassian program".
+5. **Installation:** `forge install list` shows the site installation (development, asymmsystems.atlassian.net, Jira) at version 3, status "Outdated app". The site runs the old code until the installation is upgraded. The upgrade grants the changed scopes on the site; it waits for the owner's approval.
+6. **12.4 live checks:** not started. No workflow on the site has the DefinitionGuard validator (L-01). Section 12.4 says to stop and ask. No live write has been made.
