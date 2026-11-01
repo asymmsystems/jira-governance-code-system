@@ -8,7 +8,10 @@ import {
   clampTriggerPercent,
   dependencyPopoverTitle,
   formatDependencyBadge,
-  computeDependencyPreview
+  computeDependencyPreview,
+  checkDependencyConflict,
+  clampToEarliestStart,
+  suggestTriggerToFit
 } from '../../src/ui/dependency-edit';
 
 describe('dependency editing pure helpers', () => {
@@ -73,6 +76,81 @@ describe('dependency editing pure helpers', () => {
       expect(preview.isSatisfied).toBe(false);
       expect(preview.earliestStartDate).toBeNull();
       expect(preview.summary).toBe('Predecessor has no planned start date.');
+    });
+  });
+
+  describe('checkDependencyConflict', () => {
+    const tasks = [
+      { key: 'PROJ-1', startDate: '2026-10-01', endDate: '2026-10-10', progress: 0 },
+      { key: 'PROJ-2', startDate: '2026-10-02', endDate: '2026-10-08', dependency: { predecessorKey: 'PROJ-1', triggerPercent: 40 } }
+    ];
+
+    it('flags conflict when candidate start is before earliest start', () => {
+      const res = checkDependencyConflict({ key: 'PROJ-2', startDate: '2026-10-02' }, tasks, '2026-10-01');
+      expect(res.hasConflict).toBe(true);
+      expect(res.predKey).toBe('PROJ-1');
+      expect(res.earliestDate).toBe('2026-10-05');
+      expect(res.triggerPercent).toBe(40);
+    });
+
+    it('reports no conflict when candidate start is on or after earliest start', () => {
+      const res = checkDependencyConflict({ key: 'PROJ-2', startDate: '2026-10-06' }, tasks, '2026-10-01');
+      expect(res.hasConflict).toBe(false);
+    });
+
+    it('reports no conflict when task has no incoming dependencies', () => {
+      const res = checkDependencyConflict({ key: 'PROJ-1', startDate: '2026-09-20' }, tasks, '2026-10-01');
+      expect(res.hasConflict).toBe(false);
+    });
+
+    it('handles edge cases with missing startDate, missing target, or unmapped predecessor', () => {
+      expect(checkDependencyConflict({ key: 'PROJ-1' }, tasks, '2026-10-01').hasConflict).toBe(false);
+      expect(checkDependencyConflict({ key: 'UNKNOWN', startDate: '2026-10-01' }, tasks, '2026-10-01').hasConflict).toBe(false);
+
+      const tasksWithInvalidDep = [
+        { key: 'PROJ-1', dependencies: [null, { predecessorKey: '' }, { predecessorKey: 'MISSING' }] },
+        { key: 'PROJ-2', startDate: '2026-10-05', dependencies: [{ predecessorKey: 'UNSCHEDULED' }] },
+        { key: 'UNSCHEDULED' }
+      ];
+      expect(checkDependencyConflict({ key: 'PROJ-1', startDate: '2026-10-01' }, tasksWithInvalidDep, '2026-10-01').hasConflict).toBe(false);
+      expect(checkDependencyConflict({ key: 'PROJ-2', startDate: '2026-10-05' }, tasksWithInvalidDep, '2026-10-01').hasConflict).toBe(false);
+    });
+  });
+
+  describe('clampToEarliestStart', () => {
+    it('shifts candidate start and end forward to earliest start preserving duration', () => {
+      const clamped = clampToEarliestStart('2026-10-02', '2026-10-06', '2026-10-05');
+      expect(clamped.startDate).toBe('2026-10-05');
+      expect(clamped.endDate).toBe('2026-10-09');
+    });
+
+    it('leaves dates unchanged when already after earliest start', () => {
+      const unchanged = clampToEarliestStart('2026-10-07', '2026-10-11', '2026-10-05');
+      expect(unchanged.startDate).toBe('2026-10-07');
+      expect(unchanged.endDate).toBe('2026-10-11');
+    });
+
+    it('returns original dates when earliest start is null', () => {
+      const res = clampToEarliestStart('2026-10-02', '2026-10-06', null);
+      expect(res.startDate).toBe('2026-10-02');
+      expect(res.endDate).toBe('2026-10-06');
+    });
+  });
+
+  describe('suggestTriggerToFit', () => {
+    it('computes maximum trigger percentage allowing successor start date', () => {
+      const pct = suggestTriggerToFit({ key: 'PROJ-1', startDate: '2026-10-01', endDate: '2026-10-10' }, '2026-10-03');
+      expect(pct).toBe(20);
+    });
+
+    it('returns 0 when successor starts before predecessor start or predecessor has no start date', () => {
+      expect(suggestTriggerToFit({ key: 'PROJ-1', startDate: '2026-10-05', endDate: '2026-10-10' }, '2026-10-02')).toBe(0);
+      expect(suggestTriggerToFit({ key: 'PROJ-1' }, '2026-10-02')).toBe(0);
+    });
+
+    it('computes trigger percentage when predecessor endDate is omitted', () => {
+      const pct = suggestTriggerToFit({ key: 'PROJ-1', startDate: '2026-10-01' }, '2026-10-02');
+      expect(pct).toBe(100);
     });
   });
 });

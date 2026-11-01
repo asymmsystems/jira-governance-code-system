@@ -8,7 +8,8 @@
  * Pure functions for editing dependency relationships and trigger percentages.
  */
 
-import { earliestStart, ScheduleEffort } from '../domain/schedule-engine';
+import { earliestStart, addDays, ScheduleEffort } from '../domain/schedule-engine';
+import { daysBetween } from './timeline-geometry';
 
 /** Clamps a percentage value to the valid range [0, 100]. */
 export function clampTriggerPercent(value: number | string | undefined | null): number {
@@ -70,4 +71,79 @@ export function computeDependencyPreview(
     triggerDate: res.triggerDate,
     summary: res.reason
   };
+}
+
+export interface DependencyConflictResult {
+  hasConflict: boolean;
+  predKey?: string;
+  triggerPercent?: number;
+  earliestDate?: string | null;
+  triggerDate?: string | null;
+  reason?: string;
+}
+
+/**
+ * Checks whether a candidate task move conflicts with any of its incoming predecessor milestones.
+ */
+export function checkDependencyConflict(
+  task: { key: string; startDate?: string },
+  tasks: any[],
+  today: string
+): DependencyConflictResult {
+  if (!task.startDate) return { hasConflict: false };
+  const target = tasks.find(t => t.key === task.key);
+  if (!target) return { hasConflict: false };
+
+  const deps = target.dependencies || (target.dependency ? [target.dependency] : []);
+  for (const dep of deps) {
+    if (!dep || !dep.predecessorKey) continue;
+    const pred = tasks.find(t => t.key === dep.predecessorKey);
+    if (!pred || !pred.startDate) continue;
+    const triggerPercent = typeof dep.triggerPercent === 'number' ? dep.triggerPercent : 100;
+    const preview = computeDependencyPreview(pred, triggerPercent, today);
+    if (preview.earliestStartDate && task.startDate < preview.earliestStartDate) {
+      return {
+        hasConflict: true,
+        predKey: pred.key,
+        triggerPercent,
+        earliestDate: preview.earliestStartDate,
+        triggerDate: preview.triggerDate,
+        reason: preview.summary
+      };
+    }
+  }
+  return { hasConflict: false };
+}
+
+/**
+ * Shifts candidate dates forward to earliest start preserving duration.
+ */
+export function clampToEarliestStart(
+  candidateStart: string,
+  candidateEnd: string,
+  earliestDate: string | null
+): { startDate: string; endDate: string } {
+  if (!earliestDate || candidateStart >= earliestDate) {
+    return { startDate: candidateStart, endDate: candidateEnd };
+  }
+  const diffDays = daysBetween(candidateStart, earliestDate);
+  return {
+    startDate: earliestDate,
+    endDate: addDays(candidateEnd, diffDays)
+  };
+}
+
+/**
+ * Suggests maximum trigger percentage on a predecessor allowing successor start date.
+ */
+export function suggestTriggerToFit(
+  pred: { key: string; startDate?: string; endDate?: string },
+  succStartDate: string
+): number {
+  if (!pred.startDate || succStartDate <= pred.startDate) return 0;
+  const predEnd = pred.endDate || pred.startDate;
+  const totalDays = Math.max(1, daysBetween(pred.startDate, predEnd) + 1);
+  const elapsedDays = Math.max(0, daysBetween(pred.startDate, succStartDate));
+  const pct = Math.floor((elapsedDays / totalDays) * 100);
+  return Math.max(0, Math.min(100, pct));
 }

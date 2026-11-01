@@ -6845,6 +6845,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       __publicField(this, "focusKey", null);
       __publicField(this, "driverKeys", []);
       __publicField(this, "drag", null);
+      __publicField(this, "activeLinking", null);
       /** Focused element of the treegrid in the canvas fallback content, for drawFocusIfNeeded (B-15). */
       __publicField(this, "focusElement", null);
       __publicField(this, "forced", false);
@@ -6947,6 +6948,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const rects = this.barRects(m);
       this.drawArrows(m, rects, top, cssH);
       for (let i = m.first; i <= m.last; i++) this.drawBar(m, i, rects);
+      if (this.activeLinking) this.drawActiveLinking(this.activeLinking, rects);
       if (todayX !== null) this.drawTodayFlag(m, todayX, top);
       ctx.restore();
       this.onDraw?.(this.arrowLinks);
@@ -7028,13 +7030,14 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const r = entry.r;
       const style = barStyle(task);
       const fill = this.c(style.fill);
+      const isConflict = Boolean(this.drag && this.drag.key === task.key && this.drag.isConflict);
       if (this.drag && this.drag.moves.has(task.key)) {
         const old = this.rectFor(m, i, task, true);
         if (old) {
           this.path(old);
           ctx.setLineDash([4, 3]);
-          ctx.strokeStyle = this.c(CANVAS_TOKENS.preview);
-          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = this.c(isConflict ? CANVAS_TOKENS.arrowViolated : CANVAS_TOKENS.preview);
+          ctx.lineWidth = isConflict ? 2 : 1.5;
           ctx.stroke();
           ctx.setLineDash([]);
         }
@@ -7067,8 +7070,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
         ctx.restore();
       }
       this.path(r);
-      ctx.strokeStyle = fill;
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = isConflict ? this.c(CANVAS_TOKENS.arrowViolated) : fill;
+      ctx.lineWidth = isConflict ? 2.5 : 1.5;
       ctx.stroke();
       const focus = this.c(CANVAS_TOKENS.focus);
       const ring = (dashed) => {
@@ -7184,6 +7187,37 @@ Please see https://iframe-resizer.com/upgrade for more details.
       ctx.fillStyle = this.c(CANVAS_TOKENS.todayFlagText);
       ctx.fillText(text, r.x + 6, r.y + r.h / 2);
     }
+    drawActiveLinking(linking, rects) {
+      const ctx = this.ctx;
+      const { x1, y1, curX, curY, targetKey } = linking;
+      const colour = this.c(CANVAS_TOKENS.arrowActive);
+      const dx = Math.max(35, Math.abs(curX - x1) / 2);
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.bezierCurveTo(x1 + dx, y1, curX - dx, curY, curX - 6, curY);
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(curX, curY);
+      ctx.lineTo(curX - 8, curY - 5);
+      ctx.lineTo(curX - 8, curY + 5);
+      ctx.closePath();
+      ctx.fillStyle = colour;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x1, y1, 5, 0, Math.PI * 2);
+      ctx.fill();
+      if (targetKey) {
+        const target = rects.get(targetKey);
+        if (target) {
+          this.path({ x: target.r.x - 3, y: target.r.y - 3, w: target.r.w + 6, h: target.r.h + 6 }, RADIUS + 2);
+          ctx.strokeStyle = colour;
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+        }
+      }
+    }
   };
 
   // src/ui/dependency-edit.ts
@@ -7219,6 +7253,48 @@ Please see https://iframe-resizer.com/upgrade for more details.
       triggerDate: res.triggerDate,
       summary: res.reason
     };
+  }
+  function checkDependencyConflict(task, tasks, today) {
+    if (!task.startDate) return { hasConflict: false };
+    const target = tasks.find((t) => t.key === task.key);
+    if (!target) return { hasConflict: false };
+    const deps = target.dependencies || (target.dependency ? [target.dependency] : []);
+    for (const dep of deps) {
+      if (!dep || !dep.predecessorKey) continue;
+      const pred = tasks.find((t) => t.key === dep.predecessorKey);
+      if (!pred || !pred.startDate) continue;
+      const triggerPercent = typeof dep.triggerPercent === "number" ? dep.triggerPercent : 100;
+      const preview = computeDependencyPreview(pred, triggerPercent, today);
+      if (preview.earliestStartDate && task.startDate < preview.earliestStartDate) {
+        return {
+          hasConflict: true,
+          predKey: pred.key,
+          triggerPercent,
+          earliestDate: preview.earliestStartDate,
+          triggerDate: preview.triggerDate,
+          reason: preview.summary
+        };
+      }
+    }
+    return { hasConflict: false };
+  }
+  function clampToEarliestStart(candidateStart, candidateEnd, earliestDate) {
+    if (!earliestDate || candidateStart >= earliestDate) {
+      return { startDate: candidateStart, endDate: candidateEnd };
+    }
+    const diffDays = daysBetween(candidateStart, earliestDate);
+    return {
+      startDate: earliestDate,
+      endDate: addDays(candidateEnd, diffDays)
+    };
+  }
+  function suggestTriggerToFit(pred, succStartDate) {
+    if (!pred.startDate || succStartDate <= pred.startDate) return 0;
+    const predEnd = pred.endDate || pred.startDate;
+    const totalDays = Math.max(1, daysBetween(pred.startDate, predEnd) + 1);
+    const elapsedDays = Math.max(0, daysBetween(pred.startDate, succStartDate));
+    const pct = Math.floor(elapsedDays / totalDays * 100);
+    return Math.max(0, Math.min(100, pct));
   }
 
   // src/ui/keyboard-grid.ts
@@ -9006,6 +9082,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (targetPopover) targetPopover.style.display = "none";
     const colMenu = document.getElementById("columnHeaderContextMenu");
     if (colMenu) colMenu.remove();
+    if (typeof closeDependencyEditPopover === "function") closeDependencyEditPopover();
+    if (typeof closeDependencyConflictDialog === "function") closeDependencyConflictDialog();
   }
   function openResourcePicker(targetEl, taskKey) {
     closeAllPopovers();
@@ -10460,10 +10538,21 @@ Click to manage or assign.`;
         hit.appendChild(handle);
       }
       hit.addEventListener("mousedown", (e) => {
-        if (e.button !== 0 || e.target.classList.contains("bar-handle")) return;
+        if (e.button !== 0 || e.target.classList.contains("bar-handle") || e.target.classList.contains("bar-link-anchor")) return;
         e.preventDefault();
         startBarPointerEdit(e, key, "move", hit);
       });
+      const anchor = document.createElement("div");
+      anchor.className = "bar-link-anchor";
+      anchor.title = `Drag to link dependency from ${task.key}`;
+      anchor.setAttribute("aria-hidden", "true");
+      anchor.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        e.preventDefault();
+        startVisualLinkDrag(e, key, hit);
+      });
+      hit.appendChild(anchor);
     }
     positionBarHit(hit, task);
     hit.addEventListener("mouseenter", (e) => {
@@ -10504,6 +10593,46 @@ Click to manage or assign.`;
     });
     return hit;
   }
+  function startVisualLinkDrag(e, sourceKey, hit) {
+    const sourceTask = findTask(sourceKey);
+    if (!sourceTask || !sourceTask.startDate || !timeline) return;
+    const wrapper = document.getElementById("ganttWrapper");
+    if (!wrapper) return;
+    const wRect = wrapper.getBoundingClientRect();
+    const x1 = hit.offsetLeft + hit.offsetWidth;
+    const y1 = hit.offsetTop + hit.offsetHeight / 2;
+    document.body.style.cursor = "crosshair";
+    document.body.style.userSelect = "none";
+    function onMove(ev) {
+      const curX = ev.clientX - wRect.left + wrapper.scrollLeft;
+      const curY = ev.clientY - wRect.top + wrapper.scrollTop;
+      const el2 = document.elementFromPoint(ev.clientX, ev.clientY);
+      const targetHit = el2 ? el2.closest(".bar-hit") : null;
+      const targetKey = targetHit && targetHit.dataset.taskId !== sourceKey ? targetHit.dataset.taskId : null;
+      timeline.activeLinking = { sourceKey, x1, y1, curX, curY, targetKey };
+      timeline.requestDraw();
+    }
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      const targetKey = timeline.activeLinking ? timeline.activeLinking.targetKey : null;
+      timeline.activeLinking = null;
+      timeline.requestDraw();
+      if (targetKey) {
+        const targetHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(targetKey)}"]`);
+        openDependencyEditPopover({
+          predecessorKey: sourceKey,
+          successorKey: targetKey,
+          triggerPercent: 100,
+          isViolated: false
+        }, targetHit || hit);
+      }
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
   function startBarPointerEdit(e, key, mode, hit) {
     const task = findTask(key);
     if (!task || !task.startDate || !timeline) return;
@@ -10527,13 +10656,30 @@ Click to manage or assign.`;
       shift = s;
       const moves = previewMoves(currentPlan.tasks, key, mode === "right" ? 0 : s, mode === "left" ? 0 : s, today);
       const mine = moves.get(key);
+      const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
+      const enforceDeps = document.getElementById("enforceDependenciesCheckbox")?.checked === true;
+      if (enforceDeps && conflict.hasConflict && conflict.earliestDate) {
+        const clamped = clampToEarliestStart(mine.start, mine.end, conflict.earliestDate);
+        mine.start = clamped.startDate;
+        mine.end = clamped.endDate;
+        moves.set(key, mine);
+      }
+      const isConflict = !enforceDeps && conflict.hasConflict;
       const sign = s > 0 ? `+${s}` : `${s}`;
-      timeline.drag = { key, moves, label: mode === "move" ? `${key} \u2794 ${mine.start} (${sign}d)` : `${key} ${mine.start} to ${mine.end}` };
+      let label2 = mode === "move" ? `${key} \u2794 ${mine.start} (${sign}d)` : `${key} ${mine.start} to ${mine.end}`;
+      if (isConflict) {
+        label2 += ` \xB7 \u26A0\uFE0F Conflict: ${conflict.predKey} (${conflict.triggerPercent}%)`;
+      }
+      timeline.drag = { key, moves, label: label2, isConflict };
       positionBarHit(hit, { ...task, startDate: mine.start, endDate: mine.end });
       wrapper.dataset.preview = JSON.stringify(Object.fromEntries(moves));
       const strip = document.getElementById("writePreview");
       if (strip) {
-        strip.textContent = describePendingWrites(currentPlan.tasks, moves, key).text;
+        let desc = describePendingWrites(currentPlan.tasks, moves, key).text;
+        if (isConflict) {
+          desc = `\u26A0\uFE0F Conflict: ${key} scheduled before ${conflict.predKey} reaches ${conflict.triggerPercent}% on ${conflict.triggerDate || conflict.earliestDate}. ${desc}`;
+        }
+        strip.textContent = desc;
         strip.hidden = false;
       }
       timeline.requestDraw();
@@ -10556,6 +10702,23 @@ Click to manage or assign.`;
         drawTimeline();
         return;
       }
+      const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
+      const enforceDeps = document.getElementById("enforceDependenciesCheckbox")?.checked === true;
+      if (!enforceDeps && conflict.hasConflict) {
+        timeline.drag = null;
+        positionBarHit(hit, task);
+        drawTimeline();
+        showDependencyConflictDialog({
+          key,
+          candidateStart: mine.start,
+          candidateEnd: mine.end,
+          conflict,
+          task,
+          hit,
+          mode
+        });
+        return;
+      }
       const updates = { startDate: mine.start, endDate: mine.end };
       const autoScale = mode !== "move" && document.getElementById("autoScaleEffortCheckbox")?.checked === true;
       if (autoScale && task.effortHours > 0) {
@@ -10573,6 +10736,73 @@ Click to manage or assign.`;
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+  }
+  var conflictState = null;
+  function showDependencyConflictDialog(state) {
+    const banner = document.getElementById("depConflictBanner");
+    if (!banner) return;
+    conflictState = state;
+    const { key, candidateStart, conflict } = state;
+    const pred = findTask(conflict.predKey);
+    const msgEl = document.getElementById("depConflictMessage");
+    if (msgEl) {
+      msgEl.textContent = `${key} is scheduled to start on ${candidateStart}, but depends on ${conflict.predKey} reaching ${conflict.triggerPercent}% on ${conflict.triggerDate || conflict.earliestDate}.`;
+    }
+    const snapBtn = document.getElementById("btnConflictSnap");
+    if (snapBtn) snapBtn.textContent = `Snap to Earliest Start (${conflict.earliestDate})`;
+    const suggestedPct = pred ? suggestTriggerToFit(pred, candidateStart) : 0;
+    const adjustBtn = document.getElementById("btnConflictAdjust");
+    if (adjustBtn) adjustBtn.textContent = `Adjust Trigger to ${suggestedPct}%`;
+    banner.hidden = false;
+    const r = state.hit && state.hit.getBoundingClientRect ? state.hit.getBoundingClientRect() : { bottom: 200, left: 200 };
+    banner.style.top = `${Math.max(8, Math.min(window.innerHeight - banner.offsetHeight - 8, r.bottom + 6))}px`;
+    banner.style.left = `${Math.max(8, Math.min(window.innerWidth - banner.offsetWidth - 8, r.left))}px`;
+  }
+  function closeDependencyConflictDialog() {
+    const banner = document.getElementById("depConflictBanner");
+    if (banner) banner.hidden = true;
+    conflictState = null;
+  }
+  async function applyConflictSnap() {
+    if (!conflictState) return;
+    const { key, candidateStart, candidateEnd, conflict } = conflictState;
+    const clamped = clampToEarliestStart(candidateStart, candidateEnd, conflict.earliestDate);
+    closeDependencyConflictDialog();
+    await commitDates(key, clamped.startDate, clamped.endDate);
+  }
+  async function applyConflictAdjust() {
+    if (!conflictState) return;
+    const { key, candidateStart, candidateEnd, conflict } = conflictState;
+    const pred = findTask(conflict.predKey);
+    const suggestedPct = pred ? suggestTriggerToFit(pred, candidateStart) : 0;
+    closeDependencyConflictDialog();
+    const task = findTask(key);
+    await callResolver2("updateWbsTask", {
+      taskId: key,
+      updates: {
+        startDate: candidateStart,
+        endDate: candidateEnd,
+        dependency: {
+          predecessorKey: conflict.predKey,
+          predecessorId: conflict.predKey,
+          triggerPercent: suggestedPct,
+          isTriggerSatisfied: false
+        }
+      },
+      expectedVersion: task && task.version || 0
+    });
+    await loadProjectPlan();
+    announce(`Adjusted trigger on ${conflict.predKey} to ${suggestedPct}% and moved ${key} to ${candidateStart}.`);
+  }
+  async function applyConflictKeep() {
+    if (!conflictState) return;
+    const { key, candidateStart, candidateEnd } = conflictState;
+    closeDependencyConflictDialog();
+    await commitDates(key, candidateStart, candidateEnd);
+  }
+  function applyConflictCancel() {
+    closeDependencyConflictDialog();
+    announce("Move cancelled.");
   }
   var gridRoot = null;
   var lastGridKey = null;
@@ -11139,15 +11369,36 @@ Click to manage or assign.`;
         }
       });
     }
+    const enforceBox = document.getElementById("enforceDependenciesCheckbox");
+    if (enforceBox) {
+      try {
+        enforceBox.checked = localStorage.getItem("cascadeplan_enforce_deps") === "on";
+      } catch (e) {
+      }
+      enforceBox.addEventListener("change", () => {
+        try {
+          localStorage.setItem("cascadeplan_enforce_deps", enforceBox.checked ? "on" : "off");
+        } catch (e) {
+        }
+      });
+    }
+    document.getElementById("btnCloseDepConflict")?.addEventListener("click", closeDependencyConflictDialog);
+    document.getElementById("btnConflictCancel")?.addEventListener("click", applyConflictCancel);
+    document.getElementById("btnConflictSnap")?.addEventListener("click", applyConflictSnap);
+    document.getElementById("btnConflictAdjust")?.addEventListener("click", applyConflictAdjust);
+    document.getElementById("btnConflictKeep")?.addEventListener("click", applyConflictKeep);
     document.addEventListener("click", (e) => {
       const tb = document.getElementById("barToolbar");
       if (tb && !tb.hidden && !tb.contains(e.target) && !e.target.closest(".bar-hit")) closeBarToolbar();
       const depEditPop = document.getElementById("depEditPopover");
       if (depEditPop && !depEditPop.hidden && !depEditPop.contains(e.target) && !e.target.closest(".dep-link-badge")) closeDependencyEditPopover();
+      const conflictBanner = document.getElementById("depConflictBanner");
+      if (conflictBanner && !conflictBanner.hidden && !conflictBanner.contains(e.target)) closeDependencyConflictDialog();
     });
     document.getElementById("ganttWrapper")?.addEventListener("scroll", () => {
       followBarToolbar();
       if (depEditState) closeDependencyEditPopover();
+      if (conflictState) closeDependencyConflictDialog();
     }, { passive: true });
   }
   function onShortcut(e, inField) {

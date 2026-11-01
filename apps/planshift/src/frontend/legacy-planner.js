@@ -21,7 +21,7 @@ import { initChangesPanel, isChangesPanelOpen, closeChangesPanel } from './chang
 import { describePendingWrites } from '../ui/change-log';
 import { html } from '../ui/safe-html';
 import { CanvasTimeline, ROW_H, BAR_H } from './canvas-timeline';
-import { clampTriggerPercent, dependencyPopoverTitle, computeDependencyPreview } from '../ui/dependency-edit';
+import { clampTriggerPercent, dependencyPopoverTitle, computeDependencyPreview, checkDependencyConflict, clampToEarliestStart, suggestTriggerToFit } from '../ui/dependency-edit';
 import { barRect, daysBetween, visibleRange, handleOffsets, snapDays, previewMoves, xForDate } from '../ui/timeline-geometry';
 import { GRID_COLUMNS, navigate, rowCells, rowLevel, moveKey, moveAnnouncement } from '../ui/keyboard-grid';
 import { weeklyHours } from '../ui/weekly-hours';
@@ -1692,6 +1692,8 @@ function closeAllPopovers() {
   if (targetPopover) targetPopover.style.display = 'none';
   const colMenu = document.getElementById('columnHeaderContextMenu');
   if (colMenu) colMenu.remove();
+  if (typeof closeDependencyEditPopover === 'function') closeDependencyEditPopover();
+  if (typeof closeDependencyConflictDialog === 'function') closeDependencyConflictDialog();
 }
 
 function openResourcePicker(targetEl, taskKey) {
@@ -3381,10 +3383,21 @@ function createBarHit(task, isEpic) {
       hit.appendChild(handle);
     }
     hit.addEventListener('mousedown', (e) => {
-      if (e.button !== 0 || e.target.classList.contains('bar-handle')) return;
+      if (e.button !== 0 || e.target.classList.contains('bar-handle') || e.target.classList.contains('bar-link-anchor')) return;
       e.preventDefault();
       startBarPointerEdit(e, key, 'move', hit);
     });
+    const anchor = document.createElement('div');
+    anchor.className = 'bar-link-anchor';
+    anchor.title = `Drag to link dependency from ${task.key}`;
+    anchor.setAttribute('aria-hidden', 'true');
+    anchor.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      e.preventDefault();
+      startVisualLinkDrag(e, key, hit);
+    });
+    hit.appendChild(anchor);
   }
   positionBarHit(hit, task);
 
@@ -3430,6 +3443,56 @@ function createBarHit(task, isEpic) {
   return hit;
 }
 
+function startVisualLinkDrag(e, sourceKey, hit) {
+  const sourceTask = findTask(sourceKey);
+  if (!sourceTask || !sourceTask.startDate || !timeline) return;
+  const wrapper = document.getElementById('ganttWrapper');
+  if (!wrapper) return;
+  const wRect = wrapper.getBoundingClientRect();
+
+  const x1 = hit.offsetLeft + hit.offsetWidth;
+  const y1 = hit.offsetTop + hit.offsetHeight / 2;
+
+  document.body.style.cursor = 'crosshair';
+  document.body.style.userSelect = 'none';
+
+  function onMove(ev) {
+    const curX = ev.clientX - wRect.left + wrapper.scrollLeft;
+    const curY = ev.clientY - wRect.top + wrapper.scrollTop;
+
+    const el = document.elementFromPoint(ev.clientX, ev.clientY);
+    const targetHit = el ? el.closest('.bar-hit') : null;
+    const targetKey = targetHit && targetHit.dataset.taskId !== sourceKey ? targetHit.dataset.taskId : null;
+
+    timeline.activeLinking = { sourceKey, x1, y1, curX, curY, targetKey };
+    timeline.requestDraw();
+  }
+
+  function onUp() {
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+
+    const targetKey = timeline.activeLinking ? timeline.activeLinking.targetKey : null;
+    timeline.activeLinking = null;
+    timeline.requestDraw();
+
+    if (targetKey) {
+      const targetHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(targetKey)}"]`);
+      openDependencyEditPopover({
+        predecessorKey: sourceKey,
+        successorKey: targetKey,
+        triggerPercent: 100,
+        isViolated: false
+      }, targetHit || hit);
+    }
+  }
+
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+}
+
 /**
  * Drag (move) or resize (left, right) of a bar. Snaps to days at Day and Week zoom and to weeks above
  * that; hold Alt for days at any zoom (B-27). Dependents
@@ -3460,14 +3523,32 @@ function startBarPointerEdit(e, key, mode, hit) {
     shift = s;
     const moves = previewMoves(currentPlan.tasks, key, mode === 'right' ? 0 : s, mode === 'left' ? 0 : s, today);
     const mine = moves.get(key);
+
+    const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
+    const enforceDeps = document.getElementById('enforceDependenciesCheckbox')?.checked === true;
+    if (enforceDeps && conflict.hasConflict && conflict.earliestDate) {
+      const clamped = clampToEarliestStart(mine.start, mine.end, conflict.earliestDate);
+      mine.start = clamped.startDate;
+      mine.end = clamped.endDate;
+      moves.set(key, mine);
+    }
+    const isConflict = !enforceDeps && conflict.hasConflict;
     const sign = s > 0 ? `+${s}` : `${s}`;
-    timeline.drag = { key, moves, label: mode === 'move' ? `${key} ➔ ${mine.start} (${sign}d)` : `${key} ${mine.start} to ${mine.end}` };
+    let label = mode === 'move' ? `${key} ➔ ${mine.start} (${sign}d)` : `${key} ${mine.start} to ${mine.end}`;
+    if (isConflict) {
+      label += ` · ⚠️ Conflict: ${conflict.predKey} (${conflict.triggerPercent}%)`;
+    }
+    timeline.drag = { key, moves, label, isConflict };
     positionBarHit(hit, { ...task, startDate: mine.start, endDate: mine.end });
     wrapper.dataset.preview = JSON.stringify(Object.fromEntries(moves));
     // Name every issue and field the drop will change before the user lets go (B-23, INV-11).
     const strip = document.getElementById('writePreview');
     if (strip) {
-      strip.textContent = describePendingWrites(currentPlan.tasks, moves, key).text;
+      let desc = describePendingWrites(currentPlan.tasks, moves, key).text;
+      if (isConflict) {
+        desc = `⚠️ Conflict: ${key} scheduled before ${conflict.predKey} reaches ${conflict.triggerPercent}% on ${conflict.triggerDate || conflict.earliestDate}. ${desc}`;
+      }
+      strip.textContent = desc;
       strip.hidden = false;
     }
     timeline.requestDraw();
@@ -3489,6 +3570,25 @@ function startBarPointerEdit(e, key, mode, hit) {
       drawTimeline();
       return;
     }
+
+    const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
+    const enforceDeps = document.getElementById('enforceDependenciesCheckbox')?.checked === true;
+    if (!enforceDeps && conflict.hasConflict) {
+      timeline.drag = null;
+      positionBarHit(hit, task);
+      drawTimeline();
+      showDependencyConflictDialog({
+        key,
+        candidateStart: mine.start,
+        candidateEnd: mine.end,
+        conflict,
+        task,
+        hit,
+        mode
+      });
+      return;
+    }
+
     const updates = { startDate: mine.start, endDate: mine.end };
     // A resize changes dates only. The estimate changes only when the user ticked the option (B-03).
     const autoScale = mode !== 'move' && document.getElementById('autoScaleEffortCheckbox')?.checked === true;
@@ -3509,6 +3609,82 @@ function startBarPointerEdit(e, key, mode, hit) {
 
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);
+}
+
+let conflictState = null;
+
+function showDependencyConflictDialog(state) {
+  const banner = document.getElementById('depConflictBanner');
+  if (!banner) return;
+  conflictState = state;
+  const { key, candidateStart, conflict } = state;
+  const pred = findTask(conflict.predKey);
+  const msgEl = document.getElementById('depConflictMessage');
+  if (msgEl) {
+    msgEl.textContent = `${key} is scheduled to start on ${candidateStart}, but depends on ${conflict.predKey} reaching ${conflict.triggerPercent}% on ${conflict.triggerDate || conflict.earliestDate}.`;
+  }
+  const snapBtn = document.getElementById('btnConflictSnap');
+  if (snapBtn) snapBtn.textContent = `Snap to Earliest Start (${conflict.earliestDate})`;
+
+  const suggestedPct = pred ? suggestTriggerToFit(pred, candidateStart) : 0;
+  const adjustBtn = document.getElementById('btnConflictAdjust');
+  if (adjustBtn) adjustBtn.textContent = `Adjust Trigger to ${suggestedPct}%`;
+
+  banner.hidden = false;
+  const r = state.hit && state.hit.getBoundingClientRect ? state.hit.getBoundingClientRect() : { bottom: 200, left: 200 };
+  banner.style.top = `${Math.max(8, Math.min(window.innerHeight - banner.offsetHeight - 8, r.bottom + 6))}px`;
+  banner.style.left = `${Math.max(8, Math.min(window.innerWidth - banner.offsetWidth - 8, r.left))}px`;
+}
+
+function closeDependencyConflictDialog() {
+  const banner = document.getElementById('depConflictBanner');
+  if (banner) banner.hidden = true;
+  conflictState = null;
+}
+
+async function applyConflictSnap() {
+  if (!conflictState) return;
+  const { key, candidateStart, candidateEnd, conflict } = conflictState;
+  const clamped = clampToEarliestStart(candidateStart, candidateEnd, conflict.earliestDate);
+  closeDependencyConflictDialog();
+  await commitDates(key, clamped.startDate, clamped.endDate);
+}
+
+async function applyConflictAdjust() {
+  if (!conflictState) return;
+  const { key, candidateStart, candidateEnd, conflict } = conflictState;
+  const pred = findTask(conflict.predKey);
+  const suggestedPct = pred ? suggestTriggerToFit(pred, candidateStart) : 0;
+  closeDependencyConflictDialog();
+  const task = findTask(key);
+  await callResolver('updateWbsTask', {
+    taskId: key,
+    updates: {
+      startDate: candidateStart,
+      endDate: candidateEnd,
+      dependency: {
+        predecessorKey: conflict.predKey,
+        predecessorId: conflict.predKey,
+        triggerPercent: suggestedPct,
+        isTriggerSatisfied: false
+      }
+    },
+    expectedVersion: (task && task.version) || 0
+  });
+  await loadProjectPlan();
+  announce(`Adjusted trigger on ${conflict.predKey} to ${suggestedPct}% and moved ${key} to ${candidateStart}.`);
+}
+
+async function applyConflictKeep() {
+  if (!conflictState) return;
+  const { key, candidateStart, candidateEnd } = conflictState;
+  closeDependencyConflictDialog();
+  await commitDates(key, candidateStart, candidateEnd);
+}
+
+function applyConflictCancel() {
+  closeDependencyConflictDialog();
+  announce('Move cancelled.');
 }
 
 
@@ -4110,15 +4286,32 @@ function initKeyboard() {
     });
   }
 
+  const enforceBox = document.getElementById('enforceDependenciesCheckbox');
+  if (enforceBox) {
+    try { enforceBox.checked = localStorage.getItem('cascadeplan_enforce_deps') === 'on'; } catch (e) {}
+    enforceBox.addEventListener('change', () => {
+      try { localStorage.setItem('cascadeplan_enforce_deps', enforceBox.checked ? 'on' : 'off'); } catch (e) {}
+    });
+  }
+
+  document.getElementById('btnCloseDepConflict')?.addEventListener('click', closeDependencyConflictDialog);
+  document.getElementById('btnConflictCancel')?.addEventListener('click', applyConflictCancel);
+  document.getElementById('btnConflictSnap')?.addEventListener('click', applyConflictSnap);
+  document.getElementById('btnConflictAdjust')?.addEventListener('click', applyConflictAdjust);
+  document.getElementById('btnConflictKeep')?.addEventListener('click', applyConflictKeep);
+
   document.addEventListener('click', (e) => {
     const tb = document.getElementById('barToolbar');
     if (tb && !tb.hidden && !tb.contains(e.target) && !e.target.closest('.bar-hit')) closeBarToolbar();
     const depEditPop = document.getElementById('depEditPopover');
     if (depEditPop && !depEditPop.hidden && !depEditPop.contains(e.target) && !e.target.closest('.dep-link-badge')) closeDependencyEditPopover();
+    const conflictBanner = document.getElementById('depConflictBanner');
+    if (conflictBanner && !conflictBanner.hidden && !conflictBanner.contains(e.target)) closeDependencyConflictDialog();
   });
   document.getElementById('ganttWrapper')?.addEventListener('scroll', () => {
     followBarToolbar();
     if (depEditState) closeDependencyEditPopover();
+    if (conflictState) closeDependencyConflictDialog();
   }, { passive: true });
 }
 

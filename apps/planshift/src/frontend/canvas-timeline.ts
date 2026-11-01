@@ -56,6 +56,16 @@ export interface DragPreview {
   key: string;
   moves: Map<string, { start: string; end: string }>;
   label: string;
+  isConflict?: boolean;
+}
+
+export interface ActiveLinking {
+  sourceKey: string;
+  x1: number;
+  y1: number;
+  curX: number;
+  curY: number;
+  targetKey: string | null;
 }
 
 export class CanvasTimeline {
@@ -70,6 +80,7 @@ export class CanvasTimeline {
   focusKey: string | null = null;
   driverKeys: string[] = [];
   drag: DragPreview | null = null;
+  activeLinking: ActiveLinking | null = null;
   /** Focused element of the treegrid in the canvas fallback content, for drawFocusIfNeeded (B-15). */
   focusElement: Element | null = null;
   private forced = false;
@@ -185,6 +196,7 @@ export class CanvasTimeline {
     const rects = this.barRects(m);
     this.drawArrows(m, rects, top, cssH);
     for (let i = m.first; i <= m.last; i++) this.drawBar(m, i, rects);
+    if (this.activeLinking) this.drawActiveLinking(this.activeLinking, rects);
     if (todayX !== null) this.drawTodayFlag(m, todayX, top);
     ctx.restore();
     this.onDraw?.(this.arrowLinks);
@@ -274,14 +286,15 @@ export class CanvasTimeline {
     const style = barStyle(task);
     const fill = this.c(style.fill);
 
+    const isConflict = Boolean(this.drag && this.drag.key === task.key && this.drag.isConflict);
     if (this.drag && this.drag.moves.has(task.key)) {
       // Dashed outline at the old position while the preview moves the bar (UR-05).
       const old = this.rectFor(m, i, task, true);
       if (old) {
         this.path(old);
         ctx.setLineDash([4, 3]);
-        ctx.strokeStyle = this.c(CANVAS_TOKENS.preview);
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = this.c(isConflict ? CANVAS_TOKENS.arrowViolated : CANVAS_TOKENS.preview);
+        ctx.lineWidth = isConflict ? 2 : 1.5;
         ctx.stroke();
         ctx.setLineDash([]);
       }
@@ -315,8 +328,8 @@ export class CanvasTimeline {
       ctx.restore();
     }
     this.path(r);
-    ctx.strokeStyle = fill;
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = isConflict ? this.c(CANVAS_TOKENS.arrowViolated) : fill;
+    ctx.lineWidth = isConflict ? 2.5 : 1.5;
     ctx.stroke();
 
     const focus = this.c(CANVAS_TOKENS.focus);
@@ -432,5 +445,41 @@ export class CanvasTimeline {
     ctx.fill();
     ctx.fillStyle = this.c(CANVAS_TOKENS.todayFlagText);
     ctx.fillText(text, r.x + 6, r.y + r.h / 2);
+  }
+
+  private drawActiveLinking(linking: ActiveLinking, rects: Map<string, { i: number; r: Rect }>): void {
+    const ctx = this.ctx;
+    const { x1, y1, curX, curY, targetKey } = linking;
+    const colour = this.c(CANVAS_TOKENS.arrowActive);
+    const dx = Math.max(35, Math.abs(curX - x1) / 2);
+
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.bezierCurveTo(x1 + dx, y1, curX - dx, curY, curX - 6, curY);
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(curX, curY);
+    ctx.lineTo(curX - 8, curY - 5);
+    ctx.lineTo(curX - 8, curY + 5);
+    ctx.closePath();
+    ctx.fillStyle = colour;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(x1, y1, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (targetKey) {
+      const target = rects.get(targetKey);
+      if (target) {
+        this.path({ x: target.r.x - 3, y: target.r.y - 3, w: target.r.w + 6, h: target.r.h + 6 }, RADIUS + 2);
+        ctx.strokeStyle = colour;
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+    }
   }
 }

@@ -131,6 +131,7 @@
               <button class="btn btn-outline btn-sm" type="button" data-zoom="year" aria-pressed="false">Year</button>
             </div>
             <button class="btn btn-outline btn-sm" type="button" id="btnCompactColumns" aria-pressed="false" title="Show only Key and Summary, so more of the timeline fits">Key and Summary only</button>
+            <label class="enforce-deps-toggle" title="When enabled, moving a task automatically snaps to respect predecessor milestone dates"><input type="checkbox" id="enforceDependenciesCheckbox"> Enforce dependencies</label>
           </div>
 
           <div class="milestones-strip" id="milestonesStrip">
@@ -296,6 +297,21 @@
         <button class="btn btn-outline btn-sm" id="btnCancelDepEdit" type="button">Cancel</button>
         <button class="btn btn-primary btn-sm" id="btnSaveDepEdit" type="button">Save</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Dependency Conflict Resolution Dialog: shown when dropping a bar earlier than predecessor milestone -->
+  <div id="depConflictBanner" class="why-popup dep-conflict-banner" role="dialog" aria-labelledby="depConflictTitle" hidden>
+    <div class="why-header">
+      <strong id="depConflictTitle" style="color: var(--cp-text-danger);">⚠️ Dependency Conflict</strong>
+      <button class="btn btn-subtle btn-sm" id="btnCloseDepConflict" type="button" aria-label="Close">✕</button>
+    </div>
+    <p id="depConflictMessage" class="dep-conflict-msg"></p>
+    <div class="dep-conflict-actions">
+      <button class="btn btn-primary btn-sm" id="btnConflictSnap" type="button">Snap to Earliest Start</button>
+      <button class="btn btn-outline btn-sm" id="btnConflictAdjust" type="button">Adjust Trigger to Fit</button>
+      <button class="btn btn-subtle btn-sm" id="btnConflictKeep" type="button">Keep with Violation</button>
+      <button class="btn btn-subtle btn-sm" id="btnConflictCancel" type="button">Cancel Move</button>
     </div>
   </div>
 
