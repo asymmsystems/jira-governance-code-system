@@ -19,7 +19,7 @@ import {
   Textfield
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
-import { DecideExceptionPayload, ExceptionDecision, IssueRow, LinkDecisionPayload, RecordExceptionPayload, WriteResult } from '../contract/data/models';
+import { DecideExceptionPayload, ExceptionDecision, IssueRow, LinkDecisionPayload, RecordExceptionPayload, RequestReviewPayload, WriteResult } from '../contract/data/models';
 import { messageOf } from '../contract/data/errors';
 
 /** The change event a UI Kit Textfield sends. */
@@ -175,6 +175,49 @@ export const DecisionModal: React.FC<ModalProps & { decision: ExceptionDecision 
       <ModalFooter>
         <Button appearance="subtle" onClick={onClose}>Cancel</Button>
         <Button appearance="primary" onClick={submit}>{text.button}</Button>
+      </ModalFooter>
+    </Modal>
+  );
+};
+
+export const ReviewModal: React.FC<ModalProps> = ({ issueId, issueKey, onClose, onDone }) => {
+  const [comment, setComment] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    setError(null);
+    try {
+      const res = (await invoke<RequestReviewPayload, WriteResult>('requestReview', { issueId, issueKey, comment })) as WriteResult | undefined;
+      if (res?.success) {
+        onDone(res.row);
+      } else {
+        setError(res?.error || 'The review request was not added.');
+      }
+    } catch (err) {
+      setError(messageOf(err, 'The review request was not added.'));
+    }
+  };
+
+  return (
+    <Modal onClose={onClose}>
+      <ModalHeader>
+        <ModalTitle>{`Request retrospective review for ${issueKey}`}</ModalTitle>
+      </ModalHeader>
+      <ModalBody>
+        <Stack space="space.100">
+          <Text>Ask for a retrospective code review. This posts a comment on the issue and does not change any gate.</Text>
+          {error ? (
+            <SectionMessage appearance="error" title="Not requested">
+              <Text>{error}</Text>
+            </SectionMessage>
+          ) : null}
+          <Label labelFor="fr-review-comment">Comment (15 to 1,000 characters)</Label>
+          <Textfield id="fr-review-comment" onChange={(e: TextChange) => setComment(e.target?.value || '')} />
+        </Stack>
+      </ModalBody>
+      <ModalFooter>
+        <Button appearance="subtle" onClick={onClose}>Cancel</Button>
+        <Button appearance="primary" onClick={submit}>Request review</Button>
       </ModalFooter>
     </Modal>
   );

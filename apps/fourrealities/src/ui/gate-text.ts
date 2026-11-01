@@ -178,13 +178,14 @@ export function recoveryText(row: Pick<IssueRow, 'gates' | 'recoverablePoints'>)
     : undefined;
 }
 
-export type PanelAction = 'link' | 'code' | 'rework' | 'decision';
+export type PanelAction = 'link' | 'code' | 'rework' | 'decision' | 'review';
 
 const ACTION_DONE: Record<PanelAction, string> = {
   link: 'Link added.',
   code: 'Exception requested.',
   rework: 'Rework reason recorded.',
-  decision: 'Decision recorded.'
+  decision: 'Decision recorded.',
+  review: 'Review requested.'
 };
 
 /**
@@ -193,7 +194,7 @@ const ACTION_DONE: Record<PanelAction, string> = {
  */
 export function afterActionText(action: PanelAction, row?: Pick<IssueRow, 'gates'>): string {
   const done = ACTION_DONE[action];
-  if (action === 'rework') return `${done} It does not change any gate.`;
+  if (action === 'rework' || action === 'review') return `${done} It does not change any gate.`;
   if (!row) return `${done} The gates could not be read again. Use Refresh.`;
   if (action === 'link') return `${done} Intent: ${stateLabel(row.gates.intent)}.`;
   if (action === 'code') return `${done} A project or Jira administrator must approve it. Code: ${stateLabel(row.gates.code)}.`;

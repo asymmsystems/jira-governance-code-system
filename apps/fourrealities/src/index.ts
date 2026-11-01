@@ -6,7 +6,7 @@
  */
 
 import Resolver from '@forge/resolver';
-import { CallerContext, DecideExceptionPayload, ForgeContext, IssueRow, LinkDecisionPayload, ProjectDashboardView, RecordExceptionPayload, ResolverResult, ScheduledRunResult, WriteResult } from './contract/data/models';
+import { CallerContext, DecideExceptionPayload, ForgeContext, IssueRow, LinkDecisionPayload, ProjectDashboardView, RecordExceptionPayload, RequestReviewPayload, ResolverResult, ScheduledRunResult, WriteResult } from './contract/data/models';
 import { StorageProvider } from './contract/accessors';
 import { DefaultForgeKvsStore } from './accessor/default-forge-kvs-store';
 import { DefaultForgeJiraIssueAccessor, Principal } from './accessor/default-forge-jira-issue-accessor';
@@ -170,6 +170,14 @@ export async function decideException(payload: DecideExceptionPayload | undefine
   return withRow(app, caller, await app.exceptions.decide(caller, payload));
 }
 
+/** Requests a retrospective review by posting a comment as the user. */
+export async function requestReview(payload: RequestReviewPayload | undefined, context?: ForgeContext, storageProvider?: StorageProvider): Promise<WriteResult> {
+  if (licenceInactive(context)) return { ...LICENCE_WRITE_ERROR };
+  const app = compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user');
+  const caller = callerOf(context);
+  return withRow(app, caller, await app.issues.requestReview(caller, payload));
+}
+
 /**
  * Rendering hooks for Forge modules.
  */
@@ -210,6 +218,10 @@ resolver.define('recordException', async (req) => {
 
 resolver.define('decideException', async (req) => {
   return await decideException(req.payload, req.context);
+});
+
+resolver.define('requestReview', async (req) => {
+  return await requestReview(req.payload, req.context);
 });
 
 export const handler = resolver.getDefinitions();

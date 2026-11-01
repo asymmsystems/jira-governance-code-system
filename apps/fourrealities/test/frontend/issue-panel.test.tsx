@@ -10,6 +10,7 @@ const TestRenderer = require('react-test-renderer');
 const { act } = TestRenderer;
 import { bridgeState, findAll, findButton, settle, textOf } from './forge-mocks';
 import { F, M_CODE, M_DOD, M_INTENT, NA, row } from './rows';
+import { GateResult } from '../../src/contract/data/models';
 
 jest.mock('@forge/react', () => require('./forge-mocks').reactMock());
 jest.mock('@forge/bridge', () => require('./forge-mocks').bridgeMock());
@@ -307,6 +308,45 @@ describe('IssuePanel', () => {
       }
       const noDecider = await mount(row('DEMO-23', missingCode, { codeException: { ...base, status: 'WITHDRAWN' } }));
       expect(textOf(noDecider.toJSON())).not.toContain('Exception withdrawn by');
+    });
+  });
+
+  describe('B-42: Request retrospective review', () => {
+    it('offers Request retrospective review when Code is FOUND with PR_MERGED', async () => {
+      const onRow = jest.fn();
+      const codeMerged: GateResult = { state: 'FOUND', verification: 'HEURISTIC', reason: 'PR_MERGED' };
+      const r = await mount(row('DEMO-30', { intent: F, process: F, code: codeMerged, audit: NA }), jest.fn(), onRow);
+      findButton(r.root, 'Request retrospective review');
+
+      await act(async () => { findButton(r.root, 'Request retrospective review').props.onClick(); });
+      expect(findAll(r.root, 'ModalTitle').map((t: any) => String(t.props.children))).toEqual(['Request retrospective review for DEMO-30']);
+      expect(findAll(r.root, 'Label').map((l: any) => l.props.labelFor)).toContain('fr-review-comment');
+
+      await act(async () => { type(r, 'fr-review-comment', 'Please conduct a retrospective code review for this change.'); });
+
+      bridgeState.invoke.mockResolvedValueOnce({ success: false, error: 'Review comment required.' });
+      await act(async () => { findButton(r.root, 'Request review').props.onClick(); });
+      expect(textOf(r.toJSON())).toContain('Review comment required.');
+
+      bridgeState.invoke.mockRejectedValueOnce(new Error('connection reset'));
+      await act(async () => { findButton(r.root, 'Request review').props.onClick(); });
+      expect(textOf(r.toJSON())).toContain('connection reset');
+
+      bridgeState.invoke.mockResolvedValueOnce({});
+      await act(async () => { findButton(r.root, 'Request review').props.onClick(); });
+      expect(textOf(r.toJSON())).toContain('The review request was not added.');
+
+      const after = row('DEMO-30', { intent: F, process: F, code: codeMerged, audit: NA });
+      bridgeState.invoke.mockResolvedValueOnce({ success: true, row: after });
+      await act(async () => { findButton(r.root, 'Request review').props.onClick(); });
+      expect(bridgeState.invoke).toHaveBeenLastCalledWith('requestReview', { issueId: '30', issueKey: 'DEMO-30', comment: 'Please conduct a retrospective code review for this change.' });
+      expect(onRow).toHaveBeenCalledWith(after);
+      expect(textOf(r.toJSON())).toContain('Review requested. It does not change any gate.');
+    });
+
+    it('does not offer Request retrospective review when Code is not PR_MERGED', async () => {
+      const r = await mount(row('DEMO-31', { intent: F, process: F, code: M_CODE, audit: NA }));
+      expect(() => findButton(r.root, 'Request retrospective review')).toThrow('No button');
     });
   });
 });

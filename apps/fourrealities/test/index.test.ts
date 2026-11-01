@@ -16,6 +16,7 @@ import {
   linkDecision,
   recordException,
   decideException,
+  requestReview,
   refreshProjectSnapshot,
   runScheduledSnapshot
 } from '../src/index';
@@ -250,6 +251,15 @@ describe('FourRealities Index / Forge Handlers', () => {
         context: { extension: { issue: { id: 'iss-h4' } } }
       } as any);
       expect(resException.success).toBe(true);
+
+      const resReview: any = await handler({
+        call: {
+          functionKey: 'requestReview',
+          payload: { issueId: 'iss-h5', comment: 'Please conduct a retrospective code review.' }
+        },
+        context: { extension: { issue: { id: 'iss-h5' } } }
+      } as any);
+      expect(resReview.success).toBe(true);
     });
   });
 
@@ -368,6 +378,54 @@ describe('FourRealities Index / Forge Handlers', () => {
       }, { extension: { issue: { id: 'iss-1' } } });
       expect(res.success).toBe(false);
       expect(res.error).toBe('Connection dropped');
+    });
+
+    it('executes requestReview with ADF body and handles validations', async () => {
+      mockRequestJira.mockResolvedValueOnce({ status: 201 });
+      const res = await requestReview({
+        issueId: 'iss-1',
+        comment: 'Please review this merged pull request retrospectively.'
+      }, { extension: { issue: { id: 'iss-1' } } });
+      expect(res.success).toBe(true);
+      // Comment write, then the re-read for the panel (B-17): all as the user.
+      expect(mockUserRequestJira).toHaveBeenCalledTimes(3);
+      const [path, init] = mockUserRequestJira.mock.calls[0];
+      expect(path).toBe('/rest/api/3/issue/iss-1/comment');
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body)).toEqual({
+        body: {
+          type: 'doc',
+          version: 1,
+          content: [
+            {
+              type: 'paragraph',
+              content: [
+                {
+                  type: 'text',
+                  text: 'Please review this merged pull request retrospectively.'
+                }
+              ]
+            }
+          ]
+        }
+      });
+
+      // Fails on missing issueId
+      expect((await requestReview({})).success).toBe(false);
+
+      // Fails on short comment
+      expect((await requestReview({ issueId: 'iss-1', comment: 'short' }, { extension: { issue: { id: 'iss-1' } } })).error)
+        .toBe('Give a comment of 15 to 1,000 characters.');
+
+      // Fails on 403
+      mockRequestJira.mockResolvedValueOnce({ status: 403 });
+      expect((await requestReview({ issueId: 'iss-1', issueKey: 'DEMO-1', comment: 'Please conduct a review.' }, { extension: { issue: { id: 'iss-1' } } })).error)
+        .toBe('You need permission to comment on DEMO-1.');
+
+      // Fails on network error
+      mockRequestJira.mockRejectedValueOnce(new Error('connection reset'));
+      expect((await requestReview({ issueId: 'iss-1', comment: 'Please conduct a review.' }, { extension: { issue: { id: 'iss-1' } } })).error)
+        .toBe('connection reset');
     });
   });
 });
@@ -1156,6 +1214,16 @@ describe('B-17: writers return the re-evaluated row (FR-20)', () => {
     expect(res.row.codeException.status).toBe('APPROVED');
     expect(res.row.gates.code.state).toBe('EXCEPTED');
   });
+
+  it('returns the row after requestReview', async () => {
+    mockRequestJira
+      .mockResolvedValueOnce({ status: 201 })
+      .mockResolvedValueOnce({ status: 200, json: async () => doneIssue })
+      .mockResolvedValueOnce({ status: 200, json: async () => [] });
+    const res: any = await requestReview({ issueId: '30009', issueKey: 'DEMO-39', comment: 'Please conduct a review.' }, issueCtx, new MockStorage());
+    expect(res.success).toBe(true);
+    expect(res.row.issueKey).toBe('DEMO-39');
+  });
 });
 
 describe('B-23: an inactive licence stops every resolver before any read or write', () => {
@@ -1175,6 +1243,7 @@ describe('B-23: an inactive licence stops every resolver before any read or writ
     expect(await linkDecision({ issueId: '30009', url: 'https://x.example/a', title: 'ADR 1' }, inactive as any, storage)).toEqual({ success: false, error: MESSAGE });
     expect(await recordException({ issueId: '30009', type: 'REWORK', reason: 'Requirement changed after review' }, inactive as any, storage)).toEqual({ success: false, error: MESSAGE });
     expect(await decideException({ issueId: '30009', decision: 'APPROVE', reason: '' }, inactive as any, storage)).toEqual({ success: false, error: MESSAGE });
+    expect(await requestReview({ issueId: '30009', comment: 'Please review this merged PR.' }, inactive as any, storage)).toEqual({ success: false, error: MESSAGE });
     expect(mockUserRequestJira).not.toHaveBeenCalled();
     expect(mockAppRequestJira).not.toHaveBeenCalled();
   });

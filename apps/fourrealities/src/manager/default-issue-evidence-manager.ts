@@ -5,7 +5,7 @@
  * Orchestration only. Every Jira call runs as the user (FR-05, FR-18).
  */
 
-import { CallerContext, IssueRow, LinkDecisionPayload, ResolverResult, WriteResult } from '../contract/data/models';
+import { CallerContext, IssueRow, LinkDecisionPayload, RequestReviewPayload, ResolverResult, WriteResult } from '../contract/data/models';
 import { ExceptionEventAccessor, ReworkNoteAccessor, JiraIssueAccessor, SiteConfigAccessor } from '../contract/accessors';
 import { ExceptionPolicyEngine, GateEngine, MetricsEngine, PolicyEngine } from '../contract/engines';
 import { IssueEvidenceManager } from '../contract/managers';
@@ -81,6 +81,38 @@ export class DefaultIssueEvidenceManager implements IssueEvidenceManager {
       return { success: false, error: `Jira returned status ${status} linking decision.` };
     } catch (err) {
       return { success: false, error: messageOf(err, 'Failed to link architecture decision.') };
+    }
+  }
+
+  /** Requests a retrospective review by posting a Jira comment as the user. Never claims a review happened. */
+  async requestReview(caller: CallerContext, payload: RequestReviewPayload | undefined): Promise<WriteResult> {
+    const issueId = payload?.issueId || caller.issueId;
+    if (caller.issueId && payload?.issueId && caller.issueId !== payload.issueId) {
+      return { success: false, error: 'Unauthorized: Cannot request review on external issue.' };
+    }
+    if (!issueId) {
+      return { success: false, error: 'Missing issueId.' };
+    }
+    const comment = String(payload?.comment || '').trim();
+    const inputError = this.d.policy.reviewCommentInputError(comment);
+    if (inputError) {
+      return { success: false, error: inputError };
+    }
+    try {
+      const scopeError = await this.scopeError(issueId, caller);
+      if (scopeError) {
+        return { success: false, error: scopeError };
+      }
+      const status = await this.d.userJira.addComment(issueId, comment);
+      if (status >= 200 && status < 300) {
+        return { success: true };
+      }
+      if (status === 403) {
+        return { success: false, error: `You need permission to comment on ${payload?.issueKey || issueId}.` };
+      }
+      return { success: false, error: `Jira returned status ${status} adding review comment.` };
+    } catch (err) {
+      return { success: false, error: messageOf(err, 'Failed to post review comment.') };
     }
   }
 

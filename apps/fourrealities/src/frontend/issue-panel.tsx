@@ -11,7 +11,7 @@ import { ExceptionDecision, ExceptionNote, GATE_NAMES, GateExceptionState, GateN
 import { PanelAction, afterActionText, raiPartsText, raiText, recoveryText, riskAppearance } from '../ui/gate-text';
 import { GatePipeline, GateRow } from './gate-row';
 import { alignmentText, driftText, nextActionText, scoreParts } from '../ui/pipeline';
-import { DecisionModal, ExceptionModal, LinkDecisionModal } from './modals';
+import { DecisionModal, ExceptionModal, LinkDecisionModal, ReviewModal } from './modals';
 
 /**
  * Opens the issue so the user can act in the producer app's own panel.
@@ -90,7 +90,7 @@ function gateNote(gate: GateName, row: IssueRow): React.ReactNode {
   return undefined;
 }
 
-type OpenModal = 'none' | 'link' | 'code' | 'rework' | ExceptionDecision;
+type OpenModal = 'none' | 'link' | 'code' | 'rework' | 'review' | ExceptionDecision;
 
 /**
  * onRow replaces the row in place after a write, so the panel stays mounted and its message
@@ -174,6 +174,9 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void; onRow: 
         {row.gates.intent.state === 'MISSING' ? (
           <Button appearance="primary" onClick={() => setOpen('link')}>Link decision record</Button>
         ) : null}
+        {row.gates.code.state === 'FOUND' && row.gates.code.reason === 'PR_MERGED' ? (
+          <Button appearance="default" onClick={() => setOpen('review')}>Request retrospective review</Button>
+        ) : null}
         {row.gates.code.state === 'MISSING' && row.gates.code.reason === 'PR_NONE' && row.codeException?.status !== 'REQUESTED' ? (
           <Button appearance="default" onClick={() => setOpen('code')}>Request Code exception</Button>
         ) : null}
@@ -195,6 +198,9 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void; onRow: 
 
       {open === 'link' ? (
         <LinkDecisionModal issueId={row.issueId} issueKey={row.issueKey} onClose={() => setOpen('none')} onDone={done('link')} />
+      ) : null}
+      {open === 'review' ? (
+        <ReviewModal issueId={row.issueId} issueKey={row.issueKey} onClose={() => setOpen('none')} onDone={done('review')} />
       ) : null}
       {open === 'code' || open === 'rework' ? (
         <ExceptionModal

@@ -49,4 +49,14 @@ export class DefaultPolicyEngine implements PolicyEngine {
     }
     return undefined;
   }
+
+  reviewCommentInputError(comment: string): string | undefined {
+    if (!comment) {
+      return 'Review comment required.';
+    }
+    if (comment.length < 15 || comment.length > 1000) {
+      return 'Give a comment of 15 to 1,000 characters.';
+    }
+    return undefined;
+  }
 }

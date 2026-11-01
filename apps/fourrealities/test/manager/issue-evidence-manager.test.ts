@@ -73,4 +73,34 @@ describe('DefaultIssueEvidenceManager', () => {
     expect((await manager(fakeJira({ addRemoteLink: jest.fn().mockRejectedValue({}) })).linkDecision({ issueId: '1' }, link)).error)
       .toBe('Failed to link architecture decision.');
   });
+
+  it('validates review comment input and authorization before posting a comment', async () => {
+    const m = manager(fakeJira());
+    expect((await (m as any).requestReview({ issueId: '1' }, { issueId: '2', comment: 'Valid comment text here' })).error)
+      .toBe('Unauthorized: Cannot request review on external issue.');
+    expect((await (m as any).requestReview({}, {})).error).toBe('Missing issueId.');
+    expect((await (m as any).requestReview({ issueId: '1' }, { comment: 'too short' })).error)
+      .toBe('Give a comment of 15 to 1,000 characters.');
+  });
+
+  it('posts retrospective review comment and handles 403, 500, and network error', async () => {
+    const addComment = jest.fn().mockResolvedValue(201);
+    const jira = fakeJira({ addComment } as any);
+    const m = manager(jira);
+    const ok = await (m as any).requestReview({ issueId: '1' }, { issueId: '1', issueKey: 'DEMO-1', comment: 'Please review this pull request.' });
+    expect(ok).toEqual({ success: true });
+    expect(addComment).toHaveBeenCalledWith('1', 'Please review this pull request.');
+
+    const forbidden = await (manager(fakeJira({ addComment: jest.fn().mockResolvedValue(403) } as any)) as any)
+      .requestReview({ issueId: '1' }, { issueId: '1', issueKey: 'DEMO-1', comment: 'Please review this pull request.' });
+    expect(forbidden.error).toBe('You need permission to comment on DEMO-1.');
+
+    const serverError = await (manager(fakeJira({ addComment: jest.fn().mockResolvedValue(500) } as any)) as any)
+      .requestReview({ issueId: '1' }, { issueId: '1', issueKey: 'DEMO-1', comment: 'Please review this pull request.' });
+    expect(serverError.error).toBe('Jira returned status 500 adding review comment.');
+
+    const networkError = await (manager(fakeJira({ addComment: jest.fn().mockRejectedValue(new Error('timeout')) } as any)) as any)
+      .requestReview({ issueId: '1' }, { issueId: '1', issueKey: 'DEMO-1', comment: 'Please review this pull request.' });
+    expect(networkError.error).toBe('timeout');
+  });
 });

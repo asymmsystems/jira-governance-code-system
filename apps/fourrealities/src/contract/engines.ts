@@ -51,6 +51,7 @@ export interface PolicyEngine extends Engine {
   scopeError(target: { issueId: string; issueKey?: string; projectKey?: string }, caller: { issueId?: string; projectKey?: string }): string | undefined;
   linkInputError(url: string, title: string): string | undefined;
   exceptionInputError(reason: string, notes?: string): string | undefined;
+  reviewCommentInputError(comment: string): string | undefined;
 }
 
 /** Gate exception lifecycle rules (ADR-001 Patterns 3 and 5, Option C). */

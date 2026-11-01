@@ -5,7 +5,7 @@
  */
 
 import { Manager } from './service-types';
-import { CallerContext, DecideExceptionPayload, IssueRow, LinkDecisionPayload, ProjectDashboardView, ProjectSummary, RecordExceptionPayload, ResolverResult, ScheduledRunResult, SnapshotMeta, WriteResult } from './data/models';
+import { CallerContext, DecideExceptionPayload, IssueRow, LinkDecisionPayload, ProjectDashboardView, ProjectSummary, RecordExceptionPayload, RequestReviewPayload, ResolverResult, ScheduledRunResult, SnapshotMeta, WriteResult } from './data/models';
 
 export interface DashboardManager extends Manager {
   /** Stored snapshot (built once when absent), filtered to what the viewer can browse. */
@@ -15,6 +15,7 @@ export interface DashboardManager extends Manager {
 export interface IssueEvidenceManager extends Manager {
   evaluate(caller: CallerContext): Promise<ResolverResult<{ row: IssueRow }>>;
   linkDecision(caller: CallerContext, payload: LinkDecisionPayload | undefined): Promise<WriteResult>;
+  requestReview(caller: CallerContext, payload: RequestReviewPayload | undefined): Promise<WriteResult>;
 }
 
 export interface ExceptionManager extends Manager {

@@ -121,4 +121,29 @@ export class DefaultForgeJiraIssueAccessor implements JiraIssueAccessor {
     });
     return res.status;
   }
+
+  async addComment(issueId: string, comment: string): Promise<number> {
+    const res = await this.request(route`/rest/api/3/issue/${issueId}/comment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        body: {
+          type: 'doc',
+          version: 1,
+          content: [
+            {
+              type: 'paragraph',
+              content: [
+                {
+                  type: 'text',
+                  text: comment
+                }
+              ]
+            }
+          ]
+        }
+      })
+    });
+    return res.status;
+  }
 }

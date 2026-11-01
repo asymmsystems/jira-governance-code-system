@@ -100,6 +100,12 @@ describe('B-20: accessibility on every view', () => {
       checkTree(r, open);
       await act(async () => { findButton(r.root, 'Cancel').props.onClick(); });
     }
+    const rMerged = await act(async () => {
+      r = TestRenderer.create(<IssuePanel row={row('DEMO-3', { intent: F, process: F, code: { state: 'FOUND', verification: 'HEURISTIC', reason: 'PR_MERGED' }, audit: NA })} onReload={jest.fn()} onRow={jest.fn()} />);
+    });
+    await act(async () => { findButton(r.root, 'Request retrospective review').props.onClick(); });
+    checkTree(r, 'Request retrospective review');
+    await act(async () => { findButton(r.root, 'Cancel').props.onClick(); });
   });
 
   it('the loading, error and empty states', async () => {

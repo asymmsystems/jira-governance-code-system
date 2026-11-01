@@ -45,6 +45,7 @@ export interface JiraIssueAccessor extends Accessor {
   pullRequests(issueId: string, devFieldId: string): Promise<{ status: number; issueKey?: string; summary?: DevFieldSummary }>;
   addRemoteLink(issueId: string, link: { url: string; title: string; summary: string }): Promise<number>;
   putExceptionProperty(issueId: string, value: ExceptionProperty): Promise<number>;
+  addComment(issueId: string, comment: string): Promise<number>;
 }
 
 export interface SiteConfigAccessor extends Accessor {

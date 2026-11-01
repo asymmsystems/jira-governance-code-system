@@ -122,11 +122,13 @@ describe('B-17: afterActionText (feedback from the re-evaluated state, FR-20)', 
     expect(afterActionText('code', row(found, missing))).toBe('Exception requested. A project or Jira administrator must approve it. Code: Evidence missing.');
     expect(afterActionText('decision', row(found, excepted))).toBe('Decision recorded. Code: Excepted.');
     expect(afterActionText('rework', row(found, missing))).toBe('Rework reason recorded. It does not change any gate.');
+    expect(afterActionText('review' as any, row(found, missing))).toBe('Review requested. It does not change any gate.');
   });
 
   it('says so when the gates could not be read again, and never claims a state', () => {
     expect(afterActionText('link')).toBe('Link added. The gates could not be read again. Use Refresh.');
     expect(afterActionText('decision')).toBe('Decision recorded. The gates could not be read again. Use Refresh.');
     expect(afterActionText('rework')).toBe('Rework reason recorded. It does not change any gate.');
+    expect(afterActionText('review' as any)).toBe('Review requested. It does not change any gate.');
   });
 });

@@ -380,6 +380,7 @@ export interface ForgeContext {
 export interface LinkDecisionPayload { issueId?: string; issueKey?: string; url?: string; title?: string; summary?: string }
 export interface RecordExceptionPayload { issueId?: string; issueKey?: string; type?: string; reason?: string; notes?: string }
 export interface DecideExceptionPayload { issueId?: string; issueKey?: string; decision?: string; reason?: string }
+export interface RequestReviewPayload { issueId?: string; issueKey?: string; comment?: string }
 
 /** Result of a user write. `row` is the issue read again after the write (B-17). */
 export interface WriteResult {

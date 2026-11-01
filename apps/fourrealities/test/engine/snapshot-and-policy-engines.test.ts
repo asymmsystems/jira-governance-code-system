@@ -72,4 +72,11 @@ describe('DefaultPolicyEngine', () => {
     expect(policy.exceptionInputError('Configuration change only', 'n'.repeat(1001))).toBe('Notes can be at most 1,000 characters.');
     expect(policy.exceptionInputError('Configuration change only', 'ok')).toBeUndefined();
   });
+
+  it('validates retrospective review comment input', () => {
+    expect((policy as any).reviewCommentInputError('')).toBe('Review comment required.');
+    expect((policy as any).reviewCommentInputError('too short')).toBe('Give a comment of 15 to 1,000 characters.');
+    expect((policy as any).reviewCommentInputError('c'.repeat(1001))).toBe('Give a comment of 15 to 1,000 characters.');
+    expect((policy as any).reviewCommentInputError('Please review this merged pull request retrospectively.')).toBeUndefined();
+  });
 });
