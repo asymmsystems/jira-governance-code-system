@@ -82,6 +82,9 @@ export interface FieldDiff {
   fieldName: string;
   sealedValue: any;
   liveValue: any;
+  /** Set on panel responses when the display text was cut (spec v2 section 3.4). */
+  sealedTruncated?: boolean;
+  liveTruncated?: boolean;
 }
 
 export interface AttachmentDiff {

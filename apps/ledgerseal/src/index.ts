@@ -133,16 +133,8 @@ export async function validateTransition(payload: any, context?: any, deps: Ledg
   );
 
   if (!validation.isValid) {
+    // A new change is recorded once, and the property is updated with the real count (Fixes C-3)
     await recordIncidentIfNew(deps, repository, evaluation, now);
-    // If the seal is tampered, update entity property to SEAL_BROKEN (Fixes C-3)
-    await deps.jira.putSealProperty(issueId, {
-      status: 'SEAL_BROKEN',
-      certificateId: record.certificateId,
-      snapshotHash: record.snapshotHash,
-      sealedAt: record.sealedAt,
-      tamperedFieldCount: 1,
-      lastVerifiedAt: now
-    });
   }
 
   // Strictly conform to Atlassian Forge validator schema (Fixes C-1)

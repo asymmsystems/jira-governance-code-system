@@ -97,3 +97,16 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - A reseal after an unviewed change first records the incident, then the reseal.
 - B-03 note: the rule "one incident per distinct live hash" follows from create-once history entries, so its tests (500 views give 1 incident; a second change gives 1 more) were written and failed first here.
 - Results: `tsc` OK. 12 suites, 119 tests pass. Global branches 93.87%. Changed files 92 to 100% (`workflow-validator.ts` 90.90%). Graders all True. No em dash.
+- B-02 commit: `0720fab`.
+
+### B-03 A read never writes (LS-06, NF-02, NF-03)
+- Tests first: `test/read-no-write.test.ts`. First run: 3 of 3 failed for the right reasons.
+  - Unchanged views: expected 0 property writes, received 3.
+  - 500 views of one change: expected 1 property write, received 505.
+  - Combined fixture response: expected at most 16,384 bytes, received 214,602.
+- Code:
+  - `src/service/ledger.ts`: the property is written only on seal, reseal and inside `recordIncidentIfNew`, with the real changed-item count. Verify no longer writes, and returns compact diff values.
+  - `src/index.ts`: the validator no longer writes the property directly; it records a new incident through the same function.
+  - `src/domain/display.ts`: display text, cut at 2,000 characters with a flag.
+- Adversarial test: the T-01 tampered-view scenario (500 views) now makes one incident entry, one record update and one property write. The record grows by less than 200 bytes.
+- Results: `tsc` OK. 14 suites, 126 tests pass. Global branches 94.21%. `ledger.ts` 98.86%, `display.ts` 100%, `index.ts` 94.73%. Graders all True. No em dash.

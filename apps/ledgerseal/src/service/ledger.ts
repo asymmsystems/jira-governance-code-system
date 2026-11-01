@@ -15,6 +15,7 @@ import { CanonicalIssueSnapshot, FieldDiff, HistoryEntry, SealRecord, TamperAnal
 import { authorsSince } from '../domain/policy';
 import { summarise, withRecordHash } from '../domain/seal-record';
 import { compareToSeal, SealedState } from '../domain/tamper-detector';
+import { capped } from '../domain/display';
 import { ChangelogEntry, JiraClient } from '../jira/jira-client';
 import { HISTORY_PAGE_SIZE, SealRepository, StorageProvider } from '../storage/seal-repository';
 
@@ -60,6 +61,31 @@ export function contextIssue(context: any): { id: string; key: string } | null {
 }
 
 const MAX_INCIDENT_CHANGES = 50;
+
+/** The public `ledgerseal-cert` summary. Written on seal, reseal, revoke and each new incident only. */
+function propertyBody(record: SealRecord, status: string, tamperedFieldCount: number, at: string) {
+  return {
+    status,
+    certificateId: record.certificateId,
+    snapshotHash: record.snapshotHash,
+    sealedAt: record.sealedAt,
+    tamperedFieldCount,
+    isCompromised: record.everCompromised,
+    lastVerifiedAt: at
+  };
+}
+
+/** Turns stored values into short display text, so the panel never receives the snapshot. */
+function compact(analysis: TamperAnalysis): TamperAnalysis {
+  return {
+    ...analysis,
+    tamperedFields: analysis.tamperedFields.map(diff => {
+      const was = capped(diff.sealedValue);
+      const now = capped(diff.liveValue);
+      return { ...diff, sealedValue: was.text, liveValue: now.text, sealedTruncated: was.truncated, liveTruncated: now.truncated };
+    })
+  };
+}
 
 export interface SealEvaluation {
   kind: 'SEAL';
@@ -139,6 +165,7 @@ export async function recordIncidentIfNew(
     head: { seq: entry.seq, entryHash: entry.entryHash }
   });
   await repo.saveSeal(updated);
+  await deps.jira.putSealProperty(record.issueId, propertyBody(updated, 'SEAL_BROKEN', analysis.tamperedFields.length + analysis.tamperedAttachments.length, at));
   return { record: updated, recorded: true };
 }
 
@@ -233,15 +260,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   await repo.saveSeal(record, [JSON.stringify(snapshot)]);
 
   // Publish public audit property to Jira issue without PII
-  await deps.jira.putSealProperty(issue.id, {
-    status: 'SEAL_VALID',
-    certificateId,
-    snapshotHash,
-    sealedAt: now,
-    tamperedFieldCount: 0,
-    isCompromised: record.everCompromised,
-    lastVerifiedAt: now
-  });
+  await deps.jira.putSealProperty(issue.id, propertyBody(record, 'SEAL_VALID', 0, now));
 
   return { ok: true as const, certificateId, snapshotHash, sealedAt: now };
 }
@@ -268,21 +287,9 @@ export async function verifyIssueFlow(payload: any, context: any, deps: LedgerSe
     return { status: evaluation.kind, tamperedFields: [], tamperedAttachments: [], verifiedAt: now };
   }
 
+  // Writes only when this change is new (invariant 3); the property is updated inside.
   const { record } = await recordIncidentIfNew(deps, repo, evaluation, now);
-  const analysis = { ...evaluation.analysis, seal: summarise(record) };
-
-  // Keep public entity property synchronized
-  await deps.jira.putSealProperty(issue.id, {
-    status: analysis.status,
-    certificateId: record.certificateId,
-    snapshotHash: record.snapshotHash,
-    sealedAt: record.sealedAt,
-    tamperedFieldCount: analysis.tamperedFields.length,
-    isCompromised: record.everCompromised,
-    lastVerifiedAt: now
-  });
-
-  return analysis;
+  return compact({ ...evaluation.analysis, seal: summarise(record) });
 }
 
 /**
