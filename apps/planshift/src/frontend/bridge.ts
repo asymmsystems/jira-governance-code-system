@@ -12,6 +12,7 @@
 import { invoke, router } from '@forge/bridge';
 import { classifyResult } from '../ui/result';
 import { showErrorBanner } from './banner';
+import { recordChanges } from './changes-panel';
 
 /**
  * Calls a resolver. A thrown call becomes { ok: false, error }, and every failed write
@@ -28,6 +29,8 @@ export async function callResolver(fnName: string, payload: Record<string, unkno
   if (!fnName.startsWith('get')) {
     const verdict = classifyResult(res);
     if (verdict.failed && verdict.message) showErrorBanner(verdict.message);
+    // Every Jira write goes to the Changes panel with its old value, new value and result (B-23).
+    recordChanges(res);
   }
   // A long cascade is applied in batches; keep going until nothing remains (B-10, D-05).
   let rounds = 0;

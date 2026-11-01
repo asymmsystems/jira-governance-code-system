@@ -25,6 +25,9 @@
         📂 Backlog Tray (<span id="backlogCount">0</span>)
       </button>
       <button class="btn btn-outline" id="refreshBtn">🔄 Refresh</button>
+      <button class="btn btn-outline" id="btnChanges" type="button" aria-expanded="false" aria-controls="changesPanel" title="Every Jira write of this session">
+        Changes (<span id="changesCount">0</span>)
+      </button>
     </div>
 
     <div class="header-right">
@@ -171,6 +174,21 @@
     <p id="whyViolation" class="why-violation" hidden></p>
     <div id="whyFixes" class="why-fixes"></div>
   </div>
+
+  <!-- "Changes" panel (B-23): each Jira write of this session, non-modal -->
+  <div id="changesPanel" class="changes-panel" role="dialog" aria-labelledby="changesTitle" hidden>
+    <div class="why-header">
+      <strong id="changesTitle">Jira writes in this session</strong>
+      <button class="btn btn-subtle btn-sm" id="btnCloseChanges" type="button" aria-label="Close">✕</button>
+    </div>
+    <table class="changes-table">
+      <thead><tr><th scope="col">Issue</th><th scope="col">Field</th><th scope="col">Old</th><th scope="col">New</th><th scope="col">Result</th></tr></thead>
+      <tbody id="changesBody"></tbody>
+    </table>
+  </div>
+
+  <!-- Drag preview of every change a drop will make (B-23) -->
+  <div id="writePreview" class="write-preview" role="status" aria-live="polite" hidden></div>
 
   <!-- Rich Floating Tooltip -->
   <div class="tooltip-popup" id="globalTooltip"></div>

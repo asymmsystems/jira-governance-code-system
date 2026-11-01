@@ -1415,11 +1415,11 @@
       var hashGet = require_hashGet();
       var hashHas = require_hashHas();
       var hashSet = require_hashSet();
-      function Hash(entries) {
-        var index = -1, length = entries == null ? 0 : entries.length;
+      function Hash(entries2) {
+        var index = -1, length = entries2 == null ? 0 : entries2.length;
         this.clear();
         while (++index < length) {
-          var entry = entries[index];
+          var entry = entries2[index];
           this.set(entry[0], entry[1]);
         }
       }
@@ -1543,11 +1543,11 @@
       var listCacheGet = require_listCacheGet();
       var listCacheHas = require_listCacheHas();
       var listCacheSet = require_listCacheSet();
-      function ListCache(entries) {
-        var index = -1, length = entries == null ? 0 : entries.length;
+      function ListCache(entries2) {
+        var index = -1, length = entries2 == null ? 0 : entries2.length;
         this.clear();
         while (++index < length) {
-          var entry = entries[index];
+          var entry = entries2[index];
           this.set(entry[0], entry[1]);
         }
       }
@@ -1668,11 +1668,11 @@
       var mapCacheGet = require_mapCacheGet();
       var mapCacheHas = require_mapCacheHas();
       var mapCacheSet = require_mapCacheSet();
-      function MapCache(entries) {
-        var index = -1, length = entries == null ? 0 : entries.length;
+      function MapCache(entries2) {
+        var index = -1, length = entries2 == null ? 0 : entries2.length;
         this.clear();
         while (++index < length) {
-          var entry = entries[index];
+          var entry = entries2[index];
           this.set(entry[0], entry[1]);
         }
       }
@@ -2204,8 +2204,8 @@
           return Promise.all(payload.map((item) => (0, exports.serialiseBlobsInPayload)(item)));
         }
         if (payload && isPlainObject(payload)) {
-          const entries = await Promise.all(Object.entries(payload).map(async ([key, value]) => [key, await (0, exports.serialiseBlobsInPayload)(value)]));
-          return Object.fromEntries(entries);
+          const entries2 = await Promise.all(Object.entries(payload).map(async ([key, value]) => [key, await (0, exports.serialiseBlobsInPayload)(value)]));
+          return Object.fromEntries(entries2);
         }
         return payload;
       };
@@ -6080,6 +6080,92 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (btn) btn.addEventListener("click", hideErrorBanner);
   }
 
+  // src/ui/change-log.ts
+  function toChangeEntries(sync) {
+    const out = [];
+    for (const w of sync && sync.writes || []) {
+      const result = w.ok ? "Written" : w.error ? `Not written: ${w.error}` : "Not written";
+      const changes = w.changes && w.changes.length ? w.changes : [{ field: w.fields.join(", "), from: null, to: null }];
+      for (const c of changes) out.push({ key: w.key, field: c.field, from: c.from, to: c.to, result });
+    }
+    return out;
+  }
+  function describePendingWrites(tasks, moves, key) {
+    const byKey = new Map(tasks.map((t) => [t.key, t]));
+    const jira = [];
+    const planOnly = [];
+    for (const [k, m] of moves) {
+      const t = byKey.get(k);
+      if (!t) continue;
+      if (m.end !== t.endDate) jira.push(`${k} due ${m.end}`);
+      if (m.start !== t.startDate) planOnly.push(`${k} start ${m.start}`);
+    }
+    const parent = byKey.get(key)?.parentKey;
+    if (parent && byKey.has(parent)) planOnly.push(`${parent} dates follow its children`);
+    const text = `Jira: ${jira.length ? jira.join(", ") : "no change"}.` + (planOnly.length ? ` Plan only: ${planOnly.join(", ")}.` : "");
+    return { jira, planOnly, text };
+  }
+
+  // src/frontend/changes-panel.ts
+  var entries = [];
+  function cell(tag, text) {
+    const c = document.createElement(tag);
+    c.textContent = text;
+    return c;
+  }
+  function render() {
+    const count = document.getElementById("changesCount");
+    if (count) count.textContent = String(entries.length);
+    const body = document.getElementById("changesBody");
+    if (!body) return;
+    body.replaceChildren();
+    if (entries.length === 0) {
+      const tr = document.createElement("tr");
+      const td = cell("td", "No Jira writes in this session.");
+      td.colSpan = 5;
+      tr.appendChild(td);
+      body.appendChild(tr);
+      return;
+    }
+    for (const e of [...entries].reverse()) {
+      const tr = document.createElement("tr");
+      tr.append(cell("td", e.key), cell("td", e.field), cell("td", e.from ?? "empty"), cell("td", e.to ?? "empty"), cell("td", e.result));
+      if (!e.result.startsWith("Written")) tr.className = "change-failed";
+      body.appendChild(tr);
+    }
+  }
+  function recordChanges(result) {
+    const rows = toChangeEntries(result && result.jiraSync);
+    if (rows.length === 0) return;
+    entries.push(...rows);
+    render();
+  }
+  function isChangesPanelOpen() {
+    const panel = document.getElementById("changesPanel");
+    return !!panel && !panel.hidden;
+  }
+  function closeChangesPanel() {
+    const panel = document.getElementById("changesPanel");
+    if (panel) panel.hidden = true;
+  }
+  function initChangesPanel() {
+    const btn = document.getElementById("btnChanges");
+    const panel = document.getElementById("changesPanel");
+    const close = document.getElementById("btnCloseChanges");
+    if (!btn || !panel) return;
+    btn.addEventListener("click", () => {
+      panel.hidden = !panel.hidden;
+      btn.setAttribute("aria-expanded", String(!panel.hidden));
+      if (!panel.hidden && close) close.focus();
+    });
+    if (close) close.addEventListener("click", () => {
+      closeChangesPanel();
+      btn.setAttribute("aria-expanded", "false");
+      btn.focus();
+    });
+    render();
+  }
+
   // src/frontend/bridge.ts
   async function callResolver(fnName, payload = {}) {
     let res;
@@ -6092,6 +6178,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (!fnName.startsWith("get")) {
       const verdict = classifyResult(res);
       if (verdict.failed && verdict.message) showErrorBanner(verdict.message);
+      recordChanges(res);
     }
     let rounds = 0;
     while (res && Array.isArray(res.cascadeRemaining) && res.cascadeRemaining.length > 0 && rounds < MAX_CASCADE_ROUNDS) {
@@ -6255,15 +6342,15 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (value === null || value === void 0) return "";
     return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
-  function render(value) {
+  function render2(value) {
     if (value instanceof SafeHtml) return value.toString();
-    if (Array.isArray(value)) return value.map(render).join("");
+    if (Array.isArray(value)) return value.map(render2).join("");
     return escapeHtml(value);
   }
   function html(strings, ...values) {
     let out = strings[0];
     for (let i = 0; i < values.length; i++) {
-      out += render(values[i]) + strings[i + 1];
+      out += render2(values[i]) + strings[i + 1];
     }
     return new SafeHtml(out);
   }
@@ -6915,6 +7002,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
   async function initApp() {
     initErrorBanner();
     initWhyPopup();
+    initChangesPanel();
     await enableTheme();
     onThemeChange(() => {
       if (timeline) timeline.invalidateColours();
@@ -7056,6 +7144,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
       }
       if (e.key === "Escape" && isWhyPopupOpen()) {
         closeWhyPopup();
+        return;
+      }
+      if (e.key === "Escape" && isChangesPanelOpen()) {
+        closeChangesPanel();
         return;
       }
       if (e.key === "Escape") {
@@ -9206,6 +9298,11 @@ Click to manage or assign.`;
       timeline.drag = { key, moves, label: mode === "move" ? `${key} \u2794 ${mine.start} (${sign}d)` : `${key} ${mine.start} to ${mine.end}` };
       positionBarHit(hit, { ...task, startDate: mine.start, endDate: mine.end });
       wrapper.dataset.preview = JSON.stringify(Object.fromEntries(moves));
+      const strip = document.getElementById("writePreview");
+      if (strip) {
+        strip.textContent = describePendingWrites(currentPlan.tasks, moves, key).text;
+        strip.hidden = false;
+      }
       timeline.requestDraw();
     }
     async function onUp() {
@@ -9217,6 +9314,8 @@ Click to manage or assign.`;
         isDraggingBar = false;
       }, 80);
       delete wrapper.dataset.preview;
+      const strip = document.getElementById("writePreview");
+      if (strip) strip.hidden = true;
       const mine = timeline.drag && timeline.drag.moves.get(key);
       if (!moved || shift === 0 || !mine) {
         timeline.drag = null;

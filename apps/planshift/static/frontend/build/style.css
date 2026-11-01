@@ -1122,6 +1122,19 @@ body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-
 .why-popup { position: fixed; z-index: 1300; width: 360px; max-width: calc(100vw - 16px); background: var(--cp-surface); color: var(--cp-text);
   border: 1px solid var(--cp-border); border-radius: 8px; box-shadow: 0 8px 16px rgba(9, 30, 66, 0.25); padding: 12px 14px; font-size: 13px; }
 .why-popup[hidden] { display: none; }
+
+/* Write transparency (B-23): Changes panel and the drag preview of every change. */
+.changes-panel { position: fixed; z-index: 1300; top: 64px; right: 16px; width: 560px; max-width: calc(100vw - 32px); max-height: 60vh; overflow: auto;
+  background: var(--cp-surface); color: var(--cp-text); border: 1px solid var(--cp-border); border-radius: 8px;
+  box-shadow: 0 8px 16px rgba(9, 30, 66, 0.25); padding: 12px 14px; font-size: 12px; }
+.changes-panel[hidden] { display: none; }
+.changes-table { width: 100%; border-collapse: collapse; }
+.changes-table th, .changes-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--cp-border); }
+.changes-table th { color: var(--cp-text-subtle); font-weight: 700; }
+.changes-table tr.change-failed td { color: var(--cp-text-danger); }
+.write-preview { position: fixed; z-index: 1200; left: 50%; bottom: 16px; transform: translateX(-50%); max-width: calc(100vw - 32px);
+  background: var(--cp-bg-neutral-bold); color: var(--cp-text-inverse); border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 600; }
+.write-preview[hidden] { display: none; }
 .why-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 .why-reason { margin: 0 0 8px; }
 .why-chain { margin: 0 0 8px 18px; padding: 0; }

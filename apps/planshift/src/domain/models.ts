@@ -70,6 +70,8 @@ export interface TaskDependency {
 export interface WbsTask {
   id: string;
   key: string;
+  /** Due date as Jira holds it, read live and never stored (B-23). */
+  jiraDueDate?: string;
   summary: string;
   epic: string;
   epicKey?: string;
@@ -190,6 +192,8 @@ export interface JiraWriteRecord {
   fields: string[];
   ok: boolean;
   error?: string;
+  /** Old and new value of each field, for the Changes panel (B-23). */
+  changes?: Array<{ field: string; from: string | null; to: string | null }>;
 }
 
 export interface JiraSyncReport {

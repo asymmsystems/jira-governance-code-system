@@ -70,7 +70,8 @@ describe('Jira sync report (B-07)', () => {
   it('a successful update reports ok with the Jira write it made', async () => {
     const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { summary: 'Renamed' } });
     expect(res.ok).toBe(true);
-    expect(res.jiraSync).toEqual({ ok: true, writes: [{ key: 'TEST-1', fields: ['summary'], ok: true }] });
+    expect(res.jiraSync).toEqual({ ok: true, writes: [{ key: 'TEST-1', fields: ['summary'], ok: true,
+      changes: [{ field: 'summary', from: 'TEST-1', to: 'Renamed' }] }] });
     expect(res.tasks).toBeDefined();
   });
 
@@ -81,7 +82,8 @@ describe('Jira sync report (B-07)', () => {
     expect(res.jiraSync.ok).toBe(false);
     expect(res.jiraSync.error).toContain('Field duedate cannot be set');
     // TEST-2 (a 100% successor) also moves; the report lists each write by key.
-    expect(res.jiraSync.writes).toContainEqual({ key: 'TEST-1', fields: ['duedate'], ok: false, error: expect.stringContaining('duedate') });
+    expect(res.jiraSync.writes).toContainEqual({ key: 'TEST-1', fields: ['duedate'], ok: false, error: expect.stringContaining('duedate'),
+      changes: [{ field: 'due date', from: null, to: weeks[6].endDate }] });
   });
 
   it('a failed write to a cascaded successor is reported by key', async () => {
@@ -95,7 +97,8 @@ describe('Jira sync report (B-07)', () => {
   it('scheduling reports its due date write', async () => {
     const res: any = await scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-2', startWeek: weeks[5].weekKey });
     expect(res.ok).toBe(true);
-    expect(res.jiraSync).toEqual({ ok: true, writes: [{ key: 'TEST-2', fields: ['duedate'], ok: true }] });
+    expect(res.jiraSync).toEqual({ ok: true, writes: [{ key: 'TEST-2', fields: ['duedate'], ok: true,
+      changes: [{ field: 'due date', from: null, to: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }] }] });
   });
 
   it('KVS-only writes report ok with no Jira writes', async () => {

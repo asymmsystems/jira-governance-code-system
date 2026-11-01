@@ -13,6 +13,8 @@ import { callResolver, openIssueInNewTab } from './bridge';
 import { initErrorBanner } from './banner';
 import { enableTheme, onThemeChange } from './theme';
 import { openWhyPopup, closeWhyPopup, isWhyPopupOpen, initWhyPopup } from './why-popup';
+import { initChangesPanel, isChangesPanelOpen, closeChangesPanel } from './changes-panel';
+import { describePendingWrites } from '../ui/change-log';
 import { html } from '../ui/safe-html';
 import { CanvasTimeline, ROW_H, BAR_H } from './canvas-timeline';
 import { barRect, daysBetween, visibleRange, handleOffsets, snapDays, previewMoves } from '../ui/timeline-geometry';
@@ -113,6 +115,7 @@ let currentHierarchyView = 'all'; // 'all' | 'epics' | 'stories'
 async function initApp() {
   initErrorBanner();
   initWhyPopup();
+  initChangesPanel();
   // Theme first, so the first paint already uses the Jira theme (B-17).
   await enableTheme();
   // The canvas reads token colours at draw time; a theme change repaints it (B-17).
@@ -269,6 +272,10 @@ function setupEventListeners() {
     }
     if (e.key === 'Escape' && isWhyPopupOpen()) {
       closeWhyPopup();
+      return;
+    }
+    if (e.key === 'Escape' && isChangesPanelOpen()) {
+      closeChangesPanel();
       return;
     }
     if (e.key === 'Escape') {
@@ -2754,6 +2761,12 @@ function startBarPointerEdit(e, key, mode, hit) {
     timeline.drag = { key, moves, label: mode === 'move' ? `${key} ➔ ${mine.start} (${sign}d)` : `${key} ${mine.start} to ${mine.end}` };
     positionBarHit(hit, { ...task, startDate: mine.start, endDate: mine.end });
     wrapper.dataset.preview = JSON.stringify(Object.fromEntries(moves));
+    // Name every issue and field the drop will change before the user lets go (B-23, INV-11).
+    const strip = document.getElementById('writePreview');
+    if (strip) {
+      strip.textContent = describePendingWrites(currentPlan.tasks, moves, key).text;
+      strip.hidden = false;
+    }
     timeline.requestDraw();
   }
 
@@ -2764,6 +2777,8 @@ function startBarPointerEdit(e, key, mode, hit) {
     document.body.style.userSelect = '';
     setTimeout(() => { isDraggingBar = false; }, 80);
     delete wrapper.dataset.preview;
+    const strip = document.getElementById('writePreview');
+    if (strip) strip.hidden = true;
     const mine = timeline.drag && timeline.drag.moves.get(key);
     if (!moved || shift === 0 || !mine) {
       timeline.drag = null;

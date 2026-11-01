@@ -32,6 +32,7 @@ import {
   DEFAULT_STORY_POINT_RATIO
 } from './domain/models';
 import { PlannerEngine } from './domain/planner-engine';
+import { describeJiraChanges, JiraFieldChange } from './domain/jira-change';
 import { evaluateEffort, cascade, ScheduleEffort, ScheduleLink, addDays } from './domain/schedule-engine';
 import { StorageProvider } from './storage/plan-repository';
 import { PlanStore, StoredEntry, sequenceBetween } from './storage/plan-store';
@@ -172,10 +173,11 @@ export async function withValidation<T>(fn: () => Promise<T>): Promise<T | Retur
 export class SyncLog {
   private readonly writes: JiraWriteRecord[] = [];
 
-  record(key: string, fields: string[], result: { synced: boolean; error?: string }): void {
+  record(key: string, fields: string[], result: { synced: boolean; error?: string }, changes?: JiraFieldChange[]): void {
     if (!fields || fields.length === 0) return;
     const entry: JiraWriteRecord = { key, fields, ok: result.synced };
     if (!result.synced) entry.error = result.error || 'Jira rejected the change';
+    if (changes) entry.changes = changes;
     this.writes.push(entry);
   }
 
@@ -200,7 +202,7 @@ function failedCreate(error: string): JiraSyncReport {
  */
 export const JIRA_OWNED_FIELDS = [
   'summary', 'status', 'resource', 'resourceAccountId', 'isPlaceholderResource', 'epic', 'epicKey', 'story', 'storyKey',
-  'effortHours', 'parentKey', 'parentId', 'isSubtask', 'isEpic', 'hierarchyLevel', 'id', 'key'
+  'effortHours', 'parentKey', 'parentId', 'isSubtask', 'isEpic', 'hierarchyLevel', 'id', 'key', 'jiraDueDate'
 ];
 
 /**
@@ -647,6 +649,8 @@ export function mapLiveIssues(
           status,
           startDate: stored?.startDate || DEFAULT_WEEKS[0]?.startDate || '',
           endDate: stored?.endDate || iss.fields?.duedate || DEFAULT_WEEKS[3]?.endDate || '',
+          // The due date Jira holds, read live: the old value in the Changes panel (B-23).
+          jiraDueDate: iss.fields?.duedate || undefined,
           startWeek: stored?.startWeek,
           endWeek: stored?.endWeek,
           spanWeeks: stored?.spanWeeks || 3,
@@ -1109,18 +1113,25 @@ export async function createJiraEpic(
 export async function syncTaskToJira(
   taskIdOrKey: string,
   updates: Partial<WbsTask>,
-  log?: SyncLog
+  log?: SyncLog,
+  before: Partial<WbsTask> = {}
 ): Promise<{ synced: boolean; error?: string; fields: string[] }> {
   const result = await syncTaskFields(taskIdOrKey, updates);
-  if (log) log.record(taskIdOrKey, result.fields, result);
+  if (log) {
+    // Each write is logged with its old and new values; a field Jira refused is logged as not written (B-23).
+    log.record(taskIdOrKey, result.fields, result, describeJiraChanges(result.fields, before, updates));
+    log.record(taskIdOrKey, result.rejected, { synced: false, error: 'Jira did not accept the due date on this issue screen' },
+      describeJiraChanges(result.rejected, before, updates));
+  }
   return result;
 }
 
 async function syncTaskFields(
   taskIdOrKey: string,
   updates: Partial<WbsTask>
-): Promise<{ synced: boolean; error?: string; fields: string[] }> {
+): Promise<{ synced: boolean; error?: string; fields: string[]; rejected: string[] }> {
   const fields: Record<string, any> = {};
+  let dropped: string[] = [];
 
   if (updates.summary && typeof updates.summary === 'string' && updates.summary.trim()) {
     fields.summary = updates.summary.trim();
@@ -1179,6 +1190,7 @@ async function syncTaskFields(
                   body: JSON.stringify({ fields: fallbackFields })
                 });
                 res = retryRes;
+                dropped = ['duedate'];
               }
             }
           } catch {}
@@ -1225,11 +1237,13 @@ async function syncTaskFields(
         }
       }
     } catch (err: any) {
-      return { synced: false, error: err?.message || 'Network error updating Jira issue', fields: Object.keys(fields) };
+      return { synced: false, error: err?.message || 'Network error updating Jira issue', fields: Object.keys(fields), rejected: [] };
     }
   }
 
-  const sentFields = Object.keys(fields);
+  // After a successful retry without the due date, the due date was not written.
+  const rejected = syncSuccess ? dropped : [];
+  const sentFields = Object.keys(fields).filter(f => !rejected.includes(f));
   // Status workflow transition sync
   if (updates.status) {
     try {
@@ -1257,7 +1271,7 @@ async function syncTaskFields(
   }
 
   if (updates.status) sentFields.push('status');
-  return { synced: syncSuccess, error: errMsg, fields: sentFields };
+  return { synced: syncSuccess, error: errMsg, fields: sentFields, rejected };
 }
 
 /**
@@ -1565,8 +1579,8 @@ export async function updateWbsTask(
         };
         // A computed roll-up is derived on every load and is not stored (INV-04).
         void totalHours; void completedHours;
+        // Plan-only: the parent's Jira due date is not written, because the user did not enter it (INV-03).
         changedKeys.add(pKey);
-        pendingSyncs.push({ key: pKey, updates: { endDate: activeWeeks[maxEndIdx].endDate } });
       }
     }
   }
@@ -1579,10 +1593,10 @@ export async function updateWbsTask(
     const put = await store.putEntry(key, idByKey.get(key), stripJiraOwnedFields(scheduleMap[key]), entries.get(key)?.version ?? 0);
     if (!put.ok) log.record(key, ['plan'], { synced: false, error: 'changed by someone else; not moved' });
   }
-  for (const s of pendingSyncs) await syncTaskToJira(s.key, s.updates, log);
+  for (const s of pendingSyncs) await syncTaskToJira(s.key, s.updates, log, plan.tasks.find(t => t.key === s.key));
 
   // Two-way sync: write-back changed fields to Jira
-  await syncTaskToJira(targetTask.key, sanitized, log);
+  await syncTaskToJira(targetTask.key, sanitized, log, targetTask);
 
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live),
     { ok: true, jiraSync: log.report(), cascadeRemaining });
@@ -1614,7 +1628,7 @@ export async function continueCascade(
     const put = await store.putEntry(c.key, task?.id, stripJiraOwnedFields({ ...(cur || {}), startDate: c.toStart, endDate: c.toEnd,
       ...gridFor(plan.weeks, c.toStart, c.toEnd) }), cur ? cur.version : 0);
     if (!put.ok) { log.record(c.key, ['plan'], { synced: false, error: 'changed by someone else; not moved' }); continue; }
-    await syncTaskToJira(c.key, { endDate: c.toEnd }, log);
+    await syncTaskToJira(c.key, { endDate: c.toEnd }, log, task);
   }
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live),
     { ok: true, jiraSync: log.report(), cascadeRemaining: changes.slice(CASCADE_BATCH_LIMIT).map(c => c.key) });
