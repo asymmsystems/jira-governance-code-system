@@ -99,8 +99,13 @@ describe('B-15 panel view model states', () => {
     expect(v).toMatchObject({ state: 'REVOKED', title: 'Seal revoked', lozenge: { text: 'REVOKED', appearance: 'moved' } });
     expect(v.message.lines).toEqual(['Revoked on 1 Nov 2026, 15:30 GMT+5:30. Reason: Scope withdrawn']);
     expect(v.revokedByAccountId).toBe('bob');
-    expect(v.actions.seal).toEqual({ label: 'Seal this issue' });
+    expect(v.actions.seal).toEqual({ label: 'Seal this issue', reasonLabel: 'Reason for sealing again (required)' });
     expect(v.actions.revoke).toBeUndefined();
+  });
+
+  it('a first seal asks for no reason (live, DEMO-34: only a seal after a revoke does)', () => {
+    const v = view({ status: 'NO_SEAL', tamperedFields: [], tamperedAttachments: [], verifiedAt: 't', rights: rights() });
+    expect(v.actions.seal).toEqual({ label: 'Seal this issue' });
   });
 
   it('NOT_SEALED', () => {

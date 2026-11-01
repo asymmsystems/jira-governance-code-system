@@ -45,7 +45,7 @@ export interface PanelView {
   title: string;
   lozenge: { text: string; appearance: LozengeAppearance } | null;
   message: { appearance: MessageAppearance; lines: string[] };
-  actions: { seal?: { label: string }; approveChanges?: { label: string }; revoke?: { label: string }; retry?: { label: string } };
+  actions: { seal?: { label: string; reasonLabel?: string }; approveChanges?: { label: string }; revoke?: { label: string }; retry?: { label: string } };
   askText?: string;
   policyText: string;
   changes: ChangeRowView[];
@@ -228,6 +228,8 @@ export function buildPanelView(input: PanelInput): PanelView {
   const mayActOn = ['NOT_SEALED', 'SEALED', 'CHANGED', 'CHANGED_BACK', 'REVOKED', 'RECORD_INVALID', 'LEGACY'].includes(state);
   if (state === 'ERROR') actions.retry = { label: 'Try again' };
   if (['NOT_SEALED', 'REVOKED', 'RECORD_INVALID', 'LEGACY'].includes(state) && rights.canSeal) actions.seal = { label: 'Seal this issue' };
+  // A seal after a revoke may need a reason (spec v2 section 7.2), and the panel cannot tell whether the issue changed
+  if (state === 'REVOKED' && actions.seal) actions.seal.reasonLabel = 'Reason for sealing again (required)';
   if (['CHANGED', 'CHANGED_BACK'].includes(state) && rights.canApproveChanges) actions.approveChanges = { label: 'Approve these changes' };
   if (['SEALED', 'CHANGED', 'CHANGED_BACK'].includes(state) && rights.canRevoke) actions.revoke = { label: 'Revoke seal' };
 

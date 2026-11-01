@@ -62,7 +62,8 @@ export const LedgerSealPanel: React.FC = () => {
   }, []);
 
   const view: PanelView = buildPanelView({ loading, result, error: loadFailed });
-  const reasonNeeded = form === 'approve' || form === 'revoke';
+  const sealReasonLabel = form === 'seal' ? view.actions.seal?.reasonLabel : undefined;
+  const reasonNeeded = form === 'approve' || form === 'revoke' || Boolean(sealReasonLabel);
   const reasonMissing = reasonNeeded && reason.trim().length === 0;
 
   const openForm = (mode: FormMode) => {
@@ -85,7 +86,7 @@ export const LedgerSealPanel: React.FC = () => {
                 meaning,
                 declarationVersion: DECLARATION.version,
                 declarationText: DECLARATION.text,
-                reason: form === 'approve' ? reason.trim() : undefined
+                reason: reasonNeeded ? reason.trim() : undefined
               }
             })) as { ok: boolean; message?: string } | undefined);
       if (!response?.ok) {
@@ -271,7 +272,9 @@ export const LedgerSealPanel: React.FC = () => {
             )}
             {reasonNeeded && (
               <>
-                <Label labelFor="reason">{form === 'revoke' ? 'Reason for revoking (required)' : 'Reason for approving these changes (required)'}</Label>
+                <Label labelFor="reason">
+                  {form === 'revoke' ? 'Reason for revoking (required)' : sealReasonLabel || 'Reason for approving these changes (required)'}
+                </Label>
                 {/* Uncontrolled on purpose: a controlled value lost typed characters over the UI Kit bridge (live, DEMO-34) */}
                 <TextArea key={`reason-${form}`} id="reason" name="reason" onChange={(e: any) => setReason(e.target.value)} />
               </>
