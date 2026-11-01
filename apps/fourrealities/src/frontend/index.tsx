@@ -297,12 +297,74 @@ export const FourRealitiesApp: React.FC = () => {
     }
   };
 
+  // All hooks run on every render, before any early return (React rules of hooks, FR-01).
+  const summary = snapshot?.summary;
+  const issues = snapshot?.issueScores || [];
+
+  // Unique assignee and sprint options for triage filters
+  const assigneeOptions = useMemo(() => {
+    const names = Array.from(new Set(issues.map(i => i.assigneeName).filter(Boolean)));
+    return [{ label: 'All Assignees', value: 'ALL' }, ...names.map(n => ({ label: n as string, value: n as string }))];
+  }, [issues]);
+
+  const sprintOptions = useMemo(() => {
+    const sprints = Array.from(new Set(issues.map(i => i.sprintName).filter(Boolean)));
+    return [{ label: 'All Sprints', value: 'ALL' }, ...sprints.map(s => ({ label: s as string, value: s as string }))];
+  }, [issues]);
+
+  // Filtered issues calculation for Triage Table
+  const filteredIssues = useMemo(() => {
+    return issues.filter(iss => {
+      // 1. Search Query Filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchKey = iss.issueKey.toLowerCase().includes(q);
+        const matchSummary = (iss.summary || '').toLowerCase().includes(q);
+        const matchFinding = iss.synthesizedFinding.toLowerCase().includes(q);
+        if (!matchKey && !matchSummary && !matchFinding) return false;
+      }
+
+      // 2. Reality Gap Filter
+      if (realityFilter === 'INTENT' && iss.gates.intent !== 'BLOCKED') return false;
+      if (realityFilter === 'PROCESS' && iss.gates.process !== 'ATTENTION') return false;
+      if (realityFilter === 'CODE' && iss.gates.code !== 'BLOCKED') return false;
+      if (realityFilter === 'AUDIT' && iss.gates.audit !== 'BLOCKED' && iss.gates.audit !== 'ATTENTION') return false;
+      if (realityFilter === 'BLOCKERS' && iss.gates.intent !== 'BLOCKED' && iss.gates.code !== 'BLOCKED') return false;
+
+      // 3. Risk Tier Filter
+      if (riskFilter !== 'ALL' && iss.riskLevel !== riskFilter) return false;
+
+      // 4. Assignee Filter
+      if (assigneeFilter !== 'ALL' && iss.assigneeName !== assigneeFilter) return false;
+
+      // 5. Sprint Filter
+      if (sprintFilter !== 'ALL' && iss.sprintName !== sprintFilter) return false;
+
+      return true;
+    }).sort((a, b) => {
+      // Default order: Worst first (Critical first, then lowest RAI)
+      const rankMap: Record<RiskLevel, number> = { CRITICAL: 1, HIGH: 2, MEDIUM: 3, LOW: 4, UNRATED: 5 };
+      const rankDiff = rankMap[a.riskLevel] - rankMap[b.riskLevel];
+      if (rankDiff !== 0) return rankDiff;
+      return a.realityAlignmentIndex - b.realityAlignmentIndex;
+    });
+  }, [issues, searchQuery, realityFilter, riskFilter, assigneeFilter, sprintFilter]);
+
   if (loading) {
     return (
       <Inline alignBlock="center">
         <Spinner size="small" />
         <Text>Evaluating 4-Gate Delivery Pipeline metrics...</Text>
       </Inline>
+    );
+  }
+
+  // Issue view whose score failed to load: show the error, never the project dashboard.
+  if (isIssueView && !issueScore) {
+    return (
+      <SectionMessage appearance="error" title="Delivery integrity unavailable">
+        <Text>{errorMessage || 'Failed to load delivery integrity data.'}</Text>
+      </SectionMessage>
     );
   }
 
@@ -578,57 +640,6 @@ export const FourRealitiesApp: React.FC = () => {
   // =========================================================================
   // SURFACE 2: Project-wide Executive Dashboard & Triage Workspace
   // =========================================================================
-  const summary = snapshot?.summary;
-  const issues = snapshot?.issueScores || [];
-
-  // Unique assignee and sprint options for triage filters
-  const assigneeOptions = useMemo(() => {
-    const names = Array.from(new Set(issues.map(i => i.assigneeName).filter(Boolean)));
-    return [{ label: 'All Assignees', value: 'ALL' }, ...names.map(n => ({ label: n as string, value: n as string }))];
-  }, [issues]);
-
-  const sprintOptions = useMemo(() => {
-    const sprints = Array.from(new Set(issues.map(i => i.sprintName).filter(Boolean)));
-    return [{ label: 'All Sprints', value: 'ALL' }, ...sprints.map(s => ({ label: s as string, value: s as string }))];
-  }, [issues]);
-
-  // Filtered issues calculation for Triage Table
-  const filteredIssues = useMemo(() => {
-    return issues.filter(iss => {
-      // 1. Search Query Filter
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchKey = iss.issueKey.toLowerCase().includes(q);
-        const matchSummary = (iss.summary || '').toLowerCase().includes(q);
-        const matchFinding = iss.synthesizedFinding.toLowerCase().includes(q);
-        if (!matchKey && !matchSummary && !matchFinding) return false;
-      }
-
-      // 2. Reality Gap Filter
-      if (realityFilter === 'INTENT' && iss.gates.intent !== 'BLOCKED') return false;
-      if (realityFilter === 'PROCESS' && iss.gates.process !== 'ATTENTION') return false;
-      if (realityFilter === 'CODE' && iss.gates.code !== 'BLOCKED') return false;
-      if (realityFilter === 'AUDIT' && iss.gates.audit !== 'BLOCKED' && iss.gates.audit !== 'ATTENTION') return false;
-      if (realityFilter === 'BLOCKERS' && iss.gates.intent !== 'BLOCKED' && iss.gates.code !== 'BLOCKED') return false;
-
-      // 3. Risk Tier Filter
-      if (riskFilter !== 'ALL' && iss.riskLevel !== riskFilter) return false;
-
-      // 4. Assignee Filter
-      if (assigneeFilter !== 'ALL' && iss.assigneeName !== assigneeFilter) return false;
-
-      // 5. Sprint Filter
-      if (sprintFilter !== 'ALL' && iss.sprintName !== sprintFilter) return false;
-
-      return true;
-    }).sort((a, b) => {
-      // Default order: Worst first (Critical first, then lowest RAI)
-      const rankMap: Record<RiskLevel, number> = { CRITICAL: 1, HIGH: 2, MEDIUM: 3, LOW: 4, UNRATED: 5 };
-      const rankDiff = rankMap[a.riskLevel] - rankMap[b.riskLevel];
-      if (rankDiff !== 0) return rankDiff;
-      return a.realityAlignmentIndex - b.realityAlignmentIndex;
-    });
-  }, [issues, searchQuery, realityFilter, riskFilter, assigneeFilter, sprintFilter]);
 
   const avgRAI = summary?.averageRAI || 0;
   const headlineRiskAppearance = avgRAI >= 80 ? 'success' : avgRAI >= 60 ? 'moved' : 'removed';

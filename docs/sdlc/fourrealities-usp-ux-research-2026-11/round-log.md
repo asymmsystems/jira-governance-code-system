@@ -74,6 +74,19 @@ Limits: G2, Capterra and TrustRadius returned HTTP 403. Atlassian Community page
 - `docs/sdlc/fourrealities-usp-ux-research-2026-11/backlog.md`
 - `docs/sdlc/fourrealities-usp-ux-research-2026-11/round-log.md`
 
+## Part B setup (2026-11-01)
+
+- Owner approval in chat: "APPROVED now all". Recorded as line 1 of `backlog.md`: B-01..B-28, flags approved. B-26 to B-28 are BLOCKED (sibling apps not signing; Teamwork Graph not GA).
+- Section 9 check: `apps/fourrealities` had no uncommitted changes. Other sessions had uncommitted work in `apps/planshift` and research folders, so Part B runs in a separate git worktree, `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build`, on branch `feature/fourrealities-research-build` from `master` (`5097bf5`). The worktree `node_modules` is a symbolic link to the same shared `apps/ledgerseal/node_modules`.
+- Baseline in the worktree: `tsc --noEmit` exit 0; jest 54 of 54 pass, coverage identical to T-02. No B-00 needed.
+- Commits: `17488c6` (Part A outputs), `a19d959` (spec v2). `grade_spec.py` passes on a mirror that holds spec v2 under the v1 name (`~/.cache/gemini-earning-fourrealities-research/grader-mirror/`); conflict recorded in spec v2.
+
+### Coverage deviation (applies from B-01 until B-22)
+
+Section 11.2 asks for 90% branch coverage on each changed file. Before B-22 splits the 1,093-line UI into tested modules, `src/frontend/index.tsx` cannot reach 90% without tests for code that later items delete. From B-01, `jest.config.js` collects frontend coverage with per-path thresholds: domain and storage 90% per file, `src/index.ts` at its measured floor (88% branches and functions), frontend at its measured floor. Each item records its frontend figure here. `grade_tdd.py` reads the global total, so it fails until B-22 for this reason only.
+
 ## Build items
 
-None yet. Part B waits for the owner's `APPROVED` line in `backlog.md`.
+| Item | Date | Tests added | Result | Coverage (branch) | Graders | Commit |
+|---|---|---|---|---|---|---|
+| B-01 | 2026-11-01 | `test/frontend/app.test.tsx`: loading then loaded with no hook error; issue panel error view; refresh. All 3 failed first with "Rendered more hooks than during the previous render." | tsc 0; jest 57 of 57 | `index.tsx` 26.51; `index.ts` 88.46; domain 93.46; storage 100 | tdd FAIL (global 64.73, deviation above); security PASS; ui PASS | see next line |
