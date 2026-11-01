@@ -148,4 +148,6 @@ No other issue, workflow, template or project setting was changed. No LedgerSeal
 
 - **Handover takeover:** created branch `feature/definitionguard-completion` from `master`. Tag `definitionguard-handover-2026-11-01` and branch `snapshot/definitionguard-handover-2026-11-01` untouched. All baseline checks passed (300 tests, 96.08% branch coverage, 0 em dashes, graders passed, harness 16 of 16 passed).
 - **History stream styling and alignment (B-13, B-15):** removed bullet points from `<List>` in `src/frontend/index.tsx`. Replaced with structured `<Stack>` matching native Jira activity styling. Formatted row with acting user avatar and name first, followed by action and timestamp. Indented waiver reason and evidence link and note underneath. Tests added in `test/resolvers/export.test.ts` for structured `actionText` and `reason` fields. Deployed version 4.2.0 to development environment.
+- **Panel title generic naming (owner decision A):** changed issue panel title from "DefinitionGuard Checklist" to "Definition of Done" in `manifest.yml`. Test added in `test/manifest.test.ts`.
+
 

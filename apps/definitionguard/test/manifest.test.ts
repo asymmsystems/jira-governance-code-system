@@ -20,4 +20,9 @@ describe('B-20 manifest', () => {
     expect(validator).toContain('- key: definitionguard-workflow-validator');
     expect(validator).toContain('function: validateTransition');
   });
+
+  it('titles the issue panel Definition of Done without vendor branding', () => {
+    const panel = manifest.slice(manifest.indexOf('jira:issuePanel:'), start);
+    expect(panel).toContain('title: Definition of Done');
+  });
 });

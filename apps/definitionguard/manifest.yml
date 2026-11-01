@@ -1,7 +1,7 @@
 modules:
   jira:issuePanel:
     - key: definitionguard-issue-panel
-      title: DefinitionGuard Checklist
+      title: Definition of Done
       tooltip: Definition of Done Checklist
       icon: resource:icons;check.svg
       render: native
