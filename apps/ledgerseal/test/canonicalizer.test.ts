@@ -114,7 +114,7 @@ describe('Canonicalizer', () => {
       expect(snapshot.attachments[1].id).toBe('att-99');
     });
 
-    it('skips Rank, Sprint and Development by schema type, and covers Resolution', () => {
+    it('skips Rank, Sprint and Development by schema type, and Resolution with the status rule (NF-05)', () => {
       const rawIssue = {
         id: '10003',
         key: 'PROD-44',
@@ -134,8 +134,8 @@ describe('Canonicalizer', () => {
       ];
 
       const snapshot = canonicalizeIssueState(rawIssue, '2026-10-28T12:00:00Z', schemas);
-      expect(snapshot.fields.map(f => f.id)).toEqual(['resolution', 'summary']);
-      expect(snapshot.excluded?.map(e => e.name)).toEqual(['Development', 'Rank', 'Sprint', 'resolutiondate']);
+      expect(snapshot.fields.map(f => f.id)).toEqual(['summary']);
+      expect(snapshot.excluded?.map(e => e.name)).toEqual(['Development', 'Rank', 'Sprint', 'resolution', 'resolutiondate']);
     });
 
     it('normalizes assignee, issuelinks, and subtasks to stable values without mutable status or avatars', () => {

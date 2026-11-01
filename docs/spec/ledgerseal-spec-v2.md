@@ -186,7 +186,7 @@ Excluded, with the reason shown in the panel:
 | `updated`, `lastViewed`, `created` | Timestamps that Jira sets itself |
 | `watches`, `votes` | Interest counters, not content |
 | `workratio`, `progress`, `aggregateprogress`, `timespent`, `aggregatetimespent`, `timeestimate`, `aggregatetimeestimate`, `aggregatetimeoriginalestimate` | Derived from work logs or sub-tasks |
-| `resolutiondate` | Set together with Resolution, which is covered |
+| `resolution`, `resolutiondate` | The gated transition sets the resolution (NF-05, seen live on LSP-1). The status at seal is recorded. A manual resolution change stays in Jira's change log |
 | `comment`, `attachment` | Covered separately (sections 4.4 and 4.5) |
 | custom type `com.pyxis.greenhopper.jira:gh-lexo-rank` | Rank changes on every board drag |
 | custom type `com.pyxis.greenhopper.jira:gh-sprint` | Sprint changes when a sprint closes |
@@ -198,7 +198,7 @@ Excluded, with the reason shown in the panel:
 | custom type `com.atlassian.jira.ext.charting:timeinstatus`, `com.atlassian.jira.ext.charting:firstresponsedate` | Computed by Jira |
 | custom type `com.atlassian.servicedesk.sentiment:sd-sentiment`, `com.atlassian.jira.plugin.system.customfieldtypes:agent-sessions`, and the `com.atlassian.jira.plugins.proforma-managed-fields` counts `forms-total-field-cftype`, `forms-submitted-field-cftype`, `forms-locked-field-cftype`, `forms-open-field-cftype` (NF-04, seen live on DEMO) | Computed by Jira. The forms list `proforma-forms-field-cftype` stays covered |
 
-Every other field with a value is covered, including reporter, resolution, issue type, project, parent, worklog, time tracking (original estimate), security level and all other custom fields. A field id that is not in the field list is covered, with its id as its name.
+Every other field with a value is covered, including reporter, issue type, project, parent, worklog, time tracking (original estimate), security level and all other custom fields. A field id that is not in the field list is covered, with its id as its name.
 
 ### 4.3 Values
 | Shape | Canonical value | Display |

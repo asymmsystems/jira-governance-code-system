@@ -21,6 +21,8 @@ export interface FieldSchema {
 }
 
 const STATUS_REASON = 'The gated transition changes the status. The status at seal is recorded.';
+// NF-05 (live, LSP-1): a transition to a resolving status sets these, so they follow the status rule (D-2)
+const RESOLUTION_REASON = 'The gated transition sets the resolution. The status at seal is recorded.';
 const JIRA_TIME_REASON = 'Jira sets this time itself.';
 const DERIVED_REASON = 'Derived from work logs or sub-tasks.';
 
@@ -47,7 +49,8 @@ const SYSTEM_EXCLUDED: Record<string, string> = {
   timeestimate: DERIVED_REASON,
   aggregatetimeestimate: DERIVED_REASON,
   aggregatetimeoriginalestimate: DERIVED_REASON,
-  resolutiondate: 'Set together with Resolution, which is covered.'
+  resolution: RESOLUTION_REASON,
+  resolutiondate: RESOLUTION_REASON
 };
 
 /**

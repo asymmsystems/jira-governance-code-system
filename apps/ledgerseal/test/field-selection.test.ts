@@ -76,9 +76,8 @@ describe('B-05 schema-based field selection', () => {
     }
   });
 
-  it('adversarial (audit probe.js, T-03): reporter, resolution, work log and the old blind-spot fields now break the seal', () => {
+  it('adversarial (audit probe.js, T-03): reporter, work log and the old blind-spot fields now break the seal', () => {
     expect(changed(i => (i.fields.reporter = { accountId: 'evil', displayName: 'Eve' }))).toBe(true);
-    expect(changed(i => (i.fields.resolution = { id: '10001', name: "Won't Do" }))).toBe(true);
     expect(changed(i => (i.fields.worklog.worklogs = [{ id: '1', author: { accountId: 'a' }, started: T, timeSpentSeconds: 28800 }]))).toBe(true);
     expect(changed(i => (i.fields.customfield_10001 = 'Approved budget 9999999'))).toBe(true);
     expect(changed(i => (i.fields.customfield_10050 = 0))).toBe(true);
@@ -93,7 +92,27 @@ describe('B-05 schema-based field selection', () => {
     expect(changed(i => (i.fields.customfield_10031 = [{ accountId: 'p2' }]))).toBe(false);
     expect(changed(i => (i.fields.customfield_10033 = { rating: 1 }))).toBe(false);
     expect(changed(i => (i.fields.status = { name: 'Done' }))).toBe(false);
+    // NF-05: Resolution follows the status rule (D-2), so a manual resolution change is left to Jira's change log
+    expect(changed(i => (i.fields.resolution = { id: '10001', name: "Won't Do" }))).toBe(false);
     expect(changed(i => (i.fields.updated = '2026-11-02T10:00:00.000+0000'))).toBe(false);
+  });
+
+  it('NF-05 (live, LSP-1): a gated transition that sets a resolution does not break the seal', () => {
+    const fields = [
+      { id: 'summary', name: 'Summary', schema: { type: 'string', system: 'summary' } },
+      { id: 'resolution', name: 'Resolution', schema: { type: 'resolution', system: 'resolution' } },
+      { id: 'resolutiondate', name: 'Resolved', schema: { type: 'datetime', system: 'resolutiondate' } }
+    ];
+    const open = { id: '10069', key: 'LSP-1', fields: { summary: 'Probe' } };
+    const done = { id: '10069', key: 'LSP-1', fields: { summary: 'Probe', resolution: { id: '10000', name: 'Done' }, resolutiondate: '2026-11-01T10:49:50.655+0530' } };
+
+    const before = canonicalizeIssueState(open, 't', fields);
+    const after = canonicalizeIssueState(done, 't', fields);
+
+    expect(computeSnapshotHash(after)).toBe(computeSnapshotHash(before));
+    const reasons = Object.fromEntries((after.excluded || []).map(e => [e.id, e.reason]));
+    expect(reasons.resolution).toBe('The gated transition sets the resolution. The status at seal is recorded.');
+    expect(reasons.resolutiondate).toBe('The gated transition sets the resolution. The status at seal is recorded.');
   });
 
   it('NF-04 (live, DEMO /rest/api/3/field): computed JSM sentiment, forms counts and agent sessions do not break the seal', () => {

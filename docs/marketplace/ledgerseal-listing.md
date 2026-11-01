@@ -48,7 +48,7 @@ This is a product description, not legal advice.
 
 ### Known limits
 - The approver policy is fixed: project admins and Jira admins. A group or role policy is planned.
-- A change of status does not break a seal, so the validator can gate a transition.
+- A change of status or resolution does not break a seal, so the validator can gate a transition. A manual resolution change after approval is not flagged; Jira's change log still records it.
 - Some fields are not covered, such as rank, sprint, SLA timers, sentiment and forms counts. The panel lists each one and the reason.
 - Attachments are covered by their id, name, size and type, not by file content. Jira gives a replaced file a new id.
 - If an edit and its revert both happen with no issue update event and no panel view in between, LedgerSeal does not see the change.
