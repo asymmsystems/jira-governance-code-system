@@ -2158,20 +2158,54 @@ export function extractSiteUrl(req: any): string | undefined {
   return undefined;
 }
 
+/**
+ * Checks whether the request comes from an active licensed installation (B-21).
+ * When licensing is enabled, Forge provides context.license with active/isActive.
+ * If context.license is missing (free apps, dev/test environments), access is permitted.
+ */
+export function isLicenseActive(context: any): boolean {
+  if (!context || !context.license) return true;
+  const lic = context.license;
+  if (lic.isActive === false || lic.active === false) return false;
+  return true;
+}
+
+export function licenceRequiredResult(): { ok: false; success: false; error: 'license_required'; message: string } {
+  return {
+    ok: false,
+    success: false,
+    error: 'license_required',
+    message: 'Licence required'
+  };
+}
+
+/**
+ * Runs a resolver function with licensing check and validation mapping (B-21).
+ */
+export async function withResolverHandler<T>(req: any, fn: () => Promise<T>): Promise<T | ReturnType<typeof licenceRequiredResult> | ReturnType<typeof toValidationResult>> {
+  if (!isLicenseActive(req?.context)) {
+    return licenceRequiredResult();
+  }
+  return withValidation(fn);
+}
+
 // Register Forge Resolvers
 const resolver = new Resolver();
 
-resolver.define('getProjectPlan', async (req) => withValidation(() => getProjectPlan(extractProjectKey(req), undefined, new Date(), extractSiteUrl(req), extractProjectId(req))));
+resolver.define('getProjectPlan', async (req) => withResolverHandler(req, () => getProjectPlan(extractProjectKey(req), undefined, new Date(), extractSiteUrl(req), extractProjectId(req))));
 
-resolver.define('pruneStaleEntries', async (req) => withValidation(() => pruneStaleEntries({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
-resolver.define('batchUpdateTasks', async (req) => withValidation(() => batchUpdateTasks({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
-resolver.define('scheduleBacklogTask', async (req) => withValidation(() => scheduleBacklogTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('pruneStaleEntries', async (req) => withResolverHandler(req, () => pruneStaleEntries({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('batchUpdateTasks', async (req) => withResolverHandler(req, () => batchUpdateTasks({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('scheduleBacklogTask', async (req) => withResolverHandler(req, () => scheduleBacklogTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('createInlineTask', async (req) => withValidation(() => createInlineTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('createInlineTask', async (req) => withResolverHandler(req, () => createInlineTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('createJiraEpic', async (req) => withValidation(() => createJiraEpic({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('createJiraEpic', async (req) => withResolverHandler(req, () => createJiraEpic({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
 resolver.define('updateWbsTask', async (req) => {
+  if (!isLicenseActive(req?.context)) {
+    return licenceRequiredResult();
+  }
   try {
     return await withValidation(() => updateWbsTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) }));
   } catch (err: any) {
@@ -2179,25 +2213,30 @@ resolver.define('updateWbsTask', async (req) => {
   }
 });
 
-resolver.define('addSubtaskToTask', async (req) => withValidation(() => addSubtaskToTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('addSubtaskToTask', async (req) => withResolverHandler(req, () => addSubtaskToTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('saveTaskDependency', async (req) => withValidation(() => saveTaskDependency({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('saveTaskDependency', async (req) => withResolverHandler(req, () => saveTaskDependency({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('saveColumnWidths', async (req) => withValidation(() => saveColumnWidths({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('saveColumnWidths', async (req) => withResolverHandler(req, () => saveColumnWidths({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('saveHiddenColumns', async (req) => withValidation(() => saveHiddenColumns({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('saveHiddenColumns', async (req) => withResolverHandler(req, () => saveHiddenColumns({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('saveProjectMilestone', async (req) => withValidation(() => saveProjectMilestone({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('saveProjectMilestone', async (req) => withResolverHandler(req, () => saveProjectMilestone({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
 
-resolver.define('continueCascade', async (req) => withValidation(() => continueCascade({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('continueCascade', async (req) => withResolverHandler(req, () => continueCascade({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('previewCascade', async (req) => withValidation(() => previewCascade({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('previewCascade', async (req) => withResolverHandler(req, () => previewCascade({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('unscheduleTask', async (req) => withValidation(() => unscheduleTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('unscheduleTask', async (req) => withResolverHandler(req, () => unscheduleTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('reorderWbsTasks', async (req) => withValidation(() => reorderWbsTasks({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('reorderWbsTasks', async (req) => withResolverHandler(req, () => reorderWbsTasks({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('createSubtaskForResource', async (req) => withValidation(() => createSubtaskForResource({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('createSubtaskForResource', async (req) => withResolverHandler(req, () => createSubtaskForResource({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-export const handler = resolver.getDefinitions();
+const definitions = resolver.getDefinitions();
+
+export const handler = async (event: any, context?: any) => {
+  const backendContext = context || (event?.context?.license ? { license: event.context.license } : undefined);
+  return definitions(event, backendContext);
+};
