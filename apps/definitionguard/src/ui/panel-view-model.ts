@@ -162,6 +162,8 @@ export interface HistoryRow {
   when: string;
   accountId: string;
   text: string;
+  actionText: string;
+  reason?: string;
   evidence?: { url?: string; note?: string };
 }
 
@@ -176,10 +178,12 @@ const ACTION_TEXT: Record<ChecklistAuditEvent['eventType'], string> = {
 /** One row per event, oldest first: the action in words, the item title, and any waiver reason. */
 export function historyRows(trail: ChecklistAuditEvent[] | undefined, format: (iso?: string) => string = formatLocal): HistoryRow[] {
   return (trail || []).map(ev => {
-    let text = ACTION_TEXT[ev.eventType];
-    if (ev.itemTitle) text += `: ${ev.itemTitle}`;
+    let actionText = ACTION_TEXT[ev.eventType];
+    if (ev.itemTitle) actionText += `: ${ev.itemTitle}`;
+    let text = actionText;
     if (ev.details) text += ` (reason: ${ev.details})`;
-    const row: HistoryRow = { key: ev.id, when: format(ev.timestamp), accountId: ev.actorAccountId, text };
+    const row: HistoryRow = { key: ev.id, when: format(ev.timestamp), accountId: ev.actorAccountId, text, actionText };
+    if (ev.details) row.reason = ev.details;
     if (ev.evidence) row.evidence = ev.evidence;
     return row;
   });

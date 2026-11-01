@@ -143,3 +143,9 @@ Every item: `tsc` exit 0, Jest all pass, 90% branch or more on each changed sour
 | 10 | Workflow: removed the DefinitionGuard validator from "Mark as done" (owner decision A) | version 9, validator present | version 10, no Forge validator (checked by GET) |
 
 No other issue, workflow, template or project setting was changed. No LedgerSeal panel was opened. Nothing was deleted. DEMO-35 stays as a closed probe issue with the label `dg-probe`.
+
+## Continuation (2026-11-01)
+
+- **Handover takeover:** created branch `feature/definitionguard-completion` from `master`. Tag `definitionguard-handover-2026-11-01` and branch `snapshot/definitionguard-handover-2026-11-01` untouched. All baseline checks passed (300 tests, 96.08% branch coverage, 0 em dashes, graders passed, harness 16 of 16 passed).
+- **History stream styling and alignment (B-13, B-15):** removed bullet points from `<List>` in `src/frontend/index.tsx`. Replaced with structured `<Stack>` matching native Jira activity styling. Formatted row with acting user avatar and name first, followed by action and timestamp. Indented waiver reason and evidence link and note underneath. Tests added in `test/resolvers/export.test.ts` for structured `actionText` and `reason` fields. Deployed version 4.2.0 to development environment.
+

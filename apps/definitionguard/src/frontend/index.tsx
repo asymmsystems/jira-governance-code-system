@@ -19,8 +19,6 @@ import ForgeReconciler, {
   User,
   Link,
   Textfield,
-  List,
-  ListItem,
   CodeBlock
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
@@ -270,19 +268,32 @@ export const DefinitionGuardPanel: React.FC = () => {
               <Text>{history.chain.limit}</Text>
             </SectionMessage>
           )}
-          <List type="unordered">
+          <Stack space="space.150">
             {historyRows(history.auditTrail).map(row => (
-              <ListItem key={row.key}>
-                <Inline space="space.050" alignBlock="center" shouldWrap>
-                  <Text>{row.when}</Text>
-                  <User accountId={row.accountId} />
-                  <Text>{row.text}</Text>
-                  {row.evidence?.url && <Link href={row.evidence.url} openNewTab>{row.evidence.url}</Link>}
-                  {row.evidence?.note && <Text>{row.evidence.note}</Text>}
-                </Inline>
-              </ListItem>
+              <Box key={row.key} padding="space.050">
+                <Stack space="space.050">
+                  <Inline space="space.100" alignBlock="center" shouldWrap>
+                    <User accountId={row.accountId} />
+                    <Text>{row.actionText || row.text}</Text>
+                    <Text>{row.when}</Text>
+                  </Inline>
+                  {row.reason && (
+                    <Box paddingInlineStart="space.300">
+                      <Text>Reason: {row.reason}</Text>
+                    </Box>
+                  )}
+                  {row.evidence && (row.evidence.url || row.evidence.note) && (
+                    <Box paddingInlineStart="space.300">
+                      <Stack space="space.025">
+                        {row.evidence.url && <Link href={row.evidence.url} openNewTab>{row.evidence.url}</Link>}
+                        {row.evidence.note && <Text>{row.evidence.note}</Text>}
+                      </Stack>
+                    </Box>
+                  )}
+                </Stack>
+              </Box>
             ))}
-          </List>
+          </Stack>
         </Stack>
       )}
     </Stack>
