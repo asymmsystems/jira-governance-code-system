@@ -227,6 +227,6 @@ AUDT-1 is left Done with label `fr-probe`.
 - B-45 issue panel redesign: restructured with `AppSurface`, `PanelHeader`, `SummaryBlock` (gate pipeline chips, drift sentence, next action, single primary action), collapsible `<Section title="Gate findings" count={4} defaultCollapsed={true}>`, and `ActionRow`.
 - B-46 project dashboard redesign: top Status Banner (status word, summary sentence, next step), Priority Actions tile side by side with reality cards, compact table with gaps summary, footnote, and Refresh button.
 - Architecture tests updated to 16 rules: verified zero raw token strings or hex colour codes outside `src/brand/`.
-- 373 of 373 tests pass; all graders PASS (grade_tdd: PASS 96.61, grade_security: PASS, grade_ui: PASS).
+- 373 of 373 tests pass; all graders PASS (grade_tdd: PASS 96.61, grade_security: PASS, grade_ui: PASS); committed `f82a966`; deployed to development as 3.11.0.
 
 
