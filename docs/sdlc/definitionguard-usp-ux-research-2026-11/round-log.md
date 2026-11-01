@@ -53,6 +53,43 @@ No live write was made. No DefinitionGuard or LedgerSeal panel was opened.
 - H1 to H13 each have a verdict.
 - `grep -cP '\x{2014}'` returns 0 for each of the four files (2026-11-01). A script check of the matrix found 19 rows and 0 empty cells. `git status -s apps/definitionguard` is empty.
 
+## Part B setup (2026-11-01)
+
+- **Approval:** owner, in chat: "APPROVED now all". Recorded on line 1 of `backlog.md` as B-01..B-20 with every flag. B-03 uses option A, the recommendation, because the owner did not pick one.
+- **Branch and worktree:** `feature/definitionguard-research-build` from `master` (`5097bf5`), in the worktree `/home/fahimfarookme/Documents/projects/gemini-earning-dg-build`. The main tree was on `feature/cascadeplan-research-build` with another session's untracked files, so a worktree keeps both apart, as the FourRealities and LedgerSeal sessions do. `node_modules` is a link to the shared `apps/ledgerseal/node_modules`; no dependency was installed.
+- **9.1:** `apps/definitionguard` had no uncommitted change.
+- **9.3 baseline (master):** `tsc --noEmit` exit 0. Jest 59 of 59 pass. Coverage 99.68 / 90.36 / 100 / 99.65; `src/index.ts` branch 88.28%. Same as the audit. No B-00 needed.
+- **Loop 1:** `docs/spec/definitionguard-spec-v2.md`. `grade_spec.py` passes, but it reads the v1 spec file, not v2; v2 also has every section the grader looks for.
+- **Check script:** `~/.cache/gemini-earning-definitionguard-research/check_item.sh` runs section 11.2 for each item: tsc, Jest with coverage, 90% branch on each changed source file, `grade_tdd`, `grade_security`, `grade_ui`, and an em dash scan.
+
 ## Build items
 
-None. Part B waits for `APPROVED <date> <scope>` on the first line of `backlog.md`.
+| Item | Commit | Tests added or changed | Result | Notes and deviations |
+|---|---|---|---|---|
+| B-01 | `ebd5832` | `test/validator/validate-transition.test.ts` (11), `test/helpers/forge-mocks.ts`; 2 old tests now assert the numeric-id rule | 73 pass; `index.ts` 91.26% | 5 tests red first for the right reason. Harness T-06: throw became `result: false` |
+| B-02 | `c81edd1` | `test/security/permissions.test.ts` (10); old suite gets a separate `asUser` double | 82 pass | One new test first passed for the wrong reason (no storage provider); fixed before the code |
+| B-03 | `8c6179d` | `test/storage/checklist-store.test.ts` (10), `test/domain/event-log.test.ts`, `test/resolvers/panel-resolvers.test.ts`; `test/index.test.ts` replaced | 90 pass | The old suite tested removed v1 behaviour (payload issue ids, name rewrites, notes, payload template id). Harness P14: 2 of 2 ticks kept |
+| B-04 | `fd73621` | `test/storage/size-budget.test.ts` (7) | 98 pass | Budget corrected in spec v2 and ux-spec: change events 2 KiB; events that carry the item list 32 KiB. Three tests that read the trail from the panel response moved to `getHistory` |
+| B-05 | `4aabbff` | `test/domain/chain-verify.test.ts` (14) | 112 pass | |
+| B-06 | `27896d4` | `test/settings/project-templates.test.ts` (33), `test/ui/template-editor.test.ts` (5) | 155 pass | `[SCOPE]` `jira:projectSettingsPage`. Storage resolution moved to `src/storage/forge-storage.ts`. `forge lint`: no issues |
+| B-07 | `3d9213d` | `test/ui/attribution.test.ts` (6) | 160 pass | `[SCOPE]` `read:jira-user` removed. `forge lint`: the scope change makes the next deploy a major version |
+| B-09 | `e63c892` | `test/security/licence.test.ts` (6) | 166 pass | `[SCOPE]` licensing. The tests were written first, but in the same step as the code, so they were not run red first |
+| B-10 | `1d0e1aa` | `test/validator/gate-rule.test.ts` (24) | 187 pass | The block message now follows spec v2; 3 tests that matched the old phrase changed. The status reader treats a non-list answer as empty |
+| B-11 | `790450c` | `test/resolvers/evidence.test.ts` (16) | 203 pass | Spec v2 decision D-13: evidence on the event, a flag in the state, loaded on request |
+| B-12 | `eb96f24` | `test/resolvers/roles-waivers.test.ts` (11) | 214 pass | Deviation from the backlog wording: a per-item "required role" is a Jira permission key (spec v2 D-03), so one call as the user can check it |
+| B-13 | `eab59fc` | `test/ui/panel-view-model.test.ts` (13) | 226 pass | `index.tsx` renders the view model only; the settings page also uses the safe error text |
+| B-14 | `612a7b8` | `test/integrity/attestation.test.ts` (11) | 235 pass | `[ENV]` key not yet set: generated and set at deploy time |
+| B-15 | `3161643` | `test/resolvers/export.test.ts` (8) | 242 pass | UI Kit has no file download, so the export is copyable JSON in a `CodeBlock` (criterion 4, to confirm live) |
+| B-21 | `15b0950` | `test/domain/event-log.test.ts` rewritten (25); raw-record tests ported to v3 rows; a resolver refusal test | 254 pass; every changed file at or above 90% branch | See "Owner review and B-21" below |
+
+Every item: `tsc` exit 0, Jest all pass, 90% branch or more on each changed source file, the three graders pass, and no em dash in a changed file.
+
+## Owner review and B-21 (2026-11-01)
+
+- **Question from the owner:** why so many failing tests, and does the model follow the Silverston patterns?
+- **Answer given:** the failures were red-first tests, old tests of removed behaviour, churn when a later item changed an earlier contract, my own test mistakes, and a few real defects. None showed a wrong gate rule. The churn came from not freezing the panel response contract in spec v2. The model did not follow Silverston; only CascadePlan had that decision.
+- **Owner decision "C":** restructure before B-16. Sources: the Apache OFBiz entity models (S-01 to S-05 in spec v3), because OFBiz states that its data model comes from Silverston's books. The books themselves were not read.
+- **Spec v3** (`54e5b5d`), approved by the owner with option A: a criterion is a child WorkEffort with WorkEffortStatus history. B-21 added to the backlog.
+- **B-21** (`15b0950`): the panel response, resolver payloads, settings payload, property schema and validator messages were frozen, and the UI, view-model, validator and licence test files did not change (git diff empty).
+- **Harness after B-21** (`results/after-B-21.json`, 16 of 16): the largest value is 3,766 / 10,662 / 25,458 bytes at 6 / 20 / 50 items, at any toggle count. A panel load makes 2 KVS reads, no Jira call and no write. A toggle makes 2 Jira calls. Both concurrent ticks are kept. The panel and the validator agree on zero mandatory items.
+- **Harness changes:** the harness now reads v2 and v3 records, records the B-10 behaviour change instead of asserting the baseline, and uses round-based toggles, because v3 refuses a repeated status.
