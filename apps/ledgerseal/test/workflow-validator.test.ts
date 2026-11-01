@@ -1,5 +1,6 @@
 import { validateTransitionGate } from '../src/validator/workflow-validator';
 import { generateSealCertificate } from '../src/domain/crypto';
+import { fromCertificate } from '../src/domain/tamper-detector';
 import { CanonicalIssueSnapshot, ElectronicSignature } from '../src/domain/models';
 
 describe('Workflow Validator', () => {
@@ -28,6 +29,12 @@ describe('Workflow Validator', () => {
   };
 
   const cert = generateSealCertificate(validSnapshot, sampleSig);
+  const info = (c: any) => ({
+    certificateId: c.certificateId,
+    sealedAt: c.sealedAt,
+    signerName: c.sealedBy.signerDisplayName,
+    revocationReason: c.revocation?.revocationReason
+  });
 
   it('rejects transition if issue has no active seal', () => {
     const result = validateTransitionGate(null, validSnapshot);
@@ -45,7 +52,7 @@ describe('Workflow Validator', () => {
         revocationReason: 'Security flaw detected'
       }
     };
-    const result = validateTransitionGate(revokedCert, validSnapshot);
+    const result = validateTransitionGate(fromCertificate(revokedCert), validSnapshot, info(revokedCert));
     expect(result.isValid).toBe(false);
     expect(result.errorMessage).toContain('Security flaw detected');
   });
@@ -56,7 +63,7 @@ describe('Workflow Validator', () => {
       status: 'REVOKED' as const,
       revocation: undefined
     };
-    const result = validateTransitionGate(revokedCert, validSnapshot);
+    const result = validateTransitionGate(fromCertificate(revokedCert), validSnapshot, info(revokedCert));
     expect(result.isValid).toBe(false);
     expect(result.errorMessage).toContain('Unspecified');
   });
@@ -68,7 +75,7 @@ describe('Workflow Validator', () => {
         { id: 'summary', name: 'Summary', type: 'string', value: 'Release v1.2.0 with backdoors' }
       ]
     };
-    const result = validateTransitionGate(cert, tamperedSnapshot);
+    const result = validateTransitionGate(fromCertificate(cert), tamperedSnapshot, info(cert));
     expect(result.isValid).toBe(false);
     expect(result.errorMessage).toContain('Cryptographic seal broken');
     expect(result.details?.tamperCount).toBe(1);
@@ -79,7 +86,7 @@ describe('Workflow Validator', () => {
       ...validSnapshot,
       attachments: [] // removed attachment
     };
-    const result = validateTransitionGate(cert, tamperedSnapshot);
+    const result = validateTransitionGate(fromCertificate(cert), tamperedSnapshot, info(cert));
     expect(result.isValid).toBe(false);
     expect(result.errorMessage).toContain('attachments');
   });
@@ -98,13 +105,13 @@ describe('Workflow Validator', () => {
         }
       ]
     };
-    const result = validateTransitionGate(compromisedCert, validSnapshot);
+    const result = validateTransitionGate(fromCertificate(compromisedCert), validSnapshot, info(compromisedCert));
     expect(result.isValid).toBe(false);
     expect(result.errorMessage).toContain('reverted');
   });
 
   it('permits transition if certificate is active and ticket is untampered', () => {
-    const result = validateTransitionGate(cert, validSnapshot);
+    const result = validateTransitionGate(fromCertificate(cert), validSnapshot, info(cert));
     expect(result.isValid).toBe(true);
     expect(result.details?.certificateId).toBe(cert.certificateId);
     expect(result.details?.signerName).toBe(cert.sealedBy.signerDisplayName);

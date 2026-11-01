@@ -1,96 +1,82 @@
-import { SealRepository, StorageProvider } from '../src/storage/seal-repository';
-import { generateSealCertificate } from '../src/domain/crypto';
-import { CanonicalIssueSnapshot, ElectronicSignature } from '../src/domain/models';
+import { SealRepository } from '../src/storage/seal-repository';
+import { buildEntry } from '../src/domain/history';
+import { withRecordHash, hasValidRecordHash } from '../src/domain/seal-record';
+import { SealRecord } from '../src/domain/models';
+import { MemoryStore } from './support/fakes';
 
-class InMemoryStorage implements StorageProvider {
-  private map = new Map<string, any>();
-
-  async get(key: string): Promise<any> {
-    return this.map.get(key) || null;
-  }
-
-  async set(key: string, value: any): Promise<void> {
-    this.map.set(key, JSON.parse(JSON.stringify(value)));
-  }
-
-  async delete(key: string): Promise<void> {
-    this.map.delete(key);
-  }
-}
-
-describe('Seal Repository', () => {
-  let storage: InMemoryStorage;
-  let repo: SealRepository;
-
-  const sampleSnapshot: CanonicalIssueSnapshot = {
+function record(overrides: Partial<SealRecord> = {}): SealRecord {
+  return withRecordHash({
+    schemaVersion: 2,
     issueId: '10001',
     issueKey: 'AUDIT-1',
-    projectKey: 'AUDIT',
-    issueType: 'Story',
-    status: 'Done',
-    fields: [{ id: 'summary', name: 'Summary', type: 'string', value: 'First build' }],
-    attachments: [],
-    capturedAt: '2026-10-28T10:00:00Z'
-  };
-
-  const sampleSig: ElectronicSignature = {
-    signerAccountId: 'acc-1',
-    signerDisplayName: 'Lead Auditor',
-    signedAt: '2026-10-28T10:05:00Z',
+    certificateId: 'cert-1',
+    state: 'ACTIVE',
+    sealedAt: '2026-11-01T10:00:00.000Z',
+    sealedBy: { accountId: 'acc-1', displayName: 'Lead Auditor' },
     meaning: 'Initial approval',
-    reasonCode: 'APPROVAL',
-    declarationText: 'Verified'
-  };
+    declaration: { version: '1', text: 'I approve.' },
+    reason: null,
+    statusAtSeal: 'Done',
+    snapshotHash: 'a'.repeat(64),
+    canonicalizerVersion: '1.0.0',
+    coveredFields: [{ id: 'summary', name: 'Summary' }],
+    excludedFields: [],
+    snapshotChunks: 2,
+    everCompromised: false,
+    incidentCount: 0,
+    lastIncidentHash: null,
+    head: { seq: 1, entryHash: 'b'.repeat(64) },
+    revocation: null,
+    ...overrides
+  });
+}
+
+describe('Seal Repository (v2)', () => {
+  let storage: MemoryStore;
+  let repo: SealRepository;
 
   beforeEach(() => {
-    storage = new InMemoryStorage();
+    storage = new MemoryStore();
     repo = new SealRepository(storage);
   });
 
-  it('saves and retrieves active certificate', async () => {
-    const cert = generateSealCertificate(sampleSnapshot, sampleSig);
-    await repo.saveCertificate(cert);
-
-    const retrieved = await repo.getActiveCertificate('10001');
-    expect(retrieved).not.toBeNull();
-    expect(retrieved?.certificateId).toBe(cert.certificateId);
-    expect(retrieved?.status).toBe('ACTIVE');
+  it('saves the record and the snapshot parts in one transaction and reads the snapshot back', async () => {
+    const snapshot = { issueId: '10001', fields: [{ id: 'summary', value: 'First build' }] };
+    const text = JSON.stringify(snapshot);
+    await repo.saveSeal(record(), [text.slice(0, 10), text.slice(10)]);
+    expect(storage.commits).toEqual([['ls2:snap:cert-1:0', 'ls2:snap:cert-1:1', 'ls2:seal:10001']]);
+    const saved = await repo.getSeal('10001');
+    expect(saved?.certificateId).toBe('cert-1');
+    await expect(repo.getSnapshot(saved!)).resolves.toEqual(snapshot);
   });
 
-  it('archives previous certificate into history when resealed', async () => {
-    const cert1 = generateSealCertificate(sampleSnapshot, sampleSig);
-    await repo.saveCertificate(cert1);
-
-    const cert2 = generateSealCertificate(
-      { ...sampleSnapshot, fields: [{ id: 'summary', name: 'Summary', type: 'string', value: 'Updated build' }] },
-      { ...sampleSig, signedAt: '2026-10-28T11:00:00Z' }
-    );
-    await repo.saveCertificate(cert2);
-
-    const active = await repo.getActiveCertificate('10001');
-    expect(active?.certificateId).toBe(cert2.certificateId);
-
-    const history = await repo.getCertificateHistory('10001');
-    expect(history).toHaveLength(1);
-    expect(history[0].certificateId).toBe(cert1.certificateId);
-    expect(history[0].status).toBe('SUPERSEDED');
+  it('returns null for a missing seal, a missing snapshot part or an unreadable snapshot', async () => {
+    await expect(repo.getSeal('nope')).resolves.toBeNull();
+    await expect(repo.getLegacyCertificate('nope')).resolves.toBeNull();
+    await expect(repo.getSnapshot(record())).resolves.toBeNull();
+    await storage.set('ls2:snap:cert-1:0', '{"broken');
+    await storage.set('ls2:snap:cert-1:1', '');
+    await expect(repo.getSnapshot(record())).resolves.toBeNull();
   });
 
-  it('revokes an active certificate with recorded audit reason', async () => {
-    const cert = generateSealCertificate(sampleSnapshot, sampleSig);
-    await repo.saveCertificate(cert);
-
-    const revoked = await repo.revokeCertificate('10001', 'admin-acc', 'Security flaw discovered');
-    expect(revoked).not.toBeNull();
-    expect(revoked?.status).toBe('REVOKED');
-    expect(revoked?.revocation?.revocationReason).toBe('Security flaw discovered');
-
-    const active = await repo.getActiveCertificate('10001');
-    expect(active?.status).toBe('REVOKED');
+  it('creates each history entry once', async () => {
+    const entry = buildEntry(null, { type: 'SEALED', at: 't', actorAccountId: 'a', certificateId: 'c', data: {} });
+    await expect(repo.appendEntry('10001', entry)).resolves.toBe(true);
+    await expect(repo.appendEntry('10001', { ...entry, data: { forged: true } })).resolves.toBe(false);
+    await expect(repo.getEntries('10001', 1, 1)).resolves.toEqual([entry]);
   });
 
-  it('returns null when attempting to revoke non-existent certificate', async () => {
-    const revoked = await repo.revokeCertificate('99999', 'admin-acc', 'Does not exist');
-    expect(revoked).toBeNull();
+  it('reads a v1 certificate without writing', async () => {
+    await storage.set('cert:active:10001', { certificateId: 'v1' });
+    storage.sets = [];
+    await expect(repo.getLegacyCertificate('10001')).resolves.toEqual({ certificateId: 'v1' });
+    expect(storage.sets).toEqual([]);
+  });
+
+  it('detects a record whose fields no longer match its hash', () => {
+    const r = record();
+    expect(hasValidRecordHash(r)).toBe(true);
+    expect(hasValidRecordHash({ ...r, sealedBy: { accountId: 'x', displayName: 'Someone Else' } })).toBe(false);
+    expect(hasValidRecordHash({ ...r, recordHash: undefined as any })).toBe(false);
   });
 });

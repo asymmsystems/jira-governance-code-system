@@ -121,10 +121,10 @@ export const LedgerSealPanel: React.FC = () => {
       {analysis?.status === 'SEAL_VALID' && (
         <SectionMessage appearance="success" title="Cryptographic Seal Verified">
           <Text>
-            Signer: {analysis.certificate?.sealedBy.signerDisplayName} ({analysis.certificate?.sealedBy.reasonCode})
+            Signer: {analysis.seal?.sealedByName} ({analysis.seal?.meaning})
           </Text>
           <Text>
-            Sealed At: {analysis.certificate?.sealedAt}
+            Sealed At: {analysis.seal?.sealedAt}
           </Text>
           <Text>
             SHA-256 Hash: {analysis.sealedHash?.slice(0, 16)}...
@@ -150,7 +150,7 @@ export const LedgerSealPanel: React.FC = () => {
         <SectionMessage appearance="error" title="CRITICAL: Cryptographic Seal Broken">
           <Text>
             This issue was modified after it was signed off by{' '}
-            {analysis.certificate?.sealedBy.signerDisplayName} at {analysis.certificate?.sealedAt}.
+            {analysis.seal?.sealedByName} at {analysis.seal?.sealedAt}.
           </Text>
           <Lozenge appearance="removed">TAMPER DETECTED</Lozenge>
           {analysis.tamperedFields.length > 0 && (
@@ -171,6 +171,19 @@ export const LedgerSealPanel: React.FC = () => {
         </SectionMessage>
       )}
 
+      {(analysis?.status === 'LEGACY' || analysis?.status === 'RECORD_INVALID') && (
+        <SectionMessage appearance="warning" title={analysis.status === 'LEGACY' ? 'Sealed with an old format' : 'Seal record failed its check'}>
+          <Text>
+            {analysis.status === 'LEGACY'
+              ? 'This seal uses an old format. Reseal to get the new record.'
+              : 'The stored seal record is incomplete. Contact your Jira admin.'}
+          </Text>
+          <Button appearance="primary" onClick={() => setShowSignForm(true)}>
+            Seal Issue with Cryptographic Sign-Off
+          </Button>
+        </SectionMessage>
+      )}
+
       {(!analysis || analysis.status === 'NO_SEAL') && (
         <SectionMessage appearance="information" title="Issue Not Sealed">
           <Text>
@@ -182,30 +195,25 @@ export const LedgerSealPanel: React.FC = () => {
         </SectionMessage>
       )}
 
-      {analysis?.certificate && (
+      {analysis?.seal && (
         <Box padding="space.100">
           <Stack space="space.050">
             <Heading as="h5">Audit Certificate Details</Heading>
-            <Text>Certificate ID: {analysis.certificate.certificateId}</Text>
+            <Text>Certificate ID: {analysis.seal.certificateId}</Text>
             <Text>
-              Signer: {analysis.certificate.sealedBy.signerDisplayName}
-              {analysis.certificate.sealedBy.signerEmail
-                ? ` (${analysis.certificate.sealedBy.signerEmail})`
-                : ` (Account: ${analysis.certificate.sealedBy.signerAccountId})`}
+              Signer: {analysis.seal.sealedByName} (Account: {analysis.seal.sealedByAccountId})
             </Text>
-            <Text>Meaning: {analysis.certificate.sealedBy.meaning}</Text>
+            <Text>Meaning: {analysis.seal.meaning}</Text>
             <Text>Digest: {analysis.sealedHash}</Text>
             <Button appearance="subtle" onClick={() => setShowDetails(!showDetails)}>
               {showDetails ? 'Hide Certificate Details' : 'Inspect Certificate Metadata'}
             </Button>
             {showDetails && (
               <Box padding="space.050">
-                <Text>Algorithm: {analysis.certificate.algorithm}</Text>
-                <Text>Canonical Fields Sealed: {analysis.certificate.snapshot.fields.length}</Text>
-                <Text>Attachments Sealed: {analysis.certificate.snapshot.attachments.length}</Text>
-                <Text>Comments Sealed: {analysis.certificate.snapshot.comments?.length || 0}</Text>
-                {analysis.certificate.tamperHistory && analysis.certificate.tamperHistory.length > 0 && (
-                  <Text>Tamper Incident Count: {analysis.certificate.tamperHistory.length}</Text>
+                <Text>Algorithm: SHA-256 (canonical form {analysis.seal.canonicalizerVersion})</Text>
+                <Text>History entries: {analysis.seal.historyLength}</Text>
+                {analysis.seal.everCompromised && (
+                  <Text>Change incidents across all seals: {analysis.seal.incidentCount}</Text>
                 )}
               </Box>
             )}

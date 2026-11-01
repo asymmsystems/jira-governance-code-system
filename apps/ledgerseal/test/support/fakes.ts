@@ -80,6 +80,23 @@ export class MemoryStore implements StorageProvider {
   async delete(key: string) {
     this.map.delete(key);
   }
+
+  async createIfAbsent(key: string, value: any) {
+    if (this.map.has(key)) return false;
+    await this.set(key, value);
+    return true;
+  }
+
+  commits: string[][] = [];
+
+  async commit(items: { key: string; value: any }[]) {
+    this.commits.push(items.map(i => i.key));
+    for (const item of items) await this.set(item.key, item.value);
+  }
+
+  bytes(key: string) {
+    return this.map.has(key) ? Buffer.byteLength(JSON.stringify(this.map.get(key)), 'utf8') : 0;
+  }
 }
 
 export function sampleIssue(): any {

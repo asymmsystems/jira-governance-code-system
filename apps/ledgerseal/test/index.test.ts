@@ -47,9 +47,9 @@ describe('Forge Function Entry Points (index.ts)', () => {
       expect(result.ok).toBe(true);
       expect(result.snapshotHash).toHaveLength(64);
 
-      const storedCert = await storage.get('cert:active:10001');
-      expect(storedCert.snapshotHash).toBe(result.snapshotHash);
-      expect(storedCert.sealedBy.signerDisplayName).toBe('Lead Engineer');
+      const stored = await storage.get('ls2:seal:10001');
+      expect(stored.snapshotHash).toBe(result.snapshotHash);
+      expect(stored.sealedBy).toEqual({ accountId: 'lead', displayName: 'Lead Engineer' });
       expect(jira.propertyWrites[0].body).toMatchObject({ status: 'SEAL_VALID', snapshotHash: result.snapshotHash });
     });
 
@@ -77,7 +77,7 @@ describe('Forge Function Entry Points (index.ts)', () => {
     it('falls back to the account id when Jira hides the display name', async () => {
       jira.users = {};
       await sealIssue({ signature: sampleSig }, ctx, deps());
-      expect((await storage.get('cert:active:10001')).sealedBy.signerDisplayName).toBe('lead');
+      expect((await storage.get('ls2:seal:10001')).sealedBy.displayName).toBe('lead');
     });
   });
 
@@ -90,10 +90,10 @@ describe('Forge Function Entry Points (index.ts)', () => {
 
     it('returns SEAL_COMPROMISED when issue was previously tampered and reverted', async () => {
       await sealIssue({ signature: sampleSig }, ctx, deps());
-      const storedCert = await storage.get('cert:active:10001');
-      storedCert.isCompromised = true;
-      storedCert.tamperHistory = [{ detectedAt: '2026-10-30T00:00:00Z', alteredFields: ['Summary'], liveHash: 'x', sealedHash: 'y', incidentType: 'ACTIVE_TAMPER' }];
-      await storage.set('cert:active:10001', storedCert);
+      const original = jira.issue.fields.summary;
+      jira.issue.fields.summary = 'Tampered summary';
+      await verifyIssue({}, ctx, deps());
+      jira.issue.fields.summary = original;
 
       const analysis: any = await verifyIssue({}, ctx, deps());
       expect(analysis.status).toBe('SEAL_COMPROMISED');
@@ -180,6 +180,17 @@ describe('Forge Function Entry Points (index.ts)', () => {
       const api = require('@forge/api').default;
       expect(api.asUser).toHaveBeenCalled();
       api.asUser.mockClear();
+      kvs.set = jest.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('exists')).mockRejectedValueOnce(new Error('kvs down'));
+      kvs.get = jest.fn().mockResolvedValueOnce({ taken: true }).mockResolvedValueOnce(undefined);
+      await expect(withUser.storage.createIfAbsent('e', 1)).resolves.toBe(true);
+      expect(kvs.set).toHaveBeenCalledWith('e', 1, { keyPolicy: 'FAIL_IF_EXISTS' });
+      await expect(withUser.storage.createIfAbsent('e', 1)).resolves.toBe(false);
+      await expect(withUser.storage.createIfAbsent('e', 1)).rejects.toThrow('kvs down');
+      const tx = { set: jest.fn(), execute: jest.fn().mockResolvedValue(undefined) };
+      kvs.transact = jest.fn(() => tx);
+      await withUser.storage.commit([{ key: 'a', value: 1 }, { key: 'b', value: 2 }]);
+      expect(tx.set.mock.calls).toEqual([['a', 1], ['b', 2]]);
+      expect(tx.execute).toHaveBeenCalledTimes(1);
       const appOnly = forgeDeps(false);
       await expect(appOnly.jira.hasApproverPermission('1')).resolves.toEqual({ ok: false, error: 'FORBIDDEN' });
       expect(api.asUser).not.toHaveBeenCalled();

@@ -90,11 +90,30 @@ export interface AttachmentDiff {
   filename: string;
 }
 
-export type TamperStatus = 'SEAL_VALID' | 'SEAL_BROKEN' | 'SEAL_COMPROMISED' | 'NO_SEAL' | 'SEAL_REVOKED';
+export type TamperStatus = 'SEAL_VALID' | 'SEAL_BROKEN' | 'SEAL_COMPROMISED' | 'NO_SEAL' | 'SEAL_REVOKED' | 'LEGACY' | 'RECORD_INVALID';
+
+/** What the panel may know about a v2 seal (no snapshot, no email). */
+export interface SealSummary {
+  certificateId: string;
+  state: 'ACTIVE' | 'REVOKED';
+  sealedAt: string;
+  sealedByAccountId: string;
+  sealedByName: string;
+  meaning: string;
+  reason: string | null;
+  declarationVersion: string;
+  snapshotHash: string;
+  canonicalizerVersion: string;
+  everCompromised: boolean;
+  incidentCount: number;
+  revocation: { revokedAt: string; revokedByAccountId: string; reason: string } | null;
+  historyLength: number;
+}
 
 export interface TamperAnalysis {
   status: TamperStatus;
   certificate?: SealCertificate;
+  seal?: SealSummary;
   liveHash?: string;
   sealedHash?: string;
   tamperedFields: FieldDiff[];
@@ -103,6 +122,47 @@ export interface TamperAnalysis {
   isCompromised?: boolean;
   tamperHistory?: TamperIncident[];
   compromiseReason?: string;
+}
+
+/**
+ * v2 seal record, one per issue (spec v2 section 3.2). v1 `SealCertificate` records are read as legacy only.
+ */
+export interface SealRecord {
+  schemaVersion: 2;
+  issueId: string;
+  issueKey: string;
+  certificateId: string;
+  state: 'ACTIVE' | 'REVOKED';
+  sealedAt: string;
+  sealedBy: { accountId: string; displayName: string };
+  meaning: string;
+  declaration: { version: string; text: string };
+  reason: string | null;
+  statusAtSeal: string;
+  snapshotHash: string;
+  canonicalizerVersion: string;
+  coveredFields: { id: string; name: string }[];
+  excludedFields: { id: string; name: string; reason: string }[];
+  snapshotChunks: number;
+  everCompromised: boolean;
+  incidentCount: number;
+  lastIncidentHash: string | null;
+  head: { seq: number; entryHash: string };
+  revocation: { revokedAt: string; revokedByAccountId: string; reason: string } | null;
+  recordHash: string;
+}
+
+export type HistoryEntryType = 'SEALED' | 'RESEALED' | 'INCIDENT' | 'REVOKED';
+
+export interface HistoryEntry {
+  seq: number;
+  type: HistoryEntryType;
+  at: string;
+  actorAccountId: string | null;
+  certificateId: string;
+  data: Record<string, unknown>;
+  prevEntryHash: string;
+  entryHash: string;
 }
 
 export interface WorkflowTransitionValidationResult {

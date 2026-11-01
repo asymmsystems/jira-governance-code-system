@@ -8,14 +8,31 @@ import { AttachmentDiff, CanonicalIssueSnapshot, FieldDiff, SealCertificate, Tam
 import { computeSnapshotHash } from './crypto';
 
 /**
- * Analyzes live issue state against the active seal certificate.
+ * What the detector needs to know about a seal, independent of how it is stored (v1 certificate or v2 record).
  */
-export function analyzeTamperState(
-  certificate: SealCertificate | null,
-  liveSnapshot: CanonicalIssueSnapshot,
-  verifiedAt: string
-): TamperAnalysis {
-  if (!certificate) {
+export interface SealedState {
+  snapshotHash: string;
+  snapshot: CanonicalIssueSnapshot;
+  revoked: boolean;
+  /** True when the current seal already has a recorded change incident. */
+  compromised: boolean;
+}
+
+export function fromCertificate(certificate: SealCertificate): SealedState {
+  return {
+    snapshotHash: certificate.snapshotHash,
+    snapshot: certificate.snapshot,
+    revoked: certificate.status === 'REVOKED',
+    compromised: Boolean(certificate.isCompromised || (certificate.tamperHistory && certificate.tamperHistory.length > 0))
+  };
+}
+
+/**
+ * Compares the live issue with a seal. Returns the status and the field and attachment diffs.
+ * It records nothing: the caller decides whether a change is a new incident.
+ */
+export function compareToSeal(sealed: SealedState | null, liveSnapshot: CanonicalIssueSnapshot, verifiedAt: string): TamperAnalysis {
+  if (!sealed) {
     return {
       status: 'NO_SEAL',
       tamperedFields: [],
@@ -24,10 +41,9 @@ export function analyzeTamperState(
     };
   }
 
-  if (certificate.status === 'REVOKED') {
+  if (sealed.revoked) {
     return {
       status: 'SEAL_REVOKED',
-      certificate,
       tamperedFields: [],
       tamperedAttachments: [],
       verifiedAt
@@ -35,27 +51,20 @@ export function analyzeTamperState(
   }
 
   const liveHash = computeSnapshotHash(liveSnapshot);
-  const sealedHash = certificate.snapshotHash;
-
-  // Check if this certificate was previously flagged as compromised
-  const wasPreviouslyCompromised = Boolean(
-    certificate.isCompromised || (certificate.tamperHistory && certificate.tamperHistory.length > 0)
-  );
+  const sealedHash = sealed.snapshotHash;
 
   // If hashes match exactly:
   if (liveHash === sealedHash) {
-    if (wasPreviouslyCompromised) {
+    if (sealed.compromised) {
       // Revert-then-tamper scenario (Fixes D-02)
       return {
         status: 'SEAL_COMPROMISED',
-        certificate,
         liveHash,
         sealedHash,
         tamperedFields: [],
         tamperedAttachments: [],
         verifiedAt,
         isCompromised: true,
-        tamperHistory: certificate.tamperHistory,
         compromiseReason:
           'Cryptographic integrity compromised! This issue was modified after sign-off and reverted. Re-authorization required.'
       };
@@ -63,7 +72,6 @@ export function analyzeTamperState(
 
     return {
       status: 'SEAL_VALID',
-      certificate,
       liveHash,
       sealedHash,
       tamperedFields: [],
@@ -73,10 +81,60 @@ export function analyzeTamperState(
     };
   }
 
-  // Hashes differ: compute granular diffs
+  const { tamperedFields, tamperedAttachments } = diffSnapshots(sealed.snapshot, liveSnapshot);
+  return {
+    status: 'SEAL_BROKEN',
+    liveHash,
+    sealedHash,
+    tamperedFields,
+    tamperedAttachments,
+    verifiedAt,
+    isCompromised: true,
+    compromiseReason: `Cryptographic seal broken! ${tamperedFields.length} item(s) modified after sign-off (${tamperedFields
+      .map(f => f.fieldName)
+      .join(', ')}). Re-authorization required.`
+  };
+}
+
+/**
+ * Analyzes live issue state against a v1 seal certificate, and appends a v1 tamper incident on a broken seal.
+ */
+export function analyzeTamperState(
+  certificate: SealCertificate | null,
+  liveSnapshot: CanonicalIssueSnapshot,
+  verifiedAt: string
+): TamperAnalysis {
+  if (!certificate) {
+    return compareToSeal(null, liveSnapshot, verifiedAt);
+  }
+  const analysis: TamperAnalysis = { ...compareToSeal(fromCertificate(certificate), liveSnapshot, verifiedAt), certificate };
+  if (analysis.status === 'SEAL_COMPROMISED') {
+    analysis.tamperHistory = certificate.tamperHistory;
+  }
+  if (analysis.status === 'SEAL_BROKEN') {
+    const incident: TamperIncident = {
+      detectedAt: verifiedAt,
+      alteredFields: analysis.tamperedFields.map(f => f.fieldName),
+      liveHash: analysis.liveHash as string,
+      sealedHash: certificate.snapshotHash,
+      incidentType: 'ACTIVE_TAMPER',
+      summary: `${analysis.tamperedFields.length} field(s) modified after sign-off`
+    };
+    analysis.tamperHistory = [...(certificate.tamperHistory || []), incident];
+  }
+  return analysis;
+}
+
+/**
+ * Field, attachment and comment differences between a sealed snapshot and the live one.
+ */
+export function diffSnapshots(
+  sealedSnapshot: CanonicalIssueSnapshot,
+  liveSnapshot: CanonicalIssueSnapshot
+): { tamperedFields: FieldDiff[]; tamperedAttachments: AttachmentDiff[] } {
   const tamperedFields: FieldDiff[] = [];
   const sealedFieldsMap = new Map<string, any>();
-  for (const f of certificate.snapshot.fields) {
+  for (const f of sealedSnapshot.fields) {
     sealedFieldsMap.set(f.id, f);
   }
 
@@ -115,7 +173,7 @@ export function analyzeTamperState(
 
   // Check attachments
   const tamperedAttachments: AttachmentDiff[] = [];
-  const sealedAttMap = new Map(certificate.snapshot.attachments.map(a => [a.id, a]));
+  const sealedAttMap = new Map(sealedSnapshot.attachments.map(a => [a.id, a]));
   const liveAttMap = new Map(liveSnapshot.attachments.map(a => [a.id, a]));
 
   for (const [id, sealedAtt] of sealedAttMap.entries()) {
@@ -146,7 +204,7 @@ export function analyzeTamperState(
   }
 
   // Check comments (Fixes D-10)
-  const sealedComments = certificate.snapshot.comments || [];
+  const sealedComments = sealedSnapshot.comments || [];
   const liveComments = liveSnapshot.comments || [];
   if (JSON.stringify(sealedComments) !== JSON.stringify(liveComments)) {
     tamperedFields.push({
@@ -157,29 +215,5 @@ export function analyzeTamperState(
     });
   }
 
-  const incident: TamperIncident = {
-    detectedAt: verifiedAt,
-    alteredFields: tamperedFields.map(f => f.fieldName),
-    liveHash,
-    sealedHash,
-    incidentType: 'ACTIVE_TAMPER',
-    summary: `${tamperedFields.length} field(s) modified after sign-off`
-  };
-
-  const updatedHistory = [...(certificate.tamperHistory || []), incident];
-
-  return {
-    status: 'SEAL_BROKEN',
-    certificate,
-    liveHash,
-    sealedHash,
-    tamperedFields,
-    tamperedAttachments,
-    verifiedAt,
-    isCompromised: true,
-    tamperHistory: updatedHistory,
-    compromiseReason: `Cryptographic seal broken! ${tamperedFields.length} item(s) modified after sign-off (${tamperedFields
-      .map(f => f.fieldName)
-      .join(', ')}). Re-authorization required.`
-  };
+  return { tamperedFields, tamperedAttachments };
 }

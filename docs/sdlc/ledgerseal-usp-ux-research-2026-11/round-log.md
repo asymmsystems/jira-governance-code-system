@@ -80,3 +80,20 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - Adversarial test: the audit flow.js step 3 scenario (an editor reseals their own change) now returns `SELF_APPROVAL`. The gate stays closed, and nothing is written.
 - `index.test.ts` and `edge-cases.test.ts`: the cases that drove the `NODE_ENV`, payload-issue and global-storage paths are replaced by the same behaviour through injected fakes. Domain-level cases are kept.
 - Results: `tsc --noEmit` OK. 10 suites, 97 tests pass. Global branches 92.97%. Changed files: `index.ts` 97.36%, `policy.ts` 100%, `jira-client.ts` 100%. graders: `grade_tdd` True (92.97), `grade_security` True, `grade_ui` True. No em dash.
+- B-01 commit: `d5075f0`.
+
+### B-02 Tamper record that survives a reseal (LS-02, LS-13 history)
+- Tests: `test/seal-history.test.ts` (B-02 and B-03 incident cases), `test/canonical-json.test.ts`, `test/seal-repository.test.ts` (rewritten for v2).
+- Test-first record: the service was drafted before the tests. To check the tests honestly, they ran against the B-01 commit in `~/.cache/gemini-earning-ledgerseal-research/tdd-red/b02/` (a `git archive` copy):
+  - With the new imports, the suite failed to compile (`getSealHistory` and `src/domain/history` missing).
+  - With those imports stubbed, 10 of 11 cases failed on assertions. The one that passed, "changed back keeps the gate closed", is v1 behaviour that v2 keeps.
+- Code:
+  - `src/domain/canonical-json.ts`, `src/domain/history.ts` (`buildEntry`, `verifyChain`), `src/domain/seal-record.ts` (`withRecordHash`, `summarise`).
+  - `src/service/ledger.ts` (evaluate, `recordIncidentIfNew`, seal, verify, history flows).
+  - `src/storage/seal-repository.ts` (v2 keys `ls2:seal`, `ls2:entry` created once, `ls2:snap`; v1 `cert:active` read only).
+  - `src/domain/tamper-detector.ts` (`compareToSeal`, `diffSnapshots`, `fromCertificate`), and `src/validator/workflow-validator.ts` (takes `SealedState`).
+  - `src/index.ts`: thin handlers, the `seal-history-api` resolver, and KVS `createIfAbsent` and `commit`.
+- Adversarial test: the audit flow.js step 4 scenario now leaves `everCompromised: true` and `incidentCount: 1` on the active record after a reseal, and the auditor's view reports both.
+- A reseal after an unviewed change first records the incident, then the reseal.
+- B-03 note: the rule "one incident per distinct live hash" follows from create-once history entries, so its tests (500 views give 1 incident; a second change gives 1 more) were written and failed first here.
+- Results: `tsc` OK. 12 suites, 119 tests pass. Global branches 93.87%. Changed files 92 to 100% (`workflow-validator.ts` 90.90%). Graders all True. No em dash.

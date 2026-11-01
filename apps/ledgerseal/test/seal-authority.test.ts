@@ -53,9 +53,8 @@ describe('B-01 approver policy and separation of duties', () => {
     const { storage, deps } = setup();
     const result = await sealIssue({ signature: sig }, panelContext('ann'), deps('ann'));
     expect(result).toMatchObject({ ok: true });
-    const active = await storage.get('cert:active:10001');
-    expect(active.sealedBy.signerAccountId).toBe('ann');
-    expect(active.sealedBy.signerDisplayName).toBe('Ann Approver');
+    const active = await storage.get('ls2:seal:10001');
+    expect(active.sealedBy).toEqual({ accountId: 'ann', displayName: 'Ann Approver' });
   });
 
   it('refuses a seal from a user outside the policy and writes nothing', async () => {
@@ -131,16 +130,16 @@ describe('B-01 failure paths', () => {
     jira.edit('mallory', '2099-01-01T00:00:00.000Z', 'summary', 'changed');
     await verifyIssue({}, panelContext('viewer'), deps('viewer'));
     jira.edit('mallory', '2099-01-01T00:01:00.000Z', 'summary', original);
-    const active = await storage.get('cert:active:10001');
-    expect(active.isCompromised).toBe(true);
+    const active = await storage.get('ls2:seal:10001');
+    expect(active.everCompromised).toBe(true);
     await expect(sealIssue({ signature: sig }, panelContext('mallory'), deps('mallory'))).resolves.toMatchObject({ code: 'SELF_APPROVAL' });
   });
 
   it('stores a default meaning and uses the issue id as the key when the context has no key', async () => {
     const { storage, deps } = setup();
     await sealIssue({ signature: { reauthConfirmation: 'CONFIRM' } }, { accountId: 'ann', extension: { issue: { id: '10001' } } }, deps('ann'));
-    const active = await storage.get('cert:active:10001');
-    expect(active.sealedBy.meaning).toBe('Approved for production release');
+    const active = await storage.get('ls2:seal:10001');
+    expect(active.meaning).toBe('Approved for production release');
   });
 
   it('validator: falls back when the issue cannot be read, by id or by key', async () => {
