@@ -443,6 +443,32 @@ export async function getIssueAlignment(
  */
 
 /**
+ * Checks that a payload issue id belongs to the caller's Forge context (FR-06).
+ * Issue context: the id must equal the context issue. Project context: the issue is read
+ * as the user and its project key must equal the context project key.
+ */
+export async function checkIssueScope(issueId: string, context?: any): Promise<string | undefined> {
+  const contextIssueId = context?.extension?.issue?.id;
+  if (contextIssueId) {
+    return String(contextIssueId) === String(issueId) ? undefined : 'Unauthorized: issue is outside this issue view.';
+  }
+  const contextProject = context?.extension?.project?.key;
+  if (!contextProject) {
+    return 'Forbidden: no Jira project or issue context.';
+  }
+  const res = await api.asUser().requestJira(route`/rest/api/3/issue/${issueId}?fields=project`);
+  if (res.status !== 200) {
+    return `Jira returned HTTP ${res.status} reading issue ${issueId}.`;
+  }
+  const iss = await res.json();
+  const projectKey = iss?.fields?.project?.key;
+  if (projectKey !== contextProject) {
+    return `Forbidden: issue ${iss?.key || issueId} is not in project ${contextProject}.`;
+  }
+  return undefined;
+}
+
+/**
  * Links an authentic architecture decision or specification document as a remote link.
  * Runs as calling user with explicit validation (rejects hardcoded fake links).
  */
@@ -478,6 +504,11 @@ export async function linkDecision(payload: any, context?: any): Promise<{ succe
   }
 
   try {
+    const scopeError = await checkIssueScope(issueId, context);
+    if (scopeError) {
+      return { success: false, error: scopeError };
+    }
+
     const res = await api.asUser().requestJira(route`/rest/api/3/issue/${issueId}/remotelink`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -528,6 +559,15 @@ export async function recordException(
 
   if (!reason) {
     return { success: false, error: 'Exception reason required.' };
+  }
+
+  try {
+    const scopeError = await checkIssueScope(issueId, context);
+    if (scopeError) {
+      return { success: false, error: scopeError };
+    }
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to check the issue.' };
   }
 
   const record: IssueExceptionRecord = {

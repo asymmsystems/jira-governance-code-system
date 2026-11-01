@@ -428,7 +428,8 @@ describe('FourRealities Index / Forge Handlers', () => {
         call: {
           functionKey: 'linkDecision',
           payload: { issueId: 'iss-h1', url: 'https://confluence.example.com/adr', title: 'ADR' }
-        }
+        },
+        context: { extension: { issue: { id: 'iss-h1' } } }
       } as any);
       expect(resLink.success).toBe(true);
 
@@ -436,7 +437,8 @@ describe('FourRealities Index / Forge Handlers', () => {
         call: {
           functionKey: 'recordException',
           payload: { issueId: 'iss-h4', type: 'CODE', reason: 'Configuration only' }
-        }
+        },
+        context: { extension: { issue: { id: 'iss-h4' } } }
       } as any);
       expect(resException.success).toBe(true);
     });
@@ -565,7 +567,7 @@ describe('FourRealities Index / Forge Handlers', () => {
         issueId: 'iss-1',
         url: 'https://confluence.example.com/wiki/spaces/ARCH/pages/ADR-014',
         title: 'ADR-014: Architecture Decision'
-      });
+      }, { extension: { issue: { id: 'iss-1' } } });
       expect(res.success).toBe(true);
       expect(res.remoteLink.title).toBe('ADR-014: Architecture Decision');
 
@@ -596,7 +598,7 @@ describe('FourRealities Index / Forge Handlers', () => {
 
       // Fails when Jira returns non-200
       mockRequestJira.mockResolvedValueOnce({ status: 400 });
-      const failHttp = await linkDecision({ issueId: 'iss-1', url: 'https://confluence.com/adr', title: 'ADR' });
+      const failHttp = await linkDecision({ issueId: 'iss-1', url: 'https://confluence.com/adr', title: 'ADR' }, { extension: { issue: { id: 'iss-1' } } });
       expect(failHttp.success).toBe(false);
       expect(failHttp.error).toContain('Jira returned status 400');
     });
@@ -605,7 +607,7 @@ describe('FourRealities Index / Forge Handlers', () => {
       mockRequestJira.mockResolvedValue({ status: 200 });
       const resCode = await recordException(
         { issueId: 'ex-1', issueKey: 'EX-1', type: 'CODE', reason: 'No code change: Documentation only', notes: 'Readme fix' },
-        {},
+        { extension: { issue: { id: 'ex-1' } } },
         mockStorage
       );
       expect(resCode.success).toBe(true);
@@ -614,7 +616,7 @@ describe('FourRealities Index / Forge Handlers', () => {
 
       const resRework = await recordException(
         { issueId: 'ex-2', issueKey: 'EX-2', type: 'REWORK', reason: 'Requirement scope expansion' },
-        {},
+        { extension: { issue: { id: 'ex-2' } } },
         mockStorage
       );
       expect(resRework.success).toBe(true);
@@ -643,7 +645,7 @@ describe('FourRealities Index / Forge Handlers', () => {
         issueId: 'iss-1',
         url: 'https://confluence.com/adr',
         title: 'ADR'
-      });
+      }, { extension: { issue: { id: 'iss-1' } } });
       expect(res.success).toBe(false);
       expect(res.error).toBe('Connection dropped');
     });
@@ -706,7 +708,7 @@ describe('B-05: user actions run as the user only', () => {
 
   it('linkDecision returns the permission error on 403 and never calls asApp', async () => {
     mockRequestJira.mockResolvedValueOnce({ status: 403 });
-    const res = await linkDecision({ issueId: '10001', issueKey: 'DEMO-1', url: 'https://example.atlassian.net/wiki/x', title: 'ADR-1' });
+    const res = await linkDecision({ issueId: '10001', issueKey: 'DEMO-1', url: 'https://example.atlassian.net/wiki/x', title: 'ADR-1' }, { extension: { issue: { id: '10001' } } });
     expect(res.success).toBe(false);
     expect(res.error).toBe('You need the Edit issues permission on DEMO-1 to add a link.');
     expect(mockUserRequestJira).toHaveBeenCalledTimes(1);
@@ -716,7 +718,7 @@ describe('B-05: user actions run as the user only', () => {
   it('recordException returns the permission error on 403, never calls asApp, and stores nothing', async () => {
     const storage = new MockStorage();
     mockRequestJira.mockResolvedValueOnce({ status: 403 });
-    const res = await recordException({ issueId: '10001', issueKey: 'DEMO-1', type: 'CODE', reason: 'Configuration change only, no code' }, {}, storage);
+    const res = await recordException({ issueId: '10001', issueKey: 'DEMO-1', type: 'CODE', reason: 'Configuration change only, no code' }, { extension: { issue: { id: '10001' } } }, storage);
     expect(res.success).toBe(false);
     expect(res.error).toBe('You need the Edit issues permission on DEMO-1 to record an exception.');
     expect(mockAppRequestJira).not.toHaveBeenCalled();
@@ -726,7 +728,7 @@ describe('B-05: user actions run as the user only', () => {
   it('recordException reports a rejected request and stores nothing', async () => {
     const storage = new MockStorage();
     mockRequestJira.mockRejectedValueOnce(new Error('socket hang up'));
-    const res = await recordException({ issueId: '10002', issueKey: 'DEMO-2', type: 'CODE', reason: 'Configuration change only, no code' }, {}, storage);
+    const res = await recordException({ issueId: '10002', issueKey: 'DEMO-2', type: 'CODE', reason: 'Configuration change only, no code' }, { extension: { issue: { id: '10002' } } }, storage);
     expect(res.success).toBe(false);
     expect(res.error).toBe('socket hang up');
     expect(mockAppRequestJira).not.toHaveBeenCalled();
@@ -736,7 +738,7 @@ describe('B-05: user actions run as the user only', () => {
   it('recordException reports a non-2xx status and stores nothing', async () => {
     const storage = new MockStorage();
     mockRequestJira.mockResolvedValueOnce({ status: 500 });
-    const res = await recordException({ issueId: '10003', issueKey: 'DEMO-3', type: 'CODE', reason: 'Configuration change only, no code' }, {}, storage);
+    const res = await recordException({ issueId: '10003', issueKey: 'DEMO-3', type: 'CODE', reason: 'Configuration change only, no code' }, { extension: { issue: { id: '10003' } } }, storage);
     expect(res.success).toBe(false);
     expect(res.error).toBe('Jira returned status 500 recording the exception.');
     expect(await storage.get('fr:issue:10003:exception')).toBeUndefined();
@@ -745,7 +747,7 @@ describe('B-05: user actions run as the user only', () => {
   it('recordException writes the property as the user, then stores the record', async () => {
     const storage = new MockStorage();
     mockRequestJira.mockResolvedValueOnce({ status: 200 });
-    const res = await recordException({ issueId: '10004', issueKey: 'DEMO-4', type: 'CODE', reason: 'Configuration change only, no code' }, { accountId: 'acc-9' }, storage);
+    const res = await recordException({ issueId: '10004', issueKey: 'DEMO-4', type: 'CODE', reason: 'Configuration change only, no code' }, { accountId: 'acc-9', extension: { issue: { id: '10004' } } }, storage);
     expect(res.success).toBe(true);
     expect(mockUserRequestJira).toHaveBeenCalledTimes(1);
     const [path, init] = mockUserRequestJira.mock.calls[0];
@@ -756,3 +758,79 @@ describe('B-05: user actions run as the user only', () => {
     expect((await storage.get<any>('fr:issue:10004:exception')).reason).toBe('Configuration change only, no code');
   });
 });
+
+describe('B-07: every payload issue id is checked against the context', () => {
+  const body = { url: 'https://example.atlassian.net/wiki/spaces/A/pages/1', title: 'ADR-7: Settlement' };
+  beforeEach(() => {
+    mockRequestJira.mockReset();
+    mockAppRequestJira.mockClear();
+    mockUserRequestJira.mockClear();
+  });
+
+  it('rejects an issue from another project on the project page and makes no write', async () => {
+    mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => ({ key: 'TEST-9', fields: { project: { key: 'TEST' } } }) });
+    const res = await linkDecision({ issueId: '20009', ...body }, { extension: { project: { key: 'DEMO' } } });
+    expect(res.success).toBe(false);
+    expect(res.error).toBe('Forbidden: issue TEST-9 is not in project DEMO.');
+    expect(mockUserRequestJira).toHaveBeenCalledTimes(1);
+    expect(mockUserRequestJira.mock.calls[0][0]).toBe('/rest/api/3/issue/20009?fields=project');
+    expect(mockUserRequestJira.mock.calls[0][1]).toBeUndefined();
+  });
+
+  it('rejects when the user cannot read the issue', async () => {
+    const storage = new MockStorage();
+    mockRequestJira.mockResolvedValueOnce({ status: 404 });
+    const res = await recordException({ issueId: '20010', type: 'CODE', reason: 'Configuration change only, no code' }, { extension: { project: { key: 'DEMO' } } }, storage);
+    expect(res.success).toBe(false);
+    expect(res.error).toBe('Jira returned HTTP 404 reading issue 20010.');
+    expect(mockUserRequestJira).toHaveBeenCalledTimes(1);
+    expect(await storage.get('fr:issue:20010:exception')).toBeUndefined();
+  });
+
+  it('allows an issue from the context project', async () => {
+    mockRequestJira
+      .mockResolvedValueOnce({ status: 200, json: async () => ({ key: 'DEMO-11', fields: { project: { key: 'DEMO' } } }) })
+      .mockResolvedValueOnce({ status: 201 });
+    const res = await linkDecision({ issueId: '20011', ...body }, { extension: { project: { key: 'DEMO' } } });
+    expect(res.success).toBe(true);
+    expect(mockUserRequestJira).toHaveBeenCalledTimes(2);
+    expect(mockUserRequestJira.mock.calls[1][1].method).toBe('POST');
+    expect(mockAppRequestJira).not.toHaveBeenCalled();
+  });
+
+  it('rejects a call with neither an issue nor a project context', async () => {
+    const res = await linkDecision({ issueId: '20012', ...body }, {});
+    expect(res.success).toBe(false);
+    expect(res.error).toBe('Forbidden: no Jira project or issue context.');
+    expect(mockUserRequestJira).not.toHaveBeenCalled();
+  });
+
+  it('reports a failed scope read in recordException and stores nothing', async () => {
+    const storage = new MockStorage();
+    mockRequestJira.mockRejectedValueOnce(new Error('scope read failed'));
+    const res = await recordException({ issueId: '20013', type: 'CODE', reason: 'Configuration change only, no code' }, { extension: { project: { key: 'DEMO' } } }, storage);
+    expect(res.success).toBe(false);
+    expect(res.error).toBe('scope read failed');
+    expect(await storage.get('fr:issue:20013:exception')).toBeUndefined();
+  });
+
+  it('rejects an issue id that differs from the issue view', async () => {
+    const res = await linkDecision({ issueId: '20014', url: 'https://example.atlassian.net/wiki/x', title: 'ADR-8' }, { extension: { issue: { id: '20015' } } });
+    expect(res.success).toBe(false);
+    expect(mockUserRequestJira).not.toHaveBeenCalled();
+  });
+
+  it('names the issue id when Jira returns no key on a project mismatch', async () => {
+    mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => ({ fields: { project: { key: 'TEST' } } }) });
+    const res = await linkDecision({ issueId: '20016', url: 'https://example.atlassian.net/wiki/x', title: 'ADR-9' }, { extension: { project: { key: 'DEMO' } } });
+    expect(res.error).toBe('Forbidden: issue 20016 is not in project DEMO.');
+  });
+
+  it('reports a network failure without a message on the issue read', async () => {
+    mockRequestJira.mockResolvedValue({ status: 404 });
+    mockRequestJira.mockRejectedValueOnce({});
+    await expect(getIssueAlignment({ issueId: 'n-1', issueKey: 'N-1' }, {}, new MockStorage()))
+      .rejects.toThrow("Failed to query Jira for issue 'N-1': network error");
+  });
+});
+
