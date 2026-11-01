@@ -20,6 +20,7 @@ modules:
       name: DefinitionGuard DoD Enforcement
       description: Blocks workflow transitions when mandatory Definition of Done checklist items remain incomplete
       function: validateTransition
+      projectTypes: ['company-managed', 'team-managed']
   function:
     - key: resolver
       handler: index.handler
