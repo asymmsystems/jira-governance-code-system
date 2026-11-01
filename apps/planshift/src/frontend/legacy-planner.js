@@ -11,6 +11,7 @@
 
 import { callResolver, openIssueInNewTab } from './bridge';
 import { initErrorBanner } from './banner';
+import { enableTheme, onThemeChange } from './theme';
 import { openWhyPopup, closeWhyPopup, isWhyPopupOpen, initWhyPopup } from './why-popup';
 import { html } from '../ui/safe-html';
 import { deltaWeeksFromPixels, clampStartIndex, spanFromResize } from '../ui/timeline-math';
@@ -108,9 +109,12 @@ const expandedTasks = new Set();
 let currentHierarchyView = 'all'; // 'all' | 'epics' | 'stories'
 
 // Initialization with immediate readiness check
-function initApp() {
+async function initApp() {
   initErrorBanner();
   initWhyPopup();
+  // Theme first, so the first paint already uses the Jira theme (B-17).
+  await enableTheme();
+  onThemeChange(() => { if (currentPlan) renderDependencySvgOverlay(); });
   setupEventListeners();
   loadProjectPlan();
 }
@@ -777,7 +781,7 @@ function openColumnHeaderMenu(e, colKey, colLabel) {
   menu.style.zIndex = '1200';
 
   menu.innerHTML = html`
-    <div style="font-weight:700; font-size:11px; color:#626F86; margin-bottom:4px;">Column: ${colLabel}</div>
+    <div style="font-weight:700; font-size:11px; color: var(--cp-text-subtle); margin-bottom:4px;">Column: ${colLabel}</div>
     <button class="btn btn-outline btn-sm" id="btnHideThisCol" style="text-align:left; justify-content:flex-start; width:100%; font-size:12px; margin-bottom:4px;">
       🚫 Hide "${colLabel}"
     </button>
@@ -893,7 +897,7 @@ function renderMilestones() {
   (currentPlan.milestones || []).forEach(m => {
     const el = document.createElement('div');
     el.className = 'milestone-pill';
-    el.innerHTML = html`<span class="milestone-icon">🔷</span><span>${m.title}</span><span style="color:#626F86;">(${m.weekKey})</span>`;
+    el.innerHTML = html`<span class="milestone-icon">🔷</span><span>${m.title}</span><span style="color: var(--cp-text-subtle);">(${m.weekKey})</span>`;
     strip.appendChild(el);
   });
 }
@@ -904,7 +908,7 @@ function renderBacklogTray() {
 
   const backlog = currentPlan.backlogTasks || [];
   if (backlog.length === 0) {
-    container.innerHTML = '<div style="color:#626F86; font-size:12px; text-align:center; padding:20px;">No unmapped backlog issues. Drag from timeline to unmap.</div>';
+    container.innerHTML = '<div style="color: var(--cp-text-subtle); font-size:12px; text-align:center; padding:20px;">No unmapped backlog issues. Drag from timeline to unmap.</div>';
     return;
   }
 
@@ -1162,7 +1166,7 @@ function openResourcePicker(targetEl, taskKey) {
     }
 
     currentContainer.style.display = 'flex';
-    currentContainer.innerHTML = '<div style="width:100%; font-size:10px; font-weight:700; color:#626F86; text-transform:uppercase; margin-bottom:2px;">Assigned Team:</div>';
+    currentContainer.innerHTML = '<div style="width:100%; font-size:10px; font-weight:700; color: var(--cp-text-subtle); text-transform:uppercase; margin-bottom:2px;">Assigned Team:</div>';
 
     assignedResources.forEach(res => {
       const chip = document.createElement('div');
@@ -1337,7 +1341,7 @@ function openResourcePicker(targetEl, taskKey) {
     );
 
     if (users.length === 0 && q && !'unassigned'.includes(q)) {
-      listEl.innerHTML = '<div style="padding:10px; font-size:11px; color:#626F86; text-align:center;">No matching team members</div>';
+      listEl.innerHTML = '<div style="padding:10px; font-size:11px; color: var(--cp-text-subtle); text-align:center;">No matching team members</div>';
       return;
     }
 
@@ -1349,7 +1353,7 @@ function openResourcePicker(targetEl, taskKey) {
       const opt = document.createElement('div');
       opt.className = 'resource-option' + (isAssigned ? ' is-selected' : '');
       const initials = getInitials(u.displayName);
-      const isPlaceholder = u.isPlaceholder ? html` <span style="font-size:10px; color:#8993A4;">(Placeholder)</span>` : '';
+      const isPlaceholder = u.isPlaceholder ? html` <span style="font-size:10px; color: var(--cp-text-subtlest);">(Placeholder)</span>` : '';
 
       let badgeHtml = html``;
       if (isAssigned) {
@@ -1435,7 +1439,7 @@ function openEpicPicker(targetEl, taskKey) {
     if (!q || 'none standalone'.includes(q)) {
       const opt = document.createElement('div');
       opt.className = 'resource-option';
-      opt.innerHTML = html`<span style="color:#626F86; font-size:11px;">✕ (None / Standalone Task)</span>`;
+      opt.innerHTML = html`<span style="color: var(--cp-text-subtle); font-size:11px;">✕ (None / Standalone Task)</span>`;
       opt.addEventListener('click', async () => {
         popover.style.display = 'none';
         if (activePickerTaskKey === 'NEW_INLINE_TASK') {
@@ -1458,7 +1462,7 @@ function openEpicPicker(targetEl, taskKey) {
     );
 
     if (epics.length === 0 && q) {
-      listEl.innerHTML = '<div style="padding:10px; font-size:11px; color:#626F86; text-align:center;">No matching epics</div>';
+      listEl.innerHTML = '<div style="padding:10px; font-size:11px; color: var(--cp-text-subtle); text-align:center;">No matching epics</div>';
       return;
     }
 
@@ -1600,7 +1604,7 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
     `;
   }
   if (visibleKeys.includes('story')) {
-    cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.story}px; color:#0052CC; font-weight:700;">🔷 Task</td>`;
+    cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.story}px; color: var(--cp-text-brand); font-weight:700;">🔷 Task</td>`;
   }
   // task is always visible (locked)
   cellsHtml = html`${cellsHtml}
@@ -1618,7 +1622,7 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
         <div class="resource-chip-btn new-task-resource-btn" title="Assign team member">
           <span class="resource-option-avatar">U</span>
           <span class="new-task-resource-name" style="flex:1; overflow:hidden; text-overflow:ellipsis;">Unassigned</span>
-          <span style="font-size:10px; color:#626F86;">▾</span>
+          <span style="font-size:10px; color: var(--cp-text-subtle);">▾</span>
         </div>
       </td>
     `;
@@ -1631,10 +1635,10 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
     `;
   }
   if (visibleKeys.includes('progress')) {
-    cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.progress}px; text-align:center; color:#626F86; font-weight:600;">0%</td>`;
+    cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.progress}px; text-align:center; color: var(--cp-text-subtle); font-weight:600;">0%</td>`;
   }
   if (visibleKeys.includes('target')) {
-    cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.target}px; text-align:center; color:#626F86; font-weight:600;">0%</td>`;
+    cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.target}px; text-align:center; color: var(--cp-text-subtle); font-weight:600;">0%</td>`;
   }
   if (visibleKeys.includes('status')) {
     cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.status}px; text-align:center;"><span class="badge badge-neutral">NOT_STARTED</span></td>`;
@@ -1702,7 +1706,7 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
     if (isSubmitting) return;
     const summary = input.value.trim();
     if (!summary) {
-      input.style.borderColor = '#DE350B';
+      input.style.borderColor = 'var(--cp-border-danger)';
       input.focus();
       return;
     }
@@ -1807,7 +1811,7 @@ function renderTimelineRows() {
   tbody.innerHTML = '';
 
   if (!currentPlan.tasks || currentPlan.tasks.length === 0) {
-    tbody.innerHTML = html`<tr><td colspan="${getVisibleColKeys().length + currentPlan.weeks.length}" style="text-align:center; padding:30px; color:#626F86;">No scheduled tasks in project. Drag issues from the Backlog Tray or click "+ Add Task / Issue" to schedule.</td></tr>`;
+    tbody.innerHTML = html`<tr><td colspan="${getVisibleColKeys().length + currentPlan.weeks.length}" style="text-align:center; padding:30px; color: var(--cp-text-subtle);">No scheduled tasks in project. Drag issues from the Backlog Tray or click "+ Add Task / Issue" to schedule.</td></tr>`;
     return;
   }
 
@@ -2004,8 +2008,8 @@ function renderTimelineRows() {
           avatarHtml = html`<div class="avatar-stack">`;
           contributing.slice(0, maxAvatars).forEach((res, aIdx) => {
             const initials = getInitials(res.name);
-            const bg = aIdx === 0 ? '#DFE1E6' : aIdx === 1 ? '#DEEBFF' : '#EAE6FF';
-            const color = aIdx === 0 ? '#172B4D' : aIdx === 1 ? '#0747A6' : '#403294';
+            const bg = aIdx === 0 ? 'var(--cp-bg-neutral)' : aIdx === 1 ? 'var(--cp-bg-selected)' : 'var(--cp-bg-discovery)';
+            const color = aIdx === 0 ? 'var(--cp-text)' : aIdx === 1 ? 'var(--cp-text-brand)' : 'var(--cp-text-discovery)';
             avatarHtml = html`${avatarHtml}<span class="resource-option-avatar" style="background:${bg}; color:${color}; z-index:${10 - aIdx};" title="${res.name}">${initials}</span>`;
           });
           avatarHtml = html`${avatarHtml}</div>`;
@@ -2034,7 +2038,7 @@ function renderTimelineRows() {
             ${avatarHtml}
             <span class="resource-names-wrap" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${labelText}</span>
             ${isMultiple ? html`<span class="res-count-badge">${contributing.length}</span>` : ''}
-            <span style="font-size:10px; color:#626F86;">▾</span>
+            <span style="font-size:10px; color: var(--cp-text-subtle);">▾</span>
           </div>
         `;
         const resChip = resourceTd.querySelector('.resource-chip-btn');
@@ -2435,11 +2439,11 @@ function renderTimelineRows() {
 
     // Background Color Coding
     const isBehind = task.progress < task.targetProgress && task.status !== 'COMPLETED';
-    let barBaseColor = task.status === 'COMPLETED' ? '#36B37E' : isBehind ? '#DE350B' : '#0065FF';
+    let barBaseColor = task.status === 'COMPLETED' ? 'var(--cp-bar-done)' : isBehind ? 'var(--cp-bar-late)' : 'var(--cp-bar-fill)';
     if (isEpic) {
-      barBaseColor = task.status === 'COMPLETED' ? '#36B37E' : isBehind ? '#DE350B' : '#6554C0';
+      barBaseColor = task.status === 'COMPLETED' ? 'var(--cp-bar-done)' : isBehind ? 'var(--cp-bar-late)' : 'var(--cp-bar-epic-fill)';
     }
-    bar.style.background = isEpic ? '#ECE8F6' : '#DFE1E6';
+    bar.style.background = isEpic ? 'var(--cp-bg-discovery)' : 'var(--cp-bg-neutral)';
 
     // Actual Progress Fill
     const actualFillWidth = (task.progress / 100) * barWidth;
@@ -2454,7 +2458,7 @@ function renderTimelineRows() {
     fillPlanned.className = 'gantt-bar-fill-planned';
     fillPlanned.style.left = actualFillWidth + 'px';
     fillPlanned.style.width = (barWidth - actualFillWidth) + 'px';
-    fillPlanned.style.background = isEpic ? '#8777D9' : barBaseColor;
+    fillPlanned.style.background = isEpic ? 'var(--cp-bg-discovery-bold)' : barBaseColor;
     bar.appendChild(fillPlanned);
 
     // Bar Text Content
@@ -2745,16 +2749,16 @@ function renderDependencySvgOverlay() {
   const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
   defs.innerHTML = html`
     <marker id="dep-arrow-success" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#36B37E" />
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" style="fill: var(--cp-bg-success-bold)" />
     </marker>
     <marker id="dep-arrow-violated" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#DE350B" />
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" style="fill: var(--cp-bg-danger-bold)" />
     </marker>
     <marker id="dep-arrow-incoming" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#0052CC" />
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" style="fill: var(--cp-bg-brand)" />
     </marker>
     <marker id="dep-arrow-outgoing" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#FF8B00" />
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" style="fill: var(--cp-bg-warning-bold)" />
     </marker>
   `;
   svg.appendChild(defs);
@@ -2814,22 +2818,22 @@ function renderDependencySvgOverlay() {
 
     // Determine styling, markers, and badges based on connection state
     let curveClass = 'dep-path';
-    let curveColor = isViolated ? '#DE350B' : '#36B37E';
+    let curveColor = isViolated ? 'var(--cp-border-danger)' : 'var(--cp-border-success)';
     let markerEnd = isViolated ? 'url(#dep-arrow-violated)' : 'url(#dep-arrow-success)';
 
     if (activeKey) {
       if (isConnected) {
         curveClass = 'dep-path active-dep' + (isViolated ? ' violated' : '');
         if (isIncoming) {
-          curveColor = isViolated ? '#DE350B' : '#0052CC';
+          curveColor = isViolated ? 'var(--cp-border-danger)' : 'var(--cp-border-brand)';
           markerEnd = isViolated ? 'url(#dep-arrow-violated)' : 'url(#dep-arrow-incoming)';
         } else {
-          curveColor = isViolated ? '#DE350B' : '#FF8B00';
+          curveColor = isViolated ? 'var(--cp-border-danger)' : 'var(--cp-text-warning)';
           markerEnd = isViolated ? 'url(#dep-arrow-violated)' : 'url(#dep-arrow-outgoing)';
         }
       } else {
         curveClass = 'dep-path dimmed-dep';
-        curveColor = '#8993A4';
+        curveColor = 'var(--cp-border-bold)';
       }
     } else if (isViolated) {
       curveClass = 'dep-path violated';
@@ -2852,7 +2856,7 @@ function renderDependencySvgOverlay() {
       circle.setAttribute('cx', x1);
       circle.setAttribute('cy', y1);
       circle.setAttribute('r', isConnected ? 5.5 : 4);
-      circle.setAttribute('fill', curveColor);
+      circle.style.fill = curveColor;
       svg.appendChild(circle);
 
       // Render Pill Badge Showing "X depends on Y" relationship
@@ -2875,7 +2879,7 @@ function renderDependencySvgOverlay() {
       rect.setAttribute('height', badgeH);
       rect.setAttribute('rx', 10);
       rect.setAttribute('ry', 10);
-      rect.setAttribute('fill', curveColor);
+      rect.style.fill = curveColor;
       rect.style.filter = 'drop-shadow(0 2px 4px rgba(9, 30, 66, 0.28))';
       g.appendChild(rect);
 
@@ -2900,13 +2904,13 @@ function showTaskTooltip(e, task) {
 
   const dep = task.dependency;
   const depInfo = dep && dep.predecessorKey
-    ? html`<div style="margin-top:4px;">🔗 ${dep.earliestStartReason || `Waits for ${dep.predecessorKey} at ${dep.triggerPercent}%`}</div>${dep.isViolated ? html`<div style="color:#FF8F73;">⚠ ${dep.fixSuggestion || dep.violationReason || 'Starts too early'}</div>` : ''}`
+    ? html`<div style="margin-top:4px;">🔗 ${dep.earliestStartReason || `Waits for ${dep.predecessorKey} at ${dep.triggerPercent}%`}</div>${dep.isViolated ? html`<div style="color: var(--cp-text-danger);">⚠ ${dep.fixSuggestion || dep.violationReason || 'Starts too early'}</div>` : ''}`
     : '';
   const rollupInfo = (isEpic && task.rollupStats)
-    ? html`<div style="color:#A5B4FC; font-weight:600;">Rollup: ${task.childrenCount || 0} child items | Total ${task.effortHours}h</div>`
+    ? html`<div style="color: var(--cp-text-discovery); font-weight:600;">Rollup: ${task.childrenCount || 0} child items | Total ${task.effortHours}h</div>`
     : '';
   const subInfo = (!isEpic && task.subtasks && task.subtasks.length > 0)
-    ? html`<div style="color:#B3BAC5;">Subtasks: ${task.subtasks.length} items (${task.effortHours}h total)</div>`
+    ? html`<div style="color: var(--cp-text-subtlest);">Subtasks: ${task.subtasks.length} items (${task.effortHours}h total)</div>`
     : '';
 
   const contributing = getTaskContributingResources(task);
@@ -2919,8 +2923,8 @@ function showTaskTooltip(e, task) {
 
   const siteUrl = getJiraBaseUrl();
   tip.innerHTML = html`
-    <div style="font-size:10px; color:#A5B4FC; font-weight:700; margin-bottom:2px;">${levelTitle}</div>
-    <div><strong><a href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer" style="color:#FFF; text-decoration:underline;">${task.key} ↗</a>: ${task.summary}</strong></div>
+    <div style="font-size:10px; color: var(--cp-text-discovery); font-weight:700; margin-bottom:2px;">${levelTitle}</div>
+    <div><strong><a href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer" style="color: var(--cp-text-inverse); text-decoration:underline;">${task.key} ↗</a>: ${task.summary}</strong></div>
     ${assigneeHtml}
     <div>Effort: ${formatEffort(task.effortHours)} | Progress: ${task.progress}% (Target: ${task.targetProgress}%)</div>
     <div>Dates: ${task.startDate} to ${task.endDate}</div>
@@ -3071,7 +3075,7 @@ function renderModalSubtasks(task) {
   list.innerHTML = '';
   const subs = task.subtasks || [];
   if (subs.length === 0) {
-    list.innerHTML = '<div style="font-size:11px; color:#626F86;">No subtasks added yet.</div>';
+    list.innerHTML = '<div style="font-size:11px; color: var(--cp-text-subtle);">No subtasks added yet.</div>';
   } else {
     subs.forEach((s, idx) => {
       const item = document.createElement('div');
@@ -3125,13 +3129,13 @@ async function handleAddResourceSubtask() {
       // Only a confirmed create shows success; a null or failed result is an error (B-07).
       if (statusEl) {
         statusEl.textContent = (res && (res.message || res.error)) || 'Jira did not create the subtask.';
-        statusEl.style.color = '#DE350B';
+        statusEl.style.color = 'var(--cp-text-danger)';
         statusEl.style.display = 'block';
       }
     } else {
       if (statusEl) {
         statusEl.textContent = `✓ Created Jira subtask for ${assigneeName} (${hours}h)`;
-        statusEl.style.color = '#006644';
+        statusEl.style.color = 'var(--cp-text-success)';
         statusEl.style.display = 'block';
       }
       await loadProjectPlan();
@@ -3141,7 +3145,7 @@ async function handleAddResourceSubtask() {
   } catch (err) {
     if (statusEl) {
       statusEl.textContent = err?.message || 'Failed to allocate resource subtask.';
-      statusEl.style.color = '#DE350B';
+      statusEl.style.color = 'var(--cp-text-danger)';
       statusEl.style.display = 'block';
     }
   } finally {
@@ -3334,7 +3338,7 @@ async function executeCreateTask() {
   const errEl = document.getElementById('createTaskError');
 
   if (!summary) {
-    summaryInput.style.borderColor = '#DE350B';
+    summaryInput.style.borderColor = 'var(--cp-border-danger)';
     summaryInput.focus();
     if (errEl) {
       errEl.textContent = 'Please enter a task summary.';
@@ -3401,7 +3405,7 @@ async function executeCreateEpic() {
   const errEl = document.getElementById('createEpicError');
 
   if (!summary) {
-    summaryInput.style.borderColor = '#DE350B';
+    summaryInput.style.borderColor = 'var(--cp-border-danger)';
     summaryInput.focus();
     if (errEl) {
       errEl.textContent = 'Please enter an epic summary.';
@@ -3453,7 +3457,7 @@ function closeModal(id) {
 // Utilization & Heatmap Views
 async function renderUtilizationView() {
   const cont = document.getElementById('utilizationProfilesContent');
-  cont.innerHTML = '<div style="color:#626F86;">Loading utilization profiles...</div>';
+  cont.innerHTML = '<div style="color: var(--cp-text-subtle);">Loading utilization profiles...</div>';
   const res = await callResolver('getPortfolioResourceHeatmap', {});
   if (!res || !res.rows) {
     cont.innerHTML = '<div>No resource allocation data available.</div>';
@@ -3463,14 +3467,14 @@ async function renderUtilizationView() {
   let markup = html`<div style="display:flex; flex-direction:column; gap:16px;">`;
   res.rows.forEach(r => {
     markup = html`${markup}
-      <div style="background:#FFF; border:1px solid #DCDFE4; border-radius:6px; padding:12px;">
-        <div style="font-weight:700; font-size:13px; margin-bottom:4px;">👤 ${r.resourceName} <span style="font-weight:500; color:#626F86;">(${r.coe} • ${r.vertical})</span></div>
+      <div style="background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius:6px; padding:12px;">
+        <div style="font-weight:700; font-size:13px; margin-bottom:4px;">👤 ${r.resourceName} <span style="font-weight:500; color: var(--cp-text-subtle);">(${r.coe} • ${r.vertical})</span></div>
         <div style="display:flex; gap:6px; overflow-x:auto; margin-top:8px;">
     `;
     res.weeks.forEach(w => {
       const pct = r.weeklyUtilization[w.weekKey] || 0;
-      const bg = pct > 100 ? '#FFEBE6' : pct === 100 ? '#E3FCEF' : pct > 0 ? '#DEEBFF' : '#F4F5F7';
-      const fg = pct > 100 ? '#BF2600' : pct === 100 ? '#006644' : pct > 0 ? '#0747A6' : '#626F86';
+      const bg = pct > 100 ? 'var(--cp-bg-danger)' : pct === 100 ? 'var(--cp-bg-success)' : pct > 0 ? 'var(--cp-bg-selected)' : 'var(--cp-surface-sunken)';
+      const fg = pct > 100 ? 'var(--cp-text-danger)' : pct === 100 ? 'var(--cp-text-success)' : pct > 0 ? 'var(--cp-text-brand)' : 'var(--cp-text-subtle)';
       markup = html`${markup}
         <div style="background:${bg}; color:${fg}; border-radius:4px; padding:4px 8px; text-align:center; min-width:60px;">
           <div style="font-size:10px; font-weight:600;">${w.weekKey}</div>
@@ -3486,7 +3490,7 @@ async function renderUtilizationView() {
 
 async function renderHeatmapView() {
   const cont = document.getElementById('heatmapContent');
-  cont.innerHTML = '<div style="color:#626F86;">Loading capacity heatmap...</div>';
+  cont.innerHTML = '<div style="color: var(--cp-text-subtle);">Loading capacity heatmap...</div>';
   const res = await callResolver('getPortfolioResourceHeatmap', {});
   if (!res || !res.rows) {
     cont.innerHTML = '<div>No capacity data available.</div>';
@@ -3502,13 +3506,13 @@ async function renderHeatmapView() {
   res.rows.forEach(r => {
     markup = html`${markup}<tr>
       <td class="heatmap-td" style="text-align:left; font-weight:700;">${r.resourceName}</td>
-      <td class="heatmap-td" style="color:#626F86;">${r.coe}</td>
-      <td class="heatmap-td" style="color:#626F86;">${r.vertical}</td>
+      <td class="heatmap-td" style="color: var(--cp-text-subtle);">${r.coe}</td>
+      <td class="heatmap-td" style="color: var(--cp-text-subtle);">${r.vertical}</td>
     `;
     res.weeks.forEach(w => {
       const pct = r.weeklyUtilization[w.weekKey] || 0;
-      const bg = pct > 100 ? '#FFEBE6' : pct === 100 ? '#E3FCEF' : pct > 0 ? '#DEEBFF' : '#FFF0B3';
-      const fg = pct > 100 ? '#BF2600' : pct === 100 ? '#006644' : pct > 0 ? '#0747A6' : '#172B4D';
+      const bg = pct > 100 ? 'var(--cp-bg-danger)' : pct === 100 ? 'var(--cp-bg-success)' : pct > 0 ? 'var(--cp-bg-selected)' : 'var(--cp-bg-warning)';
+      const fg = pct > 100 ? 'var(--cp-text-danger)' : pct === 100 ? 'var(--cp-text-success)' : pct > 0 ? 'var(--cp-text-brand)' : 'var(--cp-text)';
       markup = html`${markup}<td class="heatmap-td" style="background:${bg}; color:${fg};">${pct}%</td>`;
     });
     markup = html`${markup}</tr>`;

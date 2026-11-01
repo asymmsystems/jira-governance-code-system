@@ -15,7 +15,7 @@
   <header class="app-header">
     <div class="header-left">
       <div class="brand-title">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0052CC" stroke-width="2.5"><path d="M3 3h18v18H3z"/><path d="M7 8h10M7 12h6M7 16h8"/></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke: var(--cp-border-brand)" stroke-width="2.5"><path d="M3 3h18v18H3z"/><path d="M7 8h10M7 12h6M7 16h8"/></svg>
         <span>CascadePlan</span>
       </div>
       <span class="badge badge-primary" id="projectBadge">Project: DEMO</span>
@@ -85,21 +85,21 @@
       <!-- 1. Timeline View -->
       <div id="timelineViewSection" style="display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; height: 100%;">
         <!-- Initial Loading Indicator & Error Banner -->
-        <div id="plannerLoadingIndicator" style="display: flex; align-items: center; justify-content: center; gap: 10px; padding: 30px; color: #42526E; font-size: 13px; font-weight: 600;">
-          <span style="display: inline-block; width: 16px; height: 16px; border: 2px solid #0052CC; border-top-color: transparent; border-radius: 50%; animation: cpSpin 0.8s linear infinite;"></span>
+        <div id="plannerLoadingIndicator" style="display: flex; align-items: center; justify-content: center; gap: 10px; padding: 30px; color: var(--cp-text-subtle); font-size: 13px; font-weight: 600;">
+          <span style="display: inline-block; width: 16px; height: 16px; border: 2px solid var(--cp-border-brand); border-top-color: transparent; border-radius: 50%; animation: cpSpin 0.8s linear infinite;"></span>
           <span>Loading project schedule & backlog issues...</span>
         </div>
-        <div id="plannerErrorBanner" style="display: none; margin: 16px; padding: 12px 16px; background: #FFEBE6; border: 1px solid #FF8F73; border-radius: 6px; color: #BF2600; font-size: 13px; align-items: center; justify-content: space-between;">
+        <div id="plannerErrorBanner" style="display: none; margin: 16px; padding: 12px 16px; background: var(--cp-bg-danger); border: 1px solid var(--cp-border-danger); border-radius: 6px; color: var(--cp-text-danger); font-size: 13px; align-items: center; justify-content: space-between;">
           <span id="plannerErrorMsg">Failed to load project plan.</span>
           <button class="btn btn-outline" id="btnRetryLoad">Retry</button>
         </div>
         <div class="timeline-banner">
           <div class="legend-row">
-            <span style="font-weight: 700; color: #42526E;">Legend:</span>
-            <div class="legend-item"><div class="legend-swatch" style="background: #36B37E;"></div><span>Completed / On Track</span></div>
-            <div class="legend-item"><div class="legend-swatch" style="background: #DE350B;"></div><span>Behind Schedule / Dependency Violation</span></div>
-            <div class="legend-item"><div class="legend-swatch" style="background: #0065FF;"></div><span>Planned Remaining</span></div>
-            <div class="legend-item"><span style="color: #0052CC; font-weight: 700;">|</span><span id="legendCurrentWeek">Current Week</span></div>
+            <span style="font-weight: 700; color: var(--cp-text-subtle);">Legend:</span>
+            <div class="legend-item"><div class="legend-swatch" style="background: var(--cp-bg-success-bold);"></div><span>Completed / On Track</span></div>
+            <div class="legend-item"><div class="legend-swatch" style="background: var(--cp-bg-danger-bold);"></div><span>Behind Schedule / Dependency Violation</span></div>
+            <div class="legend-item"><div class="legend-swatch" style="background: var(--cp-bg-brand-hover);"></div><span>Planned Remaining</span></div>
+            <div class="legend-item"><span style="color: var(--cp-text-brand); font-weight: 700;">|</span><span id="legendCurrentWeek">Current Week</span></div>
           </div>
           
           <div class="timeline-nav-group">
@@ -148,14 +148,14 @@
       <!-- 2. Resource Utilization View -->
       <div id="utilizationViewSection" class="resource-view-container">
         <h3 style="margin-bottom: 8px;">Resource Utilization Profile</h3>
-        <p style="color: #626F86; margin-bottom: 14px;">Detailed weekly task allocations grouped by assigned team member.</p>
+        <p style="color: var(--cp-text-subtle); margin-bottom: 14px;">Detailed weekly task allocations grouped by assigned team member.</p>
         <div id="utilizationProfilesContent"></div>
       </div>
 
       <!-- 3. Executive Capacity Heatmap View -->
       <div id="heatmapViewSection" class="resource-view-container">
         <h3 style="margin-bottom: 8px;">Executive Resource Capacity Heatmap</h3>
-        <p style="color: #626F86; margin-bottom: 14px;">Portfolio-wide capacity heatmap with Center of Excellence (COE) and Vertical tags.</p>
+        <p style="color: var(--cp-text-subtle); margin-bottom: 14px;">Portfolio-wide capacity heatmap with Center of Excellence (COE) and Vertical tags.</p>
         <div id="heatmapContent"></div>
       </div>
     </main>
@@ -182,7 +182,7 @@
       <div class="modal-header">
         <div style="display: flex; align-items: center; gap: 10px;">
           <div class="modal-title" id="modalTaskKey">Task Details</div>
-          <a id="btnOpenModalInJiraNative" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm" style="font-size: 11px; padding: 2px 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; color: #0052CC; border-color: #B3D4FF; background: #DEEBFF; font-weight: 600;" title="Open this ticket in native Jira in a new tab">
+          <a id="btnOpenModalInJiraNative" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm" style="font-size: 11px; padding: 2px 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; color: var(--cp-text-brand); border-color: var(--cp-border-brand); background: var(--cp-bg-selected); font-weight: 600;" title="Open this ticket in native Jira in a new tab">
             Open in Jira ↗
           </a>
         </div>
@@ -209,15 +209,15 @@
         </div>
 
         <!-- Actual Progress & Target Progress Section -->
-        <div style="background: #FAFBFC; border: 1px solid var(--ds-border); border-radius: 6px; padding: 12px; margin-bottom: 12px;">
+        <div style="background: var(--cp-surface-sunken); border: 1px solid var(--cp-border); border-radius: 6px; padding: 12px; margin-bottom: 12px;">
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
             <div class="form-group" style="margin-bottom: 0;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                 <label class="form-label" id="editProgressLabel" style="margin: 0; font-weight: 700;">Actual Progress</label>
-                <span id="modalProgressValLabel" style="font-size: 12px; font-weight: 800; color: #006644;">0%</span>
+                <span id="modalProgressValLabel" style="font-size: 12px; font-weight: 800; color: var(--cp-text-success);">0%</span>
               </div>
               <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
-                <input type="range" min="0" max="100" step="5" id="editProgressSlider" style="flex: 1; accent-color: #00875A; cursor: pointer;" />
+                <input type="range" min="0" max="100" step="5" id="editProgressSlider" style="flex: 1; accent-color: var(--cp-bg-success-bold); cursor: pointer;" />
                 <input type="number" min="0" max="100" class="form-input" id="editProgressInput" style="width: 50px; text-align: center; padding: 2px 4px; font-weight: 700;" placeholder="0-100" />
               </div>
               <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;">
@@ -227,7 +227,7 @@
                 <button type="button" class="btn btn-sm btn-subtle modal-prog-preset" data-pct="75">75%</button>
                 <button type="button" class="btn btn-sm btn-subtle modal-prog-preset" data-pct="100">100%</button>
               </div>
-              <div id="editProgressRollupNote" style="display: none; font-size: 11px; color: #626F86; margin-top: 6px; background: #EBECF0; padding: 4px 8px; border-radius: 4px;">
+              <div id="editProgressRollupNote" style="display: none; font-size: 11px; color: var(--cp-text-subtle); margin-top: 6px; background: var(--cp-bg-neutral); padding: 4px 8px; border-radius: 4px;">
                 <span>Child Rollup: <strong id="modalRollupPctText">0%</strong></span>
                 <button type="button" id="btnModalUseRollup" class="btn btn-sm btn-subtle" style="font-size: 10px; padding: 1px 5px; float: right;">Use Rollup</button>
               </div>
@@ -236,10 +236,10 @@
             <div class="form-group" style="margin-bottom: 0;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                 <label class="form-label" style="margin: 0; font-weight: 700;">Target Progress</label>
-                <span id="modalTargetValLabel" style="font-size: 12px; font-weight: 800; color: #0052CC;">0%</span>
+                <span id="modalTargetValLabel" style="font-size: 12px; font-weight: 800; color: var(--cp-text-brand);">0%</span>
               </div>
               <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
-                <input type="range" min="0" max="100" step="5" id="editTargetProgressSlider" style="flex: 1; accent-color: #0052CC; cursor: pointer;" />
+                <input type="range" min="0" max="100" step="5" id="editTargetProgressSlider" style="flex: 1; accent-color: var(--cp-bg-brand); cursor: pointer;" />
                 <input type="number" min="0" max="100" class="form-input" id="editTargetProgressInput" style="width: 50px; text-align: center; padding: 2px 4px; font-weight: 700;" placeholder="0-100" />
               </div>
               <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;">
@@ -270,7 +270,7 @@
         </div>
 
         <!-- Multi-Unit Estimation Section -->
-        <div style="background: #FAFBFC; border: 1px solid var(--ds-border); border-radius: 6px; padding: 12px;">
+        <div style="background: var(--cp-surface-sunken); border: 1px solid var(--cp-border); border-radius: 6px; padding: 12px;">
           <div style="font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
             <span>Estimation & Sizing</span>
             <span class="badge badge-primary" id="reconciledHoursBadge">Total: 40 hrs</span>
@@ -301,19 +301,19 @@
           </div>
           <div style="margin-top: 8px; display: flex; align-items: center; gap: 6px;">
             <input type="checkbox" id="autoScaleEffortCheckbox" />
-            <label for="autoScaleEffortCheckbox" style="font-size: 11px; color: #42526E; cursor: pointer;">
+            <label for="autoScaleEffortCheckbox" style="font-size: 11px; color: var(--cp-text-subtle); cursor: pointer;">
               Also scale the Jira estimate when I resize this bar
             </label>
           </div>
         </div>
 
         <!-- Multi-Resource Allocation (Jira Subtasks) -->
-        <div style="background: #FAFBFC; border: 1px solid var(--ds-border); border-radius: 6px; padding: 12px;">
+        <div style="background: var(--cp-surface-sunken); border: 1px solid var(--cp-border); border-radius: 6px; padding: 12px;">
           <div style="font-weight: 700; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
             <span>Multi-Resource Allocation (Jira Subtasks)</span>
             <span class="badge badge-primary">Best Practice</span>
           </div>
-          <p style="font-size: 11px; color: #626F86; margin-bottom: 8px;">
+          <p style="font-size: 11px; color: var(--cp-text-subtle); margin-bottom: 8px;">
             Assign additional team members to this task. CascadePlan creates a dedicated background Jira subtask for each resource to maintain single-assignee traceability.
           </p>
           <div style="display: flex; gap: 8px; margin-bottom: 6px;">
@@ -321,11 +321,11 @@
             <input type="number" class="form-input" id="multiResourceHours" value="20" style="width: 75px;" placeholder="Hrs" />
             <button class="btn btn-outline" id="btnAddResourceSubtaskBtn">+ Allocate Resource</button>
           </div>
-          <div id="multiResourceStatus" style="font-size: 11px; color: #006644; display: none;"></div>
+          <div id="multiResourceStatus" style="font-size: 11px; color: var(--cp-text-success); display: none;"></div>
         </div>
 
         <!-- Subtasks & Buffer Section -->
-        <div style="background: #FAFBFC; border: 1px solid var(--ds-border); border-radius: 6px; padding: 12px;">
+        <div style="background: var(--cp-surface-sunken); border: 1px solid var(--cp-border); border-radius: 6px; padding: 12px;">
           <div style="font-weight: 700; margin-bottom: 8px;">Subtasks & Risk Buffer</div>
           <div id="subtasksList" style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;"></div>
           <div style="display: flex; gap: 8px; margin-bottom: 12px;">
@@ -350,7 +350,7 @@
         </div>
 
         <!-- Dependency Section -->
-        <div style="background: #FAFBFC; border: 1px solid var(--ds-border); border-radius: 6px; padding: 12px;">
+        <div style="background: var(--cp-surface-sunken); border: 1px solid var(--cp-border); border-radius: 6px; padding: 12px;">
           <div style="font-weight: 700; margin-bottom: 8px;">Fractional Completion Dependency</div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <div class="form-group">
@@ -363,10 +363,10 @@
             </div>
           </div>
         </div>
-        <div id="taskDetailError" style="display: none; color: #DE350B; font-size: 12px; margin-top: 10px; font-weight: 600;"></div>
+        <div id="taskDetailError" style="display: none; color: var(--cp-text-danger); font-size: 12px; margin-top: 10px; font-weight: 600;"></div>
       </div>
       <div class="modal-footer" style="justify-content: space-between;">
-        <button class="btn btn-outline" id="btnUnscheduleTaskModal" style="color: #BF2600; border-color: #FF8F73;" title="Move out of planner to unmapped backlog">
+        <button class="btn btn-outline" id="btnUnscheduleTaskModal" style="color: var(--cp-text-danger); border-color: var(--cp-border-danger);" title="Move out of planner to unmapped backlog">
           📤 Move to Backlog
         </button>
         <div style="display: flex; gap: 10px;">
@@ -388,7 +388,7 @@
         <div class="form-group">
           <label class="form-label">Summary</label>
           <input type="text" class="form-input" id="createSummaryInput" placeholder="e.g. Integrate Payment Webhooks" />
-          <div id="createTaskError" style="display: none; color: #DE350B; font-size: 12px; margin-top: 6px; font-weight: 600;"></div>
+          <div id="createTaskError" style="display: none; color: var(--cp-text-danger); font-size: 12px; margin-top: 6px; font-weight: 600;"></div>
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="form-group">
@@ -429,7 +429,7 @@
         <div class="form-group">
           <label class="form-label">Epic Summary</label>
           <input type="text" class="form-input" id="newEpicSummaryInput" placeholder="e.g. Identity & Access Overhaul" />
-          <div id="createEpicError" style="display: none; color: #DE350B; font-size: 12px; margin-top: 6px; font-weight: 600;"></div>
+          <div id="createEpicError" style="display: none; color: var(--cp-text-danger); font-size: 12px; margin-top: 6px; font-weight: 600;"></div>
         </div>
       </div>
       <div class="modal-footer">
@@ -474,8 +474,8 @@
   <!-- Quick Progress Popover -->
   <div id="progressPickerPopover" class="quick-menu-popover" style="padding: 12px; width: 240px; box-sizing: border-box;">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-      <span style="font-weight: 700; font-size: 12px; color: #172B4D;" id="progressPickerTitle">Set Actual Progress</span>
-      <span style="font-size: 13px; font-weight: 800; color: #006644;" id="progressPickerValLabel">0%</span>
+      <span style="font-weight: 700; font-size: 12px; color: var(--cp-text);" id="progressPickerTitle">Set Actual Progress</span>
+      <span style="font-size: 13px; font-weight: 800; color: var(--cp-text-success);" id="progressPickerValLabel">0%</span>
     </div>
 
     <!-- Quick Preset Chips -->
@@ -489,14 +489,14 @@
 
     <!-- Slider & Direct Input -->
     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
-      <input type="range" min="0" max="100" step="5" id="progressPickerSlider" style="flex: 1; accent-color: #00875A; cursor: pointer;" />
+      <input type="range" min="0" max="100" step="5" id="progressPickerSlider" style="flex: 1; accent-color: var(--cp-bg-success-bold); cursor: pointer;" />
       <input type="number" min="0" max="100" id="progressPickerNumberInput" class="form-input" style="width: 52px; height: 26px; text-align: center; padding: 2px 4px; font-weight: 700;" />
     </div>
 
     <!-- Rollup Toggle for Parents / Epics -->
-    <div id="progressPickerRollupSection" style="display: none; border-top: 1px solid var(--ds-border); padding-top: 8px; margin-top: 4px; font-size: 11px;">
+    <div id="progressPickerRollupSection" style="display: none; border-top: 1px solid var(--cp-border); padding-top: 8px; margin-top: 4px; font-size: 11px;">
       <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span style="color: #626F86;" id="progressPickerRollupLabel">Child Rollup: 0%</span>
+        <span style="color: var(--cp-text-subtle);" id="progressPickerRollupLabel">Child Rollup: 0%</span>
         <button class="btn btn-sm btn-subtle" id="btnApplyRollupProgress" style="font-size: 10px; padding: 2px 6px;">Use Rollup</button>
       </div>
     </div>
@@ -511,8 +511,8 @@
   <!-- Quick Target Progress Popover -->
   <div id="targetPickerPopover" class="quick-menu-popover" style="padding: 12px; width: 230px; box-sizing: border-box;">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-      <span style="font-weight: 700; font-size: 12px; color: #172B4D;" id="targetPickerTitle">Set Target Progress</span>
-      <span style="font-size: 13px; font-weight: 800; color: #0052CC;" id="targetPickerValLabel">0%</span>
+      <span style="font-weight: 700; font-size: 12px; color: var(--cp-text);" id="targetPickerTitle">Set Target Progress</span>
+      <span style="font-size: 13px; font-weight: 800; color: var(--cp-text-brand);" id="targetPickerValLabel">0%</span>
     </div>
     <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 10px;">
       <button class="btn btn-sm btn-subtle target-preset-btn" data-pct="0">0%</button>
@@ -522,7 +522,7 @@
       <button class="btn btn-sm btn-subtle target-preset-btn" data-pct="100">100%</button>
     </div>
     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-      <input type="range" min="0" max="100" step="5" id="targetPickerSlider" style="flex: 1; accent-color: #0052CC; cursor: pointer;" />
+      <input type="range" min="0" max="100" step="5" id="targetPickerSlider" style="flex: 1; accent-color: var(--cp-bg-brand); cursor: pointer;" />
       <input type="number" min="0" max="100" id="targetPickerNumberInput" class="form-input" style="width: 52px; height: 26px; text-align: center; padding: 2px 4px; font-weight: 700;" />
     </div>
     <div style="display: flex; justify-content: flex-end; gap: 6px;">
