@@ -12,6 +12,7 @@ import Resolver from '@forge/resolver';
 import { StorageProvider } from '../storage/checklist-repository';
 import { resolveStorage } from '../storage/forge-storage';
 import { checkProjectPermissions } from '../security/permissions';
+import { assertLicensed } from '../security/licence';
 import { TemplateStore, StoredTemplate } from './template-store';
 
 export const TEMPLATE_DENIED = 'Only a project admin can change DefinitionGuard templates.';
@@ -53,6 +54,7 @@ export async function getSettings(_payload: any, context?: any, storageProvider?
 }
 
 export async function saveTemplate(payload: any, context?: any, storageProvider?: StorageProvider) {
+  assertLicensed(context);
   const c = await requireProjectAdmin(context);
   const issueTypeId = String(payload?.issueTypeId || '');
   const issueTypes = await projectIssueTypes(c.projectId);

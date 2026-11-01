@@ -12,6 +12,7 @@ import { applyEvent, createdEvent, emptyState, chainMessage, CHAIN_LIMIT_NOTE } 
 import { ChecklistEvent, ChecklistState, IssueChecklistState, ChecklistAuditEvent } from './domain/models';
 import { checkIssuePermissions, EDIT_DENIED, RESET_DENIED } from './security/permissions';
 import { resolveTemplate } from './settings/template-store';
+import { assertLicensed, isLicenceInactive, VALIDATOR_LICENCE_INACTIVE } from './security/licence';
 import { ChecklistTemplate } from './domain/models';
 
 export { settingsHandler } from './settings/settings-resolvers';
@@ -83,6 +84,10 @@ export async function validateTransition(payload: any, context?: any, storagePro
 }
 
 async function evaluateTransition(payload: any, context?: any, storageProvider?: StorageProvider) {
+  if (isLicenceInactive(context)) {
+    return { result: false, errorMessage: VALIDATOR_LICENCE_INACTIVE };
+  }
+
   const issueKey = payload?.issue?.key || payload?.issueKey;
   let issueId = String(payload?.issue?.id || payload?.issueId || '');
   let live: any = null;
@@ -255,6 +260,7 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
     throw new Error('DefinitionGuard: Missing itemId.');
   }
 
+  assertLicensed(context);
   await checkIssuePermissions(c.issueKey, ['EDIT_ISSUES'], EDIT_DENIED);
 
   const storage = resolveStorage(storageProvider);
@@ -285,6 +291,7 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
 export async function resetChecklist(_payload: any, context?: any, storageProvider?: StorageProvider): Promise<IssueChecklistState> {
   const c = panelContext(context);
 
+  assertLicensed(context);
   await checkIssuePermissions(c.issueKey, ['ADMINISTER_PROJECTS'], RESET_DENIED);
 
   const storage = resolveStorage(storageProvider);
