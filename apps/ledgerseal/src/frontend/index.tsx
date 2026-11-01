@@ -65,8 +65,10 @@ export const LedgerSealPanel: React.FC = () => {
       }
     } catch (err) {
       console.error('Failed to load seal state', err);
+      // A failed load is an error state, never "not sealed" (LS-12)
       setAnalysis({
-        status: 'NO_SEAL',
+        status: 'ERROR',
+        errorReason: 'JIRA_UNREACHABLE',
         tamperedFields: [],
         tamperedAttachments: [],
         verifiedAt: new Date().toISOString()
@@ -181,6 +183,19 @@ export const LedgerSealPanel: React.FC = () => {
           </Text>
           <Button appearance="primary" onClick={() => setShowSignForm(true)}>
             Seal Issue with Cryptographic Sign-Off
+          </Button>
+        </SectionMessage>
+      )}
+
+      {analysis?.status === 'ERROR' && (
+        <SectionMessage appearance="warning" title="LedgerSeal could not check this issue">
+          <Text>
+            {analysis.errorReason === 'STORAGE'
+              ? 'LedgerSeal could not read its seal record. The seal state is unknown. Try again.'
+              : 'Jira did not answer. The seal state is unknown. Try again.'}
+          </Text>
+          <Button appearance="primary" onClick={() => loadTamperState()}>
+            Try again
           </Button>
         </SectionMessage>
       )}

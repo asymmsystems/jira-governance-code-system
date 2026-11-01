@@ -1,7 +1,6 @@
 import api from '@forge/api';
 import Resolver from '@forge/resolver';
 import { kvs } from '@forge/kvs';
-import { canonicalizeIssueState } from './domain/canonicalizer';
 import { validateTransitionGate } from './validator/workflow-validator';
 import { SealRepository, StorageProvider } from './storage/seal-repository';
 import { createJiraClient } from './jira/jira-client';
@@ -50,6 +49,9 @@ export function forgeDeps(asUser: boolean): LedgerSealDeps {
   };
 }
 
+export const JIRA_UNREACHABLE_MESSAGE =
+  'LedgerSeal could not read the issue from Jira, so this transition is blocked. Try again in a minute.';
+
 /**
  * Handles workflow transition validation:
  * Reads the seal from app storage and verifies it against the live issue before allowing the transition.
@@ -75,12 +77,12 @@ export async function validateTransition(payload: any, context?: any, deps: Ledg
   const live = await readLiveSnapshot(deps.jira, issueId || issueKey, now, raw =>
     modifiedFields && typeof modifiedFields === 'object' && raw?.fields ? { ...raw, fields: { ...raw.fields, ...modifiedFields } } : raw
   );
-  if (live?.raw?.id) {
-    issueId = String(live.raw.id);
+  // Fail closed, name the real cause, and write nothing (LS-08, LS-19)
+  if (!live) {
+    return { result: false, errorMessage: JIRA_UNREACHABLE_MESSAGE };
   }
-  // If only key is provided and Jira cannot be read, fall back to the key
-  issueId = issueId || String(issueKey);
-  const liveSnapshot = live ? live.snapshot : canonicalizeIssueState({ id: issueId, key: issueKey || issueId }, now);
+  issueId = String(live.raw.id || issueId);
+  const liveSnapshot = live.snapshot;
   const evaluation = await evaluate(repository, issueId, liveSnapshot, now);
 
   if (evaluation.kind === 'LEGACY') {

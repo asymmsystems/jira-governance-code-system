@@ -17,6 +17,9 @@ export class FakeJira implements JiraClient {
   failIssueGet = false;
   failChangelog = false;
   failFields = false;
+  failComments = false;
+  /** Comments as the comment endpoint returns them. Null means: use the issue body. */
+  comments: any[] | null = null;
   fields: any[] = [];
   fieldCalls = 0;
   permissionError: 'UNREACHABLE' | 'FORBIDDEN' | null = null;
@@ -38,6 +41,20 @@ export class FakeJira implements JiraClient {
     this.fieldCalls++;
     if (this.failFields) return { ok: false, error: 'UNREACHABLE' };
     return { ok: true, value: JSON.parse(JSON.stringify(this.fields)) };
+  }
+
+  async getComments(): Promise<JiraResult<any[]>> {
+    if (this.failComments) return { ok: false, error: 'UNREACHABLE' };
+    const list = this.comments ?? this.issue.fields?.comment?.comments ?? [];
+    return { ok: true, value: JSON.parse(JSON.stringify(list)) };
+  }
+
+  worklogs: any[] = [];
+  failWorklogs = false;
+
+  async getWorklogs(): Promise<JiraResult<any[]>> {
+    if (this.failWorklogs) return { ok: false, error: 'UNREACHABLE' };
+    return { ok: true, value: JSON.parse(JSON.stringify(this.worklogs)) };
   }
 
   async getChangelog(): Promise<JiraResult<ChangelogEntry[]>> {

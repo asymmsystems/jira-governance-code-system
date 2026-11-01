@@ -133,3 +133,18 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - Adversarial test: the audit probe.js blind spots now break the seal (reporter, resolution, work log, `customfield_10001`, `customfield_10050`, text with "pullrequest", an option array with `.state`). Rank, Sprint, SLA, participants, satisfaction, status and Updated do not break it.
 - Open: the custom type keys in the exclusion list come from spec v2 and public sources (Reported). The browser extension was not connected in this session, so they are not yet checked against the DEMO `/rest/api/3/field` list. That check is in Loop 3. An unknown custom type stays covered, so a wrong key can only cause a false alarm, never hide a change.
 - Results: `tsc` OK. 16 suites, 138 tests pass. Global branches 97.92%. `canonicalizer.ts` 98.94% (baseline 87.7%), `jira-client.ts` 95.65%, `ledger.ts` 97.84%, `index.ts` 94.44%. Graders all True. No em dash.
+- B-05 commit: `46fafd3`.
+
+### B-06 Honest results when Jira cannot be read (LS-08, LS-19, LS-15, LS-12)
+- Tests first: `test/jira-failure.test.ts`.
+  - First run: the comment cases failed to compile (`getComments` missing).
+  - The validator and verify cases, run on their own against the B-05 code, failed 3 of 3. The validator returned "must be sealed" and other fields' messages, and verify threw instead of returning a result.
+- Code:
+  - `src/jira/jira-client.ts`: the issue is read with `fields=*all,-comment`. Comments come from the paged comment endpoint. Work logs come from the paged endpoint when the issue body holds only the first page.
+  - `src/service/ledger.ts`: verify returns `{ status: 'ERROR', errorReason: 'JIRA_UNREACHABLE' | 'STORAGE' }` and `MISSING_ISSUE` instead of throwing.
+  - `src/index.ts`: when any live read fails, the validator returns the fixed message "LedgerSeal could not read the issue from Jira, so this transition is blocked. Try again in a minute." It writes nothing, and the stub-issue fallback is gone.
+  - `src/frontend/index.tsx`: an ERROR state with "Try again". A failed load no longer shows "Issue Not Sealed".
+- Retry (AC3) was built and tested in B-01 (`test/jira-client.test.ts`: Retry-After, exponential backoff to 3 retries, 20 s budget).
+- An older `index.test.ts` case asserted the throws, and it now asserts the typed results.
+- Adversarial test: in the audit flow.js step 6 scenario (Jira down at a transition), the validator now names the real cause, by key and by id, and writes no `SEAL_BROKEN` property.
+- Results: `tsc` OK. 17 suites, 145 tests pass. Global branches 97.37%. `jira-client.ts` 92.59%, `ledger.ts` 97.08%, `index.ts` 93.75%. Graders all True. No em dash.

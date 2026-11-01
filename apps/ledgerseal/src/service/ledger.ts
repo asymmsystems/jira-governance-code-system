@@ -75,7 +75,18 @@ export async function readLiveSnapshot(
   if (!live.ok) return null;
   const fields = await jira.getFields();
   if (!fields.ok) return null;
-  const raw = apply(live.value);
+  const issueId = String(live.value?.id || issueIdOrKey);
+  const comments = await jira.getComments(issueId);
+  if (!comments.ok) return null;
+  const issueFields = { ...(live.value?.fields || {}), comment: { comments: comments.value, total: comments.value.length } };
+  // The issue body holds only the first work log page; read the rest when there are more
+  const worklog = issueFields.worklog;
+  if (worklog && Array.isArray(worklog.worklogs) && Number(worklog.total) > worklog.worklogs.length) {
+    const all = await jira.getWorklogs(issueId);
+    if (!all.ok) return null;
+    issueFields.worklog = { ...worklog, worklogs: all.value, total: all.value.length };
+  }
+  const raw = apply({ ...live.value, fields: issueFields });
   return { raw, snapshot: canonicalizeIssueState(raw, at, fields.value as FieldSchema[]) };
 }
 
@@ -282,21 +293,31 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   return { ok: true as const, certificateId, snapshotHash, sealedAt: now };
 }
 
+function errorResult(errorReason: 'JIRA_UNREACHABLE' | 'STORAGE', at: string): TamperAnalysis {
+  return { status: 'ERROR', errorReason, tamperedFields: [], tamperedAttachments: [], verifiedAt: at };
+}
+
 export async function verifyIssueFlow(payload: any, context: any, deps: LedgerSealDeps) {
   if (!context?.accountId) return fail('NO_IDENTITY');
   const issue = contextIssue(context);
-  if (!issue) {
-    throw new Error('LedgerSeal: Missing issue context.');
-  }
+  if (!issue) return fail('MISSING_ISSUE');
 
   const now = new Date().toISOString();
   const live = await readLiveSnapshot(deps.jira, issue.id, now);
-  if (!live) {
-    throw new Error('LedgerSeal: Unable to retrieve authentic issue state from Jira.');
+  // A read failure is reported as an error, never as "not sealed" (invariant 8)
+  if (!live) return errorResult('JIRA_UNREACHABLE', now);
+  try {
+    return await verifyAgainstSeal(deps, issue.id, live.snapshot, now);
+  } catch (err) {
+    console.error('LedgerSeal: verify failed', err);
+    return errorResult('STORAGE', now);
   }
+}
+
+async function verifyAgainstSeal(deps: LedgerSealDeps, issueId: string, liveSnapshot: CanonicalIssueSnapshot, now: string) {
+  const issue = { id: issueId };
 
   const repo = new SealRepository(deps.storage);
-  const liveSnapshot = live.snapshot;
   const evaluation = await evaluate(repo, issue.id, liveSnapshot, now);
 
   if (evaluation.kind === 'NONE') return compareToSeal(null, liveSnapshot, now);

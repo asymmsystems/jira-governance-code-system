@@ -95,7 +95,7 @@ export interface AttachmentDiff {
   filename: string;
 }
 
-export type TamperStatus = 'SEAL_VALID' | 'SEAL_BROKEN' | 'SEAL_COMPROMISED' | 'NO_SEAL' | 'SEAL_REVOKED' | 'LEGACY' | 'RECORD_INVALID';
+export type TamperStatus = 'SEAL_VALID' | 'SEAL_BROKEN' | 'SEAL_COMPROMISED' | 'NO_SEAL' | 'SEAL_REVOKED' | 'LEGACY' | 'RECORD_INVALID' | 'ERROR';
 
 /** What the panel may know about a v2 seal (no snapshot, no email). */
 export interface SealSummary {
@@ -119,6 +119,7 @@ export interface TamperAnalysis {
   status: TamperStatus;
   certificate?: SealCertificate;
   seal?: SealSummary;
+  errorReason?: 'JIRA_UNREACHABLE' | 'STORAGE';
   liveHash?: string;
   sealedHash?: string;
   tamperedFields: FieldDiff[];

@@ -108,10 +108,10 @@ describe('Forge Function Entry Points (index.ts)', () => {
       expect(analysis.tamperedFields).toHaveLength(1);
     });
 
-    it('throws if issue context is missing or Jira cannot be read', async () => {
-      await expect(verifyIssue({}, { accountId: 'lead' }, deps())).rejects.toThrow('Missing issue');
+    it('returns typed results if issue context is missing or Jira cannot be read', async () => {
+      await expect(verifyIssue({}, { accountId: 'lead' }, deps())).resolves.toMatchObject({ ok: false, code: 'MISSING_ISSUE' });
       jira.failIssueGet = true;
-      await expect(verifyIssue({}, ctx, deps())).rejects.toThrow('Unable to retrieve');
+      await expect(verifyIssue({}, ctx, deps())).resolves.toMatchObject({ status: 'ERROR', errorReason: 'JIRA_UNREACHABLE' });
     });
   });
 

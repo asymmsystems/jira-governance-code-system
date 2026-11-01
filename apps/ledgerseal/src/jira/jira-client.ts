@@ -29,6 +29,10 @@ export interface ChangelogEntry {
 
 export interface JiraClient {
   getIssue(issueIdOrKey: string): Promise<JiraResult<any>>;
+  /** All comments, oldest first, from the paged comment endpoint. */
+  getComments(issueId: string): Promise<JiraResult<any[]>>;
+  /** All work log entries, from the paged work log endpoint. */
+  getWorklogs(issueId: string): Promise<JiraResult<any[]>>;
   /** The site's field list (GET /rest/api/3/field), read once per client. */
   getFields(): Promise<JiraResult<any[]>>;
   getChangelog(issueId: string): Promise<JiraResult<ChangelogEntry[]>>;
@@ -103,11 +107,33 @@ export function createJiraClient(asApp: JiraRequester, asUser: JiraRequester | n
     return { ok: true, value: (await res.json()) as T };
   }
 
+  /** Reads a startAt/total paged list until every item is read. */
+  async function pages(path: (startAt: number) => any, listKey: string): Promise<JiraResult<any[]>> {
+    const items: any[] = [];
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const res = await getJson<any>(asApp, path(items.length));
+      if (!res.ok) return res;
+      const values: any[] = Array.isArray(res.value?.[listKey]) ? res.value[listKey] : [];
+      items.push(...values);
+      if (values.length === 0 || items.length >= Number(res.value?.total ?? 0)) break;
+    }
+    return { ok: true, value: items };
+  }
+
   let fields: Promise<JiraResult<any[]>> | null = null;
 
   return {
     getIssue(issueIdOrKey) {
-      return getJson<any>(asApp, route`/rest/api/3/issue/${issueIdOrKey}`);
+      // Comments are read from their own paged endpoint, so the issue body leaves them out
+      return getJson<any>(asApp, route`/rest/api/3/issue/${issueIdOrKey}?fields=*all,-comment`);
+    },
+
+    getComments(issueId) {
+      return pages(startAt => route`/rest/api/3/issue/${issueId}/comment?startAt=${startAt}&maxResults=${PAGE_SIZE}&orderBy=created`, 'comments');
+    },
+
+    getWorklogs(issueId) {
+      return pages(startAt => route`/rest/api/3/issue/${issueId}/worklog?startAt=${startAt}&maxResults=${PAGE_SIZE}`, 'worklogs');
     },
 
     getFields() {
