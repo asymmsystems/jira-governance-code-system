@@ -9,13 +9,13 @@
 
 import { getSealHistory, sealIssue, validateTransition, verifyIssue } from '../src/index';
 import { verifyChain } from '../src/domain/history';
-import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
+import { FakeJira, MemoryStore, model, panelContext, sampleIssue, validSignature } from './support/fakes';
 
 jest.mock('@forge/api', () => ({ __esModule: true, default: {}, route: () => '' }));
 jest.mock('@forge/kvs', () => ({ kvs: {} }));
 
 const sig = validSignature();
-const entryKeys = (storage: MemoryStore) => [...storage.map.keys()].filter(k => k.startsWith('ls2:entry:10001:')).sort();
+const entryKeys = (storage: MemoryStore) => [...storage.map.keys()].filter(k => k.startsWith('ls3:wes:10001:')).sort();
 
 function setup() {
   const jira = new FakeJira(sampleIssue());
@@ -43,9 +43,9 @@ describe('B-02 history that a reseal cannot hide', () => {
     const { storage, reseal } = await sealTamperViewReseal();
     expect(reseal).toMatchObject({ ok: true });
     const keys = entryKeys(storage);
-    expect(keys).toEqual(['ls2:entry:10001:000001', 'ls2:entry:10001:000002', 'ls2:entry:10001:000003']);
+    expect(keys).toEqual([model.statusKey(1), model.statusKey(2), model.statusKey(3)]);
     const entries = await Promise.all(keys.map(k => storage.get(k)));
-    expect(entries.map(e => e.type)).toEqual(['SEALED', 'INCIDENT', 'RESEALED']);
+    expect(entries.map(e => e.transitionName)).toEqual(['SEAL', 'CHANGE', 'RESEAL']);
     expect(entries[0].prevEntryHash).toBe('0'.repeat(64));
     expect(entries[1].prevEntryHash).toBe(entries[0].entryHash);
     expect(entries[2].prevEntryHash).toBe(entries[1].entryHash);
@@ -57,8 +57,8 @@ describe('B-02 history that a reseal cannot hide', () => {
 
   it('adversarial (audit flow.js step 4): after a reseal the auditor still sees the earlier change', async () => {
     const { storage, as } = await sealTamperViewReseal();
-    const record = await storage.get('ls2:seal:10001');
-    expect(record).toMatchObject({ everCompromised: true, incidentCount: 1, lastIncidentHash: null, state: 'ACTIVE' });
+    const record = await model.workEffort(storage);
+    expect(record).toMatchObject({ everCompromised: true, incidentCount: 1, lastIncidentHash: null, currentStatusId: 'LS_SEALED' });
     const view: any = await verifyIssue({}, panelContext('auditor'), as('auditor'));
     expect(view.status).toBe('SEAL_VALID');
     expect(view.seal).toMatchObject({ everCompromised: true, incidentCount: 1, sealedByName: 'Bob Approver', historyLength: 3 });
@@ -69,8 +69,8 @@ describe('B-02 history that a reseal cannot hide', () => {
     await sealIssue({ signature: sig }, panelContext('ann'), as('ann'));
     jira.edit('mallory', '2099-01-01T00:00:00.000Z', 'summary', 'changed without a view');
     await sealIssue({ signature: sig }, panelContext('bob'), as('bob'));
-    const types = await Promise.all(entryKeys(storage).map(async k => (await storage.get(k)).type));
-    expect(types).toEqual(['SEALED', 'INCIDENT', 'RESEALED']);
+    const types = await Promise.all(entryKeys(storage).map(async k => (await storage.get(k)).transitionName));
+    expect(types).toEqual(['SEAL', 'CHANGE', 'RESEAL']);
   });
 
   it('finds the first changed entry when a stored entry is edited', async () => {
@@ -86,18 +86,18 @@ describe('B-02 history that a reseal cannot hide', () => {
     const { storage, as } = await sealTamperViewReseal();
     const page: any = await getSealHistory({}, panelContext('auditor'), as('auditor'));
     expect(page.ok).toBe(true);
-    expect(page.entries.map((e: any) => e.type)).toEqual(['SEALED', 'INCIDENT', 'RESEALED']);
+    expect(page.entries.map((e: any) => e.transitionName)).toEqual(['SEAL', 'CHANGE', 'RESEAL']);
     expect(page.chainValid).toBe(true);
     expect(page.nextFromSeq).toBeNull();
     const second: any = await getSealHistory({ fromSeq: 2 }, panelContext('auditor'), as('auditor'));
     expect(second.entries.map((e: any) => e.seq)).toEqual([2, 3]);
     expect(second.chainValid).toBe(true);
 
-    const tampered = await storage.get('ls2:entry:10001:000002');
+    const tampered = await storage.get(model.statusKey(2));
     tampered.data.liveHash = 'f'.repeat(64);
-    storage.map.set('ls2:entry:10001:000002', tampered);
+    storage.map.set(model.statusKey(2), tampered);
     expect(((await getSealHistory({}, panelContext('auditor'), as('auditor'))) as any).chainValid).toBe(false);
-    storage.map.delete('ls2:entry:10001:000003');
+    storage.map.delete(model.statusKey(3));
     expect(((await getSealHistory({ fromSeq: 3 }, panelContext('auditor'), as('auditor'))) as any).chainValid).toBe(false);
   });
 
@@ -108,7 +108,7 @@ describe('B-02 history that a reseal cannot hide', () => {
       jira.edit('mallory', `2099-01-01T00:${String(i).padStart(2, '0')}:00.000Z`, 'summary', `change ${i}`);
       await verifyIssue({}, panelContext('viewer'), as('viewer'));
     }
-    expect((await storage.get('ls2:seal:10001')).head.seq).toBe(61);
+    expect((await model.workEffort(storage)).revisionNumber).toBe(61);
     const first: any = await getSealHistory({}, panelContext('a'), as('a'));
     expect(first.entries).toHaveLength(50);
     expect(first.nextFromSeq).toBe(51);
@@ -134,9 +134,9 @@ describe('B-02 history that a reseal cannot hide', () => {
 
   it('returns CONFLICT and writes no record when another writer claimed the next entry', async () => {
     const { storage, as } = setup();
-    storage.map.set('ls2:entry:10001:000001', { seq: 1, taken: true });
+    storage.map.set(model.statusKey(1), { seq: 1, taken: true });
     await expect(sealIssue({ signature: sig }, panelContext('ann'), as('ann'))).resolves.toMatchObject({ ok: false, code: 'CONFLICT' });
-    expect(storage.map.has('ls2:seal:10001')).toBe(false);
+    expect(storage.map.has(model.workEffortKey())).toBe(false);
   });
 });
 
@@ -147,7 +147,7 @@ describe('B-02 edge paths', () => {
     await sealIssue({ signature: sig }, panelContext('ann'), as('ann'));
     jira.edit('mallory', '2099-01-01T00:00:00.000Z', 'summary', 'after the seal');
     await verifyIssue({}, panelContext('viewer'), as('viewer'));
-    const incident = await storage.get('ls2:entry:10001:000002');
+    const incident = await storage.get(model.statusKey(2));
     expect(incident.data.changes[0].changedBy).toEqual(['mallory']);
   });
 
@@ -157,7 +157,7 @@ describe('B-02 edge paths', () => {
     jira.issue.fields.summary = 'changed';
     jira.failChangelog = true;
     await verifyIssue({}, panelContext('viewer'), as('viewer'));
-    const incident = await storage.get('ls2:entry:10001:000002');
+    const incident = await storage.get(model.statusKey(2));
     expect(incident.data.changes).toEqual([{ fieldId: 'summary', fieldName: 'Summary', changedBy: [], changedAt: null }]);
   });
 
@@ -165,17 +165,16 @@ describe('B-02 edge paths', () => {
     const { jira, storage, as } = setup();
     await sealIssue({ signature: sig }, panelContext('ann'), as('ann'));
     jira.issue.fields.summary = 'changed';
-    storage.map.set('ls2:entry:10001:000002', { seq: 2, taken: true });
-    const before = JSON.stringify(await storage.get('ls2:seal:10001'));
+    storage.map.set(model.statusKey(2), { seq: 2, taken: true });
+    const before = JSON.stringify(await model.workEffort(storage));
     await verifyIssue({}, panelContext('viewer'), as('viewer'));
-    expect(JSON.stringify(await storage.get('ls2:seal:10001'))).toBe(before);
+    expect(JSON.stringify(await model.workEffort(storage))).toBe(before);
   });
 
   it('reports RECORD_INVALID, and blocks the gate, when a snapshot part is missing', async () => {
     const { storage, as } = setup();
     await sealIssue({ signature: sig }, panelContext('ann'), as('ann'));
-    const record = await storage.get('ls2:seal:10001');
-    storage.map.delete(`ls2:snap:${record.certificateId}:0`);
+    storage.map.delete(model.contentKey(await model.workEffort(storage)));
     expect(((await verifyIssue({}, panelContext('viewer'), as('viewer'))) as any).status).toBe('RECORD_INVALID');
     expect(await validateTransition({ issue: { key: 'CHG-1' } }, {}, as(null))).toEqual({
       result: false,
@@ -205,7 +204,7 @@ describe('B-02 edge paths', () => {
     delete jira.issue.key;
     await expect(sealIssue({ signature: validSignature({ meaning: 'x' }) }, panelContext('ann'), as('ann'))).resolves.toMatchObject({ code: 'INVALID_REQUEST' });
     await sealIssue({ signature: sig }, panelContext('ann'), as('ann'));
-    expect((await storage.get('ls2:seal:10001')).issueKey).toBe('CHG-1');
+    expect((await model.workEffort(storage)).sourceReferenceId).toBe('CHG-1');
   });
 });
 
@@ -215,7 +214,7 @@ describe('B-03 one incident per distinct change', () => {
     await sealIssue({ signature: sig }, panelContext('ann'), as('ann'));
     jira.edit('mallory', '2099-01-01T00:00:00.000Z', 'summary', 'changed');
     for (let i = 0; i < 500; i++) await verifyIssue({}, panelContext('viewer'), as('viewer'));
-    const record = await storage.get('ls2:seal:10001');
+    const record = await model.workEffort(storage);
     expect(record.incidentCount).toBe(1);
     expect(entryKeys(storage)).toHaveLength(2);
   });
@@ -229,7 +228,7 @@ describe('B-03 one incident per distinct change', () => {
     jira.edit('mallory', '2099-01-01T00:01:00.000Z', 'summary', 'second change');
     await verifyIssue({}, panelContext('viewer'), as('viewer'));
     await verifyIssue({}, panelContext('viewer'), as('viewer'));
-    expect((await storage.get('ls2:seal:10001')).incidentCount).toBe(2);
+    expect((await model.workEffort(storage)).incidentCount).toBe(2);
     expect(entryKeys(storage)).toHaveLength(3);
   });
 

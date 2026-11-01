@@ -36,11 +36,14 @@ Built on Atlassian Forge. The app backend makes no outbound network calls.
 
 ## Storage (Forge KVS)
 
+Seals are stored on the Silverston WorkEffort, Party and Status patterns (ADR-01):
+
 | Key | Value |
 |---|---|
-| `ls2:seal:{issueId}` | The current seal record, with its record hash |
-| `ls2:entry:{issueId}:{seq}` | One history entry, created once, holding the hash of the entry before it |
-| `ls2:snap:{certificateId}:{part}` | The sealed snapshot, in parts |
+| `ls3:we:{issueId}` | The sealed issue as a WorkEffort: current state, counts and record hash |
+| `ls3:wepa:{issueId}:{fromDate}` | One seal: the signer (party), the meaning (role) and the time window |
+| `ls3:wes:{issueId}:{seq}` | One state change, created once, holding the hash of the row before it |
+| `ls3:content:{contentId}:{part}` | The sealed snapshot, in parts |
 | `cert:active:{issueId}` | Old-format records, read only |
 
 The full design is in `docs/spec/ledgerseal-spec-v2.md`.
@@ -51,8 +54,8 @@ Measured on the last change to this file:
 
 | Measure | Value |
 |---|---|
-| Tests | 177 in 22 suites |
-| Branch coverage (all files in `src/` except the UI Kit view) | 97.39% |
+| Tests | 187 in 23 suites |
+| Branch coverage (all files in `src/` except the UI Kit view) | 96.7% |
 
 ```bash
 npm install

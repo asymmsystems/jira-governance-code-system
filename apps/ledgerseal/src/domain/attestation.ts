@@ -10,7 +10,18 @@
 
 import * as crypto from 'crypto';
 import { canonicalJson } from './canonical-json';
-import { SealRecord } from './models';
+
+/** The seal facts an attestation states. */
+export interface AttestationSource {
+  issueId: string;
+  certificateId: string;
+  snapshotHash: string;
+  canonicalizerVersion: string;
+  sealedAt: string;
+  sealedByAccountId: string;
+  everCompromised: boolean;
+  incidentCount: number;
+}
 
 export type AttestationStatus = 'SEAL_VALID' | 'SEAL_BROKEN' | 'SEAL_COMPROMISED' | 'SEAL_REVOKED';
 
@@ -62,18 +73,18 @@ export function signerFromEnvironment(env: Record<string, string | undefined>): 
   }
 }
 
-export function buildAttestation(record: SealRecord, status: AttestationStatus, issuedAt: string, signer: Signer | null): Attestation {
+export function buildAttestation(source: AttestationSource, status: AttestationStatus, issuedAt: string, signer: Signer | null): Attestation {
   const body: Attestation = {
     schemaVersion: 2,
-    issueId: record.issueId,
+    issueId: source.issueId,
     status,
-    certificateId: record.certificateId,
-    snapshotHash: record.snapshotHash,
-    canonicalizerVersion: record.canonicalizerVersion,
-    sealedAt: record.sealedAt,
-    sealedByAccountId: record.sealedBy.accountId,
-    everCompromised: record.everCompromised ? 'true' : 'false',
-    incidentCount: record.incidentCount,
+    certificateId: source.certificateId,
+    snapshotHash: source.snapshotHash,
+    canonicalizerVersion: source.canonicalizerVersion,
+    sealedAt: source.sealedAt,
+    sealedByAccountId: source.sealedByAccountId,
+    everCompromised: source.everCompromised ? 'true' : 'false',
+    incidentCount: source.incidentCount,
     issuedAt
   };
   if (!signer) return body;

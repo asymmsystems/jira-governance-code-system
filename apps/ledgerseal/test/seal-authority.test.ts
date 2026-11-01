@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { sealIssue, verifyIssue, validateTransition } from '../src/index';
 import { createJiraClient } from '../src/jira/jira-client';
-import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
+import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature, model } from './support/fakes';
 
 jest.mock('@forge/api', () => ({
   __esModule: true,
@@ -53,8 +53,8 @@ describe('B-01 approver policy and separation of duties', () => {
     const { storage, deps } = setup();
     const result = await sealIssue({ signature: sig }, panelContext('ann'), deps('ann'));
     expect(result).toMatchObject({ ok: true });
-    const active = await storage.get('ls2:seal:10001');
-    expect(active.sealedBy).toEqual({ accountId: 'ann', displayName: 'Ann Approver' });
+    expect(model.assignments(storage)[0].partyId).toBe('ann');
+    expect(model.statusRows(storage)[0]).toMatchObject({ setByPartyId: 'ann', data: { signerName: 'Ann Approver' } });
   });
 
   it('refuses a seal from a user outside the policy and writes nothing', async () => {
@@ -130,7 +130,7 @@ describe('B-01 failure paths', () => {
     jira.edit('mallory', '2099-01-01T00:00:00.000Z', 'summary', 'changed');
     await verifyIssue({}, panelContext('viewer'), deps('viewer'));
     jira.edit('mallory', '2099-01-01T00:01:00.000Z', 'summary', original);
-    const active = await storage.get('ls2:seal:10001');
+    const active = await model.workEffort(storage);
     expect(active.everCompromised).toBe(true);
     await expect(sealIssue({ signature: sig }, panelContext('mallory'), deps('mallory'))).resolves.toMatchObject({ code: 'SELF_APPROVAL' });
   });
@@ -138,8 +138,7 @@ describe('B-01 failure paths', () => {
   it('stores a default meaning and uses the issue id as the key when the context has no key', async () => {
     const { storage, deps } = setup();
     await sealIssue({ signature: validSignature({ meaning: undefined }) }, { accountId: 'ann', extension: { issue: { id: '10001' } } }, deps('ann'));
-    const active = await storage.get('ls2:seal:10001');
-    expect(active.meaning).toBe('APPROVAL');
+    expect(model.assignments(storage)[0].roleTypeId).toBe('LS_APPROVER');
   });
 
   it('validator: falls back when the issue cannot be read, by id or by key', async () => {

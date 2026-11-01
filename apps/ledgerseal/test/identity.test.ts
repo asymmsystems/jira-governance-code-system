@@ -9,7 +9,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getSealHistory, sealIssue, verifyIssue } from '../src/index';
-import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
+import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature, model } from './support/fakes';
 
 jest.mock('@forge/api', () => ({ __esModule: true, default: {}, route: () => '' }));
 jest.mock('@forge/kvs', () => ({ kvs: {} }));
@@ -40,9 +40,10 @@ describe('B-04 identity from context only', () => {
     expect(stored).not.toContain('cfo@victim.example');
     expect(stored).not.toContain('CFO');
     expect(stored).not.toContain('cfo-account');
-    const record = await storage.get('ls2:seal:10001');
-    expect(record.sealedBy).toEqual({ accountId: 'mallory', displayName: 'Mallory' });
-    expect(Object.keys(record.sealedBy)).toEqual(['accountId', 'displayName']);
+    const [assignment] = model.assignments(storage);
+    expect(assignment.partyId).toBe('mallory');
+    expect(model.statusRows(storage)[0].data.signerName).toBe('Mallory');
+    expect(Object.keys(assignment).sort()).toEqual(['comments', 'contentId', 'declaration', 'fromDate', 'partyId', 'roleTypeId', 'thruDate', 'workEffortId']);
   });
 
   it('gives the panel the signer account id and name, and no email', async () => {

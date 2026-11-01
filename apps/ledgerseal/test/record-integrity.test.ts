@@ -7,7 +7,7 @@
  */
 
 import { sealIssue, validateTransition, verifyIssue } from '../src/index';
-import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
+import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature, model } from './support/fakes';
 
 jest.mock('@forge/api', () => ({ __esModule: true, default: {}, route: () => '' }));
 jest.mock('@forge/kvs', () => ({ kvs: {} }));
@@ -28,9 +28,10 @@ async function sealedIssue() {
 describe('B-08 integrity check on every read', () => {
   it('adversarial (T-02 A7, LS-10): a stored record with a rewritten signer is reported, not shown as valid', async () => {
     const { storage, deps } = await sealedIssue();
-    const record = await storage.get('ls2:seal:10001');
-    record.sealedBy = { accountId: 'someone-else', displayName: 'Someone Else' };
-    storage.map.set('ls2:seal:10001', record);
+    const key = [...storage.map.keys()].find(k => k.startsWith('ls3:wepa:'))!;
+    storage.map.set(key, { ...storage.map.get(key), partyId: 'someone-else' });
+    const row = storage.map.get(model.statusKey(1));
+    storage.map.set(model.statusKey(1), { ...row, data: { ...row.data, signerName: 'Someone Else' } });
     const view: any = await verifyIssue({}, panelContext('viewer'), deps);
     expect(view.status).toBe('RECORD_INVALID');
     expect(JSON.stringify(view)).not.toContain('Someone Else');
@@ -40,16 +41,15 @@ describe('B-08 integrity check on every read', () => {
   it('reports a record whose sealed hash was changed to match the live issue', async () => {
     const { jira, storage, deps } = await sealedIssue();
     jira.issue.fields.summary = 'changed';
-    const record = await storage.get('ls2:seal:10001');
-    record.snapshotHash = 'f'.repeat(64);
-    storage.map.set('ls2:seal:10001', record);
+    const record = await model.workEffort(storage);
+    record.attributes.snapshotHash = 'f'.repeat(64);
+    storage.map.set(model.workEffortKey(), record);
     await expect(verifyIssue({}, panelContext('viewer'), deps)).resolves.toMatchObject({ status: 'RECORD_INVALID' });
   });
 
   it('reports a snapshot part that no longer matches the sealed hash', async () => {
     const { storage, deps } = await sealedIssue();
-    const record = await storage.get('ls2:seal:10001');
-    const key = `ls2:snap:${record.certificateId}:0`;
+    const key = model.contentKey(await model.workEffort(storage));
     const snapshot = JSON.parse(storage.map.get(key));
     snapshot.fields[0].value = 'rewritten to match a later edit';
     storage.map.set(key, JSON.stringify(snapshot));
@@ -59,18 +59,18 @@ describe('B-08 integrity check on every read', () => {
 
   it('writes nothing for an invalid record, and an approver can still reseal to replace it', async () => {
     const { jira, storage, deps } = await sealedIssue();
-    const record = await storage.get('ls2:seal:10001');
+    const record = await model.workEffort(storage);
     record.incidentCount = 0;
     record.everCompromised = false;
-    record.sealedBy.displayName = 'Edited';
-    storage.map.set('ls2:seal:10001', record);
+    record.sourceReferenceId = 'EDITED-1';
+    storage.map.set(model.workEffortKey(), record);
     const sets = storage.sets.length;
     await verifyIssue({}, panelContext('viewer'), deps);
     expect(storage.sets.length).toBe(sets);
     jira.currentUser = 'ann';
     await expect(sealIssue({ signature: validSignature() }, panelContext('ann'), deps)).resolves.toMatchObject({ ok: true });
     await expect(verifyIssue({}, panelContext('viewer'), deps)).resolves.toMatchObject({ status: 'SEAL_VALID', seal: { everCompromised: true } });
-    const reseal = await storage.get('ls2:entry:10001:000002');
+    const reseal = storage.map.get(model.statusKey(2));
     expect(reseal.data.previousState).toBe('RECORD_INVALID');
   });
 });

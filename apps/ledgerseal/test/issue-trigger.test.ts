@@ -10,7 +10,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { onIssueChanged, sealIssue, validateTransition } from '../src/index';
-import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
+import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature, model } from './support/fakes';
 
 jest.mock('@forge/api', () => ({ __esModule: true, default: { asApp: jest.fn(), asUser: jest.fn() }, route: () => '' }));
 jest.mock('@forge/kvs', () => ({ kvs: {} }));
@@ -36,7 +36,7 @@ async function sealed(fields: any[] = []) {
 }
 
 const incidents = (storage: MemoryStore) =>
-  [...storage.map.entries()].filter(([k, v]) => k.startsWith('ls2:entry:') && v.type === 'INCIDENT').map(([, v]) => v);
+  model.statusRows(storage).filter(r => r.statusId === 'LS_CHANGED');
 
 describe('B-11 issue-changed trigger', () => {
   it('records one incident, with the author and time, and writes the property once', async () => {

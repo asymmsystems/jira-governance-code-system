@@ -7,7 +7,7 @@
  */
 
 import { sealIssue, validateTransition, verifyIssue } from '../src/index';
-import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
+import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature, model } from './support/fakes';
 
 jest.mock('@forge/api', () => ({ __esModule: true, default: {}, route: () => '' }));
 jest.mock('@forge/kvs', () => ({ kvs: {} }));
@@ -61,7 +61,7 @@ describe('B-03 a read never writes', () => {
   it('adversarial (audit flow.js step 2, T-01): 500 views of one change make one incident and one property write', async () => {
     const { jira, storage, as } = setup();
     await sealIssue({ signature: sig }, panelContext('ann'), as('ann'));
-    const sizeAfterSeal = storage.bytes('ls2:seal:10001');
+    const sizeAfterSeal = storage.bytes(model.workEffortKey());
     jira.edit('mallory', '2099-01-01T00:00:00.000Z', 'summary', 'changed');
     const sets = storage.sets.length;
     const writes = jira.propertyWrites.length;
@@ -75,7 +75,7 @@ describe('B-03 a read never writes', () => {
       everCompromised: 'true',
       incidentCount: 1
     });
-    expect(storage.bytes('ls2:seal:10001') - sizeAfterSeal).toBeLessThan(200);
+    expect(storage.bytes(model.workEffortKey()) - sizeAfterSeal).toBeLessThan(200);
   });
 
   it('keeps the panel response under 16 KiB for a large changed issue, with no snapshot and no email', async () => {

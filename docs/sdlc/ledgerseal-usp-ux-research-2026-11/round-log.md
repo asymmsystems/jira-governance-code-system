@@ -211,3 +211,26 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - A 100-field change takes well under 2 s in-process (limit 25 s, FG-01).
 - PX-04: the property is updated within the event delay, not only when someone opens the panel. CascadePlan's lock badge and its confirm-before-write step stay in the CascadePlan backlog.
 - Results: `tsc` OK. 22 suites, 177 tests pass. Global branches 97.39%. `ledger.ts` 96.58%, `index.ts` 93.93%. Graders all True. README numbers updated. No em dash.
+- B-11 commit: `bcc3889`.
+
+### Owner question and ADR-01 (Silverston model)
+- While the B-12 tests were red, the owner asked why so many tests failed, whether the design was wrong, and whether the model followed Silverston patterns.
+  - Answer given: the 7 failures were the intended red phase of B-12.
+  - The model had not been checked against Silverston. That was a gap.
+- Owner chose to pause and model first ("Ok" to the recommended option), then approved ADR-01 ("approve").
+- ADR-01 (`adr-01-silverston-data-model.md`) uses entity and field names from the Apache OFBiz entity definitions, trunk `f1865809` (Silverston-derived; the book itself was not read). It was committed with spec v2 decision D-10 and backlog item B-21 as `f8d8469`.
+- The B-12 test file was parked in `~/.cache/gemini-earning-ledgerseal-research/parked/` during B-21 and restored afterwards.
+
+### B-21 Silverston WorkEffort, Party and Status model (ADR-01, D-10)
+- Tests first: `test/silverston-model.test.ts`. First run: failed for the right reason (`src/domain/status` missing).
+- Code:
+  - `src/domain/status.ts`: the `StatusValidChange` table and the meaning-to-role mapping.
+  - `src/domain/models.ts`: `SealedWorkEffort`, `WorkEffortPartyAssignment` and `WorkEffortStatus` replace `SealRecord` and `HistoryEntry`.
+  - `src/domain/history.ts`: chained status rows.
+  - `src/domain/seal-record.ts`: `LoadedSeal`, integrity bindings and the summary.
+  - `src/storage/seal-repository.ts`: `ls3:we`, `ls3:wepa`, `ls3:wes` and `ls3:content`.
+  - `src/service/ledger.ts` and `src/index.ts` are moved onto the model. Every state change goes through `canChange`.
+- Tests that read storage now use the `model` helpers in `test/support/fakes.ts`. Their behaviour assertions are unchanged. The history `type` values SEALED, INCIDENT and RESEALED are now `transitionName` values SEAL, CHANGE and RESEAL.
+- Adversarial test: T-02 A7 now covers a rewritten assignment and a rewritten sealing row as well as a rewritten work effort.
+- No migration: the `ls2:` layout was never deployed.
+- Results: `tsc` OK. 23 suites, 187 tests pass (every B-01 to B-11 test included). Global branches 96.7%. `status.ts` and `seal-record.ts` 100%, `seal-repository.ts` 94.73%, `history.ts` 94.11%, `ledger.ts` 93.54%, `index.ts` 93.93%. Graders all True. README storage table and numbers updated. No em dash.

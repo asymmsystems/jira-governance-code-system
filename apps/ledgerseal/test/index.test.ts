@@ -1,5 +1,5 @@
 import { validateTransition, sealIssue, verifyIssue, renderIssuePanel, handler } from '../src/index';
-import { FakeJira, MemoryStore, panelContext, validSignature } from './support/fakes';
+import { FakeJira, MemoryStore, panelContext, validSignature, model } from './support/fakes';
 
 jest.mock('@forge/api', () => ({
   __esModule: true,
@@ -42,9 +42,10 @@ describe('Forge Function Entry Points (index.ts)', () => {
       expect(result.ok).toBe(true);
       expect(result.snapshotHash).toHaveLength(64);
 
-      const stored = await storage.get('ls2:seal:10001');
-      expect(stored.snapshotHash).toBe(result.snapshotHash);
-      expect(stored.sealedBy).toEqual({ accountId: 'lead', displayName: 'Lead Engineer' });
+      const stored = await model.workEffort(storage);
+      expect(stored.attributes.snapshotHash).toBe(result.snapshotHash);
+      expect(model.assignments(storage)[0].partyId).toBe('lead');
+      expect(model.statusRows(storage)[0].data.signerName).toBe('Lead Engineer');
       expect(jira.propertyWrites[0].body).toMatchObject({ status: 'SEAL_VALID', snapshotHash: result.snapshotHash });
     });
 
@@ -72,7 +73,7 @@ describe('Forge Function Entry Points (index.ts)', () => {
     it('falls back to the account id when Jira hides the display name', async () => {
       jira.users = {};
       await sealIssue({ signature: sampleSig }, ctx, deps());
-      expect((await storage.get('ls2:seal:10001')).sealedBy.displayName).toBe('lead');
+      expect(model.statusRows(storage)[0].data.signerName).toBe('lead');
     });
   });
 

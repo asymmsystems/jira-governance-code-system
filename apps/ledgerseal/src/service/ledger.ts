@@ -10,13 +10,14 @@
 import * as crypto from 'crypto';
 import { canonicalizeIssueState, FieldSchema } from '../domain/canonicalizer';
 import { computeSnapshotHash } from '../domain/crypto';
-import { buildEntry, verifyChain } from '../domain/history';
-import { CanonicalIssueSnapshot, FieldDiff, HistoryEntry, SealRecord, TamperAnalysis } from '../domain/models';
+import { buildStatusRow, verifyChain } from '../domain/history';
+import { CanonicalIssueSnapshot, FieldDiff, SealedWorkEffort, WorkEffortPartyAssignment, WorkEffortStatus, TamperAnalysis } from '../domain/models';
 import { authorsSince } from '../domain/policy';
-import { hasValidRecordHash, summarise, withRecordHash } from '../domain/seal-record';
+import { assignmentHash, isConsistent, LoadedSeal, summarise, withRecordHash } from '../domain/seal-record';
+import { canChange, LedgerSealStatusId, roleForMeaning } from '../domain/status';
 import { compareToSeal, SealedState } from '../domain/tamper-detector';
 import { capped } from '../domain/display';
-import { AttestationStatus, buildAttestation, Signer } from '../domain/attestation';
+import { AttestationSource, AttestationStatus, buildAttestation, Signer } from '../domain/attestation';
 import { DECLARATION, isMeaning, matchesDeclaration, validReason } from '../domain/declaration';
 import { ChangelogEntry, JiraClient } from '../jira/jira-client';
 import { HISTORY_PAGE_SIZE, SealRepository, StorageProvider } from '../storage/seal-repository';
@@ -102,9 +103,24 @@ export async function readLiveSnapshot(
  * Writes the signed ledgerseal-cert attestation. Called on seal, reseal, revoke and each new incident only.
  * The property is an output for other tools; LedgerSeal itself never reads it.
  */
-async function writeAttestation(deps: LedgerSealDeps, record: SealRecord, status: AttestationStatus, at: string): Promise<void> {
-  const written = await deps.jira.putSealProperty(record.issueId, buildAttestation(record, status, at, deps.signer ?? null));
-  if (!written) console.error(`LedgerSeal: could not write the ledgerseal-cert property on issue ${record.issueId}`);
+async function writeAttestation(deps: LedgerSealDeps, seal: LoadedSeal, status: AttestationStatus, at: string): Promise<void> {
+  const issueId = seal.workEffort.workEffortId;
+  const written = await deps.jira.putSealProperty(issueId, buildAttestation(attestationSource(seal), status, at, deps.signer ?? null));
+  if (!written) console.error(`LedgerSeal: could not write the ledgerseal-cert property on issue ${issueId}`);
+}
+
+function attestationSource(seal: LoadedSeal): AttestationSource {
+  const we = seal.workEffort;
+  return {
+    issueId: we.workEffortId,
+    certificateId: we.currentContentId,
+    snapshotHash: we.attributes.snapshotHash,
+    canonicalizerVersion: we.attributes.canonicalizerVersion,
+    sealedAt: seal.assignment.fromDate,
+    sealedByAccountId: seal.assignment.partyId,
+    everCompromised: we.everCompromised,
+    incidentCount: we.incidentCount
+  };
 }
 
 /** Turns stored values into short display text, so the panel never receives the snapshot. */
@@ -121,33 +137,40 @@ function compact(analysis: TamperAnalysis): TamperAnalysis {
 
 export interface SealEvaluation {
   kind: 'SEAL';
-  record: SealRecord;
+  seal: LoadedSeal;
   sealedSnapshot: CanonicalIssueSnapshot;
   analysis: TamperAnalysis;
 }
 
-export type Evaluation = { kind: 'NONE' } | { kind: 'LEGACY' } | { kind: 'RECORD_INVALID'; record: SealRecord } | SealEvaluation;
+/** RECORD_INVALID carries the work effort when it could be read, so a reseal can continue its chain. */
+export type Evaluation =
+  | { kind: 'NONE' }
+  | { kind: 'LEGACY' }
+  | { kind: 'RECORD_INVALID'; workEffort: SealedWorkEffort | null }
+  | SealEvaluation;
 
 /**
  * Compares the live issue with the stored seal. Reads only.
  */
 export async function evaluate(repo: SealRepository, issueId: string, live: CanonicalIssueSnapshot, at: string): Promise<Evaluation> {
-  const record = await repo.getSeal(issueId);
-  if (!record) {
+  const seal = await repo.getSeal(issueId);
+  if (!seal) {
     return (await repo.getLegacyCertificate(issueId)) ? { kind: 'LEGACY' } : { kind: 'NONE' };
   }
-  // Check the stored record and snapshot on every read (LS-10): a rewritten value fails its hash
-  if (!hasValidRecordHash(record)) return { kind: 'RECORD_INVALID', record };
-  const sealedSnapshot = await repo.getSnapshot(record);
-  if (!sealedSnapshot || computeSnapshotHash(sealedSnapshot) !== record.snapshotHash) return { kind: 'RECORD_INVALID', record };
+  if (seal === 'missing') return { kind: 'RECORD_INVALID', workEffort: await repo.getWorkEffort(issueId) };
+  // Check the stored work effort, assignment, sealing row and content on every read (LS-10)
+  const we = seal.workEffort;
+  if (!isConsistent(seal)) return { kind: 'RECORD_INVALID', workEffort: we };
+  const sealedSnapshot = await repo.getContent(we);
+  if (!sealedSnapshot || computeSnapshotHash(sealedSnapshot) !== we.attributes.snapshotHash) return { kind: 'RECORD_INVALID', workEffort: we };
   const sealed: SealedState = {
-    snapshotHash: record.snapshotHash,
+    snapshotHash: we.attributes.snapshotHash,
     snapshot: sealedSnapshot,
-    revoked: record.state === 'REVOKED',
-    compromised: record.lastIncidentHash !== null
+    revoked: we.currentStatusId === 'LS_REVOKED',
+    compromised: we.currentStatusId === 'LS_CHANGED'
   };
-  const analysis = { ...compareToSeal(sealed, live, at), seal: summarise(record) };
-  return { kind: 'SEAL', record, sealedSnapshot, analysis };
+  const analysis = { ...compareToSeal(sealed, live, at), seal: summarise(seal) };
+  return { kind: 'SEAL', seal, sealedSnapshot, analysis };
 }
 
 /** Who changed each field after the seal, from the change log. */
@@ -172,35 +195,45 @@ export async function recordIncidentIfNew(
   repo: SealRepository,
   evaluation: SealEvaluation,
   at: string
-): Promise<{ record: SealRecord; recorded: boolean }> {
-  const { record, analysis } = evaluation;
+): Promise<{ seal: LoadedSeal; recorded: boolean }> {
+  const { seal, analysis } = evaluation;
+  const we = seal.workEffort;
   const liveHash = analysis.liveHash;
-  if (record.state !== 'ACTIVE' || analysis.status !== 'SEAL_BROKEN' || !liveHash || liveHash === record.lastIncidentHash) {
-    return { record, recorded: false };
+  const transitionName = canChange(we.currentStatusId, 'LS_CHANGED');
+  if (!transitionName || analysis.status !== 'SEAL_BROKEN' || !liveHash || liveHash === we.lastIncidentHash) {
+    return { seal, recorded: false };
   }
-  const changelog = await deps.jira.getChangelog(record.issueId);
-  const changes = attribute(analysis.tamperedFields, changelog.ok ? changelog.value : [], record.sealedAt);
-  const entry = buildEntry(record.head, {
-    type: 'INCIDENT',
-    at,
-    actorAccountId: null,
-    certificateId: record.certificateId,
-    data: { liveHash, changes, attachmentChanges: analysis.tamperedAttachments.length }
+  const changelog = await deps.jira.getChangelog(we.workEffortId);
+  const changes = attribute(analysis.tamperedFields, changelog.ok ? changelog.value : [], seal.assignment.fromDate);
+  const row = buildStatusRow(we.statusHead, {
+    workEffortId: we.workEffortId,
+    statusId: 'LS_CHANGED',
+    statusDatetime: at,
+    setByPartyId: null,
+    reason: null,
+    transitionName,
+    data: { liveHash, certificateId: we.currentContentId, changes, attachmentChanges: analysis.tamperedAttachments.length }
   });
-  if (!(await repo.appendEntry(record.issueId, entry))) {
+  if (!(await repo.appendStatus(row))) {
     // Another writer recorded this change first.
-    return { record, recorded: false };
+    return { seal, recorded: false };
   }
-  const updated = withRecordHash({
-    ...record,
-    everCompromised: true,
-    incidentCount: record.incidentCount + 1,
-    lastIncidentHash: liveHash,
-    head: { seq: entry.seq, entryHash: entry.entryHash }
-  });
-  await repo.saveSeal(updated);
+  const updated: LoadedSeal = {
+    ...seal,
+    workEffort: withRecordHash({
+      ...we,
+      currentStatusId: 'LS_CHANGED',
+      lastStatusUpdate: at,
+      revisionNumber: row.seq,
+      statusHead: { seq: row.seq, entryHash: row.entryHash },
+      everCompromised: true,
+      incidentCount: we.incidentCount + 1,
+      lastIncidentHash: liveHash
+    })
+  };
+  await repo.saveWorkEffort(updated.workEffort);
   await writeAttestation(deps, updated, 'SEAL_BROKEN', at);
-  return { record: updated, recorded: true };
+  return { seal: updated, recorded: true };
 }
 
 export async function sealIssueFlow(payload: any, context: any, deps: LedgerSealDeps) {
@@ -228,81 +261,106 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   const repo = new SealRepository(deps.storage);
   const snapshot = live.snapshot;
 
-  let previous: SealRecord | null = null;
-  let previousState: string | null = null;
+  let previous: LoadedSeal | null = null;
+  let previousWorkEffort: SealedWorkEffort | null = null;
+  let previousState: LedgerSealStatusId | 'RECORD_INVALID' | null = null;
   const evaluation = await evaluate(repo, issue.id, snapshot, now);
   if (evaluation.kind === 'SEAL') {
-    previous = evaluation.record;
-    previousState = previous.state;
-  }
-  if (evaluation.kind === 'RECORD_INVALID') {
-    // The stored counts cannot be trusted, so the new seal says the issue was compromised
-    previous = { ...evaluation.record, everCompromised: true };
-    previousState = 'RECORD_INVALID';
-  }
-  if (evaluation.kind === 'SEAL') {
+    previous = evaluation.seal;
+    previousWorkEffort = previous.workEffort;
+    previousState = previousWorkEffort.currentStatusId;
     const status = evaluation.analysis.status;
     if (status === 'SEAL_BROKEN' || status === 'SEAL_COMPROMISED') {
       // Separation of duties: the author of a change since the last seal cannot approve it
       const changelog = await deps.jira.getChangelog(issue.id);
       if (!changelog.ok) return fail('JIRA_UNREACHABLE');
-      if (authorsSince(changelog.value, previous!.sealedAt).has(accountId)) return fail('SELF_APPROVAL');
+      if (authorsSince(changelog.value, previous.assignment.fromDate).has(accountId)) return fail('SELF_APPROVAL');
       if (!validReason(signature.reason)) return fail('REASON_REQUIRED');
       // Record the change before the reseal, so the history shows it even if no one viewed the issue
-      const incident = await recordIncidentIfNew(deps, repo, evaluation, now);
-      previous = incident.record;
+      previous = (await recordIncidentIfNew(deps, repo, evaluation, now)).seal;
+      previousWorkEffort = previous.workEffort;
     }
   }
+  if (evaluation.kind === 'RECORD_INVALID') {
+    // The stored counts cannot be trusted, so the new seal says the issue was compromised
+    previousWorkEffort = evaluation.workEffort ? { ...evaluation.workEffort, everCompromised: true } : null;
+    previousState = 'RECORD_INVALID';
+  }
+
+  // The state change must be allowed (StatusValidChange). An invalid record may always be resealed.
+  const fromStatus = previousState === 'RECORD_INVALID' ? 'LS_CHANGED' : previousState;
+  const transitionName = canChange(fromStatus, 'LS_SEALED');
+  if (!transitionName) return fail('INVALID_REQUEST');
 
   const signerDisplayName = (await deps.jira.getUserName(accountId)) || accountId;
-  const reason = previous ? validReason(signature.reason) : null;
+  const reason = previousState ? validReason(signature.reason) : null;
   const certificateId = crypto.randomUUID();
   const snapshotHash = computeSnapshotHash(snapshot);
 
-  const entry = buildEntry(previous ? previous.head : null, {
-    type: previous ? 'RESEALED' : 'SEALED',
-    at: now,
-    actorAccountId: accountId,
-    certificateId,
+  const row = buildStatusRow(previousWorkEffort ? previousWorkEffort.statusHead : null, {
+    workEffortId: issue.id,
+    statusId: 'LS_SEALED',
+    statusDatetime: now,
+    setByPartyId: accountId,
+    reason,
+    transitionName,
     data: {
+      certificateId,
       snapshotHash,
       meaning,
-      reason,
       declarationVersion: DECLARATION.version,
       signerName: signerDisplayName,
-      previousCertificateId: previous ? previous.certificateId : null,
+      previousCertificateId: previousWorkEffort ? previousWorkEffort.currentContentId : null,
       previousState
     }
   });
-  if (!(await repo.appendEntry(issue.id, entry))) return fail('CONFLICT');
+  if (!(await repo.appendStatus(row))) return fail('CONFLICT');
 
-  const record = withRecordHash({
-    schemaVersion: 2,
-    issueId: issue.id,
-    issueKey: String(live.raw.key || issue.key),
-    certificateId,
-    state: 'ACTIVE',
-    sealedAt: now,
-    sealedBy: { accountId, displayName: signerDisplayName },
-    meaning,
-    declaration: { version: DECLARATION.version, text: DECLARATION.text },
-    reason,
-    statusAtSeal: snapshot.status,
-    snapshotHash,
-    canonicalizerVersion: '1.0.0',
-    coveredFields: snapshot.fields.map(f => ({ id: f.id, name: f.name })),
-    excludedFields: snapshot.excluded || [],
-    snapshotChunks: 1,
-    everCompromised: previous ? previous.everCompromised : false,
-    incidentCount: previous ? previous.incidentCount : 0,
-    lastIncidentHash: null,
-    head: { seq: entry.seq, entryHash: entry.entryHash },
-    revocation: null
+  const assignment: WorkEffortPartyAssignment = {
+    workEffortId: issue.id,
+    partyId: accountId,
+    roleTypeId: roleForMeaning(meaning),
+    fromDate: now,
+    thruDate: null,
+    comments: reason,
+    contentId: certificateId,
+    declaration: { version: DECLARATION.version, text: DECLARATION.text }
+  };
+  const workEffort = withRecordHash({
+    schemaVersion: 3,
+    workEffortId: issue.id,
+    workEffortTypeId: 'JIRA_ISSUE',
+    sourceReferenceId: String(live.raw.key || issue.key),
+    currentStatusId: 'LS_SEALED',
+    lastStatusUpdate: now,
+    revisionNumber: row.seq,
+    statusHead: { seq: row.seq, entryHash: row.entryHash },
+    currentAssignment: {
+      partyId: accountId,
+      roleTypeId: assignment.roleTypeId,
+      fromDate: now,
+      assignmentHash: assignmentHash(assignment),
+      sealingSeq: row.seq,
+      sealingEntryHash: row.entryHash
+    },
+    currentContentId: certificateId,
+    attributes: {
+      snapshotHash,
+      canonicalizerVersion: '1.0.0',
+      declarationVersion: DECLARATION.version,
+      statusAtSeal: snapshot.status,
+      snapshotParts: 1
+    },
+    everCompromised: previousWorkEffort ? previousWorkEffort.everCompromised : false,
+    incidentCount: previousWorkEffort ? previousWorkEffort.incidentCount : 0,
+    lastIncidentHash: null
   });
-  await repo.saveSeal(record, [JSON.stringify(snapshot)]);
+  // A reseal ends the previous assignment at this time (Silverston thruDate)
+  const ended = previous ? { ...previous.assignment, thruDate: now } : null;
+  await repo.saveSeal(workEffort, assignment, [JSON.stringify(snapshot)], ended);
 
   // Publish public audit property to Jira issue without PII
-  await writeAttestation(deps, record, 'SEAL_VALID', now);
+  await writeAttestation(deps, { workEffort, assignment, sealingRow: row }, 'SEAL_VALID', now);
 
   return { ok: true as const, certificateId, snapshotHash, sealedAt: now };
 }
@@ -340,11 +398,12 @@ async function verifyAgainstSeal(deps: LedgerSealDeps, issueId: string, liveSnap
   }
 
   // Writes only when this change is new (invariant 3); the property is updated inside.
-  const { record } = await recordIncidentIfNew(deps, repo, evaluation, now);
+  const { seal } = await recordIncidentIfNew(deps, repo, evaluation, now);
+  const sealed = evaluation.sealedSnapshot;
   return {
-    ...compact({ ...evaluation.analysis, seal: summarise(record) }),
-    coveredFields: record.coveredFields,
-    excludedFields: record.excludedFields
+    ...compact({ ...evaluation.analysis, seal: summarise(seal) }),
+    coveredFields: sealed.fields.map(f => ({ id: f.id, name: f.name })),
+    excludedFields: sealed.excluded || []
   };
 }
 
@@ -356,21 +415,22 @@ export async function historyFlow(payload: any, context: any, deps: LedgerSealDe
   const issue = contextIssue(context);
   if (!issue) return fail('MISSING_ISSUE');
   const repo = new SealRepository(deps.storage);
-  const record = await repo.getSeal(issue.id);
-  if (!record) return { ok: true as const, entries: [] as HistoryEntry[], chainValid: true, nextFromSeq: null };
+  const we = await repo.getWorkEffort(issue.id);
+  if (!we) return { ok: true as const, entries: [] as WorkEffortStatus[], chainValid: true, nextFromSeq: null };
 
-  const fromSeq = Math.min(record.head.seq, Math.max(1, Math.floor(Number(payload?.fromSeq) || 1)));
-  const toSeq = Math.min(record.head.seq, fromSeq + HISTORY_PAGE_SIZE - 1);
-  const page = await repo.getEntries(issue.id, fromSeq, toSeq);
-  const before = fromSeq > 1 ? (await repo.getEntries(issue.id, fromSeq - 1, fromSeq - 1))[0] : undefined;
-  const check = verifyChain(page, before ? before.entryHash : undefined, record.head);
+  const head = we.statusHead;
+  const fromSeq = Math.min(head.seq, Math.max(1, Math.floor(Number(payload?.fromSeq) || 1)));
+  const toSeq = Math.min(head.seq, fromSeq + HISTORY_PAGE_SIZE - 1);
+  const page = await repo.getStatusRows(issue.id, fromSeq, toSeq);
+  const before = fromSeq > 1 ? (await repo.getStatusRow(issue.id, fromSeq - 1)) || undefined : undefined;
+  const check = verifyChain(page, before ? before.entryHash : undefined, head);
   // A missing entry anywhere in the page, or a missing predecessor, breaks the chain.
   const complete = page.length === toSeq - fromSeq + 1 && (fromSeq === 1 || Boolean(before));
   return {
     ok: true as const,
     entries: page,
     chainValid: check.valid && complete,
-    nextFromSeq: toSeq < record.head.seq ? toSeq + 1 : null
+    nextFromSeq: toSeq < head.seq ? toSeq + 1 : null
   };
 }
 
@@ -391,7 +451,7 @@ export async function issueChangedFlow(event: any, deps: LedgerSealDeps): Promis
   try {
     const repo = new SealRepository(deps.storage);
     const now = new Date().toISOString();
-    if (!(await repo.getSeal(issueId))) return { recorded: false };
+    if (!(await repo.getWorkEffort(issueId))) return { recorded: false };
     const live = await readLiveSnapshot(deps.jira, issueId, now);
     if (!live) return { recorded: false };
     const evaluation = await evaluate(repo, issueId, live.snapshot, now);

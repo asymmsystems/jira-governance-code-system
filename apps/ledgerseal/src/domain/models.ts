@@ -2,6 +2,8 @@
  * LedgerSeal: Domain Data Models and Contracts
  */
 
+import { LedgerSealRoleTypeId, LedgerSealStatusId, TransitionName } from './status';
+
 export interface CanonicalField {
   id: string;
   name: string;
@@ -130,41 +132,61 @@ export interface TamperAnalysis {
 }
 
 /**
- * v2 seal record, one per issue (spec v2 section 3.2). v1 `SealCertificate` records are read as legacy only.
+ * The sealed Jira issue as a Silverston WorkEffort (spec v2 section 3.2, ADR-01). One per issue.
+ * Jira-owned issue fields are not stored; only LedgerSeal's own facts are.
  */
-export interface SealRecord {
-  schemaVersion: 2;
-  issueId: string;
-  issueKey: string;
-  certificateId: string;
-  state: 'ACTIVE' | 'REVOKED';
-  sealedAt: string;
-  sealedBy: { accountId: string; displayName: string };
-  meaning: string;
-  declaration: { version: string; text: string };
-  reason: string | null;
-  statusAtSeal: string;
-  snapshotHash: string;
-  canonicalizerVersion: string;
-  coveredFields: { id: string; name: string }[];
-  excludedFields: { id: string; name: string; reason: string }[];
-  snapshotChunks: number;
+export interface SealedWorkEffort {
+  schemaVersion: 3;
+  workEffortId: string;
+  workEffortTypeId: 'JIRA_ISSUE';
+  sourceReferenceId: string;
+  currentStatusId: LedgerSealStatusId;
+  lastStatusUpdate: string;
+  revisionNumber: number;
+  statusHead: { seq: number; entryHash: string };
+  currentAssignment: {
+    partyId: string;
+    roleTypeId: LedgerSealRoleTypeId;
+    fromDate: string;
+    assignmentHash: string;
+    sealingSeq: number;
+    sealingEntryHash: string;
+  };
+  currentContentId: string;
+  attributes: {
+    snapshotHash: string;
+    canonicalizerVersion: string;
+    declarationVersion: string;
+    statusAtSeal: string;
+    snapshotParts: number;
+  };
   everCompromised: boolean;
   incidentCount: number;
   lastIncidentHash: string | null;
-  head: { seq: number; entryHash: string };
-  revocation: { revokedAt: string; revokedByAccountId: string; reason: string } | null;
   recordHash: string;
 }
 
-export type HistoryEntryType = 'SEALED' | 'RESEALED' | 'INCIDENT' | 'REVOKED';
+/** One seal: the party, the role (the meaning) and the time window (Silverston WorkEffortPartyAssignment). */
+export interface WorkEffortPartyAssignment {
+  workEffortId: string;
+  partyId: string;
+  roleTypeId: LedgerSealRoleTypeId;
+  fromDate: string;
+  thruDate: string | null;
+  comments: string | null;
+  contentId: string;
+  declaration: { version: string; text: string };
+}
 
-export interface HistoryEntry {
+/** One state change, created once (Silverston WorkEffortStatus with the LedgerSeal hash chain). */
+export interface WorkEffortStatus {
+  workEffortId: string;
+  statusId: LedgerSealStatusId;
+  statusDatetime: string;
+  setByPartyId: string | null;
+  reason: string | null;
+  transitionName: TransitionName;
   seq: number;
-  type: HistoryEntryType;
-  at: string;
-  actorAccountId: string | null;
-  certificateId: string;
   data: Record<string, unknown>;
   prevEntryHash: string;
   entryHash: string;

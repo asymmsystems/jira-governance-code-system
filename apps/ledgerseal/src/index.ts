@@ -114,21 +114,22 @@ export async function validateTransition(payload: any, context?: any, deps: Ledg
     return { result: false, errorMessage: unsealed.errorMessage };
   }
 
-  const record = evaluation.record;
+  const we = evaluation.seal.workEffort;
+  const summary = evaluation.analysis.seal;
   const validation = validateTransitionGate(
     {
-      snapshotHash: record.snapshotHash,
+      snapshotHash: we.attributes.snapshotHash,
       snapshot: evaluation.sealedSnapshot,
-      revoked: record.state === 'REVOKED',
-      compromised: record.lastIncidentHash !== null
+      revoked: we.currentStatusId === 'LS_REVOKED',
+      compromised: we.currentStatusId === 'LS_CHANGED'
     },
     liveSnapshot,
     {
-      certificateId: record.certificateId,
-      sealedAt: record.sealedAt,
-      signerName: record.sealedBy.displayName,
-      revocationReason: record.revocation?.reason,
-      revokedAt: record.revocation?.revokedAt
+      certificateId: we.currentContentId,
+      sealedAt: summary?.sealedAt,
+      signerName: summary?.sealedByName,
+      revocationReason: summary?.revocation?.reason,
+      revokedAt: summary?.revocation?.revokedAt
     }
   );
 

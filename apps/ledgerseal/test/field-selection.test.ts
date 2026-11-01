@@ -11,7 +11,7 @@ import * as path from 'path';
 import { canonicalizeIssueState } from '../src/domain/canonicalizer';
 import { computeSnapshotHash } from '../src/domain/crypto';
 import { sealIssue, validateTransition, verifyIssue } from '../src/index';
-import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
+import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature, model } from './support/fakes';
 
 jest.mock('@forge/api', () => ({ __esModule: true, default: {}, route: () => '' }));
 jest.mock('@forge/kvs', () => ({ kvs: {} }));
@@ -125,7 +125,8 @@ describe('B-05 schema-based field selection', () => {
     const storage = new MemoryStore();
     jira.currentUser = 'ann';
     await sealIssue({ signature: validSignature() }, panelContext('ann'), { jira, storage });
-    const record = await storage.get('ls2:seal:10001');
+    const sealed = await model.sealedSnapshot(storage);
+    const record = { coveredFields: sealed.fields.map((f: any) => ({ id: f.id, name: f.name })), excludedFields: sealed.excluded };
     expect(record.coveredFields).toEqual(expect.arrayContaining([{ id: 'customfield_10001', name: 'Approved budget' }]));
     expect(record.excludedFields).toEqual(expect.arrayContaining([{ id: 'customfield_10019', name: 'Rank', reason: 'Rank changes on every board drag.' }]));
 

@@ -147,3 +147,37 @@ export function sampleIssue(): any {
 export function panelContext(accountId?: string) {
   return { ...(accountId ? { accountId } : {}), extension: { issue: { id: '10001', key: 'CHG-1' } } };
 }
+
+/** Model helpers: tests read storage through the Silverston model (spec v2 section 3.2), not raw keys. */
+export const model = {
+  async workEffort(storage: MemoryStore, issueId = '10001') {
+    return storage.get(`ls3:we:${issueId}`);
+  },
+  statusRows(storage: MemoryStore, issueId = '10001'): any[] {
+    return [...storage.map.entries()]
+      .filter(([k]) => k.startsWith(`ls3:wes:${issueId}:`))
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([, v]) => JSON.parse(JSON.stringify(v)));
+  },
+  assignments(storage: MemoryStore, issueId = '10001'): any[] {
+    return [...storage.map.entries()]
+      .filter(([k]) => k.startsWith(`ls3:wepa:${issueId}:`))
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([, v]) => JSON.parse(JSON.stringify(v)));
+  },
+  async sealedSnapshot(storage: MemoryStore, issueId = '10001') {
+    const we = await storage.get(`ls3:we:${issueId}`);
+    let text = '';
+    for (let part = 0; part < we.attributes.snapshotParts; part++) text += storage.map.get(`ls3:content:${we.currentContentId}:${part}`);
+    return JSON.parse(text);
+  },
+  contentKey(we: any, part = 0) {
+    return `ls3:content:${we.currentContentId}:${part}`;
+  },
+  workEffortKey(issueId = '10001') {
+    return `ls3:we:${issueId}`;
+  },
+  statusKey(seq: number, issueId = '10001') {
+    return `ls3:wes:${issueId}:${String(seq).padStart(6, '0')}`;
+  }
+};

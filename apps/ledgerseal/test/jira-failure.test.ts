@@ -8,7 +8,7 @@
 
 import { sealIssue, validateTransition, verifyIssue } from '../src/index';
 import { createJiraClient } from '../src/jira/jira-client';
-import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
+import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature, model } from './support/fakes';
 
 jest.mock('@forge/api', () => ({
   __esModule: true,
@@ -106,8 +106,7 @@ describe('B-06 explicit fields and paged comments', () => {
     jira.issue.fields.comment = { comments: [{ id: 'stale', author: { accountId: 'x' }, body: 'old', created: 'x' }], total: 1 };
     jira.comments = [{ id: '7', author: { accountId: 'a' }, body: 'from the endpoint', created: '2026-11-01T00:00:00.000Z' }];
     await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
-    const record = await storage.get('ls2:seal:10001');
-    const snapshot = JSON.parse(await storage.get(`ls2:snap:${record.certificateId}:0`));
+    const snapshot = await model.sealedSnapshot(storage);
     expect(snapshot.comments.map((c: any) => c.id)).toEqual(['7']);
     jira.failComments = true;
     await expect(verifyIssue({}, panelContext('viewer'), as('viewer'))).resolves.toMatchObject({ status: 'ERROR' });
@@ -118,8 +117,7 @@ describe('B-06 explicit fields and paged comments', () => {
     jira.issue.fields.worklog = { total: 3, worklogs: [{ id: '1', author: { accountId: 'a' }, started: 'x', timeSpentSeconds: 60 }] };
     jira.worklogs = ['1', '2', '3'].map(id => ({ id, author: { accountId: 'a' }, started: 'x', timeSpentSeconds: 60 }));
     await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
-    const record = await storage.get('ls2:seal:10001');
-    const snapshot = JSON.parse(await storage.get(`ls2:snap:${record.certificateId}:0`));
+    const snapshot = await model.sealedSnapshot(storage);
     expect(snapshot.fields.find((f: any) => f.id === 'worklog').value.map((w: any) => w.id)).toEqual(['1', '2', '3']);
     jira.failWorklogs = true;
     await expect(verifyIssue({}, panelContext('viewer'), as('viewer'))).resolves.toMatchObject({ status: 'ERROR' });

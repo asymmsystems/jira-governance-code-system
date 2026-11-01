@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { DECLARATION, MEANINGS } from '../src/domain/declaration';
 import { sealIssue } from '../src/index';
-import { FakeJira, MemoryStore, panelContext, sampleIssue } from './support/fakes';
+import { FakeJira, MemoryStore, panelContext, sampleIssue, model } from './support/fakes';
 
 jest.mock('@forge/api', () => ({ __esModule: true, default: {}, route: () => '' }));
 jest.mock('@forge/kvs', () => ({ kvs: {} }));
@@ -47,9 +47,10 @@ describe('B-07 declaration text and version', () => {
   it('adversarial (LS-09, T-02 A6): stores exactly the text and version the signer agreed to', async () => {
     const { storage, deps } = setup();
     await expect(sealIssue({ signature: signature() }, panelContext('ann'), deps)).resolves.toMatchObject({ ok: true });
-    const record = await storage.get('ls2:seal:10001');
-    expect(record.declaration).toEqual(DECLARATION);
-    expect(record.meaning).toBe('APPROVAL');
+    const [assignment] = model.assignments(storage);
+    expect(assignment.declaration).toEqual(DECLARATION);
+    expect(assignment.roleTypeId).toBe('LS_APPROVER');
+    expect((await model.workEffort(storage)).attributes.declarationVersion).toBe(DECLARATION.version);
   });
 
   it('rejects a payload whose declaration differs from the one shown', async () => {
@@ -79,7 +80,7 @@ describe('B-07 declaration text and version', () => {
       code: 'INVALID_REQUEST'
     });
     await sealIssue({ signature: signature({ meaning: undefined }) }, panelContext('ann'), deps);
-    expect((await storage.get('ls2:seal:10001')).meaning).toBe('APPROVAL');
+    expect(model.assignments(storage)[0].roleTypeId).toBe('LS_APPROVER');
   });
 
   it('requires a reason to approve changes, and stores it', async () => {
@@ -94,7 +95,8 @@ describe('B-07 declaration text and version', () => {
     await expect(sealIssue({ signature: signature({ reason: '  Scope agreed with the CAB  ' }) }, panelContext('bob'), deps)).resolves.toMatchObject({
       ok: true
     });
-    const record = await storage.get('ls2:seal:10001');
-    expect(record.reason).toBe('Scope agreed with the CAB');
+    const current = model.assignments(storage).find(a => a.thruDate === null);
+    expect(current.comments).toBe('Scope agreed with the CAB');
+    expect(model.statusRows(storage).pop().reason).toBe('Scope agreed with the CAB');
   });
 });
