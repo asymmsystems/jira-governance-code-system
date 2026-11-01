@@ -182,6 +182,8 @@ export interface ProjectDashboardView {
   summary: ProjectSummary;
   rows: IssueRow[];
   trend: TrendPoint[];
+  /** How many issues were read, and how many the project has. */
+  coverage: { shown: number; totalKnown: number | null; capped: boolean };
   meta?: SnapshotMeta;
   warning?: string;
 }

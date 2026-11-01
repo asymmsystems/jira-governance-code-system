@@ -12,6 +12,7 @@ import { MetricsRepository, StorageProvider } from './storage/metrics-repository
 import { factsFromIssue, normalizeException, PROPERTY_KEYS } from './jira/issue-facts';
 import { getSiteConfig } from './jira/site-config';
 import { readRemoteLinks } from './jira/remote-links';
+import { issueFields, searchProjectIssues, withRetry } from './jira/search';
 import { isStarted } from './domain/gates';
 
 /** Time a resolver may spend reading remote links, inside the 25 s Forge limit. */
@@ -59,13 +60,6 @@ export function resolveStorage(customProvider?: StorageProvider): StorageProvide
   return new ForgeKvsProvider();
 }
 
-/** Fields every issue read requests, plus the site's Development field when it has one. */
-const BASE_FIELDS = 'summary,status,issuetype,issuelinks,assignee,updated,customfield_10020,sprint';
-
-export function issueFields(devFieldId: string | null): string {
-  return devFieldId ? `${BASE_FIELDS},${devFieldId}` : BASE_FIELDS;
-}
-
 const asUserRequest = (r: Route) => api.asUser().requestJira(r);
 const asAppRequest = (r: Route) => api.asApp().requestJira(r);
 
@@ -74,42 +68,6 @@ function jiraError(status: number | undefined, message: string): { ok: false; er
   if (status === 404) return { ok: false, error: { code: 'NOT_FOUND', message, status } };
   if (status === 429) return { ok: false, error: { code: 'RATE_LIMITED', message, status } };
   return { ok: false, error: { code: 'JIRA_ERROR', message, status } };
-}
-
-/**
- * Queries live Jira issues using search/jql. Returns raw issues with the producers' properties.
- */
-export async function fetchProjectIssues(projectKey: string, devFieldId: string | null = null): Promise<{ issues: any[]; status?: number; error?: string }> {
-  try {
-    const allIssues: any[] = [];
-    let startAt = 0;
-    const maxResults = 100;
-    let isLast = false;
-
-    // Paginate Jira search up to 2 pages (200 issues) for comprehensive audit
-    while (!isLast && allIssues.length < 200) {
-      const res = await api.asApp().requestJira(
-        route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&startAt=${startAt}&maxResults=${maxResults}&fields=${issueFields(devFieldId)}&properties=${PROPERTY_KEYS.join(',')}&expand=changelog`
-      );
-
-      if (res.status !== 200) {
-        return { issues: [], status: res.status, error: `Jira search/jql failed with HTTP ${res.status}` };
-      }
-
-      const data = await res.json();
-      const batch: any[] = data.issues || [];
-      allIssues.push(...batch);
-
-      if (batch.length < maxResults || (data.total && allIssues.length >= data.total)) {
-        isLast = true;
-      } else {
-        startAt += maxResults;
-      }
-    }
-    return { issues: allIssues };
-  } catch (err: any) {
-    return { issues: [], error: err?.message || 'Network error querying Jira search/jql' };
-  }
 }
 
 /**
@@ -128,16 +86,18 @@ export async function getProjectDashboard(
 
   const storage = resolveStorage(storageProvider);
   const repository = new MetricsRepository(storage);
+  const deadline = Date.now() + RESOLVER_LINK_BUDGET_MS;
+  const request = withRetry(asAppRequest, () => deadline);
   let devFieldId: string | null;
   let siteHost: string | undefined;
   try {
-    const config = await getSiteConfig(storage, asAppRequest);
+    const config = await getSiteConfig(storage, request);
     devFieldId = config.devFieldId;
     siteHost = config.siteHost || undefined;
   } catch (err: any) {
     return jiraError(undefined, `Live Jira sync failed (${err?.message}).`);
   }
-  const { issues, status, error } = await fetchProjectIssues(String(projectKey), devFieldId);
+  const { issues, capped, totalKnown, status, error } = await searchProjectIssues(String(projectKey), devFieldId, request, deadline);
   if (error) {
     return jiraError(status, `Live Jira sync failed (${error}).`);
   }
@@ -145,7 +105,7 @@ export async function getProjectDashboard(
   // Remote links are read for started issues only, 8 at a time, inside the time budget.
   // Issues not reached show Intent "Needs re-check" (spec v2, Snapshot schedule).
   const started = issues.filter(iss => isStarted(factsFromIssue(iss))).map(iss => String(iss.id));
-  const links = await readRemoteLinks(started, asAppRequest, Date.now() + RESOLVER_LINK_BUDGET_MS);
+  const links = await readRemoteLinks(started, request, deadline);
 
   const rows: IssueRow[] = [];
   for (const iss of issues) {
@@ -161,7 +121,8 @@ export async function getProjectDashboard(
     generatedAt: new Date().toISOString(),
     summary: MetricsEngine.summarize(rows),
     rows,
-    trend: []
+    trend: [],
+    coverage: { shown: rows.length, totalKnown, capped }
   };
 }
 
@@ -188,7 +149,8 @@ export async function getIssueAlignment(
   // Signals come from Jira only. There is no cached fallback: a failed read is reported.
   // Every read runs as the viewer, so the panel never shows what the viewer cannot see (FR-18).
   try {
-    const { devFieldId, siteHost } = await getSiteConfig(storage, asUserRequest);
+    const userRequest = withRetry(asUserRequest, () => Date.now() + RESOLVER_LINK_BUDGET_MS);
+    const { devFieldId, siteHost } = await getSiteConfig(storage, userRequest);
     const [issueRes, remoteLinksRes] = await Promise.all([
       api.asUser().requestJira(
         route`/rest/api/3/issue/${issueId}?fields=${issueFields(devFieldId)}&properties=${PROPERTY_KEYS.join(',')}&expand=changelog`

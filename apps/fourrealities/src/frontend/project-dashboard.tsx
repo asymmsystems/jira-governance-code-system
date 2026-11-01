@@ -94,6 +94,14 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
 
   return (
     <Stack space="space.200">
+      {view.coverage?.capped ? (
+        <SectionMessage appearance="information" title="Partial read">
+          <Text>
+            {`Showing ${view.coverage.shown} of ${view.coverage.totalKnown === null ? 'an unknown number of' : `about ${view.coverage.totalKnown}`} issues. FourRealities reads at most ${view.coverage.shown} issues per project, newest first.`}
+          </Text>
+        </SectionMessage>
+      ) : null}
+
       {view.warning ? (
         <SectionMessage appearance="warning" title="Sync notice">
           <Text>{view.warning}</Text>

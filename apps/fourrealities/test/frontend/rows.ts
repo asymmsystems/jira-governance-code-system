@@ -20,5 +20,5 @@ export function row(key: string, gates: { intent: GateResult; process: GateResul
 }
 
 export function dashboard(rows: IssueRow[], extra: Partial<ProjectDashboardView> = {}): ProjectDashboardView {
-  return { projectKey: 'DEMO', generatedAt: '2026-11-01T08:30:00.000Z', summary: MetricsEngine.summarize(rows), rows, trend: [], ...extra };
+  return { projectKey: 'DEMO', generatedAt: '2026-11-01T08:30:00.000Z', summary: MetricsEngine.summarize(rows), rows, trend: [], coverage: { shown: rows.length, totalKnown: rows.length, capped: false }, ...extra };
 }

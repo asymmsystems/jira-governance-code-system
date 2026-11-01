@@ -24,7 +24,7 @@ export interface SiteConfig {
  * Sends one request as a chosen principal. Callers build the route with the @forge/api route tag,
  * which rejects interpolated values that contain '/', '?' or '#'.
  */
-export type JiraRequest = (path: Route) => Promise<{ status: number; json: () => Promise<any> }>;
+export type JiraRequest = (path: Route, init?: any) => Promise<{ status: number; json: () => Promise<any>; headers?: { get: (name: string) => string | null } }>;
 
 /** Host of the site from serverInfo; null when it cannot be read. Not fatal: only same-site links depend on it. */
 async function readSiteHost(request: JiraRequest): Promise<string | null> {

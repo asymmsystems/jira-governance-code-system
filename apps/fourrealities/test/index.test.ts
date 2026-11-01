@@ -13,7 +13,6 @@ import {
   handler,
   setGlobalStorageProvider,
   resolveStorage,
-  fetchProjectIssues,
   linkDecision,
   recordException
 } from '../src/index';
@@ -85,26 +84,6 @@ describe('FourRealities Index / Forge Handlers', () => {
     changelog: { histories: [] }
   });
 
-  describe('fetchProjectIssues', () => {
-    it('returns raw issues with the producers\' properties', async () => {
-      mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => ({ issues: [doneIssue('1', 'P-1'), doneIssue('2', 'P-2')] }) });
-      const { issues, error } = await fetchProjectIssues('PROJ');
-      expect(error).toBeUndefined();
-      expect(issues.map(i => i.key)).toEqual(['P-1', 'P-2']);
-      expect(mockAppRequestJira.mock.calls[0][0]).toContain('properties=ledgerseal-cert,definitionguard-dod,checklist');
-      expect(mockAppRequestJira.mock.calls[0][0]).not.toContain('ledgersealCert');
-    });
-
-    it('returns the HTTP status and network errors', async () => {
-      mockRequestJira.mockResolvedValueOnce({ status: 502, json: async () => ({}) });
-      expect(await fetchProjectIssues('ERR')).toEqual({ issues: [], status: 502, error: 'Jira search/jql failed with HTTP 502' });
-      mockRequestJira.mockRejectedValueOnce(new Error('Connection timeout'));
-      expect((await fetchProjectIssues('T')).error).toBe('Connection timeout');
-      mockRequestJira.mockRejectedValueOnce({});
-      expect((await fetchProjectIssues('T')).error).toBe('Network error querying Jira search/jql');
-    });
-  });
-
   describe('getProjectDashboard', () => {
     it('returns rows and a summary for the context project, and stores nothing', async () => {
       const setSpy = jest.spyOn(mockStorage, 'set');
@@ -134,7 +113,8 @@ describe('FourRealities Index / Forge Handlers', () => {
     it('maps Jira failures to error codes', async () => {
       const ctx = { extension: { project: { key: 'DEMO' } } };
       for (const [status, code] of [[403, 'FORBIDDEN'], [404, 'NOT_FOUND'], [429, 'RATE_LIMITED'], [500, 'JIRA_ERROR']] as Array<[number, string]>) {
-        mockRequestJira.mockResolvedValueOnce({ status, json: async () => ({}) });
+        mockRequestJira.mockReset();
+        mockRequestJira.mockResolvedValue({ status, headers: { get: () => '0' }, json: async () => ({}) });
         const res: any = await getProjectDashboard({}, ctx, mockStorage);
         expect(res.ok).toBe(false);
         expect(res.error.code).toBe(code);
@@ -771,5 +751,50 @@ describe('B-15: Intent from link structure on both views', () => {
     });
     const dash: any = await getProjectDashboard({}, { extension: { project: { key: 'DEMO' } } }, new MockStorage());
     expect(dash.rows[0].gates.intent).toEqual({ state: 'NEEDS_RECHECK', reason: 'INTENT_LINKS_NOT_READ' });
+  });
+});
+
+describe('B-09: the dashboard reads every issue once, up to the cap', () => {
+  beforeEach(() => {
+    mockRequestJira.mockReset();
+    mockAppRequestJira.mockClear();
+  });
+
+  function pagedJira(total: number) {
+    const issues = Array.from({ length: total }, (_, i) => ({ id: String(70000 + i), key: `P-${i + 1}`, fields: { summary: 'x', status: { name: 'To Do', statusCategory: { key: 'new' } } }, properties: {} }));
+    mockRequestJira.mockImplementation(async (path: string, init?: any) => {
+      if (path === '/rest/api/3/search/approximate-count') return { status: 200, json: async () => ({ count: total }) };
+      if (path.startsWith('/rest/api/3/search/jql')) {
+        const url = new URL('https://x' + path);
+        const start = Number(url.searchParams.get('nextPageToken') || 0);
+        const batch = issues.slice(start, start + 100);
+        const next = start + 100 < total ? String(start + 100) : undefined;
+        return { status: 200, json: async () => ({ issues: batch, nextPageToken: next, isLast: !next }) };
+      }
+      return { status: 404, json: async () => ({}) };
+    });
+  }
+
+  it('shows 300 unique rows for 300 issues', async () => {
+    pagedJira(300);
+    const res: any = await getProjectDashboard({}, { extension: { project: { key: 'DEMO' } } }, new MockStorage());
+    expect(res.rows).toHaveLength(300);
+    expect(new Set(res.rows.map((r: any) => r.issueId)).size).toBe(300);
+    expect(res.coverage).toEqual({ shown: 300, totalKnown: 300, capped: false });
+  });
+
+  it('reports the cap and the approximate total above 2,000 issues', async () => {
+    pagedJira(2050);
+    const res: any = await getProjectDashboard({}, { extension: { project: { key: 'DEMO' } } }, new MockStorage());
+    expect(res.coverage).toEqual({ shown: 2000, totalKnown: 2050, capped: true });
+  });
+
+  it('retries a 429 from the search and then succeeds', async () => {
+    mockRequestJira
+      .mockResolvedValueOnce({ status: 429, headers: { get: () => '0' }, json: async () => ({}) })
+      .mockResolvedValueOnce({ status: 200, json: async () => ({ issues: [], isLast: true }) });
+    const res: any = await getProjectDashboard({}, { extension: { project: { key: 'DEMO' } } }, new MockStorage());
+    expect(res.ok).toBe(true);
+    expect(mockAppRequestJira).toHaveBeenCalledTimes(2);
   });
 });
