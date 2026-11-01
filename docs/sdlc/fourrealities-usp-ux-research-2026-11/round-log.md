@@ -246,6 +246,16 @@ AUDT-1 is left Done with label `fr-probe`.
 - Added Rule 17 to `test/architecture.test.ts` to forbid raw HTML tags across all source files in `src/`.
 - 374 of 374 tests pass; all graders PASS (grade_tdd: PASS 96.52, grade_security: PASS, grade_ui: PASS); committed `257c66b`; deployed to development as 3.13.0.
 
+### Deployed 3.14.0 (Brand Palette Styling and Card Elevation)
+
+- Added brand accent tokens and raised shadow tokens to `src/brand/brand.ts`.
+- Styled `StatusBanner` with teal brand accent surface (`color.background.accent.teal.subtlest`), teal border (`color.border.accent.teal`), and raised shadow. Formatted status header with native `Badge` without text repetition.
+- Created `GateCard` with signature brand top borders for each of the four realities (Teal for Intent, Orange for Process, Magenta for Code, Green for Audit) and uniform 23.5% width.
+- Elevated all cards with native drop shadows (`elevation.shadow.raised`) to give genuine contrast against the sunken surface.
+- Moved `TrendPanel` below `DynamicTable` to ensure the issue triage table is immediately accessible above the fold.
+- 375 of 375 tests pass; all graders PASS (grade_tdd: PASS 96.64, grade_security: PASS, grade_ui: PASS); committed `bef218f`; deployed to development as 3.14.0.
+
+
 
 
 
