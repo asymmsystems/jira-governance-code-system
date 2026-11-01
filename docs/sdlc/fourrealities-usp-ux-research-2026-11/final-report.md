@@ -48,3 +48,11 @@ Seven writes, all to AUDT-1, each listed in `round-log.md` (Loop 3). Results: th
 7. **B-26 to B-28** stay BLOCKED.
 8. **Probe data.** AUDT-1 (label `fr-probe`) stays In Progress with its remote link, exception events and rework note. Delete it when no longer needed; this run deletes nothing.
 9. **Push.** Add a remote to push the branch.
+
+## 6. Update after the report (2026-11-01, later the same day)
+
+- **Owner decisions applied:** 1B (a Jira administrator may also approve; checked live: the administrator check passes and the requester rule still refuses), the lozenge width fix, the licence check in the daily snapshot, and the benchmark timing (dashboard read view at most 6.9 ms CPU at 1,000 issues; daily run 10 searches and 694 remote-link reads at 1,000 issues).
+- **UX redesign B-33 to B-40** (owner approved the consultation review): four-gate pipeline, compact table rows with Alignment and Top finding, reality cards, alignment box with weekly delta, weakest gate and risk filter, "Why n%?", compact issue-context view, Inspect with Previous and Next, preset views. Checked live on DEMO and AUDT-1.
+- **Live fixes:** withdrawal text, request dialog title, missing-DoD drift sentence.
+- **Now:** 346 tests pass; graders PASS; development version 3.8.0; ten writes on AUDT-1, all in `round-log.md`.
+- **Still open:** B-41 (Confluence search; needs a scope and the owner's consent to upgrade the install), B-42 (retrospective review comment), a fast human typing test, a second-person approval test, the HeroCoders check (B-25), merge and push (no remote), production and Marketplace (owner only). The next agent's instructions are in `handover-gemini.md`.

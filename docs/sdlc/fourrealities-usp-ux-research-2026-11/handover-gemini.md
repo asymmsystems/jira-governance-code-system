@@ -61,10 +61,10 @@ The shell runs inside a VS Code Flatpak sandbox. Node, npx and forge run on the 
 
 ## 6. Remaining work, in order
 
-### 6.1 Update spec v2 for B-33 to B-40 (not done yet)
+### 6.1 Update spec v2 for B-33 to B-40 (DONE in `d6aab3b`; review it only)
 `docs/spec/fourrealities-spec-v2.md` has no text for the pipeline, the cards, the alignment box, the risk and preset filters, the compact issue-context view, Inspect navigation or "Why n%?". Add a "Dashboard and panel layout (B-33 to B-40)" section that states what `src/ui/pipeline.ts`, `src/ui/filters.ts`, `src/frontend/project-dashboard.tsx`, `src/frontend/issue-panel.tsx` and `src/frontend/gate-row.tsx` do. State the H5 decision: gate cards come before the alignment box. Remove or update the line "The count reads Showing n of m issues" only if it changed (it did not). Grep the spec for "RAI" and "Show Intent missing" and fix stale text.
 
-### 6.2 Update `final-report.md`
+### 6.2 Update `final-report.md` (DONE, section 6; keep it current)
 Add the post-report work (see the last two sections of `round-log.md`) and the current open points (section 7 below).
 
 ### 6.3 B-42: "Request retrospective review" (approved)
