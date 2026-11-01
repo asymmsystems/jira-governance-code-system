@@ -182,6 +182,7 @@ export interface IssueFacts {
   statusName: string;
   statusCategory: StatusCategory;
   assigneeName?: string;
+  assigneeAccountId?: string;
   sprintNames: string[];
   updated?: string;
   /** The status category is not "new", or the status changed at least once. */
@@ -210,6 +211,7 @@ export interface IssueRow {
   statusName: string;
   statusCategory: StatusCategory;
   assigneeName?: string;
+  assigneeAccountId?: string;
   sprintNames: string[];
   started: boolean;
   gates: IssueGates;
@@ -367,6 +369,8 @@ export interface LedgerSealRecord {
 /** The parts of the Forge resolver context that FourRealities reads. */
 export interface ForgeContext {
   accountId?: string;
+  /** Manifest module key of the surface that runs the UI, for example fourrealities-issue-context. */
+  moduleKey?: string;
   extension?: { issue?: { id?: string | number; key?: string }; project?: { key?: string } };
   /** Marketplace licence; Forge gives none on development installs (spec v2, D-10). */
   license?: { isActive?: boolean };

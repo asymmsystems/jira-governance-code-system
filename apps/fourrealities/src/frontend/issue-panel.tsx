@@ -10,7 +10,7 @@ import { router } from '@forge/bridge';
 import { ExceptionDecision, ExceptionNote, GATE_NAMES, GateExceptionState, GateName, IssueRow } from '../contract/data/models';
 import { PanelAction, afterActionText, raiPartsText, raiText, recoveryText, riskAppearance } from '../ui/gate-text';
 import { GatePipeline, GateRow } from './gate-row';
-import { driftText, nextActionText, scoreParts } from '../ui/pipeline';
+import { alignmentText, driftText, nextActionText, scoreParts } from '../ui/pipeline';
 import { DecisionModal, ExceptionModal, LinkDecisionModal } from './modals';
 
 /**
@@ -96,10 +96,11 @@ type OpenModal = 'none' | 'link' | 'code' | 'rework' | ExceptionDecision;
  * onRow replaces the row in place after a write, so the panel stays mounted and its message
  * stays visible (B-17). onReload is the Refresh button only.
  */
-export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void; onRow: (row: IssueRow) => void }> = ({ row, onReload, onRow }) => {
+export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void; onRow: (row: IssueRow) => void; compact?: boolean }> = ({ row, onReload, onRow, compact = false }) => {
   const [open, setOpen] = useState<OpenModal>('none');
   const [message, setMessage] = useState<string | null>(null);
   const [why, setWhy] = useState<boolean>(false);
+  const [expanded, setExpanded] = useState<boolean>(!compact);
 
   const done = (action: PanelAction) => (after?: IssueRow) => {
     setOpen('none');
@@ -108,6 +109,26 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void; onRow: 
   };
 
   const needsProducer = row.gates.audit.state === 'MISSING' || row.gates.process.state === 'MISSING';
+
+  // Compact view for the issue context sidebar (B-38): the glance, and the findings on demand.
+  if (!expanded) {
+    return (
+      <Stack space="space.100">
+        {message ? (
+          <SectionMessage appearance="information" title="Recorded">
+            <Text>{message}</Text>
+          </SectionMessage>
+        ) : null}
+        <GatePipeline gates={row.gates} arrows={false} />
+        <Inline space="space.100" alignBlock="center" shouldWrap>
+          <Text>{alignmentText(row)}</Text>
+          {row.rai !== null ? <Lozenge maxWidth="100%" appearance={riskAppearance(row.risk)}>{`${row.risk} risk`}</Lozenge> : null}
+        </Inline>
+        <Text>{nextActionText(row) || driftText(row)}</Text>
+        <Button appearance="subtle" onClick={() => setExpanded(true)}>See all findings</Button>
+      </Stack>
+    );
+  }
 
   return (
     <Stack space="space.150">
@@ -120,6 +141,7 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void; onRow: 
       <Inline space="space.100" alignBlock="center" shouldWrap>
         <Heading as="h4">Delivery evidence: {row.issueKey}</Heading>
         <Button appearance="subtle" onClick={onReload}>Refresh</Button>
+        {compact ? <Button appearance="subtle" onClick={() => setExpanded(false)}>Hide findings</Button> : null}
       </Inline>
 
       <GatePipeline gates={row.gates} />

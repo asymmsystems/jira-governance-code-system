@@ -5,7 +5,7 @@
  */
 
 import { GateResult, IssueRow } from '../../src/contract/data/models';
-import { NO_FILTERS, activeFilters, applyFilters, filterOptions, UNASSIGNED } from '../../src/ui/filters';
+import { NO_FILTERS, PRESETS, activeFilters, applyFilters, filterOptions, presetFilters, toggleRisk, UNASSIGNED } from '../../src/ui/filters';
 
 const F: GateResult = { state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK' };
 const M: GateResult = { state: 'MISSING', reason: 'INTENT_NONE' };
@@ -57,9 +57,29 @@ describe('activeFilters', () => {
 });
 
 describe('B-39: risk filter', () => {
-  it('keeps the rows of one risk level, and names the filter for removal', () => {
-    const risky = [{ ...rows[0], risk: 'HIGH' as const }, { ...rows[1], risk: 'LOW' as const }, rows[2]];
-    expect(applyFilters(risky, { ...NO_FILTERS, risk: 'HIGH' }).map(x => x.issueKey)).toEqual(['A-1']);
-    expect(activeFilters({ ...NO_FILTERS, risk: 'CRITICAL' })).toEqual([{ field: 'risk', label: 'Risk: Critical' }]);
+  it('keeps the rows of the chosen risk levels, and names the filter for removal', () => {
+    const risky = [{ ...rows[0], risk: 'HIGH' as const }, { ...rows[1], risk: 'LOW' as const }, { ...rows[2], risk: 'CRITICAL' as const }];
+    expect(applyFilters(risky, { ...NO_FILTERS, risks: ['HIGH'] }).map(x => x.issueKey)).toEqual(['A-1']);
+    expect(applyFilters(risky, { ...NO_FILTERS, risks: ['CRITICAL', 'HIGH'] }).map(x => x.issueKey)).toEqual(['A-1', 'A-3']);
+    expect(activeFilters({ ...NO_FILTERS, risks: ['CRITICAL', 'HIGH'] })).toEqual([{ field: 'risks', label: 'Risk: Critical, High' }]);
+    expect(toggleRisk(['CRITICAL'], 'HIGH')).toEqual(['CRITICAL', 'HIGH']);
+    expect(toggleRisk(['CRITICAL', 'HIGH'], 'CRITICAL')).toEqual(['HIGH']);
+  });
+});
+
+describe('B-40: preset views', () => {
+  const mine = [{ ...rows[0], assigneeAccountId: 'acc-1' }, { ...rows[1], assigneeAccountId: 'acc-2' }, rows[2]];
+
+  it('sets the filters of each preset, keeping the search text', () => {
+    expect(presetFilters('mine', 'acc-1', 'x')).toEqual({ ...NO_FILTERS, assigneeId: 'acc-1', search: 'x' });
+    expect(presetFilters('urgent', 'acc-1', '')).toEqual({ ...NO_FILTERS, risks: ['CRITICAL', 'HIGH'] });
+    expect(presetFilters('audit', 'acc-1', '')).toEqual({ ...NO_FILTERS, missingGate: 'audit' });
+    expect(presetFilters('decision', 'acc-1', '')).toEqual({ ...NO_FILTERS, missingGate: 'intent' });
+    expect(PRESETS.map(p => p.label)).toEqual(['My issues', 'Critical and high', 'Audit prep', 'Needs a decision link']);
+  });
+
+  it('filters by the viewer account and names it "My issues"', () => {
+    expect(applyFilters(mine, { ...NO_FILTERS, assigneeId: 'acc-1' }).map(x => x.issueKey)).toEqual(['A-1']);
+    expect(activeFilters({ ...NO_FILTERS, assigneeId: 'acc-1' })).toEqual([{ field: 'assigneeId', label: 'My issues' }]);
   });
 });

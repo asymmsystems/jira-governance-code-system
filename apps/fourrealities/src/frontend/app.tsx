@@ -23,6 +23,8 @@ export const FourRealitiesApp: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [licenceInactive, setLicenceInactive] = useState<boolean>(false);
+  const [compact, setCompact] = useState<boolean>(false);
+  const [viewerAccountId, setViewerAccountId] = useState<string | undefined>(undefined);
 
   const load = async (refresh = false) => {
     setLoading(true);
@@ -32,6 +34,8 @@ export const FourRealitiesApp: React.FC = () => {
       const context = (await view.getContext().catch(() => null)) as ForgeContext | null;
       const issueView = Boolean(context?.extension?.issue);
       setIsIssueView(issueView);
+      setCompact(context?.moduleKey === 'fourrealities-issue-context');
+      setViewerAccountId(context?.accountId);
       const resolver = issueView ? 'getIssueAlignment' : refresh ? 'refreshProjectSnapshot' : 'getProjectDashboard';
       const res = (await invoke<Record<string, never>, LoadResult>(resolver, {})) as LoadResult | undefined;
       if (!res?.ok) {
@@ -79,6 +83,6 @@ export const FourRealitiesApp: React.FC = () => {
   }
 
   return isIssueView
-    ? <IssuePanel row={row as IssueRow} onReload={() => load()} onRow={setRow} />
-    : <ProjectDashboard view={dashboard as ProjectDashboardView} onRefresh={() => load(true)} />;
+    ? <IssuePanel row={row as IssueRow} onReload={() => load()} onRow={setRow} compact={compact} />
+    : <ProjectDashboard view={dashboard as ProjectDashboardView} onRefresh={() => load(true)} viewerAccountId={viewerAccountId} />;
 };

@@ -67,6 +67,7 @@ export class DefaultMetricsEngine implements MetricsEngine {
       statusName: facts.statusName,
       statusCategory: facts.statusCategory,
       assigneeName: facts.assigneeName,
+      ...(facts.assigneeAccountId ? { assigneeAccountId: facts.assigneeAccountId } : {}),
       sprintNames: facts.sprintNames,
       started: facts.started,
       gates,

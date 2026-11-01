@@ -32,7 +32,7 @@ import {
 import { router } from '@forge/bridge';
 import { GATE_NAMES, GateCount, GateName, IssueRow, ProjectDashboardView, RiskLevel } from '../contract/data/models';
 import { GATE_LABEL, raiText, rateText, riskAppearance } from '../ui/gate-text';
-import { DashboardFilters, FilterField, GATE_FILTER_OPTIONS, RISK_WORD, NO_FILTERS, activeFilters, applyFilters, filterOptions, missingGateLabel } from '../ui/filters';
+import { DashboardFilters, FilterField, GATE_FILTER_OPTIONS, PRESETS, RISK_WORD, presetFilters, toggleRisk, NO_FILTERS, activeFilters, applyFilters, filterOptions, missingGateLabel } from '../ui/filters';
 import { triageOrder } from '../ui/triage';
 import { TREND_WEEKS, chartData, recentWeeks, trendNotice, trendTableRows } from '../ui/trend';
 import { GatePipeline, GateRow } from './gate-row';
@@ -103,15 +103,17 @@ export const TrendPanel: React.FC<{ view: ProjectDashboardView }> = ({ view }) =
   );
 };
 
-export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh: () => void }> = ({ view, onRefresh }) => {
+export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh: () => void; viewerAccountId?: string }> = ({ view, onRefresh, viewerAccountId }) => {
   const [filters, setFilters] = useState<DashboardFilters>(NO_FILTERS);
-  const [selected, setSelected] = useState<IssueRow | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const options = useMemo(() => filterOptions(view.rows), [view.rows]);
   const visible = useMemo(() => applyFilters(triageOrder(view.rows), filters), [view.rows, filters]);
   const set = (patch: Partial<DashboardFilters>) => setFilters(f => ({ ...f, ...patch }));
-  const remove = (field: FilterField) => set({ [field]: null });
+  const remove = (field: FilterField) => set(field === 'risks' ? { risks: [] } : { [field]: null });
   const active = activeFilters(filters);
+  const position = visible.findIndex(r => r.issueId === selectedId);
+  const selected = position >= 0 ? visible[position] : view.rows.find(r => r.issueId === selectedId) || null;
 
   const { summary } = view;
 
@@ -127,14 +129,14 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
 
   const head = {
     cells: [
-      { key: 'key', content: 'Issue', isSortable: true },
-      { key: 'summary', content: 'Summary' },
-      { key: 'gates', content: 'Gates' },
-      { key: 'rai', content: 'Alignment', isSortable: true },
-      { key: 'finding', content: 'Top finding' },
+      { key: 'key', content: 'Issue', isSortable: true, width: 7 },
+      { key: 'summary', content: 'Summary', width: 18 },
+      { key: 'gates', content: 'Gates', width: 34 },
+      { key: 'rai', content: 'Alignment', isSortable: true, width: 9 },
+      { key: 'finding', content: 'Top finding', width: 18 },
       // Not sortable: the table never orders people next to a score (B-21, H5). Use the Assignee filter.
-      { key: 'assignee', content: 'Assignee' },
-      { key: 'action', content: 'Action' }
+      { key: 'assignee', content: 'Assignee', width: 8 },
+      { key: 'action', content: 'Action', width: 6 }
     ]
   };
 
@@ -147,7 +149,7 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
       { key: r.rai === null ? '999' : String(r.rai).padStart(3, '0'), content: <Lozenge maxWidth="100%" appearance={riskAppearance(r.risk)}>{raiText(r)}</Lozenge> },
       { key: 'finding', content: <Text>{driftText(r)}</Text> },
       { key: r.assigneeName || 'Unassigned', content: <Text>{r.assigneeName || 'Unassigned'}</Text> },
-      { key: 'action', content: <Button appearance="subtle" onClick={() => setSelected(r)}>Inspect</Button> }
+      { key: 'action', content: <Button appearance="subtle" onClick={() => setSelectedId(r.issueId)}>Inspect</Button> }
     ]
   }));
 
@@ -190,7 +192,7 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
           <Inline space="space.100" alignBlock="center" shouldWrap>
             <Text>Risk:</Text>
             {RISK_BUTTONS.map(([level, key]) => (
-              <Button key={level} appearance={filters.risk === level ? 'primary' : 'default'} onClick={() => set({ risk: filters.risk === level ? null : level })}>
+              <Button key={level} appearance={filters.risks.includes(level) ? 'primary' : 'default'} onClick={() => set({ risks: toggleRisk(filters.risks, level) })}>
                 {`${RISK_WORD[level]} ${summary.riskDistribution[key]}`}
               </Button>
             ))}
@@ -227,6 +229,13 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
       </Inline>
 
       <Inline space="space.100" alignBlock="center" shouldWrap>
+        <Text>Views:</Text>
+        {PRESETS.filter(p => p.name !== 'mine' || viewerAccountId).map(p => (
+          <Button key={p.name} appearance="default" onClick={() => setFilters(f => presetFilters(p.name, viewerAccountId || '', f.search))}>{p.label}</Button>
+        ))}
+      </Inline>
+
+      <Inline space="space.100" alignBlock="center" shouldWrap>
         {active.map(a => (
           <Button key={a.field} appearance="subtle" onClick={() => remove(a.field)}>{`Remove filter: ${a.label}`}</Button>
         ))}
@@ -237,17 +246,21 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
       <DynamicTable head={head} rows={rows} rowsPerPage={25} emptyView={<Text>No issues match the filters.</Text>} />
 
       {selected ? (
-        <Modal onClose={() => setSelected(null)} width="large">
+        <Modal onClose={() => setSelectedId(null)} width="large">
           <ModalHeader>
             <ModalTitle>{`${selected.issueKey}: ${selected.summary}`}</ModalTitle>
           </ModalHeader>
           <ModalBody>
             <Stack space="space.150">
+              <GatePipeline gates={selected.gates} />
+              <Text>{driftText(selected)}</Text>
               {GATE_NAMES.map(g => <GateRow key={g} gate={g} result={selected.gates[g]} />)}
             </Stack>
           </ModalBody>
           <ModalFooter>
-            <Button appearance="subtle" onClick={() => setSelected(null)}>Close</Button>
+            <Button appearance="subtle" isDisabled={position <= 0} onClick={() => setSelectedId(visible[position - 1].issueId)}>Previous issue</Button>
+            <Button appearance="subtle" isDisabled={position < 0 || position >= visible.length - 1} onClick={() => setSelectedId(visible[position + 1].issueId)}>Next issue</Button>
+            <Button appearance="subtle" onClick={() => setSelectedId(null)}>Close</Button>
             <Button appearance="primary" onClick={() => router.open(`/browse/${selected.issueKey}`)}>Open issue</Button>
           </ModalFooter>
         </Modal>

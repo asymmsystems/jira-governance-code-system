@@ -98,6 +98,22 @@ describe('FourRealitiesApp rendering', () => {
     expect(textOf(renderer.toJSON())).toContain('The FourRealities licence for this site is not active.');
   });
 
+  it('B-38: renders the compact panel in the issue context module, and passes the viewer to the dashboard', async () => {
+    bridgeState.context = { moduleKey: 'fourrealities-issue-context', extension: { issue: { id: '7', key: 'DEMO-7' } } };
+    bridgeState.invoke.mockResolvedValueOnce({ ok: true, row: row('DEMO-7', { intent: M_INTENT, process: NA, code: NA, audit: NA }) });
+    let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<FourRealitiesApp />); });
+    await settle(act);
+    expect(renderer.root.findAll((n: any) => n.props && n.props.compact === true).length).toBeGreaterThan(0);
+    findButton(renderer.root, 'See all findings');
+
+    bridgeState.context = { accountId: 'acc-9', extension: { project: { key: 'DEMO' } } };
+    bridgeState.invoke.mockResolvedValueOnce({ ok: true, ...dashboard([row('DEMO-1', { intent: F, process: NA, code: NA, audit: NA })]) });
+    await act(async () => { renderer = TestRenderer.create(<FourRealitiesApp />); });
+    await settle(act);
+    expect(renderer.root.findAll((n: any) => n.props && n.props.viewerAccountId === 'acc-9').length).toBeGreaterThan(0);
+  });
+
   it('shows the resolver error message from an error envelope', async () => {
     bridgeState.context = { extension: { project: { key: 'DEMO' } } };
     bridgeState.invoke.mockResolvedValue({ ok: false, error: { code: 'FORBIDDEN', message: 'Live Jira sync failed (HTTP 403).' } });

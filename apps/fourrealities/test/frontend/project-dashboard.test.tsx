@@ -194,7 +194,44 @@ describe('ProjectDashboard', () => {
     expect(risk).toEqual(['Critical 1', 'High 1', 'Medium 0', 'Low 1']);
     await act(async () => { findButton(r.root, 'Critical 1').props.onClick(); });
     expect(tableKeys(r)).toEqual(['DEMO-2']);
-    expect(textOf(r.toJSON())).toContain('Remove filter: Risk: Critical');
+    await act(async () => { findButton(r.root, 'High 1').props.onClick(); });
+    expect(tableKeys(r)).toEqual(['DEMO-2', 'DEMO-3']);
+    expect(textOf(r.toJSON())).toContain('Remove filter: Risk: Critical, High');
+  });
+
+  it('B-34: gives the Gates column the most width, so the four chips fit on one line', async () => {
+    const r = await mount(dashboard(rows));
+    const widths = Object.fromEntries(findAll(r.root, 'DynamicTable')[0].props.head.cells.map((c: any) => [c.key, c.width]));
+    expect(widths).toEqual({ key: 7, summary: 18, gates: 34, rai: 9, finding: 18, assignee: 8, action: 6 });
+  });
+
+  it('B-40: preset views set the filters, and My issues uses the viewer account', async () => {
+    const mineRows = [row('DEMO-1', { intent: F, process: F, code: NA, audit: F }, { assigneeAccountId: 'acc-1' }), ...rows.slice(1)];
+    let r: any;
+    await act(async () => { r = TestRenderer.create(<ProjectDashboard view={dashboard(mineRows)} onRefresh={jest.fn()} viewerAccountId="acc-1" />); });
+    await act(async () => { findButton(r.root, 'My issues').props.onClick(); });
+    expect(tableKeys(r)).toEqual(['DEMO-1']);
+    await act(async () => { findButton(r.root, 'Needs a decision link').props.onClick(); });
+    expect(tableKeys(r)).toEqual(['DEMO-2', 'DEMO-3']);
+    const anonymous = await mount(dashboard(rows));
+    expect(() => findButton(anonymous.root, 'My issues')).toThrow('No button');
+  });
+
+  it('B-40: Inspect shows the pipeline and the drift sentence, and steps through the visible rows', async () => {
+    const r = await mount(dashboard(rows));
+    await act(async () => { findAll(r.root, 'DynamicTable')[0].props.rows[0].cells[6].content.props.onClick(); });
+    const title = () => flatText(findAll(r.root, 'ModalTitle')[0].props.children);
+    expect(title()).toBe('DEMO-2: Work DEMO-2');
+    expect(textOf(TestRenderer.create(findAll(r.root, 'Modal')[0].props.children[1]).toJSON())).toContain('No decision record is linked.');
+    expect(findButton(r.root, 'Previous issue').props.isDisabled).toBe(true);
+    await act(async () => { findButton(r.root, 'Next issue').props.onClick(); });
+    expect(title()).toBe('DEMO-3: Work DEMO-3');
+    await act(async () => { findButton(r.root, 'Next issue').props.onClick(); });
+    await act(async () => { findButton(r.root, 'Next issue').props.onClick(); });
+    expect(title()).toBe('DEMO-4: Work DEMO-4');
+    expect(findButton(r.root, 'Next issue').props.isDisabled).toBe(true);
+    await act(async () => { findButton(r.root, 'Previous issue').props.onClick(); });
+    expect(title()).toBe('DEMO-1: Work DEMO-1');
   });
 
   it('B-34: shows each issue as a compact pipeline and a top finding, not four text boxes', async () => {
@@ -289,7 +326,7 @@ describe('ProjectDashboard', () => {
     await act(async () => { findAll(r.root, 'DynamicTable')[0].props.rows[0].cells[6].content.props.onClick(); });
     const modal = findAll(r.root, 'Modal')[0];
     const modalButtons = modal.findAll((n: any) => n.type === 'ui-Button').map((b: any) => String(b.props.children));
-    expect(modalButtons.sort()).toEqual(['Close', 'Open issue']);
+    expect(modalButtons.sort()).toEqual(['Close', 'Next issue', 'Open issue', 'Previous issue']);
   });
 });
 

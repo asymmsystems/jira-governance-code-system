@@ -106,6 +106,7 @@ export function factsFromIssue(iss: JiraIssueJson | undefined, options: FactOpti
     statusName: String(fields.status?.name || ''),
     statusCategory,
     assigneeName: fields.assignee?.displayName,
+    assigneeAccountId: fields.assignee?.accountId,
     sprintNames: Array.from(new Set(sprintNames)),
     updated: fields.updated,
     started: statusCategory !== 'new' || statusChanges > 0,

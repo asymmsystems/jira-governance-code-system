@@ -67,6 +67,22 @@ describe('IssuePanel', () => {
     expect(() => findButton(unrated.root, 'Why')).toThrow('No button');
   });
 
+  it('B-38: the compact view shows the pipeline, alignment and next action, and opens the findings on demand', async () => {
+    let r: any;
+    await act(async () => { r = TestRenderer.create(<IssuePanel row={row('DEMO-5', { intent: M_INTENT, process: F, code: NA, audit: F })} onReload={jest.fn()} onRow={jest.fn()} compact />); });
+    const text = textOf(r.toJSON());
+    expect(text).toContain('Alignment 67%');
+    expect(text).toContain('Next: link the decision record.');
+    expect(findAll(r.root, 'Tooltip')).toHaveLength(4);
+    expect(text).not.toContain('Source: Jira issue links and remote links.');
+    expect(() => findButton(r.root, 'Link decision record')).toThrow('No button');
+    await act(async () => { findButton(r.root, 'See all findings').props.onClick(); });
+    expect(textOf(r.toJSON())).toContain('Source: Jira issue links and remote links.');
+    findButton(r.root, 'Link decision record');
+    await act(async () => { findButton(r.root, 'Hide findings').props.onClick(); });
+    expect(textOf(r.toJSON())).not.toContain('Source: Jira issue links and remote links.');
+  });
+
   it('B-21: shows the four gates first and RAI after them, with no RAI in the heading', async () => {
     const r = await mount(row('DEMO-5', { intent: M_INTENT, process: F, code: NA, audit: F }));
     const lozenges = findAll(r.root, 'Lozenge').map((l: any) => String(l.props.children));
