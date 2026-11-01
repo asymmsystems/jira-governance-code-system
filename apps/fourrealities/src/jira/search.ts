@@ -98,3 +98,29 @@ async function approximateCount(jql: string, request: JiraRequest): Promise<numb
     return null;
   }
 }
+
+/**
+ * Ids of the project's issues that the caller can browse: an id-only search, paged with
+ * nextPageToken. "complete" is false when the read stopped early (error or deadline).
+ */
+export async function visibleIssueIds(projectKey: string, request: JiraRequest, deadline: number): Promise<{ ids: Set<string>; complete: boolean; status?: number }> {
+  const jql = `project = "${projectKey}" ORDER BY created DESC`;
+  const ids = new Set<string>();
+  let token: string | undefined;
+  try {
+    do {
+      const res = token
+        ? await request(route`/rest/api/3/search/jql?jql=${jql}&maxResults=${PAGE_SIZE}&fields=id&nextPageToken=${token}`)
+        : await request(route`/rest/api/3/search/jql?jql=${jql}&maxResults=${PAGE_SIZE}&fields=id`);
+      if (res.status !== 200) {
+        return { ids, complete: false, status: res.status };
+      }
+      const data = await res.json();
+      for (const iss of data.issues || []) ids.add(String(iss.id));
+      token = data.isLast ? undefined : data.nextPageToken;
+    } while (token && Date.now() < deadline);
+  } catch {
+    return { ids, complete: false };
+  }
+  return { ids, complete: !token };
+}

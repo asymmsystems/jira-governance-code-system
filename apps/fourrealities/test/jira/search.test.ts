@@ -107,3 +107,32 @@ describe('withRetry', () => {
     expect(send).toHaveBeenCalledWith('/x', { method: 'POST' });
   });
 });
+
+describe('visibleIssueIds', () => {
+  const { visibleIssueIds } = require('../../src/jira/search');
+
+  it('pages an id-only search and returns the ids the caller can see', async () => {
+    const request = jest.fn(async (r: any) => {
+      const path = pathOf(r);
+      const token = new URL('https://x' + path).searchParams.get('nextPageToken');
+      return token
+        ? { status: 200, json: async () => ({ issues: [{ id: '3' }], isLast: true }) }
+        : { status: 200, json: async () => ({ issues: [{ id: '1' }, { id: '2' }], nextPageToken: 'p2' }) };
+    });
+    const res = await visibleIssueIds('DEMO', request, Date.now() + 10_000);
+    expect(res).toEqual({ ids: new Set(['1', '2', '3']), complete: true });
+    const first = pathOf(request.mock.calls[0][0]);
+    expect(first).toContain('fields=id');
+    expect(first).toContain('maxResults=100');
+  });
+
+  it('reports the status of a refused search, and an incomplete read at the deadline', async () => {
+    const refused = jest.fn(async () => ({ status: 403, json: async () => ({}) }));
+    expect(await visibleIssueIds('DEMO', refused, Date.now() + 10_000)).toEqual({ ids: new Set(), complete: false, status: 403 });
+    const endless = jest.fn(async () => ({ status: 200, json: async () => ({ issues: [{ id: '1' }], nextPageToken: 'more' }) }));
+    const partial = await visibleIssueIds('DEMO', endless, Date.now() + 5);
+    expect(partial.complete).toBe(false);
+    const thrown = jest.fn(async () => { throw new Error('x'); });
+    expect((await visibleIssueIds('DEMO', thrown, Date.now() + 10_000)).complete).toBe(false);
+  });
+});

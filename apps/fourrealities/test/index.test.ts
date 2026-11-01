@@ -23,8 +23,24 @@ import { StorageProvider, MetricsRepository } from '../src/storage/metrics-repos
 // One response queue (mockRequestJira) and one recording mock per principal,
 // so a test can assert which principal made each call (FR-22).
 const mockRequestJira = jest.fn();
-const mockAppRequestJira = jest.fn((...args: any[]) => mockRequestJira(...args));
-const mockUserRequestJira = jest.fn((...args: any[]) => mockRequestJira(...args));
+// The viewer check (an id-only search as the user) sees every issue the last app search returned,
+// unless a test overrides it.
+const mockSeen: { ids: string[] } = { ids: [] };
+const mockDefaultApp = async (...args: any[]) => {
+  const res = await mockRequestJira(...args);
+  if (String(args[0]).startsWith('/rest/api/3/search/jql') && res?.status === 200) {
+    const body = await res.json();
+    const page = (body?.issues || []).map((i: any) => String(i.id));
+    mockSeen.ids = String(args[0]).includes('nextPageToken=') ? [...mockSeen.ids, ...page] : page;
+    return { ...res, json: async () => body };
+  }
+  return res;
+};
+const mockDefaultUser = (...args: any[]) => (String(args[0]).includes('fields=id')
+  ? Promise.resolve({ status: 200, json: async () => ({ issues: mockSeen.ids.map(id => ({ id })), isLast: true }) })
+  : mockRequestJira(...args));
+const mockAppRequestJira = jest.fn(mockDefaultApp);
+const mockUserRequestJira = jest.fn(mockDefaultUser);
 jest.mock('@forge/api', () => ({
   __esModule: true,
   default: {
@@ -910,3 +926,63 @@ describe('B-08: bounded storage and a scheduled snapshot', () => {
     }
   });
 });
+
+describe('B-13: dashboard rows respect the viewer', () => {
+  const { MemoryStorage } = require('./storage/memory-storage');
+  const ctx = { extension: { project: { key: 'DEMO' } }, accountId: 'acc-1' };
+  const all = ['1', '2', '3'].map(id => ({ id: `9000${id}`, key: `DEMO-${id}`, fields: { summary: 'x', status: { name: 'Done', statusCategory: { key: 'done' } } }, properties: {} }));
+  const seeded = () => {
+    const st = new MemoryStorage();
+    st.store.set('fr:cfg:site', { devFieldId: null, siteHost: 'asymmsystems.atlassian.net', readAt: new Date().toISOString() });
+    return st;
+  };
+  beforeEach(() => {
+    mockRequestJira.mockReset();
+    mockAppRequestJira.mockClear();
+    mockUserRequestJira.mockClear();
+  });
+
+  it('returns only the rows the viewer can browse, with the summary recomputed', async () => {
+    mockAppRequestJira.mockImplementation(async (path: string) => (path.startsWith('/rest/api/3/search/jql')
+      ? { status: 200, json: async () => ({ issues: all, isLast: true }) }
+      : { status: 404, json: async () => ({}) }));
+    mockUserRequestJira.mockImplementation(async () => ({ status: 200, json: async () => ({ issues: [{ id: '90001' }, { id: '90003' }], isLast: true }) }));
+    const res: any = await getProjectDashboard({}, ctx, seeded());
+    expect(res.rows.map((r: any) => r.issueKey)).toEqual(['DEMO-1', 'DEMO-3']);
+    expect(res.summary.totalIssues).toBe(2);
+    expect(String(mockUserRequestJira.mock.calls[0][0])).toContain('fields=id');
+    mockAppRequestJira.mockReset();
+    mockAppRequestJira.mockImplementation(mockDefaultApp);
+    mockUserRequestJira.mockReset();
+    mockUserRequestJira.mockImplementation(mockDefaultUser);
+  });
+
+  it('shows no rows when the viewer check fails', async () => {
+    mockAppRequestJira.mockImplementation(async (path: string) => (path.startsWith('/rest/api/3/search/jql')
+      ? { status: 200, json: async () => ({ issues: all, isLast: true }) }
+      : { status: 404, json: async () => ({}) }));
+    mockUserRequestJira.mockImplementation(async () => ({ status: 403, json: async () => ({}) }));
+    const res: any = await getProjectDashboard({}, ctx, seeded());
+    expect(res).toEqual({ ok: false, error: { code: 'FORBIDDEN', message: 'FourRealities could not check which issues you can see (HTTP 403).', status: 403 } });
+    mockAppRequestJira.mockReset();
+    mockAppRequestJira.mockImplementation(mockDefaultApp);
+    mockUserRequestJira.mockReset();
+    mockUserRequestJira.mockImplementation(mockDefaultUser);
+  });
+
+  it('warns and shows only checked rows when the viewer check stops early', async () => {
+    mockAppRequestJira.mockImplementation(async (path: string) => (path.startsWith('/rest/api/3/search/jql')
+      ? { status: 200, json: async () => ({ issues: all, isLast: true }) }
+      : { status: 404, json: async () => ({}) }));
+    mockUserRequestJira.mockImplementation(async () => { throw new Error('socket'); });
+    const res: any = await getProjectDashboard({}, ctx, seeded());
+    expect(res.ok).toBe(true);
+    expect(res.rows).toEqual([]);
+    expect(res.warning).toBe('FourRealities could not finish checking which issues you can see. Only the issues it checked are shown.');
+    mockAppRequestJira.mockReset();
+    mockAppRequestJira.mockImplementation(mockDefaultApp);
+    mockUserRequestJira.mockReset();
+    mockUserRequestJira.mockImplementation(mockDefaultUser);
+  });
+});
+

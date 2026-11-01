@@ -12,7 +12,7 @@ import { MetricsRepository, StorageProvider } from './storage/metrics-repository
 import { SnapshotRepository } from './storage/snapshot-repository';
 import { factsFromIssue, normalizeException, PROPERTY_KEYS } from './jira/issue-facts';
 import { getSiteConfig } from './jira/site-config';
-import { issueFields, withRetry } from './jira/search';
+import { issueFields, visibleIssueIds, withRetry } from './jira/search';
 import { jiraError } from './jira/errors';
 import { parseDevField } from './jira/dev-field';
 import { buildSnapshot } from './snapshot';
@@ -117,7 +117,18 @@ async function projectView(context: any, storageProvider: StorageProvider | unde
     }
     snapshot = built;
   }
-  return { ok: true, ...(await dashboardView(String(projectKey), snapshot, repo)) };
+  // The snapshot is built as the app. Each viewer sees only the issues they can browse (FR-18).
+  const deadline = Date.now() + RESOLVER_LINK_BUDGET_MS;
+  const visible = await visibleIssueIds(String(projectKey), withRetry(asUserRequest, () => deadline), deadline);
+  if (visible.status !== undefined) {
+    return jiraError(visible.status, `FourRealities could not check which issues you can see (HTTP ${visible.status}).`);
+  }
+  const rows = snapshot.rows.filter(r => visible.ids.has(r.issueId));
+  const view = await dashboardView(String(projectKey), { meta: snapshot.meta, rows }, repo);
+  if (!visible.complete) {
+    view.warning = 'FourRealities could not finish checking which issues you can see. Only the issues it checked are shown.';
+  }
+  return { ok: true, ...view };
 }
 
 /**
