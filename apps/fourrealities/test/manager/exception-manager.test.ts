@@ -129,7 +129,9 @@ describe('DefaultExceptionManager.decide (Option C)', () => {
     const res = await manager.decide(issueView('dev-1'), { decision: 'WITHDRAW' });
     expect(res.success).toBe(true);
     expect(userJira.hasProjectPermission).not.toHaveBeenCalled();
-    expect(events.append.mock.calls[0][0]).toEqual(expect.objectContaining({ status: 'WITHDRAWN', asRole: 'REQUESTER' }));
+    expect(events.append.mock.calls[0][0]).toEqual(expect.objectContaining({ status: 'WITHDRAWN', asRole: 'REQUESTER', reason: 'Withdrawn without comment.' }));
+    // Found live on AUDT-1: a withdrawal without a comment was stored as "Approved without comment."
+    expect(res.record?.code?.decisionReason).toBe('Withdrawn without comment.');
   });
 
   it('revokes an approved exception with a reason, and rejects needs a reason', async () => {

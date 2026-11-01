@@ -101,6 +101,7 @@ describe('IssuePanel', () => {
     expect(textOf(r.toJSON())).toContain('Rework loops: 2.');
 
     await act(async () => { findButton(r.root, 'Request Code exception').props.onClick(); });
+    expect(findAll(r.root, 'ModalTitle').map((t: any) => String(t.props.children))).toEqual(['Request a Code exception for DEMO-9']);
     expect(findAll(r.root, 'Textfield').map((f: any) => f.props.defaultValue)).toEqual([undefined, undefined]);
     await act(async () => { type(r, 'fr-exception-reason', 'Configuration change only'); type(r, 'fr-exception-notes', 'CHG-1'); });
     bridgeState.invoke.mockResolvedValueOnce({ success: false, error: 'Reason too short' });

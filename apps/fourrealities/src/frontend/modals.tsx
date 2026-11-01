@@ -101,7 +101,7 @@ export const ExceptionModal: React.FC<ModalProps & { type: 'CODE' | 'REWORK' }> 
   return (
     <Modal onClose={onClose}>
       <ModalHeader>
-        <ModalTitle>{type === 'CODE' ? `Record a Code exception for ${issueKey}` : `Record a rework reason for ${issueKey}`}</ModalTitle>
+        <ModalTitle>{type === 'CODE' ? `Request a Code exception for ${issueKey}` : `Record a rework reason for ${issueKey}`}</ModalTitle>
       </ModalHeader>
       <ModalBody>
         <Stack space="space.100">

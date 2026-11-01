@@ -13,6 +13,12 @@ import { messageOf } from '../contract/data/errors';
 
 const DECISIONS: ExceptionDecision[] = ['APPROVE', 'REJECT', 'REVOKE', 'WITHDRAW'];
 
+/** Stored when a decision comes without a comment. Reject and revoke always need a reason. */
+const NO_COMMENT: Partial<Record<ExceptionDecision, string>> = {
+  APPROVE: 'Approved without comment.',
+  WITHDRAW: 'Withdrawn without comment.'
+};
+
 export interface ExceptionManagerDeps {
   userJira: JiraIssueAccessor;
   siteConfig: SiteConfigAccessor;
@@ -146,7 +152,7 @@ export class DefaultExceptionManager implements ExceptionManager {
     const event: GateExceptionEvent = {
       schemaVersion: 3, issueId: String(issueId), issueKey, gate: 'code', status: this.d.lifecycle.targetStatus(decision),
       at: this.now(), byAccountId: caller.accountId, asRole: decision === 'WITHDRAW' ? 'REQUESTER' : 'APPROVER',
-      reason: reason || 'Approved without comment.'
+      reason: reason || NO_COMMENT[decision] || ''
     };
     return this.commit(event, events, await this.d.notes.list(String(issueId)));
   }
