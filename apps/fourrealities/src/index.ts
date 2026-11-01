@@ -116,21 +116,37 @@ export async function getIssueAlignment(payload: any, context?: any, storageProv
 }
 
 /**
+ * After a successful write from the issue panel, reads the issue again as the user and adds its
+ * row, so the panel shows the state Jira returns (B-17, FR-20). A failed read leaves no row.
+ */
+async function withRow<T extends { success: boolean }>(app: ReturnType<typeof compose>, caller: CallerContext, result: T): Promise<T & { row?: IssueRow }> {
+  if (!result.success || !caller.issueId) return result;
+  const evaluated = await app.issues.evaluate(caller);
+  return evaluated.ok ? { ...result, row: evaluated.row } : result;
+}
+
+/**
  * Remediation Resolvers. FourRealities never writes the LedgerSeal or DefinitionGuard
  * properties: that evidence belongs to the producer apps (one writer per fact).
  */
-export async function linkDecision(payload: any, context?: any): Promise<{ success: boolean; remoteLink?: any; error?: string }> {
-  return compose(undefined, RESOLVER_LINK_BUDGET_MS, 'user').issues.linkDecision(callerOf(context), payload);
+export async function linkDecision(payload: any, context?: any, storageProvider?: StorageProvider): Promise<{ success: boolean; remoteLink?: any; error?: string; row?: IssueRow }> {
+  const app = compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user');
+  const caller = callerOf(context);
+  return withRow(app, caller, await app.issues.linkDecision(caller, payload));
 }
 
 /** Requests a Code exception, or records a rework note. */
-export async function recordException(payload: any, context?: any, storageProvider?: StorageProvider): Promise<{ success: boolean; record?: ExceptionProperty; error?: string }> {
-  return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user').exceptions.record(callerOf(context), payload);
+export async function recordException(payload: any, context?: any, storageProvider?: StorageProvider): Promise<{ success: boolean; record?: ExceptionProperty; error?: string; row?: IssueRow }> {
+  const app = compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user');
+  const caller = callerOf(context);
+  return withRow(app, caller, await app.exceptions.record(caller, payload));
 }
 
 /** Approves, rejects, revokes or withdraws a Code exception (ADR-001, Option C). */
-export async function decideException(payload: any, context?: any, storageProvider?: StorageProvider): Promise<{ success: boolean; record?: ExceptionProperty; error?: string }> {
-  return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user').exceptions.decide(callerOf(context), payload);
+export async function decideException(payload: any, context?: any, storageProvider?: StorageProvider): Promise<{ success: boolean; record?: ExceptionProperty; error?: string; row?: IssueRow }> {
+  const app = compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user');
+  const caller = callerOf(context);
+  return withRow(app, caller, await app.exceptions.decide(caller, payload));
 }
 
 /**

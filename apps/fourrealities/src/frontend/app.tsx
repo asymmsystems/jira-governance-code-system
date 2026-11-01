@@ -69,6 +69,6 @@ export const FourRealitiesApp: React.FC = () => {
   }
 
   return isIssueView
-    ? <IssuePanel row={row as IssueRow} onReload={() => load()} />
+    ? <IssuePanel row={row as IssueRow} onReload={() => load()} onRow={setRow} />
     : <ProjectDashboard view={dashboard as ProjectDashboardView} onRefresh={() => load(true)} />;
 };

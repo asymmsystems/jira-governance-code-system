@@ -5,7 +5,7 @@
  */
 
 import { GateReason, GateResult } from '../../src/contract/data/models';
-import { appearanceOf, chipText, detailText, glyphOf, raiText, rateText, recoveryText, riskAppearance, sourceLine, stateLabel } from '../../src/ui/gate-text';
+import { afterActionText, appearanceOf, chipText, detailText, glyphOf, raiText, rateText, recoveryText, riskAppearance, sourceLine, stateLabel } from '../../src/ui/gate-text';
 
 const ALL_REASONS: GateReason[] = [
   'NOT_STARTED', 'NOT_DONE', 'INTENT_CONFLUENCE_LINK', 'INTENT_DECISION_ISSUE', 'INTENT_LINKS_NOT_READ',
@@ -89,5 +89,26 @@ describe('recoveryText', () => {
     expect(recoveryText({ gates, recoverablePoints: 33 })).toBe("Adding Code evidence raises this issue's RAI by 33 points.");
     expect(recoveryText({ gates, recoverablePoints: 0 })).toBeUndefined();
     expect(recoveryText({ gates: { intent: NA, process: NA, code: NA, audit: NA }, recoverablePoints: 10 })).toBeUndefined();
+  });
+});
+
+describe('B-17: afterActionText (feedback from the re-evaluated state, FR-20)', () => {
+  const found: GateResult = { state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK' };
+  const missing: GateResult = { state: 'MISSING', reason: 'PR_NONE' };
+  const excepted: GateResult = { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' };
+  const row = (intent: GateResult, code: GateResult) => ({ gates: { intent, process: missing, code, audit: missing } });
+
+  it('names the gate state that Jira returned after the write', () => {
+    expect(afterActionText('link', row(found, missing))).toBe('Link added. Intent: Evidence found.');
+    expect(afterActionText('link', row({ state: 'MISSING', reason: 'INTENT_NONE' }, missing))).toBe('Link added. Intent: Evidence missing.');
+    expect(afterActionText('code', row(found, missing))).toBe('Exception requested. A project administrator must approve it. Code: Evidence missing.');
+    expect(afterActionText('decision', row(found, excepted))).toBe('Decision recorded. Code: Excepted.');
+    expect(afterActionText('rework', row(found, missing))).toBe('Rework reason recorded. It does not change any gate.');
+  });
+
+  it('says so when the gates could not be read again, and never claims a state', () => {
+    expect(afterActionText('link')).toBe('Link added. The gates could not be read again. Use Refresh.');
+    expect(afterActionText('decision')).toBe('Decision recorded. The gates could not be read again. Use Refresh.');
+    expect(afterActionText('rework')).toBe('Rework reason recorded. It does not change any gate.');
   });
 });

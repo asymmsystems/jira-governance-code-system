@@ -464,8 +464,11 @@ describe('B-05: user actions run as the user only', () => {
     mockRequestJira.mockResolvedValueOnce(NO_PR).mockResolvedValueOnce({ status: 200 });
     const res = await recordException({ issueId: '10004', issueKey: 'DEMO-4', type: 'CODE', reason: 'Configuration change only, no code' }, { accountId: 'acc-9', extension: { issue: { id: '10004' } } }, storage);
     expect(res.success).toBe(true);
-    expect(mockUserRequestJira).toHaveBeenCalledTimes(2);
+    // Field read, property write, then the re-read for the panel (B-17): all as the user.
+    expect(mockUserRequestJira).toHaveBeenCalledTimes(4);
     expect(mockUserRequestJira.mock.calls[0][0]).toBe('/rest/api/3/issue/10004?fields=customfield_10000');
+    expect(String(mockUserRequestJira.mock.calls[2][0])).toMatch(/^\/rest\/api\/3\/issue\/10004\?/);
+    expect(mockUserRequestJira.mock.calls[3][0]).toBe('/rest/api/3/issue/10004/remotelink');
     const [path, init] = mockUserRequestJira.mock.calls[1];
     expect(path).toBe('/rest/api/3/issue/10004/properties/fourrealities-exception');
     expect(init.method).toBe('PUT');
@@ -596,7 +599,8 @@ describe('B-06: a Code exception is its own state, with who and why', () => {
     const noteKeys = Array.from((storage as any).store.keys() as Iterable<string>).filter(k => k.startsWith('fr:note:30001:'));
     expect(noteKeys).toHaveLength(1);
     expect(await storage.get<any>(noteKeys[0])).toEqual(expect.objectContaining({ schemaVersion: 1, reason: 'Requirement changed after review', notes: 'PO request', recordedBy: 'acc-7' }));
-    const lastPut = mockUserRequestJira.mock.calls[mockUserRequestJira.mock.calls.length - 1];
+    const puts = mockUserRequestJira.mock.calls.filter(c => (c[1] as any)?.method === 'PUT');
+    const lastPut = puts[puts.length - 1];
     expect(lastPut[0]).toBe('/rest/api/3/issue/30001/properties/fourrealities-exception');
     const property = JSON.parse(lastPut[1].body);
     expect(property).toEqual(expect.objectContaining({ schemaVersion: 3, issueId: '30001', issueKey: 'DEMO-30' }));
@@ -730,7 +734,9 @@ describe('B-10: one Code-gate path from the Development field', () => {
     mockRequestJira.mockResolvedValueOnce({ status: 200 });
     const res = await recordException({ issueId: '40001', type: 'CODE', reason: 'Configuration change only' }, { extension: { issue: { id: '40001' } } }, storage);
     expect(res.success).toBe(true);
-    expect(mockUserRequestJira).toHaveBeenCalledTimes(1);
+    const paths = mockUserRequestJira.mock.calls.map(c => String(c[0]));
+    expect(paths[0]).toBe('/rest/api/3/issue/40001/properties/fourrealities-exception');
+    expect(paths.filter(p => p.includes('fields=customfield'))).toEqual([]);
   });
 
   it('returns a Jira error on the dashboard when the field list cannot be read', async () => {
@@ -1043,5 +1049,63 @@ describe('B-30: exception request and administrator approval, end to end', () =>
     expect(after.row.gates.code.state).toBe('EXCEPTED');
     expect(after.row.codeException).toEqual(expect.objectContaining({ status: 'APPROVED', requestedBy: 'dev-1', decidedBy: 'admin-1' }));
     expect(mockAppRequestJira).not.toHaveBeenCalled();
+  });
+});
+
+describe('B-17: writers return the re-evaluated row (FR-20)', () => {
+  const issueCtx = { extension: { issue: { id: '30009', key: 'DEMO-39' } }, accountId: 'acc-9' };
+  const doneIssue = { id: '30009', key: 'DEMO-39', fields: { summary: 'Settle', status: { name: 'Done', statusCategory: { key: 'done' } }, issuelinks: [] }, changelog: { histories: [] } };
+  beforeEach(() => {
+    mockRequestJira.mockReset();
+    mockUserRequestJira.mockClear();
+    mockAppRequestJira.mockClear();
+  });
+
+  it('reads the issue again as the user after a rework note and returns its row', async () => {
+    mockRequestJira
+      .mockResolvedValueOnce({ status: 200 })
+      .mockResolvedValueOnce({ status: 200, json: async () => doneIssue })
+      .mockResolvedValueOnce({ status: 200, json: async () => [] });
+    const res: any = await recordException({ issueId: '30009', issueKey: 'DEMO-39', type: 'REWORK', reason: 'Requirement changed after review' }, issueCtx, new MockStorage());
+    expect(res.success).toBe(true);
+    expect(res.row.issueKey).toBe('DEMO-39');
+    expect(res.row.reworkNote.reason).toBe('Requirement changed after review');
+    expect(mockUserRequestJira.mock.calls.map(c => String(c[0]))).toEqual([
+      '/rest/api/3/issue/30009/properties/fourrealities-exception', expect.stringContaining('/rest/api/3/issue/30009?'), '/rest/api/3/issue/30009/remotelink'
+    ]);
+    expect(mockAppRequestJira).not.toHaveBeenCalled();
+  });
+
+  it('keeps the write result and returns no row when the read after it fails, or outside an issue view', async () => {
+    mockRequestJira.mockResolvedValueOnce({ status: 200 }).mockResolvedValueOnce({ status: 500, json: async () => ({}) });
+    const failed: any = await recordException({ issueId: '30009', type: 'REWORK', reason: 'Requirement changed after review' }, issueCtx, new MockStorage());
+    expect(failed.success).toBe(true);
+    expect(failed.row).toBeUndefined();
+
+    const refused: any = await recordException({ issueId: '30009', type: 'REWORK', reason: 'short' }, issueCtx, new MockStorage());
+    expect(refused.success).toBe(false);
+    expect(refused.row).toBeUndefined();
+
+    mockRequestJira.mockReset();
+    mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => ({ key: 'DEMO-39', fields: { project: { key: 'DEMO' } } }) }).mockResolvedValueOnce({ status: 200 });
+    const fromProject: any = await recordException({ issueId: '30009', type: 'REWORK', reason: 'Requirement changed after review' }, { extension: { project: { key: 'DEMO' } }, accountId: 'acc-9' }, new MockStorage());
+    expect(fromProject.success).toBe(true);
+    expect(fromProject.row).toBeUndefined();
+  });
+
+  it('returns the row after a decision', async () => {
+    const storage = new MockStorage();
+    const ev = { schemaVersion: 3, issueId: '30009', issueKey: 'DEMO-39', gate: 'code', status: 'REQUESTED', at: '2026-11-01T00:00:00.000Z', byAccountId: 'dev-1', asRole: 'REQUESTER', reason: 'Configuration change only' };
+    await storage.set('fr:ex:30009:code:2026-11-01T00:00:00.000Z:a', ev);
+    mockRequestJira
+      .mockResolvedValueOnce({ status: 200, json: async () => ({ key: 'DEMO-39', fields: { project: { key: 'DEMO' } } }) })
+      .mockResolvedValueOnce({ status: 200, json: async () => ({ permissions: { ADMINISTER_PROJECTS: { havePermission: true } } }) })
+      .mockResolvedValueOnce({ status: 200 })
+      .mockResolvedValueOnce({ status: 200, json: async () => doneIssue })
+      .mockResolvedValueOnce({ status: 200, json: async () => [] });
+    const res: any = await decideException({ issueId: '30009', decision: 'APPROVE', reason: '' }, issueCtx, storage);
+    expect(res.success).toBe(true);
+    expect(res.row.codeException.status).toBe('APPROVED');
+    expect(res.row.gates.code.state).toBe('EXCEPTED');
   });
 });

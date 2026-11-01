@@ -153,3 +153,25 @@ export function recoveryText(row: Pick<IssueRow, 'gates' | 'recoverablePoints'>)
     ? `Adding ${GATE_LABEL[gate]} evidence raises this issue's RAI by ${row.recoverablePoints} points.`
     : undefined;
 }
+
+export type PanelAction = 'link' | 'code' | 'rework' | 'decision';
+
+const ACTION_DONE: Record<PanelAction, string> = {
+  link: 'Link added.',
+  code: 'Exception requested.',
+  rework: 'Rework reason recorded.',
+  decision: 'Decision recorded.'
+};
+
+/**
+ * Feedback after a write, built from the row that Jira returned after it (FR-20). Without a
+ * row the text says the gates were not read again, and never claims a state.
+ */
+export function afterActionText(action: PanelAction, row?: Pick<IssueRow, 'gates'>): string {
+  const done = ACTION_DONE[action];
+  if (action === 'rework') return `${done} It does not change any gate.`;
+  if (!row) return `${done} The gates could not be read again. Use Refresh.`;
+  if (action === 'link') return `${done} Intent: ${stateLabel(row.gates.intent)}.`;
+  if (action === 'code') return `${done} A project administrator must approve it. Code: ${stateLabel(row.gates.code)}.`;
+  return `${done} Code: ${stateLabel(row.gates.code)}.`;
+}

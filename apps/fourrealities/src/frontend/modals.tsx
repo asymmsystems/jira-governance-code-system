@@ -19,13 +19,14 @@ import {
   Textfield
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
-import { ExceptionDecision } from '../contract/data/models';
+import { ExceptionDecision, IssueRow } from '../contract/data/models';
 
 interface ModalProps {
   issueId: string;
   issueKey: string;
   onClose: () => void;
-  onDone: () => void;
+  /** Called with the re-evaluated row when the resolver returns one. */
+  onDone: (row?: IssueRow) => void;
 }
 
 export const LinkDecisionModal: React.FC<ModalProps> = ({ issueId, issueKey, onClose, onDone }) => {
@@ -38,7 +39,7 @@ export const LinkDecisionModal: React.FC<ModalProps> = ({ issueId, issueKey, onC
     try {
       const res: any = await invoke('linkDecision', { issueId, issueKey, url, title });
       if (res?.success) {
-        onDone();
+        onDone(res.row);
       } else {
         setError(res?.error || 'The link was not added.');
       }
@@ -84,7 +85,7 @@ export const ExceptionModal: React.FC<ModalProps & { type: 'CODE' | 'REWORK' }> 
     try {
       const res: any = await invoke('recordException', { issueId, issueKey, type, reason, notes });
       if (res?.success) {
-        onDone();
+        onDone(res.row);
       } else {
         setError(res?.error || 'The exception was not recorded.');
       }
@@ -142,7 +143,7 @@ export const DecisionModal: React.FC<ModalProps & { decision: ExceptionDecision 
     try {
       const res: any = await invoke('decideException', { issueId, issueKey, decision, reason });
       if (res?.success) {
-        onDone();
+        onDone(res.row);
       } else {
         setError(res?.error || 'The decision was not recorded.');
       }

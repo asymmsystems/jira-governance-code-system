@@ -8,7 +8,7 @@ import React, { useState } from 'react';
 import { Box, Button, Heading, Inline, Lozenge, SectionMessage, Stack, Text, User } from '@forge/react';
 import { router } from '@forge/bridge';
 import { ExceptionDecision, ExceptionNote, GATE_NAMES, GateExceptionState, GateName, IssueRow } from '../contract/data/models';
-import { raiText, recoveryText, riskAppearance } from '../ui/gate-text';
+import { PanelAction, afterActionText, raiText, recoveryText, riskAppearance } from '../ui/gate-text';
 import { GateRow } from './gate-row';
 import { DecisionModal, ExceptionModal, LinkDecisionModal } from './modals';
 
@@ -91,14 +91,18 @@ function gateNote(gate: GateName, row: IssueRow): React.ReactNode {
 
 type OpenModal = 'none' | 'link' | 'code' | 'rework' | ExceptionDecision;
 
-export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void }> = ({ row, onReload }) => {
+/**
+ * onRow replaces the row in place after a write, so the panel stays mounted and its message
+ * stays visible (B-17). onReload is the Refresh button only.
+ */
+export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void; onRow: (row: IssueRow) => void }> = ({ row, onReload, onRow }) => {
   const [open, setOpen] = useState<OpenModal>('none');
   const [message, setMessage] = useState<string | null>(null);
 
-  const done = (text: string) => {
+  const done = (action: PanelAction) => (after?: IssueRow) => {
     setOpen('none');
-    setMessage(text);
-    onReload();
+    setMessage(afterActionText(action, after));
+    if (after) onRow(after);
   };
 
   const needsProducer = row.gates.audit.state === 'MISSING' || row.gates.process.state === 'MISSING';
@@ -152,7 +156,7 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void }> = ({ 
       </Inline>
 
       {open === 'link' ? (
-        <LinkDecisionModal issueId={row.issueId} issueKey={row.issueKey} onClose={() => setOpen('none')} onDone={() => done('Link added. The gates were read again.')} />
+        <LinkDecisionModal issueId={row.issueId} issueKey={row.issueKey} onClose={() => setOpen('none')} onDone={done('link')} />
       ) : null}
       {open === 'code' || open === 'rework' ? (
         <ExceptionModal
@@ -160,7 +164,7 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void }> = ({ 
           issueKey={row.issueKey}
           type={open === 'code' ? 'CODE' : 'REWORK'}
           onClose={() => setOpen('none')}
-          onDone={() => done(open === 'code' ? 'Exception requested. A project administrator must approve it.' : 'Rework reason recorded.')}
+          onDone={done(open === 'code' ? 'code' : 'rework')}
         />
       ) : null}
       {open === 'APPROVE' || open === 'REJECT' || open === 'REVOKE' || open === 'WITHDRAW' ? (
@@ -169,7 +173,7 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void }> = ({ 
           issueKey={row.issueKey}
           decision={open}
           onClose={() => setOpen('none')}
-          onDone={() => done('Decision recorded. The gates were read again.')}
+          onDone={done('decision')}
         />
       ) : null}
     </Stack>

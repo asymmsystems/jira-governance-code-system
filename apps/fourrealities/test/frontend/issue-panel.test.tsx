@@ -16,9 +16,9 @@ jest.mock('@forge/bridge', () => require('./forge-mocks').bridgeMock());
 
 import { IssuePanel } from '../../src/frontend/issue-panel';
 
-async function mount(r: any, onReload = jest.fn()) {
+async function mount(r: any, onReload = jest.fn(), onRow = jest.fn()) {
   let renderer: any;
-  await act(async () => { renderer = TestRenderer.create(<IssuePanel row={r} onReload={onReload} />); });
+  await act(async () => { renderer = TestRenderer.create(<IssuePanel row={r} onReload={onReload} onRow={onRow} />); });
   return renderer;
 }
 
@@ -49,22 +49,25 @@ describe('IssuePanel', () => {
     expect(textOf(r.toJSON())).toContain('UNRATED');
   });
 
-  it('opens the decision link modal with empty fields and reloads after a successful link', async () => {
+  it('opens the decision link modal with empty fields, and shows the re-evaluated state after a link (B-17)', async () => {
     const onReload = jest.fn();
-    const r = await mount(row('DEMO-7', { intent: M_INTENT, process: NA, code: NA, audit: NA }), onReload);
+    const onRow = jest.fn();
+    const r = await mount(row('DEMO-7', { intent: M_INTENT, process: NA, code: NA, audit: NA }), onReload, onRow);
     await act(async () => { findButton(r.root, 'Link decision record').props.onClick(); });
     const fields = findAll(r.root, 'Textfield');
     expect(fields.map((f: any) => f.props.value)).toEqual(['', '']);
     expect(findAll(r.root, 'Label').map((l: any) => l.props.labelFor)).toEqual(['fr-link-url', 'fr-link-title']);
 
     await act(async () => { type(r, 'fr-link-url', 'https://s.atlassian.net/wiki/x'); type(r, 'fr-link-title', 'ADR-7'); });
-    bridgeState.invoke.mockResolvedValue({ success: true });
+    const after = row('DEMO-7', { intent: F, process: NA, code: NA, audit: NA });
+    bridgeState.invoke.mockResolvedValue({ success: true, row: after });
     await act(async () => { findButton(r.root, 'Add link').props.onClick(); });
     await settle(act);
 
     expect(bridgeState.invoke).toHaveBeenCalledWith('linkDecision', { issueId: '7', issueKey: 'DEMO-7', url: 'https://s.atlassian.net/wiki/x', title: 'ADR-7' });
-    expect(onReload).toHaveBeenCalled();
-    expect(textOf(r.toJSON())).toContain('Link added.');
+    expect(onRow).toHaveBeenCalledWith(after);
+    expect(onReload).not.toHaveBeenCalled();
+    expect(textOf(r.toJSON())).toContain('Link added. Intent: Evidence found.');
     expect(findAll(r.root, 'Modal')).toHaveLength(0);
   });
 
@@ -101,17 +104,17 @@ describe('IssuePanel', () => {
     bridgeState.invoke.mockResolvedValueOnce({ success: true });
     await act(async () => { findButton(r.root, 'Save exception').props.onClick(); });
     expect(bridgeState.invoke).toHaveBeenLastCalledWith('recordException', { issueId: '9', issueKey: 'DEMO-9', type: 'CODE', reason: 'Configuration change only', notes: 'CHG-1' });
-    expect(textOf(r.toJSON())).toContain('Exception requested. A project administrator must approve it.');
+    expect(textOf(r.toJSON())).toContain('Exception requested. The gates could not be read again. Use Refresh.');
 
     await act(async () => { findButton(r.root, 'Add rework reason').props.onClick(); });
     expect(textOf(r.toJSON())).toContain('This note does not change any gate.');
     bridgeState.invoke.mockResolvedValueOnce({ success: true });
     await act(async () => { findButton(r.root, 'Save reason').props.onClick(); });
     expect(bridgeState.invoke).toHaveBeenLastCalledWith('recordException', expect.objectContaining({ type: 'REWORK' }));
-    expect(textOf(r.toJSON())).toContain('Rework reason recorded.');
+    expect(textOf(r.toJSON())).toContain('Rework reason recorded. It does not change any gate.');
     await act(async () => { findButton(r.root, 'Request Code exception').props.onClick(); });
     await act(async () => { findButton(r.root, 'Cancel').props.onClick(); });
-    expect(onReload).toHaveBeenCalledTimes(2);
+    expect(onReload).not.toHaveBeenCalled();
   });
 
   it('shows who and why for an approved exception and a rework reason', async () => {
@@ -221,7 +224,8 @@ describe('IssuePanel', () => {
       bridgeState.invoke.mockResolvedValueOnce({ success: true });
       await act(async () => { findButton(r.root, 'Reject').props.onClick(); });
       expect(bridgeState.invoke).toHaveBeenLastCalledWith('decideException', { issueId: '20', issueKey: 'DEMO-20', decision: 'REJECT', reason: 'Code changed in the config repo' });
-      expect(onReload).toHaveBeenCalled();
+      expect(textOf(r.toJSON())).toContain('Decision recorded. The gates could not be read again. Use Refresh.');
+      expect(onReload).not.toHaveBeenCalled();
 
       await act(async () => { findButton(r.root, 'Withdraw request').props.onClick(); });
       await act(async () => { findAll(r.root, 'Textfield', p => p.id === 'fr-decision-reason')[0].props.onChange({}); });

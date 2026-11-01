@@ -65,6 +65,28 @@ describe('FourRealitiesApp rendering', () => {
     expect(text).not.toMatch(/Delivery evidence:\s+DEMO/);
   });
 
+  it('B-17: keeps the issue panel mounted after an action, so its message stays, and shows the new row', async () => {
+    bridgeState.context = { extension: { issue: { id: '7', key: 'DEMO-7' } } };
+    const before = row('DEMO-7', { intent: M_INTENT, process: NA, code: NA, audit: NA });
+    const after = row('DEMO-7', { intent: F, process: NA, code: NA, audit: NA });
+    bridgeState.invoke.mockResolvedValueOnce({ ok: true, row: before });
+    let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<FourRealitiesApp />); });
+    await settle(act);
+
+    await act(async () => { findButton(renderer.root, 'Link decision record').props.onClick(); });
+    bridgeState.invoke.mockResolvedValueOnce({ success: true, row: after });
+    await act(async () => { findButton(renderer.root, 'Add link').props.onClick(); });
+    await settle(act);
+
+    const text = textOf(renderer.toJSON());
+    expect(text).toContain('Link added. Intent: Evidence found.');
+    expect(text).not.toContain('Link decision record');
+    expect(text).not.toContain('Evaluating delivery evidence');
+    expect(bridgeState.invoke).toHaveBeenCalledTimes(2);
+    expect(hookErrors).toEqual([]);
+  });
+
   it('shows the resolver error message from an error envelope', async () => {
     bridgeState.context = { extension: { project: { key: 'DEMO' } } };
     bridgeState.invoke.mockResolvedValue({ ok: false, error: { code: 'FORBIDDEN', message: 'Live Jira sync failed (HTTP 403).' } });
