@@ -281,3 +281,21 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - Adversarial tests: an export with one changed field value, a rewritten history entry, a forged `everCompromised`, a swapped certificate id, and a wrong public key all fail with exit code 1.
 - Deviation from `ux-spec.md` task 6: UI Kit has no file download, so the panel will show the evidence JSON for copying (B-15). PDF stays out of scope (D-7).
 - Results: `tsc` OK. 26 suites, 229 tests pass. Global branches 95.31%. `ledger.ts` 91.71%, `index.ts` 91.17%. The verifier is outside `src/`, so it has no coverage number; its behaviour is covered by the 9 process-level tests. Graders all True. README section "Evidence for an auditor" added. No em dash.
+- B-14 commit: `f8562b6`.
+
+### B-15 Panel view model and the missing states (LS-12, LS-13 UI, LS-21, PX-03, G-01 to G-13)
+- Tests first: `test/view-model.test.ts`. First run: failed for the right reason (`src/frontend/view-model` missing).
+- Code:
+  - `src/frontend/view-model.ts` is pure, with no React or bridge import. It maps the resolver result to the state, title, lozenge, message lines, actions, ask text and change rows. The states are LOADING, NOT_SEALED, SEALED, CHANGED, CHANGED_BACK, REVOKED, RECORD_INVALID, LEGACY, ERROR and LICENSE_INACTIVE. Times are in the viewer's locale with the zone, and the full hash comes with a short form.
+  - `src/service/ledger.ts` adds the viewer's `rights` to the panel response. They come from the approver permission (as the user) and, on a changed issue, from whether the viewer authored a change. Both are reads.
+  - `src/frontend/index.tsx` only maps the view model to UI Kit components:
+    - the signer, reviser and change authors with `User`;
+    - change rows with "Show full value";
+    - covered and excluded fields;
+    - history from `seal-history-api`;
+    - evidence JSON in a `CodeBlock`;
+    - one form for seal, approve (with a reason) and revoke.
+  - `jest.config.js` covers `src/frontend/view-model.ts` and excludes only `src/frontend/**/*.tsx`.
+- No new package was needed: the view model is tested in the existing node environment ([DEP] not triggered).
+- `claims.test.ts` and `identity.test.ts` now read the panel text from both UI files.
+- Results: `tsc` OK. 27 suites, 247 tests pass. Global branches 94.91%. `view-model.ts` 91.20%, `ledger.ts` 92.39%. Graders all True. No em dash.

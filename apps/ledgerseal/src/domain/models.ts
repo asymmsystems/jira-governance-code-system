@@ -115,6 +115,13 @@ export interface AttachmentDiff {
 
 export type TamperStatus = 'SEAL_VALID' | 'SEAL_BROKEN' | 'SEAL_COMPROMISED' | 'NO_SEAL' | 'SEAL_REVOKED' | 'LEGACY' | 'RECORD_INVALID' | 'ERROR';
 
+export interface ViewerRights {
+  canSeal: boolean;
+  canApproveChanges: boolean;
+  canRevoke: boolean;
+  blockedBySelfChange: boolean;
+}
+
 /** What the panel may know about a v2 seal (no snapshot, no email). */
 export interface SealSummary {
   certificateId: string;
@@ -138,6 +145,10 @@ export interface TamperAnalysis {
   certificate?: SealCertificate;
   seal?: SealSummary;
   errorReason?: 'JIRA_UNREACHABLE' | 'STORAGE';
+  /** Panel response only: the covered and excluded fields of the seal, and what the viewer may do. */
+  coveredFields?: { id: string; name: string }[];
+  excludedFields?: { id: string; name: string; reason: string }[];
+  rights?: ViewerRights;
   liveHash?: string;
   sealedHash?: string;
   tamperedFields: FieldDiff[];

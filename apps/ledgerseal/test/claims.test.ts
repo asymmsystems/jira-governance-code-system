@@ -41,7 +41,8 @@ const BANNED: RegExp[] = [
   /Re-?Authori[sz]/i
 ];
 
-const UI = fs.readFileSync(path.join(APP, 'src/frontend/index.tsx'), 'utf8');
+// The panel text lives in the view model; index.tsx maps it to UI Kit components (B-15)
+const UI = ['src/frontend/index.tsx', 'src/frontend/view-model.ts'].map(f => fs.readFileSync(path.join(APP, f), 'utf8')).join('\n');
 
 describe('B-10 no unsupported claims', () => {
   it('has no banned claim in any tracked file of the app', () => {
@@ -72,7 +73,7 @@ describe('B-10 no unsupported claims', () => {
       expect(UI).toContain(text);
     }
     for (const lozenge of ['SEALED', 'CHANGED', 'NOT SEALED']) {
-      expect(UI).toContain(`>${lozenge}</Lozenge>`);
+      expect(UI).toContain(`text: '${lozenge}'`);
     }
   });
 

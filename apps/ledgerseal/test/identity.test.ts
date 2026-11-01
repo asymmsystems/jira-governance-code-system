@@ -57,7 +57,7 @@ describe('B-04 identity from context only', () => {
 
   it('renders the signer with the UI Kit User component and never prints an email', () => {
     const ui = fs.readFileSync(path.resolve(__dirname, '../src/frontend/index.tsx'), 'utf8');
-    expect(ui).toMatch(/<User accountId=\{analysis\.seal\.sealedByAccountId\}/);
+    expect(ui).toMatch(/<User accountId=\{view\.seal\.signerAccountId\}/);
     expect(ui).not.toMatch(/signerEmail|emailAddress/);
   });
 });

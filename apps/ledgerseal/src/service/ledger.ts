@@ -409,15 +409,46 @@ export async function verifyIssueFlow(payload: any, context: any, deps: LedgerSe
   const live = await readLiveSnapshot(deps.jira, issue.id, now);
   // A read failure is reported as an error, never as "not sealed" (invariant 8)
   if (!live) return errorResult('JIRA_UNREACHABLE', now);
+  let result: TamperAnalysis;
   try {
-    return await verifyAgainstSeal(deps, issue.id, live, now);
+    result = await verifyAgainstSeal(deps, issue.id, live, now);
   } catch (err) {
     console.error('LedgerSeal: verify failed', err);
     return errorResult('STORAGE', now);
   }
+  return { ...result, rights: await viewerRights(deps, issue.id, String(context.accountId), result) };
 }
 
-async function verifyAgainstSeal(deps: LedgerSealDeps, issueId: string, live: { raw: any; snapshot: CanonicalIssueSnapshot }, now: string) {
+const CHANGED_STATES = new Set(['SEAL_BROKEN', 'SEAL_COMPROMISED']);
+const SEALED_STATES = new Set(['SEAL_VALID', 'SEAL_BROKEN', 'SEAL_COMPROMISED']);
+
+/**
+ * What the viewer may do, so the panel shows only those actions (G-10). Reads only.
+ * A failed permission check gives no rights; a failed change log read blocks approving changes.
+ */
+async function viewerRights(deps: LedgerSealDeps, issueId: string, accountId: string, result: TamperAnalysis) {
+  const permission = await deps.jira.hasApproverPermission(issueId);
+  const permitted = permission.ok && permission.value;
+  const changed = CHANGED_STATES.has(result.status);
+  let blockedBySelfChange = false;
+  if (permitted && changed && result.seal) {
+    const changelog = await deps.jira.getChangelog(issueId);
+    blockedBySelfChange = !changelog.ok || authorsSince(changelog.value, result.seal.sealedAt).has(accountId);
+  }
+  return {
+    canSeal: permitted && !changed,
+    canApproveChanges: permitted && !blockedBySelfChange,
+    canRevoke: permitted && SEALED_STATES.has(result.status),
+    blockedBySelfChange
+  };
+}
+
+async function verifyAgainstSeal(
+  deps: LedgerSealDeps,
+  issueId: string,
+  live: { raw: any; snapshot: CanonicalIssueSnapshot },
+  now: string
+): Promise<TamperAnalysis> {
   const liveSnapshot = live.snapshot;
   const issue = { id: issueId };
 
