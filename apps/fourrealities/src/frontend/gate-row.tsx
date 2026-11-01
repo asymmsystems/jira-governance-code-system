@@ -12,7 +12,7 @@ import { GATE_LABEL, appearanceOf, chipText, detailText, glyphOf, sourceLine, st
 /** One gate: state with glyph and text, the source line, and one sentence of detail. */
 export const GateRow: React.FC<{ gate: GateName; result: GateResult; note?: React.ReactNode }> = ({ gate, result, note }) => (
   <Stack space="space.050">
-    <Lozenge appearance={appearanceOf(result)}>
+    <Lozenge maxWidth="100%" appearance={appearanceOf(result)}>
       {`${glyphOf(result)} ${GATE_LABEL[gate]}: ${stateLabel(result)}`}
     </Lozenge>
     <Text>{sourceLine(result)}</Text>
@@ -23,7 +23,7 @@ export const GateRow: React.FC<{ gate: GateName; result: GateResult; note?: Reac
 
 /** Table chip: the gate name and state as text, never a bare glyph. */
 export const GateChip: React.FC<{ gate: GateName; result: GateResult }> = ({ gate, result }) => (
-  <Lozenge appearance={appearanceOf(result)}>{`${glyphOf(result)} ${chipText(gate, result)}`}</Lozenge>
+  <Lozenge maxWidth="100%" appearance={appearanceOf(result)}>{`${glyphOf(result)} ${chipText(gate, result)}`}</Lozenge>
 );
 
 export const GateChips: React.FC<{ gates: IssueGates }> = ({ gates }) => (

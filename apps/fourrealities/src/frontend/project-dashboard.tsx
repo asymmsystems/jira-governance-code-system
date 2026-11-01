@@ -113,7 +113,7 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
       { key: r.issueKey, content: <Text>{r.issueKey}</Text> },
       { key: r.summary, content: <Text>{r.summary}</Text> },
       { key: 'gates', content: <GateChips gates={r.gates} /> },
-      { key: r.rai === null ? '999' : String(r.rai).padStart(3, '0'), content: <Lozenge appearance={riskAppearance(r.risk)}>{raiText(r)}</Lozenge> },
+      { key: r.rai === null ? '999' : String(r.rai).padStart(3, '0'), content: <Lozenge maxWidth="100%" appearance={riskAppearance(r.risk)}>{raiText(r)}</Lozenge> },
       { key: r.assigneeName || 'Unassigned', content: <Text>{r.assigneeName || 'Unassigned'}</Text> },
       { key: 'action', content: <Button appearance="subtle" onClick={() => setSelected(r)}>Inspect</Button> }
     ]

@@ -53,7 +53,7 @@ export const FourRealitiesApp: React.FC = () => {
 
   if (loading) {
     return (
-      <Inline space="space.100" alignBlock="center">
+      <Inline space="space.100" alignBlock="center" shouldWrap>
         <Spinner size="small" label="Loading" />
         <Text>Evaluating delivery evidence...</Text>
       </Inline>

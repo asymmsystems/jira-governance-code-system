@@ -232,6 +232,10 @@ Audit and Process show "Source: LedgerSeal property ledgerseal-cert" or "Source:
 - **averageRAI** = rounded mean RAI over rated issues; `null` when none is rated.
 - Counts shown in the UI come from the gate counts, never from a rounded percentage.
 
+## Accessibility rules (B-20)
+
+Checked on every rendered view by `test/frontend/accessibility.test.tsx`: every `Inline` wraps (`shouldWrap`); every `Textfield` and `Select` has a `Label` whose `labelFor` is its `id`; every `Lozenge` sets `maxWidth="100%"`, so its text is not cut at the 200 px default; every gate glyph sits next to its text name; every button has text; every modal closes with `onClose` (Escape); no UI text or UI source file contains the em dash, box-drawing arrows or the middle dot. UI Kit gives no role or `aria-live` prop on `SectionMessage`, so whether the result message is announced is checked only in the live run.
+
 ## Project dashboard trend (B-19)
 
 The trend panel shows the last four weekly trend points, oldest first, labelled "whole project" (D-4: the trend is not filtered per viewer). It shows a text line per week first, then a UI Kit `LineChart` of the same numbers (`src/ui/trend.ts`). Each rate keeps its parts: "Week of 2026-10-26: RAI 64% (30 rated issues); Intent 12 of 40 rated (30%); ...". A gate with no rated issue in a week reads "n/a (0 rated)" and has no chart point. With fewer than two points the panel says "Trend starts after two weekly snapshots. Next snapshot: <Monday after this week>." and draws no chart.

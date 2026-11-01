@@ -117,7 +117,7 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void; onRow: 
 
       <Inline space="space.100" alignBlock="center" shouldWrap>
         <Heading as="h4">Delivery evidence: {row.issueKey}</Heading>
-        <Lozenge appearance={riskAppearance(row.risk)}>{raiText(row)}</Lozenge>
+        <Lozenge maxWidth="100%" appearance={riskAppearance(row.risk)}>{raiText(row)}</Lozenge>
         <Text>{`${row.applicableGates} of 4 gates rated`}</Text>
         <Button appearance="subtle" onClick={onReload}>Refresh</Button>
       </Inline>
