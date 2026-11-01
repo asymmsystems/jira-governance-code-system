@@ -11,13 +11,13 @@ import {
   historyFlow,
   issueChangedFlow,
   LedgerSealDeps,
-  rawComments,
   readLiveSnapshot,
   recordIncidentIfNew,
   revokeFlow,
   sealIssueFlow,
   verifyIssueFlow
 } from './service/ledger';
+import { getPolicyFlow, searchGroupsFlow, setPolicyFlow } from './service/policy-admin';
 
 export { LedgerSealDeps } from './service/ledger';
 
@@ -96,8 +96,7 @@ export async function validateTransition(payload: any, context?: any, deps: Ledg
     return { result: false, errorMessage: JIRA_UNREACHABLE_MESSAGE };
   }
   issueId = String(live.raw.id || issueId);
-  const liveSnapshot = live.snapshot;
-  const evaluation = await evaluate(repository, issueId, liveSnapshot, now, rawComments(live.raw));
+  const evaluation = await evaluate(repository, issueId, live, now);
 
   if (evaluation.kind === 'LEGACY') {
     return {
@@ -113,7 +112,7 @@ export async function validateTransition(payload: any, context?: any, deps: Ledg
   }
 
   if (evaluation.kind === 'NONE') {
-    const unsealed = validateTransitionGate(null, liveSnapshot);
+    const unsealed = validateTransitionGate(null, live.snapshot);
     return { result: false, errorMessage: unsealed.errorMessage };
   }
 
@@ -126,7 +125,7 @@ export async function validateTransition(payload: any, context?: any, deps: Ledg
       revoked: we.currentStatusId === 'LS_REVOKED',
       compromised: we.currentStatusId === 'LS_CHANGED'
     },
-    liveSnapshot,
+    evaluation.liveSnapshot,
     {
       certificateId: we.currentContentId,
       sealedAt: summary?.sealedAt,
@@ -190,6 +189,21 @@ export async function getSealEvidence(payload: any, context?: any, deps: LedgerS
 }
 
 /**
+ * Admin page handlers for the approver groups (spec v2 section 7.1). Jira admins only.
+ */
+export async function getApproverPolicy(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return getPolicyFlow(context, deps);
+}
+
+export async function setApproverPolicy(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return setPolicyFlow(payload, context, deps);
+}
+
+export async function searchApproverGroups(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return searchGroupsFlow(payload, context, deps);
+}
+
+/**
  * Product event trigger: issue updated, commented, attachment and work log events.
  */
 export async function onIssueChanged(event: any, context?: any, deps: LedgerSealDeps = forgeDeps(false)) {
@@ -217,6 +231,18 @@ resolver.define('revoke-seal-api', async (req) => {
 
 resolver.define('seal-evidence-api', async (req) => {
   return await getSealEvidence(req.payload, req.context);
+});
+
+resolver.define('approver-policy-get-api', async (req) => {
+  return await getApproverPolicy(req.payload, req.context);
+});
+
+resolver.define('approver-policy-set-api', async (req) => {
+  return await setApproverPolicy(req.payload, req.context);
+});
+
+resolver.define('approver-group-search-api', async (req) => {
+  return await searchApproverGroups(req.payload, req.context);
 });
 
 export const handler = resolver.getDefinitions();

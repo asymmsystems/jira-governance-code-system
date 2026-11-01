@@ -30,6 +30,23 @@ describe('B-18 entity property index', () => {
   });
 });
 
+describe('approver policy admin page', () => {
+  it('declares a native Jira admin page on the shared resolver, with its own UI resource', () => {
+    expect(manifest).toContain(`  jira:adminPage:
+    - key: ledgerseal-admin
+      title: LedgerSeal approvers
+      render: native
+      resource: admin
+      resolver:
+        function: resolver`);
+    expect(manifest).toMatch(/  - key: admin\n    path: src\/frontend\/admin\.tsx/);
+  });
+
+  it('adds no scope: groups and permissions are read with the existing read scopes', () => {
+    expect(manifest).toMatch(/scopes:\n    - read:jira-work\n    - write:jira-work\n    - read:jira-user\n    - storage:app\n?$/);
+  });
+});
+
 describe('B-20 bundled icon and no dead code', () => {
   it('loads nothing from outside the app: no http URL in the manifest', () => {
     expect(manifest).not.toMatch(/https?:\/\//);

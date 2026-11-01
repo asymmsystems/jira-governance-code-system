@@ -77,7 +77,12 @@ export interface PanelInput {
   timeZone?: string;
 }
 
-const POLICY_TEXT = 'Who can seal: project admins and Jira admins.';
+/** The "who can seal" text, naming the approver groups when a Jira admin set some (spec v2 section 7.1). */
+export function policyText(groupNames: string[] = []): string {
+  if (groupNames.length === 0) return 'Who can seal: project admins and Jira admins.';
+  return `Who can seal: project admins, Jira admins and members of ${groupNames.join(', ')}.`;
+}
+
 const ASK_APPROVER = 'You cannot seal this issue. Ask a project admin.';
 const ASK_OTHER_APPROVER = 'You changed this issue, so another approver must approve it.';
 const UNKNOWN_TIME = 'Unknown time';
@@ -247,7 +252,7 @@ export function buildPanelView(input: PanelInput): PanelView {
     message: { appearance: APPEARANCES[state], lines: messageLines(state, input, seal) },
     actions,
     ...(askText ? { askText } : {}),
-    policyText: POLICY_TEXT,
+    policyText: policyText(Array.isArray(r?.approverGroups) ? r.approverGroups : []),
     changes: ['CHANGED', 'CHANGED_BACK'].includes(state) ? changeRows(r?.tamperedFields, input) : [],
     covered: (r?.coveredFields ?? []).map((f: { name: string }) => f.name),
     excluded: (r?.excludedFields ?? []).map((f: { name: string; reason: string }) => ({ name: f.name, reason: f.reason }))

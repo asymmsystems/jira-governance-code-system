@@ -183,6 +183,13 @@ describe('B-15 rights in the view model', () => {
   it('gives "who can seal" text', () => {
     expect(view(result('SEAL_VALID')).policyText).toBe('Who can seal: project admins and Jira admins.');
   });
+
+  it('names the approver groups in the "who can seal" text', () => {
+    expect(view(result('SEAL_VALID', { approverGroups: ['qa-approvers'] })).policyText).toBe(
+      'Who can seal: project admins, Jira admins and members of qa-approvers.'
+    );
+    expect(view(result('SEAL_VALID', { approverGroups: ['ops', 'qa'] })).policyText).toBe('Who can seal: project admins, Jira admins and members of ops, qa.');
+  });
 });
 
 describe('B-15 resolver rights', () => {

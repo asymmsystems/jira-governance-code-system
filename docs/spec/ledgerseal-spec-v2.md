@@ -59,7 +59,7 @@ interface CanonicalField {
 interface CanonicalAttachment { id: string; filename: string; size: number; mimeType: string; created: string; authorAccountId: string; }
 interface CanonicalComment { id: string; authorAccountId: string; created: string; body: unknown; }
 interface CanonicalSnapshot {
-  canonicalizerVersion: '2.0.0';
+  canonicalizerVersion: '2.0.0' | '2.1.0';
   issueId: string;
   issueKey: string;
   fields: CanonicalField[];          // sorted by id
@@ -162,7 +162,7 @@ interface ChangeRow { fieldId: string; fieldName: string; was: string; now: stri
 
 ---
 
-## 4. Canonical Form v2 (`canonicalizerVersion` 2.0.0)
+## 4. Canonical Form v2 (`canonicalizerVersion` 2.1.0 for new seals; 2.0.0 still checked)
 
 An outside verifier recomputes the hash from an exported snapshot with these rules. `verifier/verify-evidence.mjs` implements them with the Node standard library only.
 
@@ -173,7 +173,10 @@ An outside verifier recomputes the hash from an exported snapshot with these rul
   `{ canonicalizerVersion, issueId, issueKey, projectId, issueTypeId, fields: [{ id, value }...], attachments, comments }`
   `projectId` and `issueTypeId` are the Jira ids (the key or the name when Jira gives no id). Field `name`, `display`, the excluded list, the project key, the issue type name and the status are not hashed, so renaming a field, a project or an issue type keeps the seal.
 - `snapshotHash` = lowercase hex SHA-256 of those bytes.
-- A change to the covered or excluded set changes the live hash of an issue that has such a field. Before the first production install, such a change is made in place (NF-04, 2026-11-01: no stored DEMO seal held the newly excluded fields). After it, a change needs a new `canonicalizerVersion`, and the app must keep the old rules to check seals made under them. That rule is not built yet.
+- Versions. Each `canonicalizerVersion` has its own exclusion rules, and an old version's rules are never edited. A change to the covered or excluded set is a new version. New seals use the newest version. A seal is always checked with the rules of the version it records: the live issue is canonicalised again under that version before the hashes are compared. A version the app does not know gives `RECORD_INVALID`, never a guess.
+  - 2.0.0: the rules in 4.2 without the rows marked "since 2.1.0". Resolution is covered there.
+  - 2.1.0: all rules in 4.2.
+  - Value shapes (4.3 to 4.5) are the same in both versions.
 
 ### 4.2 Field selection (LS-04, LS-05)
 Fields are chosen by schema, from `/rest/api/3/field` (`schema.system`, `schema.custom`), never by id or by value.
@@ -186,7 +189,8 @@ Excluded, with the reason shown in the panel:
 | `updated`, `lastViewed`, `created` | Timestamps that Jira sets itself |
 | `watches`, `votes` | Interest counters, not content |
 | `workratio`, `progress`, `aggregateprogress`, `timespent`, `aggregatetimespent`, `timeestimate`, `aggregatetimeestimate`, `aggregatetimeoriginalestimate` | Derived from work logs or sub-tasks |
-| `resolution`, `resolutiondate` | The gated transition sets the resolution (NF-05, seen live on LSP-1). The status at seal is recorded. A manual resolution change stays in Jira's change log |
+| `resolutiondate` (2.0.0) | Set together with Resolution, which is covered |
+| `resolution`, `resolutiondate` (since 2.1.0) | The gated transition sets the resolution (NF-05, seen live on LSP-1). The status at seal is recorded. A manual resolution change stays in Jira's change log |
 | `comment`, `attachment` | Covered separately (sections 4.4 and 4.5) |
 | custom type `com.pyxis.greenhopper.jira:gh-lexo-rank` | Rank changes on every board drag |
 | custom type `com.pyxis.greenhopper.jira:gh-sprint` | Sprint changes when a sprint closes |
@@ -196,7 +200,7 @@ Excluded, with the reason shown in the panel:
 | custom type `com.atlassian.servicedesk.approvals-plugin:sd-approvals` | Approvals change as approvers decide |
 | custom type `com.atlassian.jira.plugins.jira-development-integration-plugin:devsummarycf` | Development summary changes with commits |
 | custom type `com.atlassian.jira.ext.charting:timeinstatus`, `com.atlassian.jira.ext.charting:firstresponsedate` | Computed by Jira |
-| custom type `com.atlassian.servicedesk.sentiment:sd-sentiment`, `com.atlassian.jira.plugin.system.customfieldtypes:agent-sessions`, and the `com.atlassian.jira.plugins.proforma-managed-fields` counts `forms-total-field-cftype`, `forms-submitted-field-cftype`, `forms-locked-field-cftype`, `forms-open-field-cftype` (NF-04, seen live on DEMO) | Computed by Jira. The forms list `proforma-forms-field-cftype` stays covered |
+| custom type `com.atlassian.servicedesk.sentiment:sd-sentiment`, `com.atlassian.jira.plugin.system.customfieldtypes:agent-sessions`, and the `com.atlassian.jira.plugins.proforma-managed-fields` counts `forms-total-field-cftype`, `forms-submitted-field-cftype`, `forms-locked-field-cftype`, `forms-open-field-cftype` (NF-04, seen live on DEMO; since 2.1.0) | Computed by Jira. The forms list `proforma-forms-field-cftype` stays covered |
 
 Every other field with a value is covered, including reporter, issue type, project, parent, worklog, time tracking (original estimate), security level and all other custom fields. A field id that is not in the field list is covered, with its id as its name.
 
@@ -270,6 +274,7 @@ Trigger events can arrive up to 3 minutes late (Forge trigger module page). The 
 | `ls3:wes:{issueId}:{seq}` (`seq` zero-padded to 6 digits) | `WorkEffortStatus`, created once | under 8 KiB (at most 50 changed field names) |
 | `ls3:wepa:{issueId}:{fromDate}` | `WorkEffortPartyAssignment` | under 2 KiB |
 | `ls3:content:{contentId}:{part}` | part `part` (0-based) of the canonical snapshot JSON string, with its covered and excluded field lists | 120,000 UTF-8 bytes |
+| `ls3:partyrole:LS_APPROVER` | `ApproverPolicy`: the approver groups as party role (section 7.1) | under 4 KiB (at most 20 groups) |
 | `cert:active:{issueId}` (v1) | legacy certificate, read only | not written |
 
 The `ls2:` layout of B-02 to B-11 was never deployed and is not read.
@@ -288,8 +293,13 @@ The `ls2:` layout of B-02 to B-11 was never deployed and is not read.
 ### 7.1 Approver policy (D-1)
 - A user may seal, reseal and revoke if `GET /rest/api/3/mypermissions?issueId={id}&permissions=ADMINISTER_PROJECTS,ADMINISTER`, called `asUser()`, reports either permission (FG-35, FG-36).
 - Why not a project role: `GET /rest/api/3/project/{key}/roledetails` requires the caller to have Administer Jira or Administer projects (Jira REST v3 docs, read 2026-11-01). So an approver cannot check their own role membership through it. The approved D-1 rule falls back to option (c).
-- The panel says: "Who can seal: project admins and Jira admins."
-- A group or role policy needs a settings page. That is follow-up work, not in B-01 to B-20.
+- Approver groups (option (b) of D-1, added 2026-11-01 on owner instruction). A Jira admin chooses up to 20 groups on the LedgerSeal admin page (`jira:adminPage` `ledgerseal-admin`). Members of those groups may also seal, reseal and revoke.
+  - Only a Jira admin (`mypermissions?permissions=ADMINISTER`, as user) may read, search or change the groups, or gets `NOT_ADMIN`.
+  - The payload gives group ids only. Each id must exist in Jira (`/rest/api/3/group/bulk`, as user), and the stored name is Jira's. The admin comes from context.
+  - Stored as the Silverston party role `LS_APPROVER` with group parties, `fromDate` and `setByPartyId` (key `ls3:partyrole:LS_APPROVER`).
+  - The check: project or Jira admin first. Only when that fails and a policy names groups, the caller's groups are read (`/rest/api/3/myself?expand=groups`, as user). A failed read fails closed with `JIRA_UNREACHABLE`.
+  - No new scope: these reads use `read:jira-work` and `read:jira-user`.
+- The panel says: "Who can seal: project admins and Jira admins." With groups: "Who can seal: project admins, Jira admins and members of {names}."
 
 ### 7.2 Separation of duties (B-01)
 On a reseal after a change, LedgerSeal reads the change log since `sealedAt` (`/rest/api/3/issue/{id}/changelog`, paged), the comments created or edited since then, and the attachments added since then. If the caller is the author of any of them, the reseal fails with `SELF_APPROVAL`. The same check applies to a seal after a revoke, from the `fromDate` of the revoked seal, and a reason is required when the issue changed since that seal. So a revoke cannot be used to approve one's own change.
@@ -333,7 +343,7 @@ Returns entries oldest first, 50 per page (`{ fromSeq }`), with a `chainValid` f
   "status": "SEAL_VALID | SEAL_BROKEN | SEAL_COMPROMISED | SEAL_REVOKED",
   "certificateId": "uuid",
   "snapshotHash": "64 hex",
-  "canonicalizerVersion": "2.0.0",
+  "canonicalizerVersion": "2.1.0",
   "sealedAt": "ISO-8601 UTC",
   "sealedByAccountId": "557058:...",
   "everCompromised": "true | false",

@@ -8,6 +8,13 @@ modules:
       resource: main
       resolver:
         function: resolver
+  jira:adminPage:
+    - key: ledgerseal-admin
+      title: LedgerSeal approvers
+      render: native
+      resource: admin
+      resolver:
+        function: resolver
   jira:workflowValidator:
     - key: ledgerseal-validator
       name: Require Valid LedgerSeal
@@ -49,6 +56,8 @@ modules:
 resources:
   - key: main
     path: src/frontend/index.tsx
+  - key: admin
+    path: src/frontend/admin.tsx
   - key: icons
     path: static/icons
 

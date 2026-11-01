@@ -78,6 +78,35 @@ export class FakeJira implements JiraClient {
     return { ok: true, value: this.currentUser !== null && this.approvers.has(this.currentUser) };
   }
 
+  /** Jira admins (global ADMINISTER), site groups, and each user's group ids. */
+  jiraAdmins = new Set<string>();
+  siteGroups: { groupId: string; name: string }[] = [];
+  memberships: Record<string, string[]> = {};
+  failGroups = false;
+  failAdminCheck = false;
+  groupReads = 0;
+
+  async getMyGroupIds(): Promise<JiraResult<string[]>> {
+    this.groupReads++;
+    if (this.failGroups) return { ok: false, error: 'UNREACHABLE' };
+    return { ok: true, value: [...(this.memberships[this.currentUser ?? ''] ?? [])] };
+  }
+
+  async isJiraAdmin(): Promise<JiraResult<boolean>> {
+    if (this.failAdminCheck) return { ok: false, error: 'UNREACHABLE' };
+    return { ok: true, value: this.currentUser !== null && this.jiraAdmins.has(this.currentUser) };
+  }
+
+  async findGroups(query: string): Promise<JiraResult<{ groupId: string; name: string }[]>> {
+    if (this.failGroups) return { ok: false, error: 'UNREACHABLE' };
+    return { ok: true, value: this.siteGroups.filter(g => g.name.includes(query)) };
+  }
+
+  async getGroups(groupIds: string[]): Promise<JiraResult<{ groupId: string; name: string }[]>> {
+    if (this.failGroups) return { ok: false, error: 'UNREACHABLE' };
+    return { ok: true, value: this.siteGroups.filter(g => groupIds.includes(g.groupId)) };
+  }
+
   async putSealProperty(issueId: string, body: any): Promise<boolean> {
     this.propertyWrites.push({ issueId, body: JSON.parse(JSON.stringify(body)) });
     return true;

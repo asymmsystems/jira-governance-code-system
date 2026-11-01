@@ -36,7 +36,8 @@ describe('B-13 canonical form v2 test vectors', () => {
 
   for (const vector of VECTORS.vectors) {
     it(`${vector.name}: matches the hand-written canonical text and its SHA-256`, () => {
-      const snapshot = canonicalizeIssueState(vector.issue, T);
+      // The vectors are written for the canonical form the file names, so they keep checking that version's rules
+      const snapshot = canonicalizeIssueState(vector.issue, T, [], VECTORS.canonicalizerVersion);
       expect(canonicalFormText(snapshot)).toBe(vector.canonical);
       expect(computeSnapshotHash(snapshot)).toBe(crypto.createHash('sha256').update(vector.canonical, 'utf8').digest('hex'));
     });
@@ -84,15 +85,15 @@ describe('B-13 canonical form v2 rules', () => {
     expect(snap.fields.find(f => f.id === 'priority')).toMatchObject({ value: { id: '2' }, display: 'High' });
   });
 
-  it('records canonical form 2.0.0 in every seal and attestation', async () => {
+  it('records the current canonical form, 2.1.0, in every new seal and attestation', async () => {
     const jira = new FakeJira(sampleIssue());
     jira.approvers = new Set(['ann']);
     jira.currentUser = 'ann';
     const storage = new MemoryStore();
     await sealIssue({ signature: validSignature() }, panelContext('ann'), { jira, storage });
-    expect((await model.workEffort(storage)).attributes.canonicalizerVersion).toBe('2.0.0');
-    expect((await model.sealedSnapshot(storage)).canonicalizerVersion).toBe('2.0.0');
-    expect(jira.propertyWrites[0].body.canonicalizerVersion).toBe('2.0.0');
+    expect((await model.workEffort(storage)).attributes.canonicalizerVersion).toBe('2.1.0');
+    expect((await model.sealedSnapshot(storage)).canonicalizerVersion).toBe('2.1.0');
+    expect(jira.propertyWrites[0].body.canonicalizerVersion).toBe('2.1.0');
   });
 });
 
