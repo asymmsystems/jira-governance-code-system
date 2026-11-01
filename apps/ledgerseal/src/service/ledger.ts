@@ -92,6 +92,13 @@ export function rawComments(raw: any): any[] {
   return Array.isArray(raw?.fields?.comment?.comments) ? raw.fields.comment.comments : [];
 }
 
+/** One read of the live issue: the raw issue, the field list, and its snapshot in the current canonical form. */
+export interface LiveRead {
+  raw: any;
+  fields: FieldSchema[];
+  snapshot: CanonicalIssueSnapshot;
+}
+
 /**
  * Reads the live issue and the field list, then canonicalises. Returns null when either read fails.
  */
@@ -100,7 +107,7 @@ export async function readLiveSnapshot(
   issueIdOrKey: string,
   at: string,
   apply: (raw: any) => any = raw => raw
-): Promise<{ raw: any; snapshot: CanonicalIssueSnapshot } | null> {
+): Promise<LiveRead | null> {
   const live = await jira.getIssue(issueIdOrKey);
   if (!live.ok) return null;
   const fields = await jira.getFields();
@@ -117,7 +124,8 @@ export async function readLiveSnapshot(
     issueFields.worklog = { ...worklog, worklogs: all.value, total: all.value.length };
   }
   const raw = apply({ ...live.value, fields: issueFields });
-  return { raw, snapshot: canonicalizeIssueState(raw, at, fields.value as FieldSchema[]) };
+  const schemas = fields.value as FieldSchema[];
+  return { raw, fields: schemas, snapshot: canonicalizeIssueState(raw, at, schemas, CANONICALIZER_VERSION) };
 }
 
 /**
@@ -184,6 +192,8 @@ export interface SealEvaluation {
   seal: LoadedSeal;
   sealedSnapshot: CanonicalIssueSnapshot;
   analysis: TamperAnalysis;
+  /** The live issue in the canonical form the seal was made with; every comparison uses this one. */
+  liveSnapshot: CanonicalIssueSnapshot;
   /** The live comments as Jira returned them, to name who added or edited each comment. */
   liveComments: any[];
 }
@@ -198,13 +208,7 @@ export type Evaluation =
 /**
  * Compares the live issue with the stored seal. Reads only.
  */
-export async function evaluate(
-  repo: SealRepository,
-  issueId: string,
-  live: CanonicalIssueSnapshot,
-  at: string,
-  liveComments: any[] = []
-): Promise<Evaluation> {
+export async function evaluate(repo: SealRepository, issueId: string, live: LiveRead, at: string): Promise<Evaluation> {
   const seal = await repo.getSeal(issueId);
   if (!seal) {
     return (await repo.getLegacyCertificate(issueId)) ? { kind: 'LEGACY' } : { kind: 'NONE' };
@@ -215,14 +219,25 @@ export async function evaluate(
   if (!isConsistent(seal)) return { kind: 'RECORD_INVALID', workEffort: we };
   const sealedSnapshot = await repo.getContent(we);
   if (!sealedSnapshot || computeSnapshotHash(sealedSnapshot) !== we.attributes.snapshotHash) return { kind: 'RECORD_INVALID', workEffort: we };
+  // Compare under the canonical form the seal was made with (spec v2 section 4.1)
+  const version = we.attributes.canonicalizerVersion;
+  let liveSnapshot = live.snapshot;
+  if (version !== liveSnapshot.canonicalizerVersion) {
+    try {
+      liveSnapshot = canonicalizeIssueState(live.raw, at, live.fields, version);
+    } catch {
+      // Rules this app does not have cannot check the seal, so it is not shown as valid
+      return { kind: 'RECORD_INVALID', workEffort: we };
+    }
+  }
   const sealed: SealedState = {
     snapshotHash: we.attributes.snapshotHash,
     snapshot: sealedSnapshot,
     revoked: we.currentStatusId === 'LS_REVOKED',
     compromised: we.currentStatusId === 'LS_CHANGED'
   };
-  const analysis = { ...compareToSeal(sealed, live, at), seal: summarise(seal) };
-  return { kind: 'SEAL', seal, sealedSnapshot, analysis, liveComments };
+  const analysis = { ...compareToSeal(sealed, liveSnapshot, at), seal: summarise(seal) };
+  return { kind: 'SEAL', seal, sealedSnapshot, analysis, liveSnapshot, liveComments: rawComments(live.raw) };
 }
 
 /** Who changed each item after the seal: comments from the comment itself, fields from the change log. */
@@ -323,7 +338,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   let previous: LoadedSeal | null = null;
   let previousWorkEffort: SealedWorkEffort | null = null;
   let previousState: LedgerSealStatusId | 'RECORD_INVALID' | null = null;
-  const evaluation = await evaluate(repo, issue.id, snapshot, now, rawComments(live.raw));
+  const evaluation = await evaluate(repo, issue.id, live, now);
   if (evaluation.kind === 'SEAL') {
     previous = evaluation.seal;
     previousWorkEffort = previous.workEffort;
@@ -344,7 +359,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
       const changelog = await deps.jira.getChangelog(issue.id);
       if (!changelog.ok) return fail('JIRA_UNREACHABLE');
       if (authorsSince(changelog.value, previous.assignment.fromDate).has(accountId)) return fail('SELF_APPROVAL');
-      const changed = computeSnapshotHash(snapshot) !== previousWorkEffort.attributes.snapshotHash;
+      const changed = computeSnapshotHash(evaluation.liveSnapshot) !== previousWorkEffort.attributes.snapshotHash;
       if (changed && !validReason(signature.reason)) return fail('REASON_REQUIRED');
     }
   }
@@ -487,16 +502,13 @@ async function viewerRights(deps: LedgerSealDeps, issueId: string, accountId: st
 async function verifyAgainstSeal(
   deps: LedgerSealDeps,
   issueId: string,
-  live: { raw: any; snapshot: CanonicalIssueSnapshot },
+  live: LiveRead,
   now: string
 ): Promise<TamperAnalysis> {
-  const liveSnapshot = live.snapshot;
-  const issue = { id: issueId };
-
   const repo = new SealRepository(deps.storage);
-  const evaluation = await evaluate(repo, issue.id, liveSnapshot, now, rawComments(live.raw));
+  const evaluation = await evaluate(repo, issueId, live, now);
 
-  if (evaluation.kind === 'NONE') return compareToSeal(null, liveSnapshot, now);
+  if (evaluation.kind === 'NONE') return compareToSeal(null, live.snapshot, now);
   if (evaluation.kind === 'LEGACY' || evaluation.kind === 'RECORD_INVALID') {
     return { status: evaluation.kind, tamperedFields: [], tamperedAttachments: [], verifiedAt: now };
   }
@@ -569,7 +581,7 @@ export async function issueChangedFlow(event: any, deps: LedgerSealDeps): Promis
     if (!(await repo.getWorkEffort(issueId))) return { recorded: false };
     const live = await readLiveSnapshot(deps.jira, issueId, now);
     if (!live) return { recorded: false };
-    const evaluation = await evaluate(repo, issueId, live.snapshot, now, rawComments(live.raw));
+    const evaluation = await evaluate(repo, issueId, live, now);
     if (evaluation.kind !== 'SEAL') return { recorded: false };
     const { recorded } = await recordIncidentIfNew(deps, repo, evaluation, now);
     return { recorded };

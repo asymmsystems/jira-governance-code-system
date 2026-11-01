@@ -11,7 +11,6 @@ import {
   historyFlow,
   issueChangedFlow,
   LedgerSealDeps,
-  rawComments,
   readLiveSnapshot,
   recordIncidentIfNew,
   revokeFlow,
@@ -96,8 +95,7 @@ export async function validateTransition(payload: any, context?: any, deps: Ledg
     return { result: false, errorMessage: JIRA_UNREACHABLE_MESSAGE };
   }
   issueId = String(live.raw.id || issueId);
-  const liveSnapshot = live.snapshot;
-  const evaluation = await evaluate(repository, issueId, liveSnapshot, now, rawComments(live.raw));
+  const evaluation = await evaluate(repository, issueId, live, now);
 
   if (evaluation.kind === 'LEGACY') {
     return {
@@ -113,7 +111,7 @@ export async function validateTransition(payload: any, context?: any, deps: Ledg
   }
 
   if (evaluation.kind === 'NONE') {
-    const unsealed = validateTransitionGate(null, liveSnapshot);
+    const unsealed = validateTransitionGate(null, live.snapshot);
     return { result: false, errorMessage: unsealed.errorMessage };
   }
 
@@ -126,7 +124,7 @@ export async function validateTransition(payload: any, context?: any, deps: Ledg
       revoked: we.currentStatusId === 'LS_REVOKED',
       compromised: we.currentStatusId === 'LS_CHANGED'
     },
-    liveSnapshot,
+    evaluation.liveSnapshot,
     {
       certificateId: we.currentContentId,
       sealedAt: summary?.sealedAt,

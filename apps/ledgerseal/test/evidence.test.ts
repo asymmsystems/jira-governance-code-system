@@ -56,7 +56,7 @@ describe('B-14 evidence export', () => {
     expect(evidence.format).toBe('ledgerseal-evidence/1');
     expect(evidence.publicKeyId).toBe('ls-test-1');
     expect(evidence.attestation).toMatchObject({ schemaVersion: 2, issueId: '10001', status: 'SEAL_VALID', everCompromised: 'true', incidentCount: 1 });
-    expect(evidence.snapshot.canonicalizerVersion).toBe('2.0.0');
+    expect(evidence.snapshot.canonicalizerVersion).toBe('2.1.0');
     expect(evidence.history.map((r: any) => r.transitionName)).toEqual(['SEAL', 'CHANGE', 'RESEAL']);
     expect(evidence.verification.length).toBeGreaterThanOrEqual(4);
     expect(Buffer.byteLength(JSON.stringify(evidence), 'utf8')).toBeLessThan(5 * 1024 * 1024);

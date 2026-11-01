@@ -27,10 +27,10 @@ const JIRA_TIME_REASON = 'Jira sets this time itself.';
 const DERIVED_REASON = 'Derived from work logs or sub-tasks.';
 
 /**
- * System fields outside the seal, with the reason the panel shows (spec v2 section 4.2).
+ * System fields outside the seal in every canonical form, with the reason the panel shows (spec v2 section 4.2).
  * Matched on the field id, which equals schema.system for system fields.
  */
-const SYSTEM_EXCLUDED: Record<string, string> = {
+const BASE_SYSTEM_EXCLUDED: Record<string, string> = {
   status: STATUS_REASON,
   statuscategory: STATUS_REASON,
   statusCategory: STATUS_REASON,
@@ -48,16 +48,14 @@ const SYSTEM_EXCLUDED: Record<string, string> = {
   aggregatetimespent: DERIVED_REASON,
   timeestimate: DERIVED_REASON,
   aggregatetimeestimate: DERIVED_REASON,
-  aggregatetimeoriginalestimate: DERIVED_REASON,
-  resolution: RESOLUTION_REASON,
-  resolutiondate: RESOLUTION_REASON
+  aggregatetimeoriginalestimate: DERIVED_REASON
 };
 
 /**
- * Custom field types outside the seal, matched on schema.custom (spec v2 section 4.2).
+ * Custom field types outside the seal in every canonical form, matched on schema.custom (spec v2 section 4.2).
  * Any other custom type is covered, so an unknown type can only cause a false alarm, never hide a change.
  */
-const CUSTOM_EXCLUDED: Record<string, string> = {
+const BASE_CUSTOM_EXCLUDED: Record<string, string> = {
   'com.pyxis.greenhopper.jira:gh-lexo-rank': 'Rank changes on every board drag.',
   'com.pyxis.greenhopper.jira:gh-sprint': 'Sprint changes when a sprint closes.',
   'com.atlassian.servicedesk:sd-sla-field': 'SLA timers change by themselves.',
@@ -67,32 +65,61 @@ const CUSTOM_EXCLUDED: Record<string, string> = {
   'com.atlassian.servicedesk.approvals-plugin:sd-approvals': 'Approvals change as approvers decide.',
   'com.atlassian.jira.plugins.jira-development-integration-plugin:devsummarycf': 'Development summary changes with commits.',
   'com.atlassian.jira.ext.charting:timeinstatus': 'Computed by Jira.',
-  'com.atlassian.jira.ext.charting:firstresponsedate': 'Computed by Jira.',
-  // NF-04: computed on JSM sites and seen live on DEMO; each changes without a user edit
-  'com.atlassian.servicedesk.sentiment:sd-sentiment': 'Computed by Jira.',
-  'com.atlassian.jira.plugins.proforma-managed-fields:forms-total-field-cftype': 'Computed by Jira.',
-  'com.atlassian.jira.plugins.proforma-managed-fields:forms-submitted-field-cftype': 'Computed by Jira.',
-  'com.atlassian.jira.plugins.proforma-managed-fields:forms-locked-field-cftype': 'Computed by Jira.',
-  'com.atlassian.jira.plugins.proforma-managed-fields:forms-open-field-cftype': 'Computed by Jira.',
-  'com.atlassian.jira.plugin.system.customfieldtypes:agent-sessions': 'Computed by Jira.'
+  'com.atlassian.jira.ext.charting:firstresponsedate': 'Computed by Jira.'
+};
+
+/** The fields one canonical form leaves out. */
+interface ExclusionRules {
+  system: Record<string, string>;
+  custom: Record<string, string>;
+}
+
+/**
+ * Each canonical form version keeps its own rules, so a seal is always checked with the rules it was made with
+ * (spec v2 section 4.1). A change to the covered set is a new version; an old version is never edited.
+ */
+const RULES: Record<string, ExclusionRules> = {
+  '2.0.0': {
+    system: { ...BASE_SYSTEM_EXCLUDED, resolutiondate: 'Set together with Resolution, which is covered.' },
+    custom: BASE_CUSTOM_EXCLUDED
+  },
+  '2.1.0': {
+    // NF-05 (live, LSP-1): a transition to a resolving status sets these, so they follow the status rule (D-2)
+    system: { ...BASE_SYSTEM_EXCLUDED, resolution: RESOLUTION_REASON, resolutiondate: RESOLUTION_REASON },
+    custom: {
+      ...BASE_CUSTOM_EXCLUDED,
+      // NF-04: computed on JSM sites and seen live on DEMO; each changes without a user edit
+      'com.atlassian.servicedesk.sentiment:sd-sentiment': 'Computed by Jira.',
+      'com.atlassian.jira.plugins.proforma-managed-fields:forms-total-field-cftype': 'Computed by Jira.',
+      'com.atlassian.jira.plugins.proforma-managed-fields:forms-submitted-field-cftype': 'Computed by Jira.',
+      'com.atlassian.jira.plugins.proforma-managed-fields:forms-locked-field-cftype': 'Computed by Jira.',
+      'com.atlassian.jira.plugins.proforma-managed-fields:forms-open-field-cftype': 'Computed by Jira.',
+      'com.atlassian.jira.plugin.system.customfieldtypes:agent-sessions': 'Computed by Jira.'
+    }
+  }
 };
 
 /** Hashed outside `fields` (top-level ids, attachments and comments), so never listed as excluded. */
 const COVERED_ELSEWHERE = new Set(['project', 'issuetype', 'attachment', 'comment']);
 
-export const CANONICALIZER_VERSION = '2.0.0';
+/** The canonical form new seals use. Read through the module export, so a test can stand in for an older app. */
+export const CANONICALIZER_VERSION: string = '2.1.0';
+
+export function isKnownCanonicalizerVersion(version: unknown): boolean {
+  return typeof version === 'string' && Object.prototype.hasOwnProperty.call(RULES, version);
+}
 
 /** Fields that are sets whatever their schema says: their order carries no meaning (spec v2 section 4.3). */
 const SET_FIELDS = new Set(['labels', 'components', 'fixVersions', 'versions', 'issuelinks', 'subtasks']);
 /** Array item types that make a field a set. */
 const SET_ITEM_TYPES = new Set(['option', 'user', 'group', 'version', 'component']);
 
-function exclusionReason(key: string, schema: FieldSchema | undefined): string | null {
-  if (SYSTEM_EXCLUDED[key]) return SYSTEM_EXCLUDED[key];
+function exclusionReason(rules: ExclusionRules, key: string, schema: FieldSchema | undefined): string | null {
+  if (rules.system[key]) return rules.system[key];
   const system = schema?.schema?.system;
-  if (system && SYSTEM_EXCLUDED[system]) return SYSTEM_EXCLUDED[system];
+  if (system && rules.system[system]) return rules.system[system];
   const custom = schema?.schema?.custom;
-  return custom && CUSTOM_EXCLUDED[custom] ? CUSTOM_EXCLUDED[custom] : null;
+  return custom && rules.custom[custom] ? rules.custom[custom] : null;
 }
 
 function isSetField(key: string, schema: FieldSchema | undefined): boolean {
@@ -243,8 +270,16 @@ const BUILT_IN_NAMES: Record<string, string> = {
 
 /**
  * Extracts and canonicalizes issue fields, attachments, and comments from raw Jira REST API response.
+ * `version` picks the canonical form rules; an unknown version throws rather than guess its rules.
  */
-export function canonicalizeIssueState(rawIssue: any, capturedAt: string, fieldSchemas: FieldSchema[] = []): CanonicalIssueSnapshot {
+export function canonicalizeIssueState(
+  rawIssue: any,
+  capturedAt: string,
+  fieldSchemas: FieldSchema[] = [],
+  version: string = CANONICALIZER_VERSION
+): CanonicalIssueSnapshot {
+  if (!isKnownCanonicalizerVersion(version)) throw new Error(`Unknown canonical form version ${version}`);
+  const rules = RULES[version];
   const issueId = String(rawIssue?.id || '');
   const issueKey = String(rawIssue?.key || '');
   const fieldsObj = rawIssue?.fields || {};
@@ -267,7 +302,7 @@ export function canonicalizeIssueState(rawIssue: any, capturedAt: string, fieldS
 
     // Fields are chosen by schema type, never by id or value (spec v2 section 4.2)
     const schema = schemaById.get(key);
-    const reason = exclusionReason(key, schema);
+    const reason = exclusionReason(rules, key, schema);
     if (reason) {
       excluded.push({ id: key, name: schema?.name || key, reason });
       continue;
@@ -316,7 +351,7 @@ export function canonicalizeIssueState(rawIssue: any, capturedAt: string, fieldS
     .sort((a, b) => codeUnitCompare(a.id, b.id));
 
   return {
-    canonicalizerVersion: CANONICALIZER_VERSION,
+    canonicalizerVersion: version,
     issueId,
     issueKey,
     projectId,
