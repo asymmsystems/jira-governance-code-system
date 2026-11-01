@@ -287,44 +287,6 @@ describe('PlannerEngine Domain Tests', () => {
     });
   });
 
-  describe('buildPortfolioHeatmap and filterPortfolioHeatmap', () => {
-    it('builds portfolio rows using metadata and applies filters', () => {
-      const weeks: WeeklySprintColumn[] = [sampleWeek, futureWeek];
-      const profiles = PlannerEngine.calculateResourceUtilization([sampleTask], weeks, 0);
-
-      const metadata = {
-        Alice: { coe: 'Frontend', vertical: 'Fintech', project: 'Project 1' }
-      };
-
-      const rows = PlannerEngine.buildPortfolioHeatmap(profiles, metadata);
-      expect(rows).toHaveLength(1);
-      expect(rows[0].coe).toBe('Frontend');
-      expect(rows[0].vertical).toBe('Fintech');
-
-      // Filtering tests
-      const filteredAll = PlannerEngine.filterPortfolioHeatmap(rows, { project: 'ALL', coe: 'ALL', vertical: 'ALL' });
-      expect(filteredAll).toHaveLength(1);
-
-      const filteredMatch = PlannerEngine.filterPortfolioHeatmap(rows, { project: 'Project 1', coe: 'Frontend' });
-      expect(filteredMatch).toHaveLength(1);
-
-      const filteredMismatch = PlannerEngine.filterPortfolioHeatmap(rows, { project: 'Project 99' });
-      expect(filteredMismatch).toHaveLength(0);
-
-      const filteredCoeMismatch = PlannerEngine.filterPortfolioHeatmap(rows, { coe: 'Backend' });
-      expect(filteredCoeMismatch).toHaveLength(0);
-
-      const filteredVertMismatch = PlannerEngine.filterPortfolioHeatmap(rows, { vertical: 'Health' });
-      expect(filteredVertMismatch).toHaveLength(0);
-    });
-
-    it('provides fallback metadata when resource is missing from metadataMap', () => {
-      const weeks: WeeklySprintColumn[] = [sampleWeek];
-      const profiles = PlannerEngine.calculateResourceUtilization([{ ...sampleTask, resource: 'UnknownDev' }], weeks, 0);
-      const rows = PlannerEngine.buildPortfolioHeatmap(profiles, {});
-      expect(rows[0].coe).toBe('Core Engineering');
-    });
-  });
 
   describe('normalizeEstimateToHours', () => {
     it('normalizes HOURS value directly', () => {

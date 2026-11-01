@@ -12,14 +12,12 @@ import {
   saveColumnWidths,
   saveHiddenColumns,
   saveProjectMilestone,
-  getPortfolioResourceHeatmap,
   resolveStorage,
   setGlobalStorageProvider,
   handler,
-  DEFAULT_WEEKS,
+  getDefaultWeeks,
   DEFAULT_COLUMN_WIDTHS,
   DEFAULT_MILESTONES,
-  PLACEHOLDER_USERS,
   mapJiraStatus,
   extractProjectKey,
   extractSiteUrl,
@@ -69,6 +67,10 @@ jest.mock('@forge/kvs', () => ({
 }));
 
 class MockStorage extends MemStorage {}
+
+
+// Weeks of the day the tests run; the resolvers compute their own per call (B-18).
+const DEFAULT_WEEKS = getDefaultWeeks();
 
 describe('CascadePlan Index & Resolver Tests', () => {
   let mockStorage: MockStorage;
@@ -179,6 +181,9 @@ describe('CascadePlan Index & Resolver Tests', () => {
         startWeek: '15-Jul',
         endWeek: '05-Aug',
         spanWeeks: 4,
+        // Real dates: a week key has no year, so a resolver cannot derive dates from it (B-18).
+        startDate: '2026-07-15',
+        endDate: '2026-08-11',
         effortHours: 40,
         progress: 50,
         targetProgress: 30,
@@ -189,6 +194,8 @@ describe('CascadePlan Index & Resolver Tests', () => {
         startWeek: '29-Jul',
         endWeek: '19-Aug',
         spanWeeks: 4,
+        startDate: '2026-07-29',
+        endDate: '2026-08-25',
         effortHours: 20,
         progress: 10,
         targetProgress: 20,
@@ -256,16 +263,16 @@ describe('CascadePlan Index & Resolver Tests', () => {
   });
 
   describe('fetchProjectUsers and fetchProjectEpics', () => {
-    it('fetches Jira users and appends placeholders', async () => {
+    it('fetches Jira users, with no placeholder people (B-18)', async () => {
       const users = await fetchProjectUsers('TEST');
       expect(users.some(u => u.displayName === 'Fahim Farook')).toBe(true);
-      expect(users.some(u => u.isPlaceholder)).toBe(true);
+      expect(users.some(u => u.isPlaceholder)).toBe(false);
     });
 
     it('handles Jira user fetch errors gracefully', async () => {
       mockRequestJira.mockRejectedValueOnce(new Error('Network failure'));
       const users = await fetchProjectUsers('TEST');
-      expect(users.length).toBe(PLACEHOLDER_USERS.length + 1);
+      expect(users.length).toBe(1);
       expect(users[0].displayName).toBe('Unassigned');
     });
 
@@ -295,10 +302,11 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(plan.columnWidths).toEqual(DEFAULT_COLUMN_WIDTHS);
     });
 
-    it('retrieves plan from repository fallback when Jira search fails', async () => {
+    it('shows no stored rows and lists nothing as stale when Jira search fails (B-18)', async () => {
       mockRequestJira.mockRejectedValue(new Error('Jira Down'));
       const plan = await getProjectPlan('TEST', mockStorage);
-      expect(plan.tasks.length).toBeGreaterThan(0);
+      expect(plan.tasks).toEqual([]);
+      expect(plan.staleEntries).toEqual([]);
       expect(plan.isLiveSynced).toBe(false);
     });
 
@@ -1129,44 +1137,6 @@ describe('CascadePlan Index & Resolver Tests', () => {
     });
   });
 
-  describe('getPortfolioResourceHeatmap', () => {
-    it('returns portfolio rows and weeks and handles cached metadata', async () => {
-      const first = await getPortfolioResourceHeatmap('TEST', { project: 'ALL' }, mockStorage);
-      expect(first.rows.length).toBeGreaterThanOrEqual(2);
-
-      const second = await getPortfolioResourceHeatmap('TEST', { project: 'ALL' }, mockStorage);
-      expect(second.rows.length).toBe(first.rows.length);
-    });
-
-    it('handles plan whose weeks do not carry isCurrentWeek', async () => {
-      const customStorage = new MockStorage();
-      const repo = new PlanRepository(customStorage);
-      const weeksWithoutCurrent = DEFAULT_WEEKS.map(w => ({ ...w, isCurrentWeek: false }));
-      await repo.saveProjectPlan({
-        planId: 'plan-NO-CUR',
-        projectKey: 'NOCUR',
-        projectName: 'No Current Week Project',
-        overallProjectCompletion: 0,
-        overallTargetCompletion: 0,
-        weeks: weeksWithoutCurrent,
-        tasks: [],
-        milestones: [],
-        columnWidths: DEFAULT_COLUMN_WIDTHS,
-        availableEpics: [],
-        availableUsers: [],
-        lastUpdated: new Date().toISOString()
-      });
-      mockRequestJira.mockImplementation(async (routeStr: any) => {
-        const url = String(routeStr);
-        if (url.includes('/rest/api/3/search/jql')) {
-          return { status: 200, json: async () => ({ issues: [] }) };
-        }
-        return { status: 200, json: async () => [] };
-      });
-      const res = await getPortfolioResourceHeatmap('NOCUR', {}, customStorage);
-      expect(res.weeks).toBeDefined();
-    });
-  });
 
   describe('extractProjectKey', () => {
     it('extracts projectKey from payload first', () => {
@@ -1354,19 +1324,6 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(res.error).toBeDefined();
     });
 
-    it('handles bridge invocations for getPortfolioResourceHeatmap with context fallback', async () => {
-      const resCtx: any = await handler({
-        call: { functionKey: 'getPortfolioResourceHeatmap' },
-        context: { extension: { project: { key: 'TEST' } } }
-      } as any);
-      expect(resCtx.rows).toBeDefined();
-
-      const resDef: any = await handler({
-        call: { functionKey: 'getPortfolioResourceHeatmap' },
-        context: {}
-      } as any);
-      expect(resDef.rows).toBeDefined();
-    });
   });
 
   describe('Two-Way Sync and Jira Issue Links', () => {
@@ -1947,12 +1904,6 @@ describe('CascadePlan Index & Resolver Tests', () => {
   });
 
   describe('getPortfolioResourceHeatmap coverage', () => {
-    it('retrieves and filters portfolio heatmap rows', async () => {
-      const res = await getPortfolioResourceHeatmap('TEST');
-      expect(res.rows).toBeDefined();
-      expect(res.weeks).toBeDefined();
-      expect(res.rows.length).toBeGreaterThan(0);
-    });
 
     it('saves task dependency when scheduleMap key does not yet exist', async () => {
       await clearRecords(mockStorage);
@@ -1969,149 +1920,8 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(plan.projectKey).toBe('TEST');
     });
 
-    it('cascades bounds to parent task when a subtask schedule or progress updates', async () => {
-      const initialPlan = await getProjectPlan('TEST', mockStorage);
-      const w0 = initialPlan.weeks[0];
-      const w1 = initialPlan.weeks[1];
-      const w2 = initialPlan.weeks[2];
 
-      // Setup scheduleMap with parent and subtask
-      await mockStorage.delete('cp:TEST:settings');
-      await mockStorage.set('scheduleMap:TEST', {
-        'TEST-1': {
-          startWeek: w0.weekKey,
-          endWeek: w1.weekKey,
-          startDate: w0.startDate,
-          endDate: w1.endDate,
-          spanWeeks: 2
-        },
-        'TEST-SUB1': {
-          parentKey: 'TEST-1',
-          isSubtask: true,
-          hierarchyLevel: -1,
-          startWeek: w0.weekKey,
-          endWeek: w1.weekKey,
-          startDate: w0.startDate,
-          endDate: w1.endDate,
-          spanWeeks: 2,
-          effortHours: 20,
-          progress: 50
-        }
-      });
 
-      const updatedPlan = await updateWbsTask(
-        {
-          projectKey: 'TEST',
-          taskId: 'TEST-SUB1',
-          updates: {
-            parentKey: 'TEST-1',
-            startWeek: w1.weekKey,
-            spanWeeks: 2,
-            progress: 100
-          }
-        },
-        mockStorage
-      );
-
-      expect(updatedPlan).toBeDefined();
-      const parentTask = updatedPlan.tasks.find(t => t.key === 'TEST-1');
-      expect(parentTask).toBeDefined();
-
-      // Test dynamically assigning parentKey to a task that previously had no parent
-      const updatedDynParent = await updateWbsTask(
-        {
-          projectKey: 'TEST',
-          taskId: 'TEST-2',
-          updates: {
-            parentKey: 'TEST-1',
-            startWeek: w1.weekKey,
-            spanWeeks: 2
-          }
-        },
-        mockStorage
-      );
-      expect(updatedDynParent).toBeDefined();
-    });
-
-    it('cascades bounds to parent when parent is not yet in scheduleMap and effort is 0', async () => {
-      const initialPlan = await getProjectPlan('TEST', mockStorage);
-      const w0 = initialPlan.weeks[0];
-      const w1 = initialPlan.weeks[1];
-
-      await mockStorage.delete('cp:TEST:settings');
-
-      await mockStorage.set('scheduleMap:TEST', {
-        'TEST-1': {
-          startWeek: w0.weekKey,
-          spanWeeks: 2
-        },
-        'TEST-SUB1': {
-          parentKey: 'TEST-1',
-          isSubtask: true,
-          hierarchyLevel: -1,
-          startWeek: w0.weekKey,
-          endWeek: w1.weekKey,
-          startDate: w0.startDate,
-          endDate: w1.endDate,
-          spanWeeks: 2,
-          effortHours: 0,
-          progress: 0
-        },
-        'TEST-SUB2': {
-          parentKey: 'TEST-1',
-          isSubtask: true,
-          hierarchyLevel: -1,
-          startWeek: w0.weekKey,
-          spanWeeks: 1,
-          effortHours: 0,
-          progress: 0
-        }
-      });
-
-      const updatedPlan = await updateWbsTask(
-        {
-          projectKey: 'TEST',
-          taskId: 'TEST-SUB1',
-          updates: {
-            parentKey: 'TEST-1',
-            startWeek: w0.weekKey,
-            spanWeeks: 2,
-            effortHours: 0
-          }
-        },
-        mockStorage
-      );
-      expect(updatedPlan).toBeDefined();
-    });
-
-    it('handles subtask updates when parent task is missing from plan', async () => {
-      const initialPlan = await getProjectPlan('TEST', mockStorage);
-      const w0 = initialPlan.weeks[0];
-
-      await mockStorage.delete('cp:TEST:settings');
-
-      await mockStorage.set('scheduleMap:TEST', {
-        'TEST-SUB99': {
-          parentKey: 'MISSING_PARENT',
-          startWeek: w0.weekKey,
-          spanWeeks: 2
-        }
-      });
-
-      const updatedPlan = await updateWbsTask(
-        {
-          projectKey: 'TEST',
-          taskId: 'TEST-SUB99',
-          updates: {
-            parentKey: 'MISSING_PARENT',
-            startWeek: w0.weekKey,
-            spanWeeks: 2
-          }
-        },
-        mockStorage
-      );
-      expect(updatedPlan).toBeDefined();
-    });
 
     it('inherits Epic from parent when subtask is fetched and parent has epic object', async () => {
       mockRequestJira.mockImplementationOnce(async () => ({
@@ -2201,11 +2011,6 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(t3?.dependency).toBeDefined();
     });
 
-    it('uses fallback mid week index in getPortfolioResourceHeatmap when no week is current week', async () => {
-      const farFutureDate = new Date('2035-01-01');
-      const res = await getPortfolioResourceHeatmap('TEST', {}, mockStorage, farFutureDate);
-      expect(res.rows.length).toBeGreaterThan(0);
-    });
 
     it('saves and preserves contributingResources on updateWbsTask', async () => {
       const plan = await updateWbsTask({

@@ -194,6 +194,7 @@ export interface ProjectPlanState {
   truncated?: { shown: number; total: number }; // more issues exist than were read (B-10)
   ok?: boolean;                     // set by write resolvers (B-07)
   jiraSync?: JiraSyncReport;        // set by write resolvers (B-07)
+  staleEntries?: string[];          // stored entries Jira did not return (complete reads only, B-18)
 }
 
 export interface JiraWriteRecord {
@@ -233,15 +234,6 @@ export interface ResourceUtilizationProfile {
   overallWeeklyState: Record<string, UtilizationState>;
 }
 
-export interface PortfolioResourceHeatmapRow {
-  resourceId: string;
-  resourceName: string;
-  project: string;
-  coe: string;       // Center of Excellence (e.g., "Frontend", "Backend", "QA", "Infra")
-  vertical: string;  // Business vertical (e.g., "Fintech", "Telecom", "Retail")
-  weeklyUtilization: Record<string, number>;
-  weeklyState: Record<string, UtilizationState>;
-}
 
 export interface InlineTaskCreateRequest {
   projectKey: string;

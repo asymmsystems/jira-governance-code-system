@@ -348,9 +348,11 @@ body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-
 
 /* Resource Views */
 .resource-view-container { padding: 18px; display: none; }
-.heatmap-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-.heatmap-th { background: var(--cp-surface-sunken); padding: 8px; font-size: 11px; text-align: center; border: 1px solid var(--cp-border); font-weight: 700; }
-.heatmap-td { padding: 8px; text-align: center; border: 1px solid var(--cp-border); font-size: 11px; font-weight: 600; }
+/* Hours per person per week (D-10). */
+.hours-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
+.hours-table th, .hours-table td { padding: 8px; border: 1px solid var(--cp-border); text-align: center; }
+.hours-table thead th { background: var(--cp-surface-sunken); font-size: 11px; font-weight: 700; color: var(--cp-text-subtle); }
+.hours-table tbody th { text-align: left; font-weight: 600; color: var(--cp-text); }
 
 /* Drag and Drop Timeline Highlights */
 .timeline-track-cell.drag-over-cell {

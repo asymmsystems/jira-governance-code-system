@@ -11,7 +11,6 @@ import {
   UtilizationState,
   TaskDependency,
   ResourceUtilizationProfile,
-  PortfolioResourceHeatmapRow,
   ResourceProjectAllocation,
   EstimateUnit,
   TShirtSize,
@@ -357,52 +356,7 @@ export class PlannerEngine {
     return profiles;
   }
 
-  /**
-   * Builds the executive resource heatmap.
-   */
-  public static buildPortfolioHeatmap(
-    profiles: ResourceUtilizationProfile[],
-    metadata: Record<string, { coe: string; vertical: string; project: string }>
-  ): PortfolioResourceHeatmapRow[] {
-    return profiles.map((profile, idx) => {
-      const meta = metadata[profile.resourceName] || {
-        coe: 'Core Engineering',
-        vertical: 'Core Platform',
-        project: 'Project 1'
-      };
 
-      return {
-        resourceId: `res-${idx + 1}`,
-        resourceName: profile.resourceName,
-        project: meta.project,
-        coe: meta.coe,
-        vertical: meta.vertical,
-        weeklyUtilization: profile.overallWeeklyUtilization,
-        weeklyState: profile.overallWeeklyState
-      };
-    });
-  }
-
-  /**
-   * Filters the portfolio heatmap by project, COE, or vertical.
-   */
-  public static filterPortfolioHeatmap(
-    rows: PortfolioResourceHeatmapRow[],
-    filters: { project?: string; coe?: string; vertical?: string }
-  ): PortfolioResourceHeatmapRow[] {
-    return rows.filter(row => {
-      if (filters.project && filters.project !== 'ALL' && row.project !== filters.project) {
-        return false;
-      }
-      if (filters.coe && filters.coe !== 'ALL' && row.coe !== filters.coe) {
-        return false;
-      }
-      if (filters.vertical && filters.vertical !== 'ALL' && row.vertical !== filters.vertical) {
-        return false;
-      }
-      return true;
-    });
-  }
 
   /**
    * Reorders tasks list by moving a task to a target row index and updating order indices.

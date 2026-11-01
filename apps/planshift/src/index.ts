@@ -18,7 +18,6 @@ import {
   CreateSubtaskForResourceRequest,
   ReorderTasksRequest,
   ResourceUtilizationProfile,
-  PortfolioResourceHeatmapRow,
   ProjectMilestone,
   JiraAssignableUser,
   JiraEpicItem,
@@ -360,8 +359,6 @@ export function getDefaultWeeks(referenceDate: Date = new Date()): WeeklySprintC
   return getTimelineWeeks(referenceDate).weeks;
 }
 
-export const DEFAULT_WEEKS: WeeklySprintColumn[] = getDefaultWeeks();
-
 export const DEFAULT_COLUMN_WIDTHS: ColumnWidthConfig = {
   epic: 120,
   story: 110,
@@ -375,16 +372,6 @@ export const DEFAULT_COLUMN_WIDTHS: ColumnWidthConfig = {
 
 export const DEFAULT_MILESTONES: ProjectMilestone[] = [];
 
-export const PLACEHOLDER_USERS: JiraAssignableUser[] = [
-  { accountId: 'ph:res-1', displayName: 'Resource 1 (Placeholder)', isPlaceholder: true },
-  { accountId: 'ph:res-2', displayName: 'Resource 2 (Placeholder)', isPlaceholder: true },
-  { accountId: 'ph:fe-lead', displayName: 'Frontend Lead (Placeholder)', isPlaceholder: true },
-  { accountId: 'ph:be-lead', displayName: 'Backend Lead (Placeholder)', isPlaceholder: true },
-  { accountId: 'ph:qa-lead', displayName: 'QA Automation Lead (Placeholder)', isPlaceholder: true },
-  { accountId: 'ph:devops', displayName: 'DevOps & SRE (Placeholder)', isPlaceholder: true }
-];
-
-export const DEFAULT_RESOURCE_METADATA: Record<string, { coe: string; vertical: string; project: string }> = {};
 
 export { CURRENT_WEEK_INDEX } from './domain/models';
 
@@ -411,7 +398,7 @@ export const UNASSIGNED_USER: JiraAssignableUser = {
 };
 
 /**
- * Fetches real Jira project assignees and merges with placeholders.
+ * Fetches the real Jira project assignees, plus "Unassigned" (B-18: no placeholder people).
  */
 export async function fetchProjectUsers(projectKey: string): Promise<JiraAssignableUser[]> {
   const realUsers: JiraAssignableUser[] = [];
@@ -431,7 +418,7 @@ export async function fetchProjectUsers(projectKey: string): Promise<JiraAssigna
       }
     }
   } catch {}
-  return [UNASSIGNED_USER, ...realUsers, ...PLACEHOLDER_USERS];
+  return [UNASSIGNED_USER, ...realUsers];
 }
 
 /**
@@ -522,6 +509,40 @@ export async function fetchLiveJiraIssues(
 }
 
 /**
+ * Jira's search index can lag behind a create. An issue Jira has just confirmed (HTTP 201) is added to
+ * the returned plan from its stored record until the search returns it; other entries Jira did not
+ * return stay hidden (B-18).
+ */
+function includeCreated(plan: ProjectPlanState, entry: Partial<WbsTask> | undefined, issue: Partial<WbsTask> & { id: string; key: string }, targetIndex?: number): WbsTask {
+  const found = plan.tasks.find(t => t.key === issue.key);
+  if (found) return found;
+  const task: WbsTask = {
+    epic: '', story: 'Task', storyKey: issue.key, effortHours: 0, resource: 'Unassigned', progress: 0, targetProgress: 0,
+    status: 'NOT_STARTED', startDate: '', endDate: '', spanWeeks: 1, subtasks: [], hierarchyLevel: 0, summary: issue.key,
+    ...(entry ? fromStoredEntry(entry) : {}), ...issue
+  } as WbsTask;
+  const at = typeof targetIndex === 'number' ? Math.max(0, Math.min(plan.tasks.length, targetIndex)) : plan.tasks.length;
+  plan.tasks.splice(at, 0, task);
+  plan.staleEntries = (plan.staleEntries || []).filter(k => k !== issue.key);
+  return task;
+}
+
+function fromStoredEntry(entry: Partial<WbsTask>): Partial<WbsTask> {
+  const { startDate, endDate, startWeek, endWeek, spanWeeks, weeklyAllocations, version } = entry;
+  return Object.fromEntries(Object.entries({ startDate, endDate, startWeek, endWeek, spanWeeks, weeklyAllocations, version }).filter(([, v]) => v !== undefined));
+}
+
+/**
+ * Dates of an entry stored with only a week key (older records): the first day of that week and whole
+ * weeks from it, from the weeks of this call. No date when the week is not known (B-18: no defaults).
+ */
+function weekDates(stored: Partial<WbsTask> | undefined, weeks: WeeklySprintColumn[]): { startDate: string; endDate: string } {
+  const w = stored && stored.startWeek ? weeks.find(x => x.weekKey === stored.startWeek) : undefined;
+  if (!w) return { startDate: '', endDate: '' };
+  return { startDate: w.startDate, endDate: addDays(w.startDate, (stored!.spanWeeks || 1) * 7 - 1) };
+}
+
+/**
  * Merges raw Jira issues with the stored planning records into scheduled tasks and backlog.
  */
 export function mapLiveIssues(
@@ -530,6 +551,7 @@ export function mapLiveIssues(
 ): { tasks: WbsTask[]; backlogTasks: WbsTask[]; isLive: boolean; truncated?: { shown: number; total: number } } {
   try {
     if (raw.isLive) {
+  const weeksNow = getDefaultWeeks(); // computed per call (B-18)
       const rawIssues: any[] = raw.issues;
 
       const issueByKey = new Map<string, any>();
@@ -663,8 +685,8 @@ export function mapLiveIssues(
           targetProgress: stored?.targetProgress !== undefined ? stored.targetProgress : 0,
           manualProgress: stored?.manualProgress,
           status,
-          startDate: stored?.startDate || DEFAULT_WEEKS[0]?.startDate || '',
-          endDate: stored?.endDate || iss.fields?.duedate || DEFAULT_WEEKS[3]?.endDate || '',
+          startDate: stored?.startDate || weekDates(stored, weeksNow).startDate,
+          endDate: stored?.endDate || weekDates(stored, weeksNow).endDate || iss.fields?.duedate || '',
           // The due date Jira holds, read live: the old value in the Changes panel (B-23).
           jiraDueDate: iss.fields?.duedate || undefined,
           startWeek: stored?.startWeek,
@@ -748,41 +770,10 @@ export async function getProjectPlan(
   let tasks = liveData.tasks;
   const backlogTasks = liveData.backlogTasks;
 
-  // Restore any scheduled tasks from storedScheduleMap not returned by live sync
-  for (const [key, stored] of Object.entries(storedScheduleMap)) {
-    if (!tasks.some(t => t.key === key || t.id === key) &&
-        !backlogTasks.some(t => t.key === key || t.id === key)) {
-      tasks.push({
-        id: stored.id || key,
-        key: key,
-        summary: stored.summary || `Task ${key}`,
-        epic: stored.epic || '',
-        epicKey: stored.epicKey,
-        story: stored.story || 'Task',
-        storyKey: key,
-        effortHours: stored.effortHours || 0,
-        resource: stored.resource || 'Unassigned',
-        resourceAccountId: stored.resourceAccountId,
-        progress: stored.progress || 0,
-        targetProgress: stored.targetProgress || 0,
-        status: stored.status || 'NOT_STARTED',
-        startDate: stored.startDate || activeWeeks[0]?.startDate || '',
-        endDate: stored.endDate || activeWeeks[3]?.endDate || '',
-        startWeek: stored.startWeek || activeWeeks[0]?.weekKey || '',
-        endWeek: stored.endWeek || activeWeeks[3]?.weekKey || '',
-        spanWeeks: stored.spanWeeks || 3,
-        weeklyAllocations: stored.weeklyAllocations,
-        dependency: stored.dependency,
-        subtasks: stored.subtasks || [],
-        parentKey: stored.parentKey,
-        parentId: stored.parentId,
-        isSubtask: stored.isSubtask,
-        isEpic: stored.isEpic,
-        hierarchyLevel: stored.hierarchyLevel,
-        manualProgress: stored.manualProgress
-      });
-    }
-  }
+  // An entry Jira did not return is not shown. When the Jira read worked and was complete it is listed, so the
+  // client can ask pruneStaleEntries to delete it once Jira confirms the issue is gone (B-18).
+  const liveKeys = new Set([...tasks, ...backlogTasks].map(t => t.key));
+  const staleEntries = !liveData.isLive || liveData.truncated ? [] : [...entries.keys()].filter(k => !liveKeys.has(k)).sort();
 
   // Second people are stored by account id; their names are read live from Jira (B-28, INV-04).
   for (const t of tasks) {
@@ -849,6 +840,7 @@ export async function getProjectPlan(
     lastUpdated: new Date().toISOString(),
     isLiveSynced: liveData.isLive,
     truncated: liveData.truncated,
+    staleEntries,
     siteUrl: siteUrl || (process.env.JIRA_BASE_URL || undefined)
   };
 
@@ -862,6 +854,7 @@ export async function scheduleBacklogTask(
   request: ScheduleBacklogRequest,
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState> {
+  const weeksNow = getDefaultWeeks(); // computed per call (B-18)
   const { projectKey, projectId, taskId, startWeek, startDate, spanWeeks = 3, effortHours, resource, targetIndex } = request;
   if (startDate !== undefined && !isIsoDate(startDate)) throw new ValidationError('startDate', 'startDate must be a date in YYYY-MM-DD form');
   const issueId = await verifyIssueInProject(taskId, projectKey, 'taskId');
@@ -870,13 +863,13 @@ export async function scheduleBacklogTask(
   await migrateIfNeeded(store, projectKey);
   const entries = await store.loadEntries();
 
-  const startIdx = Math.max(0, DEFAULT_WEEKS.findIndex(w => w.weekKey === startWeek));
-  const endIdx = Math.min(DEFAULT_WEEKS.length - 1, startIdx + spanWeeks - 1);
-  const endWeek = DEFAULT_WEEKS[endIdx].weekKey;
+  const startIdx = Math.max(0, weeksNow.findIndex(w => w.weekKey === startWeek));
+  const endIdx = Math.min(weeksNow.length - 1, startIdx + spanWeeks - 1);
+  const endWeek = weeksNow[endIdx].weekKey;
 
   const allocations: Record<string, number> = {};
   for (let i = startIdx; i <= endIdx; i++) {
-    allocations[DEFAULT_WEEKS[i].weekKey] = Math.round(100 / spanWeeks);
+    allocations[weeksNow[i].weekKey] = Math.round(100 / spanWeeks);
   }
 
   const current = entries.get(taskId);
@@ -886,12 +879,12 @@ export async function scheduleBacklogTask(
     startWeek,
     endWeek,
     spanWeeks,
-    startDate: DEFAULT_WEEKS[startIdx].startDate,
-    endDate: DEFAULT_WEEKS[endIdx].endDate,
+    startDate: weeksNow[startIdx].startDate,
+    endDate: weeksNow[endIdx].endDate,
     weeklyAllocations: allocations,
     sequenceNum: sequenceForIndex(entries, taskId, targetIndex),
     // An exact day (B-27): the drop date and whole weeks from it, anywhere on the timeline.
-    ...(startDate ? { startDate, endDate: addDays(startDate, spanWeeks * 7 - 1), ...gridFor(DEFAULT_WEEKS, startDate, addDays(startDate, spanWeeks * 7 - 1)) } : {})
+    ...(startDate ? { startDate, endDate: addDays(startDate, spanWeeks * 7 - 1), ...gridFor(weeksNow, startDate, addDays(startDate, spanWeeks * 7 - 1)) } : {})
   });
   void resource;
   const put = await store.putEntry(taskId, issueId, entry, current ? current.version : 0);
@@ -955,7 +948,8 @@ export async function createInlineTask(
   request: InlineTaskCreateRequest,
   storageProvider?: StorageProvider
 ): Promise<{ success: boolean; ok: boolean; jiraSync: JiraSyncReport; task?: WbsTask; plan?: ProjectPlanState; error?: string }> {
-  const currentWeekKey = DEFAULT_WEEKS.find(w => w.isCurrentWeek)?.weekKey || DEFAULT_WEEKS[0].weekKey;
+  const weeksNow = getDefaultWeeks(); // computed per call (B-18)
+  const currentWeekKey = weeksNow.find(w => w.isCurrentWeek)?.weekKey || weeksNow[0].weekKey;
   const {
     projectKey, projectId, epic, epicKey, story, summary, effortHours,
     resource = 'Unassigned', resourceAccountId, startWeek, spanWeeks = 3, targetIndex
@@ -1032,21 +1026,21 @@ export async function createInlineTask(
   const entries = await store.loadEntries();
 
   const assignedStartWeek = startWeek || currentWeekKey;
-  const startIdx = Math.max(0, DEFAULT_WEEKS.findIndex(w => w.weekKey === assignedStartWeek));
-  const endIdx = Math.min(DEFAULT_WEEKS.length - 1, startIdx + spanWeeks - 1);
-  const endWeek = DEFAULT_WEEKS[endIdx].weekKey;
+  const startIdx = Math.max(0, weeksNow.findIndex(w => w.weekKey === assignedStartWeek));
+  const endIdx = Math.min(weeksNow.length - 1, startIdx + spanWeeks - 1);
+  const endWeek = weeksNow[endIdx].weekKey;
 
   const allocations: Record<string, number> = {};
   for (let i = startIdx; i <= endIdx; i++) {
-    allocations[DEFAULT_WEEKS[i].weekKey] = Math.round(100 / spanWeeks);
+    allocations[weeksNow[i].weekKey] = Math.round(100 / spanWeeks);
   }
 
   await store.putEntry(jiraIssueKey, jiraIssueId, {
     startWeek: assignedStartWeek,
     endWeek,
     spanWeeks,
-    startDate: DEFAULT_WEEKS[startIdx].startDate,
-    endDate: DEFAULT_WEEKS[endIdx].endDate,
+    startDate: weeksNow[startIdx].startDate,
+    endDate: weeksNow[endIdx].endDate,
     weeklyAllocations: allocations,
     sequenceNum: sequenceForIndex(entries, jiraIssueKey, targetIndex)
   });
@@ -1055,14 +1049,15 @@ export async function createInlineTask(
   // Sync scheduled due date and effort back to Jira
   const log = new SyncLog();
   await syncTaskToJira(jiraIssueKey, {
-    endDate: DEFAULT_WEEKS[endIdx].endDate,
+    endDate: weeksNow[endIdx].endDate,
     effortHours,
     resourceAccountId,
     epicKey
   }, log);
 
   const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId);
-  const createdTask = plan.tasks.find(t => t.key === jiraIssueKey) || plan.tasks[0];
+  const createdTask = includeCreated(plan, (await store.loadEntries()).get(jiraIssueKey),
+    { id: jiraIssueId, key: jiraIssueKey, summary, epic: epic || '', epicKey, story: story || 'Task', effortHours: effortHours || 0, resource, resourceAccountId }, targetIndex);
 
   return { success: true, ok: true, jiraSync: log.report(), task: createdTask, plan };
 }
@@ -1478,7 +1473,7 @@ export async function updateWbsTask(
   }
 
   // Derive schedule dates and weeks dynamically
-  const activeWeeks = plan.weeks || DEFAULT_WEEKS;
+  const activeWeeks = plan.weeks || getDefaultWeeks();
 
   const userPickedDates = sanitized.startDate !== undefined || sanitized.endDate !== undefined;
   if (userPickedDates) {
@@ -1586,6 +1581,31 @@ export async function updateWbsTask(
 
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live),
     { ok: true, jiraSync: log.report(), cascadeRemaining });
+}
+
+/**
+ * Deletes the stored planning record of each listed issue that Jira confirms no longer exists (404).
+ * An issue Jira still has, or cannot confirm, keeps its record. Writes nothing to Jira (B-18).
+ */
+export async function pruneStaleEntries(
+  payload: { projectKey: string; projectId?: string; keys: string[] },
+  storageProvider?: StorageProvider
+): Promise<{ ok: boolean; success: boolean; pruned: string[]; jiraSync: JiraSyncReport }> {
+  const { projectKey, projectId, keys } = payload;
+  if (!Array.isArray(keys) || keys.length > 200) throw new ValidationError('keys', 'keys must be a list of at most 200 issue keys');
+  keys.forEach(k => assertIssueKey(k, 'keys'));
+  const store = openStore(resolveStorage(storageProvider), projectKey, projectId);
+  const entries = await store.loadEntries();
+  const pruned: string[] = [];
+  for (const key of keys) {
+    if (!entries.has(key)) continue;
+    const res = await getJiraCaller().requestJira(route`/rest/api/3/issue/${key}?fields=project`);
+    if (res && res.status === 404) {
+      await store.deleteEntry(key);
+      pruned.push(key);
+    }
+  }
+  return { ok: true, success: true, pruned, jiraSync: noJiraWrites() };
 }
 
 export const CASCADE_BATCH_LIMIT = 25;
@@ -1811,7 +1831,8 @@ export async function createSubtaskForResource(
   }, log);
 
   const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId);
-  const subtask = plan.tasks.find(t => t.key === createdKey);
+  const subtask = includeCreated(plan, (await store.loadEntries()).get(createdKey),
+    { id: createdId, key: createdKey, summary, isSubtask: true, hierarchyLevel: -1, parentKey, effortHours: effortHours || 0, resourceAccountId });
   return { success: true, ok: true, jiraSync: log.report(), subtask, plan };
 }
 
@@ -1973,31 +1994,6 @@ export async function saveProjectMilestone(
   return { success: true, ok: true, jiraSync: noJiraWrites(), milestones: filtered };
 }
 
-/**
- * Retrieves the portfolio-wide executive resource heatmap.
- */
-export async function getPortfolioResourceHeatmap(
-  projectKey: string,
-  filters: { project?: string; coe?: string; vertical?: string } = {},
-  storageProvider?: StorageProvider,
-  referenceDate?: Date
-): Promise<{ rows: PortfolioResourceHeatmapRow[]; weeks: WeeklySprintColumn[] }> {
-  const storage = resolveStorage(storageProvider);
-
-  const plan = await getProjectPlan(projectKey, storage, referenceDate);
-  const metadata = DEFAULT_RESOURCE_METADATA;
-
-  const activeWeekIdx = Math.max(0, plan.weeks.findIndex(w => w.isCurrentWeek));
-
-  const profiles = PlannerEngine.calculateResourceUtilization(plan.tasks, plan.weeks, activeWeekIdx, plan.projectName);
-  const allRows = PlannerEngine.buildPortfolioHeatmap(profiles, metadata);
-  const filteredRows = PlannerEngine.filterPortfolioHeatmap(allRows, filters);
-
-  return {
-    rows: filteredRows,
-    weeks: plan.weeks
-  };
-}
 
 /**
  * Helper to extract projectKey from trusted Jira Forge context first, with payload fallback.
@@ -2032,6 +2028,7 @@ const resolver = new Resolver();
 
 resolver.define('getProjectPlan', async (req) => withValidation(() => getProjectPlan(extractProjectKey(req), undefined, new Date(), extractSiteUrl(req), extractProjectId(req))));
 
+resolver.define('pruneStaleEntries', async (req) => withValidation(() => pruneStaleEntries({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 resolver.define('scheduleBacklogTask', async (req) => withValidation(() => scheduleBacklogTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
 resolver.define('createInlineTask', async (req) => withValidation(() => createInlineTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
@@ -2056,7 +2053,6 @@ resolver.define('saveHiddenColumns', async (req) => withValidation(() => saveHid
 
 resolver.define('saveProjectMilestone', async (req) => withValidation(() => saveProjectMilestone({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('getPortfolioResourceHeatmap', async (req) => withValidation(() => getPortfolioResourceHeatmap(extractProjectKey(req), req.payload?.filters)));
 
 resolver.define('continueCascade', async (req) => withValidation(() => continueCascade({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 

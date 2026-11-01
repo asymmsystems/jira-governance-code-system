@@ -3,7 +3,7 @@
  * Manages persistence for project plans, tasks, allocations, and partial completion dependencies.
  */
 
-import { ProjectPlanState, TaskDependency, PortfolioResourceHeatmapRow } from '../domain/models';
+import { ProjectPlanState, TaskDependency } from '../domain/models';
 
 export interface StorageProvider {
   get<T>(key: string): Promise<T | undefined>;

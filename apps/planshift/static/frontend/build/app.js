@@ -7204,6 +7204,24 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return entering ? `Move mode for ${dates} Left and Right move 1 day, with Shift 1 week; [ and ] change the due date; Enter saves; Escape cancels.` : dates;
   }
 
+  // src/ui/weekly-hours.ts
+  function weeklyHours(tasks, weekStarts) {
+    const byName = /* @__PURE__ */ new Map();
+    for (const t of tasks) {
+      if (t.isEpic || t.hierarchyLevel === 1 || !t.resource || t.resource === "Unassigned" || !(t.effortHours > 0) || !t.startDate || !t.endDate) continue;
+      const days = daysBetween(t.startDate, t.endDate) + 1;
+      const perDay = t.effortHours / days;
+      const row = byName.get(t.resource) || weekStarts.map(() => 0);
+      weekStarts.forEach((ws, i) => {
+        const from = Math.max(0, daysBetween(t.startDate, ws));
+        const to = Math.min(days - 1, daysBetween(t.startDate, ws) + 6);
+        if (to >= from) row[i] += (to - from + 1) * perDay;
+      });
+      byName.set(t.resource, row);
+    }
+    return [...byName.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([name, hours]) => ({ name, hours: hours.map((h) => Math.round(h * 10) / 10) }));
+  }
+
   // src/ui/time-scale.ts
   var ZOOMS = [
     { id: "day", label: "Day", dayPx: 40, snap: "day" },
@@ -8022,13 +8040,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function switchView(viewName) {
     document.getElementById("timelineViewSection").style.display = viewName === "timeline" ? "flex" : "none";
     document.getElementById("utilizationViewSection").style.display = viewName === "utilization" ? "block" : "none";
-    document.getElementById("heatmapViewSection").style.display = viewName === "heatmap" ? "block" : "none";
     if (viewName === "timeline") {
       setTimeout(updateVirtualRows, 100);
     } else if (viewName === "utilization") {
       renderUtilizationView();
-    } else if (viewName === "heatmap") {
-      renderHeatmapView();
     }
   }
   function toggleBacklogTray() {
@@ -8188,6 +8203,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
       updateColumnManagerUI();
       renderPlan();
       settleUndo();
+      if (Array.isArray(plan.staleEntries) && plan.staleEntries.length) {
+        callResolver("pruneStaleEntries", { keys: plan.staleEntries.slice(0, 200) });
+      }
     } else {
       if (errBanner) {
         errBanner.style.display = "flex";
@@ -8224,8 +8242,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   }
   function renderPlanSummary() {
-    document.getElementById("projectBadge").textContent = `Project: ${currentPlan.projectKey}`;
-    document.getElementById("completionBadge").textContent = `Completion: ${currentPlan.overallProjectCompletion}% | Target: ${currentPlan.overallTargetCompletion}%`;
+    const projectBadge = document.getElementById("projectBadge");
+    projectBadge.textContent = `Project: ${currentPlan.projectKey}`;
+    projectBadge.hidden = false;
+    const completionBadge = document.getElementById("completionBadge");
+    completionBadge.textContent = `Completion: ${currentPlan.overallProjectCompletion}% | Target: ${currentPlan.overallTargetCompletion}%`;
+    completionBadge.hidden = false;
     document.getElementById("backlogCount").textContent = currentPlan.backlogTasks ? currentPlan.backlogTasks.length : 0;
     const truncatedNote = document.getElementById("truncatedNote");
     if (truncatedNote) {
@@ -9060,7 +9082,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       try {
         const res = await callResolver2("createInlineTask", {
           summary,
-          epic: selectedEpic || "General",
+          epic: selectedEpic || void 0,
           epicKey: selectedEpicKey || void 0,
           resource: selectedResource,
           resourceAccountId: selectedAccountId,
@@ -10802,7 +10824,7 @@ Click to manage or assign.`;
     const btn = document.getElementById("btnSubmitCreateTask");
     const summaryInput = document.getElementById("createSummaryInput");
     const summary = summaryInput.value.trim();
-    const epic = document.getElementById("createEpicSelect").value || "Prerequisites";
+    const epic = document.getElementById("createEpicSelect").value || void 0;
     const resource = document.getElementById("createAssigneeSelect").value || "Unassigned";
     const parsedEffort = parseInt(document.getElementById("createEffortInput").value, 10);
     const effortHours = isNaN(parsedEffort) ? void 0 : parsedEffort;
@@ -10957,65 +10979,17 @@ Click to manage or assign.`;
     }
     prompt.querySelector(".btn-primary").focus();
   }
-  async function renderUtilizationView() {
+  function renderUtilizationView() {
     const cont = document.getElementById("utilizationProfilesContent");
-    cont.innerHTML = '<div style="color: var(--cp-text-subtle);">Loading utilization profiles...</div>';
-    const res = await callResolver2("getPortfolioResourceHeatmap", {});
-    if (!res || !res.rows) {
-      cont.innerHTML = "<div>No resource allocation data available.</div>";
+    const weekStarts = Array.from({ length: 8 }, (_, i) => addDays(mondayOf(todayIso()), i * 7));
+    const rows = weeklyHours(currentPlan?.tasks || [], weekStarts);
+    if (rows.length === 0) {
+      cont.innerHTML = "<div>No assigned, estimated tasks with dates on the plan.</div>";
       return;
     }
-    let markup = html`<div style="display:flex; flex-direction:column; gap:16px;">`;
-    res.rows.forEach((r) => {
-      markup = html`${markup}
-      <div style="background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius:6px; padding:12px;">
-        <div style="font-weight:700; font-size:13px; margin-bottom:4px;">👤 ${r.resourceName} <span style="font-weight:500; color: var(--cp-text-subtle);">(${r.coe} • ${r.vertical})</span></div>
-        <div style="display:flex; gap:6px; overflow-x:auto; margin-top:8px;">
-    `;
-      res.weeks.forEach((w) => {
-        const pct = r.weeklyUtilization[w.weekKey] || 0;
-        const bg = pct > 100 ? "var(--cp-bg-danger)" : pct === 100 ? "var(--cp-bg-success)" : pct > 0 ? "var(--cp-bg-selected)" : "var(--cp-surface-sunken)";
-        const fg = pct > 100 ? "var(--cp-text-danger)" : pct === 100 ? "var(--cp-text-success)" : pct > 0 ? "var(--cp-text-brand)" : "var(--cp-text-subtle)";
-        markup = html`${markup}
-        <div style="background:${bg}; color:${fg}; border-radius:4px; padding:4px 8px; text-align:center; min-width:60px;">
-          <div style="font-size:10px; font-weight:600;">${w.weekKey}</div>
-          <div style="font-size:12px; font-weight:700;">${pct}%</div>
-        </div>
-      `;
-      });
-      markup = html`${markup}</div></div>`;
-    });
-    markup = html`${markup}</div>`;
-    cont.innerHTML = html`${markup}`;
-  }
-  async function renderHeatmapView() {
-    const cont = document.getElementById("heatmapContent");
-    cont.innerHTML = '<div style="color: var(--cp-text-subtle);">Loading capacity heatmap...</div>';
-    const res = await callResolver2("getPortfolioResourceHeatmap", {});
-    if (!res || !res.rows) {
-      cont.innerHTML = "<div>No capacity data available.</div>";
-      return;
-    }
-    let markup = html`<table class="heatmap-table"><thead><tr><th class="heatmap-th">Resource</th><th class="heatmap-th">COE</th><th class="heatmap-th">Vertical</th>`;
-    res.weeks.forEach((w) => {
-      markup = html`${markup}<th class="heatmap-th">${w.weekKey}</th>`;
-    });
-    markup = html`${markup}</tr></thead><tbody>`;
-    res.rows.forEach((r) => {
-      markup = html`${markup}<tr>
-      <td class="heatmap-td" style="text-align:left; font-weight:700;">${r.resourceName}</td>
-      <td class="heatmap-td" style="color: var(--cp-text-subtle);">${r.coe}</td>
-      <td class="heatmap-td" style="color: var(--cp-text-subtle);">${r.vertical}</td>
-    `;
-      res.weeks.forEach((w) => {
-        const pct = r.weeklyUtilization[w.weekKey] || 0;
-        const bg = pct > 100 ? "var(--cp-bg-danger)" : pct === 100 ? "var(--cp-bg-success)" : pct > 0 ? "var(--cp-bg-selected)" : "var(--cp-bg-warning)";
-        const fg = pct > 100 ? "var(--cp-text-danger)" : pct === 100 ? "var(--cp-text-success)" : pct > 0 ? "var(--cp-text-brand)" : "var(--cp-text)";
-        markup = html`${markup}<td class="heatmap-td" style="background:${bg}; color:${fg};">${pct}%</td>`;
-      });
-      markup = html`${markup}</tr>`;
-    });
-    markup = html`${markup}</tbody></table>`;
-    cont.innerHTML = html`${markup}`;
+    cont.innerHTML = html`<table class="hours-table">
+    <thead><tr><th scope="col">Person</th>${weekStarts.map((w) => html`<th scope="col">${w}</th>`)}</tr></thead>
+    <tbody>${rows.map((r) => html`<tr><th scope="row">${r.name}</th>${r.hours.map((h) => html`<td>${h} h</td>`)}</tr>`)}</tbody>
+  </table>`;
   }
 })();

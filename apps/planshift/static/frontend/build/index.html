@@ -18,9 +18,9 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke: var(--cp-border-brand)" stroke-width="2.5"><path d="M3 3h18v18H3z"/><path d="M7 8h10M7 12h6M7 16h8"/></svg>
         <span>CascadePlan</span>
       </div>
-      <span class="badge badge-primary" id="projectBadge">Project: DEMO</span>
+      <span class="badge badge-primary" id="projectBadge" hidden></span>
       <span class="badge badge-warning" id="truncatedNote" hidden></span>
-      <span class="badge badge-success" id="completionBadge">Completion: 31% | Target: 25%</span>
+      <span class="badge badge-success" id="completionBadge" hidden></span>
       <button class="btn btn-outline" id="toggleBacklogBtn" title="Toggle unmapped backlog tray">
         📂 Backlog Tray (<span id="backlogCount">0</span>)
       </button>
@@ -62,7 +62,6 @@
       <select class="view-select" id="viewSwitcher" aria-label="View">
         <option value="timeline">📊 Project Tracking (WBS & Timeline)</option>
         <option value="utilization">👤 Resource Utilization (Per-Person)</option>
-        <option value="heatmap">🗺️ Executive Heatmap (Capacity)</option>
       </select>
     </div>
   </header>
@@ -158,17 +157,11 @@
 
       <!-- 2. Resource Utilization View -->
       <div id="utilizationViewSection" class="resource-view-container">
-        <h3 style="margin-bottom: 8px;">Resource Utilization Profile</h3>
-        <p style="color: var(--cp-text-subtle); margin-bottom: 14px;">Detailed weekly task allocations grouped by assigned team member.</p>
+        <h3 style="margin-bottom: 8px;">Hours per person per week</h3>
+        <p style="color: var(--cp-text-subtle); margin-bottom: 14px;">From the Jira estimates on the plan, spread evenly over the days of each task. No capacity is assumed.</p>
         <div id="utilizationProfilesContent"></div>
       </div>
 
-      <!-- 3. Executive Capacity Heatmap View -->
-      <div id="heatmapViewSection" class="resource-view-container">
-        <h3 style="margin-bottom: 8px;">Executive Resource Capacity Heatmap</h3>
-        <p style="color: var(--cp-text-subtle); margin-bottom: 14px;">Portfolio-wide capacity heatmap with Center of Excellence (COE) and Vertical tags.</p>
-        <div id="heatmapContent"></div>
-      </div>
     </main>
   </div>
 
@@ -378,12 +371,12 @@
 
         <!-- Subtasks & Buffer Section -->
         <div style="background: var(--cp-surface-sunken); border: 1px solid var(--cp-border); border-radius: 6px; padding: 12px;">
-          <div style="font-weight: 700; margin-bottom: 8px;">Subtasks & Risk Buffer</div>
+          <div style="font-weight: 700; margin-bottom: 8px;">Checklist and risk buffer (CascadePlan only, not Jira sub-tasks)</div>
           <div id="subtasksList" style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;"></div>
           <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-            <input type="text" class="form-input" id="newSubtaskSummary" aria-label="New sub-task summary" placeholder="New subtask title..." style="flex: 1;" />
+            <input type="text" class="form-input" id="newSubtaskSummary" aria-label="New checklist item" placeholder="New checklist item..." style="flex: 1;" />
             <input type="number" class="form-input" id="newSubtaskHours" aria-label="New sub-task hours" value="8" style="width: 70px;" />
-            <button class="btn btn-outline" id="btnAddSubtaskBtn">+ Add Subtask</button>
+            <button class="btn btn-outline" id="btnAddSubtaskBtn">+ Add checklist item</button>
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <div class="form-group">

@@ -23,6 +23,8 @@ import { html } from '../ui/safe-html';
 import { CanvasTimeline, ROW_H, BAR_H } from './canvas-timeline';
 import { barRect, daysBetween, visibleRange, handleOffsets, snapDays, previewMoves, xForDate } from '../ui/timeline-geometry';
 import { GRID_COLUMNS, navigate, rowCells, rowLevel, moveKey, moveAnnouncement } from '../ui/keyboard-grid';
+import { weeklyHours } from '../ui/weekly-hours';
+import { addDays as addDaysIso } from '../domain/schedule-engine';
 import { shouldAutoCompact, ZOOMS, zoomById, zoomStep, mondayOf, initialRange, rangeDays, extendRange, edgeToExtend, headerCells, gridLines, anchorScroll, dateAt } from '../ui/time-scale';
 
 function getJiraBaseUrl() {
@@ -814,14 +816,11 @@ function initGanttPan() {
 function switchView(viewName) {
   document.getElementById('timelineViewSection').style.display = viewName === 'timeline' ? 'flex' : 'none';
   document.getElementById('utilizationViewSection').style.display = viewName === 'utilization' ? 'block' : 'none';
-  document.getElementById('heatmapViewSection').style.display = viewName === 'heatmap' ? 'block' : 'none';
 
   if (viewName === 'timeline') {
     setTimeout(updateVirtualRows, 100);
   } else if (viewName === 'utilization') {
     renderUtilizationView();
-  } else if (viewName === 'heatmap') {
-    renderHeatmapView();
   }
 }
 
@@ -1000,6 +999,10 @@ async function loadProjectPlan() {
     updateColumnManagerUI();
     renderPlan();
     settleUndo();
+    // Entries Jira did not return: the resolver deletes those Jira confirms are gone (B-18).
+    if (Array.isArray(plan.staleEntries) && plan.staleEntries.length) {
+      rawCallResolver('pruneStaleEntries', { keys: plan.staleEntries.slice(0, 200) });
+    }
   } else {
     if (errBanner) {
       errBanner.style.display = 'flex';
@@ -1042,8 +1045,13 @@ function renderPlan() {
 
 /** Header badges, backlog count, truncation note and legend. */
 function renderPlanSummary() {
-  document.getElementById('projectBadge').textContent = `Project: ${currentPlan.projectKey}`;
-  document.getElementById('completionBadge').textContent = `Completion: ${currentPlan.overallProjectCompletion}% | Target: ${currentPlan.overallTargetCompletion}%`;
+  // Badges are empty and hidden until real values arrive (B-18: no fixed text before load).
+  const projectBadge = document.getElementById('projectBadge');
+  projectBadge.textContent = `Project: ${currentPlan.projectKey}`;
+  projectBadge.hidden = false;
+  const completionBadge = document.getElementById('completionBadge');
+  completionBadge.textContent = `Completion: ${currentPlan.overallProjectCompletion}% | Target: ${currentPlan.overallTargetCompletion}%`;
+  completionBadge.hidden = false;
   document.getElementById('backlogCount').textContent = currentPlan.backlogTasks ? currentPlan.backlogTasks.length : 0;
   const truncatedNote = document.getElementById('truncatedNote');
   if (truncatedNote) {
@@ -2014,7 +2022,7 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
     try {
       const res = await callResolver('createInlineTask', {
         summary,
-        epic: selectedEpic || 'General',
+        epic: selectedEpic || undefined,
         epicKey: selectedEpicKey || undefined,
         resource: selectedResource,
         resourceAccountId: selectedAccountId,
@@ -3964,7 +3972,7 @@ async function executeCreateTask() {
   const btn = document.getElementById('btnSubmitCreateTask');
   const summaryInput = document.getElementById('createSummaryInput');
   const summary = summaryInput.value.trim();
-  const epic = document.getElementById('createEpicSelect').value || 'Prerequisites';
+  const epic = document.getElementById('createEpicSelect').value || undefined;
   const resource = document.getElementById('createAssigneeSelect').value || 'Unassigned';
   const parsedEffort = parseInt(document.getElementById('createEffortInput').value, 10);
   const effortHours = isNaN(parsedEffort) ? undefined : parsedEffort;
@@ -4130,69 +4138,18 @@ function closeModalAsking(modal) {
   prompt.querySelector('.btn-primary').focus();
 }
 
-// Utilization & Heatmap Views
-async function renderUtilizationView() {
+// Hours per person per week from the Jira estimates on the plan (D-10).
+function renderUtilizationView() {
   const cont = document.getElementById('utilizationProfilesContent');
-  cont.innerHTML = '<div style="color: var(--cp-text-subtle);">Loading utilization profiles...</div>';
-  const res = await callResolver('getPortfolioResourceHeatmap', {});
-  if (!res || !res.rows) {
-    cont.innerHTML = '<div>No resource allocation data available.</div>';
+  const weekStarts = Array.from({ length: 8 }, (_, i) => addDaysIso(mondayOf(todayIso()), i * 7));
+  const rows = weeklyHours(currentPlan?.tasks || [], weekStarts);
+  if (rows.length === 0) {
+    cont.innerHTML = '<div>No assigned, estimated tasks with dates on the plan.</div>';
     return;
   }
-
-  let markup = html`<div style="display:flex; flex-direction:column; gap:16px;">`;
-  res.rows.forEach(r => {
-    markup = html`${markup}
-      <div style="background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius:6px; padding:12px;">
-        <div style="font-weight:700; font-size:13px; margin-bottom:4px;">👤 ${r.resourceName} <span style="font-weight:500; color: var(--cp-text-subtle);">(${r.coe} • ${r.vertical})</span></div>
-        <div style="display:flex; gap:6px; overflow-x:auto; margin-top:8px;">
-    `;
-    res.weeks.forEach(w => {
-      const pct = r.weeklyUtilization[w.weekKey] || 0;
-      const bg = pct > 100 ? 'var(--cp-bg-danger)' : pct === 100 ? 'var(--cp-bg-success)' : pct > 0 ? 'var(--cp-bg-selected)' : 'var(--cp-surface-sunken)';
-      const fg = pct > 100 ? 'var(--cp-text-danger)' : pct === 100 ? 'var(--cp-text-success)' : pct > 0 ? 'var(--cp-text-brand)' : 'var(--cp-text-subtle)';
-      markup = html`${markup}
-        <div style="background:${bg}; color:${fg}; border-radius:4px; padding:4px 8px; text-align:center; min-width:60px;">
-          <div style="font-size:10px; font-weight:600;">${w.weekKey}</div>
-          <div style="font-size:12px; font-weight:700;">${pct}%</div>
-        </div>
-      `;
-    });
-    markup = html`${markup}</div></div>`;
-  });
-  markup = html`${markup}</div>`;
-  cont.innerHTML = html`${markup}`;
+  cont.innerHTML = html`<table class="hours-table">
+    <thead><tr><th scope="col">Person</th>${weekStarts.map(w => html`<th scope="col">${w}</th>`)}</tr></thead>
+    <tbody>${rows.map(r => html`<tr><th scope="row">${r.name}</th>${r.hours.map(h => html`<td>${h} h</td>`)}</tr>`)}</tbody>
+  </table>`;
 }
 
-async function renderHeatmapView() {
-  const cont = document.getElementById('heatmapContent');
-  cont.innerHTML = '<div style="color: var(--cp-text-subtle);">Loading capacity heatmap...</div>';
-  const res = await callResolver('getPortfolioResourceHeatmap', {});
-  if (!res || !res.rows) {
-    cont.innerHTML = '<div>No capacity data available.</div>';
-    return;
-  }
-
-  let markup = html`<table class="heatmap-table"><thead><tr><th class="heatmap-th">Resource</th><th class="heatmap-th">COE</th><th class="heatmap-th">Vertical</th>`;
-  res.weeks.forEach(w => {
-    markup = html`${markup}<th class="heatmap-th">${w.weekKey}</th>`;
-  });
-  markup = html`${markup}</tr></thead><tbody>`;
-
-  res.rows.forEach(r => {
-    markup = html`${markup}<tr>
-      <td class="heatmap-td" style="text-align:left; font-weight:700;">${r.resourceName}</td>
-      <td class="heatmap-td" style="color: var(--cp-text-subtle);">${r.coe}</td>
-      <td class="heatmap-td" style="color: var(--cp-text-subtle);">${r.vertical}</td>
-    `;
-    res.weeks.forEach(w => {
-      const pct = r.weeklyUtilization[w.weekKey] || 0;
-      const bg = pct > 100 ? 'var(--cp-bg-danger)' : pct === 100 ? 'var(--cp-bg-success)' : pct > 0 ? 'var(--cp-bg-selected)' : 'var(--cp-bg-warning)';
-      const fg = pct > 100 ? 'var(--cp-text-danger)' : pct === 100 ? 'var(--cp-text-success)' : pct > 0 ? 'var(--cp-text-brand)' : 'var(--cp-text)';
-      markup = html`${markup}<td class="heatmap-td" style="background:${bg}; color:${fg};">${pct}%</td>`;
-    });
-    markup = html`${markup}</tr>`;
-  });
-  markup = html`${markup}</tbody></table>`;
-  cont.innerHTML = html`${markup}`;
-}
