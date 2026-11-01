@@ -169,7 +169,7 @@ All resolvers take the project from `req.context.extension.project` (key and id)
 
 `jiraSync = { ok: boolean, error?: string, writes: [{ key, field, from, to, ok }] }`. The `writes` list feeds the Changes panel (B-23).
 
-Rate limits: Jira search pages with `nextPageToken` (max 5 pages of 100 inside a 20 s budget); a 429 is retried with `Retry-After` (max 3 tries) inside the budget (B-10).
+Rate limits: Jira search pages with `nextPageToken` (max 10 pages of 100, matching the 1,000-task budgets; when capped, the plan carries `truncated: { shown, total }` from `/search/approximate-count`); a 429 is retried after `Retry-After` (1 s when missing), at most 3 times and at most 20 s of waiting (B-10). `updateWbsTask` reads Jira once. A cascade moves at most 25 successors per call and returns `cascadeRemaining`; the UI calls `continueCascade` until it is empty (D-05).
 
 Licensing: when `req.context.license` exists and `isActive` is false, every write resolver returns `{ ok: false, error: 'license' }` and makes no write (B-21).
 

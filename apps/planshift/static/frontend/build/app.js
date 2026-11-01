@@ -6093,8 +6093,14 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const verdict = classifyResult(res);
       if (verdict.failed && verdict.message) showErrorBanner(verdict.message);
     }
+    let rounds = 0;
+    while (res && Array.isArray(res.cascadeRemaining) && res.cascadeRemaining.length > 0 && rounds < MAX_CASCADE_ROUNDS) {
+      rounds++;
+      res = await callResolver("continueCascade", { taskId: payload.taskId });
+    }
     return res;
   }
+  var MAX_CASCADE_ROUNDS = 40;
   function openIssueInNewTab(issueKey) {
     void import_bridge.router.open(`/browse/${encodeURIComponent(issueKey)}`);
   }
@@ -6856,6 +6862,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
     document.getElementById("projectBadge").textContent = `Project: ${currentPlan.projectKey}`;
     document.getElementById("completionBadge").textContent = `Completion: ${currentPlan.overallProjectCompletion}% | Target: ${currentPlan.overallTargetCompletion}%`;
     document.getElementById("backlogCount").textContent = currentPlan.backlogTasks ? currentPlan.backlogTasks.length : 0;
+    const truncatedNote = document.getElementById("truncatedNote");
+    if (truncatedNote) {
+      truncatedNote.hidden = !currentPlan.truncated;
+      truncatedNote.textContent = currentPlan.truncated ? `Showing the newest ${currentPlan.truncated.shown} of about ${currentPlan.truncated.total} issues` : "";
+    }
     const curWk = (currentPlan.weeks || []).find((w) => w.isCurrentWeek);
     if (curWk) {
       const el = document.getElementById("legendCurrentWeek");

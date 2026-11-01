@@ -93,11 +93,42 @@ export function resolveStorage(customProvider?: StorageProvider): StorageProvide
   return new ForgeKvsProvider();
 }
 
+let sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+
+/** Replaces the wait used by the 429 backoff (tests only). */
+export function setSleepForTests(fn: (ms: number) => Promise<void>): void {
+  sleep = fn;
+}
+
+const RETRY_BUDGET_MS = 20000;
+const MAX_RETRIES = 3;
+
+/**
+ * Wraps a Jira caller so that a 429 is retried after Retry-After (1 s when missing), at most
+ * three times and never waiting more than 20 s in total (resolver limit is 25 s, RS-19).
+ */
+function withRetry(caller: { requestJira: (...args: any[]) => Promise<any> }) {
+  return {
+    requestJira: async (r: any, opts?: any): Promise<any> => {
+      let waited = 0;
+      for (let attempt = 0; ; attempt++) {
+        const res = opts === undefined ? await caller.requestJira(r) : await caller.requestJira(r, opts);
+        if (!res || res.status !== 429 || attempt >= MAX_RETRIES) return res;
+        const header = Number(res.headers && typeof res.headers.get === 'function' ? res.headers.get('retry-after') : NaN);
+        const ms = Number.isFinite(header) && header > 0 ? header * 1000 : 1000;
+        if (waited + ms > RETRY_BUDGET_MS) return res;
+        await sleep(ms);
+        waited += ms;
+      }
+    }
+  };
+}
+
 export function getJiraCaller() {
   if (api.asUser && typeof api.asUser === 'function') {
-    return api.asUser();
+    return withRetry(api.asUser());
   }
-  return api.asApp();
+  return withRetry(api.asApp());
 }
 
 /**
@@ -363,18 +394,72 @@ export async function fetchProjectEpics(projectKey: string): Promise<JiraEpicIte
 /**
  * Fetches authentic Jira issues and maps them into scheduled tasks and backlog tray.
  */
+export const PAGE_SIZE = 100;
+export const MAX_PAGES = 10;
+
+export interface RawIssues {
+  issues: any[];
+  isLive: boolean;
+  truncated?: { shown: number; total: number };
+}
+
+/**
+ * Reads the project's issues page by page (nextPageToken), up to MAX_PAGES pages. When more
+ * pages remain, reports how many were shown and Jira's approximate total (B-10).
+ */
+export async function fetchRawIssues(projectKey: string): Promise<RawIssues> {
+  const caller = getJiraCaller();
+  const issues: any[] = [];
+  let token: string | undefined;
+  let pages = 0;
+  try {
+    do {
+      const res = token
+        ? await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100&nextPageToken=${token}`)
+        : await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100`);
+      if (!res || res.status !== 200) {
+        if (pages === 0) return { issues: [], isLive: false };
+        break;
+      }
+      const data = await res.json();
+      issues.push(...(data.issues || []));
+      pages++;
+      token = data.isLast ? undefined : data.nextPageToken;
+    } while (token && pages < MAX_PAGES);
+  } catch {
+    if (pages === 0) return { issues: [], isLive: false };
+  }
+  if (!token) return { issues, isLive: true };
+  let total = issues.length;
+  try {
+    const res = await caller.requestJira(route`/rest/api/3/search/approximate-count`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jql: `project = "${projectKey}"` })
+    });
+    if (res && res.status === 200) total = Math.max(total, Number((await res.json()).count) || total);
+  } catch {}
+  return { issues, isLive: true, truncated: { shown: issues.length, total } };
+}
+
 export async function fetchLiveJiraIssues(
   projectKey: string,
   storedScheduleMap: Record<string, Partial<WbsTask>> = {}
-): Promise<{ tasks: WbsTask[]; backlogTasks: WbsTask[]; isLive: boolean }> {
-  try {
-    const res = await getJiraCaller().requestJira(
-      route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100`
-    );
+): Promise<{ tasks: WbsTask[]; backlogTasks: WbsTask[]; isLive: boolean; truncated?: { shown: number; total: number } }> {
+  const raw = await fetchRawIssues(projectKey);
+  return mapLiveIssues(raw, storedScheduleMap);
+}
 
-    if (res.status === 200) {
-      const data = await res.json();
-      const rawIssues: any[] = data.issues || [];
+/**
+ * Merges raw Jira issues with the stored planning records into scheduled tasks and backlog.
+ */
+export function mapLiveIssues(
+  raw: RawIssues,
+  storedScheduleMap: Record<string, Partial<WbsTask>> = {}
+): { tasks: WbsTask[]; backlogTasks: WbsTask[]; isLive: boolean; truncated?: { shown: number; total: number } } {
+  try {
+    if (raw.isLive) {
+      const rawIssues: any[] = raw.issues;
 
       const issueByKey = new Map<string, any>();
       for (const iss of rawIssues) {
@@ -539,11 +624,23 @@ export async function fetchLiveJiraIssues(
         }
       }
 
-      return { tasks, backlogTasks, isLive: true };
+      return { tasks, backlogTasks, isLive: true, truncated: raw.truncated };
     }
   } catch {}
 
   return { tasks: [], backlogTasks: [], isLive: false };
+}
+
+export interface LiveData {
+  raw: RawIssues;
+  users: JiraAssignableUser[];
+  epics: JiraEpicItem[];
+}
+
+/** One read of everything a plan needs from Jira. */
+export async function loadLive(projectKey: string): Promise<LiveData> {
+  const [raw, users, epics] = await Promise.all([fetchRawIssues(projectKey), fetchProjectUsers(projectKey), fetchProjectEpics(projectKey)]);
+  return { raw, users, epics };
 }
 
 /**
@@ -554,7 +651,8 @@ export async function getProjectPlan(
   storageProvider?: StorageProvider,
   referenceDate: Date = new Date(),
   siteUrl?: string,
-  projectId?: string
+  projectId?: string,
+  preloaded?: LiveData
 ): Promise<ProjectPlanState> {
   const storage = resolveStorage(storageProvider);
   const store = openStore(storage, projectKey, projectId);
@@ -571,12 +669,11 @@ export async function getProjectPlan(
   const storedWidths = settings.columnWidths || DEFAULT_COLUMN_WIDTHS;
   const storedHiddenColumns = settings.hiddenColumns || [];
 
-  // Query live Jira issues and assignees
-  const [liveData, availableUsers, availableEpics] = await Promise.all([
-    fetchLiveJiraIssues(projectKey, storedScheduleMap),
-    fetchProjectUsers(projectKey),
-    fetchProjectEpics(projectKey)
-  ]);
+  // Query live Jira issues and assignees (once per resolver call when preloaded)
+  const live = preloaded || await loadLive(projectKey);
+  const liveData = mapLiveIssues(live.raw, storedScheduleMap);
+  const availableUsers = [...live.users];
+  const availableEpics = [...live.epics];
 
   let tasks = liveData.tasks;
   const backlogTasks = liveData.backlogTasks;
@@ -665,6 +762,7 @@ export async function getProjectPlan(
     availableUsers,
     lastUpdated: new Date().toISOString(),
     isLiveSynced: liveData.isLive,
+    truncated: liveData.truncated,
     siteUrl: siteUrl || (process.env.JIRA_BASE_URL || undefined)
   };
 
@@ -1184,7 +1282,9 @@ export async function updateWbsTask(
   const storage = resolveStorage(storageProvider);
   const log = new SyncLog();
 
-  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId);
+  // Jira is read once per update; the returned plan reuses the same read (B-10).
+  const live = await loadLive(projectKey);
+  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live);
   const targetTask = plan.tasks.find(t => t.id === taskId || t.key === taskId) ||
     (plan.backlogTasks || []).find(t => t.id === taskId || t.key === taskId);
   if (!targetTask) {
@@ -1364,11 +1464,13 @@ export async function updateWbsTask(
     ...sanitized
   });
 
-  // Cascade schedule shifts to dependent tasks
+  // Cascade schedule shifts to dependent tasks, at most CASCADE_BATCH_LIMIT per call (B-10).
+  let cascadeRemaining: string[] = [];
   if (sanitized.startWeek || sanitized.spanWeeks || sanitized.dependency) {
     const candidateTasks = plan.tasks.map(t => (t.key === targetTask.key ? { ...t, ...sanitized } : t));
     const { updatedTasks, affectedTaskKeys } = PlannerEngine.cascadeSchedule(candidateTasks, targetTask.key, activeWeeks);
-    for (const affKey of affectedTaskKeys) {
+    cascadeRemaining = affectedTaskKeys.slice(CASCADE_BATCH_LIMIT);
+    for (const affKey of affectedTaskKeys.slice(0, CASCADE_BATCH_LIMIT)) {
       const affTask = updatedTasks.find(t => t.key === affKey);
       if (affTask) {
         const curAff = scheduleMap[affKey] || {};
@@ -1448,7 +1550,60 @@ export async function updateWbsTask(
   // Two-way sync: write-back changed fields to Jira
   await syncTaskToJira(targetTask.key, sanitized, log);
 
-  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId), { ok: true, jiraSync: log.report() });
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live),
+    { ok: true, jiraSync: log.report(), cascadeRemaining });
+}
+
+export const CASCADE_BATCH_LIMIT = 25;
+
+/**
+ * Applies the next batch of a cascade from a task: moves at most CASCADE_BATCH_LIMIT conflicting
+ * successors and returns the keys still to move (D-05: the client calls again until empty).
+ */
+export async function continueCascade(
+  payload: { projectKey: string; projectId?: string; taskId: string },
+  storageProvider?: StorageProvider
+): Promise<ProjectPlanState> {
+  const { projectKey, projectId, taskId } = payload;
+  assertIssueKey(taskId, 'taskId');
+  const storage = resolveStorage(storageProvider);
+  const log = new SyncLog();
+  const live = await loadLive(projectKey);
+  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live);
+  const store = openStore(storage, projectKey, projectId);
+  const entries = await store.loadEntries();
+  const { updatedTasks, affectedTaskKeys } = PlannerEngine.cascadeSchedule(plan.tasks, taskId, plan.weeks);
+  for (const key of affectedTaskKeys.slice(0, CASCADE_BATCH_LIMIT)) {
+    const moved = updatedTasks.find(t => t.key === key) as WbsTask;
+    const cur = entries.get(key);
+    const put = await store.putEntry(key, moved.id, stripJiraOwnedFields({ ...(cur || {}), startWeek: moved.startWeek, endWeek: moved.endWeek,
+      startDate: moved.startDate, endDate: moved.endDate, weeklyAllocations: moved.weeklyAllocations }), cur ? cur.version : 0);
+    if (!put.ok) { log.record(key, ['plan'], { synced: false, error: 'changed by someone else; not moved' }); continue; }
+    await syncTaskToJira(key, { endDate: moved.endDate }, log);
+  }
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live),
+    { ok: true, jiraSync: log.report(), cascadeRemaining: affectedTaskKeys.slice(CASCADE_BATCH_LIMIT) });
+}
+
+/**
+ * Lists the moves that a change of start week or span would cause, without writing anything.
+ */
+export async function previewCascade(
+  payload: { projectKey: string; projectId?: string; taskId: string; updates: { startWeek?: string; spanWeeks?: number } },
+  storageProvider?: StorageProvider
+): Promise<{ ok: boolean; changes: Array<{ key: string; field: string; from?: string; to?: string }> }> {
+  const { projectKey, projectId, taskId, updates } = payload;
+  assertIssueKey(taskId, 'taskId');
+  validateTaskUpdates(updates as Record<string, unknown>);
+  const plan = await getProjectPlan(projectKey, resolveStorage(storageProvider), new Date(), undefined, projectId);
+  const candidate = plan.tasks.map(t => (t.key === taskId ? { ...t, ...updates } : t));
+  const { updatedTasks, affectedTaskKeys } = PlannerEngine.cascadeSchedule(candidate, taskId, plan.weeks);
+  const changes = affectedTaskKeys.map(key => {
+    const before = plan.tasks.find(t => t.key === key);
+    const after = updatedTasks.find(t => t.key === key);
+    return { key, field: 'startWeek', from: before?.startWeek, to: after?.startWeek };
+  });
+  return { ok: true, changes };
 }
 
 /**
@@ -1485,7 +1640,8 @@ export async function reorderWbsTasks(
   const { projectKey, projectId, taskId, targetIndex } = payload;
   const storage = resolveStorage(storageProvider);
 
-  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId);
+  const live = await loadLive(projectKey);
+  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live);
   const reordered = PlannerEngine.reorderTasks(plan.tasks, taskId, targetIndex);
   const store = openStore(storage, projectKey, projectId);
   const entries = await store.loadEntries();
@@ -1510,7 +1666,7 @@ export async function reorderWbsTasks(
       await store.putEntry(movedKey, reordered[pos].id, { ...moved, sequenceNum: sequenceBetween(seqAt(pos - 1), seqAt(pos + 1)) }, moved.version);
     }
   }
-  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId), { ok: true, jiraSync: noJiraWrites() });
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live), { ok: true, jiraSync: noJiraWrites() });
 }
 
 /**
@@ -1681,7 +1837,8 @@ export async function saveTaskDependency(
   validateDependencyPayload(dependency);
   const storage = resolveStorage(storageProvider);
 
-  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId);
+  const live = await loadLive(projectKey);
+  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live);
   const planKeys = new Set([...plan.tasks, ...(plan.backlogTasks || [])].map(t => t.key));
   if (!planKeys.has(dependency.predecessorKey)) {
     throw new ValidationError('dependency.predecessorKey', `${dependency.predecessorKey} is not in project ${projectKey}`);
@@ -1718,7 +1875,7 @@ export async function saveTaskDependency(
   }), stored ? stored.version : 0);
   if (!put.ok) return conflictResult(targetTask.key);
 
-  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId), { ok: true, jiraSync: log.report() });
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live), { ok: true, jiraSync: log.report() });
 }
 
 /**
@@ -1851,6 +2008,10 @@ resolver.define('saveHiddenColumns', async (req) => withValidation(() => saveHid
 resolver.define('saveProjectMilestone', async (req) => withValidation(() => saveProjectMilestone({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
 resolver.define('getPortfolioResourceHeatmap', async (req) => withValidation(() => getPortfolioResourceHeatmap(extractProjectKey(req), req.payload?.filters)));
+
+resolver.define('continueCascade', async (req) => withValidation(() => continueCascade({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+
+resolver.define('previewCascade', async (req) => withValidation(() => previewCascade({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
 resolver.define('unscheduleTask', async (req) => withValidation(() => unscheduleTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 

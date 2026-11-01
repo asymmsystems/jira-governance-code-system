@@ -176,6 +176,7 @@ export interface ProjectPlanState {
   isLiveSynced?: boolean;
   siteUrl?: string;
   hiddenColumns?: string[];
+  truncated?: { shown: number; total: number }; // more issues exist than were read (B-10)
   ok?: boolean;                     // set by write resolvers (B-07)
   jiraSync?: JiraSyncReport;        // set by write resolvers (B-07)
 }

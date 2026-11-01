@@ -29,8 +29,16 @@ export async function callResolver(fnName: string, payload: Record<string, unkno
     const verdict = classifyResult(res);
     if (verdict.failed && verdict.message) showErrorBanner(verdict.message);
   }
+  // A long cascade is applied in batches; keep going until nothing remains (B-10, D-05).
+  let rounds = 0;
+  while (res && Array.isArray(res.cascadeRemaining) && res.cascadeRemaining.length > 0 && rounds < MAX_CASCADE_ROUNDS) {
+    rounds++;
+    res = await callResolver('continueCascade', { taskId: payload.taskId });
+  }
   return res;
 }
+
+const MAX_CASCADE_ROUNDS = 40;
 
 /**
  * Opens a Jira issue in a new browser tab through the Forge router.

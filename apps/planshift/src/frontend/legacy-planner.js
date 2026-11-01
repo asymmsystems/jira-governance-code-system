@@ -819,6 +819,14 @@ function renderPlan() {
   document.getElementById('projectBadge').textContent = `Project: ${currentPlan.projectKey}`;
   document.getElementById('completionBadge').textContent = `Completion: ${currentPlan.overallProjectCompletion}% | Target: ${currentPlan.overallTargetCompletion}%`;
   document.getElementById('backlogCount').textContent = currentPlan.backlogTasks ? currentPlan.backlogTasks.length : 0;
+  const truncatedNote = document.getElementById('truncatedNote');
+  if (truncatedNote) {
+    // More issues exist than one plan reads (B-10).
+    truncatedNote.hidden = !currentPlan.truncated;
+    truncatedNote.textContent = currentPlan.truncated
+      ? `Showing the newest ${currentPlan.truncated.shown} of about ${currentPlan.truncated.total} issues`
+      : '';
+  }
 
   const curWk = (currentPlan.weeks || []).find(w => w.isCurrentWeek);
   if (curWk) {
