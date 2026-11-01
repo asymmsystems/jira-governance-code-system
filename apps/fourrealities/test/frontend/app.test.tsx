@@ -93,4 +93,29 @@ describe('FourRealitiesApp rendering', () => {
     expect(bridgeState.invoke).toHaveBeenCalledTimes(2);
     expect(textOf(renderer.toJSON())).toContain('Delivery Alignment Index');
   });
+
+  it('links to the producer panels and offers no seal or DoD action (B-02)', async () => {
+    bridgeState.context = { extension: { issue: { id: '10001', key: 'DEMO-1' } } };
+    bridgeState.invoke.mockResolvedValue({
+      issueId: '10001', issueKey: 'DEMO-1', summary: 'Done work', status: 'Done', statusCategory: 'Done',
+      isEvaluated: true, applicableGateCount: 4, intentScore: 0, processScore: 100, codeScore: 0, auditScore: 0,
+      realityAlignmentIndex: 25, riskLevel: 'CRITICAL',
+      gates: { intent: 'BLOCKED', process: 'PASSED', code: 'BLOCKED', audit: 'BLOCKED' },
+      synthesizedFinding: 'x', recoverablePoints: 25, findings: [], whyScoreExplanation: 'Why'
+    });
+    bridgeState.routerOpen.mockClear();
+
+    let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<FourRealitiesApp />); });
+    await settle(act);
+
+    const text = textOf(renderer.toJSON());
+    expect(text).not.toContain('Seal Issue');
+    expect(text).not.toContain('Complete DoD');
+
+    await act(async () => { findButton(renderer.root, 'LedgerSeal Audit Gate').props.onClick(); });
+    expect(bridgeState.routerOpen).toHaveBeenLastCalledWith('/browse/DEMO-1');
+    await act(async () => { findButton(renderer.root, 'DefinitionGuard Checklist').props.onClick(); });
+    expect(bridgeState.routerOpen).toHaveBeenLastCalledWith('/browse/DEMO-1');
+  });
 });

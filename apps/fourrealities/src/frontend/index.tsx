@@ -21,7 +21,6 @@ import ForgeReconciler, {
   DynamicTable,
   Textfield,
   Select,
-  Checkbox,
   TagGroup,
   Tag,
   Modal,
@@ -31,7 +30,7 @@ import ForgeReconciler, {
   ModalTitle,
   ModalTransition
 } from '@forge/react';
-import { invoke, view } from '@forge/bridge';
+import { invoke, view, router } from '@forge/bridge';
 import {
   ProjectAuditSnapshot,
   IssueIntegrityScore,
@@ -101,19 +100,22 @@ export const MiniGateRow: React.FC<{ gates: IssueGates }> = ({ gates }) => {
   );
 };
 
-interface StandardDoDItem {
-  id: string;
-  text: string;
-  completed: boolean;
-}
+/**
+ * Opens the issue so the user can act in the producer app's own panel.
+ * FourRealities never writes seal or Definition of Done evidence itself.
+ */
+export const openProducerPanel = (issueKey: string): Promise<void> => router.open(`/browse/${issueKey}`);
 
-const DEFAULT_DOD_ITEMS: StandardDoDItem[] = [
-  { id: 'dod-1', text: 'Unit & integration tests written and passing', completed: true },
-  { id: 'dod-2', text: 'Acceptance criteria verified against specification', completed: true },
-  { id: 'dod-3', text: 'Peer code review completed and approved', completed: true },
-  { id: 'dod-4', text: 'Documentation updated (architecture / API / user docs)', completed: true },
-  { id: 'dod-5', text: 'Security and static analysis scans clean', completed: true }
-];
+export const ProducerLinks: React.FC<{ issueKey: string }> = ({ issueKey }) => (
+  <>
+    <Button appearance="default" onClick={() => openProducerPanel(issueKey)}>
+      Open {issueKey}: LedgerSeal Audit Gate panel
+    </Button>
+    <Button appearance="default" onClick={() => openProducerPanel(issueKey)}>
+      Open {issueKey}: DefinitionGuard Checklist panel
+    </Button>
+  </>
+);
 
 export const FourRealitiesApp: React.FC = () => {
   const [isIssueView, setIsIssueView] = useState<boolean>(false);
@@ -140,13 +142,6 @@ export const FourRealitiesApp: React.FC = () => {
   const [linkUrl, setLinkUrl] = useState<string>('');
   const [linkTitle, setLinkTitle] = useState<string>('');
   const [linkSummary, setLinkSummary] = useState<string>('');
-
-  const [isDoDModalOpen, setIsDoDModalOpen] = useState<boolean>(false);
-  const [dodTargetIssueId, setDodTargetIssueId] = useState<string>('');
-  const [dodItems, setDodItems] = useState<StandardDoDItem[]>(DEFAULT_DOD_ITEMS);
-
-  const [isSealModalOpen, setIsSealModalOpen] = useState<boolean>(false);
-  const [sealTargetIssue, setSealTargetIssue] = useState<IssueIntegrityScore | null>(null);
 
   const [isExceptionModalOpen, setIsExceptionModalOpen] = useState<boolean>(false);
   const [exceptionTargetIssueId, setExceptionTargetIssueId] = useState<string>('');
@@ -192,17 +187,6 @@ export const FourRealitiesApp: React.FC = () => {
     setIsLinkDecisionModalOpen(true);
   };
 
-  const openDoDModal = (issueId: string) => {
-    setDodTargetIssueId(issueId);
-    setDodItems(DEFAULT_DOD_ITEMS.map(i => ({ ...i, completed: true })));
-    setIsDoDModalOpen(true);
-  };
-
-  const openSealModal = (issue: IssueIntegrityScore) => {
-    setSealTargetIssue(issue);
-    setIsSealModalOpen(true);
-  };
-
   const openExceptionModal = (issueId: string, type: 'CODE' | 'REWORK') => {
     setExceptionTargetIssueId(issueId);
     setExceptionType(type);
@@ -231,47 +215,6 @@ export const FourRealitiesApp: React.FC = () => {
       }
     } catch (err: any) {
       setErrorMessage(err?.message || 'Error executing link decision.');
-    }
-  };
-
-  const handleSubmitDoD = async () => {
-    setErrorMessage(null);
-    try {
-      const res: any = await invoke('completeDod', {
-        issueId: dodTargetIssueId,
-        items: dodItems
-      });
-
-      if (res?.success) {
-        setIsDoDModalOpen(false);
-        setActionSuccessMessage('Definition of Done verified and recorded with cryptographic hash.');
-        await init(true);
-      } else {
-        setErrorMessage(res?.error || 'Failed to complete Definition of Done.');
-      }
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Error executing complete DoD.');
-    }
-  };
-
-  const handleSubmitSeal = async () => {
-    if (!sealTargetIssue) return;
-    setErrorMessage(null);
-    try {
-      const res: any = await invoke('sealIssue', {
-        issueId: sealTargetIssue.issueId,
-        issueKey: sealTargetIssue.issueKey
-      });
-
-      if (res?.success && res.cert) {
-        setIsSealModalOpen(false);
-        setActionSuccessMessage(`Issue sealed successfully with certificate ${res.cert.certificateId}. Audit gate verified.`);
-        await init(true);
-      } else {
-        setErrorMessage(res?.error || 'Failed to seal issue.');
-      }
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Error executing cryptographic seal.');
     }
   };
 
@@ -447,18 +390,9 @@ export const FourRealitiesApp: React.FC = () => {
               </Button>
             )}
 
-            {/* Audit actions: only available when work is progressing or done */}
+            {/* Audit evidence lives in the producer apps: link there, never write it here */}
             {issueScore.statusCategory !== 'To Do' && issueScore.gates.audit !== 'PASSED' && (
-              <>
-                <Button appearance="default" onClick={() => openDoDModal(issueScore.issueId)}>
-                  Review & Complete DoD
-                </Button>
-                {issueScore.statusCategory === 'Done' && (
-                  <Button appearance="default" onClick={() => openSealModal(issueScore)}>
-                    Seal Issue
-                  </Button>
-                )}
-              </>
+              <ProducerLinks issueKey={issueScore.issueKey} />
             )}
 
             <Button appearance="subtle" onClick={() => setShowAllFindings(!showAllFindings)}>
@@ -514,81 +448,6 @@ export const FourRealitiesApp: React.FC = () => {
                 </Button>
                 <Button appearance="primary" onClick={handleSubmitLinkDecision}>
                   Confirm & Link Decision
-                </Button>
-              </ModalFooter>
-            </Modal>
-          )}
-        </ModalTransition>
-
-        {/* Complete DoD Modal */}
-        <ModalTransition>
-          {isDoDModalOpen && (
-            <Modal onClose={() => setIsDoDModalOpen(false)}>
-              <ModalHeader>
-                <ModalTitle>Definition of Done Checklist Verification</ModalTitle>
-              </ModalHeader>
-              <ModalBody>
-                <Stack space="space.100">
-                  <Text>
-                    Verify all required engineering criteria. Check each item to confirm completion before recording satisfaction.
-                  </Text>
-                  {dodItems.map(item => (
-                    <Checkbox
-                      key={item.id}
-                      label={item.text}
-                      isChecked={item.completed}
-                      onChange={(e: any) => {
-                        const checked = Boolean(e.target?.checked);
-                        setDodItems(dodItems.map(i => i.id === item.id ? { ...i, completed: checked } : i));
-                      }}
-                    />
-                  ))}
-                  <ProgressBar value={dodItems.filter(i => i.completed).length / (dodItems.length || 1)} />
-                  <Text>
-                    {dodItems.filter(i => i.completed).length} of {dodItems.length} items verified
-                  </Text>
-                </Stack>
-              </ModalBody>
-              <ModalFooter>
-                <Button appearance="subtle" onClick={() => setIsDoDModalOpen(false)}>
-                  Cancel
-                </Button>
-                <Button appearance="primary" onClick={handleSubmitDoD}>
-                  Confirm & Record DoD
-                </Button>
-              </ModalFooter>
-            </Modal>
-          )}
-        </ModalTransition>
-
-        {/* Seal Confirmation Modal */}
-        <ModalTransition>
-          {isSealModalOpen && sealTargetIssue && (
-            <Modal onClose={() => setIsSealModalOpen(false)}>
-              <ModalHeader>
-                <ModalTitle>Seal {sealTargetIssue.issueKey} as Complete?</ModalTitle>
-              </ModalHeader>
-              <ModalBody>
-                <Stack space="space.100">
-                  <Text>
-                    This action records a tamper-evident cryptographic SHA-256 seal of the current issue state:
-                  </Text>
-                  <Text>✓ Intent traceability: {sealTargetIssue.gates.intent}</Text>
-                  <Text>✓ Review approval: {sealTargetIssue.gates.code}</Text>
-                  <Text>✓ Definition of Done: Complete</Text>
-                  <SectionMessage appearance="warning" title="Irreversible Audit Action">
-                    <Text>
-                      Sealing generates an immutable audit certificate. Once sealed, any downstream field modifications will invalidate the seal.
-                    </Text>
-                  </SectionMessage>
-                </Stack>
-              </ModalBody>
-              <ModalFooter>
-                <Button appearance="subtle" onClick={() => setIsSealModalOpen(false)}>
-                  Cancel
-                </Button>
-                <Button appearance="primary" onClick={handleSubmitSeal}>
-                  Confirm & Seal Issue
                 </Button>
               </ModalFooter>
             </Modal>
@@ -1045,16 +904,7 @@ export const FourRealitiesApp: React.FC = () => {
                     </Button>
                   )}
                   {selectedIssueModal.statusCategory !== 'To Do' && selectedIssueModal.gates.audit !== 'PASSED' && (
-                    <>
-                      <Button appearance="default" onClick={() => openDoDModal(selectedIssueModal.issueId)}>
-                        Review & Complete DoD
-                      </Button>
-                      {selectedIssueModal.statusCategory === 'Done' && (
-                        <Button appearance="default" onClick={() => openSealModal(selectedIssueModal)}>
-                          Cryptographic Seal Issue
-                        </Button>
-                      )}
-                    </>
+                    <ProducerLinks issueKey={selectedIssueModal.issueKey} />
                   )}
                 </Inline>
               </Stack>

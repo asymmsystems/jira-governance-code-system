@@ -16,8 +16,6 @@ import {
   resolveStorage,
   fetchLiveProjectAudit,
   linkDecision,
-  sealIssue,
-  completeDod,
   recordException,
   analyzeIssueChangelog,
   evaluateDocumentedIntent,
@@ -465,7 +463,7 @@ describe('FourRealities Index / Forge Handlers', () => {
       expect(resIssue.issueKey).toBe('CTX-I');
     });
 
-    it('dispatches linkDecision, sealIssue, completeDod, recordException via handler', async () => {
+    it('dispatches linkDecision and recordException via handler', async () => {
       mockRequestJira.mockResolvedValue({ status: 200, json: async () => ({}) });
 
       const resLink: any = await handler({
@@ -475,31 +473,6 @@ describe('FourRealities Index / Forge Handlers', () => {
         }
       } as any);
       expect(resLink.success).toBe(true);
-
-      mockRequestJira
-        .mockResolvedValueOnce({
-          status: 200,
-          json: async () => ({
-            id: 'iss-h2',
-            key: 'H-2',
-            fields: { summary: 'Done task', status: { name: 'Done', statusCategory: { name: 'Done' } } },
-            properties: { 'definitionguard-dod': { isFullySatisfied: true } }
-          })
-        })
-        .mockResolvedValueOnce({ status: 200 });
-
-      const resSeal: any = await handler({
-        call: { functionKey: 'sealIssue', payload: { issueId: 'iss-h2' } }
-      } as any);
-      expect(resSeal.success).toBe(true);
-
-      const resDod: any = await handler({
-        call: {
-          functionKey: 'completeDod',
-          payload: { issueId: 'iss-h3', items: [{ id: '1', text: 'Tests pass', completed: true }] }
-        }
-      } as any);
-      expect(resDod.success).toBe(true);
 
       const resException: any = await handler({
         call: {
@@ -670,160 +643,6 @@ describe('FourRealities Index / Forge Handlers', () => {
       expect(failHttp.error).toContain('Jira returned status 400');
     });
 
-    it('executes sealIssue enforcing Done/review and DoD preconditions with cryptographic SHA-256', async () => {
-      // Successful seal when Done and DoD satisfied
-      mockRequestJira
-        .mockResolvedValueOnce({
-          status: 200,
-          json: async () => ({
-            id: 'iss-seal-1',
-            key: 'SEAL-1',
-            fields: { summary: 'Completed task', status: { name: 'Done', statusCategory: { name: 'Done' } } },
-            properties: { 'definitionguard-dod': { isFullySatisfied: true } }
-          })
-        })
-        .mockResolvedValueOnce({ status: 200 }); // property update
-
-      const res = await sealIssue({ issueId: 'iss-seal-1' });
-      expect(res.success).toBe(true);
-      expect(res.cert.status).toBe('SEAL_VALID');
-      expect(res.cert.certificateId).toMatch(/^LS-[0-9A-F]{8}$/);
-      expect(res.cert.snapshotHash).toBeDefined();
-
-      // Fails when issue is in To Do
-      mockRequestJira.mockResolvedValueOnce({
-        status: 200,
-        json: async () => ({
-          id: 'iss-todo',
-          key: 'TODO-1',
-          fields: { summary: 'Unstarted task', status: { name: 'To Do', statusCategory: { name: 'To Do' } } },
-          properties: { 'definitionguard-dod': { isFullySatisfied: true } }
-        })
-      });
-      const failEarly = await sealIssue({ issueId: 'iss-todo' });
-      expect(failEarly.success).toBe(false);
-      expect(failEarly.error).toContain('Cannot seal issue: Issue is in early status');
-
-      // Fails when DoD is incomplete
-      mockRequestJira.mockResolvedValueOnce({
-        status: 200,
-        json: async () => ({
-          id: 'iss-nodod',
-          key: 'NODOD-1',
-          fields: { summary: 'Done task', status: { name: 'Done', statusCategory: { name: 'Done' } } },
-          properties: { 'definitionguard-dod': { isFullySatisfied: false } }
-        })
-      });
-      const failNoDod = await sealIssue({ issueId: 'iss-nodod' });
-      expect(failNoDod.success).toBe(false);
-      expect(failNoDod.error).toContain('Definition of Done checklist must be satisfied');
-
-      // Fails on missing issueId
-      const failNoId = await sealIssue({});
-      expect(failNoId.success).toBe(false);
-      expect(failNoId.error).toContain('Missing issueId');
-
-      // Fails on context issueId mismatch
-      const failAuth = await sealIssue({ issueId: 'iss-other' }, { extension: { issue: { id: 'iss-ctx' } } });
-      expect(failAuth.success).toBe(false);
-      expect(failAuth.error).toContain('Unauthorized');
-
-      // Fails when issue fetch returns 500
-      mockRequestJira.mockResolvedValueOnce({ status: 500 });
-      const failFetch = await sealIssue({ issueId: 'iss-500' });
-      expect(failFetch.success).toBe(false);
-      expect(failFetch.error).toContain('Failed to verify issue state');
-
-      // Fallback from asUser() to asApp() on property write
-      mockRequestJira
-        .mockResolvedValueOnce({
-          status: 200,
-          json: async () => ({
-            id: 'iss-fallback',
-            key: 'FALL-1',
-            fields: { summary: 'Done task', status: { name: 'Done', statusCategory: { name: 'Done' } } },
-            properties: { 'definitionguard-dod': { isFullySatisfied: true } }
-          })
-        })
-        .mockResolvedValueOnce({ status: 403 }) // asUser fails
-        .mockResolvedValueOnce({ status: 200 }); // asApp succeeds
-
-      const resFallback = await sealIssue({ issueId: 'iss-fallback' });
-      expect(resFallback.success).toBe(true);
-
-      // Fails when both asUser and asApp fail
-      mockRequestJira
-        .mockResolvedValueOnce({
-          status: 200,
-          json: async () => ({
-            id: 'iss-both-fail',
-            key: 'BOTH-1',
-            fields: { summary: 'Done task', status: { name: 'Done', statusCategory: { name: 'Done' } } },
-            properties: { 'definitionguard-dod': { isFullySatisfied: true } }
-          })
-        })
-        .mockResolvedValueOnce({ status: 403 })
-        .mockResolvedValueOnce({ status: 500 });
-
-      const resBothFail = await sealIssue({ issueId: 'iss-both-fail' });
-      expect(resBothFail.success).toBe(false);
-      expect(resBothFail.error).toContain('Failed to persist cryptographic seal');
-
-      // Exception thrown
-      mockRequestJira.mockRejectedValueOnce(new Error('Network break'));
-      const resEx = await sealIssue({ issueId: 'iss-ex' });
-      expect(resEx.success).toBe(false);
-      expect(resEx.error).toBe('Network break');
-    });
-
-    it('executes completeDod with interactive checklist verification and fallbacks', async () => {
-      mockRequestJira.mockResolvedValueOnce({ status: 200 });
-      const items = [
-        { id: '1', text: 'Unit tests pass', completed: true },
-        { id: '2', text: 'Docs updated', completed: true }
-      ];
-      const res = await completeDod({ issueId: 'iss-dod-1', items });
-      expect(res.success).toBe(true);
-      expect(res.dod.isFullySatisfied).toBe(true);
-      expect(res.dod.completedCount).toBe(2);
-      expect(res.dod.checklistHash).toBeDefined();
-
-      // Fails on missing items
-      const failNoItems = await completeDod({ issueId: 'iss-dod-1' });
-      expect(failNoItems.success).toBe(false);
-      expect(failNoItems.error).toContain('Checklist items required');
-
-      // Fails on missing issueId
-      const failNoId = await completeDod({});
-      expect(failNoId.success).toBe(false);
-      expect(failNoId.error).toContain('Missing issueId');
-
-      // Fails on context issueId mismatch
-      const failAuth = await completeDod({ issueId: 'iss-other' }, { extension: { issue: { id: 'iss-ctx' } } });
-      expect(failAuth.success).toBe(false);
-      expect(failAuth.error).toContain('Unauthorized');
-
-      // Fallback from asUser() to asApp()
-      mockRequestJira
-        .mockResolvedValueOnce({ status: 403 })
-        .mockResolvedValueOnce({ status: 200 });
-      const resFallback = await completeDod({ issueId: 'iss-fb', items });
-      expect(resFallback.success).toBe(true);
-
-      // Fails when both asUser and asApp fail
-      mockRequestJira
-        .mockResolvedValueOnce({ status: 403 })
-        .mockResolvedValueOnce({ status: 500 });
-      const resFailBoth = await completeDod({ issueId: 'iss-fb2', items });
-      expect(resFailBoth.success).toBe(false);
-
-      // Exception thrown
-      mockRequestJira.mockRejectedValueOnce(new Error('DoD network failure'));
-      const resEx = await completeDod({ issueId: 'iss-ex', items });
-      expect(resEx.success).toBe(false);
-      expect(resEx.error).toBe('DoD network failure');
-    });
-
     it('executes recordException for code and rework reasons and handles validations', async () => {
       mockRequestJira.mockResolvedValue({ status: 200 });
       const resCode = await recordException(
@@ -881,5 +700,52 @@ describe('FourRealities Index / Forge Handlers', () => {
       expect(res.success).toBe(false);
       expect(res.error).toBe('Connection dropped');
     });
+  });
+});
+
+describe('B-02: no writes into sibling app keys', () => {
+  it('has no sealIssue or completeDod resolver', async () => {
+    await expect(handler({ call: { functionKey: 'sealIssue', payload: { issueId: '1' } } } as any))
+      .rejects.toThrow("Resolver has no definition for 'sealIssue'");
+    await expect(handler({ call: { functionKey: 'completeDod', payload: { issueId: '1', items: [] } } } as any))
+      .rejects.toThrow("Resolver has no definition for 'completeDod'");
+  });
+
+  it('contains no write path to ledgerseal-cert or definitionguard-dod in src', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const files: string[] = [];
+    const walk = (dir: string) => fs.readdirSync(dir).forEach((f: string) => {
+      const p = path.join(dir, f);
+      if (fs.statSync(p).isDirectory()) walk(p); else if (/\.tsx?$/.test(f)) files.push(p);
+    });
+    walk(path.join(__dirname, '..', 'src'));
+    const offenders = files.filter(f => /properties\/(ledgerseal-cert|definitionguard-dod)/.test(fs.readFileSync(f, 'utf8')));
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('getIssueAlignment with failing secondary calls', () => {
+  it('scores the issue from the issue read when remote links and dev-status reject', async () => {
+    const storage = new MockStorage();
+    mockRequestJira.mockReset();
+    mockRequestJira
+      .mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({
+          id: 'sec-1', key: 'SEC-1',
+          fields: { summary: 'S', status: { name: 'In Progress', statusCategory: { name: 'In Progress' } }, issuelinks: [] },
+          properties: {}
+        })
+      })
+      .mockRejectedValueOnce(new Error('remote link failure'))
+      .mockRejectedValueOnce(new Error('stash failure'))
+      .mockRejectedValueOnce(new Error('github failure'))
+      .mockRejectedValueOnce(new Error('bitbucket failure'));
+
+    const score = await getIssueAlignment({ issueId: 'sec-1' }, {}, storage);
+    expect(score.issueKey).toBe('SEC-1');
+    expect(score.gates.intent).toBe('BLOCKED');
+    expect(score.codeScore).toBe(0);
   });
 });

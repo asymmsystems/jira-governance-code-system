@@ -7,7 +7,6 @@
 import Resolver from '@forge/resolver';
 import { kvs } from '@forge/kvs';
 import api, { route } from '@forge/api';
-import * as crypto from 'crypto';
 import { MetricsEngine } from './domain/metrics-engine';
 import { MetricsRepository, StorageProvider } from './storage/metrics-repository';
 import {
@@ -516,7 +515,8 @@ export async function recordIssueSignals(
 }
 
 /**
- * Remediation Resolvers: 1-Click fixes for reality gates with strict authorization
+ * Remediation Resolvers. FourRealities never writes the LedgerSeal or DefinitionGuard
+ * properties: that evidence belongs to the producer apps (one writer per fact).
  */
 
 /**
@@ -573,182 +573,6 @@ export async function linkDecision(payload: any, context?: any): Promise<{ succe
     return { success: false, error: `Jira returned status ${res.status} linking decision.` };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Failed to link architecture decision.' };
-  }
-}
-
-/**
- * Cryptographically seals a completed issue.
- * Preconditions enforced: Issue must be Done/In Review, and DoD must be satisfied.
- * Computes canonical SHA-256 certificate.
- */
-export async function sealIssue(
-  payload: any,
-  context?: any,
-  storageProvider?: StorageProvider
-): Promise<{ success: boolean; cert?: any; error?: string }> {
-  const contextIssueId = context?.extension?.issue?.id;
-  const issueId = payload?.issueId || contextIssueId;
-
-  if (contextIssueId && payload?.issueId && contextIssueId !== payload.issueId) {
-    return { success: false, error: 'Unauthorized: Cannot seal external issue.' };
-  }
-
-  if (!issueId) {
-    return { success: false, error: 'Missing issueId.' };
-  }
-
-  // Precondition Check: Fetch live issue state to verify completion and DoD
-  try {
-    const res = await api.asApp().requestJira(
-      route`/rest/api/3/issue/${issueId}?fields=summary,status&properties=definitionguard-dod,definitionguardDod`
-    );
-
-    if (res.status !== 200) {
-      return { success: false, error: `Failed to verify issue state before sealing (HTTP ${res.status}).` };
-    }
-
-    const iss = await res.json();
-    const statusCategory = iss.fields?.status?.statusCategory?.name || '';
-    const statusName = String(iss.fields?.status?.name || '').toLowerCase();
-    const dodProp = iss.properties?.['definitionguard-dod'] || iss.properties?.['definitionguardDod'];
-
-    // Precondition 1: Work must have reached verification or completion stage
-    const isReadyForSeal = statusCategory === 'Done' || statusName.includes('review') || statusName.includes('resolved') || statusName.includes('closed');
-    if (!isReadyForSeal) {
-      return { success: false, error: 'Cannot seal issue: Issue is in early status. Sealing requires verification stage or completion.' };
-    }
-
-    // Precondition 2: Definition of Done must be satisfied
-    const isDoDSatisfied = Boolean(dodProp && (dodProp.isFullySatisfied === true || dodProp.satisfied === true));
-    if (!isDoDSatisfied) {
-      return { success: false, error: 'Cannot seal issue: Definition of Done checklist must be satisfied before cryptographic seal can be generated.' };
-    }
-
-    // Compute cryptographic SHA-256 seal certificate
-    const now = new Date().toISOString();
-    const userId = String(context?.accountId || 'system-user');
-    const snapshotPayload = {
-      issueId,
-      issueKey: iss.key,
-      summary: iss.fields?.summary || '',
-      status: iss.fields?.status?.name || '',
-      isDoDSatisfied: true,
-      sealedAt: now,
-      sealedBy: userId
-    };
-
-    const snapshotCanonical = JSON.stringify(snapshotPayload, Object.keys(snapshotPayload).sort());
-    const snapshotHash = crypto.createHash('sha256').update(snapshotCanonical).digest('hex');
-    const certificateId = `LS-${snapshotHash.slice(0, 8).toUpperCase()}`;
-
-    const cert = {
-      status: 'SEAL_VALID',
-      valid: true,
-      certificateId,
-      snapshotHash,
-      sealedAt: now,
-      sealedBy: userId,
-      tamperedFieldCount: 0,
-      isCompromised: false,
-      lastVerifiedAt: now
-    };
-
-    // Update entity property via asUser() for audit compliance
-    const propRes = await api.asUser().requestJira(route`/rest/api/3/issue/${issueId}/properties/ledgerseal-cert`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(cert)
-    });
-
-    if (propRes.status >= 200 && propRes.status < 300) {
-      return { success: true, cert };
-    }
-
-    // Fallback to asApp() if user lacks direct property write scope
-    const fallbackRes = await api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/properties/ledgerseal-cert`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(cert)
-    });
-
-    if (fallbackRes.status >= 200 && fallbackRes.status < 300) {
-      return { success: true, cert };
-    }
-
-    return { success: false, error: `Failed to persist cryptographic seal (HTTP ${fallbackRes.status}).` };
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Failed to generate cryptographic seal.' };
-  }
-}
-
-/**
- * Completes the Definition of Done checklist with interactive item checklist confirmation.
- * Generates checklist hash and records completion metadata.
- */
-export async function completeDod(
-  payload: any,
-  context?: any
-): Promise<{ success: boolean; dod?: any; error?: string }> {
-  const contextIssueId = context?.extension?.issue?.id;
-  const issueId = payload?.issueId || contextIssueId;
-
-  if (contextIssueId && payload?.issueId && contextIssueId !== payload.issueId) {
-    return { success: false, error: 'Unauthorized: Cannot modify checklist on external issue.' };
-  }
-
-  if (!issueId) {
-    return { success: false, error: 'Missing issueId.' };
-  }
-
-  const rawItems = Array.isArray(payload?.items) ? payload.items : [];
-  if (rawItems.length === 0) {
-    return { success: false, error: 'Checklist items required to evaluate Definition of Done.' };
-  }
-
-  const completedCount = rawItems.filter((i: any) => Boolean(i.completed)).length;
-  const totalCount = rawItems.length;
-  const isFullySatisfied = completedCount === totalCount && totalCount > 0;
-
-  const checklistHash = crypto.createHash('sha256').update(JSON.stringify(rawItems)).digest('hex');
-  const now = new Date().toISOString();
-  const userId = String(context?.accountId || 'system-user');
-
-  const dod = {
-    isFullySatisfied,
-    satisfied: isFullySatisfied,
-    completedCount,
-    totalCount,
-    checklistHash,
-    completedAt: now,
-    completedBy: userId,
-    items: rawItems
-  };
-
-  try {
-    const propRes = await api.asUser().requestJira(route`/rest/api/3/issue/${issueId}/properties/definitionguard-dod`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(dod)
-    });
-
-    if (propRes.status >= 200 && propRes.status < 300) {
-      return { success: true, dod };
-    }
-
-    // Fallback to asApp() if user lacks direct property write scope
-    const fallbackRes = await api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/properties/definitionguard-dod`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(dod)
-    });
-
-    if (fallbackRes.status >= 200 && fallbackRes.status < 300) {
-      return { success: true, dod };
-    }
-
-    return { success: false, error: `Failed to persist Definition of Done (HTTP ${fallbackRes.status}).` };
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Failed to complete Definition of Done.' };
   }
 }
 
@@ -846,14 +670,6 @@ resolver.define('recordIssueSignals', async (req) => {
 
 resolver.define('linkDecision', async (req) => {
   return await linkDecision(req.payload, req.context);
-});
-
-resolver.define('sealIssue', async (req) => {
-  return await sealIssue(req.payload, req.context);
-});
-
-resolver.define('completeDod', async (req) => {
-  return await completeDod(req.payload, req.context);
 });
 
 resolver.define('recordException', async (req) => {

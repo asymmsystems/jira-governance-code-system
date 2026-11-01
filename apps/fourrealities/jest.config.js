@@ -16,6 +16,6 @@ module.exports = {
     './src/domain/**/*.ts': { branches: 90, functions: 90, lines: 90, statements: 90 },
     './src/storage/**/*.ts': { branches: 90, functions: 90, lines: 90, statements: 90 },
     './src/index.ts': { branches: 88, functions: 88, lines: 90, statements: 90 },
-    './src/frontend/**/*.tsx': { branches: 25, functions: 9, lines: 35, statements: 35 }
+    './src/frontend/**/*.tsx': { branches: 38, functions: 22, lines: 49, statements: 47 }
   }
 };
