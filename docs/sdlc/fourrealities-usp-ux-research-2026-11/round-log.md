@@ -180,3 +180,20 @@ Findings from the live check:
 | B-38, B-40 | same | Compact issue-context view with "See all findings"; Inspect with pipeline, drift sentence, Previous and Next; preset views (My issues, Critical and high, Audit prep, Needs a decision link); multi-level risk filter; column widths so the four chips fit on one line | 346 of 346 | `b0a0c4e` | 3.7.0, not yet checked live (browser tool disconnected) |
 
 Deviation: B-33 to B-40 were committed in three slices, not one item per commit, because they share `src/ui/pipeline.ts` and the pipeline component.
+
+### Live check of 3.7.0 on DEMO and AUDT-1 (2026-11-01, 09:10 to 09:14 UTC)
+
+- Dashboard on DEMO: cards, alignment box, preset views, compact pipeline table with Alignment and Top finding; most rows fit on one line. Screenshot `/tmp/claude-chrome-screenshots-psnDAd/screenshot-1793524299943-0.jpg` (local).
+- AUDT-1: main panel opens with pipeline, drift sentence and next action; the "Delivery Integrity" sidebar shows the compact view (pipeline, "Alignment 25%", "CRITICAL risk", next action, "See all findings"). Screenshot `/tmp/claude-chrome-screenshots-psnDAd/screenshot-1793524345404-1.jpg` (local).
+- The "Recorded" message is exposed as a status region in the accessibility tree (closes the B-20 open question).
+- Request dialog title reads "Request a Code exception for AUDT-1" (fix confirmed live).
+- Found: with no DoD record the drift sentence said "not complete"; fixed in `f7ad2e8`, deployed as 3.8.0.
+
+| # | Time (UTC) | Write on AUDT-1 | Result |
+|---|---|---|---|
+| 8 | 09:11 | Transition to Done (owner session, browser) | 204 |
+| 9 | 09:12 | Request Code exception "[FR-PROBE] approver rule check, no code" (app, as user) | "Exception requested. A project or Jira administrator must approve it. Code: Evidence missing." |
+| - | 09:13 | Approve as the requester | refused before any write: "The person who requested the exception cannot approve, reject or revoke it." (1B: the Jira administrator check now passes; the requester rule refuses) |
+| 10 | 09:13 | Withdraw request (app, as user) | stored `decisionReason: "Withdrawn without comment."` (fix confirmed) |
+
+AUDT-1 is left Done with label `fr-probe`.
