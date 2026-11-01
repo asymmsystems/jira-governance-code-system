@@ -14,7 +14,9 @@ import {
   setGlobalStorageProvider,
   resolveStorage,
   linkDecision,
-  recordException
+  recordException,
+  refreshProjectSnapshot,
+  runScheduledSnapshot
 } from '../src/index';
 import { StorageProvider, MetricsRepository } from '../src/storage/metrics-repository';
 
@@ -42,7 +44,8 @@ jest.mock('@forge/kvs', () => ({
     get: jest.fn().mockResolvedValue({ dummy: 'val' }),
     set: jest.fn().mockResolvedValue(undefined),
     delete: jest.fn().mockResolvedValue(undefined)
-  }
+  },
+  WhereConditions: { beginsWith: (value: string) => ({ condition: 'BEGINS_WITH', values: [value] }) }
 }));
 
 /** Starts with a cached site configuration, so tests do not need a field-list call. */
@@ -85,16 +88,14 @@ describe('FourRealities Index / Forge Handlers', () => {
   });
 
   describe('getProjectDashboard', () => {
-    it('returns rows and a summary for the context project, and stores nothing', async () => {
-      const setSpy = jest.spyOn(mockStorage, 'set');
+    it('returns rows and a summary for the context project', async () => {
       mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => ({ issues: [doneIssue('2001', 'DEMO-1')] }) });
       const res: any = await getProjectDashboard({}, { extension: { project: { key: 'DEMO' } } }, mockStorage);
       expect(res.ok).toBe(true);
       expect(res.projectKey).toBe('DEMO');
       expect(res.rows.map((r: any) => r.issueKey)).toEqual(['DEMO-1']);
       expect(res.summary.totalIssues).toBe(1);
-      expect(res.trend).toEqual([]);
-      expect(setSpy).not.toHaveBeenCalled();
+      expect(res.trend).toHaveLength(1);
     });
 
     it('reads stored exceptions, v1 shape included', async () => {
@@ -796,5 +797,116 @@ describe('B-09: the dashboard reads every issue once, up to the cap', () => {
     const res: any = await getProjectDashboard({}, { extension: { project: { key: 'DEMO' } } }, new MockStorage());
     expect(res.ok).toBe(true);
     expect(mockAppRequestJira).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('B-08: bounded storage and a scheduled snapshot', () => {
+  const { MemoryStorage } = require('./storage/memory-storage');
+  const ctx = { extension: { project: { key: 'DEMO' } }, accountId: 'acc-1' };
+  const issues = Array.from({ length: 250 }, (_, i) => ({ id: String(80000 + i), key: `DEMO-${i}`, fields: { summary: 'x', status: { name: 'To Do', statusCategory: { key: 'new' } } }, properties: {} }));
+  const seeded = () => {
+    const st = new MemoryStorage();
+    st.store.set('fr:cfg:site', { devFieldId: null, siteHost: 'asymmsystems.atlassian.net', readAt: new Date().toISOString() });
+    return st;
+  };
+  beforeEach(() => {
+    mockRequestJira.mockReset();
+    mockAppRequestJira.mockClear();
+    mockRequestJira.mockImplementation(async (path: string) => (path.startsWith('/rest/api/3/search/jql')
+      ? { status: 200, json: async () => ({ issues, isLast: true }) }
+      : { status: 404, json: async () => ({}) }));
+  });
+
+  it('builds once, then serves page views from KVS with no Jira search and no trend write', async () => {
+    const storage = seeded();
+    const first: any = await getProjectDashboard({}, ctx, storage);
+    expect(first.ok).toBe(true);
+    expect(first.meta.generatedBy).toBe('acc-1');
+    expect(await storage.get('fr:projects')).toEqual(['DEMO']);
+    const jiraCalls = mockAppRequestJira.mock.calls.length;
+    storage.ops = [];
+    const second: any = await getProjectDashboard({}, ctx, storage);
+    expect(second.rows).toHaveLength(250);
+    expect(mockAppRequestJira.mock.calls.length).toBe(jiraCalls);
+    expect(storage.count('get')).toBeLessThanOrEqual(3 + Math.ceil(250 / 100));
+    expect(storage.count('set')).toBe(0);
+    expect(second.generatedAt).toBe(first.generatedAt);
+    expect(second.coverage).toEqual({ shown: 250, totalKnown: 250, capped: false });
+  });
+
+  it('rebuilds on refresh', async () => {
+    const storage = seeded();
+    await getProjectDashboard({}, ctx, storage);
+    mockAppRequestJira.mockClear();
+    const res: any = await refreshProjectSnapshot({}, ctx, storage);
+    expect(res.ok).toBe(true);
+    expect(mockAppRequestJira.mock.calls.some(c => String(c[0]).startsWith('/rest/api/3/search/jql'))).toBe(true);
+    const missing: any = await refreshProjectSnapshot({}, {}, storage);
+    expect(missing.error.code).toBe('INVALID_INPUT');
+  });
+
+  it('warns when the stored snapshot is older than 7 days', async () => {
+    const storage = seeded();
+    await getProjectDashboard({}, ctx, storage);
+    const meta = await storage.get('fr:p:DEMO:meta');
+    await storage.set('fr:p:DEMO:meta', { ...meta, generatedAt: new Date(Date.now() - 8 * 86400000).toISOString() });
+    const res: any = await getProjectDashboard({}, ctx, storage);
+    expect(res.warning).toMatch(/^Snapshot read on .* is more than 7 days old\. Refresh to read Jira again\.$/);
+  });
+
+  it('builds every registered project as "scheduled" and removes v1 signals keys', async () => {
+    const storage = seeded();
+    await storage.set('fr:projects', ['DEMO', 'TEST']);
+    await storage.set('fr:issue:1:signals', {});
+    const result = await runScheduledSnapshot(storage, Date.now() + 60_000);
+    expect(result).toEqual({ built: ['DEMO', 'TEST'], failed: [], skipped: [], signalsDeleted: 1 });
+    expect((await storage.get('fr:p:TEST:meta')).generatedBy).toBe('scheduled');
+    expect(storage.store.has('fr:issue:1:signals')).toBe(false);
+  });
+
+  it('skips projects once the run budget is spent, and records failures', async () => {
+    const storage = seeded();
+    await storage.set('fr:projects', ['DEMO']);
+    expect(await runScheduledSnapshot(storage, Date.now() - 1)).toEqual({ built: [], failed: [], skipped: ['DEMO'], signalsDeleted: 0 });
+    mockRequestJira.mockImplementation(async () => ({ status: 500, json: async () => ({}) }));
+    expect((await runScheduledSnapshot(storage, Date.now() + 60_000)).failed).toEqual(['DEMO']);
+  });
+
+  it('runs the scheduled trigger handler against the global storage and logs the result', async () => {
+    const storage = seeded();
+    await storage.set('fr:projects', ['DEMO']);
+    setGlobalStorageProvider(storage);
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    const { snapshot } = require('../src/index');
+    await snapshot();
+    expect(log).toHaveBeenCalledWith('FourRealities: scheduled snapshot', JSON.stringify({ built: ['DEMO'], failed: [], skipped: [], signalsDeleted: 0 }));
+    log.mockRestore();
+  });
+
+  it('dispatches refreshProjectSnapshot through the resolver', async () => {
+    setGlobalStorageProvider(seeded());
+    const res: any = await handler({ call: { functionKey: 'refreshProjectSnapshot' }, context: { extension: { project: { key: 'DEMO' } } } } as any);
+    expect(res.ok).toBe(true);
+  });
+
+  it('ForgeKvsProvider pages a prefix query through kvs.query', async () => {
+    const origEnv = process.env.NODE_ENV;
+    const { kvs } = require('@forge/kvs');
+    const getMany = jest.fn().mockResolvedValue({ results: [{ key: 'fr:issue:1:exception', value: { a: 1 } }], nextCursor: 'c2' });
+    const builder: any = { where: jest.fn(() => builder), limit: jest.fn(() => builder), cursor: jest.fn(() => builder), getMany };
+    kvs.query = jest.fn(() => builder);
+    try {
+      process.env.NODE_ENV = 'production';
+      setGlobalStorageProvider(null);
+      const page = await (resolveStorage() as any).queryPrefix('fr:issue:', 'c1');
+      expect(page).toEqual({ results: [{ key: 'fr:issue:1:exception', value: { a: 1 } }], nextCursor: 'c2' });
+      expect(builder.limit).toHaveBeenCalledWith(100);
+      expect(builder.where).toHaveBeenCalledWith('key', { condition: 'BEGINS_WITH', values: ['fr:issue:'] });
+      expect(builder.cursor).toHaveBeenCalledWith('c1');
+      await (resolveStorage() as any).queryPrefix('fr:issue:');
+      expect(builder.cursor).toHaveBeenCalledTimes(1);
+    } finally {
+      process.env.NODE_ENV = origEnv;
+    }
   });
 });

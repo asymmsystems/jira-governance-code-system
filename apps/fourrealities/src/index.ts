@@ -5,26 +5,29 @@
  */
 
 import Resolver from '@forge/resolver';
-import { kvs } from '@forge/kvs';
+import { kvs, WhereConditions } from '@forge/kvs';
 import api, { Route, route } from '@forge/api';
 import { MetricsEngine } from './domain/metrics-engine';
 import { MetricsRepository, StorageProvider } from './storage/metrics-repository';
+import { SnapshotRepository } from './storage/snapshot-repository';
 import { factsFromIssue, normalizeException, PROPERTY_KEYS } from './jira/issue-facts';
 import { getSiteConfig } from './jira/site-config';
-import { readRemoteLinks } from './jira/remote-links';
-import { issueFields, searchProjectIssues, withRetry } from './jira/search';
-import { isStarted } from './domain/gates';
-
-/** Time a resolver may spend reading remote links, inside the 25 s Forge limit. */
-export const RESOLVER_LINK_BUDGET_MS = 18_000;
+import { issueFields, withRetry } from './jira/search';
+import { jiraError } from './jira/errors';
 import { parseDevField } from './jira/dev-field';
+import { buildSnapshot } from './snapshot';
 import {
   ExceptionRecord,
   IssueRow,
   ProjectDashboardView,
-  ResolverError,
   ResolverResult
 } from './domain/models';
+
+/** Time a resolver may spend on Jira reads, inside the 25 s Forge limit. */
+export const RESOLVER_LINK_BUDGET_MS = 18_000;
+/** Time the daily snapshot run may spend across all projects, inside its 600 s timeout. */
+export const SCHEDULED_BUDGET_MS = 540_000;
+const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
 class ForgeKvsProvider implements StorageProvider {
   async get<T>(key: string): Promise<T | undefined> {
@@ -38,6 +41,15 @@ class ForgeKvsProvider implements StorageProvider {
 
   async delete(key: string): Promise<void> {
     await kvs.delete(key);
+  }
+
+  async queryPrefix<T>(prefix: string, cursor?: string): Promise<{ results: Array<{ key: string; value: T }>; nextCursor?: string }> {
+    let query = kvs.query().where('key', WhereConditions.beginsWith(prefix)).limit(100);
+    if (cursor) {
+      query = query.cursor(cursor);
+    }
+    const page = await query.getMany<T>();
+    return { results: page.results.map(r => ({ key: r.key, value: r.value })), nextCursor: page.nextCursor };
   }
 }
 
@@ -63,68 +75,102 @@ export function resolveStorage(customProvider?: StorageProvider): StorageProvide
 const asUserRequest = (r: Route) => api.asUser().requestJira(r);
 const asAppRequest = (r: Route) => api.asApp().requestJira(r);
 
-function jiraError(status: number | undefined, message: string): { ok: false; error: ResolverError } {
-  if (status === 403) return { ok: false, error: { code: 'FORBIDDEN', message, status } };
-  if (status === 404) return { ok: false, error: { code: 'NOT_FOUND', message, status } };
-  if (status === 429) return { ok: false, error: { code: 'RATE_LIMITED', message, status } };
-  return { ok: false, error: { code: 'JIRA_ERROR', message, status } };
+/** The dashboard view of a stored snapshot. */
+async function dashboardView(projectKey: string, snapshot: { meta: any; rows: IssueRow[] }, repo: SnapshotRepository): Promise<ProjectDashboardView> {
+  const { meta, rows } = snapshot;
+  const view: ProjectDashboardView = {
+    projectKey,
+    generatedAt: meta.generatedAt,
+    summary: MetricsEngine.summarize(rows),
+    rows,
+    trend: await repo.getTrend(projectKey),
+    coverage: { shown: meta.shownCount, totalKnown: meta.totalKnown, capped: meta.capped },
+    meta
+  };
+  if (Date.now() - Date.parse(meta.generatedAt) > STALE_AFTER_MS) {
+    view.warning = `Snapshot read on ${meta.generatedAt.slice(0, 10)} is more than 7 days old. Refresh to read Jira again.`;
+  }
+  return view;
+}
+
+async function projectView(context: any, storageProvider: StorageProvider | undefined, rebuild: boolean): Promise<ResolverResult<ProjectDashboardView>> {
+  const projectKey = context?.extension?.project?.key;
+  if (!projectKey) {
+    return { ok: false, error: { code: 'INVALID_INPUT', message: 'FourRealities: open this page from a Jira project.' } };
+  }
+  const storage = resolveStorage(storageProvider);
+  const repo = new SnapshotRepository(storage);
+  await repo.registerProject(String(projectKey));
+
+  let snapshot = rebuild ? undefined : await repo.loadSnapshot(String(projectKey));
+  if (!snapshot) {
+    const deadline = Date.now() + RESOLVER_LINK_BUDGET_MS;
+    const built = await buildSnapshot({
+      projectKey: String(projectKey),
+      storage,
+      request: withRetry(asAppRequest, () => deadline),
+      deadline,
+      generatedBy: String(context?.accountId || 'unknown-user')
+    });
+    if (!built.ok) {
+      return built;
+    }
+    snapshot = built;
+  }
+  return { ok: true, ...(await dashboardView(String(projectKey), snapshot, repo)) };
 }
 
 /**
- * Builds the project dashboard view from live Jira issues. The project comes from the Forge
- * context only. A page view stores nothing.
+ * Project dashboard. Reads the stored snapshot and builds one only when none exists; a page
+ * view never writes trend history. The project comes from the Forge context only.
  */
 export async function getProjectDashboard(
   payload: any,
   context?: any,
   storageProvider?: StorageProvider
 ): Promise<ResolverResult<ProjectDashboardView>> {
-  const projectKey = context?.extension?.project?.key;
-  if (!projectKey) {
-    return { ok: false, error: { code: 'INVALID_INPUT', message: 'FourRealities: open this page from a Jira project.' } };
-  }
-
-  const storage = resolveStorage(storageProvider);
-  const repository = new MetricsRepository(storage);
-  const deadline = Date.now() + RESOLVER_LINK_BUDGET_MS;
-  const request = withRetry(asAppRequest, () => deadline);
-  let devFieldId: string | null;
-  let siteHost: string | undefined;
-  try {
-    const config = await getSiteConfig(storage, request);
-    devFieldId = config.devFieldId;
-    siteHost = config.siteHost || undefined;
-  } catch (err: any) {
-    return jiraError(undefined, `Live Jira sync failed (${err?.message}).`);
-  }
-  const { issues, capped, totalKnown, status, error } = await searchProjectIssues(String(projectKey), devFieldId, request, deadline);
-  if (error) {
-    return jiraError(status, `Live Jira sync failed (${error}).`);
-  }
-
-  // Remote links are read for started issues only, 8 at a time, inside the time budget.
-  // Issues not reached show Intent "Needs re-check" (spec v2, Snapshot schedule).
-  const started = issues.filter(iss => isStarted(factsFromIssue(iss))).map(iss => String(iss.id));
-  const links = await readRemoteLinks(started, request, deadline);
-
-  const rows: IssueRow[] = [];
-  for (const iss of issues) {
-    const exception = normalizeException(await repository.getIssueException(String(iss.id)));
-    const id = String(iss.id);
-    const remoteLinks = links.get(id) ?? (started.includes(id) ? undefined : []);
-    rows.push(MetricsEngine.buildRow(factsFromIssue(iss, { exception, devFieldId, siteHost, remoteLinks })));
-  }
-
-  return {
-    ok: true,
-    projectKey: String(projectKey),
-    generatedAt: new Date().toISOString(),
-    summary: MetricsEngine.summarize(rows),
-    rows,
-    trend: [],
-    coverage: { shown: rows.length, totalKnown, capped }
-  };
+  return projectView(context, storageProvider, false);
 }
+
+/** Rebuilds the project snapshot now ("Refresh"), inside the resolver time budget. */
+export async function refreshProjectSnapshot(
+  payload: any,
+  context?: any,
+  storageProvider?: StorageProvider
+): Promise<ResolverResult<ProjectDashboardView>> {
+  return projectView(context, storageProvider, true);
+}
+
+/**
+ * Daily scheduled run: builds the snapshot of every registered project as the app while the
+ * budget lasts, then deletes at most 100 v1 signals keys (spec v2, Migration).
+ */
+export async function runScheduledSnapshot(
+  storageProvider?: StorageProvider,
+  deadline: number = Date.now() + SCHEDULED_BUDGET_MS
+): Promise<{ built: string[]; failed: string[]; skipped: string[]; signalsDeleted: number }> {
+  const storage = resolveStorage(storageProvider);
+  const repo = new SnapshotRepository(storage);
+  const result = { built: [] as string[], failed: [] as string[], skipped: [] as string[], signalsDeleted: 0 };
+  for (const projectKey of await repo.listProjects()) {
+    if (Date.now() >= deadline) {
+      result.skipped.push(projectKey);
+      continue;
+    }
+    const built = await buildSnapshot({ projectKey, storage, request: withRetry(asAppRequest, () => deadline), deadline, generatedBy: 'scheduled' });
+    (built.ok ? result.built : result.failed).push(projectKey);
+  }
+  if (Date.now() < deadline) {
+    result.signalsDeleted = await repo.deleteV1Signals();
+  }
+  return result;
+}
+
+/** Forge scheduledTrigger handler (manifest function "snapshot"). */
+export const snapshot = async (): Promise<void> => {
+  const result = await runScheduledSnapshot();
+  console.log('FourRealities: scheduled snapshot', JSON.stringify(result));
+};
 
 /**
  * Evaluates one Jira issue. The issue comes from the Forge context only.
@@ -388,6 +434,10 @@ const resolver = new Resolver();
 
 resolver.define('getProjectDashboard', async (req) => {
   return await getProjectDashboard(req.payload, req.context);
+});
+
+resolver.define('refreshProjectSnapshot', async (req) => {
+  return await refreshProjectSnapshot(req.payload, req.context);
 });
 
 resolver.define('getIssueAlignment', async (req) => {

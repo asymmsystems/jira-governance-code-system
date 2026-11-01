@@ -10,6 +10,8 @@ export interface StorageProvider {
   get<T>(key: string): Promise<T | undefined>;
   set(key: string, value: any): Promise<void>;
   delete(key: string): Promise<void>;
+  /** One page (at most 100) of keys that start with the prefix. */
+  queryPrefix?<T>(prefix: string, cursor?: string): Promise<{ results: Array<{ key: string; value: T }>; nextCursor?: string }>;
 }
 
 export class MetricsRepository {

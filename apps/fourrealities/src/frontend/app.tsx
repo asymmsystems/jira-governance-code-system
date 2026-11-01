@@ -24,14 +24,15 @@ export const FourRealitiesApp: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = async (refresh = false) => {
     setLoading(true);
     setErrorMessage(null);
     try {
       const context: any = await view.getContext().catch(() => null);
       const issueView = Boolean(context?.extension?.issue);
       setIsIssueView(issueView);
-      const res: any = await invoke(issueView ? 'getIssueAlignment' : 'getProjectDashboard', {});
+      const resolver = issueView ? 'getIssueAlignment' : refresh ? 'refreshProjectSnapshot' : 'getProjectDashboard';
+      const res: any = await invoke(resolver, {});
       if (!res?.ok) {
         setErrorMessage(errorText(res, 'Failed to load delivery evidence.'));
       } else if (issueView) {
@@ -68,6 +69,6 @@ export const FourRealitiesApp: React.FC = () => {
   }
 
   return isIssueView
-    ? <IssuePanel row={row as IssueRow} onReload={load} />
-    : <ProjectDashboard view={dashboard as ProjectDashboardView} onRefresh={load} />;
+    ? <IssuePanel row={row as IssueRow} onReload={() => load()} />
+    : <ProjectDashboard view={dashboard as ProjectDashboardView} onRefresh={() => load(true)} />;
 };

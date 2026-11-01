@@ -22,9 +22,16 @@ modules:
       resource: main
       resolver:
         function: resolver
+  scheduledTrigger:
+    - key: fourrealities-daily-snapshot
+      function: snapshot
+      interval: day
   function:
     - key: resolver
       handler: index.handler
+    - key: snapshot
+      handler: index.snapshot
+      timeoutSeconds: 600
 
 resources:
   - key: main

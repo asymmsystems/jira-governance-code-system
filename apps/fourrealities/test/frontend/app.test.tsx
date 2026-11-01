@@ -88,6 +88,7 @@ describe('FourRealitiesApp rendering', () => {
 
     expect(hookErrors).toEqual([]);
     expect(bridgeState.invoke).toHaveBeenCalledTimes(2);
+    expect(bridgeState.invoke).toHaveBeenLastCalledWith('refreshProjectSnapshot', {});
     expect(textOf(renderer.toJSON())).toMatch(/Delivery evidence:\s+DEMO/);
   });
 
@@ -123,4 +124,16 @@ describe('FourRealitiesApp rendering', () => {
     expect(bridgeState.invoke).toHaveBeenCalledWith('getProjectDashboard', {});
     expect(textOf(renderer.toJSON())).toContain('open this page from a Jira project');
   });
+
+  it('reloads the issue panel with getIssueAlignment', async () => {
+    bridgeState.context = { extension: { issue: { id: '10001', key: 'DEMO-1' } } };
+    bridgeState.invoke.mockResolvedValue({ ok: true, row: row('DEMO-1', { intent: F, process: NA, code: NA, audit: NA }) });
+    let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<FourRealitiesApp />); });
+    await settle(act);
+    await act(async () => { findButton(renderer.root, 'Refresh').props.onClick(); });
+    await settle(act);
+    expect(bridgeState.invoke.mock.calls.map((c: any) => c[0])).toEqual(['getIssueAlignment', 'getIssueAlignment']);
+  });
 });
+
