@@ -39,7 +39,7 @@ describe('Workflow Validator', () => {
   it('rejects transition if issue has no active seal', () => {
     const result = validateTransitionGate(null, validSnapshot);
     expect(result.isValid).toBe(false);
-    expect(result.errorMessage).toContain('must be cryptographically sealed');
+    expect(result.errorMessage).toContain('this issue is not sealed');
   });
 
   it('rejects transition if certificate is revoked with reason', () => {
@@ -65,7 +65,7 @@ describe('Workflow Validator', () => {
     };
     const result = validateTransitionGate(fromCertificate(revokedCert), validSnapshot, info(revokedCert));
     expect(result.isValid).toBe(false);
-    expect(result.errorMessage).toContain('Unspecified');
+    expect(result.errorMessage).toContain('reason: not given');
   });
 
   it('rejects transition if ticket state has been tampered with post-approval', () => {
@@ -77,7 +77,7 @@ describe('Workflow Validator', () => {
     };
     const result = validateTransitionGate(fromCertificate(cert), tamperedSnapshot, info(cert));
     expect(result.isValid).toBe(false);
-    expect(result.errorMessage).toContain('Cryptographic seal broken');
+    expect(result.errorMessage).toContain('1 field changed after approval (Summary)');
     expect(result.details?.tamperCount).toBe(1);
   });
 
@@ -88,7 +88,7 @@ describe('Workflow Validator', () => {
     };
     const result = validateTransitionGate(fromCertificate(cert), tamperedSnapshot, info(cert));
     expect(result.isValid).toBe(false);
-    expect(result.errorMessage).toContain('attachments');
+    expect(result.errorMessage).toContain('(Attachments)');
   });
 
   it('rejects transition if seal was previously compromised (tamper-then-revert)', () => {
@@ -107,7 +107,7 @@ describe('Workflow Validator', () => {
     };
     const result = validateTransitionGate(fromCertificate(compromisedCert), validSnapshot, info(compromisedCert));
     expect(result.isValid).toBe(false);
-    expect(result.errorMessage).toContain('reverted');
+    expect(result.errorMessage).toContain('was changed back');
   });
 
   it('permits transition if certificate is active and ticket is untampered', () => {
@@ -115,5 +115,25 @@ describe('Workflow Validator', () => {
     expect(result.isValid).toBe(true);
     expect(result.details?.certificateId).toBe(cert.certificateId);
     expect(result.details?.signerName).toBe(cert.sealedBy.signerDisplayName);
+  });
+});
+
+describe('Validator message sizes', () => {
+  const { changedItemsMessage } = require('../src/validator/workflow-validator');
+
+  it('names at most five items, counts the rest, and stays under 250 characters', () => {
+    const names = ['Summary', 'Description', 'Due Date', 'Priority', 'Labels', 'Fix Versions', 'Approved budget for the Q4 rollout'];
+    const message = changedItemsMessage(names);
+    expect(message).toBe(
+      'LedgerSeal: 7 fields changed after approval (Summary, Description, Due Date, Priority, Labels, and 2 more). Ask a project admin who did not make the change to approve it in the LedgerSeal panel.'
+    );
+    expect(message.length).toBeLessThanOrEqual(250);
+    expect(changedItemsMessage(['Summary', 'Labels'])).toContain('2 fields changed after approval (Summary, Labels)');
+  });
+
+  it('omits the date of a revoke when it is not known', () => {
+    const live = { issueId: '1', issueKey: 'X-1', projectKey: 'X', issueType: 'T', status: 'S', fields: [], attachments: [], capturedAt: 't' };
+    const result = validateTransitionGate({ snapshotHash: 'x', snapshot: live, revoked: true, compromised: false }, live, { revocationReason: 'withdrawn' });
+    expect(result.errorMessage).toBe('LedgerSeal: the seal was revoked (reason: withdrawn). Seal it again to continue.');
   });
 });

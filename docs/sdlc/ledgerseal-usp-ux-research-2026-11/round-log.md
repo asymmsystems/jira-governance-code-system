@@ -182,3 +182,19 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - Contract change: the B-03 test now asserts the v2 fields. `everCompromised` (a string) and `incidentCount` replace the v1 `isCompromised` and `tamperedFieldCount`.
 - Adversarial tests: a changed field, a value copied to another issue, an unknown key id, a missing signature, and a FourRealities-style forged v1 body (FR-02 shape) all fail verification.
 - Results: `tsc` OK. 20 suites, 162 tests pass. Global branches 97.12%. `attestation.ts` 93.33%, `ledger.ts` 96.22%, `index.ts` 93.75%. Graders all True. No em dash.
+- B-09 commit: `1bfd383`.
+
+### B-10 Remove the claims that failed (PX-02)
+- Tests first: `test/claims.test.ts`.
+  - First run: it failed to compile for the right reason (`SealInfo` had no `revokedAt` for the revoke date).
+  - A temporary copy with that field cast failed 5 of 5 on the old code. The scan found banned claims in 13 tracked files (README, `package.json`, `manifest.yml`, `crypto.ts`, `tamper-detector.ts`, `index.tsx`, `workflow-validator.ts` and five test files).
+- Scan: every tracked file under `apps/ledgerseal` (except this test, the public key and `package-lock.json`) is checked for "21 CFR", "Part 11", "SOC 2", "ISO 27001", "immutable", "audit ready", "Cloud Fortified", "compliant", "compliance", "cryptographic seal/sign/proof/integrity", "UNTAMPERED", "TAMPER DETECTED" and "re-authorise".
+- Code:
+  - `src/frontend/index.tsx` uses the texts of `ux-spec.md` section 5, with lozenges SEALED, CHANGED and NOT SEALED, and "Tamper-evident seal" in the seal details. The diff reads "Was: ... Now: ..." instead of an arrow.
+  - `src/validator/workflow-validator.ts` uses the spec v2 section 9 messages, names at most five items and counts the rest (`changedItemsMessage`), and gives the revoke date.
+  - `manifest.yml`: the title "LedgerSeal" and the plain validator description.
+  - `package.json`: the description and keywords (`approval`, `change-control`, `tamper-evidence`).
+  - `README.md` is rewritten from the code, with its stated limits and the measured numbers (169 tests in 21 suites, 97.33% branches).
+- Test data that carried claim words (an "ISO 27001" declaration fixture, a "compliance" label) was changed. Tests that asserted the old messages now assert the new ones.
+- B-08 AC3 ("tamper-evident" in the UI) is met here. The listing is rewritten in Loop 3.
+- Results: `tsc` OK. 21 suites, 169 tests pass. Global branches 97.33%. `workflow-validator.ts` 100%, `crypto.ts` 100%, `tamper-detector.ts` 100%. Graders all True. No em dash.

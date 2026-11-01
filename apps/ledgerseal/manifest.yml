@@ -1,8 +1,8 @@
 modules:
   jira:issuePanel:
     - key: ledgerseal-panel
-      title: LedgerSeal Audit Gate
-      tooltip: LedgerSeal Audit Gate
+      title: LedgerSeal
+      tooltip: LedgerSeal approval seal
       icon: https://raw.githubusercontent.com/feathericons/feather/master/icons/shield.svg
       render: native
       resource: main
@@ -11,7 +11,7 @@ modules:
   jira:workflowValidator:
     - key: ledgerseal-validator
       name: Require Valid LedgerSeal
-      description: Blocks issue transition if issue is unsealed or has a broken cryptographic seal.
+      description: Blocks the transition unless the issue is sealed and unchanged since approval.
       function: validate-transition
   function:
     - key: resolver

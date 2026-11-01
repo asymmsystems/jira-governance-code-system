@@ -1,5 +1,5 @@
 /**
- * LedgerSeal: Cryptographic Sealing & Verification Module
+ * LedgerSeal: v1 seal hashing and verification (SHA-256), kept to read v1 records and hash snapshots
  * Uses standard Node.js crypto (SHA-256) inside Atlassian Forge Node runtime.
  */
 
@@ -26,7 +26,7 @@ export function computeSnapshotHash(snapshot: CanonicalIssueSnapshot): string {
 }
 
 /**
- * Generates an immutable SealCertificate combining snapshot state and electronic signature.
+ * Generates a v1 SealCertificate combining snapshot state and electronic signature (tests and legacy reads only).
  */
 export function generateSealCertificate(
   snapshot: CanonicalIssueSnapshot,
@@ -62,7 +62,7 @@ export function generateSealCertificate(
 }
 
 /**
- * Verifies certificate internal cryptographic integrity.
+ * Verifies that a v1 certificate still matches its own hashes.
  */
 export function verifyCertificateIntegrity(certificate: SealCertificate): boolean {
   // 1. Verify snapshot hash matches snapshot content

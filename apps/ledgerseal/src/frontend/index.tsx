@@ -119,64 +119,63 @@ export const LedgerSealPanel: React.FC = () => {
     return (
       <Inline alignBlock="center">
         <Spinner size="small" />
-        <Text>Verifying cryptographic seal...</Text>
+        <Text>Checking the seal...</Text>
       </Inline>
     );
   }
 
   return (
     <Stack space="space.150">
-      <Heading as="h4">LedgerSeal: Cryptographic Sign-Off &amp; Change Gate</Heading>
+      <Heading as="h4">LedgerSeal</Heading>
 
       {analysis?.status === 'SEAL_VALID' && (
-        <SectionMessage appearance="success" title="Cryptographic Seal Verified">
+        <SectionMessage appearance="success" title="Sealed. No change since approval.">
           <Text>
             Signer: {analysis.seal?.sealedByName} ({analysis.seal?.meaning})
           </Text>
           <Text>
             Sealed At: {analysis.seal?.sealedAt}
           </Text>
-          <Text>
-            SHA-256 Hash: {analysis.sealedHash?.slice(0, 16)}...
-          </Text>
-          <Lozenge appearance="success">UNTAMPERED &amp; AUDIT READY</Lozenge>
+          {analysis.seal?.everCompromised && (
+            <Text>Resealed after {analysis.seal.incidentCount} change incident(s). See the seal details.</Text>
+          )}
+          <Lozenge appearance="success">SEALED</Lozenge>
         </SectionMessage>
       )}
 
       {analysis?.status === 'SEAL_COMPROMISED' && (
-        <SectionMessage appearance="error" title="CRITICAL: Previous Unauthorized Modification Detected">
+        <SectionMessage appearance="error" title="Changed after approval, then changed back">
           <Text>
-            Non-Monotonic Audit Alert: This issue was modified after sign-off and subsequently reverted.
-            Reverting modified content does not heal a cryptographic seal. Explicit re-authorization is required.
+            This issue changed after approval and was later changed back. An approver must approve it again.
           </Text>
-          <Lozenge appearance="removed">PREVIOUSLY TAMPERED / COMPROMISED</Lozenge>
+          <Lozenge appearance="removed">CHANGED</Lozenge>
           <Button appearance="warning" onClick={() => setShowSignForm(true)}>
-            Re-Authorize and Reseal
+            Approve these changes
           </Button>
         </SectionMessage>
       )}
 
       {analysis?.status === 'SEAL_BROKEN' && (
-        <SectionMessage appearance="error" title="CRITICAL: Cryptographic Seal Broken">
+        <SectionMessage appearance="error" title="Changed after approval">
           <Text>
-            This issue was modified after it was signed off by{' '}
+            This issue changed after it was approved by{' '}
             {analysis.seal?.sealedByName} at {analysis.seal?.sealedAt}.
           </Text>
-          <Lozenge appearance="removed">TAMPER DETECTED</Lozenge>
+          <Lozenge appearance="removed">CHANGED</Lozenge>
           {analysis.tamperedFields.length > 0 && (
             <Stack space="space.050">
-              <Heading as="h5">Altered Fields ({analysis.tamperedFields.length}):</Heading>
+              <Heading as="h5">Changed items ({analysis.tamperedFields.length})</Heading>
               {analysis.tamperedFields.map(diff => (
                 <Box key={diff.fieldId} padding="space.050">
                   <Text>
-                    {diff.fieldName}: "{formatDiffValue(diff.sealedValue)}" → "{formatDiffValue(diff.liveValue)}"
+                    {diff.fieldName}. Was: {formatDiffValue(diff.sealedValue)}. Now: {formatDiffValue(diff.liveValue)}
                   </Text>
                 </Box>
               ))}
             </Stack>
           )}
           <Button appearance="warning" onClick={() => setShowSignForm(true)}>
-            Re-Authorize and Reseal
+            Approve these changes
           </Button>
         </SectionMessage>
       )}
@@ -186,10 +185,10 @@ export const LedgerSealPanel: React.FC = () => {
           <Text>
             {analysis.status === 'LEGACY'
               ? 'This seal uses an old format. Reseal to get the new record.'
-              : 'The stored seal record is incomplete. Contact your Jira admin.'}
+              : 'The stored seal record failed its integrity check. Contact your Jira admin.'}
           </Text>
           <Button appearance="primary" onClick={() => setShowSignForm(true)}>
-            Seal Issue with Cryptographic Sign-Off
+            Seal this issue
           </Button>
         </SectionMessage>
       )}
@@ -208,12 +207,13 @@ export const LedgerSealPanel: React.FC = () => {
       )}
 
       {(!analysis || analysis.status === 'NO_SEAL') && (
-        <SectionMessage appearance="information" title="Issue Not Sealed">
+        <SectionMessage appearance="information" title="Not sealed">
           <Text>
-            This issue does not possess an active cryptographic seal. A seal is required to pass compliance workflow gates.
+            Seal this issue to record approval of its current content.
           </Text>
+          <Lozenge>NOT SEALED</Lozenge>
           <Button appearance="primary" onClick={() => setShowSignForm(true)}>
-            Seal Issue with Cryptographic Sign-Off
+            Seal this issue
           </Button>
         </SectionMessage>
       )}
@@ -221,16 +221,17 @@ export const LedgerSealPanel: React.FC = () => {
       {analysis?.seal && (
         <Box padding="space.100">
           <Stack space="space.050">
-            <Heading as="h5">Audit Certificate Details</Heading>
+            <Heading as="h5">Seal details</Heading>
             <Text>Certificate ID: {analysis.seal.certificateId}</Text>
             <Inline space="space.050" alignBlock="center">
               <Text>Signer:</Text>
               <User accountId={analysis.seal.sealedByAccountId} />
             </Inline>
             <Text>Meaning: {analysis.seal.meaning}</Text>
-            <Text>Digest: {analysis.sealedHash}</Text>
+            <Text>Tamper-evident seal: SHA-256 hash of the covered fields, comments and attachments.</Text>
+            <Text>Hash: {analysis.sealedHash}</Text>
             <Button appearance="subtle" onClick={() => setShowDetails(!showDetails)}>
-              {showDetails ? 'Hide Certificate Details' : 'Inspect Certificate Metadata'}
+              {showDetails ? 'Hide seal details' : 'Show seal details'}
             </Button>
             {showDetails && (
               <Box padding="space.050">
@@ -248,7 +249,7 @@ export const LedgerSealPanel: React.FC = () => {
       {showSignForm && (
         <Box padding="space.150">
           <Stack space="space.100">
-            <Heading as="h4">Cryptographic Sign-Off &amp; Seal</Heading>
+            <Heading as="h4">Seal this issue</Heading>
             <Label labelFor="meaning">Meaning</Label>
             <RadioGroup
               name="meaning"
@@ -282,7 +283,7 @@ export const LedgerSealPanel: React.FC = () => {
                 isDisabled={!declarationAgreed || reasonMissing || submitting}
                 onClick={handleSealSubmit}
               >
-                {submitting ? 'Sealing...' : 'Sign & Cryptographically Seal'}
+                {submitting ? 'Sealing...' : 'Sign and seal'}
               </Button>
               <Button appearance="subtle" onClick={() => setShowSignForm(false)}>
                 Cancel

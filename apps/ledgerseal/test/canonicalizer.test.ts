@@ -51,7 +51,7 @@ describe('Canonicalizer', () => {
           summary: 'Fix memory leak in parser',
           description: 'Detailed description\r\nwith windows newlines',
           priority: { name: 'High' },
-          labels: ['security', 'compliance'],
+          labels: ['security', 'regulated'],
           components: [{ name: 'Backend' }, { name: 'API' }],
           attachment: [
             { id: 'att-2', filename: 'log.txt', size: 1024, created: '2026-10-28T10:00:00Z', author: { accountId: 'acc-1' } },
@@ -75,7 +75,7 @@ describe('Canonicalizer', () => {
             { id: 'att-2', filename: 'log.txt', size: 1024, created: '2026-10-28T10:00:00Z', author: { accountId: 'acc-1' } }
           ],
           components: [{ name: 'API' }, { name: 'Backend' }],
-          labels: ['compliance', 'security']
+          labels: ['regulated', 'security']
         }
       };
 

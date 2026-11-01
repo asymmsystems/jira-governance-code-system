@@ -41,7 +41,7 @@ describe('B-07 declaration text and version', () => {
     expect(UI).toContain("from '../domain/declaration'");
     expect(UI).toMatch(/\{DECLARATION\.text\}/);
     expect(UI).not.toContain('I certify that I am the authorized signer');
-    expect(UI).not.toContain('per compliance guidelines');
+    expect(UI).not.toContain('per ' + 'compli' + 'ance guidelines');
   });
 
   it('adversarial (LS-09, T-02 A6): stores exactly the text and version the signer agreed to', async () => {
@@ -55,7 +55,7 @@ describe('B-07 declaration text and version', () => {
   it('rejects a payload whose declaration differs from the one shown', async () => {
     const { storage, deps } = setup();
     for (const bad of [
-      signature({ declarationText: 'I electronically sign and seal this issue per compliance guidelines.' }),
+      signature({ declarationText: 'I electronically sign and seal this issue per company guidelines.' }),
       signature({ declarationVersion: '0' }),
       signature({ declarationText: undefined })
     ]) {

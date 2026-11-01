@@ -65,8 +65,7 @@ export function compareToSeal(sealed: SealedState | null, liveSnapshot: Canonica
         tamperedAttachments: [],
         verifiedAt,
         isCompromised: true,
-        compromiseReason:
-          'Cryptographic integrity compromised! This issue was modified after sign-off and reverted. Re-authorization required.'
+        compromiseReason: 'This issue changed after approval and was changed back. An approver must approve it again.'
       };
     }
 
@@ -90,9 +89,7 @@ export function compareToSeal(sealed: SealedState | null, liveSnapshot: Canonica
     tamperedAttachments,
     verifiedAt,
     isCompromised: true,
-    compromiseReason: `Cryptographic seal broken! ${tamperedFields.length} item(s) modified after sign-off (${tamperedFields
-      .map(f => f.fieldName)
-      .join(', ')}). Re-authorization required.`
+    compromiseReason: `${tamperedFields.length} item(s) changed after approval (${tamperedFields.map(f => f.fieldName).join(', ')}). An approver must approve the changes.`
   };
 }
 

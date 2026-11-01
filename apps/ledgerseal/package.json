@@ -1,7 +1,7 @@
 {
   "name": "ledgerseal-jira",
   "version": "1.0.0",
-  "description": "Immutable Audit Seal and Sign-Off Gate for Jira on Atlassian Forge",
+  "description": "Tamper-evident approval seal and transition gate for Jira on Atlassian Forge",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
@@ -13,12 +13,9 @@
     "atlassian",
     "forge",
     "jira",
-    "compliance",
-    "audit",
-    "soc2",
-    "iso27001",
-    "esignature",
-    "21cfrpart11"
+    "approval",
+    "change-control",
+    "tamper-evidence"
   ],
   "author": "Fahim Farook",
   "license": "UNLICENSED",

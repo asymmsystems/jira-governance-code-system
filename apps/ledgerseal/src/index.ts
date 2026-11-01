@@ -118,7 +118,8 @@ export async function validateTransition(payload: any, context?: any, deps: Ledg
       certificateId: record.certificateId,
       sealedAt: record.sealedAt,
       signerName: record.sealedBy.displayName,
-      revocationReason: record.revocation?.reason
+      revocationReason: record.revocation?.reason,
+      revokedAt: record.revocation?.revokedAt
     }
   );
 

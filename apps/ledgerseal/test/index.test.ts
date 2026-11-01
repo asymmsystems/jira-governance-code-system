@@ -120,7 +120,7 @@ describe('Forge Function Entry Points (index.ts)', () => {
     it('returns result=false when issue is not sealed', async () => {
       const res = await validateTransition({ issue: { key: 'PROD-10' } }, {}, deps());
       expect(res.result).toBe(false);
-      expect(res.errorMessage).toContain('must be cryptographically sealed');
+      expect(res.errorMessage).toContain('this issue is not sealed');
     });
 
     it('returns result=false when issueId is missing', async () => {
