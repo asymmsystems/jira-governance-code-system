@@ -62,13 +62,16 @@ describe('Checklist Hasher', () => {
     expect(hash).toHaveLength(64);
   });
 
-  it('exercises code unit compare for items with equal and different ids', () => {
+  it('sorts items by id before hashing, so any input order gives the same hash, and duplicate ids are stable', () => {
     const items: ChecklistItemInstance[] = [
       { id: 'b', title: 'B', isMandatory: true, isCompleted: false, category: 'TESTING' },
       { id: 'a', title: 'A', isMandatory: true, isCompleted: false, category: 'TESTING' },
-      { id: 'c', title: 'C', isMandatory: true, isCompleted: false, category: 'TESTING' }
+      { id: 'c', title: 'C', isMandatory: true, isCompleted: false, category: 'TESTING' },
+      { id: 'a', title: 'A2', isMandatory: false, isCompleted: false, category: 'TESTING' }
     ];
     const hash = calculateChecklistHash(items);
-    expect(hash).toBeDefined();
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(calculateChecklistHash([items[2], items[0], items[1], items[3]])).toBe(hash);
+    expect(calculateChecklistHash(items.slice(0, 3))).not.toBe(hash);
   });
 });

@@ -1,3 +1,9 @@
+/**
+ * v1 checklist hash. Kept because the v1 record format (dg:checklist) carries it and the migration records it.
+ *
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ * @author Fahim Farook
+ */
 import * as crypto from 'crypto';
 import { ChecklistAuditEvent, ChecklistItemInstance } from './models';
 

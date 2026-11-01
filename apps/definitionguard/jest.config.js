@@ -15,6 +15,10 @@ module.exports = {
       functions: 90,
       lines: 90,
       statements: 90
+    },
+    // Each source file, not only the total (DG-13, PX-03).
+    './src/**/*.ts': {
+      branches: 90
     }
   }
 };

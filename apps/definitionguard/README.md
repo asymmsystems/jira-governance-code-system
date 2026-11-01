@@ -1,26 +1,39 @@
-# DefinitionGuard: Definition of Done & Compliance Gate for Jira
+# DefinitionGuard: Definition of Done gate for Jira
 
-DefinitionGuard is an enterprise compliance, security, and quality gating application built on Atlassian Forge.
-It enforces automated Definition-of-Done (DoD) checklists directly inside Atlassian Jira Cloud.
+DefinitionGuard is an Atlassian Forge app for Jira Cloud. It puts a Definition of Done checklist on each issue and a workflow validator that blocks a move into a Done-category status while a mandatory item is open.
 
-## Platform Architecture: Runs on Atlassian
-DefinitionGuard is built with the Forge platform and UI Kit 2.
-The app executes exclusively within Atlassian's secure cloud compute infrastructure.
-It satisfies the "Runs on Atlassian" badge standards:
-- **Zero External Egress**: No telemetry, no third-party HTTP connections, and no egress endpoints.
-- **Data Residency**: 100% of checklist definitions, item instances, and audit attribution records reside in Atlassian Forge Hosted Storage (`@forge/storage`).
-- **Least Privilege**: Only requests `read:jira-work` and `storage:app` scopes.
+What the code does is described in `docs/spec/definitionguard-spec-v3.md` (domain model) and `docs/spec/definitionguard-spec-v2.md` (everything else). The Marketplace text is `docs/marketplace/definitionguard-listing-v2.md`. The build record is `docs/sdlc/definitionguard-usp-ux-research-2026-11/round-log.md`.
 
-## Key Capabilities
-1. **Automated Definition of Done**: Standardizes required quality and compliance items across Jira issues.
-2. **Jira Workflow Validator**: Halts transitions to "Done", "Resolved", or "Released" when mandatory checklist items are incomplete.
-3. **Audit Attribution**: Tracks exact user account IDs and timestamps for every item completion event.
-4. **Deterministic Checksums**: Computes a SHA-256 state hash for audit proof and integration with LedgerSeal.
+## Platform: Forge
 
-## Build and Test
+- Runtime `nodejs22.x`, UI Kit (`render: native`). No egress is declared, so the app sends no data outside the Atlassian site.
+- Atlassian decides whether an app gets the Runs on Atlassian badge; this README does not claim it.
+- Storage: Forge KVS through `@forge/kvs`. Each change is an append-only change-log entry (`dg:evt:<issueId>:<seq>`) with a small state cache (`dg:state:<issueId>`).
+
+## Scopes
+
+| Scope | Why |
+|---|---|
+| `read:jira-work` | Read issues, statuses and the user's Jira permissions |
+| `write:jira-work` | Write the `definitionguard-dod` issue property |
+| `storage:app` | Keep checklists, history and templates in Forge storage |
+| `read:workflow:jira` | Read workflows for the gate coverage check (read only) |
+
+## Modules
+
+- `jira:issuePanel` `definitionguard-issue-panel`: the checklist.
+- `jira:projectSettingsPage` `definitionguard-project-settings`: templates per issue type, exempt statuses, re-sync, gate coverage. Project admins only.
+- `jira:workflowValidator` `definitionguard-workflow-validator`: the gate. A Jira admin adds it to each transition in the workflow editor; the app cannot add it.
+
+## Build and test
+
+Host tools run through `flatpak-spawn --host` in this environment. `node_modules` is a link to the shared `apps/ledgerseal/node_modules`; do not run `npm install` here.
+
 ```bash
-npm install
-npm test
-npm run build
+npx tsc --noEmit
+npx jest --coverage        # 90% branch per source file is enforced in jest.config.js
+forge lint
+forge deploy -e development
 ```
-All unit tests and coverage thresholds (>90% branch coverage) run via Jest.
+
+Every source file starts with the Asymm Systems copyright header and `@author Fahim Farook`.
