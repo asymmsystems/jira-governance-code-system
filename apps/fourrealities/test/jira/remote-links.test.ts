@@ -6,11 +6,15 @@
 
 import { readRemoteLinks } from '../../src/jira/remote-links';
 
+// These tests use the real @forge/api route tag, so a path that the tag would reject fails here.
+const pathOf = (r: any): string => (typeof r === 'string' ? r : r.value);
+
 describe('readRemoteLinks', () => {
   it('reads each issue once, at most 8 at a time', async () => {
     let active = 0;
     let peak = 0;
-    const request = jest.fn(async (path: string) => {
+    const request = jest.fn(async (r: any) => {
+      const path = pathOf(r);
       active++;
       peak = Math.max(peak, active);
       await new Promise(r => setTimeout(r, 2));
@@ -25,7 +29,8 @@ describe('readRemoteLinks', () => {
   });
 
   it('leaves issues unread after the deadline and after a failed read', async () => {
-    const request = jest.fn(async (path: string) => {
+    const request = jest.fn(async (r: any) => {
+      const path = pathOf(r);
       if (path.includes('/b/')) return { status: 500, json: async () => ({}) };
       if (path.includes('/c/')) throw new Error('network');
       if (path.includes('/d/')) return { status: 200, json: async () => ({ not: 'array' }) };

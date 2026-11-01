@@ -6,6 +6,9 @@
 
 import { SITE_CONFIG_KEY, getSiteConfig } from '../../src/jira/site-config';
 
+// These tests use the real @forge/api route tag, so a path that the tag would reject fails here.
+const pathOf = (r: any): string => (typeof r === 'string' ? r : r.value);
+
 class MapStorage {
   store = new Map<string, any>();
   async get(key: string) { return this.store.get(key); }
@@ -27,7 +30,7 @@ describe('getSiteConfig', () => {
     const first = await getSiteConfig(storage, request, NOW);
     expect(first.devFieldId).toBe('customfield_10042');
     expect((await storage.get(SITE_CONFIG_KEY)).devFieldId).toBe('customfield_10042');
-    expect(request.mock.calls.map(c => c[0])).toEqual(['/rest/api/3/field', '/rest/api/3/serverInfo']);
+    expect(request.mock.calls.map(c => pathOf(c[0]))).toEqual(['/rest/api/3/field', '/rest/api/3/serverInfo']);
     const second = await getSiteConfig(storage, request, NOW + 60_000);
     expect(second.devFieldId).toBe('customfield_10042');
     expect(request).toHaveBeenCalledTimes(2);
@@ -62,15 +65,15 @@ describe('getSiteConfig', () => {
   });
 
   it('reads the site host from serverInfo and keeps null when it cannot', async () => {
-    const request = jest.fn((path: string) => Promise.resolve(path === '/rest/api/3/serverInfo'
+    const request = jest.fn((r: any) => Promise.resolve(pathOf(r) === '/rest/api/3/serverInfo'
       ? { status: 200, json: async () => ({ baseUrl: 'https://asymmsystems.atlassian.net' }) }
       : { status: 200, json: async () => fields }));
     expect((await getSiteConfig(new MapStorage(), request, NOW)).siteHost).toBe('asymmsystems.atlassian.net');
-    const failing = jest.fn((path: string) => Promise.resolve(path === '/rest/api/3/serverInfo'
+    const failing = jest.fn((r: any) => Promise.resolve(pathOf(r) === '/rest/api/3/serverInfo'
       ? { status: 403, json: async () => ({}) }
       : { status: 200, json: async () => fields }));
     expect((await getSiteConfig(new MapStorage(), failing, NOW)).siteHost).toBeNull();
-    const badUrl = jest.fn((path: string) => Promise.resolve(path === '/rest/api/3/serverInfo'
+    const badUrl = jest.fn((r: any) => Promise.resolve(pathOf(r) === '/rest/api/3/serverInfo'
       ? { status: 200, json: async () => ({ baseUrl: 'not a url' }) }
       : { status: 200, json: async () => fields }));
     expect((await getSiteConfig(new MapStorage(), badUrl, NOW)).siteHost).toBeNull();

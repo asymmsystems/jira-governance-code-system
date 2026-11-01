@@ -4,6 +4,7 @@
  * FourRealities: per-site configuration read from Jira and cached in KVS for 24 hours.
  */
 
+import { Route, route } from '@forge/api';
 import { StorageProvider } from '../storage/metrics-repository';
 
 export const SITE_CONFIG_KEY = 'fr:cfg:site';
@@ -19,12 +20,16 @@ export interface SiteConfig {
   readAt: string;
 }
 
-export type JiraRequest = (path: string) => Promise<{ status: number; json: () => Promise<any> }>;
+/**
+ * Sends one request as a chosen principal. Callers build the route with the @forge/api route tag,
+ * which rejects interpolated values that contain '/', '?' or '#'.
+ */
+export type JiraRequest = (path: Route) => Promise<{ status: number; json: () => Promise<any> }>;
 
 /** Host of the site from serverInfo; null when it cannot be read. Not fatal: only same-site links depend on it. */
 async function readSiteHost(request: JiraRequest): Promise<string | null> {
   try {
-    const res = await request('/rest/api/3/serverInfo');
+    const res = await request(route`/rest/api/3/serverInfo`);
     if (res.status !== 200) return null;
     return new URL(String((await res.json())?.baseUrl)).host || null;
   } catch {
@@ -41,7 +46,7 @@ export async function getSiteConfig(storage: StorageProvider, request: JiraReque
   if (cached && now - Date.parse(cached.readAt) < SITE_CONFIG_TTL_MS) {
     return cached;
   }
-  const res = await request('/rest/api/3/field');
+  const res = await request(route`/rest/api/3/field`);
   if (res.status !== 200) {
     throw new Error(`Jira returned HTTP ${res.status} reading the field list.`);
   }

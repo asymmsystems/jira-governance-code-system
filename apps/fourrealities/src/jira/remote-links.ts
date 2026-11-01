@@ -4,6 +4,7 @@
  * FourRealities: reads issue remote links with bounded concurrency inside a time budget.
  */
 
+import { route } from '@forge/api';
 import { JiraRequest } from './site-config';
 
 export const REMOTE_LINK_CONCURRENCY = 8;
@@ -24,7 +25,7 @@ export async function readRemoteLinks(
     while (next < issueIds.length && Date.now() < deadline) {
       const id = issueIds[next++];
       try {
-        const res = await request(`/rest/api/3/issue/${id}/remotelink`);
+        const res = await request(route`/rest/api/3/issue/${id}/remotelink`);
         if (res.status === 200) {
           const body = await res.json();
           result.set(id, Array.isArray(body) ? body : []);

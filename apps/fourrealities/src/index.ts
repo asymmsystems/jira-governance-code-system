@@ -6,7 +6,7 @@
 
 import Resolver from '@forge/resolver';
 import { kvs } from '@forge/kvs';
-import api, { route } from '@forge/api';
+import api, { Route, route } from '@forge/api';
 import { MetricsEngine } from './domain/metrics-engine';
 import { MetricsRepository, StorageProvider } from './storage/metrics-repository';
 import { factsFromIssue, normalizeException, PROPERTY_KEYS } from './jira/issue-facts';
@@ -66,8 +66,8 @@ export function issueFields(devFieldId: string | null): string {
   return devFieldId ? `${BASE_FIELDS},${devFieldId}` : BASE_FIELDS;
 }
 
-const asUserRequest = (path: string) => api.asUser().requestJira(route`${path}`);
-const asAppRequest = (path: string) => api.asApp().requestJira(route`${path}`);
+const asUserRequest = (r: Route) => api.asUser().requestJira(r);
+const asAppRequest = (r: Route) => api.asApp().requestJira(r);
 
 function jiraError(status: number | undefined, message: string): { ok: false; error: ResolverError } {
   if (status === 403) return { ok: false, error: { code: 'FORBIDDEN', message, status } };
