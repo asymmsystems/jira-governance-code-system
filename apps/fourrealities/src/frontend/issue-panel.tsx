@@ -10,7 +10,7 @@ import { router } from '@forge/bridge';
 import { ExceptionDecision, ExceptionNote, GATE_NAMES, GateExceptionState, GateName, IssueRow } from '../contract/data/models';
 import { PanelAction, afterActionText, raiPartsText, raiText, recoveryText, riskAppearance } from '../ui/gate-text';
 import { GatePipeline, GateRow } from './gate-row';
-import { driftText, nextActionText } from '../ui/pipeline';
+import { driftText, nextActionText, scoreParts } from '../ui/pipeline';
 import { DecisionModal, ExceptionModal, LinkDecisionModal } from './modals';
 
 /**
@@ -99,6 +99,7 @@ type OpenModal = 'none' | 'link' | 'code' | 'rework' | ExceptionDecision;
 export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void; onRow: (row: IssueRow) => void }> = ({ row, onReload, onRow }) => {
   const [open, setOpen] = useState<OpenModal>('none');
   const [message, setMessage] = useState<string | null>(null);
+  const [why, setWhy] = useState<boolean>(false);
 
   const done = (action: PanelAction) => (after?: IssueRow) => {
     setOpen('none');
@@ -137,7 +138,15 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void; onRow: 
       <Inline space="space.100" alignBlock="center" shouldWrap>
         <Lozenge maxWidth="100%" appearance={riskAppearance(row.risk)}>{raiText(row)}</Lozenge>
         <Text>{raiPartsText(row)}</Text>
+        {row.rai !== null ? (
+          <Button appearance="subtle" onClick={() => setWhy(!why)}>{why ? 'Hide the score parts' : `Why ${row.rai}%?`}</Button>
+        ) : null}
       </Inline>
+      {why ? (
+        <Stack space="space.025">
+          {scoreParts(row).map(line => <Text key={line}>{line}</Text>)}
+        </Stack>
+      ) : null}
 
       <Inline space="space.100" alignBlock="center" shouldWrap>
         {row.gates.intent.state === 'MISSING' ? (

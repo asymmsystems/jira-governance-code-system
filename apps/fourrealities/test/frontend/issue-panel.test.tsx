@@ -53,6 +53,20 @@ describe('IssuePanel', () => {
     expect(text).toContain('Next: link the decision record.');
   });
 
+  it('B-37: "Why n%?" shows what each gate adds and what the first fix recovers, and hides again', async () => {
+    const r = await mount(row('DEMO-5', { intent: M_INTENT, process: F, code: NA, audit: F }));
+    expect(textOf(r.toJSON())).not.toContain('Intent: 0 (evidence missing)');
+    await act(async () => { findButton(r.root, 'Why 67%?').props.onClick(); });
+    const text = textOf(r.toJSON());
+    expect(text).toContain('Intent: 0 (evidence missing)');
+    expect(text).toContain('Process: +33 (evidence found)');
+    expect(text).toContain('Fix Intent to reach 100%.');
+    await act(async () => { findButton(r.root, 'Hide the score parts').props.onClick(); });
+    expect(textOf(r.toJSON())).not.toContain('Intent: 0 (evidence missing)');
+    const unrated = await mount(row('DEMO-6', { intent: NA, process: NA, code: NA, audit: NA }));
+    expect(() => findButton(unrated.root, 'Why')).toThrow('No button');
+  });
+
   it('B-21: shows the four gates first and RAI after them, with no RAI in the heading', async () => {
     const r = await mount(row('DEMO-5', { intent: M_INTENT, process: F, code: NA, audit: F }));
     const lozenges = findAll(r.root, 'Lozenge').map((l: any) => String(l.props.children));

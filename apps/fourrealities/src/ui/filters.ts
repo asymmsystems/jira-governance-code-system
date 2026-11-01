@@ -5,7 +5,7 @@
  * Pure functions over snapshot rows; the dashboard only renders them.
  */
 
-import { GATE_NAMES, GateName, IssueRow } from '../contract/data/models';
+import { GATE_NAMES, GateName, IssueRow, RiskLevel } from '../contract/data/models';
 import { GATE_LABEL } from './gate-text';
 
 /** Assignee filter value for rows with no assignee. */
@@ -15,12 +15,15 @@ export interface DashboardFilters {
   assignee: string | null;
   sprint: string | null;
   missingGate: GateName | null;
+  risk: RiskLevel | null;
   search: string;
 }
 
-export const NO_FILTERS: DashboardFilters = { assignee: null, sprint: null, missingGate: null, search: '' };
+export const NO_FILTERS: DashboardFilters = { assignee: null, sprint: null, missingGate: null, risk: null, search: '' };
 
-export type FilterField = 'assignee' | 'sprint' | 'missingGate';
+export type FilterField = 'assignee' | 'sprint' | 'missingGate' | 'risk';
+
+export const RISK_WORD: Record<RiskLevel, string> = { CRITICAL: 'Critical', HIGH: 'High', MEDIUM: 'Medium', LOW: 'Low', UNRATED: 'Unrated' };
 
 const byName = (a: string, b: string) => a.localeCompare(b);
 
@@ -41,6 +44,7 @@ export function applyFilters(rows: IssueRow[], f: DashboardFilters): IssueRow[] 
     (f.assignee === null || (r.assigneeName || UNASSIGNED) === f.assignee) &&
     (f.sprint === null || (r.sprintNames || []).includes(f.sprint)) &&
     (f.missingGate === null || r.gates[f.missingGate].state === 'MISSING') &&
+    (f.risk === null || r.risk === f.risk) &&
     (!q || r.issueKey.toLowerCase().includes(q) || r.summary.toLowerCase().includes(q)));
 }
 
@@ -55,6 +59,7 @@ export function activeFilters(f: DashboardFilters): Array<{ field: FilterField; 
   return [
     ...(f.assignee !== null ? [{ field: 'assignee' as const, label: `Assignee: ${f.assignee}` }] : []),
     ...(f.sprint !== null ? [{ field: 'sprint' as const, label: `Sprint: ${f.sprint}` }] : []),
-    ...(f.missingGate !== null ? [{ field: 'missingGate' as const, label: missingGateLabel(f.missingGate) }] : [])
+    ...(f.missingGate !== null ? [{ field: 'missingGate' as const, label: missingGateLabel(f.missingGate) }] : []),
+    ...(f.risk !== null ? [{ field: 'risk' as const, label: `Risk: ${RISK_WORD[f.risk]}` }] : [])
   ];
 }

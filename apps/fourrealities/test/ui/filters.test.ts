@@ -37,7 +37,7 @@ describe('applyFilters', () => {
     expect(applyFilters(rows, { ...NO_FILTERS, assignee: UNASSIGNED }).map(x => x.issueKey)).toEqual(['A-2']);
     expect(applyFilters(rows, { ...NO_FILTERS, sprint: 'Sprint 2' }).map(x => x.issueKey)).toEqual(['A-1', 'A-2']);
     expect(applyFilters(rows, { ...NO_FILTERS, missingGate: 'intent' }).map(x => x.issueKey)).toEqual(['A-2', 'A-3']);
-    expect(applyFilters(rows, { assignee: UNASSIGNED, sprint: 'Sprint 1', missingGate: 'intent', search: 'a-2' }).map(x => x.issueKey)).toEqual(['A-2']);
+    expect(applyFilters(rows, { ...NO_FILTERS, assignee: UNASSIGNED, sprint: 'Sprint 1', missingGate: 'intent', search: 'a-2' }).map(x => x.issueKey)).toEqual(['A-2']);
   });
 
   it('matches the search text on key or summary, without case', () => {
@@ -48,10 +48,18 @@ describe('applyFilters', () => {
 describe('activeFilters', () => {
   it('names each active filter so it can be removed on its own', () => {
     expect(activeFilters(NO_FILTERS)).toEqual([]);
-    expect(activeFilters({ assignee: 'Ana Silva', sprint: 'Sprint 2', missingGate: 'code', search: 'x' })).toEqual([
+    expect(activeFilters({ ...NO_FILTERS, assignee: 'Ana Silva', sprint: 'Sprint 2', missingGate: 'code', search: 'x' })).toEqual([
       { field: 'assignee', label: 'Assignee: Ana Silva' },
       { field: 'sprint', label: 'Sprint: Sprint 2' },
       { field: 'missingGate', label: 'Code missing' }
     ]);
+  });
+});
+
+describe('B-39: risk filter', () => {
+  it('keeps the rows of one risk level, and names the filter for removal', () => {
+    const risky = [{ ...rows[0], risk: 'HIGH' as const }, { ...rows[1], risk: 'LOW' as const }, rows[2]];
+    expect(applyFilters(risky, { ...NO_FILTERS, risk: 'HIGH' }).map(x => x.issueKey)).toEqual(['A-1']);
+    expect(activeFilters({ ...NO_FILTERS, risk: 'CRITICAL' })).toEqual([{ field: 'risk', label: 'Risk: Critical' }]);
   });
 });

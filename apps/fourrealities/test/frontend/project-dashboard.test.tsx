@@ -8,7 +8,7 @@ import * as React from 'react';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const TestRenderer = require('react-test-renderer');
 const { act } = TestRenderer;
-import { bridgeState, findAll, findButton, textOf } from './forge-mocks';
+import { bridgeState, findAll, findButton, flatText, textOf } from './forge-mocks';
 import { F, M_CODE, M_DOD, M_INTENT, M_SEAL, NA, dashboard, row } from './rows';
 
 jest.mock('@forge/react', () => require('./forge-mocks').reactMock());
@@ -43,12 +43,11 @@ describe('ProjectDashboard', () => {
 
   it('shows gate rates with counts first, then RAI with its rated count', async () => {
     const r = await mount(dashboard(rows));
-    const order = r.root.findAll((n: any) => (n.type === 'ui-Heading' && ['Intent', 'Audit'].includes(String(n.props.children))) || (n.type === 'ui-Text' && String(n.props.children).startsWith('RAI ')));
-    expect(order.map((n: any) => String(n.props.children).slice(0, 3))).toEqual(['Int', 'Aud', 'RAI']);
+    const order = r.root.findAll((n: any) => n.type === 'ui-Heading' && /^(Intent|Audit|Alignment)/.test(flatText(n.props.children)));
+    expect(order.map((n: any) => flatText(n.props.children).slice(0, 3))).toEqual(['Int', 'Aud', 'Ali']);
     const text = textOf(r.toJSON());
-    expect(text).toContain('33% evidence found');
-    expect(text).toContain('1 of 3 rated issues');
-    expect(text).toContain('0% evidence found');
+    expect(text).toContain('1 of 3 rated issues have evidence');
+    expect(findAll(r.root, 'Lozenge').map((l: any) => flatText(l.props.children)).slice(0, 4)).toEqual(['33%', '67%', '0%', '50%']);
     expect(text).toContain('across 3 rated issues (1 unrated)');
     expect(text).toContain('Read 2026-11-01 08:30 UTC');
     expect(tableKeys(r)).toEqual(['DEMO-2', 'DEMO-3', 'DEMO-1', 'DEMO-4']);
@@ -56,23 +55,26 @@ describe('ProjectDashboard', () => {
 
   it('B-21: puts no sprint name next to the project score and offers no way to rank people', async () => {
     const r = await mount(dashboard([row('DEMO-1', { intent: F, process: F, code: NA, audit: F }, { sprintNames: ['Sprint 12'] })]));
-    const score = findAll(r.root, 'Text').map((t: any) => String(t.props.children)).filter(t => t.startsWith('RAI '));
-    expect(score).toHaveLength(1);
-    expect(score[0]).not.toContain('Sprint');
+    const score = findAll(r.root, 'Heading').map((h: any) => flatText(h.props.children)).filter(t => t.startsWith('Alignment'));
+    expect(score).toEqual(['Alignment 100%']);
+    expect(textOf(r.toJSON()).match(/Alignment[^.]*Sprint/)).toBeNull();
     const heading = findAll(r.root, 'Heading').map((h: any) => (Array.isArray(h.props.children) ? h.props.children.join('') : String(h.props.children)));
     expect(heading.filter(h => h.includes('Sprint'))).toEqual([]);
     const head = findAll(r.root, 'DynamicTable')[0].props.head.cells;
     expect(head.find((c: any) => c.key === 'assignee').isSortable).toBeFalsy();
   });
 
-  it('shows RAI n/a when nothing is rated', async () => {
+  it('shows no score and no card action when nothing is rated', async () => {
     const r = await mount(dashboard([rows[3]]));
-    expect(textOf(r.toJSON())).toContain('RAI: n/a. No issue is rated yet (1 unrated).');
+    const text = textOf(r.toJSON());
+    expect(text).toContain('across 0 rated issues (1 unrated)');
+    expect(text).toContain('No issue is rated for this gate yet.');
+    expect(findAll(r.root, 'ProgressBar')).toHaveLength(0);
   });
 
   it('filters by a missing gate and by search text, and clears the filter', async () => {
     const r = await mount(dashboard(rows));
-    await act(async () => { findButton(r.root, 'Show Intent missing (2)').props.onClick(); });
+    await act(async () => { findButton(r.root, 'Show 2 missing Intent').props.onClick(); });
     expect(tableKeys(r)).toEqual(['DEMO-2', 'DEMO-3']);
     expect(textOf(r.toJSON())).toContain('Showing 2 of 4 issues');
     await act(async () => { findAll(r.root, 'Textfield', p => p.id === 'fr-search')[0].props.onChange({ target: { value: 'demo-3' } }); });
@@ -155,6 +157,44 @@ describe('ProjectDashboard', () => {
     const r = await mount(dashboard(rows));
     expect(findAll(r.root, 'Select', p => p.id === 'fr-filter-sprint')).toHaveLength(0);
     expect(findAll(r.root, 'Label').map((l: any) => l.props.labelFor)).toEqual(['fr-search', 'fr-filter-assignee', 'fr-filter-gate']);
+  });
+
+  it('B-37: leads with Alignment, the change since last week and the weakest gate', async () => {
+    const r = await mount(dashboard(rows));
+    const headings = findAll(r.root, 'Heading').map((h: any) => flatText(h.props.children));
+    expect(headings).toContain('Alignment 50%');
+    const text = textOf(r.toJSON());
+    expect(text).toContain('across 3 rated issues (1 unrated)');
+    expect(text).toContain('Not enough data for a trend yet.');
+    expect(text).toContain('Weakest gate: Code, 0% (0 of 1 rated issues).');
+    const unrated = await mount(dashboard([rows[3]]));
+    expect(findAll(unrated.root, 'Heading').map((h: any) => flatText(h.props.children))).toContain('Alignment: not rated yet');
+  });
+
+  it('B-35: shows one card per gate with a question, a labelled progress bar, a count, and an action only when something is missing', async () => {
+    const r = await mount(dashboard(rows));
+    const cards = findAll(r.root, 'Box').filter((b: any) => b.props.xcss && findAll(b, 'Tooltip').some((t: any) => String(t.props.content).startsWith('Metric ')));
+    expect(cards).toHaveLength(4);
+    const intent = textOf(TestRenderer.create(cards[0].props.children).toJSON());
+    expect(intent).toContain('Is the work traced to a decision record?');
+    expect(intent).toContain('1 of 3 rated issues have evidence');
+    expect(findAll(cards[0], 'ProgressBar')[0].props).toEqual(expect.objectContaining({ value: 1 / 3, ariaLabel: 'Intent: 1 of 3 rated issues have evidence' }));
+    expect(findAll(cards[0], 'Tooltip')[0].props.content).toBe('Metric M11: share of rated issues traced to a decision record.');
+    const audit = textOf(TestRenderer.create(cards[3].props.children).toJSON());
+    expect(audit).toContain('Is completion sealed in LedgerSeal?');
+    await act(async () => { findButton(r.root, 'Show 2 missing Intent').props.onClick(); });
+    expect(tableKeys(r)).toEqual(['DEMO-2', 'DEMO-3']);
+    const none = await mount(dashboard([rows[0]]));
+    expect(() => findButton(none.root, 'missing Intent')).toThrow('No button');
+  });
+
+  it('B-39: shows the risk counts as buttons that filter the table', async () => {
+    const r = await mount(dashboard(rows));
+    const risk = findAll(r.root, 'Button').map((b: any) => flatText(b.props.children)).filter((t: string) => /^(Critical|High|Medium|Low) \d+$/.test(t));
+    expect(risk).toEqual(['Critical 1', 'High 1', 'Medium 0', 'Low 1']);
+    await act(async () => { findButton(r.root, 'Critical 1').props.onClick(); });
+    expect(tableKeys(r)).toEqual(['DEMO-2']);
+    expect(textOf(r.toJSON())).toContain('Remove filter: Risk: Critical');
   });
 
   it('B-34: shows each issue as a compact pipeline and a top finding, not four text boxes', async () => {

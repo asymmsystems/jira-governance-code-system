@@ -20,30 +20,65 @@ import {
   ModalFooter,
   ModalHeader,
   ModalTitle,
+  ProgressBar,
   SectionMessage,
   Select,
   Stack,
   Text,
-  Textfield
+  Textfield,
+  Tooltip,
+  xcss
 } from '@forge/react';
 import { router } from '@forge/bridge';
-import { GATE_NAMES, GateName, IssueRow, ProjectDashboardView } from '../contract/data/models';
+import { GATE_NAMES, GateCount, GateName, IssueRow, ProjectDashboardView, RiskLevel } from '../contract/data/models';
 import { GATE_LABEL, raiText, rateText, riskAppearance } from '../ui/gate-text';
-import { DashboardFilters, FilterField, GATE_FILTER_OPTIONS, NO_FILTERS, activeFilters, applyFilters, filterOptions, missingGateLabel } from '../ui/filters';
+import { DashboardFilters, FilterField, GATE_FILTER_OPTIONS, RISK_WORD, NO_FILTERS, activeFilters, applyFilters, filterOptions, missingGateLabel } from '../ui/filters';
 import { triageOrder } from '../ui/triage';
 import { TREND_WEEKS, chartData, recentWeeks, trendNotice, trendTableRows } from '../ui/trend';
 import { GatePipeline, GateRow } from './gate-row';
-import { driftText } from '../ui/pipeline';
+import { GATE_QUESTION, driftText, heroDelta, weakestGate } from '../ui/pipeline';
 import { TextChange } from './modals';
 
 type Option<T extends string = string> = { label: string; value: T };
 const asOption = (value: string | null): Option | null => (value === null ? null : { label: value, value });
 
-const RATE_OF: Record<GateName, (v: ProjectDashboardView) => number | null> = {
-  intent: v => v.summary.m11IntentRate,
-  process: v => v.summary.dodRate,
-  code: v => v.summary.m29PullRequestRate,
-  audit: v => v.summary.sealRate
+const CARD = xcss({ borderColor: 'color.border', borderWidth: 'border.width', borderStyle: 'solid', borderRadius: 'radius.medium', padding: 'space.200' });
+
+const METRIC: Record<GateName, string> = {
+  intent: 'Metric M11: share of rated issues traced to a decision record.',
+  process: 'Metric DoD rate: share of rated done issues with a complete Definition of Done.',
+  code: 'Metric M29: share of rated done issues with a merged pull request.',
+  audit: 'Metric seal rate: share of rated done issues with a LedgerSeal record.'
+};
+
+const RISK_BUTTONS: Array<[RiskLevel, 'critical' | 'high' | 'medium' | 'low']> = [['CRITICAL', 'critical'], ['HIGH', 'high'], ['MEDIUM', 'medium'], ['LOW', 'low']];
+
+function rateAppearance(rate: number | null): 'success' | 'moved' | 'removed' | 'default' {
+  if (rate === null) return 'default';
+  return rate >= 80 ? 'success' : rate >= 50 ? 'moved' : 'removed';
+}
+
+/** One reality card: question, rate, labelled progress bar, plain count, and an action only when something is missing (B-35). */
+export const RealityCard: React.FC<{ gate: GateName; count: GateCount; onShowMissing: () => void }> = ({ gate, count, onShowMissing }) => {
+  const of = count.found + count.missing;
+  const rate = of === 0 ? null : Math.round((count.found * 100) / of);
+  const counted = of === 0 ? 'No issue is rated for this gate yet.' : `${count.found} of ${of} rated issues have evidence`;
+  return (
+    <Box xcss={CARD}>
+      <Stack space="space.100" alignInline="start">
+        <Inline space="space.100" alignBlock="center" shouldWrap>
+          <Tooltip content={METRIC[gate]}>
+            <Heading as="h4">{GATE_LABEL[gate]}</Heading>
+          </Tooltip>
+          <Lozenge maxWidth="100%" appearance={rateAppearance(rate)}>{rateText(rate)}</Lozenge>
+        </Inline>
+        <Text>{GATE_QUESTION[gate]}</Text>
+        {of > 0 ? <ProgressBar value={count.found / of} ariaLabel={`${GATE_LABEL[gate]}: ${counted}`} /> : null}
+        <Text>{counted}</Text>
+        {count.missing > 0 ? <Button appearance="subtle" onClick={onShowMissing}>{`Show ${count.missing} missing ${GATE_LABEL[gate]}`}</Button> : null}
+      </Stack>
+    </Box>
+  );
 };
 
 /**
@@ -138,27 +173,31 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
         <Button appearance="subtle" onClick={onRefresh}>Refresh</Button>
       </Inline>
 
+
       <Inline space="space.150" shouldWrap>
-        {GATE_NAMES.map(g => {
-          const c = summary.gates[g];
-          return (
-            <Box key={g} padding="space.100">
-              <Stack space="space.050">
-                <Heading as="h4">{GATE_LABEL[g]}</Heading>
-                <Text>{`${rateText(RATE_OF[g](view))} evidence found`}</Text>
-                <Text>{`${c.found} of ${c.found + c.missing} rated issues`}</Text>
-                <Button appearance="subtle" onClick={() => set({ missingGate: g })}>{`Show ${GATE_LABEL[g]} missing (${c.missing})`}</Button>
-              </Stack>
-            </Box>
-          );
-        })}
+        {GATE_NAMES.map(g => <RealityCard key={g} gate={g} count={summary.gates[g]} onShowMissing={() => set({ missingGate: g })} />)}
       </Inline>
 
-      <Text>
-        {summary.averageRAI === null
-          ? `RAI: n/a. No issue is rated yet (${summary.unratedIssues} unrated).`
-          : `RAI ${summary.averageRAI}% across ${summary.ratedIssues} rated issues (${summary.unratedIssues} unrated). RAI is the share of rated gates with evidence found.`}
-      </Text>
+      {/* B-21 (H5): the gate rates come first, the score after them. */}
+      <Box xcss={CARD}>
+        <Stack space="space.100">
+          <Inline space="space.150" alignBlock="center" shouldWrap>
+            <Heading as="h2">{summary.averageRAI === null ? 'Alignment: not rated yet' : `Alignment ${summary.averageRAI}%`}</Heading>
+            <Text>{`across ${summary.ratedIssues} rated issues (${summary.unratedIssues} unrated)`}</Text>
+          </Inline>
+          <Text>{heroDelta(view.trend)}</Text>
+          {weakestGate(summary) ? <Text>{weakestGate(summary)}</Text> : null}
+          <Inline space="space.100" alignBlock="center" shouldWrap>
+            <Text>Risk:</Text>
+            {RISK_BUTTONS.map(([level, key]) => (
+              <Button key={level} appearance={filters.risk === level ? 'primary' : 'default'} onClick={() => set({ risk: filters.risk === level ? null : level })}>
+                {`${RISK_WORD[level]} ${summary.riskDistribution[key]}`}
+              </Button>
+            ))}
+          </Inline>
+          <Text>Alignment is the share of rated gates with evidence found, averaged over rated issues.</Text>
+        </Stack>
+      </Box>
 
       <TrendPanel view={view} />
 

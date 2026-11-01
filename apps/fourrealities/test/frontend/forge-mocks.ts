@@ -60,7 +60,7 @@ export function findButton(root: any, label: string): any {
   return buttons[0];
 }
 
-function flatText(children: any): string {
+export function flatText(children: any): string {
   if (children === null || children === undefined || typeof children === 'boolean') return '';
   if (typeof children === 'string' || typeof children === 'number') return String(children);
   if (Array.isArray(children)) return children.map(flatText).join('');
