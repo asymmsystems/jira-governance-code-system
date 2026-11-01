@@ -69,7 +69,7 @@ The shell runs inside a VS Code Flatpak sandbox. Node, npx and forge run on the 
 ### 6.2 Update `final-report.md` (DONE, section 6; keep it current)
 Add the post-report work (see the last two sections of `round-log.md`) and the current open points (section 7 below).
 
-### 6.3 B-42: "Request retrospective review" (approved)
+### 6.3 B-42: "Request retrospective review" (DONE in `0fee151`, deployed as 3.9.0)
 In the issue panel, when Code is FOUND with reason `PR_MERGED`, offer "Request retrospective review". It opens a dialog with a comment text field (15 to 1,000 characters) and posts a Jira comment as the user: `POST /rest/api/3/issue/{issueId}/comment` with an ADF body. Scope `write:jira-work` is already granted. Put the call in `DefaultForgeJiraIssueAccessor`, the input rule in `DefaultPolicyEngine`, the use case in a Manager, a resolver `requestReview` in `src/index.ts` (with the licence check and `withRow`). Never claim a review happened. Test it in jest, then live on AUDT-1 only (record the write).
 
 ### 6.4 B-41: Confluence page search in the link dialog (approved, but it changes a scope)

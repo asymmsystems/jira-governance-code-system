@@ -321,4 +321,4 @@ The owner's pasted consultation was reviewed item by item in chat; rejected item
 | B-39 | Risk row: Critical, High, Medium, Low counts that filter the table | consultation B1 | none |
 | B-40 | Inspect modal with previous and next; preset views (My issues, Critical and high, Audit prep, Needs a decision link) | consultation B3 | none |
 | B-41 | Link-decision modal with Confluence page search | consultation C | [MANIFEST] scope |
-| B-42 | "Request retrospective review" (comment as the user) | consultation C | none (write as user) |
+| B-42 | "Request retrospective review" (comment as the user) | consultation C | none (write as user); DONE 2026-11-01 |

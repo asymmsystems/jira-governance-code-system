@@ -178,6 +178,7 @@ Findings from the live check:
 | B-33, B-34, B-36 | "Approved all yor suggestions" | Four-gate pipeline chips with short state and tooltip; table Gates column as a pipeline, Alignment and Top finding columns; drift sentence and next action | 334 of 334; pipeline logic tests were written with the module, so no fail-first run for `src/ui/pipeline.ts` | `23c122e` | 3.6.0 |
 | B-35, B-37, B-39 | same | Bordered reality cards (question, rate, labelled progress bar, count, action only when missing, metric code in a tooltip); alignment box after the cards (H5 kept over the consultation's score-first hero), weekly delta with 10 rated issues minimum, weakest gate, risk buttons that filter; "Why n%?" in the panel | 339 of 339 | `73d3cb6` | 3.6.0, checked live on DEMO (screenshot `/tmp/claude-chrome-screenshots-r0BuFx/screenshot-1793523930948-6.jpg`) |
 | B-38, B-40 | same | Compact issue-context view with "See all findings"; Inspect with pipeline, drift sentence, Previous and Next; preset views (My issues, Critical and high, Audit prep, Needs a decision link); multi-level risk filter; column widths so the four chips fit on one line | 346 of 346 | `b0a0c4e` | 3.7.0, not yet checked live (browser tool disconnected) |
+| B-42 retrospective review | "Approved" | Offer "Request retrospective review" in the issue panel when Code is FOUND with reason PR_MERGED; modal with comment text field (15 to 1,000 characters); posts ADF comment to Jira as user; does not change any gate | 353 of 353 | `0fee151` | 3.9.0 |
 
 Deviation: B-33 to B-40 were committed in three slices, not one item per commit, because they share `src/ui/pipeline.ts` and the pipeline component.
 
@@ -197,3 +198,12 @@ Deviation: B-33 to B-40 were committed in three slices, not one item per commit,
 | 10 | 09:13 | Withdraw request (app, as user) | stored `decisionReason: "Withdrawn without comment."` (fix confirmed) |
 
 AUDT-1 is left Done with label `fr-probe`.
+
+### Deployed 3.9.0 (B-42 retrospective review request)
+
+- Code gate FOUND with reason `PR_MERGED` offers "Request retrospective review" button.
+- Modal captures comment (15 to 1,000 characters) and submits via `requestReview` resolver.
+- Posts ADF comment via `POST /rest/api/3/issue/{issueId}/comment` as the user.
+- Status message confirms review requested without changing gate states.
+- 353 of 353 tests pass; all graders PASS; deployed to development as 3.9.0.
+
