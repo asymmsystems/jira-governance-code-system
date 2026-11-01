@@ -5,7 +5,7 @@
  */
 
 import { MetricsRepository, StorageProvider } from '../../src/storage/metrics-repository';
-import { IssueExceptionRecord } from '../../src/domain/models';
+import { ExceptionRecord } from '../../src/domain/models';
 
 class MockStorageProvider implements StorageProvider {
   private store: Map<string, any> = new Map();
@@ -51,14 +51,11 @@ describe('MetricsRepository', () => {
   });
 
   it('saves and retrieves issue exceptions', async () => {
-    const exception: IssueExceptionRecord = {
+    const exception: ExceptionRecord = {
+      schemaVersion: 2,
       issueId: '900',
       issueKey: 'PROJ-900',
-      type: 'CODE',
-      reason: 'No code change: Documentation only',
-      notes: 'PR not needed for readme fix',
-      recordedBy: 'user-1',
-      recordedAt: '2026-10-30T12:00:00Z'
+      code: { reason: 'No code change: Documentation only', notes: 'PR not needed for readme fix', recordedBy: 'user-1', recordedAt: '2026-10-30T12:00:00Z' }
     };
 
     await repository.saveIssueException(exception);

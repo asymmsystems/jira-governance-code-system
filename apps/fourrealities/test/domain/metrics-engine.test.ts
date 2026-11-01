@@ -113,3 +113,13 @@ describe('MetricsEngine.summarize', () => {
     expect(s.riskDistribution.unrated).toBe(1);
   });
 });
+
+describe('B-06: an excepted Code gate is outside RAI and M29', () => {
+  it('removes the excepted gate from the RAI average and from the M29 numerator and denominator', () => {
+    const row = MetricsEngine.buildRow(makeFacts(), gates(FOUND_V, MISSING, EXCEPTED, NA));
+    expect(row.rai).toBe(50);
+    const s = MetricsEngine.summarize([row]);
+    expect(s.gates.code.excepted).toBe(1);
+    expect(s.m29PullRequestRate).toBeNull();
+  });
+});

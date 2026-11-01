@@ -14,7 +14,7 @@ import { F, M_CODE, M_DOD, M_INTENT, NA, row } from './rows';
 jest.mock('@forge/react', () => require('./forge-mocks').reactMock());
 jest.mock('@forge/bridge', () => require('./forge-mocks').bridgeMock());
 
-import { IssuePanel, noteText } from '../../src/frontend/issue-panel';
+import { IssuePanel } from '../../src/frontend/issue-panel';
 
 async function mount(r: any, onReload = jest.fn()) {
   let renderer: any;
@@ -119,9 +119,14 @@ describe('IssuePanel', () => {
     const r = await mount(row('DEMO-10', { intent: F, process: F, code: { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' }, audit: NA },
       { reworkLoops: 1, exception: { schemaVersion: 2, issueId: '10', issueKey: 'DEMO-10', code: n, rework: n } }));
     const text = textOf(r.toJSON());
-    expect(text).toContain('Excepted by acc-1 on 2026-11-01: Configuration change only');
-    expect(text).toContain('Rework loops: 1. Reason recorded by acc-1 on 2026-11-01: Configuration change only');
-    expect(noteText('X', undefined)).toBeUndefined();
+    expect(text).toMatch(/Excepted\s+by/);
+    expect(text).toContain('on 2026-11-01: Configuration change only');
+    expect(text).toContain('Rework loops: 1.');
+    expect(text).toMatch(/Rework reason\s+by/);
+    const users = findAll(r.root, 'User');
+    expect(users.map((u: any) => u.props.accountId)).toEqual(['acc-1', 'acc-1']);
+    expect(text).toContain('Code: Excepted');
+    expect(text).not.toContain('Code: Evidence found');
   });
 
   it('treats an empty change event as an empty field', async () => {
@@ -153,5 +158,10 @@ describe('IssuePanel', () => {
     bridgeState.invoke.mockRejectedValueOnce({});
     await act(async () => { findButton(r.root, 'Add link').props.onClick(); });
     expect(textOf(r.toJSON())).toContain('The link was not added.');
+  });
+
+  it('offers no Code exception when a pull request exists (FR-10)', async () => {
+    const r = await mount(row('DEMO-13', { intent: F, process: NA, code: { state: 'MISSING', reason: 'PR_OPEN_AT_DONE' }, audit: NA }));
+    expect(() => findButton(r.root, 'Record Code exception')).toThrow('No button');
   });
 });

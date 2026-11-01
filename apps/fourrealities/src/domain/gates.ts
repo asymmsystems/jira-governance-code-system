@@ -5,6 +5,7 @@
  */
 
 import { GateResult, IssueFacts, IssueGates } from './models';
+import { parseDevField } from '../jira/dev-field';
 
 /** Started: the status category is not "new", or the status has changed at least once. */
 export function isStarted(f: IssueFacts): boolean {
@@ -110,10 +111,12 @@ export function evaluateProcess(f: IssueFacts): GateResult {
  * v1 approval heuristic until backlog B-10.
  */
 export function evaluateCode(f: IssueFacts): GateResult {
-  if (f.exception?.code) {
+  const prs = f.pullRequests || [];
+  const hasPullRequest = prs.length > 0 || parseDevField(f.devField.raw).count > 0;
+  // An exception applies only to work with no pull request; once one exists it is ignored (FR-10).
+  if (f.exception?.code && !hasPullRequest) {
     return { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' };
   }
-  const prs = f.pullRequests || [];
   let prCount = prs.length;
   let approved = prs.some(pr =>
     (Array.isArray(pr.reviewers) && pr.reviewers.some((r: any) => r.approvalStatus === 'APPROVED')) || pr.status === 'APPROVED');

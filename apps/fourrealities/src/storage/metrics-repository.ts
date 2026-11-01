@@ -34,7 +34,7 @@ export class MetricsRepository {
     await this.storage.delete(this.getIssueKey(issueId));
   }
 
-  public async saveIssueException(record: IssueExceptionRecord): Promise<void> {
+  public async saveIssueException(record: ExceptionRecord): Promise<void> {
     await this.storage.set(this.getExceptionKey(record.issueId), record);
   }
 

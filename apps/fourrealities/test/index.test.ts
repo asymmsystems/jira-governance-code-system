@@ -249,7 +249,7 @@ describe('FourRealities Index / Forge Handlers', () => {
       const resException: any = await handler({
         call: {
           functionKey: 'recordException',
-          payload: { issueId: 'iss-h4', type: 'CODE', reason: 'Configuration only' }
+          payload: { issueId: 'iss-h4', type: 'CODE', reason: 'Configuration change only' }
         },
         context: { extension: { issue: { id: 'iss-h4' } } }
       } as any);
@@ -328,15 +328,15 @@ describe('FourRealities Index / Forge Handlers', () => {
     });
 
     it('executes recordException for code and rework reasons and handles validations', async () => {
-      mockRequestJira.mockResolvedValue({ status: 200 });
+      mockRequestJira.mockResolvedValue({ status: 200, json: async () => ({ fields: {} }) });
       const resCode = await recordException(
         { issueId: 'ex-1', issueKey: 'EX-1', type: 'CODE', reason: 'No code change: Documentation only', notes: 'Readme fix' },
         { extension: { issue: { id: 'ex-1' } } },
         mockStorage
       );
       expect(resCode.success).toBe(true);
-      expect(resCode.record?.reason).toBe('No code change: Documentation only');
-      expect(resCode.record?.notes).toBe('Readme fix');
+      expect(resCode.record?.code?.reason).toBe('No code change: Documentation only');
+      expect(resCode.record?.code?.notes).toBe('Readme fix');
 
       const resRework = await recordException(
         { issueId: 'ex-2', issueKey: 'EX-2', type: 'REWORK', reason: 'Requirement scope expansion' },
@@ -344,7 +344,7 @@ describe('FourRealities Index / Forge Handlers', () => {
         mockStorage
       );
       expect(resRework.success).toBe(true);
-      expect(resRework.record?.type).toBe('REWORK');
+      expect(resRework.record?.rework?.reason).toBe('Requirement scope expansion');
 
       // Fails on missing issueId
       const failNoId = await recordException({});
@@ -423,6 +423,8 @@ describe('getIssueAlignment with failing secondary calls', () => {
   });
 });
 
+const NO_PR = { status: 200, json: async () => ({ fields: {} }) };
+
 describe('B-05: user actions run as the user only', () => {
   beforeEach(() => {
     mockRequestJira.mockReset();
@@ -441,7 +443,7 @@ describe('B-05: user actions run as the user only', () => {
 
   it('recordException returns the permission error on 403, never calls asApp, and stores nothing', async () => {
     const storage = new MockStorage();
-    mockRequestJira.mockResolvedValueOnce({ status: 403 });
+    mockRequestJira.mockResolvedValueOnce(NO_PR).mockResolvedValueOnce({ status: 403 });
     const res = await recordException({ issueId: '10001', issueKey: 'DEMO-1', type: 'CODE', reason: 'Configuration change only, no code' }, { extension: { issue: { id: '10001' } } }, storage);
     expect(res.success).toBe(false);
     expect(res.error).toBe('You need the Edit issues permission on DEMO-1 to record an exception.');
@@ -451,7 +453,7 @@ describe('B-05: user actions run as the user only', () => {
 
   it('recordException reports a rejected request and stores nothing', async () => {
     const storage = new MockStorage();
-    mockRequestJira.mockRejectedValueOnce(new Error('socket hang up'));
+    mockRequestJira.mockResolvedValueOnce(NO_PR).mockRejectedValueOnce(new Error('socket hang up'));
     const res = await recordException({ issueId: '10002', issueKey: 'DEMO-2', type: 'CODE', reason: 'Configuration change only, no code' }, { extension: { issue: { id: '10002' } } }, storage);
     expect(res.success).toBe(false);
     expect(res.error).toBe('socket hang up');
@@ -461,7 +463,7 @@ describe('B-05: user actions run as the user only', () => {
 
   it('recordException reports a non-2xx status and stores nothing', async () => {
     const storage = new MockStorage();
-    mockRequestJira.mockResolvedValueOnce({ status: 500 });
+    mockRequestJira.mockResolvedValueOnce(NO_PR).mockResolvedValueOnce({ status: 500 });
     const res = await recordException({ issueId: '10003', issueKey: 'DEMO-3', type: 'CODE', reason: 'Configuration change only, no code' }, { extension: { issue: { id: '10003' } } }, storage);
     expect(res.success).toBe(false);
     expect(res.error).toBe('Jira returned status 500 recording the exception.');
@@ -470,16 +472,17 @@ describe('B-05: user actions run as the user only', () => {
 
   it('recordException writes the property as the user, then stores the record', async () => {
     const storage = new MockStorage();
-    mockRequestJira.mockResolvedValueOnce({ status: 200 });
+    mockRequestJira.mockResolvedValueOnce(NO_PR).mockResolvedValueOnce({ status: 200 });
     const res = await recordException({ issueId: '10004', issueKey: 'DEMO-4', type: 'CODE', reason: 'Configuration change only, no code' }, { accountId: 'acc-9', extension: { issue: { id: '10004' } } }, storage);
     expect(res.success).toBe(true);
-    expect(mockUserRequestJira).toHaveBeenCalledTimes(1);
-    const [path, init] = mockUserRequestJira.mock.calls[0];
+    expect(mockUserRequestJira).toHaveBeenCalledTimes(2);
+    expect(mockUserRequestJira.mock.calls[0][0]).toBe('/rest/api/3/issue/10004?fields=customfield_10000');
+    const [path, init] = mockUserRequestJira.mock.calls[1];
     expect(path).toBe('/rest/api/3/issue/10004/properties/fourrealities-exception');
     expect(init.method).toBe('PUT');
-    expect(JSON.parse(init.body).recordedBy).toBe('acc-9');
+    expect(JSON.parse(init.body).code.recordedBy).toBe('acc-9');
     expect(mockAppRequestJira).not.toHaveBeenCalled();
-    expect((await storage.get<any>('fr:issue:10004:exception')).reason).toBe('Configuration change only, no code');
+    expect((await storage.get<any>('fr:issue:10004:exception')).code.reason).toBe('Configuration change only, no code');
   });
 });
 
@@ -558,3 +561,98 @@ describe('B-07: every payload issue id is checked against the context', () => {
   });
 });
 
+
+describe('B-06: a Code exception is its own state, with who and why', () => {
+  const ctx = { extension: { issue: { id: '30001' } }, accountId: 'acc-7' };
+  beforeEach(() => {
+    mockRequestJira.mockReset();
+    mockAppRequestJira.mockClear();
+    mockUserRequestJira.mockClear();
+  });
+
+  it('rejects a reason shorter than 15 or longer than 500 characters, and notes over 1,000', async () => {
+    for (const reason of ['  too short   ', 'x'.repeat(501)]) {
+      const res = await recordException({ issueId: '30001', type: 'CODE', reason }, ctx, new MockStorage());
+      expect(res).toEqual({ success: false, error: 'Give a reason of 15 to 500 characters.' });
+    }
+    const res = await recordException({ issueId: '30001', type: 'CODE', reason: 'Configuration change only', notes: 'n'.repeat(1001) }, ctx, new MockStorage());
+    expect(res).toEqual({ success: false, error: 'Notes can be at most 1,000 characters.' });
+    expect(mockUserRequestJira).not.toHaveBeenCalled();
+  });
+
+  it('rejects a Code exception when a pull request exists, and writes nothing', async () => {
+    const storage = new MockStorage();
+    mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => ({ key: 'DEMO-30', fields: { customfield_10000: '{pullrequest={dataType=pullrequest, state=MERGED, stateCount=1}}' } }) });
+    const res = await recordException({ issueId: '30001', issueKey: 'DEMO-30', type: 'CODE', reason: 'Configuration change only' }, ctx, storage);
+    expect(res).toEqual({ success: false, error: 'A pull request is linked to DEMO-30. A Code exception applies only to work with no pull request.' });
+    expect(mockUserRequestJira).toHaveBeenCalledTimes(1);
+    expect(await storage.get('fr:issue:30001:exception')).toBeUndefined();
+  });
+
+  it('reports a failed Development field read', async () => {
+    mockRequestJira.mockResolvedValueOnce({ status: 403 });
+    const res = await recordException({ issueId: '30001', type: 'CODE', reason: 'Configuration change only' }, ctx, new MockStorage());
+    expect(res).toEqual({ success: false, error: 'Jira returned HTTP 403 reading issue 30001.' });
+  });
+
+  it('keeps a Code exception and a rework reason in one v2 record, and writes the property as the user', async () => {
+    const storage = new MockStorage();
+    mockRequestJira.mockResolvedValueOnce(NO_PR).mockResolvedValueOnce({ status: 200 });
+    await recordException({ issueId: '30001', issueKey: 'DEMO-30', type: 'CODE', reason: 'Configuration change only' }, ctx, storage);
+    mockRequestJira.mockResolvedValueOnce({ status: 200 });
+    const res = await recordException({ issueId: '30001', issueKey: 'DEMO-30', type: 'REWORK', reason: 'Requirement changed after review', notes: 'PO request' }, ctx, storage);
+    expect(res.success).toBe(true);
+    const stored = await storage.get<any>('fr:issue:30001:exception');
+    expect(stored.schemaVersion).toBe(2);
+    expect(stored.code.reason).toBe('Configuration change only');
+    expect(stored.rework).toEqual(expect.objectContaining({ reason: 'Requirement changed after review', notes: 'PO request', recordedBy: 'acc-7' }));
+    const lastPut = mockUserRequestJira.mock.calls[mockUserRequestJira.mock.calls.length - 1];
+    expect(lastPut[0]).toBe('/rest/api/3/issue/30001/properties/fourrealities-exception');
+    expect(JSON.parse(lastPut[1].body)).toEqual(stored);
+    expect(mockAppRequestJira).not.toHaveBeenCalled();
+  });
+
+  it('reads a v1 record and rewrites it in v2 form', async () => {
+    const storage = new MockStorage();
+    await storage.set('fr:issue:30001:exception', { issueId: '30001', issueKey: 'DEMO-30', type: 'CODE', reason: 'Old v1 reason text', recordedBy: 'u', recordedAt: '2026-10-01T00:00:00Z' });
+    mockRequestJira.mockResolvedValueOnce({ status: 200 });
+    await recordException({ issueId: '30001', issueKey: 'DEMO-30', type: 'REWORK', reason: 'Requirement changed after review' }, ctx, storage);
+    const stored = await storage.get<any>('fr:issue:30001:exception');
+    expect(stored.code.reason).toBe('Old v1 reason text');
+    expect(stored.type).toBeUndefined();
+  });
+});
+
+describe('B-06: recordException fallbacks', () => {
+  beforeEach(() => {
+    mockRequestJira.mockReset();
+    mockUserRequestJira.mockClear();
+  });
+
+  it('records with an unknown user, keeps the payload key when Jira omits it, and ignores a non-string Development field', async () => {
+    const storage = new MockStorage();
+    mockRequestJira
+      .mockResolvedValueOnce({ status: 200, json: async () => ({ fields: { customfield_10000: { not: 'a string' } } }) })
+      .mockResolvedValueOnce({ status: 204 });
+    const res = await recordException({ issueId: '30002', issueKey: 'DEMO-31', type: 'CODE', reason: 'Configuration change only' }, { extension: { issue: { id: '30002' } } }, storage);
+    expect(res.success).toBe(true);
+    expect(res.record?.issueKey).toBe('DEMO-31');
+    expect(res.record?.code?.recordedBy).toBe('unknown-user');
+  });
+
+  it('keeps an existing rework note when a Code exception is added', async () => {
+    const storage = new MockStorage();
+    const rework = { reason: 'Requirement changed after review', recordedBy: 'u', recordedAt: '2026-10-01T00:00:00Z' };
+    await storage.set('fr:issue:30003:exception', { schemaVersion: 2, issueId: '30003', issueKey: 'DEMO-32', rework });
+    mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => ({ key: 'DEMO-32', fields: {} }) }).mockResolvedValueOnce({ status: 200 });
+    const res = await recordException({ issueId: '30003', type: 'CODE', reason: 'Configuration change only' }, { extension: { issue: { id: '30003' } }, accountId: 'a' }, storage);
+    expect(res.record?.rework).toEqual(rework);
+    expect(res.record?.code?.reason).toBe('Configuration change only');
+  });
+
+  it('reports a thrown error without a message during the checks', async () => {
+    mockRequestJira.mockRejectedValueOnce({});
+    const res = await recordException({ issueId: '30004', type: 'CODE', reason: 'Configuration change only' }, { extension: { issue: { id: '30004' } } }, new MockStorage());
+    expect(res).toEqual({ success: false, error: 'Failed to check the issue.' });
+  });
+});

@@ -174,3 +174,18 @@ describe('B-04: no sibling property is ever shown as verified', () => {
     }
   });
 });
+
+describe('B-06: exceptions and rework notes', () => {
+  const ex = (code?: any, rework?: any) => ({ schemaVersion: 2 as const, issueId: '1', issueKey: 'A-1', code, rework });
+
+  it('ignores a Code exception once a pull request exists', () => {
+    const f = makeFacts({ exception: ex(note), devField: { present: true, raw: '{pullrequest={dataType=pullrequest, state=MERGED, stateCount=1}}' } });
+    expect(evaluateCode(f).state).not.toBe('EXCEPTED');
+  });
+
+  it('a rework note changes no gate', () => {
+    const base = evaluateGates(makeFacts({ reworkLoops: 2 }));
+    const withNote = evaluateGates(makeFacts({ reworkLoops: 2, exception: ex(undefined, note) }));
+    expect(withNote).toEqual(base);
+  });
+});

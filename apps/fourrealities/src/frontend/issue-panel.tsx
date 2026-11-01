@@ -5,9 +5,9 @@
  */
 
 import React, { useState } from 'react';
-import { Box, Button, Heading, Inline, Lozenge, SectionMessage, Stack, Text } from '@forge/react';
+import { Box, Button, Heading, Inline, Lozenge, SectionMessage, Stack, Text, User } from '@forge/react';
 import { router } from '@forge/bridge';
-import { GATE_NAMES, IssueRow } from '../domain/models';
+import { ExceptionNote, GATE_NAMES, GateName, IssueRow } from '../domain/models';
 import { raiText, riskAppearance } from '../ui/gate-text';
 import { GateRow } from './gate-row';
 import { ExceptionModal, LinkDecisionModal } from './modals';
@@ -29,9 +29,28 @@ export const ProducerLinks: React.FC<{ issueKey: string }> = ({ issueKey }) => (
   </>
 );
 
-/** Who and why for an exception or a rework reason. */
-export function noteText(label: string, note?: { reason: string; recordedBy: string; recordedAt: string }): string | undefined {
-  return note ? `${label} by ${note.recordedBy} on ${note.recordedAt.slice(0, 10)}: ${note.reason}` : undefined;
+/** Who and why for an exception or a rework reason. The name comes from the UI Kit User component. */
+export const NoteLine: React.FC<{ label: string; note: ExceptionNote }> = ({ label, note }) => (
+  <Inline space="space.050" alignBlock="center" shouldWrap>
+    <Text>{label} by</Text>
+    <User accountId={note.recordedBy} />
+    <Text>{`on ${note.recordedAt.slice(0, 10)}: ${note.reason}`}</Text>
+  </Inline>
+);
+
+function gateNote(gate: GateName, row: IssueRow): React.ReactNode {
+  if (gate === 'code' && row.exception) {
+    return <NoteLine label="Excepted" note={row.exception} />;
+  }
+  if (gate === 'process' && row.reworkLoops > 0) {
+    return (
+      <Stack space="space.050">
+        <Text>{`Rework loops: ${row.reworkLoops}.`}</Text>
+        {row.reworkNote ? <NoteLine label="Rework reason" note={row.reworkNote} /> : null}
+      </Stack>
+    );
+  }
+  return undefined;
 }
 
 type OpenModal = 'none' | 'link' | 'code' | 'rework';
@@ -66,17 +85,7 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void }> = ({ 
       <Box padding="space.100">
         <Stack space="space.150">
           {GATE_NAMES.map(g => (
-            <GateRow
-              key={g}
-              gate={g}
-              result={row.gates[g]}
-              note={
-                g === 'code' ? noteText('Excepted', row.exception)
-                  : g === 'process' && row.reworkLoops > 0
-                    ? `Rework loops: ${row.reworkLoops}.${row.reworkNote ? ' ' + noteText('Reason recorded', row.reworkNote) : ''}`
-                    : undefined
-              }
-            />
+            <GateRow key={g} gate={g} result={row.gates[g]} note={gateNote(g, row)} />
           ))}
         </Stack>
       </Box>
@@ -85,7 +94,7 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void }> = ({ 
         {row.gates.intent.state === 'MISSING' ? (
           <Button appearance="primary" onClick={() => setOpen('link')}>Link decision record</Button>
         ) : null}
-        {row.gates.code.state === 'MISSING' ? (
+        {row.gates.code.state === 'MISSING' && row.gates.code.reason === 'PR_NONE' ? (
           <Button appearance="default" onClick={() => setOpen('code')}>Record Code exception</Button>
         ) : null}
         {row.reworkLoops > 0 ? (

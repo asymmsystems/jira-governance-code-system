@@ -9,9 +9,10 @@ import { kvs } from '@forge/kvs';
 import api, { route } from '@forge/api';
 import { MetricsEngine } from './domain/metrics-engine';
 import { MetricsRepository, StorageProvider } from './storage/metrics-repository';
-import { factsFromIssue, normalizeException, PROPERTY_KEYS } from './jira/issue-facts';
+import { DEFAULT_DEV_FIELD_ID, factsFromIssue, normalizeException, PROPERTY_KEYS } from './jira/issue-facts';
+import { parseDevField } from './jira/dev-field';
 import {
-  IssueExceptionRecord,
+  ExceptionRecord,
   IssueRow,
   ProjectDashboardView,
   ResolverError,
@@ -300,13 +301,15 @@ export async function linkDecision(payload: any, context?: any): Promise<{ succe
 }
 
 /**
- * Records a justified exception (e.g., "Explain: No code change" or "Rework Reason").
+ * Records a justified Code exception or a rework reason (spec v2, recordException).
+ * A Code exception applies only to work with no pull request. Both notes live in one
+ * v2 record; the issue property is written as the user first, then the KVS record.
  */
 export async function recordException(
   payload: any,
   context?: any,
   storageProvider?: StorageProvider
-): Promise<{ success: boolean; record?: IssueExceptionRecord; error?: string }> {
+): Promise<{ success: boolean; record?: ExceptionRecord; error?: string }> {
   const contextIssueId = context?.extension?.issue?.id;
   const issueId = payload?.issueId || contextIssueId;
 
@@ -325,24 +328,47 @@ export async function recordException(
   if (!reason) {
     return { success: false, error: 'Exception reason required.' };
   }
+  if (reason.length < 15 || reason.length > 500) {
+    return { success: false, error: 'Give a reason of 15 to 500 characters.' };
+  }
+  if (notes && notes.length > 1000) {
+    return { success: false, error: 'Notes can be at most 1,000 characters.' };
+  }
 
+  let issueKey = String(payload?.issueKey || issueId);
   try {
     const scopeError = await checkIssueScope(issueId, context);
     if (scopeError) {
       return { success: false, error: scopeError };
     }
+    if (type === 'CODE') {
+      // A Code exception may not hide a pull request (FR-10).
+      const res = await api.asUser().requestJira(route`/rest/api/3/issue/${issueId}?fields=${DEFAULT_DEV_FIELD_ID}`);
+      if (res.status !== 200) {
+        return { success: false, error: `Jira returned HTTP ${res.status} reading issue ${issueId}.` };
+      }
+      const iss = await res.json();
+      issueKey = String(iss?.key || issueKey);
+      const dev = iss?.fields?.[DEFAULT_DEV_FIELD_ID];
+      if (parseDevField(typeof dev === 'string' ? dev : undefined).count > 0) {
+        return { success: false, error: `A pull request is linked to ${issueKey}. A Code exception applies only to work with no pull request.` };
+      }
+    }
   } catch (err: any) {
     return { success: false, error: err?.message || 'Failed to check the issue.' };
   }
 
-  const record: IssueExceptionRecord = {
-    issueId,
-    issueKey: String(payload?.issueKey || issueId),
-    type,
-    reason,
-    notes,
-    recordedBy: String(context?.accountId || 'system-user'),
-    recordedAt: new Date().toISOString()
+  const storage = resolveStorage(storageProvider);
+  const repository = new MetricsRepository(storage);
+  const existing = normalizeException(await repository.getIssueException(String(issueId)));
+  const note = { reason, notes, recordedBy: String(context?.accountId || 'unknown-user'), recordedAt: new Date().toISOString() };
+  const record: ExceptionRecord = {
+    schemaVersion: 2,
+    issueId: String(issueId),
+    issueKey,
+    ...(existing?.code ? { code: existing.code } : {}),
+    ...(existing?.rework ? { rework: existing.rework } : {}),
+    ...(type === 'CODE' ? { code: note } : { rework: note })
   };
 
   // Write the issue property as the user first. The KVS record follows only after Jira accepts
@@ -363,10 +389,7 @@ export async function recordException(
     return { success: false, error: err?.message || 'Failed to record exception.' };
   }
 
-  const storage = resolveStorage(storageProvider);
-  const repository = new MetricsRepository(storage);
   await repository.saveIssueException(record);
-
   return { success: true, record };
 }
 
