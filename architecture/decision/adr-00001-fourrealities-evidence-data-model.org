@@ -1,9 +1,10 @@
 #+TITLE: ADR-001: FourRealities Evidence Data Model Patterns
 #+DATE: 2026-11-01
-#+STATUS: Proposed
+#+STATUS: Approved
 
 * Status
-Proposed - Pending owner approval. Build items B-17 onwards are paused until this ADR is decided.
+Approved - 2026-11-01 by the owner, in chat, with Option C for the approval rule (see "Options considered").
+Not yet implemented: backlog items B-30, B-31 and B-32.
 
 * Context
 
@@ -123,7 +124,7 @@ the evidence source. RAI stays a derived measurement (research H5).
 A Code exception becomes a *gate exception* with a lifecycle:
 #+begin_src text
 EXCEPTION_STATUS (Knowledge Level)        VALID_TRANSITION (Knowledge Level)
-├── REQUESTED                              REQUESTED ──approve──> APPROVED   [by APPROVER, not requester, not assignee]
+├── REQUESTED                              REQUESTED ──approve──> APPROVED   [by APPROVER: project administrator, not requester, not assignee]
 ├── APPROVED                               REQUESTED ──reject───> REJECTED   [by APPROVER]
 ├── REJECTED                               REQUESTED ──withdraw─> WITHDRAWN  [by requester]
 ├── WITHDRAWN                              APPROVED  ──revoke───> REVOKED    [by APPROVER]
@@ -184,15 +185,22 @@ Jira owns the parties (Atlassian accounts). FourRealities records the *role cont
 action explicitly on the event (=as_role=), as M360 does with PartyRole-to-PartyRole:
 "acc-1 *as REQUESTER* asked; acc-2 *as APPROVER* approved".
 
-Separation-of-duties rule (Knowledge Level, on the APPROVE transition):
-- The approver is not the requester.
+Approval rule (Knowledge Level, on the APPROVE, REJECT and REVOKE transitions; Option C):
+- The approver holds the Jira project permission =ADMINISTER_PROJECTS= in the issue's project.
+  Checked as the approving user with =GET /rest/api/3/mypermissions?projectKey={key}&permissions=ADMINISTER_PROJECTS=
+  (field =permissions.ADMINISTER_PROJECTS.havePermission=). Scope =read:jira-work=, which the app
+  already holds; no new scope. Verified in the Jira Cloud OpenAPI document
+  (=swagger-v3.v3.json=, read 2026-11-01): operation "Get my permissions", scope state "Current".
+- The approver is not the requester (separation of duties; without it an administrator could
+  approve their own request).
 - The approver is not the issue's assignee at approval time.
 - Jira's own Edit Issues permission is enforced by the property write, made as the user.
 
 *** Trade-offs
-- A stricter rule ("approver must hold the project Administrators role") needs a Jira
-  permission read. The supported call and scope for it were not verified (Unknown); it is
-  left as a catalog option for later.
+- In a project with one administrator, that person cannot approve their own request, and no
+  one else can approve it. The panel says so plainly ("No other project administrator can
+  approve this request").
+- One extra Jira read per approval action.
 
 ** Pattern 6: Notes (Silverston)
 
@@ -213,7 +221,9 @@ issue (=fr:note:{issueId}:{at}:{seq}=), with author and time. It never changes a
 - The same vocabulary as M360 (Party Role, Knowledge Level, Observation, Status history).
 
 ** Negative
-- A second person is needed for every Code exception. Small teams may find this slow.
+- A project administrator other than the requester and the assignee is needed for every
+  Code exception. Small teams may find this slow, and a one-administrator project cannot
+  approve that administrator's own requests.
 - More KVS keys and one more prefix query on the issue panel.
 - Migration: v2 exception records (one record per issue) become events.
 
@@ -223,15 +233,15 @@ issue (=fr:note:{issueId}:{at}:{seq}=), with author and time. It never changes a
 - Migration reads a v2 record as one REQUESTED event plus one APPROVED event by the same
   person, flagged =migrated: true=, and the panel labels it "approved before two-person
   approval was required". Nothing is deleted.
-- Option B below keeps one-person exceptions for teams that choose it.
+- Options A and B were considered and not chosen (see below).
 
 * Options considered for the approval rule
 
-| Option | Rule | For | Against |
-|--------+------+-----+---------|
-| A (recommended) | Two people: requester and a different approver who is not the assignee | Meets separation of duties (EV-03); honest evidence | Slower for small teams |
-| B | One person, with append-only history | No extra step | Self-approval stays; weak evidence (EV-01) |
-| C | Approver must be a project administrator | Strongest | Needs an unverified Jira permission read |
+| Option | Rule | For | Against | Outcome |
+|--------+------+-----+---------+---------|
+| A | Two people: requester and a different approver who is not the assignee | Meets separation of duties (EV-03) | Any colleague can approve | Not chosen |
+| B | One person, with append-only history | No extra step | Self-approval stays; weak evidence (EV-01) | Not chosen |
+| C | Approver is a project administrator, and not the requester or assignee | Strongest; the Jira permission read is supported with the existing scope | Needs an administrator for every exception | *Chosen (owner, 2026-11-01)* |
 
 * Pattern Summary Table
 
@@ -254,5 +264,6 @@ issue (=fr:note:{issueId}:{at}:{seq}=), with author and time. It never changes a
 - Len Silverston, "The Data Model Resource Book" Vol 1 and Vol 3 (not read in this review; patterns verified through OFBiz and M360)
 - Martin Fowler, "Analysis Patterns: Reusable Object Models" (Observation, Accountability, Knowledge Level)
 - Research brief =docs/sdlc/fourrealities-usp-ux-research-2026-11/research-brief.md=: EV-01 (ISA 500), EV-03 (NIST AC-5), FL-01 (KVS limits), H5, H9
+- [[https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json][Jira Cloud platform OpenAPI v3]]: "Get my permissions", =/rest/api/3/mypermissions=, scope =read:jira-work= (read 2026-11-01; copy in =~/.cache/gemini-earning-fourrealities-research/sources/jira-openapi/=)
 - [[file:adr-00002-fourrealities-volatility-layering.org][ADR-002: FourRealities Volatility Layering]]
 - [[file:../model/fourrealities-domain-model.org][FourRealities Domain Model (HLD)]]

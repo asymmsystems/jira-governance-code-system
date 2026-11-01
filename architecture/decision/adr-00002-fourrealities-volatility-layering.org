@@ -1,9 +1,10 @@
 #+TITLE: ADR-002: FourRealities Volatility Layering and Service Contracts
 #+DATE: 2026-11-01
-#+STATUS: Proposed
+#+STATUS: Approved
 
 * Status
-Proposed - Pending owner approval, together with [[file:adr-00001-fourrealities-evidence-data-model.org][ADR-001]].
+Approved - 2026-11-01 by the owner, in chat, together with [[file:adr-00001-fourrealities-evidence-data-model.org][ADR-001]].
+Not yet implemented: backlog item B-29.
 
 * Context
 

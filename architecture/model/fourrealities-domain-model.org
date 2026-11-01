@@ -1,6 +1,6 @@
 #+TITLE: FourRealities Domain Model (High-Level Design)
 #+DATE: 2026-11-01
-#+STATUS: Proposed
+#+STATUS: Approved
 
 * Purpose
 
@@ -78,6 +78,7 @@ for other tools and JQL. It is a projection of the events, not the record of tru
           │ ExceptionPolicy    │                 │ SnapshotAccessor
           │ SnapshotEngine     │                 │ ExceptionEventAccessor
           │ DevFieldEngine     │                 │ NoteAccessor
+          │                    │                 │ JiraPermissionAccessor
           └────────────────────┘                 └──────────────────
 #+end_src
 
@@ -107,7 +108,7 @@ DashboardManager
   3. filter rows, MetricsEngine.summarize(visible)
 #+end_src
 
-** 4.3 Code exception with two people (ADR-001, Option A)
+** 4.3 Code exception approved by a project administrator (ADR-001, Option C)
 
 #+begin_src text
  Requester (acc-1)                  FourRealities                         Approver (acc-2)
@@ -119,9 +120,12 @@ DashboardManager
                                     Gate stays "Evidence missing";
                                     panel: "Exception requested by acc-1, awaiting approval"
                                                                        ◄─── opens the issue panel
+                                    JiraPermissionAccessor.isProjectAdmin()  (as acc-2:
+                                      mypermissions ADMINISTER_PROJECTS)
                                     ExceptionPolicyEngine.canTransition(
                                       REQUESTED → APPROVED, by acc-2)  ◄─── "Approve" / "Reject"
-                                      rule: acc-2 ≠ requester, acc-2 ≠ assignee
+                                      rule: acc-2 is project admin,
+                                            acc-2 ≠ requester, acc-2 ≠ assignee
                                     ExceptionEventAccessor.append(APPROVED, acc-2 as APPROVER)
                                     property := {code: APPROVED}
                                     Gate shows "Excepted: requested by acc-1,
@@ -138,12 +142,12 @@ All writes run as the user. A 403 from Jira returns to the user; there is no ret
 | =fr:issue:{id}:exception= with =rework= | one REWORK_NOTE | Same deletion rule. |
 | v1 =fr:issue:{id}:exception= (type, reason) | read as v2 first (existing =normalizeException=), then as above | |
 
-* 6. Effect on the backlog (proposed, pending approval)
+* 6. Effect on the backlog (approved 2026-11-01)
 
 | Item | Change |
 |------+--------|
 | New B-29 | Volatility layering refactor (ADR-002): contracts, Default implementations, single wiring point, architecture test. No behaviour change. First. |
-| New B-30 | Gate exception lifecycle (ADR-001 Patterns 3 and 5): append-only events, two-person approval, approve, reject, withdraw and revoke, migration. Replaces the single-record model from B-06. |
+| New B-30 | Gate exception lifecycle (ADR-001 Patterns 3 and 5): append-only events; approval, rejection and revocation by a project administrator who is not the requester or assignee; withdraw by the requester; migration. Replaces the single-record model from B-06. |
 | New B-31 | Evidence catalog (ADR-001 Pattern 4): rules as data; observation gains =method= and =evidence_ref= (Pattern 2). |
 | New B-32 | Rework notes as an append-only list (ADR-001 Pattern 6). |
 | B-17 to B-25 | Resume after B-29 to B-32, in their current order. B-17 (feedback from re-evaluated state) then covers the approve and reject actions too. |

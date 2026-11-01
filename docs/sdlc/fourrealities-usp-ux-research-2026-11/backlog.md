@@ -2,7 +2,7 @@ APPROVED 2026-11-01 B-01..B-28 (owner, in chat: "APPROVED now all"; [DEP], [MANI
 
 # FourRealities: ranked backlog
 
-Status: approved. Part B in progress on branch `feature/fourrealities-research-build`. Paused before B-17 (2026-11-01) for the domain review in `architecture/decision/adr-00001-*`, `adr-00002-*` and `architecture/model/fourrealities-domain-model.org`. B-29 to B-32 below are PROPOSED and need owner approval.
+Status: approved. Part B in progress on branch `feature/fourrealities-research-build`. Paused before B-17 (2026-11-01) for the domain review in `architecture/decision/adr-00001-*`, `adr-00002-*` and `architecture/model/fourrealities-domain-model.org`. ADR-001 (Option C) and ADR-002 approved by the owner in chat on 2026-11-01; B-29 to B-32 below are approved.
 
 - **Date:** 2026-11-01
 - **Order:** release blockers first, in the order the brief requires (FR-01, FR-02 and FR-03, FR-12, FR-04, FR-05, FR-10, then FR-06 to FR-11 and PX-02). Then the U1 trust work, storage, UX and hygiene. B-26 to B-28 depend on work outside this loop and are listed for order only.
@@ -295,13 +295,13 @@ Status: approved. Part B in progress on branch `feature/fourrealities-research-b
 
 `linkDecision` writes a remote link as the user, and `recordException` writes the app's own `fourrealities-exception` property. Both need `write:jira-work`. The plan keeps the scope and states it in the listing (B-12). Removing both features would allow a read-only scope. That choice is the owner's.
 
-## Proposed by the domain review (PROPOSED, pending owner approval)
+## Added by the domain review (approved 2026-11-01, owner, in chat: "C")
 
 | ID | Title | Source | Flags |
 |---|---|---|---|
 | B-29 | Volatility layering: contracts, Default implementations, one wiring point, architecture test; no behaviour change | ADR-002 | none |
-| B-30 | Gate exception lifecycle: append-only events, two-person approval (approver is not the requester or assignee), approve, reject, withdraw, revoke; migration of v2 records | ADR-001 Patterns 3, 5 | [MIGRATE] |
+| B-30 | Gate exception lifecycle: append-only events; approve, reject and revoke by a project administrator (`ADMINISTER_PROJECTS`, checked as the user) who is not the requester or the assignee; withdraw by the requester; migration of v2 records | ADR-001 Patterns 3, 5 (Option C) | [MIGRATE] |
 | B-31 | Evidence catalog as data (Knowledge Level); observation carries `method` and `evidence_ref` | ADR-001 Patterns 2, 4 | none |
 | B-32 | Rework notes as an append-only list | ADR-001 Pattern 6 | [MIGRATE] |
 
-Order if approved: B-29, B-30, B-31, B-32, then B-17 to B-25.
+Order: B-29, B-30, B-31, B-32, then B-17 to B-25.
