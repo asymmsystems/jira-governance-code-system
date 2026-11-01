@@ -106,5 +106,32 @@ Every item: `tsc` exit 0, Jest all pass, 90% branch or more on each changed sour
 2. **12.2 `forge lint`:** 0 errors, 0 warnings, 1 approval: "This deployment triggers a major version upgrade ... because: Change due to scope modification". Expected: the scopes changed under the approved `[SCOPE]` flags.
 3. **`[ENV]` signing key:** an Ed25519 key pair was generated on the host. The private key went straight into the encrypted Forge variable `DG_SIGNING_KEY` in the development environment and was never written to disk or printed. `DG_SIGNING_KEY_ID` = `dg-dev-2026-11`. The public key is `docs/marketplace/definitionguard-public-key.pem` (`754f5ec`).
 4. **12.3 `forge deploy -e development`:** the first run stopped: "The deploy failed due to 1 approval requested. Run forge deploy --approve MAJOR_VERSION_RULE". The second run with `--approve MAJOR_VERSION_RULE`: "Deployed DefinitionGuard to the development environment with 1 approval acknowledged." Version 4.0.0. Forge: "We've detected new scopes or egress URLs in your app. Run forge install --upgrade". Forge also reports that version 4.0.0 "is eligible for the Runs on Atlassian program".
-5. **Installation:** `forge install list` shows the site installation (development, asymmsystems.atlassian.net, Jira) at version 3, status "Outdated app". The site runs the old code until the installation is upgraded. The upgrade grants the changed scopes on the site; it waits for the owner's approval.
-6. **12.4 live checks:** not started. No workflow on the site has the DefinitionGuard validator (L-01). Section 12.4 says to stop and ask. No live write has been made.
+5. **Installation upgrade:** owner, in chat: "Approved." `forge install --upgrade -e development --site asymmsystems.atlassian.net --product jira` output: "Your app will be upgraded with the following additional scopes: - read:workflow:jira", "Upgrade complete!". `forge install list`: version 4, "Up-to-date".
+6. **Live defect found and fixed:** on DEMO-35 the evidence link field kept only its last typed character. A controlled UI Kit Textfield loses keystrokes, because each key makes a round trip through the bridge. Fixed in `bb9e96d` (uncontrolled fields, plus a guard test), redeployed to development with no scope change. Re-tested live: the full link and note were kept.
+7. **12.4 live checks (2026-11-01, DEMO), version 4:**
+
+| Check | Result |
+|---|---|
+| Panel on a new issue | Renders the v4 panel: "Definition of Done incomplete", names the 5 open mandatory items, says the gate applies where an admin added the validator, red "Blocked" lozenge, "0 of 6 done", accessible names such as "(mandatory, open)" |
+| Panel load writes nothing | After the first load, DEMO-35 had no `definitionguard-dod` property |
+| Tick with evidence | Item ticked; "Evidence attached"; "Completed by" rendered by the UI Kit User component; local time "Nov 1, 2026, 10:41 AM"; "Show evidence" shows the link and the note |
+| Waive with a reason | Item waived; "Waived" lozenge; "Waived by" with user and time; status lists the 3 remaining open items |
+| History | "History checked: 3 events, chain intact." with the limit note; one row per change with the evidence link |
+| Export | JSON shown in a CodeBlock to copy (B-15 criterion 4: UI Kit has no download); Silverston-shaped rows (WorkEffort ISSUE, WorkEffortAssoc, WorkEffortStatus, Content) |
+| Signed property | `definitionguard-dod` schema v2, stateVersion 3, mandatoryCompleted 2, keyId `dg-dev-2026-11`. An independent script (`~/.cache/gemini-earning-definitionguard-research/live/verify.js`) verifies the signature with `docs/marketplace/definitionguard-public-key.pem`: true; a copy with isFullySatisfied changed: false |
+| Settings page, view only | Lists DEMO's Done-category statuses (Closed, Resolved, Canceled, Done). Coverage: "0 of 8 completion transitions are gated", listing all 8 (matches L-06). Read with the new `read:workflow:jira` scope as the app. Nothing saved |
+| Gate (validator) on a real transition | Not tested: no DEMO workflow has the validator yet (workflows unchanged since 2026-10-29). Waits for the owner to add it (brief 12.4) |
+| DG-08 on a live throw | Not tested: the validator now catches every error (unit-tested); a live throw would need a deliberately broken build |
+| Keyboard and screen reader (task 9) | Not tested live. Accessible names are set and unit-tested |
+| Team-managed (B-20) | Not testable: the site has no team-managed project |
+
+8. **Live writes (all on the probe issue DEMO-35, id 10067, label `dg-probe`):**
+
+| # | Write | Old value | New value |
+|---|---|---|---|
+| 1 | Issue created (REST POST as the owner's browser session) | none | DEMO-35, Task, summary "[DG-PROBE] DefinitionGuard 4.0.0 live check 1", label `dg-probe`, status Open |
+| 2 | Issue properties added by Jira when the panel was added from the issue-view button (platform, not app code) | none | `ari:cloud:ecosystem::extension/73e4f63d.../static/definitionguard-issue-panel`, `issue.content.panel.customised.flag` |
+| 3 | Tick "Automated test suite passes with zero regressions" with evidence | criterion DOD_OPEN; no app storage for 10067; no property | KVS `dg:evt:10067:00000001` (Create), `:00000002` (Complete with Content), `dg:state:10067`; property `definitionguard-dod` v2 stateVersion 2 |
+| 4 | Waive "Branch test coverage meets or exceeds policy threshold" with reason "DG-PROBE live check: coverage gate not used on this probe." | criterion DOD_OPEN | KVS `dg:evt:10067:00000003` (Waive), `dg:state:10067`; property stateVersion 3 |
+
+No other issue, workflow, template or project setting was changed. No LedgerSeal panel was opened. Nothing was deleted.
