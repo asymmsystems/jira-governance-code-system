@@ -5,7 +5,7 @@
  */
 
 import { GateReason, GateResult } from '../../src/domain/models';
-import { appearanceOf, chipText, detailText, glyphOf, raiText, rateText, riskAppearance, sourceLine, stateLabel } from '../../src/ui/gate-text';
+import { appearanceOf, chipText, detailText, glyphOf, raiText, rateText, recoveryText, riskAppearance, sourceLine, stateLabel } from '../../src/ui/gate-text';
 
 const ALL_REASONS: GateReason[] = [
   'NOT_STARTED', 'NOT_DONE', 'INTENT_CONFLUENCE_LINK', 'INTENT_DECISION_ISSUE', 'INTENT_LINKS_NOT_READ',
@@ -79,5 +79,15 @@ describe('rates and RAI text', () => {
     expect(riskAppearance('HIGH')).toBe('removed');
     expect(riskAppearance('CRITICAL')).toBe('removed');
     expect(riskAppearance('UNRATED')).toBe('default');
+  });
+});
+
+describe('recoveryText', () => {
+  const NA: GateResult = { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
+  it('names the first missing gate in the order Intent, Code, Process, Audit', () => {
+    const gates = { intent: NA, process: { state: 'MISSING', reason: 'DOD_NONE' } as GateResult, code: { state: 'MISSING', reason: 'PR_NONE' } as GateResult, audit: NA };
+    expect(recoveryText({ gates, recoverablePoints: 33 })).toBe("Adding Code evidence raises this issue's RAI by 33 points.");
+    expect(recoveryText({ gates, recoverablePoints: 0 })).toBeUndefined();
+    expect(recoveryText({ gates: { intent: NA, process: NA, code: NA, audit: NA }, recoverablePoints: 10 })).toBeUndefined();
   });
 });

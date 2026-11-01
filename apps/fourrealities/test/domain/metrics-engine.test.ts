@@ -123,3 +123,36 @@ describe('B-06: an excepted Code gate is outside RAI and M29', () => {
     expect(s.m29PullRequestRate).toBeNull();
   });
 });
+
+describe('B-14: UNRATED issues, denominators and recoverable points', () => {
+  it('FR-14 case: 80 unstarted and 20 poor Done issues average the rated issues only', () => {
+    const unstarted = Array.from({ length: 80 }, (_, i) =>
+      MetricsEngine.buildRow(makeFacts({ issueKey: `U-${i}`, statusCategory: 'new', statusChanges: 0 }), gates(NA, NA, NA, NA)));
+    const poor = Array.from({ length: 20 }, (_, i) =>
+      MetricsEngine.buildRow(makeFacts({ issueKey: `P-${i}` }), gates(FOUND_V, MISSING, MISSING, MISSING)));
+    const s = MetricsEngine.summarize([...unstarted, ...poor]);
+    expect(s.averageRAI).toBe(25);
+    expect(s.unratedIssues).toBe(80);
+    expect(s.ratedIssues).toBe(20);
+    expect(s.riskDistribution.unrated).toBe(80);
+    expect(s.riskDistribution.low).toBe(0);
+  });
+
+  it('FR-17 case: Intent missing and Process found gives RAI 50 and 50 recoverable points', () => {
+    const row = MetricsEngine.buildRow(makeFacts({ statusCategory: 'indeterminate' }), gates(MISSING, FOUND_V, NA, NA));
+    expect(row.rai).toBe(50);
+    expect(row.recoverablePoints).toBe(50);
+  });
+
+  it('divides each rate by the issues where the gate applies', () => {
+    const rows = [
+      MetricsEngine.buildRow(makeFacts({ issueKey: 'A' }), gates(FOUND_V, NA, NA, NA)),
+      MetricsEngine.buildRow(makeFacts({ issueKey: 'B' }), gates(MISSING, NA, NA, NA)),
+      MetricsEngine.buildRow(makeFacts({ issueKey: 'C', statusCategory: 'new', statusChanges: 0 }), gates(NA, NA, NA, NA))
+    ];
+    const s = MetricsEngine.summarize(rows);
+    expect(s.m11IntentRate).toBe(50);
+    expect(s.dodRate).toBeNull();
+    expect(s.sealRate).toBeNull();
+  });
+});

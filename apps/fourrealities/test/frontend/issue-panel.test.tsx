@@ -164,4 +164,12 @@ describe('IssuePanel', () => {
     const r = await mount(row('DEMO-13', { intent: F, process: NA, code: { state: 'MISSING', reason: 'PR_OPEN_AT_DONE' }, audit: NA }));
     expect(() => findButton(r.root, 'Record Code exception')).toThrow('No button');
   });
+
+  it('says how many RAI points the first missing gate would recover (B-14)', async () => {
+    const r = await mount(row('DEMO-14', { intent: M_INTENT, process: F, code: NA, audit: NA }));
+    expect(textOf(r.toJSON())).toContain('Adding Intent evidence raises this issue\'s RAI by 50 points.');
+    const full = await mount(row('DEMO-15', { intent: F, process: F, code: NA, audit: NA }));
+    expect(textOf(full.toJSON())).not.toContain('raises this issue');
+  });
 });
+

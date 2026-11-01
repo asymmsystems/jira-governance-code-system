@@ -5,6 +5,7 @@
  */
 
 import { GateName, GateReason, GateResult, IssueRow, Verification } from '../domain/models';
+import { RECOVERY_ORDER } from '../domain/metrics-engine';
 
 export const GATE_LABEL: Record<GateName, string> = {
   intent: 'Intent',
@@ -144,4 +145,12 @@ export function riskAppearance(risk: IssueRow['risk']): LozengeAppearance {
   if (risk === 'MEDIUM') return 'moved';
   if (risk === 'HIGH' || risk === 'CRITICAL') return 'removed';
   return 'default';
+}
+
+/** "Adding Intent evidence raises this issue's RAI by 50 points.", or undefined when nothing is recoverable. */
+export function recoveryText(row: Pick<IssueRow, 'gates' | 'recoverablePoints'>): string | undefined {
+  const gate = RECOVERY_ORDER.find(g => row.gates[g].state === 'MISSING');
+  return gate && row.recoverablePoints > 0
+    ? `Adding ${GATE_LABEL[gate]} evidence raises this issue's RAI by ${row.recoverablePoints} points.`
+    : undefined;
 }

@@ -8,7 +8,7 @@ import React, { useState } from 'react';
 import { Box, Button, Heading, Inline, Lozenge, SectionMessage, Stack, Text, User } from '@forge/react';
 import { router } from '@forge/bridge';
 import { ExceptionNote, GATE_NAMES, GateName, IssueRow } from '../domain/models';
-import { raiText, riskAppearance } from '../ui/gate-text';
+import { raiText, recoveryText, riskAppearance } from '../ui/gate-text';
 import { GateRow } from './gate-row';
 import { ExceptionModal, LinkDecisionModal } from './modals';
 
@@ -81,6 +81,8 @@ export const IssuePanel: React.FC<{ row: IssueRow; onReload: () => void }> = ({ 
         <Text>{`${row.applicableGates} of 4 gates rated`}</Text>
         <Button appearance="subtle" onClick={onReload}>Refresh</Button>
       </Inline>
+
+      {recoveryText(row) ? <Text>{recoveryText(row)}</Text> : null}
 
       <Box padding="space.100">
         <Stack space="space.150">

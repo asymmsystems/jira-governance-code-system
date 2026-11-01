@@ -19,7 +19,7 @@ import { evaluateGates, isStarted } from './gates';
 const SUMMARY_MAX = 120;
 
 /** Order in which a missing gate is offered as the next thing to fix. */
-const RECOVERY_ORDER: GateName[] = ['intent', 'code', 'process', 'audit'];
+export const RECOVERY_ORDER: GateName[] = ['intent', 'code', 'process', 'audit'];
 
 export class MetricsEngine {
   /**
