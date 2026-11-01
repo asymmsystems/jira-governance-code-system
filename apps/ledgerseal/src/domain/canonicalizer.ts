@@ -64,7 +64,14 @@ const CUSTOM_EXCLUDED: Record<string, string> = {
   'com.atlassian.servicedesk.approvals-plugin:sd-approvals': 'Approvals change as approvers decide.',
   'com.atlassian.jira.plugins.jira-development-integration-plugin:devsummarycf': 'Development summary changes with commits.',
   'com.atlassian.jira.ext.charting:timeinstatus': 'Computed by Jira.',
-  'com.atlassian.jira.ext.charting:firstresponsedate': 'Computed by Jira.'
+  'com.atlassian.jira.ext.charting:firstresponsedate': 'Computed by Jira.',
+  // NF-04: computed on JSM sites and seen live on DEMO; each changes without a user edit
+  'com.atlassian.servicedesk.sentiment:sd-sentiment': 'Computed by Jira.',
+  'com.atlassian.jira.plugins.proforma-managed-fields:forms-total-field-cftype': 'Computed by Jira.',
+  'com.atlassian.jira.plugins.proforma-managed-fields:forms-submitted-field-cftype': 'Computed by Jira.',
+  'com.atlassian.jira.plugins.proforma-managed-fields:forms-locked-field-cftype': 'Computed by Jira.',
+  'com.atlassian.jira.plugins.proforma-managed-fields:forms-open-field-cftype': 'Computed by Jira.',
+  'com.atlassian.jira.plugin.system.customfieldtypes:agent-sessions': 'Computed by Jira.'
 };
 
 /** Hashed outside `fields` (top-level ids, attachments and comments), so never listed as excluded. */

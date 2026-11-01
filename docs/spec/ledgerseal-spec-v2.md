@@ -173,6 +173,7 @@ An outside verifier recomputes the hash from an exported snapshot with these rul
   `{ canonicalizerVersion, issueId, issueKey, projectId, issueTypeId, fields: [{ id, value }...], attachments, comments }`
   `projectId` and `issueTypeId` are the Jira ids (the key or the name when Jira gives no id). Field `name`, `display`, the excluded list, the project key, the issue type name and the status are not hashed, so renaming a field, a project or an issue type keeps the seal.
 - `snapshotHash` = lowercase hex SHA-256 of those bytes.
+- A change to the covered or excluded set changes the live hash of an issue that has such a field. Before the first production install, such a change is made in place (NF-04, 2026-11-01: no stored DEMO seal held the newly excluded fields). After it, a change needs a new `canonicalizerVersion`, and the app must keep the old rules to check seals made under them. That rule is not built yet.
 
 ### 4.2 Field selection (LS-04, LS-05)
 Fields are chosen by schema, from `/rest/api/3/field` (`schema.system`, `schema.custom`), never by id or by value.
@@ -195,6 +196,7 @@ Excluded, with the reason shown in the panel:
 | custom type `com.atlassian.servicedesk.approvals-plugin:sd-approvals` | Approvals change as approvers decide |
 | custom type `com.atlassian.jira.plugins.jira-development-integration-plugin:devsummarycf` | Development summary changes with commits |
 | custom type `com.atlassian.jira.ext.charting:timeinstatus`, `com.atlassian.jira.ext.charting:firstresponsedate` | Computed by Jira |
+| custom type `com.atlassian.servicedesk.sentiment:sd-sentiment`, `com.atlassian.jira.plugin.system.customfieldtypes:agent-sessions`, and the `com.atlassian.jira.plugins.proforma-managed-fields` counts `forms-total-field-cftype`, `forms-submitted-field-cftype`, `forms-locked-field-cftype`, `forms-open-field-cftype` (NF-04, seen live on DEMO) | Computed by Jira. The forms list `proforma-forms-field-cftype` stays covered |
 
 Every other field with a value is covered, including reporter, resolution, issue type, project, parent, worklog, time tracking (original estimate), security level and all other custom fields. A field id that is not in the field list is covered, with its id as its name.
 

@@ -49,10 +49,9 @@ This is a product description, not legal advice.
 ### Known limits
 - The approver policy is fixed: project admins and Jira admins. A group or role policy is planned.
 - A change of status does not break a seal, so the validator can gate a transition.
-- Some fields are not covered, such as rank, sprint and SLA timers. The panel lists each one and the reason.
+- Some fields are not covered, such as rank, sprint, SLA timers, sentiment and forms counts. The panel lists each one and the reason.
 - Attachments are covered by their id, name, size and type, not by file content. Jira gives a replaced file a new id.
 - If an edit and its revert both happen with no issue update event and no panel view in between, LedgerSeal does not see the change.
-- Some computed Jira Service Management fields (for example sentiment and form counts) are covered today and may change by themselves. Check them in the covered list on a service project.
 
 ---
 

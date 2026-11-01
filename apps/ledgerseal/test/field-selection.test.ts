@@ -96,6 +96,41 @@ describe('B-05 schema-based field selection', () => {
     expect(changed(i => (i.fields.updated = '2026-11-02T10:00:00.000+0000'))).toBe(false);
   });
 
+  it('NF-04 (live, DEMO /rest/api/3/field): computed JSM sentiment, forms counts and agent sessions do not break the seal', () => {
+    const computed = [
+      ['customfield_10024', 'Sentiment', 'com.atlassian.servicedesk.sentiment:sd-sentiment', 'array'],
+      ['customfield_10031', 'Total forms', 'com.atlassian.jira.plugins.proforma-managed-fields:forms-total-field-cftype', 'number'],
+      ['customfield_10032', 'Submitted forms', 'com.atlassian.jira.plugins.proforma-managed-fields:forms-submitted-field-cftype', 'number'],
+      ['customfield_10034', 'Locked forms', 'com.atlassian.jira.plugins.proforma-managed-fields:forms-locked-field-cftype', 'number'],
+      ['customfield_10035', 'Open forms', 'com.atlassian.jira.plugins.proforma-managed-fields:forms-open-field-cftype', 'number'],
+      ['customfield_10040', 'Agent Sessions', 'com.atlassian.jira.plugin.system.customfieldtypes:agent-sessions', 'array']
+    ];
+    const forms = ['customfield_10030', 'Work item created forms', 'com.atlassian.jira.plugins.proforma-managed-fields:proforma-forms-field-cftype', 'array'];
+    const fields = [...computed, forms].map(([id, name, custom, type]) => ({ id, name, schema: { type, custom } }));
+    const raw = (n: number) => ({
+      id: '10001',
+      key: 'SD-1',
+      fields: {
+        summary: 'Request',
+        customfield_10024: [{ name: n ? 'Negative' : 'Neutral' }],
+        customfield_10031: n,
+        customfield_10032: n,
+        customfield_10034: n,
+        customfield_10035: n,
+        customfield_10040: [{ id: String(n) }],
+        customfield_10030: [{ id: 'form-1' }]
+      }
+    });
+
+    const before = canonicalizeIssueState(raw(0), 't', fields);
+    const after = canonicalizeIssueState(raw(3), 't', fields);
+
+    expect(computeSnapshotHash(after)).toBe(computeSnapshotHash(before));
+    expect((before.excluded || []).map(e => e.name).sort()).toEqual(computed.map(c => c[1]).sort());
+    for (const e of before.excluded || []) expect(e.reason).toBe('Computed by Jira.');
+    expect(before.fields.map(f => f.id)).toContain('customfield_10030');
+  });
+
   it('lists covered fields by Jira name and excluded fields with a reason', () => {
     const snap = canonicalizeIssueState(issue(), T, FIELD_LIST);
     const names = snap.fields.map(f => f.name);
