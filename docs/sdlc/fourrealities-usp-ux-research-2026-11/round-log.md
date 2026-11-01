@@ -237,7 +237,15 @@ AUDT-1 is left Done with label `fr-probe`.
   - Redesigned Priority Actions into a rich list with issue key, next step, issue summary in an indented `SubSection`, and an "Inspect" button.
   - Balanced the Priority Actions and Alignment cards into two 49% width columns (`Column`).
   - Consolidated search, filter dropdowns, presets, and active filters into a unified filter `Card`, pulling the triage table above the fold.
-- 373 of 373 tests pass; all graders PASS (grade_tdd: PASS 96.52, grade_security: PASS, grade_ui: PASS).
+- 373 of 373 tests pass; all graders PASS (grade_tdd: PASS 96.52, grade_security: PASS, grade_ui: PASS); committed `bc64d3b`; deployed to development as 3.12.0.
+
+### Deployed 3.13.0 (Forge Native UI Kit Runtime Fix)
+
+- Fixed live runtime error `Error rendering app - encountered unknown component strong` caused by raw `<strong>` tags inside Forge native UI Kit components.
+- Replaced raw HTML tags in `StatusBanner` and `ProjectDashboard` with Forge native `Text` and `Badge` primitives.
+- Added Rule 17 to `test/architecture.test.ts` to forbid raw HTML tags across all source files in `src/`.
+- 374 of 374 tests pass; all graders PASS (grade_tdd: PASS 96.52, grade_security: PASS, grade_ui: PASS); committed `257c66b`; deployed to development as 3.13.0.
+
 
 
 
