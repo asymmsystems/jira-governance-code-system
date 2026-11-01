@@ -368,3 +368,57 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
   - The failing test was a wall-clock and CPU-time threshold on `splitUtf8`. It passed alone, but under coverage instrumentation it took 54 to 61 ms against a 50 ms limit.
   - The follow-up commit replaces it with a deterministic check of the defect's cause: zero `JSON.stringify` calls while splitting. The speed itself is measured where it is fair, by the uninstrumented probe T-01 (p95 10.6 ms for desc400).
   - After the fix: 268 of 268 tests pass in two consecutive coverage runs.
+
+### Loop 3, step 2: lint, deploy and live check on DEMO (12.3, 12.4)
+- `forge lint`: "No issues found" on every deploy. Forge CLI 15.0.0 warns: "Unsupported Node.js versions are not guaranteed to work correctly." (host Node v26). The deploys worked.
+- Forge variables, development only: `LEDGERSEAL_SIGNING_KEY` (encrypted) and `LEDGERSEAL_KEY_ID=ls-dev-2026-11`. The private key is in `~/.cache/gemini-earning-ledgerseal-research/keys/` (mode 600). It was never printed or committed.
+- Deploys, development environment only: 3.3.0 (`6f97669`), 3.4.0 (`5ddb3a8`), 3.5.0 (`f4ecb33`), 3.6.0 (`b2688f9`). Log: `~/.cache/gemini-earning-ledgerseal-research/forge-deploy.log`. The CLI says each version "is eligible for the Runs on Atlassian program". That is eligibility, not the badge.
+- No validator was attached to a workflow. No workflow was changed. No other DEMO issue page was opened. No issue was deleted. CascadePlan and the FourRealities "Seal Issue" action were not used on the probe issue.
+
+Live results (Observed-live, asymmsystems.atlassian.net, DEMO-34):
+- All 10 custom exclusion type keys exist in `/rest/api/3/field`.
+- First view: NOT SEALED, and no property write.
+- Seal: a signed v2 property. `verify-property.mjs` checks it with the public key; a changed field fails the check.
+- Summary edit: SEAL_BROKEN, incident 1. Label edit with no panel open: incident 2 within 0.7 s, so the issue-update trigger works.
+- JQL by `ledgersealStatus`, `ledgersealEverCompromised` and `ledgersealIncidents` finds DEMO-34. DEMO-5, DEMO-20 and DEMO-22 also match, through old unsigned v1 properties.
+- The panel shows the SoD sentence "You changed this issue, so another approver must approve it." and change rows with who and when.
+- The evidence export passes the open verifier (exit 0): `live/demo-34-evidence.json`.
+- `everCompromised` stays true and `incidentCount` carries forward across a revoke and a new seal.
+
+New finding NF-04 (owner decision, not fixed): the computed JSM fields `sd-sentiment`, the forms counts and agent-sessions are covered by the hash. They may change by themselves and give false alarms on service projects. The listing names this in Known limits.
+
+Live defects found and fixed:
+1. Revoke reason saved as "e" (`live/demo-34-revoked-reason-defect.jpg`). A controlled `TextArea` lost typed characters over the UI Kit bridge. Fix `5ddb3a8`: an uncontrolled `TextArea` with a `key`; `test/ui-inputs.test.ts` guards the pattern. Live re-test on 3.4.0: the panel shows "Reason: Loop 3 re-test of the revoke reason".
+2. SoD bypass through revoke. The editor revoked the seal and then sealed their own change with "Seal this issue". A seal from the revoked state had no SoD check and no reason check. Fix `f4ecb33`: the seal flow checks the change log since the revoked seal's `fromDate` (`SELF_APPROVAL`), and needs a reason when the issue changed (`REASON_REQUIRED`). Four tests in `test/seal-authority.test.ts`; 3 failed before the fix. Spec v2 section 7.2 states the rule. Live re-test on 3.5.0: seal, a label edit by the same account, revoke, then seal gave "You changed this issue, so another approver must approve it." and no write.
+3. No reason box after a revoke. With fix 2, a second approver would get `REASON_REQUIRED` with no box to type a reason. Fix `b2688f9`: the view model gives the revoked-state seal action the label "Reason for sealing again (required)", and the panel sends the reason. Test first in `test/view-model.test.ts` (failed, then passed). Live on 3.6.0: the box shows; the form was cancelled with no write. The disabled state of the button is covered by the unit test; the browser tool cannot read it inside the Forge iframe.
+
+Limit kept: T-02 A9. An edit and its revert with no issue update event and no panel view between them are not detected.
+
+Every live write (DEMO-34, issue id 10066, by the owner's account through the panel or REST):
+
+| # | Time (UTC) | Item | Old value | New value |
+|---|---|---|---|---|
+| 1 | 2026-11-01, before 03:36 | Issue DEMO-34 created | none | summary "[LS-PROBE] LedgerSeal v3.3.0 live check", label `ls-probe` |
+| 2 | 03:36:59 | `ledgerseal-cert` property; KVS seal (WorkEffort, assignment, status row 1, content) | absent | SEAL_VALID, certificate 5d5f55ac, incidentCount 0 |
+| 3 | 03:37:32 | Summary | "[LS-PROBE] LedgerSeal v3.3.0 live check" | "... (changed after seal)" |
+| 4 | 03:37:35 | Property; KVS status row 2 (LS_CHANGED) | SEAL_VALID, incidents 0 | SEAL_BROKEN, everCompromised true, incidents 1 |
+| 5 | 03:38:22 | Labels | `ls-probe` | `ls-probe`, `ls-probe-second-change` |
+| 6 | 03:38:23 | Property; KVS status row 3 (LS_CHANGED, by the trigger) | SEAL_BROKEN, incidents 1 | SEAL_BROKEN, incidents 2 |
+| 7 | after 03:39 | Property; KVS revoke row (reason "e", the defect) | SEAL_BROKEN, incidents 2 | SEAL_REVOKED |
+| 8 | 03:46:04 | Property; KVS seal (certificate 2bf0ac7f) | SEAL_REVOKED | SEAL_VALID, everCompromised true, incidents 2 |
+| 9 | 03:46:26 | Property; KVS revoke row, reason "Loop 3 re-test of the revoke reason" | SEAL_VALID | SEAL_REVOKED |
+| 10 | 03:51:14 | Property; KVS seal (certificate a2e4eb21), no reason | SEAL_REVOKED | SEAL_VALID, incidents 2 |
+| 11 | about 03:51:30 | Labels (REST PUT, HTTP 204) | `ls-probe`, `ls-probe-second-change` | plus `ls-probe-sod-revoke` |
+| 12 | after 11 | Property; KVS status row (LS_CHANGED, by the trigger) | SEAL_VALID, incidents 2 | SEAL_BROKEN, incidents 3 |
+| 13 | 03:52:05 | Property; KVS revoke row, reason "SoD revoke path re-test" | SEAL_BROKEN, incidents 3 | SEAL_REVOKED, incidents 3 |
+| 14 | after 13 | Seal attempt by the editor | SEAL_REVOKED | no write (SELF_APPROVAL) |
+
+Final state of DEMO-34: SEAL_REVOKED, everCompromised true, incidentCount 3 (`live/demo-34-property-final.json`). Labels: `ls-probe`, `ls-probe-second-change`, `ls-probe-sod-revoke`.
+
+### Loop 3, step 3: listing (12.5)
+- `docs/marketplace/ledgerseal-listing.md` is rewritten from the code. It uses only the U5 parts that are now true, the features verified in tests and on DEMO-34, and the wording in research-brief section 6.3.
+- Removed: all three badges, "Immutable", "Cryptographic", "System of Record", the Part 11 signature claim, "no data privacy risks", "0 KB", "OAuth 2.0 (3LO)", "AES-256 / TLS 1.3", "Atlassian Starter Tier" and the unit-economics line (claims 1, 4 to 9, 13 to 17 and 24).
+- Added: known limits (approver policy, status, excluded fields, attachment content, T-02 A9, NF-04) and the four real scopes with their use.
+- The price tiers are kept as the owner set them. H9 (willingness to pay) stays Unknown.
+- Nothing was changed on the Marketplace itself.
+- README test numbers: 275 tests in 32 suites, branches 94.90%.

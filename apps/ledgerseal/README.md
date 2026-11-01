@@ -78,8 +78,8 @@ Measured on the last change to this file:
 
 | Measure | Value |
 |---|---|
-| Tests | 268 in 31 suites |
-| Branch coverage (all files in `src/` except the UI Kit component file; the panel view model is included) | 94.85% |
+| Tests | 275 in 32 suites |
+| Branch coverage (all files in `src/` except the UI Kit component file; the panel view model is included) | 94.90% |
 
 ```bash
 npm install
