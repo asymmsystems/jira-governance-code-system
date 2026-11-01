@@ -726,25 +726,12 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(modified?.dependency).toBeUndefined();
     });
 
-    it('defaults triggerPercent to 30 when undefined in updateWbsTask dependency', async () => {
-      const updatedPlan = await updateWbsTask(
-        {
-          projectKey: 'TEST',
-          taskId: 'TEST-1',
-          updates: {
-            dependency: {
-              predecessorId: 'TEST-2',
-              predecessorKey: 'TEST-2',
-              triggerPercent: undefined as any,
-              isTriggerSatisfied: false
-            }
-          }
-        },
-        mockStorage
-      );
-
-      const modified = updatedPlan.tasks.find(t => t.key === 'TEST-1');
-      expect(modified?.dependency?.triggerPercent).toBe(30);
+    it('rejects a dependency without a trigger percent (B-11: no silent default)', async () => {
+      await expect(updateWbsTask({
+        projectKey: 'TEST',
+        taskId: 'TEST-2',
+        updates: { dependency: { predecessorId: 'TEST-1', predecessorKey: 'TEST-1' } as any }
+      }, mockStorage)).rejects.toThrow('dependency.triggerPercent');
     });
 
     it('preserves existing dependency when moving timeline bar (updating startWeek only)', async () => {
@@ -975,7 +962,9 @@ describe('CascadePlan Index & Resolver Tests', () => {
       const successor = updatedPlan.tasks.find(t => t.key === 'TEST-2');
       expect(successor?.dependency?.isTriggerSatisfied).toBe(false);
       expect(successor?.dependency?.isViolated).toBe(true);
-      expect(successor?.dependency?.violationReason).toContain('90%');
+      // The violation says what to change; the reason names the 90% trigger (B-11).
+      expect(successor?.dependency?.violationReason).toContain('Move TEST-2 to');
+      expect(successor?.dependency?.earliestStartReason).toContain('90%');
     });
 
     it('saves dependency when target task is located by its ID', async () => {
@@ -1952,7 +1941,8 @@ describe('CascadePlan Index & Resolver Tests', () => {
       const res = await fetchLiveJiraIssues('TEST');
       const succ = [...res.tasks, ...res.backlogTasks].find(t => t.key === 'TEST-102');
       expect(succ?.dependency?.predecessorKey).toBe('TEST-101');
-      expect(succ?.dependency?.triggerPercent).toBe(30);
+      // A plain Jira "Blocks" link is finish-to-start (B-11).
+      expect(succ?.dependency?.triggerPercent).toBe(100);
     });
   });
 
@@ -2247,9 +2237,8 @@ describe('CascadePlan Index & Resolver Tests', () => {
     });
 
     it('auto-moves startWeek and shifts bar when fractional dependency is added', async () => {
-      // TEST-1 starts at week index 0 (15-Jul) with span 4.
-      // Setting dependency on TEST-1 with trigger 50% on TEST-2.
-      // TEST-1 reaches 50% at week index 1 (22-Jul). Earliest start for TEST-2 is week index 2 (29-Jul).
+      // TEST-1 is at 50% in Jira (time spent / estimate). With an 80% trigger the engine projects
+      // the date from the observed rate, which lies in the future, so TEST-2 moves there (B-11).
       const plan = await updateWbsTask({
         projectKey: 'TEST',
         taskId: 'TEST-2',
@@ -2258,7 +2247,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
           dependency: {
             predecessorId: '10001',
             predecessorKey: 'TEST-1',
-            triggerPercent: 50,
+            triggerPercent: 80,
             isTriggerSatisfied: false
           }
         }
@@ -2266,7 +2255,9 @@ describe('CascadePlan Index & Resolver Tests', () => {
 
       const task2 = plan.tasks.find(t => t.key === 'TEST-2');
       expect(task2?.dependency?.predecessorKey).toBe('TEST-1');
-      // Earliest start week must be shifted to index 2 (29-Jul) or later
+      expect(task2?.dependency?.earliestStartReason).toContain('observed');
+      expect(task2?.startDate).toBe(task2?.dependency?.earliestStartDate);
+      expect(task2?.dependency?.isViolated).toBe(false);
       const startIdx = DEFAULT_WEEKS.findIndex(w => w.weekKey === task2?.startWeek);
       expect(startIdx).toBeGreaterThanOrEqual(2);
     });

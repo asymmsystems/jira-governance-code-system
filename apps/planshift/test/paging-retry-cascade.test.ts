@@ -150,7 +150,8 @@ describe('one plan build and a bounded cascade (B-10)', () => {
     const res: any = await previewCascade({ projectKey: 'TEST', taskId: 'TEST-1', updates: { startWeek: weeks[2].weekKey } });
     expect(res.ok).toBe(true);
     expect(res.changes.length).toBeGreaterThan(CASCADE_BATCH_LIMIT);
-    expect(res.changes[0]).toMatchObject({ key: 'TEST-2', field: 'startWeek' });
+    expect(res.changes[0]).toMatchObject({ key: 'TEST-2', field: 'startDate' });
+    expect(res.changes[0].reason).toContain('TEST-1 reaches 100%');
     expect(storage.sets).toEqual([]);
     expect(mockRequestJira.mock.calls.filter(c => c[1]?.method && c[1].method !== 'GET')).toEqual([]);
   });

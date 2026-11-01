@@ -68,7 +68,7 @@ All dates are UTC calendar days (ISO `YYYY-MM-DD`). Working days are out of scop
 
 For a predecessor P with start day `s_P`, end day `e_P` (inclusive), duration `d_P = max(1, e_P - s_P + 1)` days, progress `p_P` (0 to 100), and a link trigger `X` (0 to 100):
 
-1. **Satisfied:** if `p_P >= X`, the link places no constraint. Reason: "API-4 is at 45%, past the 30% trigger."
+1. **Satisfied:** if `p_P >= X`, the link places no constraint. For `X = 0` this holds only once P has started; before that, item 3 applies (start together with P). Reason: "API-4 is at 45%, past the 30% trigger."
 2. **Observed basis:** if `0 < p_P < X` and today `t > s_P`: rate `r = p_P / max(1, t - s_P)` percent per day. Earliest start `E = t + ceil((X - p_P) / r)`.
 3. **Planned basis:** otherwise `E = s_P + ceil(d_P * X / 100)`. So `X = 0` starts together with P, and `X = 100` gives finish-to-start (`E = e_P + 1`).
 4. **Trigger date** shown to the user: `E - 1` (the day P reaches X%), or `s_P` when `X = 0`.

@@ -114,7 +114,8 @@ export function validateTaskUpdates(updates: Record<string, unknown>): void {
     // An object with no predecessor clears the dependency.
     if (u.dependency.predecessorKey !== undefined && u.dependency.predecessorKey !== '') {
       assertIssueKey(u.dependency.predecessorKey, 'dependency.predecessorKey');
-      if (u.dependency.triggerPercent !== undefined) numberIn('dependency.triggerPercent', u.dependency.triggerPercent, 0, 100);
+      // A link needs its trigger; there is no silent default (B-11).
+      numberIn('dependency.triggerPercent', u.dependency.triggerPercent, 0, 100);
     }
   }
   if (u.effortConfig !== undefined && !isObject(u.effortConfig)) fail('effortConfig', 'effortConfig must be an object');

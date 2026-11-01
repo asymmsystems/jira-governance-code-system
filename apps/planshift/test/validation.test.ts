@@ -49,7 +49,7 @@ describe('validation (B-02, INV-15)', () => {
     })).not.toThrow();
     expect(() => validateTaskUpdates({ dependency: null, epicKey: '', resourceAccountId: 'unassigned' })).not.toThrow();
     expect(() => validateTaskUpdates({ dependency: {} })).not.toThrow();
-    expect(() => validateTaskUpdates({ dependency: { predecessorKey: 'TEST-1' } })).not.toThrow();
+    expect(() => validateTaskUpdates({ dependency: { predecessorKey: 'TEST-1' } })).toThrow('dependency.triggerPercent');
     expect(() => validateTaskUpdates({ progress: 150, targetProgress: -20 })).not.toThrow();
     expect(() => validateTaskUpdates({ resourceAccountId: 'ph:res-1' })).not.toThrow();
   });

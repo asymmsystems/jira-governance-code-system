@@ -32,6 +32,7 @@ import {
   DEFAULT_STORY_POINT_RATIO
 } from './domain/models';
 import { PlannerEngine } from './domain/planner-engine';
+import { evaluateEffort, cascade, ScheduleEffort, ScheduleLink, addDays } from './domain/schedule-engine';
 import { StorageProvider } from './storage/plan-repository';
 import { PlanStore, StoredEntry, sequenceBetween } from './storage/plan-store';
 import {
@@ -229,6 +230,49 @@ export function addDaysIso(iso: string, days: number): string {
 export function weekIndexContaining(weeks: WeeklySprintColumn[], iso: string | undefined): number {
   if (!isIsoDate(iso)) return -1;
   return weeks.findIndex(w => w.startDate <= iso && w.endDate >= iso);
+}
+
+function todayIso(d: Date = new Date()): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Schedule engine input built from the plan: WorkEffort-shaped efforts for every task with dates,
+ * and FRACTIONAL_MILESTONE links from the dependencies (B-11, B-24).
+ */
+export function engineInputs(tasks: Array<Partial<WbsTask>>): { efforts: Map<string, ScheduleEffort>; links: ScheduleLink[] } {
+  const efforts = new Map<string, ScheduleEffort>();
+  const links: ScheduleLink[] = [];
+  for (const t of tasks) {
+    if (!t.key || !isIsoDate(t.startDate)) continue;
+    efforts.set(t.key, {
+      workEffortId: t.key,
+      estimatedStartDate: t.startDate,
+      estimatedCompletionDate: isIsoDate(t.endDate) ? t.endDate : t.startDate,
+      percentComplete: t.progress || 0,
+      started: t.status === 'IN_PROGRESS' || t.status === 'COMPLETED'
+    });
+    if (t.dependency && t.dependency.predecessorKey && typeof t.dependency.triggerPercent === 'number') {
+      links.push({ workEffortIdFrom: t.dependency.predecessorKey, workEffortIdTo: t.key, workEffortAssocTypeId: 'FRACTIONAL_MILESTONE',
+        triggerPercent: t.dependency.triggerPercent, isTriggerSatisfied: false });
+    }
+  }
+  return { efforts, links };
+}
+
+/** Week index for a date, clamped to the visible window (display only; dates stay exact). */
+function clampedWeekIndex(weeks: WeeklySprintColumn[], iso: string): number {
+  const idx = weekIndexContaining(weeks, iso);
+  if (idx !== -1) return idx;
+  return iso < weeks[0].startDate ? 0 : weeks.length - 1;
+}
+
+/** Week-grid fields for exact dates. */
+export function gridFor(weeks: WeeklySprintColumn[], start: string, end: string): Partial<WbsTask> {
+  const sIdx = clampedWeekIndex(weeks, start);
+  const eIdx = Math.max(sIdx, clampedWeekIndex(weeks, end));
+  const span = eIdx - sIdx + 1;
+  return { startWeek: weeks[sIdx].weekKey, endWeek: weeks[eIdx].weekKey, spanWeeks: span, weeklyAllocations: evenAllocations(weeks, sIdx, span) };
 }
 
 function evenAllocations(weeks: WeeklySprintColumn[], startIdx: number, span: number): Record<string, number> {
@@ -562,7 +606,8 @@ export function mapLiveIssues(
             liveDependency = {
               predecessorId: String(blockLink.inwardIssue.id || blockLink.inwardIssue.key),
               predecessorKey: String(blockLink.inwardIssue.key),
-              triggerPercent: 30,
+              // A plain Jira "Blocks" link means finish-to-start (B-11: no silent 30% default).
+              triggerPercent: 100,
               isTriggerSatisfied: false
             };
           }
@@ -714,16 +759,19 @@ export async function getProjectPlan(
     }
   }
 
-  // Validate dependencies against actual predecessor progress and dates
+  // Evaluate every dependency with the schedule engine: earliest start, reason, driver, fix (B-11).
+  const engine = engineInputs(tasks);
+  const today = todayIso(referenceDate);
   for (const t of tasks) {
     if (t.dependency) {
-      const pred = tasks.find(p => p.key === t.dependency?.predecessorKey || p.id === t.dependency?.predecessorId);
-      const evalRes = PlannerEngine.evaluateDependency(pred, t.dependency, t);
-      t.dependency.isTriggerSatisfied = evalRes.isSatisfied;
-      t.dependency.isViolated = evalRes.isViolated;
-      t.dependency.violationReason = evalRes.blockerMessage;
-      t.dependency.earliestStartDate = evalRes.earliestStartDate;
-      t.dependency.earliestStartReason = evalRes.earliestStartReason;
+      const ev = evaluateEffort(t.key, engine.efforts, engine.links, today);
+      t.dependency.isTriggerSatisfied = ev.earliestStartDate === null && !ev.violated;
+      t.dependency.isViolated = ev.violated;
+      t.dependency.violationReason = ev.violated ? (ev.suggestion || ev.reason || undefined) : undefined;
+      t.dependency.earliestStartDate = ev.earliestStartDate || undefined;
+      t.dependency.earliestStartReason = ev.reason || undefined;
+      t.dependency.driverKey = ev.driver || undefined;
+      t.dependency.fixSuggestion = ev.suggestion;
     }
   }
 
@@ -1339,8 +1387,7 @@ export async function updateWbsTask(
   if (sanitized.dependency !== undefined) {
     if (sanitized.dependency && sanitized.dependency.predecessorKey) {
       const predKey = sanitized.dependency.predecessorKey;
-      const rawTrigger = sanitized.dependency.triggerPercent;
-      const triggerPercent = typeof rawTrigger === 'number' && !isNaN(rawTrigger) ? rawTrigger : 30;
+      const triggerPercent = sanitized.dependency.triggerPercent;
       const validation = PlannerEngine.validateDependency(
         targetTask.key,
         predKey,
@@ -1379,23 +1426,6 @@ export async function updateWbsTask(
 
   // Derive schedule dates and weeks dynamically
   const activeWeeks = plan.weeks || DEFAULT_WEEKS;
-
-  // Auto-move targetTask bar to earliest allowed week based on predecessor's fractional milestone
-  if (sanitized.dependency && sanitized.dependency.predecessorKey) {
-    const predTask = plan.tasks.find(t => t.key === sanitized.dependency!.predecessorKey || t.id === sanitized.dependency!.predecessorKey);
-    if (predTask) {
-      const earliestStartIdx = PlannerEngine.calculateEarliestStartWeekIndex(
-        predTask,
-        sanitized.dependency.triggerPercent,
-        activeWeeks
-      );
-      const currentStart = sanitized.startWeek || targetTask.startWeek || activeWeeks[0].weekKey;
-      const currentStartIdx = activeWeeks.findIndex(w => w.weekKey === currentStart);
-      if (currentStartIdx < earliestStartIdx) {
-        sanitized.startWeek = activeWeeks[earliestStartIdx].weekKey;
-      }
-    }
-  }
 
   const userPickedDates = sanitized.startDate !== undefined || sanitized.endDate !== undefined;
   if (userPickedDates) {
@@ -1439,6 +1469,21 @@ export async function updateWbsTask(
     }
   }
 
+  // A new or changed dependency moves the task to its earliest start, keeping its duration (B-11).
+  if (sanitized.dependency && sanitized.dependency.predecessorKey) {
+    const start = sanitized.startDate || targetTask.startDate;
+    const end = sanitized.endDate || targetTask.endDate;
+    const candidate = plan.tasks.map(t => (t.key === targetTask.key ? { ...t, startDate: start, endDate: end, dependency: sanitized.dependency } : t));
+    const inputs = engineInputs(candidate);
+    const ev = evaluateEffort(targetTask.key, inputs.efforts, inputs.links, todayIso());
+    if (ev.earliestStartDate && isIsoDate(start) && start < ev.earliestStartDate) {
+      const days = isIsoDate(end) ? Math.max(0, Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000)) : 0;
+      sanitized.startDate = ev.earliestStartDate;
+      sanitized.endDate = addDays(ev.earliestStartDate, days);
+      Object.assign(sanitized, gridFor(activeWeeks, sanitized.startDate, sanitized.endDate));
+    }
+  }
+
   const scheduleMap: Record<string, Partial<WbsTask>> = Object.fromEntries(entries);
   const current = scheduleMap[targetTask.key] || {};
   const changedKeys = new Set<string>([targetTask.key]);
@@ -1464,30 +1509,17 @@ export async function updateWbsTask(
     ...sanitized
   });
 
-  // Cascade schedule shifts to dependent tasks, at most CASCADE_BATCH_LIMIT per call (B-10).
+  // Cascade date shifts to conflicting successors, at most CASCADE_BATCH_LIMIT per call (B-10, B-11).
   let cascadeRemaining: string[] = [];
-  if (sanitized.startWeek || sanitized.spanWeeks || sanitized.dependency) {
+  if (sanitized.startDate || sanitized.endDate || sanitized.dependency) {
     const candidateTasks = plan.tasks.map(t => (t.key === targetTask.key ? { ...t, ...sanitized } : t));
-    const { updatedTasks, affectedTaskKeys } = PlannerEngine.cascadeSchedule(candidateTasks, targetTask.key, activeWeeks);
-    cascadeRemaining = affectedTaskKeys.slice(CASCADE_BATCH_LIMIT);
-    for (const affKey of affectedTaskKeys.slice(0, CASCADE_BATCH_LIMIT)) {
-      const affTask = updatedTasks.find(t => t.key === affKey);
-      if (affTask) {
-        const curAff = scheduleMap[affKey] || {};
-        if (affTask.dependency && !curAff.dependency) {
-          curAff.dependency = affTask.dependency;
-        }
-        scheduleMap[affKey] = {
-          ...curAff,
-          startWeek: affTask.startWeek,
-          endWeek: affTask.endWeek,
-          startDate: affTask.startDate,
-          endDate: affTask.endDate,
-          weeklyAllocations: affTask.weeklyAllocations
-        };
-        changedKeys.add(affKey);
-        pendingSyncs.push({ key: affKey, updates: { endDate: affTask.endDate } });
-      }
+    const inputs = engineInputs(candidateTasks);
+    const { changes } = cascade(inputs.efforts, inputs.links, targetTask.key, todayIso());
+    cascadeRemaining = changes.slice(CASCADE_BATCH_LIMIT).map(c => c.key);
+    for (const c of changes.slice(0, CASCADE_BATCH_LIMIT)) {
+      scheduleMap[c.key] = { ...(scheduleMap[c.key] || {}), startDate: c.toStart, endDate: c.toEnd, ...gridFor(activeWeeks, c.toStart, c.toEnd) };
+      changedKeys.add(c.key);
+      pendingSyncs.push({ key: c.key, updates: { endDate: c.toEnd } });
     }
   }
 
@@ -1572,38 +1604,44 @@ export async function continueCascade(
   const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live);
   const store = openStore(storage, projectKey, projectId);
   const entries = await store.loadEntries();
-  const { updatedTasks, affectedTaskKeys } = PlannerEngine.cascadeSchedule(plan.tasks, taskId, plan.weeks);
-  for (const key of affectedTaskKeys.slice(0, CASCADE_BATCH_LIMIT)) {
-    const moved = updatedTasks.find(t => t.key === key) as WbsTask;
-    const cur = entries.get(key);
-    const put = await store.putEntry(key, moved.id, stripJiraOwnedFields({ ...(cur || {}), startWeek: moved.startWeek, endWeek: moved.endWeek,
-      startDate: moved.startDate, endDate: moved.endDate, weeklyAllocations: moved.weeklyAllocations }), cur ? cur.version : 0);
-    if (!put.ok) { log.record(key, ['plan'], { synced: false, error: 'changed by someone else; not moved' }); continue; }
-    await syncTaskToJira(key, { endDate: moved.endDate }, log);
+  const inputs = engineInputs(plan.tasks);
+  const { changes } = cascade(inputs.efforts, inputs.links, taskId, todayIso());
+  for (const c of changes.slice(0, CASCADE_BATCH_LIMIT)) {
+    const cur = entries.get(c.key);
+    const task = plan.tasks.find(t => t.key === c.key);
+    const put = await store.putEntry(c.key, task?.id, stripJiraOwnedFields({ ...(cur || {}), startDate: c.toStart, endDate: c.toEnd,
+      ...gridFor(plan.weeks, c.toStart, c.toEnd) }), cur ? cur.version : 0);
+    if (!put.ok) { log.record(c.key, ['plan'], { synced: false, error: 'changed by someone else; not moved' }); continue; }
+    await syncTaskToJira(c.key, { endDate: c.toEnd }, log);
   }
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live),
-    { ok: true, jiraSync: log.report(), cascadeRemaining: affectedTaskKeys.slice(CASCADE_BATCH_LIMIT) });
+    { ok: true, jiraSync: log.report(), cascadeRemaining: changes.slice(CASCADE_BATCH_LIMIT).map(c => c.key) });
 }
 
 /**
  * Lists the moves that a change of start week or span would cause, without writing anything.
  */
 export async function previewCascade(
-  payload: { projectKey: string; projectId?: string; taskId: string; updates: { startWeek?: string; spanWeeks?: number } },
+  payload: { projectKey: string; projectId?: string; taskId: string; updates: { startDate?: string; endDate?: string; startWeek?: string; spanWeeks?: number } },
   storageProvider?: StorageProvider
-): Promise<{ ok: boolean; changes: Array<{ key: string; field: string; from?: string; to?: string }> }> {
+): Promise<{ ok: boolean; changes: Array<{ key: string; field: string; from?: string; to?: string; reason?: string }> }> {
   const { projectKey, projectId, taskId, updates } = payload;
   assertIssueKey(taskId, 'taskId');
   validateTaskUpdates(updates as Record<string, unknown>);
   const plan = await getProjectPlan(projectKey, resolveStorage(storageProvider), new Date(), undefined, projectId);
-  const candidate = plan.tasks.map(t => (t.key === taskId ? { ...t, ...updates } : t));
-  const { updatedTasks, affectedTaskKeys } = PlannerEngine.cascadeSchedule(candidate, taskId, plan.weeks);
-  const changes = affectedTaskKeys.map(key => {
-    const before = plan.tasks.find(t => t.key === key);
-    const after = updatedTasks.find(t => t.key === key);
-    return { key, field: 'startWeek', from: before?.startWeek, to: after?.startWeek };
-  });
-  return { ok: true, changes };
+  const target = plan.tasks.find(t => t.key === taskId);
+  let start = updates.startDate || target?.startDate;
+  let end = updates.endDate || target?.endDate;
+  if (target && !updates.startDate && updates.startWeek && isIsoDate(target.startDate) && isIsoDate(target.endDate)) {
+    // A move by weeks keeps the exact days of the bar (as updateWbsTask does).
+    const shift = (plan.weeks.findIndex(w => w.weekKey === updates.startWeek) - plan.weeks.findIndex(w => w.weekKey === target.startWeek)) * 7;
+    start = addDays(target.startDate, shift);
+    end = addDays(target.endDate, shift + ((updates.spanWeeks || target.spanWeeks || 1) - (target.spanWeeks || 1)) * 7);
+  }
+  const candidate = plan.tasks.map(t => (t.key === taskId ? { ...t, startDate: start, endDate: end } : t));
+  const inputs = engineInputs(candidate);
+  const { changes } = cascade(inputs.efforts, inputs.links, taskId, todayIso());
+  return { ok: true, changes: changes.map(c => ({ key: c.key, field: 'startDate', from: c.fromStart, to: c.toStart, reason: c.reason })) };
 }
 
 /**

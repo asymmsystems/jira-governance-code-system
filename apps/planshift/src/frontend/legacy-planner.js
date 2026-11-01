@@ -12,7 +12,6 @@
 import { callResolver, openIssueInNewTab } from './bridge';
 import { initErrorBanner } from './banner';
 import { html } from '../ui/safe-html';
-import { earliestStartWeek, cascadePreview } from '../ui/cascade-preview';
 import { deltaWeeksFromPixels, clampStartIndex, spanFromResize } from '../ui/timeline-math';
 
 function getJiraBaseUrl() {
@@ -2684,9 +2683,6 @@ function setupBarDrag(bar, task) {
     window.addEventListener('mouseup', onMouseUp);
   });
 }
-
-const calculateClientEarliestStartWeek = earliestStartWeek;
-const cascadeClientSchedule = cascadePreview;
 
 // SVG Dependency Bezier Curves Overlay with Directional Arrowheads and Interactive Highlighting
 function renderDependencySvgOverlay() {

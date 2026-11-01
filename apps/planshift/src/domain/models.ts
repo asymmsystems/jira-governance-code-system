@@ -61,6 +61,8 @@ export interface TaskDependency {
   earliestStartReason?: string;
   notes?: string;
   jiraLinkId?: string; // id of the "Blocks" link that CascadePlan created for this dependency
+  driverKey?: string;    // the predecessor that sets the earliest start (B-11)
+  fixSuggestion?: string; // what the user can change to resolve a violation (B-11, B-12)
 }
 
 export interface WbsTask {
