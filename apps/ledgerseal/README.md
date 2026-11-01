@@ -46,6 +46,19 @@ Seals are stored on the Silverston WorkEffort, Party and Status patterns (ADR-01
 | `ls3:content:{contentId}:{part}` | The sealed snapshot, in parts |
 | `cert:active:{issueId}` | Old-format records, read only |
 
+## Find issues by seal state (JQL)
+
+The app indexes the `ledgerseal-cert` property, so filters and dashboards can use:
+
+```
+issue.property[ledgerseal-cert].status = "SEAL_BROKEN"
+ledgersealStatus = "SEAL_BROKEN"
+ledgersealEverCompromised = "true"
+ledgersealIncidents > 0
+```
+
+The property is a summary for searching. Any user who can edit an issue can change its properties, so check the signature (see below) before relying on a value.
+
 ## Evidence for an auditor
 
 The `seal-evidence-api` resolver returns a JSON export: a signed attestation of the stored seal, the canonical snapshot that was hashed, and the full history. An auditor checks it without access to LedgerSeal:
@@ -65,7 +78,7 @@ Measured on the last change to this file:
 
 | Measure | Value |
 |---|---|
-| Tests | 260 in 29 suites |
+| Tests | 261 in 30 suites |
 | Branch coverage (all files in `src/` except the UI Kit component file; the panel view model is included) | 94.67% |
 
 ```bash

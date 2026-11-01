@@ -13,6 +13,20 @@ modules:
       name: Require Valid LedgerSeal
       description: Blocks the transition unless the issue is sealed and unchanged since approval.
       function: validate-transition
+  jira:entityProperty:
+    - key: ledgerseal-cert-index
+      entityType: issue
+      propertyKey: ledgerseal-cert
+      values:
+        - path: status
+          type: string
+          searchAlias: ledgersealStatus
+        - path: everCompromised
+          type: string
+          searchAlias: ledgersealEverCompromised
+        - path: incidentCount
+          type: number
+          searchAlias: ledgersealIncidents
   trigger:
     - key: ledgerseal-issue-changed
       function: on-issue-changed

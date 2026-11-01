@@ -323,3 +323,11 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - Adversarial test: the T-01 / LS-07 combined fixture (400 paragraphs and 100 comments) now stores in several parts, each under 120 KiB, in one transaction of at most 25 operations. Two concurrent seals give one OK and one `CONFLICT` with the reload message.
 - Spec v2 section 6 states the stored-size rule and the claim removal.
 - Results: `tsc` OK. 29 suites, 260 tests pass. Global branches 94.67%. `seal-repository.ts` 95.45%, `ledger.ts` 91.53%. Graders all True. No em dash.
+- B-17 commit: `ec03de7`.
+
+### B-18 JQL for broken and unsealed issues (LS-20 index part) [MANIFEST]
+- The manifest keys come from the Forge `jira:entityProperty` page: `entityType` (default issue), `propertyKey`, and `values` with `path`, `type` and `searchAlias`.
+- Test first: `test/manifest.test.ts` (B-18 case). First run: 1 of 1 failed (no index). After the change: passed.
+- Code: `manifest.yml` adds `jira:entityProperty` `ledgerseal-cert-index`, which indexes `status` (string, `ledgersealStatus`), `everCompromised` (string, `ledgersealEverCompromised`) and `incidentCount` (number, `ledgersealIncidents`). The README gives the JQL and the warning that the property is a searchable summary, not evidence.
+- AC2 (the live JQL query on an `[LS-PROBE]` issue) runs in Loop 3.
+- Results: `tsc` OK. 30 suites, 261 tests pass. No source branch change. No em dash.
