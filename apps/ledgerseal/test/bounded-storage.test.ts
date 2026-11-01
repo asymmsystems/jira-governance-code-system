@@ -109,3 +109,23 @@ describe('B-17 concurrency control', () => {
     await expect(sealIssue({ signature: validSignature() }, panelContext('ann'), deps)).resolves.toMatchObject({ ok: true });
   });
 });
+
+describe('B-17 stored-size rule (performance fix)', () => {
+  it('counts each character at its JSON-escaped size, including control characters and lone surrogates', () => {
+    const tricky = 'a"\\\n\t\u0001é€😀\ud800z';
+    for (let max = 8; max <= 14; max++) {
+      const parts = splitUtf8(tricky, max);
+      expect(parts.join('')).toBe(tricky);
+      for (const part of parts) expect(Buffer.byteLength(JSON.stringify(part), 'utf8')).toBeLessThanOrEqual(max);
+    }
+  });
+
+  it('splits a 400-paragraph snapshot in well under 50 ms', () => {
+    const text = JSON.stringify({ text: 'Line x '.padEnd(200, 'x') }).repeat(1200);
+    // CPU time of this worker, so parallel test workers do not slow the measure
+    const started = process.cpuUsage();
+    splitUtf8(text, MAX_PART_BYTES);
+    const used = process.cpuUsage(started);
+    expect((used.user + used.system) / 1000).toBeLessThan(50);
+  });
+});

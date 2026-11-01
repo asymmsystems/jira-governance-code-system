@@ -350,3 +350,17 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
   - `renderIssuePanel` is removed from `src/index.ts`, along with its test.
 - Results: `tsc` OK. 31 suites, 266 tests pass. Global branches 94.73%. `index.ts` 91.42%. Graders all True. No em dash.
 - B-01 to B-21 are all done. Loop 3 follows.
+- B-20 commit: `e9fb5a1`.
+
+### Loop 3, step 1: re-run of the size, time and attack probes
+- The Part A probe files are kept, unchanged in logic, in `~/.cache/gemini-earning-ledgerseal-research/probes/baseline-v1/` with their results (`results-baseline*.json`). The `harness.ts` copy there was restored from this session, because the first rewrite overwrote it.
+- The after-build probes call the app's real `createJiraClient` over a mocked REST layer. Results are in `results-after*.json`. All 15 probe cases ran.
+- Performance defect found and fixed:
+  - Sealing the 400-paragraph fixture took a p95 of 210.7 ms, over the 50 ms budget, because `splitUtf8` called `JSON.stringify` per character.
+  - The stored size now comes from the code point, with a test for quotes, control characters, lone surrogates and astral characters.
+  - After the fix the p95 is 10.6 ms (desc400) and 16.7 ms (combined).
+  - The speed test measures worker CPU time. A wall-clock threshold failed once in two full parallel runs.
+- Limits seen in the probes, not hidden:
+  - T-03 C02 (status change keeps the seal) is decision D-2 by design.
+  - C28 (duplicated label) cannot happen in Jira, which stores labels as a set.
+  - T-02 A9 is detected when the issue-updated event arrives. With no event and no panel view between an edit and its revert, the change is not detected.

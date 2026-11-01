@@ -24,6 +24,17 @@ export const MAX_PART_BYTES = 120000;
 /** A seal transaction holds the parts, two assignments and the work effort, within 25 operations. */
 export const MAX_CONTENT_PARTS = 22;
 
+/** UTF-8 bytes of one character inside a JSON string, from its code point (no JSON.stringify per character). */
+function storedBytes(char: string): number {
+  const code = char.codePointAt(0) as number;
+  if (code === 0x22 || code === 0x5c) return 2; // \" and \\
+  if (code < 0x20) return code === 0x08 || code === 0x09 || code === 0x0a || code === 0x0c || code === 0x0d ? 2 : 6;
+  if (code < 0x80) return 1;
+  if (code < 0x800) return 2;
+  if (code >= 0xd800 && code <= 0xdfff) return 6; // a lone surrogate is written as \uXXXX
+  return code > 0xffff ? 4 : 3;
+}
+
 /**
  * Splits text into parts of at most `maxBytes` UTF-8 bytes as stored, never inside a character.
  * KVS stores each part as a JSON string, so a character counts at its JSON-escaped size (a quote counts 2).
@@ -33,7 +44,7 @@ export function splitUtf8(text: string, maxBytes: number): string[] {
   let current = '';
   let size = 2; // the two quotes around a stored JSON string
   for (const char of text) {
-    const bytes = Buffer.byteLength(JSON.stringify(char), 'utf8') - 2;
+    const bytes = storedBytes(char);
     if (size + bytes > maxBytes && current.length > 0) {
       parts.push(current);
       current = '';
