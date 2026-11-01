@@ -18,6 +18,8 @@ You continue a build that a previous agent (Claude) ran on 2026-11-01. Read this
 | Dashboard on DEMO | `https://asymmsystems.atlassian.net/jira/servicedesk/projects/DEMO/apps/974e4981-7626-4b1c-a41f-7eaccb7f3605/c9d5ad8b-0b9e-41eb-9bca-a0384f708c20` |
 | Probe issue (the only issue you may write to) | `https://asymmsystems.atlassian.net/browse/AUDT-1` (label `fr-probe`, project AUDT, software) |
 
+Checkpoint at the handover: branch `feature/fourrealities-claude-checkpoint` and annotated tag `fourrealities-claude-checkpoint` (commit `a31c554`). Never move, reset or delete them; keep working on `feature/fourrealities-research-build`.
+
 The worktree has no git remote. You cannot push. Do not touch the main checkout `gemini-earning/`; other sessions have uncommitted work there.
 
 ## 2. Hard rules (from the owner's agent definition; do not break them)
