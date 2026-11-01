@@ -266,18 +266,6 @@ body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-
 }
 .resizer:hover { background: var(--cp-bg-brand); }
 
-.week-header-cell {
-  background: var(--cp-surface-sunken); text-align: center; border-bottom: 2px solid var(--cp-border);
-  border-right: 1px solid var(--cp-border); width: 85px; min-width: 85px; padding: 6px 2px;
-  position: sticky; top: 0; z-index: 35;
-}
-.week-date { font-weight: 700; font-size: 11px; color: var(--cp-text); }
-.week-sprint { font-size: 10px; color: var(--cp-text-subtle); font-weight: 500; }
-.week-header-cell.current-week { background: var(--cp-bg-selected); }
-.week-header-cell.current-week .week-date { color: var(--cp-text-brand); }
-
-/* Task Row & Data Cells */
-.task-row { border-bottom: 1px solid var(--cp-border); height: 44px; transition: background 0.1s; }
 .task-row:hover { background: var(--cp-surface-sunken); }
 .td-data {
   padding: 6px 10px; border-right: 1px solid var(--cp-border); white-space: nowrap; overflow: hidden;
@@ -311,6 +299,24 @@ body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-
   position: absolute; top: -4px; bottom: -4px; width: 24px; cursor: col-resize;
 }
 .spacer-row td { padding: 0; border: 0; height: 0; }
+
+/* Time axis (B-27): one timeline column whose width follows the zoom and range; frozen data columns. */
+.timeline-header-cell {
+  width: var(--cp-track-w, 1275px); min-width: var(--cp-track-w, 1275px); padding: 0; height: 40px;
+  position: sticky; top: 0; z-index: 35; background: var(--cp-surface-sunken); border-bottom: 2px solid var(--cp-border);
+}
+.time-strip { position: relative; height: 100%; }
+.time-cell {
+  position: absolute; top: 0; bottom: 0; padding: 12px 4px 0; border-right: 1px solid var(--cp-border); overflow: hidden;
+  white-space: nowrap; font-size: 11px; font-weight: 700; color: var(--cp-text); text-align: center; box-sizing: border-box;
+}
+.time-cell.current { background: var(--cp-bg-selected); color: var(--cp-text-brand); }
+.timeline-track-cell { width: var(--cp-track-w, 1275px); min-width: var(--cp-track-w, 1275px); }
+.th-col.th-frozen { position: sticky; z-index: 40; }
+.task-row { background: var(--cp-surface); }
+.td-frozen { position: sticky; z-index: 25; background: inherit; }
+.zoom-group { display: inline-flex; gap: 2px; margin-left: 8px; }
+.zoom-group .btn[aria-pressed="true"], #btnCompactColumns[aria-pressed="true"] { background: var(--cp-bg-selected); color: var(--cp-text-brand); border-color: var(--cp-border-brand); }
 
 /* Rich Tooltips */
 .tooltip-popup {

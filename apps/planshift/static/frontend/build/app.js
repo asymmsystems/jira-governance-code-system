@@ -6536,14 +6536,14 @@ Please see https://iframe-resizer.com/upgrade for more details.
 
   // src/domain/schedule-engine.ts
   var DAY_MS = 864e5;
-  function dayNumber(iso) {
-    return Math.round(Date.parse(`${iso}T00:00:00Z`) / DAY_MS);
+  function dayNumber(iso2) {
+    return Math.round(Date.parse(`${iso2}T00:00:00Z`) / DAY_MS);
   }
   function isoOf(day) {
     return new Date(day * DAY_MS).toISOString().slice(0, 10);
   }
-  function addDays(iso, days) {
-    return isoOf(dayNumber(iso) + days);
+  function addDays(iso2, days) {
+    return isoOf(dayNumber(iso2) + days);
   }
   function durationDays(e) {
     const s = dayNumber(e.estimatedStartDate);
@@ -6682,14 +6682,14 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function daysBetween(fromIso, toIso) {
     return Math.round((Date.parse(`${toIso}T00:00:00Z`) - Date.parse(`${fromIso}T00:00:00Z`)) / DAY_MS2);
   }
-  function xForDate(iso, originIso2, dayPx) {
-    return daysBetween(originIso2, iso) * dayPx;
+  function xForDate(iso2, originIso2, dayPx2) {
+    return daysBetween(originIso2, iso2) * dayPx2;
   }
-  function barRect(task, originIso2, dayPx, rowTop2, rowH, barH) {
+  function barRect(task, originIso2, dayPx2, rowTop2, rowH, barH) {
     if (!task.startDate) return null;
-    const x = xForDate(task.startDate, originIso2, dayPx);
+    const x = xForDate(task.startDate, originIso2, dayPx2);
     const end = task.endDate && task.endDate >= task.startDate ? task.endDate : task.startDate;
-    const w = Math.max(dayPx, (daysBetween(task.startDate, end) + 1) * dayPx);
+    const w = Math.max(dayPx2, (daysBetween(task.startDate, end) + 1) * dayPx2);
     return { x, y: rowTop2 + (rowH - barH) / 2, w, h: barH };
   }
   function visibleRange(scrollTop, viewportH, rowH, count, buffer) {
@@ -6702,8 +6702,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (barW >= HANDLE_PX * 2) return { left: -HANDLE_PX / 2, right: barW - HANDLE_PX / 2 };
     return { left: -HANDLE_PX, right: barW };
   }
-  function snapDays(deltaPx, dayPx, mode) {
-    const days = mode === "week" ? Math.round(deltaPx / (dayPx * 7)) * 7 : Math.round(deltaPx / dayPx);
+  function snapDays(deltaPx, dayPx2, mode) {
+    const days = mode === "week" ? Math.round(deltaPx / (dayPx2 * 7)) * 7 : Math.round(deltaPx / dayPx2);
     return days === 0 ? 0 : days;
   }
   function previewMoves(tasks, key, startShift, endShift, today) {
@@ -6892,9 +6892,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
         globalThis.__cpLabels = [];
       }
       const w = this.wrapper;
-      const left = Math.max(m ? m.trackLeft : 0, w.scrollLeft);
+      const left = w.scrollLeft + (m ? m.trackLeft : 0);
       const top = w.scrollTop + (m ? m.headerH : 0);
-      const cssW = Math.max(0, w.scrollLeft + w.clientWidth - left);
+      const cssW = Math.max(0, w.clientWidth - (m ? m.trackLeft : 0));
       const cssH = Math.max(0, w.clientHeight - (m ? m.headerH : 0));
       if (!m || cssW === 0 || cssH === 0) {
         this.canvas.style.display = "none";
@@ -6956,14 +6956,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     drawGrid(m, left, top, w, h) {
       const ctx = this.ctx;
-      const week = m.dayPx * 7;
       ctx.strokeStyle = this.c(CANVAS_TOKENS.grid);
       ctx.lineWidth = 1;
       ctx.beginPath();
-      const firstWeek = Math.floor((left - m.trackLeft) / week);
-      for (let x = m.trackLeft + firstWeek * week; x <= left + w; x += week) {
-        ctx.moveTo(Math.round(x) + 0.5, top);
-        ctx.lineTo(Math.round(x) + 0.5, top + h);
+      for (const gx of m.gridX(left - m.trackLeft, left - m.trackLeft + w)) {
+        const x = Math.round(m.trackLeft + gx) + 0.5;
+        ctx.moveTo(x, top);
+        ctx.lineTo(x, top + h);
       }
       ctx.stroke();
     }
@@ -7205,6 +7204,103 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return entering ? `Move mode for ${dates} Left and Right move 1 day, with Shift 1 week; [ and ] change the due date; Enter saves; Escape cancels.` : dates;
   }
 
+  // src/ui/time-scale.ts
+  var ZOOMS = [
+    { id: "day", label: "Day", dayPx: 40, snap: "day" },
+    { id: "week", label: "Week", dayPx: 85 / 7, snap: "day" },
+    { id: "month", label: "Month", dayPx: 4, snap: "week" },
+    { id: "quarter", label: "Quarter", dayPx: 1.5, snap: "week" },
+    { id: "year", label: "Year", dayPx: 0.5, snap: "week" }
+  ];
+  function zoomById(id) {
+    return ZOOMS.find((z) => z.id === id) || ZOOMS[1];
+  }
+  function zoomStep(id, dir) {
+    const i = ZOOMS.findIndex((z) => z.id === id);
+    return ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, i - dir))].id;
+  }
+  function mondayOf(iso2) {
+    const dow = (/* @__PURE__ */ new Date(`${iso2}T00:00:00Z`)).getUTCDay();
+    return addDays(iso2, -((dow + 6) % 7));
+  }
+  function initialRange(today) {
+    const start = addDays(mondayOf(today), -56);
+    return { start, end: addDays(start, 52 * 7 - 1) };
+  }
+  function rangeDays(r) {
+    return daysBetween(r.start, r.end) + 1;
+  }
+  function extendRange(r, side, weeks) {
+    return side === "before" ? { start: addDays(r.start, -weeks * 7), end: r.end } : { start: r.start, end: addDays(r.end, weeks * 7) };
+  }
+  function edgeToExtend(scrollLeft, viewportW, trackW) {
+    if (scrollLeft < viewportW / 2) return "before";
+    if (scrollLeft + viewportW > trackW - viewportW / 2) return "after";
+    return null;
+  }
+  var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  function parts(iso2) {
+    const dt = /* @__PURE__ */ new Date(`${iso2}T00:00:00Z`);
+    return { y: dt.getUTCFullYear(), m: dt.getUTCMonth(), d: dt.getUTCDate(), dow: dt.getUTCDay() };
+  }
+  var iso = (y, m, d) => new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10);
+  function unitBounds(day, zoom) {
+    const p = parts(day);
+    switch (zoom.id) {
+      case "day":
+        return [day, addDays(day, 1)];
+      case "week":
+        return [mondayOf(day), addDays(mondayOf(day), 7)];
+      case "month":
+        return [iso(p.y, p.m, 1), iso(p.y, p.m + 1, 1)];
+      case "quarter":
+        return [iso(p.y, p.m - p.m % 3, 1), iso(p.y, p.m - p.m % 3 + 3, 1)];
+      default:
+        return [iso(p.y, 0, 1), iso(p.y + 1, 0, 1)];
+    }
+  }
+  function label(start, zoom) {
+    const p = parts(start);
+    switch (zoom.id) {
+      case "day":
+        return `${DAYS[p.dow]} ${p.d}`;
+      case "week":
+        return `${String(p.d).padStart(2, "0")}-${MONTHS[p.m]}`;
+      case "month":
+        return `${MONTHS[p.m]} ${p.y}`;
+      case "quarter":
+        return `Q${Math.floor(p.m / 3) + 1} ${p.y}`;
+      default:
+        return String(p.y);
+    }
+  }
+  function headerCells(r, zoom, today, fromX = -Infinity, toX = Infinity) {
+    const out = [];
+    const total = rangeDays(r);
+    let day = r.start;
+    while (daysBetween(r.start, day) < total) {
+      const [, next] = unitBounds(day, zoom);
+      const x = daysBetween(r.start, day) * zoom.dayPx;
+      const w = Math.min(daysBetween(day, next), total - daysBetween(r.start, day)) * zoom.dayPx;
+      if (x + w > fromX && x < toX) {
+        const [uStart] = unitBounds(day, zoom);
+        out.push({ key: uStart, label: label(uStart, zoom), x, w, current: today >= uStart && today < next });
+      }
+      day = next;
+    }
+    return out;
+  }
+  function gridLines(r, zoom, fromX, toX) {
+    return headerCells(r, zoom, "", fromX, toX).map((c) => c.x).filter((x) => x >= fromX && x <= toX);
+  }
+  function anchorScroll(anchorIso, viewportX, originIso2, dayPx2) {
+    return daysBetween(originIso2, anchorIso) * dayPx2 - viewportX;
+  }
+  function dateAt(x, originIso2, dayPx2) {
+    return addDays(originIso2, Math.floor(x / dayPx2));
+  }
+
   // src/frontend/legacy-planner.js
   function getJiraBaseUrl() {
     if (currentPlan && currentPlan.siteUrl) {
@@ -7355,10 +7451,48 @@ Please see https://iframe-resizer.com/upgrade for more details.
     { key: "status", label: "Status", icon: "\u{1F3F7}\uFE0F", defaultWidth: 95, description: "Workflow status" }
   ];
   function getVisibleColKeys() {
+    if (compactColumns) return ["task"];
     return ALL_COLUMNS.map((c) => c.key).filter((k) => !hiddenColumns.has(k));
   }
   var COL_KEYS = ALL_COLUMNS.map((c) => c.key);
-  var WEEK_WIDTH = 85;
+  var ZOOM_KEY = "cascadeplan_zoom";
+  var COMPACT_KEY = "cascadeplan_compact_columns";
+  var COMPACT_TASK_WIDTH = 220;
+  var EXTEND_WEEKS = 26;
+  function readPref(key, fallback) {
+    try {
+      return localStorage.getItem(key) || fallback;
+    } catch (e) {
+      return fallback;
+    }
+  }
+  function writePref(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+    }
+  }
+  var zoomId = readPref(ZOOM_KEY, "week");
+  var compactColumns = readPref(COMPACT_KEY, "off") === "on";
+  var timeRange = null;
+  function dayPx() {
+    return zoomById(zoomId).dayPx;
+  }
+  function trackWidth() {
+    return timeRange ? rangeDays(timeRange) * dayPx() : 0;
+  }
+  function colWidth(k) {
+    return compactColumns && k === "task" ? COMPACT_TASK_WIDTH : columnWidths[k];
+  }
+  function frozenOffsets() {
+    const out = {};
+    let x = 0;
+    getVisibleColKeys().forEach((k) => {
+      out[k] = x;
+      x += colWidth(k);
+    });
+    return out;
+  }
   var expandedTasks = /* @__PURE__ */ new Set();
   var currentHierarchyView = "all";
   async function initApp() {
@@ -7500,6 +7634,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
     });
     window.addEventListener("keydown", (e) => {
       const inField = e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT" || e.target.isContentEditable);
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && ["=", "+", "-", "_"].includes(e.key) && !inField && !openModal()) {
+        e.preventDefault();
+        setZoom(zoomStep(zoomId, e.key === "-" || e.key === "_" ? -1 : 1));
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "z" || e.key === "Z") && !inField && !openModal()) {
         e.preventDefault();
         if (e.shiftKey) redoLast();
@@ -7584,14 +7723,14 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (btnEarlier) {
       btnEarlier.addEventListener("click", () => {
         const wrapper = document.getElementById("ganttWrapper");
-        if (wrapper) wrapper.scrollBy({ left: -(WEEK_WIDTH * 3), behavior: "smooth" });
+        if (wrapper) setTimelineScrollLeft(wrapper.scrollLeft - (wrapper.clientWidth - layout.trackLeft) / 2);
       });
     }
     const btnLater = document.getElementById("btnScrollLater");
     if (btnLater) {
       btnLater.addEventListener("click", () => {
         const wrapper = document.getElementById("ganttWrapper");
-        if (wrapper) wrapper.scrollBy({ left: WEEK_WIDTH * 3, behavior: "smooth" });
+        if (wrapper) setTimelineScrollLeft(wrapper.scrollLeft + (wrapper.clientWidth - layout.trackLeft) / 2);
       });
     }
     const btnToday = document.getElementById("btnScrollToday");
@@ -7825,18 +7964,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   function scrollToToday() {
     const wrapper = document.getElementById("ganttWrapper");
-    if (!wrapper || !currentPlan || !currentPlan.weeks) return;
-    const visibleKeys = getVisibleColKeys();
-    let wbsWidth = 0;
-    visibleKeys.forEach((k) => {
-      wbsWidth += columnWidths[k] || 100;
-    });
-    const curWkIdx = currentPlan.weeks.findIndex((w) => w.isCurrentWeek);
-    const activeIdx = curWkIdx >= 0 ? curWkIdx : Math.floor(currentPlan.weeks.length / 2);
-    const todayX = wbsWidth + activeIdx * WEEK_WIDTH;
-    const viewportWidth = wrapper.clientWidth;
-    const targetScroll = Math.max(0, todayX - viewportWidth / 2 + WEEK_WIDTH / 2);
-    wrapper.scrollTo({ left: targetScroll, behavior: "smooth" });
+    if (!wrapper || !timeRange) return;
+    const vw = wrapper.clientWidth - layout.trackLeft;
+    setTimelineScrollLeft(Math.max(0, anchorScroll(todayIso(), vw / 2, timeRange.start, dayPx())));
   }
   function initGanttPan() {
     const wrapper = document.getElementById("ganttWrapper");
@@ -8072,8 +8202,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     renderMilestones();
     renderBacklogTray();
+    coverPlanDates();
     renderTimelineHeader();
     renderTimelineRows();
+    applyTimeAxis();
     setTimeout(syncGanttScrollWidth, 50);
     if (!hasInitialScrolledToToday) {
       hasInitialScrolledToToday = true;
@@ -8149,19 +8281,21 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function renderTimelineHeader() {
     const tr = document.getElementById("ganttHeaderRow");
     tr.innerHTML = "";
+    const offsets = frozenOffsets();
     getVisibleColKeys().forEach((k) => {
       const colDef = ALL_COLUMNS.find((c) => c.key === k) || { label: k, locked: false };
-      const th = document.createElement("th");
-      th.className = "th-col";
-      th.style.width = columnWidths[k] + "px";
-      th.style.minWidth = columnWidths[k] + "px";
-      th.innerHTML = html`
+      const th2 = document.createElement("th");
+      th2.className = "th-col th-frozen";
+      th2.style.width = colWidth(k) + "px";
+      th2.style.minWidth = colWidth(k) + "px";
+      th2.style.left = offsets[k] + "px";
+      th2.innerHTML = html`
       <div class="th-content-wrap">
         <span class="th-label-text">${colDef.label}</span>
         ${!colDef.locked ? html`<button class="th-col-menu-btn" data-col-key="${k}" title="Column options (Hide ${colDef.label})">▾</button>` : ""}
       </div>
     `;
-      const menuBtn = th.querySelector(".th-col-menu-btn");
+      const menuBtn = th2.querySelector(".th-col-menu-btn");
       if (menuBtn) {
         menuBtn.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -8171,18 +8305,110 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const resizer = document.createElement("div");
       resizer.className = "resizer";
       setupColumnResizer(resizer, k);
-      th.appendChild(resizer);
-      tr.appendChild(th);
+      th2.appendChild(resizer);
+      tr.appendChild(th2);
     });
-    currentPlan.weeks.forEach((w, idx) => {
-      const th = document.createElement("th");
-      th.className = "week-header-cell" + (w.isCurrentWeek ? " current-week" : "");
-      th.innerHTML = html`
-      <div class="week-date">${w.weekKey}</div>
-      <div class="week-sprint">${w.sprintName}</div>
-    `;
-      tr.appendChild(th);
+    const th = document.createElement("th");
+    th.className = "timeline-header-cell";
+    const strip = document.createElement("div");
+    strip.className = "time-strip";
+    th.appendChild(strip);
+    tr.appendChild(th);
+    renderTimeStrip();
+  }
+  function renderTimeStrip() {
+    const strip = document.querySelector("#ganttHeaderRow .time-strip");
+    if (!strip || !timeRange) return;
+    const cells = headerCells(timeRange, zoomById(zoomId), todayIso()).map((c) => {
+      const el2 = document.createElement("div");
+      el2.className = "time-cell" + (c.current ? " current" : "");
+      el2.style.left = c.x + "px";
+      el2.style.width = c.w + "px";
+      el2.textContent = c.label;
+      el2.title = c.key;
+      return el2;
     });
+    strip.replaceChildren(...cells);
+  }
+  function coverPlanDates() {
+    if (!timeRange) timeRange = initialRange(todayIso());
+    const dates = (currentPlan?.tasks || []).flatMap((t) => [t.startDate, t.endDate]).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d || ""));
+    if (!dates.length) return;
+    const min = dates.reduce((m, d) => d < m ? d : m);
+    const max = dates.reduce((m, d) => d > m ? d : m);
+    while (daysBetween(timeRange.start, min) < 28) timeRange = extendRange(timeRange, "before", EXTEND_WEEKS);
+    while (daysBetween(max, timeRange.end) < 28) timeRange = extendRange(timeRange, "after", EXTEND_WEEKS);
+  }
+  function applyTimeAxis() {
+    const table = document.getElementById("ganttTable");
+    const wrapper = document.getElementById("ganttWrapper");
+    if (!table || !timeRange) return;
+    table.style.setProperty("--cp-track-w", trackWidth() + "px");
+    if (wrapper) {
+      wrapper.dataset.origin = timeRange.start;
+      wrapper.dataset.dayPx = String(dayPx());
+    }
+    renderTimeStrip();
+    for (const [key, tr] of rowCache) {
+      const hit = tr.querySelector(".bar-hit");
+      const t = findTask(key);
+      if (hit && t) positionBarHit(hit, t);
+    }
+    measureLayout();
+    drawTimeline(true);
+    syncGanttScrollWidth();
+  }
+  function setTimelineScrollLeft(x) {
+    const w = document.getElementById("ganttWrapper");
+    const top = document.getElementById("ganttTopScrollbar");
+    w.scrollLeft = x;
+    if (top) top.scrollLeft = w.scrollLeft;
+  }
+  function maybeExtendRange() {
+    const w = document.getElementById("ganttWrapper");
+    if (!w || !timeRange) return;
+    const edge = edgeToExtend(w.scrollLeft, w.clientWidth - layout.trackLeft, trackWidth());
+    if (edge === "before") {
+      const shift = EXTEND_WEEKS * 7 * dayPx();
+      timeRange = extendRange(timeRange, "before", EXTEND_WEEKS);
+      const x = w.scrollLeft + shift;
+      applyTimeAxis();
+      setTimelineScrollLeft(x);
+    } else if (edge === "after") {
+      timeRange = extendRange(timeRange, "after", EXTEND_WEEKS);
+      applyTimeAxis();
+    }
+  }
+  function setZoom(id) {
+    const w = document.getElementById("ganttWrapper");
+    if (!w || !timeRange || id === zoomId) return;
+    const vw = w.clientWidth - layout.trackLeft;
+    const key = lastGridKey || pinnedDependencyTaskId;
+    const t = key && findTask(key);
+    const vx = t && t.startDate ? vw / 3 : vw / 2;
+    const anchor = t && t.startDate ? t.startDate : dateAt(w.scrollLeft + vx, timeRange.start, dayPx());
+    zoomId = id;
+    writePref(ZOOM_KEY, id);
+    const need = Math.ceil(vw / dayPx()) + 7;
+    while (daysBetween(timeRange.start, anchor) < need) timeRange = extendRange(timeRange, "before", EXTEND_WEEKS);
+    while (daysBetween(anchor, timeRange.end) < need) timeRange = extendRange(timeRange, "after", EXTEND_WEEKS);
+    applyTimeAxis();
+    setTimelineScrollLeft(Math.max(0, anchorScroll(anchor, vx, timeRange.start, dayPx())));
+    updateZoomButtons();
+    drawTimeline(true);
+  }
+  function updateZoomButtons() {
+    document.querySelectorAll("#zoomGroup [data-zoom]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.zoom === zoomId)));
+    const compact = document.getElementById("btnCompactColumns");
+    if (compact) compact.setAttribute("aria-pressed", String(compactColumns));
+  }
+  function setCompactColumns(on) {
+    compactColumns = on;
+    writePref(COMPACT_KEY, on ? "on" : "off");
+    updateZoomButtons();
+    renderTimelineHeader();
+    renderTimelineRows();
+    applyTimeAxis();
   }
   function setupColumnResizer(resizer, colKey) {
     resizer.addEventListener("mousedown", (e) => {
@@ -8209,9 +8435,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
   var activePickerTaskKey = null;
   function getInitials(name) {
     if (!name || name === "Unassigned") return "U";
-    const parts = name.trim().split(/\s+/);
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    const parts2 = name.trim().split(/\s+/);
+    if (parts2.length === 1) return parts2[0].slice(0, 2).toUpperCase();
+    return (parts2[0][0] + parts2[parts2.length - 1][0]).toUpperCase();
   }
   function getTaskContributingResources(task) {
     if (!task) return [];
@@ -8682,10 +8908,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
     let inheritedEpic = isAnchorEpic ? anchorTask.summary : anchorTask.epic || "";
     let inheritedEpicKey = isAnchorEpic ? anchorTask.key : anchorTask.epicKey || "";
     const defaultStartWk = anchorTask.startWeek || (currentPlan.weeks.find((w) => w.isCurrentWeek)?.weekKey || currentPlan.weeks[0]?.weekKey);
-    const startIdx = Math.max(0, currentPlan.weeks.findIndex((w) => w.weekKey === defaultStartWk));
-    const span = 3;
-    const barLeft = startIdx * WEEK_WIDTH + 4;
-    const barWidth = Math.max(WEEK_WIDTH - 8, span * WEEK_WIDTH - 8);
+    const barLeft = xForDate(anchorTask.startDate || todayIso(), originIso(), dayPx());
+    const barWidth = 21 * dayPx();
     const creationTr = document.createElement("tr");
     creationTr.className = "inline-creation-row";
     let epicDisplay = inheritedEpic ? `\u{1F7EA} ${inheritedEpic}` : "+ Link Epic";
@@ -8702,7 +8926,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.story}px; color: var(--cp-text-brand); font-weight:700;">🔷 Task</td>`;
     }
     cellsHtml = html`${cellsHtml}
-    <td class="td-data td-task-summary" style="width:${columnWidths.task}px;">
+    <td class="td-data td-task-summary" style="width:${colWidth("task")}px;">
       <div style="display:flex; align-items:center; gap:6px; padding-left:14px;">
         <input type="text" class="inline-create-input" placeholder="Type new task summary & press Enter to save..." autocomplete="off" />
         <button class="btn-inline-save">Add</button>
@@ -8738,13 +8962,14 @@ Please see https://iframe-resizer.com/upgrade for more details.
       cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.status}px; text-align:center;"><span class="badge badge-neutral">NOT_STARTED</span></td>`;
     }
     cellsHtml = html`${cellsHtml}
-    <td class="timeline-track-cell" colspan="${currentPlan.weeks.length}" style="width:${currentPlan.weeks.length * WEEK_WIDTH}px;">
+    <td class="timeline-track-cell">
       <div class="ghost-timeline-bar" style="left:${barLeft}px; width:${barWidth}px;">
         <span>➕ New Task Preview (3 wks)</span>
       </div>
     </td>
   `;
     creationTr.innerHTML = html`${cellsHtml}`;
+    applyFrozen(creationTr);
     rowElement.after(creationTr);
     updateVirtualRows();
     let selectedResource = "Unassigned";
@@ -8843,7 +9068,6 @@ Please see https://iframe-resizer.com/upgrade for more details.
       }
     });
   }
-  var DAY_PX = WEEK_WIDTH / 7;
   var ROW_BUFFER = 10;
   var timeline = null;
   var rowTasks = [];
@@ -8862,14 +9086,14 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return (currentPlan?.tasks || []).find((t) => t.key === key);
   }
   function originIso() {
-    return currentPlan?.weeks?.[0]?.startDate || todayIso();
+    return timeRange ? timeRange.start : todayIso();
   }
   function rowTop(i) {
     return layout.bodyStart + i * ROW_H + (layout.inlineAfter >= 0 && i > layout.inlineAfter ? layout.inlineH : 0);
   }
   function measureLayout() {
     const table = document.getElementById("ganttTable");
-    const firstWeek = document.querySelector("#ganttHeaderRow .week-header-cell");
+    const firstWeek = document.querySelector("#ganttHeaderRow .timeline-header-cell");
     layout.headerH = table && table.tHead ? table.tHead.offsetHeight : 0;
     layout.trackLeft = firstWeek ? firstWeek.offsetLeft : 0;
     layout.bodyStart = topDropRowEl ? table.offsetTop + topDropRowEl.offsetTop + topDropRowEl.offsetHeight : 0;
@@ -8882,6 +9106,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
       layout.inlineH = inline.offsetHeight;
     }
   }
+  var gridCache = { key: "", xs: [] };
+  function gridXBetween(fromX, toX) {
+    const key = `${timeRange.start}|${timeRange.end}|${zoomId}`;
+    if (gridCache.key !== key) gridCache = { key, xs: gridLines(timeRange, zoomById(zoomId), -Infinity, Infinity) };
+    return gridCache.xs.filter((x) => x >= fromX && x <= toX);
+  }
   function drawTimeline(sync) {
     if (!timeline || !currentPlan) return;
     timeline.activeKey = hoveredTaskId || pinnedDependencyTaskId;
@@ -8891,11 +9121,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
       last: renderedRange.last,
       rowTop,
       originIso: originIso(),
-      dayPx: DAY_PX,
+      dayPx: dayPx(),
       trackLeft: layout.trackLeft,
-      trackWidth: (currentPlan.weeks || []).length * WEEK_WIDTH,
+      trackWidth: trackWidth(),
       headerH: layout.headerH,
-      todayIso: todayIso()
+      todayIso: todayIso(),
+      gridX: gridXBetween
     });
     if (sync) timeline.draw();
     else timeline.requestDraw();
@@ -8935,7 +9166,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     renderedRange = { first: 0, last: -1 };
     topDropRowEl = topSpacer = bottomSpacer = null;
     if (gridRoot) gridRoot.replaceChildren();
-    const cols = getVisibleColKeys().length + currentPlan.weeks.length;
+    const cols = getVisibleColKeys().length + 1;
     if (!currentPlan.tasks || currentPlan.tasks.length === 0) {
       tbody.innerHTML = html`<tr><td colspan="${cols}" style="text-align:center; padding:30px; color: var(--cp-text-subtle);">No scheduled tasks in project. Drag issues from the Backlog Tray or click "+ Add Task / Issue" to schedule.</td></tr>`;
       drawTimeline();
@@ -9007,6 +9238,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (virtualFrame) return;
     virtualFrame = requestAnimationFrame(() => {
       virtualFrame = 0;
+      maybeExtendRange();
       updateVirtualRows();
     });
   }
@@ -9038,6 +9270,15 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     drawTimeline(true);
     settleUndo();
+  }
+  function applyFrozen(tr) {
+    const offsets = frozenOffsets();
+    const keys = getVisibleColKeys();
+    [...tr.children].filter((td) => !td.classList.contains("timeline-track-cell")).forEach((td, i) => {
+      if (keys[i] === void 0) return;
+      td.classList.add("td-frozen");
+      td.style.left = offsets[keys[i]] + "px";
+    });
   }
   function buildTaskRow(task, rowIdx) {
     const isEpic = Boolean(task.isEpic || task.hierarchyLevel === 1);
@@ -9116,7 +9357,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       rowColsHtml = html`${rowColsHtml}<td class="td-data td-story-cell" style="width:${columnWidths.story}px;" title="${task.story || ""}">${task.story || (isEpic ? "Epic" : isSub ? "Subtask" : "Task")}</td>`;
     }
     if (visibleKeys.includes("task")) {
-      rowColsHtml = html`${rowColsHtml}<td class="td-data td-task-summary" style="width:${columnWidths.task}px;">${summaryHtml}</td>`;
+      rowColsHtml = html`${rowColsHtml}<td class="td-data td-task-summary" style="width:${colWidth("task")}px;">${summaryHtml}</td>`;
     }
     if (visibleKeys.includes("resource")) {
       rowColsHtml = html`${rowColsHtml}<td class="td-data td-resource-cell" style="width:${columnWidths.resource}px;"></td>`;
@@ -9159,6 +9400,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     `;
     }
     tr.innerHTML = html`${rowColsHtml}`;
+    applyFrozen(tr);
     if (visibleKeys.includes("resource")) {
       const resourceTd = tr.querySelector(".td-resource-cell");
       if (resourceTd) {
@@ -9490,9 +9732,7 @@ Click to manage or assign.`;
       }
     });
     const trackTd = document.createElement("td");
-    trackTd.colSpan = currentPlan.weeks.length;
     trackTd.className = "timeline-track-cell";
-    trackTd.style.width = currentPlan.weeks.length * WEEK_WIDTH + "px";
     setupTrackDrop(trackTd, rowIdx);
     const hit = createBarHit(task, isEpic);
     if (hit) trackTd.appendChild(hit);
@@ -9530,9 +9770,9 @@ Click to manage or assign.`;
   }
   function setupTrackDrop(trackTd, rowIdx) {
     let badge = null;
-    const weekAt = (e) => {
-      const x = e.clientX - trackTd.getBoundingClientRect().left;
-      return Math.max(0, Math.min(currentPlan.weeks.length - 1, Math.floor(x / WEEK_WIDTH)));
+    const dayAt = (e) => {
+      const d = dateAt(e.clientX - trackTd.getBoundingClientRect().left, originIso(), dayPx());
+      return zoomById(zoomId).snap === "week" ? mondayOf(d) : d;
     };
     const clear = () => {
       trackTd.classList.remove("drag-over-cell");
@@ -9541,15 +9781,15 @@ Click to manage or assign.`;
     };
     trackTd.addEventListener("dragover", (e) => {
       e.preventDefault();
-      const i = weekAt(e);
+      const d = dayAt(e);
       trackTd.classList.add("drag-over-cell");
       if (!badge) {
         badge = document.createElement("div");
         badge.className = "drop-slot-badge";
         trackTd.appendChild(badge);
       }
-      badge.style.left = i * WEEK_WIDTH + 4 + "px";
-      badge.textContent = `\u{1F4C5} ${currentPlan.weeks[i].weekKey}`;
+      badge.style.left = xForDate(d, originIso(), dayPx()) + 4 + "px";
+      badge.textContent = `\u{1F4C5} ${d}`;
     });
     trackTd.addEventListener("dragleave", (e) => {
       if (!trackTd.contains(e.relatedTarget)) clear();
@@ -9557,7 +9797,7 @@ Click to manage or assign.`;
     trackTd.addEventListener("drop", async (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const i = weekAt(e);
+      const d = dayAt(e);
       clear();
       const dataStr = e.dataTransfer.getData("text/plain");
       if (!dataStr) return;
@@ -9565,18 +9805,13 @@ Click to manage or assign.`;
       if (data.fromReorder) {
         await callResolver2("reorderWbsTasks", { taskId: data.taskId, targetIndex: rowIdx });
       } else {
-        await callResolver2("scheduleBacklogTask", {
-          taskId: data.taskId,
-          startWeek: currentPlan.weeks[i].weekKey,
-          spanWeeks: 3,
-          targetIndex: rowIdx
-        });
+        await callResolver2("scheduleBacklogTask", { taskId: data.taskId, startWeek: "", startDate: d, spanWeeks: 3, targetIndex: rowIdx });
       }
       await loadProjectPlan();
     });
   }
   function positionBarHit(hit, task) {
-    const r = barRect(task, originIso(), DAY_PX, 0, ROW_H, BAR_H);
+    const r = barRect(task, originIso(), dayPx(), 0, ROW_H, BAR_H);
     if (!r) {
       hit.hidden = true;
       return;
@@ -9676,7 +9911,7 @@ Click to manage or assign.`;
         isDraggingBar = true;
       }
       if (!moved) return;
-      const s = snapDays(dx, DAY_PX, ev.altKey ? "week" : "day");
+      const s = snapDays(dx, dayPx(), ev.altKey ? "day" : zoomById(zoomId).snap);
       if (s === shift && timeline.drag) return;
       shift = s;
       const moves = previewMoves(currentPlan.tasks, key, mode === "right" ? 0 : s, mode === "left" ? 0 : s, today);
@@ -9729,6 +9964,7 @@ Click to manage or assign.`;
     window.addEventListener("mouseup", onUp);
   }
   var gridRoot = null;
+  var lastGridKey = null;
   var toolbarTimer = 0;
   var DOUBLE_CLICK_MS = 250;
   var gridFocus = { row: 0, col: 0 };
@@ -9755,6 +9991,7 @@ Click to manage or assign.`;
       if (!cell2) return;
       gridFocus = { row: Number(cell2.parentElement.dataset.row), col: Number(cell2.dataset.col) };
       const key = rowTasks[gridFocus.row]?.task.key || null;
+      lastGridKey = key;
       timeline.focusKey = key;
       timeline.focusElement = cell2;
       document.querySelectorAll("#ganttBody tr.is-grid-focused").forEach((r) => r.classList.remove("is-grid-focused"));
@@ -9837,8 +10074,8 @@ Click to manage or assign.`;
     else if (top + ROW_H > viewBottom) wrapper.scrollTop = top + ROW_H - wrapper.clientHeight + flagH;
     const t = rowTasks[i] && rowTasks[i].task;
     if (t && t.startDate) {
-      const x = layout.trackLeft + xForDate(t.startDate, originIso(), DAY_PX);
-      if (x < wrapper.scrollLeft + 40 || x > wrapper.scrollLeft + wrapper.clientWidth - 80) wrapper.scrollLeft = Math.max(0, x - 240);
+      const x = layout.trackLeft + xForDate(t.startDate, originIso(), dayPx());
+      if (x < wrapper.scrollLeft + layout.trackLeft + 40 || x > wrapper.scrollLeft + wrapper.clientWidth - 80) wrapper.scrollLeft = Math.max(0, x - layout.trackLeft - 120);
     }
   }
   function setGridFocus(row, col) {
@@ -9874,10 +10111,10 @@ Click to manage or assign.`;
       openTaskDetailModal(task.key);
     }
   }
-  function showShiftPreview(key, startShift, endShift, label) {
+  function showShiftPreview(key, startShift, endShift, label2) {
     const moves = previewMoves(currentPlan.tasks, key, startShift, endShift, todayIso());
     const mine = moves.get(key);
-    timeline.drag = { key, moves, label: label(mine) };
+    timeline.drag = { key, moves, label: label2(mine) };
     const strip = document.getElementById("writePreview");
     if (strip) {
       strip.textContent = describePendingWrites(currentPlan.tasks, moves, key).text;
@@ -10053,6 +10290,9 @@ Click to manage or assign.`;
   }
   function initKeyboard() {
     initGrid();
+    document.querySelectorAll("#zoomGroup [data-zoom]").forEach((b) => b.addEventListener("click", () => setZoom(b.dataset.zoom)));
+    document.getElementById("btnCompactColumns")?.addEventListener("click", () => setCompactColumns(!compactColumns));
+    updateZoomButtons();
     const box = document.getElementById("shortcutsToggle");
     if (box) {
       try {
@@ -10142,9 +10382,9 @@ Click to manage or assign.`;
     const isSub = task.isSubtask || task.hierarchyLevel === -1;
     const levelTitle = isEpic ? "\u{1F7EA} Epic Roadmap Level" : isSub ? "\u21B3 Subtask Execution Level" : "\u{1F537} Story / Task Plan Level";
     const dep = task.dependency;
-    const depInfo = dep && dep.predecessorKey ? html`<div style="margin-top:4px;">🔗 ${dep.earliestStartReason || `Waits for ${dep.predecessorKey} at ${dep.triggerPercent}%`}</div>${dep.isViolated ? html`<div style="color: var(--cp-text-danger);">⚠ ${dep.fixSuggestion || dep.violationReason || "Starts too early"}</div>` : ""}` : "";
-    const rollupInfo = isEpic && task.rollupStats ? html`<div style="color: var(--cp-text-discovery); font-weight:600;">Rollup: ${task.childrenCount || 0} child items | Total ${task.effortHours}h</div>` : "";
-    const subInfo = !isEpic && task.subtasks && task.subtasks.length > 0 ? html`<div style="color: var(--cp-text-subtlest);">Subtasks: ${task.subtasks.length} items (${task.effortHours}h total)</div>` : "";
+    const depInfo = dep && dep.predecessorKey ? html`<div style="margin-top:4px;">🔗 ${dep.earliestStartReason || `Waits for ${dep.predecessorKey} at ${dep.triggerPercent}%`}</div>${dep.isViolated ? html`<div style="font-weight:700;">⚠ ${dep.fixSuggestion || dep.violationReason || "Starts too early"}</div>` : ""}` : "";
+    const rollupInfo = isEpic && task.rollupStats ? html`<div style="font-weight:600;">Rollup: ${task.childrenCount || 0} child items | Total ${task.effortHours}h</div>` : "";
+    const subInfo = !isEpic && task.subtasks && task.subtasks.length > 0 ? html`<div>Subtasks: ${task.subtasks.length} items (${task.effortHours}h total)</div>` : "";
     const contributing = getTaskContributingResources(task);
     let assigneeHtml = html`<div>${isEpic ? "Epic Lead" : "Assignee"}: ${task.resource || "Unassigned"}</div>`;
     if (contributing.length > 1) {
@@ -10154,7 +10394,7 @@ Click to manage or assign.`;
     }
     const siteUrl = getJiraBaseUrl();
     tip.innerHTML = html`
-    <div style="font-size:10px; color: var(--cp-text-discovery); font-weight:700; margin-bottom:2px;">${levelTitle}</div>
+    <div style="font-size:10px; font-weight:700; margin-bottom:2px;">${levelTitle}</div>
     <div><strong><a href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer" style="color: var(--cp-text-inverse); text-decoration:underline;">${task.key} ↗</a>: ${task.summary}</strong></div>
     ${assigneeHtml}
     <div>Effort: ${formatEffort(task.effortHours)} | Progress: ${task.progress}% (Target: ${task.targetProgress}%)</div>

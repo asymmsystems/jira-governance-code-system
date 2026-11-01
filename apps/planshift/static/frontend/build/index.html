@@ -110,6 +110,14 @@
             <button class="btn btn-outline btn-sm" id="btnScrollEarlier" title="Scroll timeline left to earlier weeks (or press Left Arrow)">◀ Earlier</button>
             <button class="btn btn-primary btn-sm" id="btnScrollToday" title="Jump timeline view to Current Week / Today">🎯 Today</button>
             <button class="btn btn-outline btn-sm" id="btnScrollLater" title="Scroll timeline right to later weeks (or press Right Arrow)">Later ▶</button>
+            <div class="zoom-group" id="zoomGroup" role="group" aria-label="Zoom (Ctrl or Cmd with plus or minus)">
+              <button class="btn btn-outline btn-sm" type="button" data-zoom="day" aria-pressed="false">Day</button>
+              <button class="btn btn-outline btn-sm" type="button" data-zoom="week" aria-pressed="true">Week</button>
+              <button class="btn btn-outline btn-sm" type="button" data-zoom="month" aria-pressed="false">Month</button>
+              <button class="btn btn-outline btn-sm" type="button" data-zoom="quarter" aria-pressed="false">Quarter</button>
+              <button class="btn btn-outline btn-sm" type="button" data-zoom="year" aria-pressed="false">Year</button>
+            </div>
+            <button class="btn btn-outline btn-sm" type="button" id="btnCompactColumns" aria-pressed="false" title="Show only Key and Summary, so more of the timeline fits">Key and Summary only</button>
           </div>
 
           <div class="milestones-strip" id="milestonesStrip">

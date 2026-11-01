@@ -862,7 +862,8 @@ export async function scheduleBacklogTask(
   request: ScheduleBacklogRequest,
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState> {
-  const { projectKey, projectId, taskId, startWeek, spanWeeks = 3, effortHours, resource, targetIndex } = request;
+  const { projectKey, projectId, taskId, startWeek, startDate, spanWeeks = 3, effortHours, resource, targetIndex } = request;
+  if (startDate !== undefined && !isIsoDate(startDate)) throw new ValidationError('startDate', 'startDate must be a date in YYYY-MM-DD form');
   const issueId = await verifyIssueInProject(taskId, projectKey, 'taskId');
   const storage = resolveStorage(storageProvider);
   const store = openStore(storage, projectKey, projectId);
@@ -888,7 +889,9 @@ export async function scheduleBacklogTask(
     startDate: DEFAULT_WEEKS[startIdx].startDate,
     endDate: DEFAULT_WEEKS[endIdx].endDate,
     weeklyAllocations: allocations,
-    sequenceNum: sequenceForIndex(entries, taskId, targetIndex)
+    sequenceNum: sequenceForIndex(entries, taskId, targetIndex),
+    // An exact day (B-27): the drop date and whole weeks from it, anywhere on the timeline.
+    ...(startDate ? { startDate, endDate: addDays(startDate, spanWeeks * 7 - 1), ...gridFor(DEFAULT_WEEKS, startDate, addDays(startDate, spanWeeks * 7 - 1)) } : {})
   });
   void resource;
   const put = await store.putEntry(taskId, issueId, entry, current ? current.version : 0);
@@ -897,7 +900,7 @@ export async function scheduleBacklogTask(
   // Sync scheduled due date and effort back to Jira issue
   const log = new SyncLog();
   await syncTaskToJira(taskId, {
-    endDate: DEFAULT_WEEKS[endIdx].endDate,
+    endDate: entry.endDate,
     effortHours
   }, log);
 

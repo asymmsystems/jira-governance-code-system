@@ -270,6 +270,7 @@ export interface ScheduleBacklogRequest {
   projectId?: string; // from the Forge context; keys records by project id (B-09)
   taskId: string;
   startWeek: string;
+  startDate?: string; // an exact start day; the timeline is not limited to the server week list (B-27)
   spanWeeks?: number;
   effortHours?: number;
   resource?: string;

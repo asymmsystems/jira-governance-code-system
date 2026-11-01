@@ -8,7 +8,7 @@
  * CascadePlan: WorkEffort model conformance in the resolvers and the one-time record migration (B-28).
  */
 
-import { getProjectPlan, updateWbsTask, setGlobalStorageProvider, setSleepForTests, getTimelineWeeks } from '../src/index';
+import { getProjectPlan, updateWbsTask, scheduleBacklogTask, setGlobalStorageProvider, setSleepForTests, getTimelineWeeks } from '../src/index';
 import { MemStorage } from './helpers/mem-storage';
 
 const mockRequestJira = jest.fn();
@@ -185,5 +185,30 @@ describe('model 1 record migration (B-28 criterion 6)', () => {
     expect((await recordOf(storage, 'TEST-5')).parties.map((p: any) => p.partyId)).toEqual(['acc-2']);
     expect((await recordOf(storage, 'TEST-5')).assocs[0]).toMatchObject({ workEffortIdFrom: 'TEST-6', attrs: { triggerPercent: 40 } });
     expect((await recordOf(storage, 'TEST-4')).assocs.map((a: any) => a.workEffortIdFrom)).toEqual(['TEST-5', 'TEST-6']);
+  });
+});
+
+describe('scheduling at an exact date outside the server week list (B-27 criterion 2)', () => {
+  let storage: MemStorage;
+  beforeEach(() => {
+    storage = new MemStorage();
+    setGlobalStorageProvider(storage);
+    ISSUES = issues();
+    mockRequestJira.mockReset();
+    mockRequestJira.mockImplementation(async (routeStr: any) => {
+      const url = String(routeStr);
+      const lookup = url.match(/\/rest\/api\/3\/issue\/([A-Z0-9_]+)-(\d+)\?fields=project/);
+      if (lookup) return { status: 200, json: async () => ({ fields: { project: { key: lookup[1] } } }) };
+      if (url.includes('/search/jql')) return { status: 200, json: async () => ({ issues: url.includes('Epic') ? [] : ISSUES, isLast: true }) };
+      return { status: 204, json: async () => ({}) };
+    });
+  });
+
+  it('a startDate places the task on that exact day for the given weeks and writes that due date', async () => {
+    const res: any = await scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-5', startWeek: '', startDate: '2028-03-06', spanWeeks: 2 } as any);
+    const rec = await recordOf(storage, 'TEST-5');
+    expect(rec.effort).toMatchObject({ estimatedStartDate: '2028-03-06', estimatedCompletionDate: '2028-03-19' });
+    expect(res.jiraSync.writes[0].changes).toEqual([{ field: 'due date', from: null, to: '2028-03-19' }]);
+    await expect(scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-5', startWeek: '', startDate: '6 March' } as any)).rejects.toThrow(/startDate/);
   });
 });

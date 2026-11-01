@@ -23,6 +23,7 @@ import { html } from '../ui/safe-html';
 import { CanvasTimeline, ROW_H, BAR_H } from './canvas-timeline';
 import { barRect, daysBetween, visibleRange, handleOffsets, snapDays, previewMoves, xForDate } from '../ui/timeline-geometry';
 import { GRID_COLUMNS, navigate, rowCells, rowLevel, moveKey, moveAnnouncement } from '../ui/keyboard-grid';
+import { ZOOMS, zoomById, zoomStep, mondayOf, initialRange, rangeDays, extendRange, edgeToExtend, headerCells, gridLines, anchorScroll, dateAt } from '../ui/time-scale';
 
 function getJiraBaseUrl() {
   if (currentPlan && currentPlan.siteUrl) {
@@ -193,10 +194,41 @@ const ALL_COLUMNS = [
   { key: 'status', label: 'Status', icon: '🏷️', defaultWidth: 95, description: 'Workflow status' }
 ];
 function getVisibleColKeys() {
+  // Compact mode shows only Key and Summary, so the timeline gets the width (B-27).
+  if (compactColumns) return ['task'];
   return ALL_COLUMNS.map(c => c.key).filter(k => !hiddenColumns.has(k));
 }
 const COL_KEYS = ALL_COLUMNS.map(c => c.key);
-const WEEK_WIDTH = 85;
+// Time axis (B-27): zoom level, an open-ended range computed in the browser, and compact columns.
+const ZOOM_KEY = 'cascadeplan_zoom';
+const COMPACT_KEY = 'cascadeplan_compact_columns';
+const COMPACT_TASK_WIDTH = 220;
+const EXTEND_WEEKS = 26;
+function readPref(key, fallback) {
+  try { return localStorage.getItem(key) || fallback; } catch (e) { return fallback; }
+}
+function writePref(key, value) {
+  try { localStorage.setItem(key, value); } catch (e) {}
+}
+let zoomId = readPref(ZOOM_KEY, 'week');
+let compactColumns = readPref(COMPACT_KEY, 'off') === 'on';
+let timeRange = null;
+function dayPx() {
+  return zoomById(zoomId).dayPx;
+}
+function trackWidth() {
+  return timeRange ? rangeDays(timeRange) * dayPx() : 0;
+}
+function colWidth(k) {
+  return compactColumns && k === 'task' ? COMPACT_TASK_WIDTH : columnWidths[k];
+}
+/** Left offset of each frozen data column. */
+function frozenOffsets() {
+  const out = {};
+  let x = 0;
+  getVisibleColKeys().forEach(k => { out[k] = x; x += colWidth(k); });
+  return out;
+}
 const expandedTasks = new Set();
 let currentHierarchyView = 'all'; // 'all' | 'epics' | 'stories'
 
@@ -356,6 +388,12 @@ function setupEventListeners() {
   // Dismiss Modals and Popovers on Escape Key
   window.addEventListener('keydown', (e) => {
     const inField = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable);
+    // Ctrl or Cmd with plus or minus zooms the timeline while focus is in the planner (B-27).
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && ['=', '+', '-', '_'].includes(e.key) && !inField && !openModal()) {
+      e.preventDefault();
+      setZoom(zoomStep(zoomId, e.key === '-' || e.key === '_' ? -1 : 1));
+      return;
+    }
     // Ctrl+Z / Ctrl+Shift+Z (Cmd on macOS) in the planner; text fields keep their own undo (WCAG 2.1.4).
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'z' || e.key === 'Z') && !inField && !openModal()) {
       e.preventDefault();
@@ -442,14 +480,14 @@ function setupEventListeners() {
   if (btnEarlier) {
     btnEarlier.addEventListener('click', () => {
       const wrapper = document.getElementById('ganttWrapper');
-      if (wrapper) wrapper.scrollBy({ left: -(WEEK_WIDTH * 3), behavior: 'smooth' });
+      if (wrapper) setTimelineScrollLeft(wrapper.scrollLeft - (wrapper.clientWidth - layout.trackLeft) / 2);
     });
   }
   const btnLater = document.getElementById('btnScrollLater');
   if (btnLater) {
     btnLater.addEventListener('click', () => {
       const wrapper = document.getElementById('ganttWrapper');
-      if (wrapper) wrapper.scrollBy({ left: (WEEK_WIDTH * 3), behavior: 'smooth' });
+      if (wrapper) setTimelineScrollLeft(wrapper.scrollLeft + (wrapper.clientWidth - layout.trackLeft) / 2);
     });
   }
   const btnToday = document.getElementById('btnScrollToday');
@@ -709,21 +747,10 @@ function initGanttScrollSync() {
 
 function scrollToToday() {
   const wrapper = document.getElementById('ganttWrapper');
-  if (!wrapper || !currentPlan || !currentPlan.weeks) return;
-
-  const visibleKeys = getVisibleColKeys();
-  let wbsWidth = 0;
-  visibleKeys.forEach(k => {
-    wbsWidth += (columnWidths[k] || 100);
-  });
-
-  const curWkIdx = currentPlan.weeks.findIndex(w => w.isCurrentWeek);
-  const activeIdx = curWkIdx >= 0 ? curWkIdx : Math.floor(currentPlan.weeks.length / 2);
-  const todayX = wbsWidth + (activeIdx * WEEK_WIDTH);
-  const viewportWidth = wrapper.clientWidth;
-  const targetScroll = Math.max(0, todayX - (viewportWidth / 2) + (WEEK_WIDTH / 2));
-
-  wrapper.scrollTo({ left: targetScroll, behavior: 'smooth' });
+  if (!wrapper || !timeRange) return;
+  const vw = wrapper.clientWidth - layout.trackLeft;
+  // A direct jump: a smooth scroll is cut short by the top scrollbar mirror (B-27).
+  setTimelineScrollLeft(Math.max(0, anchorScroll(todayIso(), vw / 2, timeRange.start, dayPx())));
 }
 
 function initGanttPan() {
@@ -995,8 +1022,10 @@ function renderPlan() {
 
   renderMilestones();
   renderBacklogTray();
+  coverPlanDates();
   renderTimelineHeader();
   renderTimelineRows();
+  applyTimeAxis();
   setTimeout(syncGanttScrollWidth, 50);
   if (!hasInitialScrolledToToday) {
     hasInitialScrolledToToday = true;
@@ -1085,13 +1114,15 @@ function renderBacklogTray() {
 function renderTimelineHeader() {
   const tr = document.getElementById('ganttHeaderRow');
   tr.innerHTML = '';
+  const offsets = frozenOffsets();
 
   getVisibleColKeys().forEach(k => {
     const colDef = ALL_COLUMNS.find(c => c.key === k) || { label: k, locked: false };
     const th = document.createElement('th');
-    th.className = 'th-col';
-    th.style.width = columnWidths[k] + 'px';
-    th.style.minWidth = columnWidths[k] + 'px';
+    th.className = 'th-col th-frozen';
+    th.style.width = colWidth(k) + 'px';
+    th.style.minWidth = colWidth(k) + 'px';
+    th.style.left = offsets[k] + 'px';
 
     th.innerHTML = html`
       <div class="th-content-wrap">
@@ -1116,16 +1147,121 @@ function renderTimelineHeader() {
     tr.appendChild(th);
   });
 
-  // Weekly Sprint Columns
-  currentPlan.weeks.forEach((w, idx) => {
-    const th = document.createElement('th');
-    th.className = 'week-header-cell' + (w.isCurrentWeek ? ' current-week' : '');
-    th.innerHTML = html`
-      <div class="week-date">${w.weekKey}</div>
-      <div class="week-sprint">${w.sprintName}</div>
-    `;
-    tr.appendChild(th);
+  // One timeline column; its cells come from the time scale of the current zoom (B-27).
+  const th = document.createElement('th');
+  th.className = 'timeline-header-cell';
+  const strip = document.createElement('div');
+  strip.className = 'time-strip';
+  th.appendChild(strip);
+  tr.appendChild(th);
+  renderTimeStrip();
+}
+
+function renderTimeStrip() {
+  const strip = document.querySelector('#ganttHeaderRow .time-strip');
+  if (!strip || !timeRange) return;
+  const cells = headerCells(timeRange, zoomById(zoomId), todayIso()).map(c => {
+    const el = document.createElement('div');
+    el.className = 'time-cell' + (c.current ? ' current' : '');
+    el.style.left = c.x + 'px';
+    el.style.width = c.w + 'px';
+    el.textContent = c.label;
+    el.title = c.key;
+    return el;
   });
+  strip.replaceChildren(...cells);
+}
+
+/** Makes the range cover every scheduled date with a margin, before the first render. */
+function coverPlanDates() {
+  if (!timeRange) timeRange = initialRange(todayIso());
+  const dates = (currentPlan?.tasks || []).flatMap(t => [t.startDate, t.endDate]).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d || ''));
+  if (!dates.length) return;
+  const min = dates.reduce((m, d) => (d < m ? d : m));
+  const max = dates.reduce((m, d) => (d > m ? d : m));
+  while (daysBetween(timeRange.start, min) < 28) timeRange = extendRange(timeRange, 'before', EXTEND_WEEKS);
+  while (daysBetween(max, timeRange.end) < 28) timeRange = extendRange(timeRange, 'after', EXTEND_WEEKS);
+}
+
+/** Width, header, bar hit positions and canvas after a zoom or range change. */
+function applyTimeAxis() {
+  const table = document.getElementById('ganttTable');
+  const wrapper = document.getElementById('ganttWrapper');
+  if (!table || !timeRange) return;
+  table.style.setProperty('--cp-track-w', trackWidth() + 'px');
+  if (wrapper) {
+    wrapper.dataset.origin = timeRange.start;
+    wrapper.dataset.dayPx = String(dayPx());
+  }
+  renderTimeStrip();
+  for (const [key, tr] of rowCache) {
+    const hit = tr.querySelector('.bar-hit');
+    const t = findTask(key);
+    if (hit && t) positionBarHit(hit, t);
+  }
+  measureLayout();
+  drawTimeline(true);
+  syncGanttScrollWidth();
+}
+
+/** Sets the timeline scroll position and the top scrollbar together, so the mirror cannot undo it. */
+function setTimelineScrollLeft(x) {
+  const w = document.getElementById('ganttWrapper');
+  const top = document.getElementById('ganttTopScrollbar');
+  w.scrollLeft = x;
+  if (top) top.scrollLeft = w.scrollLeft;
+}
+
+/** Scrolling near either edge adds time there; the view does not jump (B-27 criterion 2). */
+function maybeExtendRange() {
+  const w = document.getElementById('ganttWrapper');
+  if (!w || !timeRange) return;
+  const edge = edgeToExtend(w.scrollLeft, w.clientWidth - layout.trackLeft, trackWidth());
+  if (edge === 'before') {
+    const shift = EXTEND_WEEKS * 7 * dayPx();
+    timeRange = extendRange(timeRange, 'before', EXTEND_WEEKS);
+    const x = w.scrollLeft + shift;
+    applyTimeAxis();
+    setTimelineScrollLeft(x);
+  } else if (edge === 'after') {
+    timeRange = extendRange(timeRange, 'after', EXTEND_WEEKS);
+    applyTimeAxis();
+  }
+}
+
+/** Changes the zoom and keeps the focused issue (or the date in the middle) in view (B-27 criterion 1). */
+function setZoom(id) {
+  const w = document.getElementById('ganttWrapper');
+  if (!w || !timeRange || id === zoomId) return;
+  const vw = w.clientWidth - layout.trackLeft;
+  const key = lastGridKey || pinnedDependencyTaskId;
+  const t = key && findTask(key);
+  const vx = t && t.startDate ? vw / 3 : vw / 2;
+  const anchor = t && t.startDate ? t.startDate : dateAt(w.scrollLeft + vx, timeRange.start, dayPx());
+  zoomId = id;
+  writePref(ZOOM_KEY, id);
+  const need = Math.ceil(vw / dayPx()) + 7;
+  while (daysBetween(timeRange.start, anchor) < need) timeRange = extendRange(timeRange, 'before', EXTEND_WEEKS);
+  while (daysBetween(anchor, timeRange.end) < need) timeRange = extendRange(timeRange, 'after', EXTEND_WEEKS);
+  applyTimeAxis();
+  setTimelineScrollLeft(Math.max(0, anchorScroll(anchor, vx, timeRange.start, dayPx())));
+  updateZoomButtons();
+  drawTimeline(true);
+}
+
+function updateZoomButtons() {
+  document.querySelectorAll('#zoomGroup [data-zoom]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.zoom === zoomId)));
+  const compact = document.getElementById('btnCompactColumns');
+  if (compact) compact.setAttribute('aria-pressed', String(compactColumns));
+}
+
+function setCompactColumns(on) {
+  compactColumns = on;
+  writePref(COMPACT_KEY, on ? 'on' : 'off');
+  updateZoomButtons();
+  renderTimelineHeader();
+  renderTimelineRows();
+  applyTimeAxis();
 }
 
 function setupColumnResizer(resizer, colKey) {
@@ -1715,10 +1851,8 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
   let inheritedEpic = isAnchorEpic ? anchorTask.summary : (anchorTask.epic || '');
   let inheritedEpicKey = isAnchorEpic ? anchorTask.key : (anchorTask.epicKey || '');
   const defaultStartWk = anchorTask.startWeek || (currentPlan.weeks.find(w => w.isCurrentWeek)?.weekKey || currentPlan.weeks[0]?.weekKey);
-  const startIdx = Math.max(0, currentPlan.weeks.findIndex(w => w.weekKey === defaultStartWk));
-  const span = 3;
-  const barLeft = startIdx * WEEK_WIDTH + 4;
-  const barWidth = Math.max(WEEK_WIDTH - 8, span * WEEK_WIDTH - 8);
+  const barLeft = xForDate(anchorTask.startDate || todayIso(), originIso(), dayPx());
+  const barWidth = 21 * dayPx();
 
   const creationTr = document.createElement('tr');
   creationTr.className = 'inline-creation-row';
@@ -1739,7 +1873,7 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
   }
   // task is always visible (locked)
   cellsHtml = html`${cellsHtml}
-    <td class="td-data td-task-summary" style="width:${columnWidths.task}px;">
+    <td class="td-data td-task-summary" style="width:${colWidth('task')}px;">
       <div style="display:flex; align-items:center; gap:6px; padding-left:14px;">
         <input type="text" class="inline-create-input" placeholder="Type new task summary & press Enter to save..." autocomplete="off" />
         <button class="btn-inline-save">Add</button>
@@ -1775,13 +1909,14 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
     cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.status}px; text-align:center;"><span class="badge badge-neutral">NOT_STARTED</span></td>`;
   }
   cellsHtml = html`${cellsHtml}
-    <td class="timeline-track-cell" colspan="${currentPlan.weeks.length}" style="width:${currentPlan.weeks.length * WEEK_WIDTH}px;">
+    <td class="timeline-track-cell">
       <div class="ghost-timeline-bar" style="left:${barLeft}px; width:${barWidth}px;">
         <span>➕ New Task Preview (3 wks)</span>
       </div>
     </td>
   `;
   creationTr.innerHTML = html`${cellsHtml}`;
+  applyFrozen(creationTr);
 
   rowElement.after(creationTr);
   updateVirtualRows();
@@ -1942,7 +2077,6 @@ function updateDynamicParentRollups(changedKey) {
 // Canvas timeline (B-13). Only the rows in the viewport plus a buffer are DOM rows; bars, arrows,
 // the grid and the today line are drawn on one canvas; each visible bar has a transparent hit
 // element that takes focus, hover, drag and resize.
-const DAY_PX = WEEK_WIDTH / 7;
 const ROW_BUFFER = 10;
 let timeline = null;
 let rowTasks = [];        // { task, rowIdx } in display order
@@ -1964,7 +2098,7 @@ function findTask(key) {
 }
 
 function originIso() {
-  return currentPlan?.weeks?.[0]?.startDate || todayIso();
+  return timeRange ? timeRange.start : todayIso();
 }
 
 /** Content y of the top of display row i (rows are ROW_H high; an open inline row adds its height). */
@@ -1974,7 +2108,7 @@ function rowTop(i) {
 
 function measureLayout() {
   const table = document.getElementById('ganttTable');
-  const firstWeek = document.querySelector('#ganttHeaderRow .week-header-cell');
+  const firstWeek = document.querySelector('#ganttHeaderRow .timeline-header-cell');
   layout.headerH = table && table.tHead ? table.tHead.offsetHeight : 0;
   layout.trackLeft = firstWeek ? firstWeek.offsetLeft : 0;
   layout.bodyStart = topDropRowEl ? table.offsetTop + topDropRowEl.offsetTop + topDropRowEl.offsetHeight : 0;
@@ -1988,6 +2122,14 @@ function measureLayout() {
   }
 }
 
+// Unit boundaries are computed once per range and zoom; a draw only filters them (B-27).
+let gridCache = { key: '', xs: [] };
+function gridXBetween(fromX, toX) {
+  const key = `${timeRange.start}|${timeRange.end}|${zoomId}`;
+  if (gridCache.key !== key) gridCache = { key, xs: gridLines(timeRange, zoomById(zoomId), -Infinity, Infinity) };
+  return gridCache.xs.filter(x => x >= fromX && x <= toX);
+}
+
 function drawTimeline(sync) {
   if (!timeline || !currentPlan) return;
   timeline.activeKey = hoveredTaskId || pinnedDependencyTaskId;
@@ -1997,11 +2139,12 @@ function drawTimeline(sync) {
     last: renderedRange.last,
     rowTop,
     originIso: originIso(),
-    dayPx: DAY_PX,
+    dayPx: dayPx(),
     trackLeft: layout.trackLeft,
-    trackWidth: (currentPlan.weeks || []).length * WEEK_WIDTH,
+    trackWidth: trackWidth(),
     headerH: layout.headerH,
-    todayIso: todayIso()
+    todayIso: todayIso(),
+    gridX: gridXBetween
   });
   if (sync) timeline.draw(); else timeline.requestDraw();
 }
@@ -2045,7 +2188,7 @@ function renderTimelineRows() {
   renderedRange = { first: 0, last: -1 };
   topDropRowEl = topSpacer = bottomSpacer = null;
   if (gridRoot) gridRoot.replaceChildren();
-  const cols = getVisibleColKeys().length + currentPlan.weeks.length;
+  const cols = getVisibleColKeys().length + 1;
 
   if (!currentPlan.tasks || currentPlan.tasks.length === 0) {
     tbody.innerHTML = html`<tr><td colspan="${cols}" style="text-align:center; padding:30px; color: var(--cp-text-subtle);">No scheduled tasks in project. Drag issues from the Backlog Tray or click "+ Add Task / Issue" to schedule.</td></tr>`;
@@ -2127,6 +2270,7 @@ function scheduleVirtualRows() {
   if (virtualFrame) return;
   virtualFrame = requestAnimationFrame(() => {
     virtualFrame = 0;
+    maybeExtendRange();
     updateVirtualRows();
   });
 }
@@ -2164,6 +2308,17 @@ function applyPlanInPlace(plan) {
   settleUndo();
 }
 
+
+/** Data cells stay in place while the timeline scrolls (B-27 criterion 5). */
+function applyFrozen(tr) {
+  const offsets = frozenOffsets();
+  const keys = getVisibleColKeys();
+  [...tr.children].filter(td => !td.classList.contains('timeline-track-cell')).forEach((td, i) => {
+    if (keys[i] === undefined) return;
+    td.classList.add('td-frozen');
+    td.style.left = offsets[keys[i]] + 'px';
+  });
+}
 
 /** Builds one task row: data cells plus the timeline cell with the bar hit element. */
 function buildTaskRow(task, rowIdx) {
@@ -2257,7 +2412,7 @@ function buildTaskRow(task, rowIdx) {
     rowColsHtml = html`${rowColsHtml}<td class="td-data td-story-cell" style="width:${columnWidths.story}px;" title="${task.story || ''}">${task.story || (isEpic ? 'Epic' : (isSub ? 'Subtask' : 'Task'))}</td>`;
   }
   if (visibleKeys.includes('task')) {
-    rowColsHtml = html`${rowColsHtml}<td class="td-data td-task-summary" style="width:${columnWidths.task}px;">${summaryHtml}</td>`;
+    rowColsHtml = html`${rowColsHtml}<td class="td-data td-task-summary" style="width:${colWidth('task')}px;">${summaryHtml}</td>`;
   }
   if (visibleKeys.includes('resource')) {
     rowColsHtml = html`${rowColsHtml}<td class="td-data td-resource-cell" style="width:${columnWidths.resource}px;"></td>`;
@@ -2302,6 +2457,7 @@ function buildTaskRow(task, rowIdx) {
     `;
   }
   tr.innerHTML = html`${rowColsHtml}`;
+  applyFrozen(tr);
 
   // Interactive Scalable Resource Selection (Typeahead Picker & Subtask Rollup)
   if (visibleKeys.includes('resource')) {
@@ -2659,9 +2815,7 @@ function buildTaskRow(task, rowIdx) {
 
   // Timeline cell: drops land on the week under the pointer; the bar itself is drawn on the canvas.
   const trackTd = document.createElement('td');
-  trackTd.colSpan = currentPlan.weeks.length;
   trackTd.className = 'timeline-track-cell';
-  trackTd.style.width = (currentPlan.weeks.length * WEEK_WIDTH) + 'px';
   setupTrackDrop(trackTd, rowIdx);
   const hit = createBarHit(task, isEpic);
   if (hit) trackTd.appendChild(hit);
@@ -2703,9 +2857,10 @@ function setupDropTargetRow(rowEl, targetIndex) {
 /** Drop from the backlog or a row drag onto the timeline: the week comes from the pointer x (B-03). */
 function setupTrackDrop(trackTd, rowIdx) {
   let badge = null;
-  const weekAt = (e) => {
-    const x = e.clientX - trackTd.getBoundingClientRect().left;
-    return Math.max(0, Math.min(currentPlan.weeks.length - 1, Math.floor(x / WEEK_WIDTH)));
+  // The day under the pointer; at Month zoom and above it snaps to the Monday (B-27).
+  const dayAt = (e) => {
+    const d = dateAt(e.clientX - trackTd.getBoundingClientRect().left, originIso(), dayPx());
+    return zoomById(zoomId).snap === 'week' ? mondayOf(d) : d;
   };
   const clear = () => {
     trackTd.classList.remove('drag-over-cell');
@@ -2714,15 +2869,15 @@ function setupTrackDrop(trackTd, rowIdx) {
   };
   trackTd.addEventListener('dragover', (e) => {
     e.preventDefault();
-    const i = weekAt(e);
+    const d = dayAt(e);
     trackTd.classList.add('drag-over-cell');
     if (!badge) {
       badge = document.createElement('div');
       badge.className = 'drop-slot-badge';
       trackTd.appendChild(badge);
     }
-    badge.style.left = (i * WEEK_WIDTH + 4) + 'px';
-    badge.textContent = `📅 ${currentPlan.weeks[i].weekKey}`;
+    badge.style.left = (xForDate(d, originIso(), dayPx()) + 4) + 'px';
+    badge.textContent = `📅 ${d}`;
   });
   trackTd.addEventListener('dragleave', (e) => {
     if (!trackTd.contains(e.relatedTarget)) clear();
@@ -2731,7 +2886,7 @@ function setupTrackDrop(trackTd, rowIdx) {
     e.preventDefault();
     // The row also listens for drops; one drop must send exactly one schedule call (B-03).
     e.stopPropagation();
-    const i = weekAt(e);
+    const d = dayAt(e);
     clear();
     const dataStr = e.dataTransfer.getData('text/plain');
     if (!dataStr) return;
@@ -2739,12 +2894,7 @@ function setupTrackDrop(trackTd, rowIdx) {
     if (data.fromReorder) {
       await callResolver('reorderWbsTasks', { taskId: data.taskId, targetIndex: rowIdx });
     } else {
-      await callResolver('scheduleBacklogTask', {
-        taskId: data.taskId,
-        startWeek: currentPlan.weeks[i].weekKey,
-        spanWeeks: 3,
-        targetIndex: rowIdx
-      });
+      await callResolver('scheduleBacklogTask', { taskId: data.taskId, startWeek: '', startDate: d, spanWeeks: 3, targetIndex: rowIdx });
     }
     await loadProjectPlan();
   });
@@ -2752,7 +2902,7 @@ function setupTrackDrop(trackTd, rowIdx) {
 
 /** Places a hit element over its bar and names it for assistive technology. */
 function positionBarHit(hit, task) {
-  const r = barRect(task, originIso(), DAY_PX, 0, ROW_H, BAR_H);
+  const r = barRect(task, originIso(), dayPx(), 0, ROW_H, BAR_H);
   if (!r) {
     hit.hidden = true;
     return;
@@ -2845,7 +2995,8 @@ function createBarHit(task, isEpic) {
 }
 
 /**
- * Drag (move) or resize (left, right) of a bar. Snaps to days; hold Alt for whole weeks. Dependents
+ * Drag (move) or resize (left, right) of a bar. Snaps to days at Day and Week zoom and to weeks above
+ * that; hold Alt for days at any zoom (B-27). Dependents
  * move live as a preview from the same schedule engine as the server, with dashed outlines at their
  * old positions. A drop sends one updateWbsTask call with exact dates and uses the plan it returns.
  */
@@ -2868,7 +3019,7 @@ function startBarPointerEdit(e, key, mode, hit) {
       isDraggingBar = true;
     }
     if (!moved) return;
-    const s = snapDays(dx, DAY_PX, ev.altKey ? 'week' : 'day');
+    const s = snapDays(dx, dayPx(), ev.altKey ? 'day' : zoomById(zoomId).snap);
     if (s === shift && timeline.drag) return;
     shift = s;
     const moves = previewMoves(currentPlan.tasks, key, mode === 'right' ? 0 : s, mode === 'left' ? 0 : s, today);
@@ -2928,6 +3079,7 @@ function startBarPointerEdit(e, key, mode, hit) {
 // Keyboard and single-pointer scheduling (B-15). The treegrid lives in the canvas fallback content:
 // focusable and accessible, no visual box, and drawFocusIfNeeded draws the native focus ring.
 let gridRoot = null;
+let lastGridKey = null; // issue that last had grid focus; a toolbar click does not clear it (B-27)
 let toolbarTimer = 0;
 const DOUBLE_CLICK_MS = 250;
 let gridFocus = { row: 0, col: 0 };
@@ -2957,6 +3109,7 @@ function initGrid() {
     if (!cell) return;
     gridFocus = { row: Number(cell.parentElement.dataset.row), col: Number(cell.dataset.col) };
     const key = rowTasks[gridFocus.row]?.task.key || null;
+    lastGridKey = key;
     timeline.focusKey = key;
     timeline.focusElement = cell;
     document.querySelectorAll('#ganttBody tr.is-grid-focused').forEach(r => r.classList.remove('is-grid-focused'));
@@ -3043,8 +3196,8 @@ function ensureRowVisible(i) {
   else if (top + ROW_H > viewBottom) wrapper.scrollTop = top + ROW_H - wrapper.clientHeight + flagH;
   const t = rowTasks[i] && rowTasks[i].task;
   if (t && t.startDate) {
-    const x = layout.trackLeft + xForDate(t.startDate, originIso(), DAY_PX);
-    if (x < wrapper.scrollLeft + 40 || x > wrapper.scrollLeft + wrapper.clientWidth - 80) wrapper.scrollLeft = Math.max(0, x - 240);
+    const x = layout.trackLeft + xForDate(t.startDate, originIso(), dayPx());
+    if (x < wrapper.scrollLeft + layout.trackLeft + 40 || x > wrapper.scrollLeft + wrapper.clientWidth - 80) wrapper.scrollLeft = Math.max(0, x - layout.trackLeft - 120);
   }
 }
 
@@ -3281,6 +3434,9 @@ async function saveDependency() {
 
 function initKeyboard() {
   initGrid();
+  document.querySelectorAll('#zoomGroup [data-zoom]').forEach(b => b.addEventListener('click', () => setZoom(b.dataset.zoom)));
+  document.getElementById('btnCompactColumns')?.addEventListener('click', () => setCompactColumns(!compactColumns));
+  updateZoomButtons();
   const box = document.getElementById('shortcutsToggle');
   if (box) {
     try { box.checked = localStorage.getItem(SHORTCUT_KEY) !== 'off'; } catch (e) {}
@@ -3349,6 +3505,7 @@ function onShortcut(e, inField) {
 }
 
 // Rich Tooltip Helpers
+/** The tooltip has a dark background: every line uses inverse text (contrast); a warning has a sign, not a colour. */
 function showTaskTooltip(e, task) {
   const tip = document.getElementById('globalTooltip');
   const isEpic = task.isEpic || task.hierarchyLevel === 1;
@@ -3357,13 +3514,13 @@ function showTaskTooltip(e, task) {
 
   const dep = task.dependency;
   const depInfo = dep && dep.predecessorKey
-    ? html`<div style="margin-top:4px;">🔗 ${dep.earliestStartReason || `Waits for ${dep.predecessorKey} at ${dep.triggerPercent}%`}</div>${dep.isViolated ? html`<div style="color: var(--cp-text-danger);">⚠ ${dep.fixSuggestion || dep.violationReason || 'Starts too early'}</div>` : ''}`
+    ? html`<div style="margin-top:4px;">🔗 ${dep.earliestStartReason || `Waits for ${dep.predecessorKey} at ${dep.triggerPercent}%`}</div>${dep.isViolated ? html`<div style="font-weight:700;">⚠ ${dep.fixSuggestion || dep.violationReason || 'Starts too early'}</div>` : ''}`
     : '';
   const rollupInfo = (isEpic && task.rollupStats)
-    ? html`<div style="color: var(--cp-text-discovery); font-weight:600;">Rollup: ${task.childrenCount || 0} child items | Total ${task.effortHours}h</div>`
+    ? html`<div style="font-weight:600;">Rollup: ${task.childrenCount || 0} child items | Total ${task.effortHours}h</div>`
     : '';
   const subInfo = (!isEpic && task.subtasks && task.subtasks.length > 0)
-    ? html`<div style="color: var(--cp-text-subtlest);">Subtasks: ${task.subtasks.length} items (${task.effortHours}h total)</div>`
+    ? html`<div>Subtasks: ${task.subtasks.length} items (${task.effortHours}h total)</div>`
     : '';
 
   const contributing = getTaskContributingResources(task);
@@ -3376,7 +3533,7 @@ function showTaskTooltip(e, task) {
 
   const siteUrl = getJiraBaseUrl();
   tip.innerHTML = html`
-    <div style="font-size:10px; color: var(--cp-text-discovery); font-weight:700; margin-bottom:2px;">${levelTitle}</div>
+    <div style="font-size:10px; font-weight:700; margin-bottom:2px;">${levelTitle}</div>
     <div><strong><a href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer" style="color: var(--cp-text-inverse); text-decoration:underline;">${task.key} ↗</a>: ${task.summary}</strong></div>
     ${assigneeHtml}
     <div>Effort: ${formatEffort(task.effortHours)} | Progress: ${task.progress}% (Target: ${task.targetProgress}%)</div>

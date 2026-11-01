@@ -35,6 +35,8 @@ export interface TimelineModel {
   trackWidth: number;
   headerH: number;
   todayIso: string;
+  /** Content x of the unit boundaries (days, weeks, months...) between two track x values (B-27). */
+  gridX: (fromX: number, toX: number) => number[];
 }
 
 export interface DragPreview {
@@ -128,9 +130,10 @@ export class CanvasTimeline {
       (globalThis as any).__cpLabels = [];
     }
     const w = this.wrapper;
-    const left = Math.max(m ? m.trackLeft : 0, w.scrollLeft);
+    // The data columns are frozen (B-27): the visible track always starts at the frozen edge.
+    const left = w.scrollLeft + (m ? m.trackLeft : 0);
     const top = w.scrollTop + (m ? m.headerH : 0);
-    const cssW = Math.max(0, w.scrollLeft + w.clientWidth - left);
+    const cssW = Math.max(0, w.clientWidth - (m ? m.trackLeft : 0));
     const cssH = Math.max(0, w.clientHeight - (m ? m.headerH : 0));
     if (!m || cssW === 0 || cssH === 0) {
       this.canvas.style.display = 'none';
@@ -198,14 +201,13 @@ export class CanvasTimeline {
 
   private drawGrid(m: TimelineModel, left: number, top: number, w: number, h: number): void {
     const ctx = this.ctx;
-    const week = m.dayPx * 7;
     ctx.strokeStyle = this.c(CANVAS_TOKENS.grid);
     ctx.lineWidth = 1;
     ctx.beginPath();
-    const firstWeek = Math.floor((left - m.trackLeft) / week);
-    for (let x = m.trackLeft + firstWeek * week; x <= left + w; x += week) {
-      ctx.moveTo(Math.round(x) + 0.5, top);
-      ctx.lineTo(Math.round(x) + 0.5, top + h);
+    for (const gx of m.gridX(left - m.trackLeft, left - m.trackLeft + w)) {
+      const x = Math.round(m.trackLeft + gx) + 0.5;
+      ctx.moveTo(x, top);
+      ctx.lineTo(x, top + h);
     }
     ctx.stroke();
   }
