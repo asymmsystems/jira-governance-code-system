@@ -34,6 +34,7 @@ import {
 import { PlannerEngine } from './domain/planner-engine';
 import { describeJiraChanges, JiraFieldChange } from './domain/jira-change';
 import { applyLinkUpdate, importJiraLinks, contributorsFromNames, contributorNames, rollUpParentDates, migrateEntry } from './domain/work-effort-links';
+import { formatSubtaskSummary } from './ui/second-person';
 import { evaluateEffort, cascade, ScheduleEffort, ScheduleLink, addDays } from './domain/schedule-engine';
 import { StorageProvider } from './storage/plan-repository';
 import { PlanStore, StoredEntry, sequenceBetween } from './storage/plan-store';
@@ -216,6 +217,7 @@ export function stripJiraOwnedFields(entry: Partial<WbsTask>): Partial<WbsTask> 
   for (const f of JIRA_OWNED_FIELDS) delete out[f];
   if (out.manualProgress !== true) delete out.progress;
   if (out.manualProgress === false) delete out.manualProgress;
+  delete out.removeSubtaskAction;
   return out as Partial<WbsTask>;
 }
 
@@ -951,8 +953,8 @@ export async function createInlineTask(
   const weeksNow = getDefaultWeeks(); // computed per call (B-18)
   const currentWeekKey = weeksNow.find(w => w.isCurrentWeek)?.weekKey || weeksNow[0].weekKey;
   const {
-    projectKey, projectId, epic, epicKey, story, summary, effortHours,
-    resource = 'Unassigned', resourceAccountId, startWeek, spanWeeks = 3, targetIndex
+    projectKey, projectId, epic, epicKey, parentKey, story, summary, effortHours,
+    resource = 'Unassigned', resourceAccountId, assigneeAccountId, startWeek, spanWeeks = 3, targetIndex
   } = request;
 
   let jiraIssueId = '';
@@ -961,13 +963,22 @@ export async function createInlineTask(
   try {
     let res: any;
     const caller = getJiraCaller();
-    let body = {
+    const effectiveParent = parentKey || epicKey;
+    const effectiveAssignee = assigneeAccountId || (resourceAccountId && !resourceAccountId.startsWith('ph:') && resourceAccountId !== 'unassigned' ? resourceAccountId : undefined);
+
+    const body: any = {
       fields: {
         project: { key: projectKey },
         summary,
         issuetype: { name: 'Task' }
       }
     };
+    if (effectiveParent) {
+      body.fields.parent = { key: effectiveParent };
+    }
+    if (effectiveAssignee) {
+      body.fields.assignee = { accountId: effectiveAssignee };
+    }
 
     res = await caller.requestJira(route`/rest/api/3/issue`, {
       method: 'POST',
@@ -1402,7 +1413,7 @@ export async function updateWbsTask(
     'summary', 'epic', 'epicKey', 'story', 'effortHours', 'effortConfig', 'resource',
     'resourceAccountId', 'contributingResources', 'progress', 'targetProgress', 'manualProgress', 'status', 'startDate',
     'endDate', 'startWeek', 'endWeek', 'spanWeeks', 'weeklyAllocations', 'subtasks',
-    'dependency', 'contributors'
+    'dependency', 'contributors', 'removeSubtaskAction'
   ];
   const sanitized: Partial<WbsTask> = {};
   for (const k of ALLOWED_KEYS) {
@@ -1466,11 +1477,72 @@ export async function updateWbsTask(
   // Second people: by account id from the picker, or names matched to exactly one Jira user (B-28).
   if ((updates as any).contributors !== undefined) {
     const prev = entries.get(targetTask.key)?.contributors || [];
-    sanitized.contributors = ((updates as any).contributors as Array<{ accountId: string }>).map(c => ({
-      accountId: c.accountId, since: prev.find(p => p.accountId === c.accountId)?.since || todayIso()
-    }));
+    const nextContributors: any[] = [];
+    for (const c of (updates as any).contributors as Array<{ accountId: string; subtaskKey?: string }>) {
+      const prevMatch = prev.find(p => p.accountId === c.accountId);
+      let subtaskKey = c.subtaskKey || prevMatch?.subtaskKey;
+      if (!subtaskKey) {
+        // Criterion 1: Adding a second person creates a Jira sub-task assigned to that person
+        const userObj = live.users.find(u => u.accountId === c.accountId);
+        const displayName = userObj ? userObj.displayName : c.accountId;
+        const subtaskSummary = formatSubtaskSummary(targetTask.summary, displayName);
+        const caller = getJiraCaller();
+        for (const stType of ['Sub-task', 'Subtask']) {
+          try {
+            const body: any = {
+              fields: {
+                project: { key: projectKey },
+                parent: { key: targetTask.key },
+                summary: subtaskSummary,
+                issuetype: { name: stType },
+                assignee: { accountId: c.accountId }
+              }
+            };
+            const subRes = await caller.requestJira(route`/rest/api/3/issue`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body)
+            });
+            if (subRes && subRes.status === 201) {
+              const subData = await subRes.json();
+              subtaskKey = String(subData.key);
+              log.record(subtaskKey, ['create'], { synced: true });
+              break;
+            }
+          } catch {}
+        }
+      }
+      nextContributors.push({
+        accountId: c.accountId,
+        since: prevMatch?.since || todayIso(),
+        ...(subtaskKey ? { subtaskKey } : {})
+      });
+    }
+    sanitized.contributors = nextContributors;
   } else if (sanitized.contributingResources !== undefined) {
     sanitized.contributors = contributorsFromNames(sanitized.contributingResources || [], live.users, entries.get(targetTask.key)?.contributors || [], todayIso());
+  }
+
+  if ((updates as any).removeSubtaskAction) {
+    const { subtaskKey, action } = (updates as any).removeSubtaskAction as { subtaskKey: string; action: 'delete' | 'unassign' | 'keep' };
+    if (subtaskKey && action) {
+      const caller = getJiraCaller();
+      if (action === 'delete') {
+        const delRes = await caller.requestJira(route`/rest/api/3/issue/${subtaskKey}`, {
+          method: 'DELETE'
+        });
+        const ok = delRes && (delRes.status === 204 || delRes.status === 200);
+        log.record(subtaskKey, ['delete'], { synced: ok, error: ok ? undefined : 'Jira did not delete the subtask' });
+      } else if (action === 'unassign') {
+        const unassignRes = await caller.requestJira(route`/rest/api/3/issue/${subtaskKey}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields: { assignee: null } })
+        });
+        const ok = unassignRes && (unassignRes.status === 200 || unassignRes.status === 204);
+        log.record(subtaskKey, ['unassign'], { synced: ok, error: ok ? undefined : 'Jira did not unassign the subtask' });
+      }
+    }
   }
 
   // Derive schedule dates and weeks dynamically
@@ -1864,6 +1936,25 @@ export async function createSubtaskForResource(
     spanWeeks,
     weeklyAllocations: allocations
   });
+
+  if (parentKey && resourceAccountId) {
+    const parentEntries = await store.loadEntries();
+    const parentStored = parentEntries.get(parentKey);
+    if (parentStored) {
+      const parentId = parentStored.issueId || (await verifyIssueInProject(parentKey, projectKey, 'parentKey'));
+      const existingContributors = parentStored.contributors ? [...parentStored.contributors] : [];
+      const partyIdx = existingContributors.findIndex(c => c.accountId === resourceAccountId);
+      if (partyIdx !== -1) {
+        existingContributors[partyIdx] = { ...existingContributors[partyIdx], subtaskKey: createdKey };
+      } else {
+        existingContributors.push({ accountId: resourceAccountId, since: todayIso(), subtaskKey: createdKey });
+      }
+      await store.putEntry(parentKey, parentId, stripJiraOwnedFields({
+        ...parentStored,
+        contributors: existingContributors
+      }), parentStored.version);
+    }
+  }
 
   // Sync estimate & duedate to newly created subtask
   const log = new SyncLog();

@@ -82,7 +82,11 @@ describe('validation (B-02, INV-15)', () => {
     [{ dependency: { predecessorKey: 'bad', triggerPercent: 30 } }, 'dependency.predecessorKey'],
     [{ dependency: { predecessorKey: 'TEST-1', triggerPercent: 130 } }, 'dependency.triggerPercent'],
     [{ dependency: 'x' }, 'dependency'],
-    [{ effortConfig: 'x' }, 'effortConfig']
+    [{ effortConfig: 'x' }, 'effortConfig'],
+    [{ removeSubtaskAction: 'bad' }, 'removeSubtaskAction'],
+    [{ removeSubtaskAction: { subtaskKey: 'bad-key', action: 'delete' } }, 'removeSubtaskAction.subtaskKey'],
+    [{ removeSubtaskAction: { subtaskKey: 'TEST-1', action: 'explode' } }, 'removeSubtaskAction.action'],
+    [{ contributors: [{ accountId: 'acc-1', subtaskKey: 'bad' }] }, 'contributors.subtaskKey']
   ])('validateTaskUpdates rejects %j', (updates, field) => {
     try {
       validateTaskUpdates(updates as any);

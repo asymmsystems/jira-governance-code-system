@@ -98,6 +98,7 @@ export interface WbsTask {
   dependencies?: TaskDependency[];    // every active precedency link (B-28)
   endedLinks?: EndedLink[];           // links the user removed; their Jira links are not imported again
   contributors?: Contributor[];       // second people by account id (B-28); names are read live
+  removeSubtaskAction?: { subtaskKey: string; action: 'delete' | 'unassign' | 'keep' };
   jiraBlockedBy?: Array<{ key: string; id: string }>; // Jira "Blocks" predecessors, read live, never stored
   datesFromChildren?: boolean;        // a parent whose dates are derived from its children (B-28)
   model?: number;                     // stored record model; 1 = before B-28, read for the migration only
@@ -238,6 +239,8 @@ export interface ResourceUtilizationProfile {
 export interface InlineTaskCreateRequest {
   projectKey: string;
   projectId?: string; // from the Forge context; keys records by project id (B-09)
+  parentKey?: string;
+  assigneeAccountId?: string;
   epic?: string;
   epicKey?: string;
   story?: string;

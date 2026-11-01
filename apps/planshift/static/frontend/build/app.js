@@ -7449,6 +7449,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return isCtrlOrCmd && (e.key === "f" || e.key === "F");
   }
 
+  // src/ui/second-person.ts
+  function formatRemovalPrompt(contributorName, subtaskKey) {
+    return `Remove ${contributorName}? Do you want to delete or unassign Jira subtask ${subtaskKey}?`;
+  }
+
   // src/frontend/legacy-planner.js
   function getJiraBaseUrl() {
     if (currentPlan && currentPlan.siteUrl) {
@@ -8958,7 +8963,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         currentContainer.appendChild(chip);
       });
     }
-    async function syncTaskResources() {
+    async function syncTaskResources(extraUpdates) {
       if (isInlineDraft || !curTask) return;
       const lead = assignedResources.find((r) => r.isParent) || assignedResources[0];
       const primaryName = lead ? lead.name : "Unassigned";
@@ -8968,11 +8973,63 @@ Please see https://iframe-resizer.com/upgrade for more details.
       curTask.resource = primaryName;
       curTask.resourceAccountId = primaryAccountId;
       curTask.contributingResources = contributingList;
-      const updates = { resource: primaryName, resourceAccountId: primaryAccountId };
-      if (ids.every(Boolean)) updates.contributors = ids.map((accountId) => ({ accountId }));
+      const updates = { resource: primaryName, resourceAccountId: primaryAccountId, ...extraUpdates };
+      if (ids.every(Boolean)) updates.contributors = ids.map((accountId) => {
+        const existing = curTask.contributors?.find((c) => c.accountId === accountId);
+        return existing?.subtaskKey ? { accountId, subtaskKey: existing.subtaskKey } : { accountId };
+      });
       else updates.contributingResources = contributingList;
-      await callResolver2("updateWbsTask", { taskId: curTask.key, updates });
+      const res = await callResolver2("updateWbsTask", { taskId: curTask.key, updates });
+      if (res && res.ok && res.tasks) {
+        const refreshed = res.tasks.find((t) => t.key === curTask.key);
+        if (refreshed && refreshed.contributors) {
+          curTask.contributors = refreshed.contributors;
+        }
+      }
       renderTimelineRows();
+    }
+    function showRemovalPrompt(removing, subtaskKey, idx) {
+      if (!currentContainer) return;
+      const existingPrompt = currentContainer.querySelector(".resource-removal-prompt");
+      if (existingPrompt) existingPrompt.remove();
+      const promptContainer = document.createElement("div");
+      promptContainer.className = "resource-removal-prompt";
+      promptContainer.style.cssText = "width: 100%; padding: 8px; border: 1px solid var(--cp-border); border-radius: 4px; background: var(--cp-surface); margin-top: 4px; box-sizing: border-box;";
+      promptContainer.innerHTML = html`
+      <div style="font-size: 11px; margin-bottom: 6px; color: var(--cp-text);">${formatRemovalPrompt(removing.name, subtaskKey)}</div>
+      <div style="display: flex; gap: 6px;">
+        <button type="button" class="btn btn-danger btn-sm btn-delete-subtask" style="padding: 2px 6px; font-size: 10px;">Delete sub-task</button>
+        <button type="button" class="btn btn-secondary btn-sm btn-unassign-subtask" style="padding: 2px 6px; font-size: 10px;">Unassign sub-task</button>
+        <button type="button" class="btn btn-subtle btn-sm btn-cancel-remove" style="padding: 2px 6px; font-size: 10px;">Cancel</button>
+      </div>
+    `;
+      promptContainer.querySelector(".btn-delete-subtask").addEventListener("click", async (e) => {
+        e.stopPropagation();
+        assignedResources.splice(idx, 1);
+        if (assignedResources.length > 0 && !assignedResources.some((r) => r.isParent)) {
+          assignedResources[0].isParent = true;
+        }
+        updateHeaderBadge();
+        renderCurrentChips();
+        renderUserList(searchInput.value);
+        await syncTaskResources({ removeSubtaskAction: { subtaskKey, action: "delete" } });
+      });
+      promptContainer.querySelector(".btn-unassign-subtask").addEventListener("click", async (e) => {
+        e.stopPropagation();
+        assignedResources.splice(idx, 1);
+        if (assignedResources.length > 0 && !assignedResources.some((r) => r.isParent)) {
+          assignedResources[0].isParent = true;
+        }
+        updateHeaderBadge();
+        renderCurrentChips();
+        renderUserList(searchInput.value);
+        await syncTaskResources({ removeSubtaskAction: { subtaskKey, action: "unassign" } });
+      });
+      promptContainer.querySelector(".btn-cancel-remove").addEventListener("click", (e) => {
+        e.stopPropagation();
+        renderCurrentChips();
+      });
+      currentContainer.appendChild(promptContainer);
     }
     async function toggleResource(user) {
       if (isInlineDraft) {
@@ -8984,6 +9041,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
       }
       const existingIdx = assignedResources.findIndex((r) => r.name === user.displayName);
       if (existingIdx >= 0) {
+        const removing = assignedResources[existingIdx];
+        const contributorRec = curTask?.contributors?.find((c) => c.accountId === removing.accountId) || curTask?.contributors?.find((c) => (currentPlan?.availableUsers || []).find((u) => u.displayName === removing.name)?.accountId === c.accountId);
+        const subtaskKey = contributorRec?.subtaskKey;
+        if (subtaskKey) {
+          showRemovalPrompt(removing, subtaskKey, existingIdx);
+          return;
+        }
         assignedResources.splice(existingIdx, 1);
         if (assignedResources.length > 0 && !assignedResources.some((r) => r.isParent)) {
           assignedResources[0].isParent = true;
@@ -9004,6 +9068,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
     async function removeResource(userName) {
       const idx = assignedResources.findIndex((r) => r.name === userName);
       if (idx >= 0) {
+        const removing = assignedResources[idx];
+        const contributorRec = curTask?.contributors?.find((c) => c.accountId === removing.accountId) || curTask?.contributors?.find((c) => (currentPlan?.availableUsers || []).find((u) => u.displayName === removing.name)?.accountId === c.accountId);
+        const subtaskKey = contributorRec?.subtaskKey;
+        if (subtaskKey) {
+          showRemovalPrompt(removing, subtaskKey, idx);
+          return;
+        }
         assignedResources.splice(idx, 1);
         if (assignedResources.length > 0 && !assignedResources.some((r) => r.isParent)) {
           assignedResources[0].isParent = true;
@@ -9410,8 +9481,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
           summary,
           epic: selectedEpic || void 0,
           epicKey: selectedEpicKey || void 0,
+          parentKey: selectedEpicKey || void 0,
           resource: selectedResource,
           resourceAccountId: selectedAccountId,
+          assigneeAccountId: selectedAccountId || void 0,
           effortHours: hours,
           startWeek: defaultStartWk,
           spanWeeks: 3,
@@ -11266,6 +11339,7 @@ Click to manage or assign.`;
     (currentPlan?.availableEpics || []).forEach((ep) => {
       const opt = document.createElement("option");
       opt.value = ep.summary;
+      opt.dataset.key = ep.key;
       opt.textContent = `${ep.key}: ${ep.summary}`;
       epicSelect.appendChild(opt);
     });
@@ -11274,6 +11348,7 @@ Click to manage or assign.`;
     (currentPlan?.availableUsers || []).forEach((u) => {
       const opt = document.createElement("option");
       opt.value = u.displayName;
+      opt.dataset.accountId = u.accountId || "";
       opt.textContent = u.displayName + (u.isPlaceholder ? " [Placeholder]" : "");
       assSelect.appendChild(opt);
     });
@@ -11296,8 +11371,14 @@ Click to manage or assign.`;
     const btn = document.getElementById("btnSubmitCreateTask");
     const summaryInput = document.getElementById("createSummaryInput");
     const summary = summaryInput.value.trim();
-    const epic = document.getElementById("createEpicSelect").value || void 0;
-    const resource = document.getElementById("createAssigneeSelect").value || "Unassigned";
+    const epicSelect = document.getElementById("createEpicSelect");
+    const selectedEpicOpt = epicSelect ? epicSelect.options[epicSelect.selectedIndex] : null;
+    const epic = epicSelect?.value || void 0;
+    const parentKey = selectedEpicOpt?.dataset?.key || void 0;
+    const assSelect = document.getElementById("createAssigneeSelect");
+    const selectedAssOpt = assSelect ? assSelect.options[assSelect.selectedIndex] : null;
+    const resource = assSelect?.value || "Unassigned";
+    const assigneeAccountId = selectedAssOpt?.dataset?.accountId || void 0;
     const parsedEffort = parseInt(document.getElementById("createEffortInput").value, 10);
     const effortHours = isNaN(parsedEffort) ? void 0 : parsedEffort;
     const startWeek = document.getElementById("createStartWeekSelect").value;
@@ -11322,7 +11403,11 @@ Click to manage or assign.`;
       const res = await callResolver2("createInlineTask", {
         summary,
         epic,
+        epicKey: parentKey,
+        parentKey,
         resource,
+        resourceAccountId: assigneeAccountId,
+        assigneeAccountId,
         effortHours,
         startWeek,
         spanWeeks: 3

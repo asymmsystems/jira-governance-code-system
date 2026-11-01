@@ -89,7 +89,15 @@ export function validateTaskUpdates(updates: Record<string, unknown>): void {
     if (!Array.isArray(c) || c.length > 20) fail('contributors', 'contributors must be a list of at most 20 people');
     c.forEach(p => {
       if (!isObject(p) || typeof p.accountId !== 'string' || !ACCOUNT_ID.test(p.accountId)) fail('contributors', 'each contributor needs a Jira account id');
+      if (p.subtaskKey !== undefined) assertIssueKey(p.subtaskKey, 'contributors.subtaskKey');
     });
+  }
+  if (u.removeSubtaskAction !== undefined) {
+    if (!isObject(u.removeSubtaskAction)) fail('removeSubtaskAction', 'removeSubtaskAction must be an object');
+    assertIssueKey(u.removeSubtaskAction.subtaskKey, 'removeSubtaskAction.subtaskKey');
+    if (!['delete', 'unassign', 'keep'].includes(u.removeSubtaskAction.action as string)) {
+      fail('removeSubtaskAction.action', 'action must be delete, unassign, or keep');
+    }
   }
   if (u.effortHours !== undefined) numberIn('effortHours', u.effortHours, 0, 10000);
   // Progress values outside 0 to 100 are clamped by the resolver; only the type is checked here.
