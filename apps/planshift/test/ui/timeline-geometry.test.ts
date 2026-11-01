@@ -5,7 +5,7 @@
  */
 
 import {
-  daysBetween, xForDate, barRect, visibleRange, handleOffsets, snapDays, previewMoves, HANDLE_PX
+  daysBetween, xForDate, barRect, visibleRange, handleOffsets, snapDays, previewMoves, frozenColumnsWidth, HANDLE_PX
 } from '../../src/ui/timeline-geometry';
 
 const ORIGIN = '2026-10-07';
@@ -71,5 +71,12 @@ describe('timeline geometry (B-13)', () => {
       { key: 'B', startDate: '2026-11-04', endDate: '2026-11-05', dependency: { predecessorKey: 'A', triggerPercent: 50 } }
     ];
     expect([...previewMoves(cycle, 'A', 3, 3, '2026-11-01').keys()]).toEqual(['A']);
+  });
+
+  it('computes exact frozen columns boundary without offset gap', () => {
+    const widths = { epic: 110, story: 100, task: 260, resource: 130, effort: 75, progress: 95, target: 95, status: 125 };
+    const keys = ['epic', 'story', 'task', 'resource', 'effort', 'progress', 'target', 'status'];
+    expect(frozenColumnsWidth(keys, widths)).toBe(990);
+    expect(frozenColumnsWidth(['task'], widths)).toBe(260);
   });
 });

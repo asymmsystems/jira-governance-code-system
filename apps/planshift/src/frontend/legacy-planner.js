@@ -742,32 +742,42 @@ function syncGanttScrollWidth() {
   const wrapper = document.getElementById('ganttWrapper');
   const topScroll = document.getElementById('ganttTopScrollbar');
   const topInner = document.getElementById('ganttTopScrollbarInner');
-  if (!wrapper || !topScroll || !topInner) return;
+  const bottomScroll = document.getElementById('ganttBottomScrollbar');
+  const bottomInner = document.getElementById('ganttBottomScrollbarInner');
+  if (!wrapper) return;
 
-  topInner.style.width = wrapper.scrollWidth + 'px';
+  const wPx = wrapper.scrollWidth + 'px';
+  if (topInner) topInner.style.width = wPx;
+  if (bottomInner) bottomInner.style.width = wPx;
+
   if (!isSyncingGanttScroll) {
-    topScroll.scrollLeft = wrapper.scrollLeft;
+    if (topScroll) topScroll.scrollLeft = wrapper.scrollLeft;
+    if (bottomScroll) bottomScroll.scrollLeft = wrapper.scrollLeft;
   }
 }
 
 function initGanttScrollSync() {
   const wrapper = document.getElementById('ganttWrapper');
   const topScroll = document.getElementById('ganttTopScrollbar');
-  if (!wrapper || !topScroll) return;
+  const bottomScroll = document.getElementById('ganttBottomScrollbar');
+  if (!wrapper) return;
 
-  topScroll.addEventListener('scroll', () => {
+  const syncFrom = (source) => {
     if (isSyncingGanttScroll) return;
     isSyncingGanttScroll = true;
-    wrapper.scrollLeft = topScroll.scrollLeft;
+    const x = source.scrollLeft;
+    if (source !== wrapper) wrapper.scrollLeft = x;
+    if (source !== topScroll && topScroll) topScroll.scrollLeft = x;
+    if (source !== bottomScroll && bottomScroll) bottomScroll.scrollLeft = x;
     requestAnimationFrame(() => { isSyncingGanttScroll = false; });
-  });
+  };
+
+  if (topScroll) topScroll.addEventListener('scroll', () => syncFrom(topScroll));
+  if (bottomScroll) bottomScroll.addEventListener('scroll', () => syncFrom(bottomScroll));
 
   wrapper.addEventListener('scroll', () => {
     closeAllPopovers();
-    if (isSyncingGanttScroll) return;
-    isSyncingGanttScroll = true;
-    topScroll.scrollLeft = wrapper.scrollLeft;
-    requestAnimationFrame(() => { isSyncingGanttScroll = false; });
+    syncFrom(wrapper);
   });
 
   // Shift + Wheel horizontal scroll support
@@ -1443,7 +1453,9 @@ function decideCompactColumns() {
   let choice = null;
   try { choice = localStorage.getItem(COMPACT_KEY); } catch (e) {}
   // The rendered width of the data columns, padding and borders included.
-  const next = shouldAutoCompact(wrapper.clientWidth, track.offsetLeft, 7 * dayPx(), choice);
+  const visibleKeys = getVisibleColKeys();
+  const frozenWidth = visibleKeys.reduce((sum, k) => sum + colWidth(k), 0);
+  const next = shouldAutoCompact(wrapper.clientWidth, frozenWidth, 7 * dayPx(), choice);
   const changed = next !== compactColumns;
   compactColumns = next;
   updateZoomButtons();
@@ -1486,8 +1498,10 @@ function applyTimeAxis() {
 function setTimelineScrollLeft(x) {
   const w = document.getElementById('ganttWrapper');
   const top = document.getElementById('ganttTopScrollbar');
+  const bottom = document.getElementById('ganttBottomScrollbar');
   w.scrollLeft = x;
-  if (top) top.scrollLeft = w.scrollLeft;
+  if (top && w) top.scrollLeft = w.scrollLeft;
+  if (bottom && w) bottom.scrollLeft = w.scrollLeft;
 }
 
 /** Scrolling near either edge adds time there; the view does not jump (B-27 criterion 2). */
@@ -2497,9 +2511,10 @@ function rowTop(i) {
 
 function measureLayout() {
   const table = document.getElementById('ganttTable');
-  const firstWeek = document.querySelector('#ganttHeaderRow .timeline-header-cell');
   layout.headerH = table && table.tHead ? table.tHead.offsetHeight : 0;
-  layout.trackLeft = firstWeek ? firstWeek.offsetLeft : 0;
+  const visibleKeys = getVisibleColKeys();
+  const frozenWidth = visibleKeys.reduce((sum, k) => sum + colWidth(k), 0);
+  layout.trackLeft = frozenWidth;
   layout.bodyStart = topDropRowEl ? table.offsetTop + topDropRowEl.offsetTop + topDropRowEl.offsetHeight : 0;
   const inline = document.querySelector('.inline-creation-row');
   layout.inlineAfter = -1;

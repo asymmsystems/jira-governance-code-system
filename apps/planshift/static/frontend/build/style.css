@@ -189,34 +189,45 @@ body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-
 }
 .milestone-icon { color: var(--cp-text-discovery); }
 
-/* Top Synchronized Horizontal Scrollbar */
-.gantt-top-scrollbar {
-  height: 13px;
-  min-height: 13px;
+/* Dual Synchronized Horizontal Scrollbars (Top and Bottom) */
+.gantt-top-scrollbar,
+.gantt-bottom-scrollbar {
+  height: 14px;
+  min-height: 14px;
   overflow-x: auto;
   overflow-y: hidden;
   background: var(--cp-surface-sunken);
-  border-bottom: 1px solid var(--cp-border);
+  border-top: 1px solid var(--cp-border);
   scrollbar-width: thin;
-  scrollbar-color: var(--cp-text-subtlest) var(--cp-surface-sunken);
+  scrollbar-color: var(--cp-text-subtle) var(--cp-surface-sunken);
   display: block;
   flex-shrink: 0;
+  z-index: 30;
 }
-.gantt-top-scrollbar::-webkit-scrollbar {
-  height: 10px;
+.gantt-top-scrollbar {
+  border-top: none;
+  border-bottom: 1px solid var(--cp-border);
 }
-.gantt-top-scrollbar::-webkit-scrollbar-track {
+.gantt-top-scrollbar::-webkit-scrollbar,
+.gantt-bottom-scrollbar::-webkit-scrollbar {
+  height: 12px;
+}
+.gantt-top-scrollbar::-webkit-scrollbar-track,
+.gantt-bottom-scrollbar::-webkit-scrollbar-track {
   background: var(--cp-surface-sunken);
 }
-.gantt-top-scrollbar::-webkit-scrollbar-thumb {
-  background: var(--cp-bg-neutral-bold);
-  border-radius: 5px;
-  border: 2px solid var(--cp-border);
+.gantt-top-scrollbar::-webkit-scrollbar-thumb,
+.gantt-bottom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--cp-text-subtlest);
+  border-radius: 6px;
+  border: 2px solid var(--cp-surface-sunken);
 }
-.gantt-top-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: var(--cp-bg-neutral-bold);
+.gantt-top-scrollbar::-webkit-scrollbar-thumb:hover,
+.gantt-bottom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--cp-text-subtle);
 }
-.gantt-top-scrollbar-inner {
+.gantt-top-scrollbar-inner,
+.gantt-bottom-scrollbar-inner {
   height: 1px;
 }
 

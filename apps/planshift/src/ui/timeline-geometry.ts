@@ -100,3 +100,11 @@ export function previewMoves(tasks: PreviewTask[], key: string, startShift: numb
   }
   return out;
 }
+
+/**
+ * Total width of frozen columns from an array of visible column keys and a width config.
+ * Aligns timeline canvas strictly to the outer boundary of the frozen data table.
+ */
+export function frozenColumnsWidth(visibleKeys: string[], widths: Record<string, number>): number {
+  return visibleKeys.reduce((sum, k) => sum + (widths[k] || 0), 0);
+}
