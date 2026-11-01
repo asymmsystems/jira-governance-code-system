@@ -1,3 +1,9 @@
+/**
+ * Built-in Definition of Done templates, issue-type matching, and the v1 record engine (the format the migration reads).
+ *
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ * @author Fahim Farook
+ */
 import {
   ChecklistTemplate,
   ChecklistItemInstance,
@@ -281,20 +287,21 @@ export function getTemplateForCategory(
     }
   }
 
-  // 2. Built-in type recognition
-  if (norm.includes('service request') || norm.includes('service_request') || norm.includes('general request')) {
+  // 2. Built-in type recognition, on whole words only ("Debug task" is not a bug, DG-16)
+  const has = (...words: string[]) => words.some(w => new RegExp(`(^|[^a-z0-9])${w}($|[^a-z0-9])`).test(norm));
+  if (has('service request', 'service_request', 'general request')) {
     return SERVICE_REQUEST_DEFINITION_OF_DONE;
   }
-  if (norm.includes('it help') || norm.includes('it_help') || norm.includes('help desk') || norm.includes('support')) {
+  if (has('it help', 'it_help', 'help desk', 'support')) {
     return IT_HELP_DEFINITION_OF_DONE;
   }
-  if (norm.includes('bug') || norm.includes('defect') || norm.includes('incident') || norm.includes('problem')) {
+  if (has('bug', 'defect', 'incident', 'problem')) {
     return BUG_DEFINITION_OF_DONE;
   }
-  if (norm.includes('story') || norm.includes('feature') || norm.includes('enhancement')) {
+  if (has('story', 'feature', 'enhancement')) {
     return STORY_DEFINITION_OF_DONE;
   }
-  if (norm.includes('chore') || norm.includes('refactor') || norm.includes('maintenance')) {
+  if (has('chore', 'refactor', 'maintenance')) {
     return TASK_DEFINITION_OF_DONE;
   }
   return DEFAULT_DEFINITION_OF_DONE;

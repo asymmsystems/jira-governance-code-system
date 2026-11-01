@@ -1,3 +1,9 @@
+/**
+ * DefinitionGuard domain types: the v1 record format (read for migration), the panel response, and the v3 Silverston-aligned model.
+ *
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ * @author Fahim Farook
+ */
 export type ChecklistCategory =
   | 'CODE_QUALITY'
   | 'SECURITY'

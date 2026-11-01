@@ -3,7 +3,7 @@ modules:
     - key: definitionguard-issue-panel
       title: DefinitionGuard Checklist
       tooltip: Definition of Done Checklist
-      icon: https://raw.githubusercontent.com/feathericons/feather/master/icons/check-square.svg
+      icon: resource:icons;check.svg
       render: native
       resource: main
       resolver:
@@ -33,6 +33,8 @@ resources:
     path: src/frontend/index.tsx
   - key: settings
     path: src/frontend/settings.tsx
+  - key: icons
+    path: static/icons
 
 app:
   id: ari:cloud:ecosystem::app/73e4f63d-7d60-450c-96d5-f81ca68a709c

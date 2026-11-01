@@ -1,4 +1,4 @@
-import { ChecklistEngine, DEFAULT_DEFINITION_OF_DONE } from '../../src/domain/checklist-engine';
+import { ChecklistEngine, DEFAULT_DEFINITION_OF_DONE, getTemplateForCategory } from '../../src/domain/checklist-engine';
 import { ChecklistTemplate } from '../../src/domain/models';
 
 describe('ChecklistEngine', () => {
@@ -266,5 +266,31 @@ describe('ChecklistEngine', () => {
     const lastEvent = resetState.auditTrail?.[resetState.auditTrail.length - 1];
     expect(lastEvent?.eventType).toBe('RESET');
     expect(lastEvent?.actorName).toBe('Reset Manager');
+  });
+
+  describe('v1 record edge cases (the format the migration reads)', () => {
+    const bare = () => {
+      const st: any = ChecklistEngine.initializeState('v1-1', 'V1-1', DEFAULT_DEFINITION_OF_DONE, 'system', '2026-01-01T00:00:00.000Z');
+      delete st.stateVersion;
+      delete st.auditTrail;
+      return st;
+    };
+
+    it('matches no type when the issue type is missing', () => {
+      expect(getTemplateForCategory(undefined).id).toBe(DEFAULT_DEFINITION_OF_DONE.id);
+    });
+
+    it('toggles a v1 record that has no version and no audit trail', () => {
+      const next = ChecklistEngine.toggleItem(bare(), { issueId: 'v1-1', issueKey: 'V1-1', itemId: 'item-unit-tests', isCompleted: true, userId: 'u' });
+      expect(next.stateVersion).toBe(2);
+      expect(next.auditTrail).toHaveLength(1);
+    });
+
+    it('resets a v1 record with the default actor and time, and no version or trail', () => {
+      const next = ChecklistEngine.resetChecklist(bare(), 'Admin');
+      expect(next.stateVersion).toBe(2);
+      expect(next.auditTrail![0]).toMatchObject({ eventType: 'RESET', actorAccountId: 'unknown' });
+      expect(Number.isNaN(Date.parse(next.lastModifiedAt))).toBe(false);
+    });
   });
 });

@@ -53,8 +53,5 @@ export function resolveStorage(customProvider?: StorageProvider): StorageProvide
   if (globalStorageProvider) {
     return globalStorageProvider;
   }
-  if (process.env.NODE_ENV === 'test') {
-    throw new Error('DefinitionGuard: StorageProvider must be initialized.');
-  }
   return new ForgeKvsProvider();
 }

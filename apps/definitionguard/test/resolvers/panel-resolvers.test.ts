@@ -32,8 +32,7 @@ import {
   handler,
   setGlobalStorageProvider,
   resolveStorage,
-  fetchLiveJiraIssue,
-  renderIssuePanel
+  fetchLiveJiraIssue
 } from '../../src/index';
 import { eventKey, stateKey, legacyKey } from '../../src/storage/checklist-store';
 import { ChecklistEngine, DEFAULT_DEFINITION_OF_DONE, BUG_DEFINITION_OF_DONE, STORY_DEFINITION_OF_DONE } from '../../src/domain/checklist-engine';
@@ -240,22 +239,11 @@ describe('panel resolvers (v3 change log)', () => {
       const templates: any = await handler({ call: { functionKey: 'getAvailableTemplates' } } as any);
       expect(templates.length).toBeGreaterThanOrEqual(6);
     });
-
-    it('renderIssuePanel echoes the context', async () => {
-      expect(await renderIssuePanel({ a: 1 })).toEqual({ moduleKey: 'definitionguard-panel', context: { a: 1 } });
-    });
   });
 
   describe('storage resolution and the Forge KVS provider', () => {
-    it('refuses to run without a provider in test mode', () => {
-      setGlobalStorageProvider(null);
-      expect(() => resolveStorage()).toThrow('StorageProvider must be initialized');
-    });
-
-    it('uses Forge KVS outside test mode, with FAIL_IF_EXISTS for setIfAbsent and a prefix query', async () => {
-      const origEnv = process.env.NODE_ENV;
+    it('uses Forge KVS when no provider is set, with FAIL_IF_EXISTS for setIfAbsent and a prefix query', async () => {
       try {
-        process.env.NODE_ENV = 'production';
         setGlobalStorageProvider(null);
         const kv = resolveStorage();
 
@@ -286,7 +274,7 @@ describe('panel resolvers (v3 change log)', () => {
         await kv.listByPrefix('p:');
         expect(builder.cursor).toHaveBeenCalledTimes(1);
       } finally {
-        process.env.NODE_ENV = origEnv;
+        setGlobalStorageProvider(storage);
       }
     });
   });

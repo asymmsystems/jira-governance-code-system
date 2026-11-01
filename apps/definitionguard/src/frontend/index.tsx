@@ -1,3 +1,9 @@
+/**
+ * DefinitionGuard issue panel (UI Kit). Renders src/ui/panel-view-model.ts only.
+ *
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ * @author Fahim Farook
+ */
 import React, { useState, useEffect } from 'react';
 import ForgeReconciler, {
   Text,

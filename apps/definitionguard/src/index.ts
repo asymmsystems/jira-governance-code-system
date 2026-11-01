@@ -1,3 +1,9 @@
+/**
+ * DefinitionGuard resolvers and the Jira workflow validator entry point.
+ *
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ * @author Fahim Farook
+ */
 import api, { route } from '@forge/api';
 import Resolver from '@forge/resolver';
 import {
@@ -503,16 +509,6 @@ export async function resetChecklist(_payload: any, context?: any, storageProvid
 
   await publishAttestation(state, new Date().toISOString());
   return toPanelResponse(state);
-}
-
-/**
- * Issue panel rendering function.
- */
-export async function renderIssuePanel(context: any) {
-  return {
-    moduleKey: 'definitionguard-panel',
-    context
-  };
 }
 
 // Register Forge Resolver for UI Kit 2 bridge invocations
