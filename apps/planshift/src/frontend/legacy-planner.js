@@ -14,7 +14,8 @@ import { initErrorBanner } from './banner';
 import { enableTheme, onThemeChange } from './theme';
 import { openWhyPopup, closeWhyPopup, isWhyPopupOpen, initWhyPopup } from './why-popup';
 import { html } from '../ui/safe-html';
-import { deltaWeeksFromPixels, clampStartIndex, spanFromResize } from '../ui/timeline-math';
+import { CanvasTimeline, ROW_H, BAR_H } from './canvas-timeline';
+import { barRect, daysBetween, visibleRange, handleOffsets, snapDays, previewMoves } from '../ui/timeline-geometry';
 
 function getJiraBaseUrl() {
   if (currentPlan && currentPlan.siteUrl) {
@@ -68,14 +69,14 @@ function showWhy(taskKey, anchorRect) {
       await loadProjectPlan();
     },
     focusTask: (key) => {
-      const row = document.querySelector(`#ganttBody tr[data-task-id="${CSS.escape(key)}"]`);
+      const row = scrollRowIntoView(key);
       if (row) {
         row.setAttribute('tabindex', '-1');
         row.scrollIntoView({ block: 'center' });
         row.focus();
       }
       pinnedDependencyTaskId = key;
-      renderDependencySvgOverlay();
+      drawTimeline(true);
     }
   });
 }
@@ -114,7 +115,20 @@ async function initApp() {
   initWhyPopup();
   // Theme first, so the first paint already uses the Jira theme (B-17).
   await enableTheme();
-  onThemeChange(() => { if (currentPlan) renderDependencySvgOverlay(); });
+  // The canvas reads token colours at draw time; a theme change repaints it (B-17).
+  onThemeChange(() => {
+    if (timeline) timeline.invalidateColours();
+    drawTimeline(true);
+  });
+  const wrapper = document.getElementById('ganttWrapper');
+  if (wrapper) {
+    timeline = new CanvasTimeline(wrapper);
+    wrapper.addEventListener('scroll', scheduleVirtualRows, { passive: true });
+  }
+  document.addEventListener('cp:drivers', (e) => {
+    if (timeline) timeline.driverKeys = e.detail || [];
+    drawTimeline(true);
+  });
   setupEventListeners();
   loadProjectPlan();
 }
@@ -133,7 +147,6 @@ function setupEventListeners() {
     hierSwitcher.addEventListener('change', (e) => {
       currentHierarchyView = e.target.value;
       renderTimelineRows();
-      setTimeout(renderDependencySvgOverlay, 100);
     });
   }
   document.getElementById('toggleBacklogBtn').addEventListener('click', toggleBacklogTray);
@@ -250,7 +263,7 @@ function setupEventListeners() {
     const inField = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT');
     if (e.key === '?' && !inField) {
       const key = pinnedDependencyTaskId || hoveredTaskId;
-      const bar = key && document.querySelector(`.gantt-bar[data-task-id="${CSS.escape(key)}"]`);
+      const bar = key && document.querySelector(`.bar-hit[data-task-id="${CSS.escape(key)}"]`);
       if (key) { e.preventDefault(); showWhy(key, bar ? bar.getBoundingClientRect() : null); }
       return;
     }
@@ -266,10 +279,13 @@ function setupEventListeners() {
       if (colPopover) colPopover.style.display = 'none';
       if (pinnedDependencyTaskId) {
         pinnedDependencyTaskId = null;
-        renderDependencySvgOverlay();
+        drawTimeline(true);
       }
       const inlineRow = document.querySelector('.inline-creation-row');
-      if (inlineRow) inlineRow.remove();
+      if (inlineRow) {
+        inlineRow.remove();
+        updateVirtualRows();
+      }
     }
   });
 
@@ -300,9 +316,9 @@ function setupEventListeners() {
     if (colPopover && colPopover.style.display === 'flex' && !colPopover.contains(e.target) && !e.target.closest('#btnManageColumns') && !e.target.closest('#btnOpenManagerFromBanner')) {
       colPopover.style.display = 'none';
     }
-    if (pinnedDependencyTaskId && !e.target.closest('.gantt-bar')) {
+    if (pinnedDependencyTaskId && !e.target.closest('.bar-hit')) {
       pinnedDependencyTaskId = null;
-      renderDependencySvgOverlay();
+      drawTimeline(true);
     }
   });
 
@@ -528,7 +544,7 @@ function setupEventListeners() {
 
   window.addEventListener('resize', () => {
     syncGanttScrollWidth();
-    renderDependencySvgOverlay();
+    scheduleVirtualRows();
   });
 }
 
@@ -611,7 +627,7 @@ function initGanttPan() {
     if (e.button !== 0 && e.button !== 1) return;
 
     // Skip interactive elements
-    if (e.target.closest('.gantt-bar, .bar-handle, .btn, button, input, select, a, .resizer, .row-drag-handle, .inline-edit-input, .resource-chip-btn, .editable-badge-chip, .epic-link-chip, .th-col-menu-btn, .row-action-btn, .tree-toggle-btn')) {
+    if (e.target.closest('.bar-hit, .bar-handle, .btn, button, input, select, a, .resizer, .row-drag-handle, .inline-edit-input, .resource-chip-btn, .editable-badge-chip, .epic-link-chip, .th-col-menu-btn, .row-action-btn, .tree-toggle-btn')) {
       return;
     }
 
@@ -658,7 +674,7 @@ function switchView(viewName) {
   document.getElementById('heatmapViewSection').style.display = viewName === 'heatmap' ? 'block' : 'none';
 
   if (viewName === 'timeline') {
-    setTimeout(renderDependencySvgOverlay, 100);
+    setTimeout(updateVirtualRows, 100);
   } else if (viewName === 'utilization') {
     renderUtilizationView();
   } else if (viewName === 'heatmap') {
@@ -670,7 +686,7 @@ function toggleBacklogTray() {
   const tray = document.getElementById('backlogTray');
   tray.classList.toggle('collapsed');
   setTimeout(syncGanttScrollWidth, 250);
-  setTimeout(renderDependencySvgOverlay, 250);
+  setTimeout(updateVirtualRows, 250);
 }
 
 function toggleColumnVisibility(colKey) {
@@ -706,7 +722,6 @@ function onColumnsChanged() {
   renderTimelineHeader();
   renderTimelineRows();
   setTimeout(syncGanttScrollWidth, 50);
-  setTimeout(renderDependencySvgOverlay, 100);
 }
 
 function updateColumnManagerUI() {
@@ -852,7 +867,29 @@ async function loadProjectPlan() {
 
 function renderPlan() {
   if (!currentPlan) return;
+  renderPlanSummary();
 
+  if (currentPlan.tasks) {
+    currentPlan.tasks.forEach(t => {
+      if (t.isEpic || t.childrenCount || (t.subtasks && t.subtasks.length > 0)) {
+        expandedTasks.add(t.key);
+      }
+    });
+  }
+
+  renderMilestones();
+  renderBacklogTray();
+  renderTimelineHeader();
+  renderTimelineRows();
+  setTimeout(syncGanttScrollWidth, 50);
+  if (!hasInitialScrolledToToday) {
+    hasInitialScrolledToToday = true;
+    setTimeout(scrollToToday, 250);
+  }
+}
+
+/** Header badges, backlog count, truncation note and legend. */
+function renderPlanSummary() {
   document.getElementById('projectBadge').textContent = `Project: ${currentPlan.projectKey}`;
   document.getElementById('completionBadge').textContent = `Completion: ${currentPlan.overallProjectCompletion}% | Target: ${currentPlan.overallTargetCompletion}%`;
   document.getElementById('backlogCount').textContent = currentPlan.backlogTasks ? currentPlan.backlogTasks.length : 0;
@@ -869,25 +906,6 @@ function renderPlan() {
   if (curWk) {
     const el = document.getElementById('legendCurrentWeek');
     if (el) el.textContent = `Current Week (${curWk.weekKey})`;
-  }
-
-  if (currentPlan.tasks) {
-    currentPlan.tasks.forEach(t => {
-      if (t.isEpic || t.childrenCount || (t.subtasks && t.subtasks.length > 0)) {
-        expandedTasks.add(t.key);
-      }
-    });
-  }
-
-  renderMilestones();
-  renderBacklogTray();
-  renderTimelineHeader();
-  renderTimelineRows();
-  setTimeout(syncGanttScrollWidth, 50);
-  setTimeout(renderDependencySvgOverlay, 150);
-  if (!hasInitialScrolledToToday) {
-    hasInitialScrolledToToday = true;
-    setTimeout(scrollToToday, 250);
   }
 }
 
@@ -1222,7 +1240,6 @@ function openResourcePicker(targetEl, taskKey) {
     });
 
     renderTimelineRows();
-    setTimeout(renderDependencySvgOverlay, 80);
   }
 
   async function toggleResource(user) {
@@ -1645,7 +1662,7 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
   }
   cellsHtml = html`${cellsHtml}
     <td class="timeline-track-cell" colspan="${currentPlan.weeks.length}" style="width:${currentPlan.weeks.length * WEEK_WIDTH}px;">
-      <div class="gantt-bar ghost-timeline-bar" style="left:${barLeft}px; width:${barWidth}px;">
+      <div class="ghost-timeline-bar" style="left:${barLeft}px; width:${barWidth}px;">
         <span>➕ New Task Preview (3 wks)</span>
       </div>
     </td>
@@ -1653,6 +1670,7 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
   creationTr.innerHTML = html`${cellsHtml}`;
 
   rowElement.after(creationTr);
+  updateVirtualRows();
 
   let selectedResource = 'Unassigned';
   let selectedAccountId = undefined;
@@ -1670,6 +1688,7 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
 
   function cancelCreation() {
     creationTr.remove();
+    updateVirtualRows();
   }
   cancelBtn.addEventListener('click', cancelCreation);
 
@@ -1806,727 +1825,729 @@ function updateDynamicParentRollups(changedKey) {
   }
 }
 
-function renderTimelineRows() {
-  const tbody = document.getElementById('ganttBody');
-  tbody.innerHTML = '';
+// Canvas timeline (B-13). Only the rows in the viewport plus a buffer are DOM rows; bars, arrows,
+// the grid and the today line are drawn on one canvas; each visible bar has a transparent hit
+// element that takes focus, hover, drag and resize.
+const DAY_PX = WEEK_WIDTH / 7;
+const ROW_BUFFER = 10;
+let timeline = null;
+let rowTasks = [];        // { task, rowIdx } in display order
+let rowTaskList = [];     // the same tasks, for the canvas
+let rowCache = new Map(); // task key -> built <tr>
+let renderedRange = { first: 0, last: -1 };
+let layout = { trackLeft: 0, headerH: 0, bodyStart: 0, inlineAfter: -1, inlineH: 0 };
+let topDropRowEl = null;
+let topSpacer = null;
+let bottomSpacer = null;
 
-  if (!currentPlan.tasks || currentPlan.tasks.length === 0) {
-    tbody.innerHTML = html`<tr><td colspan="${getVisibleColKeys().length + currentPlan.weeks.length}" style="text-align:center; padding:30px; color: var(--cp-text-subtle);">No scheduled tasks in project. Drag issues from the Backlog Tray or click "+ Add Task / Issue" to schedule.</td></tr>`;
-    return;
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function findTask(key) {
+  return (currentPlan?.tasks || []).find(t => t.key === key);
+}
+
+function originIso() {
+  return currentPlan?.weeks?.[0]?.startDate || todayIso();
+}
+
+/** Content y of the top of display row i (rows are ROW_H high; an open inline row adds its height). */
+function rowTop(i) {
+  return layout.bodyStart + i * ROW_H + (layout.inlineAfter >= 0 && i > layout.inlineAfter ? layout.inlineH : 0);
+}
+
+function measureLayout() {
+  const table = document.getElementById('ganttTable');
+  const firstWeek = document.querySelector('#ganttHeaderRow .week-header-cell');
+  layout.headerH = table && table.tHead ? table.tHead.offsetHeight : 0;
+  layout.trackLeft = firstWeek ? firstWeek.offsetLeft : 0;
+  layout.bodyStart = topDropRowEl ? table.offsetTop + topDropRowEl.offsetTop + topDropRowEl.offsetHeight : 0;
+  const inline = document.querySelector('.inline-creation-row');
+  layout.inlineAfter = -1;
+  layout.inlineH = 0;
+  if (inline && inline.previousElementSibling) {
+    const k = inline.previousElementSibling.dataset.taskId;
+    layout.inlineAfter = rowTasks.findIndex(r => r.task.key === k);
+    layout.inlineH = inline.offsetHeight;
   }
+}
 
-  // Top Drop Target Row (Index 0)
-  const topDropRow = document.createElement('tr');
-  topDropRow.className = 'drop-target-row';
-  topDropRow.innerHTML = html`<td colspan="${getVisibleColKeys().length + currentPlan.weeks.length}">+ Drop here to place task at top of schedule</td>`;
-  setupDropTargetRow(topDropRow, 0);
-  tbody.appendChild(topDropRow);
+function drawTimeline(sync) {
+  if (!timeline || !currentPlan) return;
+  timeline.activeKey = hoveredTaskId || pinnedDependencyTaskId;
+  timeline.setModel({
+    tasks: rowTaskList,
+    first: renderedRange.first,
+    last: renderedRange.last,
+    rowTop,
+    originIso: originIso(),
+    dayPx: DAY_PX,
+    trackLeft: layout.trackLeft,
+    trackWidth: (currentPlan.weeks || []).length * WEEK_WIDTH,
+    headerH: layout.headerH,
+    todayIso: todayIso()
+  });
+  if (sync) timeline.draw(); else timeline.requestDraw();
+}
 
+/** Rows the current view shows, in order: hierarchy filter, then collapsed parents. */
+function computeRowTasks() {
   let tasksToRender = currentPlan.tasks;
   if (currentHierarchyView === 'epics') {
     tasksToRender = currentPlan.tasks.filter(t => t.isEpic || t.hierarchyLevel === 1);
   } else if (currentHierarchyView === 'stories') {
     tasksToRender = currentPlan.tasks.filter(t => !t.isEpic && t.hierarchyLevel !== 1);
   }
-
+  const planKeys = new Set(currentPlan.tasks.map(t => t.key));
+  const out = [];
   tasksToRender.forEach((task, rowIdx) => {
-    // Hierarchy collapse check:
-    // 1. If subtask and parent is collapsed, hide subtask row
-    if (task.isSubtask && task.parentKey && !expandedTasks.has(task.parentKey)) {
-      return;
-    }
-    // 2. If story under an epic that is scheduled on the timeline and collapsed, hide story row
-    if (!task.isEpic && task.epicKey && task.epicKey !== task.key && currentPlan.tasks.some(t => t.key === task.epicKey) && !expandedTasks.has(task.epicKey)) {
-      return;
-    }
-
-    const isEpic = Boolean(task.isEpic || task.hierarchyLevel === 1);
-    const isSub = Boolean(task.isSubtask || task.hierarchyLevel === -1);
-
-    const tr = document.createElement('tr');
-    tr.className = 'task-row' + (isEpic ? ' is-epic-row' : (isSub ? ' is-subtask' : ' is-story-row'));
-    tr.dataset.taskId = task.key;
-
-    // Has children check
-    const hasChildren = Boolean(
-      (task.childrenCount && task.childrenCount > 0) ||
-      (task.subtasks && task.subtasks.length > 0) ||
-      currentPlan.tasks.some(t => (t.parentKey === task.key || t.parentId === task.id || (isEpic && t.epicKey === task.key)) && t.key !== task.key)
-    );
-
-    // Expand/collapse icon & Indentation
-    let expandToggleHtml = html``;
-    if (hasChildren && !isSub) {
-      const isExp = expandedTasks.has(task.key);
-      expandToggleHtml = html`<button class="tree-toggle-btn" data-parent-key="${task.key}" title="${isExp ? 'Collapse children' : 'Expand children'}">${isExp ? '▼' : '▶'}</button>`;
-    }
-
-    let badgeHtml = html``;
-    let indentPx = 0;
-    if (isEpic) {
-      badgeHtml = html`<span class="epic-badge" title="Epic Roadmap Level">🟪 EPIC</span>`;
-      indentPx = 0;
-    } else if (isSub) {
-      badgeHtml = html`<span class="subtask-tree-icon" title="Subtask Execution Level">↳</span>`;
-      indentPx = 28;
-    } else {
-      badgeHtml = html`<span class="story-badge" title="Story / Task Plan Level">🔷</span>`;
-      if (task.epicKey && currentPlan.tasks.some(t => t.key === task.epicKey && t.key !== task.key)) {
-        indentPx = 16;
-      }
-    }
-
-    const siteUrl = getJiraBaseUrl();
-    // Summary column content with clean hover action toolbar and in-place addition affordance
-    const summaryHtml = html`
-      <div style="display:flex; align-items:center; width:100%; padding-left:${indentPx}px;">
-        <div class="row-insert-affordance" title="Insert task below (Row ${rowIdx + 2})">
-          <button class="row-insert-plus-btn" title="Insert new task below">＋</button>
-        </div>
-        <span class="row-drag-handle" draggable="true" title="Drag to reorder row">⠿</span>
-        ${expandToggleHtml}
-        ${badgeHtml}
-        <a href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer" class="task-key-link" title="Open ${task.key} in native Jira (new tab)">${task.key} ↗</a>
-        <span class="task-summary-text" style="cursor:pointer; margin-left:6px; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="Click or double-click to edit summary">
-          : ${task.summary}
-        </span>
-        <div class="row-action-toolbar">
-          <button class="row-action-btn quick-insert-below-btn" title="Insert task below (Row ${rowIdx + 2})">➕ Add below</button>
-          <button class="row-action-btn quick-progress-btn" title="Set actual progress">📈 Progress</button>
-          <button class="row-action-btn edit-modal-btn" title="Open full detail modal">✏️ Edit</button>
-          <button class="row-action-btn why-date-btn" title="Why this date?">❓ Why?</button>
-          <button class="row-action-btn quick-subtask-btn" title="Add Jira subtask">↳ Subtask</button>
-          <button class="row-action-btn quick-resource-btn" title="Allocate team member">👥 Team</button>
-          <button class="row-action-btn open-jira-row-btn" title="Open ${task.key} in native Jira (new tab)">↗ Jira</button>
-          <button class="row-action-btn unschedule-row-btn" title="Remove from planner (Move to backlog)">📤 Backlog</button>
-        </div>
-      </div>
-    `;
-
-    // Epic Column Display
-    let epicHtml = html``;
-    if (isEpic) {
-      epicHtml = html`<span class="epic-badge" title="Epic Roadmap Level">🟪 EPIC</span>`;
-    } else {
-      let epicLabel = task.epic || '';
-      if (!epicLabel && task.epicKey) {
-        const epObj = (currentPlan.availableEpics || []).find(e => e.key === task.epicKey);
-        epicLabel = epObj ? epObj.summary : task.epicKey;
-      }
-      if (epicLabel) {
-        epicHtml = html`<span class="epic-link-chip has-epic" title="Click to change epic">🟪 ${epicLabel} ▾</span>`;
-      } else {
-        epicHtml = html`<span class="epic-link-chip no-epic" title="Click to link epic">+ Link Epic</span>`;
-      }
-    }
-
-    // Data Columns (Dynamic based on visible columns)
-    const visibleKeys = getVisibleColKeys();
-    let rowColsHtml = html``;
-    if (visibleKeys.includes('epic')) {
-      rowColsHtml = html`${rowColsHtml}<td class="td-data td-epic-cell" style="width:${columnWidths.epic}px;">${epicHtml}</td>`;
-    }
-    if (visibleKeys.includes('story')) {
-      rowColsHtml = html`${rowColsHtml}<td class="td-data td-story-cell" style="width:${columnWidths.story}px;" title="${task.story || ''}">${task.story || (isEpic ? 'Epic' : (isSub ? 'Subtask' : 'Task'))}</td>`;
-    }
-    if (visibleKeys.includes('task')) {
-      rowColsHtml = html`${rowColsHtml}<td class="td-data td-task-summary" style="width:${columnWidths.task}px;">${summaryHtml}</td>`;
-    }
-    if (visibleKeys.includes('resource')) {
-      rowColsHtml = html`${rowColsHtml}<td class="td-data td-resource-cell" style="width:${columnWidths.resource}px;"></td>`;
-    }
-    if (visibleKeys.includes('effort')) {
-      rowColsHtml = html`${rowColsHtml}
-        <td class="td-data td-effort-cell" style="width:${columnWidths.effort}px; text-align:center; cursor:pointer;" title="Click to edit effort hours">
-          <span class="effort-text" style="font-weight:700;">${formatEffort(task.effortHours)}</span>
-        </td>
-      `;
-    }
-    if (visibleKeys.includes('progress')) {
-      const isProgRollup = isEpic || (task.childrenCount && task.childrenCount > 0);
-      const progTitle = isProgRollup
-        ? `Actual progress: ${task.progress}% (Rollup from children: click to edit or override)`
-        : `Click to set actual progress (${task.progress}%)`;
-      rowColsHtml = html`${rowColsHtml}
-        <td class="td-data td-progress-cell" style="width:${columnWidths.progress}px; text-align:center; cursor:pointer;" title="${progTitle}">
-          <div class="progress-chip-cell ${task.progress === 100 ? 'is-complete' : (task.progress > 0 ? 'is-active' : 'is-zero')}">
-            <span class="progress-chip-fill" style="width:${task.progress}%;"></span>
-            <span class="progress-chip-text">${task.progress}% ▾</span>
-          </div>
-        </td>
-      `;
-    }
-    if (visibleKeys.includes('target')) {
-      rowColsHtml = html`${rowColsHtml}
-        <td class="td-data td-target-cell" style="width:${columnWidths.target}px; text-align:center; cursor:pointer;" title="Click to set target progress (${task.targetProgress}%)">
-          <div class="target-chip-cell">
-            <span class="target-chip-text">🎯 ${task.targetProgress}% ▾</span>
-          </div>
-        </td>
-      `;
-    }
-    if (visibleKeys.includes('status')) {
-      rowColsHtml = html`${rowColsHtml}
-        <td class="td-data td-status-cell" style="width:${columnWidths.status}px; text-align:center;">
-          <span class="badge editable-badge-chip ${task.status === 'COMPLETED' ? 'badge-success' : task.status === 'IN_PROGRESS' ? 'badge-primary' : 'badge-neutral'}" title="Click to change status">
-            ${task.status} ▾
-          </span>
-        </td>
-      `;
-    }
-    tr.innerHTML = html`${rowColsHtml}`;
-
-    // Interactive Scalable Resource Selection (Typeahead Picker & Subtask Rollup)
-    if (visibleKeys.includes('resource')) {
-      const resourceTd = tr.querySelector('.td-resource-cell');
-      if (resourceTd) {
-        const contributing = getTaskContributingResources(task);
-        let avatarHtml = html``;
-        let labelText = '';
-        let titleText = '';
-        let isMultiple = false;
-
-        if (contributing.length === 0) {
-          avatarHtml = html`<span class="resource-option-avatar">U</span>`;
-          labelText = 'Unassigned';
-          titleText = 'Unassigned. Click to assign team member.';
-        } else if (contributing.length === 1) {
-          const res = contributing[0];
-          const initials = getInitials(res.name);
-          avatarHtml = html`<span class="resource-option-avatar">${initials}</span>`;
-          labelText = res.name;
-          if (res.isParent) {
-            titleText = `${res.name} (Task Assignee)`;
-          } else {
-            titleText = `${res.name} (Assigned via subtask: ${res.subtasks.join(', ') || 'subtask'})`;
-            labelText = html`${labelText} <span class="resource-via-subtask-label">(subtask)</span>`;
-          }
-        } else {
-          isMultiple = true;
-          // Multi-avatar stack (up to 3 avatars)
-          const maxAvatars = 3;
-          avatarHtml = html`<div class="avatar-stack">`;
-          contributing.slice(0, maxAvatars).forEach((res, aIdx) => {
-            const initials = getInitials(res.name);
-            const bg = aIdx === 0 ? 'var(--cp-bg-neutral)' : aIdx === 1 ? 'var(--cp-bg-selected)' : 'var(--cp-bg-discovery)';
-            const color = aIdx === 0 ? 'var(--cp-text)' : aIdx === 1 ? 'var(--cp-text-brand)' : 'var(--cp-text-discovery)';
-            avatarHtml = html`${avatarHtml}<span class="resource-option-avatar" style="background:${bg}; color:${color}; z-index:${10 - aIdx};" title="${res.name}">${initials}</span>`;
-          });
-          avatarHtml = html`${avatarHtml}</div>`;
-
-          const names = contributing.map(c => c.name);
-          if (contributing.length === 2) {
-            labelText = `${names[0]}, ${names[1]}`;
-          } else {
-            labelText = `${names[0]}, ${names[1]} +${contributing.length - 2}`;
-          }
-
-          const breakdownLines = contributing.map(c => {
-            if (c.isParent && c.subtasks.length > 0) {
-              return `• ${c.name} (Lead & subtasks: ${c.subtasks.join(', ')})`;
-            } else if (c.isParent) {
-              return `• ${c.name} (Lead / Parent Assignee)`;
-            } else {
-              return `• ${c.name} (Subtask: ${c.subtasks.join(', ') || 'subtask'})`;
-            }
-          });
-          titleText = `Assigned Resources (${contributing.length}):\n` + breakdownLines.join('\n') + `\nClick to manage or assign.`;
-        }
-
-        resourceTd.innerHTML = html`
-          <div class="resource-chip-btn ${isMultiple ? 'has-multiple-resources' : ''}" title="${titleText}">
-            ${avatarHtml}
-            <span class="resource-names-wrap" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${labelText}</span>
-            ${isMultiple ? html`<span class="res-count-badge">${contributing.length}</span>` : ''}
-            <span style="font-size:10px; color: var(--cp-text-subtle);">▾</span>
-          </div>
-        `;
-        const resChip = resourceTd.querySelector('.resource-chip-btn');
-        if (resChip) {
-          resChip.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openResourcePicker(resChip, task.key);
-          });
-        }
-      }
-    }
-
-    // Inline Edit for Summary
-    const sumText = tr.querySelector('.task-summary-text');
-    if (sumText) {
-      sumText.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (tr.querySelector('.inline-edit-input')) return;
-        const origSummary = task.summary;
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'inline-edit-input';
-        input.value = origSummary;
-        sumText.replaceWith(input);
-        input.focus();
-        input.select();
-
-        let saved = false;
-        async function saveInlineSummary() {
-          if (saved) return;
-          saved = true;
-          const newSummary = input.value.trim();
-          if (newSummary && newSummary !== origSummary) {
-            task.summary = newSummary;
-            await callResolver('updateWbsTask', {
-              taskId: task.key,
-              updates: { summary: newSummary }
-            });
-            await loadProjectPlan();
-          } else {
-            input.replaceWith(sumText);
-          }
-        }
-
-        input.addEventListener('keydown', (ke) => {
-          if (ke.key === 'Enter') {
-            ke.preventDefault();
-            saveInlineSummary();
-          } else if (ke.key === 'Escape') {
-            saved = true;
-            input.replaceWith(sumText);
-          }
-        });
-        input.addEventListener('blur', saveInlineSummary);
-      });
-    }
-
-    // Inline Edit for Effort (Hours)
-    const effortTd = tr.querySelector('.td-effort-cell');
-    if (effortTd) {
-      effortTd.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (effortTd.querySelector('.inline-edit-input')) return;
-        const origHours = task.effortHours || 0;
-        const input = document.createElement('input');
-        input.type = 'number';
-        input.className = 'inline-edit-input';
-        input.style.width = '55px';
-        input.style.textAlign = 'center';
-        input.min = '0';
-        input.value = origHours;
-        effortTd.innerHTML = '';
-        effortTd.appendChild(input);
-        input.focus();
-        input.select();
-
-        let saved = false;
-        async function saveInlineEffort() {
-          if (saved) return;
-          saved = true;
-          const val = parseInt(input.value, 10);
-          if (!isNaN(val) && val >= 0 && val !== origHours) {
-            task.effortHours = val;
-            await callResolver('updateWbsTask', {
-              taskId: task.key,
-              updates: { effortHours: val }
-            });
-            await loadProjectPlan();
-          } else {
-            effortTd.innerHTML = html`<span class="effort-text" style="font-weight:700;">${formatEffort(origHours)}</span>`;
-          }
-        }
-
-        input.addEventListener('keydown', (ke) => {
-          if (ke.key === 'Enter') {
-            ke.preventDefault();
-            saveInlineEffort();
-          } else if (ke.key === 'Escape') {
-            saved = true;
-            effortTd.innerHTML = html`<span class="effort-text" style="font-weight:700;">${formatEffort(origHours)}</span>`;
-          }
-        });
-        input.addEventListener('blur', saveInlineEffort);
-      });
-    }
-
-    // Interactive Progress Cell Click -> opens Quick Progress Popover
-    const progTd = tr.querySelector('.td-progress-cell');
-    if (progTd) {
-      progTd.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openProgressPicker(progTd, task.key);
-      });
-    }
-
-    // Interactive Target Cell Click -> opens Quick Target Popover
-    const targetTd = tr.querySelector('.td-target-cell');
-    if (targetTd) {
-      targetTd.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openTargetPicker(targetTd, task.key);
-      });
-    }
-
-    // Inline Status Picker
-    const statusChip = tr.querySelector('.editable-badge-chip');
-    if (statusChip) {
-      statusChip.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openStatusPicker(statusChip, task.key);
-      });
-    }
-
-    // Inline Epic Picker
-    const epicChip = tr.querySelector('.epic-link-chip');
-    if (epicChip) {
-      epicChip.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openEpicPicker(epicChip, task.key);
-      });
-    }
-
-    // Row Action Toolbar Handlers
-    const quickInsertBtn = tr.querySelector('.quick-insert-below-btn');
-    if (quickInsertBtn) {
-      quickInsertBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openInlineCreationRow(tr, task, rowIdx);
-      });
-    }
-    const rowPlusBtn = tr.querySelector('.row-insert-plus-btn');
-    if (rowPlusBtn) {
-      rowPlusBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openInlineCreationRow(tr, task, rowIdx);
-      });
-    }
-    const quickProgBtn = tr.querySelector('.quick-progress-btn');
-    if (quickProgBtn) {
-      quickProgBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openProgressPicker(quickProgBtn, task.key);
-      });
-    }
-    const editModalBtn = tr.querySelector('.edit-modal-btn');
-    if (editModalBtn) {
-      editModalBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openTaskDetailModal(task.key);
-      });
-    }
-    const whyBtn = tr.querySelector('.why-date-btn');
-    if (whyBtn) {
-      whyBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        showWhy(task.key, whyBtn.getBoundingClientRect());
-      });
-    }
-    const quickSubBtn = tr.querySelector('.quick-subtask-btn');
-    if (quickSubBtn) {
-      quickSubBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openTaskDetailModal(task.key);
-        setTimeout(() => {
-          const inp = document.getElementById('newSubtaskSummaryInput');
-          if (inp) { inp.focus(); inp.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-        }, 100);
-      });
-    }
-    const quickResBtn = tr.querySelector('.quick-resource-btn');
-    if (quickResBtn) {
-      quickResBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openTaskDetailModal(task.key);
-        setTimeout(() => {
-          const sel = document.getElementById('multiResourceSelect');
-          if (sel) { sel.focus(); sel.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-        }, 100);
-      });
-    }
-    const unschedBtn = tr.querySelector('.unschedule-row-btn');
-    if (unschedBtn) {
-      unschedBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        await callResolver('unscheduleTask', { taskId: task.key });
-        await loadProjectPlan();
-      });
-    }
-    const openJiraBtn = tr.querySelector('.open-jira-row-btn');
-    if (openJiraBtn) {
-      openJiraBtn.addEventListener('click', (e) => {
-        openJiraIssueInNewTab(task.key, e);
-      });
-    }
-    const taskKeyLink = tr.querySelector('.task-key-link');
-    if (taskKeyLink) {
-      taskKeyLink.addEventListener('click', (e) => {
-        openJiraIssueInNewTab(task.key, e);
-      });
-    }
-
-    // Tree Toggle Handler
-    const treeToggle = tr.querySelector('.tree-toggle-btn');
-    if (treeToggle) {
-      treeToggle.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (expandedTasks.has(task.key)) {
-          expandedTasks.delete(task.key);
-        } else {
-          expandedTasks.add(task.key);
-        }
-        renderTimelineRows();
-        setTimeout(renderDependencySvgOverlay, 100);
-      });
-    }
-
-    // Row Drag Handle for Reordering
-    const dragHandle = tr.querySelector('.row-drag-handle');
-    if (dragHandle) {
-      dragHandle.addEventListener('dragstart', (e) => {
-        e.dataTransfer.setData('text/plain', JSON.stringify({ taskId: task.key, fromReorder: true, origIndex: rowIdx }));
-      });
-    }
-
-    // Between-Row Drag & Drop (Middle of Plan insertion)
-    tr.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      const rect = tr.getBoundingClientRect();
-      const isTop = (e.clientY - rect.top) < (rect.height / 2);
-      if (isTop) {
-        tr.classList.add('drop-insert-top');
-        tr.classList.remove('drop-insert-bottom');
-      } else {
-        tr.classList.add('drop-insert-bottom');
-        tr.classList.remove('drop-insert-top');
-      }
-    });
-    tr.addEventListener('dragleave', (e) => {
-      if (!tr.contains(e.relatedTarget)) {
-        tr.classList.remove('drop-insert-top');
-        tr.classList.remove('drop-insert-bottom');
-      }
-    });
-    tr.addEventListener('drop', async (e) => {
-      e.preventDefault();
-      const rect = tr.getBoundingClientRect();
-      const isTop = (e.clientY - rect.top) < (rect.height / 2);
-      tr.classList.remove('drop-insert-top');
-      tr.classList.remove('drop-insert-bottom');
-
-      const dataStr = e.dataTransfer.getData('text/plain');
-      if (!dataStr) return;
-      try {
-        const data = JSON.parse(dataStr);
-        const targetIndex = isTop ? rowIdx : rowIdx + 1;
-        if (data.fromReorder) {
-          await callResolver('reorderWbsTasks', { taskId: data.taskId, targetIndex });
-        } else if (data.taskId) {
-          const curWk = (currentPlan?.weeks || []).find(w => w.isCurrentWeek)?.weekKey || currentPlan?.weeks[0]?.weekKey;
-          await callResolver('scheduleBacklogTask', {
-            taskId: data.taskId,
-            startWeek: curWk,
-            spanWeeks: 3,
-            targetIndex
-          });
-        }
-        await loadProjectPlan();
-      } catch (err) {
-        console.error('Error handling row drop:', err);
-      }
-    });
-
-    // Timeline Track Cell (Spanning all week columns)
-    const trackTd = document.createElement('td');
-    trackTd.colSpan = currentPlan.weeks.length;
-    trackTd.className = 'timeline-track-cell';
-    trackTd.style.width = (currentPlan.weeks.length * WEEK_WIDTH) + 'px';
-
-    // Week Drop Targets with Visual Indicator
-    for (let i = 0; i < currentPlan.weeks.length; i++) {
-      const dropSlot = document.createElement('div');
-      dropSlot.className = 'drop-slot';
-      dropSlot.style.left = (i * WEEK_WIDTH) + 'px';
-      dropSlot.style.width = WEEK_WIDTH + 'px';
-      dropSlot.dataset.weekKey = currentPlan.weeks[i].weekKey;
-      dropSlot.dataset.rowIndex = rowIdx;
-
-      dropSlot.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropSlot.classList.add('drag-over');
-        trackTd.classList.add('drag-over-cell');
-        if (!dropSlot.querySelector('.drop-slot-badge')) {
-          const badge = document.createElement('div');
-          badge.className = 'drop-slot-badge';
-          badge.textContent = `📅 ${currentPlan.weeks[i].weekKey}`;
-          dropSlot.appendChild(badge);
-        }
-      });
-      dropSlot.addEventListener('dragleave', () => {
-        dropSlot.classList.remove('drag-over');
-        trackTd.classList.remove('drag-over-cell');
-        const badge = dropSlot.querySelector('.drop-slot-badge');
-        if (badge) badge.remove();
-      });
-      dropSlot.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        // The row also listens for drops; one drop must send exactly one schedule call (B-03).
-        e.stopPropagation();
-        dropSlot.classList.remove('drag-over');
-        trackTd.classList.remove('drag-over-cell');
-        const badge = dropSlot.querySelector('.drop-slot-badge');
-        if (badge) badge.remove();
-
-        const dataStr = e.dataTransfer.getData('text/plain');
-        if (dataStr) {
-          const data = JSON.parse(dataStr);
-          if (data.fromReorder) {
-            await callResolver('reorderWbsTasks', { taskId: data.taskId, targetIndex: rowIdx });
-          } else {
-            await callResolver('scheduleBacklogTask', {
-              taskId: data.taskId,
-              startWeek: currentPlan.weeks[i].weekKey,
-              spanWeeks: 3,
-              targetIndex: rowIdx
-            });
-          }
-          await loadProjectPlan();
-        }
-      });
-      trackTd.appendChild(dropSlot);
-    }
-
-    // Render Authentic TODAY Line Marker on Current Week
-    const currentWkIdx = currentPlan.weeks.findIndex(w => w.isCurrentWeek);
-    const activeTodayIdx = currentWkIdx >= 0 ? currentWkIdx : Math.floor(currentPlan.weeks.length / 2);
-    const curWeek = currentPlan.weeks[activeTodayIdx];
-
-    const todayObj = new Date();
-    const todayFormatted = todayObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-
-    let dayOffsetFraction = 0.5;
-    if (curWeek && curWeek.startDate && curWeek.endDate) {
-      const startMs = new Date(curWeek.startDate).getTime();
-      const endMs = new Date(curWeek.endDate).getTime();
-      const nowMs = todayObj.getTime();
-      if (nowMs >= startMs && nowMs <= endMs && endMs > startMs) {
-        dayOffsetFraction = Math.max(0.1, Math.min(0.9, (nowMs - startMs) / (endMs - startMs)));
-      }
-    }
-    const todayX = (activeTodayIdx * WEEK_WIDTH) + (WEEK_WIDTH * dayOffsetFraction);
-
-    const todayLine = document.createElement('div');
-    todayLine.className = 'today-line';
-    todayLine.style.left = todayX + 'px';
-    trackTd.appendChild(todayLine);
-
-    if (rowIdx === 0) {
-      const flag = document.createElement('div');
-      flag.className = 'today-flag';
-      flag.style.left = todayX + 'px';
-      flag.textContent = `TODAY (${todayFormatted})`;
-      trackTd.appendChild(flag);
-    }
-
-    // Render Continuous Gantt Bar (with Uniform Curved Corners)
-    const currentWeekKey = curWeek?.weekKey || 'Today';
-    const startWeekKey = task.startWeek || currentWeekKey;
-    const startIdx = Math.max(0, currentPlan.weeks.findIndex(w => w.weekKey === startWeekKey));
-    const span = task.spanWeeks || 3;
-    const barLeft = startIdx * WEEK_WIDTH + 4;
-    const barWidth = Math.max(WEEK_WIDTH - 8, span * WEEK_WIDTH - 8);
-
-    const bar = document.createElement('div');
-    bar.className = 'gantt-bar' + (isEpic ? ' is-epic-bar' : (isSub ? ' is-subtask-bar' : ' is-story-bar'));
-    bar.style.left = barLeft + 'px';
-    bar.style.width = barWidth + 'px';
-    bar.dataset.taskId = task.key;
-
-    // Background Color Coding
-    const isBehind = task.progress < task.targetProgress && task.status !== 'COMPLETED';
-    let barBaseColor = task.status === 'COMPLETED' ? 'var(--cp-bar-done)' : isBehind ? 'var(--cp-bar-late)' : 'var(--cp-bar-fill)';
-    if (isEpic) {
-      barBaseColor = task.status === 'COMPLETED' ? 'var(--cp-bar-done)' : isBehind ? 'var(--cp-bar-late)' : 'var(--cp-bar-epic-fill)';
-    }
-    bar.style.background = isEpic ? 'var(--cp-bg-discovery)' : 'var(--cp-bg-neutral)';
-
-    // Actual Progress Fill
-    const actualFillWidth = (task.progress / 100) * barWidth;
-    const fillActual = document.createElement('div');
-    fillActual.className = 'gantt-bar-fill-actual' + (task.progress >= 100 ? ' is-full' : '');
-    fillActual.style.width = actualFillWidth + 'px';
-    fillActual.style.background = barBaseColor;
-    bar.appendChild(fillActual);
-
-    // Remaining Planned Fill
-    const fillPlanned = document.createElement('div');
-    fillPlanned.className = 'gantt-bar-fill-planned';
-    fillPlanned.style.left = actualFillWidth + 'px';
-    fillPlanned.style.width = (barWidth - actualFillWidth) + 'px';
-    fillPlanned.style.background = isEpic ? 'var(--cp-bg-discovery-bold)' : barBaseColor;
-    bar.appendChild(fillPlanned);
-
-    // Bar Text Content
-    const content = document.createElement('div');
-    content.className = 'gantt-bar-content';
-    const glyph = isEpic ? '🟪' : (isSub ? '↳' : '🔷');
-    const rollupSuffix = (isEpic && task.childrenCount) ? ` [${task.childrenCount} stories]` : '';
-    content.textContent = `${glyph} ${task.key} (${task.progress}%)${rollupSuffix}`;
-    bar.appendChild(content);
-
-    // Resize Handles and drag (only on non-epic leaf items)
-    if (!isEpic) {
-      const leftHandle = document.createElement('div');
-      leftHandle.className = 'bar-handle bar-handle-left';
-      setupBarResizeHandle(leftHandle, task, 'left');
-      bar.appendChild(leftHandle);
-
-      const rightHandle = document.createElement('div');
-      rightHandle.className = 'bar-handle bar-handle-right';
-      setupBarResizeHandle(rightHandle, task, 'right');
-      bar.appendChild(rightHandle);
-
-      setupBarDrag(bar, task);
-    }
-
-    // Hover Tooltip Trigger and Interactive Dependency Highlighting
-    bar.addEventListener('mouseenter', (e) => {
-      showTaskTooltip(e, task);
-      hoveredTaskId = task.key;
-      renderDependencySvgOverlay();
-    });
-    bar.addEventListener('mouseleave', () => {
-      hideTooltip();
-      hoveredTaskId = null;
-      renderDependencySvgOverlay();
-    });
-    bar.addEventListener('click', (e) => {
-      if (!e.defaultPrevented && !isDraggingBar) {
-        if (pinnedDependencyTaskId === task.key) {
-          pinnedDependencyTaskId = null;
-        } else {
-          pinnedDependencyTaskId = task.key;
-        }
-        renderDependencySvgOverlay();
-      }
-    });
-    bar.addEventListener('dblclick', (e) => {
-      e.stopPropagation();
-      openTaskDetailModal(task.key);
-    });
-    bar.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      openProgressPicker(bar, task.key);
-    });
-
-    trackTd.appendChild(bar);
-    tr.appendChild(trackTd);
-    tbody.appendChild(tr);
+    // A subtask under a collapsed parent, or a story under a collapsed epic on the timeline, is hidden.
+    if (task.isSubtask && task.parentKey && !expandedTasks.has(task.parentKey)) return;
+    if (!task.isEpic && task.epicKey && task.epicKey !== task.key && planKeys.has(task.epicKey) && !expandedTasks.has(task.epicKey)) return;
+    out.push({ task, rowIdx });
   });
+  return { rows: out, total: tasksToRender.length };
+}
+
+function makeSpacer(cols) {
+  const tr = document.createElement('tr');
+  tr.className = 'spacer-row';
+  tr.setAttribute('aria-hidden', 'true');
+  const td = document.createElement('td');
+  td.colSpan = cols;
+  tr.appendChild(td);
+  return tr;
+}
+
+function renderTimelineRows() {
+  if (globalThis.__cpPerf) performance.mark('cp:rows:start');
+  const tbody = document.getElementById('ganttBody');
+  tbody.innerHTML = '';
+  rowCache = new Map();
+  rowTasks = [];
+  rowTaskList = [];
+  renderedRange = { first: 0, last: -1 };
+  topDropRowEl = topSpacer = bottomSpacer = null;
+  const cols = getVisibleColKeys().length + currentPlan.weeks.length;
+
+  if (!currentPlan.tasks || currentPlan.tasks.length === 0) {
+    tbody.innerHTML = html`<tr><td colspan="${cols}" style="text-align:center; padding:30px; color: var(--cp-text-subtle);">No scheduled tasks in project. Drag issues from the Backlog Tray or click "+ Add Task / Issue" to schedule.</td></tr>`;
+    drawTimeline();
+    return;
+  }
+
+  // Top Drop Target Row (Index 0)
+  topDropRowEl = document.createElement('tr');
+  topDropRowEl.className = 'drop-target-row';
+  topDropRowEl.innerHTML = html`<td colspan="${cols}">+ Drop here to place task at top of schedule</td>`;
+  setupDropTargetRow(topDropRowEl, 0);
+  tbody.appendChild(topDropRowEl);
+
+  const computed = computeRowTasks();
+  rowTasks = computed.rows;
+  rowTaskList = rowTasks.map(r => r.task);
+  topSpacer = makeSpacer(cols);
+  bottomSpacer = makeSpacer(cols);
+  tbody.appendChild(topSpacer);
+  tbody.appendChild(bottomSpacer);
 
   // Bottom Drop Target Row
   const btmDropRow = document.createElement('tr');
   btmDropRow.className = 'drop-target-row';
-  btmDropRow.innerHTML = html`<td colspan="${getVisibleColKeys().length + currentPlan.weeks.length}">+ Drop here to place task at bottom of schedule</td>`;
-  setupDropTargetRow(btmDropRow, tasksToRender.length);
+  btmDropRow.innerHTML = html`<td colspan="${cols}">+ Drop here to place task at bottom of schedule</td>`;
+  setupDropTargetRow(btmDropRow, computed.total);
   tbody.appendChild(btmDropRow);
-  setTimeout(renderDependencySvgOverlay, 50);
+  updateVirtualRows();
+  if (globalThis.__cpPerf) performance.measure('cp:rows', 'cp:rows:start');
+}
+
+function removeRow(tr) {
+  if (!tr) return;
+  const next = tr.nextElementSibling;
+  if (next && next.classList.contains('inline-creation-row')) next.remove();
+  tr.remove();
+}
+
+/** Shows the rows in the viewport plus a buffer. Rows that stay in view are not rebuilt (B-13). */
+function updateVirtualRows() {
+  const wrapper = document.getElementById('ganttWrapper');
+  if (!wrapper || !topSpacer) {
+    drawTimeline(true);
+    return;
+  }
+  measureLayout();
+  const offset = Math.max(0, wrapper.scrollTop + layout.headerH - layout.bodyStart);
+  const next = visibleRange(offset, Math.max(ROW_H, wrapper.clientHeight - layout.headerH), ROW_H, rowTasks.length, ROW_BUFFER);
+  const prev = renderedRange;
+  if (next.first !== prev.first || next.last !== prev.last) {
+    for (let i = prev.first; i <= prev.last; i++) {
+      if (i < next.first || i > next.last) removeRow(rowCache.get(rowTasks[i].task.key));
+    }
+    let cursor = topSpacer;
+    for (let i = next.first; i <= next.last; i++) {
+      const { task, rowIdx } = rowTasks[i];
+      let tr = rowCache.get(task.key);
+      if (!tr) {
+        tr = buildTaskRow(task, rowIdx);
+        rowCache.set(task.key, tr);
+      }
+      if (!tr.isConnected) cursor.after(tr);
+      cursor = tr;
+      const after = tr.nextElementSibling;
+      if (after && after.classList.contains('inline-creation-row')) cursor = after;
+    }
+    topSpacer.firstChild.style.height = (next.first * ROW_H) + 'px';
+    bottomSpacer.firstChild.style.height = (Math.max(0, rowTasks.length - 1 - next.last) * ROW_H) + 'px';
+    renderedRange = next;
+    measureLayout();
+  }
+  drawTimeline(true);
+}
+
+let virtualFrame = 0;
+function scheduleVirtualRows() {
+  if (virtualFrame) return;
+  virtualFrame = requestAnimationFrame(() => {
+    virtualFrame = 0;
+    updateVirtualRows();
+  });
+}
+
+/** Scrolls a row into view (it may not be a DOM row yet) and returns its <tr>. */
+function scrollRowIntoView(key) {
+  const wrapper = document.getElementById('ganttWrapper');
+  const i = rowTasks.findIndex(r => r.task.key === key);
+  if (!wrapper || i < 0) return null;
+  wrapper.scrollTop = Math.max(0, rowTop(i) - layout.headerH - (wrapper.clientHeight - layout.headerH) / 2);
+  updateVirtualRows();
+  return rowCache.get(key) || null;
+}
+
+/** Uses the plan a write returned: bars move, rows that are still shown are kept (B-13). */
+function applyPlanInPlace(plan) {
+  const before = rowTaskList.map(t => t.key).join('\n');
+  currentPlan = plan;
+  const computed = computeRowTasks();
+  if (computed.rows.map(r => r.task.key).join('\n') !== before) {
+    renderPlan();
+    return;
+  }
+  rowTasks = computed.rows;
+  rowTaskList = rowTasks.map(r => r.task);
+  renderPlanSummary();
+  const byKey = new Map(rowTaskList.map(t => [t.key, t]));
+  for (const [key, tr] of rowCache) {
+    const hit = tr.querySelector('.bar-hit');
+    if (hit && byKey.has(key)) positionBarHit(hit, byKey.get(key));
+  }
+  drawTimeline(true);
+}
+
+
+/** Builds one task row: data cells plus the timeline cell with the bar hit element. */
+function buildTaskRow(task, rowIdx) {
+  const isEpic = Boolean(task.isEpic || task.hierarchyLevel === 1);
+  const isSub = Boolean(task.isSubtask || task.hierarchyLevel === -1);
+
+  const tr = document.createElement('tr');
+  tr.className = 'task-row' + (isEpic ? ' is-epic-row' : (isSub ? ' is-subtask' : ' is-story-row'));
+  tr.dataset.taskId = task.key;
+
+  // Has children check
+  const hasChildren = Boolean(
+    (task.childrenCount && task.childrenCount > 0) ||
+    (task.subtasks && task.subtasks.length > 0) ||
+    currentPlan.tasks.some(t => (t.parentKey === task.key || t.parentId === task.id || (isEpic && t.epicKey === task.key)) && t.key !== task.key)
+  );
+
+  // Expand/collapse icon & Indentation
+  let expandToggleHtml = html``;
+  if (hasChildren && !isSub) {
+    const isExp = expandedTasks.has(task.key);
+    expandToggleHtml = html`<button class="tree-toggle-btn" data-parent-key="${task.key}" title="${isExp ? 'Collapse children' : 'Expand children'}">${isExp ? '▼' : '▶'}</button>`;
+  }
+
+  let badgeHtml = html``;
+  let indentPx = 0;
+  if (isEpic) {
+    badgeHtml = html`<span class="epic-badge" title="Epic Roadmap Level">🟪 EPIC</span>`;
+    indentPx = 0;
+  } else if (isSub) {
+    badgeHtml = html`<span class="subtask-tree-icon" title="Subtask Execution Level">↳</span>`;
+    indentPx = 28;
+  } else {
+    badgeHtml = html`<span class="story-badge" title="Story / Task Plan Level">🔷</span>`;
+    if (task.epicKey && currentPlan.tasks.some(t => t.key === task.epicKey && t.key !== task.key)) {
+      indentPx = 16;
+    }
+  }
+
+  const siteUrl = getJiraBaseUrl();
+  // Summary column content with clean hover action toolbar and in-place addition affordance
+  const summaryHtml = html`
+    <div style="display:flex; align-items:center; width:100%; padding-left:${indentPx}px;">
+      <div class="row-insert-affordance" title="Insert task below (Row ${rowIdx + 2})">
+        <button class="row-insert-plus-btn" title="Insert new task below">＋</button>
+      </div>
+      <span class="row-drag-handle" draggable="true" title="Drag to reorder row">⠿</span>
+      ${expandToggleHtml}
+      ${badgeHtml}
+      <a href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer" class="task-key-link" title="Open ${task.key} in native Jira (new tab)">${task.key} ↗</a>
+      <span class="task-summary-text" style="cursor:pointer; margin-left:6px; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="Click or double-click to edit summary">
+        : ${task.summary}
+      </span>
+      <div class="row-action-toolbar">
+        <button class="row-action-btn quick-insert-below-btn" title="Insert task below (Row ${rowIdx + 2})">➕ Add below</button>
+        <button class="row-action-btn quick-progress-btn" title="Set actual progress">📈 Progress</button>
+        <button class="row-action-btn edit-modal-btn" title="Open full detail modal">✏️ Edit</button>
+        <button class="row-action-btn why-date-btn" title="Why this date?">❓ Why?</button>
+        <button class="row-action-btn quick-subtask-btn" title="Add Jira subtask">↳ Subtask</button>
+        <button class="row-action-btn quick-resource-btn" title="Allocate team member">👥 Team</button>
+        <button class="row-action-btn open-jira-row-btn" title="Open ${task.key} in native Jira (new tab)">↗ Jira</button>
+        <button class="row-action-btn unschedule-row-btn" title="Remove from planner (Move to backlog)">📤 Backlog</button>
+      </div>
+    </div>
+  `;
+
+  // Epic Column Display
+  let epicHtml = html``;
+  if (isEpic) {
+    epicHtml = html`<span class="epic-badge" title="Epic Roadmap Level">🟪 EPIC</span>`;
+  } else {
+    let epicLabel = task.epic || '';
+    if (!epicLabel && task.epicKey) {
+      const epObj = (currentPlan.availableEpics || []).find(e => e.key === task.epicKey);
+      epicLabel = epObj ? epObj.summary : task.epicKey;
+    }
+    if (epicLabel) {
+      epicHtml = html`<span class="epic-link-chip has-epic" title="Click to change epic">🟪 ${epicLabel} ▾</span>`;
+    } else {
+      epicHtml = html`<span class="epic-link-chip no-epic" title="Click to link epic">+ Link Epic</span>`;
+    }
+  }
+
+  // Data Columns (Dynamic based on visible columns)
+  const visibleKeys = getVisibleColKeys();
+  let rowColsHtml = html``;
+  if (visibleKeys.includes('epic')) {
+    rowColsHtml = html`${rowColsHtml}<td class="td-data td-epic-cell" style="width:${columnWidths.epic}px;">${epicHtml}</td>`;
+  }
+  if (visibleKeys.includes('story')) {
+    rowColsHtml = html`${rowColsHtml}<td class="td-data td-story-cell" style="width:${columnWidths.story}px;" title="${task.story || ''}">${task.story || (isEpic ? 'Epic' : (isSub ? 'Subtask' : 'Task'))}</td>`;
+  }
+  if (visibleKeys.includes('task')) {
+    rowColsHtml = html`${rowColsHtml}<td class="td-data td-task-summary" style="width:${columnWidths.task}px;">${summaryHtml}</td>`;
+  }
+  if (visibleKeys.includes('resource')) {
+    rowColsHtml = html`${rowColsHtml}<td class="td-data td-resource-cell" style="width:${columnWidths.resource}px;"></td>`;
+  }
+  if (visibleKeys.includes('effort')) {
+    rowColsHtml = html`${rowColsHtml}
+      <td class="td-data td-effort-cell" style="width:${columnWidths.effort}px; text-align:center; cursor:pointer;" title="Click to edit effort hours">
+        <span class="effort-text" style="font-weight:700;">${formatEffort(task.effortHours)}</span>
+      </td>
+    `;
+  }
+  if (visibleKeys.includes('progress')) {
+    const isProgRollup = isEpic || (task.childrenCount && task.childrenCount > 0);
+    const progTitle = isProgRollup
+      ? `Actual progress: ${task.progress}% (Rollup from children: click to edit or override)`
+      : `Click to set actual progress (${task.progress}%)`;
+    rowColsHtml = html`${rowColsHtml}
+      <td class="td-data td-progress-cell" style="width:${columnWidths.progress}px; text-align:center; cursor:pointer;" title="${progTitle}">
+        <div class="progress-chip-cell ${task.progress === 100 ? 'is-complete' : (task.progress > 0 ? 'is-active' : 'is-zero')}">
+          <span class="progress-chip-fill" style="width:${task.progress}%;"></span>
+          <span class="progress-chip-text">${task.progress}% ▾</span>
+        </div>
+      </td>
+    `;
+  }
+  if (visibleKeys.includes('target')) {
+    rowColsHtml = html`${rowColsHtml}
+      <td class="td-data td-target-cell" style="width:${columnWidths.target}px; text-align:center; cursor:pointer;" title="Click to set target progress (${task.targetProgress}%)">
+        <div class="target-chip-cell">
+          <span class="target-chip-text">🎯 ${task.targetProgress}% ▾</span>
+        </div>
+      </td>
+    `;
+  }
+  if (visibleKeys.includes('status')) {
+    rowColsHtml = html`${rowColsHtml}
+      <td class="td-data td-status-cell" style="width:${columnWidths.status}px; text-align:center;">
+        <span class="badge editable-badge-chip ${task.status === 'COMPLETED' ? 'badge-success' : task.status === 'IN_PROGRESS' ? 'badge-primary' : 'badge-neutral'}" title="Click to change status">
+          ${task.status} ▾
+        </span>
+      </td>
+    `;
+  }
+  tr.innerHTML = html`${rowColsHtml}`;
+
+  // Interactive Scalable Resource Selection (Typeahead Picker & Subtask Rollup)
+  if (visibleKeys.includes('resource')) {
+    const resourceTd = tr.querySelector('.td-resource-cell');
+    if (resourceTd) {
+      const contributing = getTaskContributingResources(task);
+      let avatarHtml = html``;
+      let labelText = '';
+      let titleText = '';
+      let isMultiple = false;
+
+      if (contributing.length === 0) {
+        avatarHtml = html`<span class="resource-option-avatar">U</span>`;
+        labelText = 'Unassigned';
+        titleText = 'Unassigned. Click to assign team member.';
+      } else if (contributing.length === 1) {
+        const res = contributing[0];
+        const initials = getInitials(res.name);
+        avatarHtml = html`<span class="resource-option-avatar">${initials}</span>`;
+        labelText = res.name;
+        if (res.isParent) {
+          titleText = `${res.name} (Task Assignee)`;
+        } else {
+          titleText = `${res.name} (Assigned via subtask: ${res.subtasks.join(', ') || 'subtask'})`;
+          labelText = html`${labelText} <span class="resource-via-subtask-label">(subtask)</span>`;
+        }
+      } else {
+        isMultiple = true;
+        // Multi-avatar stack (up to 3 avatars)
+        const maxAvatars = 3;
+        avatarHtml = html`<div class="avatar-stack">`;
+        contributing.slice(0, maxAvatars).forEach((res, aIdx) => {
+          const initials = getInitials(res.name);
+          const bg = aIdx === 0 ? 'var(--cp-bg-neutral)' : aIdx === 1 ? 'var(--cp-bg-selected)' : 'var(--cp-bg-discovery)';
+          const color = aIdx === 0 ? 'var(--cp-text)' : aIdx === 1 ? 'var(--cp-text-brand)' : 'var(--cp-text-discovery)';
+          avatarHtml = html`${avatarHtml}<span class="resource-option-avatar" style="background:${bg}; color:${color}; z-index:${10 - aIdx};" title="${res.name}">${initials}</span>`;
+        });
+        avatarHtml = html`${avatarHtml}</div>`;
+
+        const names = contributing.map(c => c.name);
+        if (contributing.length === 2) {
+          labelText = `${names[0]}, ${names[1]}`;
+        } else {
+          labelText = `${names[0]}, ${names[1]} +${contributing.length - 2}`;
+        }
+
+        const breakdownLines = contributing.map(c => {
+          if (c.isParent && c.subtasks.length > 0) {
+            return `• ${c.name} (Lead & subtasks: ${c.subtasks.join(', ')})`;
+          } else if (c.isParent) {
+            return `• ${c.name} (Lead / Parent Assignee)`;
+          } else {
+            return `• ${c.name} (Subtask: ${c.subtasks.join(', ') || 'subtask'})`;
+          }
+        });
+        titleText = `Assigned Resources (${contributing.length}):\n` + breakdownLines.join('\n') + `\nClick to manage or assign.`;
+      }
+
+      resourceTd.innerHTML = html`
+        <div class="resource-chip-btn ${isMultiple ? 'has-multiple-resources' : ''}" title="${titleText}">
+          ${avatarHtml}
+          <span class="resource-names-wrap" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${labelText}</span>
+          ${isMultiple ? html`<span class="res-count-badge">${contributing.length}</span>` : ''}
+          <span style="font-size:10px; color: var(--cp-text-subtle);">▾</span>
+        </div>
+      `;
+      const resChip = resourceTd.querySelector('.resource-chip-btn');
+      if (resChip) {
+        resChip.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openResourcePicker(resChip, task.key);
+        });
+      }
+    }
+  }
+
+  // Inline Edit for Summary
+  const sumText = tr.querySelector('.task-summary-text');
+  if (sumText) {
+    sumText.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (tr.querySelector('.inline-edit-input')) return;
+      const origSummary = task.summary;
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'inline-edit-input';
+      input.value = origSummary;
+      sumText.replaceWith(input);
+      input.focus();
+      input.select();
+
+      let saved = false;
+      async function saveInlineSummary() {
+        if (saved) return;
+        saved = true;
+        const newSummary = input.value.trim();
+        if (newSummary && newSummary !== origSummary) {
+          task.summary = newSummary;
+          await callResolver('updateWbsTask', {
+            taskId: task.key,
+            updates: { summary: newSummary }
+          });
+          await loadProjectPlan();
+        } else {
+          input.replaceWith(sumText);
+        }
+      }
+
+      input.addEventListener('keydown', (ke) => {
+        if (ke.key === 'Enter') {
+          ke.preventDefault();
+          saveInlineSummary();
+        } else if (ke.key === 'Escape') {
+          saved = true;
+          input.replaceWith(sumText);
+        }
+      });
+      input.addEventListener('blur', saveInlineSummary);
+    });
+  }
+
+  // Inline Edit for Effort (Hours)
+  const effortTd = tr.querySelector('.td-effort-cell');
+  if (effortTd) {
+    effortTd.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (effortTd.querySelector('.inline-edit-input')) return;
+      const origHours = task.effortHours || 0;
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.className = 'inline-edit-input';
+      input.style.width = '55px';
+      input.style.textAlign = 'center';
+      input.min = '0';
+      input.value = origHours;
+      effortTd.innerHTML = '';
+      effortTd.appendChild(input);
+      input.focus();
+      input.select();
+
+      let saved = false;
+      async function saveInlineEffort() {
+        if (saved) return;
+        saved = true;
+        const val = parseInt(input.value, 10);
+        if (!isNaN(val) && val >= 0 && val !== origHours) {
+          task.effortHours = val;
+          await callResolver('updateWbsTask', {
+            taskId: task.key,
+            updates: { effortHours: val }
+          });
+          await loadProjectPlan();
+        } else {
+          effortTd.innerHTML = html`<span class="effort-text" style="font-weight:700;">${formatEffort(origHours)}</span>`;
+        }
+      }
+
+      input.addEventListener('keydown', (ke) => {
+        if (ke.key === 'Enter') {
+          ke.preventDefault();
+          saveInlineEffort();
+        } else if (ke.key === 'Escape') {
+          saved = true;
+          effortTd.innerHTML = html`<span class="effort-text" style="font-weight:700;">${formatEffort(origHours)}</span>`;
+        }
+      });
+      input.addEventListener('blur', saveInlineEffort);
+    });
+  }
+
+  // Interactive Progress Cell Click -> opens Quick Progress Popover
+  const progTd = tr.querySelector('.td-progress-cell');
+  if (progTd) {
+    progTd.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openProgressPicker(progTd, task.key);
+    });
+  }
+
+  // Interactive Target Cell Click -> opens Quick Target Popover
+  const targetTd = tr.querySelector('.td-target-cell');
+  if (targetTd) {
+    targetTd.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openTargetPicker(targetTd, task.key);
+    });
+  }
+
+  // Inline Status Picker
+  const statusChip = tr.querySelector('.editable-badge-chip');
+  if (statusChip) {
+    statusChip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openStatusPicker(statusChip, task.key);
+    });
+  }
+
+  // Inline Epic Picker
+  const epicChip = tr.querySelector('.epic-link-chip');
+  if (epicChip) {
+    epicChip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openEpicPicker(epicChip, task.key);
+    });
+  }
+
+  // Row Action Toolbar Handlers
+  const quickInsertBtn = tr.querySelector('.quick-insert-below-btn');
+  if (quickInsertBtn) {
+    quickInsertBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openInlineCreationRow(tr, task, rowIdx);
+    });
+  }
+  const rowPlusBtn = tr.querySelector('.row-insert-plus-btn');
+  if (rowPlusBtn) {
+    rowPlusBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openInlineCreationRow(tr, task, rowIdx);
+    });
+  }
+  const quickProgBtn = tr.querySelector('.quick-progress-btn');
+  if (quickProgBtn) {
+    quickProgBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openProgressPicker(quickProgBtn, task.key);
+    });
+  }
+  const editModalBtn = tr.querySelector('.edit-modal-btn');
+  if (editModalBtn) {
+    editModalBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openTaskDetailModal(task.key);
+    });
+  }
+  const whyBtn = tr.querySelector('.why-date-btn');
+  if (whyBtn) {
+    whyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showWhy(task.key, whyBtn.getBoundingClientRect());
+    });
+  }
+  const quickSubBtn = tr.querySelector('.quick-subtask-btn');
+  if (quickSubBtn) {
+    quickSubBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openTaskDetailModal(task.key);
+      setTimeout(() => {
+        const inp = document.getElementById('newSubtaskSummaryInput');
+        if (inp) { inp.focus(); inp.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      }, 100);
+    });
+  }
+  const quickResBtn = tr.querySelector('.quick-resource-btn');
+  if (quickResBtn) {
+    quickResBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openTaskDetailModal(task.key);
+      setTimeout(() => {
+        const sel = document.getElementById('multiResourceSelect');
+        if (sel) { sel.focus(); sel.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      }, 100);
+    });
+  }
+  const unschedBtn = tr.querySelector('.unschedule-row-btn');
+  if (unschedBtn) {
+    unschedBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await callResolver('unscheduleTask', { taskId: task.key });
+      await loadProjectPlan();
+    });
+  }
+  const openJiraBtn = tr.querySelector('.open-jira-row-btn');
+  if (openJiraBtn) {
+    openJiraBtn.addEventListener('click', (e) => {
+      openJiraIssueInNewTab(task.key, e);
+    });
+  }
+  const taskKeyLink = tr.querySelector('.task-key-link');
+  if (taskKeyLink) {
+    taskKeyLink.addEventListener('click', (e) => {
+      openJiraIssueInNewTab(task.key, e);
+    });
+  }
+
+  // Tree Toggle Handler
+  const treeToggle = tr.querySelector('.tree-toggle-btn');
+  if (treeToggle) {
+    treeToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (expandedTasks.has(task.key)) {
+        expandedTasks.delete(task.key);
+      } else {
+        expandedTasks.add(task.key);
+      }
+      renderTimelineRows();
+    });
+  }
+
+  // Row Drag Handle for Reordering
+  const dragHandle = tr.querySelector('.row-drag-handle');
+  if (dragHandle) {
+    dragHandle.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', JSON.stringify({ taskId: task.key, fromReorder: true, origIndex: rowIdx }));
+    });
+  }
+
+  // Between-Row Drag & Drop (Middle of Plan insertion)
+  tr.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    const rect = tr.getBoundingClientRect();
+    const isTop = (e.clientY - rect.top) < (rect.height / 2);
+    if (isTop) {
+      tr.classList.add('drop-insert-top');
+      tr.classList.remove('drop-insert-bottom');
+    } else {
+      tr.classList.add('drop-insert-bottom');
+      tr.classList.remove('drop-insert-top');
+    }
+  });
+  tr.addEventListener('dragleave', (e) => {
+    if (!tr.contains(e.relatedTarget)) {
+      tr.classList.remove('drop-insert-top');
+      tr.classList.remove('drop-insert-bottom');
+    }
+  });
+  tr.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    const rect = tr.getBoundingClientRect();
+    const isTop = (e.clientY - rect.top) < (rect.height / 2);
+    tr.classList.remove('drop-insert-top');
+    tr.classList.remove('drop-insert-bottom');
+
+    const dataStr = e.dataTransfer.getData('text/plain');
+    if (!dataStr) return;
+    try {
+      const data = JSON.parse(dataStr);
+      const targetIndex = isTop ? rowIdx : rowIdx + 1;
+      if (data.fromReorder) {
+        await callResolver('reorderWbsTasks', { taskId: data.taskId, targetIndex });
+      } else if (data.taskId) {
+        const curWk = (currentPlan?.weeks || []).find(w => w.isCurrentWeek)?.weekKey || currentPlan?.weeks[0]?.weekKey;
+        await callResolver('scheduleBacklogTask', {
+          taskId: data.taskId,
+          startWeek: curWk,
+          spanWeeks: 3,
+          targetIndex
+        });
+      }
+      await loadProjectPlan();
+    } catch (err) {
+      console.error('Error handling row drop:', err);
+    }
+  });
+
+  // Timeline cell: drops land on the week under the pointer; the bar itself is drawn on the canvas.
+  const trackTd = document.createElement('td');
+  trackTd.colSpan = currentPlan.weeks.length;
+  trackTd.className = 'timeline-track-cell';
+  trackTd.style.width = (currentPlan.weeks.length * WEEK_WIDTH) + 'px';
+  setupTrackDrop(trackTd, rowIdx);
+  const hit = createBarHit(task, isEpic);
+  if (hit) trackTd.appendChild(hit);
+  tr.appendChild(trackTd);
+  return tr;
 }
 
 function setupDropTargetRow(rowEl, targetIndex) {
@@ -2559,341 +2580,219 @@ function setupDropTargetRow(rowEl, targetIndex) {
   });
 }
 
-function setupBarResizeHandle(handle, task, edge) {
-  handle.addEventListener('mousedown', (e) => {
+
+/** Drop from the backlog or a row drag onto the timeline: the week comes from the pointer x (B-03). */
+function setupTrackDrop(trackTd, rowIdx) {
+  let badge = null;
+  const weekAt = (e) => {
+    const x = e.clientX - trackTd.getBoundingClientRect().left;
+    return Math.max(0, Math.min(currentPlan.weeks.length - 1, Math.floor(x / WEEK_WIDTH)));
+  };
+  const clear = () => {
+    trackTd.classList.remove('drag-over-cell');
+    if (badge) badge.remove();
+    badge = null;
+  };
+  trackTd.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    const i = weekAt(e);
+    trackTd.classList.add('drag-over-cell');
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.className = 'drop-slot-badge';
+      trackTd.appendChild(badge);
+    }
+    badge.style.left = (i * WEEK_WIDTH + 4) + 'px';
+    badge.textContent = `📅 ${currentPlan.weeks[i].weekKey}`;
+  });
+  trackTd.addEventListener('dragleave', (e) => {
+    if (!trackTd.contains(e.relatedTarget)) clear();
+  });
+  trackTd.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    // The row also listens for drops; one drop must send exactly one schedule call (B-03).
     e.stopPropagation();
-    e.preventDefault();
-    if (e.button !== 0) return;
-
-    const startX = e.clientX;
-    let wasResized = false;
-    const origSpan = Math.max(1, task.spanWeeks || 3);
-    const origEffort = task.effortHours || 0;
-    const origStartIdx = Math.max(0, currentPlan.weeks.findIndex(w => w.weekKey === (task.startWeek || currentPlan.weeks[0]?.weekKey)));
-    const origLeftPx = origStartIdx * WEEK_WIDTH + 4;
-    const origWidthPx = Math.max(WEEK_WIDTH - 8, origSpan * WEEK_WIDTH - 8);
-
-    let targetSpan = origSpan;
-    let targetStartIdx = origStartIdx;
-
-    const bar = handle.parentElement;
-    bar.classList.add('is-dragging-active');
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-
-    const contentEl = bar.querySelector('.gantt-bar-content');
-    const origContentText = contentEl ? contentEl.textContent : '';
-
-    function onMouseMove(moveEvent) {
-      const deltaX = moveEvent.clientX - startX;
-      if (Math.abs(deltaX) > 4) {
-        wasResized = true;
-        isDraggingBar = true;
-      }
-      const deltaWeeks = deltaWeeksFromPixels(deltaX, WEEK_WIDTH);
-      const resized = spanFromResize(edge, origStartIdx, origSpan, deltaWeeks, currentPlan.weeks.length);
-
-      if (edge === 'right') {
-        targetSpan = resized.span;
-        const newWidth = Math.max(WEEK_WIDTH - 8, targetSpan * WEEK_WIDTH - 8);
-        bar.style.width = newWidth + 'px';
-        const fillPlanned = bar.querySelector('.gantt-bar-fill-planned');
-        const fillActual = bar.querySelector('.gantt-bar-fill-actual');
-        const actualW = ((task.progress || 0) / 100) * newWidth;
-        if (fillActual) fillActual.style.width = actualW + 'px';
-        if (fillPlanned) {
-          fillPlanned.style.left = actualW + 'px';
-          fillPlanned.style.width = (newWidth - actualW) + 'px';
-        }
-      } else if (edge === 'left') {
-        targetStartIdx = resized.startIdx;
-        targetSpan = resized.span;
-        const newLeft = targetStartIdx * WEEK_WIDTH + 4;
-        const newWidth = Math.max(WEEK_WIDTH - 8, targetSpan * WEEK_WIDTH - 8);
-        bar.style.left = newLeft + 'px';
-        bar.style.width = newWidth + 'px';
-        const fillPlanned = bar.querySelector('.gantt-bar-fill-planned');
-        const fillActual = bar.querySelector('.gantt-bar-fill-actual');
-        const actualW = ((task.progress || 0) / 100) * newWidth;
-        if (fillActual) fillActual.style.width = actualW + 'px';
-        if (fillPlanned) {
-          fillPlanned.style.left = actualW + 'px';
-          fillPlanned.style.width = (newWidth - actualW) + 'px';
-        }
-      }
-
-      if (contentEl) {
-        const glyph = task.isSubtask ? '↳' : '🔷';
-        contentEl.textContent = `${glyph} ${task.key} (${targetSpan} wks)`;
-      }
+    const i = weekAt(e);
+    clear();
+    const dataStr = e.dataTransfer.getData('text/plain');
+    if (!dataStr) return;
+    const data = JSON.parse(dataStr);
+    if (data.fromReorder) {
+      await callResolver('reorderWbsTasks', { taskId: data.taskId, targetIndex: rowIdx });
+    } else {
+      await callResolver('scheduleBacklogTask', {
+        taskId: data.taskId,
+        startWeek: currentPlan.weeks[i].weekKey,
+        spanWeeks: 3,
+        targetIndex: rowIdx
+      });
     }
-
-    async function onMouseUp() {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-      bar.classList.remove('is-dragging-active');
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      setTimeout(() => { isDraggingBar = false; }, 80);
-
-      if (wasResized && (targetSpan !== origSpan || targetStartIdx !== origStartIdx)) {
-        // A resize changes dates only. The estimate changes only when the user ticked the option (B-03).
-        const autoScale = document.getElementById('autoScaleEffortCheckbox')?.checked === true;
-        const newStartWeek = currentPlan.weeks[targetStartIdx].weekKey;
-        const updates = { startWeek: newStartWeek, spanWeeks: targetSpan };
-        if (autoScale && origEffort > 0 && origSpan > 0) {
-          updates.effortHours = Math.max(1, Math.round((origEffort / origSpan) * targetSpan));
-          task.effortHours = updates.effortHours;
-        }
-        task.startWeek = newStartWeek;
-        task.spanWeeks = targetSpan;
-
-        await callResolver('updateWbsTask', { taskId: task.key, updates, expectedVersion: task.version || 0 });
-        await loadProjectPlan();
-      } else {
-        bar.style.left = origLeftPx + 'px';
-        bar.style.width = origWidthPx + 'px';
-        if (contentEl) contentEl.textContent = origContentText;
-      }
-    }
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    await loadProjectPlan();
   });
 }
 
-function setupBarDrag(bar, task) {
-  bar.addEventListener('mousedown', (e) => {
-    if (e.target.classList.contains('bar-handle') || e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
-    if (e.button !== 0) return;
-    e.preventDefault();
-
-    const startX = e.clientX;
-    let wasMoved = false;
-    const span = Math.max(1, task.spanWeeks || 3);
-    const origStartIdx = Math.max(0, currentPlan.weeks.findIndex(w => w.weekKey === (task.startWeek || currentPlan.weeks[0]?.weekKey)));
-    const origLeftPx = origStartIdx * WEEK_WIDTH + 4;
-    let targetStartIdx = origStartIdx;
-
-    const contentEl = bar.querySelector('.gantt-bar-content');
-    const origContentText = contentEl ? contentEl.textContent : '';
-
-    bar.classList.add('is-dragging-active');
-    document.body.style.cursor = 'grabbing';
-    document.body.style.userSelect = 'none';
-
-    function onMouseMove(moveEvent) {
-      const deltaX = moveEvent.clientX - startX;
-      if (Math.abs(deltaX) > 4) {
-        wasMoved = true;
-        isDraggingBar = true;
-      }
-      const deltaWeeks = deltaWeeksFromPixels(deltaX, WEEK_WIDTH);
-      targetStartIdx = clampStartIndex(origStartIdx, deltaWeeks, span, currentPlan.weeks.length);
-      const effectiveDeltaWeeks = targetStartIdx - origStartIdx;
-
-      // Directly update bar position without destroying DOM
-      bar.style.left = (origStartIdx * WEEK_WIDTH + 4 + (effectiveDeltaWeeks * WEEK_WIDTH)) + 'px';
-
-      if (contentEl) {
-        const glyph = task.isSubtask ? '↳' : '🔷';
-        const sign = effectiveDeltaWeeks > 0 ? `+${effectiveDeltaWeeks}` : `${effectiveDeltaWeeks}`;
-        contentEl.textContent = `${glyph} ${task.key} ➔ ${currentPlan.weeks[targetStartIdx].weekKey} (${sign}w)`;
-      }
-    }
-
-    async function onMouseUp() {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-      bar.classList.remove('is-dragging-active');
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      setTimeout(() => { isDraggingBar = false; }, 80);
-
-      if (wasMoved && targetStartIdx !== origStartIdx) {
-        const newStartWeek = currentPlan.weeks[targetStartIdx].weekKey;
-        task.startWeek = newStartWeek;
-        await callResolver('updateWbsTask', {
-          taskId: task.key,
-          updates: { startWeek: newStartWeek },
-          expectedVersion: task.version || 0
-        });
-        await loadProjectPlan();
-      } else {
-        bar.style.left = origLeftPx + 'px';
-        if (contentEl) contentEl.textContent = origContentText;
-      }
-    }
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-  });
+/** Places a hit element over its bar and names it for assistive technology. */
+function positionBarHit(hit, task) {
+  const r = barRect(task, originIso(), DAY_PX, 0, ROW_H, BAR_H);
+  if (!r) {
+    hit.hidden = true;
+    return;
+  }
+  hit.hidden = false;
+  hit.style.left = r.x + 'px';
+  hit.style.top = r.y + 'px';
+  hit.style.width = r.w + 'px';
+  hit.style.height = r.h + 'px';
+  const h = handleOffsets(r.w);
+  const left = hit.querySelector('.bar-handle-left');
+  const right = hit.querySelector('.bar-handle-right');
+  if (left) left.style.left = h.left + 'px';
+  if (right) right.style.left = h.right + 'px';
+  hit.setAttribute('aria-label', `${task.key}: ${task.summary || ''}, ${task.startDate} to ${task.endDate || task.startDate}, ${task.progress || 0}% done`);
 }
 
-// SVG Dependency Bezier Curves Overlay with Directional Arrowheads and Interactive Highlighting
-function renderDependencySvgOverlay() {
-  const svg = document.getElementById('dependencySvgLayer');
-  if (!svg) return;
-  svg.innerHTML = '';
-  if (!currentPlan || !currentPlan.tasks) return;
+/** Transparent element over a bar: it has no background; the canvas draws the bar. */
+function createBarHit(task, isEpic) {
+  if (!task.startDate) return null;
+  const key = task.key;
+  const hit = document.createElement('div');
+  hit.className = 'bar-hit' + (isEpic ? ' is-epic' : '');
+  hit.dataset.taskId = key;
+  hit.tabIndex = 0;
+  hit.setAttribute('role', 'button');
 
-  const ganttWrapper = document.getElementById('ganttWrapper');
-  if (!ganttWrapper) return;
-  const wrapperRect = ganttWrapper.getBoundingClientRect();
-  const scrollWidth = Math.max(ganttWrapper.scrollWidth, 1200);
-  const scrollHeight = Math.max(ganttWrapper.scrollHeight, 600);
-  svg.setAttribute('width', scrollWidth);
-  svg.setAttribute('height', scrollHeight);
+  // Resize handles and drag (only on non-epic items).
+  if (!isEpic) {
+    for (const edge of ['left', 'right']) {
+      const handle = document.createElement('div');
+      handle.className = `bar-handle bar-handle-${edge}`;
+      handle.setAttribute('aria-hidden', 'true');
+      handle.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        e.preventDefault();
+        startBarPointerEdit(e, key, edge, hit);
+      });
+      hit.appendChild(handle);
+    }
+    hit.addEventListener('mousedown', (e) => {
+      if (e.button !== 0 || e.target.classList.contains('bar-handle')) return;
+      e.preventDefault();
+      startBarPointerEdit(e, key, 'move', hit);
+    });
+  }
+  positionBarHit(hit, task);
 
-  // Define reusable SVG markers for crisp directional arrowheads
-  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-  defs.innerHTML = html`
-    <marker id="dep-arrow-success" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 9 5 L 0 8.5 z" style="fill: var(--cp-bg-success-bold)" />
-    </marker>
-    <marker id="dep-arrow-violated" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 9 5 L 0 8.5 z" style="fill: var(--cp-bg-danger-bold)" />
-    </marker>
-    <marker id="dep-arrow-incoming" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 9 5 L 0 8.5 z" style="fill: var(--cp-bg-brand)" />
-    </marker>
-    <marker id="dep-arrow-outgoing" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 9 5 L 0 8.5 z" style="fill: var(--cp-bg-warning-bold)" />
-    </marker>
-  `;
-  svg.appendChild(defs);
-
-  // Active task for dependency isolation (either hovered or pinned by click)
-  const activeKey = hoveredTaskId || pinnedDependencyTaskId;
-
-  // Reset all bar dependency glow classes
-  document.querySelectorAll('.gantt-bar').forEach(b => {
-    b.classList.remove('highlight-dependency-active', 'highlight-dependency-pred', 'highlight-dependency-succ');
+  // Hover shows the tooltip and highlights the dependency chain: one canvas draw, no DOM rebuild.
+  hit.addEventListener('mouseenter', (e) => {
+    const t = findTask(key);
+    if (t) showTaskTooltip(e, t);
+    hoveredTaskId = key;
+    drawTimeline(true);
   });
+  hit.addEventListener('mouseleave', () => {
+    hideTooltip();
+    hoveredTaskId = null;
+    drawTimeline(true);
+  });
+  hit.addEventListener('click', (e) => {
+    if (!e.defaultPrevented && !isDraggingBar) {
+      pinnedDependencyTaskId = pinnedDependencyTaskId === key ? null : key;
+      drawTimeline(true);
+    }
+  });
+  hit.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    openTaskDetailModal(key);
+  });
+  hit.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openProgressPicker(hit, key);
+  });
+  hit.addEventListener('focus', () => {
+    if (timeline) timeline.focusKey = key;
+    drawTimeline();
+  });
+  hit.addEventListener('blur', () => {
+    if (timeline && timeline.focusKey === key) timeline.focusKey = null;
+    drawTimeline();
+  });
+  return hit;
+}
 
-  if (activeKey) {
-    const activeBar = document.querySelector(`.gantt-bar[data-task-id="${activeKey}"]`);
-    if (activeBar) {
-      activeBar.classList.add('highlight-dependency-active');
+/**
+ * Drag (move) or resize (left, right) of a bar. Snaps to days; hold Alt for whole weeks. Dependents
+ * move live as a preview from the same schedule engine as the server, with dashed outlines at their
+ * old positions. A drop sends one updateWbsTask call with exact dates and uses the plan it returns.
+ */
+function startBarPointerEdit(e, key, mode, hit) {
+  const task = findTask(key);
+  if (!task || !task.startDate || !timeline) return;
+  const wrapper = document.getElementById('ganttWrapper');
+  const startX = e.clientX;
+  const today = todayIso();
+  let shift = 0;
+  let moved = false;
+  document.body.style.cursor = mode === 'move' ? 'grabbing' : 'col-resize';
+  document.body.style.userSelect = 'none';
+  hideTooltip();
+
+  function onMove(ev) {
+    const dx = ev.clientX - startX;
+    if (!moved && Math.abs(dx) > 4) {
+      moved = true;
+      isDraggingBar = true;
+    }
+    if (!moved) return;
+    const s = snapDays(dx, DAY_PX, ev.altKey ? 'week' : 'day');
+    if (s === shift && timeline.drag) return;
+    shift = s;
+    const moves = previewMoves(currentPlan.tasks, key, mode === 'right' ? 0 : s, mode === 'left' ? 0 : s, today);
+    const mine = moves.get(key);
+    const sign = s > 0 ? `+${s}` : `${s}`;
+    timeline.drag = { key, moves, label: mode === 'move' ? `${key} ➔ ${mine.start} (${sign}d)` : `${key} ${mine.start} to ${mine.end}` };
+    positionBarHit(hit, { ...task, startDate: mine.start, endDate: mine.end });
+    wrapper.dataset.preview = JSON.stringify(Object.fromEntries(moves));
+    timeline.requestDraw();
+  }
+
+  async function onUp() {
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    setTimeout(() => { isDraggingBar = false; }, 80);
+    delete wrapper.dataset.preview;
+    const mine = timeline.drag && timeline.drag.moves.get(key);
+    if (!moved || shift === 0 || !mine) {
+      timeline.drag = null;
+      positionBarHit(hit, task);
+      drawTimeline();
+      return;
+    }
+    const updates = { startDate: mine.start, endDate: mine.end };
+    // A resize changes dates only. The estimate changes only when the user ticked the option (B-03).
+    const autoScale = mode !== 'move' && document.getElementById('autoScaleEffortCheckbox')?.checked === true;
+    if (autoScale && task.effortHours > 0) {
+      const oldDays = daysBetween(task.startDate, task.endDate || task.startDate) + 1;
+      const newDays = daysBetween(mine.start, mine.end) + 1;
+      updates.effortHours = Math.max(1, Math.round((task.effortHours * newDays) / oldDays));
+    }
+    const res = await callResolver('updateWbsTask', { taskId: key, updates, expectedVersion: task.version || 0 });
+    timeline.drag = null;
+    if (res && Array.isArray(res.tasks)) {
+      applyPlanInPlace(res);
+    } else {
+      // A refused or failed write shows the banner; reload so the bars show what is stored.
+      await loadProjectPlan();
     }
   }
 
-  currentPlan.tasks.forEach(task => {
-    if (!task.dependency || !task.dependency.predecessorKey) return;
-
-    const predTask = currentPlan.tasks.find(t => t.key === task.dependency.predecessorKey);
-    if (!predTask) return;
-
-    const predBar = document.querySelector(`.gantt-bar[data-task-id="${predTask.key}"]`);
-    const succBar = document.querySelector(`.gantt-bar[data-task-id="${task.key}"]`);
-    if (!predBar || !succBar) return;
-
-    const isIncoming = (task.key === activeKey);   // activeKey depends on predTask
-    const isOutgoing = (predTask.key === activeKey); // task depends on activeKey (predTask)
-    const isConnected = isIncoming || isOutgoing;
-
-    if (activeKey) {
-      if (isIncoming) {
-        predBar.classList.add('highlight-dependency-pred');
-      } else if (isOutgoing) {
-        succBar.classList.add('highlight-dependency-succ');
-      }
-    }
-
-    const predRect = predBar.getBoundingClientRect();
-    const succRect = succBar.getBoundingClientRect();
-
-    // Coordinates relative to SVG canvas
-    const triggerPct = (typeof task.dependency.triggerPercent === 'number' ? task.dependency.triggerPercent : 30) / 100;
-    const x1 = (predRect.left - wrapperRect.left) + ganttWrapper.scrollLeft + (predRect.width * triggerPct);
-    const y1 = (predRect.top - wrapperRect.top) + ganttWrapper.scrollTop + (predRect.height / 2);
-
-    const x2 = (succRect.left - wrapperRect.left) + ganttWrapper.scrollLeft;
-    const y2 = (succRect.top - wrapperRect.top) + ganttWrapper.scrollTop + (succRect.height / 2);
-
-    // The engine is the only judge of a violation (INV-09); the drawing does not add its own test.
-    const isViolated = Boolean(task.dependency.isViolated);
-    const dx = Math.max(35, Math.abs(x2 - x1) / 2);
-    const pathData = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
-
-    // Determine styling, markers, and badges based on connection state
-    let curveClass = 'dep-path';
-    let curveColor = isViolated ? 'var(--cp-border-danger)' : 'var(--cp-border-success)';
-    let markerEnd = isViolated ? 'url(#dep-arrow-violated)' : 'url(#dep-arrow-success)';
-
-    if (activeKey) {
-      if (isConnected) {
-        curveClass = 'dep-path active-dep' + (isViolated ? ' violated' : '');
-        if (isIncoming) {
-          curveColor = isViolated ? 'var(--cp-border-danger)' : 'var(--cp-border-brand)';
-          markerEnd = isViolated ? 'url(#dep-arrow-violated)' : 'url(#dep-arrow-incoming)';
-        } else {
-          curveColor = isViolated ? 'var(--cp-border-danger)' : 'var(--cp-text-warning)';
-          markerEnd = isViolated ? 'url(#dep-arrow-violated)' : 'url(#dep-arrow-outgoing)';
-        }
-      } else {
-        curveClass = 'dep-path dimmed-dep';
-        curveColor = 'var(--cp-border-bold)';
-      }
-    } else if (isViolated) {
-      curveClass = 'dep-path violated';
-    }
-
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', pathData);
-    path.setAttribute('class', curveClass);
-    if (markerEnd && (!activeKey || isConnected)) {
-      path.setAttribute('marker-end', markerEnd);
-    }
-    if (activeKey && isConnected) {
-      path.style.stroke = curveColor;
-    }
-    svg.appendChild(path);
-
-    // Predecessor Trigger Anchor Dot (only for active or default connections)
-    if (!activeKey || isConnected) {
-      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      circle.setAttribute('cx', x1);
-      circle.setAttribute('cy', y1);
-      circle.setAttribute('r', isConnected ? 5.5 : 4);
-      circle.style.fill = curveColor;
-      svg.appendChild(circle);
-
-      // Render Pill Badge Showing "X depends on Y" relationship
-      const when = task.dependency.triggerDate ? `, ${task.dependency.triggerDate}` : '';
-      const labelText = isViolated
-        ? `⚠ ${task.dependency.triggerPercent}%${when}: starts too early`
-        : `${task.dependency.triggerPercent}%${when}`;
-
-      const midX = (x1 + x2) / 2;
-      const midY = (y1 + y2) / 2;
-      const badgeW = Math.max(76, labelText.length * 6.5 + 20);
-      const badgeH = 20;
-
-      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-
-      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      rect.setAttribute('x', midX - (badgeW / 2));
-      rect.setAttribute('y', midY - (badgeH / 2));
-      rect.setAttribute('width', badgeW);
-      rect.setAttribute('height', badgeH);
-      rect.setAttribute('rx', 10);
-      rect.setAttribute('ry', 10);
-      rect.style.fill = curveColor;
-      rect.style.filter = 'drop-shadow(0 2px 4px rgba(9, 30, 66, 0.28))';
-      g.appendChild(rect);
-
-      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      text.setAttribute('x', midX);
-      text.setAttribute('y', midY);
-      text.setAttribute('class', 'dep-badge-text');
-      text.textContent = labelText;
-      g.appendChild(text);
-
-      svg.appendChild(g);
-    }
-  });
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
 }
+
 
 // Rich Tooltip Helpers
 function showTaskTooltip(e, task) {

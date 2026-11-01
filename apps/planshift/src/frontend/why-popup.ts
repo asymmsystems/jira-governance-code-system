@@ -8,6 +8,7 @@
  * CascadePlan: the "Why this date?" popup (B-12). A non-modal popup (ADS Popup pattern, UP-48):
  * no aria-modal, Escape or the close button dismisses it, and the driving bars get a dashed
  * outline plus a "Driver" text label so the chain is not shown by colour alone (WCAG 1.4.1).
+ * The canvas draws the outline and label; the bar hit element carries the label as text.
  */
 
 import { buildWhyModel, WhyModel } from '../ui/why';
@@ -24,20 +25,27 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, classN
   return node;
 }
 
+/** The canvas draws the visible marks; it listens for this event (B-13). */
+function announceDrivers(keys: string[]): void {
+  document.dispatchEvent(new CustomEvent('cp:drivers', { detail: keys }));
+}
+
 function clearDriverMarks(): void {
-  document.querySelectorAll('.gantt-bar.is-driver').forEach(bar => {
+  document.querySelectorAll('.bar-hit.is-driver').forEach(bar => {
     bar.classList.remove('is-driver');
     bar.querySelectorAll('.driver-label').forEach(l => l.remove());
   });
+  announceDrivers([]);
 }
 
 function markDrivers(model: WhyModel): void {
   for (const k of model.driverKeys) {
-    const bar = document.querySelector(`.gantt-bar[data-task-id="${CSS.escape(k)}"]`);
+    const bar = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(k)}"]`);
     if (!bar) continue;
     bar.classList.add('is-driver');
     bar.appendChild(el('span', 'Driver', 'driver-label'));
   }
+  announceDrivers(model.driverKeys);
 }
 
 export function closeWhyPopup(): void {

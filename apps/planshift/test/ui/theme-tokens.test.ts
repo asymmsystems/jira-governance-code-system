@@ -55,6 +55,7 @@ describe('contrast of the token pairs the planner uses (WCAG 2.2 AA)', () => {
     ['--ds-text', '--ds-surface-sunken', 4.5], ['--ds-text-subtle', '--ds-surface-sunken', 4.5],
     ['--ds-text-brand', '--ds-surface', 4.5], ['--ds-text-danger', '--ds-surface', 4.5], ['--ds-text-success', '--ds-surface', 4.5],
     ['--ds-text-inverse', '--ds-background-brand-bold', 4.5], ['--ds-text-inverse', '--ds-background-neutral-bold', 4.5],
+    ['--ds-text-inverse', '--ds-background-success-bold', 4.5],
     ['--ds-text-danger', '--ds-background-danger', 4.5], ['--ds-text-success', '--ds-background-success', 4.5], ['--ds-text-brand', '--ds-background-selected', 4.5],
     ['--ds-background-accent-blue-bolder', '--ds-surface', 3], ['--ds-background-accent-purple-bolder', '--ds-surface', 3],
     ['--ds-background-accent-green-bolder', '--ds-surface', 3], ['--ds-background-accent-red-bolder', '--ds-surface', 3],
