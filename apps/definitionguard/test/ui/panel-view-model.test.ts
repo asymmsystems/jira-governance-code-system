@@ -36,11 +36,18 @@ describe('B-13 buildPanelViewModel', () => {
     const vm = vmOf(response());
     expect(vm.status).toMatchObject({ satisfied: false, title: 'Definition of Done incomplete', appearance: 'warning', lozenge: { text: 'Blocked', appearance: 'removed' } });
     expect(vm.status.body).toBe('Moving to Done is blocked while these items are open: Peer review approved, Release sign-off.');
+    expect(vm.status.nextStep).toBe('Complete mandatory item: Peer review approved.');
   });
 
   it('uses the success colour when satisfied', () => {
     const vm = vmOf(response({ isFullySatisfied: true, openMandatoryTitles: [] }));
     expect(vm.status).toMatchObject({ satisfied: true, appearance: 'success', lozenge: { text: 'Ready for Done', appearance: 'success' } });
+    expect(vm.status.nextStep).toBe('All mandatory criteria complete. Issue is ready for Done.');
+  });
+
+  it('suggests completing remaining items when incomplete but no mandatory items are open', () => {
+    const vm = vmOf(response({ isFullySatisfied: false, openMandatoryTitles: [] }));
+    expect(vm.status.nextStep).toBe('Complete remaining items or move issue to Done.');
   });
 
   it('gives each checkbox an accessible name with mandatory or optional and its state', () => {
