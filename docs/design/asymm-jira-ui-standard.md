@@ -32,7 +32,7 @@ Every Asymm Systems app rendered inside a Jira issue (`jira:issuePanel` and `jir
 1. **Header Row:**
    - App title on the left (matches manifest module title, for example "Four Realities").
    - One high-level status lozenge immediately next to the title (for example, "Incomplete", "Sealed", "DoD complete").
-   - Subtle "Refresh" button right-aligned on the header row.
+   - Bordered `default` "Refresh" button (`iconBefore="refresh"`) right-aligned on the header row so it reads clearly as an interactive control rather than a static text label.
    - For sidebar context (`jira:issueContext`), the header row is provided by Jira native chrome.
 
 2. **Summary Block (Hero Card):**
@@ -47,27 +47,29 @@ Every Asymm Systems app rendered inside a Jira issue (`jira:issuePanel` and `jir
 3. **Detail Sections (Collapsible):**
    - The findings section starts collapsed by default to prevent visual clutter.
    - Header is a single clickable row with a chevron indicator ("Show details" / "Hide details"), section title ("Gate findings"), and a count badge ("4").
-   - Built with a subtle `Button` and local component state.
+   - Built with a bordered `default` `Button` (`spacing="compact"`) and local component state.
    - When expanded, reveals the four gate findings in chain order.
 
 4. **Surfaces, Borders, and Indentation:**
    - The overall app container sits on `elevation.surface.sunken` (maps to the #F9F7F6 brand background concept).
-   - Each major section is a `Box` on `elevation.surface` with border `color.border`, border radius `radius.medium`, and padding `space.150`.
+   - Each major section is a `Box` on `elevation.surface` with border `color.border`, border radius `radius.medium`, and padding `space.200`.
    - **Strict one border rule:** Never nest bordered boxes inside another bordered box.
-   - Sub-sections (individual gate findings inside the section) are visually separated by an indented layout (`space.200` left padding or a subtle divider), never a second border.
-   - Metadata notes (exception requests, approvals, rework reasons) use a dedicated `NoteBox` with background `color.background.neutral`, radius `radius.medium`, and padding `space.100`.
+   - Sub-sections (individual gate findings inside the section) are visually separated by an indented layout (`space.200` left padding and `ListRow` hairline dividers), never a second border.
+   - Metadata notes (exception requests, approvals, rework reasons) use a dedicated borderless `NoteBox` with background `color.background.neutral`, radius `radius.small`, and full container width.
 
 5. **Button Hierarchy and Placement:**
    - **Exactly one `primary` button per view:** Dedicated strictly to the immediate next remediation step.
-   - **Secondary actions:** Use `default` appearance (for example, "Add rework reason").
-   - **Cross-app links and refresh:** Use `subtle` appearance (for example, "Open LedgerSeal panel", "Open DefinitionGuard panel", "Refresh").
-   - **Placement:** The action button row sits at the bottom of the summary block or the bottom of the expanded section. It never floats between sections.
+   - **Secondary and header actions:** Use `default` appearance (for example, "Refresh" with `iconBefore="refresh"`, "Show details", "Add rework reason").
+   - **Cross-app links and tertiary dismissals:** Use `subtle` appearance (for example, "Open LedgerSeal panel", "Open DefinitionGuard panel", "Cancel").
+   - **Async write modals:** Disable both primary submit and "Cancel" buttons while a write request is in flight to prevent duplicate submissions.
+   - **Placement:** The action button row sits at the bottom of the summary block, inside contextual `NoteBox` blocks, or at the bottom of the expanded section. It never floats between sections.
    - **Limit:** At most three buttons in any horizontal row. Additional actions belong inside their respective detail sub-sections.
    - **Destructive actions:** Revoking or rejecting exceptions must use plain language and require explicit confirmation inside a modal.
 
 6. **Typography and Content Rules:**
    - At most one sentence per line of evidence.
-   - Source names, field references, and metric codes belong in a `Tooltip` over the gate label, never as cluttering body text.
+   - **Inline `Text` rule (`as="span"`):** Jira Cloud's `@atlaskit/css-reset` adds `margin-top: 12px` to non-first `<p>` elements. Every `<Text>` inside `<Inline>` or `<Stack>` must pass `as="span"` (and inline bold-label + value pairs must use `KeyValueInline` with `alignBlock="baseline"`) so flexbox `space` tokens govern spacing with zero baseline shift.
+   - Source names, field references, and metric codes belong in a `Tooltip` over the gate label or a quiet muted source line, never as prominent body text.
    - Sentence case throughout.
    - No em dash characters anywhere.
 
@@ -313,7 +315,7 @@ To ensure uniform adoption across FourRealities, LedgerSeal, and DefinitionGuard
 1. **Package Name:** `packages/asymm-jira-ui`
 2. **Contents:**
    - `src/brand.ts`: Palette constants, WCAG contrast table, semantic role definitions, and Atlassian token maps.
-   - `src/layout.tsx`: Exported layout components (`AppSurface`, `PanelHeader`, `SummaryBlock`, `Section`, `NoteBox`, `ActionRow`, `StatusLozenge`).
+   - `src/layout.tsx`: Exported layout components (`AppSurface`, `PageHeader`, `PanelHeader`, `KeyValueInline`, `StatusBanner`, `CardHeader`, `FourColumnGrid`, `TwoColumnGrid`, `ThreeColumnGrid`, `GateCard`, `SummaryBlock`, `Card`, `StatTile`, `ListRow`, `TableCard`, `Section`, `SubSection`, `NoteBox`, `ModalContent`, `FormField`, `LabeledInline`, `AttributionLine`, `ActionRow`, `StatusLozenge`).
    - `src/types.ts`: TypeScript contracts for status states, gate models, and actions.
    - `README.md`: Usage guide and design token reference.
    - Unit and accessibility test suite.
