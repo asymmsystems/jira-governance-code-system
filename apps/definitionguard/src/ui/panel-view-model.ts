@@ -23,6 +23,7 @@ export interface GateStatusText {
   satisfied: boolean;
   title: string;
   body: string;
+  nextStep: string;
   scope?: string;
 }
 
@@ -33,12 +34,22 @@ export interface GateStatusText {
  */
 export function gateStatusText(response: Pick<IssueChecklistState, 'isFullySatisfied' | 'openMandatoryTitles'>): GateStatusText {
   if (response.isFullySatisfied) {
-    return { satisfied: true, title: 'Definition of Done satisfied', body: 'This issue can be moved to Done.' };
+    return {
+      satisfied: true,
+      title: 'Definition of Done satisfied',
+      body: 'This issue can be moved to Done.',
+      nextStep: 'All mandatory criteria complete. Issue is ready for Done.'
+    };
   }
+  const openMandatory = response.openMandatoryTitles || [];
+  const nextStep = openMandatory.length > 0
+    ? `Complete mandatory item: ${openMandatory[0]}.`
+    : 'Complete remaining items or move issue to Done.';
   return {
     satisfied: false,
     title: 'Definition of Done incomplete',
-    body: `Moving to Done is blocked while these items are open: ${(response.openMandatoryTitles || []).join(', ')}.`,
+    body: `Moving to Done is blocked while these items are open: ${openMandatory.join(', ')}.`,
+    nextStep,
     scope: 'This applies on workflows where your Jira admin added the DefinitionGuard validator.'
   };
 }
