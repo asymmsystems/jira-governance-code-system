@@ -255,7 +255,14 @@ AUDT-1 is left Done with label `fr-probe`.
 - Moved `TrendPanel` below `DynamicTable` to ensure the issue triage table is immediately accessible above the fold.
 - 375 of 375 tests pass; all graders PASS (grade_tdd: PASS 96.64, grade_security: PASS, grade_ui: PASS); committed `bef218f`; deployed to development as 3.14.0.
 
+### Deployed 3.15.0 (B-47 UX Architecture Overhaul and Shared UI Library Completion, 2026-11-02)
 
-
-
-
+- Reviewed `handover-gemini-ux.md` and `docs/design/asymm-jira-ui-standard.md` end-to-end and moved all reusable UX primitives into the standalone-ready shared UI library (`src/brand/brand.ts`, `src/brand/layout.tsx`, `src/brand/README.md`) with zero FourRealities imports:
+  - Unified `manifest.yml` (`jira:projectPage`, `jira:issuePanel`, `jira:issueContext`), `PageHeader`, and `PanelHeader` to **Four Realities**, with project scope lozenge, quiet read timestamp, and bordered `Refresh` button (`appearance="default" iconBefore="refresh"`).
+  - Replaced the cyan banner and grey numeric `Badge` in `StatusBanner` with an elevated `elevation.surface` card carrying a semantic left accent stripe (Rose for Incomplete, Sage for Complete, Sand for Recheck) and a bold semantic `Lozenge` (`appearance="removed"` for Incomplete, `appearance="success"` for Complete).
+  - Replaced the shrink-wrapped bordered `Next step` pill (which looked like a button and violated the one-border rule) with a full-width, borderless `color.background.neutral` callout strip (`<Text weight="semibold">Next step:</Text>` + body text).
+  - Replaced mismatched manual `%` widths (`23.5%` vs `49%`) with `FourColumnGrid`, `TwoColumnGrid`, and `ThreeColumnGrid` sharing the exact `space.200` (16px) gutter and `alignBlock="stretch"` equal card heights, and let `GateCard` stretch full width so header lozenges pin flush right and `ProgressBar` spans 100%.
+  - Upgraded card padding (`space.200`), outer surface padding (`space.250`), `ListRow` hairline dividers with right-pinned actions, and structured `Coverage at a glance` with three borderless `StatTile` blocks, weakest-gate `NoteBox`, and selectable risk filter buttons.
+  - Created `TableCard` unifying the filter/preset toolbox and `DynamicTable` inside a single card separated by a hairline border, enriched cells with `updated` date, `evidencedRatioText`, and `issueGapsText`, and added a `Wide text columns` / `Balanced columns` toggle in the `TableCard` header to expand Summary and Top finding on demand within native UI Kit constraints.
+  - Created `ModalContent` (`space.200` block, `space.250` inline) and `FormField` (`Label` + input + helper caption) across all five modals, and co-located exception decision and rework reason actions inside their respective gate `NoteBox` containers (`<= 3` buttons per `ActionRow`, asserted in `accessibility.test.tsx`).
+- 31 suites, 378 of 378 tests pass; coverage 99.66% statements, 96.48% branches, 99.26% functions, 99.81% lines (every file >= 90.9%); all graders PASS (`grade_tdd: PASS 96.48`, `grade_security: PASS`, `grade_ui: PASS`); `forge lint` clean; deployed to development as **3.15.0**.
