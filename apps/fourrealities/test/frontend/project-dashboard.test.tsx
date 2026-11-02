@@ -41,13 +41,15 @@ describe('ProjectDashboard', () => {
     expect(triageOrder(rows).map(r => r.issueKey)).toEqual(['DEMO-2', 'DEMO-3', 'DEMO-1', 'DEMO-4']);
   });
 
-  it('shows gate rates with counts first, then RAI with its rated count', async () => {
+  it('shows Four Realities header, readiness lozenge, gate rates with counts first, then Coverage at a glance and RAI', async () => {
     const r = await mount(dashboard(rows));
     const order = r.root.findAll((n: any) => n.type === 'ui-Heading' && /^(Intent|Audit|Alignment)/.test(flatText(n.props.children)));
     expect(order.map((n: any) => flatText(n.props.children).slice(0, 3))).toEqual(['Int', 'Aud', 'Ali']);
     const text = textOf(r.toJSON());
+    expect(text).toContain('Four Realities DEMO');
+    expect(text).toContain('Coverage at a glance');
     expect(text).toContain('1 of 3 rated issues have evidence');
-    expect(findAll(r.root, 'Lozenge').map((l: any) => flatText(l.props.children)).slice(0, 4)).toEqual(['33%', '67%', '0%', '50%']);
+    expect(findAll(r.root, 'Lozenge').map((l: any) => flatText(l.props.children)).slice(0, 6)).toEqual(['DEMO', 'Incomplete', '33%', '67%', '0%', '50%']);
     expect(text).toContain('across 3 rated issues (1 unrated)');
     expect(text).toContain('Read 2026-11-01 08:30 UTC');
     expect(tableKeys(r)).toEqual(['DEMO-2', 'DEMO-3', 'DEMO-1', 'DEMO-4']);
@@ -173,7 +175,7 @@ describe('ProjectDashboard', () => {
 
   it('B-35: shows one card per gate with a question, a labelled progress bar, a count, and an action only when something is missing', async () => {
     const r = await mount(dashboard(rows));
-    const cards = findAll(r.root, 'Box').filter((b: any) => b.props.xcss && findAll(b, 'Tooltip').some((t: any) => String(t.props.content).startsWith('Metric ')) && findAll(b, 'Tooltip').length === 1);
+    const cards = findAll(r.root, 'Box').filter((b: any) => b.props.xcss?.props?.borderStyle === 'solid' && findAll(b, 'Tooltip').some((t: any) => String(t.props.content).startsWith('Metric ')) && findAll(b, 'Tooltip').length === 1);
     expect(cards).toHaveLength(4);
     const intent = textOf(TestRenderer.create(cards[0].props.children).toJSON());
     expect(intent).toContain('Is the work traced to a decision record?');
@@ -199,18 +201,24 @@ describe('ProjectDashboard', () => {
     expect(textOf(r.toJSON())).toContain('Remove filter: Risk: Critical, High');
   });
 
-  it('B-34: gives the Gates column the most width, so the four chips fit on one line', async () => {
+  it('B-34: gives the Gates column the most width by default and toggles wide text columns on demand', async () => {
     const r = await mount(dashboard(rows));
-    const widths = Object.fromEntries(findAll(r.root, 'DynamicTable')[0].props.head.cells.map((c: any) => [c.key, c.width]));
-    expect(widths).toEqual({ key: 7, summary: 18, gates: 34, rai: 9, finding: 18, assignee: 8, action: 6 });
+    const widths = () => Object.fromEntries(findAll(r.root, 'DynamicTable')[0].props.head.cells.map((c: any) => [c.key, c.width]));
+    expect(widths()).toEqual({ key: 9, summary: 19, gates: 32, rai: 11, finding: 15, assignee: 7, action: 7 });
+    await act(async () => { findButton(r.root, 'Wide text columns').props.onClick(); });
+    expect(widths()).toEqual({ key: 8, summary: 28, gates: 24, rai: 10, finding: 18, assignee: 6, action: 6 });
+    await act(async () => { findButton(r.root, 'Balanced columns').props.onClick(); });
+    expect(widths().gates).toBe(32);
   });
 
   it('B-40: preset views set the filters, and My issues uses the viewer account', async () => {
-    const mineRows = [row('DEMO-1', { intent: F, process: F, code: NA, audit: F }, { assigneeAccountId: 'acc-1' }), ...rows.slice(1)];
+    const mineRows = [row('DEMO-1', { intent: F, process: F, code: NA, audit: F }, { assigneeAccountId: 'acc-1', updated: '2026-11-01T10:00:00Z' }), ...rows.slice(1)];
     let r: any;
     await act(async () => { r = TestRenderer.create(<ProjectDashboard view={dashboard(mineRows)} onRefresh={jest.fn()} viewerAccountId="acc-1" />); });
     await act(async () => { findButton(r.root, 'My issues').props.onClick(); });
     expect(tableKeys(r)).toEqual(['DEMO-1']);
+    const issueCell = TestRenderer.create(findAll(r.root, 'DynamicTable')[0].props.rows[0].cells[0].content);
+    expect(textOf(issueCell.toJSON())).toContain('2026-11-01');
     await act(async () => { findButton(r.root, 'Needs a decision link').props.onClick(); });
     expect(tableKeys(r)).toEqual(['DEMO-2', 'DEMO-3']);
     const anonymous = await mount(dashboard(rows));
@@ -234,14 +242,15 @@ describe('ProjectDashboard', () => {
     expect(title()).toBe('DEMO-1: Work DEMO-1');
   });
 
-  it('B-34: shows each issue as a compact pipeline and a top finding, not four text boxes', async () => {
+  it('B-34: shows each issue as a compact pipeline, evidenced ratio, gaps summary, and top finding', async () => {
     const r = await mount(dashboard(rows));
     expect(findAll(r.root, 'DynamicTable')[0].props.head.cells.map((c: any) => c.content)).toEqual(['Issue', 'Summary', 'Gates', 'Alignment', 'Top finding', 'Assignee', 'Action']);
     const first = findAll(r.root, 'DynamicTable')[0].props.rows[0];
     const gatesCell = TestRenderer.create(first.cells[2].content);
     expect(findAll(gatesCell.root, 'Lozenge').map((l: any) => String(l.props.children))).toEqual(['✕ Intent: missing', '✕ Process: missing', '✕ Code: missing', '✕ Audit: missing']);
     expect(findAll(gatesCell.root, 'Tooltip')[0].props.content).toBe('Intent: Evidence missing. Source: Jira issue links and remote links.');
-    expect(textOf(TestRenderer.create(first.cells[4].content).toJSON())).toBe('No decision record is linked.');
+    expect(textOf(TestRenderer.create(first.cells[3].content).toJSON())).toContain('0 / 4 evidenced');
+    expect(textOf(TestRenderer.create(first.cells[4].content).toJSON())).toBe('4 gaps: Intent, Process, Code, Audit No decision record is linked.');
   });
 
   it('opens Inspect with gate rows and only an Open issue action', async () => {

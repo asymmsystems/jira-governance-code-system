@@ -5,23 +5,22 @@
  */
 
 import React from 'react';
-import { Inline, Lozenge, Stack, Text, Tooltip } from '@forge/react';
+import { Inline, Lozenge, Text, Tooltip } from '@forge/react';
 import { GATE_NAMES, GateName, GateResult, IssueGates } from '../contract/data/models';
 import { GATE_LABEL, appearanceOf, chipText, detailText, glyphOf, sourceLine, stateLabel } from '../ui/gate-text';
 import { pipelineTip } from '../ui/pipeline';
+import { SPACE, TEXT_ROLE } from '../brand/brand';
 import { SubSection } from '../brand/layout';
 
-/** One gate: state with glyph and text, the source line, and one sentence of detail. */
+/** One gate: bold state lozenge, clear finding sentence, and quiet source line. */
 export const GateRow: React.FC<{ gate: GateName; result: GateResult; note?: React.ReactNode }> = ({ gate, result, note }) => (
   <SubSection>
-    <Stack space="space.075" alignInline="start">
-      <Lozenge maxWidth="100%" appearance={appearanceOf(result)}>
-        {`${glyphOf(result)} ${GATE_LABEL[gate]}: ${stateLabel(result)}`}
-      </Lozenge>
-      <Text>{sourceLine(result)}</Text>
-      <Text>{detailText(result)}</Text>
-      {note || null}
-    </Stack>
+    <Lozenge maxWidth="100%" appearance={appearanceOf(result)} isBold>
+      {`${glyphOf(result)} ${GATE_LABEL[gate]}: ${stateLabel(result)}`}
+    </Lozenge>
+    <Text>{detailText(result)}</Text>
+    <Text size="small" color={TEXT_ROLE.muted}>{sourceLine(result)}</Text>
+    {note || null}
   </SubSection>
 );
 
@@ -34,7 +33,7 @@ export const GateChip: React.FC<{ gate: GateName; result: GateResult }> = ({ gat
 
 /** The four gates in chain order, Intent to Audit, the same on every surface (B-33). */
 export const GatePipeline: React.FC<{ gates: IssueGates }> = ({ gates }) => (
-  <Inline space="space.050" alignBlock="center" shouldWrap>
+  <Inline space={SPACE.sub} alignBlock="center" shouldWrap>
     {GATE_NAMES.map(g => (
       <GateChip key={g} gate={g} result={gates[g]} />
     ))}

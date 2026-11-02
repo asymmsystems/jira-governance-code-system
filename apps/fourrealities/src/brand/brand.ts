@@ -49,6 +49,30 @@ export const TEXT_PALETTE: Record<string, { hex: string; contrastOnWhite: number
   stoneText: { hex: '#6B655C', contrastOnWhite: 5.08, role: 'Accessible stone text' }
 };
 
+/** Semantic spacing scale used across all views; components never write raw 'space.*' tokens. */
+export const SPACE = {
+  page: 'space.250',
+  section: 'space.200',
+  group: 'space.150',
+  item: 'space.100',
+  compact: 'space.075',
+  sub: 'space.050',
+  tight: 'space.025',
+  indent: 'space.200',
+  none: 'space.0'
+} as const;
+
+/** Semantic text colour roles mapped to Atlassian light/dark theme tokens. */
+export const TEXT_ROLE = {
+  primary: 'color.text',
+  secondary: 'color.text.subtle',
+  muted: 'color.text.subtlest',
+  accentTeal: 'color.text.accent.teal.bolder',
+  danger: 'color.text.danger',
+  warning: 'color.text.warning',
+  success: 'color.text.success'
+} as const;
+
 export const TOKENS = {
   surfaceApp: 'elevation.surface.sunken',
   surfaceSection: 'elevation.surface',
@@ -63,13 +87,15 @@ export const TOKENS = {
   borderBrandTeal: 'color.border.accent.teal',
   borderBrandTealSubtle: 'color.border.accent.teal.subtle',
   borderBrandRose: 'color.border.accent.magenta',
-  borderBrandSage: 'color.border.accent.lime',
+  borderBrandSage: 'color.border.accent.green',
   borderBrandSand: 'color.border.accent.orange',
   shadowCard: 'elevation.shadow.raised',
   textPrimary: 'color.text',
   textSecondary: 'color.text.subtle',
   textSubtlest: 'color.text.subtlest',
-  spaceSection: 'space.150',
+  spacePage: 'space.250',
+  spaceSection: 'space.200',
+  spaceGroup: 'space.150',
   spaceItem: 'space.100',
   spaceSub: 'space.050',
   spaceIndent: 'space.200',

@@ -213,6 +213,7 @@ export interface IssueRow {
   assigneeName?: string;
   assigneeAccountId?: string;
   sprintNames: string[];
+  updated?: string;
   started: boolean;
   gates: IssueGates;
   reworkLoops: number;

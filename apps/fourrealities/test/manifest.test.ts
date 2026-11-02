@@ -25,7 +25,8 @@ describe('manifest.yml', () => {
     expect(manifest).not.toMatch(/external:/);
   });
 
-  it('unifies issue panel and issue context module titles to Four Realities', () => {
+  it('unifies project page, issue panel, and issue context module titles to Four Realities', () => {
+    expect(manifest).toMatch(/jira:projectPage:\s*\n\s*- key: fourrealities-project-dashboard\s*\n\s*title: Four Realities/);
     expect(manifest).toMatch(/jira:issuePanel:\s*\n\s*- key: fourrealities-issue-panel\s*\n\s*title: Four Realities/);
     expect(manifest).toMatch(/jira:issueContext:\s*\n\s*- key: fourrealities-issue-context\s*\n\s*title: Four Realities\s*\n\s*label: Four Realities/);
   });

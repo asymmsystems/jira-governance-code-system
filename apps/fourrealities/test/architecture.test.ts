@@ -112,11 +112,11 @@ describe('ADR-002 volatility layering', () => {
     expect(files.filter(f => fs.readFileSync(f, 'utf8').includes('NODE_ENV')).map(rel)).toEqual([]);
   });
 
-  it('B-43: outside src/brand/, no source file uses raw Atlassian tokens or hex colors', () => {
+  it('B-43: outside src/brand/, no source file uses raw Atlassian tokens (color., elevation., space., radius.) or hex colors', () => {
     const rawTokens = files.filter(f => !inside(rel(f), 'brand'))
       .flatMap(f => fs.readFileSync(f, 'utf8').split('\n')
         .map((line, i) => ({ line, at: `${rel(f)}:${i + 1}` }))
-        .filter(({ line }) => /(elevation\.|color\.background|color\.border|#[0-9a-fA-F]{3,6})/.test(line))
+        .filter(({ line }) => /(?:['"`](?:color|elevation|space|radius)\.|#[0-9a-fA-F]{3,8}\b)/.test(line))
         .map(({ at }) => at));
     expect(rawTokens).toEqual([]);
   });

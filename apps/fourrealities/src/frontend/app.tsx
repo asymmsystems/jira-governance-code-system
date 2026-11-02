@@ -8,12 +8,14 @@ import React, { useEffect, useState } from 'react';
 import { Inline, SectionMessage, Spinner, Text } from '@forge/react';
 import { invoke, view } from '@forge/bridge';
 import { ForgeContext, IssueRow, ProjectDashboardView, ResolverError } from '../contract/data/models';
-
-/** What the load resolvers return: an error envelope, an issue row, or a dashboard view. */
-type LoadResult = { ok?: boolean; row?: IssueRow; error?: ResolverError } & Partial<ProjectDashboardView>;
+import { SPACE, TEXT_ROLE } from '../brand/brand';
+import { AppSurface } from '../brand/layout';
 import { IssuePanel } from './issue-panel';
 import { ProjectDashboard } from './project-dashboard';
 import { errorText } from '../ui/triage';
+
+/** What the load resolvers return: an error envelope, an issue row, or a dashboard view. */
+type LoadResult = { ok?: boolean; row?: IssueRow; error?: ResolverError } & Partial<ProjectDashboardView>;
 
 export const FourRealitiesApp: React.FC = () => {
   // All hooks run on every render, before any early return (React rules of hooks, FR-01).
@@ -59,26 +61,32 @@ export const FourRealitiesApp: React.FC = () => {
 
   if (loading) {
     return (
-      <Inline space="space.100" alignBlock="center" shouldWrap>
-        <Spinner size="small" label="Loading" />
-        <Text>Evaluating delivery evidence...</Text>
-      </Inline>
+      <AppSurface compact={compact}>
+        <Inline space={SPACE.item} alignBlock="center" shouldWrap>
+          <Spinner size="small" label="Loading" />
+          <Text color={TEXT_ROLE.secondary}>Evaluating delivery evidence...</Text>
+        </Inline>
+      </AppSurface>
     );
   }
 
   if (licenceInactive) {
     return (
-      <SectionMessage appearance="warning" title="Licence not active">
-        <Text>{errorMessage}</Text>
-      </SectionMessage>
+      <AppSurface compact={compact}>
+        <SectionMessage appearance="warning" title="Licence not active">
+          <Text>{errorMessage}</Text>
+        </SectionMessage>
+      </AppSurface>
     );
   }
 
   if (errorMessage || (isIssueView ? !row : !dashboard)) {
     return (
-      <SectionMessage appearance="error" title="Delivery evidence unavailable">
-        <Text>{errorMessage || 'Failed to load delivery evidence.'}</Text>
-      </SectionMessage>
+      <AppSurface compact={compact}>
+        <SectionMessage appearance="error" title="Delivery evidence unavailable">
+          <Text>{errorMessage || 'Failed to load delivery evidence.'}</Text>
+        </SectionMessage>
+      </AppSurface>
     );
   }
 

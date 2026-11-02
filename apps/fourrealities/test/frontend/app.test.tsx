@@ -48,7 +48,7 @@ describe('FourRealitiesApp rendering', () => {
 
     expect(hookErrors).toEqual([]);
     expect(bridgeState.invoke).toHaveBeenCalledWith('getProjectDashboard', {});
-    expect(textOf(renderer.toJSON())).toMatch(/Delivery evidence:\s+DEMO/);
+    expect(textOf(renderer.toJSON())).toContain('Four Realities DEMO');
   });
 
   it('shows an error in the issue panel when getIssueAlignment fails, not the dashboard', async () => {
@@ -62,7 +62,7 @@ describe('FourRealitiesApp rendering', () => {
     expect(hookErrors).toEqual([]);
     const text = textOf(renderer.toJSON());
     expect(text).toContain('Failed to query Jira for issue DEMO-1');
-    expect(text).not.toMatch(/Delivery evidence:\s+DEMO/);
+    expect(text).not.toContain('Four Realities DEMO');
   });
 
   it('B-17: keeps the issue panel mounted after an action, so its message stays, and shows the new row', async () => {
@@ -138,7 +138,7 @@ describe('FourRealitiesApp rendering', () => {
     expect(hookErrors).toEqual([]);
     expect(bridgeState.invoke).toHaveBeenCalledTimes(2);
     expect(bridgeState.invoke).toHaveBeenLastCalledWith('refreshProjectSnapshot', {});
-    expect(textOf(renderer.toJSON())).toMatch(/Delivery evidence:\s+DEMO/);
+    expect(textOf(renderer.toJSON())).toContain('Four Realities DEMO');
   });
 
   it('links to the producer panels and offers no seal or DoD action (B-02)', async () => {

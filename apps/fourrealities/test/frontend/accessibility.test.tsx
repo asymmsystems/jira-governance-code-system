@@ -24,6 +24,17 @@ const FORBIDDEN = /[—─-╿▶·]/;
 
 const flat = (children: any): string => (Array.isArray(children) ? children.map(flat).join('') : children === null || children === undefined || typeof children === 'boolean' ? '' : String(children));
 
+function hasAncestor(node: any, predicate: (ancestor: any) => boolean): boolean {
+  let cur = node?.parent;
+  while (cur) {
+    if (predicate(cur)) return true;
+    cur = cur.parent;
+  }
+  return false;
+}
+
+const isBorderedBox = (n: any): boolean => n?.type === 'ui-Box' && n.props?.xcss?.props?.borderStyle === 'solid';
+
 /** Every rule, checked on one rendered tree. */
 function checkTree(renderer: any, where: string) {
   const root = renderer.root;
@@ -51,8 +62,21 @@ function checkTree(renderer: any, where: string) {
   for (const button of findAll(root, 'Button')) {
     expect(flat(button.props.children).trim()).not.toBe('');
   }
+  // UX standard (B-43): at most one primary button per panel surface, and at most one per modal.
+  const panelPrimary = findAll(root, 'Button', p => p.appearance === 'primary').filter((b: any) => !hasAncestor(b, a => a.type === 'ui-Modal'));
+  expect({ where, atMostOnePrimaryInPanel: panelPrimary.length <= 1 }).toEqual({ where, atMostOnePrimaryInPanel: true });
   for (const modal of findAll(root, 'Modal')) {
     expect(typeof modal.props.onClose).toBe('function');
+    const modalPrimary = findAll(modal, 'Button', p => p.appearance === 'primary');
+    expect({ where, atMostOnePrimaryInModal: modalPrimary.length <= 1 }).toEqual({ where, atMostOnePrimaryInModal: true });
+  }
+  // UX standard (B-43): strict one-border rule (no bordered Box nested inside another bordered Box).
+  for (const box of findAll(root, 'Box').filter(isBorderedBox)) {
+    expect({ where, nestedBorder: hasAncestor(box, isBorderedBox) }).toEqual({ where, nestedBorder: false });
+  }
+  // UX standard (B-43): ActionRow contains at most 3 buttons.
+  for (const actionRow of root.findAll((n: any) => n.type?.name === 'ActionRow')) {
+    expect({ where, atMostThreeInActionRow: findAll(actionRow, 'Button').length <= 3 }).toEqual({ where, atMostThreeInActionRow: true });
   }
   expect(textOf(renderer.toJSON())).not.toMatch(FORBIDDEN);
   // Table cells and the empty view are props, not children: render each one and check it too.
@@ -90,8 +114,15 @@ describe('B-20: accessibility on every view', () => {
     checkTree(r, 'inspect modal');
   });
 
-  it('the issue panel and each of its modals', async () => {
+  it('the issue panel starts with summary visible and detail sections collapsed, and checks every modal', async () => {
     const state = { status: 'REQUESTED' as const, issueKey: 'DEMO-2', requestedBy: 'dev-1', requestedAt: '2026-11-01T00:00:00Z', reason: 'Configuration change only' };
+    let collapsedPanel: any;
+    await act(async () => { collapsedPanel = TestRenderer.create(<IssuePanel row={row('DEMO-2', { intent: M_INTENT, process: M_DOD, code: M_CODE, audit: M_SEAL }, { reworkLoops: 1, codeException: state })} onReload={jest.fn()} onRow={jest.fn()} />); });
+    checkTree(collapsedPanel, 'issue panel default collapsed');
+    expect(textOf(collapsedPanel.toJSON())).toContain('No decision record is linked.');
+    expect(textOf(collapsedPanel.toJSON())).toContain('Show details');
+    expect(textOf(collapsedPanel.toJSON())).not.toContain('Source: Jira issue links and remote links.');
+
     let r: any;
     await act(async () => { r = TestRenderer.create(<IssuePanel row={row('DEMO-2', { intent: M_INTENT, process: M_DOD, code: M_CODE, audit: M_SEAL }, { reworkLoops: 1, codeException: state })} onReload={jest.fn()} onRow={jest.fn()} defaultCollapsed={false} />); });
     checkTree(r, 'issue panel');
@@ -126,12 +157,13 @@ describe('B-20: accessibility on every view', () => {
     checkTree(r, 'error');
   });
 
-  it('keeps forbidden characters out of every UI and text source file', () => {
+  it('keeps forbidden characters out of every UI, brand, and text source file', () => {
     const fs = require('fs');
     const path = require('path');
-    const dirs = ['frontend', 'ui'].map(d => path.join(__dirname, '..', '..', 'src', d));
-    const bad = dirs.flatMap((d: string) => fs.readdirSync(d).map((f: string) => path.join(d, f)))
+    const dirs = ['frontend', 'ui', 'brand'].map(d => path.join(__dirname, '..', '..', 'src', d));
+    const bad = dirs.flatMap((d: string) => fs.readdirSync(d).filter((f: string) => /\.tsx?$/.test(f)).map((f: string) => path.join(d, f)))
       .filter((f: string) => FORBIDDEN.test(fs.readFileSync(f, 'utf8')));
     expect(bad).toEqual([]);
   });
 });
+

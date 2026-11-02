@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * Unit tests for brand layout primitives (AppSurface, PanelHeader, SummaryBlock, Section, NoteBox).
+ * Unit tests for shared UI library layout primitives in src/brand/layout.tsx.
  */
 
 import * as React from 'react';
@@ -16,30 +16,59 @@ import {
   ActionRow,
   AppSurface,
   Card,
-  Column,
+  FormField,
+  FourColumnGrid,
   GateCard,
+  ListRow,
+  ModalContent,
   NoteBox,
+  PageHeader,
   PanelHeader,
   Section,
+  StatTile,
   StatusBanner,
   StatusLozenge,
   SubSection,
-  SummaryBlock
+  SummaryBlock,
+  TableCard,
+  ThreeColumnGrid,
+  TwoColumnGrid
 } from '../../src/brand/layout';
 
 describe('brand layout primitives', () => {
-  it('renders AppSurface with sunken background and children', () => {
-    const renderer = TestRenderer.create(
-      <AppSurface>
-        <span>Content</span>
-      </AppSurface>
-    );
-    expect(findAll(renderer.root, 'Box')).toHaveLength(1);
-    expect(findAll(renderer.root, 'Stack')).toHaveLength(1);
-    expect(textOf(renderer.toJSON())).toContain('Content');
+  it('renders AppSurface in standard and compact modes', () => {
+    const standard = TestRenderer.create(<AppSurface><span>Standard</span></AppSurface>);
+    expect(findAll(standard.root, 'Box')).toHaveLength(1);
+    expect(textOf(standard.toJSON())).toContain('Standard');
+
+    const compact = TestRenderer.create(<AppSurface compact><span>Compact</span></AppSurface>);
+    expect(textOf(compact.toJSON())).toContain('Compact');
   });
 
-  it('renders PanelHeader with title, status lozenge, and action', () => {
+  it('renders PageHeader with and without optional scopeBadge, subtitle, metaText, and action', () => {
+    const full = TestRenderer.create(
+      <PageHeader
+        title="Four Realities"
+        scopeBadge="DEMO"
+        subtitle="Delivery assurance and audit readiness"
+        metaText="Read 2026-11-01 08:30 UTC"
+        action={<button>Refresh</button>}
+      />
+    );
+    const fullText = textOf(full.toJSON());
+    expect(fullText).toContain('Four Realities');
+    expect(fullText).toContain('DEMO');
+    expect(fullText).toContain('Delivery assurance and audit readiness');
+    expect(fullText).toContain('Read 2026-11-01 08:30 UTC');
+    expect(fullText).toContain('Refresh');
+    expect(findAll(full.root, 'Lozenge')[0].props.maxWidth).toBe('100%');
+
+    const minimal = TestRenderer.create(<PageHeader title="Four Realities" />);
+    expect(textOf(minimal.toJSON())).toBe('Four Realities');
+    expect(findAll(minimal.root, 'Lozenge')).toHaveLength(0);
+  });
+
+  it('renders PanelHeader with title, status lozenge, and optional action', () => {
     const renderer = TestRenderer.create(
       <PanelHeader
         title="Four Realities"
@@ -51,20 +80,141 @@ describe('brand layout primitives', () => {
     expect(textOf(renderer.toJSON())).toContain('Four Realities');
     expect(textOf(renderer.toJSON())).toContain('Incomplete');
     expect(findAll(renderer.root, 'Lozenge')[0].props.appearance).toBe('removed');
+    expect(findAll(renderer.root, 'Lozenge')[0].props.maxWidth).toBe('100%');
     expect(textOf(renderer.toJSON())).toContain('Refresh');
+
+    const minimal = TestRenderer.create(<PanelHeader title="Four Realities" />);
+    expect(textOf(minimal.toJSON())).toBe('Four Realities');
+    expect(findAll(minimal.root, 'Lozenge')).toHaveLength(0);
   });
 
-  it('renders PanelHeader without optional status and action', () => {
-    const renderer = TestRenderer.create(<PanelHeader title="Four Realities" />);
-    expect(textOf(renderer.toJSON())).toBe('Four Realities');
-    expect(findAll(renderer.root, 'Lozenge')).toHaveLength(0);
+  it('renders StatusBanner with semantic Lozenge (not Badge) across all appearances and step styles', () => {
+    const incomplete = TestRenderer.create(
+      <StatusBanner
+        status="Audit readiness: Incomplete"
+        statusWord="Incomplete"
+        appearance="removed"
+        summary="Evidence found for 1 of 4 gates."
+        nextStep="Next step: link decision record."
+        action={<button>Filter</button>}
+      />
+    );
+    expect(textOf(incomplete.toJSON())).toContain('Audit readiness: Incomplete');
+    expect(findAll(incomplete.root, 'Badge')).toHaveLength(0);
+    expect(findAll(incomplete.root, 'Lozenge')[0].props.appearance).toBe('removed');
+    expect(textOf(incomplete.toJSON())).toContain('Evidence found for 1 of 4 gates.');
+    expect(textOf(incomplete.toJSON())).toContain('Next step: link decision record.');
+    expect(textOf(incomplete.toJSON())).toContain('Filter');
+
+    const plainIncomplete = TestRenderer.create(
+      <StatusBanner
+        status="Audit readiness: Incomplete"
+        statusWord="Incomplete"
+        summary="0 of 1 issues are rated."
+        nextStep="Rate issues to assess delivery audit readiness."
+      />
+    );
+    expect(textOf(plainIncomplete.toJSON())).toContain('Next step: Rate issues to assess delivery audit readiness.');
+
+    const moved = TestRenderer.create(
+      <StatusBanner
+        status="Audit readiness: Recheck"
+        statusWord="Recheck"
+        appearance="moved"
+        summary="Stale link."
+        nextStep="Next step: refresh."
+      />
+    );
+    expect(findAll(moved.root, 'Lozenge')[0].props.appearance).toBe('moved');
+
+    const complete = TestRenderer.create(
+      <StatusBanner
+        status="Audit readiness: Complete"
+        statusWord="Complete"
+        appearance="success"
+        summary="All gates evidenced."
+        nextStep="All rated gates are evidenced."
+      />
+    );
+    expect(findAll(complete.root, 'Lozenge')[0].props.appearance).toBe('success');
+    expect(textOf(complete.toJSON())).toContain('All rated gates are evidenced.');
+
+    const neutral = TestRenderer.create(
+      <StatusBanner
+        status="Audit readiness: Unrated"
+        statusWord="Unrated"
+        appearance="default"
+        summary="No rated gates."
+        nextStep="Start work."
+      />
+    );
+    expect(findAll(neutral.root, 'Lozenge')[0].props.appearance).toBe('default');
   });
 
-  it('renders SummaryBlock and Card as bounded surfaces', () => {
+  it('renders Grid layouts with matching gutters and SummaryBlock / Card surfaces', () => {
+    const four = TestRenderer.create(<FourColumnGrid><span>1</span><span>2</span></FourColumnGrid>);
+    const two = TestRenderer.create(<TwoColumnGrid><span>A</span><span>B</span></TwoColumnGrid>);
+    const three = TestRenderer.create(<ThreeColumnGrid><span>X</span></ThreeColumnGrid>);
+    expect(findAll(four.root, 'Inline')[0].props.space).toBe(findAll(two.root, 'Inline')[0].props.space);
+    expect(findAll(four.root, 'Inline')[0].props.rowSpace).toBe(findAll(two.root, 'Inline')[0].props.rowSpace);
+    expect(findAll(four.root, 'Box')).toHaveLength(2);
+    expect(findAll(two.root, 'Box')).toHaveLength(2);
+    expect(findAll(three.root, 'Box')).toHaveLength(1);
+
     const summary = TestRenderer.create(<SummaryBlock><span>Summary</span></SummaryBlock>);
     expect(textOf(summary.toJSON())).toContain('Summary');
     const card = TestRenderer.create(<Card><span>Card body</span></Card>);
     expect(textOf(card.toJSON())).toContain('Card body');
+  });
+
+  it('renders TableCard unifying toolbar and table, StatTile, ListRow, ModalContent, and FormField', () => {
+    const tableCard = TestRenderer.create(
+      <TableCard
+        title="Issue triage"
+        count={4}
+        metaText="Showing 4 of 4 issues"
+        headerAction={<button>Wide text</button>}
+        toolbar={<span>Filters</span>}
+      >
+        <span>Table rows</span>
+      </TableCard>
+    );
+    const tcText = textOf(tableCard.toJSON());
+    expect(tcText).toContain('Issue triage');
+    expect(tcText).toContain('Showing 4 of 4 issues');
+    expect(tcText).toContain('Wide text');
+    expect(tcText).toContain('Filters');
+    expect(tcText).toContain('Table rows');
+
+    const minimalTableCard = TestRenderer.create(
+      <TableCard title="Issues" toolbar={<span>Search</span>}>
+        <span>Rows</span>
+      </TableCard>
+    );
+    expect(textOf(minimalTableCard.toJSON())).toContain('Issues');
+
+    const statFull = TestRenderer.create(<StatTile label="Coverage" value={<span>3 rated</span>} caption="1 unrated" />);
+    expect(textOf(statFull.toJSON())).toContain('1 unrated');
+    const statMin = TestRenderer.create(<StatTile label="Coverage" value={<span>0 rated</span>} />);
+    expect(textOf(statMin.toJSON())).toContain('0 rated');
+
+    const rowWithAction = TestRenderer.create(<ListRow divided action={<button>Inspect</button>}><span>DEMO-1</span></ListRow>);
+    expect(textOf(rowWithAction.toJSON())).toContain('Inspect');
+    const rowPlain = TestRenderer.create(<ListRow divided={false}><span>DEMO-2</span></ListRow>);
+    expect(textOf(rowPlain.toJSON())).toContain('DEMO-2');
+
+    const modal = TestRenderer.create(
+      <ModalContent>
+        <FormField id="f-1" label="Reason" helper="At least 15 characters">
+          <span>Input 1</span>
+        </FormField>
+        <FormField id="f-2" label="Notes">
+          <span>Input 2</span>
+        </FormField>
+      </ModalContent>
+    );
+    expect(textOf(modal.toJSON())).toContain('At least 15 characters');
+    expect(findAll(modal.root, 'Label')[0].props.labelFor).toBe('f-1');
   });
 
   it('renders Section collapsed by default and toggles on click', async () => {
@@ -82,53 +232,32 @@ describe('brand layout primitives', () => {
     expect(textOf(renderer.toJSON())).toContain('Show details');
     expect(textOf(renderer.toJSON())).not.toContain('Gate detail row');
 
-    // Expand
     await act(async () => {
       findButton(renderer.root, 'Show details').props.onClick();
     });
     expect(textOf(renderer.toJSON())).toContain('Hide details');
     expect(textOf(renderer.toJSON())).toContain('Gate detail row');
 
-    // Section with default props (count undefined, defaultCollapsed omitted)
     const defSec = TestRenderer.create(<Section title="Summary"><span>Body</span></Section>);
     expect(textOf(defSec.toJSON())).toContain('Summary');
     expect(textOf(defSec.toJSON())).toContain('Show details');
   });
 
-  it('renders SubSection, NoteBox, ActionRow, and StatusLozenge', () => {
+  it('renders SubSection, borderless NoteBox, ActionRow, StatusLozenge, and GateCard', () => {
     const sub = TestRenderer.create(<SubSection><span>Indented</span></SubSection>);
     expect(textOf(sub.toJSON())).toContain('Indented');
 
     const note = TestRenderer.create(<NoteBox><span>Note text</span></NoteBox>);
     expect(textOf(note.toJSON())).toContain('Note text');
 
-    const row = TestRenderer.create(<ActionRow><button>Action</button></ActionRow>);
-    expect(textOf(row.toJSON())).toContain('Action');
+    const actionRow = TestRenderer.create(<ActionRow><button>Action</button></ActionRow>);
+    expect(textOf(actionRow.toJSON())).toContain('Action');
 
     const lozenge = TestRenderer.create(<StatusLozenge state="FOUND" verification="VERIFIED" isBold={true}>Found</StatusLozenge>);
     expect(textOf(lozenge.toJSON())).toContain('Found');
     expect(findAll(lozenge.root, 'Lozenge')[0].props.appearance).toBe('success');
-    expect(findAll(lozenge.root, 'Lozenge')[0].props.isBold).toBe(true);
+    expect(findAll(lozenge.root, 'Lozenge')[0].props.maxWidth).toBe('100%');
 
-    const col = TestRenderer.create(<Column><span>Col content</span></Column>);
-    expect(textOf(col.toJSON())).toContain('Col content');
-
-    const banner = TestRenderer.create(
-      <StatusBanner
-        status="Audit readiness: Incomplete"
-        statusWord="Incomplete"
-        summary="Evidence found for 1 of 4 gates."
-        nextStep="Next step: link decision record."
-      />
-    );
-    expect(textOf(banner.toJSON())).toContain('Audit readiness: Incomplete');
-    expect(textOf(banner.toJSON())).toContain('Incomplete');
-    expect(findAll(banner.root, 'Badge')).toHaveLength(1);
-    expect(textOf(banner.toJSON())).toContain('Evidence found for 1 of 4 gates.');
-    expect(textOf(banner.toJSON())).toContain('Next step: link decision record.');
-  });
-
-  it('renders GateCard for each of the four realities with distinct styles', () => {
     for (const g of ['intent', 'process', 'code', 'audit'] as const) {
       const card = TestRenderer.create(<GateCard gate={g}><span>{g}</span></GateCard>);
       expect(textOf(card.toJSON())).toContain(g);

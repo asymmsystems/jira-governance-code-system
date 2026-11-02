@@ -5,13 +5,14 @@
  */
 
 import React, { useState } from 'react';
-import { Box, Button, Inline, Lozenge, SectionMessage, Stack, Text, User } from '@forge/react';
+import { Button, Inline, Lozenge, SectionMessage, Stack, Text, User } from '@forge/react';
 import { router } from '@forge/bridge';
 import { ExceptionDecision, ExceptionNote, GATE_NAMES, GateExceptionState, GateName, IssueRow } from '../contract/data/models';
 import { PanelAction, afterActionText, raiPartsText, raiText, recoveryText, riskAppearance } from '../ui/gate-text';
 import { GatePipeline, GateRow } from './gate-row';
-import { alignmentText, driftText, nextActionText, scoreParts } from '../ui/pipeline';
-import { ActionRow, AppSurface, NoteBox, PanelHeader, Section, SummaryBlock } from '../brand/layout';
+import { alignmentText, driftText, issueReadiness, nextActionText, scoreParts } from '../ui/pipeline';
+import { SPACE, TEXT_ROLE } from '../brand/brand';
+import { ActionRow, AppSurface, ListRow, NoteBox, PanelHeader, Section, SubSection, SummaryBlock } from '../brand/layout';
 import { DecisionModal, ExceptionModal, LinkDecisionModal, ReviewModal } from './modals';
 
 /**
@@ -22,10 +23,10 @@ export const openProducerPanel = (issueKey: string): Promise<void> => router.ope
 
 export const ProducerLinks: React.FC<{ issueKey: string }> = ({ issueKey }) => (
   <>
-    <Button appearance="default" onClick={() => openProducerPanel(issueKey)}>
+    <Button appearance="subtle" spacing="compact" iconAfter="shortcut" onClick={() => openProducerPanel(issueKey)}>
       Open {issueKey}: LedgerSeal Audit Gate panel
     </Button>
-    <Button appearance="default" onClick={() => openProducerPanel(issueKey)}>
+    <Button appearance="subtle" spacing="compact" iconAfter="shortcut" onClick={() => openProducerPanel(issueKey)}>
       Open {issueKey}: DefinitionGuard Checklist panel
     </Button>
   </>
@@ -33,10 +34,10 @@ export const ProducerLinks: React.FC<{ issueKey: string }> = ({ issueKey }) => (
 
 /** Who and why for an exception or a rework reason. The name comes from the UI Kit User component. */
 export const NoteLine: React.FC<{ label: string; note: ExceptionNote }> = ({ label, note }) => (
-  <Inline space="space.050" alignBlock="center" shouldWrap>
-    <Text>{label} by</Text>
+  <Inline space={SPACE.sub} alignBlock="center" shouldWrap>
+    <Text size="small" weight="medium">{label} by</Text>
     <User accountId={note.recordedBy} />
-    <Text>{`on ${note.recordedAt.slice(0, 10)}: ${note.reason}`}</Text>
+    <Text size="small" color={TEXT_ROLE.secondary}>{`on ${note.recordedAt.slice(0, 10)}: ${note.reason}`}</Text>
   </Inline>
 );
 
@@ -45,51 +46,73 @@ const ENDED: Record<string, string> = { REJECTED: 'Exception rejected', WITHDRAW
 /** The Code exception in words: who asked, who decided, when and why (ADR-001, Option C). */
 export const ExceptionStateLine: React.FC<{ state: GateExceptionState }> = ({ state }) => {
   const requested = (
-    <Inline space="space.050" alignBlock="center" shouldWrap>
-      <Text>Requested by</Text>
+    <Inline space={SPACE.sub} alignBlock="center" shouldWrap>
+      <Text size="small" weight="medium">Requested by</Text>
       <User accountId={state.requestedBy} />
-      <Text>{`on ${state.requestedAt.slice(0, 10)}: ${state.reason}`}</Text>
+      <Text size="small" color={TEXT_ROLE.secondary}>{`on ${state.requestedAt.slice(0, 10)}: ${state.reason}`}</Text>
     </Inline>
   );
   if (state.status === 'REQUESTED') {
     return (
-      <Stack space="space.050">
+      <Stack space={SPACE.sub}>
         {requested}
-        <Text>Waiting for a project or Jira administrator who is not the requester or the assignee.</Text>
+        <Text size="small" color={TEXT_ROLE.secondary}>
+          Waiting for a project or Jira administrator who is not the requester or the assignee.
+        </Text>
       </Stack>
     );
   }
   const decided = state.decidedBy ? (
-    <Inline space="space.050" alignBlock="center" shouldWrap>
-      <Text>{state.status === 'APPROVED' ? 'Approved by' : `${ENDED[state.status]} by`}</Text>
+    <Inline space={SPACE.sub} alignBlock="center" shouldWrap>
+      <Text size="small" weight="medium">{state.status === 'APPROVED' ? 'Approved by' : `${ENDED[state.status]} by`}</Text>
       <User accountId={state.decidedBy} />
-      <Text>{`on ${String(state.decidedAt).slice(0, 10)}${state.status === 'APPROVED' ? '' : `: ${state.decisionReason}`}`}</Text>
+      <Text size="small" color={TEXT_ROLE.secondary}>{`on ${String(state.decidedAt).slice(0, 10)}${state.status === 'APPROVED' ? '' : `: ${state.decisionReason}`}`}</Text>
     </Inline>
   ) : null;
   return (
-    <Stack space="space.050">
+    <Stack space={SPACE.sub}>
       {requested}
       {decided}
-      {state.migrated ? <Text>Approved before administrator approval was required.</Text> : null}
+      {state.migrated ? (
+        <Text size="small" color={TEXT_ROLE.muted}>
+          Approved before administrator approval was required.
+        </Text>
+      ) : null}
     </Stack>
   );
 };
 
-function gateNote(gate: GateName, row: IssueRow): React.ReactNode {
+function gateNote(gate: GateName, row: IssueRow, onOpen: (m: OpenModal) => void): React.ReactNode {
   if (gate === 'code' && row.codeException) {
     return (
       <NoteBox>
         <ExceptionStateLine state={row.codeException} />
+        {row.codeException.status === 'REQUESTED' ? (
+          <ActionRow>
+            <Button appearance="default" spacing="compact" onClick={() => onOpen('APPROVE')}>Approve exception</Button>
+            <Button appearance="default" spacing="compact" onClick={() => onOpen('REJECT')}>Reject exception</Button>
+            <Button appearance="subtle" spacing="compact" onClick={() => onOpen('WITHDRAW')}>Withdraw request</Button>
+          </ActionRow>
+        ) : row.codeException.status === 'APPROVED' ? (
+          <ActionRow>
+            <Button appearance="default" spacing="compact" onClick={() => onOpen('REVOKE')}>Revoke exception</Button>
+          </ActionRow>
+        ) : null}
       </NoteBox>
     );
   }
   if (gate === 'process' && row.reworkLoops > 0) {
     return (
       <NoteBox>
-        <Stack space="space.050">
-          <Text>{`Rework loops: ${row.reworkLoops}.`}</Text>
-          {(row.reworkNoteCount || 0) > 1 ? <Text>{`${row.reworkNoteCount} rework reasons recorded. The latest is shown.`}</Text> : null}
+        <Stack space={SPACE.sub}>
+          <Text size="small" weight="medium">{`Rework loops: ${row.reworkLoops}.`}</Text>
+          {(row.reworkNoteCount || 0) > 1 ? (
+            <Text size="small" color={TEXT_ROLE.muted}>{`${row.reworkNoteCount} rework reasons recorded. The latest is shown.`}</Text>
+          ) : null}
           {row.reworkNote ? <NoteLine label="Rework reason" note={row.reworkNote} /> : null}
+          <ActionRow>
+            <Button appearance="default" spacing="compact" onClick={() => onOpen('rework')}>Add rework reason</Button>
+          </ActionRow>
         </Stack>
       </NoteBox>
     );
@@ -130,11 +153,19 @@ export const IssuePanel: React.FC<IssuePanelProps> = ({
   };
 
   const needsProducer = row.gates.audit.state === 'MISSING' || row.gates.process.state === 'MISSING';
+  const readiness = issueReadiness(row);
+  const canLinkIntent = row.gates.intent.state === 'MISSING';
+  const canRequestCodeException = row.gates.code.state === 'MISSING' && row.gates.code.reason === 'PR_NONE' && row.codeException?.status !== 'REQUESTED';
+  const hasSummaryActions = canLinkIntent || canRequestCodeException || needsProducer;
 
-  // Compact view for the issue context sidebar (B-38): the glance, and the findings on demand.
+  const hasDetailActions =
+    (canLinkIntent && canRequestCodeException) ||
+    (row.gates.code.state === 'FOUND' && row.gates.code.reason === 'PR_MERGED');
+
+  // Compact view for the issue context sidebar (B-38): the summary block only, findings on demand.
   if (!expanded) {
     return (
-      <AppSurface>
+      <AppSurface compact>
         {message ? (
           <SectionMessage appearance="information" title="Recorded">
             <Text>{message}</Text>
@@ -142,19 +173,23 @@ export const IssuePanel: React.FC<IssuePanelProps> = ({
         ) : null}
         <SummaryBlock>
           <GatePipeline gates={row.gates} />
-          <Inline space="space.100" alignBlock="center" shouldWrap>
-            <Text>{alignmentText(row)}</Text>
-            {row.rai !== null ? <Lozenge maxWidth="100%" appearance={riskAppearance(row.risk)}>{`${row.risk} risk`}</Lozenge> : null}
+          <Inline space={SPACE.item} alignBlock="center" shouldWrap>
+            <Text weight="semibold">{alignmentText(row)}</Text>
+            {row.rai !== null ? (
+              <Lozenge maxWidth="100%" appearance={riskAppearance(row.risk)} isBold>{`${row.risk} risk`}</Lozenge>
+            ) : null}
           </Inline>
-          <Text>{nextActionText(row) || driftText(row)}</Text>
-          <Button appearance="subtle" onClick={() => setExpanded(true)}>See all findings</Button>
+          <Text size="small" color={TEXT_ROLE.secondary}>{nextActionText(row) || driftText(row)}</Text>
+          <ActionRow>
+            <Button appearance="default" spacing="compact" onClick={() => setExpanded(true)}>See all findings</Button>
+          </ActionRow>
         </SummaryBlock>
       </AppSurface>
     );
   }
 
   return (
-    <AppSurface>
+    <AppSurface compact={compact}>
       {message ? (
         <SectionMessage appearance="information" title="Recorded">
           <Text>{message}</Text>
@@ -162,77 +197,77 @@ export const IssuePanel: React.FC<IssuePanelProps> = ({
       ) : null}
 
       <PanelHeader
-        title={`Delivery evidence: ${row.issueKey}`}
+        title="Four Realities"
+        statusText={readiness.statusWord}
+        statusAppearance={readiness.appearance}
         action={
-          <Inline space="space.050" alignBlock="center" shouldWrap>
-            <Button appearance="subtle" onClick={onReload}>Refresh</Button>
-            {compact ? <Button appearance="subtle" onClick={() => setExpanded(false)}>Hide findings</Button> : null}
+          <Inline space={SPACE.sub} alignBlock="center" shouldWrap>
+            <Button appearance="default" spacing="compact" iconBefore="refresh" onClick={onReload}>Refresh</Button>
+            {compact ? <Button appearance="subtle" spacing="compact" onClick={() => setExpanded(false)}>Hide findings</Button> : null}
           </Inline>
         }
       />
 
       <SummaryBlock>
         <GatePipeline gates={row.gates} />
-        <Text>{driftText(row)}</Text>
-        {nextActionText(row) ? <Text>{nextActionText(row)}</Text> : null}
-        {recoveryText(row) ? <Text>{recoveryText(row)}</Text> : null}
+        <Text weight="medium">{driftText(row)}</Text>
+        {nextActionText(row) ? (
+          <Text weight="semibold" color={TEXT_ROLE.accentTeal}>{nextActionText(row)}</Text>
+        ) : null}
+        {recoveryText(row) ? (
+          <Text size="small" color={TEXT_ROLE.secondary}>{recoveryText(row)}</Text>
+        ) : null}
 
-        <ActionRow>
-          {row.gates.intent.state === 'MISSING' ? (
-            <Button appearance="primary" onClick={() => setOpen('link')}>Link decision record</Button>
-          ) : row.gates.code.state === 'MISSING' && row.gates.code.reason === 'PR_NONE' && row.codeException?.status !== 'REQUESTED' ? (
-            <Button appearance="primary" onClick={() => setOpen('code')}>Request Code exception</Button>
-          ) : null}
-          {needsProducer ? <ProducerLinks issueKey={row.issueKey} /> : null}
-        </ActionRow>
+        {hasSummaryActions ? (
+          <ActionRow>
+            {canLinkIntent ? (
+              <Button appearance="primary" onClick={() => setOpen('link')}>Link decision record</Button>
+            ) : canRequestCodeException ? (
+              <Button appearance="primary" onClick={() => setOpen('code')}>Request Code exception</Button>
+            ) : null}
+            {needsProducer ? <ProducerLinks issueKey={row.issueKey} /> : null}
+          </ActionRow>
+        ) : null}
       </SummaryBlock>
 
       <Section title="Gate findings" count={4} defaultCollapsed={compact ? false : defaultCollapsed}>
-        <Stack space="space.100">
-          {GATE_NAMES.map(g => (
-            <GateRow key={g} gate={g} result={row.gates[g]} note={gateNote(g, row)} />
+        <Stack space={SPACE.none}>
+          {GATE_NAMES.map((g, idx) => (
+            <ListRow key={g} divided={idx < GATE_NAMES.length - 1}>
+              <GateRow gate={g} result={row.gates[g]} note={gateNote(g, row, setOpen)} />
+            </ListRow>
           ))}
         </Stack>
 
-        <Box padding="space.050">
-          <Stack space="space.100">
-            <Inline space="space.100" alignBlock="center" shouldWrap>
-              <Lozenge maxWidth="100%" appearance={riskAppearance(row.risk)}>{raiText(row)}</Lozenge>
-              <Text>{raiPartsText(row)}</Text>
-              {row.rai !== null ? (
-                <Button appearance="subtle" onClick={() => setWhy(!why)}>{why ? 'Hide the score parts' : `Why ${row.rai}%?`}</Button>
-              ) : null}
-            </Inline>
-            {why ? (
-              <Stack space="space.025">
-                {scoreParts(row).map(line => <Text key={line}>{line}</Text>)}
-              </Stack>
+        <NoteBox>
+          <Inline space={SPACE.item} alignBlock="center" shouldWrap>
+            <Lozenge maxWidth="100%" appearance={riskAppearance(row.risk)} isBold>{raiText(row)}</Lozenge>
+            <Text size="small" color={TEXT_ROLE.secondary}>{raiPartsText(row)}</Text>
+            {row.rai !== null ? (
+              <Button appearance="subtle" spacing="compact" onClick={() => setWhy(!why)}>
+                {why ? 'Hide the score parts' : `Why ${row.rai}%?`}
+              </Button>
             ) : null}
-          </Stack>
-        </Box>
+          </Inline>
+          {why ? (
+            <SubSection>
+              {scoreParts(row).map(line => (
+                <Text key={line} size="small" color={TEXT_ROLE.secondary}>{line}</Text>
+              ))}
+            </SubSection>
+          ) : null}
+        </NoteBox>
 
-        <ActionRow>
-          {row.gates.intent.state === 'MISSING' && row.gates.code.state === 'MISSING' && row.gates.code.reason === 'PR_NONE' && row.codeException?.status !== 'REQUESTED' ? (
-            <Button appearance="default" onClick={() => setOpen('code')}>Request Code exception</Button>
-          ) : null}
-          {row.gates.code.state === 'FOUND' && row.gates.code.reason === 'PR_MERGED' ? (
-            <Button appearance="default" onClick={() => setOpen('review')}>Request retrospective review</Button>
-          ) : null}
-          {row.codeException?.status === 'REQUESTED' ? (
-            <>
-              <Button appearance="default" onClick={() => setOpen('APPROVE')}>Approve exception</Button>
-              <Button appearance="default" onClick={() => setOpen('REJECT')}>Reject exception</Button>
-              <Button appearance="subtle" onClick={() => setOpen('WITHDRAW')}>Withdraw request</Button>
-            </>
-          ) : null}
-          {row.codeException?.status === 'APPROVED' ? (
-            <Button appearance="default" onClick={() => setOpen('REVOKE')}>Revoke exception</Button>
-          ) : null}
-          {row.reworkLoops > 0 ? (
-            <Button appearance="default" onClick={() => setOpen('rework')}>Add rework reason</Button>
-          ) : null}
-          {needsProducer ? <ProducerLinks issueKey={row.issueKey} /> : null}
-        </ActionRow>
+        {hasDetailActions ? (
+          <ActionRow>
+            {canLinkIntent && canRequestCodeException ? (
+              <Button appearance="default" onClick={() => setOpen('code')}>Request Code exception</Button>
+            ) : null}
+            {row.gates.code.state === 'FOUND' && row.gates.code.reason === 'PR_MERGED' ? (
+              <Button appearance="default" onClick={() => setOpen('review')}>Request retrospective review</Button>
+            ) : null}
+          </ActionRow>
+        ) : null}
       </Section>
 
       {open === 'link' ? (

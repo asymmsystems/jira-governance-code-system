@@ -52,13 +52,17 @@ describe('MetricsEngine.recoverablePoints', () => {
 });
 
 describe('MetricsEngine.buildRow', () => {
-  it('builds a row with gates, RAI, risk and applicable count', () => {
+  it('builds a row with gates, RAI, risk, applicable count, and optional updated date', () => {
     const row = MetricsEngine.buildRow(makeFacts(), gates(FOUND_V, MISSING, NA, MISSING));
     expect(row.rai).toBe(33);
     expect(row.risk).toBe('CRITICAL');
     expect(row.applicableGates).toBe(3);
     expect(row.recoverablePoints).toBe(34);
     expect(row.started).toBe(true);
+    expect(row.updated).toBeUndefined();
+
+    const withDate = MetricsEngine.buildRow(makeFacts({ updated: '2026-11-01T14:22:00.000Z' }), gates(FOUND_V, MISSING, NA, MISSING));
+    expect(withDate.updated).toBe('2026-11-01T14:22:00.000Z');
   });
 
   it('truncates long summaries to 120 characters', () => {

@@ -6,7 +6,7 @@
 
 import { GateResult, IssueGates, IssueRow, ProjectSummary, TrendPoint } from '../../src/contract/data/models';
 import {
-  GATE_QUESTION, alignmentText, auditReadiness, driftText, heroDelta, issueGapsText, nextActionText, pipelineTip, scoreParts, weakestGate
+  GATE_QUESTION, alignmentText, auditReadiness, driftText, evidencedRatioText, heroDelta, issueGapsText, issueReadiness, nextActionText, pipelineTip, scoreParts, weakestGate
 } from '../../src/ui/pipeline';
 
 const F: GateResult = { state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK' };
@@ -162,11 +162,20 @@ describe('B-44: audit readiness sentence and gaps text', () => {
     });
   });
 
-  it('formats missing gates gaps text for triage rows', () => {
+  it('formats missing gates gaps text and evidenced ratio for triage rows', () => {
     expect(issueGapsText(gates({ intent: miss('INTENT_NONE'), code: miss('PR_NONE') }))).toBe('2 gaps: Intent, Code');
     expect(issueGapsText(gates({ process: miss('DOD_NONE') }))).toBe('1 gap: Process');
     expect(issueGapsText(gates({ intent: F, process: F }))).toBe('None');
     expect(issueGapsText(gates({}))).toBe('Not rated');
+
+    expect(evidencedRatioText(gates({ intent: F, code: { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' } }))).toBe('2 / 4 evidenced');
+    expect(evidencedRatioText(gates({}))).toBe('0 / 4 evidenced');
+  });
+
+  it('derives single-issue readiness word and lozenge appearance for the panel header', () => {
+    expect(issueReadiness(row('DEMO-1', null, {}))).toEqual({ statusWord: 'Not rated', appearance: 'default' });
+    expect(issueReadiness(row('DEMO-2', 50, { intent: F, code: miss('PR_NONE') }))).toEqual({ statusWord: 'Incomplete', appearance: 'removed' });
+    expect(issueReadiness(row('DEMO-3', null, { intent: { state: 'NEEDS_RECHECK', reason: 'INTENT_LINKS_NOT_READ' } }))).toEqual({ statusWord: 'Needs re-check', appearance: 'moved' });
+    expect(issueReadiness(row('DEMO-4', 100, { intent: F, process: F }))).toEqual({ statusWord: 'Complete', appearance: 'success' });
   });
 });
-

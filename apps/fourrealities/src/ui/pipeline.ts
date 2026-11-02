@@ -218,3 +218,28 @@ export function issueGapsText(gates: IssueGates): string {
   return `${missing.length} gaps: ${missing.map(g => GATE_LABEL[g]).join(', ')}`;
 }
 
+/** Formats how many of the 4 gates have evidence found or excepted (B-44). */
+export function evidencedRatioText(gates: IssueGates): string {
+  const count = GATE_NAMES.filter(g => gates[g].state === 'FOUND' || gates[g].state === 'EXCEPTED').length;
+  return `${count} / 4 evidenced`;
+}
+
+export interface IssueReadinessBadge {
+  readonly statusWord: string;
+  readonly appearance: 'default' | 'success' | 'removed' | 'moved';
+}
+
+/** Derives the single-issue readiness badge shown in the issue panel header. */
+export function issueReadiness(row: Pick<IssueRow, 'rai' | 'gates'>): IssueReadinessBadge {
+  const states = GATE_NAMES.map(g => row.gates[g].state);
+  if (states.some(s => s === 'MISSING')) {
+    return { statusWord: 'Incomplete', appearance: 'removed' };
+  }
+  if (states.some(s => s === 'NEEDS_RECHECK')) {
+    return { statusWord: 'Needs re-check', appearance: 'moved' };
+  }
+  if (states.some(s => s === 'FOUND' || s === 'EXCEPTED')) {
+    return { statusWord: 'Complete', appearance: 'success' };
+  }
+  return { statusWord: 'Not rated', appearance: 'default' };
+}

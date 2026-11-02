@@ -4,7 +4,9 @@
  * Brand constants, contrast table, and status mapping tests.
  */
 
-import { LIGHT_PALETTE, STRONG_PALETTE, TEXT_PALETTE, TOKENS, statusToAppearance } from '../../src/brand/brand';
+import * as fs from 'fs';
+import * as path from 'path';
+import { LIGHT_PALETTE, SPACE, STRONG_PALETTE, TEXT_PALETTE, TEXT_ROLE, TOKENS, statusToAppearance } from '../../src/brand/brand';
 
 describe('brand palette and token mappings', () => {
   it('contains strong brand colours with contrast >= 3:1 for large text or non-text', () => {
@@ -30,13 +32,21 @@ describe('brand palette and token mappings', () => {
     expect(TEXT_PALETTE.sageText.contrastOnWhite).toBeGreaterThanOrEqual(4.5);
   });
 
-  it('maps semantic roles to native Atlassian design tokens', () => {
+  it('maps semantic roles, spacing, and typography roles to native Atlassian design tokens', () => {
     expect(TOKENS.surfaceApp).toBe('elevation.surface.sunken');
     expect(TOKENS.surfaceSection).toBe('elevation.surface');
     expect(TOKENS.surfaceNote).toBe('color.background.neutral');
     expect(TOKENS.borderSection).toBe('color.border');
-    expect(TOKENS.spaceSection).toBe('space.150');
+    expect(TOKENS.spaceSection).toBe('space.200');
     expect(TOKENS.radiusSection).toBe('radius.medium');
+    expect(SPACE.page).toBe('space.250');
+    expect(SPACE.section).toBe('space.200');
+    expect(SPACE.group).toBe('space.150');
+    expect(SPACE.item).toBe('space.100');
+    expect(SPACE.sub).toBe('space.050');
+    expect(TEXT_ROLE.primary).toBe('color.text');
+    expect(TEXT_ROLE.secondary).toBe('color.text.subtle');
+    expect(TEXT_ROLE.muted).toBe('color.text.subtlest');
   });
 
   it('maps gate verification and states to lozenge appearances', () => {
@@ -48,4 +58,13 @@ describe('brand palette and token mappings', () => {
     expect(statusToAppearance('NOT_APPLICABLE')).toBe('default');
     expect(statusToAppearance('UNKNOWN')).toBe('default');
   });
+
+  it('includes a standalone README documenting semantic roles and shared components', () => {
+    const readme = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'brand', 'README.md'), 'utf8');
+    expect(readme).toContain('AppSurface');
+    expect(readme).toContain('StatusBanner');
+    expect(readme).toContain('TableCard');
+    expect(readme).toContain('ModalContent');
+  });
 });
+

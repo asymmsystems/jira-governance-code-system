@@ -1,7 +1,7 @@
 modules:
   jira:projectPage:
     - key: fourrealities-project-dashboard
-      title: FourRealities Audit Dashboard
+      title: Four Realities
       render: native
       resource: main
       resolver:

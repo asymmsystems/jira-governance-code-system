@@ -84,13 +84,15 @@ describe('IssuePanel', () => {
     expect(textOf(r.toJSON())).not.toContain('Source: Jira issue links and remote links.');
   });
 
-  it('B-21: shows the four gates first and RAI after them, with no RAI in the heading', async () => {
+  it('B-21: shows Four Realities header with readiness lozenge, the four gates first, and RAI last', async () => {
     const r = await mount(row('DEMO-5', { intent: M_INTENT, process: F, code: NA, audit: F }));
+    expect(textOf(r.toJSON())).toContain('Four Realities');
     const lozenges = findAll(r.root, 'Lozenge').map((l: any) => String(l.props.children));
-    // Pipeline chips, then the four gate rows, then the RAI lozenge last.
-    expect(lozenges.slice(4, 8).map(t => t.split(': ')[0].slice(2))).toEqual(['Intent', 'Process', 'Code', 'Audit']);
-    expect(lozenges).toHaveLength(9);
-    expect(lozenges[8]).toBe('67% (HIGH)');
+    // Header readiness lozenge, then pipeline chips, then the four gate rows, then RAI last.
+    expect(lozenges[0]).toBe('Incomplete');
+    expect(lozenges.slice(5, 9).map(t => t.split(': ')[0].slice(2))).toEqual(['Intent', 'Process', 'Code', 'Audit']);
+    expect(lozenges).toHaveLength(10);
+    expect(lozenges[9]).toBe('67% (HIGH)');
     expect(r.root.findAll((n: any) => n.type === 'ui-Heading' || n.type === 'ui-Lozenge')[0].type).toBe('ui-Heading');
   });
 
