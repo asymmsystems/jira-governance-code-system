@@ -64,7 +64,7 @@ export const FourRealitiesApp: React.FC = () => {
       <AppSurface compact={compact}>
         <Inline space={SPACE.item} alignBlock="center" shouldWrap>
           <Spinner size="small" label="Loading" />
-          <Text color={TEXT_ROLE.secondary}>Evaluating delivery evidence...</Text>
+          <Text as="span" color={TEXT_ROLE.secondary}>Evaluating delivery evidence...</Text>
         </Inline>
       </AppSurface>
     );
@@ -74,7 +74,7 @@ export const FourRealitiesApp: React.FC = () => {
     return (
       <AppSurface compact={compact}>
         <SectionMessage appearance="warning" title="Licence not active">
-          <Text>{errorMessage}</Text>
+          <Text as="span">{errorMessage}</Text>
         </SectionMessage>
       </AppSurface>
     );
@@ -84,7 +84,7 @@ export const FourRealitiesApp: React.FC = () => {
     return (
       <AppSurface compact={compact}>
         <SectionMessage appearance="error" title="Delivery evidence unavailable">
-          <Text>{errorMessage || 'Failed to load delivery evidence.'}</Text>
+          <Text as="span">{errorMessage || 'Failed to load delivery evidence.'}</Text>
         </SectionMessage>
       </AppSurface>
     );

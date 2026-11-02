@@ -15,10 +15,14 @@ jest.mock('@forge/react', () => require('../frontend/forge-mocks').reactMock());
 import {
   ActionRow,
   AppSurface,
+  AttributionLine,
   Card,
+  CardHeader,
   FormField,
   FourColumnGrid,
   GateCard,
+  KeyValueInline,
+  LabeledInline,
   ListRow,
   ModalContent,
   NoteBox,
@@ -264,4 +268,58 @@ describe('brand layout primitives', () => {
       expect(findAll(card.root, 'Box')[0].props.xcss).toBeTruthy();
     }
   });
+
+  it('B-48: renders KeyValueInline, CardHeader, LabeledInline, AttributionLine, StatTile Box wrapper, and full-width SubSection', () => {
+    const kvDefault = TestRenderer.create(<KeyValueInline label="Next step:" value="link decision records for 18 issues." />);
+    expect(textOf(kvDefault.toJSON())).toBe('Next step: link decision records for 18 issues.');
+    expect(findAll(kvDefault.root, 'Inline')[0].props.alignBlock).toBe('baseline');
+    expect(findAll(kvDefault.root, 'Inline')[0].props.shouldWrap).toBe(true);
+    expect(findAll(kvDefault.root, 'Text').map((t: any) => t.props.as)).toEqual(['span', 'span']);
+
+    const kvCustom = TestRenderer.create(<KeyValueInline label="1. DEMO-2:" value="Link record" size="small" />);
+    expect(findAll(kvCustom.root, 'Text').map((t: any) => t.props.size)).toEqual(['small', 'small']);
+
+    const chFull = TestRenderer.create(
+      <CardHeader
+        title="Priority actions"
+        count={3}
+        subtitle="Highest-impact gaps"
+        metaText="Updated now"
+        action={<button>Filter</button>}
+      />
+    );
+    const chFullText = textOf(chFull.toJSON());
+    expect(chFullText).toContain('Priority actions');
+    expect(chFullText).toContain('3');
+    expect(chFullText).toContain('Highest-impact gaps');
+    expect(chFullText).toContain('Updated now');
+    expect(chFullText).toContain('Filter');
+
+    const chMinimal = TestRenderer.create(<CardHeader title="Trend: last 8 weeks" />);
+    expect(textOf(chMinimal.toJSON())).toBe('Trend: last 8 weeks');
+    expect(findAll(chMinimal.root, 'Badge')).toHaveLength(0);
+
+    const labeled = TestRenderer.create(
+      <LabeledInline label="Views:">
+        <button>My issues</button>
+      </LabeledInline>
+    );
+    expect(textOf(labeled.toJSON())).toContain('Views:');
+    expect(textOf(labeled.toJSON())).toContain('My issues');
+    expect(findAll(labeled.root, 'Inline')[0].props.shouldWrap).toBe(true);
+
+    const attr = TestRenderer.create(
+      <AttributionLine prefix="Requested by" accountId="acc-7" suffix="on 2026-11-01: Configuration change only" />
+    );
+    expect(textOf(attr.toJSON())).toContain('Requested by');
+    expect(textOf(attr.toJSON())).toContain('on 2026-11-01: Configuration change only');
+    expect(findAll(attr.root, 'User')[0].props.accountId).toBe('acc-7');
+
+    const stat = TestRenderer.create(<StatTile label="Rated average" value={<h3>Alignment 50%</h3>} />);
+    expect(findAll(stat.root, 'Box')).toHaveLength(2);
+
+    const sub = TestRenderer.create(<SubSection><span>Full width note</span></SubSection>);
+    expect(findAll(sub.root, 'Stack')[0].props.alignInline).toBeUndefined();
+  });
 });
+

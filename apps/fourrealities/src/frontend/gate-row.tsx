@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { Inline, Lozenge, Text, Tooltip } from '@forge/react';
+import { Inline, Lozenge, Stack, Text, Tooltip } from '@forge/react';
 import { GATE_NAMES, GateName, GateResult, IssueGates } from '../contract/data/models';
 import { GATE_LABEL, appearanceOf, chipText, detailText, glyphOf, sourceLine, stateLabel } from '../ui/gate-text';
 import { pipelineTip } from '../ui/pipeline';
@@ -15,11 +15,15 @@ import { SubSection } from '../brand/layout';
 /** One gate: bold state lozenge, clear finding sentence, and quiet source line. */
 export const GateRow: React.FC<{ gate: GateName; result: GateResult; note?: React.ReactNode }> = ({ gate, result, note }) => (
   <SubSection>
-    <Lozenge maxWidth="100%" appearance={appearanceOf(result)} isBold>
-      {`${glyphOf(result)} ${GATE_LABEL[gate]}: ${stateLabel(result)}`}
-    </Lozenge>
-    <Text>{detailText(result)}</Text>
-    <Text size="small" color={TEXT_ROLE.muted}>{sourceLine(result)}</Text>
+    <Inline space={SPACE.sub} alignBlock="center" shouldWrap>
+      <Lozenge maxWidth="100%" appearance={appearanceOf(result)} isBold>
+        {`${glyphOf(result)} ${GATE_LABEL[gate]}: ${stateLabel(result)}`}
+      </Lozenge>
+    </Inline>
+    <Stack space={SPACE.tight}>
+      <Text as="span">{detailText(result)}</Text>
+      <Text as="span" size="small" color={TEXT_ROLE.muted}>{sourceLine(result)}</Text>
+    </Stack>
     {note || null}
   </SubSection>
 );

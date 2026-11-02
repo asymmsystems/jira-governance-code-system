@@ -37,8 +37,11 @@ export const LinkDecisionModal: React.FC<ModalProps> = ({ issueId, issueKey, onC
   const [url, setUrl] = useState('');
   const [title, setTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const submit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
     setError(null);
     try {
       const res = (await invoke<LinkDecisionPayload, WriteResult>('linkDecision', { issueId, issueKey, url, title })) as WriteResult | undefined;
@@ -49,6 +52,8 @@ export const LinkDecisionModal: React.FC<ModalProps> = ({ issueId, issueKey, onC
       }
     } catch (err) {
       setError(messageOf(err, 'The link was not added.'));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -59,12 +64,12 @@ export const LinkDecisionModal: React.FC<ModalProps> = ({ issueId, issueKey, onC
       </ModalHeader>
       <ModalBody>
         <ModalContent>
-          <Text color={TEXT_ROLE.secondary}>
+          <Text as="span" color={TEXT_ROLE.secondary}>
             Add the address of a Confluence page on this site that records the decision.
           </Text>
           {error ? (
             <SectionMessage appearance="error" title="Not added">
-              <Text>{error}</Text>
+              <Text as="span">{error}</Text>
             </SectionMessage>
           ) : null}
           <FormField id="fr-link-url" label="Page address" helper="Must be a Confluence page URL on this site.">
@@ -76,8 +81,8 @@ export const LinkDecisionModal: React.FC<ModalProps> = ({ issueId, issueKey, onC
         </ModalContent>
       </ModalBody>
       <ModalFooter>
-        <Button appearance="subtle" onClick={onClose}>Cancel</Button>
-        <Button appearance="primary" onClick={submit}>Add link</Button>
+        <Button appearance="subtle" isDisabled={submitting} onClick={onClose}>Cancel</Button>
+        <Button appearance="primary" isDisabled={submitting} onClick={submit}>Add link</Button>
       </ModalFooter>
     </Modal>
   );
@@ -87,8 +92,11 @@ export const ExceptionModal: React.FC<ModalProps & { type: 'CODE' | 'REWORK' }> 
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const submit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
     setError(null);
     try {
       const res = (await invoke<RecordExceptionPayload, WriteResult>('recordException', { issueId, issueKey, type, reason, notes })) as WriteResult | undefined;
@@ -99,6 +107,8 @@ export const ExceptionModal: React.FC<ModalProps & { type: 'CODE' | 'REWORK' }> 
       }
     } catch (err) {
       setError(messageOf(err, 'The exception was not recorded.'));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -109,14 +119,14 @@ export const ExceptionModal: React.FC<ModalProps & { type: 'CODE' | 'REWORK' }> 
       </ModalHeader>
       <ModalBody>
         <ModalContent>
-          <Text color={TEXT_ROLE.secondary}>
+          <Text as="span" color={TEXT_ROLE.secondary}>
             {type === 'CODE'
               ? 'Say why this work needs no pull request. A project administrator who is not you or the assignee must approve the request. Until then the Code gate stays "Evidence missing".'
               : 'Say what caused the rework. This note does not change any gate.'}
           </Text>
           {error ? (
             <SectionMessage appearance="error" title="Not recorded">
-              <Text>{error}</Text>
+              <Text as="span">{error}</Text>
             </SectionMessage>
           ) : null}
           <FormField id="fr-exception-reason" label="Reason" helper="Provide a clear audit explanation (15 to 500 characters).">
@@ -128,8 +138,8 @@ export const ExceptionModal: React.FC<ModalProps & { type: 'CODE' | 'REWORK' }> 
         </ModalContent>
       </ModalBody>
       <ModalFooter>
-        <Button appearance="subtle" onClick={onClose}>Cancel</Button>
-        <Button appearance="primary" onClick={submit}>{type === 'CODE' ? 'Save exception' : 'Save reason'}</Button>
+        <Button appearance="subtle" isDisabled={submitting} onClick={onClose}>Cancel</Button>
+        <Button appearance="primary" isDisabled={submitting} onClick={submit}>{type === 'CODE' ? 'Save exception' : 'Save reason'}</Button>
       </ModalFooter>
     </Modal>
   );
@@ -166,9 +176,12 @@ const DECISION_TEXT: Record<ExceptionDecision, { title: string; button: string; 
 export const DecisionModal: React.FC<ModalProps & { decision: ExceptionDecision }> = ({ issueId, issueKey, decision, onClose, onDone }) => {
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const text = DECISION_TEXT[decision];
 
   const submit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
     setError(null);
     try {
       const res = (await invoke<DecideExceptionPayload, WriteResult>('decideException', { issueId, issueKey, decision, reason })) as WriteResult | undefined;
@@ -179,6 +192,8 @@ export const DecisionModal: React.FC<ModalProps & { decision: ExceptionDecision 
       }
     } catch (err) {
       setError(messageOf(err, 'The decision was not recorded.'));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -189,10 +204,10 @@ export const DecisionModal: React.FC<ModalProps & { decision: ExceptionDecision 
       </ModalHeader>
       <ModalBody>
         <ModalContent>
-          <Text color={TEXT_ROLE.secondary}>{text.intro}</Text>
+          <Text as="span" color={TEXT_ROLE.secondary}>{text.intro}</Text>
           {error ? (
             <SectionMessage appearance="error" title="Not recorded">
-              <Text>{error}</Text>
+              <Text as="span">{error}</Text>
             </SectionMessage>
           ) : null}
           <FormField id="fr-decision-reason" label={text.field}>
@@ -201,8 +216,8 @@ export const DecisionModal: React.FC<ModalProps & { decision: ExceptionDecision 
         </ModalContent>
       </ModalBody>
       <ModalFooter>
-        <Button appearance="subtle" onClick={onClose}>Cancel</Button>
-        <Button appearance="primary" onClick={submit}>{text.button}</Button>
+        <Button appearance="subtle" isDisabled={submitting} onClick={onClose}>Cancel</Button>
+        <Button appearance="primary" isDisabled={submitting} onClick={submit}>{text.button}</Button>
       </ModalFooter>
     </Modal>
   );
@@ -211,8 +226,11 @@ export const DecisionModal: React.FC<ModalProps & { decision: ExceptionDecision 
 export const ReviewModal: React.FC<ModalProps> = ({ issueId, issueKey, onClose, onDone }) => {
   const [comment, setComment] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const submit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
     setError(null);
     try {
       const res = (await invoke<RequestReviewPayload, WriteResult>('requestReview', { issueId, issueKey, comment })) as WriteResult | undefined;
@@ -223,6 +241,8 @@ export const ReviewModal: React.FC<ModalProps> = ({ issueId, issueKey, onClose, 
       }
     } catch (err) {
       setError(messageOf(err, 'The review request was not added.'));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -233,12 +253,12 @@ export const ReviewModal: React.FC<ModalProps> = ({ issueId, issueKey, onClose, 
       </ModalHeader>
       <ModalBody>
         <ModalContent>
-          <Text color={TEXT_ROLE.secondary}>
+          <Text as="span" color={TEXT_ROLE.secondary}>
             Ask for a retrospective code review. This posts a comment on the issue and does not change any gate.
           </Text>
           {error ? (
             <SectionMessage appearance="error" title="Not requested">
-              <Text>{error}</Text>
+              <Text as="span">{error}</Text>
             </SectionMessage>
           ) : null}
           <FormField id="fr-review-comment" label="Comment (15 to 1,000 characters)">
@@ -247,8 +267,8 @@ export const ReviewModal: React.FC<ModalProps> = ({ issueId, issueKey, onClose, 
         </ModalContent>
       </ModalBody>
       <ModalFooter>
-        <Button appearance="subtle" onClick={onClose}>Cancel</Button>
-        <Button appearance="primary" onClick={submit}>Request review</Button>
+        <Button appearance="subtle" isDisabled={submitting} onClick={onClose}>Cancel</Button>
+        <Button appearance="primary" isDisabled={submitting} onClick={submit}>Request review</Button>
       </ModalFooter>
     </Modal>
   );

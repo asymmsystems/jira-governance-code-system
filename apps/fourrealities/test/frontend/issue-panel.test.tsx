@@ -367,6 +367,31 @@ describe('IssuePanel', () => {
       expect(textOf(r.toJSON())).toContain('Hide details');
       expect(textOf(r.toJSON())).toContain('Source: Jira issue links and remote links.');
     });
+
+    it('B-48: disables modal actions while a write is in flight and blocks duplicate submissions across all modals', async () => {
+      for (const [issueRow, openLabel, submitLabel] of [
+        [row('DEMO-40', { intent: M_INTENT, process: F, code: NA, audit: NA }), 'Link decision record', 'Add link'],
+        [row('DEMO-41', { intent: F, process: F, code: M_CODE, audit: NA }), 'Request Code exception', 'Save exception'],
+        [row('DEMO-42', { intent: F, process: F, code: M_CODE, audit: NA }, { codeException: { status: 'REQUESTED', issueKey: 'DEMO-42', requestedBy: 'dev-1', requestedAt: '2026-11-01T00:00:00Z', reason: 'Configuration change only' } }), 'Approve exception', 'Approve'],
+        [row('DEMO-43', { intent: F, process: F, code: { state: 'FOUND', verification: 'HEURISTIC', reason: 'PR_MERGED' }, audit: NA }), 'Request retrospective review', 'Request review']
+      ] as const) {
+        bridgeState.invoke.mockReset();
+        let resolveWrite: (v: any) => void = () => undefined;
+        bridgeState.invoke.mockImplementationOnce(() => new Promise(res => { resolveWrite = res; }));
+        const r = await mount(issueRow);
+        await act(async () => { findButton(r.root, openLabel).props.onClick(); });
+        expect(findButton(r.root, submitLabel).props.isDisabled).toBe(false);
+        await act(async () => { findButton(r.root, submitLabel).props.onClick(); });
+        expect(findButton(r.root, submitLabel).props.isDisabled).toBe(true);
+        expect(findButton(r.root, 'Cancel').props.isDisabled).toBe(true);
+        await act(async () => { findButton(r.root, submitLabel).props.onClick(); });
+        expect(bridgeState.invoke).toHaveBeenCalledTimes(1);
+        await act(async () => { resolveWrite({ success: false, error: 'Try again.' }); });
+        await settle(act);
+        expect(findButton(r.root, submitLabel).props.isDisabled).toBe(false);
+        expect(findButton(r.root, 'Cancel').props.isDisabled).toBe(false);
+      }
+    });
   });
 });
 

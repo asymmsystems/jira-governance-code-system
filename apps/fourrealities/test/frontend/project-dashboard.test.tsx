@@ -211,35 +211,46 @@ describe('ProjectDashboard', () => {
     expect(widths().gates).toBe(32);
   });
 
-  it('B-40: preset views set the filters, and My issues uses the viewer account', async () => {
+  it('B-40: preset views set isSelected, toggle off on second click, and My issues uses the viewer account', async () => {
     const mineRows = [row('DEMO-1', { intent: F, process: F, code: NA, audit: F }, { assigneeAccountId: 'acc-1', updated: '2026-11-01T10:00:00Z' }), ...rows.slice(1)];
     let r: any;
     await act(async () => { r = TestRenderer.create(<ProjectDashboard view={dashboard(mineRows)} onRefresh={jest.fn()} viewerAccountId="acc-1" />); });
+    expect(findButton(r.root, 'My issues').props.isSelected).toBe(false);
     await act(async () => { findButton(r.root, 'My issues').props.onClick(); });
+    expect(findButton(r.root, 'My issues').props.isSelected).toBe(true);
     expect(tableKeys(r)).toEqual(['DEMO-1']);
     const issueCell = TestRenderer.create(findAll(r.root, 'DynamicTable')[0].props.rows[0].cells[0].content);
     expect(textOf(issueCell.toJSON())).toContain('2026-11-01');
+    await act(async () => { findButton(r.root, 'My issues').props.onClick(); });
+    expect(findButton(r.root, 'My issues').props.isSelected).toBe(false);
+    expect(tableKeys(r)).toHaveLength(4);
     await act(async () => { findButton(r.root, 'Needs a decision link').props.onClick(); });
+    expect(findButton(r.root, 'Needs a decision link').props.isSelected).toBe(true);
     expect(tableKeys(r)).toEqual(['DEMO-2', 'DEMO-3']);
     const anonymous = await mount(dashboard(rows));
     expect(() => findButton(anonymous.root, 'My issues')).toThrow('No button');
   });
 
-  it('B-40: Inspect shows the pipeline and the drift sentence, and steps through the visible rows', async () => {
+  it('B-40: Inspect shows the pipeline, step position, and drift sentence, and steps through the visible rows', async () => {
     const r = await mount(dashboard(rows));
     await act(async () => { findAll(r.root, 'DynamicTable')[0].props.rows[0].cells[6].content.props.onClick(); });
     const title = () => flatText(findAll(r.root, 'ModalTitle')[0].props.children);
+    const bodyText = () => textOf(TestRenderer.create(findAll(r.root, 'Modal')[0].props.children[1]).toJSON());
     expect(title()).toBe('DEMO-2: Work DEMO-2');
-    expect(textOf(TestRenderer.create(findAll(r.root, 'Modal')[0].props.children[1]).toJSON())).toContain('No decision record is linked.');
+    expect(bodyText()).toContain('No decision record is linked.');
+    expect(bodyText()).toContain('Issue 1 of 4');
     expect(findButton(r.root, 'Previous issue').props.isDisabled).toBe(true);
     await act(async () => { findButton(r.root, 'Next issue').props.onClick(); });
     expect(title()).toBe('DEMO-3: Work DEMO-3');
+    expect(bodyText()).toContain('Issue 2 of 4');
     await act(async () => { findButton(r.root, 'Next issue').props.onClick(); });
     await act(async () => { findButton(r.root, 'Next issue').props.onClick(); });
     expect(title()).toBe('DEMO-4: Work DEMO-4');
+    expect(bodyText()).toContain('Issue 4 of 4');
     expect(findButton(r.root, 'Next issue').props.isDisabled).toBe(true);
     await act(async () => { findButton(r.root, 'Previous issue').props.onClick(); });
     expect(title()).toBe('DEMO-1: Work DEMO-1');
+    expect(bodyText()).toContain('Issue 3 of 4');
   });
 
   it('B-34: shows each issue as a compact pipeline, evidenced ratio, gaps summary, and top finding', async () => {

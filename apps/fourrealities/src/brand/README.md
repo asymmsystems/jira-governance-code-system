@@ -25,13 +25,21 @@ Components import semantic roles (`SPACE`, `TEXT_ROLE`) and layout primitives fr
 - **`AppSurface`**: Outermost sunken canvas container with standard (`space.250`) and sidebar `compact` (`space.150`) padding modes.
 - **`PageHeader`**: Full-width project dashboard header with title, project scope lozenge, subtitle, quiet timestamp, and right-aligned action slot.
 - **`PanelHeader`**: Issue panel header with manifest title, status lozenge, and right-aligned action slot.
-- **`StatusBanner`**: State-aware executive readiness card with a semantic left accent stripe, bold status `Lozenge` (never a numeric `Badge`), summary text, and a full-width borderless `Next step:` callout strip.
+- **`StatusBanner`**: State-aware executive readiness card with a semantic left accent stripe, bold status `Lozenge` (never a numeric `Badge`), summary text, and a full-width borderless `Next step:` callout strip using `KeyValueInline`.
+- **`KeyValueInline`**: Baseline-aligned inline bold-label + value pair (`alignBlock="baseline"`, `Text as="span"`) that prevents Jira Cloud `@atlaskit/css-reset` `<p>` top margins from shifting baselines.
+- **`CardHeader`**: Standardized section/card header with `Heading`, optional count `Badge`, right-aligned `metaText` or `action`, and optional secondary `subtitle`.
 - **`FourColumnGrid` / `TwoColumnGrid` / `ThreeColumnGrid`**: Responsive equal-gutter multi-column rows (`Inline` + `Box` flex-basis cells) sharing an identical `space.200` (16px) gutter so multi-row card seams align to the pixel.
 - **`Card` / `GateCard` / `SummaryBlock`**: Single-border elevated surfaces with `space.200` padding and equal row heights.
-- **`StatTile`**: Borderless neutral KPI metric block for inside cards (preserving the strict one-border rule).
+- **`StatTile`**: Borderless neutral KPI metric block for inside cards (wrapping `value` in `Box` so semantic headings carry zero extra top margin).
 - **`ListRow`**: Structured list row with optional bottom hairline divider and right-aligned action slot.
 - **`TableCard`**: Unified container combining a subtle header/filter toolbox and `DynamicTable` inside a single card separated by a hairline divider.
 - **`Section`**: Collapsible detail card (starts collapsed by default) with count `Badge` and chevron toggle button.
-- **`SubSection` / `NoteBox`**: Indented sub-rows and borderless neutral metadata boxes for exceptions and rework history.
+- **`SubSection` / `NoteBox`**: Indented full-width sub-rows and borderless neutral metadata boxes for exceptions and rework history.
 - **`ModalContent` / `FormField`**: Generously padded modal body wrapper (`space.200` block, `space.250` inline) and proximity-grouped label + input + helper stacks.
+- **`LabeledInline` / `AttributionLine`**: Reusable inline control-strip label wrapper (`Views:`, `Risk:`) and `User`-aware audit attribution line (`Requested by <User> on ...`).
 - **`ActionRow` / `StatusLozenge`**: Wrapped horizontal button row and accessible status lozenge (`maxWidth="100%"`).
+
+## Typography Rhythm Rule (`Text as="span"`)
+
+In Jira Cloud's Forge UI Kit 2 host, `<Text>` defaults to `<p>`, and `@atlaskit/css-reset` applies `margin-top: 12px` to every non-first `<p>`. Every `<Text>` inside `<Inline>` or `<Stack>` must render `as="span"` (enforced by `test/frontend/accessibility.test.tsx`) so flexbox `space` tokens control vertical and baseline alignment with zero shift.
+

@@ -5,7 +5,7 @@
  */
 
 import { GateResult, IssueRow } from '../../src/contract/data/models';
-import { NO_FILTERS, PRESETS, activeFilters, applyFilters, filterOptions, presetFilters, toggleRisk, UNASSIGNED } from '../../src/ui/filters';
+import { NO_FILTERS, PRESETS, activeFilters, applyFilters, filterOptions, isPresetActive, presetFilters, togglePreset, toggleRisk, UNASSIGNED } from '../../src/ui/filters';
 
 const F: GateResult = { state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK' };
 const M: GateResult = { state: 'MISSING', reason: 'INTENT_NONE' };
@@ -81,5 +81,27 @@ describe('B-40: preset views', () => {
   it('filters by the viewer account and names it "My issues"', () => {
     expect(applyFilters(mine, { ...NO_FILTERS, assigneeId: 'acc-1' }).map(x => x.issueKey)).toEqual(['A-1']);
     expect(activeFilters({ ...NO_FILTERS, assigneeId: 'acc-1' })).toEqual([{ field: 'assigneeId', label: 'My issues' }]);
+  });
+
+  it('B-48: detects active preset state accurately and toggles an active preset off while keeping search', () => {
+    expect(isPresetActive(NO_FILTERS, 'mine', 'acc-1')).toBe(false);
+    expect(isPresetActive(NO_FILTERS, 'mine', '')).toBe(false);
+    const activeMine = togglePreset({ ...NO_FILTERS, search: 'DEMO' }, 'mine', 'acc-1');
+    expect(activeMine).toEqual({ ...NO_FILTERS, assigneeId: 'acc-1', search: 'DEMO' });
+    expect(isPresetActive(activeMine, 'mine', 'acc-1')).toBe(true);
+    expect(isPresetActive(activeMine, 'urgent', 'acc-1')).toBe(false);
+    expect(isPresetActive({ ...activeMine, sprint: 'Sprint 1' }, 'mine', 'acc-1')).toBe(false);
+    expect(togglePreset(activeMine, 'mine', 'acc-1')).toEqual({ ...NO_FILTERS, search: 'DEMO' });
+
+    const activeUrgent = togglePreset(NO_FILTERS, 'urgent', '');
+    expect(isPresetActive(activeUrgent, 'urgent')).toBe(true);
+    expect(isPresetActive({ ...NO_FILTERS, risks: ['CRITICAL'] }, 'urgent')).toBe(false);
+    expect(togglePreset(activeUrgent, 'urgent', '')).toEqual(NO_FILTERS);
+
+    const activeAudit = togglePreset(NO_FILTERS, 'audit', '');
+    expect(isPresetActive(activeAudit, 'audit')).toBe(true);
+    const activeDecision = togglePreset(activeAudit, 'decision', '');
+    expect(isPresetActive(activeDecision, 'decision')).toBe(true);
+    expect(isPresetActive(activeDecision, 'audit')).toBe(false);
   });
 });

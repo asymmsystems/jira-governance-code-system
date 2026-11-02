@@ -41,6 +41,14 @@ function checkTree(renderer: any, where: string) {
   for (const inline of findAll(root, 'Inline')) {
     expect({ where, shouldWrap: inline.props.shouldWrap }).toEqual({ where, shouldWrap: true });
   }
+  // UX standard (B-48): Jira Cloud applies margin-top: 12px to non-first <p> elements. Every Text inside
+  // Inline or Stack renders as="span" (or inline "strong") so flex gap owns spacing and baselines never shift.
+  for (const textNode of findAll(root, 'Text')) {
+    if (hasAncestor(textNode, a => a.type === 'ui-Inline' || a.type === 'ui-Stack')) {
+      expect({ where, text: flat(textNode.props.children), spanOrStrong: textNode.props.as === 'span' || textNode.props.as === 'strong' })
+        .toEqual({ where, text: flat(textNode.props.children), spanOrStrong: true });
+    }
+  }
   const labels = new Set(findAll(root, 'Label').map((l: any) => l.props.labelFor));
   for (const type of CONTROLS) {
     for (const control of findAll(root, type)) {

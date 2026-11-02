@@ -6,8 +6,12 @@
  */
 
 import * as React from 'react';
-import { Badge, Box, Button, Heading, Inline, Label, Lozenge, Stack, Text, xcss } from '@forge/react';
+import { Badge, Box, Button, Heading, Inline, Label, Lozenge, Stack, Text, User, xcss } from '@forge/react';
 import { LozengeAppearance, SPACE, TEXT_ROLE, TOKENS, statusToAppearance } from './brand';
+
+type TextSize = React.ComponentProps<typeof Text>['size'];
+type TextColor = React.ComponentProps<typeof Text>['color'];
+type InlineSpace = React.ComponentProps<typeof Inline>['space'];
 
 const APP_SURFACE_STYLE = xcss({
   backgroundColor: TOKENS.surfaceApp,
@@ -182,7 +186,7 @@ export function PageHeader({ title, scopeBadge, subtitle, metaText, action }: Pa
           ) : null}
         </Inline>
         {subtitle ? (
-          <Text size="small" color={TEXT_ROLE.secondary}>
+          <Text as="span" size="small" color={TEXT_ROLE.secondary}>
             {subtitle}
           </Text>
         ) : null}
@@ -190,7 +194,7 @@ export function PageHeader({ title, scopeBadge, subtitle, metaText, action }: Pa
       {metaText || action ? (
         <Inline alignBlock="center" space={SPACE.group} shouldWrap>
           {metaText ? (
-            <Text size="small" color={TEXT_ROLE.muted}>
+            <Text as="span" size="small" color={TEXT_ROLE.muted}>
               {metaText}
             </Text>
           ) : null}
@@ -224,6 +228,26 @@ export function PanelHeader({ title, statusText, statusAppearance = 'default', a
   );
 }
 
+export interface KeyValueInlineProps {
+  readonly label: string;
+  readonly value: string;
+  readonly size?: TextSize;
+  readonly color?: TextColor;
+}
+
+export function KeyValueInline({ label, value, size, color }: KeyValueInlineProps): React.JSX.Element {
+  return (
+    <Inline alignBlock="baseline" space={SPACE.sub} rowSpace={SPACE.tight} shouldWrap>
+      <Text as="span" size={size} weight="semibold">
+        {label}
+      </Text>
+      <Text as="span" size={size} color={color}>
+        {value}
+      </Text>
+    </Inline>
+  );
+}
+
 export interface StatusBannerProps {
   readonly status: string;
   readonly statusWord: string;
@@ -253,21 +277,18 @@ export function StatusBanner({
     <Box xcss={bannerStyle}>
       <Stack space={SPACE.group}>
         <Inline alignBlock="center" space={SPACE.item} shouldWrap>
-          <Text size="large" weight="bold">Audit readiness:</Text>
+          <Text as="span" size="large" weight="bold">Audit readiness:</Text>
           <Lozenge maxWidth="100%" appearance={appearance} isBold>
             {statusWord}
           </Lozenge>
         </Inline>
-        <Text color={TEXT_ROLE.secondary}>{summary}</Text>
+        <Text as="span" color={TEXT_ROLE.secondary}>{summary}</Text>
         <Box xcss={CALLOUT_STRIP_STYLE}>
           <Inline alignBlock="center" spread="space-between" space={SPACE.item} shouldWrap>
             {hasPrefix || appearance !== 'success' ? (
-              <Inline alignBlock="center" space={SPACE.sub} shouldWrap>
-                <Text weight="semibold">Next step:</Text>
-                <Text>{stepBody}</Text>
-              </Inline>
+              <KeyValueInline label="Next step:" value={stepBody} />
             ) : (
-              <Text weight="medium">{stepBody}</Text>
+              <Text as="span" weight="medium">{stepBody}</Text>
             )}
             {action}
           </Inline>
@@ -378,6 +399,42 @@ export function Card({ children }: CardProps): React.JSX.Element {
   );
 }
 
+export interface CardHeaderProps {
+  readonly title: string;
+  readonly count?: number | string;
+  readonly subtitle?: string;
+  readonly metaText?: string;
+  readonly action?: React.ReactNode;
+}
+
+export function CardHeader({ title, count, subtitle, metaText, action }: CardHeaderProps): React.JSX.Element {
+  return (
+    <Stack space={SPACE.tight}>
+      <Inline spread="space-between" alignBlock="center" space={SPACE.item} shouldWrap>
+        <Inline alignBlock="center" space={SPACE.item} shouldWrap>
+          <Heading size="small" as="h4">{title}</Heading>
+          {count !== undefined ? <Badge>{count}</Badge> : null}
+        </Inline>
+        {metaText || action ? (
+          <Inline alignBlock="center" space={SPACE.item} shouldWrap>
+            {metaText ? (
+              <Text as="span" size="small" color={TEXT_ROLE.muted}>
+                {metaText}
+              </Text>
+            ) : null}
+            {action}
+          </Inline>
+        ) : null}
+      </Inline>
+      {subtitle ? (
+        <Text as="span" size="small" color={TEXT_ROLE.secondary}>
+          {subtitle}
+        </Text>
+      ) : null}
+    </Stack>
+  );
+}
+
 export interface StatTileProps {
   readonly label: string;
   readonly value: React.ReactNode;
@@ -388,12 +445,12 @@ export function StatTile({ label, value, caption }: StatTileProps): React.JSX.El
   return (
     <Box xcss={STAT_TILE_STYLE}>
       <Stack space={SPACE.sub} alignInline="start">
-        <Text size="small" weight="medium" color={TEXT_ROLE.secondary}>
+        <Text as="span" size="small" weight="medium" color={TEXT_ROLE.secondary}>
           {label}
         </Text>
-        {value}
+        <Box>{value}</Box>
         {caption ? (
-          <Text size="small" color={TEXT_ROLE.muted}>
+          <Text as="span" size="small" color={TEXT_ROLE.muted}>
             {caption}
           </Text>
         ) : null}
@@ -451,7 +508,7 @@ export function TableCard({ title, count, metaText, headerAction, toolbar, child
             {metaText || headerAction ? (
               <Inline alignBlock="center" space={SPACE.item} shouldWrap>
                 {metaText ? (
-                  <Text size="small" color={TEXT_ROLE.secondary}>
+                  <Text as="span" size="small" color={TEXT_ROLE.secondary}>
                     {metaText}
                   </Text>
                 ) : null}
@@ -511,7 +568,7 @@ export interface SubSectionProps {
 export function SubSection({ children }: SubSectionProps): React.JSX.Element {
   return (
     <Box xcss={SUB_SECTION_STYLE}>
-      <Stack space={SPACE.compact} alignInline="start">{children}</Stack>
+      <Stack space={SPACE.compact}>{children}</Stack>
     </Box>
   );
 }
@@ -553,11 +610,48 @@ export function FormField({ id, label, helper, children }: FormFieldProps): Reac
       <Label labelFor={id}>{label}</Label>
       {children}
       {helper ? (
-        <Text size="small" color={TEXT_ROLE.muted}>
+        <Text as="span" size="small" color={TEXT_ROLE.muted}>
           {helper}
         </Text>
       ) : null}
     </Stack>
+  );
+}
+
+export interface LabeledInlineProps {
+  readonly label: string;
+  readonly space?: InlineSpace;
+  readonly children: React.ReactNode;
+}
+
+export function LabeledInline({ label, space = SPACE.sub, children }: LabeledInlineProps): React.JSX.Element {
+  return (
+    <Inline space={space} rowSpace={SPACE.sub} alignBlock="center" shouldWrap>
+      <Text as="span" size="small" weight="semibold" color={TEXT_ROLE.secondary}>
+        {label}
+      </Text>
+      {children}
+    </Inline>
+  );
+}
+
+export interface AttributionLineProps {
+  readonly prefix: string;
+  readonly accountId: string;
+  readonly suffix: string;
+}
+
+export function AttributionLine({ prefix, accountId, suffix }: AttributionLineProps): React.JSX.Element {
+  return (
+    <Inline space={SPACE.sub} rowSpace={SPACE.tight} alignBlock="center" shouldWrap>
+      <Text as="span" size="small" weight="medium">
+        {prefix}
+      </Text>
+      <User accountId={accountId} />
+      <Text as="span" size="small" color={TEXT_ROLE.secondary}>
+        {suffix}
+      </Text>
+    </Inline>
   );
 }
 
@@ -587,3 +681,4 @@ export function StatusLozenge({ state, verification, children, isBold }: StatusL
     </Lozenge>
   );
 }
+

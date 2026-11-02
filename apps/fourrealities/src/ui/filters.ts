@@ -96,3 +96,21 @@ export function presetFilters(name: PresetName, viewerAccountId: string, search:
     default: return { ...base, missingGate: 'intent' };
   }
 }
+
+/** True when the active filters match the preset exactly (ignoring free-text search). */
+export function isPresetActive(f: DashboardFilters, name: PresetName, viewerAccountId = ''): boolean {
+  if (name === 'mine' && !viewerAccountId) return false;
+  const target = presetFilters(name, viewerAccountId, f.search);
+  const sameScalars = [f.assignee, f.sprint, f.missingGate, f.assigneeId]
+    .every((v, i) => v === [target.assignee, target.sprint, target.missingGate, target.assigneeId][i]);
+  const sameRisks = f.risks.length === target.risks.length && f.risks.every((r, i) => r === target.risks[i]);
+  return sameScalars && sameRisks;
+}
+
+/** Applies a preset, or clears back to NO_FILTERS (preserving search) when clicked again. */
+export function togglePreset(f: DashboardFilters, name: PresetName, viewerAccountId: string): DashboardFilters {
+  return isPresetActive(f, name, viewerAccountId)
+    ? { ...NO_FILTERS, search: f.search }
+    : presetFilters(name, viewerAccountId, f.search);
+}
+
