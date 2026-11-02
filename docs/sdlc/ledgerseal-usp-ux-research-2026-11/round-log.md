@@ -512,3 +512,6 @@ Not tested live: a seal by a non-admin group member, because the site has one hu
 
 Also: the gate `tools/check.sh` now runs jest with `-w 2`; one full run was killed (exit 137) with the default worker count.
 
+**4. In-Jira UI standard adoption** (`23419c7`, development 3.13.0). Adopted Asymm Systems In-Jira UI standard (`docs/design/asymm-jira-ui-standard.md`). Wrapped issue panel in `AppSurface`, added unified `PanelHeader` with status lozenge and bordered compact refresh button, single-border `SummaryBlock` hero card with honest status sentence and `KeyValueInline` next step line, single primary action button, subtle `Open Four Realities panel` link, and collapsible `Section` for seal details, tamper-evident hash, covered/excluded fields, and audit history. Retained all uncontrolled inputs and inline `Text as="span"` rules. 315 tests pass across 36 suites, 95.57% branch coverage, 0 em dashes.
+
+
