@@ -477,6 +477,7 @@ export async function verifyIssueFlow(payload: any, context: any, deps: LedgerSe
   }
   return {
     ...result,
+    issueKey: issue.key,
     rights: await viewerRights(deps, issue.id, String(context.accountId), result),
     approverGroups: await approverGroupNames(deps.storage)
   };

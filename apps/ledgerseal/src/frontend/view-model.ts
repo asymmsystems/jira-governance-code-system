@@ -43,6 +43,8 @@ export interface ChangeRowView {
 export interface PanelView {
   state: PanelState;
   title: string;
+  statusSentence: string;
+  nextStep: string;
   lozenge: { text: string; appearance: LozengeAppearance } | null;
   message: { appearance: MessageAppearance; lines: string[] };
   actions: { seal?: { label: string; reasonLabel?: string }; approveChanges?: { label: string }; revoke?: { label: string }; retry?: { label: string } };
@@ -223,6 +225,69 @@ function changeRows(diffs: FieldDiff[], input: PanelInput): ChangeRowView[] {
 
 const NO_RIGHTS: ViewerRights = { canSeal: false, canApproveChanges: false, canRevoke: false, blockedBySelfChange: false };
 
+export function statusSentence(state: PanelState, changesCount: number, seal?: SealSummary): string {
+  switch (state) {
+    case 'NOT_SEALED':
+      return 'Approval seal: Not sealed yet. Work can change without detection.';
+    case 'SEALED':
+      return seal?.everCompromised
+        ? `Approval seal: Sealed. Resealed after ${seal.incidentCount} change ${seal.incidentCount === 1 ? 'incident' : 'incidents'}.`
+        : 'Approval seal: Sealed. No change detected since approval.';
+    case 'CHANGED':
+      return `Approval seal: Changed after approval. ${changesCount} ${changesCount === 1 ? 'item' : 'items'} modified.`;
+    case 'CHANGED_BACK':
+      return 'Approval seal: Changed after approval, then changed back.';
+    case 'REVOKED':
+      return seal?.revocation?.reason
+        ? `Approval seal: Revoked (${seal.revocation.reason}).`
+        : 'Approval seal: Revoked.';
+    case 'RECORD_INVALID':
+      return 'Approval seal: Stored seal record failed its integrity check.';
+    case 'LEGACY':
+      return 'Approval seal: Sealed with an older format.';
+    case 'LICENSE_INACTIVE':
+      return 'Approval seal: LedgerSeal licence is inactive.';
+    case 'ERROR':
+      return 'Approval seal: Could not verify seal state.';
+    case 'LOADING':
+    default:
+      return 'Approval seal: Checking the seal...';
+  }
+}
+
+export function nextStepText(state: PanelState, canSeal: boolean, canApprove: boolean): string {
+  switch (state) {
+    case 'NOT_SEALED':
+      return canSeal
+        ? 'Seal this issue to record sign-off of its current content.'
+        : 'Ask an approver to seal this issue.';
+    case 'SEALED':
+      return 'None (seal is valid and tamper-evident).';
+    case 'CHANGED':
+    case 'CHANGED_BACK':
+      return canApprove
+        ? 'Review modifications below and approve these changes or reseal.'
+        : 'Another approver must review modifications and approve these changes.';
+    case 'REVOKED':
+      return canSeal
+        ? 'Seal this issue again if approval is re-established.'
+        : 'Ask an approver to seal this issue again if required.';
+    case 'RECORD_INVALID':
+      return 'Contact your Jira administrator to inspect the seal record.';
+    case 'LEGACY':
+      return canSeal
+        ? 'Reseal this issue to upgrade to current record format.'
+        : 'Ask an approver to reseal this issue.';
+    case 'LICENSE_INACTIVE':
+      return 'Ask your Jira administrator to renew the LedgerSeal licence.';
+    case 'ERROR':
+      return 'Retry or refresh to check the seal again.';
+    case 'LOADING':
+    default:
+      return 'Waiting for seal verification.';
+  }
+}
+
 export function buildPanelView(input: PanelInput): PanelView {
   const state = stateOf(input);
   const r = input.result;
@@ -245,15 +310,18 @@ export function buildPanelView(input: PanelInput): PanelView {
     askText = ASK_OTHER_APPROVER;
   }
 
+  const changes = ['CHANGED', 'CHANGED_BACK'].includes(state) ? changeRows(r?.tamperedFields, input) : [];
   const view: PanelView = {
     state,
     title: TITLES[state],
+    statusSentence: statusSentence(state, changes.length, seal),
+    nextStep: nextStepText(state, Boolean(actions.seal), Boolean(actions.approveChanges)),
     lozenge: LOZENGES[state] ?? null,
     message: { appearance: APPEARANCES[state], lines: messageLines(state, input, seal) },
     actions,
     ...(askText ? { askText } : {}),
     policyText: policyText(Array.isArray(r?.approverGroups) ? r.approverGroups : []),
-    changes: ['CHANGED', 'CHANGED_BACK'].includes(state) ? changeRows(r?.tamperedFields, input) : [],
+    changes,
     covered: (r?.coveredFields ?? []).map((f: { name: string }) => f.name),
     excluded: (r?.excludedFields ?? []).map((f: { name: string; reason: string }) => ({ name: f.name, reason: f.reason }))
   };

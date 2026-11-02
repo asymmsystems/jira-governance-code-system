@@ -2,29 +2,42 @@ import React, { useState, useEffect } from 'react';
 import ForgeReconciler, {
   Text,
   Button,
-  Lozenge,
   SectionMessage,
   Stack,
   Inline,
-  Heading,
-  Label,
   Checkbox,
   Box,
   Spinner,
   User,
   RadioGroup,
   TextArea,
-  CodeBlock
+  CodeBlock,
+  Heading
 } from '@forge/react';
-import { invoke } from '@forge/bridge';
+import { invoke, router } from '@forge/bridge';
 import { DECLARATION, MEANINGS } from '../domain/declaration';
 import { buildPanelView, formatTime, PanelView } from './view-model';
+import {
+  AppSurface,
+  PanelHeader,
+  SummaryBlock,
+  Card,
+  Section,
+  SubSection,
+  NoteBox,
+  KeyValueInline,
+  AttributionLine,
+  ActionRow,
+  ListRow,
+  FormField
+} from '../brand/layout';
+import { SPACE, TEXT_ROLE } from '../brand/brand';
 
 type FormMode = 'seal' | 'approve' | 'revoke' | null;
 
 /**
  * The LedgerSeal issue panel. Every decision about what to show comes from the view model (view-model.ts);
- * this component only maps it to UI Kit components and holds the form state.
+ * this component maps it to Asymm Systems In-Jira UI standard layout primitives and holds the form state.
  */
 export const LedgerSealPanel: React.FC = () => {
   const [result, setResult] = useState<any>(null);
@@ -123,217 +136,268 @@ export const LedgerSealPanel: React.FC = () => {
 
   if (view.state === 'LOADING') {
     return (
-      <Inline alignBlock="center">
-        <Spinner size="small" />
-        <Text>{view.title}</Text>
-      </Inline>
+      <AppSurface>
+        <Inline alignBlock="center" space={SPACE.item}>
+          <Spinner size="small" />
+          <Text as="span">{view.title}</Text>
+        </Inline>
+      </AppSurface>
     );
   }
 
   return (
-    <Stack space="space.150">
-      <SectionMessage appearance={view.message.appearance} title={view.title}>
-        <Stack space="space.100">
-          {view.message.lines.map(line => (
-            <Text key={line}>{line}</Text>
-          ))}
-          {view.revokedByAccountId && (
-            <Inline space="space.050" alignBlock="center">
-              <Text>Revoked by:</Text>
-              <User accountId={view.revokedByAccountId} />
-            </Inline>
-          )}
-          {view.lozenge && (
-            <Box paddingBlock="space.050">
-              <Lozenge appearance={view.lozenge.appearance}>{view.lozenge.text}</Lozenge>
-            </Box>
-          )}
-          {view.changes.length > 0 && (
-            <Stack space="space.100">
-              <Heading as="h5">Changed items ({view.changes.length})</Heading>
-              {view.changes.map(row => (
-                <Box key={row.fieldId} padding="space.100" backgroundColor="color.background.neutral.subtle">
-                  <Stack space="space.050">
-                    <Inline space="space.050" alignBlock="center">
-                      <Text weight="bold">{row.fieldName}</Text>
-                      {row.detail && <Text color="color.text.subtle">({row.detail})</Text>}
-                    </Inline>
-                    <Text color="color.text.subtle" weight="medium">Was (at approval):</Text>
-                    <Box padding="space.050">
-                      <Text>{fullValues[row.fieldId] ? row.wasFull : row.was}</Text>
-                    </Box>
-                    <Text color="color.text.danger" weight="medium">Now (current edit):</Text>
-                    <Box padding="space.050">
-                      <Text>{fullValues[row.fieldId] ? row.nowFull : row.now}</Text>
-                    </Box>
-                    <Inline space="space.050" alignBlock="center">
-                      <Text color="color.text.subtlest">Changed by:</Text>
-                      {row.changedBy.length > 0 ? row.changedBy.map(id => <User key={id} accountId={id} />) : <Text>unknown</Text>}
-                      <Text color="color.text.subtlest">on {row.changedAt}</Text>
-                    </Inline>
-                    {row.showFullToggle && (
-                      <Button appearance="subtle" onClick={() => setFullValues({ ...fullValues, [row.fieldId]: !fullValues[row.fieldId] })}>
+    <AppSurface>
+      <PanelHeader
+        title="Approval Seal"
+        statusText={view.lozenge?.text}
+        statusAppearance={view.lozenge?.appearance}
+        action={
+          <Button appearance="default" spacing="compact" iconBefore="refresh" onClick={loadState}>
+            Refresh
+          </Button>
+        }
+      />
+
+      <SummaryBlock>
+        <Text as="span" weight="medium">{view.statusSentence}</Text>
+        <KeyValueInline label="Next step:" value={view.nextStep} />
+
+        {view.revokedByAccountId && (
+          <AttributionLine prefix="Revoked by" accountId={view.revokedByAccountId} suffix="" />
+        )}
+
+        {view.askText && (
+          <NoteBox>
+            <Text as="span" size="small" color={TEXT_ROLE.secondary}>{view.askText}</Text>
+          </NoteBox>
+        )}
+
+        {view.changes.length > 0 && (
+          <Stack space={SPACE.group}>
+            <Text as="span" weight="semibold">Changed items ({view.changes.length})</Text>
+            {view.changes.map(row => (
+              <ListRow key={row.fieldId} divided>
+                <Stack space={SPACE.sub}>
+                  <Inline space={SPACE.sub} alignBlock="center" shouldWrap>
+                    <Text as="span" weight="bold">{row.fieldName}</Text>
+                    {row.detail && <Text as="span" color={TEXT_ROLE.secondary}>({row.detail})</Text>}
+                  </Inline>
+                  <Inline space={SPACE.sub} alignBlock="center" shouldWrap>
+                    <Text as="span" size="small" color={TEXT_ROLE.secondary} weight="medium">Was (at approval):</Text>
+                    <Text as="span" size="small">{fullValues[row.fieldId] ? row.wasFull : row.was}</Text>
+                  </Inline>
+                  <Inline space={SPACE.sub} alignBlock="center" shouldWrap>
+                    <Text as="span" size="small" color={TEXT_ROLE.danger} weight="medium">Now (current edit):</Text>
+                    <Text as="span" size="small">{fullValues[row.fieldId] ? row.nowFull : row.now}</Text>
+                  </Inline>
+                  <Inline space={SPACE.sub} alignBlock="center" shouldWrap>
+                    <Text as="span" size="small" color={TEXT_ROLE.muted}>Changed by:</Text>
+                    {row.changedBy.length > 0 ? (
+                      row.changedBy.map(id => <User key={id} accountId={id} />)
+                    ) : (
+                      <Text as="span" size="small" color={TEXT_ROLE.muted}>unknown</Text>
+                    )}
+                    <Text as="span" size="small" color={TEXT_ROLE.muted}>on {row.changedAt}</Text>
+                  </Inline>
+                  {row.showFullToggle && (
+                    <Box>
+                      <Button
+                        appearance="subtle"
+                        spacing="compact"
+                        onClick={() => setFullValues({ ...fullValues, [row.fieldId]: !fullValues[row.fieldId] })}
+                      >
                         {fullValues[row.fieldId] ? 'Show less' : 'Show full value'}
                       </Button>
-                    )}
-                  </Stack>
-                </Box>
-              ))}
-            </Stack>
+                    </Box>
+                  )}
+                </Stack>
+              </ListRow>
+            ))}
+          </Stack>
+        )}
+
+        <ActionRow>
+          {view.actions.retry && (
+            <Button appearance="primary" onClick={() => loadState()}>
+              {view.actions.retry.label}
+            </Button>
           )}
-          <Box paddingBlockStart="space.050">
-            <Inline space="space.100">
-              {view.actions.retry && (
-                <Button appearance="primary" onClick={() => loadState()}>
-                  {view.actions.retry.label}
-                </Button>
-              )}
-              {view.actions.seal && (
-                <Button appearance="primary" onClick={() => openForm('seal')}>
-                  {view.actions.seal.label}
-                </Button>
-              )}
-              {view.actions.approveChanges && (
-                <Button appearance="warning" onClick={() => openForm('approve')}>
-                  {view.actions.approveChanges.label}
-                </Button>
-              )}
-              {view.actions.revoke && (
-                <Button appearance="default" onClick={() => openForm('revoke')}>
-                  {view.actions.revoke.label}
-                </Button>
-              )}
-              <Button appearance="subtle" onClick={() => loadState()}>
-                Refresh status
-              </Button>
-            </Inline>
-          </Box>
-          {view.askText && (
-            <Box padding="space.050">
-              <Text weight="medium">{view.askText}</Text>
-            </Box>
+          {view.actions.seal && (
+            <Button appearance="primary" onClick={() => openForm('seal')}>
+              {view.actions.seal.label}
+            </Button>
           )}
-        </Stack>
-      </SectionMessage>
+          {view.actions.approveChanges && (
+            <Button appearance="primary" onClick={() => openForm('approve')}>
+              {view.actions.approveChanges.label}
+            </Button>
+          )}
+          {view.actions.revoke && (
+            <Button appearance="default" onClick={() => openForm('revoke')}>
+              {view.actions.revoke.label}
+            </Button>
+          )}
+          <Button
+            appearance="subtle"
+            spacing="compact"
+            iconAfter="shortcut"
+            onClick={() => {
+              const key = result?.issueKey || result?.key;
+              if (key) router.open(`/browse/${key}`);
+            }}
+          >
+            Open Four Realities panel
+          </Button>
+        </ActionRow>
+      </SummaryBlock>
 
       {view.seal && (
-        <Box padding="space.100">
-          <Stack space="space.050">
-            <Heading as="h5">Seal details</Heading>
-            <Inline space="space.050" alignBlock="center">
-              <Text>Signer:</Text>
-              <User accountId={view.seal.signerAccountId} />
-            </Inline>
-            <Text>
-              Sealed: {view.seal.sealedAt}. Meaning: {view.seal.meaningLabel}.
+        <Section title="Seal details" defaultCollapsed={true}>
+          <Inline space={SPACE.sub} alignBlock="center" shouldWrap>
+            <Text as="span" size="small" weight="medium">Signed by:</Text>
+            <User accountId={view.seal.signerAccountId} />
+            <Text as="span" size="small" color={TEXT_ROLE.secondary}>on {view.seal.sealedAt}</Text>
+          </Inline>
+          <KeyValueInline label="Sign-off role:" value={view.seal.meaningLabel} />
+          {view.seal.reason && <KeyValueInline label="Reason:" value={view.seal.reason} />}
+
+          <NoteBox>
+            <Text as="span" size="small" weight="medium">Tamper-evident seal</Text>
+            <Text as="span" size="small" color={TEXT_ROLE.secondary}>
+              SHA-256 hash of covered fields, comments and attachments.
             </Text>
-            {view.seal.reason && <Text>Reason: {view.seal.reason}</Text>}
-            <Text>Tamper-evident seal: SHA-256 hash of the covered fields, comments and attachments.</Text>
-            <Text>Hash: {showDetails ? view.seal.hash : view.seal.hashShort}</Text>
-            <Inline space="space.100">
-              <Button appearance="subtle" onClick={() => setShowDetails(!showDetails)}>
-                {showDetails ? 'Hide seal details' : 'Show seal details'}
+            <KeyValueInline
+              label="Hash:"
+              value={showDetails ? view.seal.hash : view.seal.hashShort}
+              size="small"
+            />
+            <Box>
+              <Button appearance="subtle" spacing="compact" onClick={() => setShowDetails(!showDetails)}>
+                {showDetails ? 'Hide full hash' : 'Show full hash'}
               </Button>
-              <Button appearance="subtle" onClick={() => setShowCovered(!showCovered)}>
-                {showCovered ? 'Hide fields' : `Covered fields (${view.covered.length}), not covered (${view.excluded.length})`}
-              </Button>
-              <Button appearance="subtle" onClick={() => loadHistory()}>
-                {history ? 'Hide history' : `History (${view.seal.historyLength})`}
-              </Button>
-              <Button appearance="subtle" onClick={() => loadEvidence()}>
-                {evidence ? 'Hide evidence' : 'Show evidence (JSON)'}
+            </Box>
+          </NoteBox>
+
+          <SubSection>
+            <Inline alignBlock="center" spread="space-between" space={SPACE.item} shouldWrap>
+              <Text as="span" size="small" weight="semibold">
+                Covered fields ({view.covered.length}), not covered ({view.excluded.length})
+              </Text>
+              <Button appearance="subtle" spacing="compact" onClick={() => setShowCovered(!showCovered)}>
+                {showCovered ? 'Hide fields' : 'Show fields'}
               </Button>
             </Inline>
-            {showDetails && (
-              <Box padding="space.050">
-                <Text>Certificate: {view.seal.certificateId}</Text>
-                <Text>
-                  Canonical form {view.seal.canonicalizerVersion}. Declaration v{view.seal.declarationVersion}.
-                </Text>
-              </Box>
-            )}
             {showCovered && (
-              <Box padding="space.050">
-                <Text>Covered: {view.covered.join(', ')}</Text>
+              <Stack space={SPACE.sub}>
+                <Text as="span" size="small" color={TEXT_ROLE.secondary}>
+                  Covered: {view.covered.join(', ')}
+                </Text>
                 {view.excluded.map(item => (
-                  <Text key={item.name}>
+                  <Text as="span" size="small" color={TEXT_ROLE.muted} key={item.name}>
                     Not covered: {item.name}. {item.reason}
                   </Text>
                 ))}
-              </Box>
+              </Stack>
             )}
+          </SubSection>
+
+          <SubSection>
+            <Inline alignBlock="center" spread="space-between" space={SPACE.item} shouldWrap>
+              <Text as="span" size="small" weight="semibold">
+                History ({view.seal.historyLength})
+              </Text>
+              <Button appearance="subtle" spacing="compact" onClick={loadHistory}>
+                {history ? 'Hide history' : 'Show history'}
+              </Button>
+            </Inline>
             {history && (
-              <Box padding="space.050">
+              <Stack space={SPACE.sub}>
                 {history.map(row => (
-                  <Text key={row.seq}>
+                  <Text as="span" size="small" key={row.seq}>
                     {row.seq}. {row.transitionName} on {formatTime(row.statusDatetime)}
                     {row.reason ? `. Reason: ${row.reason}` : ''}
                   </Text>
                 ))}
-              </Box>
+              </Stack>
             )}
+          </SubSection>
+
+          <SubSection>
+            <Inline alignBlock="center" spread="space-between" space={SPACE.item} shouldWrap>
+              <Text as="span" size="small" weight="semibold">Evidence record</Text>
+              <Button appearance="subtle" spacing="compact" onClick={loadEvidence}>
+                {evidence ? 'Hide evidence' : 'Show evidence (JSON)'}
+              </Button>
+            </Inline>
             {evidence && <CodeBlock language="json" text={evidence} />}
-            <Text>{view.policyText}</Text>
-          </Stack>
-        </Box>
+          </SubSection>
+
+          <NoteBox>
+            <Text as="span" size="small" color={TEXT_ROLE.muted}>{view.policyText}</Text>
+            <Text as="span" size="small" color={TEXT_ROLE.muted}>
+              Certificate: {view.seal.certificateId}. Canonical form {view.seal.canonicalizerVersion}. Declaration v{view.seal.declarationVersion}.
+            </Text>
+          </NoteBox>
+        </Section>
       )}
 
       {form && (
-        <Box padding="space.150">
-          <Stack space="space.100">
-            <Heading as="h4">{form === 'revoke' ? 'Revoke seal' : form === 'approve' ? 'Approve these changes' : 'Seal this issue'}</Heading>
-            {form !== 'revoke' && (
-              <>
-                <Label labelFor="meaning">Choose the role of your sign-off for this approval:</Label>
-                <RadioGroup
-                  name="meaning"
-                  options={MEANINGS.map(m => ({ name: 'meaning', value: m.value, label: m.label }))}
-                  value={meaning}
-                  onChange={(e: any) => setMeaning(e.target.value)}
-                />
-              </>
-            )}
-            {reasonNeeded && (
-              <>
-                <Label labelFor="reason">
-                  {form === 'revoke' ? 'Reason for revoking (required)' : sealReasonLabel || 'Reason for approving these changes (required)'}
-                </Label>
-                {/* Uncontrolled on purpose: a controlled value lost typed characters over the UI Kit bridge (live, DEMO-34) */}
-                <TextArea key={`reason-${form}`} id="reason" name="reason" onChange={(e: any) => setReason(e.target.value)} />
-              </>
-            )}
-            {form !== 'revoke' && (
-              <>
-                <Text>{DECLARATION.text}</Text>
-                <Checkbox
-                  value="agreed"
-                  isChecked={declarationAgreed}
-                  onChange={(e: any) => setDeclarationAgreed(e.target.checked)}
-                  label="I agree to the declaration above."
-                />
-              </>
-            )}
-            {actionError && (
-              <SectionMessage appearance="warning">
-                <Text>{actionError}</Text>
-              </SectionMessage>
-            )}
-            <Inline space="space.100">
-              <Button
-                appearance="primary"
-                isDisabled={reasonMissing || (form !== 'revoke' && !declarationAgreed) || submitting}
-                onClick={submit}
-              >
-                {submitting ? 'Saving...' : form === 'revoke' ? 'Revoke' : 'Sign and seal'}
-              </Button>
-              <Button appearance="subtle" onClick={() => setForm(null)}>
-                Cancel
-              </Button>
-            </Inline>
-          </Stack>
-        </Box>
+        <Card>
+          <Heading size="small">
+            {form === 'revoke' ? 'Revoke seal' : form === 'approve' ? 'Approve these changes' : 'Seal this issue'}
+          </Heading>
+          {form !== 'revoke' && (
+            <FormField id="meaning" label="Choose the role of your sign-off for this approval:">
+              <RadioGroup
+                name="meaning"
+                options={MEANINGS.map(m => ({ name: 'meaning', value: m.value, label: m.label }))}
+                value={meaning}
+                onChange={(e: any) => setMeaning(e.target.value)}
+              />
+            </FormField>
+          )}
+          {reasonNeeded && (
+            <FormField
+              id="reason"
+              label={form === 'revoke' ? 'Reason for revoking (required)' : sealReasonLabel || 'Reason for approving these changes (required)'}
+            >
+              {/* Uncontrolled on purpose: a controlled value lost typed characters over the UI Kit bridge (live, DEMO-34) */}
+              <TextArea key={`reason-${form}`} id="reason" name="reason" onChange={(e: any) => setReason(e.target.value)} />
+            </FormField>
+          )}
+          {form !== 'revoke' && (
+            <Stack space={SPACE.sub}>
+              <NoteBox>
+                <Text as="span" size="small">{DECLARATION.text}</Text>
+              </NoteBox>
+              <Checkbox
+                value="agreed"
+                isChecked={declarationAgreed}
+                onChange={(e: any) => setDeclarationAgreed(e.target.checked)}
+                label="I agree to the declaration above."
+              />
+            </Stack>
+          )}
+          {actionError && (
+            <SectionMessage appearance="warning">
+              <Text as="span">{actionError}</Text>
+            </SectionMessage>
+          )}
+          <ActionRow>
+            <Button
+              appearance="primary"
+              isDisabled={reasonMissing || (form !== 'revoke' && !declarationAgreed) || submitting}
+              onClick={submit}
+            >
+              {submitting ? 'Saving...' : form === 'revoke' ? 'Revoke' : 'Sign and seal'}
+            </Button>
+            <Button appearance="subtle" isDisabled={submitting} onClick={() => setForm(null)}>
+              Cancel
+            </Button>
+          </ActionRow>
+        </Card>
       )}
-    </Stack>
+    </AppSurface>
   );
 };
 

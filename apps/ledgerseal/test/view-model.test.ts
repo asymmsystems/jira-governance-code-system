@@ -8,7 +8,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { buildPanelView, formatTime } from '../src/frontend/view-model';
+import { buildPanelView, formatTime, nextStepText, statusSentence } from '../src/frontend/view-model';
 import { sealIssue, verifyIssue } from '../src/index';
 import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
 
@@ -19,7 +19,7 @@ const TZ = { locale: 'en-GB', timeZone: 'Asia/Colombo' };
 const rights = (r: any = {}) => ({ canSeal: true, canApproveChanges: true, canRevoke: true, blockedBySelfChange: false, ...r });
 const seal = {
   certificateId: 'c-1',
-  state: 'ACTIVE',
+  state: 'ACTIVE' as const,
   sealedAt: '2026-11-01T08:35:00.000Z',
   sealedByAccountId: 'ann',
   sealedByName: 'Ann Approver',
@@ -249,5 +249,38 @@ describe('B-15 structure', () => {
     expect(formatTime('2026-11-01T08:35:00.000Z', 'en-GB', 'UTC')).toBe('1 Nov 2026, 08:35 UTC');
     expect(formatTime('not a time', 'en-GB', 'UTC')).toBe('Unknown time');
     expect(formatTime(null, 'en-GB', 'UTC')).toBe('Unknown time');
+  });
+
+  it('computes statusSentence for each panel state', () => {
+    expect(statusSentence('NOT_SEALED', 0)).toContain('Not sealed yet');
+    expect(statusSentence('SEALED', 0, { ...seal, everCompromised: false })).toContain('No change detected');
+    expect(statusSentence('SEALED', 0, { ...seal, everCompromised: true, incidentCount: 1 })).toContain('Resealed after 1 change incident.');
+    expect(statusSentence('SEALED', 0, { ...seal, everCompromised: true, incidentCount: 2 })).toContain('Resealed after 2 change incidents.');
+    expect(statusSentence('CHANGED', 1)).toContain('1 item modified');
+    expect(statusSentence('CHANGED', 3)).toContain('3 items modified');
+    expect(statusSentence('CHANGED_BACK', 0)).toContain('then changed back');
+    expect(statusSentence('REVOKED', 0, { ...seal, state: 'REVOKED' as const, revocation: { revokedAt: 't', revokedByAccountId: 'u', reason: 'scope' } })).toContain('Revoked (scope)');
+    expect(statusSentence('REVOKED', 0, { ...seal, state: 'REVOKED' as const, revocation: null })).toBe('Approval seal: Revoked.');
+    expect(statusSentence('RECORD_INVALID', 0)).toContain('integrity check');
+    expect(statusSentence('LEGACY', 0)).toContain('older format');
+    expect(statusSentence('LICENSE_INACTIVE', 0)).toContain('licence is inactive');
+    expect(statusSentence('ERROR', 0)).toContain('Could not verify');
+    expect(statusSentence('LOADING', 0)).toContain('Checking the seal');
+  });
+
+  it('computes nextStepText for each panel state with permission variations', () => {
+    expect(nextStepText('NOT_SEALED', true, false)).toContain('Seal this issue to record');
+    expect(nextStepText('NOT_SEALED', false, false)).toContain('Ask an approver to seal');
+    expect(nextStepText('SEALED', false, false)).toContain('None (seal is valid');
+    expect(nextStepText('CHANGED', false, true)).toContain('Review modifications');
+    expect(nextStepText('CHANGED', false, false)).toContain('Another approver must review');
+    expect(nextStepText('REVOKED', true, false)).toContain('Seal this issue again');
+    expect(nextStepText('REVOKED', false, false)).toContain('Ask an approver to seal this issue again');
+    expect(nextStepText('RECORD_INVALID', false, false)).toContain('Contact your Jira administrator');
+    expect(nextStepText('LEGACY', true, false)).toContain('Reseal this issue');
+    expect(nextStepText('LEGACY', false, false)).toContain('Ask an approver to reseal');
+    expect(nextStepText('LICENSE_INACTIVE', false, false)).toContain('Ask your Jira administrator to renew');
+    expect(nextStepText('ERROR', false, false)).toContain('Retry or refresh');
+    expect(nextStepText('LOADING', false, false)).toContain('Waiting for seal verification');
   });
 });
