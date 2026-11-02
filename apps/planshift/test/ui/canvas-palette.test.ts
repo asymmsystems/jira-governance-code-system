@@ -63,6 +63,18 @@ describe('bar style and label placement (B-13 criterion 9)', () => {
     expect(labelPlacement(100, 80 + LABEL_PAD * 2, 80)).toEqual({ x: 100 + LABEL_PAD, inside: true });
     expect(labelPlacement(100, 60, 80)).toEqual({ x: 160 + LABEL_PAD, inside: false });
   });
+
+  it('places the label chip after partial progress fills so dark fill is never hidden', () => {
+    // 30% of 240px = 72px fill; 72 + 80 + 8 <= 240 -> chip sits inside at 100 + 72 + LABEL_PAD
+    expect(labelPlacement(100, 240, 80, 0.3)).toEqual({ x: 172 + LABEL_PAD, inside: true });
+    // High partial progress (85% of 240px = 204px) where fill exceeds chip + margin -> chip sits at left inside bar
+    expect(labelPlacement(100, 240, 80, 0.85)).toEqual({ x: 100 + LABEL_PAD, inside: true });
+    // Narrow bar with 30% progress where chip cannot fit after fill -> chip sits to the right of bar
+    expect(labelPlacement(100, 110, 80, 0.3)).toEqual({ x: 210 + LABEL_PAD, inside: false });
+    // 0% and 100% progress keep standard placement
+    expect(labelPlacement(100, 200, 80, 0)).toEqual({ x: 100 + LABEL_PAD, inside: true });
+    expect(labelPlacement(100, 200, 80, 1)).toEqual({ x: 100 + LABEL_PAD, inside: true });
+  });
 });
 
 describe('forced colours (B-15 criterion 12)', () => {

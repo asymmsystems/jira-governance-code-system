@@ -21,7 +21,23 @@ import { initChangesPanel, isChangesPanelOpen, closeChangesPanel } from './chang
 import { describePendingWrites } from '../ui/change-log';
 import { html } from '../ui/safe-html';
 import { CanvasTimeline, ROW_H, BAR_H } from './canvas-timeline';
-import { clampTriggerPercent, dependencyPopoverTitle, computeDependencyPreview, checkDependencyConflict, clampToEarliestStart, suggestTriggerToFit } from '../ui/dependency-edit';
+import {
+  clampTriggerPercent,
+  dependencyPopoverTitle,
+  computeDependencyPreview,
+  checkDependencyConflict,
+  clampToEarliestStart,
+  suggestTriggerToFit,
+  buildDraggedDependencyLink,
+  swapDependencyDirection
+} from '../ui/dependency-edit';
+import {
+  DEFAULT_COLUMN_WIDTHS,
+  COMPACT_TASK_DEFAULT_WIDTH,
+  sanitizeLoadedColumnWidths,
+  clampColumnResize,
+  computeFrozenLayout
+} from '../ui/column-layout';
 import { barRect, daysBetween, visibleRange, handleOffsets, snapDays, previewMoves, xForDate } from '../ui/timeline-geometry';
 import { GRID_COLUMNS, navigate, rowCells, rowLevel, moveKey, moveAnnouncement } from '../ui/keyboard-grid';
 import { weeklyHours } from '../ui/weekly-hours';
@@ -163,6 +179,16 @@ function formatEffort(hours) {
   return hours > 0 ? `${hours}h` : 'Unestimated';
 }
 
+function syncPinnedBarHit() {
+  document.querySelectorAll('.bar-hit.is-pinned').forEach(el => {
+    if (el.dataset.taskId !== pinnedDependencyTaskId) el.classList.remove('is-pinned');
+  });
+  if (pinnedDependencyTaskId) {
+    const el = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(pinnedDependencyTaskId)}"]`);
+    if (el) el.classList.add('is-pinned');
+  }
+}
+
 /** Opens "Why this date?" for a task (B-12); fixes are applied with a version check. */
 function showWhy(taskKey, anchorRect) {
   openWhyPopup(currentPlan?.tasks || [], taskKey, anchorRect, {
@@ -179,6 +205,7 @@ function showWhy(taskKey, anchorRect) {
         row.focus();
       }
       pinnedDependencyTaskId = key;
+      syncPinnedBarHit();
       drawTimeline(true);
     }
   });
@@ -191,18 +218,19 @@ let hoveredTaskId = null;
 let pinnedDependencyTaskId = null;
 let isDraggingBar = false;
 let modalUseRollupProgressFlag = false;
-let columnWidths = { epic: 110, story: 100, task: 260, resource: 130, effort: 75, progress: 95, target: 95, status: 125 };
-const DEFAULT_COLUMN_WIDTHS = { epic: 110, story: 100, task: 260, resource: 130, effort: 75, progress: 95, target: 95, status: 125 };
+let popoverOpenedAt = 0;
+let columnWidths = { ...DEFAULT_COLUMN_WIDTHS };
+let compactTaskWidth = COMPACT_TASK_DEFAULT_WIDTH;
 let hiddenColumns = new Set();
 const ALL_COLUMNS = [
-  { key: 'epic', label: 'Epic', icon: '🟪', defaultWidth: 110, description: 'Parent Epic roadmap category' },
-  { key: 'story', label: 'Story', icon: '🔷', defaultWidth: 100, description: 'Issue type (Story, Task, Subtask)' },
-  { key: 'task', label: 'Task', icon: '📝', defaultWidth: 260, locked: true, description: 'Issue key and summary (Required)' },
-  { key: 'resource', label: 'Resource', icon: '👥', defaultWidth: 130, description: 'Assigned team member' },
-  { key: 'effort', label: 'Hrs', icon: '⏱️', defaultWidth: 75, description: 'Estimated effort in hours' },
-  { key: 'progress', label: 'Progress', icon: '📈', defaultWidth: 95, description: 'Actual completion %' },
-  { key: 'target', label: 'Target', icon: '🎯', defaultWidth: 95, description: 'Planned target completion %' },
-  { key: 'status', label: 'Status', icon: '🏷️', defaultWidth: 125, description: 'Workflow status' }
+  { key: 'epic', label: 'Epic', icon: '🟪', defaultWidth: DEFAULT_COLUMN_WIDTHS.epic, description: 'Parent Epic roadmap category' },
+  { key: 'story', label: 'Story', icon: '🔷', defaultWidth: DEFAULT_COLUMN_WIDTHS.story, description: 'Issue type (Story, Task, Subtask)' },
+  { key: 'task', label: 'Task', icon: '📝', defaultWidth: DEFAULT_COLUMN_WIDTHS.task, locked: true, description: 'Issue key and summary (Required)' },
+  { key: 'resource', label: 'Resource', icon: '👥', defaultWidth: DEFAULT_COLUMN_WIDTHS.resource, description: 'Assigned team member' },
+  { key: 'effort', label: 'Hrs', icon: '⏱️', defaultWidth: DEFAULT_COLUMN_WIDTHS.effort, description: 'Estimated effort in hours' },
+  { key: 'progress', label: 'Progress', icon: '📈', defaultWidth: DEFAULT_COLUMN_WIDTHS.progress, description: 'Actual completion %' },
+  { key: 'target', label: 'Target', icon: '🎯', defaultWidth: DEFAULT_COLUMN_WIDTHS.target, description: 'Planned target completion %' },
+  { key: 'status', label: 'Status', icon: '🏷️', defaultWidth: DEFAULT_COLUMN_WIDTHS.status, description: 'Workflow status' }
 ];
 function getVisibleColKeys() {
   // Compact mode shows only Key and Summary, so the timeline gets the width (B-27).
@@ -213,7 +241,6 @@ const COL_KEYS = ALL_COLUMNS.map(c => c.key);
 // Time axis (B-27): zoom level, an open-ended range computed in the browser, and compact columns.
 const ZOOM_KEY = 'cascadeplan_zoom';
 const COMPACT_KEY = 'cascadeplan_compact_columns';
-const COMPACT_TASK_WIDTH = 220;
 const EXTEND_WEEKS = 26;
 function readPref(key, fallback) {
   try { return localStorage.getItem(key) || fallback; } catch (e) { return fallback; }
@@ -231,15 +258,16 @@ function dayPx() {
 function trackWidth() {
   return timeRange ? rangeDays(timeRange) * dayPx() : 0;
 }
+function getFrozenLayout() {
+  return computeFrozenLayout(getVisibleColKeys(), columnWidths, compactColumns, compactTaskWidth);
+}
 function colWidth(k) {
-  return compactColumns && k === 'task' ? COMPACT_TASK_WIDTH : columnWidths[k];
+  const fl = getFrozenLayout();
+  return fl.widths[k] !== undefined ? fl.widths[k] : (compactColumns && k === 'task' ? compactTaskWidth : columnWidths[k]);
 }
 /** Left offset of each frozen data column. */
 function frozenOffsets() {
-  const out = {};
-  let x = 0;
-  getVisibleColKeys().forEach(k => { out[k] = x; x += colWidth(k); });
-  return out;
+  return getFrozenLayout().offsets;
 }
 const expandedTasks = new Set();
 let currentHierarchyView = 'all'; // 'all' | 'epics' | 'stories'
@@ -261,6 +289,24 @@ async function initApp() {
     timeline = new CanvasTimeline(wrapper);
     timeline.onDraw = (links) => renderDependencyBadges(links);
     wrapper.addEventListener('scroll', scheduleVirtualRows, { passive: true });
+  }
+  const tbody = document.getElementById('ganttBody');
+  if (tbody) {
+    tbody.addEventListener('mouseover', (e) => {
+      if (!timeline) return;
+      const tr = e.target.closest('tr.task-row');
+      const nextKey = tr ? (tr.dataset.taskId || null) : null;
+      if (timeline.hoveredRowKey !== nextKey) {
+        timeline.hoveredRowKey = nextKey;
+        timeline.requestDraw();
+      }
+    });
+    tbody.addEventListener('mouseleave', () => {
+      if (timeline && timeline.hoveredRowKey !== null) {
+        timeline.hoveredRowKey = null;
+        timeline.requestDraw();
+      }
+    });
   }
   document.addEventListener('cp:drivers', (e) => {
     if (timeline) timeline.driverKeys = e.detail || [];
@@ -508,8 +554,9 @@ function setupEventListeners() {
     if (colPopover && colPopover.style.display === 'flex' && !colPopover.contains(e.target) && !e.target.closest('#btnManageColumns') && !e.target.closest('#btnOpenManagerFromBanner')) {
       colPopover.style.display = 'none';
     }
-    if (pinnedDependencyTaskId && !e.target.closest('.bar-hit')) {
+    if (pinnedDependencyTaskId && !e.target.closest('.bar-hit') && !e.target.closest('#barToolbar')) {
       pinnedDependencyTaskId = null;
+      syncPinnedBarHit();
       drawTimeline(true);
     }
   });
@@ -751,9 +798,12 @@ function syncGanttScrollWidth() {
   const bottomInner = document.getElementById('ganttBottomScrollbarInner');
   if (!wrapper) return;
 
-  const wPx = wrapper.scrollWidth + 'px';
-  if (topInner) topInner.style.width = wPx;
-  if (bottomInner) bottomInner.style.width = wPx;
+  const trackLeft = layout.trackLeft || 0;
+  const innerW = Math.max(0, wrapper.scrollWidth - trackLeft) + 'px';
+  if (topScroll) topScroll.style.marginLeft = trackLeft + 'px';
+  if (bottomScroll) bottomScroll.style.marginLeft = trackLeft + 'px';
+  if (topInner) topInner.style.width = innerW;
+  if (bottomInner) bottomInner.style.width = innerW;
 
   if (!isSyncingGanttScroll) {
     if (topScroll) topScroll.scrollLeft = wrapper.scrollLeft;
@@ -817,8 +867,13 @@ function initGanttPan() {
     // Only trigger on left-click (0) or middle-click (1)
     if (e.button !== 0 && e.button !== 1) return;
 
+    // Left-button drag inside frozen data columns is reserved for row interactions and press-hold reordering
+    if (e.button === 0 && (e.clientX - wrapper.getBoundingClientRect().left) < (layout.trackLeft || 0)) {
+      return;
+    }
+
     // Skip interactive elements
-    if (e.target.closest('.bar-hit, .bar-handle, .btn, button, input, select, a, .resizer, .row-drag-handle, .inline-edit-input, .resource-chip-btn, .editable-badge-chip, .epic-link-chip, .th-col-menu-btn, .row-action-btn, .tree-toggle-btn')) {
+    if (e.target.closest('.bar-hit, .bar-handle, .bar-link-port, .dep-link-badge, .btn, button, input, select, a, .resizer, .row-drag-handle, .inline-edit-input, .resource-chip-btn, .editable-badge-chip, .epic-link-chip, .th-col-menu-btn, .row-action-btn, .tree-toggle-btn')) {
       return;
     }
 
@@ -1072,6 +1127,7 @@ function showAllColumns() {
 function resetColumnDefaults() {
   hiddenColumns.clear();
   columnWidths = { ...DEFAULT_COLUMN_WIDTHS };
+  compactTaskWidth = COMPACT_TASK_DEFAULT_WIDTH;
   onColumnsChanged();
   callResolver('saveColumnWidths', { columnWidths });
 }
@@ -1086,6 +1142,7 @@ function onColumnsChanged() {
   updateColumnManagerUI();
   renderTimelineHeader();
   renderTimelineRows();
+  applyTimeAxis();
   setTimeout(syncGanttScrollWidth, 50);
 }
 
@@ -1331,9 +1388,7 @@ async function loadProjectPlan() {
     currentPlan = plan;
     if (plan.planId) activePlanId = plan.planId;
     updatePlansUI(plan.availablePlans, activePlanId);
-    if (plan.columnWidths) {
-      columnWidths = { ...columnWidths, ...plan.columnWidths };
-    }
+    columnWidths = sanitizeLoadedColumnWidths(plan.columnWidths);
     if (Array.isArray(plan.hiddenColumns)) {
       hiddenColumns = new Set(plan.hiddenColumns);
     } else {
@@ -1505,6 +1560,12 @@ function renderBacklogTray() {
     }
     card.addEventListener('dragstart', (e) => {
       e.dataTransfer.setData('text/plain', JSON.stringify({ taskId: item.key, effortHours: item.effortHours }));
+      document.body.classList.add('is-dragging-backlog');
+      updateVirtualRows();
+    });
+    card.addEventListener('dragend', () => {
+      document.body.classList.remove('is-dragging-backlog');
+      updateVirtualRows();
     });
     container.appendChild(card);
   });
@@ -1513,15 +1574,18 @@ function renderBacklogTray() {
 function renderTimelineHeader() {
   const tr = document.getElementById('ganttHeaderRow');
   tr.innerHTML = '';
-  const offsets = frozenOffsets();
+  const frozen = getFrozenLayout();
+  try { document.documentElement.style.setProperty('--cp-frozen-w', frozen.totalWidth + 'px'); } catch (e) {}
 
-  getVisibleColKeys().forEach(k => {
+  frozen.visibleKeys.forEach(k => {
     const colDef = ALL_COLUMNS.find(c => c.key === k) || { label: k, locked: false };
     const th = document.createElement('th');
-    th.className = 'th-col th-frozen';
-    th.style.width = colWidth(k) + 'px';
-    th.style.minWidth = colWidth(k) + 'px';
-    th.style.left = offsets[k] + 'px';
+    th.className = 'th-col th-frozen' + (k === frozen.lastKey ? ' is-last-frozen' : '');
+    const w = frozen.widths[k];
+    th.style.width = w + 'px';
+    th.style.minWidth = w + 'px';
+    th.style.maxWidth = w + 'px';
+    th.style.left = frozen.offsets[k] + 'px';
 
     th.innerHTML = html`
       <div class="th-content-wrap">
@@ -1580,10 +1644,11 @@ function decideCompactColumns() {
   if (!wrapper || !wrapper.clientWidth || !track) return false;
   let choice = null;
   try { choice = localStorage.getItem(COMPACT_KEY); } catch (e) {}
-  // The rendered width of the data columns, padding and borders included.
+  // The uncompacted width of all data columns with standard padding and content margins (1,021 px).
   const visibleKeys = getVisibleColKeys();
   const frozenWidth = visibleKeys.reduce((sum, k) => sum + colWidth(k), 0);
-  const next = shouldAutoCompact(wrapper.clientWidth, frozenWidth, 7 * dayPx(), choice);
+  const uncompactedWidth = visibleKeys.length >= 8 ? Math.max(frozenWidth, 1021) : frozenWidth;
+  const next = shouldAutoCompact(wrapper.clientWidth, uncompactedWidth, 7 * dayPx(), choice);
   const changed = next !== compactColumns;
   compactColumns = next;
   updateZoomButtons();
@@ -1684,44 +1749,49 @@ function setCompactColumns(on) {
   applyTimeAxis();
 }
 
+function applyColumnWidthsToDom() {
+  const frozen = getFrozenLayout();
+  try { document.documentElement.style.setProperty('--cp-frozen-w', frozen.totalWidth + 'px'); } catch (e) {}
+  const thList = document.querySelectorAll('#ganttHeaderRow .th-col');
+  thList.forEach((th, i) => {
+    const k = frozen.visibleKeys[i];
+    if (!k) return;
+    const w = frozen.widths[k];
+    th.classList.toggle('is-last-frozen', k === frozen.lastKey);
+    th.style.width = w + 'px';
+    th.style.minWidth = w + 'px';
+    th.style.maxWidth = w + 'px';
+    th.style.left = frozen.offsets[k] + 'px';
+  });
+
+  const visited = new Set();
+  for (const tr of rowCache.values()) {
+    visited.add(tr);
+    applyFrozen(tr);
+  }
+  document.querySelectorAll('#ganttBody tr.task-row, #ganttBody tr.inline-creation-row').forEach(tr => {
+    if (!visited.has(tr)) applyFrozen(tr);
+  });
+}
+
 function setupColumnResizer(resizer, colKey) {
   resizer.addEventListener('mousedown', (e) => {
     e.preventDefault();
     e.stopPropagation();
     const startX = e.clientX;
-    const startWidth = columnWidths[colKey] || 95;
+    const startWidth = colWidth(colKey);
     resizer.classList.add('is-resizing');
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
 
     function onMouseMove(moveEvent) {
-      const newWidth = Math.max(50, startWidth + (moveEvent.clientX - startX));
-      columnWidths[colKey] = newWidth;
-
-      const thList = document.querySelectorAll('#ganttHeaderRow .th-col');
-      const visibleKeys = getVisibleColKeys();
-      const offsets = frozenOffsets();
-
-      thList.forEach((th, i) => {
-        const k = visibleKeys[i];
-        if (!k) return;
-        th.style.width = colWidth(k) + 'px';
-        th.style.minWidth = colWidth(k) + 'px';
-        th.style.left = offsets[k] + 'px';
-      });
-
-      const rows = document.querySelectorAll('#ganttTableBody tr.task-row');
-      rows.forEach(tr => {
-        const cells = [...tr.children].filter(td => !td.classList.contains('timeline-track-cell'));
-        cells.forEach((td, i) => {
-          const k = visibleKeys[i];
-          if (!k) return;
-          td.style.width = colWidth(k) + 'px';
-          td.style.minWidth = colWidth(k) + 'px';
-          td.style.left = offsets[k] + 'px';
-        });
-      });
-
+      const nextWidth = clampColumnResize(colKey, startWidth + (moveEvent.clientX - startX));
+      if (compactColumns && colKey === 'task') {
+        compactTaskWidth = nextWidth;
+      } else {
+        columnWidths[colKey] = nextWidth;
+      }
+      applyColumnWidthsToDom();
       measureLayout();
       drawTimeline(true);
       syncGanttScrollWidth();
@@ -1734,10 +1804,13 @@ function setupColumnResizer(resizer, colKey) {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
 
+      applyColumnWidthsToDom();
       measureLayout();
       drawTimeline(true);
       syncGanttScrollWidth();
-      callResolver('saveColumnWidths', { columnWidths });
+      if (!(compactColumns && colKey === 'task')) {
+        callResolver('saveColumnWidths', { columnWidths });
+      }
     }
 
     window.addEventListener('mousemove', onMouseMove);
@@ -2754,7 +2827,7 @@ function renderTimelineRows() {
   // Top Drop Target Row (Index 0)
   topDropRowEl = document.createElement('tr');
   topDropRowEl.className = 'drop-target-row';
-  topDropRowEl.innerHTML = html`<td colspan="${cols}">+ Drop here to place task at top of schedule</td>`;
+  topDropRowEl.innerHTML = html`<td colspan="${cols}"><span class="drop-target-label">+ Drop here to place task at top of schedule</span></td>`;
   setupDropTargetRow(topDropRowEl, 0);
   tbody.appendChild(topDropRowEl);
 
@@ -2769,7 +2842,7 @@ function renderTimelineRows() {
   // Bottom Drop Target Row
   const btmDropRow = document.createElement('tr');
   btmDropRow.className = 'drop-target-row';
-  btmDropRow.innerHTML = html`<td colspan="${cols}">+ Drop here to place task at bottom of schedule</td>`;
+  btmDropRow.innerHTML = html`<td colspan="${cols}"><span class="drop-target-label">+ Drop here to place task at bottom of schedule</span></td>`;
   setupDropTargetRow(btmDropRow, computed.total);
   tbody.appendChild(btmDropRow);
   updateVirtualRows();
@@ -2869,12 +2942,19 @@ function applyPlanInPlace(plan) {
 
 /** Data cells stay in place while the timeline scrolls (B-27 criterion 5). */
 function applyFrozen(tr) {
-  const offsets = frozenOffsets();
-  const keys = getVisibleColKeys();
-  [...tr.children].filter(td => !td.classList.contains('timeline-track-cell')).forEach((td, i) => {
-    if (keys[i] === undefined) return;
+  const frozen = getFrozenLayout();
+  const keys = frozen.visibleKeys;
+  const cells = [...tr.children].filter(td => !td.classList.contains('timeline-track-cell'));
+  if (cells.length !== keys.length) return;
+  cells.forEach((td, i) => {
+    const k = keys[i];
+    const w = frozen.widths[k];
     td.classList.add('td-frozen');
-    td.style.left = offsets[keys[i]] + 'px';
+    td.classList.toggle('is-last-frozen', k === frozen.lastKey);
+    td.style.width = w + 'px';
+    td.style.minWidth = w + 'px';
+    td.style.maxWidth = w + 'px';
+    td.style.left = frozen.offsets[k] + 'px';
   });
 }
 
@@ -2923,11 +3003,11 @@ function buildTaskRow(task, rowIdx) {
       <div class="row-insert-affordance" title="Insert task below (Row ${rowIdx + 2})">
         <button class="row-insert-plus-btn" title="Insert new task below">＋</button>
       </div>
-      <span class="row-drag-handle" draggable="true" title="Drag to reorder row">⠿</span>
+      <span class="row-drag-handle" title="Drag handle or press and hold row to reorder">⠿</span>
       ${expandToggleHtml}
       ${badgeHtml}
       <a href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer" class="task-key-link" title="Open ${task.key} in native Jira (new tab)">${task.key} ↗</a>
-      <span class="task-summary-text" style="cursor:pointer; margin-left:6px; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="Click or double-click to edit summary">
+      <span class="task-summary-text" style="cursor:pointer; margin-left:6px; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="Click to edit summary, or press and hold row to reorder">
         : ${task.summary}
       </span>
       <div class="row-action-toolbar">
@@ -3323,15 +3403,10 @@ function buildTaskRow(task, rowIdx) {
     });
   }
 
-  // Row Drag Handle for Reordering
-  const dragHandle = tr.querySelector('.row-drag-handle');
-  if (dragHandle) {
-    dragHandle.addEventListener('dragstart', (e) => {
-      e.dataTransfer.setData('text/plain', JSON.stringify({ taskId: task.key, fromReorder: true, origIndex: rowIdx }));
-    });
-  }
+  // Intuitive row reordering: drag handle immediately, or press-and-hold / drag vertically from anywhere on row
+  setupRowPointerReorder(tr, task);
 
-  // Between-Row Drag & Drop (Middle of Plan insertion)
+  // Between-Row Drag & Drop (Backlog card insertion into middle of plan)
   tr.addEventListener('dragover', (e) => {
     e.preventDefault();
     const rect = tr.getBoundingClientRect();
@@ -3352,6 +3427,7 @@ function buildTaskRow(task, rowIdx) {
   });
   tr.addEventListener('drop', async (e) => {
     e.preventDefault();
+    document.body.classList.remove('is-dragging-backlog');
     const rect = tr.getBoundingClientRect();
     const isTop = (e.clientY - rect.top) < (rect.height / 2);
     tr.classList.remove('drop-insert-top');
@@ -3361,7 +3437,9 @@ function buildTaskRow(task, rowIdx) {
     if (!dataStr) return;
     try {
       const data = JSON.parse(dataStr);
-      const targetIndex = isTop ? rowIdx : rowIdx + 1;
+      const entry = rowTasks.find(r => r.task.key === task.key);
+      const baseIdx = entry ? entry.rowIdx : rowIdx;
+      const targetIndex = isTop ? baseIdx : baseIdx + 1;
       if (data.fromReorder) {
         await callResolver('reorderWbsTasks', { taskId: data.taskId, targetIndex });
       } else if (data.taskId) {
@@ -3389,6 +3467,183 @@ function buildTaskRow(task, rowIdx) {
   return tr;
 }
 
+function setupRowPointerReorder(tr, task) {
+  tr.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const td = e.target.closest('td.td-data');
+    if (!td) return;
+    const onHandle = Boolean(e.target.closest('.row-drag-handle'));
+    if (!onHandle && e.target.closest('button, a, input, select, textarea, .resource-chip-btn, .editable-badge-chip, .epic-link-chip, .progress-chip-cell, .target-chip-cell, .tree-toggle-btn, .row-action-btn, .row-insert-plus-btn')) {
+      return;
+    }
+    if (onHandle) {
+      e.preventDefault();
+    }
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let lastX = startX;
+    let lastY = startY;
+    let active = false;
+    let ghost = null;
+    let grabOffsetY = ROW_H / 2;
+    let hoveredTr = null;
+    let dropTargetIndex = null;
+
+    function clearHoveredIndicator() {
+      if (hoveredTr) {
+        hoveredTr.classList.remove('drop-insert-top', 'drop-insert-bottom');
+        hoveredTr = null;
+      }
+    }
+
+    function activateDrag(curX, curY) {
+      if (active) return;
+      active = true;
+      clearTimeout(holdTimer);
+      try { window.getSelection()?.removeAllRanges?.(); } catch {}
+      hideTooltip();
+
+      const trRect = tr.getBoundingClientRect();
+      grabOffsetY = Math.max(8, Math.min(ROW_H - 8, startY - trRect.top));
+      const frozen = getFrozenLayout();
+
+      ghost = document.createElement('div');
+      ghost.className = 'row-drag-ghost';
+      ghost.style.left = `${Math.max(4, trRect.left)}px`;
+      ghost.style.top = `${curY - grabOffsetY}px`;
+      ghost.style.width = `${Math.min(frozen.totalWidth, window.innerWidth - 16)}px`;
+
+      const dataCells = [...tr.children].filter(c => !c.classList.contains('timeline-track-cell'));
+      dataCells.forEach((cell, idx) => {
+        const k = frozen.visibleKeys[idx];
+        if (!k) return;
+        const clone = document.createElement('div');
+        clone.className = 'row-drag-ghost-cell';
+        const w = frozen.widths[k];
+        clone.style.width = `${w}px`;
+        clone.style.minWidth = `${w}px`;
+        clone.style.maxWidth = `${w}px`;
+        for (const child of cell.childNodes) {
+          clone.appendChild(child.cloneNode(true));
+        }
+        clone.querySelectorAll('.row-action-toolbar, .row-insert-affordance').forEach(n => n.remove());
+        ghost.appendChild(clone);
+      });
+
+      document.body.appendChild(ghost);
+      tr.classList.add('is-row-dragging');
+      document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+      updateDropTarget(curX, curY);
+    }
+
+    function updateDropTarget(curX, curY) {
+      if (!active || !ghost) return;
+      ghost.style.top = `${curY - grabOffsetY}px`;
+
+      const wrapper = document.getElementById('ganttWrapper');
+      if (wrapper) {
+        const wRect = wrapper.getBoundingClientRect();
+        const topEdge = wRect.top + (layout.headerH || 40) + 28;
+        const bottomEdge = wRect.bottom - 28;
+        if (curY < topEdge && wrapper.scrollTop > 0) {
+          wrapper.scrollTop = Math.max(0, wrapper.scrollTop - 14);
+        } else if (curY > bottomEdge) {
+          wrapper.scrollTop += 14;
+        }
+      }
+
+      clearHoveredIndicator();
+      dropTargetIndex = null;
+      const under = document.elementFromPoint(curX, curY);
+      const overTr = under ? under.closest('tr.task-row') : null;
+      if (overTr && overTr !== tr) {
+        const r = overTr.getBoundingClientRect();
+        const isTop = (curY - r.top) < (r.height / 2);
+        overTr.classList.toggle('drop-insert-top', isTop);
+        overTr.classList.toggle('drop-insert-bottom', !isTop);
+        hoveredTr = overTr;
+        const overEntry = rowTasks.find(x => x.task.key === overTr.dataset.taskId);
+        if (overEntry) {
+          dropTargetIndex = isTop ? overEntry.rowIdx : overEntry.rowIdx + 1;
+        }
+      }
+    }
+
+    const holdTimer = !onHandle
+      ? setTimeout(() => activateDrag(lastX, lastY), 180)
+      : null;
+
+    function onMove(ev) {
+      lastX = ev.clientX;
+      lastY = ev.clientY;
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+
+      if (!active) {
+        if (onHandle) {
+          if (Math.abs(dx) >= 3 || Math.abs(dy) >= 3) {
+            activateDrag(ev.clientX, ev.clientY);
+          }
+          return;
+        }
+        if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+          cleanup();
+          return;
+        }
+        if (Math.abs(dy) >= 6) {
+          activateDrag(ev.clientX, ev.clientY);
+        }
+        return;
+      }
+
+      ev.preventDefault();
+      updateDropTarget(ev.clientX, ev.clientY);
+    }
+
+    function cleanup() {
+      if (holdTimer) clearTimeout(holdTimer);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      clearHoveredIndicator();
+      if (ghost) {
+        ghost.remove();
+        ghost = null;
+      }
+      tr.classList.remove('is-row-dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+
+    async function onUp() {
+      const wasActive = active;
+      const targetIdx = dropTargetIndex;
+      cleanup();
+      if (!wasActive) return;
+
+      const suppressClick = (ce) => {
+        ce.stopPropagation();
+        ce.preventDefault();
+        window.removeEventListener('click', suppressClick, true);
+      };
+      window.addEventListener('click', suppressClick, true);
+      setTimeout(() => window.removeEventListener('click', suppressClick, true), 80);
+
+      if (targetIdx === null) return;
+      const ownEntry = rowTasks.find(x => x.task.key === task.key);
+      if (ownEntry && (targetIdx === ownEntry.rowIdx || targetIdx === ownEntry.rowIdx + 1)) {
+        return;
+      }
+      await callResolver('reorderWbsTasks', { taskId: task.key, targetIndex: targetIdx });
+      await loadProjectPlan();
+    }
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  });
+}
+
 function setupDropTargetRow(rowEl, targetIndex) {
   rowEl.addEventListener('dragover', (e) => {
     e.preventDefault();
@@ -3399,6 +3654,7 @@ function setupDropTargetRow(rowEl, targetIndex) {
   });
   rowEl.addEventListener('drop', async (e) => {
     e.preventDefault();
+    document.body.classList.remove('is-dragging-backlog');
     rowEl.classList.remove('drag-over');
     const dataStr = e.dataTransfer.getData('text/plain');
     if (dataStr) {
@@ -3452,6 +3708,7 @@ function setupTrackDrop(trackTd, rowIdx) {
     e.preventDefault();
     // The row also listens for drops; one drop must send exactly one schedule call (B-03).
     e.stopPropagation();
+    document.body.classList.remove('is-dragging-backlog');
     const d = dayAt(e);
     clear();
     const dataStr = e.dataTransfer.getData('text/plain');
@@ -3491,7 +3748,7 @@ function createBarHit(task, isEpic) {
   if (!task.startDate) return null;
   const key = task.key;
   const hit = document.createElement('div');
-  hit.className = 'bar-hit' + (isEpic || task.datesFromChildren ? ' is-epic' : '');
+  hit.className = 'bar-hit' + (isEpic || task.datesFromChildren ? ' is-epic' : '') + (pinnedDependencyTaskId === key ? ' is-pinned' : '');
   hit.dataset.taskId = key;
   // Pointer only: keyboard and screen readers use the treegrid in the canvas (one tab stop, B-15).
   hit.setAttribute('aria-hidden', 'true');
@@ -3511,21 +3768,28 @@ function createBarHit(task, isEpic) {
       hit.appendChild(handle);
     }
     hit.addEventListener('mousedown', (e) => {
-      if (e.button !== 0 || e.target.classList.contains('bar-handle') || e.target.classList.contains('bar-link-anchor')) return;
+      if (e.button !== 0 || e.target.classList.contains('bar-handle') || e.target.closest('.bar-link-port')) return;
       e.preventDefault();
       startBarPointerEdit(e, key, 'move', hit);
     });
-    const anchor = document.createElement('div');
-    anchor.className = 'bar-link-anchor';
-    anchor.title = `Drag to link dependency from ${task.key}`;
-    anchor.setAttribute('aria-hidden', 'true');
-    anchor.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return;
-      e.stopPropagation();
-      e.preventDefault();
-      startVisualLinkDrag(e, key, hit);
-    });
-    hit.appendChild(anchor);
+  }
+  if (!isEpic) {
+    for (const side of ['right', 'left']) {
+      const port = document.createElement('div');
+      port.className = `bar-link-port bar-link-port-${side}`;
+      port.textContent = '➔';
+      port.title = side === 'right'
+        ? `Drag arrow to successor task (which will depend on ${task.key})`
+        : `Drag arrow to predecessor task (which ${task.key} will depend on)`;
+      port.setAttribute('aria-hidden', 'true');
+      port.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        e.preventDefault();
+        startVisualLinkDrag(e, key, hit, side);
+      });
+      hit.appendChild(port);
+    }
   }
   positionBarHit(hit, task);
 
@@ -3542,8 +3806,9 @@ function createBarHit(task, isEpic) {
     drawTimeline(true);
   });
   hit.addEventListener('click', (e) => {
-    if (!e.defaultPrevented && !isDraggingBar) {
+    if (!e.defaultPrevented && !isDraggingBar && !e.target.closest('.bar-link-port')) {
       pinnedDependencyTaskId = pinnedDependencyTaskId === key ? null : key;
+      syncPinnedBarHit();
       // The clicked bar's row takes grid focus in the same frame, and the toolbar opens (B-15).
       const i = rowTasks.findIndex(r => r.task.key === key);
       if (i >= 0 && gridRoot) {
@@ -3571,20 +3836,24 @@ function createBarHit(task, isEpic) {
   return hit;
 }
 
-function startVisualLinkDrag(e, sourceKey, hit) {
+function startVisualLinkDrag(e, sourceKey, hit, side = 'right') {
   const sourceTask = findTask(sourceKey);
   if (!sourceTask || !sourceTask.startDate || !timeline) return;
   const wrapper = document.getElementById('ganttWrapper');
   if (!wrapper) return;
-  const wRect = wrapper.getBoundingClientRect();
+  closeBarToolbar();
+  hideTooltip();
 
-  const x1 = hit.offsetLeft + hit.offsetWidth;
-  const y1 = hit.offsetTop + hit.offsetHeight / 2;
+  const hitRect = hit.getBoundingClientRect();
+  const initWRect = wrapper.getBoundingClientRect();
+  const x1 = (side === 'left' ? hitRect.left : hitRect.right) - initWRect.left + wrapper.scrollLeft;
+  const y1 = (hitRect.top + hitRect.height / 2) - initWRect.top + wrapper.scrollTop;
 
   document.body.style.cursor = 'crosshair';
   document.body.style.userSelect = 'none';
 
   function onMove(ev) {
+    const wRect = wrapper.getBoundingClientRect();
     const curX = ev.clientX - wRect.left + wrapper.scrollLeft;
     const curY = ev.clientY - wRect.top + wrapper.scrollTop;
 
@@ -3592,7 +3861,10 @@ function startVisualLinkDrag(e, sourceKey, hit) {
     const targetHit = el ? el.closest('.bar-hit') : null;
     const targetKey = targetHit && targetHit.dataset.taskId !== sourceKey ? targetHit.dataset.taskId : null;
 
-    timeline.activeLinking = { sourceKey, x1, y1, curX, curY, targetKey };
+    const predKey = side === 'right' ? sourceKey : targetKey;
+    const succKey = side === 'right' ? targetKey : sourceKey;
+
+    timeline.activeLinking = { sourceKey, x1, y1, curX, curY, targetKey, predKey, succKey };
     timeline.requestDraw();
   }
 
@@ -3602,18 +3874,19 @@ function startVisualLinkDrag(e, sourceKey, hit) {
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
 
-    const targetKey = timeline.activeLinking ? timeline.activeLinking.targetKey : null;
+    const active = timeline.activeLinking;
+    const targetKey = active ? active.targetKey : null;
     timeline.activeLinking = null;
     timeline.requestDraw();
 
     if (targetKey) {
       const targetHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(targetKey)}"]`);
-      openDependencyEditPopover({
-        predecessorKey: sourceKey,
-        successorKey: targetKey,
-        triggerPercent: 100,
-        isViolated: false
-      }, targetHit || hit);
+      const anchorEl = targetHit || hit;
+      const rect = anchorEl.getBoundingClientRect();
+      openDependencyEditPopover(
+        buildDraggedDependencyLink(sourceKey, targetKey, 100, side),
+        { getBoundingClientRect: () => rect }
+      );
     }
   }
 
@@ -3687,7 +3960,17 @@ function startBarPointerEdit(e, key, mode, hit) {
     window.removeEventListener('mouseup', onUp);
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
-    setTimeout(() => { isDraggingBar = false; }, 80);
+    if (moved) {
+      const swallowClick = (ev) => {
+        ev.stopPropagation();
+        ev.preventDefault();
+        window.removeEventListener('click', swallowClick, true);
+        setTimeout(() => { isDraggingBar = false; }, 60);
+      };
+      window.addEventListener('click', swallowClick, true);
+    } else {
+      isDraggingBar = false;
+    }
     delete wrapper.dataset.preview;
     const strip = document.getElementById('writePreview');
     if (strip) strip.hidden = true;
@@ -3701,28 +3984,20 @@ function startBarPointerEdit(e, key, mode, hit) {
 
     const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
     const enforceDeps = document.getElementById('enforceDependenciesCheckbox')?.checked === true;
-    if (!enforceDeps && conflict.hasConflict) {
-      timeline.drag = null;
-      positionBarHit(hit, task);
-      drawTimeline();
-      showDependencyConflictDialog({
-        key,
-        candidateStart: mine.start,
-        candidateEnd: mine.end,
-        conflict,
-        task,
-        hit,
-        mode
-      });
-      return;
+    let finalStart = mine.start;
+    let finalEnd = mine.end;
+    if (enforceDeps && conflict.hasConflict && conflict.earliestDate) {
+      const clamped = clampToEarliestStart(finalStart, finalEnd, conflict.earliestDate);
+      finalStart = clamped.startDate;
+      finalEnd = clamped.endDate;
     }
 
-    const updates = { startDate: mine.start, endDate: mine.end };
+    const updates = { startDate: finalStart, endDate: finalEnd };
     // A resize changes dates only. The estimate changes only when the user ticked the option (B-03).
     const autoScale = mode !== 'move' && document.getElementById('autoScaleEffortCheckbox')?.checked === true;
     if (autoScale && task.effortHours > 0) {
       const oldDays = daysBetween(task.startDate, task.endDate || task.startDate) + 1;
-      const newDays = daysBetween(mine.start, mine.end) + 1;
+      const newDays = daysBetween(finalStart, finalEnd) + 1;
       updates.effortHours = Math.max(1, Math.round((task.effortHours * newDays) / oldDays));
     }
     const res = await callResolver('updateWbsTask', { taskId: key, updates, expectedVersion: task.version || 0 });
@@ -3732,6 +4007,19 @@ function startBarPointerEdit(e, key, mode, hit) {
     } else {
       // A refused or failed write shows the banner; reload so the bars show what is stored.
       await loadProjectPlan();
+    }
+
+    if (!enforceDeps && conflict.hasConflict) {
+      const updatedHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(key)}"]`) || hit;
+      showDependencyConflictDialog({
+        key,
+        candidateStart: finalStart,
+        candidateEnd: finalEnd,
+        conflict,
+        task,
+        hit: updatedHit,
+        mode
+      });
     }
   }
 
@@ -3744,6 +4032,7 @@ let conflictState = null;
 function showDependencyConflictDialog(state) {
   const banner = document.getElementById('depConflictBanner');
   if (!banner) return;
+  popoverOpenedAt = performance.now();
   conflictState = state;
   const { key, candidateStart, conflict } = state;
   const pred = findTask(conflict.predKey);
@@ -3803,16 +4092,19 @@ async function applyConflictAdjust() {
   announce(`Adjusted trigger on ${conflict.predKey} to ${suggestedPct}% and moved ${key} to ${candidateStart}.`);
 }
 
-async function applyConflictKeep() {
-  if (!conflictState) return;
-  const { key, candidateStart, candidateEnd } = conflictState;
+function applyConflictKeep() {
   closeDependencyConflictDialog();
-  await commitDates(key, candidateStart, candidateEnd);
+  announce('Kept schedule with dependency violation.');
 }
 
-function applyConflictCancel() {
+async function applyConflictCancel() {
+  if (!conflictState) return;
+  const { key, task } = conflictState;
   closeDependencyConflictDialog();
-  announce('Move cancelled.');
+  if (task && task.startDate) {
+    await commitDates(key, task.startDate, task.endDate || task.startDate);
+  }
+  announce(`Reverted ${key} to original schedule.`);
 }
 
 
@@ -4103,6 +4395,9 @@ function closeBarToolbar() {
 async function toolbarAction(action, key, btn) {
   const task = findTask(key);
   if (!task) return;
+  const barHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(key)}"]`);
+  const anchorRect = (barHit || btn).getBoundingClientRect();
+  const barAnchor = { getBoundingClientRect: () => anchorRect };
   closeBarToolbar();
   if ((action === 'earlier' || action === 'later') && task.datesFromChildren) {
     showFlag({ text: `${key} follows the dates of its children. Move a child instead.` });
@@ -4114,12 +4409,17 @@ async function toolbarAction(action, key, btn) {
     await commitDates(key, mine.start, mine.end);
   } else if (action === 'dates') {
     openTaskDetailModal(key);
-    setTimeout(() => document.getElementById('editStartDateInput')?.focus(), 50);
+    setTimeout(() => {
+      const inp = document.getElementById('editStartDateInput');
+      if (inp) {
+        inp.scrollIntoView({ block: 'center' });
+        inp.focus();
+      }
+    }, 50);
   } else if (action === 'dependency') {
-    openDependencyPopup(key, btn);
+    openDependencyPopup(key, barAnchor);
   } else if (action === 'progress') {
-    const row = rowCache.get(key);
-    openProgressPicker(row ? row.querySelector('.td-progress-cell') || btn : btn, key);
+    openProgressPicker(barAnchor, key);
   }
 }
 
@@ -4155,6 +4455,7 @@ function renderDependencyOptions() {
 function openDependencyPopup(key, anchor) {
   const pop = document.getElementById('depPopup');
   if (!pop) return;
+  popoverOpenedAt = performance.now();
   depState = { key, active: -1, options: [], chosen: null, anchor };
   document.getElementById('depTitle').textContent = `${key} starts when`;
   document.getElementById('depSearch').value = '';
@@ -4197,19 +4498,40 @@ async function saveDependency() {
 }
 
 let depEditState = null;
+let lastDepBadgeSignature = '';
 
 function renderDependencyBadges(links) {
   const layer = document.getElementById('depLinksLayer');
-  if (!layer) return;
-  layer.replaceChildren(...(links || []).map(link => {
+  const wrapper = document.getElementById('ganttWrapper');
+  if (!layer || !wrapper) return;
+
+  const viewLeft = wrapper.scrollLeft + (layout.trackLeft || 0);
+  const viewRight = wrapper.scrollLeft + wrapper.clientWidth;
+  const viewTop = wrapper.scrollTop + (layout.headerH || 0);
+  const viewBottom = wrapper.scrollTop + wrapper.clientHeight;
+
+  const visibleLinks = (links || []).filter(link => {
+    const hw = Math.max(12, (link.width || 28) / 2);
+    const hh = Math.max(10, (link.height || 18) / 2);
+    return (link.x - hw) >= viewLeft && (link.x + hw) <= viewRight && (link.y - hh) >= viewTop && (link.y + hh) <= viewBottom;
+  });
+
+  const sig = visibleLinks
+    .map(l => `${l.predecessorKey}>${l.successorKey}@${Math.round(l.x)},${Math.round(l.y)}:${l.triggerPercent}:${l.isViolated ? 1 : 0}`)
+    .join('|');
+  if (sig === lastDepBadgeSignature) return;
+  lastDepBadgeSignature = sig;
+
+  layer.replaceChildren(...visibleLinks.map(link => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'dep-link-badge' + (link.isViolated ? ' is-violated' : '');
     btn.style.left = `${link.x}px`;
     btn.style.top = `${link.y}px`;
-    btn.textContent = link.text;
-    btn.title = `Click to edit dependency: ${link.predecessorKey} ➔ ${link.successorKey}`;
-    btn.setAttribute('aria-label', `Dependency link: ${link.predecessorKey} to ${link.successorKey}, ${link.text}`);
+    btn.style.width = `${Math.max(26, Math.round((link.width || 28) + 6))}px`;
+    btn.style.height = `${Math.max(20, Math.round((link.height || 18) + 6))}px`;
+    btn.title = `Click to edit dependency: ${link.successorKey} depends on ${link.predecessorKey} (${link.text})`;
+    btn.setAttribute('aria-label', `Dependency link: ${link.successorKey} depends on ${link.predecessorKey}, ${link.text}`);
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       e.preventDefault();
@@ -4219,10 +4541,9 @@ function renderDependencyBadges(links) {
   }));
 }
 
-function openDependencyEditPopover(link, anchor) {
-  const pop = document.getElementById('depEditPopover');
-  if (!pop) return;
-  depEditState = { link, anchor };
+function refreshDepEditPopoverFields() {
+  if (!depEditState) return;
+  const { link } = depEditState;
   const predTask = findTask(link.predecessorKey);
   const succTask = findTask(link.successorKey);
 
@@ -4232,17 +4553,41 @@ function openDependencyEditPopover(link, anchor) {
   const partiesEl = document.getElementById('depEditParties');
   if (partiesEl) {
     partiesEl.innerHTML = html`
-      <div><strong>Predecessor:</strong> ${link.predecessorKey} (${predTask ? predTask.summary || '' : ''})</div>
-      <div><strong>Successor:</strong> ${link.successorKey} (${succTask ? succTask.summary || '' : ''})</div>
+      <div><strong>${link.successorKey} depends on ${link.predecessorKey}</strong></div>
+      <div>Predecessor: ${link.predecessorKey} (${predTask ? predTask.summary || '' : ''})</div>
+      <div>Successor: ${link.successorKey} (${succTask ? succTask.summary || '' : ''})</div>
     `;
   }
+
+  const labelEl = document.getElementById('depEditTriggerLabel');
+  if (labelEl) {
+    labelEl.textContent = `${link.successorKey} starts when ${link.predecessorKey} reaches (percent)`;
+  }
+
+  const removeBtn = document.getElementById('btnRemoveDepLink');
+  if (removeBtn) {
+    removeBtn.hidden = Boolean(link.isNew);
+  }
+  const saveBtn = document.getElementById('btnSaveDepEdit');
+  if (saveBtn) {
+    saveBtn.textContent = link.isNew ? 'Add Dependency' : 'Save';
+  }
+
+  updateDepEditPreview();
+}
+
+function openDependencyEditPopover(link, anchor) {
+  const pop = document.getElementById('depEditPopover');
+  if (!pop) return;
+  popoverOpenedAt = performance.now();
+  depEditState = { link: { ...link }, anchor };
 
   const triggerInput = document.getElementById('depEditTrigger');
   if (triggerInput) {
     triggerInput.value = String(link.triggerPercent);
   }
 
-  updateDepEditPreview();
+  refreshDepEditPopoverFields();
 
   pop.hidden = false;
   const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { bottom: 120, left: 120 };
@@ -4285,7 +4630,7 @@ function updateDepEditPreview() {
 function closeDependencyEditPopover() {
   const pop = document.getElementById('depEditPopover');
   if (pop) pop.hidden = true;
-  if (depEditState && depEditState.anchor) {
+  if (depEditState && depEditState.anchor && typeof depEditState.anchor.focus === 'function') {
     depEditState.anchor.focus();
   }
   depEditState = null;
@@ -4351,7 +4696,10 @@ function initKeyboard() {
   if (bar) {
     bar.addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-action]');
-      if (btn) toolbarAction(btn.dataset.action, bar.dataset.key, btn);
+      if (btn) {
+        e.stopPropagation();
+        toolbarAction(btn.dataset.action, bar.dataset.key, btn);
+      }
     });
     bar.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeBarToolbar(); focusGridCell(); } });
   }
@@ -4387,6 +4735,12 @@ function initKeyboard() {
   });
   document.getElementById('btnDepCancel')?.addEventListener('click', closeDependencyPopup);
 
+  document.getElementById('btnSwapDepDirection')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!depEditState) return;
+    depEditState.link = swapDependencyDirection(depEditState.link);
+    refreshDepEditPopoverFields();
+  });
   document.getElementById('btnCloseDepEdit')?.addEventListener('click', closeDependencyEditPopover);
   document.getElementById('btnCancelDepEdit')?.addEventListener('click', closeDependencyEditPopover);
   document.getElementById('btnSaveDepEdit')?.addEventListener('click', saveDependencyEdit);
@@ -4472,12 +4826,15 @@ function initKeyboard() {
   });
 
   document.addEventListener('click', (e) => {
+    const recentlyOpened = (performance.now() - popoverOpenedAt) < 180;
     const tb = document.getElementById('barToolbar');
     if (tb && !tb.hidden && !tb.contains(e.target) && !e.target.closest('.bar-hit')) closeBarToolbar();
+    const depPop = document.getElementById('depPopup');
+    if (!recentlyOpened && depPop && !depPop.hidden && !depPop.contains(e.target) && !e.target.closest('#barToolbar')) closeDependencyPopup();
     const depEditPop = document.getElementById('depEditPopover');
-    if (depEditPop && !depEditPop.hidden && !depEditPop.contains(e.target) && !e.target.closest('.dep-link-badge')) closeDependencyEditPopover();
+    if (!recentlyOpened && depEditPop && !depEditPop.hidden && !depEditPop.contains(e.target) && !e.target.closest('.dep-link-badge')) closeDependencyEditPopover();
     const conflictBanner = document.getElementById('depConflictBanner');
-    if (conflictBanner && !conflictBanner.hidden && !conflictBanner.contains(e.target)) closeDependencyConflictDialog();
+    if (!recentlyOpened && conflictBanner && !conflictBanner.hidden && !conflictBanner.contains(e.target)) closeDependencyConflictDialog();
     const plansPop = document.getElementById('plansManagerPopover');
     if (plansPop && plansPop.style.display !== 'none' && !plansPop.contains(e.target) && !e.target.closest('#btnManagePlans')) {
       plansPop.style.display = 'none';

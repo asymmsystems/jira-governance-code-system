@@ -84,10 +84,26 @@ export const CANVAS_PAIRS: ColourPair[] = [
 export const LABEL_PAD = 4;
 
 /**
- * Where a label goes: on its own opaque chip inside the bar when the chip fits, otherwise to the
- * right of the bar. The label never sits directly on a bar fill (B-13 criterion 9).
+ * Where a label goes: on its own opaque chip inside the bar when the chip fits without hiding
+ * partial progress fills, otherwise right after the partial fill or to the right of the bar.
+ * The label never sits directly on a bar fill (B-13 criterion 9).
  */
-export function labelPlacement(barX: number, barW: number, chipW: number): { x: number; inside: boolean } {
+export function labelPlacement(
+  barX: number,
+  barW: number,
+  chipW: number,
+  doneRatio = 0
+): { x: number; inside: boolean } {
+  if (doneRatio > 0 && doneRatio < 1) {
+    const fillW = Math.round(barW * doneRatio);
+    if (fillW + chipW + LABEL_PAD * 2 <= barW) {
+      return { x: barX + fillW + LABEL_PAD, inside: true };
+    }
+    if (fillW >= chipW + LABEL_PAD * 2 + 16 && chipW + LABEL_PAD * 2 <= barW) {
+      return { x: barX + LABEL_PAD, inside: true };
+    }
+    return { x: barX + barW + LABEL_PAD, inside: false };
+  }
   if (chipW + LABEL_PAD * 2 <= barW) return { x: barX + LABEL_PAD, inside: true };
   return { x: barX + barW + LABEL_PAD, inside: false };
 }

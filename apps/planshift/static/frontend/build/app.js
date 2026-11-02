@@ -6801,7 +6801,17 @@ Please see https://iframe-resizer.com/upgrade for more details.
     { name: "driver", fg: CANVAS_TOKENS.driverText, bg: CANVAS_TOKENS.labelChip, min: 4.5 }
   ];
   var LABEL_PAD = 4;
-  function labelPlacement(barX, barW, chipW) {
+  function labelPlacement(barX, barW, chipW, doneRatio = 0) {
+    if (doneRatio > 0 && doneRatio < 1) {
+      const fillW = Math.round(barW * doneRatio);
+      if (fillW + chipW + LABEL_PAD * 2 <= barW) {
+        return { x: barX + fillW + LABEL_PAD, inside: true };
+      }
+      if (fillW >= chipW + LABEL_PAD * 2 + 16 && chipW + LABEL_PAD * 2 <= barW) {
+        return { x: barX + LABEL_PAD, inside: true };
+      }
+      return { x: barX + barW + LABEL_PAD, inside: false };
+    }
     if (chipW + LABEL_PAD * 2 <= barW) return { x: barX + LABEL_PAD, inside: true };
     return { x: barX + barW + LABEL_PAD, inside: false };
   }
@@ -6842,6 +6852,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       __publicField(this, "colours", /* @__PURE__ */ new Map());
       __publicField(this, "pending", 0);
       __publicField(this, "activeKey", null);
+      __publicField(this, "hoveredRowKey", null);
       __publicField(this, "focusKey", null);
       __publicField(this, "driverKeys", []);
       __publicField(this, "drag", null);
@@ -6943,16 +6954,38 @@ Please see https://iframe-resizer.com/upgrade for more details.
       ctx.beginPath();
       ctx.rect(left, top, cssW, cssH);
       ctx.clip();
+      this.drawHoveredRow(m, left, cssW);
       this.drawGrid(m, left, top, cssW, cssH);
       const todayX = this.drawTodayLine(m, top, cssH);
       const rects = this.barRects(m);
       this.drawArrows(m, rects, top, cssH);
       for (let i = m.first; i <= m.last; i++) this.drawBar(m, i, rects);
-      if (this.activeLinking) this.drawActiveLinking(this.activeLinking, rects);
+      if (this.activeLinking) this.drawActiveLinking(this.activeLinking, rects, left, cssW);
       if (todayX !== null) this.drawTodayFlag(m, todayX, top);
       ctx.restore();
       this.onDraw?.(this.arrowLinks);
       if (perf) performance.measure("cp:draw", "cp:draw:start");
+    }
+    drawHoveredRow(m, left, cssW) {
+      const hoverKey = this.hoveredRowKey || this.activeKey;
+      if (!hoverKey) return;
+      const hi = this.index.get(hoverKey);
+      if (hi === void 0 || hi < m.first || hi > m.last) return;
+      const ctx = this.ctx;
+      const ry = m.rowTop(hi);
+      ctx.save();
+      ctx.fillStyle = this.c("--cp-surface-sunken");
+      ctx.fillRect(left, ry, cssW, ROW_H);
+      ctx.strokeStyle = this.c(CANVAS_TOKENS.focus);
+      ctx.globalAlpha = 0.28;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(left, ry + 0.5);
+      ctx.lineTo(left + cssW, ry + 0.5);
+      ctx.moveTo(left, ry + ROW_H - 0.5);
+      ctx.lineTo(left + cssW, ry + ROW_H - 0.5);
+      ctx.stroke();
+      ctx.restore();
     }
     dates(task) {
       const moved = this.drag && this.drag.moves.get(task.key);
@@ -7058,9 +7091,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
         this.path(r);
         ctx.clip();
         ctx.strokeStyle = fill;
-        ctx.lineWidth = 1.5;
-        ctx.globalAlpha = 0.35;
-        const step = 8;
+        ctx.lineWidth = 1.75;
+        ctx.globalAlpha = 0.45;
+        const step = 7;
         ctx.beginPath();
         for (let offset = -r.h; offset < r.w + r.h; offset += step) {
           ctx.moveTo(r.x + offset, r.y + r.h);
@@ -7069,9 +7102,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
         ctx.stroke();
         ctx.restore();
       }
+      const isHovered = task.key === this.activeKey && task.key !== this.focusKey;
       this.path(r);
-      ctx.strokeStyle = isConflict ? this.c(CANVAS_TOKENS.arrowViolated) : fill;
-      ctx.lineWidth = isConflict ? 2.5 : 1.5;
+      ctx.strokeStyle = isConflict ? this.c(CANVAS_TOKENS.arrowViolated) : isHovered ? this.c(CANVAS_TOKENS.focus) : fill;
+      ctx.lineWidth = isConflict ? 2.5 : isHovered ? 2.25 : 1.5;
       ctx.stroke();
       const focus = this.c(CANVAS_TOKENS.focus);
       const ring = (dashed) => {
@@ -7087,7 +7121,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         this.path({ x: r.x - 3, y: r.y - 3, w: r.w + 6, h: r.h + 6 }, RADIUS + 2);
         ctx.drawFocusIfNeeded(this.focusElement);
       }
-      if (task.key === this.focusKey || task.key === this.activeKey) ring(false);
+      if (task.key === this.focusKey) ring(false);
       else if (isDriver) ring(true);
       ctx.font = `600 11px ${cssToken("--cp-font", "sans-serif")}`;
       ctx.textBaseline = "middle";
@@ -7096,7 +7130,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       let text = this.drag && this.drag.key === task.key ? this.drag.label : `${task.key} (${task.progress || 0}%)${rollup}`;
       if (isDriver) text = `${text} \xB7 Driver`;
       const chipW = ctx.measureText(text).width + 10;
-      const place = labelPlacement(r.x, r.w, chipW);
+      const place = labelPlacement(r.x, r.w, chipW, done);
       this.chip(text, place.x, r.y + r.h / 2, this.c(isDriver ? CANVAS_TOKENS.driverText : CANVAS_TOKENS.labelText));
     }
     drawArrows(m, rects, top, h) {
@@ -7121,9 +7155,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
         const violated = Boolean(dep.isViolated);
         const colour = this.c(violated ? CANVAS_TOKENS.arrowViolated : connected ? CANVAS_TOKENS.arrowActive : CANVAS_TOKENS.arrowOk);
         const dx = Math.max(35, Math.abs(x2 - x1) / 2);
+        const dir = x2 >= x1 ? 1 : -1;
         ctx.beginPath();
         ctx.moveTo(x1, y1);
-        ctx.bezierCurveTo(x1 + dx, y1, x2 - dx, y2, x2 - 6, y2);
+        ctx.bezierCurveTo(x1 + dir * dx, y1, x2 - dir * dx, y2, x2 - dir * 6, y2);
         ctx.strokeStyle = colour;
         ctx.lineWidth = active && !connected ? 1 : connected ? 2.5 : 1.75;
         ctx.setLineDash(violated ? [4, 3] : []);
@@ -7131,8 +7166,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
         ctx.setLineDash([]);
         ctx.beginPath();
         ctx.moveTo(x2, y2);
-        ctx.lineTo(x2 - 7, y2 - 4);
-        ctx.lineTo(x2 - 7, y2 + 4);
+        ctx.lineTo(x2 - dir * 8, y2 - 4.5);
+        ctx.lineTo(x2 - dir * 8, y2 + 4.5);
         ctx.closePath();
         ctx.fillStyle = colour;
         ctx.fill();
@@ -7187,21 +7222,22 @@ Please see https://iframe-resizer.com/upgrade for more details.
       ctx.fillStyle = this.c(CANVAS_TOKENS.todayFlagText);
       ctx.fillText(text, r.x + 6, r.y + r.h / 2);
     }
-    drawActiveLinking(linking, rects) {
+    drawActiveLinking(linking, rects, left, cssW) {
       const ctx = this.ctx;
-      const { x1, y1, curX, curY, targetKey } = linking;
+      const { sourceKey, x1, y1, curX, curY, targetKey } = linking;
       const colour = this.c(CANVAS_TOKENS.arrowActive);
+      const dir = curX >= x1 ? 1 : -1;
       const dx = Math.max(35, Math.abs(curX - x1) / 2);
       ctx.beginPath();
       ctx.moveTo(x1, y1);
-      ctx.bezierCurveTo(x1 + dx, y1, curX - dx, curY, curX - 6, curY);
+      ctx.bezierCurveTo(x1 + dir * dx, y1, curX - dir * dx, curY, curX - dir * 6, curY);
       ctx.strokeStyle = colour;
       ctx.lineWidth = 2.5;
       ctx.stroke();
       ctx.beginPath();
       ctx.moveTo(curX, curY);
-      ctx.lineTo(curX - 8, curY - 5);
-      ctx.lineTo(curX - 8, curY + 5);
+      ctx.lineTo(curX - dir * 8, curY - 5);
+      ctx.lineTo(curX - dir * 8, curY + 5);
       ctx.closePath();
       ctx.fillStyle = colour;
       ctx.fill();
@@ -7217,6 +7253,14 @@ Please see https://iframe-resizer.com/upgrade for more details.
           ctx.stroke();
         }
       }
+      ctx.font = `600 11px ${cssToken("--cp-font", "sans-serif")}`;
+      ctx.textBaseline = "middle";
+      const effectivePred = linking.predKey || sourceKey;
+      const effectiveSucc = linking.succKey || targetKey;
+      const label2 = targetKey ? `${effectiveSucc} depends on ${effectivePred}` : `Drag arrow to connect dependency`;
+      const tw = ctx.measureText(label2).width + 10;
+      const chipX = Math.max(left + 6, Math.min(left + cssW - tw - 6, curX + 12));
+      this.chip(label2, chipX, Math.max(y1 - 24, curY - 18), this.c(CANVAS_TOKENS.driverText), colour);
     }
   };
 
@@ -7229,6 +7273,23 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   function dependencyPopoverTitle(predKey, succKey) {
     return `${predKey} \u2794 ${succKey}`;
+  }
+  function buildDraggedDependencyLink(sourceKey, targetKey, triggerPercent = 100, side = "right") {
+    const isRight = side === "right";
+    return {
+      predecessorKey: isRight ? sourceKey : targetKey,
+      successorKey: isRight ? targetKey : sourceKey,
+      triggerPercent: clampTriggerPercent(triggerPercent),
+      isViolated: false,
+      isNew: true
+    };
+  }
+  function swapDependencyDirection(link) {
+    return {
+      ...link,
+      predecessorKey: link.successorKey,
+      successorKey: link.predecessorKey
+    };
   }
   function computeDependencyPreview(pred, triggerPercent, today) {
     if (!pred.startDate) {
@@ -7295,6 +7356,73 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const elapsedDays = Math.max(0, daysBetween(pred.startDate, succStartDate));
     const pct = Math.floor(elapsedDays / totalDays * 100);
     return Math.max(0, Math.min(100, pct));
+  }
+
+  // src/ui/column-layout.ts
+  var ALL_COLUMN_KEYS = [
+    "epic",
+    "story",
+    "task",
+    "resource",
+    "effort",
+    "progress",
+    "target",
+    "status"
+  ];
+  var DEFAULT_COLUMN_WIDTHS = {
+    epic: 110,
+    story: 100,
+    task: 260,
+    resource: 130,
+    effort: 65,
+    progress: 65,
+    target: 65,
+    status: 95
+  };
+  var MIN_COLUMN_WIDTHS = {
+    epic: 68,
+    story: 64,
+    task: 160,
+    resource: 80,
+    effort: 48,
+    progress: 50,
+    target: 50,
+    status: 70
+  };
+  var COMPACT_TASK_DEFAULT_WIDTH = 220;
+  var MAX_COLUMN_WIDTH = 640;
+  function sanitizeLoadedColumnWidths(saved) {
+    const out = { ...DEFAULT_COLUMN_WIDTHS };
+    if (!saved || typeof saved !== "object") return out;
+    for (const key of ALL_COLUMN_KEYS) {
+      const raw = Number(saved[key]);
+      if (Number.isFinite(raw) && raw >= MIN_COLUMN_WIDTHS[key]) {
+        out[key] = Math.min(MAX_COLUMN_WIDTH, Math.round(raw));
+      }
+    }
+    return out;
+  }
+  function clampColumnResize(key, candidateWidth) {
+    const k = key;
+    const fallback = DEFAULT_COLUMN_WIDTHS[k] ?? 96;
+    if (!Number.isFinite(candidateWidth)) return fallback;
+    const minW = MIN_COLUMN_WIDTHS[k] ?? 64;
+    return Math.max(minW, Math.min(MAX_COLUMN_WIDTH, Math.round(candidateWidth)));
+  }
+  function computeFrozenLayout(visibleKeys, columnWidths2, compactColumns2, compactTaskWidth2 = COMPACT_TASK_DEFAULT_WIDTH) {
+    const widths = {};
+    const offsets = {};
+    let x = 0;
+    let lastKey = null;
+    for (const k of visibleKeys) {
+      const base = compactColumns2 && k === "task" ? compactTaskWidth2 : columnWidths2[k] ?? DEFAULT_COLUMN_WIDTHS[k] ?? 100;
+      const w = Math.round(base);
+      widths[k] = w;
+      offsets[k] = x;
+      x += w;
+      lastKey = k;
+    }
+    return { visibleKeys, widths, offsets, totalWidth: x, lastKey };
   }
 
   // src/ui/keyboard-grid.ts
@@ -7721,6 +7849,15 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function formatEffort(hours) {
     return hours > 0 ? `${hours}h` : "Unestimated";
   }
+  function syncPinnedBarHit() {
+    document.querySelectorAll(".bar-hit.is-pinned").forEach((el2) => {
+      if (el2.dataset.taskId !== pinnedDependencyTaskId) el2.classList.remove("is-pinned");
+    });
+    if (pinnedDependencyTaskId) {
+      const el2 = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(pinnedDependencyTaskId)}"]`);
+      if (el2) el2.classList.add("is-pinned");
+    }
+  }
   function showWhy(taskKey, anchorRect) {
     openWhyPopup(currentPlan?.tasks || [], taskKey, anchorRect, {
       apply: async (key, updates) => {
@@ -7736,6 +7873,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
           row.focus();
         }
         pinnedDependencyTaskId = key;
+        syncPinnedBarHit();
         drawTimeline(true);
       }
     });
@@ -7746,18 +7884,19 @@ Please see https://iframe-resizer.com/upgrade for more details.
   var pinnedDependencyTaskId = null;
   var isDraggingBar = false;
   var modalUseRollupProgressFlag = false;
-  var columnWidths = { epic: 110, story: 100, task: 260, resource: 130, effort: 75, progress: 95, target: 95, status: 125 };
-  var DEFAULT_COLUMN_WIDTHS = { epic: 110, story: 100, task: 260, resource: 130, effort: 75, progress: 95, target: 95, status: 125 };
+  var popoverOpenedAt = 0;
+  var columnWidths = { ...DEFAULT_COLUMN_WIDTHS };
+  var compactTaskWidth = COMPACT_TASK_DEFAULT_WIDTH;
   var hiddenColumns = /* @__PURE__ */ new Set();
   var ALL_COLUMNS = [
-    { key: "epic", label: "Epic", icon: "\u{1F7EA}", defaultWidth: 110, description: "Parent Epic roadmap category" },
-    { key: "story", label: "Story", icon: "\u{1F537}", defaultWidth: 100, description: "Issue type (Story, Task, Subtask)" },
-    { key: "task", label: "Task", icon: "\u{1F4DD}", defaultWidth: 260, locked: true, description: "Issue key and summary (Required)" },
-    { key: "resource", label: "Resource", icon: "\u{1F465}", defaultWidth: 130, description: "Assigned team member" },
-    { key: "effort", label: "Hrs", icon: "\u23F1\uFE0F", defaultWidth: 75, description: "Estimated effort in hours" },
-    { key: "progress", label: "Progress", icon: "\u{1F4C8}", defaultWidth: 95, description: "Actual completion %" },
-    { key: "target", label: "Target", icon: "\u{1F3AF}", defaultWidth: 95, description: "Planned target completion %" },
-    { key: "status", label: "Status", icon: "\u{1F3F7}\uFE0F", defaultWidth: 125, description: "Workflow status" }
+    { key: "epic", label: "Epic", icon: "\u{1F7EA}", defaultWidth: DEFAULT_COLUMN_WIDTHS.epic, description: "Parent Epic roadmap category" },
+    { key: "story", label: "Story", icon: "\u{1F537}", defaultWidth: DEFAULT_COLUMN_WIDTHS.story, description: "Issue type (Story, Task, Subtask)" },
+    { key: "task", label: "Task", icon: "\u{1F4DD}", defaultWidth: DEFAULT_COLUMN_WIDTHS.task, locked: true, description: "Issue key and summary (Required)" },
+    { key: "resource", label: "Resource", icon: "\u{1F465}", defaultWidth: DEFAULT_COLUMN_WIDTHS.resource, description: "Assigned team member" },
+    { key: "effort", label: "Hrs", icon: "\u23F1\uFE0F", defaultWidth: DEFAULT_COLUMN_WIDTHS.effort, description: "Estimated effort in hours" },
+    { key: "progress", label: "Progress", icon: "\u{1F4C8}", defaultWidth: DEFAULT_COLUMN_WIDTHS.progress, description: "Actual completion %" },
+    { key: "target", label: "Target", icon: "\u{1F3AF}", defaultWidth: DEFAULT_COLUMN_WIDTHS.target, description: "Planned target completion %" },
+    { key: "status", label: "Status", icon: "\u{1F3F7}\uFE0F", defaultWidth: DEFAULT_COLUMN_WIDTHS.status, description: "Workflow status" }
   ];
   function getVisibleColKeys() {
     if (compactColumns) return ["task"];
@@ -7766,7 +7905,6 @@ Please see https://iframe-resizer.com/upgrade for more details.
   var COL_KEYS = ALL_COLUMNS.map((c) => c.key);
   var ZOOM_KEY = "cascadeplan_zoom";
   var COMPACT_KEY = "cascadeplan_compact_columns";
-  var COMPACT_TASK_WIDTH = 220;
   var EXTEND_WEEKS = 26;
   function readPref(key, fallback) {
     try {
@@ -7791,17 +7929,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function trackWidth() {
     return timeRange ? rangeDays(timeRange) * dayPx() : 0;
   }
-  function colWidth(k) {
-    return compactColumns && k === "task" ? COMPACT_TASK_WIDTH : columnWidths[k];
+  function getFrozenLayout() {
+    return computeFrozenLayout(getVisibleColKeys(), columnWidths, compactColumns, compactTaskWidth);
   }
-  function frozenOffsets() {
-    const out = {};
-    let x = 0;
-    getVisibleColKeys().forEach((k) => {
-      out[k] = x;
-      x += colWidth(k);
-    });
-    return out;
+  function colWidth(k) {
+    const fl = getFrozenLayout();
+    return fl.widths[k] !== void 0 ? fl.widths[k] : compactColumns && k === "task" ? compactTaskWidth : columnWidths[k];
   }
   var expandedTasks = /* @__PURE__ */ new Set();
   var currentHierarchyView = "all";
@@ -7819,6 +7952,24 @@ Please see https://iframe-resizer.com/upgrade for more details.
       timeline = new CanvasTimeline(wrapper);
       timeline.onDraw = (links) => renderDependencyBadges(links);
       wrapper.addEventListener("scroll", scheduleVirtualRows, { passive: true });
+    }
+    const tbody = document.getElementById("ganttBody");
+    if (tbody) {
+      tbody.addEventListener("mouseover", (e) => {
+        if (!timeline) return;
+        const tr = e.target.closest("tr.task-row");
+        const nextKey = tr ? tr.dataset.taskId || null : null;
+        if (timeline.hoveredRowKey !== nextKey) {
+          timeline.hoveredRowKey = nextKey;
+          timeline.requestDraw();
+        }
+      });
+      tbody.addEventListener("mouseleave", () => {
+        if (timeline && timeline.hoveredRowKey !== null) {
+          timeline.hoveredRowKey = null;
+          timeline.requestDraw();
+        }
+      });
     }
     document.addEventListener("cp:drivers", (e) => {
       if (timeline) timeline.driverKeys = e.detail || [];
@@ -8050,8 +8201,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
       if (colPopover2 && colPopover2.style.display === "flex" && !colPopover2.contains(e.target) && !e.target.closest("#btnManageColumns") && !e.target.closest("#btnOpenManagerFromBanner")) {
         colPopover2.style.display = "none";
       }
-      if (pinnedDependencyTaskId && !e.target.closest(".bar-hit")) {
+      if (pinnedDependencyTaskId && !e.target.closest(".bar-hit") && !e.target.closest("#barToolbar")) {
         pinnedDependencyTaskId = null;
+        syncPinnedBarHit();
         drawTimeline(true);
       }
     });
@@ -8267,9 +8419,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const bottomScroll = document.getElementById("ganttBottomScrollbar");
     const bottomInner = document.getElementById("ganttBottomScrollbarInner");
     if (!wrapper) return;
-    const wPx = wrapper.scrollWidth + "px";
-    if (topInner) topInner.style.width = wPx;
-    if (bottomInner) bottomInner.style.width = wPx;
+    const trackLeft = layout.trackLeft || 0;
+    const innerW = Math.max(0, wrapper.scrollWidth - trackLeft) + "px";
+    if (topScroll) topScroll.style.marginLeft = trackLeft + "px";
+    if (bottomScroll) bottomScroll.style.marginLeft = trackLeft + "px";
+    if (topInner) topInner.style.width = innerW;
+    if (bottomInner) bottomInner.style.width = innerW;
     if (!isSyncingGanttScroll) {
       if (topScroll) topScroll.scrollLeft = wrapper.scrollLeft;
       if (bottomScroll) bottomScroll.scrollLeft = wrapper.scrollLeft;
@@ -8321,7 +8476,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
     let hasMoved = false;
     wrapper.addEventListener("mousedown", (e) => {
       if (e.button !== 0 && e.button !== 1) return;
-      if (e.target.closest(".bar-hit, .bar-handle, .btn, button, input, select, a, .resizer, .row-drag-handle, .inline-edit-input, .resource-chip-btn, .editable-badge-chip, .epic-link-chip, .th-col-menu-btn, .row-action-btn, .tree-toggle-btn")) {
+      if (e.button === 0 && e.clientX - wrapper.getBoundingClientRect().left < (layout.trackLeft || 0)) {
+        return;
+      }
+      if (e.target.closest(".bar-hit, .bar-handle, .bar-link-port, .dep-link-badge, .btn, button, input, select, a, .resizer, .row-drag-handle, .inline-edit-input, .resource-chip-btn, .editable-badge-chip, .epic-link-chip, .th-col-menu-btn, .row-action-btn, .tree-toggle-btn")) {
         return;
       }
       isPanning = true;
@@ -8544,6 +8702,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function resetColumnDefaults() {
     hiddenColumns.clear();
     columnWidths = { ...DEFAULT_COLUMN_WIDTHS };
+    compactTaskWidth = COMPACT_TASK_DEFAULT_WIDTH;
     onColumnsChanged();
     callResolver2("saveColumnWidths", { columnWidths });
   }
@@ -8558,6 +8717,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     updateColumnManagerUI();
     renderTimelineHeader();
     renderTimelineRows();
+    applyTimeAxis();
     setTimeout(syncGanttScrollWidth, 50);
   }
   function updateColumnManagerUI() {
@@ -8772,9 +8932,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       currentPlan = plan;
       if (plan.planId) activePlanId = plan.planId;
       updatePlansUI(plan.availablePlans, activePlanId);
-      if (plan.columnWidths) {
-        columnWidths = { ...columnWidths, ...plan.columnWidths };
-      }
+      columnWidths = sanitizeLoadedColumnWidths(plan.columnWidths);
       if (Array.isArray(plan.hiddenColumns)) {
         hiddenColumns = new Set(plan.hiddenColumns);
       } else {
@@ -8923,6 +9081,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
       }
       card.addEventListener("dragstart", (e) => {
         e.dataTransfer.setData("text/plain", JSON.stringify({ taskId: item.key, effortHours: item.effortHours }));
+        document.body.classList.add("is-dragging-backlog");
+        updateVirtualRows();
+      });
+      card.addEventListener("dragend", () => {
+        document.body.classList.remove("is-dragging-backlog");
+        updateVirtualRows();
       });
       container.appendChild(card);
     });
@@ -8930,14 +9094,20 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function renderTimelineHeader() {
     const tr = document.getElementById("ganttHeaderRow");
     tr.innerHTML = "";
-    const offsets = frozenOffsets();
-    getVisibleColKeys().forEach((k) => {
+    const frozen = getFrozenLayout();
+    try {
+      document.documentElement.style.setProperty("--cp-frozen-w", frozen.totalWidth + "px");
+    } catch (e) {
+    }
+    frozen.visibleKeys.forEach((k) => {
       const colDef = ALL_COLUMNS.find((c) => c.key === k) || { label: k, locked: false };
       const th2 = document.createElement("th");
-      th2.className = "th-col th-frozen";
-      th2.style.width = colWidth(k) + "px";
-      th2.style.minWidth = colWidth(k) + "px";
-      th2.style.left = offsets[k] + "px";
+      th2.className = "th-col th-frozen" + (k === frozen.lastKey ? " is-last-frozen" : "");
+      const w = frozen.widths[k];
+      th2.style.width = w + "px";
+      th2.style.minWidth = w + "px";
+      th2.style.maxWidth = w + "px";
+      th2.style.left = frozen.offsets[k] + "px";
       th2.innerHTML = html`
       <div class="th-content-wrap">
         <span class="th-label-text">${colDef.label}</span>
@@ -8992,7 +9162,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     const visibleKeys = getVisibleColKeys();
     const frozenWidth = visibleKeys.reduce((sum, k) => sum + colWidth(k), 0);
-    const next = shouldAutoCompact(wrapper.clientWidth, frozenWidth, 7 * dayPx(), choice);
+    const uncompactedWidth = visibleKeys.length >= 8 ? Math.max(frozenWidth, 1021) : frozenWidth;
+    const next = shouldAutoCompact(wrapper.clientWidth, uncompactedWidth, 7 * dayPx(), choice);
     const changed = next !== compactColumns;
     compactColumns = next;
     updateZoomButtons();
@@ -9080,39 +9251,49 @@ Please see https://iframe-resizer.com/upgrade for more details.
     renderTimelineRows();
     applyTimeAxis();
   }
+  function applyColumnWidthsToDom() {
+    const frozen = getFrozenLayout();
+    try {
+      document.documentElement.style.setProperty("--cp-frozen-w", frozen.totalWidth + "px");
+    } catch (e) {
+    }
+    const thList = document.querySelectorAll("#ganttHeaderRow .th-col");
+    thList.forEach((th, i) => {
+      const k = frozen.visibleKeys[i];
+      if (!k) return;
+      const w = frozen.widths[k];
+      th.classList.toggle("is-last-frozen", k === frozen.lastKey);
+      th.style.width = w + "px";
+      th.style.minWidth = w + "px";
+      th.style.maxWidth = w + "px";
+      th.style.left = frozen.offsets[k] + "px";
+    });
+    const visited = /* @__PURE__ */ new Set();
+    for (const tr of rowCache.values()) {
+      visited.add(tr);
+      applyFrozen(tr);
+    }
+    document.querySelectorAll("#ganttBody tr.task-row, #ganttBody tr.inline-creation-row").forEach((tr) => {
+      if (!visited.has(tr)) applyFrozen(tr);
+    });
+  }
   function setupColumnResizer(resizer, colKey) {
     resizer.addEventListener("mousedown", (e) => {
       e.preventDefault();
       e.stopPropagation();
       const startX = e.clientX;
-      const startWidth = columnWidths[colKey] || 95;
+      const startWidth = colWidth(colKey);
       resizer.classList.add("is-resizing");
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
       function onMouseMove(moveEvent) {
-        const newWidth = Math.max(50, startWidth + (moveEvent.clientX - startX));
-        columnWidths[colKey] = newWidth;
-        const thList = document.querySelectorAll("#ganttHeaderRow .th-col");
-        const visibleKeys = getVisibleColKeys();
-        const offsets = frozenOffsets();
-        thList.forEach((th, i) => {
-          const k = visibleKeys[i];
-          if (!k) return;
-          th.style.width = colWidth(k) + "px";
-          th.style.minWidth = colWidth(k) + "px";
-          th.style.left = offsets[k] + "px";
-        });
-        const rows = document.querySelectorAll("#ganttTableBody tr.task-row");
-        rows.forEach((tr) => {
-          const cells = [...tr.children].filter((td) => !td.classList.contains("timeline-track-cell"));
-          cells.forEach((td, i) => {
-            const k = visibleKeys[i];
-            if (!k) return;
-            td.style.width = colWidth(k) + "px";
-            td.style.minWidth = colWidth(k) + "px";
-            td.style.left = offsets[k] + "px";
-          });
-        });
+        const nextWidth = clampColumnResize(colKey, startWidth + (moveEvent.clientX - startX));
+        if (compactColumns && colKey === "task") {
+          compactTaskWidth = nextWidth;
+        } else {
+          columnWidths[colKey] = nextWidth;
+        }
+        applyColumnWidthsToDom();
         measureLayout();
         drawTimeline(true);
         syncGanttScrollWidth();
@@ -9123,10 +9304,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
         resizer.classList.remove("is-resizing");
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
+        applyColumnWidthsToDom();
         measureLayout();
         drawTimeline(true);
         syncGanttScrollWidth();
-        callResolver2("saveColumnWidths", { columnWidths });
+        if (!(compactColumns && colKey === "task")) {
+          callResolver2("saveColumnWidths", { columnWidths });
+        }
       }
       window.addEventListener("mousemove", onMouseMove);
       window.addEventListener("mouseup", onMouseUp);
@@ -9965,7 +10149,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     topDropRowEl = document.createElement("tr");
     topDropRowEl.className = "drop-target-row";
-    topDropRowEl.innerHTML = html`<td colspan="${cols}">+ Drop here to place task at top of schedule</td>`;
+    topDropRowEl.innerHTML = html`<td colspan="${cols}"><span class="drop-target-label">+ Drop here to place task at top of schedule</span></td>`;
     setupDropTargetRow(topDropRowEl, 0);
     tbody.appendChild(topDropRowEl);
     const computed = computeRowTasks();
@@ -9977,7 +10161,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     tbody.appendChild(bottomSpacer);
     const btmDropRow = document.createElement("tr");
     btmDropRow.className = "drop-target-row";
-    btmDropRow.innerHTML = html`<td colspan="${cols}">+ Drop here to place task at bottom of schedule</td>`;
+    btmDropRow.innerHTML = html`<td colspan="${cols}"><span class="drop-target-label">+ Drop here to place task at bottom of schedule</span></td>`;
     setupDropTargetRow(btmDropRow, computed.total);
     tbody.appendChild(btmDropRow);
     updateVirtualRows();
@@ -10066,12 +10250,19 @@ Please see https://iframe-resizer.com/upgrade for more details.
     settleUndo();
   }
   function applyFrozen(tr) {
-    const offsets = frozenOffsets();
-    const keys = getVisibleColKeys();
-    [...tr.children].filter((td) => !td.classList.contains("timeline-track-cell")).forEach((td, i) => {
-      if (keys[i] === void 0) return;
+    const frozen = getFrozenLayout();
+    const keys = frozen.visibleKeys;
+    const cells = [...tr.children].filter((td) => !td.classList.contains("timeline-track-cell"));
+    if (cells.length !== keys.length) return;
+    cells.forEach((td, i) => {
+      const k = keys[i];
+      const w = frozen.widths[k];
       td.classList.add("td-frozen");
-      td.style.left = offsets[keys[i]] + "px";
+      td.classList.toggle("is-last-frozen", k === frozen.lastKey);
+      td.style.width = w + "px";
+      td.style.minWidth = w + "px";
+      td.style.maxWidth = w + "px";
+      td.style.left = frozen.offsets[k] + "px";
     });
   }
   function buildTaskRow(task, rowIdx) {
@@ -10108,11 +10299,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
       <div class="row-insert-affordance" title="Insert task below (Row ${rowIdx + 2})">
         <button class="row-insert-plus-btn" title="Insert new task below">＋</button>
       </div>
-      <span class="row-drag-handle" draggable="true" title="Drag to reorder row">⠿</span>
+      <span class="row-drag-handle" title="Drag handle or press and hold row to reorder">⠿</span>
       ${expandToggleHtml}
       ${badgeHtml}
       <a href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer" class="task-key-link" title="Open ${task.key} in native Jira (new tab)">${task.key} ↗</a>
-      <span class="task-summary-text" style="cursor:pointer; margin-left:6px; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="Click or double-click to edit summary">
+      <span class="task-summary-text" style="cursor:pointer; margin-left:6px; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="Click to edit summary, or press and hold row to reorder">
         : ${task.summary}
       </span>
       <div class="row-action-toolbar">
@@ -10481,12 +10672,7 @@ Click to manage or assign.`;
         renderTimelineRows();
       });
     }
-    const dragHandle = tr.querySelector(".row-drag-handle");
-    if (dragHandle) {
-      dragHandle.addEventListener("dragstart", (e) => {
-        e.dataTransfer.setData("text/plain", JSON.stringify({ taskId: task.key, fromReorder: true, origIndex: rowIdx }));
-      });
-    }
+    setupRowPointerReorder(tr, task);
     tr.addEventListener("dragover", (e) => {
       e.preventDefault();
       const rect = tr.getBoundingClientRect();
@@ -10507,6 +10693,7 @@ Click to manage or assign.`;
     });
     tr.addEventListener("drop", async (e) => {
       e.preventDefault();
+      document.body.classList.remove("is-dragging-backlog");
       const rect = tr.getBoundingClientRect();
       const isTop = e.clientY - rect.top < rect.height / 2;
       tr.classList.remove("drop-insert-top");
@@ -10515,7 +10702,9 @@ Click to manage or assign.`;
       if (!dataStr) return;
       try {
         const data = JSON.parse(dataStr);
-        const targetIndex = isTop ? rowIdx : rowIdx + 1;
+        const entry = rowTasks.find((r) => r.task.key === task.key);
+        const baseIdx = entry ? entry.rowIdx : rowIdx;
+        const targetIndex = isTop ? baseIdx : baseIdx + 1;
         if (data.fromReorder) {
           await callResolver2("reorderWbsTasks", { taskId: data.taskId, targetIndex });
         } else if (data.taskId) {
@@ -10540,6 +10729,164 @@ Click to manage or assign.`;
     tr.appendChild(trackTd);
     return tr;
   }
+  function setupRowPointerReorder(tr, task) {
+    tr.addEventListener("mousedown", (e) => {
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      const td = e.target.closest("td.td-data");
+      if (!td) return;
+      const onHandle = Boolean(e.target.closest(".row-drag-handle"));
+      if (!onHandle && e.target.closest("button, a, input, select, textarea, .resource-chip-btn, .editable-badge-chip, .epic-link-chip, .progress-chip-cell, .target-chip-cell, .tree-toggle-btn, .row-action-btn, .row-insert-plus-btn")) {
+        return;
+      }
+      if (onHandle) {
+        e.preventDefault();
+      }
+      const startX = e.clientX;
+      const startY = e.clientY;
+      let lastX = startX;
+      let lastY = startY;
+      let active = false;
+      let ghost = null;
+      let grabOffsetY = ROW_H / 2;
+      let hoveredTr = null;
+      let dropTargetIndex = null;
+      function clearHoveredIndicator() {
+        if (hoveredTr) {
+          hoveredTr.classList.remove("drop-insert-top", "drop-insert-bottom");
+          hoveredTr = null;
+        }
+      }
+      function activateDrag(curX, curY) {
+        if (active) return;
+        active = true;
+        clearTimeout(holdTimer);
+        try {
+          window.getSelection()?.removeAllRanges?.();
+        } catch {
+        }
+        hideTooltip();
+        const trRect = tr.getBoundingClientRect();
+        grabOffsetY = Math.max(8, Math.min(ROW_H - 8, startY - trRect.top));
+        const frozen = getFrozenLayout();
+        ghost = document.createElement("div");
+        ghost.className = "row-drag-ghost";
+        ghost.style.left = `${Math.max(4, trRect.left)}px`;
+        ghost.style.top = `${curY - grabOffsetY}px`;
+        ghost.style.width = `${Math.min(frozen.totalWidth, window.innerWidth - 16)}px`;
+        const dataCells = [...tr.children].filter((c) => !c.classList.contains("timeline-track-cell"));
+        dataCells.forEach((cell2, idx) => {
+          const k = frozen.visibleKeys[idx];
+          if (!k) return;
+          const clone = document.createElement("div");
+          clone.className = "row-drag-ghost-cell";
+          const w = frozen.widths[k];
+          clone.style.width = `${w}px`;
+          clone.style.minWidth = `${w}px`;
+          clone.style.maxWidth = `${w}px`;
+          for (const child of cell2.childNodes) {
+            clone.appendChild(child.cloneNode(true));
+          }
+          clone.querySelectorAll(".row-action-toolbar, .row-insert-affordance").forEach((n) => n.remove());
+          ghost.appendChild(clone);
+        });
+        document.body.appendChild(ghost);
+        tr.classList.add("is-row-dragging");
+        document.body.style.cursor = "grabbing";
+        document.body.style.userSelect = "none";
+        updateDropTarget(curX, curY);
+      }
+      function updateDropTarget(curX, curY) {
+        if (!active || !ghost) return;
+        ghost.style.top = `${curY - grabOffsetY}px`;
+        const wrapper = document.getElementById("ganttWrapper");
+        if (wrapper) {
+          const wRect = wrapper.getBoundingClientRect();
+          const topEdge = wRect.top + (layout.headerH || 40) + 28;
+          const bottomEdge = wRect.bottom - 28;
+          if (curY < topEdge && wrapper.scrollTop > 0) {
+            wrapper.scrollTop = Math.max(0, wrapper.scrollTop - 14);
+          } else if (curY > bottomEdge) {
+            wrapper.scrollTop += 14;
+          }
+        }
+        clearHoveredIndicator();
+        dropTargetIndex = null;
+        const under = document.elementFromPoint(curX, curY);
+        const overTr = under ? under.closest("tr.task-row") : null;
+        if (overTr && overTr !== tr) {
+          const r = overTr.getBoundingClientRect();
+          const isTop = curY - r.top < r.height / 2;
+          overTr.classList.toggle("drop-insert-top", isTop);
+          overTr.classList.toggle("drop-insert-bottom", !isTop);
+          hoveredTr = overTr;
+          const overEntry = rowTasks.find((x) => x.task.key === overTr.dataset.taskId);
+          if (overEntry) {
+            dropTargetIndex = isTop ? overEntry.rowIdx : overEntry.rowIdx + 1;
+          }
+        }
+      }
+      const holdTimer = !onHandle ? setTimeout(() => activateDrag(lastX, lastY), 180) : null;
+      function onMove(ev) {
+        lastX = ev.clientX;
+        lastY = ev.clientY;
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        if (!active) {
+          if (onHandle) {
+            if (Math.abs(dx) >= 3 || Math.abs(dy) >= 3) {
+              activateDrag(ev.clientX, ev.clientY);
+            }
+            return;
+          }
+          if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+            cleanup();
+            return;
+          }
+          if (Math.abs(dy) >= 6) {
+            activateDrag(ev.clientX, ev.clientY);
+          }
+          return;
+        }
+        ev.preventDefault();
+        updateDropTarget(ev.clientX, ev.clientY);
+      }
+      function cleanup() {
+        if (holdTimer) clearTimeout(holdTimer);
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        clearHoveredIndicator();
+        if (ghost) {
+          ghost.remove();
+          ghost = null;
+        }
+        tr.classList.remove("is-row-dragging");
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
+      async function onUp() {
+        const wasActive = active;
+        const targetIdx = dropTargetIndex;
+        cleanup();
+        if (!wasActive) return;
+        const suppressClick = (ce) => {
+          ce.stopPropagation();
+          ce.preventDefault();
+          window.removeEventListener("click", suppressClick, true);
+        };
+        window.addEventListener("click", suppressClick, true);
+        setTimeout(() => window.removeEventListener("click", suppressClick, true), 80);
+        if (targetIdx === null) return;
+        const ownEntry = rowTasks.find((x) => x.task.key === task.key);
+        if (ownEntry && (targetIdx === ownEntry.rowIdx || targetIdx === ownEntry.rowIdx + 1)) {
+          return;
+        }
+        await callResolver2("reorderWbsTasks", { taskId: task.key, targetIndex: targetIdx });
+        await loadProjectPlan();
+      }
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    });
+  }
   function setupDropTargetRow(rowEl, targetIndex) {
     rowEl.addEventListener("dragover", (e) => {
       e.preventDefault();
@@ -10550,6 +10897,7 @@ Click to manage or assign.`;
     });
     rowEl.addEventListener("drop", async (e) => {
       e.preventDefault();
+      document.body.classList.remove("is-dragging-backlog");
       rowEl.classList.remove("drag-over");
       const dataStr = e.dataTransfer.getData("text/plain");
       if (dataStr) {
@@ -10598,6 +10946,7 @@ Click to manage or assign.`;
     trackTd.addEventListener("drop", async (e) => {
       e.preventDefault();
       e.stopPropagation();
+      document.body.classList.remove("is-dragging-backlog");
       const d = dayAt(e);
       clear();
       const dataStr = e.dataTransfer.getData("text/plain");
@@ -10633,7 +10982,7 @@ Click to manage or assign.`;
     if (!task.startDate) return null;
     const key = task.key;
     const hit = document.createElement("div");
-    hit.className = "bar-hit" + (isEpic || task.datesFromChildren ? " is-epic" : "");
+    hit.className = "bar-hit" + (isEpic || task.datesFromChildren ? " is-epic" : "") + (pinnedDependencyTaskId === key ? " is-pinned" : "");
     hit.dataset.taskId = key;
     hit.setAttribute("aria-hidden", "true");
     if (!isEpic && !task.datesFromChildren) {
@@ -10650,21 +10999,26 @@ Click to manage or assign.`;
         hit.appendChild(handle);
       }
       hit.addEventListener("mousedown", (e) => {
-        if (e.button !== 0 || e.target.classList.contains("bar-handle") || e.target.classList.contains("bar-link-anchor")) return;
+        if (e.button !== 0 || e.target.classList.contains("bar-handle") || e.target.closest(".bar-link-port")) return;
         e.preventDefault();
         startBarPointerEdit(e, key, "move", hit);
       });
-      const anchor = document.createElement("div");
-      anchor.className = "bar-link-anchor";
-      anchor.title = `Drag to link dependency from ${task.key}`;
-      anchor.setAttribute("aria-hidden", "true");
-      anchor.addEventListener("mousedown", (e) => {
-        if (e.button !== 0) return;
-        e.stopPropagation();
-        e.preventDefault();
-        startVisualLinkDrag(e, key, hit);
-      });
-      hit.appendChild(anchor);
+    }
+    if (!isEpic) {
+      for (const side of ["right", "left"]) {
+        const port = document.createElement("div");
+        port.className = `bar-link-port bar-link-port-${side}`;
+        port.textContent = "\u2794";
+        port.title = side === "right" ? `Drag arrow to successor task (which will depend on ${task.key})` : `Drag arrow to predecessor task (which ${task.key} will depend on)`;
+        port.setAttribute("aria-hidden", "true");
+        port.addEventListener("mousedown", (e) => {
+          if (e.button !== 0) return;
+          e.stopPropagation();
+          e.preventDefault();
+          startVisualLinkDrag(e, key, hit, side);
+        });
+        hit.appendChild(port);
+      }
     }
     positionBarHit(hit, task);
     hit.addEventListener("mouseenter", (e) => {
@@ -10679,8 +11033,9 @@ Click to manage or assign.`;
       drawTimeline(true);
     });
     hit.addEventListener("click", (e) => {
-      if (!e.defaultPrevented && !isDraggingBar) {
+      if (!e.defaultPrevented && !isDraggingBar && !e.target.closest(".bar-link-port")) {
         pinnedDependencyTaskId = pinnedDependencyTaskId === key ? null : key;
+        syncPinnedBarHit();
         const i = rowTasks.findIndex((r) => r.task.key === key);
         if (i >= 0 && gridRoot) {
           gridFocus = { row: i, col: 2 };
@@ -10705,23 +11060,29 @@ Click to manage or assign.`;
     });
     return hit;
   }
-  function startVisualLinkDrag(e, sourceKey, hit) {
+  function startVisualLinkDrag(e, sourceKey, hit, side = "right") {
     const sourceTask = findTask(sourceKey);
     if (!sourceTask || !sourceTask.startDate || !timeline) return;
     const wrapper = document.getElementById("ganttWrapper");
     if (!wrapper) return;
-    const wRect = wrapper.getBoundingClientRect();
-    const x1 = hit.offsetLeft + hit.offsetWidth;
-    const y1 = hit.offsetTop + hit.offsetHeight / 2;
+    closeBarToolbar();
+    hideTooltip();
+    const hitRect = hit.getBoundingClientRect();
+    const initWRect = wrapper.getBoundingClientRect();
+    const x1 = (side === "left" ? hitRect.left : hitRect.right) - initWRect.left + wrapper.scrollLeft;
+    const y1 = hitRect.top + hitRect.height / 2 - initWRect.top + wrapper.scrollTop;
     document.body.style.cursor = "crosshair";
     document.body.style.userSelect = "none";
     function onMove(ev) {
+      const wRect = wrapper.getBoundingClientRect();
       const curX = ev.clientX - wRect.left + wrapper.scrollLeft;
       const curY = ev.clientY - wRect.top + wrapper.scrollTop;
       const el2 = document.elementFromPoint(ev.clientX, ev.clientY);
       const targetHit = el2 ? el2.closest(".bar-hit") : null;
       const targetKey = targetHit && targetHit.dataset.taskId !== sourceKey ? targetHit.dataset.taskId : null;
-      timeline.activeLinking = { sourceKey, x1, y1, curX, curY, targetKey };
+      const predKey = side === "right" ? sourceKey : targetKey;
+      const succKey = side === "right" ? targetKey : sourceKey;
+      timeline.activeLinking = { sourceKey, x1, y1, curX, curY, targetKey, predKey, succKey };
       timeline.requestDraw();
     }
     function onUp() {
@@ -10729,17 +11090,18 @@ Click to manage or assign.`;
       window.removeEventListener("mouseup", onUp);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
-      const targetKey = timeline.activeLinking ? timeline.activeLinking.targetKey : null;
+      const active = timeline.activeLinking;
+      const targetKey = active ? active.targetKey : null;
       timeline.activeLinking = null;
       timeline.requestDraw();
       if (targetKey) {
         const targetHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(targetKey)}"]`);
-        openDependencyEditPopover({
-          predecessorKey: sourceKey,
-          successorKey: targetKey,
-          triggerPercent: 100,
-          isViolated: false
-        }, targetHit || hit);
+        const anchorEl = targetHit || hit;
+        const rect = anchorEl.getBoundingClientRect();
+        openDependencyEditPopover(
+          buildDraggedDependencyLink(sourceKey, targetKey, 100, side),
+          { getBoundingClientRect: () => rect }
+        );
       }
     }
     window.addEventListener("mousemove", onMove);
@@ -10801,9 +11163,19 @@ Click to manage or assign.`;
       window.removeEventListener("mouseup", onUp);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
-      setTimeout(() => {
+      if (moved) {
+        const swallowClick = (ev) => {
+          ev.stopPropagation();
+          ev.preventDefault();
+          window.removeEventListener("click", swallowClick, true);
+          setTimeout(() => {
+            isDraggingBar = false;
+          }, 60);
+        };
+        window.addEventListener("click", swallowClick, true);
+      } else {
         isDraggingBar = false;
-      }, 80);
+      }
       delete wrapper.dataset.preview;
       const strip = document.getElementById("writePreview");
       if (strip) strip.hidden = true;
@@ -10816,26 +11188,18 @@ Click to manage or assign.`;
       }
       const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
       const enforceDeps = document.getElementById("enforceDependenciesCheckbox")?.checked === true;
-      if (!enforceDeps && conflict.hasConflict) {
-        timeline.drag = null;
-        positionBarHit(hit, task);
-        drawTimeline();
-        showDependencyConflictDialog({
-          key,
-          candidateStart: mine.start,
-          candidateEnd: mine.end,
-          conflict,
-          task,
-          hit,
-          mode
-        });
-        return;
+      let finalStart = mine.start;
+      let finalEnd = mine.end;
+      if (enforceDeps && conflict.hasConflict && conflict.earliestDate) {
+        const clamped = clampToEarliestStart(finalStart, finalEnd, conflict.earliestDate);
+        finalStart = clamped.startDate;
+        finalEnd = clamped.endDate;
       }
-      const updates = { startDate: mine.start, endDate: mine.end };
+      const updates = { startDate: finalStart, endDate: finalEnd };
       const autoScale = mode !== "move" && document.getElementById("autoScaleEffortCheckbox")?.checked === true;
       if (autoScale && task.effortHours > 0) {
         const oldDays = daysBetween(task.startDate, task.endDate || task.startDate) + 1;
-        const newDays = daysBetween(mine.start, mine.end) + 1;
+        const newDays = daysBetween(finalStart, finalEnd) + 1;
         updates.effortHours = Math.max(1, Math.round(task.effortHours * newDays / oldDays));
       }
       const res = await callResolver2("updateWbsTask", { taskId: key, updates, expectedVersion: task.version || 0 });
@@ -10845,6 +11209,18 @@ Click to manage or assign.`;
       } else {
         await loadProjectPlan();
       }
+      if (!enforceDeps && conflict.hasConflict) {
+        const updatedHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(key)}"]`) || hit;
+        showDependencyConflictDialog({
+          key,
+          candidateStart: finalStart,
+          candidateEnd: finalEnd,
+          conflict,
+          task,
+          hit: updatedHit,
+          mode
+        });
+      }
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -10853,6 +11229,7 @@ Click to manage or assign.`;
   function showDependencyConflictDialog(state) {
     const banner = document.getElementById("depConflictBanner");
     if (!banner) return;
+    popoverOpenedAt = performance.now();
     conflictState = state;
     const { key, candidateStart, conflict } = state;
     const pred = findTask(conflict.predKey);
@@ -10906,15 +11283,18 @@ Click to manage or assign.`;
     await loadProjectPlan();
     announce(`Adjusted trigger on ${conflict.predKey} to ${suggestedPct}% and moved ${key} to ${candidateStart}.`);
   }
-  async function applyConflictKeep() {
-    if (!conflictState) return;
-    const { key, candidateStart, candidateEnd } = conflictState;
+  function applyConflictKeep() {
     closeDependencyConflictDialog();
-    await commitDates(key, candidateStart, candidateEnd);
+    announce("Kept schedule with dependency violation.");
   }
-  function applyConflictCancel() {
+  async function applyConflictCancel() {
+    if (!conflictState) return;
+    const { key, task } = conflictState;
     closeDependencyConflictDialog();
-    announce("Move cancelled.");
+    if (task && task.startDate) {
+      await commitDates(key, task.startDate, task.endDate || task.startDate);
+    }
+    announce(`Reverted ${key} to original schedule.`);
   }
   var gridRoot = null;
   var lastGridKey = null;
@@ -11178,6 +11558,9 @@ Click to manage or assign.`;
   async function toolbarAction(action, key, btn) {
     const task = findTask(key);
     if (!task) return;
+    const barHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(key)}"]`);
+    const anchorRect = (barHit || btn).getBoundingClientRect();
+    const barAnchor = { getBoundingClientRect: () => anchorRect };
     closeBarToolbar();
     if ((action === "earlier" || action === "later") && task.datesFromChildren) {
       showFlag({ text: `${key} follows the dates of its children. Move a child instead.` });
@@ -11189,12 +11572,17 @@ Click to manage or assign.`;
       await commitDates(key, mine.start, mine.end);
     } else if (action === "dates") {
       openTaskDetailModal(key);
-      setTimeout(() => document.getElementById("editStartDateInput")?.focus(), 50);
+      setTimeout(() => {
+        const inp = document.getElementById("editStartDateInput");
+        if (inp) {
+          inp.scrollIntoView({ block: "center" });
+          inp.focus();
+        }
+      }, 50);
     } else if (action === "dependency") {
-      openDependencyPopup(key, btn);
+      openDependencyPopup(key, barAnchor);
     } else if (action === "progress") {
-      const row = rowCache.get(key);
-      openProgressPicker(row ? row.querySelector(".td-progress-cell") || btn : btn, key);
+      openProgressPicker(barAnchor, key);
     }
   }
   var depState = null;
@@ -11224,6 +11612,7 @@ Click to manage or assign.`;
   function openDependencyPopup(key, anchor) {
     const pop = document.getElementById("depPopup");
     if (!pop) return;
+    popoverOpenedAt = performance.now();
     depState = { key, active: -1, options: [], chosen: null, anchor };
     document.getElementById("depTitle").textContent = `${key} starts when`;
     document.getElementById("depSearch").value = "";
@@ -11264,18 +11653,33 @@ Click to manage or assign.`;
     announce(`${key} now starts when ${chosen} reaches ${pct}%.`);
   }
   var depEditState = null;
+  var lastDepBadgeSignature = "";
   function renderDependencyBadges(links) {
     const layer = document.getElementById("depLinksLayer");
-    if (!layer) return;
-    layer.replaceChildren(...(links || []).map((link) => {
+    const wrapper = document.getElementById("ganttWrapper");
+    if (!layer || !wrapper) return;
+    const viewLeft = wrapper.scrollLeft + (layout.trackLeft || 0);
+    const viewRight = wrapper.scrollLeft + wrapper.clientWidth;
+    const viewTop = wrapper.scrollTop + (layout.headerH || 0);
+    const viewBottom = wrapper.scrollTop + wrapper.clientHeight;
+    const visibleLinks = (links || []).filter((link) => {
+      const hw = Math.max(12, (link.width || 28) / 2);
+      const hh = Math.max(10, (link.height || 18) / 2);
+      return link.x - hw >= viewLeft && link.x + hw <= viewRight && link.y - hh >= viewTop && link.y + hh <= viewBottom;
+    });
+    const sig = visibleLinks.map((l) => `${l.predecessorKey}>${l.successorKey}@${Math.round(l.x)},${Math.round(l.y)}:${l.triggerPercent}:${l.isViolated ? 1 : 0}`).join("|");
+    if (sig === lastDepBadgeSignature) return;
+    lastDepBadgeSignature = sig;
+    layer.replaceChildren(...visibleLinks.map((link) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "dep-link-badge" + (link.isViolated ? " is-violated" : "");
       btn.style.left = `${link.x}px`;
       btn.style.top = `${link.y}px`;
-      btn.textContent = link.text;
-      btn.title = `Click to edit dependency: ${link.predecessorKey} \u2794 ${link.successorKey}`;
-      btn.setAttribute("aria-label", `Dependency link: ${link.predecessorKey} to ${link.successorKey}, ${link.text}`);
+      btn.style.width = `${Math.max(26, Math.round((link.width || 28) + 6))}px`;
+      btn.style.height = `${Math.max(20, Math.round((link.height || 18) + 6))}px`;
+      btn.title = `Click to edit dependency: ${link.successorKey} depends on ${link.predecessorKey} (${link.text})`;
+      btn.setAttribute("aria-label", `Dependency link: ${link.successorKey} depends on ${link.predecessorKey}, ${link.text}`);
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         e.preventDefault();
@@ -11284,10 +11688,9 @@ Click to manage or assign.`;
       return btn;
     }));
   }
-  function openDependencyEditPopover(link, anchor) {
-    const pop = document.getElementById("depEditPopover");
-    if (!pop) return;
-    depEditState = { link, anchor };
+  function refreshDepEditPopoverFields() {
+    if (!depEditState) return;
+    const { link } = depEditState;
     const predTask = findTask(link.predecessorKey);
     const succTask = findTask(link.successorKey);
     const titleEl = document.getElementById("depEditTitle");
@@ -11295,15 +11698,35 @@ Click to manage or assign.`;
     const partiesEl = document.getElementById("depEditParties");
     if (partiesEl) {
       partiesEl.innerHTML = html`
-      <div><strong>Predecessor:</strong> ${link.predecessorKey} (${predTask ? predTask.summary || "" : ""})</div>
-      <div><strong>Successor:</strong> ${link.successorKey} (${succTask ? succTask.summary || "" : ""})</div>
+      <div><strong>${link.successorKey} depends on ${link.predecessorKey}</strong></div>
+      <div>Predecessor: ${link.predecessorKey} (${predTask ? predTask.summary || "" : ""})</div>
+      <div>Successor: ${link.successorKey} (${succTask ? succTask.summary || "" : ""})</div>
     `;
     }
+    const labelEl = document.getElementById("depEditTriggerLabel");
+    if (labelEl) {
+      labelEl.textContent = `${link.successorKey} starts when ${link.predecessorKey} reaches (percent)`;
+    }
+    const removeBtn = document.getElementById("btnRemoveDepLink");
+    if (removeBtn) {
+      removeBtn.hidden = Boolean(link.isNew);
+    }
+    const saveBtn = document.getElementById("btnSaveDepEdit");
+    if (saveBtn) {
+      saveBtn.textContent = link.isNew ? "Add Dependency" : "Save";
+    }
+    updateDepEditPreview();
+  }
+  function openDependencyEditPopover(link, anchor) {
+    const pop = document.getElementById("depEditPopover");
+    if (!pop) return;
+    popoverOpenedAt = performance.now();
+    depEditState = { link: { ...link }, anchor };
     const triggerInput = document.getElementById("depEditTrigger");
     if (triggerInput) {
       triggerInput.value = String(link.triggerPercent);
     }
-    updateDepEditPreview();
+    refreshDepEditPopoverFields();
     pop.hidden = false;
     const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { bottom: 120, left: 120 };
     pop.style.top = `${Math.max(8, Math.min(window.innerHeight - pop.offsetHeight - 8, r.bottom + 6))}px`;
@@ -11340,7 +11763,7 @@ Click to manage or assign.`;
   function closeDependencyEditPopover() {
     const pop = document.getElementById("depEditPopover");
     if (pop) pop.hidden = true;
-    if (depEditState && depEditState.anchor) {
+    if (depEditState && depEditState.anchor && typeof depEditState.anchor.focus === "function") {
       depEditState.anchor.focus();
     }
     depEditState = null;
@@ -11407,7 +11830,10 @@ Click to manage or assign.`;
     if (bar) {
       bar.addEventListener("click", (e) => {
         const btn = e.target.closest("button[data-action]");
-        if (btn) toolbarAction(btn.dataset.action, bar.dataset.key, btn);
+        if (btn) {
+          e.stopPropagation();
+          toolbarAction(btn.dataset.action, bar.dataset.key, btn);
+        }
       });
       bar.addEventListener("keydown", (e) => {
         if (e.key === "Escape") {
@@ -11455,6 +11881,12 @@ Click to manage or assign.`;
       document.getElementById("linkHint").hidden = true;
     });
     document.getElementById("btnDepCancel")?.addEventListener("click", closeDependencyPopup);
+    document.getElementById("btnSwapDepDirection")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!depEditState) return;
+      depEditState.link = swapDependencyDirection(depEditState.link);
+      refreshDepEditPopoverFields();
+    });
     document.getElementById("btnCloseDepEdit")?.addEventListener("click", closeDependencyEditPopover);
     document.getElementById("btnCancelDepEdit")?.addEventListener("click", closeDependencyEditPopover);
     document.getElementById("btnSaveDepEdit")?.addEventListener("click", saveDependencyEdit);
@@ -11539,12 +11971,15 @@ Click to manage or assign.`;
       }
     });
     document.addEventListener("click", (e) => {
+      const recentlyOpened = performance.now() - popoverOpenedAt < 180;
       const tb = document.getElementById("barToolbar");
       if (tb && !tb.hidden && !tb.contains(e.target) && !e.target.closest(".bar-hit")) closeBarToolbar();
+      const depPop = document.getElementById("depPopup");
+      if (!recentlyOpened && depPop && !depPop.hidden && !depPop.contains(e.target) && !e.target.closest("#barToolbar")) closeDependencyPopup();
       const depEditPop = document.getElementById("depEditPopover");
-      if (depEditPop && !depEditPop.hidden && !depEditPop.contains(e.target) && !e.target.closest(".dep-link-badge")) closeDependencyEditPopover();
+      if (!recentlyOpened && depEditPop && !depEditPop.hidden && !depEditPop.contains(e.target) && !e.target.closest(".dep-link-badge")) closeDependencyEditPopover();
       const conflictBanner = document.getElementById("depConflictBanner");
-      if (conflictBanner && !conflictBanner.hidden && !conflictBanner.contains(e.target)) closeDependencyConflictDialog();
+      if (!recentlyOpened && conflictBanner && !conflictBanner.hidden && !conflictBanner.contains(e.target)) closeDependencyConflictDialog();
       const plansPop = document.getElementById("plansManagerPopover");
       if (plansPop && plansPop.style.display !== "none" && !plansPop.contains(e.target) && !e.target.closest("#btnManagePlans")) {
         plansPop.style.display = "none";

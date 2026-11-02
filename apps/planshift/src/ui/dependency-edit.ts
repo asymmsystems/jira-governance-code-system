@@ -24,6 +24,46 @@ export function dependencyPopoverTitle(predKey: string, succKey: string): string
   return `${predKey} ➔ ${succKey}`;
 }
 
+export interface EditableDependencyLink {
+  predecessorKey: string;
+  successorKey: string;
+  triggerPercent: number;
+  isViolated: boolean;
+  isNew?: boolean;
+}
+
+/**
+ * Builds a dependency link when dragging a connector from Task A (sourceKey) onto Task B (targetKey).
+ * side === 'right' (forward link port): sourceKey is Predecessor, targetKey is Successor (targetKey depends on sourceKey).
+ * side === 'left' (backward link port): targetKey is Predecessor, sourceKey is Successor (sourceKey depends on targetKey).
+ */
+export function buildDraggedDependencyLink(
+  sourceKey: string,
+  targetKey: string,
+  triggerPercent = 100,
+  side: 'right' | 'left' = 'right'
+): EditableDependencyLink {
+  const isRight = side === 'right';
+  return {
+    predecessorKey: isRight ? sourceKey : targetKey,
+    successorKey: isRight ? targetKey : sourceKey,
+    triggerPercent: clampTriggerPercent(triggerPercent),
+    isViolated: false,
+    isNew: true
+  };
+}
+
+/**
+ * Reverses predecessor and successor on a dependency link while preserving triggerPercent.
+ */
+export function swapDependencyDirection<T extends { predecessorKey: string; successorKey: string }>(link: T): T {
+  return {
+    ...link,
+    predecessorKey: link.successorKey,
+    successorKey: link.predecessorKey
+  };
+}
+
 /** Formats text for a dependency badge on the canvas timeline. */
 export function formatDependencyBadge(dep: { triggerPercent?: number; triggerDate?: string; isViolated?: boolean }): string {
   const pct = typeof dep.triggerPercent === 'number' ? dep.triggerPercent : 100;

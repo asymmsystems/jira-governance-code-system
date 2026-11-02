@@ -11,7 +11,9 @@ import {
   computeDependencyPreview,
   checkDependencyConflict,
   clampToEarliestStart,
-  suggestTriggerToFit
+  suggestTriggerToFit,
+  buildDraggedDependencyLink,
+  swapDependencyDirection
 } from '../../src/ui/dependency-edit';
 
 describe('dependency editing pure helpers', () => {
@@ -27,9 +29,34 @@ describe('dependency editing pure helpers', () => {
     });
   });
 
-  describe('dependencyPopoverTitle', () => {
-    it('formats predecessor to successor title with arrow', () => {
+  describe('dependencyPopoverTitle and drag direction helpers', () => {
+    it('formats predecessor to successor title and builds directional drag links', () => {
       expect(dependencyPopoverTitle('PROJ-1', 'PROJ-2')).toBe('PROJ-1 ➔ PROJ-2');
+      // Dragging forward from right port of A to B: A is predecessor, B is successor
+      const forwardLink = buildDraggedDependencyLink('TASK-A', 'TASK-B', 40, 'right');
+      expect(forwardLink).toEqual({
+        predecessorKey: 'TASK-A',
+        successorKey: 'TASK-B',
+        triggerPercent: 40,
+        isViolated: false,
+        isNew: true
+      });
+      // Dragging backward from left port of A to B: B is predecessor, A is successor
+      const backwardLink = buildDraggedDependencyLink('TASK-A', 'TASK-B', 40, 'left');
+      expect(backwardLink).toEqual({
+        predecessorKey: 'TASK-B',
+        successorKey: 'TASK-A',
+        triggerPercent: 40,
+        isViolated: false,
+        isNew: true
+      });
+      const defaultLink = buildDraggedDependencyLink('TASK-A', 'TASK-B');
+      expect(defaultLink.triggerPercent).toBe(100);
+      expect(defaultLink.predecessorKey).toBe('TASK-A');
+      const swapped = swapDependencyDirection(forwardLink);
+      expect(swapped.predecessorKey).toBe('TASK-B');
+      expect(swapped.successorKey).toBe('TASK-A');
+      expect(swapped.triggerPercent).toBe(40);
     });
   });
 

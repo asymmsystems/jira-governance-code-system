@@ -7,6 +7,7 @@
 /**
  * CascadePlan: the only path from the UI to the Forge backend and the Jira router.
  * Uses the public @forge/bridge API (B-01, INV-02).
+ * Decision D-09: Custom UI canvas planner with @forge/bridge; @forge/react (UI Kit 2) has no canvas support.
  */
 
 import { invoke, router } from '@forge/bridge';

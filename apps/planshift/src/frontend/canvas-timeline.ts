@@ -66,6 +66,8 @@ export interface ActiveLinking {
   curX: number;
   curY: number;
   targetKey: string | null;
+  predKey?: string | null;
+  succKey?: string | null;
 }
 
 export class CanvasTimeline {
@@ -77,6 +79,7 @@ export class CanvasTimeline {
   private colours = new Map<string, string>();
   private pending = 0;
   activeKey: string | null = null;
+  hoveredRowKey: string | null = null;
   focusKey: string | null = null;
   driverKeys: string[] = [];
   drag: DragPreview | null = null;
@@ -190,17 +193,40 @@ export class CanvasTimeline {
     ctx.rect(left, top, cssW, cssH);
     ctx.clip();
 
+    this.drawHoveredRow(m, left, cssW);
     this.drawGrid(m, left, top, cssW, cssH);
     // The today line goes under the bars so it never crosses a label; its flag goes on top.
     const todayX = this.drawTodayLine(m, top, cssH);
     const rects = this.barRects(m);
     this.drawArrows(m, rects, top, cssH);
     for (let i = m.first; i <= m.last; i++) this.drawBar(m, i, rects);
-    if (this.activeLinking) this.drawActiveLinking(this.activeLinking, rects);
+    if (this.activeLinking) this.drawActiveLinking(this.activeLinking, rects, left, cssW);
     if (todayX !== null) this.drawTodayFlag(m, todayX, top);
     ctx.restore();
     this.onDraw?.(this.arrowLinks);
     if (perf) performance.measure('cp:draw', 'cp:draw:start');
+  }
+
+  private drawHoveredRow(m: TimelineModel, left: number, cssW: number): void {
+    const hoverKey = this.hoveredRowKey || this.activeKey;
+    if (!hoverKey) return;
+    const hi = this.index.get(hoverKey);
+    if (hi === undefined || hi < m.first || hi > m.last) return;
+    const ctx = this.ctx;
+    const ry = m.rowTop(hi);
+    ctx.save();
+    ctx.fillStyle = this.c('--cp-surface-sunken');
+    ctx.fillRect(left, ry, cssW, ROW_H);
+    ctx.strokeStyle = this.c(CANVAS_TOKENS.focus);
+    ctx.globalAlpha = 0.28;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(left, ry + 0.5);
+    ctx.lineTo(left + cssW, ry + 0.5);
+    ctx.moveTo(left, ry + ROW_H - 0.5);
+    ctx.lineTo(left + cssW, ry + ROW_H - 0.5);
+    ctx.stroke();
+    ctx.restore();
   }
 
   private dates(task: any): { startDate?: string; endDate?: string } {
@@ -316,9 +342,9 @@ export class CanvasTimeline {
       this.path(r);
       ctx.clip();
       ctx.strokeStyle = fill;
-      ctx.lineWidth = 1.5;
-      ctx.globalAlpha = 0.35;
-      const step = 8;
+      ctx.lineWidth = 1.75;
+      ctx.globalAlpha = 0.45;
+      const step = 7;
       ctx.beginPath();
       for (let offset = -r.h; offset < r.w + r.h; offset += step) {
         ctx.moveTo(r.x + offset, r.y + r.h);
@@ -327,9 +353,10 @@ export class CanvasTimeline {
       ctx.stroke();
       ctx.restore();
     }
+    const isHovered = task.key === this.activeKey && task.key !== this.focusKey;
     this.path(r);
-    ctx.strokeStyle = isConflict ? this.c(CANVAS_TOKENS.arrowViolated) : fill;
-    ctx.lineWidth = isConflict ? 2.5 : 1.5;
+    ctx.strokeStyle = isConflict ? this.c(CANVAS_TOKENS.arrowViolated) : isHovered ? this.c(CANVAS_TOKENS.focus) : fill;
+    ctx.lineWidth = isConflict ? 2.5 : isHovered ? 2.25 : 1.5;
     ctx.stroke();
 
     const focus = this.c(CANVAS_TOKENS.focus);
@@ -347,7 +374,7 @@ export class CanvasTimeline {
       this.path({ x: r.x - 3, y: r.y - 3, w: r.w + 6, h: r.h + 6 }, RADIUS + 2);
       ctx.drawFocusIfNeeded(this.focusElement);
     }
-    if (task.key === this.focusKey || task.key === this.activeKey) ring(false);
+    if (task.key === this.focusKey) ring(false);
     else if (isDriver) ring(true);
 
     ctx.font = `600 11px ${cssToken('--cp-font', 'sans-serif')}`;
@@ -357,7 +384,7 @@ export class CanvasTimeline {
     let text = this.drag && this.drag.key === task.key ? this.drag.label : `${task.key} (${task.progress || 0}%)${rollup}`;
     if (isDriver) text = `${text} · Driver`;
     const chipW = ctx.measureText(text).width + 10;
-    const place = labelPlacement(r.x, r.w, chipW);
+    const place = labelPlacement(r.x, r.w, chipW, done);
     this.chip(text, place.x, r.y + r.h / 2, this.c(isDriver ? CANVAS_TOKENS.driverText : CANVAS_TOKENS.labelText));
   }
 
@@ -383,9 +410,10 @@ export class CanvasTimeline {
       const violated = Boolean(dep.isViolated);
       const colour = this.c(violated ? CANVAS_TOKENS.arrowViolated : connected ? CANVAS_TOKENS.arrowActive : CANVAS_TOKENS.arrowOk);
       const dx = Math.max(35, Math.abs(x2 - x1) / 2);
+      const dir = x2 >= x1 ? 1 : -1;
       ctx.beginPath();
       ctx.moveTo(x1, y1);
-      ctx.bezierCurveTo(x1 + dx, y1, x2 - dx, y2, x2 - 6, y2);
+      ctx.bezierCurveTo(x1 + dir * dx, y1, x2 - dir * dx, y2, x2 - dir * 6, y2);
       ctx.strokeStyle = colour;
       ctx.lineWidth = active && !connected ? 1 : connected ? 2.5 : 1.75;
       ctx.setLineDash(violated ? [4, 3] : []);
@@ -393,8 +421,8 @@ export class CanvasTimeline {
       ctx.setLineDash([]);
       ctx.beginPath();
       ctx.moveTo(x2, y2);
-      ctx.lineTo(x2 - 7, y2 - 4);
-      ctx.lineTo(x2 - 7, y2 + 4);
+      ctx.lineTo(x2 - dir * 8, y2 - 4.5);
+      ctx.lineTo(x2 - dir * 8, y2 + 4.5);
       ctx.closePath();
       ctx.fillStyle = colour;
       ctx.fill();
@@ -447,23 +475,24 @@ export class CanvasTimeline {
     ctx.fillText(text, r.x + 6, r.y + r.h / 2);
   }
 
-  private drawActiveLinking(linking: ActiveLinking, rects: Map<string, { i: number; r: Rect }>): void {
+  private drawActiveLinking(linking: ActiveLinking, rects: Map<string, { i: number; r: Rect }>, left: number, cssW: number): void {
     const ctx = this.ctx;
-    const { x1, y1, curX, curY, targetKey } = linking;
+    const { sourceKey, x1, y1, curX, curY, targetKey } = linking;
     const colour = this.c(CANVAS_TOKENS.arrowActive);
+    const dir = curX >= x1 ? 1 : -1;
     const dx = Math.max(35, Math.abs(curX - x1) / 2);
 
     ctx.beginPath();
     ctx.moveTo(x1, y1);
-    ctx.bezierCurveTo(x1 + dx, y1, curX - dx, curY, curX - 6, curY);
+    ctx.bezierCurveTo(x1 + dir * dx, y1, curX - dir * dx, curY, curX - dir * 6, curY);
     ctx.strokeStyle = colour;
     ctx.lineWidth = 2.5;
     ctx.stroke();
 
     ctx.beginPath();
     ctx.moveTo(curX, curY);
-    ctx.lineTo(curX - 8, curY - 5);
-    ctx.lineTo(curX - 8, curY + 5);
+    ctx.lineTo(curX - dir * 8, curY - 5);
+    ctx.lineTo(curX - dir * 8, curY + 5);
     ctx.closePath();
     ctx.fillStyle = colour;
     ctx.fill();
@@ -481,5 +510,16 @@ export class CanvasTimeline {
         ctx.stroke();
       }
     }
+
+    ctx.font = `600 11px ${cssToken('--cp-font', 'sans-serif')}`;
+    ctx.textBaseline = 'middle';
+    const effectivePred = linking.predKey || sourceKey;
+    const effectiveSucc = linking.succKey || targetKey;
+    const label = targetKey
+      ? `${effectiveSucc} depends on ${effectivePred}`
+      : `Drag arrow to connect dependency`;
+    const tw = ctx.measureText(label).width + 10;
+    const chipX = Math.max(left + 6, Math.min(left + cssW - tw - 6, curX + 12));
+    this.chip(label, chipX, Math.max(y1 - 24, curY - 18), this.c(CANVAS_TOKENS.driverText), colour);
   }
 }
