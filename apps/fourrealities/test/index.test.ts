@@ -18,7 +18,9 @@ import {
   decideException,
   requestReview,
   refreshProjectSnapshot,
-  runScheduledSnapshot
+  runScheduledSnapshot,
+  searchConfluencePages,
+  LICENCE_INACTIVE_MESSAGE
 } from '../src/index';
 import { StorageProvider } from '../src/contract/accessors';
 import { judged } from './domain/fixtures';
@@ -45,6 +47,10 @@ const mockDefaultUser = (...args: any[]) => (String(args[0]).includes('fields=id
   : mockRequestJira(...args));
 const mockAppRequestJira = jest.fn(mockDefaultApp);
 const mockUserRequestJira = jest.fn(mockDefaultUser);
+const mockUserRequestConfluence = jest.fn().mockResolvedValue({
+  status: 200,
+  json: async () => ({ results: [{ title: 'ADR-001', _links: { webui: '/wiki/adr-1' } }] })
+});
 // The Forge app context of the current invocation (licence); a test may replace it or make it throw.
 const mockAppContext: { get: () => any } = { get: () => ({}) };
 jest.mock('@forge/api', () => ({
@@ -55,7 +61,8 @@ jest.mock('@forge/api', () => ({
       requestJira: mockAppRequestJira
     }),
     asUser: () => ({
-      requestJira: mockUserRequestJira
+      requestJira: mockUserRequestJira,
+      requestConfluence: mockUserRequestConfluence
     })
   },
   route: (strings: any, ...values: any[]) =>
@@ -260,6 +267,23 @@ describe('FourRealities Index / Forge Handlers', () => {
         context: { extension: { issue: { id: 'iss-h5' } } }
       } as any);
       expect(resReview.success).toBe(true);
+    });
+
+    it('dispatches searchConfluencePages via handler', async () => {
+      const res: any = await handler({
+        call: {
+          functionKey: 'searchConfluencePages',
+          payload: { query: 'ADR' }
+        },
+        context: {}
+      } as any);
+      expect(res.ok).toBe(true);
+    });
+
+    it('searchConfluencePages checks licence and returns error when inactive', async () => {
+      const res = await searchConfluencePages({ query: 'ADR' }, { license: { isActive: false } } as any);
+      expect(res.ok).toBe(false);
+      expect(res.error).toBe(LICENCE_INACTIVE_MESSAGE);
     });
   });
 

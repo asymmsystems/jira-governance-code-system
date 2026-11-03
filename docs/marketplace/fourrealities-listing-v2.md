@@ -11,12 +11,15 @@ Shows, for each Jira issue, which delivery evidence exists and where it comes fr
 - **Project dashboard.** Gate rates with their counts ("3 of 8 rated issues"), a triage table ordered by missing evidence, filters by assignee, sprint and gate, and a four-week trend with denominators.
 - **Code exceptions with separation of duties.** A user can request a Code exception for work with no pull request. A project administrator who is not the requester or the assignee approves, rejects or revokes it. Every step is kept, with who and when.
 - **Rework reasons.** Rework loops come from status categories in the changelog. Users can add a reason; reasons are kept as a list and never change a gate.
+- **Confluence search.** Users can search Confluence pages directly from the Link Decision dialog to attach architecture decisions without copying and pasting URLs.
+- **Uniform admin policy.** Administrators can define allowed groups and permission policies using the uniform Asymm Jira UI administration panel.
 - **RAI as a secondary number.** The Reality Alignment Index is the share of rated gates with evidence found. It is always shown after the gates and with its parts. FourRealities never ranks people by it.
 
 ## Works with
 - LedgerSeal and DefinitionGuard (same publisher): their issue properties are read as hints.
 - Checklists for Jira (HeroCoders): its `checklist` issue property is read as a Process hint when no DefinitionGuard record exists.
 - The Jira Development field (GitHub, Bitbucket, GitLab integrations): pull request counts and state.
+- Atlassian Confluence: in-app page search and remote decision links.
 
 ## Limits
 - FourRealities does not verify LedgerSeal, DefinitionGuard or HeroCoders records. Issue properties can be changed by any user who can edit the issue.
@@ -27,9 +30,13 @@ Shows, for each Jira issue, which delivery evidence exists and where it comes fr
 
 ## Data and permissions
 - Runs on Atlassian Forge. The manifest declares no external egress.
-- Scopes: `read:jira-work`, `write:jira-work`, `storage:app`. `write:jira-work` is used only when a user adds a decision link (a remote link, as that user) or records an exception or rework reason (the app's own `fourrealities-exception` issue property, as that user).
+- Scopes: `read:jira-work`, `write:jira-work`, `read:jira-user`, `storage:app`, `search:confluence`, `read:confluence-content.summary`.
+  - `read:jira-work` and `read:jira-user`: reads issue facts, dev status, permissions and assignees.
+  - `write:jira-work`: writes remote links and audit exception properties as the acting user.
+  - `storage:app`: stores daily snapshots, audit exception events, and uniform admin policies in Forge KVS.
+  - `search:confluence` and `read:confluence-content.summary`: enables in-dialog Confluence page search when linking architecture and intent decisions.
 - FourRealities never writes LedgerSeal or DefinitionGuard data.
-- App data (snapshots, exception events, rework notes, site settings) is kept in Forge storage.
+- App data (snapshots, exception events, rework notes, site settings, admin policies) is kept in Forge storage.
 - Marketplace licensing is enabled. With an inactive licence the app shows "Licence not active" and reads nothing.
 
 ## Pricing

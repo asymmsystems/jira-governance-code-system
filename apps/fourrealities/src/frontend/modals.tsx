@@ -7,20 +7,23 @@
 import React, { useState } from 'react';
 import {
   Button,
+  Inline,
   Modal,
   ModalBody,
   ModalFooter,
   ModalHeader,
   ModalTitle,
   SectionMessage,
+  Stack,
   Text,
   Textfield
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
 import { DecideExceptionPayload, ExceptionDecision, IssueRow, LinkDecisionPayload, RecordExceptionPayload, RequestReviewPayload, WriteResult } from '../contract/data/models';
+import { ConfluencePage } from '../contract/accessors';
 import { messageOf } from '../contract/data/errors';
-import { TEXT_ROLE } from '../brand/brand';
-import { FormField, ModalContent } from '../brand/layout';
+import { SPACE, TEXT_ROLE } from '../brand/brand';
+import { FormField, ListRow, ModalContent, NoteBox } from '../brand/layout';
 
 /** The change event a UI Kit Textfield sends. */
 export type TextChange = { target?: { value?: string } };
@@ -38,6 +41,46 @@ export const LinkDecisionModal: React.FC<ModalProps> = ({ issueId, issueKey, onC
   const [title, setTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<ConfluencePage[]>([]);
+  const [searchNotice, setSearchNotice] = useState<string | null>(null);
+  const [selectedPage, setSelectedPage] = useState<ConfluencePage | null>(null);
+
+  const searchConfluence = async () => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed || searching) return;
+    setSearching(true);
+    setSearchNotice(null);
+    try {
+      const res = (await invoke<{ query: string }, { ok: boolean; pages: ConfluencePage[]; error?: string }>('searchConfluencePages', { query: trimmed })) as { ok: boolean; pages: ConfluencePage[]; error?: string } | undefined;
+      if (res?.ok) {
+        setSearchResults(res.pages || []);
+        if ((res.pages || []).length === 0) {
+          setSearchNotice('No Confluence pages found matching your search.');
+        }
+      } else {
+        setSearchNotice(res?.error || 'Could not search Confluence.');
+      }
+    } catch (err) {
+      setSearchNotice(messageOf(err, 'Could not search Confluence.'));
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const selectPage = (page: ConfluencePage) => {
+    setSelectedPage(page);
+    setUrl(page.url);
+    setTitle(page.title);
+  };
+
+  const clearSelectedPage = () => {
+    setSelectedPage(null);
+    setUrl('');
+    setTitle('');
+  };
 
   const submit = async () => {
     if (submitting) return;
@@ -65,19 +108,84 @@ export const LinkDecisionModal: React.FC<ModalProps> = ({ issueId, issueKey, onC
       <ModalBody>
         <ModalContent>
           <Text as="span" color={TEXT_ROLE.secondary}>
-            Add the address of a Confluence page on this site that records the decision.
+            Search Confluence by title or enter the page address of a decision record on this site.
           </Text>
           {error ? (
             <SectionMessage appearance="error" title="Not added">
               <Text as="span">{error}</Text>
             </SectionMessage>
           ) : null}
-          <FormField id="fr-link-url" label="Page address" helper="Must be a Confluence page URL on this site.">
-            <Textfield id="fr-link-url" onChange={(e: TextChange) => setUrl(e.target?.value || '')} />
-          </FormField>
-          <FormField id="fr-link-title" label="Page title" helper="Short title shown on the Jira remote link.">
-            <Textfield id="fr-link-title" onChange={(e: TextChange) => setTitle(e.target?.value || '')} />
-          </FormField>
+
+          <Inline space={SPACE.item} alignBlock="center" shouldWrap={true}>
+            <Button
+              appearance="subtle"
+              spacing="compact"
+              onClick={() => setShowSearch(prev => !prev)}
+            >
+              {showSearch ? 'Hide Confluence search' : 'Search Confluence...'}
+            </Button>
+          </Inline>
+
+          {showSearch ? (
+            <FormField id="fr-link-search" label="Search Confluence pages" helper="Find an architecture decision record or specification by title.">
+              <Inline space={SPACE.item} alignBlock="center" shouldWrap={true}>
+                <Textfield id="fr-link-search" onChange={(e: TextChange) => setSearchQuery(e.target?.value || '')} />
+                <Button appearance="default" spacing="compact" isDisabled={searching} onClick={searchConfluence}>
+                  {searching ? 'Searching...' : 'Search'}
+                </Button>
+              </Inline>
+            </FormField>
+          ) : null}
+
+          {searchNotice ? (
+            <SectionMessage appearance="information">
+              <Text as="span">{searchNotice}</Text>
+            </SectionMessage>
+          ) : null}
+
+          {searchResults.length > 0 && showSearch && !selectedPage ? (
+            <Stack space={SPACE.sub}>
+              <Text as="span" color={TEXT_ROLE.secondary}>Matching Confluence pages:</Text>
+              {searchResults.map((page, idx) => (
+                <ListRow key={idx}>
+                  <Inline space={SPACE.item} alignBlock="center" spread="space-between" shouldWrap={true}>
+                    <Stack space={SPACE.tight}>
+                      <Text as="span" weight="medium">{page.title}</Text>
+                      {page.spaceKey ? (
+                        <Text as="span" size="small" color={TEXT_ROLE.muted}>Space: {page.spaceKey}</Text>
+                      ) : null}
+                    </Stack>
+                    <Button appearance="subtle" spacing="compact" onClick={() => selectPage(page)}>
+                      Select
+                    </Button>
+                  </Inline>
+                </ListRow>
+              ))}
+            </Stack>
+          ) : null}
+
+          {selectedPage ? (
+            <NoteBox>
+              <Inline space={SPACE.item} alignBlock="center" spread="space-between" shouldWrap={true}>
+                <Stack space={SPACE.tight}>
+                  <Text as="span" weight="medium">Selected page: {selectedPage.title}</Text>
+                  <Text as="span" size="small" color={TEXT_ROLE.muted}>{selectedPage.url}</Text>
+                </Stack>
+                <Button appearance="subtle" spacing="compact" onClick={clearSelectedPage}>
+                  Clear
+                </Button>
+              </Inline>
+            </NoteBox>
+          ) : (
+            <>
+              <FormField id="fr-link-url" label="Page address" helper="Must be a Confluence page URL on this site.">
+                <Textfield id="fr-link-url" onChange={(e: TextChange) => setUrl(e.target?.value || '')} />
+              </FormField>
+              <FormField id="fr-link-title" label="Page title" helper="Short title shown on the Jira remote link.">
+                <Textfield id="fr-link-title" onChange={(e: TextChange) => setTitle(e.target?.value || '')} />
+              </FormField>
+            </>
+          )}
         </ModalContent>
       </ModalBody>
       <ModalFooter>

@@ -51,3 +51,6 @@ permissions:
     - read:jira-work
     - write:jira-work
     - storage:app
+    - search:confluence
+    - read:confluence-content.summary
+    - read:jira-user

@@ -297,4 +297,18 @@ AUDT-1 is left Done with label `fr-probe`.
 - Updated sibling adoption prompt in `docs/design/prompt-other-apps-ui-adoption.md` with Section 3.C (Admin Policy Page) and Section 3.D (Jest configuration).
 - 32 suites, 386 of 386 tests pass; coverage 99.66% statements, 96.4% branches, 99.28% functions, 99.81% lines (every file >= 90.9%); all graders PASS (`grade_tdd: PASS 96.4`, `grade_security: PASS`, `grade_ui: PASS`); `forge lint` clean (0 issues); committed `ab2452a`; deployed to development as **3.18.0**.
 
+### Deployed 4.0.0 (B-41 Confluence Page Search in Decision Modal, 2026-11-03)
+
+- Implemented in-dialog Confluence page search in `LinkDecisionModal` (B-41) so users can search site Confluence pages via CQL without having to manually copy and paste page URLs.
+- Added `ConfluencePage` data contract and `ConfluencePageSearchAccessor` contract in `src/contract/accessors.ts`.
+- Implemented `DefaultForgeConfluenceSearchAccessor` in `src/accessor/default-forge-confluence-search-accessor.ts` querying `/wiki/rest/api/content/search?cql=type=page AND title ~ "..."` via Forge `asUser().requestConfluence()`.
+- Added `searchConfluencePages` resolver in `src/index.ts`.
+- Added required Confluence scopes to `manifest.yml`: `search:confluence`, `read:confluence-content.summary`, `read:jira-user`. Zero external network egress preserved.
+- Added comprehensive unit and frontend test suites:
+  - `test/accessor-confluence-search.test.ts` (7 tests covering query trimming, CQL formatting, URL resolution, 401/403 permissions, 500 errors, and network exceptions).
+  - `test/frontend/modals.test.tsx` (8 tests covering `LinkDecisionModal` search expansion, query submission, result display, page selection, manual fallback clearing, and error handling, plus `ExceptionModal`, `DecisionModal`, and `ReviewModal` interactions).
+- Upgraded app on both Jira and Confluence products on `asymmsystems.atlassian.net` with confirmed scopes.
+- 34 suites, 403 of 403 tests pass; coverage 99.62% statements, 96.07% branches, 99.3% functions, 99.82% lines (every file >= 90.9%); all graders PASS (`grade_tdd: PASS 96.07`, `grade_security: PASS`, `grade_ui: PASS`); `forge lint` clean (0 issues, 1 approval acknowledged); deployed to development as **4.0.0**.
+
+
 

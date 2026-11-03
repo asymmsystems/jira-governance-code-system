@@ -90,3 +90,14 @@ export interface ExceptionEventAccessor extends Accessor {
   /** Writes migrated events for at most `limit` v2 code notes and removes those notes; returns the count. */
   migrateV2CodeNotes(limit: number): Promise<number>;
 }
+
+export interface ConfluencePage {
+  readonly title: string;
+  readonly url: string;
+  readonly spaceKey?: string;
+}
+
+export interface ConfluencePageSearchAccessor extends Accessor {
+  searchPages(query: string): Promise<{ readonly ok: boolean; readonly pages: ConfluencePage[]; readonly error?: string }>;
+}
+

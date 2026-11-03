@@ -21,7 +21,14 @@ describe('manifest.yml', () => {
 
   it('keeps the scopes the app uses, and declares no external egress', () => {
     const scopes = manifest.slice(manifest.indexOf('scopes:')).split('\n').filter(l => /^\s*- /.test(l)).map(l => l.trim().slice(2));
-    expect(scopes).toEqual(['read:jira-work', 'write:jira-work', 'storage:app']);
+    expect(scopes).toEqual([
+      'read:jira-work',
+      'write:jira-work',
+      'storage:app',
+      'search:confluence',
+      'read:confluence-content.summary',
+      'read:jira-user'
+    ]);
     expect(manifest).not.toMatch(/external:/);
   });
 

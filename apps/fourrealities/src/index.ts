@@ -7,8 +7,9 @@
 
 import Resolver from '@forge/resolver';
 import { CallerContext, DecideExceptionPayload, ForgeContext, IssueRow, LinkDecisionPayload, ProjectDashboardView, RecordExceptionPayload, RequestReviewPayload, ResolverResult, ScheduledRunResult, WriteResult } from './contract/data/models';
-import { StorageProvider } from './contract/accessors';
+import { ConfluencePage, ConfluencePageSearchAccessor, StorageProvider } from './contract/accessors';
 import { DefaultForgeKvsStore } from './accessor/default-forge-kvs-store';
+import { DefaultForgeConfluenceSearchAccessor } from './accessor/default-forge-confluence-search-accessor';
 import { DefaultForgeJiraIssueAccessor, Principal } from './accessor/default-forge-jira-issue-accessor';
 import { DefaultKvsSiteConfigAccessor } from './accessor/default-kvs-site-config-accessor';
 import { DefaultKvsSnapshotAccessor } from './accessor/default-kvs-snapshot-accessor';
@@ -178,6 +179,18 @@ export async function requestReview(payload: RequestReviewPayload | undefined, c
   return withRow(app, caller, await app.issues.requestReview(caller, payload));
 }
 
+/** Searches Confluence pages by title as the user (B-41). */
+export async function searchConfluencePages(
+  payload: { query?: string } | undefined,
+  context?: ForgeContext,
+  confluenceAccessor?: ConfluencePageSearchAccessor
+): Promise<{ ok: boolean; pages: ConfluencePage[]; error?: string }> {
+  if (licenceInactive(context)) return { ok: false, pages: [], error: LICENCE_INACTIVE_MESSAGE };
+  const query = typeof payload?.query === 'string' ? payload.query : '';
+  const searcher = confluenceAccessor || new DefaultForgeConfluenceSearchAccessor();
+  return searcher.searchPages(query);
+}
+
 /**
  * Rendering hooks for Forge modules.
  */
@@ -222,6 +235,10 @@ resolver.define('decideException', async (req) => {
 
 resolver.define('requestReview', async (req) => {
   return await requestReview(req.payload, req.context);
+});
+
+resolver.define('searchConfluencePages', async (req) => {
+  return await searchConfluencePages(req.payload as { query?: string }, req.context);
 });
 
 export const handler = resolver.getDefinitions();
