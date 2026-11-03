@@ -10,6 +10,7 @@
 import React, { useState, useEffect } from 'react';
 import ForgeReconciler, { Text, Button, SectionMessage, Stack, Inline, Heading, Label, Textfield, Spinner } from '@forge/react';
 import { invoke } from '@forge/bridge';
+import { SPACE, TEXT_ROLE } from '@asymm/jira-ui';
 import { addGroup, buildAdminView, GroupChoice, removeGroup, savedGroups } from './admin-view-model';
 
 export const LedgerSealAdmin: React.FC = () => {
@@ -78,7 +79,7 @@ export const LedgerSealAdmin: React.FC = () => {
   }
 
   return (
-    <Stack space="space.150">
+    <Stack space={SPACE.group}>
       {view.state !== 'READY' ? (
         <SectionMessage appearance={view.state === 'NOT_ADMIN' ? 'information' : 'warning'}>
           <Text>{view.message}</Text>
@@ -89,18 +90,18 @@ export const LedgerSealAdmin: React.FC = () => {
             <Text>{view.message}</Text>
           </SectionMessage>
           <Text>Project admins and Jira admins can always seal. Members of the groups below can also seal, reseal and revoke.</Text>
-          <Stack space="space.100">
+          <Stack space={SPACE.item}>
             <Heading as="h4">Approver groups ({view.chosen.length})</Heading>
             {view.chosen.length === 0 && <Text>No approver groups configured.</Text>}
             {view.chosen.map(g => (
-              <Inline key={g.groupId} space="space.100" alignBlock="center">
+              <Inline key={g.groupId} space={SPACE.item} alignBlock="center">
                 <Text weight="medium">{g.name}</Text>
                 <Button appearance="subtle" onClick={() => setChosen(removeGroup(chosen, g.groupId))}>
                   Remove
                 </Button>
               </Inline>
             ))}
-            <Inline space="space.100">
+            <Inline space={SPACE.item}>
               <Button appearance="primary" isDisabled={!view.canSave || saving} onClick={save}>
                 {saving ? 'Saving...' : 'Save changes'}
               </Button>
@@ -111,18 +112,18 @@ export const LedgerSealAdmin: React.FC = () => {
               <Text>{notice}</Text>
             </SectionMessage>
           )}
-          <Stack space="space.100">
+          <Stack space={SPACE.item}>
             <Label labelFor="group-search">Find a group to add</Label>
-            <Inline space="space.100" alignBlock="center">
+            <Inline space={SPACE.item} alignBlock="center">
               {/* Uncontrolled on purpose: a controlled value lost typed characters over the UI Kit bridge (live, DEMO-34) */}
               <Textfield id="group-search" name="group-search" onChange={(e: any) => setQuery(e.target.value)} />
               <Button onClick={search}>Search</Button>
             </Inline>
             {view.results.length > 0 && (
-              <Stack space="space.050">
-                <Text color="color.text.subtle">Search results:</Text>
+              <Stack space={SPACE.sub}>
+                <Text color={TEXT_ROLE.secondary}>Search results:</Text>
                 {view.results.map(g => (
-                  <Inline key={g.groupId} space="space.100" alignBlock="center">
+                  <Inline key={g.groupId} space={SPACE.item} alignBlock="center">
                     <Text>{g.name}</Text>
                     <Button appearance="subtle" onClick={() => setChosen(addGroup(chosen, g))}>
                       Add

@@ -1,0 +1,14 @@
+{
+  "name": "@asymm/jira-ui",
+  "version": "1.0.0",
+  "description": "Shared in-Jira UI Kit brand system and layout primitives for Asymm Systems apps",
+  "author": "Fahim Farook",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "peerDependencies": {
+    "@forge/react": ">=10.0.0",
+    "react": ">=18.0.0"
+  }
+}

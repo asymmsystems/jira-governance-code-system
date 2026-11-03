@@ -1,16 +1,49 @@
-# Asymm Jira UI Shared Brand and Layout Module
+# @asymm/jira-ui: Shared In-Jira UI Kit Brand and Layout Package
 
-This folder (`src/brand/`) contains the reusable brand definitions and Forge UI Kit layout primitives for Asymm Systems Jira apps (**FourRealities**, **LedgerSeal**, and **DefinitionGuard**).
+This package (`packages/asymm-jira-ui`) contains the canonical brand definitions, design tokens, and Forge UI Kit layout primitives for all Asymm Systems Jira apps (**FourRealities**, **LedgerSeal**, **DefinitionGuard**, and **PlanShift**).
 
-It has zero imports from LedgerSeal domain, contract, or UI code (`react` and `@forge/react` only) so it can move unchanged into `packages/asymm-jira-ui` once workspace extraction is approved.
+It is a zero-dependency monorepo package (`react` and `@forge/react` peer dependencies only) designed for uniform adoption across apps without code duplication.
+
+## Monorepo Setup
+
+In each app's `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@asymm/jira-ui": ["../../packages/asymm-jira-ui/src"],
+      "@asymm/jira-ui/*": ["../../packages/asymm-jira-ui/src/*"]
+    }
+  }
+}
+```
+
+Components across all apps import directly from `@asymm/jira-ui`:
+
+```tsx
+import {
+  AppSurface,
+  PanelHeader,
+  SummaryBlock,
+  KeyValueInline,
+  StatusLozenge,
+  Card,
+  Section,
+  NoteBox,
+  TEXT_ROLE,
+  SPACE
+} from '@asymm/jira-ui';
+```
 
 ## Architecture Rule
 
-Outside `src/brand/`, no source file in `src/` may contain:
+Outside `@asymm/jira-ui`, no app source file in `src/` may contain:
 - raw hex colours (`#...`), or
 - raw Atlassian Design System token strings starting with `color.`, `elevation.`, `space.`, or `radius.`.
 
-Components import semantic roles (`SPACE`, `TEXT_ROLE`) and layout primitives from `src/brand/` instead.
+Components import semantic roles (`SPACE`, `TEXT_ROLE`, `TOKENS`) and layout primitives from `@asymm/jira-ui` instead.
 
 ## Semantic Roles (`brand.ts`)
 
@@ -18,7 +51,7 @@ Components import semantic roles (`SPACE`, `TEXT_ROLE`) and layout primitives fr
 - **`SPACE`**: Semantic spacing roles (`page`, `section`, `group`, `item`, `compact`, `sub`, `tight`, `indent`, `none`) mapped to Atlassian `space.*` tokens.
 - **`TEXT_ROLE`**: Semantic text colour roles (`primary`, `secondary`, `muted`, `accentTeal`, `danger`, `warning`, `success`) mapped to theme-aware `color.text.*` tokens.
 - **`TOKENS`**: Surface (`elevation.surface.sunken`, `elevation.surface`, `color.background.neutral`), border, shadow, and radius mappings.
-- **`statusToAppearance(state, verification)`**: Maps gate states to Atlassian `Lozenge` appearances (`success`, `inprogress`, `removed`, `moved`, `default`).
+- **`statusToAppearance(state, verification)`**: Maps gate and verification states to Atlassian `Lozenge` appearances (`success`, `inprogress`, `removed`, `moved`, `default`).
 
 ## Shared Layout Primitives (`layout.tsx`)
 

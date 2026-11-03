@@ -6,7 +6,11 @@
     "jsx": "react",
     "declaration": true,
     "outDir": "./dist",
-    "rootDir": "./src",
+    "baseUrl": ".",
+    "paths": {
+      "@asymm/jira-ui": ["../../packages/asymm-jira-ui/src"],
+      "@asymm/jira-ui/*": ["../../packages/asymm-jira-ui/src/*"]
+    },
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

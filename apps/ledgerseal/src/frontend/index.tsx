@@ -18,20 +18,21 @@ import { invoke, router } from '@forge/bridge';
 import { DECLARATION, MEANINGS } from '../domain/declaration';
 import { buildPanelView, formatTime, PanelView } from './view-model';
 import {
-  AppSurface,
-  PanelHeader,
-  SummaryBlock,
-  Card,
-  Section,
-  SubSection,
-  NoteBox,
-  KeyValueInline,
-  AttributionLine,
   ActionRow,
+  AppSurface,
+  AttributionLine,
+  Card,
+  FormField,
+  KeyValueInline,
   ListRow,
-  FormField
-} from '../brand/layout';
-import { SPACE, TEXT_ROLE } from '../brand/brand';
+  NoteBox,
+  PanelHeader,
+  Section,
+  SPACE,
+  SubSection,
+  SummaryBlock,
+  TEXT_ROLE
+} from '@asymm/jira-ui';
 
 type FormMode = 'seal' | 'approve' | 'revoke' | null;
 
@@ -148,7 +149,7 @@ export const LedgerSealPanel: React.FC = () => {
   return (
     <AppSurface>
       <PanelHeader
-        title="Approval Seal"
+        title="LedgerSeal"
         statusText={view.lozenge?.text}
         statusAppearance={view.lozenge?.appearance}
         action={
@@ -252,7 +253,7 @@ export const LedgerSealPanel: React.FC = () => {
       </SummaryBlock>
 
       {view.seal && (
-        <Section title="Seal details" defaultCollapsed={true}>
+        <Section title="Certificate & attestation details" count={3} defaultCollapsed={true}>
           <Inline space={SPACE.sub} alignBlock="center" shouldWrap>
             <Text as="span" size="small" weight="medium">Signed by:</Text>
             <User accountId={view.seal.signerAccountId} />

@@ -512,6 +512,23 @@ Not tested live: a seal by a non-admin group member, because the site has one hu
 
 Also: the gate `tools/check.sh` now runs jest with `-w 2`; one full run was killed (exit 137) with the default worker count.
 
-**4. In-Jira UI standard adoption** (`23419c7`, development 3.13.0). Adopted Asymm Systems In-Jira UI standard (`docs/design/asymm-jira-ui-standard.md`). Wrapped issue panel in `AppSurface`, added unified `PanelHeader` with status lozenge and bordered compact refresh button, single-border `SummaryBlock` hero card with honest status sentence and `KeyValueInline` next step line, single primary action button, subtle `Open Four Realities panel` link, and collapsible `Section` for seal details, tamper-evident hash, covered/excluded fields, and audit history. Retained all uncontrolled inputs and inline `Text as="span"` rules. 315 tests pass across 36 suites, 95.57% branch coverage, 0 em dashes.
+**4. Canonical In-Jira UI shared package adoption** (development 3.14.0).
+- Adopted canonical `@asymm/jira-ui` package located at `packages/asymm-jira-ui` across LedgerSeal.
+- Removed local duplicate `apps/ledgerseal/src/brand/` directory and test `test/brand/brand.test.ts`.
+- Configured path mapping in `apps/ledgerseal/tsconfig.json` (`baseUrl: "."`, `paths` mapping `@asymm/jira-ui`) and removed `rootDir: "./src"` to allow compilation of monorepo package sources.
+- Annotated child and index parameters in `packages/asymm-jira-ui/src/layout.tsx` grid components with explicit `React.ReactNode` and `number` types to satisfy strict TypeScript checking.
+- Updated `apps/ledgerseal/src/frontend/index.tsx` to import directly from `@asymm/jira-ui`, displaying `title="LedgerSeal"` in `PanelHeader` and `<Section title="Certificate & attestation details" count={3} defaultCollapsed={true}>`.
+- Updated `apps/ledgerseal/src/frontend/admin.tsx` to import `SPACE` and `TEXT_ROLE` from `@asymm/jira-ui` and eliminated all raw Atlassian tokens.
+- Created `apps/ledgerseal/test/architecture.test.ts` verifying that no source file in LedgerSeal uses raw Atlassian tokens or hex colors outside `@asymm/jira-ui`, no local `src/brand` exists, and `TextArea` preserves uncontrolled input rules without a `value` prop.
+- Added `@asymm/jira-ui` symlink in `apps/ledgerseal/node_modules/@asymm/jira-ui` so Forge CLI's native Webpack bundler resolves the shared package without modifying dependencies or running `npm install`.
+- Verification results:
+  - `tsc --noEmit -p .`: OK (0 errors).
+  - Test suite: 36 passed, 36 total suites; 314 passed, 314 total tests; 95.54% branch coverage (all files >= 90%).
+  - Em dash scan: 0 em dashes across all changed and untracked files.
+  - Architecture test: passed 5 of 5 checks.
+  - Graders (`tools/graders.sh`): `grade_tdd True 95.54`, `grade_security True`, `grade_ui True`.
+  - Forge lint: 0 issues found.
+  - Deployed to development as version 3.14.0; installation `b8f7e832` remains Up-to-date.
+
 
 
