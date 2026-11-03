@@ -50,6 +50,9 @@ import {
   validatePlanName,
   toValidationResult
 } from './validation';
+import { ResourceUtilizationEngine, ResourceUtilizationView } from './domain/resource-utilization';
+import { ScopeCreepEngine, PlanBaseline, ScopeShiftRequest, ScopeCreepReport } from './domain/scope-creep';
+import { BaselineRepository } from './storage/baseline-repository';
 
 class ForgeKvsProvider implements StorageProvider {
   async get<T>(key: string): Promise<T | undefined> {
@@ -2273,6 +2276,133 @@ export async function withResolverHandler<T>(req: any, fn: () => Promise<T>): Pr
   return withValidation(fn);
 }
 
+export async function freezePlanBaseline(
+  payload: { projectKey: string; projectId?: string; planId?: string; name: string },
+  storageProvider?: StorageProvider,
+  context?: any
+): Promise<{ success: boolean; baseline?: PlanBaseline; error?: string }> {
+  try {
+    const storage = resolveStorage(storageProvider);
+    const planId = payload.planId || 'default';
+    const plan = await getProjectPlan(payload.projectKey, storageProvider, new Date(), undefined, payload.projectId, undefined, planId);
+    const accountId = context?.accountId || 'unknown';
+    const baseline = ScopeCreepEngine.freezeBaseline(planId, payload.projectKey, payload.name, accountId, plan.tasks);
+    const repo = new BaselineRepository(storage);
+    await repo.saveBaseline(baseline);
+    return { success: true, baseline };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to freeze baseline' };
+  }
+}
+
+export async function getPlanBaselines(
+  payload: { projectKey: string; projectId?: string; planId?: string },
+  storageProvider?: StorageProvider
+): Promise<{ success: boolean; baselines: PlanBaseline[]; activeBaseline?: PlanBaseline; error?: string }> {
+  try {
+    const storage = resolveStorage(storageProvider);
+    const planId = payload.planId || 'default';
+    const repo = new BaselineRepository(storage);
+    const baselines = await repo.listBaselines(payload.projectKey, planId);
+    const activeBaseline = await repo.getActiveBaseline(payload.projectKey, planId);
+    return { success: true, baselines, activeBaseline };
+  } catch (err: any) {
+    return { success: false, baselines: [], error: err?.message || 'Failed to get baselines' };
+  }
+}
+
+export async function getScopeCreepReport(
+  payload: { projectKey: string; projectId?: string; planId?: string; baselineId?: string },
+  storageProvider?: StorageProvider
+): Promise<{ success: boolean; report?: ScopeCreepReport; error?: string }> {
+  try {
+    const storage = resolveStorage(storageProvider);
+    const planId = payload.planId || 'default';
+    const repo = new BaselineRepository(storage);
+    const baseline = payload.baselineId
+      ? await repo.getBaseline(payload.projectKey, planId, payload.baselineId)
+      : await repo.getActiveBaseline(payload.projectKey, planId);
+
+    if (!baseline) {
+      return { success: false, error: 'No baseline found for plan' };
+    }
+
+    const plan = await getProjectPlan(payload.projectKey, storageProvider, new Date(), undefined, payload.projectId, undefined, planId);
+    const shifts = await repo.getShiftRequests(payload.projectKey, planId);
+    const report = ScopeCreepEngine.detectScopeCreep(baseline, plan.tasks, shifts);
+    return { success: true, report };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to get scope creep report' };
+  }
+}
+
+export async function requestScopeShift(
+  payload: { projectKey: string; projectId?: string; planId?: string; baselineId?: string; reason: string },
+  storageProvider?: StorageProvider,
+  context?: any
+): Promise<{ success: boolean; request?: ScopeShiftRequest; error?: string }> {
+  try {
+    const storage = resolveStorage(storageProvider);
+    const planId = payload.planId || 'default';
+    const repo = new BaselineRepository(storage);
+    const baseline = payload.baselineId
+      ? await repo.getBaseline(payload.projectKey, planId, payload.baselineId)
+      : await repo.getActiveBaseline(payload.projectKey, planId);
+
+    if (!baseline) {
+      return { success: false, error: 'No active baseline to shift from' };
+    }
+
+    const plan = await getProjectPlan(payload.projectKey, storageProvider, new Date(), undefined, payload.projectId, undefined, planId);
+    const accountId = context?.accountId || 'unknown';
+    const shift = ScopeCreepEngine.createShiftRequest(baseline, plan.tasks, accountId, payload.reason);
+    await repo.saveShiftRequest(shift);
+    return { success: true, request: shift };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to request scope shift' };
+  }
+}
+
+export async function reviewScopeShift(
+  payload: { projectKey: string; projectId?: string; planId?: string; shiftId: string; status: 'APPROVED' | 'REJECTED'; comment?: string },
+  storageProvider?: StorageProvider,
+  context?: any
+): Promise<{ success: boolean; request?: ScopeShiftRequest; error?: string }> {
+  try {
+    const storage = resolveStorage(storageProvider);
+    const planId = payload.planId || 'default';
+    const repo = new BaselineRepository(storage);
+    const shifts = await repo.getShiftRequests(payload.projectKey, planId);
+    const target = shifts.find(s => s.shiftId === payload.shiftId);
+    if (!target) {
+      return { success: false, error: 'Shift request not found' };
+    }
+
+    const accountId = context?.accountId || 'approver';
+    const reviewed = ScopeCreepEngine.reviewShiftRequest(target, payload.status, accountId, payload.comment);
+    await repo.saveShiftRequest(reviewed);
+    return { success: true, request: reviewed };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to review scope shift' };
+  }
+}
+
+export async function getResourceUtilizationGrid(
+  payload: { projectKey: string; projectId?: string; planId?: string; weeklyCapacityHours?: number },
+  storageProvider?: StorageProvider
+): Promise<{ success: boolean; utilization?: ResourceUtilizationView; error?: string }> {
+  try {
+    const planId = payload.planId || 'default';
+    const plan = await getProjectPlan(payload.projectKey, storageProvider, new Date(), undefined, payload.projectId, undefined, planId);
+    const utilization = ResourceUtilizationEngine.generateGrid(plan.tasks, plan.weeks, {
+      weeklyCapacityHours: payload.weeklyCapacityHours || 40
+    });
+    return { success: true, utilization };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to generate resource utilization grid' };
+  }
+}
+
 // Register Forge Resolvers
 const resolver = new Resolver();
 
@@ -2321,6 +2451,13 @@ resolver.define('unscheduleTask', async (req) => withResolverHandler(req, () => 
 resolver.define('reorderWbsTasks', async (req) => withResolverHandler(req, () => reorderWbsTasks({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
 resolver.define('createSubtaskForResource', async (req) => withResolverHandler(req, () => createSubtaskForResource({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+
+resolver.define('freezePlanBaseline', async (req) => withResolverHandler(req, () => freezePlanBaseline({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) }, undefined, req.context)));
+resolver.define('getPlanBaselines', async (req) => withResolverHandler(req, () => getPlanBaselines({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('getScopeCreepReport', async (req) => withResolverHandler(req, () => getScopeCreepReport({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+resolver.define('requestScopeShift', async (req) => withResolverHandler(req, () => requestScopeShift({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) }, undefined, req.context)));
+resolver.define('reviewScopeShift', async (req) => withResolverHandler(req, () => reviewScopeShift({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) }, undefined, req.context)));
+resolver.define('getResourceUtilizationGrid', async (req) => withResolverHandler(req, () => getResourceUtilizationGrid({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
 const definitions = resolver.getDefinitions();
 
