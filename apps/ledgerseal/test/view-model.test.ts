@@ -165,7 +165,9 @@ describe('B-15 rights in the view model', () => {
     for (const status of ['NO_SEAL', 'SEAL_VALID', 'SEAL_BROKEN', 'SEAL_REVOKED']) {
       const v = view(result(status, { rights: none }));
       expect(v.actions).toEqual({});
-      expect(v.askText).toBe('You cannot seal this issue. Ask a project admin.');
+      expect(v.askText).toBe(
+        'Requires Project Admin, Jira Admin, or membership in an authorized group. Configured by your Jira administrator in Jira Settings > Apps > LedgerSeal.'
+      );
     }
   });
 

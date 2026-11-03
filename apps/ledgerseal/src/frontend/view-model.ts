@@ -85,7 +85,7 @@ export function policyText(groupNames: string[] = []): string {
   return `Who can seal: project admins, Jira admins and members of ${groupNames.join(', ')}.`;
 }
 
-const ASK_APPROVER = 'You cannot seal this issue. Ask a project admin.';
+const ASK_APPROVER = 'Requires Project Admin, Jira Admin, or membership in an authorized group. Configured by your Jira administrator in Jira Settings > Apps > LedgerSeal.';
 const ASK_OTHER_APPROVER = 'You changed this issue, so another approver must approve it.';
 const UNKNOWN_TIME = 'Unknown time';
 

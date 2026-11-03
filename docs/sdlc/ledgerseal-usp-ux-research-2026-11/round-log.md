@@ -530,5 +530,10 @@ Also: the gate `tools/check.sh` now runs jest with `-w 2`; one full run was kill
   - Forge lint: 0 issues found.
   - Deployed to development as version 3.14.0; installation `b8f7e832` remains Up-to-date.
 
-
-
+**5. Uniform Permission Management Standard adoption** (development 3.15.0).
+- Standardized authorization and admin surface to comply with Asymm Systems Uniform Permission Management Standard (`docs/design/uniform-permission-management-standard.md`).
+- Added canonical `AdminPolicyPanel` component and view model functions in `packages/asymm-jira-ui/src/admin.tsx` and exported via `packages/asymm-jira-ui/src/index.ts`.
+- Replaced custom admin page UI in `apps/ledgerseal/src/frontend/admin.tsx` with canonical `AdminPolicyPanel` from `@asymm/jira-ui`.
+- Updated unauthorized contextual in-app guidance in `apps/ledgerseal/src/frontend/view-model.ts` to standard text: "Requires Project Admin, Jira Admin, or membership in an authorized group. Configured by your Jira administrator in Jira Settings > Apps > LedgerSeal."
+- Updated test assertions in `apps/ledgerseal/test/view-model.test.ts`.
+- Deployed to development as version 3.15.0 (installation `b8f7e832` Up-to-date). All 314 tests pass, 95.54% branch coverage, 0 em dashes, graders all True.

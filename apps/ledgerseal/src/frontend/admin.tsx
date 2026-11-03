@@ -1,17 +1,21 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  *
- * The LedgerSeal admin page: a Jira admin chooses the approver groups. Every decision about what to show
- * comes from the admin view model (admin-view-model.ts); this component only maps it to UI Kit components.
+ * The LedgerSeal admin page: a Jira admin chooses the approver groups.
+ * Adheres to the Uniform Permission Management Standard using AdminPolicyPanel from @asymm/jira-ui.
  *
  * @author Fahim Farook
  */
 
 import React, { useState, useEffect } from 'react';
-import ForgeReconciler, { Text, Button, SectionMessage, Stack, Inline, Heading, Label, Textfield, Spinner } from '@forge/react';
+import ForgeReconciler from '@forge/react';
 import { invoke } from '@forge/bridge';
-import { SPACE, TEXT_ROLE } from '@asymm/jira-ui';
-import { addGroup, buildAdminView, GroupChoice, removeGroup, savedGroups } from './admin-view-model';
+import {
+  AdminPolicyPanel,
+  buildAdminPolicyView,
+  GroupChoice,
+  savedGroups
+} from '@asymm/jira-ui';
 
 export const LedgerSealAdmin: React.FC = () => {
   const [response, setResponse] = useState<any>(null);
@@ -25,7 +29,7 @@ export const LedgerSealAdmin: React.FC = () => {
   const load = async () => {
     setLoading(true);
     try {
-      const r = await invoke('approver-policy-get-api', {});
+      const r = (await invoke('approver-policy-get-api', {})) as any;
       setResponse(r);
       setChosen(savedGroups(r));
     } catch (err) {
@@ -40,7 +44,14 @@ export const LedgerSealAdmin: React.FC = () => {
     load();
   }, []);
 
-  const view = buildAdminView({ loading, response, chosen, results });
+  const view = buildAdminPolicyView({
+    loading,
+    response,
+    chosen,
+    results,
+    appName: 'LedgerSeal',
+    roleDescription: 'seal, reseal, and revoke approval seals'
+  });
 
   const search = async () => {
     setNotice(null);
@@ -69,73 +80,20 @@ export const LedgerSealAdmin: React.FC = () => {
     }
   };
 
-  if (view.state === 'LOADING') {
-    return (
-      <Inline alignBlock="center">
-        <Spinner size="small" />
-        <Text>{view.message}</Text>
-      </Inline>
-    );
-  }
-
   return (
-    <Stack space={SPACE.group}>
-      {view.state !== 'READY' ? (
-        <SectionMessage appearance={view.state === 'NOT_ADMIN' ? 'information' : 'warning'}>
-          <Text>{view.message}</Text>
-        </SectionMessage>
-      ) : (
-        <>
-          <SectionMessage appearance="information">
-            <Text>{view.message}</Text>
-          </SectionMessage>
-          <Text>Project admins and Jira admins can always seal. Members of the groups below can also seal, reseal and revoke.</Text>
-          <Stack space={SPACE.item}>
-            <Heading as="h4">Approver groups ({view.chosen.length})</Heading>
-            {view.chosen.length === 0 && <Text>No approver groups configured.</Text>}
-            {view.chosen.map(g => (
-              <Inline key={g.groupId} space={SPACE.item} alignBlock="center">
-                <Text weight="medium">{g.name}</Text>
-                <Button appearance="subtle" onClick={() => setChosen(removeGroup(chosen, g.groupId))}>
-                  Remove
-                </Button>
-              </Inline>
-            ))}
-            <Inline space={SPACE.item}>
-              <Button appearance="primary" isDisabled={!view.canSave || saving} onClick={save}>
-                {saving ? 'Saving...' : 'Save changes'}
-              </Button>
-            </Inline>
-          </Stack>
-          {notice && (
-            <SectionMessage appearance="success">
-              <Text>{notice}</Text>
-            </SectionMessage>
-          )}
-          <Stack space={SPACE.item}>
-            <Label labelFor="group-search">Find a group to add</Label>
-            <Inline space={SPACE.item} alignBlock="center">
-              {/* Uncontrolled on purpose: a controlled value lost typed characters over the UI Kit bridge (live, DEMO-34) */}
-              <Textfield id="group-search" name="group-search" onChange={(e: any) => setQuery(e.target.value)} />
-              <Button onClick={search}>Search</Button>
-            </Inline>
-            {view.results.length > 0 && (
-              <Stack space={SPACE.sub}>
-                <Text color={TEXT_ROLE.secondary}>Search results:</Text>
-                {view.results.map(g => (
-                  <Inline key={g.groupId} space={SPACE.item} alignBlock="center">
-                    <Text>{g.name}</Text>
-                    <Button appearance="subtle" onClick={() => setChosen(addGroup(chosen, g))}>
-                      Add
-                    </Button>
-                  </Inline>
-                ))}
-              </Stack>
-            )}
-          </Stack>
-        </>
-      )}
-    </Stack>
+    <AdminPolicyPanel
+      appName="LedgerSeal"
+      roleTitle="Approver groups"
+      roleDescription="seal, reseal, and revoke approval seals"
+      view={view}
+      saving={saving}
+      notice={notice}
+      onSearchChange={setQuery}
+      onSearch={search}
+      onAddGroup={g => setChosen(prev => (prev.some(x => x.groupId === g.groupId) ? prev : [...prev, g]))}
+      onRemoveGroup={id => setChosen(prev => prev.filter(g => g.groupId !== id))}
+      onSave={save}
+    />
   );
 };
 
