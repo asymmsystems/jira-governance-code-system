@@ -25,4 +25,15 @@ describe('B-20 manifest', () => {
     const panel = manifest.slice(manifest.indexOf('jira:issuePanel:'), start);
     expect(panel).toContain('title: Definition of Done');
   });
+
+  it('declares the native admin page for approvers under module definitionguard-admin', () => {
+    expect(manifest).toContain('jira:adminPage:');
+    expect(manifest).toContain('- key: definitionguard-admin');
+    expect(manifest).toContain('title: DefinitionGuard approvers');
+    expect(manifest).toContain('function: admin-resolver');
+  });
+
+  it('declares the read:jira-user scope for group checks and picker', () => {
+    expect(manifest).toContain('- read:jira-user');
+  });
 });

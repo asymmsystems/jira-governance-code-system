@@ -83,6 +83,8 @@ export interface IssueChecklistState {
   stateVersion?: number;
   auditTrail?: ChecklistAuditEvent[];
   openMandatoryTitles?: string[];  // v2 panel response: from the shared gate rule
+  approverGroups?: string[];
+  canApprove?: boolean;
 }
 
 export interface ProjectDoDConfig {
@@ -220,3 +222,18 @@ export interface ChangeEntry {
 
 /** What a resolver asks the log to record; seq, issueId, prevHash and hash are added by makeEntry. */
 export type EntryInput = Pick<ChangeEntry, 'transitionName' | 'at' | 'actorPartyId' | 'rows'>;
+
+/** A Jira group designated with authority under the Uniform Permission Management Standard. */
+export interface ApproverParty {
+  partyId: string;
+  partyTypeId: 'GROUP';
+  name: string;
+}
+
+/** Configurable approver policy stored at dg:cfg:approver_policy. */
+export interface ApproverPolicy {
+  roleTypeId: 'DG_APPROVER';
+  parties: ApproverParty[];
+  fromDate: string;
+  setByPartyId: string;
+}

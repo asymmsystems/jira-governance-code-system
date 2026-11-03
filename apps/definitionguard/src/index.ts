@@ -18,7 +18,24 @@ import { ChecklistStore, eventKey } from './storage/checklist-store';
 import { applyEntry, createEntry, emptyState, statusEntry, resetEntry, chainMessage, verifyChain, CHAIN_LIMIT_NOTE } from './domain/event-log';
 import { ChangeEntry, DodState, DodTemplate, IssueChecklistState, ChecklistAuditEvent } from './domain/models';
 import { permissionKeyOf } from './domain/roles';
-import { checkIssuePermissions, getIssuePermissions, permissionLabel, PermissionDeniedError, EDIT_DENIED, RESET_DENIED } from './security/permissions';
+import {
+  checkIssuePermissions,
+  getIssuePermissions,
+  permissionLabel,
+  PermissionDeniedError,
+  EDIT_DENIED,
+  RESET_DENIED
+} from './security/permissions';
+import {
+  hasApproverPermission,
+  approverGroupNames,
+  APPROVER_REQUIRED_MESSAGE
+} from './security/approver';
+import {
+  getApproverPolicyFlow,
+  searchGroupsFlow,
+  setApproverPolicyFlow
+} from './security/policy-admin';
 import { resolveTemplate } from './settings/template-store';
 import { assertLicensed, isLicenceInactive, VALIDATOR_LICENCE_INACTIVE } from './security/licence';
 import { validateEvidence, EVIDENCE_REQUIRED } from './domain/evidence';
@@ -344,9 +361,12 @@ export async function waiveChecklistItem(payload: any, context?: any, storagePro
   }
   // Refuse an invalid change before the permission call (StatusValidChange, spec v3 section 5).
   statusEntry(current, { templateItemId: itemId, statusIdTo: 'DOD_WAIVED', transitionName: 'Waive', actorPartyId: c.actorAccountId, at, reason });
-  const waiverPermission = permissionKeyOf(current.template.waiverRoleTypeId);
-  await checkIssuePermissions(c.issueKey, [waiverPermission],
-    `Only users with the ${permissionLabel(waiverPermission)} Jira permission can waive this item.`);
+  const isApprover = await hasApproverPermission(c.issueKey, storage);
+  if (!isApprover) {
+    const waiverPermission = permissionKeyOf(current.template.waiverRoleTypeId);
+    await checkIssuePermissions(c.issueKey, [waiverPermission],
+      `Only users with the ${permissionLabel(waiverPermission)} Jira permission can waive this item.`);
+  }
 
   const state = await store.mutate(
     c.issueId,
@@ -463,8 +483,11 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
   if (isCompleted && requiredPermission && !granted[requiredPermission]) {
     throw new PermissionDeniedError(`You need the ${permissionLabel(requiredPermission)} Jira permission to complete this item.`);
   }
-  if (reopensWaiver && !granted[waiverPermission]) {
-    throw new PermissionDeniedError(`Only users with the ${permissionLabel(waiverPermission)} Jira permission can reopen a waived item.`);
+  if (reopensWaiver) {
+    const isApprover = await hasApproverPermission(c.issueKey, storage);
+    if (!isApprover && !granted[waiverPermission]) {
+      throw new PermissionDeniedError(`Only users with the ${permissionLabel(waiverPermission)} Jira permission can reopen a waived item.`);
+    }
   }
   if (isCompleted && target.excludedRoleTypeId === 'ASSIGNEE' && (await currentAssignee(c.issueKey)) === c.actorAccountId) {
     throw new PermissionDeniedError(ASSIGNEE_DENIED);
@@ -494,9 +517,12 @@ export async function resetChecklist(_payload: any, context?: any, storageProvid
   const c = panelContext(context);
 
   assertLicensed(context);
-  await checkIssuePermissions(c.issueKey, ['ADMINISTER_PROJECTS'], RESET_DENIED);
-
   const storage = resolveStorage(storageProvider);
+  const isApprover = await hasApproverPermission(c.issueKey, storage);
+  if (!isApprover) {
+    await checkIssuePermissions(c.issueKey, ['ADMINISTER_PROJECTS'], RESET_DENIED);
+  }
+
   const store = new ChecklistStore(storage);
   const at = new Date().toISOString();
 
@@ -542,8 +568,37 @@ resolver.define('getHistory', async (req) => {
   return await getChecklistHistory(req.payload, req.context);
 });
 
+resolver.define('authority-policy-get', async (req) => {
+  return await getApproverPolicyFlow(resolveStorage(), req.context);
+});
+
+resolver.define('authority-group-search', async (req) => {
+  return await searchGroupsFlow(req.payload, req.context);
+});
+
+resolver.define('authority-policy-set', async (req) => {
+  return await setApproverPolicyFlow(req.payload, resolveStorage(), req.context);
+});
+
 resolver.define('getAvailableTemplates', async () => {
   return getAvailableTemplates();
 });
 
 export const handler = resolver.getDefinitions();
+
+const adminResolver = new Resolver();
+
+adminResolver.define('authority-policy-get', async (req) => {
+  return await getApproverPolicyFlow(resolveStorage(), req.context);
+});
+
+adminResolver.define('authority-group-search', async (req) => {
+  return await searchGroupsFlow(req.payload, req.context);
+});
+
+adminResolver.define('authority-policy-set', async (req) => {
+  return await setApproverPolicyFlow(req.payload, resolveStorage(), req.context);
+});
+
+export const adminHandler = adminResolver.getDefinitions();
+

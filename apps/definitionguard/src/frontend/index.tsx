@@ -183,6 +183,11 @@ export const DefinitionGuardPanel: React.FC = () => {
                 {vm.status.scope}
               </Text>
             ) : null}
+            {vm.approverLine ? (
+              <Text as="span" size="small" color={TEXT_ROLE.secondary}>
+                {vm.approverLine}
+              </Text>
+            ) : null}
           </Stack>
 
           <ActionRow>

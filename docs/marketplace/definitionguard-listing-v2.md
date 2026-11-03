@@ -53,6 +53,7 @@ DefinitionGuard runs on Atlassian Forge. The manifest declares no egress, so the
 - **Scopes.** The app requests these scopes, and why:
 - `read:jira-work`: read issues, statuses and your Jira permissions.
 - `write:jira-work`: write the `definitionguard-dod` issue property.
+- `read:jira-user`: read group memberships and search groups for approver authority.
 - `storage:app`: keep checklists and their history in Forge storage.
 - `read:workflow:jira`: read workflows for the coverage check. Read only.
 - **Who can change what.** Ticking needs Edit issues on the issue. Resetting, exporting and settings need Administer projects. Each check runs as the user.
