@@ -279,3 +279,13 @@ AUDT-1 is left Done with label `fr-probe`.
   - **Interactive control and modal polish**: Added `isPresetActive` and `togglePreset` in `src/ui/filters.ts` so `Views:` presets show `isSelected` and toggle off on a second click; added `Issue k of n` step position inside the `Inspect` modal; added `submitting` state and double-submit protection (`isDisabled={submitting}` on both submit and `Cancel`) across `LinkDecisionModal`, `ExceptionModal`, `DecisionModal`, and `ReviewModal`.
 - 31 suites, 381 of 381 tests pass; coverage 99.66% statements, 96.47% branches, 99.28% functions, 99.81% lines (every file >= 90.9%); all graders PASS (`grade_tdd: PASS 96.47`, `grade_security: PASS`, `grade_ui: PASS`); `forge lint` clean; deployed to development as **3.16.0**.
 
+### Deployed 3.17.0 (B-49 Monorepo Shared Package Extraction and RAI Clarity, 2026-11-03)
+
+- Extracted canonical `@asymm/jira-ui` monorepo package under `packages/asymm-jira-ui` (`package.json`, `README.md`, `src/index.ts`, `src/brand.ts`, `src/layout.tsx`) so sibling apps (LedgerSeal, DefinitionGuard, PlanShift) reuse the exact brand tokens and 22 layout primitives without code duplication.
+- Configured path mapping in `apps/fourrealities/tsconfig.json` (`baseUrl: "."`, `"@asymm/jira-ui": ["../../packages/asymm-jira-ui/src"]`).
+- Defined **Reality Alignment Index (RAI)** in dashboard trend card subtitle, note rows, LineChart legend (`Alignment (RAI)`), and footnote to eliminate unexplained acronym jargon.
+- Updated `RealityCard` missing-evidence actions to subtle button appearance (`appearance="subtle"`) with downward arrow affordance (`iconAfter="arrow-down"`) and filter toggle support.
+- Wrote sibling session adoption prompt in `docs/design/prompt-other-apps-ui-adoption.md` and updated `asymm-jira-ui-standard.md`.
+- 31 suites, 381 of 381 tests pass; coverage 99.66% statements, 96.4% branches, 99.28% functions, 99.81% lines (every file >= 90.9%); all graders PASS (`grade_tdd: PASS 96.4`, `grade_security: PASS`, `grade_ui: PASS`); `forge lint` clean; committed `5c24e7d`; deployed to development as **3.17.0**.
+
+
