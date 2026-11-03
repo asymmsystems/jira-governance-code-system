@@ -323,7 +323,7 @@ export interface GridRowProps {
 export function FourColumnGrid({ children }: GridRowProps): React.JSX.Element {
   return (
     <Inline alignBlock="stretch" space={SPACE.section} rowSpace={SPACE.section} shouldWrap>
-      {React.Children.toArray(children).map((child, idx) => (
+      {React.Children.toArray(children).map((child: React.ReactNode, idx: number) => (
         <Box key={idx} xcss={FOUR_COL_CELL_STYLE}>
           {child}
         </Box>
@@ -335,7 +335,7 @@ export function FourColumnGrid({ children }: GridRowProps): React.JSX.Element {
 export function TwoColumnGrid({ children }: GridRowProps): React.JSX.Element {
   return (
     <Inline alignBlock="stretch" space={SPACE.section} rowSpace={SPACE.section} shouldWrap>
-      {React.Children.toArray(children).map((child, idx) => (
+      {React.Children.toArray(children).map((child: React.ReactNode, idx: number) => (
         <Box key={idx} xcss={TWO_COL_CELL_STYLE}>
           {child}
         </Box>
@@ -347,7 +347,7 @@ export function TwoColumnGrid({ children }: GridRowProps): React.JSX.Element {
 export function ThreeColumnGrid({ children }: GridRowProps): React.JSX.Element {
   return (
     <Inline alignBlock="stretch" space={SPACE.group} rowSpace={SPACE.group} shouldWrap>
-      {React.Children.toArray(children).map((child, idx) => (
+      {React.Children.toArray(children).map((child: React.ReactNode, idx: number) => (
         <Box key={idx} xcss={THREE_COL_CELL_STYLE}>
           {child}
         </Box>
