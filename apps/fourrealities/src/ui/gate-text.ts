@@ -153,9 +153,9 @@ export function raiText(row: Pick<IssueRow, 'rai' | 'risk'>): string {
  * never shown without the gate counts it comes from.
  */
 export function raiPartsText(row: Pick<IssueRow, 'rai' | 'risk' | 'applicableGates' | 'gates'>): string {
-  if (row.rai === null) return 'RAI: not rated. No gate applies to this issue yet.';
+  if (row.rai === null) return 'Reality Alignment Index (RAI): not rated. No gate applies to this issue yet.';
   const found = Object.values(row.gates).filter(g => g.state === 'FOUND').length;
-  return `RAI ${raiText(row)}: ${found} of ${row.applicableGates} rated gates have evidence found. ${row.applicableGates} of 4 gates apply to this issue.`;
+  return `Reality Alignment Index (RAI) ${raiText(row)}: ${found} of ${row.applicableGates} rated gates have evidence found. ${row.applicableGates} of 4 gates apply to this issue.`;
 }
 
 /** A rate or "n/a" when its denominator is zero. */

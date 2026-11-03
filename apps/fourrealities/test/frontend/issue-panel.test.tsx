@@ -41,7 +41,7 @@ describe('IssuePanel', () => {
     expect(text).toContain('Code: Not applicable');
     expect(text).toContain('Audit: Evidence found (not verified)');
     expect(text).toContain('Source: LedgerSeal property ledgerseal-cert, not verified by FourRealities.');
-    expect(text).toContain('RAI 67% (HIGH): 2 of 3 rated gates have evidence found. 3 of 4 gates apply to this issue.');
+    expect(text).toContain('Reality Alignment Index (RAI) 67% (HIGH): 2 of 3 rated gates have evidence found. 3 of 4 gates apply to this issue.');
   });
 
   it('B-33, B-36: opens with the pipeline, the drift sentence and the next action', async () => {

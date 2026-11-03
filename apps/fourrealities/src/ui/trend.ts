@@ -33,7 +33,7 @@ export type TrendTableRow = { week: string; rai: string } & Record<GateName, str
 export function trendTableRows(points: TrendPoint[]): TrendTableRow[] {
   return points.map(p => ({
     week: `Week of ${p.weekStart}`,
-    rai: p.averageRAI === null ? `RAI n/a (${p.ratedIssues} rated issues)` : `RAI ${p.averageRAI}% (${p.ratedIssues} rated issues)`,
+    rai: p.averageRAI === null ? `Alignment (RAI) n/a (${p.ratedIssues} rated issues)` : `Alignment (RAI) ${p.averageRAI}% (${p.ratedIssues} rated issues)`,
     intent: gateText('intent', p),
     process: gateText('process', p),
     code: gateText('code', p),
@@ -50,7 +50,7 @@ export interface ChartPoint {
 /** One point per week and series (RAI and each gate). A week with an empty denominator has no point. */
 export function chartData(points: TrendPoint[]): ChartPoint[] {
   return points.flatMap(p => [
-    ...(p.averageRAI === null ? [] : [{ week: p.weekStart, series: 'RAI', percent: p.averageRAI }]),
+    ...(p.averageRAI === null ? [] : [{ week: p.weekStart, series: 'Alignment (RAI)', percent: p.averageRAI }]),
     ...GATE_NAMES.flatMap(g => {
       const rate = percent(p.gates[g].found, p.gates[g].missing);
       return rate === null ? [] : [{ week: p.weekStart, series: GATE_LABEL[g], percent: rate }];

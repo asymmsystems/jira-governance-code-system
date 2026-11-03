@@ -184,8 +184,19 @@ describe('ProjectDashboard', () => {
     expect(findAll(cards[0], 'Tooltip')[0].props.content).toBe('Metric M11: share of rated issues traced to a decision record.');
     const audit = textOf(TestRenderer.create(cards[3].props.children).toJSON());
     expect(audit).toContain('Is completion sealed in LedgerSeal?');
-    await act(async () => { findButton(r.root, 'Show 2 missing Intent').props.onClick(); });
+    const intentButton = findButton(r.root, 'Show 2 missing Intent');
+    expect(intentButton.props.appearance).toBe('subtle');
+    expect(intentButton.props.iconAfter).toBe('arrow-down');
+    expect(intentButton.props.isSelected).toBe(false);
+    await act(async () => { intentButton.props.onClick(); });
     expect(tableKeys(r)).toEqual(['DEMO-2', 'DEMO-3']);
+    expect(findButton(r.root, 'Show 2 missing Intent').props.isSelected).toBe(true);
+
+    // Toggle off by clicking again
+    await act(async () => { findButton(r.root, 'Show 2 missing Intent').props.onClick(); });
+    expect(tableKeys(r)).toEqual(['DEMO-2', 'DEMO-3', 'DEMO-1', 'DEMO-4']);
+    expect(findButton(r.root, 'Show 2 missing Intent').props.isSelected).toBe(false);
+
     const none = await mount(dashboard([rows[0]]));
     expect(() => findButton(none.root, 'missing Intent')).toThrow('No button');
   });
@@ -355,7 +366,7 @@ describe('ProjectDashboard', () => {
     expect(text).toContain('Audit readiness: Incomplete');
     expect(text).toContain('Priority actions');
     expect(text).toContain('1. DEMO-2: Next: link the decision record.');
-    expect(text).toContain('Alignment is calculated across rated gates only.');
+    expect(text).toContain('Alignment (Reality Alignment Index, RAI) is calculated across rated gates only.');
 
     // Respects active filters
     await act(async () => { select(r, 'fr-filter-gate').props.onChange({ label: 'Code missing', value: 'code' }); });

@@ -77,9 +77,9 @@ describe('B-21: raiPartsText', () => {
 
   it('gives RAI with its parts: gates with evidence, rated gates, and applicable gates', () => {
     expect(raiPartsText({ rai: 67, risk: 'HIGH', applicableGates: 3, gates: { intent: found, process: found, code: missing, audit: na } }))
-      .toBe('RAI 67% (HIGH): 2 of 3 rated gates have evidence found. 3 of 4 gates apply to this issue.');
+      .toBe('Reality Alignment Index (RAI) 67% (HIGH): 2 of 3 rated gates have evidence found. 3 of 4 gates apply to this issue.');
     expect(raiPartsText({ rai: null, risk: 'UNRATED', applicableGates: 0, gates: { intent: na, process: na, code: na, audit: na } }))
-      .toBe('RAI: not rated. No gate applies to this issue yet.');
+      .toBe('Reality Alignment Index (RAI): not rated. No gate applies to this issue yet.');
   });
 });
 

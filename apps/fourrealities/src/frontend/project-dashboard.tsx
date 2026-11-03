@@ -105,7 +105,12 @@ function rateAppearance(rate: number | null): 'success' | 'moved' | 'removed' | 
 }
 
 /** One reality card: full-width header with bold rate, muted question, progress bar, count, and clear action button (B-35). */
-export const RealityCard: React.FC<{ gate: GateName; count: GateCount; onShowMissing: () => void }> = ({ gate, count, onShowMissing }) => {
+export const RealityCard: React.FC<{
+  gate: GateName;
+  count: GateCount;
+  isSelected?: boolean;
+  onShowMissing: () => void;
+}> = ({ gate, count, isSelected = false, onShowMissing }) => {
   const of = count.found + count.missing;
   const rate = of === 0 ? null : Math.round((count.found * 100) / of);
   const counted = of === 0 ? 'No issue is rated for this gate yet.' : `${count.found} of ${of} rated issues have evidence`;
@@ -124,7 +129,13 @@ export const RealityCard: React.FC<{ gate: GateName; count: GateCount; onShowMis
       <Text as="span" size="small" weight="medium">{counted}</Text>
       {count.missing > 0 ? (
         <ActionRow>
-          <Button appearance="default" spacing="compact" iconAfter="arrow-right" onClick={onShowMissing}>
+          <Button
+            appearance="subtle"
+            spacing="compact"
+            isSelected={isSelected}
+            iconAfter="arrow-down"
+            onClick={onShowMissing}
+          >
             {`Show ${count.missing} missing ${GATE_LABEL[gate]}`}
           </Button>
         </ActionRow>
@@ -142,7 +153,10 @@ export const TrendPanel: React.FC<{ view: ProjectDashboardView }> = ({ view }) =
   const notice = trendNotice(points, view.generatedAt);
   return (
     <Card>
-      <CardHeader title={`Trend: last ${TREND_WEEKS} weeks (whole project)`} />
+      <CardHeader
+        title={`Trend: last ${TREND_WEEKS} weeks (whole project)`}
+        subtitle="Reality Alignment Index (RAI) and gate evidence rates over time"
+      />
       {notice ? (
         <Text as="span" color={TEXT_ROLE.secondary}>{notice}</Text>
       ) : (
@@ -355,7 +369,13 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
 
       <FourColumnGrid>
         {GATE_NAMES.map(g => (
-          <RealityCard key={g} gate={g} count={summary.gates[g]} onShowMissing={() => set({ missingGate: g })} />
+          <RealityCard
+            key={g}
+            gate={g}
+            count={summary.gates[g]}
+            isSelected={filters.missingGate === g}
+            onShowMissing={() => set({ missingGate: filters.missingGate === g ? null : g })}
+          />
         ))}
       </FourColumnGrid>
 
@@ -398,7 +418,7 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
         <Card>
           <CardHeader
             title="Coverage at a glance"
-            subtitle="Rated scope, alignment average, and risk distribution"
+            subtitle="Rated scope, alignment average (Reality Alignment Index, RAI), and risk distribution"
           />
           <ThreeColumnGrid>
             <StatTile
@@ -467,7 +487,7 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
 
       <TrendPanel view={view} />
 
-      <Text as="span" size="small" color={TEXT_ROLE.muted}>Alignment is calculated across rated gates only.</Text>
+      <Text as="span" size="small" color={TEXT_ROLE.muted}>Alignment (Reality Alignment Index, RAI) is calculated across rated gates only.</Text>
 
       {selected ? (
         <Modal onClose={() => setSelectedId(null)} width="large">

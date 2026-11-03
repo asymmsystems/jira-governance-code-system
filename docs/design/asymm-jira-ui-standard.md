@@ -333,9 +333,9 @@ To ensure uniform adoption across FourRealities, LedgerSeal, and DefinitionGuard
      ```
    - This keeps the shared `node_modules` completely untouched, satisfying hard rule 6.
 4. **Adoption Plan:**
-   - **Step 1 (FourRealities build):** Build the code in `apps/fourrealities/src/brand/` first with clean modular boundaries and zero imports from FourRealities engine or contracts.
-   - **Step 2 (Shared extraction):** Once approved by the owner, extract `src/brand/` into `packages/asymm-jira-ui`.
-   - **Step 3 (Sibling apps):** LedgerSeal and DefinitionGuard import the package only after explicit owner approval.
+   - **Step 1 (FourRealities build):** Built the code in `apps/fourrealities/src/brand/` first with clean modular boundaries and zero imports from FourRealities engine or contracts.
+   - **Step 2 (Shared extraction):** Extracted `src/brand/` into canonical monorepo package `packages/asymm-jira-ui` (`@asymm/jira-ui`).
+   - **Step 3 (Sibling apps):** Approved by the owner on 2026-11-03 for monorepo adoption across LedgerSeal, DefinitionGuard, and PlanShift.
 
 ---
 

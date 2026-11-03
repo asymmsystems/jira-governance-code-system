@@ -10,7 +10,7 @@ You work on one of the owner's other Jira apps: LedgerSeal, DefinitionGuard, Pla
 | The standard, once written | `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/design/asymm-jira-ui-standard.md` |
 | The brand module, once built | `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities/src/brand/brand.ts` |
 | The shared layout components, once built | `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities/src/brand/layout.tsx` |
-| The proposed shared package (exists only after the owner approves it) | `packages/asymm-jira-ui` at the repository root of the branch where it is created |
+| The shared package | `packages/asymm-jira-ui` at the repository root |
 | FourRealities worktree (read-only for you) | `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build` (branch `feature/fourrealities-research-build`) |
 | LedgerSeal worktree | `/home/fahimfarookme/Documents/projects/gemini-earning-ls-build` (branch `feature/ledgerseal-research-build`) |
 | DefinitionGuard worktree | `/home/fahimfarookme/Documents/projects/gemini-earning-dg-build` (branch `feature/definitionguard-completion`) |
@@ -21,9 +21,9 @@ Work only in your own app's worktree. Never edit files in another session's work
 
 Run these checks at the start of every UI task, and say the result to the owner in one line:
 
-1. **Is the standard written?** Check that `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/design/asymm-jira-ui-standard.md` exists.
-2. **Is the brand module built?** Check that `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities/src/brand/brand.ts` exists.
-3. **Is the shared package approved and available on your branch?** It is available only if `packages/asymm-jira-ui` exists in **your** worktree, and the standard or the backlog records the owner's approval of that package.
+1. **Is the standard written?** Check that `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/design/asymm-jira-ui-standard.md` exists. (Yes)
+2. **Is the brand module built?** Check that `packages/asymm-jira-ui/src/brand.ts` exists. (Yes)
+3. **Is the shared package approved and available on your branch?** Approved on 2026-11-03. Check that `packages/asymm-jira-ui` exists in **your** worktree root.
 
 ## 3. What you may do at each stage
 
