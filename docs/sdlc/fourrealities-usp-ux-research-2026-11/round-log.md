@@ -288,4 +288,13 @@ AUDT-1 is left Done with label `fr-probe`.
 - Wrote sibling session adoption prompt in `docs/design/prompt-other-apps-ui-adoption.md` and updated `asymm-jira-ui-standard.md`.
 - 31 suites, 381 of 381 tests pass; coverage 99.66% statements, 96.4% branches, 99.28% functions, 99.81% lines (every file >= 90.9%); all graders PASS (`grade_tdd: PASS 96.4`, `grade_security: PASS`, `grade_ui: PASS`); `forge lint` clean; committed `5c24e7d`; deployed to development as **3.17.0**.
 
+### Deployed 3.18.0 (Uniform Permission Management Standard and Shared Admin Components, 2026-11-03)
+
+- Reviewed LedgerSeal's two-tier authorization architecture and defined the comprehensive **Uniform Permission Management Standard** across the entire Asymm Systems Jira Suite (LedgerSeal, FourRealities, DefinitionGuard, PlanShift) in `docs/design/uniform-permission-management-standard.md`.
+- Extracted shared admin policy components into `@asymm/jira-ui` (`packages/asymm-jira-ui/src/admin.tsx`), providing `AdminPolicyPanel`, pure view-model state builder `buildAdminPolicyView`, immutable group modifiers (`addGroup`, `removeGroup`, `savedGroups`), and natural language policy summary formatter.
+- Created `apps/fourrealities/test/brand/admin.test.tsx` verifying all admin view model states (`LOADING`, `ERROR`, `NOT_ADMIN`, `READY`), group choices, and UI Kit rendering.
+- Configured Jest module name mapping in `apps/fourrealities/jest.config.js` to seamlessly resolve `@asymm/jira-ui`.
+- Updated sibling adoption prompt in `docs/design/prompt-other-apps-ui-adoption.md` with Section 3.C (Admin Policy Page) and Section 3.D (Jest configuration).
+- 32 suites, 386 of 386 tests pass; coverage 99.66% statements, 96.4% branches, 99.28% functions, 99.81% lines (every file >= 90.9%); all graders PASS (`grade_tdd: PASS 96.4`, `grade_security: PASS`, `grade_ui: PASS`); `forge lint` clean (0 issues); committed `ab2452a`; deployed to development as **3.18.0**.
+
 
