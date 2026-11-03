@@ -537,3 +537,9 @@ Also: the gate `tools/check.sh` now runs jest with `-w 2`; one full run was kill
 - Updated unauthorized contextual in-app guidance in `apps/ledgerseal/src/frontend/view-model.ts` to standard text: "Requires Project Admin, Jira Admin, or membership in an authorized group. Configured by your Jira administrator in Jira Settings > Apps > LedgerSeal."
 - Updated test assertions in `apps/ledgerseal/test/view-model.test.ts`.
 - Deployed to development as version 3.15.0 (installation `b8f7e832` Up-to-date). All 314 tests pass, 95.54% branch coverage, 0 em dashes, graders all True.
+
+**6. In-Jira UI library alignment refinements** (development 3.16.0).
+- Configured `moduleNameMapper` and `moduleDirectories` in `apps/ledgerseal/jest.config.js` pointing `@asymm/jira-ui` to canonical monorepo source (Section 3.D).
+- Standardized revoke button in issue panel action row to compact spacing (`appearance="default" spacing="compact"`).
+- Added typography alignment rule test in `test/architecture.test.ts` verifying all UI Text elements specify `as="span"`.
+- Deployed to development as version 3.16.0 (installation `b8f7e832` Up-to-date). All 315 tests pass across 36 suites, 95.54% branch coverage, 0 em dashes, graders all True.

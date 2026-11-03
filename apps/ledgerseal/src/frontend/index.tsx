@@ -234,7 +234,7 @@ export const LedgerSealPanel: React.FC = () => {
             </Button>
           )}
           {view.actions.revoke && (
-            <Button appearance="default" onClick={() => openForm('revoke')}>
+            <Button appearance="default" spacing="compact" onClick={() => openForm('revoke')}>
               {view.actions.revoke.label}
             </Button>
           )}

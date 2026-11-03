@@ -51,6 +51,16 @@ describe('UI architecture and design system rules', () => {
     expect(textAreaWithValue).toEqual([]);
   });
 
+  it('all Text components inside UI views specify as="span" (typography alignment rule)', () => {
+    const textWithoutSpan = files
+      .filter(f => f.endsWith('.tsx'))
+      .flatMap(f => fs.readFileSync(f, 'utf8').split('\n')
+        .map((line, i) => ({ line, at: `${rel(f)}:${i + 1}` }))
+        .filter(({ line }) => /<Text\b(?![^>]*\bas="span")/.test(line))
+        .map(({ at }) => at));
+    expect(textWithoutSpan).toEqual([]);
+  });
+
   it('no source file contains raw HTML tags (Forge native UI Kit uses Forge components only)', () => {
     const rawHtml = files
       .filter(f => f.endsWith('.tsx'))
