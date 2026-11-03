@@ -21,6 +21,10 @@ export function plainText(value: unknown): string {
   if (typeof value !== 'object') return String(value);
   if (Array.isArray(value)) return value.map(plainText).join(value.some(isNode) ? '\n' : ', ');
   const obj = value as Record<string, any>;
+  if (obj.type === 'hardBreak') return '\n';
+  if (obj.type === 'mention') return obj.attrs?.text ? `@${obj.attrs.text}` : '@user';
+  if (obj.type === 'emoji') return obj.attrs?.text ?? obj.attrs?.shortName ?? '';
+  if (obj.type === 'inlineCard') return obj.attrs?.url ?? '';
   if (obj.type === 'text' && typeof obj.text === 'string') return obj.text;
   if (Array.isArray(obj.content)) return obj.content.map(plainText).join(obj.type === 'paragraph' ? '' : '\n');
   const label = obj.displayName ?? obj.name ?? obj.value ?? obj.key;

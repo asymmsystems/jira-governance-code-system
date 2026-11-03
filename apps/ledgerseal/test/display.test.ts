@@ -30,6 +30,27 @@ describe('plainText', () => {
     expect(plainText([doc.content[0], doc.content[1]])).toBe('Hello world\nSecond');
   });
 
+  it('handles ADF inline nodes like hardBreak, mention, emoji and inlineCard without JSON leakage', () => {
+    const docWithBreak = {
+      type: 'paragraph',
+      content: [
+        { type: 'text', text: 'Line 1' },
+        { type: 'hardBreak' },
+        { type: 'text', text: 'Line 2' },
+        { type: 'mention', attrs: { text: 'Alice' } },
+        { type: 'emoji', attrs: { text: '👍' } },
+        { type: 'inlineCard', attrs: { url: 'https://example.com' } }
+      ]
+    };
+    expect(plainText(docWithBreak)).toBe('Line 1\nLine 2@Alice👍https://example.com');
+
+    // Test fallbacks
+    expect(plainText({ type: 'mention' })).toBe('@user');
+    expect(plainText({ type: 'emoji', attrs: { shortName: ':smile:' } })).toBe(':smile:');
+    expect(plainText({ type: 'emoji' })).toBe('');
+    expect(plainText({ type: 'inlineCard' })).toBe('');
+  });
+
   it('uses the display name, name, value or key of an object, else its JSON', () => {
     expect(plainText({ accountId: 'a1', displayName: 'Alice' })).toBe('Alice');
     expect(plainText({ id: '2', name: 'High' })).toBe('High');

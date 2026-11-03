@@ -372,7 +372,7 @@ The payload carries `issue.key` and `transition.modifiedFields` (FG-19). `modifi
 | Case | `result` | `errorMessage` |
 |---|---|---|
 | Live issue cannot be read | false | "LedgerSeal could not read the issue from Jira, so this transition is blocked. Try again in a minute." |
-| No seal | false | "LedgerSeal: this issue is not sealed. Ask a project admin to seal it in the LedgerSeal panel, then try again." |
+| No seal | false | "LedgerSeal: this issue is not sealed. To proceed: open the LedgerSeal panel on this issue, select your sign-off role, agree to the declaration, and click \"Seal issue\"." |
 | v1 seal only | false | "LedgerSeal: this issue has an old-format seal. Ask a project admin to seal it again in the LedgerSeal panel." |
 | Record fails its integrity check | false | "LedgerSeal: the seal record failed its integrity check. Contact your Jira admin." |
 | Revoked | false | "LedgerSeal: the seal was revoked on {date} (reason: {reason}). Seal it again to continue." |

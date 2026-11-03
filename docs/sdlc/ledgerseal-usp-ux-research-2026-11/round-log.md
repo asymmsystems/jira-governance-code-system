@@ -512,3 +512,34 @@ Not tested live: a seal by a non-admin group member, because the site has one hu
 
 Also: the gate `tools/check.sh` now runs jest with `-w 2`; one full run was killed (exit 137) with the default worker count.
 
+**4. Canonical In-Jira UI shared package adoption** (development 3.14.0).
+- Adopted canonical `@asymm/jira-ui` package located at `packages/asymm-jira-ui` across LedgerSeal.
+- Removed local duplicate `apps/ledgerseal/src/brand/` directory and test `test/brand/brand.test.ts`.
+- Configured path mapping in `apps/ledgerseal/tsconfig.json` (`baseUrl: "."`, `paths` mapping `@asymm/jira-ui`) and removed `rootDir: "./src"` to allow compilation of monorepo package sources.
+- Annotated child and index parameters in `packages/asymm-jira-ui/src/layout.tsx` grid components with explicit `React.ReactNode` and `number` types to satisfy strict TypeScript checking.
+- Updated `apps/ledgerseal/src/frontend/index.tsx` to import directly from `@asymm/jira-ui`, displaying `title="LedgerSeal"` in `PanelHeader` and `<Section title="Certificate & attestation details" count={3} defaultCollapsed={true}>`.
+- Updated `apps/ledgerseal/src/frontend/admin.tsx` to import `SPACE` and `TEXT_ROLE` from `@asymm/jira-ui` and eliminated all raw Atlassian tokens.
+- Created `apps/ledgerseal/test/architecture.test.ts` verifying that no source file in LedgerSeal uses raw Atlassian tokens or hex colors outside `@asymm/jira-ui`, no local `src/brand` exists, and `TextArea` preserves uncontrolled input rules without a `value` prop.
+- Added `@asymm/jira-ui` symlink in `apps/ledgerseal/node_modules/@asymm/jira-ui` so Forge CLI's native Webpack bundler resolves the shared package without modifying dependencies or running `npm install`.
+- Verification results:
+  - `tsc --noEmit -p .`: OK (0 errors).
+  - Test suite: 36 passed, 36 total suites; 314 passed, 314 total tests; 95.54% branch coverage (all files >= 90%).
+  - Em dash scan: 0 em dashes across all changed and untracked files.
+  - Architecture test: passed 5 of 5 checks.
+  - Graders (`tools/graders.sh`): `grade_tdd True 95.54`, `grade_security True`, `grade_ui True`.
+  - Forge lint: 0 issues found.
+  - Deployed to development as version 3.14.0; installation `b8f7e832` remains Up-to-date.
+
+**5. Uniform Permission Management Standard adoption** (development 3.15.0).
+- Standardized authorization and admin surface to comply with Asymm Systems Uniform Permission Management Standard (`docs/design/uniform-permission-management-standard.md`).
+- Added canonical `AdminPolicyPanel` component and view model functions in `packages/asymm-jira-ui/src/admin.tsx` and exported via `packages/asymm-jira-ui/src/index.ts`.
+- Replaced custom admin page UI in `apps/ledgerseal/src/frontend/admin.tsx` with canonical `AdminPolicyPanel` from `@asymm/jira-ui`.
+- Updated unauthorized contextual in-app guidance in `apps/ledgerseal/src/frontend/view-model.ts` to standard text: "Requires Project Admin, Jira Admin, or membership in an authorized group. Configured by your Jira administrator in Jira Settings > Apps > LedgerSeal."
+- Updated test assertions in `apps/ledgerseal/test/view-model.test.ts`.
+- Deployed to development as version 3.15.0 (installation `b8f7e832` Up-to-date). All 314 tests pass, 95.54% branch coverage, 0 em dashes, graders all True.
+
+**6. In-Jira UI library alignment refinements** (development 3.16.0).
+- Configured `moduleNameMapper` and `moduleDirectories` in `apps/ledgerseal/jest.config.js` pointing `@asymm/jira-ui` to canonical monorepo source (Section 3.D).
+- Standardized revoke button in issue panel action row to compact spacing (`appearance="default" spacing="compact"`).
+- Added typography alignment rule test in `test/architecture.test.ts` verifying all UI Text elements specify `as="span"`.
+- Deployed to development as version 3.16.0 (installation `b8f7e832` Up-to-date). All 315 tests pass across 36 suites, 95.54% branch coverage, 0 em dashes, graders all True.
