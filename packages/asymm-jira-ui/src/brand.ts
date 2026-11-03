@@ -1,8 +1,8 @@
 /**
- * Asymm Systems In-Jira UI brand tokens and palette definitions.
- *
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
+ * Asymm Systems In-Jira UI brand tokens, palette definitions, and Atlassian Design System mappings.
+ * Pure definitions; zero external dependencies outside React and Forge UI Kit.
  */
 
 export interface PaletteEntry {

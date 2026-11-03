@@ -13,7 +13,6 @@ import ForgeReconciler, {
   Stack,
   Inline,
   Checkbox,
-  Box,
   Spinner,
   User,
   Link,
@@ -23,18 +22,19 @@ import ForgeReconciler, {
 import { invoke, router } from '@forge/bridge';
 import { IssueChecklistState, ChecklistAuditEvent } from '../domain/models';
 import { buildPanelViewModel, historyRows, panelErrorText, Attribution } from '../ui/panel-view-model';
-import { SPACE, TEXT_ROLE } from '../brand/brand';
 import {
   AppSurface,
   PanelHeader,
   SummaryBlock,
+  KeyValueInline,
   Section,
   SubSection,
   NoteBox,
-  KeyValueInline,
   ActionRow,
-  ListRow
-} from '../brand/layout';
+  ListRow,
+  TEXT_ROLE,
+  SPACE
+} from '@asymm/jira-ui';
 
 type Evidence = { url?: string; note?: string };
 type HistoryPage = { auditTrail?: ChecklistAuditEvent[]; chain?: { ok: boolean; message: string; limit: string } };
@@ -52,8 +52,6 @@ export const DefinitionGuardPanel: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState<boolean>(false);
   const [history, setHistory] = useState<HistoryPage | null>(null);
-  const [itemsCollapsed, setItemsCollapsed] = useState<boolean>(false);
-  const [historyCollapsed, setHistoryCollapsed] = useState<boolean>(true);
   const [evidenceFor, setEvidenceFor] = useState<string | null>(null);
   const [evUrl, setEvUrl] = useState<string>('');
   const [evNote, setEvNote] = useState<string>('');
@@ -97,6 +95,16 @@ export const DefinitionGuardPanel: React.FC = () => {
       setWaiveReason('');
       setHistory(null);
     });
+
+  const completeDoD = () => {
+    const firstOpen = vm?.items.find(i => !i.checked);
+    if (!firstOpen) return;
+    if (firstOpen.needsEvidence) {
+      setEvidenceFor(firstOpen.id);
+    } else {
+      change('toggleItem', { itemId: firstOpen.id, isCompleted: true }, firstOpen.id, 'save the change');
+    }
+  };
 
   const vm = buildPanelViewModel(checklist);
 
@@ -181,7 +189,8 @@ export const DefinitionGuardPanel: React.FC = () => {
             {!vm.status.satisfied ? (
               <Button
                 appearance="primary"
-                onClick={() => setItemsCollapsed(false)}
+                isDisabled={loading || busyId !== null}
+                onClick={completeDoD}
               >
                 Complete DoD
               </Button>
@@ -203,8 +212,6 @@ export const DefinitionGuardPanel: React.FC = () => {
           title="Definition of Done items"
           count={vm.progress.text}
           defaultCollapsed={false}
-          isCollapsed={itemsCollapsed}
-          onToggleCollapse={() => setItemsCollapsed(!itemsCollapsed)}
         >
           <Stack space={SPACE.none}>
             {vm.items.map((item, idx) => (
@@ -387,46 +394,53 @@ export const DefinitionGuardPanel: React.FC = () => {
         title="Checklist audit history"
         count={history?.auditTrail?.length}
         defaultCollapsed={true}
-        isCollapsed={historyCollapsed}
-        onToggleCollapse={() => {
-          const next = !historyCollapsed;
-          setHistoryCollapsed(next);
-          if (!next && !history) {
-            run('load the history', 'history', async () => {
-              setHistory((await invoke('getHistory', {})) as unknown as HistoryPage);
-            });
-          }
-        }}
       >
         <Stack space={SPACE.group}>
-          <ActionRow>
-            <Button
-              appearance="default"
-              spacing="compact"
-              isDisabled={loading}
-              onClick={() =>
-                run('load the history', 'history', async () => {
-                  setHistory((await invoke('getHistory', {})) as unknown as HistoryPage);
-                })
-              }
-            >
-              Refresh history
-            </Button>
-            <Button
-              appearance="default"
-              spacing="compact"
-              isDisabled={loading}
-              onClick={() =>
-                exported
-                  ? setExported(null)
-                  : run('export the history', 'export', async () => {
-                      setExported((await invoke('exportHistory', {})) as unknown as { fileName: string; text: string });
-                    })
-              }
-            >
-              {exported ? 'Hide export' : 'Export history'}
-            </Button>
-          </ActionRow>
+          {!history ? (
+            <ActionRow>
+              <Button
+                appearance="default"
+                spacing="compact"
+                isDisabled={loading}
+                onClick={() =>
+                  run('load the history', 'history', async () => {
+                    setHistory((await invoke('getHistory', {})) as unknown as HistoryPage);
+                  })
+                }
+              >
+                Load audit history
+              </Button>
+            </ActionRow>
+          ) : (
+            <ActionRow>
+              <Button
+                appearance="default"
+                spacing="compact"
+                isDisabled={loading}
+                onClick={() =>
+                  run('load the history', 'history', async () => {
+                    setHistory((await invoke('getHistory', {})) as unknown as HistoryPage);
+                  })
+                }
+              >
+                Refresh history
+              </Button>
+              <Button
+                appearance="default"
+                spacing="compact"
+                isDisabled={loading}
+                onClick={() =>
+                  exported
+                    ? setExported(null)
+                    : run('export the history', 'export', async () => {
+                        setExported((await invoke('exportHistory', {})) as unknown as { fileName: string; text: string });
+                      })
+                }
+              >
+                {exported ? 'Hide export' : 'Export history'}
+              </Button>
+            </ActionRow>
+          )}
 
           {exported && (
             <NoteBox>

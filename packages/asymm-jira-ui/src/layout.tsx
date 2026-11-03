@@ -1,8 +1,8 @@
 /**
- * Asymm Systems In-Jira UI shared layout primitives and accessible card surfaces.
- *
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
+ * Asymm Systems In-Jira UI shared layout primitives and accessible card surfaces.
+ * Reusable across FourRealities, LedgerSeal, and DefinitionGuard with zero app-specific imports.
  */
 
 import * as React from 'react';
@@ -70,6 +70,23 @@ const CALLOUT_STRIP_STYLE = xcss({
   paddingBlock: TOKENS.spaceItem,
   paddingInline: TOKENS.spaceGroup
 });
+
+const GATE_CARD_BASE = {
+  backgroundColor: TOKENS.surfaceSection,
+  borderColor: TOKENS.borderSection,
+  borderWidth: 'border.width',
+  borderStyle: 'solid',
+  borderTopWidth: 'border.width.selected',
+  borderRadius: TOKENS.radiusSection,
+  boxShadow: TOKENS.shadowCard,
+  padding: TOKENS.spaceSection,
+  height: '100%'
+} as const;
+
+const GATE_CARD_INTENT = xcss({ ...GATE_CARD_BASE, borderTopColor: TOKENS.borderBrandTeal });
+const GATE_CARD_PROCESS = xcss({ ...GATE_CARD_BASE, borderTopColor: TOKENS.borderBrandSand });
+const GATE_CARD_CODE = xcss({ ...GATE_CARD_BASE, borderTopColor: TOKENS.borderBrandRose });
+const GATE_CARD_AUDIT = xcss({ ...GATE_CARD_BASE, borderTopColor: TOKENS.borderBrandSage });
 
 const STAT_TILE_STYLE = xcss({
   backgroundColor: TOKENS.surfaceNote,
@@ -232,6 +249,7 @@ export function KeyValueInline({ label, value, size, color }: KeyValueInlineProp
 }
 
 export interface StatusBannerProps {
+  readonly status: string;
   readonly statusWord: string;
   readonly appearance?: LozengeAppearance;
   readonly summary: string;
@@ -259,7 +277,7 @@ export function StatusBanner({
     <Box xcss={bannerStyle}>
       <Stack space={SPACE.group}>
         <Inline alignBlock="center" space={SPACE.item} shouldWrap>
-          <Text as="span" size="large" weight="bold">Definition of Done:</Text>
+          <Text as="span" size="large" weight="bold">Audit readiness:</Text>
           <Lozenge maxWidth="100%" appearance={appearance} isBold>
             {statusWord}
           </Lozenge>
@@ -276,6 +294,83 @@ export function StatusBanner({
           </Inline>
         </Box>
       </Stack>
+    </Box>
+  );
+}
+
+const FOUR_COL_CELL_STYLE = xcss({
+  width: 'calc(25% - 12px)',
+  minWidth: '200px',
+  flexGrow: 1
+});
+
+const TWO_COL_CELL_STYLE = xcss({
+  width: 'calc(50% - 8px)',
+  minWidth: '300px',
+  flexGrow: 1
+});
+
+const THREE_COL_CELL_STYLE = xcss({
+  width: 'calc(33.333% - 8px)',
+  minWidth: '110px',
+  flexGrow: 1
+});
+
+export interface GridRowProps {
+  readonly children: React.ReactNode;
+}
+
+export function FourColumnGrid({ children }: GridRowProps): React.JSX.Element {
+  return (
+    <Inline alignBlock="stretch" space={SPACE.section} rowSpace={SPACE.section} shouldWrap>
+      {React.Children.toArray(children).map((child, idx) => (
+        <Box key={idx} xcss={FOUR_COL_CELL_STYLE}>
+          {child}
+        </Box>
+      ))}
+    </Inline>
+  );
+}
+
+export function TwoColumnGrid({ children }: GridRowProps): React.JSX.Element {
+  return (
+    <Inline alignBlock="stretch" space={SPACE.section} rowSpace={SPACE.section} shouldWrap>
+      {React.Children.toArray(children).map((child, idx) => (
+        <Box key={idx} xcss={TWO_COL_CELL_STYLE}>
+          {child}
+        </Box>
+      ))}
+    </Inline>
+  );
+}
+
+export function ThreeColumnGrid({ children }: GridRowProps): React.JSX.Element {
+  return (
+    <Inline alignBlock="stretch" space={SPACE.group} rowSpace={SPACE.group} shouldWrap>
+      {React.Children.toArray(children).map((child, idx) => (
+        <Box key={idx} xcss={THREE_COL_CELL_STYLE}>
+          {child}
+        </Box>
+      ))}
+    </Inline>
+  );
+}
+
+export interface GateCardProps {
+  readonly gate: 'intent' | 'process' | 'code' | 'audit';
+  readonly children: React.ReactNode;
+}
+
+export function GateCard({ gate, children }: GateCardProps): React.JSX.Element {
+  const style =
+    gate === 'intent' ? GATE_CARD_INTENT :
+    gate === 'process' ? GATE_CARD_PROCESS :
+    gate === 'code' ? GATE_CARD_CODE :
+    GATE_CARD_AUDIT;
+
+  return (
+    <Box xcss={style}>
+      <Stack space={SPACE.group}>{children}</Stack>
     </Box>
   );
 }
@@ -433,28 +528,11 @@ export interface SectionProps {
   readonly title: string;
   readonly count?: number | string;
   readonly defaultCollapsed?: boolean;
-  readonly isCollapsed?: boolean;
-  readonly onToggleCollapse?: () => void;
   readonly children: React.ReactNode;
 }
 
-export function Section({
-  title,
-  count,
-  defaultCollapsed = true,
-  isCollapsed,
-  onToggleCollapse,
-  children
-}: SectionProps): React.JSX.Element {
-  const [internalCollapsed, setInternalCollapsed] = React.useState(defaultCollapsed);
-  const collapsed = isCollapsed !== undefined ? isCollapsed : internalCollapsed;
-  const handleToggle = () => {
-    if (onToggleCollapse) {
-      onToggleCollapse();
-    } else {
-      setInternalCollapsed(!internalCollapsed);
-    }
-  };
+export function Section({ title, count, defaultCollapsed = true, children }: SectionProps): React.JSX.Element {
+  const [collapsed, setCollapsed] = React.useState(defaultCollapsed);
 
   return (
     <Box xcss={CARD_STYLE}>
@@ -468,7 +546,7 @@ export function Section({
             appearance="default"
             spacing="compact"
             iconBefore={collapsed ? 'chevron-right' : 'chevron-down'}
-            onClick={handleToggle}
+            onClick={() => setCollapsed(!collapsed)}
           >
             {collapsed ? 'Show details' : 'Hide details'}
           </Button>
@@ -603,3 +681,4 @@ export function StatusLozenge({ state, verification, children, isBold }: StatusL
     </Lozenge>
   );
 }
+
