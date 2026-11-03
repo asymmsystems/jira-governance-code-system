@@ -3,6 +3,10 @@ module.exports = {
   testEnvironment: 'node',
   roots: ['<rootDir>/test'],
   testMatch: ['**/*.test.ts'],
+  moduleNameMapper: {
+    '^@asymm/jira-ui$': '<rootDir>/../../packages/asymm-jira-ui/src/index.ts'
+  },
+  moduleDirectories: ['node_modules', '<rootDir>/node_modules'],
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',
