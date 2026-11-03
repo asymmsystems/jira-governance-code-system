@@ -23,10 +23,15 @@
       <span class="badge badge-success" id="completionBadge" hidden></span>
       <div class="header-divider"></div>
       <div class="plan-selector-group">
-        <select class="view-select plan-select" id="planSwitcher" aria-label="Active Plan" title="Switch active plan">
+        <select class="view-select plan-select" id="planSwitcher" aria-label="Active Plan" title="Switch active plan" style="display: none;">
           <option value="default">Main Plan</option>
         </select>
-        <button class="btn btn-outline btn-sm" id="btnManagePlans" title="Manage plans or create new scenario" type="button" aria-expanded="false" aria-controls="plansManagerPopover">Plans ▾</button>
+        <button class="btn btn-outline btn-sm plan-selector-trigger" id="planSelectorBtn" title="Select or manage project plans" type="button" aria-expanded="false" aria-controls="plansManagerPopover">
+          <span class="plan-selector-icon">📋</span>
+          <span id="planSelectorLabel" class="plan-selector-label">Main Plan</span>
+          <span class="plan-selector-caret">▾</span>
+        </button>
+        <button id="btnManagePlans" style="display: none;" type="button" aria-expanded="false" aria-controls="plansManagerPopover">Plans ▾</button>
         <!-- Plans Manager Popover -->
         <div class="column-manager-popover plans-manager-popover" id="plansManagerPopover" style="display: none;">
           <div class="col-popover-header">
@@ -34,7 +39,15 @@
             <button class="btn-icon-subtle" id="btnClosePlansPopover" title="Close" type="button">✕</button>
           </div>
           <div class="col-popover-info">
-            Create scenarios, optimistic timelines, or alternative baselines for this project.
+            Switch plans, create scenarios, or baseline alternatives.
+          </div>
+          <div class="plans-filter-section">
+            <input type="search" id="planSearchInput" class="in-app-search-input" placeholder="Search plans..." aria-label="Search plans by name" autocomplete="off">
+            <div class="plan-filter-tabs" role="tablist">
+              <button type="button" class="plan-tab active" data-category="all" role="tab" aria-selected="true">All (<span id="planTabCountAll">1</span>)</button>
+              <button type="button" class="plan-tab" data-category="baselines" role="tab" aria-selected="false">Baselines (<span id="planTabCountBaselines">1</span>)</button>
+              <button type="button" class="plan-tab" data-category="scenarios" role="tab" aria-selected="false">Scenarios (<span id="planTabCountScenarios">0</span>)</button>
+            </div>
           </div>
           <div id="plansListContainer" class="plans-list-container"></div>
           <div class="plans-create-section">
@@ -55,19 +68,19 @@
       </div>
       <div class="btn-group">
         <button class="btn btn-outline" id="toggleBacklogBtn" title="Toggle unmapped backlog tray">
-          📂 Backlog Tray (<span id="backlogCount">0</span>)
+          📂 Backlog (<span id="backlogCount">0</span>)
         </button>
         <button class="btn btn-outline" id="btnChanges" type="button" aria-expanded="false" aria-controls="changesPanel" title="Every Jira write of this session">
           Changes (<span id="changesCount">0</span>)
         </button>
-        <button class="btn btn-outline" id="refreshBtn" title="Refresh project plan">🔄 Refresh</button>
+        <button class="btn btn-outline" id="refreshBtn" title="Refresh project plan">🔄</button>
       </div>
       <label class="shortcut-toggle"><input type="checkbox" id="shortcutsToggle" checked> Keys</label>
     </div>
 
     <div class="header-right">
       <div class="btn-group">
-        <button class="btn btn-outline" id="toggleTableViewBtn" type="button" aria-pressed="false" title="Switch between timeline and plain table view">Table view</button>
+        <button class="btn btn-outline btn-sm" id="toggleTableViewBtn" type="button" aria-pressed="false" title="Switch between timeline and plain table view">Table view</button>
         <div style="position: relative; display: inline-block;">
           <button class="btn btn-outline" id="btnManageColumns" title="Show or hide table columns">
             ⊞ Columns <span id="colCountBadge" class="col-count-badge">8/8</span> ▾

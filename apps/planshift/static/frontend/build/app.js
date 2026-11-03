@@ -7736,7 +7736,87 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return `Remove ${contributorName}? Do you want to delete or unassign Jira subtask ${subtaskKey}?`;
   }
 
+  // src/ui/plan-manager.ts
+  function categorizePlan(plan) {
+    if (plan.isDefault) return "baseline";
+    const lower = (plan.name || "").toLowerCase();
+    if (lower.includes("baseline") || lower.includes("main") || lower.includes("actual")) {
+      return "baseline";
+    }
+    return "scenario";
+  }
+  function validateNewPlanName(name) {
+    if (typeof name !== "string") {
+      return { valid: false, error: "Plan name must be text", cleanName: "" };
+    }
+    const clean = name.trim();
+    if (clean.length === 0) {
+      return { valid: false, error: "Plan name cannot be empty", cleanName: "" };
+    }
+    if (clean.length > 80) {
+      return { valid: false, error: "Plan name must be at most 80 characters", cleanName: clean };
+    }
+    return { valid: true, cleanName: clean };
+  }
+  function suggestCloneName(originalName, existingNames = []) {
+    const base = originalName.replace(/\s*\(Copy(\s+\d+)?\)$/i, "").trim();
+    let candidate = `${base} (Copy)`;
+    let counter = 2;
+    const lowerSet = new Set(existingNames.map((n) => n.toLowerCase().trim()));
+    while (lowerSet.has(candidate.toLowerCase())) {
+      candidate = `${base} (Copy ${counter})`;
+      counter++;
+    }
+    return candidate;
+  }
+  function buildPlanListViewModel(plans, activePlanId2) {
+    if (!plans || plans.length === 0) {
+      return [{ id: "default", name: "Main Plan", isDefault: true, isActive: true, canDelete: false, category: "baseline" }];
+    }
+    return plans.map((p) => {
+      const isDefault = p.id === "default" || p.isDefault === true;
+      return {
+        id: p.id,
+        name: p.name,
+        isDefault,
+        isActive: p.id === activePlanId2,
+        canDelete: !isDefault,
+        category: categorizePlan(p)
+      };
+    });
+  }
+  function filterPlans(plans, query = "", category = "all") {
+    const q = (query || "").trim().toLowerCase();
+    return plans.filter((p) => {
+      if (category === "baselines" && p.category !== "baseline") return false;
+      if (category === "scenarios" && p.category !== "scenario") return false;
+      if (q.length > 0 && !p.name.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }
+
   // src/frontend/legacy-planner.js
+  var optimisticTasks = /* @__PURE__ */ new Map();
+  function registerOptimisticTask(task) {
+    if (!task || !task.key) return;
+    optimisticTasks.set(task.key, { task, timestamp: Date.now() });
+  }
+  function mergeOptimisticTasks(plan) {
+    if (!plan || !Array.isArray(plan.tasks)) return;
+    const now = Date.now();
+    for (const [key, entry] of optimisticTasks.entries()) {
+      if (now - entry.timestamp > 6e4) {
+        optimisticTasks.delete(key);
+        continue;
+      }
+      const exists = plan.tasks.some((t) => t.key === key);
+      if (!exists) {
+        plan.tasks.push(entry.task);
+      } else {
+        optimisticTasks.delete(key);
+      }
+    }
+  }
   function getJiraBaseUrl() {
     if (currentPlan && currentPlan.siteUrl) {
       return currentPlan.siteUrl.replace(/\/+$/, "");
@@ -8815,39 +8895,107 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     setTimeout(() => document.addEventListener("click", onDocClick), 10);
   }
+  var currentPlanCategoryFilter = "all";
+  var currentPlanSearchQuery = "";
   function updatePlansUI(availablePlans = [], currentId = "default") {
     const switcher = document.getElementById("planSwitcher");
-    if (!switcher) return;
     const plans = Array.isArray(availablePlans) && availablePlans.length > 0 ? availablePlans : [{ id: "default", name: "Main Plan", isDefault: true }];
-    switcher.innerHTML = "";
-    for (const p of plans) {
-      const opt = document.createElement("option");
-      opt.value = p.id;
-      opt.textContent = p.name;
-      if (p.id === currentId) opt.selected = true;
-      switcher.appendChild(opt);
+    if (switcher) {
+      switcher.innerHTML = "";
+      for (const p of plans) {
+        const opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = p.name;
+        if (p.id === currentId) opt.selected = true;
+        switcher.appendChild(opt);
+      }
     }
+    const activePlan = plans.find((p) => p.id === currentId) || plans[0];
+    const labelEl = document.getElementById("planSelectorLabel");
+    if (labelEl) {
+      labelEl.textContent = activePlan ? activePlan.name : "Main Plan";
+    }
+    const allCount = plans.length;
+    const baselineCount = plans.filter((p) => categorizePlan(p) === "baseline").length;
+    const scenarioCount = plans.filter((p) => categorizePlan(p) === "scenario").length;
+    const countAllEl = document.getElementById("planTabCountAll");
+    if (countAllEl) countAllEl.textContent = String(allCount);
+    const countBaselinesEl = document.getElementById("planTabCountBaselines");
+    if (countBaselinesEl) countBaselinesEl.textContent = String(baselineCount);
+    const countScenariosEl = document.getElementById("planTabCountScenarios");
+    if (countScenariosEl) countScenariosEl.textContent = String(scenarioCount);
+    renderFilteredPlansList(plans, currentId);
+  }
+  function renderFilteredPlansList(plans, currentId) {
     const container = document.getElementById("plansListContainer");
     if (!container) return;
     container.innerHTML = "";
-    for (const p of plans) {
+    const viewModels = buildPlanListViewModel(plans, currentId);
+    const filtered = filterPlans(viewModels, currentPlanSearchQuery, currentPlanCategoryFilter);
+    if (filtered.length === 0) {
+      const emptyRow = document.createElement("div");
+      emptyRow.style.padding = "16px";
+      emptyRow.style.textAlign = "center";
+      emptyRow.style.color = "var(--cp-text-subtle)";
+      emptyRow.style.fontSize = "12px";
+      emptyRow.textContent = currentPlanSearchQuery ? `No plans matching "${currentPlanSearchQuery}"` : "No plans in this category";
+      container.appendChild(emptyRow);
+      return;
+    }
+    const allNames = plans.map((p) => p.name);
+    for (const p of filtered) {
       const row = document.createElement("div");
-      row.className = "plan-item-row";
+      row.className = "plan-item-row" + (p.isActive ? " is-active" : "");
+      row.setAttribute("role", "button");
+      row.tabIndex = 0;
+      row.title = p.isActive ? `${p.name} (Active plan)` : `Switch to ${p.name}`;
+      const mainDiv = document.createElement("div");
+      mainDiv.className = "plan-item-main";
+      const catBadge = document.createElement("span");
+      catBadge.className = "plan-category-badge " + (p.category === "baseline" ? "is-baseline" : "is-scenario");
+      catBadge.textContent = p.category === "baseline" ? "Baseline" : "Scenario";
+      mainDiv.appendChild(catBadge);
       const nameSpan = document.createElement("span");
       nameSpan.className = "plan-item-name";
       nameSpan.textContent = p.name;
-      row.appendChild(nameSpan);
-      if (p.id === currentId) {
-        const activeBadge = document.createElement("span");
-        activeBadge.className = "plan-item-badge";
-        activeBadge.textContent = "Active";
-        row.appendChild(activeBadge);
+      mainDiv.appendChild(nameSpan);
+      if (p.isActive) {
+        const activeCheck = document.createElement("span");
+        activeCheck.style.fontSize = "12px";
+        activeCheck.style.color = "var(--cp-text-brand)";
+        activeCheck.textContent = "\u2713";
+        mainDiv.appendChild(activeCheck);
       }
+      row.appendChild(mainDiv);
       const actions = document.createElement("div");
       actions.className = "plan-item-actions";
-      if (p.id !== "default" && p.isDefault !== true) {
+      const btnClone = document.createElement("button");
+      btnClone.className = "btn btn-subtle btn-xs";
+      btnClone.textContent = "\u{1F4D1}";
+      btnClone.title = "Duplicate / Clone this plan";
+      btnClone.type = "button";
+      btnClone.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const cloneName = suggestCloneName(p.name, allNames);
+        btnClone.disabled = true;
+        const res = await callResolver2("createProjectPlan", {
+          name: cloneName,
+          cloneFromPlanId: p.id
+        });
+        if (res && res.ok && res.plan) {
+          activePlanId = res.plan.id;
+          showFlag({ text: `Cloned plan to ${res.plan.name}.` });
+          closePlansPopover();
+          await loadProjectPlan();
+        } else {
+          showFlag({ text: res?.message || "Failed to clone plan.", error: true });
+          btnClone.disabled = false;
+        }
+      });
+      actions.appendChild(btnClone);
+      if (p.canDelete) {
         const btnRename = document.createElement("button");
-        btnRename.className = "btn btn-subtle btn-sm";
+        btnRename.className = "btn btn-subtle btn-xs";
         btnRename.textContent = "\u270F\uFE0F";
         btnRename.title = "Rename plan";
         btnRename.type = "button";
@@ -8887,7 +9035,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         });
         actions.appendChild(btnRename);
         const btnDel = document.createElement("button");
-        btnDel.className = "btn btn-subtle btn-sm";
+        btnDel.className = "btn btn-subtle btn-xs";
         btnDel.textContent = "\u{1F5D1}\uFE0F";
         btnDel.title = "Delete plan";
         btnDel.type = "button";
@@ -8907,19 +9055,45 @@ Please see https://iframe-resizer.com/upgrade for more details.
           } else {
             btnDel.dataset.confirming = "true";
             btnDel.textContent = "Confirm?";
-            btnDel.className = "btn btn-danger btn-sm";
+            btnDel.className = "btn btn-danger btn-xs";
             setTimeout(() => {
               btnDel.dataset.confirming = "false";
               btnDel.textContent = "\u{1F5D1}\uFE0F";
-              btnDel.className = "btn btn-subtle btn-sm";
+              btnDel.className = "btn btn-subtle btn-xs";
             }, 4e3);
           }
         });
         actions.appendChild(btnDel);
       }
       row.appendChild(actions);
+      row.addEventListener("click", async (e) => {
+        if (e.target.closest("button") || e.target.closest("input")) return;
+        if (p.id !== currentId) {
+          activePlanId = p.id;
+          closePlansPopover();
+          await loadProjectPlan();
+          showFlag({ text: `Switched to plan ${p.name}.` });
+        }
+      });
+      row.addEventListener("keydown", async (ke) => {
+        if (ke.key === "Enter" || ke.key === " ") {
+          ke.preventDefault();
+          if (p.id !== currentId) {
+            activePlanId = p.id;
+            closePlansPopover();
+            await loadProjectPlan();
+            showFlag({ text: `Switched to plan ${p.name}.` });
+          }
+        }
+      });
       container.appendChild(row);
     }
+  }
+  function closePlansPopover() {
+    const pop = document.getElementById("plansManagerPopover");
+    if (pop) pop.style.display = "none";
+    const trigger = document.getElementById("planSelectorBtn");
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
   }
   async function loadProjectPlan() {
     const loader = document.getElementById("plannerLoadingIndicator");
@@ -8929,6 +9103,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const plan = await callResolver2("getProjectPlan", { planId: activePlanId });
     if (loader) loader.style.display = "none";
     if (plan && Array.isArray(plan.tasks)) {
+      mergeOptimisticTasks(plan);
       currentPlan = plan;
       if (plan.planId) activePlanId = plan.planId;
       updatePlansUI(plan.availablePlans, activePlanId);
@@ -9071,12 +9246,38 @@ Please see https://iframe-resizer.com/upgrade for more details.
       <div class="backlog-footer">
         <span>⏱️ ${effortDisplay}</span>
         <span>👤 ${item.resource || "Unassigned"}</span>
+        <button type="button" class="btn btn-outline btn-sm btn-schedule-backlog" title="Schedule onto timeline" style="margin-left: auto; padding: 2px 8px; font-size: 11px;">+ Schedule</button>
       </div>
     `;
       const bKeyLink = card.querySelector(".backlog-key-link");
       if (bKeyLink) {
         bKeyLink.addEventListener("click", (e) => {
           openJiraIssueInNewTab(item.key, e);
+        });
+      }
+      const btnSched = card.querySelector(".btn-schedule-backlog");
+      if (btnSched) {
+        btnSched.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          btnSched.disabled = true;
+          btnSched.textContent = "Scheduling...";
+          try {
+            const res = await callResolver2("scheduleBacklogTask", {
+              taskId: item.key,
+              startWeek: "",
+              startDate: todayIso(),
+              spanWeeks: 3
+            });
+            if (res && Array.isArray(res.tasks)) {
+              currentPlan = res;
+              renderPlan();
+            } else {
+              await loadProjectPlan();
+            }
+            showFlag({ text: "Scheduled " + item.key + " to timeline." });
+          } catch (err) {
+            showFlag({ text: "Failed to schedule " + item.key, error: true });
+          }
         });
       }
       card.addEventListener("dragstart", (e) => {
@@ -10005,7 +10206,22 @@ Please see https://iframe-resizer.com/upgrade for more details.
           isSubmitting = false;
           return;
         }
-        await loadProjectPlan();
+        if (res && res.task) {
+          registerOptimisticTask(res.task);
+        }
+        if (res && res.plan && Array.isArray(res.plan.tasks)) {
+          mergeOptimisticTasks(res.plan);
+          currentPlan = res.plan;
+          renderPlan();
+        } else if (res && res.task && currentPlan && Array.isArray(currentPlan.tasks)) {
+          if (!currentPlan.tasks.some((t) => t.key === res.task.key)) {
+            currentPlan.tasks.splice(insertIndex, 0, res.task);
+          }
+          renderPlan();
+        } else {
+          await loadProjectPlan();
+        }
+        showFlag({ text: "Task " + (res?.task?.key || "") + " created and scheduled." });
       } catch (err) {
         showFlag({ text: err?.message || "Error creating task.", error: true });
         input.disabled = false;
@@ -10127,9 +10343,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (!currentPlan.tasks || currentPlan.tasks.length === 0) {
       const es = emptyState(currentPlan);
       tbody.innerHTML = html`<tr><td colspan="${cols}" class="empty-state-cell">
-      <div class="empty-state" role="region" aria-labelledby="emptyStateTitle">
+      <div class="empty-state" id="emptyStateDropZone" role="region" aria-labelledby="emptyStateTitle">
         <h2 id="emptyStateTitle">${es.title}</h2>
         <p>${es.text}</p>
+        <div class="empty-state-drop-hint" style="margin: 12px 0 16px 0; padding: 12px 18px; border: 2px dashed var(--cp-border-brand); border-radius: 6px; background: var(--cp-bg-brand-subtle); color: var(--cp-text-brand); font-weight: 600; font-size: 13px;">
+          📥 Drop backlog issues here to schedule, or click below
+        </div>
         <div class="empty-state-actions">
           <button class="btn btn-primary" id="emptyStateAction" type="button" data-action="${es.action.id}">${es.action.label}</button>
           <button class="btn btn-link help-link" id="emptyStateHelp" type="button">How CascadePlan works</button>
@@ -10144,6 +10363,48 @@ Please see https://iframe-resizer.com/upgrade for more details.
         }
       });
       tbody.querySelector("#emptyStateHelp").addEventListener("click", openHelp);
+      const dropZone = tbody.querySelector("#emptyStateDropZone");
+      if (dropZone) {
+        dropZone.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          dropZone.classList.add("drop-active");
+        });
+        dropZone.addEventListener("dragleave", (e) => {
+          if (!dropZone.contains(e.relatedTarget)) {
+            dropZone.classList.remove("drop-active");
+          }
+        });
+        dropZone.addEventListener("drop", async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropZone.classList.remove("drop-active");
+          document.body.classList.remove("is-dragging-backlog");
+          const dataStr = e.dataTransfer.getData("text/plain");
+          if (!dataStr) return;
+          try {
+            const data = JSON.parse(dataStr);
+            if (data && data.taskId) {
+              const res = await callResolver2("scheduleBacklogTask", {
+                taskId: data.taskId,
+                startWeek: "",
+                startDate: todayIso(),
+                spanWeeks: 3,
+                targetIndex: 0
+              });
+              if (res && Array.isArray(res.tasks)) {
+                currentPlan = res;
+                renderPlan();
+              } else {
+                await loadProjectPlan();
+              }
+              showFlag({ text: "Scheduled " + data.taskId + " to timeline." });
+            }
+          } catch (err) {
+            console.error("Error handling empty state drop:", err);
+          }
+        });
+      }
       drawTimeline();
       return;
     }
@@ -11936,24 +12197,66 @@ Click to manage or assign.`;
       await loadProjectPlan();
       announce(`Switched to plan ${e.target.selectedOptions[0]?.textContent || activePlanId}.`);
     });
+    const trigger = document.getElementById("planSelectorBtn");
+    const pop = document.getElementById("plansManagerPopover");
+    if (trigger && pop) {
+      trigger.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const isClosed = pop.style.display === "none";
+        pop.style.display = isClosed ? "flex" : "none";
+        trigger.setAttribute("aria-expanded", isClosed ? "true" : "false");
+        if (isClosed) {
+          const searchInp2 = document.getElementById("planSearchInput");
+          if (searchInp2) {
+            searchInp2.value = currentPlanSearchQuery;
+            setTimeout(() => searchInp2.focus(), 50);
+          }
+        }
+      });
+    }
     document.getElementById("btnManagePlans")?.addEventListener("click", (e) => {
       e.stopPropagation();
-      const pop = document.getElementById("plansManagerPopover");
       if (pop) {
         pop.style.display = pop.style.display === "none" ? "flex" : "none";
       }
     });
     document.getElementById("btnClosePlansPopover")?.addEventListener("click", () => {
-      const pop = document.getElementById("plansManagerPopover");
-      if (pop) pop.style.display = "none";
+      closePlansPopover();
     });
-    document.getElementById("btnCreatePlan")?.addEventListener("click", async () => {
+    const searchInp = document.getElementById("planSearchInput");
+    if (searchInp) {
+      searchInp.addEventListener("input", (e) => {
+        currentPlanSearchQuery = e.target.value;
+        if (currentPlan && currentPlan.availablePlans) {
+          renderFilteredPlansList(currentPlan.availablePlans, activePlanId);
+        }
+      });
+    }
+    const tabs = document.querySelectorAll(".plan-tab");
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", (e) => {
+        e.stopPropagation();
+        tabs.forEach((t) => {
+          t.classList.remove("active");
+          t.setAttribute("aria-selected", "false");
+        });
+        tab.classList.add("active");
+        tab.setAttribute("aria-selected", "true");
+        currentPlanCategoryFilter = tab.dataset.category || "all";
+        if (currentPlan && currentPlan.availablePlans) {
+          renderFilteredPlansList(currentPlan.availablePlans, activePlanId);
+        }
+      });
+    });
+    const submitCreatePlan = async () => {
       const nameInp = document.getElementById("newPlanNameInput");
-      const name = nameInp ? nameInp.value.trim() : "";
-      if (!name) {
-        showFlag({ text: "Please enter a name for the new plan.", error: true });
+      const valResult = validateNewPlanName(nameInp ? nameInp.value : "");
+      if (!valResult.valid) {
+        showFlag({ text: valResult.error || "Please enter a valid plan name.", error: true });
+        nameInp?.focus();
         return;
       }
+      const name = valResult.cleanName;
       const clone = document.getElementById("cloneCurrentPlanCheckbox")?.checked === true;
       const res = await callResolver2("createProjectPlan", {
         name,
@@ -11961,15 +12264,62 @@ Click to manage or assign.`;
       });
       if (res && res.ok && res.plan) {
         if (nameInp) nameInp.value = "";
-        const pop = document.getElementById("plansManagerPopover");
-        if (pop) pop.style.display = "none";
+        closePlansPopover();
         activePlanId = res.plan.id;
         showFlag({ text: `Created and switched to plan ${res.plan.name}.` });
         await loadProjectPlan();
       } else {
         showFlag({ text: res?.message || "Failed to create plan.", error: true });
       }
+    };
+    document.getElementById("btnCreatePlan")?.addEventListener("click", submitCreatePlan);
+    document.getElementById("newPlanNameInput")?.addEventListener("keydown", (ke) => {
+      if (ke.key === "Enter") {
+        ke.preventDefault();
+        submitCreatePlan();
+      }
     });
+    const wrapper = document.getElementById("ganttWrapper");
+    if (wrapper) {
+      wrapper.addEventListener("dragover", (e) => {
+        if (document.body.classList.contains("is-dragging-backlog")) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+        }
+      });
+      wrapper.addEventListener("drop", async (e) => {
+        if (!document.body.classList.contains("is-dragging-backlog")) return;
+        document.body.classList.remove("is-dragging-backlog");
+        const dataStr = e.dataTransfer.getData("text/plain");
+        if (!dataStr) return;
+        try {
+          const data = JSON.parse(dataStr);
+          if (data && data.taskId && !data.fromReorder) {
+            e.preventDefault();
+            const rect = wrapper.getBoundingClientRect();
+            const relX = e.clientX - rect.left + wrapper.scrollLeft;
+            const d = dateAt(relX, originIso(), dayPx());
+            const snapped = zoomById(zoomId).snap === "week" ? mondayOf(d) : d;
+            const res = await callResolver2("scheduleBacklogTask", {
+              taskId: data.taskId,
+              startWeek: "",
+              startDate: snapped,
+              spanWeeks: 3,
+              targetIndex: currentPlan?.tasks ? currentPlan.tasks.length : 0
+            });
+            if (res && Array.isArray(res.tasks)) {
+              currentPlan = res;
+              renderPlan();
+            } else {
+              await loadProjectPlan();
+            }
+            showFlag({ text: "Scheduled " + data.taskId + " to timeline." });
+          }
+        } catch (err) {
+          console.error("Error on wrapper drop:", err);
+        }
+      });
+    }
     document.addEventListener("click", (e) => {
       const recentlyOpened = performance.now() - popoverOpenedAt < 180;
       const tb = document.getElementById("barToolbar");
@@ -11981,8 +12331,8 @@ Click to manage or assign.`;
       const conflictBanner = document.getElementById("depConflictBanner");
       if (!recentlyOpened && conflictBanner && !conflictBanner.hidden && !conflictBanner.contains(e.target)) closeDependencyConflictDialog();
       const plansPop = document.getElementById("plansManagerPopover");
-      if (plansPop && plansPop.style.display !== "none" && !plansPop.contains(e.target) && !e.target.closest("#btnManagePlans")) {
-        plansPop.style.display = "none";
+      if (plansPop && plansPop.style.display !== "none" && !plansPop.contains(e.target) && !e.target.closest("#planSelectorBtn") && !e.target.closest("#btnManagePlans")) {
+        closePlansPopover();
       }
     });
     document.getElementById("ganttWrapper")?.addEventListener("scroll", () => {
@@ -12597,7 +12947,22 @@ Click to manage or assign.`;
       }
       summaryInput.value = "";
       closeModal("createTaskModal");
-      await loadProjectPlan();
+      if (res && res.task) {
+        registerOptimisticTask(res.task);
+      }
+      if (res && res.plan && Array.isArray(res.plan.tasks)) {
+        mergeOptimisticTasks(res.plan);
+        currentPlan = res.plan;
+        renderPlan();
+      } else if (res && res.task && currentPlan && Array.isArray(currentPlan.tasks)) {
+        if (!currentPlan.tasks.some((t) => t.key === res.task.key)) {
+          currentPlan.tasks.push(res.task);
+        }
+        renderPlan();
+      } else {
+        await loadProjectPlan();
+      }
+      showFlag({ text: "Task " + (res?.task?.key || "") + " created and scheduled." });
     } catch (err) {
       if (errEl) {
         errEl.textContent = "An unexpected network error occurred.";
@@ -12661,7 +13026,14 @@ Click to manage or assign.`;
       }
       summaryInput.value = "";
       closeModal("createEpicModal");
-      await loadProjectPlan();
+      if (res && res.epic && currentPlan) {
+        if (!Array.isArray(currentPlan.availableEpics)) currentPlan.availableEpics = [];
+        if (!currentPlan.availableEpics.some((e) => e.key === res.epic.key)) {
+          currentPlan.availableEpics.push(res.epic);
+        }
+        populateEpicDropdowns();
+      }
+      showFlag({ text: "Epic " + (res?.epic?.key || "") + " created." });
     } catch (err) {
       if (errEl) {
         errEl.textContent = "An unexpected network error occurred.";

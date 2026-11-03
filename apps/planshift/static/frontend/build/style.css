@@ -1532,29 +1532,132 @@ body.is-dragging-backlog .drop-target-row.drag-over {
   gap: 4px;
   position: relative;
 }
-.plan-select {
+.plan-selector-trigger {
   font-weight: 600;
-  max-width: 145px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 180px;
+}
+.plan-selector-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plan-selector-caret {
+  font-size: 10px;
+  color: var(--cp-text-subtle);
 }
 .plans-manager-popover {
   left: 0;
   right: auto;
-  width: 320px;
-  max-width: 90vw;
+  width: 360px;
+  max-width: 92vw;
+  box-shadow: 0 8px 24px rgba(9, 30, 66, 0.18);
+}
+.plans-filter-section {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--cp-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.plan-filter-tabs {
+  display: flex;
+  gap: 4px;
+}
+.plan-tab {
+  background: transparent;
+  border: 1px solid var(--cp-border);
+  border-radius: 3px;
+  padding: 2px 7px;
+  font-size: 11px;
+  color: var(--cp-text-subtle);
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+.plan-tab:hover {
+  background: var(--cp-surface-sunken);
+  color: var(--cp-text);
+}
+.plan-tab.active {
+  background: var(--cp-bg-selected);
+  color: var(--cp-text-brand);
+  border-color: var(--cp-border-brand);
+  font-weight: 600;
 }
 .plans-list-container {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-height: 180px;
+  gap: 4px;
+  max-height: 240px;
   overflow-y: auto;
+  padding: 6px 12px;
+}
+.plan-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  gap: 8px;
+  cursor: pointer;
+  transition: background 0.1s ease, border-color 0.1s ease;
+}
+.plan-item-row:hover {
+  background: var(--cp-surface-hovered);
+  border-color: var(--cp-border-bold);
+}
+.plan-item-row.is-active {
+  border-left: 3px solid var(--cp-border-brand);
+  background: var(--cp-bg-selected);
+}
+.plan-item-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.plan-item-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cp-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plan-category-badge {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 600;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.plan-category-badge.is-baseline {
+  background: var(--cp-bg-selected);
+  color: var(--cp-text-brand);
+}
+.plan-category-badge.is-scenario {
+  background: var(--cp-bg-discovery);
+  color: var(--cp-text-discovery);
+}
+.plan-item-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
 }
 .plans-create-section {
   border-top: 1px solid var(--cp-border);
-  padding-top: 8px;
+  padding: 8px 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  background: var(--cp-surface-sunken);
 }
 .clone-plan-label {
   font-size: 11px;
@@ -1564,36 +1667,17 @@ body.is-dragging-backlog .drop-target-row.drag-over {
   color: var(--cp-text-subtle);
   cursor: pointer;
 }
-.plan-item-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 8px;
-  border-radius: 4px;
-  background: var(--cp-surface-sunken);
-  gap: 8px;
+.empty-state.drop-active {
+  background: var(--cp-bg-selected) !important;
+  border: 2px dashed var(--cp-border-brand) !important;
+  border-radius: 8px;
 }
-.plan-item-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--cp-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
+.empty-state-drop-hint {
+  transition: background 0.12s ease;
 }
-.plan-item-badge {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 3px;
-  background: var(--cp-bg-selected);
-  color: var(--cp-text-brand);
-  font-weight: 600;
-}
-.plan-item-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+.empty-state.drop-active .empty-state-drop-hint {
+  background: var(--cp-bg-brand-hover) !important;
+  color: var(--cp-text-inverse) !important;
 }
 
 /* Reduced motion: motion is off and instant (ADS motion guidance, UP-53; B-17). */
