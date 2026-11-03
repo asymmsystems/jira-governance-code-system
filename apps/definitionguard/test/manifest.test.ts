@@ -20,4 +20,20 @@ describe('B-20 manifest', () => {
     expect(validator).toContain('- key: definitionguard-workflow-validator');
     expect(validator).toContain('function: validateTransition');
   });
+
+  it('titles the issue panel Definition of Done without vendor branding', () => {
+    const panel = manifest.slice(manifest.indexOf('jira:issuePanel:'), start);
+    expect(panel).toContain('title: Definition of Done');
+  });
+
+  it('declares the native admin page for approvers under module definitionguard-admin', () => {
+    expect(manifest).toContain('jira:adminPage:');
+    expect(manifest).toContain('- key: definitionguard-admin');
+    expect(manifest).toContain('title: DefinitionGuard approvers');
+    expect(manifest).toContain('function: admin-resolver');
+  });
+
+  it('declares the read:jira-user scope for group checks and picker', () => {
+    expect(manifest).toContain('- read:jira-user');
+  });
 });

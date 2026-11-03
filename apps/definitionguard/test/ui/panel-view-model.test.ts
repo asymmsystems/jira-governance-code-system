@@ -36,11 +36,18 @@ describe('B-13 buildPanelViewModel', () => {
     const vm = vmOf(response());
     expect(vm.status).toMatchObject({ satisfied: false, title: 'Definition of Done incomplete', appearance: 'warning', lozenge: { text: 'Blocked', appearance: 'removed' } });
     expect(vm.status.body).toBe('Moving to Done is blocked while these items are open: Peer review approved, Release sign-off.');
+    expect(vm.status.nextStep).toBe('Complete mandatory item: Peer review approved.');
   });
 
   it('uses the success colour when satisfied', () => {
     const vm = vmOf(response({ isFullySatisfied: true, openMandatoryTitles: [] }));
     expect(vm.status).toMatchObject({ satisfied: true, appearance: 'success', lozenge: { text: 'Ready for Done', appearance: 'success' } });
+    expect(vm.status.nextStep).toBe('All mandatory criteria complete. Issue is ready for Done.');
+  });
+
+  it('suggests completing remaining items when incomplete but no mandatory items are open', () => {
+    const vm = vmOf(response({ isFullySatisfied: false, openMandatoryTitles: [] }));
+    expect(vm.status.nextStep).toBe('Complete remaining items or move issue to Done.');
   });
 
   it('gives each checkbox an accessible name with mandatory or optional and its state', () => {
@@ -83,6 +90,14 @@ describe('B-13 buildPanelViewModel', () => {
   it('builds an empty model when there is no checklist yet', () => {
     expect(buildPanelViewModel(null, fmt)).toBeNull();
   });
+
+  it('formats the approver audit line for empty and populated groups', () => {
+    const vmDefault = vmOf(response());
+    expect(vmDefault.approverLine).toBe('Authorized approvers: project administrators and Jira administrators.');
+
+    const vmCustom = vmOf(response({ approverGroups: ['lead-architects', 'product-owners'] }));
+    expect(vmCustom.approverLine).toBe('Authorized approvers: lead-architects, product-owners, and project administrators.');
+  });
 });
 
 describe('B-13 formatLocal', () => {
@@ -98,6 +113,7 @@ describe('B-13 formatLocal', () => {
 describe('B-13 panelErrorText', () => {
   it('shows our own messages, which carry a next step', () => {
     for (const m of [
+      'Requires Project Admin, Jira Admin, or membership in an authorized group. Configured by your Jira administrator in Jira Settings > Apps > DefinitionGuard.',
       'You need Edit issues permission to change this checklist.',
       'Only a project admin can reset this checklist.',
       'Someone else changed this checklist. Refresh and try again.',

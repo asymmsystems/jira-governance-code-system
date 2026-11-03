@@ -49,6 +49,18 @@ describe('B-19 hygiene', () => {
     const config = require(path.join(APP, 'jest.config.js'));
     expect(config.coverageThreshold['./src/**/*.ts']).toMatchObject({ branches: 90 });
   });
+
+  it('outside @asymm/jira-ui, no source file uses raw Atlassian tokens (color., elevation., space., radius.) or hex colors', () => {
+    const rawTokens = walk(path.join(APP, 'src'))
+      .filter(f => /\.tsx?$/.test(f))
+      .flatMap(f =>
+        fs.readFileSync(f, 'utf8').split('\n')
+          .map((line, i) => ({ line, at: `${path.relative(APP, f)}:${i + 1}` }))
+          .filter(({ line }) => /(?:['"`](?:color|elevation|space|radius)\.|#[0-9a-fA-F]{3,8}\b)/.test(line))
+          .map(({ at }) => at)
+      );
+    expect(rawTokens).toEqual([]);
+  });
 });
 
 describe('B-19 issue-type matching on whole words (DG-16)', () => {

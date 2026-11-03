@@ -23,6 +23,7 @@ export interface GateStatusText {
   satisfied: boolean;
   title: string;
   body: string;
+  nextStep: string;
   scope?: string;
 }
 
@@ -33,12 +34,22 @@ export interface GateStatusText {
  */
 export function gateStatusText(response: Pick<IssueChecklistState, 'isFullySatisfied' | 'openMandatoryTitles'>): GateStatusText {
   if (response.isFullySatisfied) {
-    return { satisfied: true, title: 'Definition of Done satisfied', body: 'This issue can be moved to Done.' };
+    return {
+      satisfied: true,
+      title: 'Definition of Done satisfied',
+      body: 'This issue can be moved to Done.',
+      nextStep: 'All mandatory criteria complete. Issue is ready for Done.'
+    };
   }
+  const openMandatory = response.openMandatoryTitles || [];
+  const nextStep = openMandatory.length > 0
+    ? `Complete mandatory item: ${openMandatory[0]}.`
+    : 'Complete remaining items or move issue to Done.';
   return {
     satisfied: false,
     title: 'Definition of Done incomplete',
-    body: `Moving to Done is blocked while these items are open: ${(response.openMandatoryTitles || []).join(', ')}.`,
+    body: `Moving to Done is blocked while these items are open: ${openMandatory.join(', ')}.`,
+    nextStep,
     scope: 'This applies on workflows where your Jira admin added the DefinitionGuard validator.'
   };
 }
@@ -69,6 +80,15 @@ export interface PanelViewModel {
   status: GateStatusText & { appearance: 'success' | 'warning'; lozenge: Lozenge };
   progress: Lozenge;
   items: PanelItemView[];
+  approverLine: string;
+}
+
+/** Formats the authorized approvers audit line. */
+export function formatApproverLine(groups?: string[]): string {
+  if (!groups || groups.length === 0) {
+    return 'Authorized approvers: project administrators and Jira administrators.';
+  }
+  return `Authorized approvers: ${groups.join(', ')}, and project administrators.`;
 }
 
 /** Local date and time, for example "1 Nov 2026, 09:30". Unparseable text is shown as is. */
@@ -118,12 +138,14 @@ export function buildPanelViewModel(response: IssueChecklistState | null, format
       lozenge: gate.satisfied ? { text: 'Ready for Done', appearance: 'success' } : { text: 'Blocked', appearance: 'removed' }
     },
     progress: { text: `${done} of ${response.items.length} done`, appearance: done > 0 && done === response.items.length ? 'success' : 'default' },
-    items
+    items,
+    approverLine: formatApproverLine(response.approverGroups)
   };
 }
 
 // Messages written by DefinitionGuard resolvers. Each one already says what to do next.
 const OWN_MESSAGES = [
+  'Requires Project Admin, Jira Admin, or membership in an authorized group',
   'You need ',
   'Only a project admin ',
   'Only users with ',
@@ -162,6 +184,11 @@ export interface HistoryRow {
   when: string;
   accountId: string;
   text: string;
+  actionText: string;
+  eventType?: ChecklistAuditEvent['eventType'];
+  actionVerb?: string;
+  itemTitle?: string;
+  reason?: string;
   evidence?: { url?: string; note?: string };
 }
 
@@ -176,11 +203,23 @@ const ACTION_TEXT: Record<ChecklistAuditEvent['eventType'], string> = {
 /** One row per event, oldest first: the action in words, the item title, and any waiver reason. */
 export function historyRows(trail: ChecklistAuditEvent[] | undefined, format: (iso?: string) => string = formatLocal): HistoryRow[] {
   return (trail || []).map(ev => {
-    let text = ACTION_TEXT[ev.eventType];
-    if (ev.itemTitle) text += `: ${ev.itemTitle}`;
+    let actionText = ACTION_TEXT[ev.eventType];
+    if (ev.itemTitle) actionText += `: ${ev.itemTitle}`;
+    let text = actionText;
     if (ev.details) text += ` (reason: ${ev.details})`;
-    const row: HistoryRow = { key: ev.id, when: format(ev.timestamp), accountId: ev.actorAccountId, text };
+    const row: HistoryRow = {
+      key: ev.id,
+      when: format(ev.timestamp),
+      accountId: ev.actorAccountId,
+      text,
+      actionText,
+      eventType: ev.eventType,
+      actionVerb: ACTION_TEXT[ev.eventType],
+      itemTitle: ev.itemTitle
+    };
+    if (ev.details) row.reason = ev.details;
     if (ev.evidence) row.evidence = ev.evidence;
     return row;
   });
 }
+

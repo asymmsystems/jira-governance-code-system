@@ -36,6 +36,7 @@ import {
   updateItem
 } from '../ui/template-editor';
 import { panelErrorText } from '../ui/panel-view-model';
+import { SPACE } from '@asymm/jira-ui';
 
 type Settings = {
   projectKey: string;
@@ -149,7 +150,7 @@ export const SettingsPage: React.FC = () => {
 
   if (!settings && !error) {
     return (
-      <Inline alignBlock="center" space="space.100">
+      <Inline alignBlock="center" space={SPACE.item}>
         <Spinner size="small" />
         <Text>Loading DefinitionGuard settings...</Text>
       </Inline>
@@ -159,7 +160,7 @@ export const SettingsPage: React.FC = () => {
   const typeOptions = (settings?.issueTypes || []).map(t => ({ label: t.name, value: t.id }));
 
   return (
-    <Stack space="space.200">
+    <Stack space={SPACE.section}>
       <Heading as="h2">Definition of Done templates</Heading>
       <Text>Choose an issue type, list its Definition of Done items, and save. Issues that already have a checklist keep their items.</Text>
 
@@ -189,16 +190,16 @@ export const SettingsPage: React.FC = () => {
         onChange={(e: any) => setEditor({ ...editor, name: e.target.value })}
       />
 
-      <Stack space="space.100">
+      <Stack space={SPACE.item}>
         {editor.items.map((item, idx) => (
-          <Box key={item.key} padding="space.100">
-            <Stack space="space.050">
+          <Box key={item.key} padding={SPACE.item}>
+            <Stack space={SPACE.sub}>
               <Textfield
                 id={`dg-title-${item.key}`}
                 defaultValue={item.title}
                 onChange={(e: any) => setEditor(updateItem(editor, item.key, { title: e.target.value }))}
               />
-              <Inline space="space.150" alignBlock="center" shouldWrap>
+              <Inline space={SPACE.group} alignBlock="center" shouldWrap>
                 <Checkbox
                   label="Mandatory"
                   isChecked={item.isMandatory}
@@ -239,7 +240,7 @@ export const SettingsPage: React.FC = () => {
         ))}
       </Stack>
 
-      <Inline space="space.100" alignBlock="center">
+      <Inline space={SPACE.item} alignBlock="center">
         <Textfield key={`dg-new-item-${newItemRound}`} id="dg-new-item" placeholder="New item title" onChange={(e: any) => setNewTitle(e.target.value)} />
         <Button
           isDisabled={newTitle.trim().length === 0}
@@ -253,7 +254,7 @@ export const SettingsPage: React.FC = () => {
         </Button>
       </Inline>
 
-      <Inline space="space.100">
+      <Inline space={SPACE.item}>
         <Button appearance="primary" isDisabled={saving || !issueTypeId} onClick={save}>
           Save template
         </Button>
@@ -264,7 +265,7 @@ export const SettingsPage: React.FC = () => {
 
       <Heading as="h3">Statuses the gate lets through</Heading>
       <Text>The gate blocks moves into Done-category statuses while mandatory items are open. Tick statuses that are not completions, such as Canceled or Declined.</Text>
-      <Stack space="space.050">
+      <Stack space={SPACE.sub}>
         {(settings?.doneStatuses || []).map(st => (
           <Checkbox
             key={st.id}
@@ -274,7 +275,7 @@ export const SettingsPage: React.FC = () => {
           />
         ))}
       </Stack>
-      <Inline space="space.100">
+      <Inline space={SPACE.item}>
         <Button isDisabled={saving} onClick={saveExempt}>Save statuses</Button>
       </Inline>
 
@@ -286,14 +287,14 @@ export const SettingsPage: React.FC = () => {
         </SectionMessage>
       )}
       {coverage && (
-        <Stack space="space.100">
+        <Stack space={SPACE.item}>
           <SectionMessage appearance={coverage.missing === 0 ? 'success' : 'warning'}>
             <Text>{coverage.summary}</Text>
           </SectionMessage>
           <List type="unordered">
             {coverage.transitions.map(t => (
               <ListItem key={`${t.workflow}/${t.transition}/${t.toStatus}`}>
-                <Inline space="space.100" alignBlock="center" shouldWrap>
+                <Inline space={SPACE.item} alignBlock="center" shouldWrap>
                   <Lozenge appearance={t.exempt ? 'default' : t.gated ? 'success' : 'removed'}>{t.exempt ? 'Exempt' : t.gated ? 'Gated' : 'Not gated'}</Lozenge>
                   <Text>{t.workflow}: {t.transition} (to {t.toStatus})</Text>
                 </Inline>

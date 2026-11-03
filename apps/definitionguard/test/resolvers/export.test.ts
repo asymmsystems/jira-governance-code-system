@@ -126,7 +126,9 @@ describe('B-15 historyRows', () => {
       'Reopened: Docs',
       'Checklist reset'
     ]);
-    expect(rows[1]).toMatchObject({ key: 'evt-2', when: '1 Nov 2026, 09:31', accountId: 'b', evidence: { note: 'done' } });
+    expect(rows[0]).toMatchObject({ key: 'evt-1', when: '1 Nov 2026, 09:30', accountId: 'a', actionText: 'Checklist created', eventType: 'TEMPLATE_CONFIGURED', actionVerb: 'Checklist created', itemTitle: undefined });
+    expect(rows[1]).toMatchObject({ key: 'evt-2', when: '1 Nov 2026, 09:31', accountId: 'b', actionText: 'Completed: Docs', eventType: 'CHECK', actionVerb: 'Completed', itemTitle: 'Docs', evidence: { note: 'done' } });
+    expect(rows[2]).toMatchObject({ key: 'evt-3', when: '1 Nov 2026, 09:32', accountId: 'c', actionText: 'Waived: Scan', eventType: 'WAIVE', actionVerb: 'Waived', itemTitle: 'Scan', reason: 'No code' });
     expect(historyRows(undefined, fmt)).toEqual([]);
   });
 });

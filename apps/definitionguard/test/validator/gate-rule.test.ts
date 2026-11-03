@@ -157,6 +157,7 @@ describe('B-10 panel uses the same rule', () => {
       satisfied: false,
       title: 'Definition of Done incomplete',
       body: `Moving to Done is blocked while these items are open: ${DEFAULT_DEFINITION_OF_DONE.items.filter(i => i.isMandatory).map(i => i.title).join(', ')}.`,
+      nextStep: `Complete mandatory item: ${DEFAULT_DEFINITION_OF_DONE.items.find(i => i.isMandatory)!.title}.`,
       scope: 'This applies on workflows where your Jira admin added the DefinitionGuard validator.'
     });
     for (const i of DEFAULT_DEFINITION_OF_DONE.items.filter(x => x.isMandatory)) {
