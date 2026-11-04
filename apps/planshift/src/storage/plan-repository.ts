@@ -3,12 +3,16 @@
  * Manages persistence for project plans, tasks, allocations, and partial completion dependencies.
  */
 
-import { ProjectPlanState, TaskDependency, PortfolioResourceHeatmapRow } from '../domain/models';
+import { ProjectPlanState, TaskDependency } from '../domain/models';
 
 export interface StorageProvider {
   get<T>(key: string): Promise<T | undefined>;
   set(key: string, value: any): Promise<void>;
   delete(key: string): Promise<void>;
+  /** All entries whose key starts with the prefix (paged by the provider). Used by PlanStore (B-09). */
+  query?<T>(prefix: string): Promise<Array<{ key: string; value: T }>>;
+  /** Atomically stores the value and returns the value it replaced. Used for the version check (B-09). */
+  swap?<T>(key: string, value: T): Promise<T | undefined>;
 }
 
 export class PlanRepository {

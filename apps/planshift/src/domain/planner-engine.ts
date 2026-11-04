@@ -11,7 +11,6 @@ import {
   UtilizationState,
   TaskDependency,
   ResourceUtilizationProfile,
-  PortfolioResourceHeatmapRow,
   ResourceProjectAllocation,
   EstimateUnit,
   TShirtSize,
@@ -51,7 +50,7 @@ export class PlannerEngine {
     config: Partial<TaskEffortConfig>
   ): TaskEffortConfig {
     const unit: EstimateUnit = config.unit || 'HOURS';
-    const rawEstimate = typeof config.rawEstimate === 'number' ? config.rawEstimate : 40;
+    const rawEstimate = typeof config.rawEstimate === 'number' ? config.rawEstimate : 0;
     const tshirtSize = config.tshirtSize;
     const ratio = config.hoursConversionRatio || DEFAULT_STORY_POINT_RATIO;
     const subtasks = config.subtasks || [];
@@ -141,7 +140,7 @@ export class PlannerEngine {
     successorKey: string,
     predecessorKey: string,
     triggerPercent: number,
-    existingTasks: { key: string; dependency?: TaskDependency }[] = []
+    existingTasks: { key: string; dependency?: TaskDependency | null }[] = []
   ): { valid: boolean; error?: string } {
     if (typeof triggerPercent !== 'number' || isNaN(triggerPercent) || triggerPercent < 0 || triggerPercent > 100) {
       return {
@@ -182,93 +181,6 @@ export class PlannerEngine {
     }
 
     return { valid: true };
-  }
-
-  /**
-   * Checks whether a partial completion dependency trigger is satisfied.
-   * Calculates earliest possible start date and flags timeline violations.
-   * Example: Task 2 can start as soon as Task 1 reaches 30% progress.
-   */
-  public static evaluateDependency(
-    predecessor: WbsTask | undefined,
-    dependency: TaskDependency,
-    successor?: WbsTask,
-    now: Date = new Date()
-  ): {
-    isSatisfied: boolean;
-    isViolated?: boolean;
-    blockerMessage?: string;
-    earliestStartDate?: string;
-    earliestStartReason?: string;
-  } {
-    if (!predecessor) {
-      return {
-        isSatisfied: false,
-        isViolated: true,
-        blockerMessage: `Predecessor task '${dependency.predecessorKey}' not found.`
-      };
-    }
-
-    const p = predecessor.progress || 0;
-    const X = dependency.triggerPercent;
-
-    if (p >= X) {
-      return {
-        isSatisfied: true,
-        isViolated: false
-      };
-    }
-
-    // Predecessor has not yet reached threshold X%
-    const predStartMs = new Date(predecessor.startDate || now).getTime();
-    const predEndMs = new Date(predecessor.endDate || predecessor.startDate || now).getTime();
-    const durationDays = Math.max(1, Math.round((Math.max(predEndMs, predStartMs + 86400000) - predStartMs) / 86400000));
-
-    let earliestDate: Date;
-    let earliestStartReason: string;
-
-    if (p === 0) {
-      const offsetDays = Math.max(1, Math.round((X / 100) * durationDays));
-      earliestDate = new Date(predStartMs + offsetDays * 86400000);
-      earliestStartReason = `Planned timeline: ${durationDays} days duration at 0% progress; requires ${offsetDays} days to reach ${X}%`;
-    } else {
-      const nowMs = now.getTime();
-      const elapsedDays = Math.max(1, Math.round((nowMs - predStartMs) / 86400000));
-      const observedRate = (p / 100) / elapsedDays;
-      const remainingFraction = (X - p) / 100;
-      const remainingDays = Math.max(1, Math.round(remainingFraction / (observedRate > 0 ? observedRate : 0.01)));
-      earliestDate = new Date(nowMs + remainingDays * 86400000);
-      earliestStartReason = `Observed velocity: ${p}% achieved over ${elapsedDays} days; estimated ${remainingDays} days to reach ${X}%`;
-    }
-
-    const earliestStartDate = earliestDate.toISOString().slice(0, 10);
-
-    let isViolated = false;
-    let blockerMessage: string | undefined;
-
-    if (successor) {
-      const successorStarted = successor.progress > 0 || successor.status === 'IN_PROGRESS' || successor.status === 'COMPLETED';
-      const succStartMs = new Date(successor.startDate).getTime();
-
-      if (successorStarted) {
-        isViolated = true;
-        blockerMessage = `'${successor.key}' has already started (${successor.progress}%), but predecessor '${predecessor.key}' is only at ${p}% (threshold: ${X}%).`;
-      } else if (succStartMs < earliestDate.getTime()) {
-        isViolated = true;
-        blockerMessage = `'${successor.key}' scheduled to start on ${successor.startDate}, before earliest possible start date ${earliestStartDate} (${earliestStartReason}).`;
-      }
-    } else {
-      isViolated = true;
-      blockerMessage = `Blocked: '${predecessor.key}' is at ${p}%, requires ${X}% completion to start.`;
-    }
-
-    return {
-      isSatisfied: false,
-      isViolated,
-      blockerMessage,
-      earliestStartDate,
-      earliestStartReason
-    };
   }
 
   /**
@@ -332,9 +244,12 @@ export class PlannerEngine {
       return { actualCompletion: 0, targetCompletion: 0 };
     }
 
-    const totalEffort = tasks.reduce((acc, t) => acc + (t.effortHours > 0 ? t.effortHours : 1), 0);
-    const actualWork = tasks.reduce((acc, t) => acc + (t.effortHours > 0 ? t.effortHours : 1) * (t.progress / 100), 0);
-    const targetWork = tasks.reduce((acc, t) => acc + (t.effortHours > 0 ? t.effortHours : 1) * (t.targetProgress / 100), 0);
+    const nonRollupTasks = tasks.filter(t => !t.isRollup);
+    const targetTasks = nonRollupTasks.length > 0 ? nonRollupTasks : tasks;
+
+    const totalEffort = targetTasks.reduce((acc, t) => acc + (t.effortHours > 0 ? t.effortHours : 1), 0);
+    const actualWork = targetTasks.reduce((acc, t) => acc + (t.effortHours > 0 ? t.effortHours : 1) * (t.progress / 100), 0);
+    const targetWork = targetTasks.reduce((acc, t) => acc + (t.effortHours > 0 ? t.effortHours : 1) * (t.targetProgress / 100), 0);
 
     return {
       actualCompletion: Math.round((actualWork / totalEffort) * 100),
@@ -441,50 +356,243 @@ export class PlannerEngine {
     return profiles;
   }
 
-  /**
-   * Builds the executive resource heatmap.
-   */
-  public static buildPortfolioHeatmap(
-    profiles: ResourceUtilizationProfile[],
-    metadata: Record<string, { coe: string; vertical: string; project: string }>
-  ): PortfolioResourceHeatmapRow[] {
-    return profiles.map((profile, idx) => {
-      const meta = metadata[profile.resourceName] || {
-        coe: 'Core Engineering',
-        vertical: 'Core Platform',
-        project: 'Project 1'
-      };
 
-      return {
-        resourceId: `res-${idx + 1}`,
-        resourceName: profile.resourceName,
-        project: meta.project,
-        coe: meta.coe,
-        vertical: meta.vertical,
-        weeklyUtilization: profile.overallWeeklyUtilization,
-        weeklyState: profile.overallWeeklyState
-      };
+
+  /**
+   * Reorders tasks list by moving a task to a target row index and updating order indices.
+   */
+  public static reorderTasks(tasks: WbsTask[], taskId: string, targetIndex: number): WbsTask[] {
+    const list = [...tasks];
+    const currentIndex = list.findIndex(t => t.key === taskId || t.id === taskId);
+    if (currentIndex === -1) return list;
+
+    const [item] = list.splice(currentIndex, 1);
+    const clampedIndex = Math.max(0, Math.min(list.length, targetIndex));
+    list.splice(clampedIndex, 0, item);
+
+    list.forEach((t, idx) => {
+      t.orderIndex = idx;
     });
+
+    return list;
   }
 
   /**
-   * Filters the portfolio heatmap by project, COE, or vertical.
+   * Organizes tasks into a hierarchical multi-tier tree (Epics -> Stories/Tasks -> Subtasks)
+   * and computes memory roll-up statistics (bounding dates, total hours, weighted progress)
+   * for parent tasks.
    */
-  public static filterPortfolioHeatmap(
-    rows: PortfolioResourceHeatmapRow[],
-    filters: { project?: string; coe?: string; vertical?: string }
-  ): PortfolioResourceHeatmapRow[] {
-    return rows.filter(row => {
-      if (filters.project && filters.project !== 'ALL' && row.project !== filters.project) {
-        return false;
+  public static buildWbsHierarchy(tasks: WbsTask[], weeks?: WeeklySprintColumn[]): WbsTask[] {
+    if (!tasks || tasks.length === 0) return [];
+
+    const taskList = tasks.map(t => ({ ...t }));
+
+    // 1. Establish hierarchyLevel, isEpic, and isSubtask
+    taskList.forEach(t => {
+      let level = t.hierarchyLevel;
+      if (level === undefined) {
+        if (t.isSubtask) {
+          level = -1;
+        } else if (t.isEpic || t.story === 'Epic' || t.story?.toLowerCase() === 'epic' || (t.epicKey && t.epicKey === t.key)) {
+          level = 1;
+        }
       }
-      if (filters.coe && filters.coe !== 'ALL' && row.coe !== filters.coe) {
-        return false;
+      if (level !== undefined) {
+        t.hierarchyLevel = level;
+        t.isEpic = (level === 1);
+        t.isSubtask = (level === -1);
       }
-      if (filters.vertical && filters.vertical !== 'ALL' && row.vertical !== filters.vertical) {
-        return false;
-      }
-      return true;
     });
+
+    // 2. Map parent-child relationships
+    const taskByKey = new Map<string, WbsTask>();
+    const taskById = new Map<string, WbsTask>();
+    taskList.forEach(t => {
+      if (t.key) taskByKey.set(t.key, t);
+      if (t.id) taskById.set(t.id, t);
+    });
+
+    const childrenMap = new Map<string, WbsTask[]>();
+    const childSet = new Set<string>();
+
+    taskList.forEach(t => {
+      let parentTask: WbsTask | undefined;
+      const targetParentKey = t.parentKey;
+      const targetParentId = t.parentId;
+
+      if (targetParentKey && (taskByKey.has(targetParentKey) || taskById.has(targetParentKey))) {
+        parentTask = taskByKey.get(targetParentKey) || taskById.get(targetParentKey);
+      } else if (targetParentId && (taskById.has(targetParentId) || taskByKey.has(targetParentId))) {
+        parentTask = taskById.get(targetParentId) || taskByKey.get(targetParentId);
+      } else if (t.epicKey && !t.isEpic && (taskByKey.has(t.epicKey) || taskById.has(t.epicKey))) {
+        parentTask = taskByKey.get(t.epicKey) || taskById.get(t.epicKey);
+      }
+
+      if (parentTask && parentTask.key !== t.key && parentTask.id !== t.id) {
+        const pk = parentTask.key || parentTask.id;
+        if (!childrenMap.has(pk)) childrenMap.set(pk, []);
+        childrenMap.get(pk)!.push(t);
+        childSet.add(t.key || t.id);
+
+        if (parentTask.isEpic) {
+          t.parentKey = parentTask.key;
+          t.epicKey = parentTask.key;
+          t.epic = parentTask.summary || parentTask.key;
+          if (t.hierarchyLevel === undefined || t.hierarchyLevel === 0) {
+            t.isSubtask = false;
+            t.hierarchyLevel = 0;
+          }
+        } else {
+          t.parentKey = parentTask.key;
+          t.isSubtask = true;
+          t.hierarchyLevel = -1;
+          if (parentTask.epic) {
+            t.epic = parentTask.epic;
+            t.epicKey = parentTask.epicKey;
+          }
+        }
+      } else {
+        if (t.hierarchyLevel === undefined) {
+          t.isSubtask = Boolean(t.isSubtask || t.parentKey || t.parentId);
+          t.hierarchyLevel = t.isSubtask ? -1 : 0;
+        }
+      }
+      t.isEpic = (t.hierarchyLevel === 1);
+    });
+
+    // 3. Compute roll-ups bottom-up for parents
+    taskList.forEach(t => {
+      const pk = t.key || t.id;
+      const children = childrenMap.get(pk) || [];
+      if (children.length > 0) {
+        t.childrenCount = children.length;
+        t.isRollup = true;
+
+        let totalHours = 0;
+        let completedHours = 0;
+        const validStartDates: string[] = [];
+        const validEndDates: string[] = [];
+        const distinctResources = new Set<string>();
+
+        const addResource = (res?: string) => {
+          if (res && res !== 'Unassigned' && res !== 'Unallocated') {
+            distinctResources.add(res);
+          }
+        };
+
+        addResource(t.resource);
+
+        children.forEach(c => {
+          const effort = c.effortHours > 0 ? c.effortHours : 0;
+          totalHours += effort;
+          completedHours += effort * ((c.progress || 0) / 100);
+          if (c.startDate) validStartDates.push(c.startDate.slice(0, 10));
+          if (c.endDate) validEndDates.push(c.endDate.slice(0, 10));
+
+          addResource(c.resource);
+          (c.contributingResources || []).forEach(addResource);
+          (c.subtasks || []).forEach(s => addResource(s.assignee));
+        });
+
+        (t.subtasks || []).forEach(s => addResource(s.assignee));
+        (t.contributingResources || []).forEach(addResource);
+
+        const contributingResources = Array.from(distinctResources);
+        if (contributingResources.length > 0) {
+          t.contributingResources = contributingResources;
+        }
+
+        validStartDates.sort();
+        validEndDates.sort();
+
+        const earliestStart = validStartDates[0];
+        const latestEnd = validEndDates[validEndDates.length - 1];
+        const progressPct = totalHours > 0 ? Math.round((completedHours / totalHours) * 100) : 0;
+
+        let startWeek = t.startWeek;
+        let spanWeeks = t.spanWeeks;
+
+        if (weeks && weeks.length > 0 && earliestStart && latestEnd) {
+          const sIdx = weeks.findIndex(w => w.startDate <= earliestStart && w.endDate >= earliestStart);
+          const eIdx = weeks.findIndex(w => w.startDate <= latestEnd && w.endDate >= latestEnd);
+          if (sIdx !== -1 && eIdx !== -1 && eIdx >= sIdx) {
+            startWeek = weeks[sIdx].weekKey;
+            spanWeeks = Math.max(1, eIdx - sIdx + 1);
+          }
+        }
+
+        t.rollupStats = {
+          startDate: earliestStart || t.startDate,
+          endDate: latestEnd || t.endDate,
+          totalHours,
+          completedHours,
+          progressPct,
+          startWeek,
+          spanWeeks,
+          childrenCount: children.length,
+          contributingResources
+        };
+
+        // Dynamically adjust bounding box and progress for all parent rollups (Epics AND Stories/Tasks with subtasks)
+        if (t.isRollup || t.isEpic || children.length > 0) {
+          if (t.isEpic && totalHours > 0) {
+            t.effortHours = totalHours;
+          }
+          if (!t.manualProgress) {
+            t.progress = progressPct;
+          }
+          if (earliestStart) t.startDate = earliestStart;
+          if (latestEnd) t.endDate = latestEnd;
+          if (startWeek) t.startWeek = startWeek;
+          if (spanWeeks) t.spanWeeks = spanWeeks;
+        }
+      } else {
+        const distinctResources = new Set<string>();
+        const addResource = (res?: string) => {
+          if (res && res !== 'Unassigned' && res !== 'Unallocated') {
+            distinctResources.add(res);
+          }
+        };
+        addResource(t.resource);
+        (t.subtasks || []).forEach(s => addResource(s.assignee));
+        (t.contributingResources || []).forEach(addResource);
+        const contributingResources = Array.from(distinctResources);
+        if (contributingResources.length > 0) {
+          t.contributingResources = contributingResources;
+        }
+      }
+    });
+
+    // 4. Construct ordered hierarchy list
+    const orderedResult: WbsTask[] = [];
+    const addedKeys = new Set<string>();
+
+    const appendWithChildren = (task: WbsTask) => {
+      const idStr = task.key || task.id;
+      if (addedKeys.has(idStr)) return;
+      addedKeys.add(idStr);
+      orderedResult.push(task);
+
+      const children = childrenMap.get(idStr) || [];
+      // Preserve the input taskList order among children
+      children.sort((a, b) => taskList.indexOf(a) - taskList.indexOf(b));
+      children.forEach(c => appendWithChildren(c));
+    };
+
+    taskList.forEach(t => {
+      const idStr = t.key || t.id;
+      if (!childSet.has(idStr)) {
+        appendWithChildren(t);
+      }
+    });
+
+    taskList.forEach(t => {
+      const idStr = t.key || t.id;
+      if (!addedKeys.has(idStr)) {
+        appendWithChildren(t);
+      }
+    });
+
+    return orderedResult;
   }
 }
