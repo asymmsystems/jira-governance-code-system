@@ -1,828 +1,208 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
- * @author Asymm Systems Team
- * FourRealities: Main Atlassian Forge Entry Point & Resolvers
+ * @author Fahim Farook
+ * FourRealities: Forge entry point. Client layer (resolver and trigger registration) and the
+ * single composition point that builds the Default implementations (ADR-002).
  */
 
 import Resolver from '@forge/resolver';
-import { kvs } from '@forge/kvs';
-import api, { route } from '@forge/api';
-import * as crypto from 'crypto';
-import { MetricsEngine } from './domain/metrics-engine';
-import { MetricsRepository, StorageProvider } from './storage/metrics-repository';
-import {
-  RealitySignals,
-  ProjectAuditSnapshot,
-  IssueIntegrityScore,
-  IssueExceptionRecord
-} from './domain/models';
+import { CallerContext, DecideExceptionPayload, ForgeContext, IssueRow, LinkDecisionPayload, ProjectDashboardView, RecordExceptionPayload, RequestReviewPayload, ResolverResult, ScheduledRunResult, WriteResult } from './contract/data/models';
+import { ConfluencePage, ConfluencePageSearchAccessor, StorageProvider } from './contract/accessors';
+import { DefaultForgeKvsStore } from './accessor/default-forge-kvs-store';
+import { DefaultForgeConfluenceSearchAccessor } from './accessor/default-forge-confluence-search-accessor';
+import { DefaultForgeJiraIssueAccessor, Principal } from './accessor/default-forge-jira-issue-accessor';
+import { DefaultKvsSiteConfigAccessor } from './accessor/default-kvs-site-config-accessor';
+import { DefaultKvsSnapshotAccessor } from './accessor/default-kvs-snapshot-accessor';
+import { DefaultKvsReworkNoteAccessor } from './accessor/default-kvs-rework-note-accessor';
+import { DefaultForgeAppContextAccessor } from './accessor/default-forge-app-context-accessor';
+import { DefaultKvsExceptionEventAccessor } from './accessor/default-kvs-exception-event-accessor';
+import { requestAs } from './accessor/default-forge-jira-issue-accessor';
+import { DefaultGateEngine } from './engine/default-gate-engine';
+import { DefaultMetricsEngine } from './engine/default-metrics-engine';
+import { DefaultSnapshotEngine } from './engine/default-snapshot-engine';
+import { DefaultPolicyEngine } from './engine/default-policy-engine';
+import { DefaultExceptionPolicyEngine } from './engine/default-exception-policy-engine';
+import { DefaultSnapshotManager } from './manager/default-snapshot-manager';
+import { DefaultIssueEvidenceManager } from './manager/default-issue-evidence-manager';
+import { DefaultExceptionManager } from './manager/default-exception-manager';
 
-class ForgeKvsProvider implements StorageProvider {
-  async get<T>(key: string): Promise<T | undefined> {
-    const val = await kvs.get(key);
-    return val as T;
-  }
-
-  async set(key: string, value: any): Promise<void> {
-    await kvs.set(key, value);
-  }
-
-  async delete(key: string): Promise<void> {
-    await kvs.delete(key);
-  }
-}
+/** Time a resolver may spend on Jira reads, inside the 25 s Forge limit. */
+export const RESOLVER_LINK_BUDGET_MS = 18_000;
+/** Time the daily snapshot run may spend across all projects, inside its 600 s timeout. */
+export const SCHEDULED_BUDGET_MS = 540_000;
 
 let globalStorageProvider: StorageProvider | null = null;
 
+/** Replaces the storage for every later call (tests and tools). */
 export function setGlobalStorageProvider(provider: StorageProvider | null): void {
   globalStorageProvider = provider;
 }
 
 export function resolveStorage(customProvider?: StorageProvider): StorageProvider {
-  if (customProvider) {
-    return customProvider;
-  }
-  if (globalStorageProvider) {
-    return globalStorageProvider;
-  }
-  if (process.env.NODE_ENV === 'test') {
-    throw new Error('FourRealities: StorageProvider must be initialized.');
-  }
-  return new ForgeKvsProvider();
+  return customProvider || globalStorageProvider || new DefaultForgeKvsStore();
 }
 
 /**
- * Analyzes issue changelog histories for status transitions and rework bounces.
- * Detects regressions from review/testing/done stages back into development.
+ * Builds the object graph for one invocation. Site configuration is read as the given
+ * principal; the snapshot is built as the app; viewer checks and user actions run as the user.
  */
-export function analyzeIssueChangelog(changelog: any): { transitionCount: number; regressionCount: number } {
-  if (!changelog || !Array.isArray(changelog.histories)) {
-    return { transitionCount: 1, regressionCount: 0 };
-  }
-
-  let transitionCount = 0;
-  let regressionCount = 0;
-
-  // Stages that indicate verification or completion
-  const reviewCategoryWords = ['review', 'in review', 'qa', 'testing', 'verification', 'uat', 'test'];
-  const doneCategoryWords = ['done', 'resolved', 'closed', 'complete', 'completed', 'shipped'];
-
-  // Stages that indicate development rework or reopening
-  const reworkTargetWords = ['in progress', 'to do', 'open', 'backlog', 'reopened', 'draft'];
-
-  for (const history of changelog.histories) {
-    if (!Array.isArray(history.items)) continue;
-    for (const item of history.items) {
-      if (item.field === 'status') {
-        transitionCount++;
-        const fromStatus = String(item.fromString || '').toLowerCase();
-        const toStatus = String(item.toString || '').toLowerCase();
-
-        const wasInReviewOrTesting = reviewCategoryWords.some(w => fromStatus.includes(w));
-        const wasDone = doneCategoryWords.some(w => fromStatus.includes(w));
-        const becameRework = reworkTargetWords.some(w => toStatus.includes(w));
-
-        // Rework bounce: moved from review/testing or done back to open/in progress
-        if ((wasInReviewOrTesting || wasDone) && becameRework) {
-          regressionCount++;
-        }
-      }
-    }
-  }
-
+export function compose(storageProvider: StorageProvider | undefined, budgetMs: number, configPrincipal: Principal) {
+  const storage = resolveStorage(storageProvider);
+  const deadline = Date.now() + budgetMs;
+  const appJira = new DefaultForgeJiraIssueAccessor('app', () => deadline);
+  const userJira = new DefaultForgeJiraIssueAccessor('user', () => deadline);
+  const siteConfig = new DefaultKvsSiteConfigAccessor(storage, requestAs(configPrincipal, () => deadline));
+  const notes = new DefaultKvsReworkNoteAccessor(storage);
+  const events = new DefaultKvsExceptionEventAccessor(storage);
+  const lifecycle = new DefaultExceptionPolicyEngine();
+  const gates = new DefaultGateEngine();
+  const metrics = new DefaultMetricsEngine();
+  const policy = new DefaultPolicyEngine();
   return {
-    transitionCount: Math.max(1, transitionCount),
-    regressionCount
+    projects: new DefaultSnapshotManager({
+      jira: appJira,
+      viewerJira: userJira,
+      budgetMs,
+      siteConfig,
+      snapshots: new DefaultKvsSnapshotAccessor(storage),
+      notes,
+      events,
+      lifecycle,
+      gates,
+      metrics,
+      snapshot: new DefaultSnapshotEngine()
+    }),
+    issues: new DefaultIssueEvidenceManager({ userJira, siteConfig, notes, events, lifecycle, gates, metrics, policy }),
+    exceptions: new DefaultExceptionManager({ userJira, siteConfig, notes, events, policy, lifecycle })
   };
 }
 
-/**
- * Validates authentic architectural documentation/intent traceability.
- * Requires genuine ADR, RFC, technical specification, design doc, or PRD links.
- */
-export function evaluateDocumentedIntent(issuelinks?: any[] | null, remotelinks?: any[] | null): boolean {
-  if (Array.isArray(remotelinks) && remotelinks.length > 0) {
-    for (const rl of remotelinks) {
-      const url = String(rl.object?.url || rl.url || '').toLowerCase();
-      const title = String(rl.object?.title || rl.title || '').toLowerCase();
+export const LICENCE_INACTIVE_MESSAGE = 'The FourRealities licence for this site is not active. A site administrator can renew it in Manage apps.';
 
-      const isArchitectureSpec =
-        title.includes('adr') ||
-        title.includes('rfc') ||
-        title.includes('spec') ||
-        title.includes('decision') ||
-        title.includes('architecture') ||
-        title.includes('blueprint') ||
-        title.includes('design doc') ||
-        title.includes('tech spec') ||
-        title.includes('requirement');
-
-      const isSpecUrl =
-        url.includes('/adr') ||
-        url.includes('/rfc') ||
-        url.includes('/spec') ||
-        url.includes('architecture') ||
-        url.includes('decision') ||
-        url.includes('blueprint') ||
-        url.includes('design-doc');
-
-      if (isArchitectureSpec || isSpecUrl) {
-        return true;
-      }
-    }
-  }
-
-  if (!Array.isArray(issuelinks) || issuelinks.length === 0) {
-    return false;
-  }
-
-  const docLinkKeywords = ['document', 'specif', 'implement', 'verif', 'satisf', 'decision', 'design'];
-  const docTypeKeywords = ['architecture', 'adr', 'spec', 'rfc', 'requirement', 'documentation', 'decision'];
-
-  for (const link of issuelinks) {
-    const linkTypeInward = String(link.type?.inward || '').toLowerCase();
-    const linkTypeOutward = String(link.type?.outward || '').toLowerCase();
-    const isDocLinkType = docLinkKeywords.some(kw => linkTypeInward.includes(kw) || linkTypeOutward.includes(kw));
-    if (isDocLinkType) {
-      return true;
-    }
-
-    const linkedIssue = link.inwardIssue || link.outwardIssue;
-    if (linkedIssue) {
-      const summary = String(linkedIssue.fields?.summary || '').toLowerCase();
-      const typeName = String(linkedIssue.fields?.issuetype?.name || '').toLowerCase();
-
-      if (
-        summary.startsWith('[adr]') ||
-        summary.startsWith('[spec]') ||
-        summary.startsWith('[arch]') ||
-        summary.startsWith('[rfc]') ||
-        summary.includes('architecture decision') ||
-        summary.includes('software design') ||
-        summary.includes('design document')
-      ) {
-        return true;
-      }
-
-      if (docTypeKeywords.some(kw => typeName.includes(kw))) {
-        return true;
-      }
-    }
-  }
-
-  return false;
+/** True only when Forge says the licence is inactive; no licence (development) is allowed (D-10, B-23). */
+export function licenceInactive(context: ForgeContext | undefined): boolean {
+  return context?.license?.isActive === false;
 }
 
-/**
- * Shared extraction pipeline converting Jira issue payload to authentic RealitySignals.
- */
-export function extractSignalsFromIssue(
-  iss: any,
-  remoteLinks?: any[],
-  devStatusPullRequests?: any[],
-  storedException?: IssueExceptionRecord
-): RealitySignals {
-  const certProp = iss.properties?.['ledgerseal-cert'] || iss.properties?.['ledgersealCert'];
-  const dodProp = iss.properties?.['definitionguard-dod'] || iss.properties?.['definitionguardDod'];
-  const links = iss.fields?.issuelinks;
-  const hasDocumentedIntent = evaluateDocumentedIntent(links, remoteLinks);
-  const { transitionCount, regressionCount } = analyzeIssueChangelog(iss.changelog);
+const LICENCE_READ_ERROR = { ok: false as const, error: { code: 'LICENSE_INACTIVE' as const, message: LICENCE_INACTIVE_MESSAGE } };
+const LICENCE_WRITE_ERROR: WriteResult = { success: false, error: LICENCE_INACTIVE_MESSAGE };
 
-  let prCount = 0;
-  let hasApprovedReview = false;
-
-  // 1. Check Dev Status PR review approval
-  if (Array.isArray(devStatusPullRequests) && devStatusPullRequests.length > 0) {
-    prCount = devStatusPullRequests.length;
-    hasApprovedReview = devStatusPullRequests.some(pr =>
-      (Array.isArray(pr.reviewers) && pr.reviewers.some((r: any) => r.approvalStatus === 'APPROVED')) ||
-      pr.status === 'APPROVED'
-    );
-  }
-
-  // 2. Check development field heuristic if dev-status returned no PRs
-  if (prCount === 0) {
-    const devField = iss.fields?.customfield_10000;
-    if (typeof devField === 'string' && devField.includes('pullrequest')) {
-      prCount = 1;
-      // Approved status required; merely MERGED without approval is not credited
-      if (devField.includes('APPROVED')) {
-        hasApprovedReview = true;
-      }
-    }
-  }
-
-  // 3. Authenticate cryptographic seal (requires valid snapshotHash and certificateId)
-  const isSealed = Boolean(
-    certProp &&
-    (certProp.status === 'SEAL_VALID' || certProp.valid === true) &&
-    !certProp.isCompromised &&
-    certProp.snapshotHash
-  );
-
-  // 4. Authenticate DoD satisfaction
-  const isDoDSatisfied = Boolean(
-    dodProp &&
-    (dodProp.isFullySatisfied === true || dodProp.satisfied === true)
-  );
-
-  // 5. Dynamic sprint name detection
-  const sprintObj = iss.fields?.sprint || iss.fields?.customfield_10020?.[0];
-  const sprintName = sprintObj?.name;
-
+/** The parts of the Forge context that Managers use. */
+export function callerOf(context: ForgeContext | undefined): CallerContext {
+  const issue = context?.extension?.issue;
   return {
-    issueId: String(iss.id),
-    issueKey: String(iss.key),
-    summary: iss.fields?.summary || '',
-    status: iss.fields?.status?.name || 'In Progress',
-    statusCategory: iss.fields?.status?.statusCategory?.name || 'In Progress',
-    assigneeName: iss.fields?.assignee?.displayName,
-    sprintName,
-    hasDocumentedIntent,
-    transitionCount,
-    regressionCount,
-    reworkReason: storedException?.type === 'REWORK' ? storedException.reason : undefined,
-    prCount,
-    hasApprovedReview,
-    codeExceptionReason: storedException?.type === 'CODE' ? storedException.reason : undefined,
-    hasCryptographicSeal: isSealed,
-    sealCertificateId: certProp?.certificateId,
-    sealSnapshotHash: certProp?.snapshotHash,
-    isDoDSatisfied,
-    dodCompletedCount: dodProp?.completedCount,
-    dodTotalCount: dodProp?.totalCount
+    accountId: context?.accountId ? String(context.accountId) : undefined,
+    issueId: issue?.id ? String(issue.id) : undefined,
+    issueKey: issue?.key ? String(issue.key) : undefined,
+    projectKey: context?.extension?.project?.key ? String(context.extension.project.key) : undefined
   };
 }
 
 /**
- * Queries live Jira issues using search/jql with pagination support up to 100+ issues.
+ * Project dashboard. Reads the stored snapshot and builds one only when none exists; a page
+ * view never writes trend history. The project comes from the Forge context only.
  */
-export async function fetchLiveProjectAudit(
-  projectKey: string,
-  repository?: MetricsRepository
-): Promise<{ signals: RealitySignals[]; error?: string }> {
-  try {
-    const allIssues: any[] = [];
-    let startAt = 0;
-    const maxResults = 100;
-    let isLast = false;
+export async function getProjectDashboard(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<ResolverResult<ProjectDashboardView>> {
+  if (licenceInactive(context)) return LICENCE_READ_ERROR;
+  return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'app').projects.view(callerOf(context), false);
+}
 
-    // Paginate Jira search up to 2 pages (200 issues) for comprehensive audit
-    while (!isLast && allIssues.length < 200) {
-      const res = await api.asApp().requestJira(
-        route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&startAt=${startAt}&maxResults=${maxResults}&fields=summary,status,issuetype,issuelinks,assignee,customfield_10000,customfield_10020,sprint&properties=ledgerseal-cert,ledgersealCert,definitionguard-dod,definitionguardDod&expand=changelog`
-      );
+/** Rebuilds the project snapshot now ("Refresh"), inside the resolver time budget. */
+export async function refreshProjectSnapshot(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<ResolverResult<ProjectDashboardView>> {
+  if (licenceInactive(context)) return LICENCE_READ_ERROR;
+  return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'app').projects.view(callerOf(context), true);
+}
 
-      if (res.status !== 200) {
-        return { signals: [], error: `Jira search/jql failed with HTTP ${res.status}` };
-      }
+/** Daily scheduled run over every registered project (spec v2, Snapshot schedule). */
+export async function runScheduledSnapshot(storageProvider?: StorageProvider, deadline: number = Date.now() + SCHEDULED_BUDGET_MS): Promise<ScheduledRunResult> {
+  return compose(storageProvider, Math.max(0, deadline - Date.now()), 'app').projects.runScheduled(deadline);
+}
 
-      const data = await res.json();
-      const batch: any[] = data.issues || [];
-      allIssues.push(...batch);
-
-      if (batch.length < maxResults || (data.total && allIssues.length >= data.total)) {
-        isLast = true;
-      } else {
-        startAt += maxResults;
-      }
-    }
-
-    const signals: RealitySignals[] = [];
-    for (const iss of allIssues) {
-      let storedException: IssueExceptionRecord | undefined = undefined;
-      if (repository) {
-        storedException = await repository.getIssueException(String(iss.id));
-      }
-      signals.push(extractSignalsFromIssue(iss, undefined, undefined, storedException));
-    }
-
-    return { signals };
-  } catch (err: any) {
-    return { signals: [], error: err?.message || 'Network error querying Jira search/jql' };
+/** Forge scheduledTrigger handler (manifest function "snapshot"). */
+export const snapshot = async (): Promise<void> => {
+  if (new DefaultForgeAppContextAccessor().licenceActive() === false) {
+    console.log('FourRealities: scheduled snapshot skipped: the licence is not active.');
+    return;
   }
+  const result = await runScheduledSnapshot();
+  console.log('FourRealities: scheduled snapshot', JSON.stringify(result));
+};
+
+/** Evaluates one Jira issue. The issue comes from the Forge context only. */
+export async function getIssueAlignment(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<ResolverResult<{ row: IssueRow }>> {
+  if (licenceInactive(context)) return LICENCE_READ_ERROR;
+  return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user').issues.evaluate(callerOf(context));
 }
 
 /**
- * Retrieves the project-level audit dashboard and reality alignment summary.
+ * After a successful write from the issue panel, reads the issue again as the user and adds its
+ * row, so the panel shows the state Jira returns (B-17, FR-20). A failed read leaves no row.
  */
-export async function getProjectDashboard(
-  payload: any,
-  context?: any,
-  storageProvider?: StorageProvider
-): Promise<ProjectAuditSnapshot> {
-  const contextProject = context?.extension?.project?.key;
-  const projectKey = String(contextProject || payload?.projectKey || 'DEFAULT');
-  const userId = String(context?.accountId || payload?.userId || 'anonymous');
-
-  const storage = resolveStorage(storageProvider);
-  const repository = new MetricsRepository(storage);
-
-  // Retrieve authentic previous snapshot from storage history
-  const previousSnapshot = await repository.getPreviousProjectSnapshot(projectKey);
-
-  // Attempt live Jira query for authentic project issues
-  const { signals: liveSignals, error: syncError } = await fetchLiveProjectAudit(projectKey, repository);
-
-  // If live Jira returned authentic signals without error
-  if (!syncError) {
-    const issueScores = liveSignals.map(s => MetricsEngine.evaluateIssue(s));
-    const summary = MetricsEngine.summarizeProject(liveSignals, previousSnapshot);
-    const snapshot: ProjectAuditSnapshot = {
-      snapshotId: `snap-${Date.now()}`,
-      projectKey,
-      generatedAt: new Date().toISOString(),
-      generatedBy: userId,
-      summary,
-      issueScores
-    };
-    await repository.saveProjectSnapshot(snapshot);
-    return snapshot;
-  }
-
-  // If sync error occurred, check if cached snapshot exists and flag warning
-  const existing = await repository.getLatestProjectSnapshot(projectKey);
-  if (existing) {
-    return {
-      ...existing,
-      warning: `Live Jira sync failed (${syncError}). Displaying cached snapshot.`
-    };
-  }
-
-  // If no cached snapshot exists, return initial baseline with error warning
-  const now = new Date().toISOString();
-  const emptySummary = MetricsEngine.summarizeProject([]);
-  const initialSnapshot: ProjectAuditSnapshot = {
-    snapshotId: `snap-${Date.now()}`,
-    projectKey,
-    generatedAt: now,
-    generatedBy: userId,
-    summary: emptySummary,
-    issueScores: [],
-    warning: `Live Jira sync failed (${syncError}). No cached snapshot available.`
-  };
-
-  await repository.saveProjectSnapshot(initialSnapshot);
-  return initialSnapshot;
+async function withRow(app: ReturnType<typeof compose>, caller: CallerContext, result: WriteResult): Promise<WriteResult> {
+  if (!result.success || !caller.issueId) return result;
+  const evaluated = await app.issues.evaluate(caller);
+  return evaluated.ok ? { ...result, row: evaluated.row } : result;
 }
 
 /**
- * Retrieves reality alignment metrics for a single Jira issue.
+ * Remediation Resolvers. FourRealities never writes the LedgerSeal or DefinitionGuard
+ * properties: that evidence belongs to the producer apps (one writer per fact).
  */
-export async function getIssueAlignment(
-  payload: any,
-  context?: any,
-  storageProvider?: StorageProvider
-): Promise<IssueIntegrityScore> {
-  const contextIssue = context?.extension?.issue;
-  const issueId = String(contextIssue?.id || payload?.issueId || payload?.issue?.id || '');
-  const issueKey = String(contextIssue?.key || payload?.issueKey || payload?.issue?.key || issueId);
-
-  if (!issueId || issueId === 'default-issue') {
-    throw new Error('FourRealities: Missing issueId.');
-  }
-
-  const storage = resolveStorage(storageProvider);
-  const repository = new MetricsRepository(storage);
-  const storedException = await repository.getIssueException(issueId);
-
-  // Attempt to fetch authentic live Jira issue state and entity properties
-  try {
-    const [issueRes, remoteLinksRes, stashDevRes, githubDevRes, bitbucketDevRes] = await Promise.all([
-      api.asApp().requestJira(
-        route`/rest/api/3/issue/${issueId}?fields=summary,status,issuetype,issuelinks,assignee,customfield_10000,customfield_10020,sprint&properties=ledgerseal-cert,ledgersealCert,definitionguard-dod,definitionguardDod&expand=changelog`
-      ),
-      api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/remotelink`).catch(() => null),
-      api.asApp().requestJira(route`/rest/dev-status/latest/issue/detail?issueId=${issueId}&applicationType=stash&dataType=pullrequest`).catch(() => null),
-      api.asApp().requestJira(route`/rest/dev-status/latest/issue/detail?issueId=${issueId}&applicationType=github&dataType=pullrequest`).catch(() => null),
-      api.asApp().requestJira(route`/rest/dev-status/latest/issue/detail?issueId=${issueId}&applicationType=bitbucket&dataType=pullrequest`).catch(() => null)
-    ]);
-
-    if (issueRes.status === 200) {
-      const iss = await issueRes.json();
-      if (iss?.id || iss?.key) {
-        let remoteLinks: any[] = [];
-        if (remoteLinksRes && remoteLinksRes.status === 200) {
-          try {
-            remoteLinks = await remoteLinksRes.json();
-          } catch {}
-        }
-
-        const pullRequests: any[] = [];
-        for (const devRes of [stashDevRes, githubDevRes, bitbucketDevRes]) {
-          if (devRes && devRes.status === 200) {
-            try {
-              const devData = await devRes.json();
-              if (Array.isArray(devData.detail)) {
-                for (const item of devData.detail) {
-                  if (Array.isArray(item.pullRequests)) {
-                    pullRequests.push(...item.pullRequests);
-                  }
-                }
-              }
-            } catch {}
-          }
-        }
-
-        const signals = extractSignalsFromIssue(iss, remoteLinks, pullRequests, storedException);
-        await repository.saveIssueSignals(signals);
-        return MetricsEngine.evaluateIssue(signals);
-      }
-    }
-  } catch (err: any) {
-    console.error('FourRealities: Jira API fetch failed for issue', err);
-  }
-
-  // Check fallback stored signals in repository
-  const stored = await repository.getIssueSignals(issueId);
-  if (stored) {
-    return MetricsEngine.evaluateIssue(stored);
-  }
-
-  throw new Error(`FourRealities: Failed to query Jira for issue '${issueKey}'. Verify Jira connection and issue permissions.`);
+export async function linkDecision(payload: LinkDecisionPayload | undefined, context?: ForgeContext, storageProvider?: StorageProvider): Promise<WriteResult> {
+  if (licenceInactive(context)) return { ...LICENCE_WRITE_ERROR };
+  const app = compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user');
+  const caller = callerOf(context);
+  return withRow(app, caller, await app.issues.linkDecision(caller, payload));
 }
 
-/**
- * Records reality signals for an issue and updates project snapshot.
- * Enforces cross-project isolation to prevent unauthorized poisoning.
- */
-export async function recordIssueSignals(
-  payload: any,
-  context?: any,
-  storageProvider?: StorageProvider
-): Promise<IssueIntegrityScore> {
-  const contextProject = context?.extension?.project?.key;
-  const targetProject = payload?.projectKey;
-
-  // Prevent cross-project data poisoning
-  if (contextProject && targetProject && contextProject !== targetProject) {
-    throw new Error(`FourRealities: Forbidden. Cannot record signals for project '${targetProject}' from context '${contextProject}'.`);
-  }
-
-  const { signals, projectKey } = payload || {};
-  if (!signals?.issueId || !signals?.issueKey) {
-    throw new Error('FourRealities: Valid issue signals required.');
-  }
-
-  let effectiveProject = contextProject || targetProject || projectKey;
-  if (!effectiveProject && signals?.issueKey?.includes('-')) {
-    effectiveProject = signals.issueKey.split('-')[0];
-  }
-  if (!effectiveProject) {
-    throw new Error('FourRealities: Project key required.');
-  }
-
-  const storage = resolveStorage(storageProvider);
-  const repository = new MetricsRepository(storage);
-
-  await repository.saveIssueSignals(signals);
-  const score = MetricsEngine.evaluateIssue(signals);
-
-  const current = await repository.getLatestProjectSnapshot(String(effectiveProject));
-  const now = new Date().toISOString();
-  const updatedIssues = current?.issueScores.filter(s => s.issueId !== signals.issueId) || [];
-  updatedIssues.push(score);
-
-  const newSummary = MetricsEngine.summarizeProject(
-    updatedIssues.map(s => ({
-      issueId: s.issueId,
-      issueKey: s.issueKey,
-      summary: s.summary,
-      status: s.status,
-      statusCategory: s.statusCategory,
-      assigneeName: s.assigneeName,
-      hasDocumentedIntent: s.intentScore === 100,
-      transitionCount: 1,
-      regressionCount: Math.round((100 - s.processScore) / 25),
-      prCount: s.codeScore > 0 ? 1 : 0,
-      hasApprovedReview: s.codeScore === 100,
-      hasCryptographicSeal: s.auditScore === 100 || (s.auditScore >= 50 && s.gates.audit === 'PASSED'),
-      isDoDSatisfied: s.auditScore === 100 || (s.auditScore >= 50 && s.gates.audit !== 'BLOCKED')
-    })),
-    current
-  );
-
-  const updatedSnapshot: ProjectAuditSnapshot = {
-    snapshotId: `snap-${Date.now()}`,
-    projectKey: String(effectiveProject),
-    generatedAt: now,
-    generatedBy: String(context?.accountId || 'system'),
-    summary: newSummary,
-    issueScores: updatedIssues
-  };
-  await repository.saveProjectSnapshot(updatedSnapshot);
-
-  return score;
+/** Requests a Code exception, or records a rework note. */
+export async function recordException(payload: RecordExceptionPayload | undefined, context?: ForgeContext, storageProvider?: StorageProvider): Promise<WriteResult> {
+  if (licenceInactive(context)) return { ...LICENCE_WRITE_ERROR };
+  const app = compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user');
+  const caller = callerOf(context);
+  return withRow(app, caller, await app.exceptions.record(caller, payload));
 }
 
-/**
- * Remediation Resolvers: 1-Click fixes for reality gates with strict authorization
- */
-
-/**
- * Links an authentic architecture decision or specification document as a remote link.
- * Runs as calling user with explicit validation (rejects hardcoded fake links).
- */
-export async function linkDecision(payload: any, context?: any): Promise<{ success: boolean; remoteLink?: any; error?: string }> {
-  const contextIssueId = context?.extension?.issue?.id;
-  const issueId = payload?.issueId || contextIssueId;
-
-  // Authorization check: if in issue context, target issue must match context
-  if (contextIssueId && payload?.issueId && contextIssueId !== payload.issueId) {
-    return { success: false, error: 'Unauthorized: Cannot link decision to external issue.' };
-  }
-
-  if (!issueId) {
-    return { success: false, error: 'Missing issueId.' };
-  }
-
-  const url = String(payload?.url || '').trim();
-  const title = String(payload?.title || '').trim();
-  const summary = String(payload?.summary || 'Architecture decision record verifying Intent gate.').trim();
-
-  // Validate URL format
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return { success: false, error: 'Invalid URL protocol. HTTP or HTTPS required.' };
-    }
-  } catch {
-    return { success: false, error: 'Invalid specification URL provided.' };
-  }
-
-  if (!title) {
-    return { success: false, error: 'Document title or ADR identifier required.' };
-  }
-
-  try {
-    const res = await api.asUser().requestJira(route`/rest/api/3/issue/${issueId}/remotelink`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        object: {
-          url,
-          title,
-          summary
-        }
-      })
-    });
-
-    if (res.status >= 200 && res.status < 300) {
-      return { success: true, remoteLink: { url, title } };
-    }
-    return { success: false, error: `Jira returned status ${res.status} linking decision.` };
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Failed to link architecture decision.' };
-  }
+/** Approves, rejects, revokes or withdraws a Code exception (ADR-001, Option C). */
+export async function decideException(payload: DecideExceptionPayload | undefined, context?: ForgeContext, storageProvider?: StorageProvider): Promise<WriteResult> {
+  if (licenceInactive(context)) return { ...LICENCE_WRITE_ERROR };
+  const app = compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user');
+  const caller = callerOf(context);
+  return withRow(app, caller, await app.exceptions.decide(caller, payload));
 }
 
-/**
- * Cryptographically seals a completed issue.
- * Preconditions enforced: Issue must be Done/In Review, and DoD must be satisfied.
- * Computes canonical SHA-256 certificate.
- */
-export async function sealIssue(
-  payload: any,
-  context?: any,
-  storageProvider?: StorageProvider
-): Promise<{ success: boolean; cert?: any; error?: string }> {
-  const contextIssueId = context?.extension?.issue?.id;
-  const issueId = payload?.issueId || contextIssueId;
-
-  if (contextIssueId && payload?.issueId && contextIssueId !== payload.issueId) {
-    return { success: false, error: 'Unauthorized: Cannot seal external issue.' };
-  }
-
-  if (!issueId) {
-    return { success: false, error: 'Missing issueId.' };
-  }
-
-  // Precondition Check: Fetch live issue state to verify completion and DoD
-  try {
-    const res = await api.asApp().requestJira(
-      route`/rest/api/3/issue/${issueId}?fields=summary,status&properties=definitionguard-dod,definitionguardDod`
-    );
-
-    if (res.status !== 200) {
-      return { success: false, error: `Failed to verify issue state before sealing (HTTP ${res.status}).` };
-    }
-
-    const iss = await res.json();
-    const statusCategory = iss.fields?.status?.statusCategory?.name || '';
-    const statusName = String(iss.fields?.status?.name || '').toLowerCase();
-    const dodProp = iss.properties?.['definitionguard-dod'] || iss.properties?.['definitionguardDod'];
-
-    // Precondition 1: Work must have reached verification or completion stage
-    const isReadyForSeal = statusCategory === 'Done' || statusName.includes('review') || statusName.includes('resolved') || statusName.includes('closed');
-    if (!isReadyForSeal) {
-      return { success: false, error: 'Cannot seal issue: Issue is in early status. Sealing requires verification stage or completion.' };
-    }
-
-    // Precondition 2: Definition of Done must be satisfied
-    const isDoDSatisfied = Boolean(dodProp && (dodProp.isFullySatisfied === true || dodProp.satisfied === true));
-    if (!isDoDSatisfied) {
-      return { success: false, error: 'Cannot seal issue: Definition of Done checklist must be satisfied before cryptographic seal can be generated.' };
-    }
-
-    // Compute cryptographic SHA-256 seal certificate
-    const now = new Date().toISOString();
-    const userId = String(context?.accountId || 'system-user');
-    const snapshotPayload = {
-      issueId,
-      issueKey: iss.key,
-      summary: iss.fields?.summary || '',
-      status: iss.fields?.status?.name || '',
-      isDoDSatisfied: true,
-      sealedAt: now,
-      sealedBy: userId
-    };
-
-    const snapshotCanonical = JSON.stringify(snapshotPayload, Object.keys(snapshotPayload).sort());
-    const snapshotHash = crypto.createHash('sha256').update(snapshotCanonical).digest('hex');
-    const certificateId = `LS-${snapshotHash.slice(0, 8).toUpperCase()}`;
-
-    const cert = {
-      status: 'SEAL_VALID',
-      valid: true,
-      certificateId,
-      snapshotHash,
-      sealedAt: now,
-      sealedBy: userId,
-      tamperedFieldCount: 0,
-      isCompromised: false,
-      lastVerifiedAt: now
-    };
-
-    // Update entity property via asUser() for audit compliance
-    const propRes = await api.asUser().requestJira(route`/rest/api/3/issue/${issueId}/properties/ledgerseal-cert`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(cert)
-    });
-
-    if (propRes.status >= 200 && propRes.status < 300) {
-      return { success: true, cert };
-    }
-
-    // Fallback to asApp() if user lacks direct property write scope
-    const fallbackRes = await api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/properties/ledgerseal-cert`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(cert)
-    });
-
-    if (fallbackRes.status >= 200 && fallbackRes.status < 300) {
-      return { success: true, cert };
-    }
-
-    return { success: false, error: `Failed to persist cryptographic seal (HTTP ${fallbackRes.status}).` };
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Failed to generate cryptographic seal.' };
-  }
+/** Requests a retrospective review by posting a comment as the user. */
+export async function requestReview(payload: RequestReviewPayload | undefined, context?: ForgeContext, storageProvider?: StorageProvider): Promise<WriteResult> {
+  if (licenceInactive(context)) return { ...LICENCE_WRITE_ERROR };
+  const app = compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user');
+  const caller = callerOf(context);
+  return withRow(app, caller, await app.issues.requestReview(caller, payload));
 }
 
-/**
- * Completes the Definition of Done checklist with interactive item checklist confirmation.
- * Generates checklist hash and records completion metadata.
- */
-export async function completeDod(
-  payload: any,
-  context?: any
-): Promise<{ success: boolean; dod?: any; error?: string }> {
-  const contextIssueId = context?.extension?.issue?.id;
-  const issueId = payload?.issueId || contextIssueId;
-
-  if (contextIssueId && payload?.issueId && contextIssueId !== payload.issueId) {
-    return { success: false, error: 'Unauthorized: Cannot modify checklist on external issue.' };
-  }
-
-  if (!issueId) {
-    return { success: false, error: 'Missing issueId.' };
-  }
-
-  const rawItems = Array.isArray(payload?.items) ? payload.items : [];
-  if (rawItems.length === 0) {
-    return { success: false, error: 'Checklist items required to evaluate Definition of Done.' };
-  }
-
-  const completedCount = rawItems.filter((i: any) => Boolean(i.completed)).length;
-  const totalCount = rawItems.length;
-  const isFullySatisfied = completedCount === totalCount && totalCount > 0;
-
-  const checklistHash = crypto.createHash('sha256').update(JSON.stringify(rawItems)).digest('hex');
-  const now = new Date().toISOString();
-  const userId = String(context?.accountId || 'system-user');
-
-  const dod = {
-    isFullySatisfied,
-    satisfied: isFullySatisfied,
-    completedCount,
-    totalCount,
-    checklistHash,
-    completedAt: now,
-    completedBy: userId,
-    items: rawItems
-  };
-
-  try {
-    const propRes = await api.asUser().requestJira(route`/rest/api/3/issue/${issueId}/properties/definitionguard-dod`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(dod)
-    });
-
-    if (propRes.status >= 200 && propRes.status < 300) {
-      return { success: true, dod };
-    }
-
-    // Fallback to asApp() if user lacks direct property write scope
-    const fallbackRes = await api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/properties/definitionguard-dod`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(dod)
-    });
-
-    if (fallbackRes.status >= 200 && fallbackRes.status < 300) {
-      return { success: true, dod };
-    }
-
-    return { success: false, error: `Failed to persist Definition of Done (HTTP ${fallbackRes.status}).` };
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Failed to complete Definition of Done.' };
-  }
-}
-
-/**
- * Records a justified exception (e.g., "Explain: No code change" or "Rework Reason").
- */
-export async function recordException(
-  payload: any,
-  context?: any,
-  storageProvider?: StorageProvider
-): Promise<{ success: boolean; record?: IssueExceptionRecord; error?: string }> {
-  const contextIssueId = context?.extension?.issue?.id;
-  const issueId = payload?.issueId || contextIssueId;
-
-  if (contextIssueId && payload?.issueId && contextIssueId !== payload.issueId) {
-    return { success: false, error: 'Unauthorized: Cannot record exception on external issue.' };
-  }
-
-  if (!issueId) {
-    return { success: false, error: 'Missing issueId.' };
-  }
-
-  const type = payload?.type === 'REWORK' ? 'REWORK' : 'CODE';
-  const reason = String(payload?.reason || '').trim();
-  const notes = payload?.notes ? String(payload.notes).trim() : undefined;
-
-  if (!reason) {
-    return { success: false, error: 'Exception reason required.' };
-  }
-
-  const record: IssueExceptionRecord = {
-    issueId,
-    issueKey: String(payload?.issueKey || issueId),
-    type,
-    reason,
-    notes,
-    recordedBy: String(context?.accountId || 'system-user'),
-    recordedAt: new Date().toISOString()
-  };
-
-  const storage = resolveStorage(storageProvider);
-  const repository = new MetricsRepository(storage);
-  await repository.saveIssueException(record);
-
-  // Persist property to Jira issue
-  try {
-    await api.asUser().requestJira(route`/rest/api/3/issue/${issueId}/properties/fourrealities-exception`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(record)
-    }).catch(async () => {
-      await api.asApp().requestJira(route`/rest/api/3/issue/${issueId}/properties/fourrealities-exception`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(record)
-      });
-    });
-  } catch {}
-
-  return { success: true, record };
+/** Searches Confluence pages by title as the user (B-41). */
+export async function searchConfluencePages(
+  payload: { query?: string } | undefined,
+  context?: ForgeContext,
+  confluenceAccessor?: ConfluencePageSearchAccessor
+): Promise<{ ok: boolean; pages: ConfluencePage[]; error?: string }> {
+  if (licenceInactive(context)) return { ok: false, pages: [], error: LICENCE_INACTIVE_MESSAGE };
+  const query = typeof payload?.query === 'string' ? payload.query : '';
+  const searcher = confluenceAccessor || new DefaultForgeConfluenceSearchAccessor();
+  return searcher.searchPages(query);
 }
 
 /**
  * Rendering hooks for Forge modules.
  */
-export async function renderProjectPage(context: any) {
+export async function renderProjectPage(context: ForgeContext) {
   return { moduleKey: 'fourrealities-project-dashboard', context };
 }
 
-export async function renderIssuePanel(context: any) {
+export async function renderIssuePanel(context: ForgeContext) {
   return { moduleKey: 'fourrealities-issue-panel', context };
 }
 
-export async function renderIssueContext(context: any) {
+export async function renderIssueContext(context: ForgeContext) {
   return { moduleKey: 'fourrealities-issue-context', context };
 }
 
@@ -830,34 +210,35 @@ export async function renderIssueContext(context: any) {
 const resolver = new Resolver();
 
 resolver.define('getProjectDashboard', async (req) => {
-  const projectKey = req.payload?.projectKey || req.context?.extension?.project?.key || 'DEFAULT';
-  return await getProjectDashboard({ ...req.payload, projectKey }, req.context);
+  return await getProjectDashboard(req.payload, req.context);
+});
+
+resolver.define('refreshProjectSnapshot', async (req) => {
+  return await refreshProjectSnapshot(req.payload, req.context);
 });
 
 resolver.define('getIssueAlignment', async (req) => {
-  const issueId = req.payload?.issueId || req.context?.extension?.issue?.id || 'default-issue';
-  const issueKey = req.payload?.issueKey || req.context?.extension?.issue?.key || issueId;
-  return await getIssueAlignment({ ...req.payload, issueId, issueKey }, req.context);
-});
-
-resolver.define('recordIssueSignals', async (req) => {
-  return await recordIssueSignals(req.payload, req.context);
+  return await getIssueAlignment(req.payload, req.context);
 });
 
 resolver.define('linkDecision', async (req) => {
   return await linkDecision(req.payload, req.context);
 });
 
-resolver.define('sealIssue', async (req) => {
-  return await sealIssue(req.payload, req.context);
-});
-
-resolver.define('completeDod', async (req) => {
-  return await completeDod(req.payload, req.context);
-});
-
 resolver.define('recordException', async (req) => {
   return await recordException(req.payload, req.context);
+});
+
+resolver.define('decideException', async (req) => {
+  return await decideException(req.payload, req.context);
+});
+
+resolver.define('requestReview', async (req) => {
+  return await requestReview(req.payload, req.context);
+});
+
+resolver.define('searchConfluencePages', async (req) => {
+  return await searchConfluencePages(req.payload as { query?: string }, req.context);
 });
 
 export const handler = resolver.getDefinitions();

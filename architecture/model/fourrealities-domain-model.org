@@ -1,0 +1,153 @@
+#+TITLE: FourRealities Domain Model (High-Level Design)
+#+DATE: 2026-11-01
+#+STATUS: Approved
+
+* Purpose
+
+The high-level design for [[file:../decision/adr-00001-fourrealities-evidence-data-model.org][ADR-001]] (data model patterns) and
+[[file:../decision/adr-00002-fourrealities-volatility-layering.org][ADR-002]] (volatility layering).
+It shows the logical model, the KVS mapping, the components and the main flows.
+
+* 1. Logical model
+
+#+begin_src text
+ JIRA OWNS (read only)                          FOURREALITIES OWNS
+ ─────────────────────                          ──────────────────
+
+ KNOWLEDGE LEVEL                                KNOWLEDGE LEVEL (catalog: defaults in code,
+ ───────────────                                per-project override reserved)
+ ISSUE_TYPE                                     GATE_TYPE ─────────── applicability rule
+ ISSUE_LINK_TYPE                                EVIDENCE_SOURCE ───── verification class
+ STATUS_CATEGORY                                INTENT_EVIDENCE_RULE  (link types, target issue
+ PROJECT_ROLE                                                          types, content app types)
+                                                EXCEPTION_STATUS
+                                                VALID_TRANSITION ──── condition (separation of duties)
+                                                ROLE_TYPE (REQUESTER, APPROVER)
+
+ OPERATIONAL LEVEL                              OPERATIONAL LEVEL
+ ─────────────────                              ─────────────────
+ ISSUE (WorkEffort) ◄───────────────subject──── GATE_OBSERVATION (derived, per snapshot)
+  │  ├─ STATUS_CHANGE (history)                   gate, state, method, verification,
+  │  ├─ ASSIGNEE (party in role)                  evidence_ref, reason, observed_at
+  │  ├─ ISSUE_LINK ──type──► ISSUE              │
+  │  ├─ REMOTE_LINK ──app type──► PAGE          ├─► ISSUE_ROW (rows of observations + RAI)
+  │  ├─ DEV_FIELD (PR summary)                   └─► TREND_POINT (weekly aggregate, max 52)
+  │  └─ PROPERTY ledgerseal-cert   (LedgerSeal)
+  │     PROPERTY definitionguard-dod (DefinitionGuard)
+  │     PROPERTY checklist         (HeroCoders)  GATE_EXCEPTION_EVENT (append-only)
+  │                                                issue, gate, status, at,
+ ACCOUNT (Party) ◄──────────by_account_id──────── by_account_id, as_role, reason
+                                                │
+                                                └─► current status = last event
+
+                                                REWORK_NOTE (append-only)
+                                                  issue, at, by_account_id, text
+#+end_src
+
+* 2. KVS mapping (Forge KVS: 240 KiB per value, 25 operations per transaction)
+
+| Logical entity | KVS key | Value | Bound |
+|----------------+---------+-------+-------|
+| ISSUE_ROW (snapshot) | =fr:p:{project}:chunk:{i}= | ={snapshotId, rows[]}= | 100 rows, measured 63,099 B |
+| Snapshot meta | =fr:p:{project}:meta= | =SnapshotMeta=, written last | under 1 KiB |
+| Project summary | =fr:p:{project}:summary= | =ProjectSummary= | under 2 KiB |
+| TREND_POINT | =fr:p:{project}:trend= | =TrendPoint[]= | 52 points |
+| Catalog override (reserved) | =fr:p:{project}:catalog= | =EvidenceCatalog= | under 8 KiB |
+| GATE_EXCEPTION_EVENT | =fr:ex:{issueId}:{gate}:{at}:{seq}= | one event | under 2 KiB each; never rewritten |
+| REWORK_NOTE | =fr:note:{issueId}:{at}:{seq}= | one note | under 2 KiB each |
+| Site configuration | =fr:cfg:site= | dev field id, site host | under 1 KiB |
+| Project registry | =fr:projects= | project keys | 500 keys |
+
+Issue property =fourrealities-exception= holds only the *current* exception status per gate,
+for other tools and JQL. It is a projection of the events, not the record of truth.
+
+* 3. Components (ADR-002)
+
+#+begin_src text
+                 ┌────────────────────────── CLIENT ───────────────────────────┐
+                 │ frontend: App, IssuePanel, ProjectDashboard, modals          │
+                 │ index.ts: resolvers + scheduledTrigger + wiring              │
+                 └───────┬───────────────┬────────────────┬──────────────┬─────┘
+                         │               │                │              │
+             DashboardManager  IssueEvidenceManager  GateExceptionManager  SnapshotManager
+                         │               │                │              │
+          ┌──────────────┴─────┬─────────┴───────┬────────┴─────┬────────┘
+          │ ENGINES (pure)     │                 │ ACCESSORS (I/O)
+          │ GateEngine         │                 │ JiraIssueAccessor
+          │ MetricsEngine      │                 │ SiteConfigAccessor
+          │ ExceptionPolicy    │                 │ SnapshotAccessor
+          │ SnapshotEngine     │                 │ ExceptionEventAccessor
+          │ DevFieldEngine     │                 │ NoteAccessor
+          │                    │                 │ JiraPermissionAccessor
+          └────────────────────┘                 └──────────────────
+#+end_src
+
+* 4. Flows
+
+** 4.1 Daily snapshot (scheduledTrigger, as the app)
+
+#+begin_src text
+SnapshotManager
+  1. SiteConfigAccessor.get()                     dev field id, site host
+  2. JiraIssueAccessor.searchProject()            paged, cap 2,000
+  3. ExceptionEventAccessor.currentByIssue()      one paged prefix query
+  4. JiraIssueAccessor.remoteLinks(started ids)   8 at a time, inside the budget
+  5. GateEngine.evaluate(facts, catalog)          per issue
+  6. SnapshotEngine.mergeUnread(previous, now)    keep previous Intent when links unread
+  7. MetricsEngine.row(), summarize()             RAI, rates
+  8. SnapshotEngine.trendPoint(summary, at)
+  9. SnapshotAccessor.save(), recordTrend()       chunks, then summary, then meta
+#+end_src
+
+** 4.2 Page view (as the viewer)
+
+#+begin_src text
+DashboardManager
+  1. SnapshotAccessor.load()                      meta + chunks (build once if absent)
+  2. JiraIssueAccessor.visibleIds()               id-only search as the viewer
+  3. filter rows, MetricsEngine.summarize(visible)
+#+end_src
+
+** 4.3 Code exception approved by a project administrator (ADR-001, Option C)
+
+#+begin_src text
+ Requester (acc-1)                  FourRealities                         Approver (acc-2)
+ ────────────────                   ─────────────                         ────────────────
+ "Request exception" ─────────────► ExceptionPolicyEngine.canRequest()
+   reason (15-500 chars)             (no PR, gate MISSING)
+                                    ExceptionEventAccessor.append(REQUESTED, acc-1 as REQUESTER)
+                                    property fourrealities-exception := {code: REQUESTED}
+                                    Gate stays "Evidence missing";
+                                    panel: "Exception requested by acc-1, awaiting approval"
+                                                                       ◄─── opens the issue panel
+                                    JiraPermissionAccessor.isProjectAdmin()  (as acc-2:
+                                      mypermissions ADMINISTER_PROJECTS)
+                                    ExceptionPolicyEngine.canTransition(
+                                      REQUESTED → APPROVED, by acc-2)  ◄─── "Approve" / "Reject"
+                                      rule: acc-2 is project admin,
+                                            acc-2 ≠ requester, acc-2 ≠ assignee
+                                    ExceptionEventAccessor.append(APPROVED, acc-2 as APPROVER)
+                                    property := {code: APPROVED}
+                                    Gate shows "Excepted: requested by acc-1,
+                                    approved by acc-2 on <date>: <reason>"
+#+end_src
+
+All writes run as the user. A 403 from Jira returns to the user; there is no retry as the app.
+
+* 5. Migration from specification v2
+
+| v2 data | v3 form | Rule |
+|---------+---------+------|
+| =fr:issue:{id}:exception= with =code= | two events: REQUESTED and APPROVED by =code.recordedBy=, =migrated: true= | Panel labels it "approved before two-person approval was required". Old key kept until the next daily run confirms the events, then deleted. |
+| =fr:issue:{id}:exception= with =rework= | one REWORK_NOTE | Same deletion rule. |
+| v1 =fr:issue:{id}:exception= (type, reason) | read as v2 first (existing =normalizeException=), then as above | |
+
+* 6. Effect on the backlog (approved 2026-11-01)
+
+| Item | Change |
+|------+--------|
+| New B-29 | Volatility layering refactor (ADR-002): contracts, Default implementations, single wiring point, architecture test. No behaviour change. First. |
+| New B-30 | Gate exception lifecycle (ADR-001 Patterns 3 and 5): append-only events; approval, rejection and revocation by a project administrator who is not the requester or assignee; withdraw by the requester; migration. Replaces the single-record model from B-06. |
+| New B-31 | Evidence catalog (ADR-001 Pattern 4): rules as data; observation gains =method= and =evidence_ref= (Pattern 2). |
+| New B-32 | Rework notes as an append-only list (ADR-001 Pattern 6). |
+| B-17 to B-25 | Resume after B-29 to B-32, in their current order. B-17 (feedback from re-evaluated state) then covers the approve and reject actions too. |

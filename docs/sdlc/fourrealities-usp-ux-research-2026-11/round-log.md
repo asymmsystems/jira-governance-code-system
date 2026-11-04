@@ -1,0 +1,314 @@
+# FourRealities research and build: round log
+
+Each entry gives the date, what changed and the evidence. Test IDs (T-xx) are cited in the other three files.
+
+## Round 0: setup (2026-11-01)
+
+- Read in full: the portfolio audit (all sections), `appendix-fourrealities.md`, `docs/spec/fourrealities-spec.md`, `docs/marketplace/fourrealities-listing.md`, every file under `apps/fourrealities/src` and `apps/fourrealities/test`, `manifest.yml`, `package.json`, `jest.config.js`, `tsconfig.json`, `loop-engine/README.md`, `loop-engine/agents/*.md` and `loop-engine/graders/*.py`.
+- **T-00, md5 check.** The md5 of all 11 FourRealities source, test and config files equals `snapshot-md5.txt`. So every audit finding (FR-01 to FR-26) still applies to the code. Command: `md5sum` against the audit snapshot.
+- Git: the repo is on branch `feature/cascadeplan-research-build`. The working tree has uncommitted changes under `apps/planshift` and four untracked agent files under `loop-engine/agents/`. None are under `apps/fourrealities`. Part A changed nothing under `apps/`.
+- Scratch folder: `~/.cache/gemini-earning-fourrealities-research/` (`harness/`, `probes/`, `sources/`).
+
+## Round 1: collect (2026-11-01)
+
+### Observed-test evidence produced in this round
+
+| ID | What | Result | Files |
+|---|---|---|---|
+| T-01 | Baseline `npx tsc --noEmit -p .` (host node v26.13.0) | Exit 0, no errors, 3.3 s | `probes/tsc-baseline.txt` |
+| T-02 | Baseline `npx jest --coverage` (coverage written to the cache, not to `apps/`) | 3 suites, 54 of 54 tests pass, 7.0 s. All files 98.62 / 90.33 / 92.18 / 98.71. `index.ts` 97.67 / 88.46 / 88.09 / 97.9. `metrics-engine.ts` branch 93.46. `metrics-repository.ts` 100. Identical to the audit run. | `probes/jest-baseline.txt`, `probes/cov-baseline/` |
+| T-03 | FR-01 render probe. Renders the real `FourRealitiesApp` with `react-test-renderer` 18.3.1. UI Kit components and `@forge/bridge` are mocked. | Project page: React throws "Rendered more hooks than during the previous render." at `src/frontend/index.tsx:585`, raised from `setLoading` in `init` (`:182`). The tree then renders `null`. Issue panel with a failing `getIssueAlignment`: same error, same blank result. The probe asserts the desired behaviour, so it fails today for the right reason. | `probes/fr01-render.test.tsx`, `probes/results/fr01-render.json` |
+| T-04 | Resolver harness. Calls `getProjectDashboard` 11 times (11 page views) at 50, 300 and 1,000 issues, and `getIssueAlignment` once. The mocked Jira follows the enhanced `/search/jql` contract that the audit saw live (`startAt` ignored, no `total`). The KVS mock rejects a value above 240 KiB. | See `ux-spec.md` section 3. Short form: at 50 issues the history value passes 240 KiB on view 7 (272,855 bytes). At 300 and 1,000 issues the dashboard reads 200 rows that hold only 100 unique issues (FR-08), and view 2 fails (314,377 bytes). After the first failure every later view fails. KVS reads per view are N + 2, one by one (52 at 50 issues, 202 at 200 rows). Every Jira call runs as the app. | `harness/resolver-perf.test.ts`, `harness/results/resolver-baseline.json` |
+| T-05 | Live, read-only (GET calls and one page view) on `asymmsystems.atlassian.net` | The DEMO project page still shows only its title. The app iframe is hidden with height 0 after 20 s. DEMO-26 still carries `ledgerseal-cert` `{status: SEAL_VALID, valid: true, sealedAt, isCompromised: false}` and `definitionguard-dod` `{isFullySatisfied: true, satisfied: true, completedAt}`, and no `fourrealities-exception`. 17 of the 34 issues in DEMO and TEST carry `ledgerseal-cert` or `definitionguard-dod`. **New:** the site now has a third project, AUDT ("Audit Test Software"), a classic Jira Software project with Scrum board 4 and 0 issues. | `probes/live-demo-project-page-2026-11-01.jpg` |
+
+### Side effects of Part A on the live site
+
+- The DEMO project page view ran `getProjectDashboard`. That resolver writes `fr:project:DEMO:latest` and `fr:project:DEMO:history` in FourRealities app storage on every view (Observed-code `src/index.ts:339`). This is app storage, not Jira. The effect is Inferred, because the audit cannot read app storage.
+- No Jira write. No issue panel was opened, so no LedgerSeal panel ran (LS-06).
+
+### Collect: web sources
+
+Four research agents ran in parallel with WebSearch and WebFetch only (GET, no sign-up, no login, no posting, no email sent). Their source files are in `~/.cache/gemini-earning-fourrealities-research/sources/`:
+
+| File | IDs | Rows |
+|---|---|---|
+| `native-atlassian.md` | NA-01 to NA-35 | 35 |
+| `dod-and-audit-apps.md` | DD-01 to DD-29, AU-01 to AU-34 | 63 |
+| `traceability-and-metrics.md` | TR-01 to TR-14, EM-01 to EM-22, EX-01 to EX-17 | 53 |
+| `metrics-buyers-pricing.md` | CM-01 to CM-12, BY-01 to BY-10, PR-01 to PR-16, EV-01 to EV-11 | 49 |
+
+Forge limits FL-01 to FL-03 are reused from the CascadePlan research of the same day (its RS-18, RS-19, RS-21).
+
+Limits: G2, Capterra and TrustRadius returned HTTP 403. Atlassian Community pages returned titles only. No source gave click or keystroke counts. Six sources failed (ACM, PCAOB, NIST CPRT, OECD/JRC, trustnetinc); substitutes are named in the metrics source file.
+
+### Synthesise
+
+- Hypothesis verdicts H1 to H9, plus new H10 and H11: `research-brief.md` section 3.
+- USP table U1 to U9: `research-brief.md` section 4.1. Before refute, U1 and U3 passed with conditions.
+- UX benchmark and target interactions: `ux-spec.md` sections 1 and 2.
+
+### Refute
+
+| Candidate | Search | Result |
+|---|---|---|
+| U1 | Per-item requirement, PR and approval evidence products (RF-01, RF-02) | Partly refuted: Ketryx (291 installs) does this for FDA-regulated teams, as an external platform. Gap narrowed; verdict kept. |
+| U3 | Native 2026 JQL for Confluence-linked issues; Marketplace JQL apps (RF-04 to RF-06) | Refuted: JQL Search Extensions (3,842 installs) and ScriptRunner already answer the query. Verdict changed to Fail. |
+| U4 | Teamwork Graph GA date (RF-03) | Still Early Access, test sites only. Feasibility failure confirmed. |
+
+## Round 2: revise (2026-11-01)
+
+- U3 changed from conditional pass to Fail (Gap). H2 stays Partly true: the need for remote-link search is stated, but Marketplace apps meet it.
+- U1 kept as the only conditional pass, with a narrower gap statement (general software teams, no egress).
+- Items still Unknown after round 2: H6, H9 demand, H2 for decision records, all competitor click counts.
+
+## Round 3: Unknown items only (2026-11-01)
+
+- One extended search for buyer demand for one per-issue evidence view, or for linked Confluence evidence before closing.
+- Result: no direct request. One indirect signal: a review dated 2026-10-28 keeps "Pull request merged, with at least one approving review" as a hand-ticked DoD item (RF-07). This supports U1 condition 2 as "Partly" and changes no verdict.
+- No verdict changed in round 3, so the research loop stops. H6 and H9 demand stay Unknown.
+
+## Outputs of Part A (2026-11-01, uncommitted)
+
+- `docs/sdlc/fourrealities-usp-ux-research-2026-11/research-brief.md`
+- `docs/sdlc/fourrealities-usp-ux-research-2026-11/ux-spec.md`
+- `docs/sdlc/fourrealities-usp-ux-research-2026-11/backlog.md`
+- `docs/sdlc/fourrealities-usp-ux-research-2026-11/round-log.md`
+
+## Part B setup (2026-11-01)
+
+- Owner approval in chat: "APPROVED now all". Recorded as line 1 of `backlog.md`: B-01..B-28, flags approved. B-26 to B-28 are BLOCKED (sibling apps not signing; Teamwork Graph not GA).
+- Section 9 check: `apps/fourrealities` had no uncommitted changes. Other sessions had uncommitted work in `apps/planshift` and research folders, so Part B runs in a separate git worktree, `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build`, on branch `feature/fourrealities-research-build` from `master` (`5097bf5`). The worktree `node_modules` is a symbolic link to the same shared `apps/ledgerseal/node_modules`.
+- Baseline in the worktree: `tsc --noEmit` exit 0; jest 54 of 54 pass, coverage identical to T-02. No B-00 needed.
+- Commits: `17488c6` (Part A outputs), `a19d959` (spec v2). `grade_spec.py` passes on a mirror that holds spec v2 under the v1 name (`~/.cache/gemini-earning-fourrealities-research/grader-mirror/`); conflict recorded in spec v2.
+
+### Coverage deviation (applied from B-01; closed at B-16)
+
+Section 11.2 asks for 90% branch coverage on each changed file. Before B-22 splits the 1,093-line UI into tested modules, `src/frontend/index.tsx` cannot reach 90% without tests for code that later items delete. From B-01, `jest.config.js` collects frontend coverage with per-path thresholds: domain and storage 90% per file, `src/index.ts` at its measured floor (88% branches and functions), frontend at its measured floor. Each item records its frontend figure here. `grade_tdd.py` reads the global total, so it failed for this reason only. Closed at B-16: the UI is now small modules, and `jest.config.js` enforces 90% per file for every module except `src/index.ts` (floor 88% branches until its v1 search code is replaced in B-09).
+
+## Build items
+
+| Item | Date | Tests added | Result | Coverage (branch) | Graders | Commit |
+|---|---|---|---|---|---|---|
+Build order (deviation from backlog order, recorded 2026-11-01): B-03, B-05, B-07 on the current code; then B-16 (new domain model and a modular UI), because B-04, B-06, B-10, B-14 and B-15 change the data the whole UI consumes; then B-04, B-06, B-10, B-15, B-14; then B-09, B-08, B-13; then B-11, B-17 to B-21, B-22; then B-23 to B-25; B-12 in Loop 3.
+
+| B-01 | 2026-11-01 | `test/frontend/app.test.tsx`: loading then loaded with no hook error; issue panel error view; refresh. All 3 failed first with "Rendered more hooks than during the previous render." | tsc 0; jest 57 of 57 | `index.tsx` 26.51; `index.ts` 88.46; domain 93.46; storage 100 | tdd FAIL (global 64.73, deviation above); security PASS; ui PASS | `419c53c` |
+| B-02 | 2026-11-01 | `test/index.test.ts`: no `sealIssue` or `completeDod` resolver; source scan finds no write path to `ledgerseal-cert` or `definitionguard-dod`; issue panel with failing secondary calls. `test/frontend/app.test.tsx`: no seal or DoD action, both producer links call `router.open('/browse/DEMO-1')`. New tests failed first (3 of 3). Removed: the seal and DoD tests that asserted the forged writes and the asApp fallback. | tsc 0; jest 59 of 59 | `index.tsx` 38.88 (floor raised); `index.ts` 88.54 | tdd FAIL (global, deviation); security PASS; ui PASS | `40cbed3` |
+| B-03 | 2026-11-01 | `test/index.test.ts`: no `recordIssueSignals` resolver; a failed Jira read rejects with "Jira returned HTTP 404" even when stored signals exist; a successful read writes no `:signals` key. `test/storage`: the v1 signals key can be deleted. Failed first: 4 of 4. Removed: the tests that asserted the forged-signal resolver and the stored fallback. | tsc 0; jest 56 of 56 | `index.ts` 88.66; `index.tsx` 38.88 | tdd FAIL (global, deviation); security PASS; ui PASS | `3489faf` |
+| B-05 | 2026-11-01 | `test/index.test.ts`: separate recording mocks for `asApp` and `asUser`; `linkDecision` 403 returns the permission message and never calls `asApp`; `recordException` on 403, on a rejected request and on HTTP 500 returns an error and stores no KVS record; on 2xx it PUTs as the user, then stores. The `route` mock now interpolates values, so paths can be asserted. Failed first: 5 of 5. Removed: the test that asserted the asApp fallback. | tsc 0; jest 61 of 61 | `index.ts` 88.2; `index.tsx` 38.88 | tdd FAIL (global, deviation); security PASS; ui PASS | `2fc10f6` |
+| B-07 | 2026-11-01 | `test/index.test.ts`: project page with an issue from another project is rejected after one GET as the user and no write; 404 on the scope read is rejected and nothing is stored; a same-project issue proceeds (GET then POST, both as the user); no context is rejected with no call; a rejected scope read and an issue-view mismatch are rejected. Existing writer tests now pass an issue context. Failed first: 4 of 4. | tsc 0; jest 69 of 69 | `index.ts` 89.28; `index.tsx` 38.88 | tdd FAIL (global, deviation); security PASS; ui PASS | `aa0a43b` |
+| B-16 | 2026-11-01 | New: `test/domain/gates.test.ts`, `test/domain/metrics-engine.test.ts` (rewritten for v2), `test/jira/issue-facts.test.ts`, `test/ui/gate-text.test.ts`, `test/frontend/issue-panel.test.tsx`, `test/frontend/project-dashboard.test.tsx`; `test/index.test.ts` read-resolver tests rewritten for the `{ ok }` envelope and context-only scope. The new modules are new files, so their tests were written with them; failure-first was not demonstrated separately for B-16. One real defect found by the tests and fixed: a remote-link body that is not an array crashed the parser. | tsc 0; jest 106 of 106 | every `src/frontend`, `src/ui`, `src/jira`, `src/domain`, `src/storage` file at least 90 per file (now enforced); `index.ts` 88.88 (floor); global 95.44 | tdd PASS (95.44); security PASS; ui PASS | `801cbed` |
+| B-04 | 2026-11-01 | `test/domain/gates.test.ts`: the `valid` and `satisfied` aliases give evidence missing; a well-formed LedgerSeal SEAL_VALID gives found, not verified, with the seal date; SEAL_BROKEN, SEAL_COMPROMISED and `isCompromised` give "seal broken"; other statuses are named; the DEMO-26 shapes (T-05) give "record shape not written by"; malformed hash, certificate id, date and counts are rejected; DefinitionGuard counts are reported; `issuedAt` older than `updated` gives needs re-check; across all shapes and status categories no Audit or Process result is VERIFIED. Failed first: 12 of 12. | tsc 0; jest 117 of 117 | `gates.ts` 98.92; global 95.81 | tdd PASS; security PASS; ui PASS | `a61e100` |
+| B-06 | 2026-11-01 | `test/jira/dev-field.test.ts` (parser, failed first: module missing); `test/index.test.ts`: reason 15 to 500 characters, notes up to 1,000; Code exception refused when a pull request exists, with no write; failed Development field read reported; Code and rework notes kept in one v2 record and written as the user; v1 record rewritten as v2; fallbacks. `test/domain`: an excepted Code gate is outside RAI and M29; an exception is ignored once a PR exists; a rework note changes no gate. `test/frontend/issue-panel.test.tsx`: "Excepted by" with the UI Kit `User` component and the reason; no Code exception button when a PR exists. Failed first: 3 domain/UI tests and the resolver suite (record type). | tsc 0; jest 132 of 132 | `index.ts` 91.52 (threshold now 90 for every file); global 96.03 | tdd PASS; security PASS; ui PASS | `f6d2607` |
+| B-10 | 2026-11-01 | `test/jira/site-config.test.ts` (failed first: module missing): Development field found by name or custom type, cached 24 h, null when absent, refreshed after 24 h, error on refusal. `test/domain/gates.test.ts`: merged gives found (heuristic) with count, open gives missing at done and found (heuristic) before, declined or none gives no pull request, no Development field gives not applicable, never VERIFIED. `test/index.test.ts`: the issue panel reads issue and remote links as the user with no dev-status call (2 Jira calls when cached); field lookup when not cached; not applicable without a field; Jira error when the field list fails (panel and dashboard); same Code state on dashboard and panel; recordException checks the discovered field. Failed first: 4 domain and 8 resolver tests. | tsc 0; jest 148 of 148 | every file at least 90; global 95.7 | tdd PASS; security PASS; ui PASS | `c68e118` |
+| B-15 | 2026-11-01 | `test/domain/gates.test.ts`: Confluence app link and same-site `/wiki/` link give found, verified, with the title; the DEMO-26 placeholder on another host, keyword titles, "Inspection report" and non-wiki paths give missing; issue links count only for exact decision or specification types; unread remote links give needs re-check; not started gives not applicable unless a decision is linked. `test/jira/remote-links.test.ts` (failed first: module missing): at most 8 reads at a time, failures and the deadline leave an issue unread. `test/jira/site-config.test.ts`: site host from serverInfo, null when unreadable. `test/index.test.ts`: the dashboard reads remote links for started issues only and agrees with the issue panel; a failed read gives needs re-check (these two were written after the implementation). Failed first: 7 gate tests, the site-host test and the module. | tsc 0; jest 157 of 157 | every file at least 90; global 95.0 | tdd PASS; security PASS; ui PASS | `6e0a463` |
+| B-14 | 2026-11-01 | `test/domain/metrics-engine.test.ts`: the FR-14 case (80 unstarted, 20 poor Done) averages the 20 rated issues (25) with 80 UNRATED; the FR-17 case gives RAI 50 and 50 recoverable points; each rate divides by the issues where its gate applies, null when none. `test/ui/gate-text.test.ts` and `test/frontend/issue-panel.test.tsx`: the panel names the first missing gate and the points it would recover. The domain rules shipped in B-16, so these domain tests passed on first run; the recovery text test failed first. | tsc 0; jest 162 of 162 | every file at least 90; global 95.06 | tdd PASS; security PASS; ui PASS | `2e2f310` |
+| Fix (B-10, B-15) | 2026-11-01 | Defect found before B-09: the B-10 and B-15 request helpers passed a whole path into the `route` tag, which Forge rejects ("Disallowing path manipulation attempt", `@forge/api` `safeUrl.js`). The resolver tests mock `route`, so they hid it. New `test/forge-route.test.ts` runs both read resolvers through the real `route` tag with only the principals mocked; it failed first (2 of 2). The site-config and remote-link tests now also use the real `route`. | tsc 0; jest 164 of 164 | every file at least 90; global 95.06 | tdd PASS; security PASS; ui PASS | `9bbfa55` |
+| B-09 | 2026-11-01 | `test/jira/search.test.ts` (real `route` tag; failed first: module missing): 50, 300 and 1,000 issues read once each with `nextPageToken` (no `startAt`); the cap at 2,000 asks `approximate-count` by POST; a repeated page keeps each issue once; failures return the status; `withRetry` waits Retry-After (0 to 5 s, default 1) at most 3 times and stops at the deadline. `test/index.test.ts`: 300 issues give 300 unique rows; 2,050 give `{shown: 2000, totalKnown: 2050, capped: true}`; a 429 is retried. `test/frontend/project-dashboard.test.tsx`: "Showing 2000 of about 2310 issues" when capped. | tsc 0; jest 175 of 175 | every file at least 90; global 95.59 | tdd PASS; security PASS; ui PASS | `095e3fa` |
+| B-08 | 2026-11-01 | `test/storage/snapshot-repository.test.ts` (failed first: module missing): chunks of at most 100 rows, meta written last, mismatched or missing chunk means no snapshot, stale chunks deleted, one trend point per ISO week (at most 52), project registry (at most 500), v1 project keys deleted, v1 signals deleted at most 100 per run, exceptions by paged prefix query. `test/snapshot.test.ts` (failed first): builder stores rows, meta and the week's trend point, reuses the previous Intent result when remote links were not read, stores nothing on a Jira error, falls back to per-issue exception reads. `test/index.test.ts`: page views after the first make no Jira call and no KVS write and read at most 3 + ceil(N/100) values; refresh rebuilds; warning after 7 days; the scheduled run builds each registered project as "scheduled", skips past the budget, records failures, deletes v1 signals; `ForgeKvsProvider.queryPrefix` pages `kvs.query`. `test/manifest.test.ts` (failed first): daily `scheduledTrigger`, `snapshot` function, `timeoutSeconds: 600`. Harness `resolver-after.test.ts` (T-06): 52 views at 50, 300 and 1,000 issues, 0 failures; largest value 63,099 B; read views 0 Jira calls and 4, 6, 13 KVS reads. | tsc 0; jest 198 of 198 | every file at least 90; global 95.79 | tdd PASS; security PASS; ui PASS | `c996dfc` |
+| B-13 | 2026-11-01 | `test/jira/search.test.ts`: `visibleIssueIds` pages an id-only search (`fields=id`, 100 per page), reports a refused search and an early stop. `test/index.test.ts`: only rows the viewer can browse are returned and the summary counts only them; a refused viewer check returns FORBIDDEN and no rows; an early stop shows only checked rows with a warning. The other resolver tests now answer the id-only search with the issues the app search returned. Failed first: 4 of 4. Harness (T-06): read views make ceil(N/100) user calls (1, 3, 10) and 0 app calls. Decision: summary recomputed for visible rows (spec D-4). | tsc 0; jest 203 of 203 | every file at least 90; global 95.7 | tdd PASS; security PASS; ui PASS | `39574ec` |
+| B-11 | 2026-11-01 | The behaviour shipped in B-16 (`801cbed`): the dashboard has no remediation action. `test/frontend/project-dashboard.test.tsx` adds the acceptance tests: every rendered dashboard button changes the view, refreshes or opens a page, and none calls a resolver; the Inspect modal has only "Open issue" and "Close". Both passed on first run (behaviour already present); the generic test first failed on a test defect (JSON of the rendered tree), fixed by comparing a render signature. | tsc 0; jest 205 of 205 | every file at least 90 | tdd PASS; security PASS; ui PASS | `7968c2e` |
+
+## Pause for domain review (2026-11-01)
+
+- The owner asked whether the failing tests point at a design problem and whether the model follows Silverston patterns. Answer: most failures were planned fail-first runs; about 10 were defects in test code (shared mock queue, mocked `route` tag); three real defects were not caught by tests (route tag rejection, lost action message, per-issue Development field presence). The model had not been checked against Silverston.
+- Owner decision: Option A, pause and review first.
+- Sources read in full: M360 ADR-009 (data model patterns), M360 Party-Role deep dive, M360 ADR-029 (service-type contracts), `asymm-engineering` ADR-0042 (format). Silverston patterns verified against Apache OFBiz entity models (`workeffort-entitymodel.xml`; `framework/common/entitydef/entitymodel.xml` for StatusItem, StatusType, StatusValidChange), read 2026-11-01. Silverston's books were not read (not available); this is stated in ADR-001.
+- Output (PROPOSED): `architecture/decision/adr-00001-fourrealities-evidence-data-model.org`, `architecture/decision/adr-00002-fourrealities-volatility-layering.org`, `architecture/model/fourrealities-domain-model.org`; backlog items B-29 to B-32.
+- Findings: exceptions keep no history; the requester approves their own exception; evidence rules are hard-coded; five layering violations (Client, Manager and Accessor mixed in `src/index.ts`; Engine imports a Jira-package parser; UI imports an Engine constant; Manager holds rules; `NODE_ENV` wiring branch).
+- Owner decision (2026-11-01, in chat: "C"): ADR-001 and ADR-002 approved, with Option C. Interpretation recorded in ADR-001: the approver must hold `ADMINISTER_PROJECTS` and must not be the requester or the assignee.
+- Verified before recording: `GET /rest/api/3/mypermissions` ("Get my permissions") takes `projectKey` and `permissions`, returns `permissions.<KEY>.havePermission`, and needs `read:jira-work` (scope state "Current"); `ADMINISTER_PROJECTS` is a valid key. Source: Jira Cloud OpenAPI `swagger-v3.v3.json`, read 2026-11-01, copy in `~/.cache/gemini-earning-fourrealities-research/sources/jira-openapi/`. No new scope is needed.
+| B-29 | 2026-11-01 | `test/architecture.test.ts` (9 ADR-002 rules; failed first: 4 of 9: missing layers, `@forge/api` outside Accessors, UI importing an Engine, `NODE_ENV` branch). Files moved with `git mv` into `src/contract`, `src/engine`, `src/accessor`, `src/manager`; `src/index.ts` is resolvers plus one `compose()` wiring point. New unit tests with plain inputs and fake Accessors: `test/engine/snapshot-and-policy-engines.test.ts`, `test/manager/issue-evidence-manager.test.ts`. The 205 earlier tests pass unchanged in their assertions (imports and fixtures updated). Two ADR-002 corrections recorded in its Implementation Notes. Harness after refactor: same figures as B-13 (T-06). | tsc 0; jest 226 of 226 | every file at least 90; global 96.75 | tdd PASS; security PASS; ui PASS | `adf2e49` |
+| B-30 | 2026-11-01 | `test/engine/exception-policy-engine.test.ts` (transition table, administrator, requester and assignee checks, reason lengths), `test/accessor-exception-events.test.ts` (append-only `fr:ex:` keys, ordering, v2 migration), `test/manager/exception-manager.test.ts` (request, decide, permission check as the user, property before event), `test/index.test.ts` end-to-end request then approve, panel tests for the five buttons. Failed first: new modules absent; Code gate EXCEPTED on a REQUESTED exception. Code gate now EXCEPTED only for APPROVED with no pull request. Spec v2 updated (lifecycle table, `decideException`, storage, migration). Harness: 0 failures; largest chunk 63,099 B; read views 4, 6, 13 KVS gets (unchanged). | tsc 0; jest 255 of 255 | every file at least 90; global 99.41 / 96.99 / 98.85 / 99.72 | tdd PASS; security PASS; ui PASS | `10a271d` |
+| B-31 | 2026-11-01 | `test/engine/evidence-catalog.test.ts` (10 tests: catalog shape; `method` and `evidenceRef` per source; read-but-not-counted records keep the source; no method without a record; verification from the catalog; 200-character cap; a custom catalog changes the Intent result; the gate engine source holds no name lists). Failed first: `src/contract/data/catalog.ts` absent. `DEFAULT_CATALOG` holds the sources and the Intent rule; `DefaultGateEngine` takes a catalog. 17 earlier assertions now compare the judgement without the two new fields (`judged()` in `test/domain/fixtures.ts`); no expected value changed. Spec v2 gained the catalog section. Harness: 0 failures; read views 4, 6, 13 KVS gets (unchanged); largest chunk 76,066 B (was 63,099 B; limit 245,760 B). | tsc 0; jest 266 of 266 | every file at least 90; global 99.41 / 96.95 / 98.86 / 99.72 | tdd PASS; security PASS; ui PASS | `6aef597` |
+| B-32 | 2026-11-01 | `test/accessor-rework-notes.test.ts` (6 tests: one key per note, oldest first, no issue 1 / 10 mix, v2 note read as migrated, stored notes win, migration limit keeps a code note and deletes an emptied record, paging past 100 keys); manager tests (a note is appended after the property write and earlier notes stay; no note on 403; decisions project the latest note); metrics (latest note and count); panel ("2 rework reasons recorded. The latest is shown."); end-to-end scheduled run converts a v2 record that holds both notes. Failed first: note Accessor absent; `reworkNotes` unknown. Removed with the v2 writer: `DefaultKvsExceptionAccessor`, `MetricsRepository`, `PolicyEngine.mergeException`, and their tests (`test/storage/metrics-repository.test.ts`, one paging test moved to the note Accessor). Shared helper `src/accessor/kvs-v2-exception.ts`. Spec v2: storage, row, migration and `recordException`; also corrects the `IssueRow` block, which still showed `exception` after B-30. Harness: 0 failures; read views 4, 6, 13 KVS gets (unchanged); the building view runs 4 prefix queries (was 3); largest chunk 76,066 B. | tsc 0; jest 273 of 273 | every file at least 90; global 99.51 / 96.99 / 98.89 / 99.73 | tdd PASS; security PASS; ui PASS | `66371f4` |
+| B-17 | 2026-11-01 | `test/ui/gate-text.test.ts` (`afterActionText`: the state from the returned row; without a row it never claims a state); `test/frontend/issue-panel.test.tsx` (the panel calls `onRow` with the returned row, never `onReload`, and shows "Link added. Intent: Evidence found."); `test/frontend/app.test.tsx` (the app keeps the panel mounted: the message stays, no spinner, two invokes only); `test/index.test.ts` (rework and approve return the row read as the user; no row on a failed read, a refused write, or from the project page). Failed first: 3 tests (no row returned; panel unmounted by `load()`). Cause of the lost message: `done()` called `onReload`, which set `loading` and unmounted the panel. Three call-sequence tests now include the two reads after the write. Spec v2: resolver returns and a feedback paragraph; `linkDecision` had promised `{ row, linked: true }` with no row returned. | tsc 0; jest 279 of 279 | every file at least 90; global 99.59 / 97.16 / 98.89 / 99.82 | tdd PASS; security PASS; ui PASS | `82fd4e7` |
+| B-18 | 2026-11-01 | `test/ui/filters.test.ts` (6 tests: assignee and sprint values with Unassigned last; no sprints for a project without them; each filter alone and combined; search without case; active filters named for removal); `test/frontend/project-dashboard.test.tsx` (labelled selects in tab order; select, combine, remove one, clear all; Sprint hidden, not empty, without sprints). Failed first: `src/ui/filters.ts` absent; no `Select` rendered (NF-01). The Gate select and the "Show Gate missing (n)" buttons set the same filter; the old "Clear filter" button became "Remove filter: Intent missing". Spec v2 gained a dashboard filters section. No resolver or storage change, so the harness was not rerun. | tsc 0; jest 287 of 287 | every file at least 90; global 99.61 / 96.77 / 98.97 / 99.82 | tdd PASS; security PASS; ui PASS | `7723993` |
+| B-19 | 2026-11-01 | `test/ui/trend.test.ts` (5 tests: last four weeks oldest first; numerator and denominator per rate, n/a for an empty denominator; chart points per week and series, none for an empty denominator; next weekly snapshot date; notice below two points); `test/frontend/project-dashboard.test.tsx` (text lines before the `LineChart`, labelled whole project, five points cut to four; notice and no chart with one point). Failed first: `src/ui/trend.ts` absent; no trend shown (FR-15, FR-16). The view already carried the stored weekly points (B-08), so no resolver or storage change. | tsc 0; jest 293 of 293 | every file at least 90; global 99.62 / 96.82 / 99.02 / 99.83 | tdd PASS; security PASS; ui PASS | `27a9391` |
+| B-20 | 2026-11-01 | `test/frontend/accessibility.test.tsx` (4 tests over the dashboard with filters, trend and Inspect; the panel and its five modals; loading, empty and error states; table cells rendered one by one): every `Inline` wraps, every control is labelled, every `Lozenge` has `maxWidth="100%"`, buttons have text, modals have `onClose`, no forbidden characters in rendered text or in `src/frontend` and `src/ui`. Failed first: 3 of 4 (4 lozenges with the 200 px default; the loading `Inline` did not wrap). The other FR-23 and NF-04 gaps (unnamed glyphs, arrows, em dash in score text) were already closed by B-16; the test now holds them. Not shown by tests: the result message as a status region (UI Kit offers no role or `aria-live` prop) and keyboard reach with Tab, Enter and Escape; both move to the Loop 3 live check. | tsc 0; jest 297 of 297 | every file at least 90; global 99.62 / 96.82 / 99.02 / 99.83 | tdd PASS; security PASS; ui PASS | `39e0e77` |
+| B-21 | 2026-11-01 | `test/ui/gate-text.test.ts` (`raiPartsText`: rated and unrated); `test/frontend/issue-panel.test.tsx` (the four gate lozenges come before the RAI lozenge; no RAI in the heading line; the parts sentence); `test/frontend/project-dashboard.test.tsx` (gate cards before the RAI line; no sprint name in the score or headings; Assignee column not sortable). Failed first: 3 tests (RAI lozenge in the panel heading; no parts sentence; Assignee sortable). The dashboard order already met criterion 1 and is now under test. | tsc 0; jest 300 of 300 | every file at least 90; global 99.62 / 96.83 / 99.02 / 99.83 | tdd PASS; security PASS; ui PASS | `4e038e1` |
+| B-22 | 2026-11-01 | `test/architecture.test.ts` (3 rules: `src/ui` imports only contracts and UI modules; React files export no lowercase logic function; no test uses `toBeDefined()`); `test/ui/triage.test.ts` (order by missing gates, risk, RAI with unrated last, key; input not changed; error text order). Failed first: 2 of 3 rules (`errorText` in `frontend/app.tsx`, `triageOrder` in `frontend/project-dashboard.tsx`; one `toBeDefined()` in `test/index.test.ts`, now `toBeInstanceOf(DefaultForgeKvsStore)`). Both functions moved to `src/ui/triage.ts`. Criterion 2 was already met: `jest.config.js` has enforced 90% per file on every source folder since B-16. Gate labels (`gate-text.ts`), filters (`filters.ts`), recoverable points (Engine plus `recoveryText`) and trend text (`trend.ts`) are in modules with no React import. | tsc 0; jest 306 of 306 | every file at least 90; global 99.62 / 96.95 / 99.02 / 99.83 | tdd PASS; security PASS; ui PASS | `ca7151c` |
+| B-24 | 2026-11-01 | `test/jira/issue-facts.test.ts` (rework from category keys by status id: done to not done, in progress to to do; status names ignored; unknown id counts nothing); `test/jira/site-config.test.ts` (status categories read and cached; a cache without them read again; a refused status list throws and caches nothing); `test/jira/search.test.ts` (a 200 with an empty body); `test/architecture.test.ts` (copyright and `@author Fahim Farook` in every source header; no `any` type in `src`). Failed first: changelog and site-config tests (no categories; names matched). The header and `any` rules passed at once: headers were already right, and the `any` rule was added after the typing pass (66 type uses of `any` before, 0 after; 3 remaining words are in comments). Typing: `src/accessor/jira-types.ts` for Jira responses; payload, context, `WriteResult`, `DefinitionGuardRecord` and `LedgerSealRecord` types in the contract; type guards in the gate engine; `messageOf()` for caught errors. `@forge/storage` removed from `package.json`; no `npm install` ran. Behaviour change recorded in spec v2 (M30, D-7): a move inside one category, such as In Review to In Progress, is no longer a rework loop. Site config reads one more endpoint, `GET /rest/api/3/status` (`read:jira-work`, verified in the OpenAPI copy), on a cache miss only. Harness: 0 failures; read views 4, 6, 13 KVS gets (unchanged); `fr:cfg:site` 168 B. | tsc 0; jest 311 of 311 | every file at least 90; global 99.62 / 97.09 / 99.02 / 99.83 | tdd PASS; security PASS; ui PASS | `c08bf9a` |
+| B-25 | 2026-11-01 | `test/domain/gates.test.ts` (3 tests: zero open mandatory items is FOUND, not verified, source line "Checklists for Jira (HeroCoders) property checklist, not verified by FourRealities.", method and `progressText` reference; open items MISSING at Done and NOT_APPLICABLE before; DefinitionGuard first, and a checklist without a non-negative integer count reads as absent); `test/jira/search.test.ts` (the three properties come in one search request). Failed first: 2 of 3 gate tests; the guard test and the one-call test passed at once (the old code ignored every checklist; `PROPERTY_KEYS` already held `checklist`). Shape re-read from the vendor page DD-21 on 2026-11-01: `uncheckedMandatoryItems` is a top-level number. Not verified on a site with the app installed; that check stays a release condition. | tsc 0; jest 317 of 317 | every file at least 90; global 99.63 / 97.11 / 99.03 / 99.83 | tdd PASS; security PASS; ui PASS | `3af3c06` |
+| B-23 | 2026-11-01 | Owner decision in chat ("B"): build all of B-23; the approval of the item is taken to override the agent definition's "never change the app licensing" rule. `test/manifest.test.ts` (`app.licensing.enabled: true`); `test/index.test.ts` (all six resolvers return the licence error when `isActive === false`, with no Jira call; an active licence and no licence both run); `test/frontend/app.test.tsx` (warning message "Licence not active"). Failed first: manifest and resolver tests. The scheduled trigger is not checked (no resolver context). The manifest change goes live only with a production deploy, which this run does not do. | tsc 0; jest 321 of 321 | every file at least 90; global 99.63 / 97.13 / 99.03 / 99.83 | tdd PASS; security PASS; ui PASS | `aac597e` |
+
+## Loop 3: verify and deploy (2026-11-01)
+
+- `forge lint` (CLI 15.0.0, host Node.js outside the supported 22/24 range, warning only): no issues.
+- `forge deploy -e development --non-interactive`: deployed app version 3.2.0 to development. No staging or production deploy.
+- Live check on DEMO, read-only (page views and GET calls only; no writes):
+  - Issue panel on DEMO-1 renders: four gates with source lines and sentences, RAI after the gates with its parts ("RAI 0% (CRITICAL): 0 of 4 rated gates have evidence found. 4 of 4 gates apply to this issue."), and the buttons for a done issue with no evidence. Screenshot `/tmp/claude-chrome-screenshots-r0BuFx/screenshot-1793509899951-0.jpg` (local, not committed).
+  - Project page "FourRealities Audit Dashboard" on DEMO renders (FR-01 closed live): gate cards with counts, RAI line (21 rated, 14 unrated), trend notice with next snapshot 2026-11-02, filter bar with Search, Assignee and Gate (Sprint hidden: no DEMO issue has a sprint), 35 issues in the table with named gate chips. Screenshot `/tmp/claude-chrome-screenshots-r0BuFx/screenshot-1793509979028-2.jpg` (local, not committed).
+  - Observed: with `maxWidth="100%"` (B-20) each gate lozenge fills the width of its container, so it reads as a bar, not a pill. Text is not cut. Open for a visual decision.
+  - No `[FR-PROBE]` issue exists (`labels = fr-probe` search returned none), so the write paths (B-17, B-30, B-32) were not checked live.
+- Writes made in the read-only pass: none.
+
+### Loop 3 live write check on AUDT (owner decision in chat: "Option B", 2026-11-01)
+
+Every write, in order. All went to AUDT-1 (id 10068), created for this check; no other issue was opened for writing, no sealed issue was touched, DEMO-26 was not repaired, and no LedgerSeal or DefinitionGuard key was written.
+
+| # | Time (UTC) | Write | By | Result |
+|---|---|---|---|---|
+| 1 | 05:19 | `POST /rest/api/3/issue`: Task "[FR-PROBE] FourRealities write check" in AUDT, label `fr-probe` | owner session, browser | 201, AUDT-1 |
+| 2 | 05:19 | Transition AUDT-1 to Done | owner session, browser | 204 |
+| - | 05:20 | Link decision record, first try: the browser tool's burst typing kept one character per field; FourRealities refused the input ("Invalid specification URL provided."); nothing written | app, as user | refused |
+| 3 | 05:21 | Link decision record: remote link `https://asymmsystems.atlassian.net/wiki/spaces/FRPROBE/pages/1`, title "[FR-PROBE] decision link" (fields filled with one input event each) | app, as user | added; panel updated in place: "Link added. Intent: Evidence found."; RAI 25% |
+| 4 | 05:22 | Request Code exception, reason "[FR-PROBE] configuration change only, no code", notes "FR-PROBE write check": property `fourrealities-exception` and one `fr:ex:` event | app, as user | "Exception requested. A project administrator must approve it. Code: Evidence missing." |
+| - | 05:22 | Approve as the requester | app, as user | refused before any write: "Only a project administrator can approve, reject or revoke an exception." |
+| 5 | 05:23 | Withdraw request: property and one `fr:ex:` event | app, as user | "Decision recorded. Code: Evidence missing."; stored reason "Approved without comment." (defect, fixed in `ac961dc`; the stored event stays as written) |
+| 6 | 05:23 | Transition AUDT-1 to In Progress | owner session, browser | 204; panel shows "Rework loops: 1." (B-24 categories live) |
+| 7 | 05:24 | Add rework reason "[FR-PROBE] reopened to check the rework note": property and one `fr:note:` key | app, as user | "Rework reason recorded. It does not change any gate." |
+
+Read back: `fourrealities-exception` holds schemaVersion 3, code WITHDRAWN with requester and decider, the rework note and `reworkNoteCount: 1`. AUDT-1 is left In Progress with label `fr-probe`.
+
+Findings from the live check:
+- **L3-1 (design, for the owner):** the owner is a Jira administrator (`ADMINISTER: true`) without `ADMINISTER_PROJECTS` on AUDT (`false`), so FourRealities refuses the owner's approvals there. ADR-001 Option C names the project permission only.
+- **L3-2 (fixed, `ac961dc`):** a withdrawal without a comment stored "Approved without comment."; the request dialog title said "Record". Deployed as 3.4.0.
+- **L3-3 (not resolved):** text entered by the browser tool in one burst (typing or many key events) kept only the last character in UI Kit text fields; single key presses and single input events worked. Fields were made uncontrolled (`ac58487`, deployed as 3.3.0) and the burst loss stayed. Whether fast human typing loses characters is not known.
+- **L3-4 (visual, open):** gate lozenges with `maxWidth="100%"` fill their container and read as bars.
+- Labels are announced with their fields (accessible names "Page address", "Page title"), as B-20 requires.
+
+## After the final report (2026-11-01, owner instructions in chat)
+
+| Item | Owner input | What changed | Tests | Commit | Deployed |
+|---|---|---|---|---|---|
+| L3-1 approver rule | "1. Rule - B" | Approve, reject, revoke need `ADMINISTER_PROJECTS` or the global `ADMINISTER`, one `mypermissions` call; texts name both roles; ADR-001 and spec v2 updated | 322 of 322; new end-to-end test with a Jira administrator who is not a project administrator | `f39f686` | 3.5.0 |
+| L3-4 lozenge bars | "you do these" | Cause: a `Stack` stretches its children. Gate stacks align to the start; accessibility test checks it (the first version of that check passed vacuously and was fixed to find the real parent) | 322 of 322 | `6d8567b` | 3.5.0 |
+| Open point 8 | "you do these" | Daily trigger reads the licence from `getAppContext()` through `DefaultForgeAppContextAccessor` and skips its run when inactive | 323 of 323 | `2fb80f3` | 3.5.0 |
+| Open point 7 | "you do these" | Harness times the daily run: 1,000 issues, 10 searches, 694 remote-link reads, 707 Jira calls, 19 ms with instant mocks; dashboard read view CPU at most 6.9 ms | harness 6 of 6 | harness only (`~/.cache/.../harness`) | n/a |
+| B-33, B-34, B-36 | "Approved all yor suggestions" | Four-gate pipeline chips with short state and tooltip; table Gates column as a pipeline, Alignment and Top finding columns; drift sentence and next action | 334 of 334; pipeline logic tests were written with the module, so no fail-first run for `src/ui/pipeline.ts` | `23c122e` | 3.6.0 |
+| B-35, B-37, B-39 | same | Bordered reality cards (question, rate, labelled progress bar, count, action only when missing, metric code in a tooltip); alignment box after the cards (H5 kept over the consultation's score-first hero), weekly delta with 10 rated issues minimum, weakest gate, risk buttons that filter; "Why n%?" in the panel | 339 of 339 | `73d3cb6` | 3.6.0, checked live on DEMO (screenshot `/tmp/claude-chrome-screenshots-r0BuFx/screenshot-1793523930948-6.jpg`) |
+| B-38, B-40 | same | Compact issue-context view with "See all findings"; Inspect with pipeline, drift sentence, Previous and Next; preset views (My issues, Critical and high, Audit prep, Needs a decision link); multi-level risk filter; column widths so the four chips fit on one line | 346 of 346 | `b0a0c4e` | 3.7.0, not yet checked live (browser tool disconnected) |
+| B-42 retrospective review | "Approved" | Offer "Request retrospective review" in the issue panel when Code is FOUND with reason PR_MERGED; modal with comment text field (15 to 1,000 characters); posts ADF comment to Jira as user; does not change any gate | 353 of 353 | `0fee151` | 3.9.0 |
+| UI polish and unified titles | "How about Four Realities? Agreed the UX improvements" | Unify module titles to Four Realities; remove arrow glyphs from GatePipeline; add styled card containers for issue summary and gate rows | 354 of 354 | `c195fbb` | 3.10.0 |
+
+Deviation: B-33 to B-40 were committed in three slices, not one item per commit, because they share `src/ui/pipeline.ts` and the pipeline component.
+
+### Live check of 3.7.0 on DEMO and AUDT-1 (2026-11-01, 09:10 to 09:14 UTC)
+
+- Dashboard on DEMO: cards, alignment box, preset views, compact pipeline table with Alignment and Top finding; most rows fit on one line. Screenshot `/tmp/claude-chrome-screenshots-psnDAd/screenshot-1793524299943-0.jpg` (local).
+- AUDT-1: main panel opens with pipeline, drift sentence and next action; the "Delivery Integrity" sidebar shows the compact view (pipeline, "Alignment 25%", "CRITICAL risk", next action, "See all findings"). Screenshot `/tmp/claude-chrome-screenshots-psnDAd/screenshot-1793524345404-1.jpg` (local).
+- The "Recorded" message is exposed as a status region in the accessibility tree (closes the B-20 open question).
+- Request dialog title reads "Request a Code exception for AUDT-1" (fix confirmed live).
+- Found: with no DoD record the drift sentence said "not complete"; fixed in `f7ad2e8`, deployed as 3.8.0.
+
+| # | Time (UTC) | Write on AUDT-1 | Result |
+|---|---|---|---|
+| 8 | 09:11 | Transition to Done (owner session, browser) | 204 |
+| 9 | 09:12 | Request Code exception "[FR-PROBE] approver rule check, no code" (app, as user) | "Exception requested. A project or Jira administrator must approve it. Code: Evidence missing." |
+| - | 09:13 | Approve as the requester | refused before any write: "The person who requested the exception cannot approve, reject or revoke it." (1B: the Jira administrator check now passes; the requester rule refuses) |
+| 10 | 09:13 | Withdraw request (app, as user) | stored `decisionReason: "Withdrawn without comment."` (fix confirmed) |
+
+AUDT-1 is left Done with label `fr-probe`.
+
+### Deployed 3.9.0 (B-42 retrospective review request)
+
+- Code gate FOUND with reason `PR_MERGED` offers "Request retrospective review" button.
+- Modal captures comment (15 to 1,000 characters) and submits via `requestReview` resolver.
+- Posts ADF comment via `POST /rest/api/3/issue/{issueId}/comment` as the user.
+- Status message confirms review requested without changing gate states.
+- 353 of 353 tests pass; all graders PASS; deployed to development as 3.9.0.
+
+### Deployed 3.10.0 (Unified titles, arrowless pipeline, and card styling)
+
+- Unified both `jira:issuePanel` and `jira:issueContext` module titles to "Four Realities" in `manifest.yml`.
+- Removed arrow glyphs from `GatePipeline` across all surfaces to ensure clean alignment and natural wrapping without orphan arrows.
+- Added card styling to `IssuePanel` and `GateRow`:
+  - Hero summary card with subtle sunken background (`elevation.surface.sunken`), rounded corners, and border.
+  - Bordered card containers (`GATE_CARD`) for each gate row (Intent, Process, Code, Audit).
+  - Sunken callout boxes (`NOTE_BOX`) for exception history and rework notes.
+  - Clean score card and bottom action bar.
+- 354 of 354 tests pass; all graders PASS; deployed to development as 3.10.0.
+
+### In-Jira UI Standard and Redesign (B-43 to B-46, Phase 1 & 2)
+
+- Phase 1 approved by owner on 2026-11-01 ("Aprooved now all", decisions: Refresh, Start collapsed, Respect active filters). Recorded in `docs/design/asymm-jira-ui-standard.md`.
+- B-43 brand primitives and layout components: created `src/brand/brand.ts` and `src/brand/layout.tsx`. Enforces strict one-border rule (`SubSection` with left indentation without nested borders).
+- B-44 pure UI logic: implemented `auditReadiness`, `issueGapsText`, and `priorityActions` (ranking filtered issues) in `src/ui/pipeline.ts` and `src/ui/triage.ts`.
+- B-45 issue panel redesign: restructured with `AppSurface`, `PanelHeader`, `SummaryBlock` (gate pipeline chips, drift sentence, next action, single primary action), collapsible `<Section title="Gate findings" count={4} defaultCollapsed={true}>`, and `ActionRow`.
+- B-46 project dashboard redesign: top Status Banner (status word, summary sentence, next step), Priority Actions tile side by side with reality cards, compact table with gaps summary, footnote, and Refresh button.
+- Architecture tests updated to 16 rules: verified zero raw token strings or hex colour codes outside `src/brand/`.
+- 373 of 373 tests pass; all graders PASS (grade_tdd: PASS 96.61, grade_security: PASS, grade_ui: PASS); committed `f82a966`; deployed to development as 3.11.0.
+
+### Dashboard UX Polish and Layout Redesign Fix (3.12.0)
+
+- Addressed live review feedback on DEMO dashboard:
+  - Wrapped ProjectDashboard in `AppSurface` so the page has the soft sunken background (`elevation.surface.sunken`) and cards have genuine depth and contrast.
+  - Replaced the full-width empty status box with a dedicated `StatusBanner` component featuring a prominent `Badge` status indicator and an indented, highlighted `NoteBox` for the next step.
+  - Redesigned Priority Actions into a rich list with issue key, next step, issue summary in an indented `SubSection`, and an "Inspect" button.
+  - Balanced the Priority Actions and Alignment cards into two 49% width columns (`Column`).
+  - Consolidated search, filter dropdowns, presets, and active filters into a unified filter `Card`, pulling the triage table above the fold.
+- 373 of 373 tests pass; all graders PASS (grade_tdd: PASS 96.52, grade_security: PASS, grade_ui: PASS); committed `bc64d3b`; deployed to development as 3.12.0.
+
+### Deployed 3.13.0 (Forge Native UI Kit Runtime Fix)
+
+- Fixed live runtime error `Error rendering app - encountered unknown component strong` caused by raw `<strong>` tags inside Forge native UI Kit components.
+- Replaced raw HTML tags in `StatusBanner` and `ProjectDashboard` with Forge native `Text` and `Badge` primitives.
+- Added Rule 17 to `test/architecture.test.ts` to forbid raw HTML tags across all source files in `src/`.
+- 374 of 374 tests pass; all graders PASS (grade_tdd: PASS 96.52, grade_security: PASS, grade_ui: PASS); committed `257c66b`; deployed to development as 3.13.0.
+
+### Deployed 3.14.0 (Brand Palette Styling and Card Elevation)
+
+- Added brand accent tokens and raised shadow tokens to `src/brand/brand.ts`.
+- Styled `StatusBanner` with teal brand accent surface (`color.background.accent.teal.subtlest`), teal border (`color.border.accent.teal`), and raised shadow. Formatted status header with native `Badge` without text repetition.
+- Created `GateCard` with signature brand top borders for each of the four realities (Teal for Intent, Orange for Process, Magenta for Code, Green for Audit) and uniform 23.5% width.
+- Elevated all cards with native drop shadows (`elevation.shadow.raised`) to give genuine contrast against the sunken surface.
+- Moved `TrendPanel` below `DynamicTable` to ensure the issue triage table is immediately accessible above the fold.
+- 375 of 375 tests pass; all graders PASS (grade_tdd: PASS 96.64, grade_security: PASS, grade_ui: PASS); committed `bef218f`; deployed to development as 3.14.0.
+
+### Deployed 3.15.0 (B-47 UX Architecture Overhaul and Shared UI Library Completion, 2026-11-02)
+
+- Reviewed `handover-gemini-ux.md` and `docs/design/asymm-jira-ui-standard.md` end-to-end and moved all reusable UX primitives into the standalone-ready shared UI library (`src/brand/brand.ts`, `src/brand/layout.tsx`, `src/brand/README.md`) with zero FourRealities imports:
+  - Unified `manifest.yml` (`jira:projectPage`, `jira:issuePanel`, `jira:issueContext`), `PageHeader`, and `PanelHeader` to **Four Realities**, with project scope lozenge, quiet read timestamp, and bordered `Refresh` button (`appearance="default" iconBefore="refresh"`).
+  - Replaced the cyan banner and grey numeric `Badge` in `StatusBanner` with an elevated `elevation.surface` card carrying a semantic left accent stripe (Rose for Incomplete, Sage for Complete, Sand for Recheck) and a bold semantic `Lozenge` (`appearance="removed"` for Incomplete, `appearance="success"` for Complete).
+  - Replaced the shrink-wrapped bordered `Next step` pill (which looked like a button and violated the one-border rule) with a full-width, borderless `color.background.neutral` callout strip (`<Text weight="semibold">Next step:</Text>` + body text).
+  - Replaced mismatched manual `%` widths (`23.5%` vs `49%`) with `FourColumnGrid`, `TwoColumnGrid`, and `ThreeColumnGrid` sharing the exact `space.200` (16px) gutter and `alignBlock="stretch"` equal card heights, and let `GateCard` stretch full width so header lozenges pin flush right and `ProgressBar` spans 100%.
+  - Upgraded card padding (`space.200`), outer surface padding (`space.250`), `ListRow` hairline dividers with right-pinned actions, and structured `Coverage at a glance` with three borderless `StatTile` blocks, weakest-gate `NoteBox`, and selectable risk filter buttons.
+  - Created `TableCard` unifying the filter/preset toolbox and `DynamicTable` inside a single card separated by a hairline border, enriched cells with `updated` date, `evidencedRatioText`, and `issueGapsText`, and added a `Wide text columns` / `Balanced columns` toggle in the `TableCard` header to expand Summary and Top finding on demand within native UI Kit constraints.
+  - Created `ModalContent` (`space.200` block, `space.250` inline) and `FormField` (`Label` + input + helper caption) across all five modals, and co-located exception decision and rework reason actions inside their respective gate `NoteBox` containers (`<= 3` buttons per `ActionRow`, asserted in `accessibility.test.tsx`).
+- 31 suites, 378 of 378 tests pass; coverage 99.66% statements, 96.48% branches, 99.26% functions, 99.81% lines (every file >= 90.9%); all graders PASS (`grade_tdd: PASS 96.48`, `grade_security: PASS`, `grade_ui: PASS`); `forge lint` clean; deployed to development as **3.15.0**.
+
+### Deployed 3.16.0 (B-48 Deep UX Review, Baseline Alignment Fix, and Shared UI Library Polish, 2026-11-02)
+
+- Evaluated external UX skill candidates:
+  - Installed four Antigravity-compliant global skills from `ui-skills.com` (`ibelick/ui-skills`) under `~/.gemini/config/skills/`: `ui-review` (with `references/criteria.md`), `ui-layout`, `ui-polish`, and `baseline-ui`.
+  - Rejected `mcpmarket.com/tools/skills/ux-design-gemini` (`chaorenex1/coding-workflow`, archived Oct 2026): zero UX rules, thin CLI wrapper calling an uninstalled `memex-cli` binary.
+- Conducted a systematic UX review across every view, card, inline row, table cell, filter bar, and modal in `apps/fourrealities` (`src/brand/`, `src/ui/`, `src/frontend/`):
+  - **Root-cause fix for the 6px baseline shift and lopsided callout padding (`StatusBanner`, `Priority actions`) plus inflated `Stack` gaps**: On Jira Cloud's Forge UI Kit 2 host, `<Text>` defaults to `<p>` and `@atlaskit/css-reset` adds `margin-top: 12px` to every non-first `<p>` and `<h1..h6>`. Updated every `<Text>` inside `<Inline>` and `<Stack>` to pass `as="span"`, wrapped `StatTile` values in `<Box>` so semantic `<h3>` headings get `margin-top: 0`, and added an automated `accessibility.test.tsx` tree invariant enforcing `as="span"` (or `"strong"`) on every `<Text>` inside `Inline` or `Stack`.
+  - **Shared UI library expansion (`src/brand/layout.tsx`)**: Added four cross-app primitives with zero FourRealities imports: `KeyValueInline` (`alignBlock="baseline"`, `rowSpace={SPACE.tight}`), `CardHeader`, `LabeledInline`, and `AttributionLine` (`@forge/react` `User` + inline `Text as="span"`).
+  - **Full-width nested `NoteBox` inside `SubSection`**: Removed `alignInline="start"` from `SubSection` so exception and rework `NoteBox` blocks span 100% width instead of jagged intrinsic text widths, while wrapping `GateRow`'s `Lozenge` in `<Inline>` so gate chips stay compact.
+  - **Interactive control and modal polish**: Added `isPresetActive` and `togglePreset` in `src/ui/filters.ts` so `Views:` presets show `isSelected` and toggle off on a second click; added `Issue k of n` step position inside the `Inspect` modal; added `submitting` state and double-submit protection (`isDisabled={submitting}` on both submit and `Cancel`) across `LinkDecisionModal`, `ExceptionModal`, `DecisionModal`, and `ReviewModal`.
+- 31 suites, 381 of 381 tests pass; coverage 99.66% statements, 96.47% branches, 99.28% functions, 99.81% lines (every file >= 90.9%); all graders PASS (`grade_tdd: PASS 96.47`, `grade_security: PASS`, `grade_ui: PASS`); `forge lint` clean; deployed to development as **3.16.0**.
+
+### Deployed 3.17.0 (B-49 Monorepo Shared Package Extraction and RAI Clarity, 2026-11-03)
+
+- Extracted canonical `@asymm/jira-ui` monorepo package under `packages/asymm-jira-ui` (`package.json`, `README.md`, `src/index.ts`, `src/brand.ts`, `src/layout.tsx`) so sibling apps (LedgerSeal, DefinitionGuard, PlanShift) reuse the exact brand tokens and 22 layout primitives without code duplication.
+- Configured path mapping in `apps/fourrealities/tsconfig.json` (`baseUrl: "."`, `"@asymm/jira-ui": ["../../packages/asymm-jira-ui/src"]`).
+- Defined **Reality Alignment Index (RAI)** in dashboard trend card subtitle, note rows, LineChart legend (`Alignment (RAI)`), and footnote to eliminate unexplained acronym jargon.
+- Updated `RealityCard` missing-evidence actions to subtle button appearance (`appearance="subtle"`) with downward arrow affordance (`iconAfter="arrow-down"`) and filter toggle support.
+- Wrote sibling session adoption prompt in `docs/design/prompt-other-apps-ui-adoption.md` and updated `asymm-jira-ui-standard.md`.
+- 31 suites, 381 of 381 tests pass; coverage 99.66% statements, 96.4% branches, 99.28% functions, 99.81% lines (every file >= 90.9%); all graders PASS (`grade_tdd: PASS 96.4`, `grade_security: PASS`, `grade_ui: PASS`); `forge lint` clean; committed `5c24e7d`; deployed to development as **3.17.0**.
+
+### Deployed 3.18.0 (Uniform Permission Management Standard and Shared Admin Components, 2026-11-03)
+
+- Reviewed LedgerSeal's two-tier authorization architecture and defined the comprehensive **Uniform Permission Management Standard** across the entire Asymm Systems Jira Suite (LedgerSeal, FourRealities, DefinitionGuard, PlanShift) in `docs/design/uniform-permission-management-standard.md`.
+- Extracted shared admin policy components into `@asymm/jira-ui` (`packages/asymm-jira-ui/src/admin.tsx`), providing `AdminPolicyPanel`, pure view-model state builder `buildAdminPolicyView`, immutable group modifiers (`addGroup`, `removeGroup`, `savedGroups`), and natural language policy summary formatter.
+- Created `apps/fourrealities/test/brand/admin.test.tsx` verifying all admin view model states (`LOADING`, `ERROR`, `NOT_ADMIN`, `READY`), group choices, and UI Kit rendering.
+- Configured Jest module name mapping in `apps/fourrealities/jest.config.js` to seamlessly resolve `@asymm/jira-ui`.
+- Updated sibling adoption prompt in `docs/design/prompt-other-apps-ui-adoption.md` with Section 3.C (Admin Policy Page) and Section 3.D (Jest configuration).
+- 32 suites, 386 of 386 tests pass; coverage 99.66% statements, 96.4% branches, 99.28% functions, 99.81% lines (every file >= 90.9%); all graders PASS (`grade_tdd: PASS 96.4`, `grade_security: PASS`, `grade_ui: PASS`); `forge lint` clean (0 issues); committed `ab2452a`; deployed to development as **3.18.0**.
+
+### Deployed 4.0.0 (B-41 Confluence Page Search in Decision Modal, 2026-11-03)
+
+- Implemented in-dialog Confluence page search in `LinkDecisionModal` (B-41) so users can search site Confluence pages via CQL without having to manually copy and paste page URLs.
+- Added `ConfluencePage` data contract and `ConfluencePageSearchAccessor` contract in `src/contract/accessors.ts`.
+- Implemented `DefaultForgeConfluenceSearchAccessor` in `src/accessor/default-forge-confluence-search-accessor.ts` querying `/wiki/rest/api/content/search?cql=type=page AND title ~ "..."` via Forge `asUser().requestConfluence()`.
+- Added `searchConfluencePages` resolver in `src/index.ts`.
+- Added required Confluence scopes to `manifest.yml`: `search:confluence`, `read:confluence-content.summary`, `read:jira-user`. Zero external network egress preserved.
+- Added comprehensive unit and frontend test suites:
+  - `test/accessor-confluence-search.test.ts` (7 tests covering query trimming, CQL formatting, URL resolution, 401/403 permissions, 500 errors, and network exceptions).
+  - `test/frontend/modals.test.tsx` (8 tests covering `LinkDecisionModal` search expansion, query submission, result display, page selection, manual fallback clearing, and error handling, plus `ExceptionModal`, `DecisionModal`, and `ReviewModal` interactions).
+- Upgraded app on both Jira and Confluence products on `asymmsystems.atlassian.net` with confirmed scopes.
+- 34 suites, 403 of 403 tests pass; coverage 99.62% statements, 96.07% branches, 99.3% functions, 99.82% lines (every file >= 90.9%); all graders PASS (`grade_tdd: PASS 96.07`, `grade_security: PASS`, `grade_ui: PASS`); `forge lint` clean (0 issues, 1 approval acknowledged); deployed to development as **4.0.0**.
+
+
+

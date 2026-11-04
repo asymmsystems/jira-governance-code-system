@@ -1,14 +1,14 @@
 modules:
   jira:projectPage:
     - key: fourrealities-project-dashboard
-      title: FourRealities Audit Dashboard
+      title: Four Realities
       render: native
       resource: main
       resolver:
         function: resolver
   jira:issuePanel:
     - key: fourrealities-issue-panel
-      title: Reality Alignment
+      title: Four Realities
       icon: resource:icons;icon.svg
       render: native
       resource: main
@@ -16,15 +16,22 @@ modules:
         function: resolver
   jira:issueContext:
     - key: fourrealities-issue-context
-      title: Delivery Integrity
-      label: Delivery Integrity
+      title: Four Realities
+      label: Four Realities
       render: native
       resource: main
       resolver:
         function: resolver
+  scheduledTrigger:
+    - key: fourrealities-daily-snapshot
+      function: snapshot
+      interval: day
   function:
     - key: resolver
       handler: index.handler
+    - key: snapshot
+      handler: index.snapshot
+      timeoutSeconds: 600
 
 resources:
   - key: main
@@ -36,9 +43,14 @@ app:
   id: ari:cloud:ecosystem::app/974e4981-7626-4b1c-a41f-7eaccb7f3605
   runtime:
     name: nodejs22.x
+  licensing:
+    enabled: true
 
 permissions:
   scopes:
     - read:jira-work
     - write:jira-work
     - storage:app
+    - search:confluence
+    - read:confluence-content.summary
+    - read:jira-user

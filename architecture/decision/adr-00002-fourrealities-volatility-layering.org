@@ -1,0 +1,167 @@
+#+TITLE: ADR-002: FourRealities Volatility Layering and Service Contracts
+#+DATE: 2026-11-01
+#+STATUS: Approved
+
+* Status
+Approved - 2026-11-01 by the owner, in chat, together with [[file:adr-00001-fourrealities-evidence-data-model.org][ADR-001]].
+Implemented: backlog item B-29 (see Implementation Notes).
+
+* Context
+
+Asymm builds use IDesign volatility-based decomposition with explicit service-type contracts
+([[file:/home/fahimfarookme/Documents/projects/m360/architecture/decision/adr-00029-service-type-contracts-marker-interfaces.org][M360 ADR-029]]):
+Clients call Managers; Managers orchestrate Engines and Accessors; Engines hold all logic and
+do no I/O; Accessors do all I/O; contracts are the firewall between volatility zones.
+
+FourRealities runs on Atlassian Forge. The backend runtime is Node.js (=runtime: nodejs22.x=
+in =apps/fourrealities/manifest.yml=), so the code is TypeScript. The pattern still applies;
+only its form changes (TypeScript interfaces and folders instead of Maven modules).
+
+The Part B build so far (branch =feature/fourrealities-research-build=, commit =7968c2e=)
+already separates pure gate logic from Jira and KVS access, but it breaks the pattern in
+five places (all Observed-code):
+
+| # | Where | Violation |
+|---+-------+-----------|
+| 1 | =src/index.ts= | Client, Manager and Accessor in one file. It registers resolvers (Client), orchestrates (Manager), and calls =api.asUser().requestJira= and =kvs= directly (Accessor) in =getIssueAlignment=, =checkIssueScope=, =linkDecision=, =recordException=, =ForgeKvsProvider=. |
+| 2 | =src/domain/gates.ts= imports =src/jira/dev-field.ts= | An Engine depends on the Jira access package. Parsing a value is logic; it belongs on the Engine side of the contract. |
+| 3 | =src/ui/gate-text.ts= imports =RECOVERY_ORDER= from =src/domain/metrics-engine.ts= | The Client depends on an Engine implementation, not on contract data. |
+| 4 | =src/snapshot.ts= | A Manager holds rules: the "keep the previous Intent result" rule and the trend-point calculation. |
+| 5 | =src/index.ts= =resolveStorage= | A =NODE_ENV === 'test'= branch in production code chooses the storage. Wiring belongs in one composition point (the same defect class as LedgerSeal finding LS-14). |
+
+* Decision
+
+** 1. Four service types with contracts
+
+#+begin_src text
+┌──────────────────────────────────────────────────────────────────────┐
+│ CLIENT        src/frontend/** (UI Kit), src/ui/** (text, no React),  │
+│               src/index.ts (resolver and trigger registration, and   │
+│               wiring: the only file that creates Default* objects)   │
+└───────────────────────────────┬──────────────────────────────────────┘
+                                │ calls Manager contracts only
+┌───────────────────────────────▼──────────────────────────────────────┐
+│ MANAGER       src/manager/**   orchestration, ZERO rules, ZERO I/O   │
+│   DashboardManager, IssueEvidenceManager, GateExceptionManager,      │
+│   SnapshotManager                                                    │
+└───────────────┬──────────────────────────────────┬───────────────────┘
+                │                                  │
+┌───────────────▼──────────────┐   ┌───────────────▼───────────────────┐
+│ ENGINE   src/engine/**       │   │ ACCESSOR   src/accessor/**        │
+│ pure, ZERO I/O, no @forge/*  │   │ the ONLY code that imports        │
+│  GateEngine                  │   │ @forge/api and @forge/kvs         │
+│  MetricsEngine               │   │  JiraIssueAccessor (search, read, │
+│  ExceptionPolicyEngine       │   │   links, properties, viewer ids)  │
+│  SnapshotEngine (merge rules,│   │  SiteConfigAccessor               │
+│   trend point)               │   │  SnapshotAccessor (KVS chunks)    │
+│  DevFieldEngine (parse)      │   │  ExceptionEventAccessor (KVS)     │
+└───────────────┬──────────────┘   └───────────────┬───────────────────┘
+                │                                  │
+┌───────────────▼──────────────────────────────────▼───────────────────┐
+│ CONTRACT      src/contract/data/** (value types, no behaviour)        │
+│               src/contract/{engine,accessor,manager}/** (interfaces) │
+└──────────────────────────────────────────────────────────────────────┘
+#+end_src
+
+** 2. Markers in TypeScript
+
+TypeScript types are structural, so an empty marker interface matches every object. Each
+marker therefore carries a literal discriminant:
+
+#+begin_src typescript
+/** Engines: all rules, pure input to output, no I/O, no @forge imports, no other Engine. */
+export interface Engine { readonly serviceType: 'engine'; }
+/** Managers: orchestration only, no rules, no I/O. */
+export interface Manager { readonly serviceType: 'manager'; }
+/** Accessors: all I/O (Jira REST, Forge KVS). The only importers of @forge/api and @forge/kvs. */
+export interface Accessor { readonly serviceType: 'accessor'; }
+
+export interface GateEngine extends Engine { evaluate(facts: IssueFacts, catalog: EvidenceCatalog): IssueGates; }
+#+end_src
+
+Implementations are named =Default<Name>= (for example =DefaultGateEngine=), as in M360.
+
+** 3. Dependency rules, enforced by a test
+
+An architecture test (=test/architecture.test.ts=) reads every source file and fails when:
+- a file in =src/engine/= imports anything outside =src/contract/=;
+- a file in =src/manager/= imports anything outside =src/contract/=;
+- any file outside =src/accessor/= imports =@forge/api= or =@forge/kvs=;
+- any file other than =src/index.ts= imports a =Default*= implementation;
+- a file in =src/frontend/= or =src/ui/= imports from =src/engine/=, =src/accessor/= or =src/manager/=.
+
+This is the TypeScript equivalent of the ArchUnit rule that M360 ADR-029 lists as open.
+
+** 4. One composition point
+
+=src/index.ts= builds the object graph once per invocation (accessors with the request
+principal, engines, managers) and passes it to the resolver handlers. Tests build their own
+graph with fake accessors. =resolveStorage= and its =NODE_ENV= branch are removed.
+
+* Alternatives Considered
+
+** Alternative A: Keep the current folders (domain, jira, storage)
+- For: no refactor.
+- Against: the five violations stay; nothing stops new ones.
+- Verdict: Rejected.
+
+** Alternative B: Layers without contracts (folders only)
+- For: smaller change.
+- Against: no firewall; Managers depend on concrete Accessors; tests keep mocking =@forge/api=,
+  the mock that hid the =route= defect fixed in commit =9bbfa55=.
+- Verdict: Rejected. Fake Accessors behind contracts let tests stop mocking the platform; the
+  real =route= tag is then exercised only in Accessor tests.
+
+* Consequences
+
+** Positive
+- Engines are tested with plain inputs; no platform mocks.
+- Platform calls live in one place, tested against the real =@forge/api= =route= tag.
+- The architecture test stops new layering defects at build time.
+- Same vocabulary as M360.
+
+** Negative
+- A refactor of the code built so far (about 1,500 lines moved, not rewritten).
+- More files and interfaces.
+
+** Mitigations
+- The refactor is one backlog item with no behaviour change: the existing 205 tests must stay
+  green, apart from moving to fake Accessors.
+- It lands before the ADR-001 model changes, so those changes are made once, in the new layout.
+
+* Implementation Notes (2026-11-01, B-29)
+
+Two corrections to the Decision section, made while building, both to keep the M360 ADR-029
+rule that an Engine has no dependency on another Engine, and the IDesign rule that one Manager
+does not call another synchronously:
+
+1. *No DevFieldEngine.* Parsing the Jira Development field is a translation of Jira's data
+   format, so it lives in the Jira Accessor (=src/accessor/dev-field.ts=). Engines receive a
+   parsed =DevFieldSummary=. "Started" is also a fact derived by the Accessor
+   (=IssueFacts.started=), so the Metrics Engine does not call the Gate Engine.
+2. *One project Manager.* The dashboard view, the on-demand build and the daily run share one
+   subject (the project snapshot), so =DefaultSnapshotManager= implements both
+   =DashboardManager= and =SnapshotManager=. The scope check before a user action is a short
+   private method in each of the two user-action Managers, so no Manager imports another.
+
+Layout as built:
+#+begin_src text
+src/contract/   service-types.ts, engines.ts, accessors.ts, managers.ts, data/models.ts, data/errors.ts
+src/engine/     default-gate-engine.ts, default-metrics-engine.ts, default-snapshot-engine.ts, default-policy-engine.ts
+src/accessor/   default-forge-jira-issue-accessor.ts, default-forge-kvs-store.ts, default-kvs-site-config-accessor.ts,
+                default-kvs-snapshot-accessor.ts, default-kvs-exception-accessor.ts,
+                helpers: jira-request.ts, jira-search.ts, remote-links.ts, issue-facts.ts, dev-field.ts
+src/manager/    default-snapshot-manager.ts, default-issue-evidence-manager.ts, default-exception-manager.ts
+src/index.ts    resolvers, scheduled trigger, compose() (the only file that creates Default* objects)
+#+end_src
+
+=test/architecture.test.ts= enforces the dependency rules. It failed on the earlier code
+(4 of 9 rules) and passes on this layout.
+
+* References
+
+- [[file:/home/fahimfarookme/Documents/projects/m360/architecture/decision/adr-00029-service-type-contracts-marker-interfaces.org][M360 ADR-029: Service Type Contracts and Marker Interfaces]]
+- [[file:adr-00001-fourrealities-evidence-data-model.org][ADR-001: FourRealities Evidence Data Model Patterns]]
+- [[file:../model/fourrealities-domain-model.org][FourRealities Domain Model (HLD)]]
+- Juval Löwy, "Righting Software" (2019)
+- Portfolio audit 2026-10-31, finding LS-14 (=NODE_ENV= branches in production code)

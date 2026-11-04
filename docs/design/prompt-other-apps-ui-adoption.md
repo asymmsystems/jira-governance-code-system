@@ -137,8 +137,28 @@ Follow [asymm-jira-ui-standard.md](file:///home/fahimfarookme/Documents/projects
    - Render mandatory and optional items using `<ListRow>` with bottom hairline dividers (`divided={true}`).
    - Checkbox or toggle status using `<StatusLozenge>`.
    - Rework notes and waiver history inside `<NoteBox>`.
+### C. Uniform Admin Policy Page (`src/frontend/admin.tsx`)
 
----
+Follow [uniform-permission-management-standard.md](file:///home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/design/uniform-permission-management-standard.md):
+
+Every app in the suite provides a native `jira:adminPage` where Jira administrators configure authorized groups. Do not write custom group picker forms; import the shared admin panel from `@asymm/jira-ui`:
+
+```tsx
+import { AdminPolicyPanel, buildAdminPolicyView, GroupChoice, savedGroups } from '@asymm/jira-ui';
+```
+
+Use `AdminPolicyPanel` to render the standard cards, group lists, remove buttons, and group search input without writing custom UI layout code.
+
+### D. Jest Configuration (`jest.config.js`)
+
+In your app's `jest.config.js`, add `moduleNameMapper` so Jest resolves `@asymm/jira-ui`:
+
+```js
+  moduleNameMapper: {
+    '^@asymm/jira-ui$': '<rootDir>/../../packages/asymm-jira-ui/src/index.ts'
+  },
+  moduleDirectories: ['node_modules', '<rootDir>/node_modules'],
+```
 
 ## 4. UI Rules Enforced by the Standard
 

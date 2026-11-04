@@ -1,371 +1,173 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
- * @author Asymm Systems Team
- * FourRealities: MetricsEngine Unit Tests
+ * @author Fahim Farook
+ * FourRealities: MetricsEngine unit tests (spec v2, Metrics)
  */
 
-import { MetricsEngine } from '../../src/domain/metrics-engine';
-import { RealitySignals, ProjectAuditSnapshot } from '../../src/domain/models';
+import { DefaultMetricsEngine } from '../../src/engine/default-metrics-engine';
+import { evaluateGates } from '../../src/engine/default-gate-engine';
 
-describe('MetricsEngine', () => {
-  const perfectSignals: RealitySignals = {
-    issueId: '101',
-    issueKey: 'CORE-101',
-    status: 'Done',
-    statusCategory: 'Done',
-    hasDocumentedIntent: true,
-    transitionCount: 3,
-    regressionCount: 0,
-    prCount: 1,
-    hasApprovedReview: true,
-    hasCryptographicSeal: true,
-    isDoDSatisfied: true
-  };
+const MetricsEngine = new DefaultMetricsEngine();
+import { EXCEPTED, FOUND_V, MISSING, NA, RECHECK, gates, makeFacts } from './fixtures';
 
-  describe('evaluateIssue', () => {
-    it('evaluates a perfect issue with 100% RAI and LOW risk', () => {
-      const score = MetricsEngine.evaluateIssue(perfectSignals);
-
-      expect(score.intentScore).toBe(100);
-      expect(score.processScore).toBe(100);
-      expect(score.codeScore).toBe(100);
-      expect(score.auditScore).toBe(100);
-      expect(score.realityAlignmentIndex).toBe(100);
-      expect(score.riskLevel).toBe('LOW');
-      expect(score.findings).toHaveLength(0);
-      expect(score.isEvaluated).toBe(true);
-      expect(score.whyScoreExplanation).toContain('Why 100%?');
-    });
-
-    it('penalizes missing intent documentation with plain-English diagnosis', () => {
-      const signals: RealitySignals = { ...perfectSignals, hasDocumentedIntent: false };
-      const score = MetricsEngine.evaluateIssue(signals);
-
-      expect(score.intentScore).toBe(0);
-      expect(score.realityAlignmentIndex).toBe(75);
-      expect(score.riskLevel).toBe('MEDIUM');
-      expect(score.findings.some(f => f.includes('Architectural Intent: Missing Confluence ADR'))).toBe(true);
-      // Ensures metric codes (M11) are not displayed to developers
-      expect(score.findings.some(f => f.includes('M11'))).toBe(false);
-    });
-
-    it('penalizes workflow rework loops with plain-English diagnosis', () => {
-      const signals: RealitySignals = { ...perfectSignals, regressionCount: 2 };
-      const score = MetricsEngine.evaluateIssue(signals);
-
-      expect(score.processScore).toBe(50); // 100 - (2 * 25) = 50
-      expect(score.findings.some(f => f.includes('Workflow Stability: 2 rework loop(s) detected'))).toBe(true);
-      expect(score.findings.some(f => f.includes('M30'))).toBe(false);
-    });
-
-    it('floors process score at 0 for excessive rework loops', () => {
-      const signals: RealitySignals = { ...perfectSignals, regressionCount: 5 };
-      const score = MetricsEngine.evaluateIssue(signals);
-
-      expect(score.processScore).toBe(0);
-    });
-
-    it('penalizes issues with zero PRs when completed', () => {
-      const signals: RealitySignals = { ...perfectSignals, prCount: 0, hasApprovedReview: false };
-      const score = MetricsEngine.evaluateIssue(signals);
-
-      expect(score.codeScore).toBe(0);
-      expect(score.findings.some(f => f.includes('Review Compliance: No associated Pull Request'))).toBe(true);
-    });
-
-    it('penalizes unreviewed PRs (merged without verified approval)', () => {
-      const signals: RealitySignals = { ...perfectSignals, prCount: 1, hasApprovedReview: false };
-      const score = MetricsEngine.evaluateIssue(signals);
-
-      expect(score.codeScore).toBe(40);
-      expect(score.findings.some(f => f.includes('Review Compliance: Pull Request merged without verified peer review approval'))).toBe(true);
-      expect(score.findings.some(f => f.includes('M29'))).toBe(false);
-    });
-
-    it('credits approved exceptions without requiring PRs', () => {
-      const signals: RealitySignals = {
-        ...perfectSignals,
-        prCount: 0,
-        hasApprovedReview: false,
-        codeExceptionReason: 'No code change: Documentation update'
-      };
-      const score = MetricsEngine.evaluateIssue(signals);
-
-      expect(score.codeScore).toBe(100);
-      expect(score.gates.code).toBe('PASSED');
-      expect(score.findings.some(f => f.includes('Approved Exception: No code change: Documentation update'))).toBe(true);
-    });
-
-    it('evaluates audit reality for partial compliance', () => {
-      const signalsOnlyDoD: RealitySignals = { ...perfectSignals, hasCryptographicSeal: false };
-      const score1 = MetricsEngine.evaluateIssue(signalsOnlyDoD);
-      expect(score1.auditScore).toBe(50);
-      expect(score1.findings.some(f => f.toLowerCase().includes('cryptographic seal is missing'))).toBe(true);
-
-      const signalsOnlySeal: RealitySignals = { ...perfectSignals, isDoDSatisfied: false };
-      const score2 = MetricsEngine.evaluateIssue(signalsOnlySeal);
-      expect(score2.auditScore).toBe(50);
-      expect(score2.findings.some(f => f.toLowerCase().includes('definition of done is incomplete'))).toBe(true);
-    });
-
-    it('does not penalize early unstarted To Do issues (excludes hollow gates from score)', () => {
-      const todoSignals: RealitySignals = {
-        issueId: '202',
-        issueKey: 'TODO-202',
-        statusCategory: 'To Do',
-        transitionCount: 1,
-        hasDocumentedIntent: false,
-        regressionCount: 0,
-        prCount: 0,
-        hasApprovedReview: false,
-        hasCryptographicSeal: false,
-        isDoDSatisfied: false
-      };
-      const score = MetricsEngine.evaluateIssue(todoSignals);
-
-      expect(score.gates.intent).toBe('HOLLOW');
-      expect(score.gates.process).toBe('HOLLOW');
-      expect(score.gates.code).toBe('HOLLOW');
-      expect(score.gates.audit).toBe('HOLLOW');
-      expect(score.isEvaluated).toBe(false);
-      expect(score.riskLevel).toBe('LOW');
-      expect(score.whyScoreExplanation).toContain('Early stage: Gates will be evaluated');
-    });
-
-    it('assigns HIGH and CRITICAL risk levels correctly on evaluated issues', () => {
-      // High risk
-      const highRiskSignals: RealitySignals = {
-        ...perfectSignals,
-        hasDocumentedIntent: false,
-        hasApprovedReview: false,
-        regressionCount: 1
-      };
-      const scoreHigh = MetricsEngine.evaluateIssue(highRiskSignals);
-      expect(scoreHigh.riskLevel).toBe('HIGH');
-
-      // Critical risk
-      const criticalSignals: RealitySignals = {
-        ...perfectSignals,
-        hasDocumentedIntent: false,
-        prCount: 0,
-        hasApprovedReview: false,
-        hasCryptographicSeal: false,
-        isDoDSatisfied: false,
-        regressionCount: 3
-      };
-      const scoreCritical = MetricsEngine.evaluateIssue(criticalSignals);
-      expect(scoreCritical.riskLevel).toBe('CRITICAL');
-    });
+describe('MetricsEngine.rai and risk', () => {
+  it('scores only FOUND and MISSING gates', () => {
+    expect(MetricsEngine.rai(gates(FOUND_V, FOUND_V, FOUND_V, FOUND_V))).toBe(100);
+    expect(MetricsEngine.rai(gates(FOUND_V, MISSING, NA, NA))).toBe(50);
+    expect(MetricsEngine.rai(gates(FOUND_V, MISSING, MISSING, NA))).toBe(33);
   });
 
-  describe('summarizeProject', () => {
-    it('returns zero defaults with honest trend notice for empty issue list', () => {
-      const summary = MetricsEngine.summarizeProject([]);
-
-      expect(summary.totalAuditedIssues).toBe(0);
-      expect(summary.m11TraceabilityRate).toBe(0);
-      expect(summary.m29ReviewComplianceRate).toBe(0);
-      expect(summary.m30ReworkLoopRate).toBe(0);
-      expect(summary.averageRAI).toBe(0);
-      expect(summary.hasTrendHistory).toBe(false);
-      expect(summary.sprintDelta).toBeUndefined();
-      expect(summary.trendNotice).toContain('Trend available after 2 scans');
-    });
-
-    it('aggregates project metrics accurately and calculates audit rate from DONE issues only', () => {
-      const issueA: RealitySignals = { ...perfectSignals, issueKey: 'ISSUE-A', statusCategory: 'Done' }; // RAI 100, sealed
-      const issueB: RealitySignals = {
-        ...perfectSignals,
-        issueKey: 'ISSUE-B',
-        statusCategory: 'In Progress',
-        hasDocumentedIntent: false, // Intent 0
-        hasApprovedReview: false, // Code 40
-        regressionCount: 1 // Process 75
-      }; // Applicable: Intent (0), Process (75), Code (40). Audit is HOLLOW in In Progress. Average = (0+75+40)/3 = 38 (CRITICAL)
-
-      const summary = MetricsEngine.summarizeProject([issueA, issueB]);
-
-      expect(summary.totalAuditedIssues).toBe(2);
-      expect(summary.doneCount).toBe(1); // Only issueA is done
-      expect(summary.sealedDoneCount).toBe(1); // 1 out of 1 done issue sealed
-      expect(summary.m40AuditComplianceRate).toBe(100); // 1 of 1 done sealed = 100% (honest audit rate!)
-      expect(summary.m11TraceabilityRate).toBe(50);
-      expect(summary.m29ReviewComplianceRate).toBe(50);
-      expect(summary.healthyIssueCount).toBe(1);
-      expect(summary.atRiskIssueCount).toBe(1);
-    });
-
-    it('calculates authentic sprint delta and biggest mover when previous snapshot exists', () => {
-      const issueA: RealitySignals = { ...perfectSignals, issueKey: 'ISSUE-A' };
-      const prevSnapshot: ProjectAuditSnapshot = {
-        snapshotId: 'snap-old',
-        projectKey: 'CORE',
-        generatedAt: '2026-10-25T10:00:00Z',
-        generatedBy: 'admin',
-        summary: {
-          m11TraceabilityRate: 80,
-          m29ReviewComplianceRate: 80,
-          m30ReworkLoopRate: 20,
-          m40AuditComplianceRate: 70,
-          averageRAI: 85,
-          totalAuditedIssues: 10,
-          doneCount: 10,
-          sealedDoneCount: 7,
-          healthyIssueCount: 8,
-          atRiskIssueCount: 2,
-          highRiskIssueKeys: [],
-          gateBreakdown: {
-            intent: { passed: 8, attention: 0, blocked: 2, hollow: 0 },
-            process: { passed: 8, attention: 2, blocked: 0, hollow: 0 },
-            code: { passed: 8, attention: 0, blocked: 2, hollow: 0 },
-            audit: { passed: 7, attention: 1, blocked: 2, hollow: 0 }
-          },
-          weakestGate: 'audit',
-          sprintName: 'Sprint 23',
-          hasTrendHistory: true,
-          riskDistribution: { low: 8, medium: 2, high: 0, critical: 0 }
-        },
-        issueScores: []
-      };
-
-      const summary = MetricsEngine.summarizeProject([issueA], prevSnapshot);
-      expect(summary.hasTrendHistory).toBe(true);
-      expect(summary.sprintDelta).toBe(15); // 100 - 85 = +15
-      expect(summary.biggestMover).toBeDefined();
-
-      // Test steady delivery alignment when delta is zero
-      const identicalPrev: ProjectAuditSnapshot = {
-        ...prevSnapshot,
-        summary: {
-          ...prevSnapshot.summary,
-          m11TraceabilityRate: 100,
-          m29ReviewComplianceRate: 100,
-          m30ReworkLoopRate: 0,
-          m40AuditComplianceRate: 100,
-          averageRAI: 100
-        }
-      };
-      const steadySummary = MetricsEngine.summarizeProject([issueA], identicalPrev);
-      expect(steadySummary.biggestMover).toBe('Delivery alignment steady across monitored realities.');
-
-      // Test CRITICAL risk aggregation in risk distribution
-      const critSignals: RealitySignals = {
-        ...perfectSignals,
-        issueKey: 'CRIT-1',
-        hasDocumentedIntent: false,
-        prCount: 0,
-        hasApprovedReview: false,
-        hasCryptographicSeal: false,
-        isDoDSatisfied: false,
-        regressionCount: 3
-      };
-      const critSummary = MetricsEngine.summarizeProject([critSignals]);
-      expect(critSummary.riskDistribution.critical).toBe(1);
-    });
-
-    it('identifies weakest gate accurately across intent, code, and process', () => {
-      // Intent weakest
-      const sig1: RealitySignals = { ...perfectSignals, hasDocumentedIntent: false };
-      const sum1 = MetricsEngine.summarizeProject([sig1]);
-      expect(sum1.weakestGate).toBe('intent');
-
-      // Code weakest
-      const sig2: RealitySignals = { ...perfectSignals, hasApprovedReview: false };
-      const sum2 = MetricsEngine.summarizeProject([sig2]);
-      expect(sum2.weakestGate).toBe('code');
-
-      // Process weakest
-      const sig3: RealitySignals = { ...perfectSignals, regressionCount: 3 };
-      const sum3 = MetricsEngine.summarizeProject([sig3]);
-      expect(sum3.weakestGate).toBe('process');
-    });
+  it('never counts EXCEPTED, NEEDS_RECHECK or NOT_APPLICABLE as pass or fail', () => {
+    expect(MetricsEngine.rai(gates(MISSING, EXCEPTED, RECHECK, NA))).toBe(0);
+    expect(MetricsEngine.rai(gates(FOUND_V, EXCEPTED, RECHECK, NA))).toBe(100);
   });
 
-  describe('evaluateGates and synthesizeFinding', () => {
-    it('marks early issues as HOLLOW across gates and returns early stage guidance', () => {
-      const todoSignals: RealitySignals = {
-        issueId: 'early-1',
-        issueKey: 'EARLY-1',
-        hasDocumentedIntent: false,
-        regressionCount: 0,
-        prCount: 0,
-        hasApprovedReview: false,
-        isDoDSatisfied: false,
-        hasCryptographicSeal: false,
-        statusCategory: 'To Do',
-        transitionCount: 1
-      };
-      const gates = MetricsEngine.evaluateGates(todoSignals);
-      expect(gates.intent).toBe('HOLLOW');
-      expect(gates.code).toBe('HOLLOW');
-      expect(gates.audit).toBe('HOLLOW');
-      expect(gates.process).toBe('HOLLOW');
+  it('is null (UNRATED) when no gate is scored', () => {
+    expect(MetricsEngine.rai(gates(NA, NA, EXCEPTED, RECHECK))).toBeNull();
+    expect(MetricsEngine.risk(null)).toBe('UNRATED');
+  });
 
-      const finding = MetricsEngine.synthesizeFinding(gates, todoSignals);
-      expect(finding).toContain('early planning stage');
-    });
+  it('maps RAI to risk bands', () => {
+    expect(MetricsEngine.risk(49)).toBe('CRITICAL');
+    expect(MetricsEngine.risk(50)).toBe('HIGH');
+    expect(MetricsEngine.risk(69)).toBe('HIGH');
+    expect(MetricsEngine.risk(70)).toBe('MEDIUM');
+    expect(MetricsEngine.risk(84)).toBe('MEDIUM');
+    expect(MetricsEngine.risk(85)).toBe('LOW');
+  });
+});
 
-    it('generates accurate synthesized findings and recoverable points', () => {
-      // Intent blocked
-      const intentBlocked: RealitySignals = { ...perfectSignals, hasDocumentedIntent: false };
-      const scoreIntent = MetricsEngine.evaluateIssue(intentBlocked);
-      expect(scoreIntent.synthesizedFinding).toContain('Work lacks documented architectural intent');
-      expect(scoreIntent.recoverablePoints).toBe(25);
+describe('MetricsEngine.recoverablePoints', () => {
+  it('recomputes RAI with the first missing gate found', () => {
+    // Intent missing, Process found: 50 now, 100 after the fix.
+    expect(MetricsEngine.recoverablePoints(gates(MISSING, FOUND_V, NA, NA))).toBe(50);
+    // Four gates, one found: 25 now, 50 after fixing Intent.
+    expect(MetricsEngine.recoverablePoints(gates(MISSING, MISSING, MISSING, FOUND_V))).toBe(25);
+  });
 
-      // Code blocked without PR on done issue
-      const codeNoPr: RealitySignals = { ...perfectSignals, prCount: 0, hasApprovedReview: false, statusCategory: 'Done' };
-      const scoreNoPr = MetricsEngine.evaluateIssue(codeNoPr);
-      expect(scoreNoPr.synthesizedFinding).toContain('Work completed without a linked Pull Request or code branch');
-      expect(scoreNoPr.recoverablePoints).toBe(25);
+  it('is 0 when nothing is missing or nothing is rated', () => {
+    expect(MetricsEngine.recoverablePoints(gates(FOUND_V, FOUND_V, NA, NA))).toBe(0);
+    expect(MetricsEngine.recoverablePoints(gates(NA, NA, NA, NA))).toBe(0);
+  });
+});
 
-      // Code blocked with unreviewed PR
-      const codeUnreviewed: RealitySignals = { ...perfectSignals, prCount: 1, hasApprovedReview: false };
-      const scoreUnreviewed = MetricsEngine.evaluateIssue(codeUnreviewed);
-      expect(scoreUnreviewed.synthesizedFinding).toContain('without verified peer review approval');
-      expect(scoreUnreviewed.recoverablePoints).toBe(15);
+describe('MetricsEngine.buildRow', () => {
+  it('builds a row with gates, RAI, risk, applicable count, and optional updated date', () => {
+    const row = MetricsEngine.buildRow(makeFacts(), gates(FOUND_V, MISSING, NA, MISSING));
+    expect(row.rai).toBe(33);
+    expect(row.risk).toBe('CRITICAL');
+    expect(row.applicableGates).toBe(3);
+    expect(row.recoverablePoints).toBe(34);
+    expect(row.started).toBe(true);
+    expect(row.updated).toBeUndefined();
 
-      // Audit blocked on Done issue
-      const auditBlocked: RealitySignals = {
-        ...perfectSignals,
-        isDoDSatisfied: false,
-        hasCryptographicSeal: false,
-        statusCategory: 'Done'
-      };
-      const scoreAudit = MetricsEngine.evaluateIssue(auditBlocked);
-      expect(scoreAudit.synthesizedFinding).toContain('Definition of Done is incomplete and cryptographic seal is missing');
-      expect(scoreAudit.recoverablePoints).toBe(25);
+    const withDate = MetricsEngine.buildRow(makeFacts({ updated: '2026-11-01T14:22:00.000Z' }), gates(FOUND_V, MISSING, NA, MISSING));
+    expect(withDate.updated).toBe('2026-11-01T14:22:00.000Z');
+  });
 
-      // Process attention
-      const procAttention: RealitySignals = { ...perfectSignals, regressionCount: 2 };
-      const scoreProc = MetricsEngine.evaluateIssue(procAttention);
-      expect(scoreProc.synthesizedFinding).toContain('rework loop(s) indicating requirement churn');
+  it('truncates long summaries to 120 characters', () => {
+    const row = MetricsEngine.buildRow(makeFacts({ summary: 'x'.repeat(200) }), evaluateGates(makeFacts()));
+    expect(row.summary.length).toBe(120);
+    expect(row.summary.endsWith('...')).toBe(true);
+  });
 
-      // Audit attention without seal
-      const auditNoSeal: RealitySignals = {
-        ...perfectSignals,
-        isDoDSatisfied: true,
-        hasCryptographicSeal: false,
-        statusCategory: 'Done'
-      };
-      const scoreNoSeal = MetricsEngine.evaluateIssue(auditNoSeal);
-      expect(scoreNoSeal.synthesizedFinding).toContain('Definition of Done satisfied, but cryptographic seal is unverified');
-      expect(scoreNoSeal.recoverablePoints).toBe(12);
+  it('carries the Code exception state, the latest rework note and the note count', () => {
+    const note = { reason: 'Configuration change only', recordedBy: 'acc-1', recordedAt: '2026-11-01T00:00:00Z' };
+    const older = { reason: 'Earlier rework reason', recordedBy: 'acc-2', recordedAt: '2026-10-01T00:00:00Z' };
+    const state = { status: 'REQUESTED' as const, issueKey: 'A-1', requestedBy: 'dev-1', requestedAt: 't', reason: 'Configuration change only' };
+    const facts = makeFacts({ codeException: state, reworkNotes: [older, note] });
+    const row = MetricsEngine.buildRow(facts, evaluateGates(facts));
+    expect(row.codeException).toEqual(state);
+    expect(row.reworkNote).toEqual(note);
+    expect(row.reworkNoteCount).toBe(2);
+    const none = MetricsEngine.buildRow(makeFacts(), evaluateGates(makeFacts()));
+    expect(none.reworkNote).toBeUndefined();
+    expect(none.reworkNoteCount).toBeUndefined();
+  });
 
-      // Audit attention without DoD
-      const auditNoDod: RealitySignals = {
-        ...perfectSignals,
-        isDoDSatisfied: false,
-        hasCryptographicSeal: true,
-        statusCategory: 'Done'
-      };
-      const scoreNoDod = MetricsEngine.evaluateIssue(auditNoDod);
-      expect(scoreNoDod.synthesizedFinding).toContain('Cryptographic seal recorded, but Definition of Done is incomplete');
-      expect(scoreNoDod.recoverablePoints).toBe(12);
+  it('builds an UNRATED row for an unstarted issue', () => {
+    const facts = makeFacts({ statusCategory: 'new', statusChanges: 0, devField: { present: false, summary: { count: 0, state: null, openCount: 0, mergedCount: 0, declinedCount: 0 } } });
+    const row = MetricsEngine.buildRow(facts, evaluateGates(facts));
+    expect(row.rai).toBeNull();
+    expect(row.risk).toBe('UNRATED');
+    expect(row.started).toBe(false);
+  });
+});
 
-      // All passed
-      const scoreAllPassed = MetricsEngine.evaluateIssue(perfectSignals);
-      expect(scoreAllPassed.synthesizedFinding).toContain('All evaluated delivery reality gates verified and aligned');
-      expect(scoreAllPassed.recoverablePoints).toBe(0);
-    });
+describe('MetricsEngine.summarize', () => {
+  it('returns null rates and averages for an empty project', () => {
+    const s = MetricsEngine.summarize([]);
+    expect(s.totalIssues).toBe(0);
+    expect(s.averageRAI).toBeNull();
+    expect(s.m11IntentRate).toBeNull();
+    expect(s.m29PullRequestRate).toBeNull();
+    expect(s.m30ReworkRate).toBeNull();
+    expect(s.dodRate).toBeNull();
+    expect(s.sealRate).toBeNull();
+  });
+
+  it('counts each gate state and divides rates by FOUND plus MISSING', () => {
+    const rows = [
+      MetricsEngine.buildRow(makeFacts({ issueKey: 'A-1' }), gates(FOUND_V, FOUND_V, EXCEPTED, MISSING)),
+      MetricsEngine.buildRow(makeFacts({ issueKey: 'A-2', reworkLoops: 2 }), gates(MISSING, MISSING, FOUND_V, RECHECK)),
+      MetricsEngine.buildRow(makeFacts({ issueKey: 'A-3', statusCategory: 'new', statusChanges: 0 }), gates(NA, NA, NA, NA))
+    ];
+    const s = MetricsEngine.summarize(rows);
+    expect(s.gates.intent).toEqual({ found: 1, missing: 1, excepted: 0, recheck: 0, notApplicable: 1 });
+    expect(s.gates.code).toEqual({ found: 1, missing: 0, excepted: 1, recheck: 0, notApplicable: 1 });
+    expect(s.gates.audit).toEqual({ found: 0, missing: 1, excepted: 0, recheck: 1, notApplicable: 1 });
+    expect(s.m11IntentRate).toBe(50);
+    expect(s.m29PullRequestRate).toBe(100);
+    expect(s.sealRate).toBe(0);
+    expect(s.ratedIssues).toBe(2);
+    expect(s.unratedIssues).toBe(1);
+    expect(s.averageRAI).toBe(Math.round((67 + 33) / 2));
+    expect(s.startedIssues).toBe(2);
+    expect(s.reworkIssues).toBe(1);
+    expect(s.m30ReworkRate).toBe(50);
+    expect(s.riskDistribution.unrated).toBe(1);
+  });
+});
+
+describe('B-06: an excepted Code gate is outside RAI and M29', () => {
+  it('removes the excepted gate from the RAI average and from the M29 numerator and denominator', () => {
+    const row = MetricsEngine.buildRow(makeFacts(), gates(FOUND_V, MISSING, EXCEPTED, NA));
+    expect(row.rai).toBe(50);
+    const s = MetricsEngine.summarize([row]);
+    expect(s.gates.code.excepted).toBe(1);
+    expect(s.m29PullRequestRate).toBeNull();
+  });
+});
+
+describe('B-14: UNRATED issues, denominators and recoverable points', () => {
+  it('FR-14 case: 80 unstarted and 20 poor Done issues average the rated issues only', () => {
+    const unstarted = Array.from({ length: 80 }, (_, i) =>
+      MetricsEngine.buildRow(makeFacts({ issueKey: `U-${i}`, statusCategory: 'new', statusChanges: 0 }), gates(NA, NA, NA, NA)));
+    const poor = Array.from({ length: 20 }, (_, i) =>
+      MetricsEngine.buildRow(makeFacts({ issueKey: `P-${i}` }), gates(FOUND_V, MISSING, MISSING, MISSING)));
+    const s = MetricsEngine.summarize([...unstarted, ...poor]);
+    expect(s.averageRAI).toBe(25);
+    expect(s.unratedIssues).toBe(80);
+    expect(s.ratedIssues).toBe(20);
+    expect(s.riskDistribution.unrated).toBe(80);
+    expect(s.riskDistribution.low).toBe(0);
+  });
+
+  it('FR-17 case: Intent missing and Process found gives RAI 50 and 50 recoverable points', () => {
+    const row = MetricsEngine.buildRow(makeFacts({ statusCategory: 'indeterminate' }), gates(MISSING, FOUND_V, NA, NA));
+    expect(row.rai).toBe(50);
+    expect(row.recoverablePoints).toBe(50);
+  });
+
+  it('divides each rate by the issues where the gate applies', () => {
+    const rows = [
+      MetricsEngine.buildRow(makeFacts({ issueKey: 'A' }), gates(FOUND_V, NA, NA, NA)),
+      MetricsEngine.buildRow(makeFacts({ issueKey: 'B' }), gates(MISSING, NA, NA, NA)),
+      MetricsEngine.buildRow(makeFacts({ issueKey: 'C', statusCategory: 'new', statusChanges: 0 }), gates(NA, NA, NA, NA))
+    ];
+    const s = MetricsEngine.summarize(rows);
+    expect(s.m11IntentRate).toBe(50);
+    expect(s.dodRate).toBeNull();
+    expect(s.sealRate).toBeNull();
   });
 });
