@@ -1,5 +1,5 @@
 /**
- * PlanShift: Resource Allocation Utilization Domain Engine
+ * CascadePlan: Resource Allocation Utilization Domain Engine
  * Computes weekly resource workloads, detects allocation bottlenecks,
  * and highlights over-allocated and under-utilized team members.
  */

@@ -1,5 +1,5 @@
 /**
- * PlanShift: Baseline and Scope Shift Storage Repository Layer
+ * CascadePlan: Baseline and Scope Shift Storage Repository Layer
  * Manages persistence for frozen commitment baselines and scope shift approval records.
  */
 

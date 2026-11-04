@@ -104,7 +104,6 @@ export const CascadePlanAdmin: React.FC = () => {
   );
 };
 
-export const PlanShiftAdmin = CascadePlanAdmin;
 export default CascadePlanAdmin;
 
 ForgeReconciler.render(

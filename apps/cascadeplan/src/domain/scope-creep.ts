@@ -1,5 +1,5 @@
 /**
- * PlanShift: Scope Creep Detection & Baseline Freezing Engine
+ * CascadePlan: Scope Creep Detection & Baseline Freezing Engine
  * Freezes commitment baselines, audits variance in scope and timeline,
  * and manages formal scope shift approval requests.
  */
