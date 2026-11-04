@@ -78,15 +78,31 @@ function verifyEvidence(evidence, publicKeyPem) {
 }
 
 function main(args) {
-  if (args[0] === '--self-test') return selfTest() ? 0 : 1;
-  if (!args[0]) {
-    console.error('Usage: node verify-evidence.mjs <evidence.json> [public-key.pem] | --self-test');
+  if (args.includes('--self-test')) return selfTest() ? 0 : 1;
+  let evidencePath = null;
+  let keyPath = null;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--evidence' && args[i + 1]) {
+      evidencePath = args[++i];
+    } else if (args[i] === '--public-key' && args[i + 1]) {
+      keyPath = args[++i];
+    } else if (!args[i].startsWith('--')) {
+      if (!evidencePath) evidencePath = args[i];
+      else if (!keyPath) keyPath = args[i];
+    }
+  }
+  if (!evidencePath) {
+    console.error('Usage: node verify-evidence.mjs [--evidence] <evidence.json> [--public-key] [public-key.pem] | --self-test');
     return 2;
   }
-  const evidence = JSON.parse(readFileSync(args[0], 'utf8'));
+  if (!existsSync(evidencePath)) {
+    console.error(`No evidence file: ${evidencePath}`);
+    return 2;
+  }
+  const evidence = JSON.parse(readFileSync(evidencePath, 'utf8'));
   const localKey = join(HERE, 'keys', `${evidence.attestation?.keyId}.pub.pem`);
   const parentKey = join(HERE, '..', 'keys', `${evidence.attestation?.keyId}.pub.pem`);
-  const keyFile = args[1] || (existsSync(localKey) ? localKey : parentKey);
+  const keyFile = keyPath || (existsSync(localKey) ? localKey : parentKey);
   if (!existsSync(keyFile)) {
     console.error(`No public key file: ${keyFile}`);
     return 2;
