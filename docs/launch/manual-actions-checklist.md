@@ -44,37 +44,24 @@ This checklist consolidates all operational actions that require direct human ex
 
 ---
 
-## 2. Domain & Documentation Portal (`docs.asymm.systems`)
+## 2. Documentation Portal Deployment (`asymm.systems`)
 
-- [ ] **DNS CNAME Configuration:**
-  - In your DNS provider (Cloudflare, Route 53, or Namecheap) for domain `asymm.systems`:
-  - Add CNAME record: `docs` -> `<your-github-username>.github.io` (or Cloudflare Pages target).
-  - Set TTL to 300 seconds (or automatic).
-- [ ] **GitHub Pages Setup:**
-  - In the repository settings on GitHub under **Settings > Pages**:
-  - Set Source to **GitHub Actions**.
-  - Custom domain: Enter `docs.asymm.systems`.
-  - Check **Enforce HTTPS** once the SSL certificate provisions.
-- [ ] **Trigger Initial Site Deployment:**
-  - Merge the `feature/suite-launch` branch to `master` to trigger `.github/workflows/docs-deploy.yml`.
-  - Confirm the site builds and resolves live at `https://docs.asymm.systems/`.
+- [x] **Host Documentation on Corporate Domain:**
+  - Integrated into `asymm-corporate-code-pfw` under `/product/jira-governance/`.
+  - Avoids GitHub Pages plan restrictions and unifies SEO under `asymm.systems`.
+- [ ] **Deploy Corporate Site to Cloudflare Pages:**
+  - Merge branch `develop` to `main` in `asymm-corporate-code-pfw`.
+  - Push release tag to trigger `.github/workflows/production.yml`.
+  - Confirm live resolution at `https://asymm.systems/product/jira-governance.html` and `https://asymm.systems/product/jira-governance/user-guide/`.
 
 ---
 
-## 3. Monorepo & Documentation Publishing
+## 3. Monorepo & Open-Source Verifier
 
-- [ ] **Push Monorepo to GitHub:**
-  - Remote repository: `https://github.com/asymmsystems/jira-governance-code-system`
-  - Push branch `master`:
-    ```bash
-    git push -u origin master
-    ```
-- [ ] **Verify Documentation Deployment Workflow:**
-  - In GitHub Actions for `asymmsystems/jira-governance-code-system`:
-  - Confirm `.github/workflows/docs-deploy.yml` triggers on push to `master`.
-  - Confirm the VitePress build succeeds and deploys to GitHub Pages (`docs.asymm.systems`).
-- [ ] **Verify Offline Verifier in Monorepo:**
-  - The verifier package lives under `tools/verifier/` and is documented directly on the docs site (`https://docs.asymm.systems/apps/ledgerseal/open-verifier`).
+- [x] **Monorepo Created & Pushed:**
+  - Private repository: `https://github.com/asymmsystems/jira-governance-code-system` (synced on `master`).
+- [x] **Offline Verifier Consolidated in Monorepo:**
+  - The verifier package lives under `tools/verifier/` and is documented directly on the site (`https://asymm.systems/product/jira-governance/user-guide/open-verifier.html`).
 
 ---
 

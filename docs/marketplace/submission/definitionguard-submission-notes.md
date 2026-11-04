@@ -5,7 +5,7 @@
 - **App ID:** `ari:cloud:ecosystem::app/73e4f63d-7d60-450c-96d5-f81ca68a709c`
 - **Publisher:** Asymm Systems (`https://asymm.systems`)
 - **Support Contact:** `support@asymm.systems`
-- **Documentation:** `https://docs.asymm.systems/apps/definitionguard/`
+- **Documentation:** `https://asymm.systems/product/jira-governance/user-guide/definitionguard.html`
 
 ---
 

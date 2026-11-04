@@ -5,7 +5,7 @@
 - **App ID:** `ari:cloud:ecosystem::app/7489a645-7c96-400a-b289-eb36f2701a00`
 - **Publisher:** Asymm Systems (`https://asymm.systems`)
 - **Support Contact:** `support@asymm.systems`
-- **Documentation:** `https://docs.asymm.systems/apps/ledgerseal/`
+- **Documentation:** `https://asymm.systems/product/jira-governance/user-guide/ledgerseal.html`
 
 ---
 

@@ -5,7 +5,7 @@
 - **App ID:** `ari:cloud:ecosystem::app/cac8499e-e92e-4ba6-95cc-af398b1be791`
 - **Publisher:** Asymm Systems (`https://asymm.systems`)
 - **Support Contact:** `support@asymm.systems`
-- **Documentation:** `https://docs.asymm.systems/apps/cascadeplan/`
+- **Documentation:** `https://asymm.systems/product/jira-governance/user-guide/cascadeplan.html`
 
 ---
 

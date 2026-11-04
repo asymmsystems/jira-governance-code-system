@@ -94,7 +94,7 @@ I would be glad to support your evaluation in whatever format is most efficient:
 3. Review your specific SOC 2, ISO 27001, or FDA 21 CFR Part 11 change control requirements.
 
 Our complete technical documentation is available at:
-https://docs.asymm.systems/apps/ledgerseal/
+https://asymm.systems/product/jira-governance/user-guide/ledgerseal.html
 
 Let me know if you would like to connect this week.
 
@@ -102,16 +102,16 @@ Best regards,
 
 Fahim Farook
 Lead Engineer, Asymm Systems
-fahim@asymm.systems | docs.asymm.systems
+fahim@asymm.systems | asymm.systems
 ```
 
 ### Step 3: Providing the Security & Compliance Whitepaper
 When the prospect's security team asks for vendor documentation:
-- Direct them to: `https://docs.asymm.systems/vendor-security-assessment`
+- Direct them to: `https://asymm.systems/product/jira-governance/compliance.html`
 - Emphasize key zero-trust architectural proofs:
   - Zero third-party servers: no AWS/GCP backend to breach.
   - Zero egress: no outbound network fetch calls.
-  - Open offline verification: auditors can verify evidence independently via `https://docs.asymm.systems/apps/ledgerseal/open-verifier`.
+  - Open offline verification: auditors can verify evidence independently via `https://asymm.systems/product/jira-governance/user-guide/open-verifier.html`.
 
 ---
 
@@ -130,7 +130,7 @@ Quick technical follow-up: Have you had a chance to attach the LedgerSeal valida
 The app provides value immediately once the transition to "Done" or "Released" is gated, stopping post-approval modifications automatically.
 
 Here is a 2-minute setup guide with screenshots:
-https://docs.asymm.systems/apps/ledgerseal/admin-guide
+https://asymm.systems/product/jira-governance/user-guide/ledgerseal.html
 
 Let me know if you hit any workflow permission questions.
 ```
@@ -163,7 +163,7 @@ Your 30-day evaluation trial of LedgerSeal concludes next week on [Date].
 Because billing is handled natively through Atlassian Marketplace, no manual contract or invoice is required: the subscription will automatically continue on your organization's regular Atlassian invoice.
 
 If your procurement or billing team requires our vendor tax ID, W-9, or formal SOC 2 architecture packet to keep the subscription active, you can download them directly here:
-https://docs.asymm.systems/vendor-security-assessment
+https://asymm.systems/product/jira-governance/compliance.html
 
 Thank you for trusting Asymm Systems with your release governance.
 ```

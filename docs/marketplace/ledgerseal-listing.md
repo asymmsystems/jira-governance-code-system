@@ -87,8 +87,8 @@ LedgerSeal provides technical controls that support customer compliance across r
 
 ## Support, Documentation & Legal Links
 
-- **Documentation Portal:** https://docs.asymm.systems/apps/ledgerseal/
-- **Offline Verifier Documentation & Source:** https://docs.asymm.systems/apps/ledgerseal/open-verifier
+- **Documentation Portal:** https://asymm.systems/product/jira-governance/user-guide/ledgerseal.html
+- **Offline Verifier Documentation & Source:** https://asymm.systems/product/jira-governance/user-guide/open-verifier.html
 - **Privacy Policy:** https://asymm.systems/privacy
 - **Terms of Service:** https://asymm.systems/terms
 - **Support Portal & SLA:** https://asymm.systems/support

@@ -67,3 +67,13 @@ CascadePlan offers simple, tiered user-based pricing with automated Atlassian bi
 * **Growth Tier (101 to 250 users):** $1.20 / user / month.
 * **Enterprise Tier (251+ users):** Volume pricing down to $0.60 / user / month.
 * **Annual Subscriptions:** 2 months free with an annual plan.
+
+---
+
+## Support, Documentation & Legal Links
+
+- **Documentation Portal:** https://asymm.systems/product/jira-governance/user-guide/cascadeplan.html
+- **Privacy Policy:** https://asymm.systems/privacy
+- **Terms of Service:** https://asymm.systems/terms
+- **Support Portal & SLA:** https://asymm.systems/support
+- **Direct Support Contact:** `support@asymm.systems`

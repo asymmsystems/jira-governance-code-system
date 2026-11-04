@@ -185,4 +185,4 @@ Change control should be mathematical, verifiable, and transparent.
 
 ---
 
-*For technical documentation, compliance audit guides, and the open-source offline verifier, visit [docs.asymm.systems](https://docs.asymm.systems).*
+*For technical documentation, compliance audit guides, and the open-source offline verifier, visit the [Asymm Systems Jira Governance Portal](https://asymm.systems/product/jira-governance/).*

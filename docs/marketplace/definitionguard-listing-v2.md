@@ -86,7 +86,7 @@ DefinitionGuard provides verifiable evidence for internal and external audits:
 
 ## Support, Documentation & Legal Links
 
-- **Documentation Portal:** https://docs.asymm.systems/apps/definitionguard/
+- **Documentation Portal:** https://asymm.systems/product/jira-governance/user-guide/definitionguard.html
 - **Privacy Policy:** https://asymm.systems/privacy
 - **Terms of Service:** https://asymm.systems/terms
 - **Support Portal & SLA:** https://asymm.systems/support

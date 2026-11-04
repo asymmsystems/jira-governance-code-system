@@ -67,7 +67,7 @@ Provide the live production URLs:
 - **Terms of Service:** `https://asymm.systems/terms`
 - **Support URL:** `https://asymm.systems/support`
 - **Support Email:** `support@asymm.systems`
-- **Documentation URL:** `https://docs.asymm.systems/apps/<app>/`
+- **Documentation URL:** `https://asymm.systems/product/jira-governance/user-guide/<app>.html`
 
 ### Step 2.6: Reviewer Notes Submission
 Paste the entire content of `docs/marketplace/submission/<app>-submission-notes.md` into the **Notes for Reviewer** field. This includes the scope justifications, reviewer test steps, and architecture statement.

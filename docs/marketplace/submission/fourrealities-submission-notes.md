@@ -5,7 +5,7 @@
 - **App ID:** `ari:cloud:ecosystem::app/974e4981-7626-4b1c-a41f-7eaccb7f3605`
 - **Publisher:** Asymm Systems (`https://asymm.systems`)
 - **Support Contact:** `support@asymm.systems`
-- **Documentation:** `https://docs.asymm.systems/apps/fourrealities/`
+- **Documentation:** `https://asymm.systems/product/jira-governance/user-guide/fourrealities.html`
 
 ---
 

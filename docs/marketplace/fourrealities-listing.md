@@ -86,7 +86,7 @@ FourRealities provides transparent audit evidence for software delivery governan
 
 ## Support, Documentation & Legal Links
 
-- **Documentation Portal:** https://docs.asymm.systems/apps/fourrealities/
+- **Documentation Portal:** https://asymm.systems/product/jira-governance/user-guide/fourrealities.html
 - **Privacy Policy:** https://asymm.systems/privacy
 - **Terms of Service:** https://asymm.systems/terms
 - **Support Portal & SLA:** https://asymm.systems/support
