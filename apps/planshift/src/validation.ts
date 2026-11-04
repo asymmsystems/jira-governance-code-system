@@ -104,6 +104,7 @@ export function validateTaskUpdates(updates: Record<string, unknown>): void {
   if (u.progress !== undefined) numberIn('progress', u.progress, -Infinity, Infinity);
   if (u.targetProgress !== undefined) numberIn('targetProgress', u.targetProgress, -Infinity, Infinity);
   if (u.manualProgress !== undefined && typeof u.manualProgress !== 'boolean') fail('manualProgress', 'manualProgress must be true or false');
+  if (u.manualTargetProgress !== undefined && typeof u.manualTargetProgress !== 'boolean') fail('manualTargetProgress', 'manualTargetProgress must be true or false');
   if (u.status !== undefined && !STATUSES.includes(u.status as string)) fail('status', 'status is not a known status');
   if (u.startDate !== undefined) isoDate('startDate', u.startDate);
   if (u.endDate !== undefined) isoDate('endDate', u.endDate);

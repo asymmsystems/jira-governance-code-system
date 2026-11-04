@@ -418,10 +418,15 @@ body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-
   cursor: pointer;
   vertical-align: middle;
 }
+.task-row:hover,
+.task-row.is-hovered {
+  position: relative;
+  z-index: 65 !important;
+}
 .task-row:hover > td.td-task-summary,
 .task-row.is-hovered > td.td-task-summary {
   overflow: visible !important;
-  z-index: 60 !important;
+  z-index: 80 !important;
 }
 .td-task-summary:hover .task-summary-text { color: var(--cp-text-brand); text-decoration: underline; }
 .resource-chip {
@@ -1028,11 +1033,11 @@ body.is-dragging-backlog .drop-target-row.drag-over {
   align-items: center;
   gap: 3px;
   background: var(--cp-surface);
-  padding: 2px 6px;
+  padding: 2px 4px;
   border-radius: 4px;
   border: 1px solid var(--cp-border);
-  box-shadow: -4px 0 12px rgba(9, 30, 66, 0.14), 0 2px 6px rgba(9, 30, 66, 0.1);
-  z-index: 70;
+  box-shadow: 0 4px 12px rgba(9, 30, 66, 0.2), 0 1px 3px rgba(9, 30, 66, 0.12);
+  z-index: 100 !important;
   white-space: nowrap;
 }
 .task-row:hover .row-action-toolbar,
@@ -1041,19 +1046,21 @@ body.is-dragging-backlog .drop-target-row.drag-over {
 }
 .task-row:hover .task-summary-text,
 .task-row.is-hovered .task-summary-text {
-  padding-right: 185px;
+  padding-right: 125px;
 }
 .row-action-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
   background: var(--cp-surface);
   border: 1px solid var(--cp-border);
   border-radius: 3px;
   cursor: pointer;
-  font-size: 11px;
-  padding: 2px 6px;
   color: var(--cp-text-subtle);
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
   transition: all 0.12s ease;
   box-shadow: 0 1px 2px rgba(9, 30, 66, 0.08);
 }

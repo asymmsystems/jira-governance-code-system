@@ -759,7 +759,8 @@
       <input type="range" min="0" max="100" step="5" id="targetPickerSlider" aria-label="Target progress" style="flex: 1; accent-color: var(--cp-bg-brand); cursor: pointer;" />
       <input type="number" min="0" max="100" id="targetPickerNumberInput" aria-label="Target progress percent" class="form-input" style="width: 52px; height: 26px; text-align: center; padding: 2px 4px; font-weight: 700;" />
     </div>
-    <div style="display: flex; justify-content: flex-end; gap: 6px;">
+    <div style="display: flex; justify-content: flex-end; gap: 6px; align-items: center;">
+      <button class="btn btn-subtle btn-sm" id="btnAutoTargetPicker" title="Calculate target progress automatically from scheduled dates based on today" style="margin-right: auto; font-size: 11px;">⚡ Auto</button>
       <button class="btn btn-subtle btn-sm" id="btnCancelTargetPicker">Cancel</button>
       <button class="btn btn-primary btn-sm" id="btnSaveTargetPicker">Apply</button>
     </div>

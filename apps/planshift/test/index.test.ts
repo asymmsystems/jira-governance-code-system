@@ -39,6 +39,7 @@ import { PlanRepository } from '../src/storage/plan-repository';
 import { PlanStore } from '../src/storage/plan-store';
 import { MemStorage, entryOf, clearRecords } from './helpers/mem-storage';
 import { EstimateUnit, ProjectMilestone, ColumnWidthConfig } from '../src/domain/models';
+import { PlannerEngine } from '../src/domain/planner-engine';
 
 const mockRequestJira = jest.fn();
 const mockAsAppRequest = jest.fn().mockImplementation(async () => {
@@ -2254,6 +2255,35 @@ describe('CascadePlan Index & Resolver Tests', () => {
       const task1Second = plan2.tasks.find(t => t.key === 'TEST-1');
       expect(task1Second?.targetProgress).toBe(90);
       expect(task1Second?.manualProgress).toBe(true);
+    });
+
+    it('sets manualTargetProgress: true when targetProgress is explicitly updated, and resets to auto-calculated when manualTargetProgress: false is set', async () => {
+      const plan = await updateWbsTask({
+        projectKey: 'TEST',
+        taskId: 'TEST-1',
+        updates: {
+          targetProgress: 75
+        }
+      }, mockStorage);
+
+      const task1 = plan.tasks.find(t => t.key === 'TEST-1');
+      expect(task1?.targetProgress).toBe(75);
+      expect(task1?.manualTargetProgress).toBe(true);
+
+      // Reset to auto
+      const resetPlan = await updateWbsTask({
+        projectKey: 'TEST',
+        taskId: 'TEST-1',
+        updates: {
+          manualTargetProgress: false
+        }
+      }, mockStorage);
+
+      const task1Reset = resetPlan.tasks.find(t => t.key === 'TEST-1');
+      expect(task1Reset?.manualTargetProgress).toBeUndefined();
+      // Target progress should now be auto-calculated from its start/end dates
+      const expectedAuto = PlannerEngine.calculateTargetProgress(task1Reset?.startDate, task1Reset?.endDate);
+      expect(task1Reset?.targetProgress).toBe(expectedAuto);
     });
 
     it('sets manualProgress: true automatically when updating progress on an Epic without manualProgress specified', async () => {

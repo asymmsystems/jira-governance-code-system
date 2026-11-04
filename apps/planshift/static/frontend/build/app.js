@@ -8447,6 +8447,19 @@ Please see https://iframe-resizer.com/upgrade for more details.
         if (targetPopover) targetPopover.style.display = "none";
       });
     }
+    const btnAutoTarget = document.getElementById("btnAutoTargetPicker");
+    if (btnAutoTarget) {
+      btnAutoTarget.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (targetPopover) targetPopover.style.display = "none";
+        if (!activeTargetTaskKey) return;
+        await callResolver2("updateWbsTask", {
+          taskId: activeTargetTaskKey,
+          updates: { manualTargetProgress: false }
+        });
+        await loadProjectPlan();
+      });
+    }
     const editProgInput = document.getElementById("editProgressInput");
     const editProgSlider = document.getElementById("editProgressSlider");
     const editProgValLabel = document.getElementById("modalProgressValLabel");
@@ -10091,7 +10104,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const valLabel = document.getElementById("targetPickerValLabel");
     const slider = document.getElementById("targetPickerSlider");
     const numInput = document.getElementById("targetPickerNumberInput");
-    titleEl.textContent = `Target: ${task.key}`;
+    titleEl.textContent = `Target: ${task.key}${task.manualTargetProgress ? " (Manual)" : " (Auto)"}`;
     const curTarget = task.targetProgress !== void 0 ? task.targetProgress : 0;
     slider.value = curTarget;
     numInput.value = curTarget;
@@ -10708,11 +10721,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
       <span class="task-summary-text" style="cursor:pointer; margin-left:6px; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="Click to edit summary, or press and hold row to reorder">
         : ${task.summary}
       </span>
-      <div class="row-action-toolbar">
-        <button class="row-action-btn quick-insert-below-btn" title="Insert task below (Row ${rowIdx + 2})">➕ Add below</button>
-        <button class="row-action-btn edit-modal-btn" title="Open full detail modal">✏️ Edit</button>
-        <button class="row-action-btn why-date-btn" title="Why this date?">❓ Why?</button>
-        <button class="row-action-btn row-more-actions-btn" title="More task actions (Subtask, Progress, Team, Jira, Backlog)">•••</button>
+      <div class="row-action-toolbar" role="toolbar" aria-label="Row actions for ${task.key}">
+        <button class="row-action-btn quick-insert-below-btn" title="Insert task below (Row ${rowIdx + 2})" aria-label="Insert task below">➕</button>
+        <button class="row-action-btn edit-modal-btn" title="Open full detail modal" aria-label="Open task details">✏️</button>
+        <button class="row-action-btn why-date-btn" title="Why this date?" aria-label="Why this date?">❓</button>
+        <button class="row-action-btn row-more-actions-btn" title="More task actions (Subtask, Progress, Team, Jira, Backlog)" aria-label="More actions">•••</button>
       </div>
     </div>
   `;

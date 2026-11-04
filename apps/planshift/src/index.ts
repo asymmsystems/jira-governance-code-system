@@ -228,6 +228,10 @@ export function stripJiraOwnedFields(entry: Partial<WbsTask>): Partial<WbsTask> 
   for (const f of JIRA_OWNED_FIELDS) delete out[f];
   if (out.manualProgress !== true) delete out.progress;
   if (out.manualProgress === false) delete out.manualProgress;
+  if (out.manualTargetProgress === false) {
+    delete out.manualTargetProgress;
+    delete out.targetProgress;
+  }
   delete out.removeSubtaskAction;
   return out as Partial<WbsTask>;
 }
@@ -681,6 +685,13 @@ export function mapLiveIssues(
         // The estimate is Jira's original estimate, read live (INV-04).
         const totalHours = effortHours;
 
+        const taskStart = stored?.startDate || weekDates(stored, weeksNow).startDate;
+        const taskEnd = stored?.endDate || weekDates(stored, weeksNow).endDate || iss.fields?.duedate || '';
+        const autoTarget = PlannerEngine.calculateTargetProgress(taskStart, taskEnd);
+        const targetProgress = stored?.manualTargetProgress === true && stored.targetProgress !== undefined
+          ? stored.targetProgress
+          : autoTarget;
+
         const wbsItem: WbsTask = {
           id,
           key,
@@ -695,11 +706,12 @@ export function mapLiveIssues(
           resourceAccountId: iss.fields?.assignee?.accountId || undefined,
           contributingResources: stored?.contributingResources,
           progress: stored?.manualProgress === true && stored.progress !== undefined ? stored.progress : progress,
-          targetProgress: stored?.targetProgress !== undefined ? stored.targetProgress : 0,
+          targetProgress,
           manualProgress: stored?.manualProgress,
+          manualTargetProgress: stored?.manualTargetProgress,
           status,
-          startDate: stored?.startDate || weekDates(stored, weeksNow).startDate,
-          endDate: stored?.endDate || weekDates(stored, weeksNow).endDate || iss.fields?.duedate || '',
+          startDate: taskStart,
+          endDate: taskEnd,
           // The due date Jira holds, read live: the old value in the Changes panel (B-23).
           jiraDueDate: iss.fields?.duedate || undefined,
           startWeek: stored?.startWeek,
@@ -1439,7 +1451,8 @@ export async function updateWbsTask(
 
   const ALLOWED_KEYS = [
     'summary', 'epic', 'epicKey', 'story', 'effortHours', 'effortConfig', 'resource',
-    'resourceAccountId', 'contributingResources', 'progress', 'targetProgress', 'manualProgress', 'status', 'startDate',
+    'resourceAccountId', 'contributingResources', 'progress', 'targetProgress', 'manualProgress',
+    'manualTargetProgress', 'status', 'startDate',
     'endDate', 'startWeek', 'endWeek', 'spanWeeks', 'weeklyAllocations', 'subtasks',
     'dependency', 'contributors', 'removeSubtaskAction'
   ];
@@ -1467,6 +1480,14 @@ export async function updateWbsTask(
   if (sanitized.targetProgress !== undefined) {
     const rawT = Number(sanitized.targetProgress);
     sanitized.targetProgress = isNaN(rawT) ? 0 : Math.max(0, Math.min(100, Math.round(rawT)));
+    if (sanitized.manualTargetProgress === undefined) {
+      sanitized.manualTargetProgress = true;
+    }
+  }
+  if (sanitized.manualTargetProgress === false) {
+    const s = sanitized.startDate || targetTask.startDate;
+    const e = sanitized.endDate || targetTask.endDate;
+    sanitized.targetProgress = PlannerEngine.calculateTargetProgress(s, e);
   }
 
   // Fractional progress-threshold dependency validation and Jira link mirroring
@@ -1633,6 +1654,13 @@ export async function updateWbsTask(
     }
   }
 
+  // Recalculate targetProgress if auto-target is active and dates were modified
+  if (!targetTask.manualTargetProgress && sanitized.manualTargetProgress !== true && sanitized.targetProgress === undefined && (sanitized.startDate !== undefined || sanitized.endDate !== undefined)) {
+    const s = sanitized.startDate || targetTask.startDate;
+    const e = sanitized.endDate || targetTask.endDate;
+    sanitized.targetProgress = PlannerEngine.calculateTargetProgress(s, e);
+  }
+
   const scheduleMap: Record<string, Partial<WbsTask>> = Object.fromEntries(entries);
   const current = scheduleMap[targetTask.key] || {};
   const changedKeys = new Set<string>([targetTask.key]);
@@ -1644,6 +1672,10 @@ export async function updateWbsTask(
   // Preserve existing manualProgress if updates didn't explicitly modify or clear it
   if (sanitized.manualProgress === undefined && (current.manualProgress !== undefined || targetTask.manualProgress !== undefined)) {
     sanitized.manualProgress = current.manualProgress !== undefined ? current.manualProgress : targetTask.manualProgress;
+  }
+  // Preserve existing manualTargetProgress if updates didn't explicitly modify or clear it
+  if (sanitized.manualTargetProgress === undefined && (current.manualTargetProgress !== undefined || targetTask.manualTargetProgress !== undefined)) {
+    sanitized.manualTargetProgress = current.manualTargetProgress !== undefined ? current.manualTargetProgress : targetTask.manualTargetProgress;
   }
 
   scheduleMap[targetTask.key] = stripJiraOwnedFields({

@@ -185,6 +185,39 @@ describe('PlannerEngine Domain Tests', () => {
     });
   });
 
+  describe('calculateTargetProgress', () => {
+    it('returns 0 when task has no startDate', () => {
+      expect(PlannerEngine.calculateTargetProgress(undefined, undefined, '2026-11-04')).toBe(0);
+      expect(PlannerEngine.calculateTargetProgress('', '2026-11-10', '2026-11-04')).toBe(0);
+    });
+
+    it('returns 0 when today is before startDate', () => {
+      expect(PlannerEngine.calculateTargetProgress('2026-11-10', '2026-11-20', '2026-11-05')).toBe(0);
+    });
+
+    it('returns 100 when today is on or after endDate', () => {
+      expect(PlannerEngine.calculateTargetProgress('2026-11-01', '2026-11-10', '2026-11-10')).toBe(100);
+      expect(PlannerEngine.calculateTargetProgress('2026-11-01', '2026-11-10', '2026-11-15')).toBe(100);
+    });
+
+    it('calculates linear progress during task duration', () => {
+      // 10-day task: 2026-11-01 to 2026-11-10 (totalDays = 10)
+      // Day 1 (2026-11-01): 0 / 10 = 0%
+      expect(PlannerEngine.calculateTargetProgress('2026-11-01', '2026-11-10', '2026-11-01')).toBe(0);
+      // Day 5 (2026-11-05): 4 / 10 = 40%
+      expect(PlannerEngine.calculateTargetProgress('2026-11-01', '2026-11-10', '2026-11-05')).toBe(40);
+      // Day 6 (2026-11-06): 5 / 10 = 50%
+      expect(PlannerEngine.calculateTargetProgress('2026-11-01', '2026-11-10', '2026-11-06')).toBe(50);
+    });
+
+    it('handles single-day task and missing endDate correctly', () => {
+      // Single-day task
+      expect(PlannerEngine.calculateTargetProgress('2026-11-04', '2026-11-04', '2026-11-03')).toBe(0);
+      expect(PlannerEngine.calculateTargetProgress('2026-11-04', '2026-11-04', '2026-11-04')).toBe(100);
+      expect(PlannerEngine.calculateTargetProgress('2026-11-04', undefined, '2026-11-04')).toBe(100);
+    });
+  });
+
   describe('calculateResourceUtilization', () => {
     const weeks: WeeklySprintColumn[] = [sampleWeek, futureWeek];
 

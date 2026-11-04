@@ -87,6 +87,7 @@ export interface WbsTask {
   isPlaceholderResource?: boolean;
   progress: number;       // Actual progress (0 - 100%)
   targetProgress: number; // Target progress (0 - 100%)
+  manualTargetProgress?: boolean;
   status: TaskStatus;
   startDate: string;      // YYYY-MM-DD
   endDate: string;        // YYYY-MM-DD
@@ -382,6 +383,7 @@ export interface StoredWorkEffort {
   sequenceNum?: number;
   targetPercentComplete?: number;
   manualProgress?: boolean;
+  manualTargetProgress?: boolean;
   percentComplete?: number; // only when the user set progress by hand
 }
 
@@ -442,6 +444,7 @@ export function toWorkEffortRecord(issueKey: string, entry: Partial<WbsTask>, to
     sequenceNum: entry.sequenceNum,
     targetPercentComplete: entry.targetProgress,
     manualProgress: entry.manualProgress,
+    manualTargetProgress: entry.manualTargetProgress,
     percentComplete: entry.manualProgress === true ? entry.progress : undefined
   });
   const link = (from: string, fromDate: string, triggerPercent: number, jiraLinkId?: string, thruDate?: string): WorkEffortAssoc => defined({
@@ -488,6 +491,7 @@ export function fromWorkEffortRecord(rec: WorkEffortRecordBody): Partial<WbsTask
     sequenceNum: e.sequenceNum,
     targetProgress: e.targetPercentComplete,
     manualProgress: e.manualProgress,
+    manualTargetProgress: e.manualTargetProgress,
     progress: e.percentComplete,
     ...(rec.grid ? defined({ startWeek: rec.grid.startWeek, endWeek: rec.grid.endWeek, spanWeeks: rec.grid.spanWeeks,
       weeklyAllocations: rec.grid.weeklyAllocations, isBacklog: rec.grid.isBacklog, subtasks: rec.grid.localSubtasks }) : {})

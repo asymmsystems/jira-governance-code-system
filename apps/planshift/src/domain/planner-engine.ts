@@ -258,6 +258,26 @@ export class PlannerEngine {
   }
 
   /**
+   * Calculates linear target completion percentage (0-100%) based on scheduled date range and current date.
+   */
+  public static calculateTargetProgress(
+    startDate?: string,
+    endDate?: string,
+    todayIsoStr?: string
+  ): number {
+    if (!startDate) return 0;
+    const today = todayIsoStr || new Date().toISOString().slice(0, 10);
+    const end = endDate && endDate >= startDate ? endDate : startDate;
+    if (today < startDate) return 0;
+    if (today >= end) return 100;
+    const totalDays = Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86400000) + 1;
+    if (totalDays <= 1) return 100;
+    const elapsedDays = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86400000);
+    const pct = Math.round((elapsedDays / totalDays) * 100);
+    return Math.max(0, Math.min(100, pct));
+  }
+
+  /**
    * Aggregates tasks into multi-project resource utilization profiles.
    */
   public static calculateResourceUtilization(
