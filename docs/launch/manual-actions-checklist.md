@@ -11,7 +11,7 @@ This checklist consolidates all operational actions that require direct human ex
 - [ ] Verify vendor profile details: Company Name (**Asymm Systems**), Website (`https://asymm.systems`), Support Email (`support@asymm.systems`).
 - [ ] Complete payment setup: Connect bank account or Stripe profile to receive Atlassian Marketplace monthly revenue disbursements.
 
-### App Submissions (Repeat for all 4 apps: LedgerSeal, DefinitionGuard, FourRealities, PlanShift)
+### App Submissions (Repeat for all 4 apps: LedgerSeal, DefinitionGuard, FourRealities, CascadePlan)
 - [ ] **Forge Production Deployment:**
   - Run `forge deploy -e production` for each app from its respective directory under `apps/`.
   - Run `forge install -e production` into the test/demo instance.
@@ -101,7 +101,7 @@ This checklist consolidates all operational actions that require direct human ex
   - Follow the shot-by-shot scripts in `docs/launch/video-scripts.md`:
     - Video 1: *LedgerSeal: The Tamper Trap* (60-80s).
     - Video 2: *DefinitionGuard: The Ungated Done Gate* (60-75s).
-    - Video 3: *PlanShift: Catching Hidden Scope Creep* (60-80s).
+    - Video 3: *CascadePlan: Catching Hidden Scope Creep* (60-80s).
 - [ ] **Upload & Embed:**
   - Upload videos to YouTube / Vimeo (1080p60 or 1440p).
   - Add video links to Marketplace app listing media galleries.

@@ -1,6 +1,6 @@
 # Distribution Kit: Asymm Systems Jira Governance Suite
 
-This distribution kit contains ready-to-publish copy, technical community discussion starters, social announcements, and direct outbound communication templates for the launch of the Asymm Systems Jira Governance Suite (**LedgerSeal**, **DefinitionGuard**, **FourRealities**, **PlanShift**).
+This distribution kit contains ready-to-publish copy, technical community discussion starters, social announcements, and direct outbound communication templates for the launch of the Asymm Systems Jira Governance Suite (**LedgerSeal**, **DefinitionGuard**, **FourRealities**, **CascadePlan**).
 
 ---
 

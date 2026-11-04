@@ -45,16 +45,16 @@ This document contains shot-by-shot production scripts for three high-impact, 60
 
 ---
 
-## Video 3: PlanShift: Catching Hidden Scope Creep (60-80 Seconds)
+## Video 3: CascadePlan: Catching Hidden Scope Creep (60-80 Seconds)
 
 **Target Audience:** Project Managers, Engineering Directors, Scrum Masters  
-**Featured View:** PlanShift Planner (`CascadePlan Planner`)
+**Featured View:** CascadePlan Planner
 
 | Timecode | Visual Action | On-Screen Captions | Voiceover Script |
 | :--- | :--- | :--- | :--- |
-| **00:00 - 00:14** | Open PlanShift in Jira project navigation. Display the visual WBS hierarchical tree with Epics, Stories, and Tasks clearly arranged. | **PlanShift:** Hierarchical WBS planning and baseline control for Jira. | Jira boards tell you what you're working on today. But they can't tell you how much your sprint commitment quietly expanded since planning. |
-| **00:14 - 00:26** | Click the **Freeze Baseline** button in the toolbar. The baseline badge turns from DRAFT to **[FROZEN: Sprint 12 Initial]** at 160 hours. | **Freeze Baselines:** Lock sprint commitments with one click. | At the start of the sprint, freeze your baseline. PlanShift locks a cryptographic snapshot of every committed task and estimate. |
+| **00:00 - 00:14** | Open CascadePlan in Jira project navigation. Display the visual WBS hierarchical tree with Epics, Stories, and Tasks clearly arranged. | **CascadePlan:** Hierarchical WBS planning and baseline control for Jira. | Jira boards tell you what you're working on today. But they can't tell you how much your sprint commitment quietly expanded since planning. |
+| **00:14 - 00:26** | Click the **Freeze Baseline** button in the toolbar. The baseline badge turns from DRAFT to **[FROZEN: Sprint 12 Initial]** at 160 hours. | **Freeze Baselines:** Lock sprint commitments with one click. | At the start of the sprint, freeze your baseline. CascadePlan locks a cryptographic snapshot of every committed task and estimate. |
 | **00:26 - 00:42** | Switch to Jira backlog or board. Add an urgent 24-hour bug into the active sprint, and increase an existing task from 4 hours to 12 hours. | Mid-sprint changes cause hidden schedule erosion. | Midway through the sprint, unexpected tasks are injected, and estimates increase. In native Jira, these changes vanish into velocity averages. |
-| **00:42 - 00:58** | Switch back to PlanShift. The planner displays a bright amber alert banner: `Scope Creep Detected: +32h (+20.0%)`. The newly added and modified tasks are highlighted with tags. | **Real-Time Delta:** Track net hours and percentage variance instantly. | PlanShift catches the drift immediately. It flags the added hours, calculates net commitment variance, and highlights exactly which tasks expanded. |
+| **00:42 - 00:58** | Switch back to CascadePlan. The planner displays a bright amber alert banner: `Scope Creep Detected: +32h (+20.0%)`. The newly added and modified tasks are highlighted with tags. | **Real-Time Delta:** Track net hours and percentage variance instantly. | CascadePlan catches the drift immediately. It flags the added hours, calculates net commitment variance, and highlights exactly which tasks expanded. |
 | **00:58 - 01:14** | Click **Request Scope Shift**. Enter justification: `Client requested expedited payment gateway`. Open approval modal and approve shift to create baseline `v1.1`. Click **Resource Grid** to show capacity balance. | **Scope Shift Approvals & Capacity Grid:** Keep teams balanced. | Submit a formal Scope Shift Request to keep stakeholders aligned, while the Resource Grid visualizes capacity bottlenecks across your team. |
-| **01:14 - 01:28** | End card: PlanShift by Asymm Systems, Atlassian Forge Native, `docs.asymm.systems/apps/planshift`. | **Stop silent scope creep.** Install PlanShift from Atlassian Marketplace. | Take control of your sprint baselines. Install PlanShift on the Atlassian Marketplace today. |
+| **01:14 - 01:28** | End card: CascadePlan by Asymm Systems, Atlassian Forge Native, `docs.asymm.systems/apps/cascadeplan`. | **Stop silent scope creep.** Install CascadePlan from Atlassian Marketplace. | Take control of your sprint baselines. Install CascadePlan on the Atlassian Marketplace today. |

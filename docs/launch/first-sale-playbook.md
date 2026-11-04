@@ -31,7 +31,7 @@ During the first 90 days post-launch, execute this daily 10-minute operational r
 
 ### 1. Marketplace Insights Inspection
 Every morning at 09:00 UTC, log into the **Atlassian Developer Console** (`developer.atlassian.com/console`):
-- Check **Installs:** Track net new installs across LedgerSeal, DefinitionGuard, FourRealities, and PlanShift.
+- Check **Installs:** Track net new installs across LedgerSeal, DefinitionGuard, FourRealities, and CascadePlan.
 - Check **Evaluations:** Monitor active 30-day evaluation trials. Note company domain names where visible.
 - Check **Licenses:** Review active paid licenses and upcoming renewal dates.
 - Check **Uninstalls / Churn:** If an uninstall occurs, inspect the feedback reason code immediately.
@@ -52,8 +52,8 @@ forge logs -e production -a <app-id> --limit 50
 cd apps/fourrealities
 forge logs -e production -a <app-id> --limit 50
 
-# Inspect production logs for PlanShift
-cd apps/planshift
+# Inspect production logs for CascadePlan
+cd apps/cascadeplan
 forge logs -e production -a <app-id> --limit 50
 ```
 
