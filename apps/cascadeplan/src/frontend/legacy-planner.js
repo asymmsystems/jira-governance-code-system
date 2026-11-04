@@ -9,7 +9,8 @@
  * Parts are replaced by the canvas timeline and the pure modules in later items.
  */
 
-import { callResolver as rawCallResolver, openIssueInNewTab } from './bridge';
+import { callResolver as rawCallResolver, openIssueInNewTab, getProjectScope } from './bridge';
+import { MAIN_PLAN_ID, getSavedPlanId, setSavedPlanId, chooseActivePlan, parentKeysOf, visibleRows } from '../ui/plan-view-state';
 import { showFlag } from './flag';
 import { classifyResult } from '../ui/result';
 import { UndoStack } from '../ui/undo-stack';
@@ -125,7 +126,27 @@ const undoStack = new UndoStack(20);
 let pendingUndo = null;
 let replayingUndo = false;
 
-let activePlanId = 'default';
+let activePlanId = MAIN_PLAN_ID;
+// Browser-storage scope of the open project; set from the Forge context, else from the first plan load.
+let planScope;
+
+function browserStore() {
+  try { return window.localStorage; } catch (e) { return undefined; }
+}
+
+/**
+ * Makes a plan the active one and remembers it for this project, so a refresh reopens it.
+ * Another plan's undo history does not apply here, so it is dropped on a switch.
+ */
+function setActivePlan(planId) {
+  const next = planId || MAIN_PLAN_ID;
+  if (next !== activePlanId) {
+    undoStack.clear();
+    pendingUndo = null;
+  }
+  activePlanId = next;
+  setSavedPlanId(browserStore(), planScope, activePlanId);
+}
 
 async function callResolver(fn, payload = {}) {
   const mergedPayload = { planId: activePlanId, ...payload };
@@ -163,19 +184,21 @@ function findAnyTask(key) {
 async function replayUndo(ops) {
   replayingUndo = true;
   let ok = true;
+  // Undo writes go to the plan the action was made in, like every other write.
+  const planId = activePlanId;
   try {
     for (const op of ops) {
       let res;
       if (op.kind === 'unschedule') {
-        res = await rawCallResolver('unscheduleTask', { taskId: op.key });
+        res = await rawCallResolver('unscheduleTask', { planId, taskId: op.key });
       } else if (op.kind === 'schedule') {
-        res = await rawCallResolver('scheduleBacklogTask', { taskId: op.key, startWeek: op.updates.startWeek, spanWeeks: op.updates.spanWeeks || 1 });
+        res = await rawCallResolver('scheduleBacklogTask', { planId, taskId: op.key, startWeek: op.updates.startWeek, spanWeeks: op.updates.spanWeeks || 1 });
         if (!classifyResult(res).failed && op.updates.startDate) {
-          res = await rawCallResolver('updateWbsTask', { taskId: op.key, updates: { startDate: op.updates.startDate, endDate: op.updates.endDate } });
+          res = await rawCallResolver('updateWbsTask', { planId, taskId: op.key, updates: { startDate: op.updates.startDate, endDate: op.updates.endDate } });
         }
       } else {
         const t = findAnyTask(op.key);
-        res = await rawCallResolver('updateWbsTask', { taskId: op.key, updates: op.updates, expectedVersion: (t && t.version) || 0 });
+        res = await rawCallResolver('updateWbsTask', { planId, taskId: op.key, updates: op.updates, expectedVersion: (t && t.version) || 0 });
       }
       const verdict = classifyResult(res);
       if (verdict.failed) {
@@ -301,7 +324,24 @@ function colWidth(k) {
 function frozenOffsets() {
   return getFrozenLayout().offsets;
 }
-const expandedTasks = new Set();
+// Parent rows the user collapsed. Every parent starts expanded; a re-render keeps the user's choice.
+const collapsedTasks = new Set();
+
+/** Expands every collapsed row above a task (parent, epic, grandparent, ...). True when one was expanded. */
+function expandAncestors(task) {
+  let changed = false;
+  const seen = new Set();
+  let cur = task;
+  while (cur && !seen.has(cur.key)) {
+    seen.add(cur.key);
+    for (const k of [cur.parentKey, cur.epicKey]) {
+      if (k && k !== cur.key && collapsedTasks.delete(k)) changed = true;
+    }
+    const upKey = cur.parentKey && cur.parentKey !== cur.key ? cur.parentKey : cur.epicKey;
+    cur = upKey && upKey !== cur.key ? findTask(upKey) : null;
+  }
+  return changed;
+}
 let currentHierarchyView = 'all'; // 'all' | 'epics' | 'stories'
 
 // Initialization with immediate readiness check
@@ -346,6 +386,9 @@ async function initApp() {
   });
   setupEventListeners();
   initKeyboard();
+  // A refresh reopens the plan this project had open (saved per project in browser storage).
+  planScope = await getProjectScope();
+  activePlanId = getSavedPlanId(browserStore(), planScope);
   loadProjectPlan();
 }
 if (document.readyState === 'loading') {
@@ -1088,17 +1131,8 @@ function scrollToSearchMatch(pos, takeFocus = false) {
   const key = match.task.key;
   if (!key) return;
 
-  // If the task belongs to a collapsed parent or epic, expand it so it's visible in rowTasks
-  let needsRecompute = false;
-  if (match.task.parentKey && !expandedTasks.has(match.task.parentKey)) {
-    expandedTasks.add(match.task.parentKey);
-    needsRecompute = true;
-  }
-  if (match.task.epicKey && !expandedTasks.has(match.task.epicKey)) {
-    expandedTasks.add(match.task.epicKey);
-    needsRecompute = true;
-  }
-  if (needsRecompute) {
+  // If the task sits under a collapsed parent or epic (at any level), expand them so it is visible in rowTasks
+  if (expandAncestors(match.task)) {
     const computed = computeRowTasks();
     rowTasks = computed.rows;
     rowTaskList = rowTasks.map(r => r.task);
@@ -1471,7 +1505,7 @@ function renderFilteredPlansList(plans, currentId) {
         cloneFromPlanId: p.id
       });
       if (res && res.ok && res.plan) {
-        activePlanId = res.plan.id;
+        setActivePlan(res.plan.id);
         showFlag({ text: `Cloned plan to ${res.plan.name}.` });
         closePlansPopover();
         await loadProjectPlan();
@@ -1538,7 +1572,7 @@ function renderFilteredPlansList(plans, currentId) {
           if (res && res.ok) {
             showFlag({ text: `Deleted plan ${p.name}.` });
             if (activePlanId === p.id) {
-              activePlanId = 'default';
+              setActivePlan(MAIN_PLAN_ID);
             }
             await loadProjectPlan();
           } else {
@@ -1563,7 +1597,7 @@ function renderFilteredPlansList(plans, currentId) {
     row.addEventListener('click', async (e) => {
       if (e.target.closest('button') || e.target.closest('input')) return;
       if (p.id !== currentId) {
-        activePlanId = p.id;
+        setActivePlan(p.id);
         closePlansPopover();
         await loadProjectPlan();
         showFlag({ text: `Switched to plan ${p.name}.` });
@@ -1574,7 +1608,7 @@ function renderFilteredPlansList(plans, currentId) {
       if (ke.key === 'Enter' || ke.key === ' ') {
         ke.preventDefault();
         if (p.id !== currentId) {
-          activePlanId = p.id;
+          setActivePlan(p.id);
           closePlansPopover();
           await loadProjectPlan();
           showFlag({ text: `Switched to plan ${p.name}.` });
@@ -1603,9 +1637,24 @@ async function loadProjectPlan() {
   if (loader) loader.style.display = 'none';
 
   if (plan && Array.isArray(plan.tasks)) {
+    // The Forge context could not be read at start-up: scope by project key and reopen the saved plan once.
+    if (!planScope && plan.projectKey) {
+      planScope = String(plan.projectKey);
+      const saved = chooseActivePlan(getSavedPlanId(browserStore(), planScope), plan.availablePlans);
+      if (saved !== (plan.planId || MAIN_PLAN_ID)) {
+        activePlanId = saved;
+        return loadProjectPlan();
+      }
+    }
+    // The server answers with the plan it read; a plan deleted elsewhere falls back to the Main Plan.
+    const requested = activePlanId;
+    const served = chooseActivePlan(plan.planId || MAIN_PLAN_ID, plan.availablePlans);
+    if (requested !== MAIN_PLAN_ID && served !== requested) {
+      showFlag({ text: 'The plan you had open no longer exists. Showing the Main Plan.' });
+    }
     mergeOptimisticTasks(plan);
     currentPlan = plan;
-    if (plan.planId) activePlanId = plan.planId;
+    setActivePlan(served);
     updatePlansUI(plan.availablePlans, activePlanId);
     columnWidths = sanitizeLoadedColumnWidths(plan.columnWidths);
     if (Array.isArray(plan.hiddenColumns)) {
@@ -1621,7 +1670,7 @@ async function loadProjectPlan() {
     settleUndo();
     // Entries Jira did not return: the resolver deletes those Jira confirms are gone (B-18).
     if (Array.isArray(plan.staleEntries) && plan.staleEntries.length) {
-      rawCallResolver('pruneStaleEntries', { keys: plan.staleEntries.slice(0, 200) });
+      rawCallResolver('pruneStaleEntries', { planId: activePlanId, keys: plan.staleEntries.slice(0, 200) });
     }
   } else {
     if (errBanner) {
@@ -1647,12 +1696,10 @@ function renderPlan() {
     }
   }
 
-  if (currentPlan.tasks) {
-    currentPlan.tasks.forEach(t => {
-      if (t.isEpic || t.childrenCount || (t.subtasks && t.subtasks.length > 0)) {
-        expandedTasks.add(t.key);
-      }
-    });
+  // Collapsed parents stay collapsed across renders; keys no longer in the plan are forgotten.
+  if (currentPlan.tasks && collapsedTasks.size) {
+    const keys = new Set(currentPlan.tasks.map(t => t.key));
+    for (const k of [...collapsedTasks]) if (!keys.has(k)) collapsedTasks.delete(k);
   }
 
   renderMilestones();
@@ -2863,8 +2910,7 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
       }
 
       if (res && res.task) {
-        if (res.task.epicKey) expandedTasks.add(res.task.epicKey);
-        if (res.task.parentKey) expandedTasks.add(res.task.parentKey);
+        expandAncestors(res.task);
         registerOptimisticTask(res.task);
       }
       if (currentHierarchyView === 'epics') {
@@ -3041,16 +3087,12 @@ function computeRowTasks() {
   } else if (currentHierarchyView === 'stories') {
     tasksToRender = currentPlan.tasks.filter(t => !t.isEpic && t.hierarchyLevel !== 1);
   }
-  const planKeys = new Set(currentPlan.tasks.map(t => t.key));
-  const out = [];
-  tasksToRender.forEach((task, rowIdx) => {
-    // A subtask under a collapsed parent, or a story under a collapsed epic on the timeline, is hidden.
-    if (task.isSubtask && task.parentKey && !expandedTasks.has(task.parentKey)) return;
-    if (!task.isEpic && task.epicKey && task.epicKey !== task.key && planKeys.has(task.epicKey) && !expandedTasks.has(task.epicKey)) return;
-    out.push({ task, rowIdx });
-  });
-  return { rows: out, total: tasksToRender.length };
+  // Rows that have child rows in this view get the expand toggle (computed once per render).
+  rowParentKeys = parentKeysOf(tasksToRender);
+  // Every descendant of a collapsed parent or epic (at any depth) is hidden.
+  return { rows: visibleRows(tasksToRender, collapsedTasks), total: tasksToRender.length };
 }
+let rowParentKeys = new Set();
 
 function makeSpacer(cols) {
   const tr = document.createElement('tr');
@@ -3367,18 +3409,14 @@ function buildTaskRow(task, rowIdx) {
     }
   }
 
-  // Has children check
-  const hasChildren = Boolean(
-    (task.childrenCount && task.childrenCount > 0) ||
-    (task.subtasks && task.subtasks.length > 0) ||
-    currentPlan.tasks.some(t => (t.parentKey === task.key || t.parentId === task.id || (isEpic && t.epicKey === task.key)) && t.key !== task.key)
-  );
+  // Any row with child rows in this view (epic, story or task) can be collapsed.
+  const hasChildren = rowParentKeys.has(task.key);
 
   // Expand/collapse icon & Indentation
   let expandToggleHtml = html``;
-  if (hasChildren && !isSub) {
-    const isExp = expandedTasks.has(task.key);
-    expandToggleHtml = html`<button class="tree-toggle-btn" data-parent-key="${task.key}" title="${isExp ? 'Collapse children' : 'Expand children'}">${isExp ? '▼' : '▶'}</button>`;
+  if (hasChildren) {
+    const isExp = !collapsedTasks.has(task.key);
+    expandToggleHtml = html`<button class="tree-toggle-btn" type="button" data-parent-key="${task.key}" aria-expanded="${isExp ? 'true' : 'false'}" aria-label="${isExp ? 'Collapse' : 'Expand'} children of ${task.key}" title="${isExp ? 'Collapse children' : 'Expand children'}">${isExp ? '▼' : '▶'}</button>`;
   }
 
   let badgeHtml = html``;
@@ -3797,12 +3835,14 @@ function buildTaskRow(task, rowIdx) {
   if (treeToggle) {
     treeToggle.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (expandedTasks.has(task.key)) {
-        expandedTasks.delete(task.key);
+      if (collapsedTasks.has(task.key)) {
+        collapsedTasks.delete(task.key);
       } else {
-        expandedTasks.add(task.key);
+        collapsedTasks.add(task.key);
       }
       renderTimelineRows();
+      // The rebuilt row is a new element: keep keyboard focus on its toggle.
+      document.querySelector(`.tree-toggle-btn[data-parent-key="${CSS.escape(task.key)}"]`)?.focus();
     });
   }
 
@@ -4690,7 +4730,7 @@ function renderGrid() {
     row.setAttribute('role', 'row');
     row.setAttribute('aria-rowindex', String(i + 2));
     row.setAttribute('aria-level', String(rowLevel(t, planKeys)));
-    if (expandedTasks.has(t.key) && (t.isEpic || t.childrenCount)) row.setAttribute('aria-expanded', 'true');
+    if (rowParentKeys.has(t.key)) row.setAttribute('aria-expanded', collapsedTasks.has(t.key) ? 'false' : 'true');
     row.dataset.row = String(i);
     rowCells(t).forEach((text, c) => {
       const cell = document.createElement('span');
@@ -5424,7 +5464,7 @@ function initKeyboard() {
   document.getElementById('btnConflictKeep')?.addEventListener('click', applyConflictKeep);
 
   document.getElementById('planSwitcher')?.addEventListener('change', async (e) => {
-    activePlanId = e.target.value;
+    setActivePlan(e.target.value);
     await loadProjectPlan();
     announce(`Switched to plan ${e.target.selectedOptions[0]?.textContent || activePlanId}.`);
   });
@@ -5502,7 +5542,7 @@ function initKeyboard() {
     if (res && res.ok && res.plan) {
       if (nameInp) nameInp.value = '';
       closePlansPopover();
-      activePlanId = res.plan.id;
+      setActivePlan(res.plan.id);
       showFlag({ text: `Created and switched to plan ${res.plan.name}.` });
       await loadProjectPlan();
     } else {
@@ -6260,8 +6300,7 @@ async function executeCreateTask() {
     summaryInput.value = '';
     closeModal('createTaskModal');
     if (res && res.task) {
-      if (res.task.epicKey) expandedTasks.add(res.task.epicKey);
-      if (res.task.parentKey) expandedTasks.add(res.task.parentKey);
+      expandAncestors(res.task);
       registerOptimisticTask(res.task);
     }
     if (currentHierarchyView === 'epics') {

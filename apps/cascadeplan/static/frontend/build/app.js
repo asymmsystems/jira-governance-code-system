@@ -6183,13 +6183,86 @@ Please see https://iframe-resizer.com/upgrade for more details.
     let rounds = 0;
     while (res && Array.isArray(res.cascadeRemaining) && res.cascadeRemaining.length > 0 && rounds < MAX_CASCADE_ROUNDS) {
       rounds++;
-      res = await callResolver("continueCascade", { taskId: payload.taskId });
+      res = await callResolver("continueCascade", { taskId: payload.taskId, planId: payload.planId });
     }
     return res;
   }
   var MAX_CASCADE_ROUNDS = 40;
+  async function getProjectScope() {
+    try {
+      const ctx = await import_bridge.view.getContext();
+      const key = ctx?.extension?.project?.key;
+      if (!key) return void 0;
+      return ctx?.cloudId ? `${ctx.cloudId}:${key}` : String(key);
+    } catch {
+      return void 0;
+    }
+  }
   function openIssueInNewTab(issueKey) {
     void import_bridge.router.open(`/browse/${encodeURIComponent(issueKey)}`);
+  }
+
+  // src/ui/plan-view-state.ts
+  var MAIN_PLAN_ID = "default";
+  var ACTIVE_PLAN_PREFIX = "cp_active_plan_";
+  function activePlanStorageKey(scope) {
+    return ACTIVE_PLAN_PREFIX + scope;
+  }
+  function getSavedPlanId(store, scope) {
+    if (!store || !scope) return MAIN_PLAN_ID;
+    try {
+      return store.getItem(activePlanStorageKey(scope)) || MAIN_PLAN_ID;
+    } catch {
+      return MAIN_PLAN_ID;
+    }
+  }
+  function setSavedPlanId(store, scope, planId) {
+    if (!store || !scope) return;
+    try {
+      store.setItem(activePlanStorageKey(scope), planId || MAIN_PLAN_ID);
+    } catch {
+    }
+  }
+  function chooseActivePlan(requested, availablePlans) {
+    if (!requested || requested === MAIN_PLAN_ID) return MAIN_PLAN_ID;
+    return (availablePlans || []).some((p) => p.id === requested) ? requested : MAIN_PLAN_ID;
+  }
+  function isEpicRow(t) {
+    return Boolean(t.isEpic || t.hierarchyLevel === 1);
+  }
+  function parentRowKey(task, rowKeys) {
+    if (task.parentKey && task.parentKey !== task.key && rowKeys.has(task.parentKey)) return task.parentKey;
+    if (!isEpicRow(task) && task.epicKey && task.epicKey !== task.key && rowKeys.has(task.epicKey)) return task.epicKey;
+    return void 0;
+  }
+  function parentKeysOf(rows) {
+    const keys = new Set(rows.map((r) => r.key));
+    const out = /* @__PURE__ */ new Set();
+    for (const r of rows) {
+      const up = parentRowKey(r, keys);
+      if (up) out.add(up);
+    }
+    return out;
+  }
+  function isHiddenByCollapse(task, byKey, collapsed) {
+    const keys = new Set(byKey.keys());
+    const seen = /* @__PURE__ */ new Set([task.key]);
+    let up = parentRowKey(task, keys);
+    while (up && !seen.has(up)) {
+      if (collapsed.has(up)) return true;
+      seen.add(up);
+      const parent = byKey.get(up);
+      up = parent ? parentRowKey(parent, keys) : void 0;
+    }
+    return false;
+  }
+  function visibleRows(rows, collapsed) {
+    const byKey = new Map(rows.map((r) => [r.key, r]));
+    const out = [];
+    rows.forEach((task, rowIdx) => {
+      if (!isHiddenByCollapse(task, byKey, collapsed)) out.push({ task, rowIdx });
+    });
+    return out;
   }
 
   // src/frontend/flag.ts
@@ -6273,6 +6346,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const entry = this.undone.pop();
       if (entry !== void 0) this.done.push(entry);
       return entry;
+    }
+    /** Forgets every action, for example when another plan opens: its records are not this plan's. */
+    clear() {
+      this.done.length = 0;
+      this.undone.length = 0;
     }
     canUndo() {
       return this.done.length > 0;
@@ -7876,7 +7954,24 @@ Please see https://iframe-resizer.com/upgrade for more details.
   var undoStack = new UndoStack(20);
   var pendingUndo = null;
   var replayingUndo = false;
-  var activePlanId = "default";
+  var activePlanId = MAIN_PLAN_ID;
+  var planScope;
+  function browserStore() {
+    try {
+      return window.localStorage;
+    } catch (e) {
+      return void 0;
+    }
+  }
+  function setActivePlan(planId) {
+    const next = planId || MAIN_PLAN_ID;
+    if (next !== activePlanId) {
+      undoStack.clear();
+      pendingUndo = null;
+    }
+    activePlanId = next;
+    setSavedPlanId(browserStore(), planScope, activePlanId);
+  }
   async function callResolver2(fn, payload = {}) {
     const mergedPayload = { planId: activePlanId, ...payload };
     if (!UNDOABLE.has(fn) || replayingUndo) return callResolver(fn, mergedPayload);
@@ -7907,19 +8002,20 @@ Please see https://iframe-resizer.com/upgrade for more details.
   async function replayUndo(ops) {
     replayingUndo = true;
     let ok = true;
+    const planId = activePlanId;
     try {
       for (const op of ops) {
         let res;
         if (op.kind === "unschedule") {
-          res = await callResolver("unscheduleTask", { taskId: op.key });
+          res = await callResolver("unscheduleTask", { planId, taskId: op.key });
         } else if (op.kind === "schedule") {
-          res = await callResolver("scheduleBacklogTask", { taskId: op.key, startWeek: op.updates.startWeek, spanWeeks: op.updates.spanWeeks || 1 });
+          res = await callResolver("scheduleBacklogTask", { planId, taskId: op.key, startWeek: op.updates.startWeek, spanWeeks: op.updates.spanWeeks || 1 });
           if (!classifyResult(res).failed && op.updates.startDate) {
-            res = await callResolver("updateWbsTask", { taskId: op.key, updates: { startDate: op.updates.startDate, endDate: op.updates.endDate } });
+            res = await callResolver("updateWbsTask", { planId, taskId: op.key, updates: { startDate: op.updates.startDate, endDate: op.updates.endDate } });
           }
         } else {
           const t = findAnyTask(op.key);
-          res = await callResolver("updateWbsTask", { taskId: op.key, updates: op.updates, expectedVersion: t && t.version || 0 });
+          res = await callResolver("updateWbsTask", { planId, taskId: op.key, updates: op.updates, expectedVersion: t && t.version || 0 });
         }
         const verdict = classifyResult(res);
         if (verdict.failed) {
@@ -8037,7 +8133,21 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const fl = getFrozenLayout();
     return fl.widths[k] !== void 0 ? fl.widths[k] : isCompactMode() && k === "task" ? compactTaskWidth : columnWidths[k];
   }
-  var expandedTasks = /* @__PURE__ */ new Set();
+  var collapsedTasks = /* @__PURE__ */ new Set();
+  function expandAncestors(task) {
+    let changed = false;
+    const seen = /* @__PURE__ */ new Set();
+    let cur = task;
+    while (cur && !seen.has(cur.key)) {
+      seen.add(cur.key);
+      for (const k of [cur.parentKey, cur.epicKey]) {
+        if (k && k !== cur.key && collapsedTasks.delete(k)) changed = true;
+      }
+      const upKey = cur.parentKey && cur.parentKey !== cur.key ? cur.parentKey : cur.epicKey;
+      cur = upKey && upKey !== cur.key ? findTask(upKey) : null;
+    }
+    return changed;
+  }
   var currentHierarchyView = "all";
   async function initApp() {
     initErrorBanner();
@@ -8078,6 +8188,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
     });
     setupEventListeners();
     initKeyboard();
+    planScope = await getProjectScope();
+    activePlanId = getSavedPlanId(browserStore(), planScope);
     loadProjectPlan();
   }
   if (document.readyState === "loading") {
@@ -8727,16 +8839,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const match = searchMatches[pos];
     const key = match.task.key;
     if (!key) return;
-    let needsRecompute = false;
-    if (match.task.parentKey && !expandedTasks.has(match.task.parentKey)) {
-      expandedTasks.add(match.task.parentKey);
-      needsRecompute = true;
-    }
-    if (match.task.epicKey && !expandedTasks.has(match.task.epicKey)) {
-      expandedTasks.add(match.task.epicKey);
-      needsRecompute = true;
-    }
-    if (needsRecompute) {
+    if (expandAncestors(match.task)) {
       const computed = computeRowTasks();
       rowTasks = computed.rows;
       rowTaskList = rowTasks.map((r) => r.task);
@@ -9063,7 +9166,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
           cloneFromPlanId: p.id
         });
         if (res && res.ok && res.plan) {
-          activePlanId = res.plan.id;
+          setActivePlan(res.plan.id);
           showFlag({ text: `Cloned plan to ${res.plan.name}.` });
           closePlansPopover();
           await loadProjectPlan();
@@ -9126,7 +9229,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
             if (res && res.ok) {
               showFlag({ text: `Deleted plan ${p.name}.` });
               if (activePlanId === p.id) {
-                activePlanId = "default";
+                setActivePlan(MAIN_PLAN_ID);
               }
               await loadProjectPlan();
             } else {
@@ -9149,7 +9252,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       row.addEventListener("click", async (e) => {
         if (e.target.closest("button") || e.target.closest("input")) return;
         if (p.id !== currentId) {
-          activePlanId = p.id;
+          setActivePlan(p.id);
           closePlansPopover();
           await loadProjectPlan();
           showFlag({ text: `Switched to plan ${p.name}.` });
@@ -9159,7 +9262,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         if (ke.key === "Enter" || ke.key === " ") {
           ke.preventDefault();
           if (p.id !== currentId) {
-            activePlanId = p.id;
+            setActivePlan(p.id);
             closePlansPopover();
             await loadProjectPlan();
             showFlag({ text: `Switched to plan ${p.name}.` });
@@ -9183,9 +9286,22 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const plan = await callResolver2("getProjectPlan", { planId: activePlanId });
     if (loader) loader.style.display = "none";
     if (plan && Array.isArray(plan.tasks)) {
+      if (!planScope && plan.projectKey) {
+        planScope = String(plan.projectKey);
+        const saved = chooseActivePlan(getSavedPlanId(browserStore(), planScope), plan.availablePlans);
+        if (saved !== (plan.planId || MAIN_PLAN_ID)) {
+          activePlanId = saved;
+          return loadProjectPlan();
+        }
+      }
+      const requested = activePlanId;
+      const served = chooseActivePlan(plan.planId || MAIN_PLAN_ID, plan.availablePlans);
+      if (requested !== MAIN_PLAN_ID && served !== requested) {
+        showFlag({ text: "The plan you had open no longer exists. Showing the Main Plan." });
+      }
       mergeOptimisticTasks(plan);
       currentPlan = plan;
-      if (plan.planId) activePlanId = plan.planId;
+      setActivePlan(served);
       updatePlansUI(plan.availablePlans, activePlanId);
       columnWidths = sanitizeLoadedColumnWidths(plan.columnWidths);
       if (Array.isArray(plan.hiddenColumns)) {
@@ -9201,7 +9317,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       renderPlan();
       settleUndo();
       if (Array.isArray(plan.staleEntries) && plan.staleEntries.length) {
-        callResolver("pruneStaleEntries", { keys: plan.staleEntries.slice(0, 200) });
+        callResolver("pruneStaleEntries", { planId: activePlanId, keys: plan.staleEntries.slice(0, 200) });
       }
     } else {
       if (errBanner) {
@@ -9224,12 +9340,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
         newEpicBtn.title = "";
       }
     }
-    if (currentPlan.tasks) {
-      currentPlan.tasks.forEach((t) => {
-        if (t.isEpic || t.childrenCount || t.subtasks && t.subtasks.length > 0) {
-          expandedTasks.add(t.key);
-        }
-      });
+    if (currentPlan.tasks && collapsedTasks.size) {
+      const keys = new Set(currentPlan.tasks.map((t) => t.key));
+      for (const k of [...collapsedTasks]) if (!keys.has(k)) collapsedTasks.delete(k);
     }
     renderMilestones();
     renderBacklogTray();
@@ -10272,8 +10385,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
           return;
         }
         if (res && res.task) {
-          if (res.task.epicKey) expandedTasks.add(res.task.epicKey);
-          if (res.task.parentKey) expandedTasks.add(res.task.parentKey);
+          expandAncestors(res.task);
           registerOptimisticTask(res.task);
         }
         if (currentHierarchyView === "epics") {
@@ -10389,15 +10501,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
     } else if (currentHierarchyView === "stories") {
       tasksToRender = currentPlan.tasks.filter((t) => !t.isEpic && t.hierarchyLevel !== 1);
     }
-    const planKeys = new Set(currentPlan.tasks.map((t) => t.key));
-    const out = [];
-    tasksToRender.forEach((task, rowIdx) => {
-      if (task.isSubtask && task.parentKey && !expandedTasks.has(task.parentKey)) return;
-      if (!task.isEpic && task.epicKey && task.epicKey !== task.key && planKeys.has(task.epicKey) && !expandedTasks.has(task.epicKey)) return;
-      out.push({ task, rowIdx });
-    });
-    return { rows: out, total: tasksToRender.length };
+    rowParentKeys = parentKeysOf(tasksToRender);
+    return { rows: visibleRows(tasksToRender, collapsedTasks), total: tasksToRender.length };
   }
+  var rowParentKeys = /* @__PURE__ */ new Set();
   function makeSpacer(cols) {
     const tr = document.createElement("tr");
     tr.className = "spacer-row";
@@ -10686,13 +10793,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
         if (activeKey === task.key) tr.classList.add("is-search-active");
       }
     }
-    const hasChildren = Boolean(
-      task.childrenCount && task.childrenCount > 0 || task.subtasks && task.subtasks.length > 0 || currentPlan.tasks.some((t) => (t.parentKey === task.key || t.parentId === task.id || isEpic && t.epicKey === task.key) && t.key !== task.key)
-    );
+    const hasChildren = rowParentKeys.has(task.key);
     let expandToggleHtml = html``;
-    if (hasChildren && !isSub) {
-      const isExp = expandedTasks.has(task.key);
-      expandToggleHtml = html`<button class="tree-toggle-btn" data-parent-key="${task.key}" title="${isExp ? "Collapse children" : "Expand children"}">${isExp ? "\u25BC" : "\u25B6"}</button>`;
+    if (hasChildren) {
+      const isExp = !collapsedTasks.has(task.key);
+      expandToggleHtml = html`<button class="tree-toggle-btn" type="button" data-parent-key="${task.key}" aria-expanded="${isExp ? "true" : "false"}" aria-label="${isExp ? "Collapse" : "Expand"} children of ${task.key}" title="${isExp ? "Collapse children" : "Expand children"}">${isExp ? "\u25BC" : "\u25B6"}</button>`;
     }
     let badgeHtml = html``;
     let indentPx = 0;
@@ -11082,12 +11187,13 @@ Click to manage or assign.`;
     if (treeToggle) {
       treeToggle.addEventListener("click", (e) => {
         e.stopPropagation();
-        if (expandedTasks.has(task.key)) {
-          expandedTasks.delete(task.key);
+        if (collapsedTasks.has(task.key)) {
+          collapsedTasks.delete(task.key);
         } else {
-          expandedTasks.add(task.key);
+          collapsedTasks.add(task.key);
         }
         renderTimelineRows();
+        document.querySelector(`.tree-toggle-btn[data-parent-key="${CSS.escape(task.key)}"]`)?.focus();
       });
     }
     setupRowPointerReorder(tr, task);
@@ -11871,7 +11977,7 @@ Click to manage or assign.`;
       row.setAttribute("role", "row");
       row.setAttribute("aria-rowindex", String(i + 2));
       row.setAttribute("aria-level", String(rowLevel(t, planKeys)));
-      if (expandedTasks.has(t.key) && (t.isEpic || t.childrenCount)) row.setAttribute("aria-expanded", "true");
+      if (rowParentKeys.has(t.key)) row.setAttribute("aria-expanded", collapsedTasks.has(t.key) ? "false" : "true");
       row.dataset.row = String(i);
       rowCells(t).forEach((text, c) => {
         const cell2 = document.createElement("span");
@@ -12561,7 +12667,7 @@ Click to manage or assign.`;
     document.getElementById("btnConflictAdjust")?.addEventListener("click", applyConflictAdjust);
     document.getElementById("btnConflictKeep")?.addEventListener("click", applyConflictKeep);
     document.getElementById("planSwitcher")?.addEventListener("change", async (e) => {
-      activePlanId = e.target.value;
+      setActivePlan(e.target.value);
       await loadProjectPlan();
       announce(`Switched to plan ${e.target.selectedOptions[0]?.textContent || activePlanId}.`);
     });
@@ -12633,7 +12739,7 @@ Click to manage or assign.`;
       if (res && res.ok && res.plan) {
         if (nameInp) nameInp.value = "";
         closePlansPopover();
-        activePlanId = res.plan.id;
+        setActivePlan(res.plan.id);
         showFlag({ text: `Created and switched to plan ${res.plan.name}.` });
         await loadProjectPlan();
       } else {
@@ -13320,8 +13426,7 @@ Click to manage or assign.`;
       summaryInput.value = "";
       closeModal("createTaskModal");
       if (res && res.task) {
-        if (res.task.epicKey) expandedTasks.add(res.task.epicKey);
-        if (res.task.parentKey) expandedTasks.add(res.task.parentKey);
+        expandAncestors(res.task);
         registerOptimisticTask(res.task);
       }
       if (currentHierarchyView === "epics") {
