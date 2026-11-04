@@ -64,7 +64,7 @@ This checklist consolidates all operational actions that require direct human ex
 ## 3. Public Standalone Verifier Repository
 
 - [ ] **Create GitHub Repository:**
-  - Create a new public repository: `https://github.com/asymm-systems/ledgerseal-verifier`.
+  - Create a new public repository: `https://github.com/asymmsystems/ledgerseal-verifier`.
   - Description: *"Zero-dependency offline cryptographic verification engine for LedgerSeal Jira Cloud approval evidence."*
 - [ ] **Push Package Contents:**
   - In a temporary terminal, push the contents of `verifier-public/` to `main`:
@@ -73,7 +73,7 @@ This checklist consolidates all operational actions that require direct human ex
     git init -b main
     git add .
     git commit -m "feat(verifier): initial public release of standalone offline verifier"
-    git remote add origin git@github.com:asymm-systems:ledgerseal-verifier.git
+    git remote add origin git@github.com:asymmsystems/ledgerseal-verifier.git
     git push -u origin main
     ```
 - [ ] **Verify CI Workflow:**

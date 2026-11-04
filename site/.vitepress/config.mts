@@ -84,7 +84,7 @@ export default defineConfig({
       }
     ],
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/asymm-systems/ledgerseal-verifier' }
+      { icon: 'github', link: 'https://github.com/asymmsystems/ledgerseal-verifier' }
     ],
     footer: {
       message: '100% Forge Native Governance Suite for Jira Cloud.',

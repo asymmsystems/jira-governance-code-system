@@ -88,7 +88,7 @@ LedgerSeal provides technical controls that support customer compliance across r
 ## Support, Documentation & Legal Links
 
 - **Documentation Portal:** https://docs.asymm.systems/apps/ledgerseal/
-- **Open Verifier Repository:** https://github.com/asymm-systems/ledgerseal-verifier
+- **Open Verifier Repository:** https://github.com/asymmsystems/ledgerseal-verifier
 - **Privacy Policy:** https://asymm.systems/privacy
 - **Terms of Service:** https://asymm.systems/terms
 - **Support Portal & SLA:** https://asymm.systems/support

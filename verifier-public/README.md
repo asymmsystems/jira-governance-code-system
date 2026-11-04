@@ -2,7 +2,7 @@
 
 > Independent, zero-dependency offline verifier for cryptographic approval evidence produced by LedgerSeal for Jira Cloud.
 
-[![Test](https://github.com/asymm-systems/ledgerseal-verifier/actions/workflows/test.yml/badge.svg)](https://github.com/asymm-systems/ledgerseal-verifier/actions)
+[![Test](https://github.com/asymmsystems/ledgerseal-verifier/actions/workflows/test.yml/badge.svg)](https://github.com/asymmsystems/ledgerseal-verifier/actions)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 ---
@@ -40,7 +40,7 @@ When you run `verify-evidence.mjs`, four sequential checks are executed:
 
 ### Clone Repository
 ```bash
-git clone https://github.com/asymm-systems/ledgerseal-verifier.git
+git clone https://github.com/asymmsystems/ledgerseal-verifier.git
 cd ledgerseal-verifier
 ```
 
