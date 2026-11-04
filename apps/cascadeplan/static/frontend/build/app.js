@@ -36,7 +36,7 @@
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
   var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
-  // ../ledgerseal/node_modules/tslib/tslib.es6.mjs
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/tslib/tslib.es6.mjs
   var tslib_es6_exports = {};
   __export(tslib_es6_exports, {
     __addDisposableResource: () => __addDisposableResource,
@@ -475,7 +475,7 @@
   }
   var extendStatics, __assign, __createBinding, __setModuleDefault, ownKeys, _SuppressedError, tslib_es6_default;
   var init_tslib_es6 = __esm({
-    "../ledgerseal/node_modules/tslib/tslib.es6.mjs"() {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/tslib/tslib.es6.mjs"() {
       extendStatics = function(d, b) {
         extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d2, b2) {
           d2.__proto__ = b2;
@@ -561,9 +561,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/router/targets.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/router/targets.js
   var require_targets = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/router/targets.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/router/targets.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.NavigationTarget = void 0;
@@ -608,9 +608,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/errors.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/errors.js
   var require_errors = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/errors.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/errors.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.BridgeAPIError = void 0;
@@ -620,9 +620,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/bridge.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/bridge.js
   var require_bridge = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/bridge.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/bridge.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getCallBridge = void 0;
@@ -643,9 +643,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/utils/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/utils/index.js
   var require_utils = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/utils/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/utils/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.withRateLimiter = void 0;
@@ -671,9 +671,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/invoke/invoke.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/invoke/invoke.js
   var require_invoke = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/invoke/invoke.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/invoke/invoke.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.invoke = invoke2;
@@ -706,9 +706,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/invoke/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/invoke/index.js
   var require_invoke2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/invoke/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/invoke/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -716,9 +716,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-endpoint.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-endpoint.js
   var require_invoke_endpoint = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-endpoint.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-endpoint.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.InvokeType = void 0;
@@ -767,9 +767,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-remote.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-remote.js
   var require_invoke_remote = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-remote.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-remote.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.invokeRemote = void 0;
@@ -782,9 +782,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-service.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-service.js
   var require_invoke_service = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-service.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-service.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.invokeService = void 0;
@@ -797,9 +797,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/index.js
   var require_invoke_endpoint2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -808,9 +808,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/submit.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/submit.js
   var require_submit = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/submit.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/submit.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.submit = void 0;
@@ -827,9 +827,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/close.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/close.js
   var require_close = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/close.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/close.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.close = void 0;
@@ -850,9 +850,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/open.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/open.js
   var require_open = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/open.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/open.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.open = void 0;
@@ -873,9 +873,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/refresh.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/refresh.js
   var require_refresh = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/refresh.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/refresh.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.refresh = void 0;
@@ -892,9 +892,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/createHistory.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/createHistory.js
   var require_createHistory = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/createHistory.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/createHistory.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.createHistory = void 0;
@@ -911,9 +911,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/constants.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/i18n/out/constants.js
   var require_constants = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/constants.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/i18n/out/constants.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.FORGE_SUPPORTED_LOCALE_CODES = exports.I18N_BUNDLE_FOLDER_NAME = exports.I18N_INFO_FILE_NAME = void 0;
@@ -950,9 +950,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/translationsGetter.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/i18n/out/translationsGetter.js
   var require_translationsGetter = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/translationsGetter.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/i18n/out/translationsGetter.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.TranslationsGetter = exports.TranslationGetterError = void 0;
@@ -1060,25 +1060,25 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/isArray.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/isArray.js
   var require_isArray = __commonJS({
-    "../ledgerseal/node_modules/lodash/isArray.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/isArray.js"(exports, module) {
       var isArray = Array.isArray;
       module.exports = isArray;
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_freeGlobal.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_freeGlobal.js
   var require_freeGlobal = __commonJS({
-    "../ledgerseal/node_modules/lodash/_freeGlobal.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_freeGlobal.js"(exports, module) {
       var freeGlobal = typeof global == "object" && global && global.Object === Object && global;
       module.exports = freeGlobal;
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_root.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_root.js
   var require_root = __commonJS({
-    "../ledgerseal/node_modules/lodash/_root.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_root.js"(exports, module) {
       var freeGlobal = require_freeGlobal();
       var freeSelf = typeof self == "object" && self && self.Object === Object && self;
       var root = freeGlobal || freeSelf || Function("return this")();
@@ -1086,18 +1086,18 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_Symbol.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_Symbol.js
   var require_Symbol = __commonJS({
-    "../ledgerseal/node_modules/lodash/_Symbol.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_Symbol.js"(exports, module) {
       var root = require_root();
       var Symbol2 = root.Symbol;
       module.exports = Symbol2;
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_getRawTag.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_getRawTag.js
   var require_getRawTag = __commonJS({
-    "../ledgerseal/node_modules/lodash/_getRawTag.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_getRawTag.js"(exports, module) {
       var Symbol2 = require_Symbol();
       var objectProto = Object.prototype;
       var hasOwnProperty = objectProto.hasOwnProperty;
@@ -1124,9 +1124,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_objectToString.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_objectToString.js
   var require_objectToString = __commonJS({
-    "../ledgerseal/node_modules/lodash/_objectToString.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_objectToString.js"(exports, module) {
       var objectProto = Object.prototype;
       var nativeObjectToString = objectProto.toString;
       function objectToString(value) {
@@ -1136,9 +1136,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_baseGetTag.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_baseGetTag.js
   var require_baseGetTag = __commonJS({
-    "../ledgerseal/node_modules/lodash/_baseGetTag.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_baseGetTag.js"(exports, module) {
       var Symbol2 = require_Symbol();
       var getRawTag = require_getRawTag();
       var objectToString = require_objectToString();
@@ -1155,9 +1155,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/isObjectLike.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/isObjectLike.js
   var require_isObjectLike = __commonJS({
-    "../ledgerseal/node_modules/lodash/isObjectLike.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/isObjectLike.js"(exports, module) {
       function isObjectLike(value) {
         return value != null && typeof value == "object";
       }
@@ -1165,9 +1165,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/isSymbol.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/isSymbol.js
   var require_isSymbol = __commonJS({
-    "../ledgerseal/node_modules/lodash/isSymbol.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/isSymbol.js"(exports, module) {
       var baseGetTag = require_baseGetTag();
       var isObjectLike = require_isObjectLike();
       var symbolTag = "[object Symbol]";
@@ -1178,9 +1178,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_isKey.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_isKey.js
   var require_isKey = __commonJS({
-    "../ledgerseal/node_modules/lodash/_isKey.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_isKey.js"(exports, module) {
       var isArray = require_isArray();
       var isSymbol = require_isSymbol();
       var reIsDeepProp = /\.|\[(?:[^[\]]*|(["'])(?:(?!\1)[^\\]|\\.)*?\1)\]/;
@@ -1199,9 +1199,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/isObject.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/isObject.js
   var require_isObject = __commonJS({
-    "../ledgerseal/node_modules/lodash/isObject.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/isObject.js"(exports, module) {
       function isObject(value) {
         var type = typeof value;
         return value != null && (type == "object" || type == "function");
@@ -1210,9 +1210,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/isFunction.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/isFunction.js
   var require_isFunction = __commonJS({
-    "../ledgerseal/node_modules/lodash/isFunction.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/isFunction.js"(exports, module) {
       var baseGetTag = require_baseGetTag();
       var isObject = require_isObject();
       var asyncTag = "[object AsyncFunction]";
@@ -1230,18 +1230,18 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_coreJsData.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_coreJsData.js
   var require_coreJsData = __commonJS({
-    "../ledgerseal/node_modules/lodash/_coreJsData.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_coreJsData.js"(exports, module) {
       var root = require_root();
       var coreJsData = root["__core-js_shared__"];
       module.exports = coreJsData;
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_isMasked.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_isMasked.js
   var require_isMasked = __commonJS({
-    "../ledgerseal/node_modules/lodash/_isMasked.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_isMasked.js"(exports, module) {
       var coreJsData = require_coreJsData();
       var maskSrcKey = (function() {
         var uid = /[^.]+$/.exec(coreJsData && coreJsData.keys && coreJsData.keys.IE_PROTO || "");
@@ -1254,9 +1254,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_toSource.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_toSource.js
   var require_toSource = __commonJS({
-    "../ledgerseal/node_modules/lodash/_toSource.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_toSource.js"(exports, module) {
       var funcProto = Function.prototype;
       var funcToString = funcProto.toString;
       function toSource(func) {
@@ -1276,9 +1276,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_baseIsNative.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_baseIsNative.js
   var require_baseIsNative = __commonJS({
-    "../ledgerseal/node_modules/lodash/_baseIsNative.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_baseIsNative.js"(exports, module) {
       var isFunction = require_isFunction();
       var isMasked = require_isMasked();
       var isObject = require_isObject();
@@ -1303,9 +1303,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_getValue.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_getValue.js
   var require_getValue = __commonJS({
-    "../ledgerseal/node_modules/lodash/_getValue.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_getValue.js"(exports, module) {
       function getValue(object, key) {
         return object == null ? void 0 : object[key];
       }
@@ -1313,9 +1313,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_getNative.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_getNative.js
   var require_getNative = __commonJS({
-    "../ledgerseal/node_modules/lodash/_getNative.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_getNative.js"(exports, module) {
       var baseIsNative = require_baseIsNative();
       var getValue = require_getValue();
       function getNative(object, key) {
@@ -1326,18 +1326,18 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_nativeCreate.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_nativeCreate.js
   var require_nativeCreate = __commonJS({
-    "../ledgerseal/node_modules/lodash/_nativeCreate.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_nativeCreate.js"(exports, module) {
       var getNative = require_getNative();
       var nativeCreate = getNative(Object, "create");
       module.exports = nativeCreate;
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_hashClear.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_hashClear.js
   var require_hashClear = __commonJS({
-    "../ledgerseal/node_modules/lodash/_hashClear.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_hashClear.js"(exports, module) {
       var nativeCreate = require_nativeCreate();
       function hashClear() {
         this.__data__ = nativeCreate ? nativeCreate(null) : {};
@@ -1347,9 +1347,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_hashDelete.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_hashDelete.js
   var require_hashDelete = __commonJS({
-    "../ledgerseal/node_modules/lodash/_hashDelete.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_hashDelete.js"(exports, module) {
       function hashDelete(key) {
         var result = this.has(key) && delete this.__data__[key];
         this.size -= result ? 1 : 0;
@@ -1359,9 +1359,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_hashGet.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_hashGet.js
   var require_hashGet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_hashGet.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_hashGet.js"(exports, module) {
       var nativeCreate = require_nativeCreate();
       var HASH_UNDEFINED = "__lodash_hash_undefined__";
       var objectProto = Object.prototype;
@@ -1378,9 +1378,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_hashHas.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_hashHas.js
   var require_hashHas = __commonJS({
-    "../ledgerseal/node_modules/lodash/_hashHas.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_hashHas.js"(exports, module) {
       var nativeCreate = require_nativeCreate();
       var objectProto = Object.prototype;
       var hasOwnProperty = objectProto.hasOwnProperty;
@@ -1392,9 +1392,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_hashSet.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_hashSet.js
   var require_hashSet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_hashSet.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_hashSet.js"(exports, module) {
       var nativeCreate = require_nativeCreate();
       var HASH_UNDEFINED = "__lodash_hash_undefined__";
       function hashSet(key, value) {
@@ -1407,9 +1407,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_Hash.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_Hash.js
   var require_Hash = __commonJS({
-    "../ledgerseal/node_modules/lodash/_Hash.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_Hash.js"(exports, module) {
       var hashClear = require_hashClear();
       var hashDelete = require_hashDelete();
       var hashGet = require_hashGet();
@@ -1432,9 +1432,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_listCacheClear.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_listCacheClear.js
   var require_listCacheClear = __commonJS({
-    "../ledgerseal/node_modules/lodash/_listCacheClear.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_listCacheClear.js"(exports, module) {
       function listCacheClear() {
         this.__data__ = [];
         this.size = 0;
@@ -1443,9 +1443,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/eq.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/eq.js
   var require_eq = __commonJS({
-    "../ledgerseal/node_modules/lodash/eq.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/eq.js"(exports, module) {
       function eq(value, other) {
         return value === other || value !== value && other !== other;
       }
@@ -1453,9 +1453,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_assocIndexOf.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_assocIndexOf.js
   var require_assocIndexOf = __commonJS({
-    "../ledgerseal/node_modules/lodash/_assocIndexOf.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_assocIndexOf.js"(exports, module) {
       var eq = require_eq();
       function assocIndexOf(array, key) {
         var length = array.length;
@@ -1470,9 +1470,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_listCacheDelete.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_listCacheDelete.js
   var require_listCacheDelete = __commonJS({
-    "../ledgerseal/node_modules/lodash/_listCacheDelete.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_listCacheDelete.js"(exports, module) {
       var assocIndexOf = require_assocIndexOf();
       var arrayProto = Array.prototype;
       var splice = arrayProto.splice;
@@ -1494,9 +1494,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_listCacheGet.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_listCacheGet.js
   var require_listCacheGet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_listCacheGet.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_listCacheGet.js"(exports, module) {
       var assocIndexOf = require_assocIndexOf();
       function listCacheGet(key) {
         var data = this.__data__, index = assocIndexOf(data, key);
@@ -1506,9 +1506,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_listCacheHas.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_listCacheHas.js
   var require_listCacheHas = __commonJS({
-    "../ledgerseal/node_modules/lodash/_listCacheHas.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_listCacheHas.js"(exports, module) {
       var assocIndexOf = require_assocIndexOf();
       function listCacheHas(key) {
         return assocIndexOf(this.__data__, key) > -1;
@@ -1517,9 +1517,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_listCacheSet.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_listCacheSet.js
   var require_listCacheSet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_listCacheSet.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_listCacheSet.js"(exports, module) {
       var assocIndexOf = require_assocIndexOf();
       function listCacheSet(key, value) {
         var data = this.__data__, index = assocIndexOf(data, key);
@@ -1535,9 +1535,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_ListCache.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_ListCache.js
   var require_ListCache = __commonJS({
-    "../ledgerseal/node_modules/lodash/_ListCache.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_ListCache.js"(exports, module) {
       var listCacheClear = require_listCacheClear();
       var listCacheDelete = require_listCacheDelete();
       var listCacheGet = require_listCacheGet();
@@ -1560,9 +1560,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_Map.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_Map.js
   var require_Map = __commonJS({
-    "../ledgerseal/node_modules/lodash/_Map.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_Map.js"(exports, module) {
       var getNative = require_getNative();
       var root = require_root();
       var Map2 = getNative(root, "Map");
@@ -1570,9 +1570,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_mapCacheClear.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_mapCacheClear.js
   var require_mapCacheClear = __commonJS({
-    "../ledgerseal/node_modules/lodash/_mapCacheClear.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_mapCacheClear.js"(exports, module) {
       var Hash = require_Hash();
       var ListCache = require_ListCache();
       var Map2 = require_Map();
@@ -1588,9 +1588,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_isKeyable.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_isKeyable.js
   var require_isKeyable = __commonJS({
-    "../ledgerseal/node_modules/lodash/_isKeyable.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_isKeyable.js"(exports, module) {
       function isKeyable(value) {
         var type = typeof value;
         return type == "string" || type == "number" || type == "symbol" || type == "boolean" ? value !== "__proto__" : value === null;
@@ -1599,9 +1599,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_getMapData.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_getMapData.js
   var require_getMapData = __commonJS({
-    "../ledgerseal/node_modules/lodash/_getMapData.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_getMapData.js"(exports, module) {
       var isKeyable = require_isKeyable();
       function getMapData(map, key) {
         var data = map.__data__;
@@ -1611,9 +1611,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_mapCacheDelete.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_mapCacheDelete.js
   var require_mapCacheDelete = __commonJS({
-    "../ledgerseal/node_modules/lodash/_mapCacheDelete.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_mapCacheDelete.js"(exports, module) {
       var getMapData = require_getMapData();
       function mapCacheDelete(key) {
         var result = getMapData(this, key)["delete"](key);
@@ -1624,9 +1624,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_mapCacheGet.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_mapCacheGet.js
   var require_mapCacheGet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_mapCacheGet.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_mapCacheGet.js"(exports, module) {
       var getMapData = require_getMapData();
       function mapCacheGet(key) {
         return getMapData(this, key).get(key);
@@ -1635,9 +1635,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_mapCacheHas.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_mapCacheHas.js
   var require_mapCacheHas = __commonJS({
-    "../ledgerseal/node_modules/lodash/_mapCacheHas.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_mapCacheHas.js"(exports, module) {
       var getMapData = require_getMapData();
       function mapCacheHas(key) {
         return getMapData(this, key).has(key);
@@ -1646,9 +1646,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_mapCacheSet.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_mapCacheSet.js
   var require_mapCacheSet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_mapCacheSet.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_mapCacheSet.js"(exports, module) {
       var getMapData = require_getMapData();
       function mapCacheSet(key, value) {
         var data = getMapData(this, key), size = data.size;
@@ -1660,9 +1660,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_MapCache.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_MapCache.js
   var require_MapCache = __commonJS({
-    "../ledgerseal/node_modules/lodash/_MapCache.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_MapCache.js"(exports, module) {
       var mapCacheClear = require_mapCacheClear();
       var mapCacheDelete = require_mapCacheDelete();
       var mapCacheGet = require_mapCacheGet();
@@ -1685,9 +1685,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/memoize.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/memoize.js
   var require_memoize = __commonJS({
-    "../ledgerseal/node_modules/lodash/memoize.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/memoize.js"(exports, module) {
       var MapCache = require_MapCache();
       var FUNC_ERROR_TEXT = "Expected a function";
       function memoize(func, resolver) {
@@ -1711,9 +1711,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_memoizeCapped.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_memoizeCapped.js
   var require_memoizeCapped = __commonJS({
-    "../ledgerseal/node_modules/lodash/_memoizeCapped.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_memoizeCapped.js"(exports, module) {
       var memoize = require_memoize();
       var MAX_MEMOIZE_SIZE = 500;
       function memoizeCapped(func) {
@@ -1730,9 +1730,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_stringToPath.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_stringToPath.js
   var require_stringToPath = __commonJS({
-    "../ledgerseal/node_modules/lodash/_stringToPath.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_stringToPath.js"(exports, module) {
       var memoizeCapped = require_memoizeCapped();
       var rePropName = /[^.[\]]+|\[(?:(-?\d+(?:\.\d+)?)|(["'])((?:(?!\2)[^\\]|\\.)*?)\2)\]|(?=(?:\.|\[\])(?:\.|\[\]|$))/g;
       var reEscapeChar = /\\(\\)?/g;
@@ -1750,9 +1750,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_arrayMap.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_arrayMap.js
   var require_arrayMap = __commonJS({
-    "../ledgerseal/node_modules/lodash/_arrayMap.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_arrayMap.js"(exports, module) {
       function arrayMap(array, iteratee) {
         var index = -1, length = array == null ? 0 : array.length, result = Array(length);
         while (++index < length) {
@@ -1764,9 +1764,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_baseToString.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_baseToString.js
   var require_baseToString = __commonJS({
-    "../ledgerseal/node_modules/lodash/_baseToString.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_baseToString.js"(exports, module) {
       var Symbol2 = require_Symbol();
       var arrayMap = require_arrayMap();
       var isArray = require_isArray();
@@ -1791,9 +1791,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/toString.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/toString.js
   var require_toString = __commonJS({
-    "../ledgerseal/node_modules/lodash/toString.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/toString.js"(exports, module) {
       var baseToString = require_baseToString();
       function toString(value) {
         return value == null ? "" : baseToString(value);
@@ -1802,9 +1802,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_castPath.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_castPath.js
   var require_castPath = __commonJS({
-    "../ledgerseal/node_modules/lodash/_castPath.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_castPath.js"(exports, module) {
       var isArray = require_isArray();
       var isKey = require_isKey();
       var stringToPath = require_stringToPath();
@@ -1819,9 +1819,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_toKey.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_toKey.js
   var require_toKey = __commonJS({
-    "../ledgerseal/node_modules/lodash/_toKey.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_toKey.js"(exports, module) {
       var isSymbol = require_isSymbol();
       var INFINITY = 1 / 0;
       function toKey(value) {
@@ -1835,9 +1835,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_baseGet.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_baseGet.js
   var require_baseGet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_baseGet.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/_baseGet.js"(exports, module) {
       var castPath = require_castPath();
       var toKey = require_toKey();
       function baseGet(object, path) {
@@ -1852,9 +1852,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/get.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/lodash/get.js
   var require_get = __commonJS({
-    "../ledgerseal/node_modules/lodash/get.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/lodash/get.js"(exports, module) {
       var baseGet = require_baseGet();
       function get(object, path, defaultValue) {
         var result = object == null ? void 0 : baseGet(object, path);
@@ -1864,9 +1864,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/translationValueGetter.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/i18n/out/translationValueGetter.js
   var require_translationValueGetter = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/translationValueGetter.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/i18n/out/translationValueGetter.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getTranslationValueFromContent = exports.getTranslationValue = void 0;
@@ -1894,9 +1894,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/translator.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/i18n/out/translator.js
   var require_translator = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/translator.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/i18n/out/translator.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.Translator = void 0;
@@ -1936,9 +1936,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/ensureLocale.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/i18n/out/ensureLocale.js
   var require_ensureLocale = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/ensureLocale.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/i18n/out/ensureLocale.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.ensureLocale = void 0;
@@ -1969,9 +1969,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/moduleI18nHelper.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/i18n/out/moduleI18nHelper.js
   var require_moduleI18nHelper = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/moduleI18nHelper.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/i18n/out/moduleI18nHelper.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.extractI18nPropertiesFromModules = exports.extractI18nKeysFromModules = exports.getI18nSupportedModuleEntries = void 0;
@@ -2036,17 +2036,17 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/types.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/i18n/out/types.js
   var require_types = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/types.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/i18n/out/types.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/i18n/out/index.js
   var require_out = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/i18n/out/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getI18nSupportedModuleEntries = exports.extractI18nPropertiesFromModules = exports.extractI18nKeysFromModules = exports.getTranslationValue = void 0;
@@ -2073,9 +2073,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/getContext.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/getContext.js
   var require_getContext = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/getContext.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/getContext.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getContext = void 0;
@@ -2095,9 +2095,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/changeWindowTitle.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/changeWindowTitle.js
   var require_changeWindowTitle = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/changeWindowTitle.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/changeWindowTitle.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.changeWindowTitle = void 0;
@@ -2115,9 +2115,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/theme.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/theme.js
   var require_theme = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/theme.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/theme.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.theme = void 0;
@@ -2129,9 +2129,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/utils/blobParser.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/utils/blobParser.js
   var require_blobParser = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/utils/blobParser.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/utils/blobParser.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.blobToBase64 = exports.base64ToBlob = void 0;
@@ -2163,9 +2163,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/events/serialiseBlob.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/events/serialiseBlob.js
   var require_serialiseBlob = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/events/serialiseBlob.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/events/serialiseBlob.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.containsSerialisedBlobs = exports.containsBlobs = exports.deserialiseBlobsInPayload = exports.serialiseBlobsInPayload = void 0;
@@ -2260,9 +2260,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/events/events.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/events/events.js
   var require_events = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/events/events.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/events/events.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.events = void 0;
@@ -2307,9 +2307,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/emitReadyEvent.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/emitReadyEvent.js
   var require_emitReadyEvent = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/emitReadyEvent.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/emitReadyEvent.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.emitReadyEvent = void 0;
@@ -2332,9 +2332,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/iframe-resizer/js/iframeResizer.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/iframe-resizer/js/iframeResizer.js
   var require_iframeResizer = __commonJS({
-    "../ledgerseal/node_modules/iframe-resizer/js/iframeResizer.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/iframe-resizer/js/iframeResizer.js"(exports, module) {
       console.info(`
 IFRAME-RESIZER
 
@@ -3388,9 +3388,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/iframe-resizer/js/iframeResizer.contentWindow.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/iframe-resizer/js/iframeResizer.contentWindow.js
   var require_iframeResizer_contentWindow = __commonJS({
-    "../ledgerseal/node_modules/iframe-resizer/js/iframeResizer.contentWindow.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/iframe-resizer/js/iframeResizer.contentWindow.js"(exports, module) {
       (function(undefined2) {
         if (typeof window === "undefined") return;
         var autoResize = true, base = 10, bodyBackground = "", bodyMargin = 0, bodyMarginStr = "", bodyObserver = null, bodyPadding = "", calculateWidth = false, doubleEventList = { resize: 1, click: 1 }, eventCancelTimer = 128, firstRun = true, height = 1, heightCalcModeDefault = "bodyOffset", heightCalcMode = heightCalcModeDefault, initLock = true, initMsg = "", inPageLinks = {}, interval = 32, intervalTimer = null, logging = false, mouseEvents = false, msgID = "[iFrameSizer]", msgIdLen = msgID.length, myID = "", resetRequiredMethods = {
@@ -4338,9 +4338,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/iframe-resizer/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/iframe-resizer/index.js
   var require_iframe_resizer = __commonJS({
-    "../ledgerseal/node_modules/iframe-resizer/index.js"(exports, module) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/iframe-resizer/index.js"(exports, module) {
       var iframeResize = require_iframeResizer();
       module.exports = {
         iframeResize,
@@ -4351,9 +4351,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/adf-renderer.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/adf-renderer.js
   var require_adf_renderer = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/adf-renderer.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/adf-renderer.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.createAdfRendererIframeProps = exports.sendMessageWhenReady = void 0;
@@ -4420,9 +4420,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/onClose.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/onClose.js
   var require_onClose = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/onClose.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/onClose.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.onClose = void 0;
@@ -4443,9 +4443,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/getFrameDispatch.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/getFrameDispatch.js
   var require_getFrameDispatch = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/getFrameDispatch.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/getFrameDispatch.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getFrameDispatch = void 0;
@@ -4458,9 +4458,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/view.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/view.js
   var require_view = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/view.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/view.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.view = void 0;
@@ -4493,9 +4493,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/index.js
   var require_view2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/view/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -4503,9 +4503,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/router/router.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/router/router.js
   var require_router = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/router/router.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/router/router.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.router = void 0;
@@ -4555,9 +4555,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/router/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/router/index.js
   var require_router2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/router/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/router/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -4565,9 +4565,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/modal/modal.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/modal/modal.js
   var require_modal = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/modal/modal.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/modal/modal.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.Modal = void 0;
@@ -4628,9 +4628,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/modal/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/modal/index.js
   var require_modal2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/modal/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/modal/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -4638,9 +4638,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/fetch/fetch.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/fetch/fetch.js
   var require_fetch = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/fetch/fetch.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/fetch/fetch.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.productFetchApi = exports.remoteFetchApi = void 0;
@@ -4733,9 +4733,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/fetch/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/fetch/index.js
   var require_fetch2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/fetch/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/fetch/index.js"(exports) {
       "use strict";
       var _a;
       Object.defineProperty(exports, "__esModule", { value: true });
@@ -4752,9 +4752,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/requestTeamworkGraph/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/requestTeamworkGraph/index.js
   var require_requestTeamworkGraph = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/requestTeamworkGraph/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/requestTeamworkGraph/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.requestTeamworkGraph = void 0;
@@ -4768,9 +4768,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/flag/flag.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/flag/flag.js
   var require_flag = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/flag/flag.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/flag/flag.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.showFlag = void 0;
@@ -4797,9 +4797,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/flag/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/flag/index.js
   var require_flag2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/flag/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/flag/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.showFlag = void 0;
@@ -4810,9 +4810,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/events/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/events/index.js
   var require_events2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/events/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/events/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -4820,9 +4820,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/realtime/realtime.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/realtime/realtime.js
   var require_realtime = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/realtime/realtime.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/realtime/realtime.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.realtime = void 0;
@@ -4858,9 +4858,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/realtime/productContext.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/realtime/productContext.js
   var require_productContext = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/realtime/productContext.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/realtime/productContext.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.Bitbucket = exports.Confluence = exports.Jira = void 0;
@@ -4883,9 +4883,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/realtime/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/realtime/index.js
   var require_realtime2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/realtime/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/realtime/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.Bitbucket = exports.Confluence = exports.Jira = exports.realtime = void 0;
@@ -4906,9 +4906,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/rovo/open.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/rovo/open.js
   var require_open2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/rovo/open.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/rovo/open.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.open = exports.OPEN_ROVO_BRIDGE_ERROR_MESSAGE = void 0;
@@ -4953,9 +4953,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/rovo/isEnabled.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/rovo/isEnabled.js
   var require_isEnabled = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/rovo/isEnabled.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/rovo/isEnabled.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.isEnabled = void 0;
@@ -4968,9 +4968,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/rovo/rovo.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/rovo/rovo.js
   var require_rovo = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/rovo/rovo.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/rovo/rovo.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.rovo = void 0;
@@ -4983,9 +4983,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/rovo/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/rovo/index.js
   var require_rovo2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/rovo/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/rovo/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -4993,9 +4993,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/cookieConsent/getCookieConsentPreferences.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/cookieConsent/getCookieConsentPreferences.js
   var require_getCookieConsentPreferences = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/cookieConsent/getCookieConsentPreferences.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/cookieConsent/getCookieConsentPreferences.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getCookieConsentPreferences = void 0;
@@ -5013,9 +5013,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/cookieConsent/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/cookieConsent/index.js
   var require_cookieConsent = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/cookieConsent/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/cookieConsent/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -5023,9 +5023,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/i18n/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/i18n/index.js
   var require_i18n = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/i18n/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/i18n/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.createTranslationFunction = exports.getTranslations = exports.resetTranslationsCache = void 0;
@@ -5081,9 +5081,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/permissions/permissions.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/permissions/permissions.js
   var require_permissions = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/permissions/permissions.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/permissions/permissions.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.permissions = void 0;
@@ -5122,9 +5122,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/egress/out/egress/url-parser.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/egress/out/egress/url-parser.js
   var require_url_parser = __commonJS({
-    "../ledgerseal/node_modules/@forge/egress/out/egress/url-parser.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/egress/out/egress/url-parser.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.parseUrl = parseUrl;
@@ -5139,9 +5139,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/egress/out/egress/utils.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/egress/out/egress/utils.js
   var require_utils2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/egress/out/egress/utils.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/egress/out/egress/utils.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getEgressesBasedOnToggles = exports.sortAndGroupEgressPermissionsByDomain = exports.EgressCategory = exports.EgressType = void 0;
@@ -5221,9 +5221,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/egress/out/egress/egress-filtering-service.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/egress/out/egress/egress-filtering-service.js
   var require_egress_filtering_service = __commonJS({
-    "../ledgerseal/node_modules/@forge/egress/out/egress/egress-filtering-service.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/egress/out/egress/egress-filtering-service.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.EgressFilteringService = void 0;
@@ -5296,9 +5296,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/egress/out/egress/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/egress/out/egress/index.js
   var require_egress = __commonJS({
-    "../ledgerseal/node_modules/@forge/egress/out/egress/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/egress/out/egress/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -5308,9 +5308,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/egress/out/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/egress/out/index.js
   var require_out2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/egress/out/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/egress/out/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -5318,9 +5318,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/permissions/permissionsUtil.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/permissions/permissionsUtil.js
   var require_permissionsUtil = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/permissions/permissionsUtil.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/permissions/permissionsUtil.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.createPermissionUtils = createPermissionUtils;
@@ -5495,9 +5495,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/permissions/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/permissions/index.js
   var require_permissions2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/permissions/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/permissions/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -5506,9 +5506,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/upload.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/object-store/upload.js
   var require_upload = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/upload.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/object-store/upload.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.upload = exports.createUploadPromises = void 0;
@@ -5637,9 +5637,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/deleteObjects.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/object-store/deleteObjects.js
   var require_deleteObjects = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/deleteObjects.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/object-store/deleteObjects.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.deleteObjects = void 0;
@@ -5663,9 +5663,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/download.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/object-store/download.js
   var require_download = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/download.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/object-store/download.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.download = void 0;
@@ -5723,9 +5723,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/getMetadata.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/object-store/getMetadata.js
   var require_getMetadata = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/getMetadata.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/object-store/getMetadata.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getMetadata = void 0;
@@ -5757,9 +5757,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/objectStore.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/object-store/objectStore.js
   var require_objectStore = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/objectStore.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/object-store/objectStore.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.createUploadPromises = exports.objectStore = void 0;
@@ -5779,17 +5779,17 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/types.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/object-store/types.js
   var require_types2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/types.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/object-store/types.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/object-store/index.js
   var require_object_store = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/object-store/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -5798,9 +5798,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/featureFlags/evaluator.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/featureFlags/evaluator.js
   var require_evaluator = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/featureFlags/evaluator.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/featureFlags/evaluator.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.Evaluator = void 0;
@@ -5857,9 +5857,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/featureFlags/initFeatureFlags.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/featureFlags/initFeatureFlags.js
   var require_initFeatureFlags = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/featureFlags/initFeatureFlags.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/featureFlags/initFeatureFlags.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.initFeatureFlags = void 0;
@@ -5888,9 +5888,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/featureFlags/featureFlags.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/featureFlags/featureFlags.js
   var require_featureFlags = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/featureFlags/featureFlags.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/featureFlags/featureFlags.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.FeatureFlags = void 0;
@@ -5941,9 +5941,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/featureFlags/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/featureFlags/index.js
   var require_featureFlags2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/featureFlags/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/featureFlags/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.FeatureFlags = void 0;
@@ -5954,9 +5954,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/frontendCustomMetrics/frontendCustomMetrics.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/frontendCustomMetrics/frontendCustomMetrics.js
   var require_frontendCustomMetrics = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/frontendCustomMetrics/frontendCustomMetrics.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/frontendCustomMetrics/frontendCustomMetrics.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.frontendCustomMetrics = void 0;
@@ -6001,9 +6001,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/frontendCustomMetrics/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/frontendCustomMetrics/index.js
   var require_frontendCustomMetrics2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/frontendCustomMetrics/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/frontendCustomMetrics/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -6011,9 +6011,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/index.js
+  // ../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/index.js
   var require_out3 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/index.js"(exports) {
+    "../../../gemini-earning/apps/ledgerseal/node_modules/@forge/bridge/out/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.i18n = exports.NavigationTarget = void 0;
@@ -6183,13 +6183,86 @@ Please see https://iframe-resizer.com/upgrade for more details.
     let rounds = 0;
     while (res && Array.isArray(res.cascadeRemaining) && res.cascadeRemaining.length > 0 && rounds < MAX_CASCADE_ROUNDS) {
       rounds++;
-      res = await callResolver("continueCascade", { taskId: payload.taskId });
+      res = await callResolver("continueCascade", { taskId: payload.taskId, planId: payload.planId });
     }
     return res;
   }
   var MAX_CASCADE_ROUNDS = 40;
+  async function getProjectScope() {
+    try {
+      const ctx = await import_bridge.view.getContext();
+      const key = ctx?.extension?.project?.key;
+      if (!key) return void 0;
+      return ctx?.cloudId ? `${ctx.cloudId}:${key}` : String(key);
+    } catch {
+      return void 0;
+    }
+  }
   function openIssueInNewTab(issueKey) {
     void import_bridge.router.open(`/browse/${encodeURIComponent(issueKey)}`);
+  }
+
+  // src/ui/plan-view-state.ts
+  var MAIN_PLAN_ID = "default";
+  var ACTIVE_PLAN_PREFIX = "cp_active_plan_";
+  function activePlanStorageKey(scope) {
+    return ACTIVE_PLAN_PREFIX + scope;
+  }
+  function getSavedPlanId(store, scope) {
+    if (!store || !scope) return MAIN_PLAN_ID;
+    try {
+      return store.getItem(activePlanStorageKey(scope)) || MAIN_PLAN_ID;
+    } catch {
+      return MAIN_PLAN_ID;
+    }
+  }
+  function setSavedPlanId(store, scope, planId) {
+    if (!store || !scope) return;
+    try {
+      store.setItem(activePlanStorageKey(scope), planId || MAIN_PLAN_ID);
+    } catch {
+    }
+  }
+  function chooseActivePlan(requested, availablePlans) {
+    if (!requested || requested === MAIN_PLAN_ID) return MAIN_PLAN_ID;
+    return (availablePlans || []).some((p) => p.id === requested) ? requested : MAIN_PLAN_ID;
+  }
+  function isEpicRow(t) {
+    return Boolean(t.isEpic || t.hierarchyLevel === 1);
+  }
+  function parentRowKey(task, rowKeys) {
+    if (task.parentKey && task.parentKey !== task.key && rowKeys.has(task.parentKey)) return task.parentKey;
+    if (!isEpicRow(task) && task.epicKey && task.epicKey !== task.key && rowKeys.has(task.epicKey)) return task.epicKey;
+    return void 0;
+  }
+  function parentKeysOf(rows) {
+    const keys = new Set(rows.map((r) => r.key));
+    const out = /* @__PURE__ */ new Set();
+    for (const r of rows) {
+      const up = parentRowKey(r, keys);
+      if (up) out.add(up);
+    }
+    return out;
+  }
+  function isHiddenByCollapse(task, byKey, collapsed) {
+    const keys = new Set(byKey.keys());
+    const seen = /* @__PURE__ */ new Set([task.key]);
+    let up = parentRowKey(task, keys);
+    while (up && !seen.has(up)) {
+      if (collapsed.has(up)) return true;
+      seen.add(up);
+      const parent = byKey.get(up);
+      up = parent ? parentRowKey(parent, keys) : void 0;
+    }
+    return false;
+  }
+  function visibleRows(rows, collapsed) {
+    const byKey = new Map(rows.map((r) => [r.key, r]));
+    const out = [];
+    rows.forEach((task, rowIdx) => {
+      if (!isHiddenByCollapse(task, byKey, collapsed)) out.push({ task, rowIdx });
+    });
+    return out;
   }
 
   // src/frontend/flag.ts
@@ -6273,6 +6346,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const entry = this.undone.pop();
       if (entry !== void 0) this.done.push(entry);
       return entry;
+    }
+    /** Forgets every action, for example when another plan opens: its records are not this plan's. */
+    clear() {
+      this.done.length = 0;
+      this.undone.length = 0;
     }
     canUndo() {
       return this.done.length > 0;
@@ -7876,7 +7954,24 @@ Please see https://iframe-resizer.com/upgrade for more details.
   var undoStack = new UndoStack(20);
   var pendingUndo = null;
   var replayingUndo = false;
-  var activePlanId = "default";
+  var activePlanId = MAIN_PLAN_ID;
+  var planScope;
+  function browserStore() {
+    try {
+      return window.localStorage;
+    } catch (e) {
+      return void 0;
+    }
+  }
+  function setActivePlan(planId) {
+    const next = planId || MAIN_PLAN_ID;
+    if (next !== activePlanId) {
+      undoStack.clear();
+      pendingUndo = null;
+    }
+    activePlanId = next;
+    setSavedPlanId(browserStore(), planScope, activePlanId);
+  }
   async function callResolver2(fn, payload = {}) {
     const mergedPayload = { planId: activePlanId, ...payload };
     if (!UNDOABLE.has(fn) || replayingUndo) return callResolver(fn, mergedPayload);
@@ -7907,19 +8002,20 @@ Please see https://iframe-resizer.com/upgrade for more details.
   async function replayUndo(ops) {
     replayingUndo = true;
     let ok = true;
+    const planId = activePlanId;
     try {
       for (const op of ops) {
         let res;
         if (op.kind === "unschedule") {
-          res = await callResolver("unscheduleTask", { taskId: op.key });
+          res = await callResolver("unscheduleTask", { planId, taskId: op.key });
         } else if (op.kind === "schedule") {
-          res = await callResolver("scheduleBacklogTask", { taskId: op.key, startWeek: op.updates.startWeek, spanWeeks: op.updates.spanWeeks || 1 });
+          res = await callResolver("scheduleBacklogTask", { planId, taskId: op.key, startWeek: op.updates.startWeek, spanWeeks: op.updates.spanWeeks || 1 });
           if (!classifyResult(res).failed && op.updates.startDate) {
-            res = await callResolver("updateWbsTask", { taskId: op.key, updates: { startDate: op.updates.startDate, endDate: op.updates.endDate } });
+            res = await callResolver("updateWbsTask", { planId, taskId: op.key, updates: { startDate: op.updates.startDate, endDate: op.updates.endDate } });
           }
         } else {
           const t = findAnyTask(op.key);
-          res = await callResolver("updateWbsTask", { taskId: op.key, updates: op.updates, expectedVersion: t && t.version || 0 });
+          res = await callResolver("updateWbsTask", { planId, taskId: op.key, updates: op.updates, expectedVersion: t && t.version || 0 });
         }
         const verdict = classifyResult(res);
         if (verdict.failed) {
@@ -8037,7 +8133,21 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const fl = getFrozenLayout();
     return fl.widths[k] !== void 0 ? fl.widths[k] : isCompactMode() && k === "task" ? compactTaskWidth : columnWidths[k];
   }
-  var expandedTasks = /* @__PURE__ */ new Set();
+  var collapsedTasks = /* @__PURE__ */ new Set();
+  function expandAncestors(task) {
+    let changed = false;
+    const seen = /* @__PURE__ */ new Set();
+    let cur = task;
+    while (cur && !seen.has(cur.key)) {
+      seen.add(cur.key);
+      for (const k of [cur.parentKey, cur.epicKey]) {
+        if (k && k !== cur.key && collapsedTasks.delete(k)) changed = true;
+      }
+      const upKey = cur.parentKey && cur.parentKey !== cur.key ? cur.parentKey : cur.epicKey;
+      cur = upKey && upKey !== cur.key ? findTask(upKey) : null;
+    }
+    return changed;
+  }
   var currentHierarchyView = "all";
   async function initApp() {
     initErrorBanner();
@@ -8078,6 +8188,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
     });
     setupEventListeners();
     initKeyboard();
+    planScope = await getProjectScope();
+    activePlanId = getSavedPlanId(browserStore(), planScope);
     loadProjectPlan();
   }
   if (document.readyState === "loading") {
@@ -8727,16 +8839,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const match = searchMatches[pos];
     const key = match.task.key;
     if (!key) return;
-    let needsRecompute = false;
-    if (match.task.parentKey && !expandedTasks.has(match.task.parentKey)) {
-      expandedTasks.add(match.task.parentKey);
-      needsRecompute = true;
-    }
-    if (match.task.epicKey && !expandedTasks.has(match.task.epicKey)) {
-      expandedTasks.add(match.task.epicKey);
-      needsRecompute = true;
-    }
-    if (needsRecompute) {
+    if (expandAncestors(match.task)) {
       const computed = computeRowTasks();
       rowTasks = computed.rows;
       rowTaskList = rowTasks.map((r) => r.task);
@@ -9063,7 +9166,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
           cloneFromPlanId: p.id
         });
         if (res && res.ok && res.plan) {
-          activePlanId = res.plan.id;
+          setActivePlan(res.plan.id);
           showFlag({ text: `Cloned plan to ${res.plan.name}.` });
           closePlansPopover();
           await loadProjectPlan();
@@ -9126,7 +9229,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
             if (res && res.ok) {
               showFlag({ text: `Deleted plan ${p.name}.` });
               if (activePlanId === p.id) {
-                activePlanId = "default";
+                setActivePlan(MAIN_PLAN_ID);
               }
               await loadProjectPlan();
             } else {
@@ -9149,7 +9252,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       row.addEventListener("click", async (e) => {
         if (e.target.closest("button") || e.target.closest("input")) return;
         if (p.id !== currentId) {
-          activePlanId = p.id;
+          setActivePlan(p.id);
           closePlansPopover();
           await loadProjectPlan();
           showFlag({ text: `Switched to plan ${p.name}.` });
@@ -9159,7 +9262,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         if (ke.key === "Enter" || ke.key === " ") {
           ke.preventDefault();
           if (p.id !== currentId) {
-            activePlanId = p.id;
+            setActivePlan(p.id);
             closePlansPopover();
             await loadProjectPlan();
             showFlag({ text: `Switched to plan ${p.name}.` });
@@ -9183,9 +9286,22 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const plan = await callResolver2("getProjectPlan", { planId: activePlanId });
     if (loader) loader.style.display = "none";
     if (plan && Array.isArray(plan.tasks)) {
+      if (!planScope && plan.projectKey) {
+        planScope = String(plan.projectKey);
+        const saved = chooseActivePlan(getSavedPlanId(browserStore(), planScope), plan.availablePlans);
+        if (saved !== (plan.planId || MAIN_PLAN_ID)) {
+          activePlanId = saved;
+          return loadProjectPlan();
+        }
+      }
+      const requested = activePlanId;
+      const served = chooseActivePlan(plan.planId || MAIN_PLAN_ID, plan.availablePlans);
+      if (requested !== MAIN_PLAN_ID && served !== requested) {
+        showFlag({ text: "The plan you had open no longer exists. Showing the Main Plan." });
+      }
       mergeOptimisticTasks(plan);
       currentPlan = plan;
-      if (plan.planId) activePlanId = plan.planId;
+      setActivePlan(served);
       updatePlansUI(plan.availablePlans, activePlanId);
       columnWidths = sanitizeLoadedColumnWidths(plan.columnWidths);
       if (Array.isArray(plan.hiddenColumns)) {
@@ -9201,7 +9317,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       renderPlan();
       settleUndo();
       if (Array.isArray(plan.staleEntries) && plan.staleEntries.length) {
-        callResolver("pruneStaleEntries", { keys: plan.staleEntries.slice(0, 200) });
+        callResolver("pruneStaleEntries", { planId: activePlanId, keys: plan.staleEntries.slice(0, 200) });
       }
     } else {
       if (errBanner) {
@@ -9224,12 +9340,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
         newEpicBtn.title = "";
       }
     }
-    if (currentPlan.tasks) {
-      currentPlan.tasks.forEach((t) => {
-        if (t.isEpic || t.childrenCount || t.subtasks && t.subtasks.length > 0) {
-          expandedTasks.add(t.key);
-        }
-      });
+    if (currentPlan.tasks && collapsedTasks.size) {
+      const keys = new Set(currentPlan.tasks.map((t) => t.key));
+      for (const k of [...collapsedTasks]) if (!keys.has(k)) collapsedTasks.delete(k);
     }
     renderMilestones();
     renderBacklogTray();
@@ -10272,8 +10385,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
           return;
         }
         if (res && res.task) {
-          if (res.task.epicKey) expandedTasks.add(res.task.epicKey);
-          if (res.task.parentKey) expandedTasks.add(res.task.parentKey);
+          expandAncestors(res.task);
           registerOptimisticTask(res.task);
         }
         if (currentHierarchyView === "epics") {
@@ -10389,15 +10501,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
     } else if (currentHierarchyView === "stories") {
       tasksToRender = currentPlan.tasks.filter((t) => !t.isEpic && t.hierarchyLevel !== 1);
     }
-    const planKeys = new Set(currentPlan.tasks.map((t) => t.key));
-    const out = [];
-    tasksToRender.forEach((task, rowIdx) => {
-      if (task.isSubtask && task.parentKey && !expandedTasks.has(task.parentKey)) return;
-      if (!task.isEpic && task.epicKey && task.epicKey !== task.key && planKeys.has(task.epicKey) && !expandedTasks.has(task.epicKey)) return;
-      out.push({ task, rowIdx });
-    });
-    return { rows: out, total: tasksToRender.length };
+    rowParentKeys = parentKeysOf(tasksToRender);
+    return { rows: visibleRows(tasksToRender, collapsedTasks), total: tasksToRender.length };
   }
+  var rowParentKeys = /* @__PURE__ */ new Set();
   function makeSpacer(cols) {
     const tr = document.createElement("tr");
     tr.className = "spacer-row";
@@ -10686,13 +10793,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
         if (activeKey === task.key) tr.classList.add("is-search-active");
       }
     }
-    const hasChildren = Boolean(
-      task.childrenCount && task.childrenCount > 0 || task.subtasks && task.subtasks.length > 0 || currentPlan.tasks.some((t) => (t.parentKey === task.key || t.parentId === task.id || isEpic && t.epicKey === task.key) && t.key !== task.key)
-    );
+    const hasChildren = rowParentKeys.has(task.key);
     let expandToggleHtml = html``;
-    if (hasChildren && !isSub) {
-      const isExp = expandedTasks.has(task.key);
-      expandToggleHtml = html`<button class="tree-toggle-btn" data-parent-key="${task.key}" title="${isExp ? "Collapse children" : "Expand children"}">${isExp ? "\u25BC" : "\u25B6"}</button>`;
+    if (hasChildren) {
+      const isExp = !collapsedTasks.has(task.key);
+      expandToggleHtml = html`<button class="tree-toggle-btn" type="button" data-parent-key="${task.key}" aria-expanded="${isExp ? "true" : "false"}" aria-label="${isExp ? "Collapse" : "Expand"} children of ${task.key}" title="${isExp ? "Collapse children" : "Expand children"}">${isExp ? "\u25BC" : "\u25B6"}</button>`;
     }
     let badgeHtml = html``;
     let indentPx = 0;
@@ -11082,12 +11187,13 @@ Click to manage or assign.`;
     if (treeToggle) {
       treeToggle.addEventListener("click", (e) => {
         e.stopPropagation();
-        if (expandedTasks.has(task.key)) {
-          expandedTasks.delete(task.key);
+        if (collapsedTasks.has(task.key)) {
+          collapsedTasks.delete(task.key);
         } else {
-          expandedTasks.add(task.key);
+          collapsedTasks.add(task.key);
         }
         renderTimelineRows();
+        document.querySelector(`.tree-toggle-btn[data-parent-key="${CSS.escape(task.key)}"]`)?.focus();
       });
     }
     setupRowPointerReorder(tr, task);
@@ -11871,7 +11977,7 @@ Click to manage or assign.`;
       row.setAttribute("role", "row");
       row.setAttribute("aria-rowindex", String(i + 2));
       row.setAttribute("aria-level", String(rowLevel(t, planKeys)));
-      if (expandedTasks.has(t.key) && (t.isEpic || t.childrenCount)) row.setAttribute("aria-expanded", "true");
+      if (rowParentKeys.has(t.key)) row.setAttribute("aria-expanded", collapsedTasks.has(t.key) ? "false" : "true");
       row.dataset.row = String(i);
       rowCells(t).forEach((text, c) => {
         const cell2 = document.createElement("span");
@@ -12561,7 +12667,7 @@ Click to manage or assign.`;
     document.getElementById("btnConflictAdjust")?.addEventListener("click", applyConflictAdjust);
     document.getElementById("btnConflictKeep")?.addEventListener("click", applyConflictKeep);
     document.getElementById("planSwitcher")?.addEventListener("change", async (e) => {
-      activePlanId = e.target.value;
+      setActivePlan(e.target.value);
       await loadProjectPlan();
       announce(`Switched to plan ${e.target.selectedOptions[0]?.textContent || activePlanId}.`);
     });
@@ -12633,7 +12739,7 @@ Click to manage or assign.`;
       if (res && res.ok && res.plan) {
         if (nameInp) nameInp.value = "";
         closePlansPopover();
-        activePlanId = res.plan.id;
+        setActivePlan(res.plan.id);
         showFlag({ text: `Created and switched to plan ${res.plan.name}.` });
         await loadProjectPlan();
       } else {
@@ -13320,8 +13426,7 @@ Click to manage or assign.`;
       summaryInput.value = "";
       closeModal("createTaskModal");
       if (res && res.task) {
-        if (res.task.epicKey) expandedTasks.add(res.task.epicKey);
-        if (res.task.parentKey) expandedTasks.add(res.task.parentKey);
+        expandAncestors(res.task);
         registerOptimisticTask(res.task);
       }
       if (currentHierarchyView === "epics") {
