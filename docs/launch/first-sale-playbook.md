@@ -111,7 +111,7 @@ When the prospect's security team asks for vendor documentation:
 - Emphasize key zero-trust architectural proofs:
   - Zero third-party servers: no AWS/GCP backend to breach.
   - Zero egress: no outbound network fetch calls.
-  - Open offline verification: auditors can verify evidence independently via `github.com/asymmsystems/ledgerseal-verifier`.
+  - Open offline verification: auditors can verify evidence independently via `https://docs.asymm.systems/apps/ledgerseal/open-verifier`.
 
 ---
 

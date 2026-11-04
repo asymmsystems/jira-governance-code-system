@@ -24,7 +24,8 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/asymmsystems/ledgerseal-verifier.git"
+    "url": "git+https://github.com/asymmsystems/jira-governance-code-system.git",
+    "directory": "tools/verifier"
   },
   "engines": {
     "node": ">=18.0.0"

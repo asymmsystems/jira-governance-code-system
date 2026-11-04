@@ -30,12 +30,12 @@ LedgerSeal solves this mathematically:
 2. The snapshot hash is digitally signed with an Ed25519 key and appended to a cryptographic hash chain stored in Atlassian Forge KVS.
 3. A native Jira workflow transition validator (ledgerseal-validator) recalculates the snapshot hash when the ticket attempts to transition to Done or Released. If a single byte or attachment changed since approval, the deployment transition is hard-blocked and attributes the exact modified field.
 4. It is 100% Forge native: zero external network calls (no outbound fetch), zero external servers, runs entirely in the customer's Atlassian tenant.
-5. Compliance verification is completely offline: we open-sourced a zero-dependency CLI verifier using only Node.js node:crypto (github.com/asymmsystems/ledgerseal-verifier) so auditors can verify signatures and hash chains independently without trusting us or Jira.
+5. Compliance verification is completely offline: we open-sourced a zero-dependency CLI verifier using only Node.js node:crypto (docs.asymm.systems/apps/ledgerseal/open-verifier) so auditors can verify signatures and hash chains independently without trusting us or Jira.
 
 Pricing: Free up to 10 users, then $1.50/user/month on the Marketplace.
 
 Docs & Architecture: https://docs.asymm.systems/
-Offline Verifier: https://github.com/asymmsystems/ledgerseal-verifier
+Offline Verifier: https://docs.asymm.systems/apps/ledgerseal/open-verifier
 
 I'd love feedback on the canonicalization scheme and how teams here handle release gate verification in Jira.
 ```
@@ -63,7 +63,7 @@ We built an open solution called LedgerSeal on Atlassian Forge:
 - We also published an open-source offline verification script using standard node:crypto so auditors can verify evidence files independently.
 
 Article with technical architecture: https://docs.asymm.systems/approved-ticket-problem
-Verifier repo: https://github.com/asymmsystems/ledgerseal-verifier
+Verifier repo: https://docs.asymm.systems/apps/ledgerseal/open-verifier
 
 How are other teams ensuring approved tickets aren't modified prior to automated deployment?
 ```
@@ -117,7 +117,7 @@ Jira's default history log shows modifications, but it doesn't prove integrity a
 We developed an Atlassian Forge suite to automate this proof:
 1. LedgerSeal: Hashes the approved issue state (SHA-256) and Ed25519 signs it. Gated workflow transitions reject release if the hash diverges.
 2. DefinitionGuard: Enforces mandatory DoD checklists, requires non-assignee reviews, and records immutable waiver justifications.
-3. Standalone Verification: Outputs standalone evidence JSON that can be verified offline with an open-source Node script (github.com/asymmsystems/ledgerseal-verifier), meaning you don't have to rely on an app vendor during an audit.
+3. Standalone Verification: Outputs standalone evidence JSON that can be verified offline with an open-source Node script (docs.asymm.systems/apps/ledgerseal/open-verifier), meaning you don't have to rely on an app vendor during an audit.
 
 Architecture guarantee: 100% Forge native, zero external network egress, data resides in customer tenant storage.
 
@@ -237,7 +237,7 @@ Hope you're having a productive week. If [Company] uses Jira for validation or c
 We built LedgerSeal to provide tamper-evident approval seals and independent verification for Jira Cloud, addressing FDA 21 CFR Part 11 (§ 11.10e audit trails) and SOC 2 CC8.1 change control.
 
 It generates an append-only cryptographic hash chain for every approval and includes an open-source, zero-dependency offline CLI verifier so your auditors can verify evidence files independently:
-https://github.com/asymmsystems/ledgerseal-verifier
+https://docs.asymm.systems/apps/ledgerseal/open-verifier
 
 Full compliance mapping documentation is available at:
 https://docs.asymm.systems/apps/ledgerseal/compliance-mapping

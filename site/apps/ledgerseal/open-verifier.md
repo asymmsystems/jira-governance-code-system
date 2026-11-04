@@ -10,7 +10,7 @@ The LedgerSeal offline verifier allows compliance officers, security auditors, a
 
 - **Zero Dependencies:** Uses standard library `node:crypto`, `node:fs`, and `node:path` only. No external npm packages.
 - **Air-Gapped Execution:** Runs completely offline with zero external network egress.
-- **Public Repository:** https://github.com/asymmsystems/ledgerseal-verifier
+- **Monorepo Package Location:** https://github.com/asymmsystems/jira-governance-code-system/tree/master/tools/verifier
 
 ---
 

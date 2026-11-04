@@ -61,23 +61,20 @@ This checklist consolidates all operational actions that require direct human ex
 
 ---
 
-## 3. Public Standalone Verifier Repository
+## 3. Monorepo & Documentation Publishing
 
-- [ ] **Create GitHub Repository:**
-  - Create a new public repository: `https://github.com/asymmsystems/ledgerseal-verifier`.
-  - Description: *"Zero-dependency offline cryptographic verification engine for LedgerSeal Jira Cloud approval evidence."*
-- [ ] **Push Package Contents:**
-  - In a temporary terminal, push the contents of `verifier-public/` to `main`:
+- [ ] **Push Monorepo to GitHub:**
+  - Remote repository: `https://github.com/asymmsystems/jira-governance-code-system`
+  - Push branch `master`:
     ```bash
-    cd verifier-public
-    git init -b main
-    git add .
-    git commit -m "feat(verifier): initial public release of standalone offline verifier"
-    git remote add origin git@github.com:asymmsystems/ledgerseal-verifier.git
-    git push -u origin main
+    git push -u origin master
     ```
-- [ ] **Verify CI Workflow:**
-  - Confirm that `.github/workflows/test.yml` runs in the public repo and passes all tests (`node --test`).
+- [ ] **Verify Documentation Deployment Workflow:**
+  - In GitHub Actions for `asymmsystems/jira-governance-code-system`:
+  - Confirm `.github/workflows/docs-deploy.yml` triggers on push to `master`.
+  - Confirm the VitePress build succeeds and deploys to GitHub Pages (`docs.asymm.systems`).
+- [ ] **Verify Offline Verifier in Monorepo:**
+  - The verifier package lives under `tools/verifier/` and is documented directly on the docs site (`https://docs.asymm.systems/apps/ledgerseal/open-verifier`).
 
 ---
 

@@ -1,8 +1,7 @@
 # LedgerSeal Offline Evidence Verifier
 
-> Independent, zero-dependency offline verifier for cryptographic approval evidence produced by LedgerSeal for Jira Cloud.
+> Independent, zero-dependency offline verifier for cryptographic approval evidence produced by LedgerSeal for Jira Cloud. Part of the [Asymm Systems Jira Governance Suite](https://github.com/asymmsystems/jira-governance-code-system).
 
-[![Test](https://github.com/asymmsystems/ledgerseal-verifier/actions/workflows/test.yml/badge.svg)](https://github.com/asymmsystems/ledgerseal-verifier/actions)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 ---
@@ -11,7 +10,7 @@
 
 **LedgerSeal** provides tamper-evident cryptographic approval seals and post-approval change control for Jira issues. When an authorized lead approves an issue, LedgerSeal takes a canonical snapshot of covered fields, comments, and attachments, computes a SHA-256 hash, chains it into a tamper-evident audit history, and signs the attestation with an Ed25519 private key.
 
-This repository provides an open-source, offline verification script (`verify-evidence.mjs`) that allows compliance officers, security auditors, and release engineers to verify exported evidence files independently, without needing access to Jira, the LedgerSeal app, or any external network service.
+This package provides an open-source, offline verification script (`verify-evidence.mjs`) that allows compliance officers, security auditors, and release engineers to verify exported evidence files independently, without needing access to Jira, the LedgerSeal app, or any external network service.
 
 ### Design Principles
 - **Zero Dependencies:** Uses Node.js standard library only (`node:crypto`, `node:fs`, `node:path`). No external npm packages.
@@ -38,10 +37,10 @@ When you run `verify-evidence.mjs`, four sequential checks are executed:
 ### Prerequisites
 - Node.js 18.0.0 or higher.
 
-### Clone Repository
+### Source Location
 ```bash
-git clone https://github.com/asymmsystems/ledgerseal-verifier.git
-cd ledgerseal-verifier
+git clone https://github.com/asymmsystems/jira-governance-code-system.git
+cd jira-governance-code-system/tools/verifier
 ```
 
 ### Self-Test

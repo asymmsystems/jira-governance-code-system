@@ -37,7 +37,7 @@ LedgerSeal solves this by binding the approval directly to the issue content wit
 | **Tamper-Evident History Chain** | Hash-chained audit trail from genesis (`0000...0000`) where every seal, edit, reseal, or revocation is linked. | `apps/ledgerseal/src/domain/history.ts`, `apps/ledgerseal/test/history-chain.test.ts` |
 | **Workflow Transition Gate** | Jira workflow validator blocks issue transition to Done if unsealed, broken, or modified post-approval. | `apps/ledgerseal/src/validator/workflow-validator.ts`, `apps/ledgerseal/test/workflow-validator.test.ts` |
 | **Ed25519 Digital Signatures** | Attestation signed with Ed25519 asymmetric cryptography using published vendor public keys. | `apps/ledgerseal/src/domain/crypto.ts`, `apps/ledgerseal/keys/ls-dev-2026-11.pub.pem` |
-| **Standalone Offline Verifier** | Open-source Node.js script verifies exported evidence offline using standard library `node:crypto` only. | `verifier-public/verify-evidence.mjs`, `verifier-public/test/verify.test.mjs` |
+| **Standalone Offline Verifier** | Open-source Node.js script verifies exported evidence offline using standard library `node:crypto` only. | `tools/verifier/verify-evidence.mjs`, `tools/verifier/test/verify.test.mjs` |
 
 ---
 
@@ -88,7 +88,7 @@ LedgerSeal provides technical controls that support customer compliance across r
 ## Support, Documentation & Legal Links
 
 - **Documentation Portal:** https://docs.asymm.systems/apps/ledgerseal/
-- **Open Verifier Repository:** https://github.com/asymmsystems/ledgerseal-verifier
+- **Offline Verifier Documentation & Source:** https://docs.asymm.systems/apps/ledgerseal/open-verifier
 - **Privacy Policy:** https://asymm.systems/privacy
 - **Terms of Service:** https://asymm.systems/terms
 - **Support Portal & SLA:** https://asymm.systems/support
