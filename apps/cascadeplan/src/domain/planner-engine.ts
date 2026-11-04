@@ -567,6 +567,8 @@ export class PlannerEngine {
           if (spanWeeks) t.spanWeeks = spanWeeks;
         }
       } else {
+        // A row without child rows says so explicitly; the client draws no expand toggle for it.
+        t.childrenCount = 0;
         const distinctResources = new Set<string>();
         const addResource = (res?: string) => {
           if (res && res !== 'Unassigned' && res !== 'Unallocated') {
