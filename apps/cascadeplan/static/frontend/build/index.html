@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CascadePlan - Visual Project & Portfolio Planner</title>
+  <link rel="stylesheet" href="./style.css">
+  <style>
+    @keyframes cpSpin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <!-- App Header -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="brand-title">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke: var(--cp-border-brand)" stroke-width="2.5"><path d="M3 3h18v18H3z"/><path d="M7 8h10M7 12h6M7 16h8"/></svg>
+        <span>CascadePlan</span>
+      </div>
+      <span class="badge badge-primary" id="projectBadge" hidden></span>
+      <span class="badge badge-warning" id="truncatedNote" hidden></span>
+      <span class="badge badge-success" id="completionBadge" hidden></span>
+      <div class="header-divider"></div>
+      <div class="plan-selector-group">
+        <select class="view-select plan-select" id="planSwitcher" aria-label="Active Plan" title="Switch active plan" style="display: none;">
+          <option value="default">Main Plan</option>
+        </select>
+        <button class="btn btn-outline btn-sm plan-selector-trigger" id="planSelectorBtn" title="Select or manage project plans" type="button" aria-expanded="false" aria-controls="plansManagerPopover">
+          <span class="plan-selector-icon">📋</span>
+          <span id="planSelectorLabel" class="plan-selector-label">Main Plan</span>
+          <span class="plan-selector-caret">▾</span>
+        </button>
+        <button id="btnManagePlans" style="display: none;" type="button" aria-expanded="false" aria-controls="plansManagerPopover">Plans ▾</button>
+        <!-- Plans Manager Popover -->
+        <div class="column-manager-popover plans-manager-popover" id="plansManagerPopover" style="display: none;">
+          <div class="col-popover-header">
+            <span style="font-weight: 700; font-size: 13px;">Manage Project Plans</span>
+            <button class="btn-icon-subtle" id="btnClosePlansPopover" title="Close" type="button">✕</button>
+          </div>
+          <div class="col-popover-info">
+            Switch plans, create scenarios, or baseline alternatives.
+          </div>
+          <div class="plans-filter-section">
+            <input type="search" id="planSearchInput" class="in-app-search-input" placeholder="Search plans..." aria-label="Search plans by name" autocomplete="off">
+            <div class="plan-filter-tabs" role="tablist">
+              <button type="button" class="plan-tab active" data-category="all" role="tab" aria-selected="true">All (<span id="planTabCountAll">1</span>)</button>
+              <button type="button" class="plan-tab" data-category="baselines" role="tab" aria-selected="false">Baselines (<span id="planTabCountBaselines">1</span>)</button>
+              <button type="button" class="plan-tab" data-category="scenarios" role="tab" aria-selected="false">Scenarios (<span id="planTabCountScenarios">0</span>)</button>
+            </div>
+          </div>
+          <div id="plansListContainer" class="plans-list-container"></div>
+          <div class="plans-create-section">
+            <div style="display: flex; gap: 6px;">
+              <input type="text" id="newPlanNameInput" class="in-app-search-input" placeholder="New plan name..." style="flex: 1;">
+              <button class="btn btn-primary btn-sm" id="btnCreatePlan" type="button">+ Create</button>
+            </div>
+            <label class="clone-plan-label">
+              <input type="checkbox" id="cloneCurrentPlanCheckbox" checked> Clone current plan tasks &amp; settings
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="header-divider"></div>
+      <div class="search-box-container" role="search">
+        <input type="search" id="inAppSearchInput" class="in-app-search-input" placeholder="Search tasks..." aria-label="Search tasks by key or summary" autocomplete="off">
+        <span id="searchMatchCount" class="search-match-count" aria-live="polite"></span>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <button class="btn btn-outline btn-sm" id="toggleBacklogBtn" title="Toggle unmapped backlog tray">📂 Backlog (<span id="backlogCount">0</span>)</button>
+      <button class="btn btn-outline btn-sm" id="btnChanges" type="button" aria-expanded="false" aria-controls="changesPanel" title="Every Jira write of this session">Changes (<span id="changesCount">0</span>)</button>
+      <button class="btn btn-outline btn-sm" id="refreshBtn" title="Refresh project plan">🔄</button>
+      <button class="btn btn-outline btn-sm" id="toggleTableViewBtn" type="button" aria-pressed="false" style="display: none;">Table view</button>
+      <div style="position: relative; display: inline-block;">
+        <button class="btn btn-outline btn-sm" id="btnManageColumns" title="Show or hide table columns">
+          ⊞ Columns <span id="colCountBadge" class="col-count-badge">8/8</span> ▾
+        </button>
+        <!-- Column Manager Popover -->
+        <div class="column-manager-popover" id="columnManagerPopover" style="display: none;">
+          <div class="col-popover-header">
+            <span style="font-weight: 700; font-size: 13px;">Manage Table Columns</span>
+            <button class="btn-icon-subtle" id="btnCloseColPopover" title="Close">✕</button>
+          </div>
+          <div class="col-popover-info">
+            Toggle columns to customize view. Task Summary is required for task identity.
+          </div>
+          <div class="col-popover-list" id="columnOptionsList"></div>
+          <div class="col-popover-footer">
+            <button class="btn btn-outline btn-sm" id="btnShowAllColumns">Show All</button>
+            <button class="btn btn-outline btn-sm" id="btnResetColumns">Reset Defaults</button>
+          </div>
+        </div>
+      </div>
+      <select class="view-select hierarchy-select" id="hierarchySwitcher" aria-label="Hierarchy level" title="Filter hierarchy level">
+        <option value="all">🌳 Level</option>
+        <option value="epics">🟪 Epics</option>
+        <option value="stories">🔷 Stories</option>
+      </select>
+      <select class="view-select" id="viewSwitcher" aria-label="View">
+        <option value="timeline">📊 Timeline</option>
+        <option value="table">📋 Table</option>
+        <option value="utilization">👤 Utilization</option>
+      </select>
+      <div class="header-divider"></div>
+      <div class="btn-group">
+        <button class="btn btn-outline btn-sm" id="newEpicBtn" title="Create a new Epic">+ Epic</button>
+        <button class="btn btn-primary btn-sm" id="newTaskBtn" title="Create a new Task or Issue">+ Task</button>
+      </div>
+      <label class="shortcut-toggle" title="Keyboard shortcuts enabled"><input type="checkbox" id="shortcutsToggle" checked> Keys</label>
+    </div>
+  </header>
+
+  <div id="syncBanner" class="sync-banner" role="alert" hidden>
+    <span id="syncBannerText"></span>
+    <button class="btn btn-outline btn-sm" id="btnDismissSync">Dismiss</button>
+  </div>
+
+  <div class="workspace-container">
+    <!-- Collapsible Backlog Tray -->
+    <aside class="backlog-tray collapsed" id="backlogTray">
+      <div class="tray-header">
+        <span class="tray-title">Unmapped Project Issues</span>
+        <button class="btn btn-subtle" id="closeTrayBtn">✕</button>
+      </div>
+      <div class="tray-content" id="backlogCardsList">
+        <!-- Backlog cards dynamically rendered here -->
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="planner-content">
+      <!-- 1. Timeline View -->
+      <div id="timelineViewSection" style="display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; height: 100%;">
+        <!-- Initial Loading Indicator & Error Banner -->
+        <div id="plannerLoadingIndicator" style="display: flex; align-items: center; justify-content: center; gap: 10px; padding: 20px; color: var(--cp-text-subtle); font-size: 13px; font-weight: 600;">
+          <span style="display: inline-block; width: 16px; height: 16px; border: 2px solid var(--cp-border-brand); border-top-color: transparent; border-radius: 50%; animation: cpSpin 0.8s linear infinite;"></span>
+          <span>Loading project schedule & backlog issues...</span>
+        </div>
+        <div id="plannerErrorBanner" style="display: none; margin: 12px; padding: 10px 14px; background: var(--cp-bg-danger); border: 1px solid var(--cp-border-danger); border-radius: 6px; color: var(--cp-text-danger); font-size: 13px; align-items: center; justify-content: space-between;">
+          <span id="plannerErrorMsg">Failed to load project plan.</span>
+          <button class="btn btn-outline btn-sm" id="btnRetryLoad">Retry</button>
+        </div>
+        <div class="timeline-banner">
+          <div class="timeline-nav-group">
+            <div class="btn-group">
+              <button class="btn btn-outline btn-sm" id="btnScrollEarlier" title="Scroll timeline left to earlier weeks (or press Left Arrow)">◀</button>
+              <button class="btn btn-primary btn-sm" id="btnScrollToday" title="Jump timeline view to Current Week / Today">🎯 Today</button>
+              <button class="btn btn-outline btn-sm" id="btnScrollLater" title="Scroll timeline right to later weeks (or press Right Arrow)">▶</button>
+            </div>
+
+            <div class="zoom-group" id="zoomGroup" role="group" aria-label="Zoom scale">
+              <button class="btn btn-outline btn-sm" type="button" data-zoom="day" aria-pressed="false">Day</button>
+              <button class="btn btn-outline btn-sm" type="button" data-zoom="week" aria-pressed="true">Week</button>
+              <button class="btn btn-outline btn-sm" type="button" data-zoom="month" aria-pressed="false">Month</button>
+              <button class="btn btn-outline btn-sm" type="button" data-zoom="quarter" aria-pressed="false">Quarter</button>
+              <button class="btn btn-outline btn-sm" type="button" data-zoom="year" aria-pressed="false">Year</button>
+            </div>
+
+            <button class="btn btn-outline btn-sm" type="button" id="btnCompactColumns" aria-pressed="false" title="Show only Key and Summary">Compact</button>
+            <label class="enforce-deps-toggle" title="When enabled, moving a task automatically snaps to respect predecessor milestone dates"><input type="checkbox" id="enforceDependenciesCheckbox"> Enforce deps</label>
+          </div>
+
+          <div class="milestones-strip" id="milestonesStrip">
+            <!-- Milestones dynamically injected -->
+          </div>
+
+          <div class="legend-row">
+            <div class="legend-compact-chip" id="legendTrigger" title="Legend: Green = Completed / On Track | Red = Behind Schedule or Conflict | Blue = Planned">
+              <span class="legend-dot" style="background: var(--cp-bg-success-bold);"></span>
+              <span class="legend-dot" style="background: var(--cp-bg-danger-bold);"></span>
+              <span class="legend-dot" style="background: var(--cp-bg-brand-hover);"></span>
+              <span style="font-weight: 600; font-size: 11px; margin-left: 2px;">Legend</span>
+              <span id="legendCurrentWeek" style="display: none;"></span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Hidden Columns Quick Restoration Alert Bar -->
+        <div id="hiddenColsAlertBar" class="hidden-cols-alert" style="display: none;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 14px;">👁️</span>
+            <span id="hiddenColsText" style="font-weight: 600;">Columns hidden</span>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-primary btn-sm" id="btnUnhideAllBanner">Unhide All Columns</button>
+            <button class="btn btn-outline btn-sm" id="btnOpenManagerFromBanner">Manage Columns ▾</button>
+          </div>
+        </div>
+
+        <!-- First-link hint (B-25): shown until the plan has a link or it is dismissed -->
+        <div id="linkHint" class="link-hint" role="note" hidden>
+          <span>Tip: make a percent link in 3 clicks. Click a bar, choose <strong>Add dependency</strong>, then click the issue it waits for.</span>
+          <button class="btn btn-link btn-sm" type="button" id="btnHintHelp">How CascadePlan works</button>
+          <button class="btn btn-subtle btn-sm" type="button" id="btnHintDismiss" aria-label="Dismiss tip">✕</button>
+        </div>
+
+        <!-- Single unified horizontal scroll on ganttWrapper (duplicate top and bottom dummy scrollbars removed) -->
+        <div class="gantt-wrapper" id="ganttWrapper">
+          <table class="gantt-table" id="ganttTable">
+            <thead>
+              <tr id="ganttHeaderRow">
+                <!-- Columns dynamically injected with resizers -->
+              </tr>
+            </thead>
+            <tbody id="ganttBody">
+              <!-- Task rows dynamically injected -->
+            </tbody>
+          </table>
+          <div id="depLinksLayer" class="dep-links-layer"></div>
+        </div>
+      </div>
+
+      <!-- 2. Resource Utilization View -->
+      <div id="utilizationViewSection" class="resource-view-container">
+        <h3 style="margin-bottom: 8px;">Hours per person per week</h3>
+        <p style="color: var(--cp-text-subtle); margin-bottom: 14px;">From the Jira estimates on the plan, spread evenly over the days of each task. No capacity is assumed.</p>
+        <div id="utilizationProfilesContent"></div>
+      </div>
+
+      <!-- 3. Plain DOM Table View (B-26: canvas fallback) -->
+      <div id="tableViewSection" class="table-view-container" style="display: none;">
+        <div class="table-view-banner">
+          <div>
+            <h3 class="table-view-title">Plain Table View</h3>
+            <p class="table-view-desc">Project tasks and dates in a plain DOM table (canvas fallback).</p>
+          </div>
+          <span class="table-row-count" id="tableRowCount">0 issues</span>
+        </div>
+        <div class="table-view-wrapper">
+          <table id="plainDataTable" class="plain-data-table" aria-label="Project tasks table">
+            <thead>
+              <tr>
+                <th scope="col">Key</th>
+                <th scope="col">Summary</th>
+                <th scope="col">Type</th>
+                <th scope="col">Epic</th>
+                <th scope="col">Assignee</th>
+                <th scope="col">Start Date</th>
+                <th scope="col">Due Date</th>
+                <th scope="col">Progress</th>
+                <th scope="col">Status</th>
+                <th scope="col">Dependencies</th>
+              </tr>
+            </thead>
+            <tbody id="plainDataTableBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- "Why this date?" popup (B-12): non-modal, dismissed by Escape or the close button -->
+  <div id="whyPopup" class="why-popup" role="dialog" aria-labelledby="whyTitle" hidden>
+    <div class="why-header">
+      <strong id="whyTitle"></strong>
+      <button class="btn btn-subtle btn-sm" id="btnCloseWhy" type="button" aria-label="Close">✕</button>
+    </div>
+    <p id="whyReason" class="why-reason"></p>
+    <ol id="whyChain" class="why-chain"></ol>
+    <p id="whyViolation" class="why-violation" hidden></p>
+    <div id="whyFixes" class="why-fixes"></div>
+  </div>
+
+  <!-- "Changes" panel (B-23): each Jira write of this session, non-modal -->
+  <div id="changesPanel" class="changes-panel" role="dialog" aria-labelledby="changesTitle" hidden>
+    <div class="why-header">
+      <strong id="changesTitle">Jira writes in this session</strong>
+      <button class="btn btn-subtle btn-sm" id="btnCloseChanges" type="button" aria-label="Close">✕</button>
+    </div>
+    <table class="changes-table">
+      <thead><tr><th scope="col">Issue</th><th scope="col">Field</th><th scope="col">Old</th><th scope="col">New</th><th scope="col">Result</th></tr></thead>
+      <tbody id="changesBody"></tbody>
+    </table>
+  </div>
+
+  <!-- Drag preview of every change a drop will make (B-23) -->
+  <div id="writePreview" class="write-preview" role="status" aria-live="polite" hidden></div>
+
+  <!-- Keyboard and single-pointer scheduling (B-15) -->
+  <div id="cpLive" class="visually-hidden" aria-live="polite"></div>
+  <div id="barToolbar" class="bar-toolbar" role="toolbar" aria-label="Bar actions" hidden>
+    <button class="btn btn-outline btn-sm" type="button" data-action="earlier">Move 1 week earlier</button>
+    <button class="btn btn-outline btn-sm" type="button" data-action="later">Move 1 week later</button>
+    <button class="btn btn-outline btn-sm" type="button" data-action="dates">Edit dates</button>
+    <button class="btn btn-outline btn-sm" type="button" data-action="dependency">Add dependency</button>
+    <button class="btn btn-outline btn-sm" type="button" data-action="progress">Set progress</button>
+  </div>
+
+  <!-- Anchored Date Edit Popover: quick in-place start/end date editing without opening full modal -->
+  <div id="dateEditPopover" class="why-popup date-edit-popover" role="dialog" aria-labelledby="dateEditTitle" hidden>
+    <div class="why-header">
+      <strong id="dateEditTitle">Edit Dates</strong>
+      <button class="btn btn-subtle btn-sm" id="btnCloseDateEdit" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="date-edit-fields" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0;">
+      <div>
+        <label class="form-label" for="dateEditStart">Start Date</label>
+        <input type="date" id="dateEditStart" class="form-input">
+      </div>
+      <div>
+        <label class="form-label" for="dateEditEnd">End Date</label>
+        <input type="date" id="dateEditEnd" class="form-input">
+      </div>
+    </div>
+    <div style="display: flex; gap: 6px; margin-bottom: 10px; align-items: center;">
+      <button class="btn btn-outline btn-xs" id="btnDateEditMinusWk" type="button">-1 Wk</button>
+      <button class="btn btn-outline btn-xs" id="btnDateEditPlusWk" type="button">+1 Wk</button>
+      <span id="dateEditDuration" style="margin-left: auto; font-size: 11px; color: var(--cp-text-subtle);"></span>
+    </div>
+    <div class="why-fixes" style="display: flex; justify-content: space-between; align-items: center;">
+      <button class="btn btn-subtle btn-xs" id="btnOpenFullTaskDetail" type="button">Full details...</button>
+      <button class="btn btn-primary btn-sm" id="btnSaveDateEdit" type="button">Save Dates</button>
+    </div>
+  </div>
+
+  <div id="depPopup" class="why-popup dep-popup" role="dialog" aria-labelledby="depTitle" hidden>
+    <div class="why-header">
+      <strong id="depTitle">Starts when</strong>
+      <button class="btn btn-subtle btn-sm" id="btnDepCancel" type="button" aria-label="Close">✕</button>
+    </div>
+    <label class="form-label" for="depTrigger">Starts when that issue reaches (percent)</label>
+    <input id="depTrigger" class="form-input" type="number" min="0" max="100" step="5" value="100">
+    <label class="form-label" for="depSearch">Issue it waits for (choose one to add the link)</label>
+    <input id="depSearch" class="form-input" type="search" role="combobox" aria-expanded="true" aria-controls="depList" aria-autocomplete="list" autocomplete="off">
+    <ul id="depList" class="dep-list" role="listbox" aria-label="Issues"></ul>
+    <div class="why-fixes"><button class="btn btn-primary btn-sm" id="btnDepSave" type="button">Add dependency</button></div>
+  </div>
+
+  <!-- Dependency Edit Popover: click an arrow badge or drag-link bars to set trigger percent or direction -->
+  <div id="depEditPopover" class="why-popup dep-edit-popover" role="dialog" aria-labelledby="depEditTitle" hidden>
+    <div class="why-header">
+      <strong id="depEditTitle">Predecessor ➔ Successor</strong>
+      <div style="display: inline-flex; align-items: center; gap: 4px;">
+        <button class="btn btn-outline btn-xs" id="btnSwapDepDirection" type="button" title="Reverse which task depends on the other">⇄ Swap direction</button>
+        <button class="btn btn-subtle btn-sm" id="btnCloseDepEdit" type="button" aria-label="Close">✕</button>
+      </div>
+    </div>
+    <div id="depEditParties" class="dep-edit-parties"></div>
+    <label class="form-label" id="depEditTriggerLabel" for="depEditTrigger">Starts when predecessor reaches (percent)</label>
+    <div class="dep-edit-input-row">
+      <input id="depEditTrigger" class="form-input" type="number" min="0" max="100" step="5" value="100">
+      <div class="dep-preset-group">
+        <button type="button" class="btn btn-outline btn-xs" data-pct="0">0%</button>
+        <button type="button" class="btn btn-outline btn-xs" data-pct="30">30%</button>
+        <button type="button" class="btn btn-outline btn-xs" data-pct="50">50%</button>
+        <button type="button" class="btn btn-outline btn-xs" data-pct="100">100%</button>
+      </div>
+    </div>
+    <div id="depEditPreview" class="dep-edit-preview"></div>
+    <div class="dep-edit-actions">
+      <button class="btn btn-danger btn-sm" id="btnRemoveDepLink" type="button">Remove Link</button>
+      <div style="display: flex; gap: 8px; margin-left: auto;">
+        <button class="btn btn-outline btn-sm" id="btnCancelDepEdit" type="button">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="btnSaveDepEdit" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dependency Conflict Resolution Dialog: shown when dropping a bar earlier than predecessor milestone -->
+  <div id="depConflictBanner" class="why-popup dep-conflict-banner" role="dialog" aria-labelledby="depConflictTitle" hidden>
+    <div class="why-header">
+      <strong id="depConflictTitle" style="color: var(--cp-text-danger);">⚠️ Dependency Conflict</strong>
+      <button class="btn btn-subtle btn-sm" id="btnCloseDepConflict" type="button" aria-label="Close">✕</button>
+    </div>
+    <p id="depConflictMessage" class="dep-conflict-msg"></p>
+    <div class="dep-conflict-actions">
+      <button class="btn btn-primary btn-sm" id="btnConflictSnap" type="button">Snap to Earliest Start</button>
+      <button class="btn btn-outline btn-sm" id="btnConflictAdjust" type="button">Adjust Trigger to Fit</button>
+      <button class="btn btn-subtle btn-sm" id="btnConflictKeep" type="button">Keep with Violation</button>
+      <button class="btn btn-subtle btn-sm" id="btnConflictCancel" type="button">Cancel Move</button>
+    </div>
+  </div>
+
+  <!-- Help (B-25) -->
+  <div id="helpPopup" class="why-popup help-popup" role="dialog" aria-labelledby="helpTitle" hidden>
+    <div class="why-header">
+      <strong id="helpTitle">How CascadePlan works</strong>
+      <button class="btn btn-subtle btn-sm" id="btnCloseHelp" type="button" aria-label="Close">✕</button>
+    </div>
+    <ul class="help-list">
+      <li>Your Jira issues are the plan. Drag an issue from the backlog onto the timeline to give it dates.</li>
+      <li>A percent link says when work can start: "B starts when A reaches 30%". Click a bar, then Add dependency.</li>
+      <li>When A slips, CascadePlan moves B and shows why. Every change to Jira is listed under Changes, and Ctrl+Z undoes it.</li>
+      <li>The keyboard works everywhere: Tab to the schedule, arrows to move, Space to move a bar, ? to see why a date is set.</li>
+    </ul>
+  </div>
+
+  <!-- Standup flow (B-16): actions for the selected rows -->
+  <div id="selectionBar" class="selection-bar" role="toolbar" aria-label="Selected issues" hidden>
+    <strong id="selectionCount">0 selected</strong>
+    <label for="selProgress">Progress %</label>
+    <input id="selProgress" class="form-input sel-input" type="number" min="0" max="100" step="10" value="50">
+    <button class="btn btn-outline btn-sm" type="button" id="btnSelProgress">Set progress</button>
+    <label for="selDays">Days</label>
+    <input id="selDays" class="form-input sel-input" type="number" step="1" value="3">
+    <button class="btn btn-outline btn-sm" type="button" id="btnSelMove">Move by days</button>
+    <label for="selAssignee">Assignee</label>
+    <select id="selAssignee" class="form-input"></select>
+    <button class="btn btn-outline btn-sm" type="button" id="btnSelAssign">Set assignee</button>
+    <button class="btn btn-subtle btn-sm" type="button" id="btnSelClear">Clear</button>
+  </div>
+
+  <!-- Flags (B-14): write results with Undo -->
+  <div id="flagGroup" class="flag-group"></div>
+
+  <!-- Rich Floating Tooltip -->
+  <div class="tooltip-popup" id="globalTooltip"></div>
+
+  <!-- Task Detail & Estimation / Subtasks Modal -->
+  <div class="modal-backdrop" id="taskDetailModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div class="modal-title" id="modalTaskKey">Task Details</div>
+          <a id="btnOpenModalInJiraNative" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm" style="font-size: 11px; padding: 2px 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; color: var(--cp-text-brand); border-color: var(--cp-border-brand); background: var(--cp-bg-selected); font-weight: 600;" title="Open this ticket in native Jira in a new tab">
+            Open in Jira ↗
+          </a>
+        </div>
+        <button class="btn btn-subtle" id="btnCloseTaskDetail" title="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label" for="editSummaryInput">Summary</label>
+          <input type="text" class="form-input" id="editSummaryInput" />
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="form-group">
+            <label class="form-label" for="editAssigneeSelect">Assignee / Resource</label>
+            <select class="form-input" id="editAssigneeSelect"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="editStatusSelect">Status</label>
+            <select class="form-input" id="editStatusSelect">
+              <option value="NOT_STARTED">NOT_STARTED</option>
+              <option value="IN_PROGRESS">IN_PROGRESS</option>
+              <option value="COMPLETED">COMPLETED</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Actual Progress & Target Progress Section -->
+        <div style="background: var(--cp-surface-sunken); border: 1px solid var(--cp-border); border-radius: 6px; padding: 12px; margin-bottom: 12px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <label class="form-label" for="editProgressSlider" id="editProgressLabel" style="margin: 0; font-weight: 700;">Actual Progress</label>
+                <span id="modalProgressValLabel" style="font-size: 12px; font-weight: 800; color: var(--cp-text-success);">0%</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                <input type="range" min="0" max="100" step="5" id="editProgressSlider" style="flex: 1; accent-color: var(--cp-bg-success-bold); cursor: pointer;" />
+                <input type="number" min="0" max="100" class="form-input" id="editProgressInput" aria-label="Actual progress percent" style="width: 50px; text-align: center; padding: 2px 4px; font-weight: 700;" placeholder="0-100" />
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;">
+                <button type="button" class="btn btn-sm btn-subtle modal-prog-preset" data-pct="0">0%</button>
+                <button type="button" class="btn btn-sm btn-subtle modal-prog-preset" data-pct="25">25%</button>
+                <button type="button" class="btn btn-sm btn-subtle modal-prog-preset" data-pct="50">50%</button>
+                <button type="button" class="btn btn-sm btn-subtle modal-prog-preset" data-pct="75">75%</button>
+                <button type="button" class="btn btn-sm btn-subtle modal-prog-preset" data-pct="100">100%</button>
+              </div>
+              <div id="editProgressRollupNote" style="display: none; font-size: 11px; color: var(--cp-text-subtle); margin-top: 6px; background: var(--cp-bg-neutral); padding: 4px 8px; border-radius: 4px;">
+                <span>Child Rollup: <strong id="modalRollupPctText">0%</strong></span>
+                <button type="button" id="btnModalUseRollup" class="btn btn-sm btn-subtle" style="font-size: 10px; padding: 1px 5px; float: right;">Use Rollup</button>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <label class="form-label" for="editTargetProgressSlider" style="margin: 0; font-weight: 700;">Target Progress</label>
+                <span id="modalTargetValLabel" style="font-size: 12px; font-weight: 800; color: var(--cp-text-brand);">0%</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                <input type="range" min="0" max="100" step="5" id="editTargetProgressSlider" style="flex: 1; accent-color: var(--cp-bg-brand); cursor: pointer;" />
+                <input type="number" min="0" max="100" class="form-input" id="editTargetProgressInput" aria-label="Target progress percent" style="width: 50px; text-align: center; padding: 2px 4px; font-weight: 700;" placeholder="0-100" />
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;">
+                <button type="button" class="btn btn-sm btn-subtle modal-target-preset" data-pct="0">0%</button>
+                <button type="button" class="btn btn-sm btn-subtle modal-target-preset" data-pct="25">25%</button>
+                <button type="button" class="btn btn-sm btn-subtle modal-target-preset" data-pct="50">50%</button>
+                <button type="button" class="btn btn-sm btn-subtle modal-target-preset" data-pct="75">75%</button>
+                <button type="button" class="btn btn-sm btn-subtle modal-target-preset" data-pct="100">100%</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Start & End Date/Time Section -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="form-group">
+            <label class="form-label" for="editStartDateInput">Start Date</label>
+            <div style="display: flex; gap: 6px;">
+              <input type="date" class="form-input" id="editStartDateInput" style="flex: 1;" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="editEndDateInput">Due Date</label>
+            <div style="display: flex; gap: 6px;">
+              <input type="date" class="form-input" id="editEndDateInput" style="flex: 1;" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Multi-Unit Estimation Section -->
+        <div style="background: var(--cp-surface-sunken); border: 1px solid var(--cp-border); border-radius: 6px; padding: 12px;">
+          <div style="font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+            <span>Estimation & Sizing</span>
+            <span class="badge badge-primary" id="reconciledHoursBadge">Total: 40 hrs</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-group">
+              <label class="form-label" for="editEstimateUnitSelect">Estimation Unit</label>
+              <select class="form-input" id="editEstimateUnitSelect">
+                <option value="HOURS">Hours (Direct Effort)</option>
+                <option value="STORY_POINTS">Story Points (1 pt = 8 hrs)</option>
+                <option value="TSHIRT">T-Shirt Size (XS, S, M, L, XL)</option>
+              </select>
+            </div>
+            <div class="form-group" id="rawEstimateGroup">
+              <label class="form-label" for="editEstimateValueInput" id="rawEstimateLabel">Effort Value</label>
+              <input type="number" class="form-input" id="editEstimateValueInput" placeholder="Unestimated" />
+            </div>
+            <div class="form-group" id="tshirtSizeGroup" style="display: none;">
+              <label class="form-label" for="editTshirtSelect">T-Shirt Size</label>
+              <select class="form-input" id="editTshirtSelect">
+                <option value="XS">XS (4 hrs)</option>
+                <option value="S">S (8 hrs)</option>
+                <option value="M" selected>M (16 hrs)</option>
+                <option value="L">L (32 hrs)</option>
+                <option value="XL">XL (64 hrs)</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-top: 8px; display: flex; align-items: center; gap: 6px;">
+            <input type="checkbox" id="autoScaleEffortCheckbox" />
+            <label for="autoScaleEffortCheckbox" style="font-size: 11px; color: var(--cp-text-subtle); cursor: pointer;">
+              Also scale the Jira estimate when I resize this bar
+            </label>
+          </div>
+        </div>
+
+        <!-- Multi-Resource Allocation (Jira Subtasks) -->
+        <div style="background: var(--cp-surface-sunken); border: 1px solid var(--cp-border); border-radius: 6px; padding: 12px;">
+          <div style="font-weight: 700; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
+            <span>Multi-Resource Allocation (Jira Subtasks)</span>
+            <span class="badge badge-primary">Best Practice</span>
+          </div>
+          <p style="font-size: 11px; color: var(--cp-text-subtle); margin-bottom: 8px;">
+            Assign additional team members to this task. CascadePlan creates a dedicated background Jira subtask for each resource to maintain single-assignee traceability.
+          </p>
+          <div style="display: flex; gap: 8px; margin-bottom: 6px;">
+            <select class="form-input" id="multiResourceSelect" aria-label="Team member for a new sub-task" style="flex: 1;"></select>
+            <input type="number" class="form-input" id="multiResourceHours" aria-label="Hours for the new sub-task" value="20" style="width: 75px;" placeholder="Hrs" />
+            <button class="btn btn-outline" id="btnAddResourceSubtaskBtn">+ Allocate Resource</button>
+          </div>
+          <div id="multiResourceStatus" style="font-size: 11px; color: var(--cp-text-success); display: none;"></div>
+        </div>
+
+        <!-- Subtasks & Buffer Section -->
+        <div style="background: var(--cp-surface-sunken); border: 1px solid var(--cp-border); border-radius: 6px; padding: 12px;">
+          <div style="font-weight: 700; margin-bottom: 8px;">Checklist and risk buffer (CascadePlan only, not Jira sub-tasks)</div>
+          <div id="subtasksList" style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;"></div>
+          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <input type="text" class="form-input" id="newSubtaskSummary" aria-label="New checklist item" placeholder="New checklist item..." style="flex: 1;" />
+            <input type="number" class="form-input" id="newSubtaskHours" aria-label="New sub-task hours" value="8" style="width: 70px;" />
+            <button class="btn btn-outline" id="btnAddSubtaskBtn">+ Add checklist item</button>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-group">
+              <label class="form-label" for="editBufferTypeSelect">Buffer Type</label>
+              <select class="form-input" id="editBufferTypeSelect">
+                <option value="NONE">No Buffer</option>
+                <option value="PERCENTAGE">Percentage Buffer (%)</option>
+                <option value="FIXED_HOURS">Fixed Hours Buffer (h)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="editBufferValueInput">Buffer Value</label>
+              <input type="number" class="form-input" id="editBufferValueInput" value="15" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Dependency Section -->
+        <div style="background: var(--cp-surface-sunken); border: 1px solid var(--cp-border); border-radius: 6px; padding: 12px;">
+          <div style="font-weight: 700; margin-bottom: 8px;">Fractional Completion Dependency</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-group">
+              <label class="form-label" for="editPredecessorSelect">Predecessor Task</label>
+              <select class="form-input" id="editPredecessorSelect"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="editTriggerPercentInput">Trigger Completion %</label>
+              <input type="number" class="form-input" id="editTriggerPercentInput" value="30" min="0" max="100" />
+            </div>
+          </div>
+        </div>
+        <div id="taskDetailError" style="display: none; color: var(--cp-text-danger); font-size: 12px; margin-top: 10px; font-weight: 600;"></div>
+      </div>
+      <div class="modal-footer" style="justify-content: space-between;">
+        <button class="btn btn-outline" id="btnUnscheduleTaskModal" style="color: var(--cp-text-danger); border-color: var(--cp-border-danger);" title="Move out of planner to unmapped backlog">
+          📤 Move to Backlog
+        </button>
+        <div style="display: flex; gap: 10px;">
+          <button class="btn btn-outline" id="btnCancelTaskDetail">Cancel</button>
+          <button class="btn btn-primary" id="btnSaveTaskModal">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create New Task Modal -->
+  <div class="modal-backdrop" id="createTaskModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">Create Jira Task & Schedule</div>
+        <button class="btn btn-subtle" id="btnCloseCreateTask" title="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label" for="createSummaryInput">Summary</label>
+          <input type="text" class="form-input" id="createSummaryInput" placeholder="e.g. Integrate Payment Webhooks" />
+          <div id="createTaskError" style="display: none; color: var(--cp-text-danger); font-size: 12px; margin-top: 6px; font-weight: 600;"></div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="form-group">
+            <label class="form-label" for="createEpicSelect">Parent Epic</label>
+            <select class="form-input" id="createEpicSelect"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="createAssigneeSelect">Assignee</label>
+            <select class="form-input" id="createAssigneeSelect"></select>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="form-group">
+            <label class="form-label" for="createEffortInput">Effort Hours</label>
+            <input type="number" class="form-input" id="createEffortInput" placeholder="Optional" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="createStartWeekSelect">Start Week</label>
+            <select class="form-input" id="createStartWeekSelect"></select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="btnCancelCreateTask">Cancel</button>
+        <button class="btn btn-primary" id="btnSubmitCreateTask">Create & Schedule</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create New Epic Modal -->
+  <div class="modal-backdrop" id="createEpicModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">Create Jira Epic</div>
+        <button class="btn btn-subtle" id="btnCloseCreateEpic" title="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label" for="newEpicSummaryInput">Epic Summary</label>
+          <input type="text" class="form-input" id="newEpicSummaryInput" placeholder="e.g. Identity & Access Overhaul" />
+          <div id="createEpicError" style="display: none; color: var(--cp-text-danger); font-size: 12px; margin-top: 6px; font-weight: 600;"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="btnCancelCreateEpic">Cancel</button>
+        <button class="btn btn-primary" id="btnSubmitCreateEpic">Create Epic</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scalable Searchable User Picker Popover (Multi-Resource Allocation) -->
+  <div id="resourcePickerPopover" class="resource-picker-popover">
+    <div class="resource-picker-header">
+      <div class="resource-picker-title">
+        <span id="resourcePickerTitleText">Assign Team</span>
+        <span class="badge badge-primary" id="resourcePickerBadge">1 assigned</span>
+      </div>
+      <input type="text" id="resourcePickerSearch" aria-label="Search people" class="resource-picker-search" placeholder="Search team members..." autocomplete="off" />
+    </div>
+    <div id="resourcePickerCurrent" class="resource-picker-current" style="display: none;"></div>
+    <div id="resourcePickerList" class="resource-picker-list"></div>
+    <div class="resource-picker-footer" id="resourcePickerFooter">
+      <button class="btn btn-subtle btn-sm" id="btnResourceClearAll">Clear All</button>
+      <button class="btn btn-primary btn-sm" id="btnResourceDone">Done</button>
+    </div>
+  </div>
+
+  <!-- Quick Status Popover -->
+  <div id="statusPickerPopover" class="quick-menu-popover">
+    <div class="quick-menu-item" data-status="NOT_STARTED">⚪ To Do / Not Started</div>
+    <div class="quick-menu-item" data-status="IN_PROGRESS">🔵 In Progress</div>
+    <div class="quick-menu-item" data-status="COMPLETED">🟢 Completed / Done</div>
+  </div>
+
+  <!-- Quick Epic Link Popover -->
+  <div id="epicPickerPopover" class="quick-menu-popover" style="min-width: 220px;">
+    <div class="resource-picker-header" style="padding: 6px 8px;">
+      <input type="text" id="epicPickerSearch" aria-label="Search epics" class="resource-picker-search" placeholder="Search epics..." autocomplete="off" />
+    </div>
+    <div id="epicPickerList" class="resource-picker-list"></div>
+  </div>
+
+  <!-- Quick Progress Popover -->
+  <div id="progressPickerPopover" class="quick-menu-popover" style="padding: 12px; width: 240px; box-sizing: border-box;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <span style="font-weight: 700; font-size: 12px; color: var(--cp-text);" id="progressPickerTitle">Set Actual Progress</span>
+      <span style="font-size: 13px; font-weight: 800; color: var(--cp-text-success);" id="progressPickerValLabel">0%</span>
+    </div>
+
+    <!-- Quick Preset Chips -->
+    <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 10px;">
+      <button class="btn btn-sm btn-subtle progress-preset-btn" data-pct="0">0%</button>
+      <button class="btn btn-sm btn-subtle progress-preset-btn" data-pct="25">25%</button>
+      <button class="btn btn-sm btn-subtle progress-preset-btn" data-pct="50">50%</button>
+      <button class="btn btn-sm btn-subtle progress-preset-btn" data-pct="75">75%</button>
+      <button class="btn btn-sm btn-subtle progress-preset-btn" data-pct="100">100%</button>
+    </div>
+
+    <!-- Slider & Direct Input -->
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+      <input type="range" min="0" max="100" step="5" id="progressPickerSlider" aria-label="Actual progress" style="flex: 1; accent-color: var(--cp-bg-success-bold); cursor: pointer;" />
+      <input type="number" min="0" max="100" id="progressPickerNumberInput" aria-label="Actual progress percent" class="form-input" style="width: 52px; height: 26px; text-align: center; padding: 2px 4px; font-weight: 700;" />
+    </div>
+
+    <!-- Rollup Toggle for Parents / Epics -->
+    <div id="progressPickerRollupSection" style="display: none; border-top: 1px solid var(--cp-border); padding-top: 8px; margin-top: 4px; font-size: 11px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="color: var(--cp-text-subtle);" id="progressPickerRollupLabel">Child Rollup: 0%</span>
+        <button class="btn btn-sm btn-subtle" id="btnApplyRollupProgress" style="font-size: 10px; padding: 2px 6px;">Use Rollup</button>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div style="display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px;">
+      <button class="btn btn-subtle btn-sm" id="btnCancelProgressPicker">Cancel</button>
+      <button class="btn btn-primary btn-sm" id="btnSaveProgressPicker">Apply</button>
+    </div>
+  </div>
+
+  <!-- Quick Target Progress Popover -->
+  <div id="targetPickerPopover" class="quick-menu-popover" style="padding: 12px; width: 230px; box-sizing: border-box;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <span style="font-weight: 700; font-size: 12px; color: var(--cp-text);" id="targetPickerTitle">Set Target Progress</span>
+      <span style="font-size: 13px; font-weight: 800; color: var(--cp-text-brand);" id="targetPickerValLabel">0%</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 10px;">
+      <button class="btn btn-sm btn-subtle target-preset-btn" data-pct="0">0%</button>
+      <button class="btn btn-sm btn-subtle target-preset-btn" data-pct="25">25%</button>
+      <button class="btn btn-sm btn-subtle target-preset-btn" data-pct="50">50%</button>
+      <button class="btn btn-sm btn-subtle target-preset-btn" data-pct="75">75%</button>
+      <button class="btn btn-sm btn-subtle target-preset-btn" data-pct="100">100%</button>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+      <input type="range" min="0" max="100" step="5" id="targetPickerSlider" aria-label="Target progress" style="flex: 1; accent-color: var(--cp-bg-brand); cursor: pointer;" />
+      <input type="number" min="0" max="100" id="targetPickerNumberInput" aria-label="Target progress percent" class="form-input" style="width: 52px; height: 26px; text-align: center; padding: 2px 4px; font-weight: 700;" />
+    </div>
+    <div style="display: flex; justify-content: flex-end; gap: 6px; align-items: center;">
+      <button class="btn btn-subtle btn-sm" id="btnAutoTargetPicker" title="Calculate target progress automatically from scheduled dates based on today" style="margin-right: auto; font-size: 11px;">⚡ Auto</button>
+      <button class="btn btn-subtle btn-sm" id="btnCancelTargetPicker">Cancel</button>
+      <button class="btn btn-primary btn-sm" id="btnSaveTargetPicker">Apply</button>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

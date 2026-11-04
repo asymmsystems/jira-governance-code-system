@@ -2,14 +2,14 @@
 
 - **Status:** Approved Architecture Standard
 - **Date:** 2026-11-03
-- **Scope:** Uniform authorization, permission checking, admin pages, and in-app guidance across the Asymm Systems Jira Suite (LedgerSeal, FourRealities, DefinitionGuard, PlanShift).
+- **Scope:** Uniform authorization, permission checking, admin pages, and in-app guidance across the Asymm Systems Jira Suite (LedgerSeal, FourRealities, DefinitionGuard, CascadePlan).
 - **Author:** Fahim Farook
 
 ---
 
 ## 1. Executive Summary & Core Architectural Invariants
 
-Across the Asymm Systems Jira Suite, governance actions (such as sealing an audit record in LedgerSeal, approving a Code gate exception in FourRealities, baselining acceptance criteria in DefinitionGuard, or locking a delivery baseline in PlanShift) require strict, verifiable authorization.
+Across the Asymm Systems Jira Suite, governance actions (such as sealing an audit record in LedgerSeal, approving a Code gate exception in FourRealities, baselining acceptance criteria in DefinitionGuard, or locking a delivery baseline in CascadePlan) require strict, verifiable authorization.
 
 To provide a consistent enterprise experience for Jira site administrators and project teams, all four apps adhere to a **Uniform Two-Tier Fail-Closed Authorization Model**.
 
@@ -31,7 +31,7 @@ Administrators configure app permissions through Jira's native administrative na
   - **LedgerSeal:** Module key `ledgerseal-admin`, title `LedgerSeal approvers`
   - **FourRealities:** Module key `fourrealities-admin`, title `FourRealities gate authority`
   - **DefinitionGuard:** Module key `definitionguard-admin`, title `DefinitionGuard approvers`
-  - **PlanShift:** Module key `planshift-admin`, title `PlanShift approvers`
+  - **CascadePlan:** Module key `cascadeplan-admin`, title `CascadePlan approvers`
 
 ### 2.2 Access Control on the Admin Page
 The admin configuration page is strictly restricted to Jira Administrators holding the global `ADMINISTER` permission.
@@ -96,7 +96,7 @@ For enterprises where technical leads, compliance officers, or release managers 
 | **LedgerSeal** | Seal issue, reseal issue, revoke seal | `LS_APPROVER` | Jira Admin, Project Admin | `qa-leads`, `compliance-officers`, `security-auditors` |
 | **FourRealities** | Decide Code exceptions (Approve, Reject, Revoke), override gate thresholds | `FR_APPROVER` | Jira Admin, Project Admin | `architecture-board`, `release-managers`, `tech-leads` |
 | **DefinitionGuard** | Baseline criteria, sign off Definition of Done, authorize deviations | `DG_APPROVER` | Jira Admin, Project Admin | `product-owners`, `business-analysts`, `lead-architects` |
-| **PlanShift** | Freeze delivery baseline, approve milestone variance / shift | `PS_APPROVER` | Jira Admin, Project Admin | `program-managers`, `pmo-directors`, `delivery-leads` |
+| **CascadePlan** | Freeze delivery baseline, approve milestone variance / shift | `CP_APPROVER` | Jira Admin, Project Admin | `program-managers`, `pmo-directors`, `delivery-leads` |
 
 ---
 

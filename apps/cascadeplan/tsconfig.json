@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022", "DOM"],
+    "jsx": "react",
+    "declaration": true,
+    "outDir": "./dist",
+    "baseUrl": ".",
+    "paths": {
+      "@asymm/jira-ui": ["../../packages/asymm-jira-ui/src"],
+      "@asymm/jira-ui/*": ["../../packages/asymm-jira-ui/src/*"],
+      "react": ["node_modules/@types/react"],
+      "@forge/react": ["node_modules/@forge/react"]
+    },
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "test/**/*"]
+}

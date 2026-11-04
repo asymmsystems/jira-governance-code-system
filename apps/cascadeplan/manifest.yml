@@ -1,0 +1,41 @@
+modules:
+  jira:projectPage:
+    - key: cascadeplan-project-planner
+      title: CascadePlan Planner
+      icon: resource:main;icon.svg
+      resource: main
+      resolver:
+        function: resolver
+  jira:adminPage:
+    - key: cascadeplan-admin
+      title: CascadePlan approvers
+      render: native
+      resource: admin
+      resolver:
+        function: resolver
+  function:
+    - key: resolver
+      handler: index.handler
+
+resources:
+  - key: main
+    path: static/frontend/build
+  - key: admin
+    path: src/frontend/admin.tsx
+
+permissions:
+  content:
+    styles:
+      - 'unsafe-inline'
+  scopes:
+    - read:jira-work
+    - write:jira-work
+    - read:jira-user
+    - storage:app
+
+app:
+  runtime:
+    name: nodejs22.x
+  id: ari:cloud:ecosystem::app/cac8499e-e92e-4ba6-95cc-af398b1be791
+  licensing:
+    enabled: true
