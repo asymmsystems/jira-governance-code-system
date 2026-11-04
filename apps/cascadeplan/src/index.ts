@@ -48,6 +48,7 @@ import {
   validateHiddenColumns,
   validateMilestone,
   validatePlanName,
+  validatePlanId,
   toValidationResult
 } from './validation';
 import {
@@ -311,6 +312,29 @@ function evenAllocations(weeks: WeeklySprintColumn[], startIdx: number, span: nu
  */
 export function openStore(storage: StorageProvider, projectKey: string, projectId?: string, planId?: string): PlanStore {
   return new PlanStore(storage, projectId || projectKey, projectKey, planId);
+}
+
+/**
+ * True for the Main Plan. Only the Main Plan writes issue fields (due date, estimate, assignee, status,
+ * summary, parent) back to Jira; a scenario plan keeps its dates and allocations in KVS only.
+ */
+export function isMainPlan(planId?: string): boolean {
+  return !planId || planId === 'default';
+}
+
+/**
+ * The plan a write goes to: undefined for the Main Plan, else the id of a plan that still exists.
+ * A write to a plan that was deleted (for example in another tab) is refused, so it never lands in
+ * orphaned keys or in the Main Plan.
+ */
+export async function writablePlanId(storage: StorageProvider, projectKey: string, projectId: string | undefined, planId: unknown): Promise<string | undefined> {
+  validatePlanId(planId);
+  if (isMainPlan(planId as string | undefined)) return undefined;
+  const plans = await openStore(storage, projectKey, projectId).listPlans();
+  if (!plans.some(p => p.id === planId)) {
+    throw new ValidationError('planId', 'This plan no longer exists. Reload to see the current plans.');
+  }
+  return planId as string;
 }
 
 /**
@@ -730,7 +754,8 @@ export function mapLiveIssues(
           hierarchyLevel,
           parentKey,
           parentId,
-          version: stored?.version
+          // The record version the client sends back as expectedVersion; 0 when nothing is stored yet.
+          version: stored?.version ?? 0
         };
 
         if (wbsItem.startWeek) {
@@ -779,9 +804,13 @@ export async function getProjectPlan(
   planId?: string
 ): Promise<ProjectPlanState> {
   const storage = resolveStorage(storageProvider);
+  validatePlanId(planId);
+  const availablePlans = await openStore(storage, projectKey, projectId).listPlans();
+  // A plan id that is not listed (deleted, or a stale id saved by the browser) reads the Main Plan;
+  // the returned planId tells the client which plan it got.
+  if (!isMainPlan(planId) && !availablePlans.some(p => p.id === planId)) planId = undefined;
   const store = openStore(storage, projectKey, projectId, planId);
-  if (!planId || planId === 'default') await migrateIfNeeded(store, projectKey);
-  const availablePlans = await store.listPlans();
+  if (isMainPlan(planId)) await migrateIfNeeded(store, projectKey);
 
   const dynamicTimeline = getTimelineWeeks(referenceDate);
   const activeWeeks = dynamicTimeline.weeks;
@@ -894,8 +923,9 @@ export async function scheduleBacklogTask(
   if (startDate !== undefined && !isIsoDate(startDate)) throw new ValidationError('startDate', 'startDate must be a date in YYYY-MM-DD form');
   const issueId = await verifyIssueInProject(taskId, projectKey, 'taskId');
   const storage = resolveStorage(storageProvider);
-  const store = openStore(storage, projectKey, projectId);
-  await migrateIfNeeded(store, projectKey);
+  const planId = await writablePlanId(storage, projectKey, projectId, request.planId);
+  const store = openStore(storage, projectKey, projectId, planId);
+  if (isMainPlan(planId)) await migrateIfNeeded(store, projectKey);
   const entries = await store.loadEntries();
 
   const startIdx = Math.max(0, weeksNow.findIndex(w => w.weekKey === startWeek));
@@ -925,14 +955,16 @@ export async function scheduleBacklogTask(
   const put = await store.putEntry(taskId, issueId, entry, current ? current.version : 0);
   if (!put.ok) return conflictResult(taskId);
 
-  // Sync scheduled due date and effort back to Jira issue
+  // Sync scheduled due date and effort back to Jira issue (Main Plan only)
   const log = new SyncLog();
-  await syncTaskToJira(taskId, {
-    endDate: entry.endDate,
-    effortHours
-  }, log);
+  if (isMainPlan(planId)) {
+    await syncTaskToJira(taskId, {
+      endDate: entry.endDate,
+      effortHours
+    }, log);
+  }
 
-  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId), { ok: true, jiraSync: log.report() });
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, undefined, planId), { ok: true, jiraSync: log.report() });
 }
 
 /**
@@ -1068,8 +1100,9 @@ export async function createInlineTask(
   }
 
   const storage = resolveStorage(storageProvider);
-  const store = openStore(storage, projectKey, projectId);
-  await migrateIfNeeded(store, projectKey);
+  const planId = await writablePlanId(storage, projectKey, projectId, request.planId);
+  const store = openStore(storage, projectKey, projectId, planId);
+  if (isMainPlan(planId)) await migrateIfNeeded(store, projectKey);
   const entries = await store.loadEntries();
 
   const assignedStartWeek = startWeek || currentWeekKey;
@@ -1093,16 +1126,16 @@ export async function createInlineTask(
   });
   void epic; void story; void resource;
 
-  // Sync scheduled due date and effort back to Jira
+  // Sync the new issue's estimate, assignee and epic to Jira; the scheduled due date only on the Main Plan.
   const log = new SyncLog();
   await syncTaskToJira(jiraIssueKey, {
-    endDate: weeksNow[endIdx].endDate,
+    ...(isMainPlan(planId) ? { endDate: weeksNow[endIdx].endDate } : {}),
     effortHours,
     resourceAccountId,
     epicKey
   }, log);
 
-  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId);
+  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, undefined, planId);
   const createdTask = includeCreated(plan, (await store.loadEntries()).get(jiraIssueKey),
     { id: jiraIssueId, key: jiraIssueKey, summary, epic: epic || '', epicKey, story: story || 'Task', effortHours: effortHours || 0, resource, resourceAccountId }, targetIndex);
 
@@ -1415,7 +1448,7 @@ export async function removeMirroredLink(linkId: string): Promise<boolean> {
  * Updates a task schedule, dates, effort, progress, or resource.
  */
 export async function updateWbsTask(
-  payload: { projectKey: string; projectId?: string; taskId: string; updates: Partial<WbsTask>; expectedVersion?: number },
+  payload: { projectKey: string; projectId?: string; planId?: string; taskId: string; updates: Partial<WbsTask>; expectedVersion?: number },
   storageProvider?: StorageProvider,
   preloaded?: LiveData
 ): Promise<ProjectPlanState> {
@@ -1426,7 +1459,7 @@ export async function updateWbsTask(
   }
   const storage = resolveStorage(storageProvider);
   const log = new SyncLog();
-  const planId = (payload as any).planId;
+  const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
 
   // Jira is read once per update (or once per batch); the returned plan reuses the same read (B-10, B-16).
   const live = preloaded || await loadLive(projectKey);
@@ -1707,10 +1740,12 @@ export async function updateWbsTask(
     const put = await store.putEntry(key, idByKey.get(key), stripJiraOwnedFields(scheduleMap[key]), entries.get(key)?.version ?? 0);
     if (!put.ok) log.record(key, ['plan'], { synced: false, error: 'changed by someone else; not moved' });
   }
-  for (const s of pendingSyncs) await syncTaskToJira(s.key, s.updates, log, plan.tasks.find(t => t.key === s.key));
-
-  // Two-way sync: write-back changed fields to Jira
-  await syncTaskToJira(targetTask.key, sanitized, log, targetTask);
+  // Two-way sync: write-back changed fields to Jira. A scenario plan is a what-if: its dates and
+  // allocations stay in KVS and no issue field in Jira changes.
+  if (isMainPlan(planId)) {
+    for (const s of pendingSyncs) await syncTaskToJira(s.key, s.updates, log, plan.tasks.find(t => t.key === s.key));
+    await syncTaskToJira(targetTask.key, sanitized, log, targetTask);
+  }
 
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId),
     { ok: true, jiraSync: log.report(), cascadeRemaining });
@@ -1721,13 +1756,14 @@ export async function updateWbsTask(
  * An issue Jira still has, or cannot confirm, keeps its record. Writes nothing to Jira (B-18).
  */
 export async function pruneStaleEntries(
-  payload: { projectKey: string; projectId?: string; keys: string[] },
+  payload: { projectKey: string; projectId?: string; planId?: string; keys: string[] },
   storageProvider?: StorageProvider
 ): Promise<{ ok: boolean; success: boolean; pruned: string[]; jiraSync: JiraSyncReport }> {
   const { projectKey, projectId, keys } = payload;
   if (!Array.isArray(keys) || keys.length > 200) throw new ValidationError('keys', 'keys must be a list of at most 200 issue keys');
   keys.forEach(k => assertIssueKey(k, 'keys'));
-  const store = openStore(resolveStorage(storageProvider), projectKey, projectId);
+  const storage = resolveStorage(storageProvider);
+  const store = openStore(storage, projectKey, projectId, await writablePlanId(storage, projectKey, projectId, payload.planId));
   const entries = await store.loadEntries();
   const pruned: string[] = [];
   for (const key of keys) {
@@ -1748,7 +1784,7 @@ export async function pruneStaleEntries(
  * anyone else is reported as a conflict and the other items still apply.
  */
 export async function batchUpdateTasks(
-  payload: { projectKey: string; projectId?: string; items: Array<{ taskId: string; updates: Partial<WbsTask>; expectedVersion?: number }> },
+  payload: { projectKey: string; projectId?: string; planId?: string; items: Array<{ taskId: string; updates: Partial<WbsTask>; expectedVersion?: number }> },
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState & { results: Array<{ taskId: string; ok: boolean; conflict?: boolean }> }> {
   const { projectKey, projectId, items } = payload;
@@ -1758,14 +1794,15 @@ export async function batchUpdateTasks(
     validateTaskUpdates(item.updates as Record<string, unknown>);
   }
   const storage = resolveStorage(storageProvider);
-  const store = openStore(storage, projectKey, projectId);
+  const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
+  const store = openStore(storage, projectKey, projectId, planId);
   const live = await loadLive(projectKey);
   const startVersions = new Map([...(await store.loadEntries())].map(([k, e]) => [k, e.version]));
   const writes: JiraWriteRecord[] = [];
   const results: Array<{ taskId: string; ok: boolean; conflict?: boolean }> = [];
   let plan: ProjectPlanState | null = null;
   for (const item of items) {
-    const run = (expectedVersion?: number) => updateWbsTask({ projectKey, projectId, taskId: item.taskId, updates: item.updates, expectedVersion }, storage, live);
+    const run = (expectedVersion?: number) => updateWbsTask({ projectKey, projectId, planId, taskId: item.taskId, updates: item.updates, expectedVersion }, storage, live);
     let res: any = await run(item.expectedVersion);
     if (res && res.conflict) {
       const now = (await store.loadEntries()).get(item.taskId)?.version ?? 0;
@@ -1777,7 +1814,7 @@ export async function batchUpdateTasks(
     writes.push(...((res && res.jiraSync && res.jiraSync.writes) || []));
     if (res && Array.isArray(res.tasks)) plan = res;
   }
-  const finalPlan = plan || await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live);
+  const finalPlan = plan || await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId);
   const failed = writes.filter(w => !w.ok);
   const jiraSync: JiraSyncReport = { ok: failed.length === 0, writes };
   if (failed.length) jiraSync.error = failed.map(w => `${w.key}: ${w.error}`).join('; ');
@@ -1791,16 +1828,17 @@ export const CASCADE_BATCH_LIMIT = 25;
  * successors and returns the keys still to move (D-05: the client calls again until empty).
  */
 export async function continueCascade(
-  payload: { projectKey: string; projectId?: string; taskId: string },
+  payload: { projectKey: string; projectId?: string; planId?: string; taskId: string },
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState> {
   const { projectKey, projectId, taskId } = payload;
   assertIssueKey(taskId, 'taskId');
   const storage = resolveStorage(storageProvider);
+  const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
   const log = new SyncLog();
   const live = await loadLive(projectKey);
-  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live);
-  const store = openStore(storage, projectKey, projectId);
+  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId);
+  const store = openStore(storage, projectKey, projectId, planId);
   const entries = await store.loadEntries();
   const inputs = engineInputs(plan.tasks);
   const { changes } = cascade(inputs.efforts, inputs.links, taskId, todayIso());
@@ -1810,9 +1848,9 @@ export async function continueCascade(
     const put = await store.putEntry(c.key, task?.id, stripJiraOwnedFields({ ...(cur || {}), startDate: c.toStart, endDate: c.toEnd,
       ...gridFor(plan.weeks, c.toStart, c.toEnd) }), cur ? cur.version : 0);
     if (!put.ok) { log.record(c.key, ['plan'], { synced: false, error: 'changed by someone else; not moved' }); continue; }
-    await syncTaskToJira(c.key, { endDate: c.toEnd }, log, task);
+    if (isMainPlan(planId)) await syncTaskToJira(c.key, { endDate: c.toEnd }, log, task);
   }
-  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live),
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId),
     { ok: true, jiraSync: log.report(), cascadeRemaining: changes.slice(CASCADE_BATCH_LIMIT).map(c => c.key) });
 }
 
@@ -1820,13 +1858,13 @@ export async function continueCascade(
  * Lists the moves that a change of start week or span would cause, without writing anything.
  */
 export async function previewCascade(
-  payload: { projectKey: string; projectId?: string; taskId: string; updates: { startDate?: string; endDate?: string; startWeek?: string; spanWeeks?: number } },
+  payload: { projectKey: string; projectId?: string; planId?: string; taskId: string; updates: { startDate?: string; endDate?: string; startWeek?: string; spanWeeks?: number } },
   storageProvider?: StorageProvider
 ): Promise<{ ok: boolean; changes: Array<{ key: string; field: string; from?: string; to?: string; reason?: string }> }> {
   const { projectKey, projectId, taskId, updates } = payload;
   assertIssueKey(taskId, 'taskId');
   validateTaskUpdates(updates as Record<string, unknown>);
-  const plan = await getProjectPlan(projectKey, resolveStorage(storageProvider), new Date(), undefined, projectId);
+  const plan = await getProjectPlan(projectKey, resolveStorage(storageProvider), new Date(), undefined, projectId, undefined, payload.planId);
   const target = plan.tasks.find(t => t.key === taskId);
   let start = updates.startDate || target?.startDate;
   let end = updates.endDate || target?.endDate;
@@ -1852,8 +1890,9 @@ export async function unscheduleTask(
   const { projectKey, projectId, taskId } = payload;
   const issueId = await verifyIssueInProject(taskId, projectKey, 'taskId');
   const storage = resolveStorage(storageProvider);
-  const store = openStore(storage, projectKey, projectId);
-  await migrateIfNeeded(store, projectKey);
+  const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
+  const store = openStore(storage, projectKey, projectId, planId);
+  if (isMainPlan(planId)) await migrateIfNeeded(store, projectKey);
   const current = (await store.loadEntries()).get(taskId);
   if (current) {
     const entry: Partial<WbsTask> = { ...current };
@@ -1863,7 +1902,7 @@ export async function unscheduleTask(
     if (!put.ok) return conflictResult(taskId);
   }
 
-  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId), { ok: true, jiraSync: noJiraWrites() });
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, undefined, planId), { ok: true, jiraSync: noJiraWrites() });
 }
 
 /**
@@ -1875,11 +1914,12 @@ export async function reorderWbsTasks(
 ): Promise<ProjectPlanState> {
   const { projectKey, projectId, taskId, targetIndex } = payload;
   const storage = resolveStorage(storageProvider);
+  const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
 
   const live = await loadLive(projectKey);
-  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live);
+  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId);
   const reordered = PlannerEngine.reorderTasks(plan.tasks, taskId, targetIndex);
-  const store = openStore(storage, projectKey, projectId);
+  const store = openStore(storage, projectKey, projectId, planId);
   const entries = await store.loadEntries();
   const pos = reordered.findIndex(t => t.key === taskId || t.id === taskId);
   if (pos !== -1) {
@@ -1902,7 +1942,7 @@ export async function reorderWbsTasks(
       await store.putEntry(movedKey, reordered[pos].id, { ...moved, sequenceNum: sequenceBetween(seqAt(pos - 1), seqAt(pos + 1)) }, moved.version);
     }
   }
-  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live), { ok: true, jiraSync: noJiraWrites() });
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId), { ok: true, jiraSync: noJiraWrites() });
 }
 
 /**
@@ -1927,6 +1967,8 @@ export async function createSubtaskForResource(
     return { success: false, ok: false, error: 'parentKey is required', jiraSync: noJiraWrites() };
   }
   await verifyIssueInProject(parentKey, projectKey, 'parentKey');
+  const storage = resolveStorage(storageProvider);
+  const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
 
   const caller = getJiraCaller();
 
@@ -1974,7 +2016,6 @@ export async function createSubtaskForResource(
     return { success: false, ok: false, error: message, jiraSync: failedCreate(message) };
   }
 
-  const storage = resolveStorage(storageProvider);
   const dynamicWeeks = getTimelineWeeks();
   const activeWeeks = dynamicWeeks.weeks;
   const assignedStart = startWeek || activeWeeks[dynamicWeeks.currentWeekIndex].weekKey;
@@ -1986,8 +2027,8 @@ export async function createSubtaskForResource(
     allocations[activeWeeks[i].weekKey] = Math.round(100 / spanWeeks);
   }
 
-  const store = openStore(storage, projectKey, projectId);
-  await migrateIfNeeded(store, projectKey);
+  const store = openStore(storage, projectKey, projectId, planId);
+  if (isMainPlan(planId)) await migrateIfNeeded(store, projectKey);
   await store.putEntry(createdKey, createdId, {
     startWeek: assignedStart,
     endWeek: activeWeeks[eIdx].weekKey,
@@ -2021,11 +2062,11 @@ export async function createSubtaskForResource(
   log.record(createdKey, ['create'], { synced: true });
   await syncTaskToJira(createdKey, {
     effortHours,
-    endDate: activeWeeks[eIdx].endDate,
+    ...(isMainPlan(planId) ? { endDate: activeWeeks[eIdx].endDate } : {}),
     resourceAccountId
   }, log);
 
-  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId);
+  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, undefined, planId);
   const subtask = includeCreated(plan, (await store.loadEntries()).get(createdKey),
     { id: createdId, key: createdKey, summary, isSubtask: true, hierarchyLevel: -1, parentKey, effortHours: effortHours || 0, resourceAccountId });
   return { success: true, ok: true, jiraSync: log.report(), subtask, plan };
@@ -2038,6 +2079,7 @@ export async function addSubtaskToTask(
   payload: {
     projectKey: string;
     projectId?: string;
+    planId?: string;
     parentTaskId: string;
     subtask: { summary: string; estimateValue: number; estimateUnit: EstimateUnit };
     bufferType?: 'PERCENTAGE' | 'FIXED_HOURS' | 'NONE';
@@ -2048,8 +2090,9 @@ export async function addSubtaskToTask(
   const { projectKey, projectId, parentTaskId, subtask, bufferType = 'NONE', bufferValue = 0 } = payload;
   const parentId = await verifyIssueInProject(parentTaskId, projectKey, 'parentTaskId');
   const storage = resolveStorage(storageProvider);
-  const store = openStore(storage, projectKey, projectId);
-  await migrateIfNeeded(store, projectKey);
+  const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
+  const store = openStore(storage, projectKey, projectId, planId);
+  if (isMainPlan(planId)) await migrateIfNeeded(store, projectKey);
   const stored = (await store.loadEntries()).get(parentTaskId);
   const current: Partial<WbsTask> = stored || {};
   const existingSubtasks: SubtaskItem[] = (current.subtasks || []);
@@ -2079,22 +2122,23 @@ export async function addSubtaskToTask(
     effortConfig
   }), stored ? stored.version : 0);
   if (!put.ok) return conflictResult(parentTaskId);
-  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId), { ok: true, jiraSync: noJiraWrites() });
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, undefined, planId), { ok: true, jiraSync: noJiraWrites() });
 }
 
 /**
  * Saves an inter-task fractional dependency.
  */
 export async function saveTaskDependency(
-  payload: { projectKey: string; projectId?: string; taskId: string; dependency: TaskDependency },
+  payload: { projectKey: string; projectId?: string; planId?: string; taskId: string; dependency: TaskDependency },
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState> {
   const { projectKey, projectId, taskId, dependency } = payload;
   validateDependencyPayload(dependency);
   const storage = resolveStorage(storageProvider);
+  const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
 
   const live = await loadLive(projectKey);
-  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live);
+  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId);
   const planKeys = new Set([...plan.tasks, ...(plan.backlogTasks || [])].map(t => t.key));
   if (!planKeys.has(dependency.predecessorKey)) {
     throw new ValidationError('dependency.predecessorKey', `${dependency.predecessorKey} is not in project ${projectKey}`);
@@ -2122,7 +2166,7 @@ export async function saveTaskDependency(
   const keep = (targetTask.dependencies || []).find(d => d.predecessorKey === dependency.predecessorKey);
   const ownedLinkId = mirror.created ? mirror.linkId : (keep ? keep.jiraLinkId : undefined);
 
-  const store = openStore(storage, projectKey, projectId);
+  const store = openStore(storage, projectKey, projectId, planId);
   const stored = (await store.loadEntries()).get(targetTask.key);
   // The new link replaces the active set; the others end (B-28).
   const next: TaskDependency = { predecessorId: dependency.predecessorKey, predecessorKey: dependency.predecessorKey,
@@ -2140,19 +2184,20 @@ export async function saveTaskDependency(
   }), stored ? stored.version : 0);
   if (!put.ok) return conflictResult(targetTask.key);
 
-  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live), { ok: true, jiraSync: log.report() });
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId), { ok: true, jiraSync: log.report() });
 }
 
 /**
  * Saves column width configurations.
  */
 export async function saveColumnWidths(
-  payload: { projectKey: string; projectId?: string; columnWidths: ColumnWidthConfig },
+  payload: { projectKey: string; projectId?: string; planId?: string; columnWidths: ColumnWidthConfig },
   storageProvider?: StorageProvider
 ): Promise<{ success: boolean; ok: boolean; jiraSync: JiraSyncReport; columnWidths: ColumnWidthConfig }> {
   const { projectKey, projectId, columnWidths } = payload;
   validateColumnWidths(columnWidths as unknown as Record<string, unknown>);
-  const store = openStore(resolveStorage(storageProvider), projectKey, projectId);
+  const storage = resolveStorage(storageProvider);
+  const store = openStore(storage, projectKey, projectId, await writablePlanId(storage, projectKey, projectId, payload.planId));
   await store.saveSettings({ columnWidths });
   return { success: true, ok: true, jiraSync: noJiraWrites(), columnWidths };
 }
@@ -2161,12 +2206,13 @@ export async function saveColumnWidths(
  * Saves hidden columns configuration.
  */
 export async function saveHiddenColumns(
-  payload: { projectKey: string; projectId?: string; hiddenColumns: string[] },
+  payload: { projectKey: string; projectId?: string; planId?: string; hiddenColumns: string[] },
   storageProvider?: StorageProvider
 ): Promise<{ success: boolean; ok: boolean; jiraSync: JiraSyncReport; hiddenColumns: string[] }> {
   const { projectKey, projectId, hiddenColumns } = payload;
   validateHiddenColumns(hiddenColumns);
-  const store = openStore(resolveStorage(storageProvider), projectKey, projectId);
+  const storage = resolveStorage(storageProvider);
+  const store = openStore(storage, projectKey, projectId, await writablePlanId(storage, projectKey, projectId, payload.planId));
   const cols = Array.isArray(hiddenColumns) ? hiddenColumns : [];
   await store.saveSettings({ hiddenColumns: cols });
   return { success: true, ok: true, jiraSync: noJiraWrites(), hiddenColumns: cols };
@@ -2176,12 +2222,13 @@ export async function saveHiddenColumns(
  * Saves a milestone marker.
  */
 export async function saveProjectMilestone(
-  payload: { projectKey: string; projectId?: string; milestone: ProjectMilestone },
+  payload: { projectKey: string; projectId?: string; planId?: string; milestone: ProjectMilestone },
   storageProvider?: StorageProvider
 ): Promise<{ success: boolean; ok: boolean; jiraSync: JiraSyncReport; milestones: ProjectMilestone[] }> {
   const { projectKey, projectId, milestone } = payload;
   validateMilestone(milestone as unknown as Record<string, unknown>);
-  const store = openStore(resolveStorage(storageProvider), projectKey, projectId);
+  const storage = resolveStorage(storageProvider);
+  const store = openStore(storage, projectKey, projectId, await writablePlanId(storage, projectKey, projectId, payload.planId));
   const current = (await store.getSettings()).milestones || DEFAULT_MILESTONES;
   const filtered = current.filter(m => m.id !== milestone.id).slice(-99);
   filtered.push(milestone);
@@ -2211,6 +2258,7 @@ export async function createProjectPlan(
 ): Promise<{ ok: boolean; plan: PlanMetadata; plans: PlanMetadata[]; error?: string; message?: string }> {
   try {
     const trimmed = validatePlanName(payload.name);
+    validatePlanId(payload.cloneFromPlanId);
     const storage = resolveStorage(storageProvider);
     const store = openStore(storage, payload.projectKey, payload.projectId);
     const plan = await store.createPlan(trimmed, payload.cloneFromPlanId);
@@ -2231,6 +2279,7 @@ export async function deleteProjectPlan(
   if (!payload.planId || payload.planId === 'default') {
     return { ok: false, plans: [], error: 'cannot_delete_default', message: 'Cannot delete the default plan' };
   }
+  validatePlanId(payload.planId);
   const storage = resolveStorage(storageProvider);
   const store = openStore(storage, payload.projectKey, payload.projectId);
   const success = await store.deletePlan(payload.planId);
@@ -2247,6 +2296,7 @@ export async function renameProjectPlan(
 ): Promise<{ ok: boolean; plan?: PlanMetadata | null; plans: PlanMetadata[]; error?: string; message?: string }> {
   try {
     const trimmed = validatePlanName(payload.name);
+    validatePlanId(payload.planId);
     const storage = resolveStorage(storageProvider);
     const store = openStore(storage, payload.projectKey, payload.projectId);
     const plan = await store.renamePlan(payload.planId, trimmed);

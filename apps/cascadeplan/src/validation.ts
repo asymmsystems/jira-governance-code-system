@@ -160,6 +160,17 @@ export function validateMilestone(m: Record<string, unknown>): void {
   if (!MILESTONE_TYPES.includes(m.type as string)) fail('milestone.type', 'milestone.type is not a known type');
 }
 
+/**
+ * A plan id is absent (the Main Plan), 'default', or a stored plan id: letters, digits, '-' and '_'.
+ * The id is part of the KVS key of every record of the plan, so no other character is accepted.
+ */
+export function validatePlanId(planId: unknown): void {
+  if (planId === undefined || planId === null) return;
+  if (typeof planId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(planId)) {
+    fail('planId', 'planId must be 1 to 64 letters, digits, hyphens or underscores');
+  }
+}
+
 export function validatePlanName(name: unknown): string {
   if (typeof name !== 'string' || name.trim().length === 0 || name.length > 80) {
     fail('name', 'Plan name must be between 1 and 80 characters');
