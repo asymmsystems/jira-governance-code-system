@@ -11,5 +11,9 @@ apps/*/.forge
 __pycache__
 *.pyc
 
+# VitePress
+site/.vitepress/dist
+site/.vitepress/cache
+
 # Do not ignore Custom UI static bundles
 !apps/*/static/frontend/build/

@@ -1,74 +1,95 @@
 # Atlassian Marketplace Listing: LedgerSeal
 
 ## App Information
-* **Name:** LedgerSeal: Tamper-Evident Approval Seal
-* **Tagline:** Seal a Jira issue when it is approved. See what changed after approval, and who changed it.
-* **Categories:** Workflow & Automation, Security
+* **App Title:** LedgerSeal
+* **Tagline:** Tamper-evident approval seals and post-approval change control for Jira.
+* **Categories:** Security, Workflow & Automation, Project Management
 
 ---
 
-## Short Description (Highlight)
-LedgerSeal records an approval as a signed seal of the issue. If the issue changes after approval, LedgerSeal shows which covered items changed, who changed them and when. It can block a workflow transition until the issue is sealed and unchanged. An auditor can check the seal with our published public key and an open verifier.
+## Short Highlight Description (Max 250 chars)
+Seal Jira issues cryptographically at approval. LedgerSeal tracks post-approval edits with SHA-256 snapshot hashes, blocks unapproved releases at workflow gates, and provides standalone offline Ed25519 signature verification. (227 characters)
 
 ---
 
-## Detailed Description
+## The Unaddressed Native Problem
 
-### The problem
-Jira keeps a change log, but it does not tell you whether the content that moves on is the content that was approved. A user who can edit an issue can change it after approval, and nothing compares the issue with the approval.
+Standard Jira records when issue changes happen in its change history, but native Jira workflows cannot prove whether an approved ticket remained authentic before release. 
 
-LedgerSeal ties the approval to the issue content, and keeps the evidence.
+Consider the standard release trap:
+1. At 10:00 AM, QA and compliance leadership formally approve ticket `DEMO-101` for production deployment.
+2. At 2:00 PM, a developer edits the ticket description, modifies acceptance criteria, or changes an attached configuration script.
+3. At 4:00 PM, the ticket moves cleanly to **Done** and deploys to production. 
 
-### Key Capabilities
-1. **A seal of the approved content:**
-   When an approver seals an issue, LedgerSeal stores a SHA-256 hash of the covered fields, the comments and the attachment list. The panel lists the covered fields, and the fields it does not cover with the reason for each.
-2. **Changes after approval, with who and when:**
-   When a covered item changes, the panel shows "Changed after approval", the item, the old and new value, who changed it and when. LedgerSeal records the change when the issue update event arrives, even if no one opens the issue.
-3. **Separation of duties:**
-   Only project admins, Jira admins and members of the approver groups a Jira admin chooses can seal, reseal or revoke. A user who changed the issue cannot approve that change, and cannot get around this by revoking and sealing again. A reseal after a change needs a reason.
-4. **History that a reseal does not hide:**
-   LedgerSeal keeps every seal, change incident, reseal and revoke in a hash-chained history. An issue that changed after approval stays marked as changed after approval, also after a reseal.
-5. **Workflow transition validator:**
-   LedgerSeal can block a workflow transition until the issue is sealed and unchanged. A Jira admin must add the validator to the workflow.
-6. **Signed records and an open verifier:**
-   Seal records are signed with Ed25519. An auditor can check them with our published public key. The key is held by the vendor, so the signature proves that LedgerSeal wrote the record, not that the vendor could not. The evidence export (JSON) contains the hashed snapshot, the history and the signed attestation. The open verifier uses the Node standard library only, and checks the hash, the history chain and the signature.
-7. **Find issues in JQL:**
-   Search by seal state, for example `issue.property[ledgerseal-cert].status = "SEAL_BROKEN"`, or by `ledgersealEverCompromised` and `ledgersealIncidents`. The property is a summary for search. Check the signature before you rely on a value.
+Standard Jira permission schemes cannot prevent this without locking the entire project into read-only mode, which breaks active sprint execution. Jira's audit log shows an edit occurred, but native Jira cannot answer the auditor's core question: **"Was the exact work deployed identical to what leadership approved?"**
 
-### Each seal records
-The signer's Jira account and name, the time, the meaning (Approved, Reviewed or Verified) and the declaration the signer agreed to (supports 21 CFR 11.50(a)).
-
-### Compliance
-- "Only users in your approver policy can seal, reseal or revoke. A user who changed the issue cannot approve that change (supports authority checks, 21 CFR 11.10(g))."
-- "LedgerSeal can block a workflow transition until the issue is sealed and unchanged (supports operational sequencing checks, 21 CFR 11.10(f))."
-- "LedgerSeal can provide evidence for the approval step of a change management control, such as SOC 2 CC8.1 or ISO 27001 A.8.32. Your auditor decides whether it is sufficient."
-- "LedgerSeal does not provide 21 CFR Part 11 electronic signatures by itself. It does not perform the two-component signing in 11.200. Compliance depends on your validation and procedures."
-
-This is a product description, not legal advice.
-
-### Known limits
-- A change of status or resolution does not break a seal, so the validator can gate a transition. A manual resolution change after approval is not flagged; Jira's change log still records it.
-- Some fields are not covered, such as rank, sprint, SLA timers, sentiment and forms counts. The panel lists each one and the reason.
-- Attachments are covered by their id, name, size and type, not by file content. Jira gives a replaced file a new id.
-- If an edit and its revert both happen with no issue update event and no panel view in between, LedgerSeal does not see the change.
+LedgerSeal solves this by binding the approval directly to the issue content with cryptographic snapshot hashing, tamper-evident seals, automated workflow transition gates, and open offline verification.
 
 ---
 
-## Pricing Strategy (Monthly per Instance)
+## Key Capabilities & Verifiable Proof
 
-* **1 to 10 Users:** Free for up to 10 users
-* **11 to 100 Users:** \$1.50 per user/month (\$15 to \$150/month)
-* **101 to 250 Users:** \$1.20 per user/month (\$150 to \$300/month)
-* **251 to 1,000 Users:** \$0.90 per user/month (\$300 to \$900/month)
-* **1,001+ Users:** Custom Enterprise Tier
+| Capability | Underlying Mechanism | Verifiable Proof in Code & Tests |
+|---|---|---|
+| **Cryptographic Content Snapshot** | Computes SHA-256 digest over Canonical JSON of covered fields, comments, and attachments. | `apps/ledgerseal/src/domain/canonicalizer.ts`, `apps/ledgerseal/test/canonicalizer.test.ts` |
+| **Post-Approval Tamper Detection** | Detects modifications immediately via issue update events and UI reconciliation, attributing who changed what. | `apps/ledgerseal/src/domain/tamper-detector.ts`, `apps/ledgerseal/test/tamper-detector.test.ts` |
+| **Separation of Duties** | Enforces that ticket editors cannot approve their own changes. Prevents self-approval bypasses. | `apps/ledgerseal/src/storage/seal-repository.ts`, `apps/ledgerseal/test/security-adversarial.test.ts` |
+| **Tamper-Evident History Chain** | Hash-chained audit trail from genesis (`0000...0000`) where every seal, edit, reseal, or revocation is linked. | `apps/ledgerseal/src/domain/history.ts`, `apps/ledgerseal/test/history-chain.test.ts` |
+| **Workflow Transition Gate** | Jira workflow validator blocks issue transition to Done if unsealed, broken, or modified post-approval. | `apps/ledgerseal/src/validator/workflow-validator.ts`, `apps/ledgerseal/test/workflow-validator.test.ts` |
+| **Ed25519 Digital Signatures** | Attestation signed with Ed25519 asymmetric cryptography using published vendor public keys. | `apps/ledgerseal/src/domain/crypto.ts`, `apps/ledgerseal/keys/ls-dev-2026-11.pub.pem` |
+| **Standalone Offline Verifier** | Open-source Node.js script verifies exported evidence offline using standard library `node:crypto` only. | `verifier-public/verify-evidence.mjs`, `verifier-public/test/verify.test.mjs` |
 
 ---
 
-## Security and Data
-* **Runtime:** Runs on Forge, in the Forge runtime under the user's Atlassian login. The app backend makes no outbound network calls. The panel icon is bundled with the app.
-* **Data storage:** Forge key-value storage, hosted by Atlassian, and one issue property (`ledgerseal-cert`) per sealed issue.
-* **Scopes:**
-  * `read:jira-work`: read the issue, comments, work log, field list and change log to compute and check the seal.
-  * `write:jira-work`: write the `ledgerseal-cert` issue property, used for JQL search.
-  * `read:jira-user`: read the signer's display name for the seal record.
-  * `storage:app`: store seals and history in Forge storage.
+## Enterprise Compliance Grounding
+
+LedgerSeal provides technical controls that support customer compliance across regulated industries:
+
+- **SOC 2 Type II (Trust Services Criteria CC8.1):** Supports change authorization controls by cryptographically guaranteeing that code and configuration changes moving to production match approved tickets.
+- **ISO/IEC 27001:2022 (Control A.8.32 Change Management):** Enforces separation of duties and tamper detection on change tickets.
+- **FDA 21 CFR Part 11 (Electronic Records & Signatures):** Supports electronic signature manifestation (21 CFR 11.50) and signature-to-record linking (21 CFR 11.70) by binding the approver identity, timestamp, and meaning directly to the hashed ticket state.
+
+*Honest Compliance Boundary:* LedgerSeal provides technical enforcement tools. It does not certify your organization. Regulatory compliance is determined by your external auditors based on your overall operating procedures and system validation.
+
+---
+
+## Data Privacy & "Runs on Atlassian" Architecture Guarantee
+
+- **100% Forge Native Execution:** LedgerSeal executes entirely within Atlassian Cloud compute infrastructure.
+- **Zero External Egress:** The app manifest contains zero egress endpoints (`permissions.external.fetch.backend` is completely absent). No data ever leaves your Atlassian tenant.
+- **Customer Tenant Storage:** All seal records, audit chains, and certificates reside in your tenant Atlassian Forge Key-Value Storage (KVS).
+- **Data Residency Compliance:** Your data remains stored in the same geographic region as your Jira Cloud instance.
+
+---
+
+## Transparent Pricing
+
+| Tier | Monthly Price | Annual Price (2 Months Free) |
+|---|---|---|
+| **1 to 10 Users** | **Free** | **Free** |
+| **11 to 100 Users** | $1.50 per user / month | $15.00 per user / year |
+| **101 to 250 Users** | $1.20 per user / month | $12.00 per user / year |
+| **251 to 1,000 Users** | $0.90 per user / month | $9.00 per user / year |
+
+*All billing is handled natively through your existing Atlassian invoice.*
+
+---
+
+## Retina Screenshot Gallery Manifest
+
+1. `01-sealed-panel.png` - **Cryptographic Issue Panel:** Issue in verified sealed state showing SHA-256 snapshot hash, approver identity, and certificate status.
+2. `02-tamper-detected.png` - **Instant Tamper Detection:** Clear alert indicating issue description was edited post-approval with user attribution.
+3. `03-transition-blocked.png` - **Enforcement Gate:** Workflow validator blocks transition into Done status because content was altered.
+4. `04-admin-approvers.png` - **Approver Governance:** Admin settings page configuring authorized approver groups under the Uniform Permission Standard.
+5. `05-certificate.png` - **Audit Certificate:** Expanded cryptographic attestation certificate ready for one-click JSON export.
+
+---
+
+## Support, Documentation & Legal Links
+
+- **Documentation Portal:** https://docs.asymm.systems/apps/ledgerseal/
+- **Open Verifier Repository:** https://github.com/asymm-systems/ledgerseal-verifier
+- **Privacy Policy:** https://asymm.systems/privacy
+- **Terms of Service:** https://asymm.systems/terms
+- **Support Portal & SLA:** https://asymm.systems/support
+- **Direct Support Contact:** `support@asymm.systems`

@@ -26,7 +26,7 @@ It carries the official "Runs on Atlassian" badge.
 ## Pricing
 DefinitionGuard offers transparent, tiered user-based pricing with automated Atlassian billing:
 - **Free Tier**: Free forever for small teams up to 10 users.
-- **Standard Tier (11–100 users)**: $1.00 / user / month.
-- **Growth Tier (101–250 users)**: $0.80 / user / month.
+- **Standard Tier (11-100 users)**: $1.00 / user / month.
+- **Growth Tier (101-250 users)**: $0.80 / user / month.
 - **Enterprise Tier (251+ users)**: Tiered volume discount down to $0.40 / user / month.
 - **Annual Plans**: 2 months free with annual subscription.

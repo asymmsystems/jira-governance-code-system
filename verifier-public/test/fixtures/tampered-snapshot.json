@@ -1,0 +1,54 @@
+{
+  "format": "ledgerseal-evidence/1",
+  "publicKeyId": "test-key",
+  "exportedAt": "2026-11-04T00:05:00.000Z",
+  "attestation": {
+    "schemaVersion": 2,
+    "issueId": "10001",
+    "issueKey": "SEC-101",
+    "status": "SEAL_VALID",
+    "keyId": "test-key",
+    "certificateId": "cert-2026-11-04-001",
+    "snapshotHash": "6b5c0cd9f3e66a0aa1941f6067fd7a1fcccb9d025145de6090d64a965787af21",
+    "sealedAt": "2026-11-04T00:00:00.000Z",
+    "sealedBy": "user-lead",
+    "historyTailHash": "eee8d714b9da4ba9458f349a31b6de155cef186de7f9b8566d2c90133bf2d02c",
+    "everCompromised": "false",
+    "incidentCount": 0,
+    "sig": "QKXvG7wqjTwL0jUQ30l54nMeMJh+ZBU/xK62MSWdT6YDpNcGT13cG3xAGVAP/CXz0p2SyMgLiUlDb5TRUzWKCw=="
+  },
+  "snapshot": {
+    "canonicalizerVersion": "2.1.0",
+    "issueId": "10001",
+    "issueKey": "SEC-101",
+    "projectId": "10000",
+    "issueTypeId": "10001",
+    "fields": [
+      {
+        "id": "summary",
+        "value": "TAMPERED: Backup Policy Modified Without CAB Approval"
+      },
+      {
+        "id": "description",
+        "value": "All production databases must have point-in-time recovery enabled."
+      }
+    ],
+    "comments": [],
+    "attachments": []
+  },
+  "history": [
+    {
+      "seq": 1,
+      "prevEntryHash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "timestamp": "2026-11-04T00:00:00.000Z",
+      "partyId": "user-lead",
+      "transitionName": "SEAL",
+      "statusId": "LS_SEALED",
+      "snapshotHash": "6b5c0cd9f3e66a0aa1941f6067fd7a1fcccb9d025145de6090d64a965787af21",
+      "data": {
+        "certificateId": "cert-2026-11-04-001"
+      },
+      "entryHash": "eee8d714b9da4ba9458f349a31b6de155cef186de7f9b8566d2c90133bf2d02c"
+    }
+  ]
+}

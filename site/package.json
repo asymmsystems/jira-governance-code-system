@@ -1,0 +1,16 @@
+{
+  "name": "@asymm/docs-portal",
+  "version": "1.0.0",
+  "description": "Asymm Systems Documentation Portal (docs.asymm.systems)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync-assets": "node sync-assets.mjs",
+    "docs:dev": "npm run sync-assets && vitepress dev",
+    "docs:build": "npm run sync-assets && vitepress build",
+    "docs:preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "^1.5.0"
+  }
+}
