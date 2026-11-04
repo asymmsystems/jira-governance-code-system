@@ -21,7 +21,7 @@ export default defineConfig({
           { text: 'LedgerSeal', link: '/apps/ledgerseal/' },
           { text: 'DefinitionGuard', link: '/apps/definitionguard/' },
           { text: 'FourRealities', link: '/apps/fourrealities/' },
-          { text: 'PlanShift', link: '/apps/planshift/' }
+          { text: 'CascadePlan', link: '/apps/cascadeplan/' }
         ]
       },
       { text: 'Security & Architecture', link: '/architecture-and-security' },
@@ -73,13 +73,13 @@ export default defineConfig({
         ]
       },
       {
-        text: 'PlanShift',
+        text: 'CascadePlan',
         collapsed: false,
         items: [
-          { text: 'Overview & Baseline Protection', link: '/apps/planshift/' },
-          { text: 'Admin Guide', link: '/apps/planshift/admin-guide' },
-          { text: 'User Guide & WBS Planning', link: '/apps/planshift/user-guide' },
-          { text: 'Scope Creep Auditing', link: '/apps/planshift/scope-creep-audit' }
+          { text: 'Overview & Baseline Protection', link: '/apps/cascadeplan/' },
+          { text: 'Admin Guide', link: '/apps/cascadeplan/admin-guide' },
+          { text: 'User Guide & WBS Planning', link: '/apps/cascadeplan/user-guide' },
+          { text: 'Scope Creep Auditing', link: '/apps/cascadeplan/scope-creep-audit' }
         ]
       }
     ],

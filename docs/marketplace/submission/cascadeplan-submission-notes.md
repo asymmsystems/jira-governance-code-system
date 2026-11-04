@@ -1,11 +1,11 @@
-# Atlassian Marketplace Reviewer Notes: PlanShift
+# Atlassian Marketplace Reviewer Notes: CascadePlan
 
 ## App Overview
-- **App Name:** PlanShift
+- **App Name:** CascadePlan
 - **App ID:** `ari:cloud:ecosystem::app/cac8499e-e92e-4ba6-95cc-af398b1be791`
 - **Publisher:** Asymm Systems (`https://asymm.systems`)
 - **Support Contact:** `support@asymm.systems`
-- **Documentation:** `https://docs.asymm.systems/apps/planshift/`
+- **Documentation:** `https://docs.asymm.systems/apps/cascadeplan/`
 
 ---
 
@@ -24,7 +24,7 @@ Every scope declared in `manifest.yml` directly maps to user-facing capabilities
 
 ## 2. Architecture & Data Residency Statement
 
-- **Zero External Egress:** PlanShift declares zero external network endpoints. It makes no outbound network calls.
+- **Zero External Egress:** CascadePlan declares zero external network endpoints. It makes no outbound network calls.
 - **Tenant Storage:** All baselines, task snapshots, shift approval records, and WBS custom schedules reside strictly in customer Atlassian Forge KVS (`storage:app`).
 - **Data Residency:** All data remains strictly within the customer's Atlassian Cloud data region.
 
@@ -36,7 +36,7 @@ Every scope declared in `manifest.yml` directly maps to user-facing capabilities
 
 ### Sample Test Project
 - **Project Key:** `DEMO` or `TEST`
-- **Planner Page URL:** Accessible from the left project sidebar under **PlanShift Planner** (or **CascadePlan Planner**).
+- **Planner Page URL:** Accessible from the left project sidebar under **CascadePlan Planner**.
 
 ---
 
@@ -50,7 +50,7 @@ Every scope declared in `manifest.yml` directly maps to user-facing capabilities
 ### Test Step 2: Sprint Baseline Freezing
 1. In the planner toolbar, click **Freeze Baseline**.
 2. Enter a baseline name (e.g. `Sprint 1 Commitment`) and confirm.
-3. Observe that PlanShift records an immutable snapshot of all committed tasks and total hours.
+3. Observe that CascadePlan records an immutable snapshot of all committed tasks and total hours.
 
 ### Test Step 3: Scope Creep Detection
 1. Create a new task or edit an existing task's estimate on the schedule.
@@ -70,5 +70,5 @@ Every scope declared in `manifest.yml` directly maps to user-facing capabilities
 
 ## 5. Known Review Risks & Technical Mitigations
 
-1. **Manifest Key Naming:** The project page module key in `manifest.yml` is currently `cascadeplan-project-planner`. The user-facing listing and UI title reflect the commercial brand **PlanShift**. The underlying module key remains stable to preserve backwards compatibility for existing beta installations.
-2. **Native Jira Synchronization:** PlanShift only writes to Jira when an unestimated or rescheduled task is updated by the user, preserving Jira data integrity.
+1. **Manifest Key Naming:** The project page module key in `manifest.yml` is `cascadeplan-project-planner`, matching the commercial brand **CascadePlan**.
+2. **Native Jira Synchronization:** CascadePlan only writes to Jira when an unestimated or rescheduled task is updated by the user, preserving Jira data integrity.

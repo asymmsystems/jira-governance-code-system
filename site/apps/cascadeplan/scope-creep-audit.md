@@ -1,12 +1,12 @@
 # Scope Creep Auditing & Sprint Retrospectives
 
-Scope creep is one of the leading causes of missed software release dates, budget overruns, and engineering team burnout. PlanShift provides structured auditing and metrics export capabilities to help engineering leadership analyze commitment variance across sprints and delivery quarters.
+Scope creep is one of the leading causes of missed software release dates, budget overruns, and engineering team burnout. CascadePlan provides structured auditing and metrics export capabilities to help engineering leadership analyze commitment variance across sprints and delivery quarters.
 
 ---
 
 ## 1. Scope Variance Metrics
 
-PlanShift quantifies delivery stability using three standardized metrics:
+CascadePlan quantifies delivery stability using three standardized metrics:
 
 ### 1. Scope Creep Percentage (Expansion Ratio)
 The total net increase in committed effort after baseline freezing:
@@ -34,7 +34,7 @@ Regulated organizations and client services agencies target a 100% compliance ra
 
 During your sprint retrospective or milestone post-mortem:
 
-1. Open the **PlanShift Planner** and select the completed sprint.
+1. Open the **CascadePlan Planner** and select the completed sprint.
 2. In the baseline selector, choose **Baseline Comparison View**.
 3. Inspect the side-by-side delta table:
    - **Original Baseline:** Displays the committed snapshot as frozen at sprint launch.
@@ -53,7 +53,7 @@ During your sprint retrospective or milestone post-mortem:
 For software agencies, consulting firms, and defense contractors operating under fixed-fee or milestone-based contracts, unrecorded scope expansion represents direct revenue loss:
 
 1. **Client Sign-off Verification:** When clients request modifications mid-milestone, submit a formal Scope Shift Request and attach client email confirmation or change order reference in the justification.
-2. **Immutable Audit Trail:** PlanShift records the exact Atlassian Account ID, timestamp, and justification for every approved baseline version (`v1.0`, `v1.1`, `v1.2`).
+2. **Immutable Audit Trail:** CascadePlan records the exact Atlassian Account ID, timestamp, and justification for every approved baseline version (`v1.0`, `v1.1`, `v1.2`).
 3. **Change Order Export:** Export the complete baseline audit trail as a signed PDF or JSON artifact to support client invoicing and change order negotiations.
 
 ---
@@ -61,7 +61,7 @@ For software agencies, consulting firms, and defense contractors operating under
 ## 4. Exporting Audit Reports
 
 Administrators and leads can export complete baseline audit data:
-1. In PlanShift, click **Export Report** in the top navigation.
+1. In CascadePlan, click **Export Report** in the top navigation.
 2. Choose your export format:
    - **JSON (Machine Readable):** Contains full ticket snapshots, SHA-256 baseline hashes, and shift request logs for ingestion into enterprise data lakes or compliance archives.
    - **CSV (Tabular):** Summary table of all sprint issues, original hours, final hours, and delta percentages for executive review.

@@ -2,7 +2,7 @@
 
 > Enterprise-grade data privacy by design: runs entirely within the customer Atlassian tenant.
 
-This document describes the security architecture, data storage model, and isolation guarantees implemented across the Asymm Systems Jira Governance Suite (**LedgerSeal**, **DefinitionGuard**, **FourRealities**, **PlanShift**).
+This document describes the security architecture, data storage model, and isolation guarantees implemented across the Asymm Systems Jira Governance Suite (**LedgerSeal**, **DefinitionGuard**, **FourRealities**, **CascadePlan**).
 
 ---
 
@@ -23,7 +23,7 @@ The Asymm Systems suite was designed from inception as **100% Atlassian Forge Na
 |   |  - Workflow Engine    |  Local API   |  - LedgerSeal            |   |
 |   |  - User Permissions   |              |  - DefinitionGuard       |   |
 |   +-----------------------+              |  - FourRealities         |   |
-|                                          |  - PlanShift             |   |
+|                                          |  - CascadePlan           |   |
 |                                          +--------------------------+   |
 |                                                       |                 |
 |                                                       v                 |
@@ -50,7 +50,7 @@ Inspect the manifests across all four suite apps:
 - `apps/ledgerseal/manifest.yml`: Zero `permissions.external` declarations.
 - `apps/definitionguard/manifest.yml`: Zero `permissions.external` declarations.
 - `apps/fourrealities/manifest.yml`: Zero `permissions.external` declarations.
-- `apps/planshift/manifest.yml`: Zero `permissions.external` declarations.
+- `apps/cascadeplan/manifest.yml`: Zero `permissions.external` declarations.
 
 **Result:** The Forge platform physically blocks any attempt by the suite code to make an outbound HTTP/HTTPS request, open a WebSocket, or connect to an external server. Customer data cannot leak outside Atlassian Cloud.
 

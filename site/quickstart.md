@@ -19,7 +19,7 @@ Every app in the suite includes a **Free Evaluation Tier for teams up to 10 user
    - `LedgerSeal`
    - `DefinitionGuard`
    - `FourRealities`
-   - `PlanShift`
+   - `CascadePlan`
 3. Click **Try it free** to install the app.
 4. Because the suite runs 100% on Atlassian Forge, installation completes in seconds without configuring external databases or webhook endpoints.
 
@@ -33,7 +33,7 @@ The suite utilizes the **Uniform Permission Management Standard** across all app
 2. In the left sidebar, click the app's administration page:
    - **LedgerSeal approvers**
    - **DefinitionGuard approvers**
-   - **PlanShift approvers**
+   - **CascadePlan approvers**
 3. In the **Authorized Groups** input, search for and select your compliance, release, or lead groups (e.g. `jira-administrators`, `release-managers`, `tech-leads`).
 4. Click **Save Policy**. Only members of these configured groups will have authority to apply seals, grant waivers, or approve baseline shifts.
 
@@ -61,7 +61,7 @@ Open any test ticket in your active sprint board:
 - **Testing LedgerSeal:** Open the **LedgerSeal Audit Gate** issue panel. Click **Seal Issue**. Edit the ticket description and verify that the panel turns amber `[CHANGED]` and the transition into Done is blocked.
 - **Testing DefinitionGuard:** Open the **Definition of Done** issue panel. Add a mandatory item requiring an evidence URL. Attempt moving the ticket to Done and verify that the validator blocks the move until evidence is attached.
 - **Testing FourRealities:** Open the **Delivery Integrity** issue glance on any ticket. Verify that Intent, Process, Code, and Audit scores render.
-- **Testing PlanShift:** Open the **PlanShift Planner** project page in the left sidebar. Click **Freeze Baseline** to record your sprint commitment snapshot.
+- **Testing CascadePlan:** Open the **CascadePlan Planner** project page in the left sidebar. Click **Freeze Baseline** to record your sprint commitment snapshot.
 
 ---
 

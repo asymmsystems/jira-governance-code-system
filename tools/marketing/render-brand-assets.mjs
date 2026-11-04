@@ -63,8 +63,8 @@ const APPS = [
     ]
   },
   {
-    name: 'planshift',
-    title: 'PlanShift',
+    name: 'cascadeplan',
+    title: 'CascadePlan',
     tagline: 'Visual sprint baseline control, scope creep detection, and WBS planning for Jira.',
     primaryColor: '#0065FF',
     badgeColor: '#FF8B00',

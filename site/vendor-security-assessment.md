@@ -11,7 +11,7 @@ This document provides standardized answers to common questions found in enterpr
 | Question | Answer |
 |---|---|
 | **Vendor / Publisher Name** | Asymm Systems (`https://asymm.systems`) |
-| **Product Suite** | Asymm Systems Jira Governance Suite (**LedgerSeal**, **DefinitionGuard**, **FourRealities**, **PlanShift**) |
+| **Product Suite** | Asymm Systems Jira Governance Suite (**LedgerSeal**, **DefinitionGuard**, **FourRealities**, **CascadePlan**) |
 | **Primary Contact** | `security@asymm.systems` / `support@asymm.systems` |
 | **Application Delivery Model** | 100% Atlassian Forge Native Cloud App |
 

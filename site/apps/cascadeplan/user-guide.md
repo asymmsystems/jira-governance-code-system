@@ -1,14 +1,14 @@
-# PlanShift User Guide
+# CascadePlan User Guide
 
-This guide explains how engineering leads, scrum masters, and developers use PlanShift for hierarchical project scheduling, sprint baseline freezing, scope change approvals, and capacity management.
+This guide explains how engineering leads, scrum masters, and developers use CascadePlan for hierarchical project scheduling, sprint baseline freezing, scope change approvals, and capacity management.
 
 ---
 
 ## 1. Accessing the Project Planner
 
-In Jira's left-hand project navigation menu, select **PlanShift Planner** (or **CascadePlan Planner**).
+In Jira's left-hand project navigation menu, select **CascadePlan Planner**.
 
-![PlanShift WBS Tree and Hierarchy](/assets/planshift/01-wbs-tree.png)
+![CascadePlan WBS Tree and Hierarchy](/assets/cascadeplan/01-wbs-tree.png)
 
 The planner interface displays:
 - **Hierarchical WBS View:** Interactive breakdown of Epics, Stories, and Subtasks.
@@ -29,17 +29,17 @@ Once sprint planning or milestone scoping is finalized:
    - Baseline name (e.g., `Sprint 24 - Initial Commitment`).
 3. Click **Confirm & Freeze**.
 
-![Baseline Settings and Freeze Confirmation](/assets/planshift/04-baseline-settings.png)
+![Baseline Settings and Freeze Confirmation](/assets/cascadeplan/04-baseline-settings.png)
 
-PlanShift takes an immutable snapshot of all ticket estimates, assignees, and dependencies at this exact moment.
+CascadePlan takes an immutable snapshot of all ticket estimates, assignees, and dependencies at this exact moment.
 
 ---
 
 ## 3. Detecting Scope Creep & Viewing Alerts
 
-Once a baseline is frozen, PlanShift monitors all changes in the active sprint:
+Once a baseline is frozen, CascadePlan monitors all changes in the active sprint:
 
-![Scope Creep Alert and Commitment Delta](/assets/planshift/03-scope-creep-alert.png)
+![Scope Creep Alert and Commitment Delta](/assets/cascadeplan/03-scope-creep-alert.png)
 
 - **Added Task Warning:** Any ticket added to the sprint after freeze displays an **[ADDED]** tag with the injected hours.
 - **Estimate Increase Alert:** Tickets where original estimates increased display a **[RE-ESTIMATED]** badge showing the delta (e.g., `+12h`).
@@ -68,12 +68,12 @@ The sprint enters a **SHIFT_REQUESTED** state, notifying designated baseline aut
 
 Designated Baseline Authorities review submitted shift requests:
 
-![Scope Shift Approval Modal](/assets/planshift/05-shift-approval.png)
+![Scope Shift Approval Modal](/assets/cascadeplan/05-shift-approval.png)
 
 1. Open the pending Scope Shift notification in the planner.
 2. Inspect the proposed delta hours, impacted assignees, and justification notes.
 3. Choose an action:
-   - **Approve Shift:** PlanShift generates a new baseline version (`v1.1`), incorporating the approved tasks into the authorized commitment and resetting the scope creep delta.
+   - **Approve Shift:** CascadePlan generates a new baseline version (`v1.1`), incorporating the approved tasks into the authorized commitment and resetting the scope creep delta.
    - **Reject Shift:** The shift is denied. Team members must remove the unauthorized tasks from the active sprint to clear the alert.
 
 ---
@@ -82,7 +82,7 @@ Designated Baseline Authorities review submitted shift requests:
 
 Click the **Resource Grid** toggle on the planner toolbar to inspect team workload:
 
-![Resource Allocation Grid](/assets/planshift/02-resource-heatmap.png)
+![Resource Allocation Grid](/assets/cascadeplan/02-resource-heatmap.png)
 
 - **Weekly Columns:** Work is distributed across calendar weeks based on issue start dates, due dates, and remaining estimates.
 - **Over-Capacity Highlighting:** Cells exceeding 40 hours per week turn amber or red, highlighting overallocation before burnout occurs.

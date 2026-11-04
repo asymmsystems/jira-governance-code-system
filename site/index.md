@@ -2,7 +2,7 @@
 
 > The Zero-Trust Governance & Change Control Platform for Jira Cloud.
 
-Welcome to the official technical and compliance documentation portal for the **Asymm Systems Jira Governance Suite**: **LedgerSeal**, **DefinitionGuard**, **FourRealities**, and **PlanShift**.
+Welcome to the official technical and compliance documentation portal for the **Asymm Systems Jira Governance Suite**: **LedgerSeal**, **DefinitionGuard**, **FourRealities**, and **CascadePlan**.
 
 ---
 
@@ -29,7 +29,7 @@ While Jira Cloud provides issue tracking and audit logs, native Jira fails three
 | LedgerSeal               | Tamper-Evident Approval Seals  | Workflow Transition   |
 | DefinitionGuard          | Enforceable Definition of Done | Move-to-Done Gate     |
 | FourRealities            | Multi-Perspective Alignment    | Reality Alignment     |
-| PlanShift                | Sprint Baseline Control        | Shift Approval Flow   |
+| CascadePlan              | Sprint Baseline Control        | Shift Approval Flow   |
 +--------------------------+--------------------------------+-----------------------+
 ```
 
@@ -42,7 +42,7 @@ Workflow-enforced Definition of Done (DoD). Enforces per-issue-type DoD criteria
 ### 3. FourRealities
 Cross-reality delivery integrity dashboard. Audits delivery alignment across four distinct perspectives: Intent (Confluence ADRs), Process (Jira Workflows), Code (Git PRs), and Audit (Logs), computing an objective Reality Alignment Index (RAI).
 
-### 4. PlanShift
+### 4. CascadePlan
 Visual sprint baseline control and scope governance. Freezes commitment snapshots at sprint planning, tracks commitment variance and scope creep (+%), and enforces formal shift approval authorities under the Uniform Permission Standard.
 
 ---

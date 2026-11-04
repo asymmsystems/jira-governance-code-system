@@ -1,6 +1,6 @@
 # Atlassian Developer Console Submission Checklist & Runbook
 
-This runbook guides the publisher through official Atlassian Marketplace submission on [developer.atlassian.com/console](https://developer.atlassian.com/console) for all 4 apps in the Asymm Systems Jira Governance Suite (**LedgerSeal**, **DefinitionGuard**, **FourRealities**, **PlanShift**).
+This runbook guides the publisher through official Atlassian Marketplace submission on [developer.atlassian.com/console](https://developer.atlassian.com/console) for all 4 apps in the Asymm Systems Jira Governance Suite (**LedgerSeal**, **DefinitionGuard**, **FourRealities**, **CascadePlan**).
 
 ---
 
@@ -10,7 +10,7 @@ Before submitting any app in the Developer Console, ensure these prerequisites a
 
 | Check | Requirement | Verification Command / Check | Status |
 |---|---|---|---|
-| **Licensing Enabled** | Every paid app manifest must declare `app.licensing.enabled: true`. | Verified in `apps/planshift` and `apps/definitionguard`. Ensure `apps/ledgerseal` has licensing enabled for commercial listing. | Ready |
+| **Licensing Enabled** | Every paid app manifest must declare `app.licensing.enabled: true`. | Verified in `apps/cascadeplan` and `apps/definitionguard`. Ensure `apps/ledgerseal` has licensing enabled for commercial listing. | Ready |
 | **No External Icon URLs** | Icons in `manifest.yml` must reference local static resources (e.g. `resource:icons;icon.svg`) rather than raw GitHub URLs. | Checked in manifests. LedgerSeal uses Feather SVG icon. Replace raw URLs with local bundled SVG icons before submission. | Fix Needed |
 | **Production Forge Deploy** | Apps must be deployed to the Forge `production` environment. | Run `forge deploy -e production` inside each app directory. | Ready |
 | **Production Installation** | App must be installed on at least one production Jira instance. | Run `forge install -e production --site asymmsystems.atlassian.net`. | Ready |
@@ -28,7 +28,7 @@ For each app:
    - **LedgerSeal:** `ari:cloud:ecosystem::app/7489a645-7c96-400a-b289-eb36f2701a00`
    - **DefinitionGuard:** `ari:cloud:ecosystem::app/73e4f63d-7d60-450c-96d5-f81ca68a709c`
    - **FourRealities:** `ari:cloud:ecosystem::app/974e4981-7626-4b1c-a41f-7eaccb7f3605`
-   - **PlanShift:** `ari:cloud:ecosystem::app/cac8499e-e92e-4ba6-95cc-af398b1be791`
+   - **CascadePlan:** `ari:cloud:ecosystem::app/cac8499e-e92e-4ba6-95cc-af398b1be791`
 2. Under **Distribution**, click **Create Marketplace Listing**.
 
 ### Step 2.2: Media & Copy Assets Upload
@@ -36,7 +36,7 @@ For each app:
    - *LedgerSeal:* `Tamper-evident approval seals and post-approval change control for Jira.`
    - *DefinitionGuard:* `Enforceable Definition of Done with evidence, review rules, and audit history.`
    - *FourRealities:* `Delivery integrity dashboard: align Confluence specs, Jira issues, and Git PRs.`
-   - *PlanShift:* `Visual sprint baseline control, scope creep detection, and WBS planning for Jira`
+   - *CascadePlan:* `Visual sprint baseline control, scope creep detection, and WBS planning for Jira`
 2. **Icon Upload:** Upload `docs/marketplace/assets/<app>/icon.png` (144x144 px PNG).
 3. **Hero Banner:** Upload `docs/marketplace/assets/<app>/banner.png` (2280x1140 px PNG).
 4. **Screenshot Gallery:** Upload all 5 screenshots in numerical order (`01-*.png` through `05-*.png`) from `docs/marketplace/assets/<app>/` and copy the manifest captions.

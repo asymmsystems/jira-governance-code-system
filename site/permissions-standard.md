@@ -2,7 +2,7 @@
 
 > Consistent, auditable role-based access control across all Asymm Systems Jira apps.
 
-The **Uniform Permission Management Standard** establishes a single, predictable permission architecture for configuring approvers, review authorities, and administrative privileges across the Asymm Systems suite (**LedgerSeal**, **DefinitionGuard**, **FourRealities**, **PlanShift**).
+The **Uniform Permission Management Standard** establishes a single, predictable permission architecture for configuring approvers, review authorities, and administrative privileges across the Asymm Systems suite (**LedgerSeal**, **DefinitionGuard**, **FourRealities**, **CascadePlan**).
 
 ---
 
@@ -35,7 +35,7 @@ export interface ApproverPolicy {
 ### Storage Keys
 - LedgerSeal: `ledgerseal:cfg:approver_policy`
 - DefinitionGuard: `definitionguard:cfg:approver_policy`
-- PlanShift: `cascadeplan:cfg:approver_policy` (or `planshift:cfg:approver_policy`)
+- CascadePlan: `cascadeplan:cfg:approver_policy`
 - FourRealities: `fourrealities:cfg:approver_policy`
 
 ---
@@ -46,7 +46,7 @@ Administrators configure authorized approver groups via dedicated settings pages
 
 - **LedgerSeal:** `LedgerSeal approvers`
 - **DefinitionGuard:** `DefinitionGuard approvers`
-- **PlanShift:** `PlanShift approvers`
+- **CascadePlan:** `CascadePlan approvers`
 - **FourRealities:** `FourRealities approvers`
 
 ### Configuration Workflow
@@ -64,5 +64,5 @@ Administrators configure authorized approver groups via dedicated settings pages
 |---|---|---|
 | **LedgerSeal** | Sealing, Resealing, or Revoking an Issue | User must belong to an authorized approver group. User must NOT be the author of the most recent ticket change. |
 | **DefinitionGuard** | Granting an Audited Waiver | User must have waiver authority. User must enter an obligatory justification comment. |
-| **PlanShift** | Freezing a Baseline or Approving a Scope Shift | User must belong to the authorized baseline authority group. |
+| **CascadePlan** | Freezing a Baseline or Approving a Scope Shift | User must belong to the authorized baseline authority group. |
 | **FourRealities** | Overriding an Architectural Drift Alert | User must belong to the authorized architecture decision group. |

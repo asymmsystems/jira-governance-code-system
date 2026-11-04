@@ -1,8 +1,8 @@
-# PlanShift
+# CascadePlan
 
-**PlanShift** provides visual sprint baseline control, scope creep detection, and Work Breakdown Structure (WBS) planning for Jira Cloud. It enables engineering leaders and release managers to freeze sprint commitments, detect scope drift in real time, and enforce a formal approval workflow for scope additions.
+**CascadePlan** provides visual sprint baseline control, scope creep detection, and Work Breakdown Structure (WBS) planning for Jira Cloud. It enables engineering leaders and release managers to freeze sprint commitments, detect scope drift in real time, and enforce a formal approval workflow for scope additions.
 
-![PlanShift WBS Tree and Hierarchy](/assets/planshift/01-wbs-tree.png)
+![CascadePlan WBS Tree and Hierarchy](/assets/cascadeplan/01-wbs-tree.png)
 
 ---
 
@@ -19,10 +19,10 @@ Jira allows anyone with edit permissions to add issues to an active sprint, modi
 ## 2. Key Capabilities
 
 ### 1. Visual Work Breakdown Structure (WBS)
-PlanShift organizes complex deliverables into a visual hierarchical tree: Initiatives, Epics, Stories, Tasks, and Subtasks. Drag-and-drop planning lets leads sequence work, set dependencies, and inspect schedule horizons without switching between disconnected Jira boards.
+CascadePlan organizes complex deliverables into a visual hierarchical tree: Initiatives, Epics, Stories, Tasks, and Subtasks. Drag-and-drop planning lets leads sequence work, set dependencies, and inspect schedule horizons without switching between disconnected Jira boards.
 
 ### 2. Sprint & Plan Baseline Freezing
-At the conclusion of sprint planning, administrators or release managers freeze the plan baseline with a single click. PlanShift captures a cryptographic snapshot of all committed issues, original estimates, assigned personnel, and target milestones.
+At the conclusion of sprint planning, administrators or release managers freeze the plan baseline with a single click. CascadePlan captures a cryptographic snapshot of all committed issues, original estimates, assigned personnel, and target milestones.
 
 ### 3. Real-Time Scope Creep Detection
 Any divergence from the frozen baseline is detected automatically:
@@ -31,32 +31,32 @@ Any divergence from the frozen baseline is detected automatically:
 - **Removed Scope:** Unfinished issues removed from the sprint without formal review.
 - **Commitment Variance (%):** Instant visibility into net delta hours and scope expansion percentage.
 
-![Scope Creep Alert and Commitment Delta](/assets/planshift/03-scope-creep-alert.png)
+![Scope Creep Alert and Commitment Delta](/assets/cascadeplan/03-scope-creep-alert.png)
 
 ### 4. Controlled Scope Shift Approval Workflow
 When unexpected work arises, team members submit a **Scope Shift Request** detailing added tasks, hours, and business justification. Designated baseline authorities approve or reject the shift, maintaining an immutable record of authorized scope modifications.
 
-![Scope Shift Approval Modal](/assets/planshift/05-shift-approval.png)
+![Scope Shift Approval Modal](/assets/cascadeplan/05-shift-approval.png)
 
 ### 5. Resource Allocation Utilization Grid *(New in this release)*
 A multi-week capacity grid visualizes team workload across the project timeline:
 - **Weekly Capacity Balancing:** Flags weeks where team members exceed standard 40-hour capacity.
 - **Bottleneck Detection:** Identifies overallocation spikes across dependencies before sprint execution begins.
 
-![Resource Allocation Grid](/assets/planshift/02-resource-heatmap.png)
+![Resource Allocation Grid](/assets/cascadeplan/02-resource-heatmap.png)
 
 ---
 
 ## 3. Data Privacy and Zero-Egress Architecture
 
 - **100% Atlassian Forge Native:** All computation executes inside Atlassian's secure execution environment.
-- **Zero External Network Calls:** PlanShift makes no outbound HTTP requests to external servers.
+- **Zero External Network Calls:** CascadePlan makes no outbound HTTP requests to external servers.
 - **Tenant Data Residency:** Baselines, shift requests, and utilization metrics reside in customer Forge Key-Value Storage (KVS) within your Atlassian site.
 
 ---
 
 ## 4. Next Steps
 
-- [Admin Guide](/apps/planshift/admin-guide): Configure baseline authorities and permission schemes.
-- [User Guide](/apps/planshift/user-guide): Freeze baselines, build WBS trees, and request scope shifts.
-- [Scope Creep Auditing](/apps/planshift/scope-creep-audit): Conduct sprint post-mortems and audit variance history.
+- [Admin Guide](/apps/cascadeplan/admin-guide): Configure baseline authorities and permission schemes.
+- [User Guide](/apps/cascadeplan/user-guide): Freeze baselines, detect scope creep, and request shifts.
+- [Scope Creep Auditing](/apps/cascadeplan/scope-creep-audit): Export sprint commitment variance reports for retrospectives.
