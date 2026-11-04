@@ -1,5 +1,5 @@
 /**
- * PlanShift: Storage Repository Layer
+ * CascadePlan: Storage Repository Layer
  * Manages persistence for project plans, tasks, allocations, and partial completion dependencies.
  */
 

@@ -264,15 +264,16 @@ const ALL_COLUMNS = [
   { key: 'status', label: 'Status', icon: '🏷️', defaultWidth: DEFAULT_COLUMN_WIDTHS.status, description: 'Workflow status' }
 ];
 function getVisibleColKeys() {
-  // Compact mode shows only Key and Summary, so the timeline gets the width (B-27).
-  if (compactColumns) return ['task'];
   return ALL_COLUMNS.map(c => c.key).filter(k => !hiddenColumns.has(k));
 }
+function isCompactMode() {
+  const visible = getVisibleColKeys();
+  return visible.length === 1 && visible[0] === 'task';
+}
 const COL_KEYS = ALL_COLUMNS.map(c => c.key);
-// Time axis (B-27): zoom level, an open-ended range computed in the browser, and compact columns.
+// Time axis (B-27): zoom level, bounded time range computed in browser, and compact columns.
 const ZOOM_KEY = 'cascadeplan_zoom';
-const COMPACT_KEY = 'cascadeplan_compact_columns';
-const EXTEND_WEEKS = 26;
+const EXTEND_WEEKS = 4;
 function readPref(key, fallback) {
   try { return localStorage.getItem(key) || fallback; } catch (e) { return fallback; }
 }
@@ -280,7 +281,6 @@ function writePref(key, value) {
   try { localStorage.setItem(key, value); } catch (e) {}
 }
 let zoomId = readPref(ZOOM_KEY, 'week');
-let compactColumns = readPref(COMPACT_KEY, 'off') === 'on';
 let compactDecided = false;
 let timeRange = null;
 function dayPx() {
@@ -290,11 +290,11 @@ function trackWidth() {
   return timeRange ? rangeDays(timeRange) * dayPx() : 0;
 }
 function getFrozenLayout() {
-  return computeFrozenLayout(getVisibleColKeys(), columnWidths, compactColumns, compactTaskWidth);
+  return computeFrozenLayout(getVisibleColKeys(), columnWidths, isCompactMode(), compactTaskWidth);
 }
 function colWidth(k) {
   const fl = getFrozenLayout();
-  return fl.widths[k] !== undefined ? fl.widths[k] : (compactColumns && k === 'task' ? compactTaskWidth : columnWidths[k]);
+  return fl.widths[k] !== undefined ? fl.widths[k] : (isCompactMode() && k === 'task' ? compactTaskWidth : columnWidths[k]);
 }
 /** Left offset of each frozen data column. */
 function frozenOffsets() {
@@ -492,7 +492,10 @@ function setupEventListeners() {
 
   // Dismiss Modals and Popovers on Escape Key
   window.addEventListener('keydown', (e) => {
-    const inField = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable);
+    const inField = Boolean(
+      (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable)) ||
+      (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT' || document.activeElement.isContentEditable))
+    );
     // Ctrl or Cmd with plus or minus zooms the timeline while focus is in the planner (B-27).
     if ((e.ctrlKey || e.metaKey) && !e.altKey && ['=', '+', '-', '_'].includes(e.key) && !inField && !openModal()) {
       e.preventDefault();
@@ -822,48 +825,15 @@ let hasInitialScrolledToToday = false;
 let isSyncingGanttScroll = false;
 
 function syncGanttScrollWidth() {
-  const wrapper = document.getElementById('ganttWrapper');
-  const topScroll = document.getElementById('ganttTopScrollbar');
-  const topInner = document.getElementById('ganttTopScrollbarInner');
-  const bottomScroll = document.getElementById('ganttBottomScrollbar');
-  const bottomInner = document.getElementById('ganttBottomScrollbarInner');
-  if (!wrapper) return;
-
-  const trackLeft = layout.trackLeft || 0;
-  const innerW = Math.max(0, wrapper.scrollWidth - trackLeft) + 'px';
-  if (topScroll) topScroll.style.marginLeft = trackLeft + 'px';
-  if (bottomScroll) bottomScroll.style.marginLeft = trackLeft + 'px';
-  if (topInner) topInner.style.width = innerW;
-  if (bottomInner) bottomInner.style.width = innerW;
-
-  if (!isSyncingGanttScroll) {
-    if (topScroll) topScroll.scrollLeft = wrapper.scrollLeft;
-    if (bottomScroll) bottomScroll.scrollLeft = wrapper.scrollLeft;
-  }
+  // ganttWrapper is the sole native horizontal scrollbar.
 }
 
 function initGanttScrollSync() {
   const wrapper = document.getElementById('ganttWrapper');
-  const topScroll = document.getElementById('ganttTopScrollbar');
-  const bottomScroll = document.getElementById('ganttBottomScrollbar');
   if (!wrapper) return;
-
-  const syncFrom = (source) => {
-    if (isSyncingGanttScroll) return;
-    isSyncingGanttScroll = true;
-    const x = source.scrollLeft;
-    if (source !== wrapper) wrapper.scrollLeft = x;
-    if (source !== topScroll && topScroll) topScroll.scrollLeft = x;
-    if (source !== bottomScroll && bottomScroll) bottomScroll.scrollLeft = x;
-    requestAnimationFrame(() => { isSyncingGanttScroll = false; });
-  };
-
-  if (topScroll) topScroll.addEventListener('scroll', () => syncFrom(topScroll));
-  if (bottomScroll) bottomScroll.addEventListener('scroll', () => syncFrom(bottomScroll));
 
   wrapper.addEventListener('scroll', () => {
     closeAllPopovers();
-    syncFrom(wrapper);
   });
 
   // Shift + Wheel horizontal scroll support
@@ -1035,6 +1005,112 @@ function renderTableView() {
 let searchMatches = [];
 let currentSearchMatchPos = -1;
 
+function updateSearchHighlights() {
+  const matchKeys = new Set(searchMatches.map(m => m.task.key));
+  const activeKey = (currentSearchMatchPos >= 0 && currentSearchMatchPos < searchMatches.length)
+    ? searchMatches[currentSearchMatchPos].task.key
+    : null;
+
+  // 1. Planner rows cached in rowCache
+  if (rowCache) {
+    for (const [key, tr] of rowCache.entries()) {
+      if (matchKeys.has(key)) {
+        tr.classList.add('is-search-match');
+        if (key === activeKey) {
+          tr.classList.add('is-search-active');
+        } else {
+          tr.classList.remove('is-search-active');
+        }
+      } else {
+        tr.classList.remove('is-search-match', 'is-search-active');
+      }
+    }
+  }
+
+  // 2. Planner rows in DOM
+  const plannerTbody = document.querySelector('#plannerTable tbody');
+  if (plannerTbody) {
+    plannerTbody.querySelectorAll('.task-row').forEach(tr => {
+      const key = tr.dataset.taskId;
+      if (key && matchKeys.has(key)) {
+        tr.classList.add('is-search-match');
+        if (key === activeKey) {
+          tr.classList.add('is-search-active');
+        } else {
+          tr.classList.remove('is-search-active');
+        }
+      } else {
+        tr.classList.remove('is-search-match', 'is-search-active');
+      }
+    });
+  }
+
+  // 3. Table View rows
+  const tableTbody = document.getElementById('plainDataTableBody');
+  if (tableTbody) {
+    tableTbody.querySelectorAll('tr').forEach(tr => {
+      const key = tr.dataset.taskKey;
+      if (key && matchKeys.has(key)) {
+        tr.classList.add('is-search-match');
+        if (key === activeKey) {
+          tr.classList.add('is-search-active');
+        } else {
+          tr.classList.remove('is-search-active');
+        }
+      } else {
+        tr.classList.remove('is-search-match', 'is-search-active');
+      }
+    });
+  }
+
+  // 4. Redraw timeline to reflect matching status
+  drawTimeline(true);
+}
+
+function scrollToSearchMatch(pos, takeFocus = false) {
+  if (pos < 0 || pos >= searchMatches.length) return;
+  const match = searchMatches[pos];
+  const key = match.task.key;
+  if (!key) return;
+
+  // If the task belongs to a collapsed parent or epic, expand it so it's visible in rowTasks
+  let needsRecompute = false;
+  if (match.task.parentKey && !expandedTasks.has(match.task.parentKey)) {
+    expandedTasks.add(match.task.parentKey);
+    needsRecompute = true;
+  }
+  if (match.task.epicKey && !expandedTasks.has(match.task.epicKey)) {
+    expandedTasks.add(match.task.epicKey);
+    needsRecompute = true;
+  }
+  if (needsRecompute) {
+    const computed = computeRowTasks();
+    rowTasks = computed.rows;
+    rowTaskList = rowTasks.map(r => r.task);
+    updateVirtualRows();
+  }
+
+  if (currentView === 'table') {
+    const tbody = document.getElementById('plainDataTableBody');
+    if (tbody) {
+      const tr = tbody.querySelector(`tr[data-task-key="${CSS.escape(key)}"]`);
+      if (tr) {
+        tr.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        if (takeFocus) tr.focus();
+      }
+    }
+  } else {
+    scrollRowIntoView(key);
+    const rIdx = rowTasks.findIndex(r => r.task.key === key);
+    if (rIdx >= 0) {
+      gridFocus = { row: rIdx, col: 0 };
+      if (takeFocus) {
+        setGridFocus(rIdx, 0);
+      }
+    }
+  }
+}
+
 function initInAppSearch() {
   const input = document.getElementById('inAppSearchInput');
   const count = document.getElementById('searchMatchCount');
@@ -1042,14 +1118,15 @@ function initInAppSearch() {
 
   input.addEventListener('input', () => {
     const query = input.value;
-    const tasks = (rowTasks && rowTasks.length > 0 ? rowTasks.map(r => r.task) : (currentPlan?.tasks || []));
+    const tasks = (currentPlan?.tasks && currentPlan.tasks.length > 0 ? currentPlan.tasks : (rowTasks || []).map(r => r.task));
     searchMatches = findMatchingTasks(tasks, query);
     currentSearchMatchPos = searchMatches.length > 0 ? 0 : -1;
     if (count) {
       count.textContent = formatMatchCount(query, searchMatches.length, currentSearchMatchPos);
     }
+    updateSearchHighlights();
     if (searchMatches.length > 0) {
-      navigateToSearchMatch(currentSearchMatchPos);
+      scrollToSearchMatch(currentSearchMatchPos, false);
     }
   });
 
@@ -1062,7 +1139,8 @@ function initInAppSearch() {
         if (count) {
           count.textContent = formatMatchCount(input.value, searchMatches.length, currentSearchMatchPos);
         }
-        navigateToSearchMatch(currentSearchMatchPos);
+        updateSearchHighlights();
+        scrollToSearchMatch(currentSearchMatchPos, false);
       }
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -1071,7 +1149,8 @@ function initInAppSearch() {
         if (count) {
           count.textContent = formatMatchCount(input.value, searchMatches.length, currentSearchMatchPos);
         }
-        navigateToSearchMatch(currentSearchMatchPos);
+        updateSearchHighlights();
+        scrollToSearchMatch(currentSearchMatchPos, false);
       }
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
@@ -1080,7 +1159,8 @@ function initInAppSearch() {
         if (count) {
           count.textContent = formatMatchCount(input.value, searchMatches.length, currentSearchMatchPos);
         }
-        navigateToSearchMatch(currentSearchMatchPos);
+        updateSearchHighlights();
+        scrollToSearchMatch(currentSearchMatchPos, false);
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
@@ -1088,6 +1168,7 @@ function initInAppSearch() {
       searchMatches = [];
       currentSearchMatchPos = -1;
       if (count) count.textContent = '';
+      updateSearchHighlights();
       input.blur();
       if (currentView === 'table') {
         const table = document.getElementById('plainDataTable');
@@ -1104,32 +1185,6 @@ function focusInAppSearch() {
   if (input) {
     input.focus();
     input.select();
-  }
-}
-
-function navigateToSearchMatch(pos) {
-  if (pos < 0 || pos >= searchMatches.length) return;
-  const match = searchMatches[pos];
-  const key = match.task.key;
-  if (!key) return;
-
-  if (currentView === 'table') {
-    const tbody = document.getElementById('plainDataTableBody');
-    if (tbody) {
-      tbody.querySelectorAll('tr.is-search-match').forEach(tr => tr.classList.remove('is-search-match'));
-      const tr = tbody.querySelector(`tr[data-task-key="${CSS.escape(key)}"]`);
-      if (tr) {
-        tr.classList.add('is-search-match');
-        tr.scrollIntoView({ block: 'center' });
-        tr.focus();
-      }
-    }
-  } else {
-    scrollRowIntoView(key);
-    const rIdx = rowTasks.findIndex(r => r.task.key === key);
-    if (rIdx >= 0) {
-      setGridFocus(rIdx, 0);
-    }
   }
 }
 
@@ -1181,11 +1236,10 @@ function updateColumnManagerUI() {
   const visibleKeys = getVisibleColKeys();
   const badge = document.getElementById('colCountBadge');
   if (badge) {
+    badge.textContent = `${visibleKeys.length}/${ALL_COLUMNS.length}`;
     if (hiddenColumns.size > 0) {
-      badge.textContent = `${visibleKeys.length}/${ALL_COLUMNS.length} (${hiddenColumns.size} hidden)`;
       badge.classList.add('has-hidden');
     } else {
-      badge.textContent = `${visibleKeys.length}/${ALL_COLUMNS.length}`;
       badge.classList.remove('has-hidden');
     }
   }
@@ -1629,10 +1683,10 @@ function renderPlanSummary() {
   fillAssigneeOptions();
   // Badges are empty and hidden until real values arrive (B-18: no fixed text before load).
   const projectBadge = document.getElementById('projectBadge');
-  projectBadge.textContent = `Project: ${currentPlan.projectKey}`;
+  projectBadge.textContent = currentPlan.projectKey;
   projectBadge.hidden = false;
   const completionBadge = document.getElementById('completionBadge');
-  completionBadge.textContent = `Completion: ${currentPlan.overallProjectCompletion}% | Target: ${currentPlan.overallTargetCompletion}%`;
+  completionBadge.textContent = `${currentPlan.overallProjectCompletion}% (${currentPlan.overallTargetCompletion}%)`;
   completionBadge.hidden = false;
   document.getElementById('backlogCount').textContent = currentPlan.backlogTasks ? currentPlan.backlogTasks.length : 0;
   const truncatedNote = document.getElementById('truncatedNote');
@@ -1750,6 +1804,7 @@ function renderTimelineHeader() {
     const colDef = ALL_COLUMNS.find(c => c.key === k) || { label: k, locked: false };
     const th = document.createElement('th');
     th.className = 'th-col th-frozen' + (k === frozen.lastKey ? ' is-last-frozen' : '');
+    th.setAttribute('data-col-key', k);
     const w = frozen.widths[k];
     th.style.width = w + 'px';
     th.style.minWidth = w + 'px';
@@ -1773,7 +1828,7 @@ function renderTimelineHeader() {
 
     // Resizer Handle
     const resizer = document.createElement('div');
-    resizer.className = 'resizer';
+    resizer.className = 'resizer col-resizer';
     setupColumnResizer(resizer, k);
     th.appendChild(resizer);
     tr.appendChild(th);
@@ -1804,35 +1859,47 @@ function renderTimeStrip() {
   strip.replaceChildren(...cells);
 }
 
-/** At first render, compact columns follow the user's choice, or turn on when the timeline would be narrow. */
+/** At first render, keep all columns visible by default unless explicitly hidden by user. */
 function decideCompactColumns() {
-  if (compactDecided) return false;
   compactDecided = true;
-  const wrapper = document.getElementById('ganttWrapper');
-  const track = document.querySelector('#ganttHeaderRow .timeline-header-cell');
-  if (!wrapper || !wrapper.clientWidth || !track) return false;
-  let choice = null;
-  try { choice = localStorage.getItem(COMPACT_KEY); } catch (e) {}
-  // The uncompacted width of all data columns with standard padding and content margins (1,021 px).
-  const visibleKeys = getVisibleColKeys();
-  const frozenWidth = visibleKeys.reduce((sum, k) => sum + colWidth(k), 0);
-  const uncompactedWidth = visibleKeys.length >= 8 ? Math.max(frozenWidth, 1021) : frozenWidth;
-  const next = shouldAutoCompact(wrapper.clientWidth, uncompactedWidth, 7 * dayPx(), choice);
-  const changed = next !== compactColumns;
-  compactColumns = next;
-  updateZoomButtons();
-  return changed;
+  return false;
 }
 
-/** Makes the range cover every scheduled date with a margin, before the first render. */
+/** Calculates a bounded time range with 1 month buffer before earliest date, 1 month buffer after latest date, and fills the screen width */
+function computeBoundedTimeRange() {
+  const today = todayIso();
+  const dates = (currentPlan?.tasks || [])
+    .flatMap(t => [t.startDate, t.endDate])
+    .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d || ''));
+
+  dates.push(today);
+  const minDate = dates.reduce((m, d) => (d < m ? d : m));
+  const maxDate = dates.reduce((m, d) => (d > m ? d : m));
+
+  // Exactly 1 month buffer (28 days / 4 weeks) before earliest date, snapped to Monday
+  const start = mondayOf(addDaysIso(minDate, -28));
+
+  // Exactly 1 month buffer (28 days / 4 weeks) after latest date, snapped to Sunday
+  let end = addDaysIso(mondayOf(addDaysIso(maxDate, 28)), 6);
+
+  // Fills screen width requirement (no horizontal blank voids)
+  const wrapper = document.getElementById('ganttWrapper');
+  const trackLeft = (layout && layout.trackLeft) || 300;
+  const viewportTrackWidth = wrapper && wrapper.clientWidth ? Math.max(400, wrapper.clientWidth - trackLeft) : 800;
+  const currentPx = rangeDays({ start, end }) * dayPx();
+
+  if (currentPx < viewportTrackWidth) {
+    const missingPx = viewportTrackWidth - currentPx;
+    const missingDays = Math.ceil(missingPx / dayPx());
+    const missingWeeks = Math.ceil(missingDays / 7);
+    end = addDaysIso(end, missingWeeks * 7);
+  }
+
+  return { start, end };
+}
+
 function coverPlanDates() {
-  if (!timeRange) timeRange = initialRange(todayIso());
-  const dates = (currentPlan?.tasks || []).flatMap(t => [t.startDate, t.endDate]).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d || ''));
-  if (!dates.length) return;
-  const min = dates.reduce((m, d) => (d < m ? d : m));
-  const max = dates.reduce((m, d) => (d > m ? d : m));
-  while (daysBetween(timeRange.start, min) < 28) timeRange = extendRange(timeRange, 'before', EXTEND_WEEKS);
-  while (daysBetween(max, timeRange.end) < 28) timeRange = extendRange(timeRange, 'after', EXTEND_WEEKS);
+  timeRange = computeBoundedTimeRange();
 }
 
 /** Width, header, bar hit positions and canvas after a zoom or range change. */
@@ -1853,34 +1920,18 @@ function applyTimeAxis() {
   }
   measureLayout();
   drawTimeline(true);
-  syncGanttScrollWidth();
 }
 
-/** Sets the timeline scroll position and the top scrollbar together, so the mirror cannot undo it. */
+/** Sets the timeline scroll position directly on ganttWrapper */
 function setTimelineScrollLeft(x) {
   const w = document.getElementById('ganttWrapper');
-  const top = document.getElementById('ganttTopScrollbar');
-  const bottom = document.getElementById('ganttBottomScrollbar');
-  w.scrollLeft = x;
-  if (top && w) top.scrollLeft = w.scrollLeft;
-  if (bottom && w) bottom.scrollLeft = w.scrollLeft;
+  if (w) w.scrollLeft = x;
 }
 
-/** Scrolling near either edge adds time there; the view does not jump (B-27 criterion 2). */
+/** Passive scrolling is strictly bounded to the 1-month buffered timeline; no infinite whitespace extension. */
 function maybeExtendRange() {
-  const w = document.getElementById('ganttWrapper');
-  if (!w || !timeRange) return;
-  const edge = edgeToExtend(w.scrollLeft, w.clientWidth - layout.trackLeft, trackWidth());
-  if (edge === 'before') {
-    const shift = EXTEND_WEEKS * 7 * dayPx();
-    timeRange = extendRange(timeRange, 'before', EXTEND_WEEKS);
-    const x = w.scrollLeft + shift;
-    applyTimeAxis();
-    setTimelineScrollLeft(x);
-  } else if (edge === 'after') {
-    timeRange = extendRange(timeRange, 'after', EXTEND_WEEKS);
-    applyTimeAxis();
-  }
+  // Bounded timeline navigation: no infinite auto-extension during passive scrolling
+  return;
 }
 
 /** Changes the zoom and keeps the focused issue (or the date in the middle) in view (B-27 criterion 1). */
@@ -1906,16 +1957,16 @@ function setZoom(id) {
 function updateZoomButtons() {
   document.querySelectorAll('#zoomGroup [data-zoom]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.zoom === zoomId)));
   const compact = document.getElementById('btnCompactColumns');
-  if (compact) compact.setAttribute('aria-pressed', String(compactColumns));
+  if (compact) compact.setAttribute('aria-pressed', String(isCompactMode()));
 }
 
 function setCompactColumns(on) {
-  compactColumns = on;
-  writePref(COMPACT_KEY, on ? 'on' : 'off');
-  updateZoomButtons();
-  renderTimelineHeader();
-  renderTimelineRows();
-  applyTimeAxis();
+  if (on) {
+    hiddenColumns = new Set(ALL_COLUMNS.filter(c => c.key !== 'task').map(c => c.key));
+  } else {
+    hiddenColumns.clear();
+  }
+  onColumnsChanged();
 }
 
 function applyColumnWidthsToDom() {
@@ -1955,7 +2006,7 @@ function setupColumnResizer(resizer, colKey) {
 
     function onMouseMove(moveEvent) {
       const nextWidth = clampColumnResize(colKey, startWidth + (moveEvent.clientX - startX));
-      if (compactColumns && colKey === 'task') {
+      if (isCompactMode() && colKey === 'task') {
         compactTaskWidth = nextWidth;
       } else {
         columnWidths[colKey] = nextWidth;
@@ -1977,7 +2028,7 @@ function setupColumnResizer(resizer, colKey) {
       measureLayout();
       drawTimeline(true);
       syncGanttScrollWidth();
-      if (!(compactColumns && colKey === 'task')) {
+      if (!(isCompactMode() && colKey === 'task')) {
         callResolver('saveColumnWidths', { columnWidths });
       }
     }
@@ -2064,6 +2115,8 @@ function closeAllPopovers() {
   if (typeof closeDependencyConflictDialog === 'function') closeDependencyConflictDialog();
   const plansPop = document.getElementById('plansManagerPopover');
   if (plansPop) plansPop.style.display = 'none';
+  const rowMore = document.getElementById('rowMoreMenu');
+  if (rowMore) rowMore.style.display = 'none';
 }
 
 function openResourcePicker(targetEl, taskKey) {
@@ -2787,7 +2840,14 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
       }
 
       if (res && res.task) {
+        if (res.task.epicKey) expandedTasks.add(res.task.epicKey);
+        if (res.task.parentKey) expandedTasks.add(res.task.parentKey);
         registerOptimisticTask(res.task);
+      }
+      if (currentHierarchyView === 'epics') {
+        currentHierarchyView = 'all';
+        const hierSwitcher = document.getElementById('hierarchySwitcher');
+        if (hierSwitcher) hierSwitcher.value = 'all';
       }
       if (res && res.plan && Array.isArray(res.plan.tasks)) {
         mergeOptimisticTasks(res.plan);
@@ -2800,6 +2860,11 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
         renderPlan();
       } else {
         await loadProjectPlan();
+      }
+      if (res?.task?.key) {
+        setTimeout(() => {
+          scrollRowIntoView(res.task.key);
+        }, 120);
       }
       showFlag({ text: 'Task ' + (res?.task?.key || '') + ' created and scheduled.' });
     } catch (err) {
@@ -2925,7 +2990,10 @@ function gridXBetween(fromX, toX) {
 
 function drawTimeline(sync) {
   if (!timeline || !currentPlan) return;
-  timeline.activeKey = hoveredTaskId || pinnedDependencyTaskId;
+  const activeSearchKey = (currentSearchMatchPos >= 0 && currentSearchMatchPos < searchMatches.length)
+    ? searchMatches[currentSearchMatchPos].task.key
+    : null;
+  timeline.activeKey = hoveredTaskId || pinnedDependencyTaskId || activeSearchKey;
   timeline.setModel({
     tasks: rowTaskList,
     first: renderedRange.first,
@@ -3188,6 +3256,72 @@ function applyFrozen(tr) {
   });
 }
 
+/** Opens the floating More Actions menu for a task row */
+function openRowMoreMenu(anchorBtn, task, rowIdx, tr) {
+  let menu = document.getElementById('rowMoreMenu');
+  if (!menu) {
+    menu = document.createElement('div');
+    menu.id = 'rowMoreMenu';
+    menu.className = 'quick-menu-popover row-more-menu-popover';
+    document.body.appendChild(menu);
+  }
+
+  menu.innerHTML = html`
+    <div class="menu-item-header" style="padding: 6px 10px; font-weight: 700; font-size: 11px; color: var(--cp-text-subtle); border-bottom: 1px solid var(--cp-border);">
+      ${task.key}: ${task.summary}
+    </div>
+    <button class="quick-menu-item" data-action="insert"><span>➕</span><span>Insert task below</span></button>
+    <button class="quick-menu-item" data-action="subtask"><span>↳</span><span>Add subtask</span></button>
+    <button class="quick-menu-item" data-action="progress"><span>📈</span><span>Set actual progress (${task.progress}%)</span></button>
+    <button class="quick-menu-item" data-action="why"><span>❓</span><span>Why this date?</span></button>
+    <button class="quick-menu-item" data-action="team"><span>👥</span><span>Assign team member</span></button>
+    <button class="quick-menu-item" data-action="edit"><span>✏️</span><span>Edit task details</span></button>
+    <button class="quick-menu-item" data-action="jira"><span>↗</span><span>Open in native Jira</span></button>
+    <div style="border-top: 1px solid var(--cp-border); margin: 2px 0;"></div>
+    <button class="quick-menu-item item-danger" data-action="backlog"><span>📤</span><span>Move to backlog</span></button>
+  `;
+
+  const rect = anchorBtn.getBoundingClientRect();
+  menu.style.display = 'flex';
+  menu.style.position = 'fixed';
+  menu.style.background = 'var(--cp-surface-overlay)';
+  menu.style.zIndex = '2500';
+  menu.style.top = `${rect.bottom + 4}px`;
+  menu.style.left = `${Math.min(window.innerWidth - 225, Math.max(10, rect.left - 80))}px`;
+
+  menu.onclick = async (e) => {
+    const item = e.target.closest('.quick-menu-item');
+    if (!item) return;
+    const action = item.dataset.action;
+    menu.style.display = 'none';
+    if (action === 'insert') openInlineCreationRow(tr, task, rowIdx);
+    else if (action === 'subtask') {
+      openTaskDetailModal(task.key);
+      setTimeout(() => { document.getElementById('newSubtaskSummaryInput')?.focus(); }, 100);
+    }
+    else if (action === 'progress') openProgressPicker(anchorBtn, task.key);
+    else if (action === 'why') showWhy(task.key, anchorBtn.getBoundingClientRect());
+    else if (action === 'team') {
+      openTaskDetailModal(task.key);
+      setTimeout(() => { document.getElementById('multiResourceSelect')?.focus(); }, 100);
+    }
+    else if (action === 'edit') openTaskDetailModal(task.key);
+    else if (action === 'jira') openJiraIssueInNewTab(task.key, e);
+    else if (action === 'backlog') {
+      await callResolver('unscheduleTask', { taskId: task.key });
+      await loadProjectPlan();
+    }
+  };
+
+  const closeListener = (ev) => {
+    if (!menu.contains(ev.target) && ev.target !== anchorBtn) {
+      menu.style.display = 'none';
+      window.removeEventListener('click', closeListener, true);
+    }
+  };
+  setTimeout(() => window.addEventListener('click', closeListener, true), 20);
+}
+
 /** Builds one task row: data cells plus the timeline cell with the bar hit element. */
 function buildTaskRow(task, rowIdx) {
   const isEpic = Boolean(task.isEpic || task.hierarchyLevel === 1);
@@ -3196,6 +3330,19 @@ function buildTaskRow(task, rowIdx) {
   const tr = document.createElement('tr');
   tr.className = 'task-row' + (isEpic ? ' is-epic-row' : (isSub ? ' is-subtask' : ' is-story-row'));
   tr.dataset.taskId = task.key;
+  tr.addEventListener('mouseenter', () => { tr.classList.add('is-hovered'); });
+  tr.addEventListener('mouseleave', () => { tr.classList.remove('is-hovered'); });
+
+  if (searchMatches && searchMatches.length > 0) {
+    const isMatch = searchMatches.some(m => m.task.key === task.key);
+    if (isMatch) {
+      tr.classList.add('is-search-match');
+      const activeKey = (currentSearchMatchPos >= 0 && currentSearchMatchPos < searchMatches.length)
+        ? searchMatches[currentSearchMatchPos].task.key
+        : null;
+      if (activeKey === task.key) tr.classList.add('is-search-active');
+    }
+  }
 
   // Has children check
   const hasChildren = Boolean(
@@ -3242,13 +3389,9 @@ function buildTaskRow(task, rowIdx) {
       </span>
       <div class="row-action-toolbar">
         <button class="row-action-btn quick-insert-below-btn" title="Insert task below (Row ${rowIdx + 2})">➕ Add below</button>
-        <button class="row-action-btn quick-progress-btn" title="Set actual progress">📈 Progress</button>
         <button class="row-action-btn edit-modal-btn" title="Open full detail modal">✏️ Edit</button>
         <button class="row-action-btn why-date-btn" title="Why this date?">❓ Why?</button>
-        <button class="row-action-btn quick-subtask-btn" title="Add Jira subtask">↳ Subtask</button>
-        <button class="row-action-btn quick-resource-btn" title="Allocate team member">👥 Team</button>
-        <button class="row-action-btn open-jira-row-btn" title="Open ${task.key} in native Jira (new tab)">↗ Jira</button>
-        <button class="row-action-btn unschedule-row-btn" title="Remove from planner (Move to backlog)">📤 Backlog</button>
+        <button class="row-action-btn row-more-actions-btn" title="More task actions (Subtask, Progress, Team, Jira, Backlog)">•••</button>
       </div>
     </div>
   `;
@@ -3574,6 +3717,13 @@ function buildTaskRow(task, rowIdx) {
     whyBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       showWhy(task.key, whyBtn.getBoundingClientRect());
+    });
+  }
+  const rowMoreBtn = tr.querySelector('.row-more-actions-btn');
+  if (rowMoreBtn) {
+    rowMoreBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openRowMoreMenu(rowMoreBtn, task, rowIdx, tr);
     });
   }
   const quickSubBtn = tr.querySelector('.quick-subtask-btn');
@@ -4088,8 +4238,15 @@ function startVisualLinkDrag(e, sourceKey, hit, side = 'right') {
     const curY = ev.clientY - wRect.top + wrapper.scrollTop;
 
     const el = document.elementFromPoint(ev.clientX, ev.clientY);
-    const targetHit = el ? el.closest('.bar-hit') : null;
-    const targetKey = targetHit && targetHit.dataset.taskId !== sourceKey ? targetHit.dataset.taskId : null;
+    let targetHit = el ? el.closest('.bar-hit') : null;
+    let targetKey = targetHit && targetHit.dataset.taskId !== sourceKey ? targetHit.dataset.taskId : null;
+    if (!targetKey && el) {
+      const row = el.closest('tr[data-task-id]');
+      if (row && row.getAttribute('data-task-id') !== sourceKey) {
+        targetKey = row.getAttribute('data-task-id');
+        targetHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(targetKey)}"]`);
+      }
+    }
 
     const predKey = side === 'right' ? sourceKey : targetKey;
     const succKey = side === 'right' ? targetKey : sourceKey;
@@ -4156,14 +4313,7 @@ function startBarPointerEdit(e, key, mode, hit) {
     const mine = moves.get(key);
 
     const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
-    const enforceDeps = document.getElementById('enforceDependenciesCheckbox')?.checked === true;
-    if (enforceDeps && conflict.hasConflict && conflict.earliestDate) {
-      const clamped = clampToEarliestStart(mine.start, mine.end, conflict.earliestDate);
-      mine.start = clamped.startDate;
-      mine.end = clamped.endDate;
-      moves.set(key, mine);
-    }
-    const isConflict = !enforceDeps && conflict.hasConflict;
+    const isConflict = conflict.hasConflict;
     const sign = s > 0 ? `+${s}` : `${s}`;
     let label = mode === 'move' ? `${key} ➔ ${mine.start} (${sign}d)` : `${key} ${mine.start} to ${mine.end}`;
     if (isConflict) {
@@ -4172,6 +4322,35 @@ function startBarPointerEdit(e, key, mode, hit) {
     timeline.drag = { key, moves, label, isConflict };
     positionBarHit(hit, { ...task, startDate: mine.start, endDate: mine.end });
     wrapper.dataset.preview = JSON.stringify(Object.fromEntries(moves));
+
+    // Auto-expand time range dynamically when dragging/resizing beyond current boundaries
+    if (timeRange && mine) {
+      if (mine.start < timeRange.start) {
+        const diffDays = daysBetween(mine.start, timeRange.start);
+        const addWeeks = Math.max(2, Math.ceil(diffDays / 7) + 2);
+        const oldStart = timeRange.start;
+        timeRange = { start: addDaysIso(timeRange.start, -addWeeks * 7), end: timeRange.end };
+        const shiftPx = daysBetween(timeRange.start, oldStart) * dayPx();
+        applyTimeAxis();
+        wrapper.scrollLeft += shiftPx;
+      } else if (mine.end > timeRange.end) {
+        const diffDays = daysBetween(timeRange.end, mine.end);
+        const addWeeks = Math.max(2, Math.ceil(diffDays / 7) + 2);
+        timeRange = { start: timeRange.start, end: addDaysIso(timeRange.end, addWeeks * 7) };
+        applyTimeAxis();
+      }
+
+      // Auto-scroll when cursor drags near edges of ganttWrapper
+      const wrapRect = wrapper.getBoundingClientRect();
+      const edgeBuffer = 50;
+      const trackLeftPx = (layout && layout.trackLeft) || 300;
+      if (ev.clientX > wrapRect.right - edgeBuffer) {
+        wrapper.scrollLeft += 15;
+      } else if (ev.clientX < wrapRect.left + trackLeftPx + edgeBuffer) {
+        wrapper.scrollLeft = Math.max(0, wrapper.scrollLeft - 15);
+      }
+    }
+
     // Name every issue and field the drop will change before the user lets go (B-23, INV-11).
     const strip = document.getElementById('writePreview');
     if (strip) {
@@ -4191,11 +4370,16 @@ function startBarPointerEdit(e, key, mode, hit) {
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
     if (moved) {
+      const swallowTimer = setTimeout(() => {
+        window.removeEventListener('click', swallowClick, true);
+        isDraggingBar = false;
+      }, 150);
       const swallowClick = (ev) => {
+        clearTimeout(swallowTimer);
         ev.stopPropagation();
         ev.preventDefault();
         window.removeEventListener('click', swallowClick, true);
-        setTimeout(() => { isDraggingBar = false; }, 60);
+        setTimeout(() => { isDraggingBar = false; }, 40);
       };
       window.addEventListener('click', swallowClick, true);
     } else {
@@ -4213,14 +4397,8 @@ function startBarPointerEdit(e, key, mode, hit) {
     }
 
     const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
-    const enforceDeps = document.getElementById('enforceDependenciesCheckbox')?.checked === true;
     let finalStart = mine.start;
     let finalEnd = mine.end;
-    if (enforceDeps && conflict.hasConflict && conflict.earliestDate) {
-      const clamped = clampToEarliestStart(finalStart, finalEnd, conflict.earliestDate);
-      finalStart = clamped.startDate;
-      finalEnd = clamped.endDate;
-    }
 
     const updates = { startDate: finalStart, endDate: finalEnd };
     // A resize changes dates only. The estimate changes only when the user ticked the option (B-03).
@@ -4230,16 +4408,31 @@ function startBarPointerEdit(e, key, mode, hit) {
       const newDays = daysBetween(finalStart, finalEnd) + 1;
       updates.effortHours = Math.max(1, Math.round((task.effortHours * newDays) / oldDays));
     }
-    const res = await callResolver('updateWbsTask', { taskId: key, updates, expectedVersion: task.version || 0 });
+    // Optimistically update in-memory task dates immediately so the bar does not flicker or snap back while the network request is in flight
+    const prevStart = task.startDate;
+    const prevEnd = task.endDate;
+    task.startDate = finalStart;
+    task.endDate = finalEnd;
     timeline.drag = null;
-    if (res && Array.isArray(res.tasks)) {
-      applyPlanInPlace(res);
-    } else {
-      // A refused or failed write shows the banner; reload so the bars show what is stored.
-      await loadProjectPlan();
+    positionBarHit(hit, task);
+    drawTimeline(true);
+
+    try {
+      const res = await callResolver('updateWbsTask', { taskId: key, updates, expectedVersion: task.version || 0 });
+      if (res && Array.isArray(res.tasks)) {
+        applyPlanInPlace(res);
+      } else {
+        await loadProjectPlan();
+      }
+    } catch (err) {
+      task.startDate = prevStart;
+      task.endDate = prevEnd;
+      positionBarHit(hit, task);
+      drawTimeline(true);
+      showFlag({ text: 'Failed to update dates: ' + String(err), error: true });
     }
 
-    if (!enforceDeps && conflict.hasConflict) {
+    if (conflict.hasConflict) {
       const updatedHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(key)}"]`) || hit;
       showDependencyConflictDialog({
         key,
@@ -4438,6 +4631,8 @@ function viewportFirstRow() {
 }
 
 function focusGridCell() {
+  const inField = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT' || document.activeElement.isContentEditable);
+  if (inField) return;
   const cell = gridRoot && gridRoot.querySelector(`[role="row"][data-row="${gridFocus.row}"] [data-col="${gridFocus.col}"]`);
   if (cell) {
     gridRoot.querySelectorAll('[role="gridcell"][tabindex="0"]').forEach(c => { c.tabIndex = -1; });
@@ -4596,12 +4791,18 @@ async function onMoveKey(e) {
 function openBarToolbar(key, anchor) {
   const bar = document.getElementById('barToolbar');
   if (!bar) return;
+  const currentHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(key)}"]`) || anchor;
+  if (!currentHit) return;
   bar.dataset.key = key;
   bar.setAttribute('aria-label', `Actions for ${key}`);
-  const r = anchor.getBoundingClientRect();
+  const r = currentHit.getBoundingClientRect();
+  popoverOpenedAt = performance.now();
   bar.hidden = false;
-  bar.style.top = `${Math.min(window.innerHeight - bar.offsetHeight - 8, r.bottom + 6)}px`;
-  bar.style.left = `${Math.max(8, Math.min(window.innerWidth - bar.offsetWidth - 8, r.left))}px`;
+  const barH = bar.offsetHeight || 38;
+  const spaceBelow = window.innerHeight - r.bottom;
+  const top = spaceBelow >= barH + 10 ? r.bottom + 6 : Math.max(8, r.top - barH - 6);
+  bar.style.top = `${top}px`;
+  bar.style.left = `${Math.max(8, Math.min(window.innerWidth - (bar.offsetWidth || 340) - 8, r.left))}px`;
 }
 
 /** On scroll the toolbar follows its bar, and closes when the bar leaves the view. */
@@ -4622,6 +4823,56 @@ function closeBarToolbar() {
   if (bar) bar.hidden = true;
 }
 
+let dateEditKey = null;
+
+function openDateEditPopover(key, anchor) {
+  const task = findTask(key);
+  if (!task) return;
+  dateEditKey = key;
+  const pop = document.getElementById('dateEditPopover');
+  if (!pop) return;
+  popoverOpenedAt = performance.now();
+  pop.hidden = false;
+
+  document.getElementById('dateEditTitle').textContent = `Edit Dates: ${key}`;
+  const startInp = document.getElementById('dateEditStart');
+  const endInp = document.getElementById('dateEditEnd');
+  startInp.value = task.startDate || '';
+  endInp.value = task.endDate || task.startDate || '';
+
+  const updateDuration = () => {
+    const s = startInp.value;
+    const e = endInp.value;
+    const durEl = document.getElementById('dateEditDuration');
+    if (s && e && s <= e) {
+      const days = daysBetween(s, e) + 1;
+      const wks = (days / 7).toFixed(1).replace(/\.0$/, '');
+      durEl.textContent = `${days}d (${wks} wks)`;
+    } else {
+      durEl.textContent = '';
+    }
+  };
+  startInp.oninput = updateDuration;
+  endInp.oninput = updateDuration;
+  updateDuration();
+
+  const currentHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(key)}"]`) || anchor;
+  const r = currentHit && currentHit.getBoundingClientRect ? currentHit.getBoundingClientRect() : { top: 120, bottom: 160, left: 140 };
+  const popH = pop.offsetHeight || 190;
+  const spaceBelow = window.innerHeight - r.bottom;
+  const top = spaceBelow >= popH + 10 ? r.bottom + 6 : Math.max(8, r.top - popH - 6);
+  pop.style.top = `${top}px`;
+  pop.style.left = `${Math.max(8, Math.min(window.innerWidth - (pop.offsetWidth || 340) - 8, r.left))}px`;
+  startInp.focus();
+}
+
+function closeDateEditPopover() {
+  const pop = document.getElementById('dateEditPopover');
+  if (pop) pop.hidden = true;
+  dateEditKey = null;
+  focusGridCell();
+}
+
 async function toolbarAction(action, key, btn) {
   const task = findTask(key);
   if (!task) return;
@@ -4638,14 +4889,7 @@ async function toolbarAction(action, key, btn) {
     const mine = showShiftPreview(key, days, days, (m) => `${key} ➔ ${m.start}`);
     await commitDates(key, mine.start, mine.end);
   } else if (action === 'dates') {
-    openTaskDetailModal(key);
-    setTimeout(() => {
-      const inp = document.getElementById('editStartDateInput');
-      if (inp) {
-        inp.scrollIntoView({ block: 'center' });
-        inp.focus();
-      }
-    }, 50);
+    openDateEditPopover(key, barAnchor);
   } else if (action === 'dependency') {
     openDependencyPopup(key, barAnchor);
   } else if (action === 'progress') {
@@ -4692,9 +4936,12 @@ function openDependencyPopup(key, anchor) {
   document.getElementById('depTrigger').value = '100';
   renderDependencyOptions();
   pop.hidden = false;
-  const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { bottom: 120, left: 120 };
-  pop.style.top = `${Math.max(8, Math.min(window.innerHeight - pop.offsetHeight - 8, r.bottom + 6))}px`;
-  pop.style.left = `${Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, r.left))}px`;
+  const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { top: 120, bottom: 120, left: 120 };
+  const popH = pop.offsetHeight || 260;
+  const spaceBelow = window.innerHeight - r.bottom;
+  const top = spaceBelow >= popH + 10 ? r.bottom + 6 : Math.max(8, r.top - popH - 6);
+  pop.style.top = `${top}px`;
+  pop.style.left = `${Math.max(8, Math.min(window.innerWidth - (pop.offsetWidth || 340) - 8, r.left))}px`;
   const trig = document.getElementById('depTrigger');
   trig.focus();
   trig.select();
@@ -4913,7 +5160,7 @@ function initKeyboard() {
   initGrid();
   initSelectionBar();
   document.querySelectorAll('#zoomGroup [data-zoom]').forEach(b => b.addEventListener('click', () => setZoom(b.dataset.zoom)));
-  document.getElementById('btnCompactColumns')?.addEventListener('click', () => setCompactColumns(!compactColumns));
+  document.getElementById('btnCompactColumns')?.addEventListener('click', () => setCompactColumns(!isCompactMode()));
   updateZoomButtons();
   const box = document.getElementById('shortcutsToggle');
   if (box) {
@@ -4964,6 +5211,44 @@ function initKeyboard() {
     document.getElementById('linkHint').hidden = true;
   });
   document.getElementById('btnDepCancel')?.addEventListener('click', closeDependencyPopup);
+
+  document.getElementById('btnCloseDateEdit')?.addEventListener('click', closeDateEditPopover);
+  document.getElementById('btnDateEditMinusWk')?.addEventListener('click', () => {
+    const sInp = document.getElementById('dateEditStart');
+    const eInp = document.getElementById('dateEditEnd');
+    if (!sInp || !eInp) return;
+    if (sInp.value) sInp.value = addDays(sInp.value, -7);
+    if (eInp.value) eInp.value = addDays(eInp.value, -7);
+    sInp.dispatchEvent(new Event('input'));
+  });
+  document.getElementById('btnDateEditPlusWk')?.addEventListener('click', () => {
+    const sInp = document.getElementById('dateEditStart');
+    const eInp = document.getElementById('dateEditEnd');
+    if (!sInp || !eInp) return;
+    if (sInp.value) sInp.value = addDays(sInp.value, 7);
+    if (eInp.value) eInp.value = addDays(eInp.value, 7);
+    sInp.dispatchEvent(new Event('input'));
+  });
+  document.getElementById('btnOpenFullTaskDetail')?.addEventListener('click', () => {
+    const k = dateEditKey;
+    closeDateEditPopover();
+    if (k) openTaskDetailModal(k);
+  });
+  document.getElementById('btnSaveDateEdit')?.addEventListener('click', async () => {
+    const k = dateEditKey;
+    const s = document.getElementById('dateEditStart')?.value;
+    const e = document.getElementById('dateEditEnd')?.value;
+    closeDateEditPopover();
+    if (k && s) {
+      await commitDates(k, s, e || s);
+    }
+  });
+  document.getElementById('dateEditPopover')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeDateEditPopover();
+    }
+  });
 
   document.getElementById('btnSwapDepDirection')?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -5155,6 +5440,8 @@ function initKeyboard() {
     if (tb && !tb.hidden && !tb.contains(e.target) && !e.target.closest('.bar-hit')) closeBarToolbar();
     const depPop = document.getElementById('depPopup');
     if (!recentlyOpened && depPop && !depPop.hidden && !depPop.contains(e.target) && !e.target.closest('#barToolbar')) closeDependencyPopup();
+    const datePop = document.getElementById('dateEditPopover');
+    if (!recentlyOpened && datePop && !datePop.hidden && !datePop.contains(e.target) && !e.target.closest('#barToolbar')) closeDateEditPopover();
     const depEditPop = document.getElementById('depEditPopover');
     if (!recentlyOpened && depEditPop && !depEditPop.hidden && !depEditPop.contains(e.target) && !e.target.closest('.dep-link-badge')) closeDependencyEditPopover();
     const conflictBanner = document.getElementById('depConflictBanner');
@@ -5166,6 +5453,7 @@ function initKeyboard() {
   });
   document.getElementById('ganttWrapper')?.addEventListener('scroll', () => {
     followBarToolbar();
+    closeDateEditPopover();
     if (depEditState) closeDependencyEditPopover();
     if (conflictState) closeDependencyConflictDialog();
   }, { passive: true });
@@ -5173,7 +5461,8 @@ function initKeyboard() {
 
 /** Single-letter shortcuts: only while focus is in the planner outside text fields, and only when on (WCAG 2.1.4). */
 function onShortcut(e, inField) {
-  if (inField || e.ctrlKey || e.metaKey || e.altKey || !shortcutsOn() || openModal()) return false;
+  const activeInput = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT' || document.activeElement.isContentEditable);
+  if (inField || activeInput || e.ctrlKey || e.metaKey || e.altKey || !shortcutsOn() || openModal()) return false;
   const key = gridRoot && gridRoot.contains(document.activeElement) ? rowTasks[gridFocus.row]?.task.key : (pinnedDependencyTaskId || hoveredTaskId);
   if (e.key === 't') {
     scrollToToday();
@@ -5760,7 +6049,7 @@ function openCreateTaskModal() {
   (currentPlan?.availableUsers || []).forEach(u => {
     const opt = document.createElement('option');
     opt.value = u.displayName;
-    opt.dataset.accountId = u.accountId || '';
+    opt.dataset.accountId = (u.accountId && u.accountId !== 'unassigned') ? u.accountId : '';
     opt.textContent = u.displayName + (u.isPlaceholder ? ' [Placeholder]' : '');
     assSelect.appendChild(opt);
   });
@@ -5845,7 +6134,14 @@ async function executeCreateTask() {
     summaryInput.value = '';
     closeModal('createTaskModal');
     if (res && res.task) {
+      if (res.task.epicKey) expandedTasks.add(res.task.epicKey);
+      if (res.task.parentKey) expandedTasks.add(res.task.parentKey);
       registerOptimisticTask(res.task);
+    }
+    if (currentHierarchyView === 'epics') {
+      currentHierarchyView = 'all';
+      const hierSwitcher = document.getElementById('hierarchySwitcher');
+      if (hierSwitcher) hierSwitcher.value = 'all';
     }
     if (res && res.plan && Array.isArray(res.plan.tasks)) {
       mergeOptimisticTasks(res.plan);
@@ -5858,6 +6154,11 @@ async function executeCreateTask() {
       renderPlan();
     } else {
       await loadProjectPlan();
+    }
+    if (res?.task?.key) {
+      setTimeout(() => {
+        scrollRowIntoView(res.task.key);
+      }, 120);
     }
     showFlag({ text: 'Task ' + (res?.task?.key || '') + ' created and scheduled.' });
   } catch (err) {

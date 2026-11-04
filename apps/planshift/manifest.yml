@@ -6,6 +6,13 @@ modules:
       resource: main
       resolver:
         function: resolver
+  jira:adminPage:
+    - key: cascadeplan-admin
+      title: CascadePlan approvers
+      render: native
+      resource: admin
+      resolver:
+        function: resolver
   function:
     - key: resolver
       handler: index.handler
@@ -13,6 +20,8 @@ modules:
 resources:
   - key: main
     path: static/frontend/build
+  - key: admin
+    path: src/frontend/admin.tsx
 
 permissions:
   content:

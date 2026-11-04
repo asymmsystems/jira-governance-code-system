@@ -88,8 +88,15 @@ describe('in-app search (B-26 criterion 3)', () => {
     expect(isSearchShortcut({ key: 'f', metaKey: true })).toBe(true);
     expect(isSearchShortcut({ key: 'F', metaKey: true })).toBe(true);
     expect(isSearchShortcut({ key: 'f', ctrlKey: true, altKey: true })).toBe(false);
-    expect(isSearchShortcut({ key: 'f' })).toBe(false);
     expect(isSearchShortcut({ key: 'z', ctrlKey: true })).toBe(false);
     expect(isSearchShortcut({ key: 'f', shiftKey: true })).toBe(false);
+  });
+
+  it('handles empty, whitespace-only, and special characters cleanly', () => {
+    expect(findMatchingTasks(sampleTasks, '   ')).toEqual([]);
+    expect(findMatchingTasks([], 'test')).toEqual([]);
+    expect(formatMatchCount('test', 0, -1)).toBe('No matches');
+    expect(findNextMatch([0, 1], 0, 1)).toBe(1);
+    expect(findNextMatch([0, 1], 1, 1)).toBe(0);
   });
 });

@@ -522,3 +522,15 @@ export function fromWorkEffortRecord(rec: WorkEffortRecordBody): Partial<WbsTask
   }
   return out;
 }
+
+/**
+ * Configurable approver policy stored at cascadeplan:cfg:approver_policy.
+ * Adheres to the Uniform Permission Management Standard across the Jira suite.
+ */
+export interface ApproverPolicy {
+  roleTypeId: 'CP_APPROVER' | 'PS_APPROVER';
+  parties: Array<{ partyId: string; partyTypeId: 'GROUP'; name: string }>;
+  fromDate: string;
+  setByPartyId: string;
+}
+

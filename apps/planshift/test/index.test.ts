@@ -1374,6 +1374,60 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(res.error).toBe("Task 'NON_EXISTENT' not found in project plan");
     });
 
+    it('invokes checkPlanApprover and authority-check resolvers via handler', async () => {
+      mockRequestJira.mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({ permissions: { ADMINISTER: { havePermission: true } } })
+      });
+
+      const resCheck: any = await handler({
+        call: {
+          functionKey: 'checkPlanApprover',
+          payload: { projectKey: 'TEST' }
+        },
+        context: { extension: { project: { key: 'TEST' } } }
+      } as any);
+
+      expect(resCheck.ok).toBe(true);
+      expect(resCheck.isApprover).toBe(true);
+      expect(resCheck.guidance).toBeNull();
+
+      mockRequestJira.mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({ permissions: { ADMINISTER: { havePermission: false }, ADMINISTER_PROJECTS: { havePermission: false } } })
+      });
+
+      const resAuth: any = await handler({
+        call: {
+          functionKey: 'authority-check',
+          payload: { projectKey: 'TEST' }
+        },
+        context: { extension: { project: { key: 'TEST' } } }
+      } as any);
+
+      expect(resAuth.ok).toBe(true);
+      expect(resAuth.isApprover).toBe(false);
+      expect(resAuth.guidance).toContain('Requires Project Admin, Jira Admin, or membership in an authorized group.');
+    });
+
+    it('invokes approver-policy-get-api via handler', async () => {
+      mockRequestJira.mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({ permissions: { ADMINISTER: { havePermission: true } } })
+      });
+
+      const resPolicy: any = await handler({
+        call: {
+          functionKey: 'approver-policy-get-api',
+          payload: {}
+        },
+        context: { accountId: 'admin-user' }
+      } as any);
+
+      expect(resPolicy.ok).toBe(true);
+    });
+
+
   });
 
   describe('Two-Way Sync and Jira Issue Links', () => {

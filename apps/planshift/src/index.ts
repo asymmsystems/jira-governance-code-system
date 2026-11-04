@@ -50,6 +50,15 @@ import {
   validatePlanName,
   toValidationResult
 } from './validation';
+import {
+  getApproverPolicyFlow,
+  searchGroupsFlow,
+  setApproverPolicyFlow,
+  isPlanApprover,
+  APPROVER_REQUIRED_MESSAGE
+} from './security/policy-admin';
+
+
 
 class ForgeKvsProvider implements StorageProvider {
   async get<T>(key: string): Promise<T | undefined> {
@@ -976,7 +985,10 @@ export async function createInlineTask(
     let res: any;
     const caller = getJiraCaller();
     const effectiveParent = parentKey || epicKey;
-    const effectiveAssignee = assigneeAccountId || (resourceAccountId && !resourceAccountId.startsWith('ph:') && resourceAccountId !== 'unassigned' ? resourceAccountId : undefined);
+    const rawAssignee = (assigneeAccountId && assigneeAccountId !== 'unassigned' && assigneeAccountId !== 'Unassigned')
+      ? assigneeAccountId
+      : (resourceAccountId && !resourceAccountId.startsWith('ph:') && resourceAccountId !== 'unassigned' && resourceAccountId !== 'Unassigned' ? resourceAccountId : undefined);
+    const effectiveAssignee = rawAssignee && rawAssignee.trim().length > 0 ? rawAssignee.trim() : undefined;
 
     const body: any = {
       fields: {
@@ -2322,7 +2334,34 @@ resolver.define('reorderWbsTasks', async (req) => withResolverHandler(req, () =>
 
 resolver.define('createSubtaskForResource', async (req) => withResolverHandler(req, () => createSubtaskForResource({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
+resolver.define('approver-policy-get-api', async (req) => getApproverPolicyFlow(resolveStorage(), req.context));
+resolver.define('approver-policy-set-api', async (req) => setApproverPolicyFlow(req.payload, resolveStorage(), req.context));
+resolver.define('approver-group-search-api', async (req) => searchGroupsFlow(req.payload, req.context));
+
+resolver.define('authority-policy-get', async (req) => getApproverPolicyFlow(resolveStorage(), req.context));
+resolver.define('authority-policy-set', async (req) => setApproverPolicyFlow(req.payload, resolveStorage(), req.context));
+resolver.define('authority-group-search', async (req) => searchGroupsFlow(req.payload, req.context));
+
+resolver.define('checkPlanApprover', async (req) => {
+  const isApprover = await isPlanApprover(resolveStorage(), req.payload?.projectKey || extractProjectKey(req));
+  return {
+    ok: true,
+    isApprover,
+    guidance: isApprover ? null : APPROVER_REQUIRED_MESSAGE
+  };
+});
+resolver.define('authority-check', async (req) => {
+  const isApprover = await isPlanApprover(resolveStorage(), req.payload?.projectKey || extractProjectKey(req));
+  return {
+    ok: true,
+    isApprover,
+    guidance: isApprover ? null : APPROVER_REQUIRED_MESSAGE
+  };
+});
+
 const definitions = resolver.getDefinitions();
+
+
 
 export const handler = async (event: any, context?: any) => {
   const backendContext = context || (event?.context?.license ? { license: event.context.license } : undefined);

@@ -354,28 +354,25 @@ export class CanvasTimeline {
       ctx.restore();
     }
     const isHovered = task.key === this.activeKey && task.key !== this.focusKey;
-    this.path(r);
-    ctx.strokeStyle = isConflict ? this.c(CANVAS_TOKENS.arrowViolated) : isHovered ? this.c(CANVAS_TOKENS.focus) : fill;
-    ctx.lineWidth = isConflict ? 2.5 : isHovered ? 2.25 : 1.5;
-    ctx.stroke();
-
-    const focus = this.c(CANVAS_TOKENS.focus);
-    const ring = (dashed: boolean) => {
-      this.path({ x: r.x - 3, y: r.y - 3, w: r.w + 6, h: r.h + 6 }, RADIUS + 2);
-      ctx.setLineDash(dashed ? [5, 3] : []);
-      ctx.strokeStyle = focus;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.setLineDash([]);
-    };
+    const isFocused = task.key === this.focusKey;
     const isDriver = this.driverKeys.includes(task.key);
-    if (task.key === this.focusKey && this.focusElement) {
-      // Native focus ring for the focused treegrid cell, plus a 2 px focus token ring (UP-03, UP-40).
-      this.path({ x: r.x - 3, y: r.y - 3, w: r.w + 6, h: r.h + 6 }, RADIUS + 2);
+    const focus = this.c(CANVAS_TOKENS.focus);
+
+    this.path(r);
+    ctx.strokeStyle = isConflict
+      ? this.c(CANVAS_TOKENS.arrowViolated)
+      : (isFocused || isHovered || isDriver)
+      ? focus
+      : fill;
+    ctx.lineWidth = isConflict ? 2.5 : isFocused ? 2.25 : isHovered ? 2 : 1.5;
+    ctx.setLineDash(isConflict ? [4, 3] : isDriver ? [5, 3] : []);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    if (isFocused && this.focusElement) {
+      this.path(r);
       ctx.drawFocusIfNeeded(this.focusElement);
     }
-    if (task.key === this.focusKey) ring(false);
-    else if (isDriver) ring(true);
 
     ctx.font = `600 11px ${cssToken('--cp-font', 'sans-serif')}`;
     ctx.textBaseline = 'middle';
@@ -409,23 +406,36 @@ export class CanvasTimeline {
       const connected = active === task.key || active === dep.predecessorKey;
       const violated = Boolean(dep.isViolated);
       const colour = this.c(violated ? CANVAS_TOKENS.arrowViolated : connected ? CANVAS_TOKENS.arrowActive : CANVAS_TOKENS.arrowOk);
-      const dx = Math.max(35, Math.abs(x2 - x1) / 2);
-      const dir = x2 >= x1 ? 1 : -1;
       ctx.beginPath();
       ctx.moveTo(x1, y1);
-      ctx.bezierCurveTo(x1 + dir * dx, y1, x2 - dir * dx, y2, x2 - dir * 6, y2);
+      if (x2 >= x1 + 16) {
+        // Standard forward dependency: smooth curve from predecessor right to successor left
+        const dx = Math.max(24, (x2 - x1) * 0.45);
+        ctx.bezierCurveTo(x1 + dx, y1, x2 - dx, y2, x2 - 6, y2);
+      } else {
+        // Backward / conflicting link: route out from predecessor, loop around, and enter successor from the left
+        const loopOutX = x1 + 16;
+        const loopInX = x2 - 16;
+        const midY = y1 < y2 ? y1 + ROW_H * 0.5 : y1 - ROW_H * 0.5;
+        ctx.bezierCurveTo(loopOutX, y1, loopOutX, midY, (loopOutX + loopInX) / 2, midY);
+        ctx.bezierCurveTo(loopInX, midY, loopInX, y2, x2 - 6, y2);
+      }
       ctx.strokeStyle = colour;
       ctx.lineWidth = active && !connected ? 1 : connected ? 2.5 : 1.75;
       ctx.setLineDash(violated ? [4, 3] : []);
       ctx.stroke();
       ctx.setLineDash([]);
+
+      // Arrowhead always enters successor left edge pointing cleanly to the right
       ctx.beginPath();
       ctx.moveTo(x2, y2);
-      ctx.lineTo(x2 - dir * 8, y2 - 4.5);
-      ctx.lineTo(x2 - dir * 8, y2 + 4.5);
+      ctx.lineTo(x2 - 8, y2 - 4.5);
+      ctx.lineTo(x2 - 8, y2 + 4.5);
       ctx.closePath();
       ctx.fillStyle = colour;
       ctx.fill();
+
+      // Predecessor origin anchor dot
       ctx.beginPath();
       ctx.arc(x1, y1, connected ? 4.5 : 3.5, 0, Math.PI * 2);
       ctx.fill();
@@ -479,20 +489,50 @@ export class CanvasTimeline {
     const ctx = this.ctx;
     const { sourceKey, x1, y1, curX, curY, targetKey } = linking;
     const colour = this.c(CANVAS_TOKENS.arrowActive);
-    const dir = curX >= x1 ? 1 : -1;
-    const dx = Math.max(35, Math.abs(curX - x1) / 2);
+
+    const angle = Math.atan2(curY - y1, curX - x1);
+    const dist = Math.hypot(curX - x1, curY - y1);
+    const curveOffset = Math.min(60, dist * 0.35);
+
+    let endX = curX;
+    let endY = curY;
+    let enterAngle = angle;
+    if (targetKey) {
+      const target = rects.get(targetKey);
+      if (target) {
+        endX = target.r.x;
+        endY = target.r.y + target.r.h / 2;
+        enterAngle = 0; // enter from left pointing right
+      }
+    }
 
     ctx.beginPath();
     ctx.moveTo(x1, y1);
-    ctx.bezierCurveTo(x1 + dir * dx, y1, curX - dir * dx, curY, curX - dir * 6, curY);
+    if (targetKey) {
+      const dx = Math.max(24, Math.abs(endX - x1) * 0.45);
+      ctx.bezierCurveTo(x1 + dx, y1, endX - dx, endY, endX - 6, endY);
+    } else {
+      ctx.bezierCurveTo(
+        x1 + Math.cos(angle) * curveOffset,
+        y1 + Math.sin(angle) * curveOffset,
+        endX - Math.cos(angle) * curveOffset,
+        endY - Math.sin(angle) * curveOffset,
+        endX,
+        endY
+      );
+    }
     ctx.strokeStyle = colour;
     ctx.lineWidth = 2.5;
     ctx.stroke();
 
+    const tipLen = 9;
+    const tipHalf = 5;
+    const cosA = Math.cos(enterAngle);
+    const sinA = Math.sin(enterAngle);
     ctx.beginPath();
-    ctx.moveTo(curX, curY);
-    ctx.lineTo(curX - dir * 8, curY - 5);
-    ctx.lineTo(curX - dir * 8, curY + 5);
+    ctx.moveTo(endX, endY);
+    ctx.lineTo(endX - cosA * tipLen + sinA * tipHalf, endY - sinA * tipLen - cosA * tipHalf);
+    ctx.lineTo(endX - cosA * tipLen - sinA * tipHalf, endY - sinA * tipLen + cosA * tipHalf);
     ctx.closePath();
     ctx.fillStyle = colour;
     ctx.fill();

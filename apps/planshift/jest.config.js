@@ -2,7 +2,12 @@ module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/test'],
-  testMatch: ['**/*.test.ts'],
+  testMatch: ['**/*.test.ts', '**/*.test.tsx'],
+  moduleNameMapper: {
+    '^@asymm/jira-ui$': '<rootDir>/../../packages/asymm-jira-ui/src/index.ts',
+    '^@asymm/jira-ui/(.*)$': '<rootDir>/../../packages/asymm-jira-ui/src/$1'
+  },
+  moduleDirectories: ['node_modules', '<rootDir>/node_modules'],
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',

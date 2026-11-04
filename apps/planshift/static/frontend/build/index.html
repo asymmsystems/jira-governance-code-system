@@ -63,60 +63,52 @@
       </div>
       <div class="header-divider"></div>
       <div class="search-box-container" role="search">
-        <input type="search" id="inAppSearchInput" class="in-app-search-input" placeholder="Search tasks (Ctrl+F)..." aria-label="Search tasks by key or summary" autocomplete="off">
+        <input type="search" id="inAppSearchInput" class="in-app-search-input" placeholder="Search tasks..." aria-label="Search tasks by key or summary" autocomplete="off">
         <span id="searchMatchCount" class="search-match-count" aria-live="polite"></span>
       </div>
-      <div class="btn-group">
-        <button class="btn btn-outline" id="toggleBacklogBtn" title="Toggle unmapped backlog tray">
-          📂 Backlog (<span id="backlogCount">0</span>)
-        </button>
-        <button class="btn btn-outline" id="btnChanges" type="button" aria-expanded="false" aria-controls="changesPanel" title="Every Jira write of this session">
-          Changes (<span id="changesCount">0</span>)
-        </button>
-        <button class="btn btn-outline" id="refreshBtn" title="Refresh project plan">🔄</button>
-      </div>
-      <label class="shortcut-toggle"><input type="checkbox" id="shortcutsToggle" checked> Keys</label>
     </div>
 
     <div class="header-right">
-      <div class="btn-group">
-        <button class="btn btn-outline btn-sm" id="toggleTableViewBtn" type="button" aria-pressed="false" title="Switch between timeline and plain table view">Table view</button>
-        <div style="position: relative; display: inline-block;">
-          <button class="btn btn-outline" id="btnManageColumns" title="Show or hide table columns">
-            ⊞ Columns <span id="colCountBadge" class="col-count-badge">8/8</span> ▾
-          </button>
-          <!-- Column Manager Popover -->
-          <div class="column-manager-popover" id="columnManagerPopover" style="display: none;">
-            <div class="col-popover-header">
-              <span style="font-weight: 700; font-size: 13px;">Manage Table Columns</span>
-              <button class="btn-icon-subtle" id="btnCloseColPopover" title="Close">✕</button>
-            </div>
-            <div class="col-popover-info">
-              Toggle columns to customize view. Task Summary is required for task identity.
-            </div>
-            <div class="col-popover-list" id="columnOptionsList"></div>
-            <div class="col-popover-footer">
-              <button class="btn btn-outline btn-sm" id="btnShowAllColumns">Show All</button>
-              <button class="btn btn-outline btn-sm" id="btnResetColumns">Reset Defaults</button>
-            </div>
+      <button class="btn btn-outline btn-sm" id="toggleBacklogBtn" title="Toggle unmapped backlog tray">📂 Backlog (<span id="backlogCount">0</span>)</button>
+      <button class="btn btn-outline btn-sm" id="btnChanges" type="button" aria-expanded="false" aria-controls="changesPanel" title="Every Jira write of this session">Changes (<span id="changesCount">0</span>)</button>
+      <button class="btn btn-outline btn-sm" id="refreshBtn" title="Refresh project plan">🔄</button>
+      <button class="btn btn-outline btn-sm" id="toggleTableViewBtn" type="button" aria-pressed="false" style="display: none;">Table view</button>
+      <div style="position: relative; display: inline-block;">
+        <button class="btn btn-outline btn-sm" id="btnManageColumns" title="Show or hide table columns">
+          ⊞ Columns <span id="colCountBadge" class="col-count-badge">8/8</span> ▾
+        </button>
+        <!-- Column Manager Popover -->
+        <div class="column-manager-popover" id="columnManagerPopover" style="display: none;">
+          <div class="col-popover-header">
+            <span style="font-weight: 700; font-size: 13px;">Manage Table Columns</span>
+            <button class="btn-icon-subtle" id="btnCloseColPopover" title="Close">✕</button>
+          </div>
+          <div class="col-popover-info">
+            Toggle columns to customize view. Task Summary is required for task identity.
+          </div>
+          <div class="col-popover-list" id="columnOptionsList"></div>
+          <div class="col-popover-footer">
+            <button class="btn btn-outline btn-sm" id="btnShowAllColumns">Show All</button>
+            <button class="btn btn-outline btn-sm" id="btnResetColumns">Reset Defaults</button>
           </div>
         </div>
       </div>
       <select class="view-select hierarchy-select" id="hierarchySwitcher" aria-label="Hierarchy level" title="Filter hierarchy level">
-        <option value="all">🌳 Full Hierarchy</option>
-        <option value="epics">🟪 Epics Only</option>
-        <option value="stories">🔷 Stories & Tasks</option>
+        <option value="all">🌳 Level</option>
+        <option value="epics">🟪 Epics</option>
+        <option value="stories">🔷 Stories</option>
       </select>
       <select class="view-select" id="viewSwitcher" aria-label="View">
-        <option value="timeline">📊 Timeline (WBS)</option>
-        <option value="table">📋 Table View</option>
+        <option value="timeline">📊 Timeline</option>
+        <option value="table">📋 Table</option>
         <option value="utilization">👤 Utilization</option>
       </select>
       <div class="header-divider"></div>
       <div class="btn-group">
-        <button class="btn btn-outline" id="newEpicBtn">+ New Epic</button>
-        <button class="btn btn-primary" id="newTaskBtn">+ Add Task / Issue</button>
+        <button class="btn btn-outline btn-sm" id="newEpicBtn" title="Create a new Epic">+ Epic</button>
+        <button class="btn btn-primary btn-sm" id="newTaskBtn" title="Create a new Task or Issue">+ Task</button>
       </div>
+      <label class="shortcut-toggle" title="Keyboard shortcuts enabled"><input type="checkbox" id="shortcutsToggle" checked> Keys</label>
     </div>
   </header>
 
@@ -142,40 +134,46 @@
       <!-- 1. Timeline View -->
       <div id="timelineViewSection" style="display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; height: 100%;">
         <!-- Initial Loading Indicator & Error Banner -->
-        <div id="plannerLoadingIndicator" style="display: flex; align-items: center; justify-content: center; gap: 10px; padding: 30px; color: var(--cp-text-subtle); font-size: 13px; font-weight: 600;">
+        <div id="plannerLoadingIndicator" style="display: flex; align-items: center; justify-content: center; gap: 10px; padding: 20px; color: var(--cp-text-subtle); font-size: 13px; font-weight: 600;">
           <span style="display: inline-block; width: 16px; height: 16px; border: 2px solid var(--cp-border-brand); border-top-color: transparent; border-radius: 50%; animation: cpSpin 0.8s linear infinite;"></span>
           <span>Loading project schedule & backlog issues...</span>
         </div>
-        <div id="plannerErrorBanner" style="display: none; margin: 16px; padding: 12px 16px; background: var(--cp-bg-danger); border: 1px solid var(--cp-border-danger); border-radius: 6px; color: var(--cp-text-danger); font-size: 13px; align-items: center; justify-content: space-between;">
+        <div id="plannerErrorBanner" style="display: none; margin: 12px; padding: 10px 14px; background: var(--cp-bg-danger); border: 1px solid var(--cp-border-danger); border-radius: 6px; color: var(--cp-text-danger); font-size: 13px; align-items: center; justify-content: space-between;">
           <span id="plannerErrorMsg">Failed to load project plan.</span>
-          <button class="btn btn-outline" id="btnRetryLoad">Retry</button>
+          <button class="btn btn-outline btn-sm" id="btnRetryLoad">Retry</button>
         </div>
         <div class="timeline-banner">
-          <div class="legend-row">
-            <span style="font-weight: 700; color: var(--cp-text-subtle);">Legend:</span>
-            <div class="legend-item"><div class="legend-swatch" style="background: var(--cp-bg-success-bold);"></div><span>Completed / On Track</span></div>
-            <div class="legend-item"><div class="legend-swatch" style="background: var(--cp-bg-danger-bold);"></div><span>Behind Schedule / Dependency Violation</span></div>
-            <div class="legend-item"><div class="legend-swatch" style="background: var(--cp-bg-brand-hover);"></div><span>Planned Remaining</span></div>
-            <div class="legend-item"><span style="color: var(--cp-text-brand); font-weight: 700;">|</span><span id="legendCurrentWeek">Current Week</span></div>
-          </div>
-          
           <div class="timeline-nav-group">
-            <button class="btn btn-outline btn-sm" id="btnScrollEarlier" title="Scroll timeline left to earlier weeks (or press Left Arrow)">◀ Earlier</button>
-            <button class="btn btn-primary btn-sm" id="btnScrollToday" title="Jump timeline view to Current Week / Today">🎯 Today</button>
-            <button class="btn btn-outline btn-sm" id="btnScrollLater" title="Scroll timeline right to later weeks (or press Right Arrow)">Later ▶</button>
-            <div class="zoom-group" id="zoomGroup" role="group" aria-label="Zoom (Ctrl or Cmd with plus or minus)">
+            <div class="btn-group">
+              <button class="btn btn-outline btn-sm" id="btnScrollEarlier" title="Scroll timeline left to earlier weeks (or press Left Arrow)">◀</button>
+              <button class="btn btn-primary btn-sm" id="btnScrollToday" title="Jump timeline view to Current Week / Today">🎯 Today</button>
+              <button class="btn btn-outline btn-sm" id="btnScrollLater" title="Scroll timeline right to later weeks (or press Right Arrow)">▶</button>
+            </div>
+
+            <div class="zoom-group" id="zoomGroup" role="group" aria-label="Zoom scale">
               <button class="btn btn-outline btn-sm" type="button" data-zoom="day" aria-pressed="false">Day</button>
               <button class="btn btn-outline btn-sm" type="button" data-zoom="week" aria-pressed="true">Week</button>
               <button class="btn btn-outline btn-sm" type="button" data-zoom="month" aria-pressed="false">Month</button>
               <button class="btn btn-outline btn-sm" type="button" data-zoom="quarter" aria-pressed="false">Quarter</button>
               <button class="btn btn-outline btn-sm" type="button" data-zoom="year" aria-pressed="false">Year</button>
             </div>
-            <button class="btn btn-outline btn-sm" type="button" id="btnCompactColumns" aria-pressed="false" title="Show only Key and Summary, so more of the timeline fits">Key and Summary only</button>
-            <label class="enforce-deps-toggle" title="When enabled, moving a task automatically snaps to respect predecessor milestone dates"><input type="checkbox" id="enforceDependenciesCheckbox"> Enforce dependencies</label>
+
+            <button class="btn btn-outline btn-sm" type="button" id="btnCompactColumns" aria-pressed="false" title="Show only Key and Summary">Compact</button>
+            <label class="enforce-deps-toggle" title="When enabled, moving a task automatically snaps to respect predecessor milestone dates"><input type="checkbox" id="enforceDependenciesCheckbox"> Enforce deps</label>
           </div>
 
           <div class="milestones-strip" id="milestonesStrip">
             <!-- Milestones dynamically injected -->
+          </div>
+
+          <div class="legend-row">
+            <div class="legend-compact-chip" id="legendTrigger" title="Legend: Green = Completed / On Track | Red = Behind Schedule or Conflict | Blue = Planned">
+              <span class="legend-dot" style="background: var(--cp-bg-success-bold);"></span>
+              <span class="legend-dot" style="background: var(--cp-bg-danger-bold);"></span>
+              <span class="legend-dot" style="background: var(--cp-bg-brand-hover);"></span>
+              <span style="font-weight: 600; font-size: 11px; margin-left: 2px;">Legend</span>
+              <span id="legendCurrentWeek" style="display: none;"></span>
+            </div>
           </div>
         </div>
         
@@ -198,11 +196,7 @@
           <button class="btn btn-subtle btn-sm" type="button" id="btnHintDismiss" aria-label="Dismiss tip">✕</button>
         </div>
 
-        <!-- Top Synchronized Horizontal Scrollbar -->
-        <div class="gantt-top-scrollbar" id="ganttTopScrollbar" title="Scroll timeline horizontally">
-          <div class="gantt-top-scrollbar-inner" id="ganttTopScrollbarInner"></div>
-        </div>
-
+        <!-- Single unified horizontal scroll on ganttWrapper (duplicate top and bottom dummy scrollbars removed) -->
         <div class="gantt-wrapper" id="ganttWrapper">
           <table class="gantt-table" id="ganttTable">
             <thead>
@@ -215,11 +209,6 @@
             </tbody>
           </table>
           <div id="depLinksLayer" class="dep-links-layer"></div>
-        </div>
-
-        <!-- Bottom Synchronized Horizontal Scrollbar -->
-        <div class="gantt-bottom-scrollbar" id="ganttBottomScrollbar" title="Scroll timeline horizontally">
-          <div class="gantt-bottom-scrollbar-inner" id="ganttBottomScrollbarInner"></div>
         </div>
       </div>
 
@@ -300,6 +289,34 @@
     <button class="btn btn-outline btn-sm" type="button" data-action="dependency">Add dependency</button>
     <button class="btn btn-outline btn-sm" type="button" data-action="progress">Set progress</button>
   </div>
+
+  <!-- Anchored Date Edit Popover: quick in-place start/end date editing without opening full modal -->
+  <div id="dateEditPopover" class="why-popup date-edit-popover" role="dialog" aria-labelledby="dateEditTitle" hidden>
+    <div class="why-header">
+      <strong id="dateEditTitle">Edit Dates</strong>
+      <button class="btn btn-subtle btn-sm" id="btnCloseDateEdit" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="date-edit-fields" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0;">
+      <div>
+        <label class="form-label" for="dateEditStart">Start Date</label>
+        <input type="date" id="dateEditStart" class="form-input">
+      </div>
+      <div>
+        <label class="form-label" for="dateEditEnd">End Date</label>
+        <input type="date" id="dateEditEnd" class="form-input">
+      </div>
+    </div>
+    <div style="display: flex; gap: 6px; margin-bottom: 10px; align-items: center;">
+      <button class="btn btn-outline btn-xs" id="btnDateEditMinusWk" type="button">-1 Wk</button>
+      <button class="btn btn-outline btn-xs" id="btnDateEditPlusWk" type="button">+1 Wk</button>
+      <span id="dateEditDuration" style="margin-left: auto; font-size: 11px; color: var(--cp-text-subtle);"></span>
+    </div>
+    <div class="why-fixes" style="display: flex; justify-content: space-between; align-items: center;">
+      <button class="btn btn-subtle btn-xs" id="btnOpenFullTaskDetail" type="button">Full details...</button>
+      <button class="btn btn-primary btn-sm" id="btnSaveDateEdit" type="button">Save Dates</button>
+    </div>
+  </div>
+
   <div id="depPopup" class="why-popup dep-popup" role="dialog" aria-labelledby="depTitle" hidden>
     <div class="why-header">
       <strong id="depTitle">Starts when</strong>

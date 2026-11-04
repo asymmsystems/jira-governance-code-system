@@ -6553,7 +6553,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function isoOf(day) {
     return new Date(day * DAY_MS).toISOString().slice(0, 10);
   }
-  function addDays(iso2, days) {
+  function addDays2(iso2, days) {
     return isoOf(dayNumber(iso2) + days);
   }
   function durationDays(e) {
@@ -6624,7 +6624,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const ownStart = own.estimatedStartDate;
     if (ownStart >= e) return { earliestStartDate: e, driver: best.pred.workEffortId, violated: false, reason, ...detail };
     let suggestion = `Move ${key} to ${e}`;
-    const fixes = [{ kind: "move", startDate: e, endDate: addDays(e, durationDays(own) - 1) }];
+    const fixes = [{ kind: "move", startDate: e, endDate: addDays2(e, durationDays(own) - 1) }];
     if (best.res.basis === "planned") {
       const lower = Math.floor((dayNumber(ownStart) - dayNumber(best.pred.estimatedStartDate)) / durationDays(best.pred) * 100);
       if (lower >= 0) {
@@ -6672,7 +6672,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       if (!ev.earliestStartDate || cur.estimatedStartDate >= ev.earliestStartDate) continue;
       const dur = durationDays(cur);
       const toStart = ev.earliestStartDate;
-      const toEnd = addDays(toStart, dur - 1);
+      const toEnd = addDays2(toStart, dur - 1);
       changes.push({
         key,
         fromStart: cur.estimatedStartDate,
@@ -6721,8 +6721,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const out = /* @__PURE__ */ new Map();
     const target = tasks.find((t) => t.key === key);
     if (!target || !target.startDate) return out;
-    const start = addDays(target.startDate, startShift);
-    let end = addDays(target.endDate || target.startDate, endShift);
+    const start = addDays2(target.startDate, startShift);
+    let end = addDays2(target.endDate || target.startDate, endShift);
     if (end < start) end = start;
     out.set(key, { start, end });
     const efforts = /* @__PURE__ */ new Map();
@@ -7103,26 +7103,19 @@ Please see https://iframe-resizer.com/upgrade for more details.
         ctx.restore();
       }
       const isHovered = task.key === this.activeKey && task.key !== this.focusKey;
-      this.path(r);
-      ctx.strokeStyle = isConflict ? this.c(CANVAS_TOKENS.arrowViolated) : isHovered ? this.c(CANVAS_TOKENS.focus) : fill;
-      ctx.lineWidth = isConflict ? 2.5 : isHovered ? 2.25 : 1.5;
-      ctx.stroke();
-      const focus = this.c(CANVAS_TOKENS.focus);
-      const ring = (dashed) => {
-        this.path({ x: r.x - 3, y: r.y - 3, w: r.w + 6, h: r.h + 6 }, RADIUS + 2);
-        ctx.setLineDash(dashed ? [5, 3] : []);
-        ctx.strokeStyle = focus;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.setLineDash([]);
-      };
+      const isFocused = task.key === this.focusKey;
       const isDriver = this.driverKeys.includes(task.key);
-      if (task.key === this.focusKey && this.focusElement) {
-        this.path({ x: r.x - 3, y: r.y - 3, w: r.w + 6, h: r.h + 6 }, RADIUS + 2);
+      const focus = this.c(CANVAS_TOKENS.focus);
+      this.path(r);
+      ctx.strokeStyle = isConflict ? this.c(CANVAS_TOKENS.arrowViolated) : isFocused || isHovered || isDriver ? focus : fill;
+      ctx.lineWidth = isConflict ? 2.5 : isFocused ? 2.25 : isHovered ? 2 : 1.5;
+      ctx.setLineDash(isConflict ? [4, 3] : isDriver ? [5, 3] : []);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (isFocused && this.focusElement) {
+        this.path(r);
         ctx.drawFocusIfNeeded(this.focusElement);
       }
-      if (task.key === this.focusKey) ring(false);
-      else if (isDriver) ring(true);
       ctx.font = `600 11px ${cssToken("--cp-font", "sans-serif")}`;
       ctx.textBaseline = "middle";
       const epic = task.isEpic || task.hierarchyLevel === 1;
@@ -7154,11 +7147,18 @@ Please see https://iframe-resizer.com/upgrade for more details.
         const connected = active === task.key || active === dep.predecessorKey;
         const violated = Boolean(dep.isViolated);
         const colour = this.c(violated ? CANVAS_TOKENS.arrowViolated : connected ? CANVAS_TOKENS.arrowActive : CANVAS_TOKENS.arrowOk);
-        const dx = Math.max(35, Math.abs(x2 - x1) / 2);
-        const dir = x2 >= x1 ? 1 : -1;
         ctx.beginPath();
         ctx.moveTo(x1, y1);
-        ctx.bezierCurveTo(x1 + dir * dx, y1, x2 - dir * dx, y2, x2 - dir * 6, y2);
+        if (x2 >= x1 + 16) {
+          const dx = Math.max(24, (x2 - x1) * 0.45);
+          ctx.bezierCurveTo(x1 + dx, y1, x2 - dx, y2, x2 - 6, y2);
+        } else {
+          const loopOutX = x1 + 16;
+          const loopInX = x2 - 16;
+          const midY = y1 < y2 ? y1 + ROW_H * 0.5 : y1 - ROW_H * 0.5;
+          ctx.bezierCurveTo(loopOutX, y1, loopOutX, midY, (loopOutX + loopInX) / 2, midY);
+          ctx.bezierCurveTo(loopInX, midY, loopInX, y2, x2 - 6, y2);
+        }
         ctx.strokeStyle = colour;
         ctx.lineWidth = active && !connected ? 1 : connected ? 2.5 : 1.75;
         ctx.setLineDash(violated ? [4, 3] : []);
@@ -7166,8 +7166,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
         ctx.setLineDash([]);
         ctx.beginPath();
         ctx.moveTo(x2, y2);
-        ctx.lineTo(x2 - dir * 8, y2 - 4.5);
-        ctx.lineTo(x2 - dir * 8, y2 + 4.5);
+        ctx.lineTo(x2 - 8, y2 - 4.5);
+        ctx.lineTo(x2 - 8, y2 + 4.5);
         ctx.closePath();
         ctx.fillStyle = colour;
         ctx.fill();
@@ -7226,18 +7226,46 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const ctx = this.ctx;
       const { sourceKey, x1, y1, curX, curY, targetKey } = linking;
       const colour = this.c(CANVAS_TOKENS.arrowActive);
-      const dir = curX >= x1 ? 1 : -1;
-      const dx = Math.max(35, Math.abs(curX - x1) / 2);
+      const angle = Math.atan2(curY - y1, curX - x1);
+      const dist = Math.hypot(curX - x1, curY - y1);
+      const curveOffset = Math.min(60, dist * 0.35);
+      let endX = curX;
+      let endY = curY;
+      let enterAngle = angle;
+      if (targetKey) {
+        const target = rects.get(targetKey);
+        if (target) {
+          endX = target.r.x;
+          endY = target.r.y + target.r.h / 2;
+          enterAngle = 0;
+        }
+      }
       ctx.beginPath();
       ctx.moveTo(x1, y1);
-      ctx.bezierCurveTo(x1 + dir * dx, y1, curX - dir * dx, curY, curX - dir * 6, curY);
+      if (targetKey) {
+        const dx = Math.max(24, Math.abs(endX - x1) * 0.45);
+        ctx.bezierCurveTo(x1 + dx, y1, endX - dx, endY, endX - 6, endY);
+      } else {
+        ctx.bezierCurveTo(
+          x1 + Math.cos(angle) * curveOffset,
+          y1 + Math.sin(angle) * curveOffset,
+          endX - Math.cos(angle) * curveOffset,
+          endY - Math.sin(angle) * curveOffset,
+          endX,
+          endY
+        );
+      }
       ctx.strokeStyle = colour;
       ctx.lineWidth = 2.5;
       ctx.stroke();
+      const tipLen = 9;
+      const tipHalf = 5;
+      const cosA = Math.cos(enterAngle);
+      const sinA = Math.sin(enterAngle);
       ctx.beginPath();
-      ctx.moveTo(curX, curY);
-      ctx.lineTo(curX - dir * 8, curY - 5);
-      ctx.lineTo(curX - dir * 8, curY + 5);
+      ctx.moveTo(endX, endY);
+      ctx.lineTo(endX - cosA * tipLen + sinA * tipHalf, endY - sinA * tipLen - cosA * tipHalf);
+      ctx.lineTo(endX - cosA * tipLen - sinA * tipHalf, endY - sinA * tipLen + cosA * tipHalf);
       ctx.closePath();
       ctx.fillStyle = colour;
       ctx.fill();
@@ -7346,7 +7374,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const diffDays = daysBetween(candidateStart, earliestDate);
     return {
       startDate: earliestDate,
-      endDate: addDays(candidateEnd, diffDays)
+      endDate: addDays2(candidateEnd, diffDays)
     };
   }
   function suggestTriggerToFit(pred, succStartDate) {
@@ -7409,13 +7437,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const minW = MIN_COLUMN_WIDTHS[k] ?? 64;
     return Math.max(minW, Math.min(MAX_COLUMN_WIDTH, Math.round(candidateWidth)));
   }
-  function computeFrozenLayout(visibleKeys, columnWidths2, compactColumns2, compactTaskWidth2 = COMPACT_TASK_DEFAULT_WIDTH) {
+  function computeFrozenLayout(visibleKeys, columnWidths2, compactColumns, compactTaskWidth2 = COMPACT_TASK_DEFAULT_WIDTH) {
     const widths = {};
     const offsets = {};
     let x = 0;
     let lastKey = null;
     for (const k of visibleKeys) {
-      const base = compactColumns2 && k === "task" ? compactTaskWidth2 : columnWidths2[k] ?? DEFAULT_COLUMN_WIDTHS[k] ?? 100;
+      const base = compactColumns && k === "task" ? compactTaskWidth2 : columnWidths2[k] ?? DEFAULT_COLUMN_WIDTHS[k] ?? 100;
       const w = Math.round(base);
       widths[k] = w;
       offsets[k] = x;
@@ -7549,7 +7577,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   function moveSelectionBy(tasks, selected, days) {
     if (!days) return [];
-    return tasks.filter((t) => selected.has(t.key) && t.startDate && !t.isEpic && t.hierarchyLevel !== 1 && !t.datesFromChildren).sort((a, b) => a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0).map((t) => ({ taskId: t.key, updates: { startDate: addDays(t.startDate, days), endDate: addDays(t.endDate || t.startDate, days) }, expectedVersion: t.version || 0 }));
+    return tasks.filter((t) => selected.has(t.key) && t.startDate && !t.isEpic && t.hierarchyLevel !== 1 && !t.datesFromChildren).sort((a, b) => a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0).map((t) => ({ taskId: t.key, updates: { startDate: addDays2(t.startDate, days), endDate: addDays2(t.endDate || t.startDate, days) }, expectedVersion: t.version || 0 }));
   }
   function progressFromDigit(key) {
     return /^[0-9]$/.test(key) ? Number(key) * 10 : null;
@@ -7572,22 +7600,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   function mondayOf(iso2) {
     const dow = (/* @__PURE__ */ new Date(`${iso2}T00:00:00Z`)).getUTCDay();
-    return addDays(iso2, -((dow + 6) % 7));
-  }
-  function initialRange(today) {
-    const start = addDays(mondayOf(today), -56);
-    return { start, end: addDays(start, 52 * 7 - 1) };
+    return addDays2(iso2, -((dow + 6) % 7));
   }
   function rangeDays(r) {
     return daysBetween(r.start, r.end) + 1;
   }
   function extendRange(r, side, weeks) {
-    return side === "before" ? { start: addDays(r.start, -weeks * 7), end: r.end } : { start: r.start, end: addDays(r.end, weeks * 7) };
-  }
-  function edgeToExtend(scrollLeft, viewportW, trackW) {
-    if (scrollLeft < viewportW / 2) return "before";
-    if (scrollLeft + viewportW > trackW - viewportW / 2) return "after";
-    return null;
+    return side === "before" ? { start: addDays2(r.start, -weeks * 7), end: r.end } : { start: r.start, end: addDays2(r.end, weeks * 7) };
   }
   var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -7600,9 +7619,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const p = parts(day);
     switch (zoom.id) {
       case "day":
-        return [day, addDays(day, 1)];
+        return [day, addDays2(day, 1)];
       case "week":
-        return [mondayOf(day), addDays(mondayOf(day), 7)];
+        return [mondayOf(day), addDays2(mondayOf(day), 7)];
       case "month":
         return [iso(p.y, p.m, 1), iso(p.y, p.m + 1, 1)];
       case "quarter":
@@ -7649,12 +7668,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return daysBetween(originIso2, anchorIso) * dayPx2 - viewportX;
   }
   function dateAt(x, originIso2, dayPx2) {
-    return addDays(originIso2, Math.floor(x / dayPx2));
-  }
-  var MIN_VISIBLE_WEEKS = 6;
-  function shouldAutoCompact(viewportW, columnsW, weekPx, userChoice) {
-    if (userChoice === "on" || userChoice === "off") return userChoice === "on";
-    return (viewportW - columnsW) / weekPx < MIN_VISIBLE_WEEKS;
+    return addDays2(originIso2, Math.floor(x / dayPx2));
   }
 
   // src/ui/table-view.ts
@@ -7979,13 +7993,15 @@ Please see https://iframe-resizer.com/upgrade for more details.
     { key: "status", label: "Status", icon: "\u{1F3F7}\uFE0F", defaultWidth: DEFAULT_COLUMN_WIDTHS.status, description: "Workflow status" }
   ];
   function getVisibleColKeys() {
-    if (compactColumns) return ["task"];
     return ALL_COLUMNS.map((c) => c.key).filter((k) => !hiddenColumns.has(k));
+  }
+  function isCompactMode() {
+    const visible = getVisibleColKeys();
+    return visible.length === 1 && visible[0] === "task";
   }
   var COL_KEYS = ALL_COLUMNS.map((c) => c.key);
   var ZOOM_KEY = "cascadeplan_zoom";
-  var COMPACT_KEY = "cascadeplan_compact_columns";
-  var EXTEND_WEEKS = 26;
+  var EXTEND_WEEKS = 4;
   function readPref(key, fallback) {
     try {
       return localStorage.getItem(key) || fallback;
@@ -8000,7 +8016,6 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   }
   var zoomId = readPref(ZOOM_KEY, "week");
-  var compactColumns = readPref(COMPACT_KEY, "off") === "on";
   var compactDecided = false;
   var timeRange = null;
   function dayPx() {
@@ -8010,11 +8025,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return timeRange ? rangeDays(timeRange) * dayPx() : 0;
   }
   function getFrozenLayout() {
-    return computeFrozenLayout(getVisibleColKeys(), columnWidths, compactColumns, compactTaskWidth);
+    return computeFrozenLayout(getVisibleColKeys(), columnWidths, isCompactMode(), compactTaskWidth);
   }
   function colWidth(k) {
     const fl = getFrozenLayout();
-    return fl.widths[k] !== void 0 ? fl.widths[k] : compactColumns && k === "task" ? compactTaskWidth : columnWidths[k];
+    return fl.widths[k] !== void 0 ? fl.widths[k] : isCompactMode() && k === "task" ? compactTaskWidth : columnWidths[k];
   }
   var expandedTasks = /* @__PURE__ */ new Set();
   var currentHierarchyView = "all";
@@ -8190,7 +8205,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
       });
     });
     window.addEventListener("keydown", (e) => {
-      const inField = e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT" || e.target.isContentEditable);
+      const inField = Boolean(
+        e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT" || e.target.isContentEditable) || document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA" || document.activeElement.tagName === "SELECT" || document.activeElement.isContentEditable)
+      );
       if ((e.ctrlKey || e.metaKey) && !e.altKey && ["=", "+", "-", "_"].includes(e.key) && !inField && !openModal()) {
         e.preventDefault();
         setZoom(zoomStep(zoomId, e.key === "-" || e.key === "_" ? -1 : 1));
@@ -8491,46 +8508,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
     });
   }
   var hasInitialScrolledToToday = false;
-  var isSyncingGanttScroll = false;
   function syncGanttScrollWidth() {
-    const wrapper = document.getElementById("ganttWrapper");
-    const topScroll = document.getElementById("ganttTopScrollbar");
-    const topInner = document.getElementById("ganttTopScrollbarInner");
-    const bottomScroll = document.getElementById("ganttBottomScrollbar");
-    const bottomInner = document.getElementById("ganttBottomScrollbarInner");
-    if (!wrapper) return;
-    const trackLeft = layout.trackLeft || 0;
-    const innerW = Math.max(0, wrapper.scrollWidth - trackLeft) + "px";
-    if (topScroll) topScroll.style.marginLeft = trackLeft + "px";
-    if (bottomScroll) bottomScroll.style.marginLeft = trackLeft + "px";
-    if (topInner) topInner.style.width = innerW;
-    if (bottomInner) bottomInner.style.width = innerW;
-    if (!isSyncingGanttScroll) {
-      if (topScroll) topScroll.scrollLeft = wrapper.scrollLeft;
-      if (bottomScroll) bottomScroll.scrollLeft = wrapper.scrollLeft;
-    }
   }
   function initGanttScrollSync() {
     const wrapper = document.getElementById("ganttWrapper");
-    const topScroll = document.getElementById("ganttTopScrollbar");
-    const bottomScroll = document.getElementById("ganttBottomScrollbar");
     if (!wrapper) return;
-    const syncFrom = (source) => {
-      if (isSyncingGanttScroll) return;
-      isSyncingGanttScroll = true;
-      const x = source.scrollLeft;
-      if (source !== wrapper) wrapper.scrollLeft = x;
-      if (source !== topScroll && topScroll) topScroll.scrollLeft = x;
-      if (source !== bottomScroll && bottomScroll) bottomScroll.scrollLeft = x;
-      requestAnimationFrame(() => {
-        isSyncingGanttScroll = false;
-      });
-    };
-    if (topScroll) topScroll.addEventListener("scroll", () => syncFrom(topScroll));
-    if (bottomScroll) bottomScroll.addEventListener("scroll", () => syncFrom(bottomScroll));
     wrapper.addEventListener("scroll", () => {
       closeAllPopovers();
-      syncFrom(wrapper);
     });
     wrapper.addEventListener("wheel", (e) => {
       if (e.shiftKey) {
@@ -8668,20 +8652,112 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   var searchMatches = [];
   var currentSearchMatchPos = -1;
+  function updateSearchHighlights() {
+    const matchKeys = new Set(searchMatches.map((m) => m.task.key));
+    const activeKey = currentSearchMatchPos >= 0 && currentSearchMatchPos < searchMatches.length ? searchMatches[currentSearchMatchPos].task.key : null;
+    if (rowCache) {
+      for (const [key, tr] of rowCache.entries()) {
+        if (matchKeys.has(key)) {
+          tr.classList.add("is-search-match");
+          if (key === activeKey) {
+            tr.classList.add("is-search-active");
+          } else {
+            tr.classList.remove("is-search-active");
+          }
+        } else {
+          tr.classList.remove("is-search-match", "is-search-active");
+        }
+      }
+    }
+    const plannerTbody = document.querySelector("#plannerTable tbody");
+    if (plannerTbody) {
+      plannerTbody.querySelectorAll(".task-row").forEach((tr) => {
+        const key = tr.dataset.taskId;
+        if (key && matchKeys.has(key)) {
+          tr.classList.add("is-search-match");
+          if (key === activeKey) {
+            tr.classList.add("is-search-active");
+          } else {
+            tr.classList.remove("is-search-active");
+          }
+        } else {
+          tr.classList.remove("is-search-match", "is-search-active");
+        }
+      });
+    }
+    const tableTbody = document.getElementById("plainDataTableBody");
+    if (tableTbody) {
+      tableTbody.querySelectorAll("tr").forEach((tr) => {
+        const key = tr.dataset.taskKey;
+        if (key && matchKeys.has(key)) {
+          tr.classList.add("is-search-match");
+          if (key === activeKey) {
+            tr.classList.add("is-search-active");
+          } else {
+            tr.classList.remove("is-search-active");
+          }
+        } else {
+          tr.classList.remove("is-search-match", "is-search-active");
+        }
+      });
+    }
+    drawTimeline(true);
+  }
+  function scrollToSearchMatch(pos, takeFocus = false) {
+    if (pos < 0 || pos >= searchMatches.length) return;
+    const match = searchMatches[pos];
+    const key = match.task.key;
+    if (!key) return;
+    let needsRecompute = false;
+    if (match.task.parentKey && !expandedTasks.has(match.task.parentKey)) {
+      expandedTasks.add(match.task.parentKey);
+      needsRecompute = true;
+    }
+    if (match.task.epicKey && !expandedTasks.has(match.task.epicKey)) {
+      expandedTasks.add(match.task.epicKey);
+      needsRecompute = true;
+    }
+    if (needsRecompute) {
+      const computed = computeRowTasks();
+      rowTasks = computed.rows;
+      rowTaskList = rowTasks.map((r) => r.task);
+      updateVirtualRows();
+    }
+    if (currentView === "table") {
+      const tbody = document.getElementById("plainDataTableBody");
+      if (tbody) {
+        const tr = tbody.querySelector(`tr[data-task-key="${CSS.escape(key)}"]`);
+        if (tr) {
+          tr.scrollIntoView({ block: "center", behavior: "smooth" });
+          if (takeFocus) tr.focus();
+        }
+      }
+    } else {
+      scrollRowIntoView(key);
+      const rIdx = rowTasks.findIndex((r) => r.task.key === key);
+      if (rIdx >= 0) {
+        gridFocus = { row: rIdx, col: 0 };
+        if (takeFocus) {
+          setGridFocus(rIdx, 0);
+        }
+      }
+    }
+  }
   function initInAppSearch() {
     const input = document.getElementById("inAppSearchInput");
     const count = document.getElementById("searchMatchCount");
     if (!input) return;
     input.addEventListener("input", () => {
       const query = input.value;
-      const tasks = rowTasks && rowTasks.length > 0 ? rowTasks.map((r) => r.task) : currentPlan?.tasks || [];
+      const tasks = currentPlan?.tasks && currentPlan.tasks.length > 0 ? currentPlan.tasks : (rowTasks || []).map((r) => r.task);
       searchMatches = findMatchingTasks(tasks, query);
       currentSearchMatchPos = searchMatches.length > 0 ? 0 : -1;
       if (count) {
         count.textContent = formatMatchCount(query, searchMatches.length, currentSearchMatchPos);
       }
+      updateSearchHighlights();
       if (searchMatches.length > 0) {
-        navigateToSearchMatch(currentSearchMatchPos);
+        scrollToSearchMatch(currentSearchMatchPos, false);
       }
     });
     input.addEventListener("keydown", (e) => {
@@ -8693,7 +8769,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
           if (count) {
             count.textContent = formatMatchCount(input.value, searchMatches.length, currentSearchMatchPos);
           }
-          navigateToSearchMatch(currentSearchMatchPos);
+          updateSearchHighlights();
+          scrollToSearchMatch(currentSearchMatchPos, false);
         }
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -8702,7 +8779,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
           if (count) {
             count.textContent = formatMatchCount(input.value, searchMatches.length, currentSearchMatchPos);
           }
-          navigateToSearchMatch(currentSearchMatchPos);
+          updateSearchHighlights();
+          scrollToSearchMatch(currentSearchMatchPos, false);
         }
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
@@ -8711,7 +8789,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
           if (count) {
             count.textContent = formatMatchCount(input.value, searchMatches.length, currentSearchMatchPos);
           }
-          navigateToSearchMatch(currentSearchMatchPos);
+          updateSearchHighlights();
+          scrollToSearchMatch(currentSearchMatchPos, false);
         }
       } else if (e.key === "Escape") {
         e.preventDefault();
@@ -8719,6 +8798,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         searchMatches = [];
         currentSearchMatchPos = -1;
         if (count) count.textContent = "";
+        updateSearchHighlights();
         input.blur();
         if (currentView === "table") {
           const table = document.getElementById("plainDataTable");
@@ -8734,30 +8814,6 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (input) {
       input.focus();
       input.select();
-    }
-  }
-  function navigateToSearchMatch(pos) {
-    if (pos < 0 || pos >= searchMatches.length) return;
-    const match = searchMatches[pos];
-    const key = match.task.key;
-    if (!key) return;
-    if (currentView === "table") {
-      const tbody = document.getElementById("plainDataTableBody");
-      if (tbody) {
-        tbody.querySelectorAll("tr.is-search-match").forEach((tr2) => tr2.classList.remove("is-search-match"));
-        const tr = tbody.querySelector(`tr[data-task-key="${CSS.escape(key)}"]`);
-        if (tr) {
-          tr.classList.add("is-search-match");
-          tr.scrollIntoView({ block: "center" });
-          tr.focus();
-        }
-      }
-    } else {
-      scrollRowIntoView(key);
-      const rIdx = rowTasks.findIndex((r) => r.task.key === key);
-      if (rIdx >= 0) {
-        setGridFocus(rIdx, 0);
-      }
     }
   }
   function toggleBacklogTray() {
@@ -8804,11 +8860,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const visibleKeys = getVisibleColKeys();
     const badge = document.getElementById("colCountBadge");
     if (badge) {
+      badge.textContent = `${visibleKeys.length}/${ALL_COLUMNS.length}`;
       if (hiddenColumns.size > 0) {
-        badge.textContent = `${visibleKeys.length}/${ALL_COLUMNS.length} (${hiddenColumns.size} hidden)`;
         badge.classList.add("has-hidden");
       } else {
-        badge.textContent = `${visibleKeys.length}/${ALL_COLUMNS.length}`;
         badge.classList.remove("has-hidden");
       }
     }
@@ -9192,10 +9247,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
     updateLinkHint();
     fillAssigneeOptions();
     const projectBadge = document.getElementById("projectBadge");
-    projectBadge.textContent = `Project: ${currentPlan.projectKey}`;
+    projectBadge.textContent = currentPlan.projectKey;
     projectBadge.hidden = false;
     const completionBadge = document.getElementById("completionBadge");
-    completionBadge.textContent = `Completion: ${currentPlan.overallProjectCompletion}% | Target: ${currentPlan.overallTargetCompletion}%`;
+    completionBadge.textContent = `${currentPlan.overallProjectCompletion}% (${currentPlan.overallTargetCompletion}%)`;
     completionBadge.hidden = false;
     document.getElementById("backlogCount").textContent = currentPlan.backlogTasks ? currentPlan.backlogTasks.length : 0;
     const truncatedNote = document.getElementById("truncatedNote");
@@ -9304,6 +9359,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const colDef = ALL_COLUMNS.find((c) => c.key === k) || { label: k, locked: false };
       const th2 = document.createElement("th");
       th2.className = "th-col th-frozen" + (k === frozen.lastKey ? " is-last-frozen" : "");
+      th2.setAttribute("data-col-key", k);
       const w = frozen.widths[k];
       th2.style.width = w + "px";
       th2.style.minWidth = w + "px";
@@ -9323,7 +9379,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         });
       }
       const resizer = document.createElement("div");
-      resizer.className = "resizer";
+      resizer.className = "resizer col-resizer";
       setupColumnResizer(resizer, k);
       th2.appendChild(resizer);
       tr.appendChild(th2);
@@ -9351,33 +9407,31 @@ Please see https://iframe-resizer.com/upgrade for more details.
     strip.replaceChildren(...cells);
   }
   function decideCompactColumns() {
-    if (compactDecided) return false;
     compactDecided = true;
+    return false;
+  }
+  function computeBoundedTimeRange() {
+    const today = todayIso();
+    const dates = (currentPlan?.tasks || []).flatMap((t) => [t.startDate, t.endDate]).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d || ""));
+    dates.push(today);
+    const minDate = dates.reduce((m, d) => d < m ? d : m);
+    const maxDate = dates.reduce((m, d) => d > m ? d : m);
+    const start = mondayOf(addDays2(minDate, -28));
+    let end = addDays2(mondayOf(addDays2(maxDate, 28)), 6);
     const wrapper = document.getElementById("ganttWrapper");
-    const track = document.querySelector("#ganttHeaderRow .timeline-header-cell");
-    if (!wrapper || !wrapper.clientWidth || !track) return false;
-    let choice = null;
-    try {
-      choice = localStorage.getItem(COMPACT_KEY);
-    } catch (e) {
+    const trackLeft = layout && layout.trackLeft || 300;
+    const viewportTrackWidth = wrapper && wrapper.clientWidth ? Math.max(400, wrapper.clientWidth - trackLeft) : 800;
+    const currentPx = rangeDays({ start, end }) * dayPx();
+    if (currentPx < viewportTrackWidth) {
+      const missingPx = viewportTrackWidth - currentPx;
+      const missingDays = Math.ceil(missingPx / dayPx());
+      const missingWeeks = Math.ceil(missingDays / 7);
+      end = addDays2(end, missingWeeks * 7);
     }
-    const visibleKeys = getVisibleColKeys();
-    const frozenWidth = visibleKeys.reduce((sum, k) => sum + colWidth(k), 0);
-    const uncompactedWidth = visibleKeys.length >= 8 ? Math.max(frozenWidth, 1021) : frozenWidth;
-    const next = shouldAutoCompact(wrapper.clientWidth, uncompactedWidth, 7 * dayPx(), choice);
-    const changed = next !== compactColumns;
-    compactColumns = next;
-    updateZoomButtons();
-    return changed;
+    return { start, end };
   }
   function coverPlanDates() {
-    if (!timeRange) timeRange = initialRange(todayIso());
-    const dates = (currentPlan?.tasks || []).flatMap((t) => [t.startDate, t.endDate]).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d || ""));
-    if (!dates.length) return;
-    const min = dates.reduce((m, d) => d < m ? d : m);
-    const max = dates.reduce((m, d) => d > m ? d : m);
-    while (daysBetween(timeRange.start, min) < 28) timeRange = extendRange(timeRange, "before", EXTEND_WEEKS);
-    while (daysBetween(max, timeRange.end) < 28) timeRange = extendRange(timeRange, "after", EXTEND_WEEKS);
+    timeRange = computeBoundedTimeRange();
   }
   function applyTimeAxis() {
     const table = document.getElementById("ganttTable");
@@ -9396,30 +9450,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     measureLayout();
     drawTimeline(true);
-    syncGanttScrollWidth();
   }
   function setTimelineScrollLeft(x) {
     const w = document.getElementById("ganttWrapper");
-    const top = document.getElementById("ganttTopScrollbar");
-    const bottom = document.getElementById("ganttBottomScrollbar");
-    w.scrollLeft = x;
-    if (top && w) top.scrollLeft = w.scrollLeft;
-    if (bottom && w) bottom.scrollLeft = w.scrollLeft;
+    if (w) w.scrollLeft = x;
   }
   function maybeExtendRange() {
-    const w = document.getElementById("ganttWrapper");
-    if (!w || !timeRange) return;
-    const edge = edgeToExtend(w.scrollLeft, w.clientWidth - layout.trackLeft, trackWidth());
-    if (edge === "before") {
-      const shift = EXTEND_WEEKS * 7 * dayPx();
-      timeRange = extendRange(timeRange, "before", EXTEND_WEEKS);
-      const x = w.scrollLeft + shift;
-      applyTimeAxis();
-      setTimelineScrollLeft(x);
-    } else if (edge === "after") {
-      timeRange = extendRange(timeRange, "after", EXTEND_WEEKS);
-      applyTimeAxis();
-    }
+    return;
   }
   function setZoom(id) {
     const w = document.getElementById("ganttWrapper");
@@ -9442,15 +9479,15 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function updateZoomButtons() {
     document.querySelectorAll("#zoomGroup [data-zoom]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.zoom === zoomId)));
     const compact = document.getElementById("btnCompactColumns");
-    if (compact) compact.setAttribute("aria-pressed", String(compactColumns));
+    if (compact) compact.setAttribute("aria-pressed", String(isCompactMode()));
   }
   function setCompactColumns(on) {
-    compactColumns = on;
-    writePref(COMPACT_KEY, on ? "on" : "off");
-    updateZoomButtons();
-    renderTimelineHeader();
-    renderTimelineRows();
-    applyTimeAxis();
+    if (on) {
+      hiddenColumns = new Set(ALL_COLUMNS.filter((c) => c.key !== "task").map((c) => c.key));
+    } else {
+      hiddenColumns.clear();
+    }
+    onColumnsChanged();
   }
   function applyColumnWidthsToDom() {
     const frozen = getFrozenLayout();
@@ -9489,7 +9526,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       document.body.style.userSelect = "none";
       function onMouseMove(moveEvent) {
         const nextWidth = clampColumnResize(colKey, startWidth + (moveEvent.clientX - startX));
-        if (compactColumns && colKey === "task") {
+        if (isCompactMode() && colKey === "task") {
           compactTaskWidth = nextWidth;
         } else {
           columnWidths[colKey] = nextWidth;
@@ -9509,7 +9546,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         measureLayout();
         drawTimeline(true);
         syncGanttScrollWidth();
-        if (!(compactColumns && colKey === "task")) {
+        if (!(isCompactMode() && colKey === "task")) {
           callResolver2("saveColumnWidths", { columnWidths });
         }
       }
@@ -9581,6 +9618,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (typeof closeDependencyConflictDialog === "function") closeDependencyConflictDialog();
     const plansPop = document.getElementById("plansManagerPopover");
     if (plansPop) plansPop.style.display = "none";
+    const rowMore = document.getElementById("rowMoreMenu");
+    if (rowMore) rowMore.style.display = "none";
   }
   function openResourcePicker(targetEl, taskKey) {
     closeAllPopovers();
@@ -10207,7 +10246,14 @@ Please see https://iframe-resizer.com/upgrade for more details.
           return;
         }
         if (res && res.task) {
+          if (res.task.epicKey) expandedTasks.add(res.task.epicKey);
+          if (res.task.parentKey) expandedTasks.add(res.task.parentKey);
           registerOptimisticTask(res.task);
+        }
+        if (currentHierarchyView === "epics") {
+          currentHierarchyView = "all";
+          const hierSwitcher = document.getElementById("hierarchySwitcher");
+          if (hierSwitcher) hierSwitcher.value = "all";
         }
         if (res && res.plan && Array.isArray(res.plan.tasks)) {
           mergeOptimisticTasks(res.plan);
@@ -10220,6 +10266,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
           renderPlan();
         } else {
           await loadProjectPlan();
+        }
+        if (res?.task?.key) {
+          setTimeout(() => {
+            scrollRowIntoView(res.task.key);
+          }, 120);
         }
         showFlag({ text: "Task " + (res?.task?.key || "") + " created and scheduled." });
       } catch (err) {
@@ -10287,7 +10338,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   function drawTimeline(sync) {
     if (!timeline || !currentPlan) return;
-    timeline.activeKey = hoveredTaskId || pinnedDependencyTaskId;
+    const activeSearchKey = currentSearchMatchPos >= 0 && currentSearchMatchPos < searchMatches.length ? searchMatches[currentSearchMatchPos].task.key : null;
+    timeline.activeKey = hoveredTaskId || pinnedDependencyTaskId || activeSearchKey;
     timeline.setModel({
       tasks: rowTaskList,
       first: renderedRange.first,
@@ -10526,12 +10578,88 @@ Please see https://iframe-resizer.com/upgrade for more details.
       td.style.left = frozen.offsets[k] + "px";
     });
   }
+  function openRowMoreMenu(anchorBtn, task, rowIdx, tr) {
+    let menu = document.getElementById("rowMoreMenu");
+    if (!menu) {
+      menu = document.createElement("div");
+      menu.id = "rowMoreMenu";
+      menu.className = "quick-menu-popover row-more-menu-popover";
+      document.body.appendChild(menu);
+    }
+    menu.innerHTML = html`
+    <div class="menu-item-header" style="padding: 6px 10px; font-weight: 700; font-size: 11px; color: var(--cp-text-subtle); border-bottom: 1px solid var(--cp-border);">
+      ${task.key}: ${task.summary}
+    </div>
+    <button class="quick-menu-item" data-action="insert"><span>➕</span><span>Insert task below</span></button>
+    <button class="quick-menu-item" data-action="subtask"><span>↳</span><span>Add subtask</span></button>
+    <button class="quick-menu-item" data-action="progress"><span>📈</span><span>Set actual progress (${task.progress}%)</span></button>
+    <button class="quick-menu-item" data-action="why"><span>❓</span><span>Why this date?</span></button>
+    <button class="quick-menu-item" data-action="team"><span>👥</span><span>Assign team member</span></button>
+    <button class="quick-menu-item" data-action="edit"><span>✏️</span><span>Edit task details</span></button>
+    <button class="quick-menu-item" data-action="jira"><span>↗</span><span>Open in native Jira</span></button>
+    <div style="border-top: 1px solid var(--cp-border); margin: 2px 0;"></div>
+    <button class="quick-menu-item item-danger" data-action="backlog"><span>📤</span><span>Move to backlog</span></button>
+  `;
+    const rect = anchorBtn.getBoundingClientRect();
+    menu.style.display = "flex";
+    menu.style.position = "fixed";
+    menu.style.background = "var(--cp-surface-overlay)";
+    menu.style.zIndex = "2500";
+    menu.style.top = `${rect.bottom + 4}px`;
+    menu.style.left = `${Math.min(window.innerWidth - 225, Math.max(10, rect.left - 80))}px`;
+    menu.onclick = async (e) => {
+      const item = e.target.closest(".quick-menu-item");
+      if (!item) return;
+      const action = item.dataset.action;
+      menu.style.display = "none";
+      if (action === "insert") openInlineCreationRow(tr, task, rowIdx);
+      else if (action === "subtask") {
+        openTaskDetailModal(task.key);
+        setTimeout(() => {
+          document.getElementById("newSubtaskSummaryInput")?.focus();
+        }, 100);
+      } else if (action === "progress") openProgressPicker(anchorBtn, task.key);
+      else if (action === "why") showWhy(task.key, anchorBtn.getBoundingClientRect());
+      else if (action === "team") {
+        openTaskDetailModal(task.key);
+        setTimeout(() => {
+          document.getElementById("multiResourceSelect")?.focus();
+        }, 100);
+      } else if (action === "edit") openTaskDetailModal(task.key);
+      else if (action === "jira") openJiraIssueInNewTab(task.key, e);
+      else if (action === "backlog") {
+        await callResolver2("unscheduleTask", { taskId: task.key });
+        await loadProjectPlan();
+      }
+    };
+    const closeListener = (ev) => {
+      if (!menu.contains(ev.target) && ev.target !== anchorBtn) {
+        menu.style.display = "none";
+        window.removeEventListener("click", closeListener, true);
+      }
+    };
+    setTimeout(() => window.addEventListener("click", closeListener, true), 20);
+  }
   function buildTaskRow(task, rowIdx) {
     const isEpic = Boolean(task.isEpic || task.hierarchyLevel === 1);
     const isSub = Boolean(task.isSubtask || task.hierarchyLevel === -1);
     const tr = document.createElement("tr");
     tr.className = "task-row" + (isEpic ? " is-epic-row" : isSub ? " is-subtask" : " is-story-row");
     tr.dataset.taskId = task.key;
+    tr.addEventListener("mouseenter", () => {
+      tr.classList.add("is-hovered");
+    });
+    tr.addEventListener("mouseleave", () => {
+      tr.classList.remove("is-hovered");
+    });
+    if (searchMatches && searchMatches.length > 0) {
+      const isMatch = searchMatches.some((m) => m.task.key === task.key);
+      if (isMatch) {
+        tr.classList.add("is-search-match");
+        const activeKey = currentSearchMatchPos >= 0 && currentSearchMatchPos < searchMatches.length ? searchMatches[currentSearchMatchPos].task.key : null;
+        if (activeKey === task.key) tr.classList.add("is-search-active");
+      }
+    }
     const hasChildren = Boolean(
       task.childrenCount && task.childrenCount > 0 || task.subtasks && task.subtasks.length > 0 || currentPlan.tasks.some((t) => (t.parentKey === task.key || t.parentId === task.id || isEpic && t.epicKey === task.key) && t.key !== task.key)
     );
@@ -10569,13 +10697,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
       </span>
       <div class="row-action-toolbar">
         <button class="row-action-btn quick-insert-below-btn" title="Insert task below (Row ${rowIdx + 2})">➕ Add below</button>
-        <button class="row-action-btn quick-progress-btn" title="Set actual progress">📈 Progress</button>
         <button class="row-action-btn edit-modal-btn" title="Open full detail modal">✏️ Edit</button>
         <button class="row-action-btn why-date-btn" title="Why this date?">❓ Why?</button>
-        <button class="row-action-btn quick-subtask-btn" title="Add Jira subtask">↳ Subtask</button>
-        <button class="row-action-btn quick-resource-btn" title="Allocate team member">👥 Team</button>
-        <button class="row-action-btn open-jira-row-btn" title="Open ${task.key} in native Jira (new tab)">↗ Jira</button>
-        <button class="row-action-btn unschedule-row-btn" title="Remove from planner (Move to backlog)">📤 Backlog</button>
+        <button class="row-action-btn row-more-actions-btn" title="More task actions (Subtask, Progress, Team, Jira, Backlog)">•••</button>
       </div>
     </div>
   `;
@@ -10871,6 +10995,13 @@ Click to manage or assign.`;
       whyBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         showWhy(task.key, whyBtn.getBoundingClientRect());
+      });
+    }
+    const rowMoreBtn = tr.querySelector(".row-more-actions-btn");
+    if (rowMoreBtn) {
+      rowMoreBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openRowMoreMenu(rowMoreBtn, task, rowIdx, tr);
       });
     }
     const quickSubBtn = tr.querySelector(".quick-subtask-btn");
@@ -11339,8 +11470,15 @@ Click to manage or assign.`;
       const curX = ev.clientX - wRect.left + wrapper.scrollLeft;
       const curY = ev.clientY - wRect.top + wrapper.scrollTop;
       const el2 = document.elementFromPoint(ev.clientX, ev.clientY);
-      const targetHit = el2 ? el2.closest(".bar-hit") : null;
-      const targetKey = targetHit && targetHit.dataset.taskId !== sourceKey ? targetHit.dataset.taskId : null;
+      let targetHit = el2 ? el2.closest(".bar-hit") : null;
+      let targetKey = targetHit && targetHit.dataset.taskId !== sourceKey ? targetHit.dataset.taskId : null;
+      if (!targetKey && el2) {
+        const row = el2.closest("tr[data-task-id]");
+        if (row && row.getAttribute("data-task-id") !== sourceKey) {
+          targetKey = row.getAttribute("data-task-id");
+          targetHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(targetKey)}"]`);
+        }
+      }
       const predKey = side === "right" ? sourceKey : targetKey;
       const succKey = side === "right" ? targetKey : sourceKey;
       timeline.activeLinking = { sourceKey, x1, y1, curX, curY, targetKey, predKey, succKey };
@@ -11392,14 +11530,7 @@ Click to manage or assign.`;
       const moves = previewMoves(currentPlan.tasks, key, mode === "right" ? 0 : s, mode === "left" ? 0 : s, today);
       const mine = moves.get(key);
       const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
-      const enforceDeps = document.getElementById("enforceDependenciesCheckbox")?.checked === true;
-      if (enforceDeps && conflict.hasConflict && conflict.earliestDate) {
-        const clamped = clampToEarliestStart(mine.start, mine.end, conflict.earliestDate);
-        mine.start = clamped.startDate;
-        mine.end = clamped.endDate;
-        moves.set(key, mine);
-      }
-      const isConflict = !enforceDeps && conflict.hasConflict;
+      const isConflict = conflict.hasConflict;
       const sign = s > 0 ? `+${s}` : `${s}`;
       let label2 = mode === "move" ? `${key} \u2794 ${mine.start} (${sign}d)` : `${key} ${mine.start} to ${mine.end}`;
       if (isConflict) {
@@ -11408,6 +11539,30 @@ Click to manage or assign.`;
       timeline.drag = { key, moves, label: label2, isConflict };
       positionBarHit(hit, { ...task, startDate: mine.start, endDate: mine.end });
       wrapper.dataset.preview = JSON.stringify(Object.fromEntries(moves));
+      if (timeRange && mine) {
+        if (mine.start < timeRange.start) {
+          const diffDays = daysBetween(mine.start, timeRange.start);
+          const addWeeks = Math.max(2, Math.ceil(diffDays / 7) + 2);
+          const oldStart = timeRange.start;
+          timeRange = { start: addDays2(timeRange.start, -addWeeks * 7), end: timeRange.end };
+          const shiftPx = daysBetween(timeRange.start, oldStart) * dayPx();
+          applyTimeAxis();
+          wrapper.scrollLeft += shiftPx;
+        } else if (mine.end > timeRange.end) {
+          const diffDays = daysBetween(timeRange.end, mine.end);
+          const addWeeks = Math.max(2, Math.ceil(diffDays / 7) + 2);
+          timeRange = { start: timeRange.start, end: addDays2(timeRange.end, addWeeks * 7) };
+          applyTimeAxis();
+        }
+        const wrapRect = wrapper.getBoundingClientRect();
+        const edgeBuffer = 50;
+        const trackLeftPx = layout && layout.trackLeft || 300;
+        if (ev.clientX > wrapRect.right - edgeBuffer) {
+          wrapper.scrollLeft += 15;
+        } else if (ev.clientX < wrapRect.left + trackLeftPx + edgeBuffer) {
+          wrapper.scrollLeft = Math.max(0, wrapper.scrollLeft - 15);
+        }
+      }
       const strip = document.getElementById("writePreview");
       if (strip) {
         let desc = describePendingWrites(currentPlan.tasks, moves, key).text;
@@ -11425,13 +11580,18 @@ Click to manage or assign.`;
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       if (moved) {
+        const swallowTimer = setTimeout(() => {
+          window.removeEventListener("click", swallowClick, true);
+          isDraggingBar = false;
+        }, 150);
         const swallowClick = (ev) => {
+          clearTimeout(swallowTimer);
           ev.stopPropagation();
           ev.preventDefault();
           window.removeEventListener("click", swallowClick, true);
           setTimeout(() => {
             isDraggingBar = false;
-          }, 60);
+          }, 40);
         };
         window.addEventListener("click", swallowClick, true);
       } else {
@@ -11448,14 +11608,8 @@ Click to manage or assign.`;
         return;
       }
       const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
-      const enforceDeps = document.getElementById("enforceDependenciesCheckbox")?.checked === true;
       let finalStart = mine.start;
       let finalEnd = mine.end;
-      if (enforceDeps && conflict.hasConflict && conflict.earliestDate) {
-        const clamped = clampToEarliestStart(finalStart, finalEnd, conflict.earliestDate);
-        finalStart = clamped.startDate;
-        finalEnd = clamped.endDate;
-      }
       const updates = { startDate: finalStart, endDate: finalEnd };
       const autoScale = mode !== "move" && document.getElementById("autoScaleEffortCheckbox")?.checked === true;
       if (autoScale && task.effortHours > 0) {
@@ -11463,14 +11617,28 @@ Click to manage or assign.`;
         const newDays = daysBetween(finalStart, finalEnd) + 1;
         updates.effortHours = Math.max(1, Math.round(task.effortHours * newDays / oldDays));
       }
-      const res = await callResolver2("updateWbsTask", { taskId: key, updates, expectedVersion: task.version || 0 });
+      const prevStart = task.startDate;
+      const prevEnd = task.endDate;
+      task.startDate = finalStart;
+      task.endDate = finalEnd;
       timeline.drag = null;
-      if (res && Array.isArray(res.tasks)) {
-        applyPlanInPlace(res);
-      } else {
-        await loadProjectPlan();
+      positionBarHit(hit, task);
+      drawTimeline(true);
+      try {
+        const res = await callResolver2("updateWbsTask", { taskId: key, updates, expectedVersion: task.version || 0 });
+        if (res && Array.isArray(res.tasks)) {
+          applyPlanInPlace(res);
+        } else {
+          await loadProjectPlan();
+        }
+      } catch (err) {
+        task.startDate = prevStart;
+        task.endDate = prevEnd;
+        positionBarHit(hit, task);
+        drawTimeline(true);
+        showFlag({ text: "Failed to update dates: " + String(err), error: true });
       }
-      if (!enforceDeps && conflict.hasConflict) {
+      if (conflict.hasConflict) {
         const updatedHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(key)}"]`) || hit;
         showDependencyConflictDialog({
           key,
@@ -11648,6 +11816,8 @@ Click to manage or assign.`;
     return Math.max(0, Math.min(rowTasks.length - 1, Math.ceil((wrapper.scrollTop + layout.headerH - layout.bodyStart) / ROW_H)));
   }
   function focusGridCell() {
+    const inField = document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA" || document.activeElement.tagName === "SELECT" || document.activeElement.isContentEditable);
+    if (inField) return;
     const cell2 = gridRoot && gridRoot.querySelector(`[role="row"][data-row="${gridFocus.row}"] [data-col="${gridFocus.col}"]`);
     if (cell2) {
       gridRoot.querySelectorAll('[role="gridcell"][tabindex="0"]').forEach((c) => {
@@ -11794,12 +11964,18 @@ Click to manage or assign.`;
   function openBarToolbar(key, anchor) {
     const bar = document.getElementById("barToolbar");
     if (!bar) return;
+    const currentHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(key)}"]`) || anchor;
+    if (!currentHit) return;
     bar.dataset.key = key;
     bar.setAttribute("aria-label", `Actions for ${key}`);
-    const r = anchor.getBoundingClientRect();
+    const r = currentHit.getBoundingClientRect();
+    popoverOpenedAt = performance.now();
     bar.hidden = false;
-    bar.style.top = `${Math.min(window.innerHeight - bar.offsetHeight - 8, r.bottom + 6)}px`;
-    bar.style.left = `${Math.max(8, Math.min(window.innerWidth - bar.offsetWidth - 8, r.left))}px`;
+    const barH = bar.offsetHeight || 38;
+    const spaceBelow = window.innerHeight - r.bottom;
+    const top = spaceBelow >= barH + 10 ? r.bottom + 6 : Math.max(8, r.top - barH - 6);
+    bar.style.top = `${top}px`;
+    bar.style.left = `${Math.max(8, Math.min(window.innerWidth - (bar.offsetWidth || 340) - 8, r.left))}px`;
   }
   function followBarToolbar() {
     const bar = document.getElementById("barToolbar");
@@ -11815,6 +11991,50 @@ Click to manage or assign.`;
   function closeBarToolbar() {
     const bar = document.getElementById("barToolbar");
     if (bar) bar.hidden = true;
+  }
+  var dateEditKey = null;
+  function openDateEditPopover(key, anchor) {
+    const task = findTask(key);
+    if (!task) return;
+    dateEditKey = key;
+    const pop = document.getElementById("dateEditPopover");
+    if (!pop) return;
+    popoverOpenedAt = performance.now();
+    pop.hidden = false;
+    document.getElementById("dateEditTitle").textContent = `Edit Dates: ${key}`;
+    const startInp = document.getElementById("dateEditStart");
+    const endInp = document.getElementById("dateEditEnd");
+    startInp.value = task.startDate || "";
+    endInp.value = task.endDate || task.startDate || "";
+    const updateDuration = () => {
+      const s = startInp.value;
+      const e = endInp.value;
+      const durEl = document.getElementById("dateEditDuration");
+      if (s && e && s <= e) {
+        const days = daysBetween(s, e) + 1;
+        const wks = (days / 7).toFixed(1).replace(/\.0$/, "");
+        durEl.textContent = `${days}d (${wks} wks)`;
+      } else {
+        durEl.textContent = "";
+      }
+    };
+    startInp.oninput = updateDuration;
+    endInp.oninput = updateDuration;
+    updateDuration();
+    const currentHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(key)}"]`) || anchor;
+    const r = currentHit && currentHit.getBoundingClientRect ? currentHit.getBoundingClientRect() : { top: 120, bottom: 160, left: 140 };
+    const popH = pop.offsetHeight || 190;
+    const spaceBelow = window.innerHeight - r.bottom;
+    const top = spaceBelow >= popH + 10 ? r.bottom + 6 : Math.max(8, r.top - popH - 6);
+    pop.style.top = `${top}px`;
+    pop.style.left = `${Math.max(8, Math.min(window.innerWidth - (pop.offsetWidth || 340) - 8, r.left))}px`;
+    startInp.focus();
+  }
+  function closeDateEditPopover() {
+    const pop = document.getElementById("dateEditPopover");
+    if (pop) pop.hidden = true;
+    dateEditKey = null;
+    focusGridCell();
   }
   async function toolbarAction(action, key, btn) {
     const task = findTask(key);
@@ -11832,14 +12052,7 @@ Click to manage or assign.`;
       const mine = showShiftPreview(key, days, days, (m) => `${key} \u2794 ${m.start}`);
       await commitDates(key, mine.start, mine.end);
     } else if (action === "dates") {
-      openTaskDetailModal(key);
-      setTimeout(() => {
-        const inp = document.getElementById("editStartDateInput");
-        if (inp) {
-          inp.scrollIntoView({ block: "center" });
-          inp.focus();
-        }
-      }, 50);
+      openDateEditPopover(key, barAnchor);
     } else if (action === "dependency") {
       openDependencyPopup(key, barAnchor);
     } else if (action === "progress") {
@@ -11880,9 +12093,12 @@ Click to manage or assign.`;
     document.getElementById("depTrigger").value = "100";
     renderDependencyOptions();
     pop.hidden = false;
-    const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { bottom: 120, left: 120 };
-    pop.style.top = `${Math.max(8, Math.min(window.innerHeight - pop.offsetHeight - 8, r.bottom + 6))}px`;
-    pop.style.left = `${Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, r.left))}px`;
+    const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { top: 120, bottom: 120, left: 120 };
+    const popH = pop.offsetHeight || 260;
+    const spaceBelow = window.innerHeight - r.bottom;
+    const top = spaceBelow >= popH + 10 ? r.bottom + 6 : Math.max(8, r.top - popH - 6);
+    pop.style.top = `${top}px`;
+    pop.style.left = `${Math.max(8, Math.min(window.innerWidth - (pop.offsetWidth || 340) - 8, r.left))}px`;
     const trig = document.getElementById("depTrigger");
     trig.focus();
     trig.select();
@@ -12072,7 +12288,7 @@ Click to manage or assign.`;
     initGrid();
     initSelectionBar();
     document.querySelectorAll("#zoomGroup [data-zoom]").forEach((b) => b.addEventListener("click", () => setZoom(b.dataset.zoom)));
-    document.getElementById("btnCompactColumns")?.addEventListener("click", () => setCompactColumns(!compactColumns));
+    document.getElementById("btnCompactColumns")?.addEventListener("click", () => setCompactColumns(!isCompactMode()));
     updateZoomButtons();
     const box = document.getElementById("shortcutsToggle");
     if (box) {
@@ -12142,6 +12358,43 @@ Click to manage or assign.`;
       document.getElementById("linkHint").hidden = true;
     });
     document.getElementById("btnDepCancel")?.addEventListener("click", closeDependencyPopup);
+    document.getElementById("btnCloseDateEdit")?.addEventListener("click", closeDateEditPopover);
+    document.getElementById("btnDateEditMinusWk")?.addEventListener("click", () => {
+      const sInp = document.getElementById("dateEditStart");
+      const eInp = document.getElementById("dateEditEnd");
+      if (!sInp || !eInp) return;
+      if (sInp.value) sInp.value = addDays(sInp.value, -7);
+      if (eInp.value) eInp.value = addDays(eInp.value, -7);
+      sInp.dispatchEvent(new Event("input"));
+    });
+    document.getElementById("btnDateEditPlusWk")?.addEventListener("click", () => {
+      const sInp = document.getElementById("dateEditStart");
+      const eInp = document.getElementById("dateEditEnd");
+      if (!sInp || !eInp) return;
+      if (sInp.value) sInp.value = addDays(sInp.value, 7);
+      if (eInp.value) eInp.value = addDays(eInp.value, 7);
+      sInp.dispatchEvent(new Event("input"));
+    });
+    document.getElementById("btnOpenFullTaskDetail")?.addEventListener("click", () => {
+      const k = dateEditKey;
+      closeDateEditPopover();
+      if (k) openTaskDetailModal(k);
+    });
+    document.getElementById("btnSaveDateEdit")?.addEventListener("click", async () => {
+      const k = dateEditKey;
+      const s = document.getElementById("dateEditStart")?.value;
+      const e = document.getElementById("dateEditEnd")?.value;
+      closeDateEditPopover();
+      if (k && s) {
+        await commitDates(k, s, e || s);
+      }
+    });
+    document.getElementById("dateEditPopover")?.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeDateEditPopover();
+      }
+    });
     document.getElementById("btnSwapDepDirection")?.addEventListener("click", (e) => {
       e.stopPropagation();
       if (!depEditState) return;
@@ -12326,6 +12579,8 @@ Click to manage or assign.`;
       if (tb && !tb.hidden && !tb.contains(e.target) && !e.target.closest(".bar-hit")) closeBarToolbar();
       const depPop = document.getElementById("depPopup");
       if (!recentlyOpened && depPop && !depPop.hidden && !depPop.contains(e.target) && !e.target.closest("#barToolbar")) closeDependencyPopup();
+      const datePop = document.getElementById("dateEditPopover");
+      if (!recentlyOpened && datePop && !datePop.hidden && !datePop.contains(e.target) && !e.target.closest("#barToolbar")) closeDateEditPopover();
       const depEditPop = document.getElementById("depEditPopover");
       if (!recentlyOpened && depEditPop && !depEditPop.hidden && !depEditPop.contains(e.target) && !e.target.closest(".dep-link-badge")) closeDependencyEditPopover();
       const conflictBanner = document.getElementById("depConflictBanner");
@@ -12337,12 +12592,14 @@ Click to manage or assign.`;
     });
     document.getElementById("ganttWrapper")?.addEventListener("scroll", () => {
       followBarToolbar();
+      closeDateEditPopover();
       if (depEditState) closeDependencyEditPopover();
       if (conflictState) closeDependencyConflictDialog();
     }, { passive: true });
   }
   function onShortcut(e, inField) {
-    if (inField || e.ctrlKey || e.metaKey || e.altKey || !shortcutsOn() || openModal()) return false;
+    const activeInput = document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA" || document.activeElement.tagName === "SELECT" || document.activeElement.isContentEditable);
+    if (inField || activeInput || e.ctrlKey || e.metaKey || e.altKey || !shortcutsOn() || openModal()) return false;
     const key = gridRoot && gridRoot.contains(document.activeElement) ? rowTasks[gridFocus.row]?.task.key : pinnedDependencyTaskId || hoveredTaskId;
     if (e.key === "t") {
       scrollToToday();
@@ -12874,7 +13131,7 @@ Click to manage or assign.`;
     (currentPlan?.availableUsers || []).forEach((u) => {
       const opt = document.createElement("option");
       opt.value = u.displayName;
-      opt.dataset.accountId = u.accountId || "";
+      opt.dataset.accountId = u.accountId && u.accountId !== "unassigned" ? u.accountId : "";
       opt.textContent = u.displayName + (u.isPlaceholder ? " [Placeholder]" : "");
       assSelect.appendChild(opt);
     });
@@ -12948,7 +13205,14 @@ Click to manage or assign.`;
       summaryInput.value = "";
       closeModal("createTaskModal");
       if (res && res.task) {
+        if (res.task.epicKey) expandedTasks.add(res.task.epicKey);
+        if (res.task.parentKey) expandedTasks.add(res.task.parentKey);
         registerOptimisticTask(res.task);
+      }
+      if (currentHierarchyView === "epics") {
+        currentHierarchyView = "all";
+        const hierSwitcher = document.getElementById("hierarchySwitcher");
+        if (hierSwitcher) hierSwitcher.value = "all";
       }
       if (res && res.plan && Array.isArray(res.plan.tasks)) {
         mergeOptimisticTasks(res.plan);
@@ -12961,6 +13225,11 @@ Click to manage or assign.`;
         renderPlan();
       } else {
         await loadProjectPlan();
+      }
+      if (res?.task?.key) {
+        setTimeout(() => {
+          scrollRowIntoView(res.task.key);
+        }, 120);
       }
       showFlag({ text: "Task " + (res?.task?.key || "") + " created and scheduled." });
     } catch (err) {
@@ -13090,7 +13359,7 @@ Click to manage or assign.`;
   }
   function renderUtilizationView() {
     const cont = document.getElementById("utilizationProfilesContent");
-    const weekStarts = Array.from({ length: 8 }, (_, i) => addDays(mondayOf(todayIso()), i * 7));
+    const weekStarts = Array.from({ length: 8 }, (_, i) => addDays2(mondayOf(todayIso()), i * 7));
     const rows = weeklyHours(currentPlan?.tasks || [], weekStarts);
     if (rows.length === 0) {
       cont.innerHTML = "<div>No assigned, estimated tasks with dates on the plan.</div>";
