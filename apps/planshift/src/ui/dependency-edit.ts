@@ -187,3 +187,16 @@ export function suggestTriggerToFit(
   const pct = Math.floor((elapsedDays / totalDays) * 100);
   return Math.max(0, Math.min(100, pct));
 }
+
+/**
+ * Checks whether dependency enforcement is active based on checkbox state and localStorage fallback.
+ */
+export function isEnforceDepsActive(
+  checkbox?: { checked: boolean } | null,
+  storageValue?: string | null
+): boolean {
+  if (checkbox && typeof checkbox.checked === 'boolean') {
+    return checkbox.checked;
+  }
+  return storageValue === 'on';
+}

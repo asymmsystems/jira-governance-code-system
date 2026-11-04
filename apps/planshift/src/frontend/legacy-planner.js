@@ -29,7 +29,8 @@ import {
   clampToEarliestStart,
   suggestTriggerToFit,
   buildDraggedDependencyLink,
-  swapDependencyDirection
+  swapDependencyDirection,
+  isEnforceDepsActive
 } from '../ui/dependency-edit';
 import {
   DEFAULT_COLUMN_WIDTHS,
@@ -1292,6 +1293,10 @@ function updateColumnManagerUI() {
 function openColumnHeaderMenu(e, colKey, colLabel) {
   const old = document.getElementById('columnHeaderContextMenu');
   if (old) old.remove();
+  document.querySelectorAll('.th-col.is-menu-open').forEach(th => th.classList.remove('is-menu-open'));
+
+  const activeTh = document.querySelector(`.th-col[data-col-key="${CSS.escape(colKey)}"]`);
+  if (activeTh) activeTh.classList.add('is-menu-open');
 
   const menu = document.createElement('div');
   menu.id = 'columnHeaderContextMenu';
@@ -1318,6 +1323,7 @@ function openColumnHeaderMenu(e, colKey, colLabel) {
   if (hideBtn) {
     hideBtn.addEventListener('click', () => {
       menu.remove();
+      if (activeTh) activeTh.classList.remove('is-menu-open');
       toggleColumnVisibility(colKey);
     });
   }
@@ -1325,6 +1331,7 @@ function openColumnHeaderMenu(e, colKey, colLabel) {
   if (manageBtn) {
     manageBtn.addEventListener('click', () => {
       menu.remove();
+      if (activeTh) activeTh.classList.remove('is-menu-open');
       const pop = document.getElementById('columnManagerPopover');
       if (pop) pop.style.display = 'flex';
     });
@@ -1333,6 +1340,7 @@ function openColumnHeaderMenu(e, colKey, colLabel) {
   function onDocClick(ev) {
     if (!menu.contains(ev.target)) {
       menu.remove();
+      if (activeTh) activeTh.classList.remove('is-menu-open');
       document.removeEventListener('click', onDocClick);
     }
   }
@@ -1814,7 +1822,7 @@ function renderTimelineHeader() {
     th.innerHTML = html`
       <div class="th-content-wrap">
         <span class="th-label-text">${colDef.label}</span>
-        ${!colDef.locked ? html`<button class="th-col-menu-btn" data-col-key="${k}" title="Column options (Hide ${colDef.label})">▾</button>` : ''}
+        ${!colDef.locked ? html`<button class="th-col-menu-btn" data-col-key="${k}" title="Column options (Hide ${colDef.label})" aria-label="Column options for ${colDef.label}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg></button>` : ''}
       </div>
     `;
 
@@ -2111,6 +2119,7 @@ function closeAllPopovers() {
   if (targetPopover) targetPopover.style.display = 'none';
   const colMenu = document.getElementById('columnHeaderContextMenu');
   if (colMenu) colMenu.remove();
+  document.querySelectorAll('.th-col.is-menu-open').forEach(th => th.classList.remove('is-menu-open'));
   if (typeof closeDependencyEditPopover === 'function') closeDependencyEditPopover();
   if (typeof closeDependencyConflictDialog === 'function') closeDependencyConflictDialog();
   const plansPop = document.getElementById('plansManagerPopover');
@@ -4282,6 +4291,18 @@ function startVisualLinkDrag(e, sourceKey, hit, side = 'right') {
 }
 
 /**
+ * Returns whether dependency enforcement is active (auto-snapping moves to respect predecessor milestones).
+ */
+export function isEnforceDepsEnabled() {
+  const enforceBox = document.getElementById('enforceDependenciesCheckbox');
+  let storageVal = null;
+  try {
+    storageVal = localStorage.getItem('cascadeplan_enforce_deps');
+  } catch (e) {}
+  return isEnforceDepsActive(enforceBox, storageVal);
+}
+
+/**
  * Drag (move) or resize (left, right) of a bar. Snaps to days at Day and Week zoom and to weeks above
  * that; hold Alt for days at any zoom (B-27). Dependents
  * move live as a preview from the same schedule engine as the server, with dashed outlines at their
@@ -4314,13 +4335,35 @@ function startBarPointerEdit(e, key, mode, hit) {
 
     const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
     const isConflict = conflict.hasConflict;
+    const enforceDeps = isEnforceDepsEnabled();
     const sign = s > 0 ? `+${s}` : `${s}`;
     let label = mode === 'move' ? `${key} ➔ ${mine.start} (${sign}d)` : `${key} ${mine.start} to ${mine.end}`;
+    let wasSnapped = false;
+
     if (isConflict) {
-      label += ` · ⚠️ Conflict: ${conflict.predKey} (${conflict.triggerPercent}%)`;
+      if (enforceDeps) {
+        const clampedDates = clampToEarliestStart(mine.start, mine.end, conflict.earliestDate);
+        wasSnapped = true;
+        label = mode === 'move'
+          ? `${key} ➔ ${clampedDates.startDate} (Enforced: ${conflict.predKey})`
+          : `${key} ${clampedDates.startDate} to ${clampedDates.endDate} (Enforced: ${conflict.predKey})`;
+        moves.set(key, { start: clampedDates.startDate, end: clampedDates.endDate });
+      } else {
+        label += ` · ⚠️ Conflict: ${conflict.predKey} (${conflict.triggerPercent}%)`;
+      }
     }
-    timeline.drag = { key, moves, label, isConflict };
-    positionBarHit(hit, { ...task, startDate: mine.start, endDate: mine.end });
+
+    const currentMine = moves.get(key) || mine;
+    timeline.drag = {
+      key,
+      moves,
+      label,
+      isConflict: enforceDeps ? false : isConflict,
+      wasSnapped,
+      earliestDate: conflict.earliestDate,
+      predKey: conflict.predKey
+    };
+    positionBarHit(hit, { ...task, startDate: currentMine.start, endDate: currentMine.end });
     wrapper.dataset.preview = JSON.stringify(Object.fromEntries(moves));
 
     // Auto-expand time range dynamically when dragging/resizing beyond current boundaries
@@ -4356,7 +4399,11 @@ function startBarPointerEdit(e, key, mode, hit) {
     if (strip) {
       let desc = describePendingWrites(currentPlan.tasks, moves, key).text;
       if (isConflict) {
-        desc = `⚠️ Conflict: ${key} scheduled before ${conflict.predKey} reaches ${conflict.triggerPercent}% on ${conflict.triggerDate || conflict.earliestDate}. ${desc}`;
+        if (enforceDeps) {
+          desc = `🔒 Enforce dependencies: will snap ${key} to ${conflict.earliestDate} to satisfy dependency on ${conflict.predKey}. ${desc}`;
+        } else {
+          desc = `⚠️ Conflict: ${key} scheduled before ${conflict.predKey} reaches ${conflict.triggerPercent}% on ${conflict.triggerDate || conflict.earliestDate}. ${desc}`;
+        }
       }
       strip.textContent = desc;
       strip.hidden = false;
@@ -4388,7 +4435,8 @@ function startBarPointerEdit(e, key, mode, hit) {
     delete wrapper.dataset.preview;
     const strip = document.getElementById('writePreview');
     if (strip) strip.hidden = true;
-    const mine = timeline.drag && timeline.drag.moves.get(key);
+    const dragInfo = timeline.drag;
+    const mine = dragInfo && dragInfo.moves && dragInfo.moves.get(key);
     if (!moved || shift === 0 || !mine) {
       timeline.drag = null;
       positionBarHit(hit, task);
@@ -4396,9 +4444,29 @@ function startBarPointerEdit(e, key, mode, hit) {
       return;
     }
 
-    const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
+    const enforceDeps = isEnforceDepsEnabled();
     let finalStart = mine.start;
     let finalEnd = mine.end;
+    let conflict = checkDependencyConflict({ key, startDate: finalStart }, currentPlan.tasks, today);
+    const wasSnapped = Boolean(dragInfo && dragInfo.wasSnapped);
+    const earliestDate = (dragInfo && dragInfo.earliestDate) || conflict.earliestDate;
+    const predKey = (dragInfo && dragInfo.predKey) || conflict.predKey;
+
+    if (conflict.hasConflict && enforceDeps) {
+      const clamped = clampToEarliestStart(finalStart, finalEnd, conflict.earliestDate);
+      finalStart = clamped.startDate;
+      finalEnd = clamped.endDate;
+    }
+
+    if (finalStart === task.startDate && finalEnd === (task.endDate || task.startDate)) {
+      timeline.drag = null;
+      positionBarHit(hit, task);
+      drawTimeline(true);
+      if (wasSnapped || (conflict.hasConflict && enforceDeps)) {
+        announce(`Enforce dependencies: ${key} cannot start before ${earliestDate} (dependency on ${predKey}).`);
+      }
+      return;
+    }
 
     const updates = { startDate: finalStart, endDate: finalEnd };
     // A resize changes dates only. The estimate changes only when the user ticked the option (B-03).
@@ -4432,7 +4500,7 @@ function startBarPointerEdit(e, key, mode, hit) {
       showFlag({ text: 'Failed to update dates: ' + String(err), error: true });
     }
 
-    if (conflict.hasConflict) {
+    if (conflict.hasConflict && !enforceDeps) {
       const updatedHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(key)}"]`) || hit;
       showDependencyConflictDialog({
         key,
@@ -4443,6 +4511,8 @@ function startBarPointerEdit(e, key, mode, hit) {
         hit: updatedHit,
         mode
       });
+    } else if (wasSnapped || (conflict.hasConflict && enforceDeps)) {
+      announce(`Enforce dependencies: snapped ${key} start to ${earliestDate} to satisfy dependency on ${predKey}.`);
     }
   }
 
@@ -4782,8 +4852,47 @@ async function onMoveKey(e) {
   }
   const strip = document.getElementById('writePreview');
   if (strip) strip.hidden = true;
-  await commitDates(key, mine.start, mine.end);
-  announce(`Saved. ${key}: ${mine.start} to ${mine.end}.`);
+
+  const task = findTask(key);
+  const enforceDeps = isEnforceDepsEnabled();
+  let finalStart = mine.start;
+  let finalEnd = mine.end;
+  const conflict = checkDependencyConflict({ key, startDate: finalStart }, currentPlan.tasks, todayIso());
+
+  if (conflict.hasConflict) {
+    if (enforceDeps) {
+      const clamped = clampToEarliestStart(finalStart, finalEnd, conflict.earliestDate);
+      finalStart = clamped.startDate;
+      finalEnd = clamped.endDate;
+      if (task && finalStart === task.startDate && finalEnd === (task.endDate || task.startDate)) {
+        clearShiftPreview();
+        announce(`Enforce dependencies: ${key} cannot start before ${conflict.earliestDate} (dependency on ${conflict.predKey}).`);
+        focusGridCell();
+        return;
+      }
+      await commitDates(key, finalStart, finalEnd);
+      announce(`Enforce dependencies: snapped ${key} start to ${conflict.earliestDate} to satisfy dependency on ${conflict.predKey}.`);
+      focusGridCell();
+      return;
+    } else {
+      clearShiftPreview();
+      const updatedHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(key)}"]`);
+      showDependencyConflictDialog({
+        key,
+        candidateStart: finalStart,
+        candidateEnd: finalEnd,
+        conflict,
+        task,
+        hit: updatedHit,
+        mode: 'move'
+      });
+      focusGridCell();
+      return;
+    }
+  }
+
+  await commitDates(key, finalStart, finalEnd);
+  announce(`Saved. ${key}: ${finalStart} to ${finalEnd}.`);
   focusGridCell();
 }
 
@@ -5288,6 +5397,9 @@ function initKeyboard() {
     try { enforceBox.checked = localStorage.getItem('cascadeplan_enforce_deps') === 'on'; } catch (e) {}
     enforceBox.addEventListener('change', () => {
       try { localStorage.setItem('cascadeplan_enforce_deps', enforceBox.checked ? 'on' : 'off'); } catch (e) {}
+      announce(enforceBox.checked
+        ? 'Enforce dependencies enabled. Moving tasks will automatically snap to respect predecessor milestones.'
+        : 'Enforce dependencies disabled.');
     });
   }
 

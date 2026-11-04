@@ -13,7 +13,8 @@ import {
   clampToEarliestStart,
   suggestTriggerToFit,
   buildDraggedDependencyLink,
-  swapDependencyDirection
+  swapDependencyDirection,
+  isEnforceDepsActive
 } from '../../src/ui/dependency-edit';
 
 describe('dependency editing pure helpers', () => {
@@ -178,6 +179,24 @@ describe('dependency editing pure helpers', () => {
     it('computes trigger percentage when predecessor endDate is omitted', () => {
       const pct = suggestTriggerToFit({ key: 'PROJ-1', startDate: '2026-10-01' }, '2026-10-02');
       expect(pct).toBe(100);
+    });
+  });
+
+  describe('isEnforceDepsActive', () => {
+    it('returns true when checkbox is checked', () => {
+      expect(isEnforceDepsActive({ checked: true }, 'off')).toBe(true);
+      expect(isEnforceDepsActive({ checked: true }, null)).toBe(true);
+    });
+
+    it('returns false when checkbox is unchecked even if storage was on', () => {
+      expect(isEnforceDepsActive({ checked: false }, 'on')).toBe(false);
+    });
+
+    it('falls back to storage when checkbox element is not present', () => {
+      expect(isEnforceDepsActive(null, 'on')).toBe(true);
+      expect(isEnforceDepsActive(undefined, 'on')).toBe(true);
+      expect(isEnforceDepsActive(null, 'off')).toBe(false);
+      expect(isEnforceDepsActive(null, null)).toBe(false);
     });
   });
 });

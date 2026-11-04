@@ -267,6 +267,7 @@ export interface InlineTaskCreateRequest {
   startWeek?: string;
   spanWeeks?: number;
   targetIndex?: number;
+  planId?: string;
 }
 
 export interface ScheduleBacklogRequest {
@@ -279,12 +280,14 @@ export interface ScheduleBacklogRequest {
   effortHours?: number;
   resource?: string;
   targetIndex?: number;
+  planId?: string;
 }
 
 export interface UnscheduleTaskRequest {
   projectKey: string;
   projectId?: string; // from the Forge context; keys records by project id (B-09)
   taskId: string;
+  planId?: string;
 }
 
 export interface CreateSubtaskForResourceRequest {
@@ -300,6 +303,7 @@ export interface CreateSubtaskForResourceRequest {
   effortHours?: number;
   startWeek?: string;
   spanWeeks?: number;
+  planId?: string;
 }
 
 export interface ReorderTasksRequest {
@@ -307,6 +311,7 @@ export interface ReorderTasksRequest {
   projectId?: string; // from the Forge context; keys records by project id (B-09)
   taskId: string;
   targetIndex: number;
+  planId?: string;
 }
 
 export const DEFAULT_TSHIRT_MAP: Record<TShirtSize, number> = {
