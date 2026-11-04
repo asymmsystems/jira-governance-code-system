@@ -418,11 +418,6 @@ body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-
   cursor: pointer;
   vertical-align: middle;
 }
-.task-row:hover,
-.task-row.is-hovered {
-  position: relative;
-  z-index: 65 !important;
-}
 .task-row:hover > td.td-task-summary,
 .task-row.is-hovered > td.td-task-summary {
   overflow: visible !important;
@@ -438,9 +433,29 @@ body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-
 
 /* Interactive Timeline Track */
 .timeline-track-cell {
-  padding: 0; position: relative; border-right: 1px dashed var(--cp-border); border-bottom: 1px solid var(--cp-border); height: 44px;
+  padding: 0;
+  position: relative;
+  border-right: 1px dashed var(--cp-border);
+  border-bottom: 1px solid var(--cp-border);
+  height: 44px;
+  background: transparent !important;
 }
-.timeline-track-cell.current-week-track { background: rgba(0, 101, 255, 0.03); }
+.timeline-track-cell.current-week-track {
+  background: rgba(0, 101, 255, 0.03) !important;
+}
+.task-row > td.timeline-track-cell,
+.task-row:hover > td.timeline-track-cell,
+.task-row.is-hovered > td.timeline-track-cell,
+.task-row.is-story-row:hover > td.timeline-track-cell,
+.task-row.is-subtask:hover > td.timeline-track-cell,
+.task-row.is-epic-row:hover > td.timeline-track-cell,
+.task-row.is-search-match > td.timeline-track-cell,
+.task-row.is-search-active > td.timeline-track-cell,
+.task-row.is-selected > td.timeline-track-cell,
+.task-row.drop-insert-top > td.timeline-track-cell,
+.task-row.drop-insert-bottom > td.timeline-track-cell {
+  background: transparent !important;
+}
 
 /* Canvas timeline (B-13): the canvas draws bars, arrows, grid and today line and ignores the
    pointer; transparent hit elements over the bars take focus, hover, drag and resize. */
@@ -469,13 +484,9 @@ body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-
 .time-cell.current { background: var(--cp-bg-selected); color: var(--cp-text-brand); }
 .timeline-track-cell { width: var(--cp-track-w, 1275px); min-width: var(--cp-track-w, 1275px); }
 .th-col.th-frozen { position: sticky; z-index: 45; }
-.task-row { background: var(--cp-surface); transition: background 0.1s ease; }
+.task-row { transition: background 0.1s ease; }
 .td-frozen { position: sticky; z-index: 36; background: var(--cp-surface); }
-.task-row:hover,
-.task-row:hover > td,
 .task-row:hover > td.td-frozen,
-.task-row.is-hovered,
-.task-row.is-hovered > td,
 .task-row.is-hovered > td.td-frozen {
   background: var(--cp-bg-selected) !important;
 }
@@ -642,13 +653,12 @@ body.is-dragging-backlog .drop-target-row.drag-over {
   background: var(--cp-surface-sunken);
   font-size: 11px;
 }
-.task-row:hover,
-.task-row.is-story-row:hover,
-.task-row.is-subtask:hover {
-  background: var(--cp-bg-selected);
+.task-row.is-story-row:hover > td.td-frozen,
+.task-row.is-subtask:hover > td.td-frozen {
+  background: var(--cp-bg-selected) !important;
 }
-.task-row.is-epic-row:hover {
-  background: var(--cp-bg-discovery);
+.task-row.is-epic-row:hover > td.td-frozen {
+  background: var(--cp-bg-discovery) !important;
 }
 
 .epic-badge {
@@ -1683,13 +1693,9 @@ body.is-dragging-backlog .drop-target-row.drag-over {
 .plain-data-table tbody tr:focus { outline: 2px solid var(--cp-border-focused); outline-offset: -2px; }
 
 /* In-app task search highlights on planner grid (B-26) */
-.task-row.is-search-match,
-.task-row.is-search-match > td,
 .task-row.is-search-match > td.td-frozen {
   background: var(--cp-bg-warning) !important;
 }
-.task-row.is-search-active,
-.task-row.is-search-active > td,
 .task-row.is-search-active > td.td-frozen {
   background: var(--cp-bg-selected) !important;
   outline: 2px solid var(--cp-border-focused) !important;
