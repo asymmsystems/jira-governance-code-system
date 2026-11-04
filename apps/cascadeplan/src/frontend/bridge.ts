@@ -10,7 +10,7 @@
  * Decision D-09: Custom UI canvas planner with @forge/bridge; @forge/react (UI Kit 2) has no canvas support.
  */
 
-import { invoke, router } from '@forge/bridge';
+import { invoke, router, view } from '@forge/bridge';
 import { classifyResult } from '../ui/result';
 import { showErrorBanner } from './banner';
 import { recordChanges } from './changes-panel';
@@ -37,12 +37,28 @@ export async function callResolver(fnName: string, payload: Record<string, unkno
   let rounds = 0;
   while (res && Array.isArray(res.cascadeRemaining) && res.cascadeRemaining.length > 0 && rounds < MAX_CASCADE_ROUNDS) {
     rounds++;
-    res = await callResolver('continueCascade', { taskId: payload.taskId });
+    // The cascade continues in the plan the first write went to.
+    res = await callResolver('continueCascade', { taskId: payload.taskId, planId: payload.planId });
   }
   return res;
 }
 
 const MAX_CASCADE_ROUNDS = 40;
+
+/**
+ * The browser-storage scope of the open project: "<cloudId>:<project key>" from the Forge context,
+ * or undefined when the context cannot be read (the planner then uses the key of the loaded plan).
+ */
+export async function getProjectScope(): Promise<string | undefined> {
+  try {
+    const ctx: any = await view.getContext();
+    const key = ctx?.extension?.project?.key;
+    if (!key) return undefined;
+    return ctx?.cloudId ? `${ctx.cloudId}:${key}` : String(key);
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Opens a Jira issue in a new browser tab through the Forge router.

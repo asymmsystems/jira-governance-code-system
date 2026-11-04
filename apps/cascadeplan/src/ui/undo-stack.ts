@@ -39,6 +39,12 @@ export class UndoStack<T> {
     return entry;
   }
 
+  /** Forgets every action, for example when another plan opens: its records are not this plan's. */
+  clear(): void {
+    this.done.length = 0;
+    this.undone.length = 0;
+  }
+
   canUndo(): boolean {
     return this.done.length > 0;
   }
