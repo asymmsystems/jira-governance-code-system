@@ -33,7 +33,7 @@ The link is a Jira "Blocks" link; the percent is stored on the successor as the 
 
 A parent's links also apply to its sub-tasks. A link between an issue and its own parent or sub-task is refused, because the parent's dates come from its sub-tasks.
 
-Remove a link from its badge on the timeline: **Remove Link** deletes exactly that Jira link.
+Every link of a task has its own arrow and percent label. Click an arrow or its label to change the percent or to remove the link: **Remove Link** deletes exactly that Jira link. To resize a bar, drag its edge; the link arrows that appear on hover sit just outside the edges.
 
 ---
 

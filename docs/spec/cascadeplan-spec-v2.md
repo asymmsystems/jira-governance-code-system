@@ -253,6 +253,8 @@ Licensing: when `req.context.license` exists and is not active, every write reso
 
 | Path | Content | Tests |
 |---|---|---|
+| `src/index.ts` | The Forge entry point: resolver registration with the permission rules, the admin resolvers, the triggers; it re-exports the server modules | Jest unit |
+| `src/server/*.ts` | The resolvers and their Jira and storage code, by group (F-31): `core` (storage, retries, Jira caller, today, defaults), `jira-read`, `plan-read` (`getProjectPlan`), `jira-write`, `tasks`, `create`, `hierarchy`, `block-moves`, `plans`, `request`, `baselines`. Imports go one way, from `core` up to `index` | Jest unit |
 | `src/domain/*.ts` | Engine and domain rules | Jest unit |
 | `src/ui/*.ts` | Pure UI logic | Jest unit |
 | `src/frontend/*.ts`, `legacy-planner.js` | DOM and canvas code | Browser harness |
