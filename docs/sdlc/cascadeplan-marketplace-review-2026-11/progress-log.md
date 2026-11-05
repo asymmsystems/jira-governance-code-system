@@ -195,3 +195,10 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 - **Tests:** `write-transparency` (no unchanged start date listed), `plan-isolation` (unschedule writes only the property delete), `paging-retry-cascade` (the batch limit counts field writes; each moved issue also gets its property). Harness fake Jira stores, returns and deletes issue properties.
 - **Proof:** unit suite 802 passed; tsc clean; harness `e2e.py` 30/30, `e2e_review.py` 25/25, undo probe (2026-11-16 -> 2026-11-23, Ctrl+Z back to 2026-11-16), F-11, N-10, N-07 and BL-2 step 8 probes pass. The harness results show the property writes.
 - **Remaining (step 2):** remove `shareTaskDates`, make the unit test fakes return properties, rewrite R-01 and R-28.
+
+### Live check on development after ADR-008 step 1 (build tag `74785ec`, version 2.51.0)
+
+- `live_move.py DEMO-29 7`: 170 px after the reload, 2026-11-04 to 2026-11-17. New read-only `test/live/prop_read.py DEMO-29`: property `cascadeplan.dates` = `{startDate: 2026-11-04, endDate: 2026-11-17, v: 1}`, due date 2026-11-17. So real Jira accepts the property write as the user through Forge.
+- `live_move.py DEMO-29 -7`: 170 px before, during, after the answer and after the reload; Changes panel "start date 2026-11-04 -> 2026-10-28 Written" and "due date 2026-11-17 -> 2026-11-10 Written". Property after: `{startDate: 2026-10-28, endDate: 2026-11-10, v: 1}`, due date 2026-11-10. The reload reads the start from the property.
+- `forge logs -e development --since 20m`: no `cascadeplan` failure line.
+- **Live site changes:** DEMO-29's due date 2026-11-10 -> 2026-11-17 -> 2026-11-10. DEMO-29 now holds the issue property `cascadeplan.dates` (start 2026-10-28, end 2026-11-10), the same dates it had in the plan record. It stays: it is the shared start date from now on.
