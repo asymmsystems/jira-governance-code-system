@@ -314,24 +314,74 @@ export function openStore(storage: StorageProvider, projectKey: string, projectI
   return new PlanStore(storage, projectId || projectKey, projectKey, planId);
 }
 
-/**
- * True for the Main Plan. Only the Main Plan writes its schedule (the due date) to Jira; a scenario
- * plan keeps its dates and allocations in KVS only.
- */
+/** True for the Main Plan (no plan id, or 'default'). */
 export function isMainPlan(planId?: string): boolean {
   return !planId || planId === 'default';
 }
 
 /**
- * The part of an edit that goes to Jira from this plan. Summary, estimate, assignee, status and parent
- * describe the issue itself, so they are the same in every plan and sync from any plan. The due date
- * is the plan's schedule, so it syncs from the Main Plan only.
+ * The fields that place a task on the timeline. Jira is the single truth for a task, so these have
+ * one value per task: every plan shows the same dates, and the end date is the Jira due date.
+ * Order, columns, milestones and dependency settings stay per plan.
  */
-export function jiraUpdatesForPlan(planId: string | undefined, updates: Partial<WbsTask>): Partial<WbsTask> {
-  if (isMainPlan(planId)) return updates;
-  const { endDate, ...issueFields } = updates;
-  void endDate;
-  return issueFields;
+export const SHARED_DATE_FIELDS = ['startDate', 'endDate', 'startWeek', 'endWeek', 'spanWeeks', 'weeklyAllocations'] as const;
+
+/** The other plan's record with the shared date fields of `source`, or null when it has them already. */
+function withSharedDates(cur: Partial<WbsTask> | undefined, source: Partial<WbsTask>): Partial<WbsTask> | null {
+  const next: Record<string, unknown> = { ...(cur || {}) };
+  let changed = false;
+  for (const f of SHARED_DATE_FIELDS) {
+    const v = (source as Record<string, unknown>)[f];
+    if (JSON.stringify(next[f]) !== JSON.stringify(v)) changed = true;
+    if (v === undefined) delete next[f]; else next[f] = v;
+  }
+  if (!changed) return null;
+  // A task with a start week is on the timeline; without one it is in the backlog.
+  if (next.startWeek) delete next.isBacklog; else next.isBacklog = true;
+  return next as Partial<WbsTask>;
+}
+
+/**
+ * Copies the saved dates of tasks to the same tasks in every other plan of the project, so a date
+ * change in one plan shows in all plans. Each record keeps its own version check; when another writer
+ * saved that record first, the dates are applied again on top of its value (at most 3 tries).
+ * Returns the keys whose dates could not be copied to some plan.
+ */
+export async function shareTaskDates(
+  storage: StorageProvider, projectKey: string, projectId: string | undefined, planId: string | undefined,
+  saved: Array<{ key: string; id?: string; entry: Partial<WbsTask> }>
+): Promise<string[]> {
+  if (saved.length === 0) return [];
+  const own = planId || 'default';
+  const failed = new Set<string>();
+  for (const p of await openStore(storage, projectKey, projectId).listPlans()) {
+    const pid = p.id || 'default';
+    if (pid === own) continue;
+    const other = openStore(storage, projectKey, projectId, pid);
+    const entries = await other.loadEntries();
+    for (const s of saved) {
+      let cur: Partial<WbsTask> & { issueId?: string; version?: number } | undefined = entries.get(s.key);
+      let done = false;
+      for (let attempt = 0; attempt < 3 && !done; attempt++) {
+        const next = withSharedDates(cur, s.entry);
+        if (!next) { done = true; break; }
+        const put = await other.putEntry(s.key, s.id || cur?.issueId, stripJiraOwnedFields(next), cur?.version ?? 0);
+        if (put.ok) done = true; else cur = put.entry;
+      }
+      if (!done) failed.add(s.key);
+    }
+  }
+  return [...failed];
+}
+
+/** shareTaskDates, with each task it could not update in every plan reported in the Changes panel. */
+async function shareDatesAndLog(
+  storage: StorageProvider, projectKey: string, projectId: string | undefined, planId: string | undefined,
+  saved: Array<{ key: string; id?: string; entry: Partial<WbsTask> }>, log: SyncLog
+): Promise<void> {
+  for (const key of await shareTaskDates(storage, projectKey, projectId, planId, saved)) {
+    log.record(key, ['plans'], { synced: false, error: 'the new dates did not reach every plan; move it again' });
+  }
 }
 
 /**
@@ -721,8 +771,16 @@ export function mapLiveIssues(
         // The estimate is Jira's original estimate, read live (INV-04).
         const totalHours = effortHours;
 
-        const taskStart = stored?.startDate || weekDates(stored, weeksNow).startDate;
-        const taskEnd = stored?.endDate || weekDates(stored, weeksNow).endDate || iss.fields?.duedate || '';
+        // Jira is the single truth for a task's dates. A scheduled task ends on the Jira due date in
+        // every plan, also when someone changed it directly in Jira. The start date has no standard Jira
+        // field, so it is the one shared by every plan; it moves only when it would fall after the end.
+        const savedStart = stored?.startDate || weekDates(stored, weeksNow).startDate;
+        const savedEnd = stored?.endDate || weekDates(stored, weeksNow).endDate;
+        const jiraDue = isIsoDate(iss.fields?.duedate) ? String(iss.fields.duedate).slice(0, 10) : undefined;
+        const endFromJira = !!stored?.startWeek && !!jiraDue && jiraDue !== savedEnd && weeksNow.length > 0;
+        const taskEnd = endFromJira ? jiraDue! : (savedEnd || iss.fields?.duedate || '');
+        const taskStart = endFromJira && (!isIsoDate(savedStart) || savedStart > jiraDue!) ? jiraDue! : savedStart;
+        const jiraGrid = endFromJira ? gridFor(weeksNow, taskStart, taskEnd) : undefined;
         const autoTarget = PlannerEngine.calculateTargetProgress(taskStart, taskEnd);
         const targetProgress = stored?.manualTargetProgress === true && stored.targetProgress !== undefined
           ? stored.targetProgress
@@ -750,10 +808,10 @@ export function mapLiveIssues(
           endDate: taskEnd,
           // The due date Jira holds, read live: the old value in the Changes panel (B-23).
           jiraDueDate: iss.fields?.duedate || undefined,
-          startWeek: stored?.startWeek,
-          endWeek: stored?.endWeek,
-          spanWeeks: stored?.spanWeeks || 3,
-          weeklyAllocations: stored?.weeklyAllocations,
+          startWeek: jiraGrid ? jiraGrid.startWeek : stored?.startWeek,
+          endWeek: jiraGrid ? jiraGrid.endWeek : stored?.endWeek,
+          spanWeeks: jiraGrid ? jiraGrid.spanWeeks! : (stored?.spanWeeks || 3),
+          weeklyAllocations: jiraGrid ? jiraGrid.weeklyAllocations : stored?.weeklyAllocations,
           dependency: liveDependency,
           dependencies: liveDependencies.length ? liveDependencies : undefined,
           endedLinks: stored?.endedLinks,
@@ -967,12 +1025,13 @@ export async function scheduleBacklogTask(
   const put = await store.putEntry(taskId, issueId, entry, current ? current.version : 0);
   if (!put.ok) return conflictResult(taskId);
 
-  // Sync the effort to Jira from any plan; the scheduled due date only from the Main Plan.
+  // The dates are the same in every plan; the due date and effort go to Jira.
   const log = new SyncLog();
-  await syncTaskToJira(taskId, jiraUpdatesForPlan(planId, {
+  await shareDatesAndLog(storage, projectKey, projectId, planId, [{ key: taskId, id: issueId, entry: put.entry }], log);
+  await syncTaskToJira(taskId, {
     endDate: entry.endDate,
     effortHours
-  }), log);
+  }, log);
 
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, undefined, planId), { ok: true, jiraSync: log.report() });
 }
@@ -1125,7 +1184,7 @@ export async function createInlineTask(
     allocations[weeksNow[i].weekKey] = Math.round(100 / spanWeeks);
   }
 
-  await store.putEntry(jiraIssueKey, jiraIssueId, {
+  const created = await store.putEntry(jiraIssueKey, jiraIssueId, {
     startWeek: assignedStartWeek,
     endWeek,
     spanWeeks,
@@ -1136,10 +1195,11 @@ export async function createInlineTask(
   });
   void epic; void story; void resource;
 
-  // Sync the new issue's estimate, assignee and epic to Jira; the scheduled due date only on the Main Plan.
+  // The new issue has the same dates in every plan; its due date, estimate, assignee and epic go to Jira.
   const log = new SyncLog();
+  if (created.ok) await shareDatesAndLog(storage, projectKey, projectId, planId, [{ key: jiraIssueKey, id: jiraIssueId, entry: created.entry }], log);
   await syncTaskToJira(jiraIssueKey, {
-    ...(isMainPlan(planId) ? { endDate: weeksNow[endIdx].endDate } : {}),
+    endDate: weeksNow[endIdx].endDate,
     effortHours,
     resourceAccountId,
     epicKey
@@ -1745,18 +1805,24 @@ export async function updateWbsTask(
   // KVS first, with a version check per record; Jira only after the target record is saved.
   const targetPut = await store.putEntry(targetTask.key, targetTask.id, stripJiraOwnedFields(scheduleMap[targetTask.key]), baseVersion);
   if (!targetPut.ok) return conflictResult(targetTask.key);
+  const datesSaved: Array<{ key: string; id?: string; entry: Partial<WbsTask> }> = [];
+  if (SHARED_DATE_FIELDS.some(f => (sanitized as Record<string, unknown>)[f] !== undefined)) {
+    datesSaved.push({ key: targetTask.key, id: targetTask.id, entry: targetPut.entry });
+  }
+  const notMoved = new Set<string>();
   for (const key of changedKeys) {
     if (key === targetTask.key) continue;
     const put = await store.putEntry(key, idByKey.get(key), stripJiraOwnedFields(scheduleMap[key]), entries.get(key)?.version ?? 0);
-    if (!put.ok) log.record(key, ['plan'], { synced: false, error: 'changed by someone else; not moved' });
+    if (put.ok) datesSaved.push({ key, id: idByKey.get(key), entry: put.entry });
+    else { notMoved.add(key); log.record(key, ['plan'], { synced: false, error: 'changed by someone else; not moved' }); }
   }
-  // Two-way sync: write-back changed fields to Jira. Issue fields (summary, estimate, assignee, status,
-  // parent) sync from any plan. A scenario plan is a what-if for the schedule: its dates, the cascade
-  // and allocations stay in KVS, so no due date in Jira changes.
-  if (isMainPlan(planId)) {
-    for (const s of pendingSyncs) await syncTaskToJira(s.key, s.updates, log, plan.tasks.find(t => t.key === s.key));
+  // Jira is the single truth for a task: the same dates go to every plan, and every changed field,
+  // the due date included, goes to Jira from whichever plan the change was made in.
+  await shareDatesAndLog(storage, projectKey, projectId, planId, datesSaved, log);
+  for (const s of pendingSyncs) {
+    if (!notMoved.has(s.key)) await syncTaskToJira(s.key, s.updates, log, plan.tasks.find(t => t.key === s.key));
   }
-  await syncTaskToJira(targetTask.key, jiraUpdatesForPlan(planId, sanitized), log, targetTask);
+  await syncTaskToJira(targetTask.key, sanitized, log, targetTask);
 
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId),
     { ok: true, jiraSync: log.report(), cascadeRemaining });
@@ -1859,7 +1925,8 @@ export async function continueCascade(
     const put = await store.putEntry(c.key, task?.id, stripJiraOwnedFields({ ...(cur || {}), startDate: c.toStart, endDate: c.toEnd,
       ...gridFor(plan.weeks, c.toStart, c.toEnd) }), cur ? cur.version : 0);
     if (!put.ok) { log.record(c.key, ['plan'], { synced: false, error: 'changed by someone else; not moved' }); continue; }
-    if (isMainPlan(planId)) await syncTaskToJira(c.key, { endDate: c.toEnd }, log, task);
+    await shareDatesAndLog(storage, projectKey, projectId, planId, [{ key: c.key, id: task?.id, entry: put.entry }], log);
+    await syncTaskToJira(c.key, { endDate: c.toEnd }, log, task);
   }
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId),
     { ok: true, jiraSync: log.report(), cascadeRemaining: changes.slice(CASCADE_BATCH_LIMIT).map(c => c.key) });
@@ -1911,6 +1978,10 @@ export async function unscheduleTask(
     entry.isBacklog = true;
     const put = await store.putEntry(taskId, issueId, stripJiraOwnedFields(entry), current.version);
     if (!put.ok) return conflictResult(taskId);
+    // The task leaves the timeline in every plan. Its Jira due date is left as it is.
+    const log = new SyncLog();
+    await shareDatesAndLog(storage, projectKey, projectId, planId, [{ key: taskId, id: issueId, entry: put.entry }], log);
+    return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, undefined, planId), { ok: true, jiraSync: log.report() });
   }
 
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, undefined, planId), { ok: true, jiraSync: noJiraWrites() });
@@ -2040,7 +2111,7 @@ export async function createSubtaskForResource(
 
   const store = openStore(storage, projectKey, projectId, planId);
   if (isMainPlan(planId)) await migrateIfNeeded(store, projectKey);
-  await store.putEntry(createdKey, createdId, {
+  const createdPut = await store.putEntry(createdKey, createdId, {
     startWeek: assignedStart,
     endWeek: activeWeeks[eIdx].weekKey,
     startDate: activeWeeks[sIdx].startDate,
@@ -2048,6 +2119,8 @@ export async function createSubtaskForResource(
     spanWeeks,
     weeklyAllocations: allocations
   });
+  const log = new SyncLog();
+  if (createdPut.ok) await shareDatesAndLog(storage, projectKey, projectId, planId, [{ key: createdKey, id: createdId, entry: createdPut.entry }], log);
 
   if (parentKey && resourceAccountId) {
     const parentEntries = await store.loadEntries();
@@ -2068,12 +2141,11 @@ export async function createSubtaskForResource(
     }
   }
 
-  // Sync estimate & duedate to newly created subtask
-  const log = new SyncLog();
+  // Sync estimate, due date and assignee to the new subtask, from any plan.
   log.record(createdKey, ['create'], { synced: true });
   await syncTaskToJira(createdKey, {
     effortHours,
-    ...(isMainPlan(planId) ? { endDate: activeWeeks[eIdx].endDate } : {}),
+    endDate: activeWeeks[eIdx].endDate,
     resourceAccountId
   }, log);
 
