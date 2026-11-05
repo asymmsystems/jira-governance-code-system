@@ -345,7 +345,17 @@ async function moveBlock(key, days) {
   }
   const expectedVersions = {};
   for (const c of plan.changes) expectedVersions[c.key] = (findAnyTask(c.key) && findAnyTask(c.key).version) || 0;
-  const res = await callResolver('moveTaskGroup', { taskId: key, days, expectedVersions });
+  let res = await callResolver('moveTaskGroup', { taskId: key, days, expectedVersions });
+  // A block of more than 25 sub-tasks continues in batches of 25; the last batch runs the cascade.
+  const rest = (res && Array.isArray(res.blockRemaining)) ? res.blockRemaining : [];
+  for (let i = 0; i < rest.length; i += 25) {
+    const items = rest.slice(i, i + 25);
+    const last = i + 25 >= rest.length;
+    showFlag({ text: `Moving the sub-tasks of ${key}: ${Math.min(i + 25, rest.length) + 25} of ${rest.length + 25}.` });
+    const next = await rawCallResolver('continueBlockMove', { planId: activePlanId, taskId: key, items, last });
+    if (next && Array.isArray(next.tasks)) res = next;
+    if (!next || next.ok === false) break;
+  }
   if (res && Array.isArray(res.tasks)) applyPlanInPlace(res);
   else await loadProjectPlan();
   if (res && res.ok && plan.fixed.length) {

@@ -6,7 +6,7 @@
 
 /** N-05, ADR-003: a task or story moves with its sub-tasks as one block; DEC-6 for its due date. */
 import { planBlockMove, rollUpAfter, blockState } from '../src/domain/block-move';
-import { getProjectPlan, moveTaskGroup, updateWbsTask, setGlobalStorageProvider, setSleepForTests, getTimelineWeeks, expandParentCascades } from '../src/index';
+import { getProjectPlan, moveTaskGroup, continueBlockMove, updateWbsTask, setGlobalStorageProvider, setSleepForTests, getTimelineWeeks, expandParentCascades } from '../src/index';
 import { setPermissionCheckerForTests, allowAllPermissions } from '../src/security/write-permissions';
 import { PlanStore } from '../src/storage/plan-store';
 import { ValidationError } from '../src/validation';
@@ -40,6 +40,13 @@ describe('planBlockMove (ADR-003 rules)', () => {
     expect(rollUpAfter([
       { key: 'D-30', startDate: '2026-10-27', endDate: '2026-10-31' }, { key: 'D-29', startDate: '2026-11-03', endDate: '2026-11-10' },
       { key: 'D-28', startDate: '2026-11-11', endDate: '2026-11-14' }], r.changes)).toEqual({ startDate: '2026-10-27', endDate: '2026-11-21' });
+  });
+
+  it('a sub-task with no end moves as one day; an in-progress end never moves before its start; roll-ups skip undated items', () => {
+    expect(planBlockMove([{ key: 'B-1', startDate: '2026-11-02' }], 7, '2026-11-01').changes[0]).toMatchObject({ fromEnd: '2026-11-02', toStart: '2026-11-09', toEnd: '2026-11-09' });
+    expect(planBlockMove([{ key: 'B-2', startDate: '2026-11-10', endDate: '2026-11-12', status: 'IN_PROGRESS' }], -10, '2026-11-01').changes[0]).toMatchObject({ toStart: '2026-11-10', toEnd: '2026-11-10' });
+    expect(rollUpAfter([{ key: 'U' }, { key: 'D', startDate: '2026-11-02' }], [])).toEqual({ startDate: '2026-11-02', endDate: '2026-11-02' });
+    expect(rollUpAfter([{ key: 'U' }], [])).toBeNull();
   });
 
   it('an in-progress end never moves before today or its start; a not-started bar may move into the past', () => {
@@ -228,6 +235,59 @@ describe('moveTaskGroup (N-05)', () => {
     expect(ok.ok).not.toBe(false);
     expect(fieldPuts('TEST-11')).toEqual([{ duedate: add(s0, 6) }]);
     await expect(updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-11', updates: { startDate: add(s0, 4) }, expectedDueDate: 'soon' as any }, storage)).rejects.toThrow(ValidationError);
+  });
+
+  it('a block of more than 25 sub-tasks moves 25 in the first call and the rest in continueBlockMove; the last call cascades', async () => {
+    // 30 more not-started sub-tasks of TEST-1, each dated.
+    const extra = Array.from({ length: 30 }, (_, i) => 100 + i);
+    const base = mockRequestJira.getMockImplementation()!;
+    const more = extra.map(n => issue(n, type.sub, 1));
+    mockRequestJira.mockImplementation(async (r: any, o?: any) => {
+      const url = String(r);
+      if (url.includes('/search/jql') && !url.includes('Epic') && !url.includes('key+%3D')) return { status: 200, json: async () => ({ issues: [...issues(), ...more.map(m => ({ ...m, fields: { ...m.fields, duedate: jiraDue[m.key] || null } }))], isLast: true }) };
+      return base(r, o);
+    });
+    const store = new PlanStore(storage, 'TEST', 'TEST');
+    for (const n of extra) await store.putEntry(`TEST-${n}`, String(n), { startWeek: weeks[5].weekKey, spanWeeks: 1, startDate: add(s0, 3), endDate: add(s0, 5) });
+    const first: any = await moveTaskGroup({ projectKey: 'TEST', taskId: 'TEST-1', days: 7 }, storage);
+    expect(first.ok).toBe(true);
+    // 32 changes (TEST-11, TEST-12 and 30 more): 25 now, 7 left.
+    expect(first.blockRemaining).toHaveLength(7);
+    expect(first.blockRemaining[0]).toMatchObject({ fromStart: add(s0, 3), toStart: add(s0, 10) });
+    const putsBefore = mockRequestJira.mock.calls.filter(([, o]) => o?.method === 'PUT').length;
+    // An item that is not a sub-task of TEST-1 is refused.
+    await expect(continueBlockMove({ projectKey: 'TEST', taskId: 'TEST-1', items: [{ ...first.blockRemaining[0], key: 'TEST-5' }] }, storage)).rejects.toThrow('not a sub-task');
+    const done: any = await continueBlockMove({ projectKey: 'TEST', taskId: 'TEST-1', items: first.blockRemaining, last: true }, storage);
+    expect(done.ok).toBe(true);
+    const all = [...done.tasks, ...(done.backlogTasks || [])];
+    for (const it of first.blockRemaining) expect(all.find((t: any) => t.key === it.key)).toMatchObject({ startDate: it.toStart, endDate: it.toEnd });
+    expect(mockRequestJira.mock.calls.filter(([, o]) => o?.method === 'PUT').length).toBeGreaterThan(putsBefore);
+    // Running the same items again changes nothing (they no longer have their old dates).
+    const again: any = await continueBlockMove({ projectKey: 'TEST', taskId: 'TEST-1', items: first.blockRemaining }, storage);
+    expect(again.jiraSync.writes).toEqual([]);
+    await expect(continueBlockMove({ projectKey: 'TEST', taskId: 'TEST-1', items: [{ key: 'TEST-100', fromStart: 'x', fromEnd: 'y', toStart: 'z', toEnd: 'w' }] as any }, storage)).rejects.toThrow(ValidationError);
+  });
+
+  it('continueBlockMove: no permission, changed by someone else, or a refused due date leaves the sub-task as it was', async () => {
+    const it11 = { key: 'TEST-11', fromStart: add(s0, 3), fromEnd: add(s0, 5), toStart: add(s0, 10), toEnd: add(s0, 12) };
+    const it12 = { key: 'TEST-12', fromStart: add(s0, 9), fromEnd: add(s0, 11), toStart: add(s0, 16), toEnd: add(s0, 18) };
+    setPermissionCheckerForTests(async (ids, perms) => new Map(perms.map(p => [p, new Set(ids.filter(id => id !== '11'))])));
+    try {
+      const r: any = await continueBlockMove({ projectKey: 'TEST', taskId: 'TEST-1', items: [it11, it12] }, storage);
+      expect(r.jiraSync.writes.find((w: any) => w.key === 'TEST-11').error).toContain('not moved: you lack');
+      // TEST-12 does not have the dates it would move from (s0+0..s0+4): reported, not moved.
+      expect(r.jiraSync.writes.find((w: any) => w.key === 'TEST-12').error).toContain('someone else changed it');
+    } finally { setPermissionCheckerForTests(allowAllPermissions); }
+    refuseDue = 'TEST-11';
+    const before = await entry('TEST-11');
+    const r2: any = await continueBlockMove({ projectKey: 'TEST', taskId: 'TEST-1', items: [it11], last: true }, storage);
+    expect(r2.jiraSync.ok).toBe(false);
+    expect(await entry('TEST-11')).toMatchObject({ startDate: before.startDate, endDate: before.endDate });
+    await expect(continueBlockMove({ projectKey: 'TEST', taskId: 'TEST-1', items: 'x' as any }, storage)).rejects.toThrow('items');
+    await expect(continueBlockMove({ projectKey: 'TEST', taskId: 'TEST-1', items: [null] as any }, storage)).rejects.toThrow('object');
+    await expect(continueBlockMove({ projectKey: 'TEST', taskId: 'TEST-1', items: [{ ...it11, toEnd: add(s0, 1) }] }, storage)).rejects.toThrow('on or after');
+    await expect(continueBlockMove({ projectKey: 'TEST', taskId: 'TEST-1', items: [], last: 'yes' as any }, storage)).rejects.toThrow('last');
+    await expect(continueBlockMove({ projectKey: 'TEST', taskId: 'TEST-99', items: [] }, storage)).rejects.toThrow('not in project');
   });
 
   it('restore must be true or false', async () => {

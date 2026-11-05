@@ -57,6 +57,31 @@ describe('baseline domain', () => {
   });
 });
 
+describe('baseline domain: more comparison cases', () => {
+  it('sorts items by id, notes a start change, a shrink, and an estimate that only grew', () => {
+    expect(baselineItems([{ id: '9', key: 'P-9', startDate: '2026-11-02' }, { id: '10', key: 'P-10', startDate: '2026-11-02' }, { id: '10', key: 'P-10b', startDate: '2026-11-02' }] as any).map(i => i.key)).toEqual(['P-10', 'P-10b', 'P-9']);
+    const c = compareItems([{ id: '1', key: 'A', hours: 4, start: '2026-11-02', end: '2026-11-06' }], [{ id: '1', key: 'A', hours: 2, start: '2026-11-03', end: '2026-11-05' }]);
+    expect(c.changed).toEqual([{ id: '1', key: 'A', fromHours: 4, toHours: 2, fromStart: '2026-11-02', toStart: '2026-11-03', fromEnd: '2026-11-06', toEnd: '2026-11-05' }]);
+    expect(c).toMatchObject({ grew: false, slipped: 0, deltaHours: -2, deltaPercent: -50 });
+    expect(compareItems([{ id: '1', key: 'A' }], [{ id: '1', key: 'A', hours: 3 }])).toMatchObject({ grew: true, deltaPercent: 0 });
+  });
+});
+
+describe('BaselineStore: guards', () => {
+  it('needs query and swap; requests list newest first; an index change can be declined', async () => {
+    expect(() => new BaselineStore({ get: async () => undefined, set: async () => undefined, delete: async () => undefined } as any, 'P')).toThrow('query and swap');
+    const s = new BaselineStore(new MemStorage(), 'P');
+    const shift = (id: string, at: string) => ({ id, planId: 'default', baselineId: 'b', requestedBy: null, requestedAt: at, reason: 'r', status: 'PENDING' as const, summary: { added: 0, removed: 0, changed: 0, deltaHours: 0 }, v: 1 as const });
+    await s.saveShift(shift('a', '2026-11-01'));
+    await s.saveShift(shift('b', '2026-11-03'));
+    expect((await s.shifts()).map(x => x.id)).toEqual(['b', 'a']);
+    expect(await s.updateIndex(() => null)).toBe(false);
+    await s.save({ id: 'x', name: 'X', frozenAt: 'T', frozenBy: null, items: [] });
+    await s.updateIndex(idx => ({ ...idx, ids: [] }));
+    expect(await s.setActive('x')).toBe(false);
+  });
+});
+
 describe('BaselineStore: chunks, index, integrity', () => {
   it('a changed chunk or a missing chunk shows as not intact', async () => {
     const storage = new MemStorage();
