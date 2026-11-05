@@ -15,7 +15,7 @@ import { showFlag } from './flag';
 import { classifyResult } from '../ui/result';
 import { UndoStack } from '../ui/undo-stack';
 import { snapshotPlan, buildUndoEntry, actionLabel } from '../ui/undo-plan';
-import { initErrorBanner } from './banner';
+import { initErrorBanner, showErrorBanner } from './banner';
 import { enableTheme, onThemeChange } from './theme';
 import { openWhyPopup, closeWhyPopup, isWhyPopupOpen, initWhyPopup } from './why-popup';
 import { initChangesPanel, isChangesPanelOpen, closeChangesPanel } from './changes-panel';
@@ -5380,16 +5380,16 @@ function initKeyboard() {
     const sInp = document.getElementById('dateEditStart');
     const eInp = document.getElementById('dateEditEnd');
     if (!sInp || !eInp) return;
-    if (sInp.value) sInp.value = addDays(sInp.value, -7);
-    if (eInp.value) eInp.value = addDays(eInp.value, -7);
+    if (sInp.value) sInp.value = addDaysIso(sInp.value, -7);
+    if (eInp.value) eInp.value = addDaysIso(eInp.value, -7);
     sInp.dispatchEvent(new Event('input'));
   });
   document.getElementById('btnDateEditPlusWk')?.addEventListener('click', () => {
     const sInp = document.getElementById('dateEditStart');
     const eInp = document.getElementById('dateEditEnd');
     if (!sInp || !eInp) return;
-    if (sInp.value) sInp.value = addDays(sInp.value, 7);
-    if (eInp.value) eInp.value = addDays(eInp.value, 7);
+    if (sInp.value) sInp.value = addDaysIso(sInp.value, 7);
+    if (eInp.value) eInp.value = addDaysIso(eInp.value, 7);
     sInp.dispatchEvent(new Event('input'));
   });
   document.getElementById('btnOpenFullTaskDetail')?.addEventListener('click', () => {
@@ -6398,7 +6398,7 @@ async function executeCreateEpic() {
       if (!currentPlan.availableEpics.some(e => e.key === res.epic.key)) {
         currentPlan.availableEpics.push(res.epic);
       }
-      populateEpicDropdowns();
+      // The epic picker and the create form rebuild their lists from availableEpics when opened.
     }
     showFlag({ text: 'Epic ' + (res?.epic?.key || '') + ' created.' });
   } catch (err) {

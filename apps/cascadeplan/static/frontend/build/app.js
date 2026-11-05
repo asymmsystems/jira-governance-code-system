@@ -6073,7 +6073,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
 
   // src/frontend/banner.ts
-  function showErrorBanner2(message) {
+  function showErrorBanner(message) {
     const banner = document.getElementById("syncBanner");
     const text = document.getElementById("syncBannerText");
     if (!banner || !text) return;
@@ -6186,7 +6186,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     if (!fnName.startsWith("get")) {
       const verdict = classifyResult(res);
-      if (verdict.failed && verdict.message) showErrorBanner2(verdict.message);
+      if (verdict.failed && verdict.message) showErrorBanner(verdict.message);
       recordChanges(res);
     }
     let rounds = 0;
@@ -6640,7 +6640,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function isoOf(day) {
     return new Date(day * DAY_MS).toISOString().slice(0, 10);
   }
-  function addDays2(iso2, days) {
+  function addDays(iso2, days) {
     return isoOf(dayNumber(iso2) + days);
   }
   function durationDays(e) {
@@ -6711,7 +6711,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const ownStart = own.estimatedStartDate;
     if (ownStart >= e) return { earliestStartDate: e, driver: best.pred.workEffortId, violated: false, reason, ...detail };
     let suggestion = `Move ${key} to ${e}`;
-    const fixes = [{ kind: "move", startDate: e, endDate: addDays2(e, durationDays(own) - 1) }];
+    const fixes = [{ kind: "move", startDate: e, endDate: addDays(e, durationDays(own) - 1) }];
     if (best.res.basis === "planned") {
       const lower = Math.floor((dayNumber(ownStart) - dayNumber(best.pred.estimatedStartDate)) / durationDays(best.pred) * 100);
       if (lower >= 0) {
@@ -6759,7 +6759,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       if (!ev.earliestStartDate || cur.estimatedStartDate >= ev.earliestStartDate) continue;
       const dur = durationDays(cur);
       const toStart = ev.earliestStartDate;
-      const toEnd = addDays2(toStart, dur - 1);
+      const toEnd = addDays(toStart, dur - 1);
       changes.push({
         key,
         fromStart: cur.estimatedStartDate,
@@ -6808,8 +6808,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const out = /* @__PURE__ */ new Map();
     const target = tasks.find((t) => t.key === key);
     if (!target || !target.startDate) return out;
-    const start = addDays2(target.startDate, startShift);
-    let end = addDays2(target.endDate || target.startDate, endShift);
+    const start = addDays(target.startDate, startShift);
+    let end = addDays(target.endDate || target.startDate, endShift);
     if (end < start) end = start;
     out.set(key, { start, end });
     const efforts = /* @__PURE__ */ new Map();
@@ -7461,7 +7461,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const diffDays = daysBetween(candidateStart, earliestDate);
     return {
       startDate: earliestDate,
-      endDate: addDays2(candidateEnd, diffDays)
+      endDate: addDays(candidateEnd, diffDays)
     };
   }
   function suggestTriggerToFit(pred, succStartDate) {
@@ -7670,7 +7670,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   function moveSelectionBy(tasks, selected, days) {
     if (!days) return [];
-    return tasks.filter((t) => selected.has(t.key) && t.startDate && !t.isEpic && t.hierarchyLevel !== 1 && !t.datesFromChildren).sort((a, b) => a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0).map((t) => ({ taskId: t.key, updates: { startDate: addDays2(t.startDate, days), endDate: addDays2(t.endDate || t.startDate, days) }, expectedVersion: t.version || 0 }));
+    return tasks.filter((t) => selected.has(t.key) && t.startDate && !t.isEpic && t.hierarchyLevel !== 1 && !t.datesFromChildren).sort((a, b) => a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0).map((t) => ({ taskId: t.key, updates: { startDate: addDays(t.startDate, days), endDate: addDays(t.endDate || t.startDate, days) }, expectedVersion: t.version || 0 }));
   }
   function progressFromDigit(key) {
     return /^[0-9]$/.test(key) ? Number(key) * 10 : null;
@@ -7693,13 +7693,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   function mondayOf(iso2) {
     const dow = (/* @__PURE__ */ new Date(`${iso2}T00:00:00Z`)).getUTCDay();
-    return addDays2(iso2, -((dow + 6) % 7));
+    return addDays(iso2, -((dow + 6) % 7));
   }
   function rangeDays(r) {
     return daysBetween(r.start, r.end) + 1;
   }
   function extendRange(r, side, weeks) {
-    return side === "before" ? { start: addDays2(r.start, -weeks * 7), end: r.end } : { start: r.start, end: addDays2(r.end, weeks * 7) };
+    return side === "before" ? { start: addDays(r.start, -weeks * 7), end: r.end } : { start: r.start, end: addDays(r.end, weeks * 7) };
   }
   var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -7712,9 +7712,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const p = parts(day);
     switch (zoom.id) {
       case "day":
-        return [day, addDays2(day, 1)];
+        return [day, addDays(day, 1)];
       case "week":
-        return [mondayOf(day), addDays2(mondayOf(day), 7)];
+        return [mondayOf(day), addDays(mondayOf(day), 7)];
       case "month":
         return [iso(p.y, p.m, 1), iso(p.y, p.m + 1, 1)];
       case "quarter":
@@ -7761,7 +7761,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return daysBetween(originIso2, anchorIso) * dayPx2 - viewportX;
   }
   function dateAt(x, originIso2, dayPx2) {
-    return addDays2(originIso2, Math.floor(x / dayPx2));
+    return addDays(originIso2, Math.floor(x / dayPx2));
   }
 
   // src/ui/table-view.ts
@@ -9563,8 +9563,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
     dates.push(today);
     const minDate = dates.reduce((m, d) => d < m ? d : m);
     const maxDate = dates.reduce((m, d) => d > m ? d : m);
-    const start = mondayOf(addDays2(minDate, -28));
-    let end = addDays2(mondayOf(addDays2(maxDate, 28)), 6);
+    const start = mondayOf(addDays(minDate, -28));
+    let end = addDays(mondayOf(addDays(maxDate, 28)), 6);
     const wrapper = document.getElementById("ganttWrapper");
     const trackLeft = layout && layout.trackLeft || 300;
     const viewportTrackWidth = wrapper && wrapper.clientWidth ? Math.max(400, wrapper.clientWidth - trackLeft) : 800;
@@ -9573,7 +9573,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const missingPx = viewportTrackWidth - currentPx;
       const missingDays = Math.ceil(missingPx / dayPx());
       const missingWeeks = Math.ceil(missingDays / 7);
-      end = addDays2(end, missingWeeks * 7);
+      end = addDays(end, missingWeeks * 7);
     }
     return { start, end };
   }
@@ -11712,14 +11712,14 @@ Click to manage or assign.`;
           const diffDays = daysBetween(mine.start, timeRange.start);
           const addWeeks = Math.max(2, Math.ceil(diffDays / 7) + 2);
           const oldStart = timeRange.start;
-          timeRange = { start: addDays2(timeRange.start, -addWeeks * 7), end: timeRange.end };
+          timeRange = { start: addDays(timeRange.start, -addWeeks * 7), end: timeRange.end };
           const shiftPx = daysBetween(timeRange.start, oldStart) * dayPx();
           applyTimeAxis();
           wrapper.scrollLeft += shiftPx;
         } else if (mine.end > timeRange.end) {
           const diffDays = daysBetween(timeRange.end, mine.end);
           const addWeeks = Math.max(2, Math.ceil(diffDays / 7) + 2);
-          timeRange = { start: timeRange.start, end: addDays2(timeRange.end, addWeeks * 7) };
+          timeRange = { start: timeRange.start, end: addDays(timeRange.end, addWeeks * 7) };
           applyTimeAxis();
         }
         const wrapRect = wrapper.getBoundingClientRect();
@@ -13529,7 +13529,6 @@ Click to manage or assign.`;
         if (!currentPlan.availableEpics.some((e) => e.key === res.epic.key)) {
           currentPlan.availableEpics.push(res.epic);
         }
-        populateEpicDropdowns();
       }
       showFlag({ text: "Epic " + (res?.epic?.key || "") + " created." });
     } catch (err) {
@@ -13588,7 +13587,7 @@ Click to manage or assign.`;
   }
   function renderUtilizationView() {
     const cont = document.getElementById("utilizationProfilesContent");
-    const weekStarts = Array.from({ length: 8 }, (_, i) => addDays2(mondayOf(todayIso()), i * 7));
+    const weekStarts = Array.from({ length: 8 }, (_, i) => addDays(mondayOf(todayIso()), i * 7));
     const rows = weeklyHours(currentPlan?.tasks || [], weekStarts);
     if (rows.length === 0) {
       cont.innerHTML = "<div>No assigned, estimated tasks with dates on the plan.</div>";

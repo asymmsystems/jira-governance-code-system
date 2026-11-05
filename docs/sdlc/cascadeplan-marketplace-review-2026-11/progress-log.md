@@ -18,3 +18,8 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
   - `forge deploy -e development` from the clean clone: "Deployed PlanShift to the development environment", version 2.47.0. The CLI added: "eligible for the Runs on Atlassian program" (evidence for BL-6 and MK-01). The product code is unchanged from `db08009`.
   - Other apps, in the worktree: LedgerSeal 315 tests passed, FourRealities 403 passed, `tsc` 0 errors in each. DefinitionGuard: `tsc` 0 errors; 342 passed and 5 failed, all in `test/listing.test.ts` (B-08 listing v2), which compares `docs/marketplace/definitionguard-listing-v2.md`. That file, the manifest and the tests are unchanged from `origin/master`, so the failure exists on `master` and is not caused by this change. It belongs to the DefinitionGuard work.
 - **Not done:** the deploy above had no build tag. From now on, deploys use `forge build -t <sha>` and `forge deploy -t <sha>` (spec v2 section 8).
+
+### F-12. Three undefined functions in the shipped bundle
+
+- **What changed:** `legacy-planner.js` calls `addDaysIso` (the imported `addDays`) in the date editor, imports `showErrorBanner` from `banner.ts`, and no longer calls the missing `populateEpicDropdowns` (the epic picker and the create form rebuild their lists from `currentPlan.availableEpics` when they open). New test `test/frontend-names.test.ts`.
+- **Proof:** TypeScript (`checkJs`) found exactly these 6 call sites as TS2304 and no other undefined name. The new test fails on the old file with those 6 lines and passes on the fix. Full suite 770 passed, coverage thresholds met; bundle rebuilt.
