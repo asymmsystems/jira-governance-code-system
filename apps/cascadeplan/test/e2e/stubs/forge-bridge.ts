@@ -5,7 +5,7 @@
  */
 
 /* Harness stub of @forge/bridge: invoke runs the real resolver in the page. */
-export const CTX = { cloudId: 'harness-cloud', siteUrl: 'https://harness.atlassian.net', extension: { project: { key: 'DEMO', id: '10000' } } };
+export const CTX = { cloudId: 'harness-cloud', siteUrl: 'https://harness.atlassian.net', accountId: 'acc-harness', extension: { project: { key: 'DEMO', id: '10000' } } };
 export async function invoke(fn: string, payload: any): Promise<any> {
   const w: any = globalThis;
   w.__calls = w.__calls || [];

@@ -2414,11 +2414,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
         function getMutationObserver() {
           return window.MutationObserver || window.WebKitMutationObserver || window.MozMutationObserver;
         }
-        function addEventListener(el2, evt, func) {
-          el2.addEventListener(evt, func, false);
+        function addEventListener(el3, evt, func) {
+          el3.addEventListener(evt, func, false);
         }
-        function removeEventListener(el2, evt, func) {
-          el2.removeEventListener(evt, func, false);
+        function removeEventListener(el3, evt, func) {
+          el3.removeEventListener(evt, func, false);
         }
         function setupRequestAnimationFrame() {
           var vendors = ["moz", "webkit", "o", "ms"];
@@ -3249,8 +3249,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
               function chkDimension(dimension) {
                 return "0px" === (settings[settingId] && settings[settingId].iframe.style[dimension]);
               }
-              function isVisible(el2) {
-                return null !== el2.offsetParent;
+              function isVisible(el3) {
+                return null !== el3.offsetParent;
               }
               if (settings[settingId] && isVisible(settings[settingId].iframe) && (chkDimension("height") || chkDimension("width"))) {
                 trigger(
@@ -3439,11 +3439,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
           window.removeEventListener("test", noop, options);
         } catch (error) {
         }
-        function addEventListener(el2, evt, func, options2) {
-          el2.addEventListener(evt, func, passiveSupported ? options2 || {} : false);
+        function addEventListener(el3, evt, func, options2) {
+          el3.addEventListener(evt, func, passiveSupported ? options2 || {} : false);
         }
-        function removeEventListener(el2, evt, func) {
-          el2.removeEventListener(evt, func, false);
+        function removeEventListener(el3, evt, func) {
+          el3.removeEventListener(evt, func, false);
         }
         function capitalizeFirstLetter(string) {
           return string.charAt(0).toUpperCase() + string.slice(1);
@@ -3781,8 +3781,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
               y: window.pageYOffset === undefined2 ? document.documentElement.scrollTop : window.pageYOffset
             };
           }
-          function getElementPosition(el2) {
-            var elPosition = el2.getBoundingClientRect(), pagePosition = getPagePosition();
+          function getElementPosition(el3) {
+            var elPosition = el3.getBoundingClientRect(), pagePosition = getPagePosition();
             return {
               x: parseInt(elPosition.left, 10) + parseInt(pagePosition.x, 10),
               y: parseInt(elPosition.top, 10) + parseInt(pagePosition.y, 10)
@@ -3814,13 +3814,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
             }
           }
           function bindAnchors() {
-            function setupLink(el2) {
+            function setupLink(el3) {
               function linkClicked(e) {
                 e.preventDefault();
                 findTarget(this.getAttribute("href"));
               }
-              if ("#" !== el2.getAttribute("href")) {
-                addEventListener(el2, "click", linkClicked);
+              if ("#" !== el3.getAttribute("href")) {
+                addEventListener(el3, "click", linkClicked);
               }
             }
             Array.prototype.forEach.call(
@@ -4026,10 +4026,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
             initInterval();
           }
         }
-        function getComputedStyle2(prop, el2) {
+        function getComputedStyle2(prop, el3) {
           var retVal = 0;
-          el2 = el2 || document.body;
-          retVal = document.defaultView.getComputedStyle(el2, null);
+          el3 = el3 || document.body;
+          retVal = document.defaultView.getComputedStyle(el3, null);
           retVal = null === retVal ? 0 : retVal[prop];
           return parseInt(retVal, base);
         }
@@ -4702,9 +4702,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
             fetchRequestInit: { ...validatedInit, body: requestBody, headers: [...requestHeaders.entries()] },
             isMultipartFormData
           };
-          const { body, headers, statusText, status, isAttachment } = await callBridge("fetchRemote", fetchPayload);
+          const { body, headers, statusText: statusText2, status, isAttachment } = await callBridge("fetchRemote", fetchPayload);
           const responseBody = isAttachment ? (0, blobParser_1.base64ToBlob)(body, headers["content-type"]) : body;
-          return new Response(responseBody || null, { headers, status, statusText });
+          return new Response(responseBody || null, { headers, status, statusText: statusText2 });
         };
         return {
           requestRemote: (remoteKey, fetchOptions) => fetch2(remoteKey, fetchOptions)
@@ -4728,9 +4728,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
             },
             isMultipartFormData
           };
-          const { body, headers, statusText, status, isAttachment } = await callBridge("fetchProduct", fetchPayload);
+          const { body, headers, statusText: statusText2, status, isAttachment } = await callBridge("fetchProduct", fetchPayload);
           const responseBody = isAttachment ? (0, blobParser_1.base64ToBlob)(body, headers["content-type"]) : body;
-          return new Response(responseBody || null, { headers, status, statusText });
+          return new Response(responseBody || null, { headers, status, statusText: statusText2 });
         };
         return {
           requestConfluence: (restPath, fetchOptions) => fetch2("confluence", restPath, fetchOptions),
@@ -5682,7 +5682,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       var errors_1 = require_errors();
       var bridge_1 = require_bridge();
       var callBridge = (0, bridge_1.getCallBridge)();
-      var download = async ({ functionKey, keys }) => {
+      var download2 = async ({ functionKey, keys }) => {
         void callBridge("trackObjectStoreAction", { action: "download" });
         if (!functionKey || functionKey.length === 0) {
           throw new errors_1.BridgeAPIError("functionKey is required to filter and generate download URLs");
@@ -5728,7 +5728,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         const results = await Promise.all(downloadPromises);
         return results;
       };
-      exports.download = download;
+      exports.download = download2;
     }
   });
 
@@ -6654,6 +6654,233 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (close) close.addEventListener("click", closeWhyPopup);
   }
 
+  // src/frontend/baseline-panel.ts
+  var deps;
+  function el2(tag, text, cls) {
+    const e = document.createElement(tag);
+    if (text !== void 0) e.textContent = text;
+    if (cls) e.className = cls;
+    return e;
+  }
+  function button(text, onClick, primary = false) {
+    const b = el2("button", text, `btn ${primary ? "btn-primary" : "btn-outline"} btn-xs`);
+    b.type = "button";
+    b.addEventListener("click", onClick);
+    return b;
+  }
+  var signed = (n) => n > 0 ? `+${n}` : String(n);
+  var day = (iso2) => (iso2 || "").slice(0, 10);
+  function statusText(report) {
+    if (!report || report.ok === false) return "Baseline: none";
+    const c = report.comparison;
+    const parts2 = [`${signed(c.deltaHours)} h (${signed(c.deltaPercent)}%)`];
+    if (c.added.length) parts2.push(`${c.added.length} added`);
+    if (c.removed.length) parts2.push(`${c.removed.length} removed`);
+    if (c.slipped) parts2.push(`${c.slipped} later`);
+    return `Baseline: ${report.baseline.name}${report.intact ? "" : " (changed since frozen!)"} \xB7 ${c.grew || c.removed.length || c.changed.length ? parts2.join(", ") : "on scope"}`;
+  }
+  function comparisonTable(c, summaries) {
+    const wrap = el2("div");
+    wrap.appendChild(el2("p", `Hours ${c.fromHours} -> ${c.toHours} (${signed(c.deltaHours)} h, ${signed(c.deltaPercent)}%). Items ${c.fromCount} -> ${c.toCount}.`));
+    const table = el2("table", void 0, "changes-table");
+    const head = el2("tr");
+    for (const h of ["Change", "Issue", "Summary (now)", "Estimate", "Start", "End"]) head.appendChild(el2("th", h));
+    table.appendChild(el2("thead")).appendChild(head);
+    const body = table.appendChild(el2("tbody"));
+    const row = (kind, key, est, start, end) => {
+      const tr = el2("tr");
+      for (const v of [kind, key, summaries[key] || "", est, start, end]) tr.appendChild(el2("td", v));
+      body.appendChild(tr);
+    };
+    for (const i of c.added) row("added", i.key, i.hours !== void 0 ? `${i.hours} h` : "none", day(i.start), day(i.end));
+    for (const i of c.removed) row("removed", i.key, i.hours !== void 0 ? `${i.hours} h` : "none", day(i.start), day(i.end));
+    for (const x of c.changed) {
+      const pair = (a, b, unit = "") => a === void 0 && b === void 0 ? "" : `${a ?? "none"}${unit} -> ${b ?? "none"}${unit}`;
+      row(
+        "changed",
+        x.key,
+        "fromHours" in x || "toHours" in x ? pair(x.fromHours, x.toHours, " h") : "",
+        "fromStart" in x ? pair(x.fromStart, x.toStart) : "",
+        "fromEnd" in x ? pair(x.fromEnd, x.toEnd) : ""
+      );
+    }
+    if (!c.added.length && !c.removed.length && !c.changed.length) wrap.appendChild(el2("p", "No change."));
+    else wrap.appendChild(table);
+    return wrap;
+  }
+  function download(name, text, type) {
+    try {
+      const url = URL.createObjectURL(new Blob([text], { type }));
+      const a = el2("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2e3);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  async function refreshStatus() {
+    const btn = document.getElementById("btnBaseline");
+    const report = await deps.call("getScopeCreepReport", {});
+    if (btn) {
+      btn.textContent = statusText(report);
+      btn.classList.toggle("is-warning", !!(report && report.ok !== false && (report.comparison.grew || !report.intact)));
+    }
+    return report;
+  }
+  async function render2() {
+    const body = document.getElementById("baselineBody");
+    if (!body) return;
+    body.replaceChildren(el2("p", "Loading..."));
+    const [list, report] = await Promise.all([deps.call("getPlanBaselines", {}), refreshStatus()]);
+    body.replaceChildren();
+    const approver = deps.isApprover() === true;
+    const freeze = el2("div", void 0, "baseline-freeze");
+    const name = el2("input");
+    name.type = "text";
+    name.className = "form-input";
+    name.placeholder = "Baseline name, for example Sprint 7 commitment";
+    name.setAttribute("aria-label", "Baseline name");
+    name.maxLength = 80;
+    const freezeBtn = button("Freeze the plan as a baseline", async () => {
+      const res = await deps.call("freezePlanBaseline", { name: name.value });
+      if (res && res.ok) {
+        deps.flag({ text: `Froze "${res.baseline.name}": ${res.baseline.itemCount} items, ${res.baseline.totalHours} h.` });
+        await deps.reloadPlan();
+        await render2();
+      } else deps.flag({ text: res && (res.message || res.error) || "The baseline was not frozen.", error: true });
+    }, true);
+    name.disabled = freezeBtn.disabled = !approver;
+    if (!approver) freezeBtn.title = "Only plan approvers freeze baselines.";
+    freeze.append(name, freezeBtn);
+    body.appendChild(freeze);
+    const delta = el2("section");
+    delta.appendChild(el2("h3", "Scope since the active baseline"));
+    if (report && report.ok !== false) {
+      if (!report.intact) delta.appendChild(el2("p", "Warning: this baseline no longer matches what was frozen (its SHA-256 digest differs).", "baseline-warning"));
+      delta.appendChild(comparisonTable(report.comparison, report.summaries || {}));
+      const reason = el2("textarea");
+      reason.className = "form-input";
+      reason.placeholder = "Why the scope changed (sent to plan approvers)";
+      reason.setAttribute("aria-label", "Reason for the scope change");
+      reason.maxLength = 1e3;
+      delta.append(reason, button("Request approval of this scope", async () => {
+        const res = await deps.call("requestScopeShift", { reason: reason.value });
+        if (res && res.ok) {
+          deps.flag({ text: "Scope change requested. A plan approver can accept or reject it." });
+          await render2();
+        } else deps.flag({ text: res && (res.message || res.error) || "The request was not saved.", error: true });
+      }));
+    } else {
+      delta.appendChild(el2("p", report && report.message || "No baseline yet."));
+    }
+    body.appendChild(delta);
+    const shifts = list && list.shifts || [];
+    if (shifts.length) {
+      const sec = el2("section");
+      sec.appendChild(el2("h3", "Scope-change requests"));
+      for (const s of shifts) {
+        const line = el2("div", void 0, "baseline-shift");
+        const sum = s.summary || {};
+        line.appendChild(el2("span", `${day(s.requestedAt)} ${s.requestedByName}: "${s.reason}" (${sum.added} added, ${sum.removed} removed, ${sum.changed} changed, ${signed(sum.deltaHours)} h). ${s.status === "PENDING" ? "Waiting." : `${s.status === "APPROVED" ? "Accepted" : "Rejected"} by ${s.reviewedByName}${s.comment ? `: ${s.comment}` : ""}.`}`));
+        if (s.status === "PENDING" && approver) {
+          for (const [status, label2] of [["APPROVED", "Accept"], ["REJECTED", "Reject"]]) {
+            line.appendChild(button(label2, async () => {
+              const res = await deps.call("reviewScopeShift", { shiftId: s.id, status });
+              if (res && res.ok) {
+                deps.flag({ text: status === "APPROVED" ? "Accepted: a new baseline version is active." : "Rejected: the baseline stays." });
+                await deps.reloadPlan();
+                await render2();
+              } else deps.flag({ text: res && (res.message || res.error) || "The review was not saved.", error: true });
+            }, status === "APPROVED"));
+          }
+        }
+        sec.appendChild(line);
+      }
+      body.appendChild(sec);
+    }
+    const versions = list && list.baselines || [];
+    if (versions.length) {
+      const sec = el2("section");
+      sec.appendChild(el2("h3", "Baseline versions"));
+      const out = el2("div");
+      for (const b of versions) {
+        const line = el2("div", void 0, "baseline-version");
+        const active = b.id === list.active;
+        line.appendChild(el2("span", `${active ? "\u25CF " : ""}${b.name}, ${day(b.frozenAt)} by ${b.frozenByName}: ${b.itemCount} items, ${b.totalHours} h${b.unestimated ? `, ${b.unestimated} unestimated` : ""}.`));
+        line.appendChild(button("Compare with now", async () => {
+          const r = await deps.call("getScopeCreepReport", { baselineId: b.id });
+          out.replaceChildren(el2("h4", `${b.name} against the current plan`), r && r.ok ? comparisonTable(r.comparison, r.summaries || {}) : el2("p", r && r.message || "Not available."));
+        }));
+        if (!active && list.active) {
+          line.appendChild(button("Compare with active", async () => {
+            const r = await deps.call("compareBaselines", { fromId: b.id, toId: list.active });
+            out.replaceChildren(el2("h4", `${b.name} against the active version`), r && r.ok ? comparisonTable(r.comparison, r.summaries || {}) : el2("p", r && r.message || "Not available."));
+          }));
+        }
+        line.appendChild(button("Export CSV", async () => {
+          const r = await deps.call("exportBaseline", { baselineId: b.id });
+          if (!r || !r.ok) {
+            deps.flag({ text: r && r.message || "Export failed.", error: true });
+            return;
+          }
+          if (!download(`${b.name.replace(/[^\w.-]+/g, "_")}.csv`, r.csv, "text/csv")) {
+            const ta = el2("textarea");
+            ta.className = "form-input";
+            ta.value = r.csv;
+            ta.readOnly = true;
+            out.replaceChildren(el2("p", "Copy the CSV below:"), ta);
+          }
+          if (!r.intact) deps.flag({ text: `"${b.name}" no longer matches what was frozen (SHA-256 differs).`, error: true });
+        }));
+        if (!active && approver) {
+          line.appendChild(button("Make active", async () => {
+            const res = await deps.call("setActiveBaseline", { baselineId: b.id });
+            if (res && res.ok) {
+              await deps.reloadPlan();
+              await render2();
+            } else deps.flag({ text: res && res.message || "Not changed.", error: true });
+          }));
+        }
+        sec.appendChild(line);
+      }
+      sec.appendChild(out);
+      body.appendChild(sec);
+    }
+  }
+  function closeBaselinePanel() {
+    const panel = document.getElementById("baselinePanel");
+    if (panel) panel.hidden = true;
+    document.getElementById("btnBaseline")?.setAttribute("aria-expanded", "false");
+  }
+  function isBaselinePanelOpen() {
+    const panel = document.getElementById("baselinePanel");
+    return !!panel && !panel.hidden;
+  }
+  function initBaselinePanel(d) {
+    deps = d;
+    const btn = document.getElementById("btnBaseline");
+    const panel = document.getElementById("baselinePanel");
+    const close = document.getElementById("btnCloseBaseline");
+    if (!btn || !panel) return;
+    btn.addEventListener("click", async () => {
+      panel.hidden = !panel.hidden;
+      btn.setAttribute("aria-expanded", String(!panel.hidden));
+      if (!panel.hidden) {
+        await render2();
+        close?.focus();
+      }
+    });
+    close?.addEventListener("click", () => {
+      closeBaselinePanel();
+      btn.focus();
+    });
+  }
+
   // src/ui/safe-html.ts
   var SafeHtml = class {
     constructor(markup) {
@@ -6667,15 +6894,15 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (value === null || value === void 0) return "";
     return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
-  function render2(value) {
+  function render3(value) {
     if (value instanceof SafeHtml) return value.toString();
-    if (Array.isArray(value)) return value.map(render2).join("");
+    if (Array.isArray(value)) return value.map(render3).join("");
     return escapeHtml(value);
   }
   function html(strings, ...values) {
     let out = strings[0];
     for (let i = 0; i < values.length; i++) {
-      out += render2(values[i]) + strings[i + 1];
+      out += render3(values[i]) + strings[i + 1];
     }
     return new SafeHtml(out);
   }
@@ -6685,8 +6912,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function dayNumber(iso2) {
     return Math.round(Date.parse(`${iso2}T00:00:00Z`) / DAY_MS);
   }
-  function isoOf(day) {
-    return new Date(day * DAY_MS).toISOString().slice(0, 10);
+  function isoOf(day2) {
+    return new Date(day2 * DAY_MS).toISOString().slice(0, 10);
   }
   function addDays(iso2, days) {
     return isoOf(dayNumber(iso2) + days);
@@ -7515,8 +7742,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
     };
     let worst = { hasConflict: false };
     for (const holder of chain) {
-      const deps = holder.dependencies || (holder.dependency ? [holder.dependency] : []);
-      for (const dep of deps) {
+      const deps2 = holder.dependencies || (holder.dependency ? [holder.dependency] : []);
+      for (const dep of deps2) {
         if (!dep || !dep.predecessorKey || isSelfOrBelow(dep.predecessorKey)) continue;
         const pred = byKey.get(dep.predecessorKey);
         if (!pred || !pred.startDate) continue;
@@ -7811,6 +8038,70 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return { changes, fixed };
   }
 
+  // src/domain/baseline.ts
+  var round1 = (n) => Math.round(n * 10) / 10;
+  function baselineItems(tasks) {
+    return tasks.filter((t) => t && t.id && t.key && !t.isEpic && (t.hierarchyLevel ?? 0) < 1 && !t.datesFromChildren && !!t.startDate).map((t) => {
+      const item = { id: String(t.id), key: t.key };
+      if (typeof t.effortHours === "number" && t.effortHours > 0) item.hours = round1(t.effortHours);
+      if (t.startDate) item.start = t.startDate.slice(0, 10);
+      if (t.endDate) item.end = t.endDate.slice(0, 10);
+      if (t.status === "COMPLETED") item.done = true;
+      return item;
+    }).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  }
+  function totals(items) {
+    return {
+      itemCount: items.length,
+      totalHours: round1(items.reduce((s, i) => s + (i.hours || 0), 0)),
+      unestimated: items.filter((i) => i.hours === void 0).length
+    };
+  }
+  function compareItems(from, to) {
+    const a = new Map(from.map((i) => [i.id, i]));
+    const b = new Map(to.map((i) => [i.id, i]));
+    const added = to.filter((i) => !a.has(i.id));
+    const removed = from.filter((i) => !b.has(i.id));
+    const changed = [];
+    for (const x of from) {
+      const y = b.get(x.id);
+      if (!y) continue;
+      if (x.hours === y.hours && x.start === y.start && x.end === y.end) continue;
+      const c = { id: x.id, key: y.key };
+      if (x.hours !== y.hours) {
+        c.fromHours = x.hours;
+        c.toHours = y.hours;
+      }
+      if (x.start !== y.start) {
+        c.fromStart = x.start;
+        c.toStart = y.start;
+      }
+      if (x.end !== y.end) {
+        c.fromEnd = x.end;
+        c.toEnd = y.end;
+      }
+      changed.push(c);
+    }
+    const fromHours = totals(from).totalHours;
+    const toHours = totals(to).totalHours;
+    const deltaHours = round1(toHours - fromHours);
+    const slipped = changed.filter((c) => c.fromEnd && c.toEnd && c.toEnd > c.fromEnd).length;
+    const grew = added.length > 0 || deltaHours > 0 || slipped > 0 || changed.some((c) => (c.toHours || 0) > (c.fromHours || 0));
+    return {
+      added,
+      removed,
+      changed,
+      fromHours,
+      toHours,
+      deltaHours,
+      deltaPercent: fromHours > 0 ? round1(deltaHours / fromHours * 100) : 0,
+      fromCount: from.length,
+      toCount: to.length,
+      slipped,
+      grew
+    };
+  }
+
   // src/ui/time-scale.ts
   var ZOOMS = [
     { id: "day", label: "Day", dayPx: 40, snap: "day" },
@@ -7843,13 +8134,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return { y: dt.getUTCFullYear(), m: dt.getUTCMonth(), d: dt.getUTCDate(), dow: dt.getUTCDay() };
   }
   var iso = (y, m, d) => new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10);
-  function unitBounds(day, zoom) {
-    const p = parts(day);
+  function unitBounds(day2, zoom) {
+    const p = parts(day2);
     switch (zoom.id) {
       case "day":
-        return [day, addDays(day, 1)];
+        return [day2, addDays(day2, 1)];
       case "week":
-        return [mondayOf(day), addDays(mondayOf(day), 7)];
+        return [mondayOf(day2), addDays(mondayOf(day2), 7)];
       case "month":
         return [iso(p.y, p.m, 1), iso(p.y, p.m + 1, 1)];
       case "quarter":
@@ -7876,16 +8167,16 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function headerCells(r, zoom, today, fromX = -Infinity, toX = Infinity) {
     const out = [];
     const total = rangeDays(r);
-    let day = r.start;
-    while (daysBetween(r.start, day) < total) {
-      const [, next] = unitBounds(day, zoom);
-      const x = daysBetween(r.start, day) * zoom.dayPx;
-      const w = Math.min(daysBetween(day, next), total - daysBetween(r.start, day)) * zoom.dayPx;
+    let day2 = r.start;
+    while (daysBetween(r.start, day2) < total) {
+      const [, next] = unitBounds(day2, zoom);
+      const x = daysBetween(r.start, day2) * zoom.dayPx;
+      const w = Math.min(daysBetween(day2, next), total - daysBetween(r.start, day2)) * zoom.dayPx;
       if (x + w > fromX && x < toX) {
-        const [uStart] = unitBounds(day, zoom);
+        const [uStart] = unitBounds(day2, zoom);
         out.push({ key: uStart, label: label(uStart, zoom), x, w, current: today >= uStart && today < next });
       }
-      day = next;
+      day2 = next;
     }
     return out;
   }
@@ -8235,10 +8526,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
       }
     }
     sel.replaceChildren(...[{ value: "", text: task.parentKey ? `Now: under ${task.parentKey}` : "Now: no parent" }, ...opts].map((o) => {
-      const el2 = document.createElement("option");
-      el2.value = o.value;
-      el2.textContent = o.text;
-      return el2;
+      const el3 = document.createElement("option");
+      el3.value = o.value;
+      el3.textContent = o.text;
+      return el3;
     }));
     sel.disabled = btn.disabled = lvl >= 1 || opts.length === 0;
     btn.onclick = () => {
@@ -8347,12 +8638,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return hours > 0 ? `${hours}h` : "Unestimated";
   }
   function syncPinnedBarHit() {
-    document.querySelectorAll(".bar-hit.is-pinned").forEach((el2) => {
-      if (el2.dataset.taskId !== pinnedDependencyTaskId) el2.classList.remove("is-pinned");
+    document.querySelectorAll(".bar-hit.is-pinned").forEach((el3) => {
+      if (el3.dataset.taskId !== pinnedDependencyTaskId) el3.classList.remove("is-pinned");
     });
     if (pinnedDependencyTaskId) {
-      const el2 = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(pinnedDependencyTaskId)}"]`);
-      if (el2) el2.classList.add("is-pinned");
+      const el3 = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(pinnedDependencyTaskId)}"]`);
+      if (el3) el3.classList.add("is-pinned");
     }
   }
   function showWhy(taskKey, anchorRect) {
@@ -8454,6 +8745,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
     initErrorBanner();
     initWhyPopup();
     initChangesPanel();
+    initBaselinePanel({
+      call: (fn, payload = {}) => callResolver(fn, { planId: activePlanId, ...payload }),
+      flag: showFlag,
+      isApprover: () => planApprover,
+      reloadPlan: () => loadProjectPlan()
+    });
     await enableTheme();
     onThemeChange(() => {
       if (timeline) timeline.invalidateColours();
@@ -8670,6 +8967,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
       }
       if (e.key === "Escape" && isChangesPanelOpen()) {
         closeChangesPanel();
+        return;
+      }
+      if (e.key === "Escape" && isBaselinePanelOpen()) {
+        closeBaselinePanel();
         return;
       }
       if (e.key === "Escape") {
@@ -9443,10 +9744,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const nameInp = document.getElementById("newPlanNameInput");
     const btn = document.getElementById("btnCreatePlan");
     const allowed = planApprover === true;
-    for (const el2 of [nameInp, btn]) {
-      if (!el2) continue;
-      el2.disabled = !allowed;
-      el2.title = allowed ? "" : "Only plan approvers (project or Jira administrators, or an approver group) create plans.";
+    for (const el3 of [nameInp, btn]) {
+      if (!el3) continue;
+      el3.disabled = !allowed;
+      el3.title = allowed ? "" : "Only plan approvers (project or Jira administrators, or an approver group) create plans.";
     }
   }
   function renderFilteredPlansList(plans, currentId) {
@@ -9671,6 +9972,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
       setActivePlan(served);
       updatePlansUI(plan.availablePlans, activePlanId);
       notePlanOnlyLinks(plan);
+      if (plan.baselineStatus !== void 0) baselineState = plan.baselineStatus;
+      updateBaselineButton();
       columnWidths = sanitizeLoadedColumnWidths(plan.columnWidths);
       if (Array.isArray(plan.hiddenColumns)) {
         hiddenColumns = new Set(plan.hiddenColumns);
@@ -9764,18 +10067,18 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     const curWk = (currentPlan.weeks || []).find((w) => w.isCurrentWeek);
     if (curWk) {
-      const el2 = document.getElementById("legendCurrentWeek");
-      if (el2) el2.textContent = `Current Week (${curWk.weekKey})`;
+      const el3 = document.getElementById("legendCurrentWeek");
+      if (el3) el3.textContent = `Current Week (${curWk.weekKey})`;
     }
   }
   function renderMilestones() {
     const strip = document.getElementById("milestonesStrip");
     strip.innerHTML = "";
     (currentPlan.milestones || []).forEach((m) => {
-      const el2 = document.createElement("div");
-      el2.className = "milestone-pill";
-      el2.innerHTML = html`<span class="milestone-icon">🔷</span><span>${m.title}</span><span style="color: var(--cp-text-subtle);">(${m.weekKey})</span>`;
-      strip.appendChild(el2);
+      const el3 = document.createElement("div");
+      el3.className = "milestone-pill";
+      el3.innerHTML = html`<span class="milestone-icon">🔷</span><span>${m.title}</span><span style="color: var(--cp-text-subtle);">(${m.weekKey})</span>`;
+      strip.appendChild(el3);
     });
   }
   function renderBacklogTray() {
@@ -9900,13 +10203,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const strip = document.querySelector("#ganttHeaderRow .time-strip");
     if (!strip || !timeRange) return;
     const cells = headerCells(timeRange, zoomById(zoomId), todayIso()).map((c) => {
-      const el2 = document.createElement("div");
-      el2.className = "time-cell" + (c.current ? " current" : "");
-      el2.style.left = c.x + "px";
-      el2.style.width = c.w + "px";
-      el2.textContent = c.label;
-      el2.title = c.key;
-      return el2;
+      const el3 = document.createElement("div");
+      el3.className = "time-cell" + (c.current ? " current" : "");
+      el3.style.left = c.x + "px";
+      el3.style.width = c.w + "px";
+      el3.textContent = c.label;
+      el3.title = c.key;
+      return el3;
     });
     strip.replaceChildren(...cells);
   }
@@ -11037,9 +11340,18 @@ Please see https://iframe-resizer.com/upgrade for more details.
     updateVirtualRows();
     return rowCache.get(key) || null;
   }
+  var baselineState = null;
+  function updateBaselineButton() {
+    const btn = document.getElementById("btnBaseline");
+    if (!btn || !baselineState || !currentPlan) return;
+    const report = baselineState.ok ? { ok: true, baseline: baselineState.baseline, intact: baselineState.intact, comparison: compareItems(baselineState.items || [], baselineItems(currentPlan.tasks || [])) } : { ok: false };
+    btn.textContent = statusText(report);
+    btn.classList.toggle("is-warning", !!(report.ok && (report.comparison.grew || !report.intact)));
+  }
   function applyPlanInPlace(plan) {
     const before = rowTaskList.map((t) => t.key).join("\n");
     currentPlan = plan;
+    updateBaselineButton();
     const computed = computeRowTasks();
     if (computed.rows.map((r) => r.task.key).join("\n") !== before) {
       renderPlan();
@@ -11992,11 +12304,11 @@ Click to manage or assign.`;
       const wRect = wrapper.getBoundingClientRect();
       const curX = ev.clientX - wRect.left + wrapper.scrollLeft;
       const curY = ev.clientY - wRect.top + wrapper.scrollTop;
-      const el2 = document.elementFromPoint(ev.clientX, ev.clientY);
-      let targetHit = el2 ? el2.closest(".bar-hit") : null;
+      const el3 = document.elementFromPoint(ev.clientX, ev.clientY);
+      let targetHit = el3 ? el3.closest(".bar-hit") : null;
       let targetKey = targetHit && targetHit.dataset.taskId !== sourceKey ? targetHit.dataset.taskId : null;
-      if (!targetKey && el2) {
-        const row = el2.closest("tr[data-task-id]");
+      if (!targetKey && el3) {
+        const row = el3.closest("tr[data-task-id]");
         if (row && row.getAttribute("data-task-id") !== sourceKey) {
           targetKey = row.getAttribute("data-task-id");
           targetHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(targetKey)}"]`);

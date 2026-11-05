@@ -35,7 +35,7 @@ import {
 } from '../../src/index';
 import { setPermissionCheckerForTests } from '../../src/security/write-permissions';
 import { PlanStore } from '../../src/storage/plan-store';
-import { BaselineRepository } from '../../src/storage/baseline-repository';
+import { BaselineStore } from '../../src/storage/baseline-store';
 import { ValidationError } from '../../src/validation';
 import { toWorkEffortRecord, fromWorkEffortRecord, WbsTask } from '../../src/domain/models';
 import { isPlanApprover } from '../../src/security/policy-admin';
@@ -388,9 +388,10 @@ describe('Security and permissions (D11)', () => {
   it('R-16: a scope shift review needs an approver, never by the requester, only APPROVED or REJECTED, and only once', async () => {
     override = url => (url.includes('mypermissions')
       ? { status: 200, json: async () => ({ permissions: { ADMINISTER: { havePermission: false }, ADMINISTER_PROJECTS: { havePermission: false } } }) } : undefined);
-    const repo = new BaselineRepository(storage);
-    await repo.saveShiftRequest({ shiftId: 's1', planId: 'default', baselineId: 'b1', projectKey: 'TEST', requestedBy: 'acc-1', requestedAt: 'x',
-      status: 'PENDING', deltaHours: 10, reason: 'r', addedTaskKeys: [], removedTaskKeys: [], modifiedTaskKeys: [] });
+    const store = new BaselineStore(storage, 'TEST', 'default');
+    await store.save({ id: 'b1', name: 'B1', frozenAt: '2026-11-01T00:00:00Z', frozenBy: 'acc-9', items: [{ id: '1', key: 'TEST-1', hours: 8, start: start, end: add(start, 2) }] });
+    await store.saveShift({ id: 's1', planId: 'default', baselineId: 'b1', requestedBy: 'acc-1', requestedAt: 'x', reason: 'r', status: 'PENDING',
+      summary: { added: 1, removed: 0, changed: 0, deltaHours: 10 }, v: 1 });
     // Through the resolver, a user who is not an approver is refused before anything is read or stored.
     const viaHandler: any = await handler({ call: { functionKey: 'reviewScopeShift', payload: { shiftId: 's1', status: 'APPROVED' } },
       context: { accountId: 'acc-2', extension: { project: { key: 'TEST', id: '10001' } } } });
@@ -403,6 +404,10 @@ describe('Security and permissions (D11)', () => {
       .toBe('The review must be APPROVED or REJECTED.');
     const ok = await reviewScopeShift({ projectKey: 'TEST', shiftId: 's1', status: 'APPROVED' }, storage, { accountId: 'acc-2' });
     expect(ok.request).toMatchObject({ status: 'APPROVED', reviewedBy: 'acc-2' });
+    // Approving freezes a new baseline version that supersedes b1 and is active (ADR-009).
+    const idx = await store.readIndex();
+    expect(idx.active).toBe(ok.request.newBaselineId);
+    expect((await store.header(ok.request.newBaselineId))).toMatchObject({ supersedes: 'b1', name: 'B1 (version 2)', frozenBy: 'acc-2' });
     expect((await reviewScopeShift({ projectKey: 'TEST', shiftId: 's1', status: 'REJECTED' }, storage, { accountId: 'acc-3' })).error)
       .toBe('This request has already been reviewed.');
   });
@@ -429,22 +434,27 @@ describe('Security and permissions (D11)', () => {
     expect(await planEntry(storage, 'default', 'TEST-5')).toBeUndefined();
   });
 
-  it('FINDING R-19: baselines store Jira-owned text and display names in KVS (INV-04, personal data)', async () => {
-    const res = await freezePlanBaseline({ projectKey: 'TEST', name: 'B1' }, storage, { accountId: 'acc-1' });
+  it('R-19 (ADR-009): a baseline stores no Jira text and no names; it is keyed by project id (here TEST, as in the fixture); who froze it is an audit subject that is reported', async () => {
+    const res = await freezePlanBaseline({ projectKey: 'TEST', projectId: 'TEST', name: 'B1' }, storage, { accountId: 'acc-1' });
     expect(res.success).toBe(true);
-    const stored: any = [...storage.store.entries()].find(([k]) => k.startsWith('ps:baseline:TEST:default:'))![1];
-    const snap: any = Object.values(stored.tasks)[0];
-    expect(snap.summary).toBeDefined();
-    expect(snap.resource).toBeDefined();
-    expect(stored.frozenBy).toBe('acc-1');
-    // Keyed by project KEY, not id (CP-09 says keys use the id so a renamed project keeps its data).
-    expect([...storage.store.keys()].some(k => k.startsWith('ps:baseline:TEST:'))).toBe(true);
+    const keys = [...storage.store.keys()];
+    expect(keys.some(k => k.startsWith('ps:baseline:'))).toBe(false);
+    const chunkKey = keys.find(k => k.startsWith('cp:TEST:bl:default:c:'))!;
+    const items: any[] = storage.store.get(chunkKey);
+    expect(Object.keys(items[0]).sort()).toEqual(expect.arrayContaining(['id', 'key']));
+    for (const i of items) { expect(i.summary).toBeUndefined(); expect(i.resource).toBeUndefined(); }
+    expect(storage.store.get(keys.find(k => k.startsWith('cp:TEST:bl:default:h:'))!).frozenBy).toBe('acc-1');
+    expect(storage.store.get('cp:pd:accounts')['acc-1'].keys).toEqual([expect.stringMatching(/^cp:TEST:bl:default:h:/)]);
   });
 
   it('R-20: deleting a plan also deletes its baselines, active-baseline pointer and scope-shift requests (F-22)', async () => {
     await freezePlanBaseline({ projectKey: 'TEST', planId: planB, name: 'B' }, storage, { accountId: 'acc-1' });
-    await new BaselineRepository(storage).saveShiftRequest({ shiftId: 's1', planId: planB, baselineId: 'b', projectKey: 'TEST', requestedBy: 'acc-1', requestedAt: 'x',
-      status: 'PENDING', deltaHours: 1, reason: 'r', addedTaskKeys: [], removedTaskKeys: [], modifiedTaskKeys: [] });
+    await new BaselineStore(storage, 'TEST', planB).saveShift({ id: 's1', planId: planB, baselineId: 'b', requestedBy: 'acc-1', requestedAt: 'x', reason: 'r',
+      status: 'PENDING', summary: { added: 0, removed: 0, changed: 1, deltaHours: 1 }, v: 1 });
+    // Keys a development build wrote under the project key before ADR-009.
+    await storage.set(`ps:baseline:TEST:${planB}:old`, { x: 1 });
+    await storage.set(`ps:shifts:TEST:${planB}`, []);
+    expect([...storage.store.keys()].filter(k => k.includes(planB)).length).toBeGreaterThan(3);
     await deleteProjectPlan({ projectKey: 'TEST', planId: planB }, storage);
     const left = [...storage.store.keys()].filter(k => k.includes(planB));
     expect(left).toEqual([]);
@@ -601,18 +611,18 @@ describe('F-03: the plan returned after a write shows the written dates (owner o
 });
 
 describe('Sizes and costs (section 4.1, 4.5)', () => {
-  it('MEASURE R-27: baseline value size at 1,000 tasks against the KVS value limit', () => {
-    const { ScopeCreepEngine } = require('../../src/domain/scope-creep');
-    const sizes: Record<number, number> = {};
-    for (const summaryLen of [40, 80, 160]) {
-      const tasks = Array.from({ length: 1000 }, (_, i) => ({ id: String(10000 + i), key: `PROJ-${10000 + i}`, summary: 'x'.repeat(summaryLen),
-        effortHours: 8, startWeek: '04-Nov', endWeek: '18-Nov', spanWeeks: 3, resource: 'Firstname Lastname', status: 'IN_PROGRESS' })) as any;
-      const b = ScopeCreepEngine.freezeBaseline('default', 'PROJ', 'B', '557058:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', tasks);
-      sizes[summaryLen] = Buffer.byteLength(JSON.stringify(b), 'utf8');
-    }
+  it('R-27 (F-16): a 5,000-item baseline saves in chunks under the KVS value limit and loads back intact', async () => {
+    const store = new BaselineStore(storage, '10001', 'default');
+    const items = Array.from({ length: 5000 }, (_, i) => ({ id: String(100000 + i), key: `PROJ-${100000 + i}`, hours: 8, start: '2026-11-02', end: '2026-11-13' }));
+    const h = await store.save({ id: 'big', name: 'Big', frozenAt: '2026-11-05T00:00:00Z', frozenBy: null, items });
+    expect(h.chunks).toBe(25);
+    const largest = Math.max(...[...storage.store.entries()].filter(([k]) => k.startsWith('cp:10001:bl:default:c:big:')).map(([, v]) => Buffer.byteLength(JSON.stringify(v), 'utf8')));
     // eslint-disable-next-line no-console
-    console.log('baseline bytes at 1000 tasks by summary length', sizes);
-    expect(sizes[80]).toBeGreaterThan(240 * 1024);
+    console.log('largest baseline chunk bytes (200 items)', largest);
+    expect(largest).toBeLessThan(240 * 1024);
+    const loaded = await store.load('big');
+    expect(loaded!.items).toHaveLength(5000);
+    expect(loaded!.intact).toBe(true);
   });
 
   it('R-28: KVS operations for one move do not grow with the number of plans (200 scheduled tasks, ADR-008)', async () => {

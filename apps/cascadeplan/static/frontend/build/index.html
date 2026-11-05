@@ -70,6 +70,7 @@
 
     <div class="header-right">
       <button class="btn btn-outline btn-sm" id="toggleBacklogBtn" title="Toggle unmapped backlog tray">📂 Backlog (<span id="backlogCount">0</span>)</button>
+      <button class="btn btn-outline btn-sm baseline-status" id="btnBaseline" type="button" aria-expanded="false" aria-controls="baselinePanel" title="Baselines and scope changes">Baseline: none</button>
       <button class="btn btn-outline btn-sm" id="btnChanges" type="button" aria-expanded="false" aria-controls="changesPanel" title="Every Jira write of this session">Changes (<span id="changesCount">0</span>)</button>
       <button class="btn btn-outline btn-sm" id="refreshBtn" title="Refresh project plan">🔄</button>
       <button class="btn btn-outline btn-sm" id="toggleTableViewBtn" type="button" aria-pressed="false" style="display: none;">Table view</button>
@@ -275,6 +276,14 @@
       <thead><tr><th scope="col">Issue</th><th scope="col">Field</th><th scope="col">Old</th><th scope="col">New</th><th scope="col">Result</th></tr></thead>
       <tbody id="changesBody"></tbody>
     </table>
+  </div>
+
+  <div id="baselinePanel" class="changes-panel baseline-panel" role="dialog" aria-labelledby="baselineTitle" hidden>
+    <div class="why-header">
+      <strong id="baselineTitle">Baselines and scope changes</strong>
+      <button class="btn btn-subtle btn-sm" id="btnCloseBaseline" type="button" aria-label="Close">✕</button>
+    </div>
+    <div id="baselineBody"></div>
   </div>
 
   <!-- Drag preview of every change a drop will make (B-23) -->

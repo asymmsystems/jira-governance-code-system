@@ -17,7 +17,8 @@
 
 import { WbsTask, ColumnWidthConfig, ProjectMilestone, WorkEffortRecordBody, toWorkEffortRecord, fromWorkEffortRecord, PlanMetadata } from '../domain/models';
 import { StorageProvider } from './plan-repository';
-import { BaselineRepository } from './baseline-repository';
+import { deleteLegacyBaselineKeys } from './baseline-repository';
+import { BaselineStore } from './baseline-store';
 
 export interface StoredEntry extends Partial<WbsTask> {
   issueKey: string;
@@ -275,8 +276,10 @@ export class PlanStore {
     for (const row of rows.slice(0, PLAN_PAGE_SIZE)) await this.storage.delete(row.key);
     const remaining = Math.max(0, rows.length - PLAN_PAGE_SIZE);
     if (remaining === 0) {
-      // The plan's baselines and scope-shift requests go with it (F-22).
-      await new BaselineRepository(this.storage).deletePlanData(this.projectKey, planId);
+      // The plan's baselines and scope-change requests go with it (F-22, ADR-009), and any left by
+      // earlier development builds under the project key.
+      await new BaselineStore(this.storage, this.projectId, planId).deleteAll();
+      await deleteLegacyBaselineKeys(this.storage, this.projectKey, planId);
       await this.storage.delete(target.getSettingsKey());
       await this.updatePlans(plans => plans.filter(p => p.id !== planId));
     }

@@ -19,6 +19,7 @@ import { initErrorBanner, showErrorBanner } from './banner';
 import { enableTheme, onThemeChange } from './theme';
 import { openWhyPopup, closeWhyPopup, isWhyPopupOpen, initWhyPopup } from './why-popup';
 import { initChangesPanel, isChangesPanelOpen, closeChangesPanel } from './changes-panel';
+import { initBaselinePanel, closeBaselinePanel, isBaselinePanelOpen, statusText as baselineStatusText } from './baseline-panel';
 import { describePendingWrites } from '../ui/change-log';
 import { html } from '../ui/safe-html';
 import { CanvasTimeline, ROW_H, BAR_H } from './canvas-timeline';
@@ -47,6 +48,7 @@ import { emptyState, showLinkHint } from '../ui/first-run';
 import { toggleKey, rangeKeys, moveSelectionBy, selectedBlockParents, progressFromDigit } from '../ui/selection';
 import { addDays as addDaysIso } from '../domain/schedule-engine';
 import { planBlockMove } from '../domain/block-move';
+import { baselineItems, compareItems } from '../domain/baseline';
 import { shouldAutoCompact, ZOOMS, zoomById, zoomStep, mondayOf, initialRange, rangeDays, extendRange, edgeToExtend, headerCells, gridLines, anchorScroll, dateAt } from '../ui/time-scale';
 import { buildTableViewRows, toggleTableView } from '../ui/table-view';
 import { findMatchingTasks, findNextMatch, formatMatchCount, isSearchShortcut } from '../ui/in-app-search';
@@ -526,6 +528,12 @@ async function initApp() {
   initErrorBanner();
   initWhyPopup();
   initChangesPanel();
+  initBaselinePanel({
+    call: (fn, payload = {}) => rawCallResolver(fn, { planId: activePlanId, ...payload }),
+    flag: showFlag,
+    isApprover: () => planApprover,
+    reloadPlan: () => loadProjectPlan()
+  });
   // Theme first, so the first paint already uses the Jira theme (B-17).
   await enableTheme();
   // The canvas reads token colours at draw time; a theme change repaints it (B-17).
@@ -759,6 +767,10 @@ function setupEventListeners() {
     }
     if (e.key === 'Escape' && isChangesPanelOpen()) {
       closeChangesPanel();
+      return;
+    }
+    if (e.key === 'Escape' && isBaselinePanelOpen()) {
+      closeBaselinePanel();
       return;
     }
     if (e.key === 'Escape') {
@@ -1912,6 +1924,9 @@ async function loadProjectPlan() {
     setActivePlan(served);
     updatePlansUI(plan.availablePlans, activePlanId);
     notePlanOnlyLinks(plan);
+    // The active baseline comes with the plan load (ADR-009); the status follows every later change.
+    if (plan.baselineStatus !== undefined) baselineState = plan.baselineStatus;
+    updateBaselineButton();
     columnWidths = sanitizeLoadedColumnWidths(plan.columnWidths);
     if (Array.isArray(plan.hiddenColumns)) {
       hiddenColumns = new Set(plan.hiddenColumns);
@@ -3536,9 +3551,22 @@ function scrollRowIntoView(key) {
 }
 
 /** Uses the plan a write returned: bars move, rows that are still shown are kept (B-13). */
+// The active baseline of the open plan, from the last plan load (ADR-009).
+let baselineState = null;
+function updateBaselineButton() {
+  const btn = document.getElementById('btnBaseline');
+  if (!btn || !baselineState || !currentPlan) return;
+  const report = baselineState.ok
+    ? { ok: true, baseline: baselineState.baseline, intact: baselineState.intact, comparison: compareItems(baselineState.items || [], baselineItems(currentPlan.tasks || [])) }
+    : { ok: false };
+  btn.textContent = baselineStatusText(report);
+  btn.classList.toggle('is-warning', !!(report.ok && (report.comparison.grew || !report.intact)));
+}
+
 function applyPlanInPlace(plan) {
   const before = rowTaskList.map(t => t.key).join('\n');
   currentPlan = plan;
+  updateBaselineButton();
   const computed = computeRowTasks();
   if (computed.rows.map(r => r.task.key).join('\n') !== before) {
     renderPlan();

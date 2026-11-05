@@ -1904,3 +1904,14 @@ tr.task-row.drop-into-refused > td { box-shadow: inset 0 0 0 2px var(--cp-border
 .hierarchy-row { display: flex; gap: 8px; }
 .hierarchy-row select { flex: 1; }
 
+/* Baselines and scope changes (ADR-009). */
+.baseline-status.is-warning { border-color: var(--cp-border-danger); color: var(--cp-text-danger); }
+.baseline-panel { width: 720px; max-height: 75vh; }
+.baseline-panel h3 { font-size: 13px; margin: 12px 0 6px; }
+.baseline-panel h4 { font-size: 12px; margin: 8px 0 4px; }
+.baseline-freeze, .baseline-version, .baseline-shift { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0; }
+.baseline-freeze input { flex: 1; min-width: 200px; }
+.baseline-version span, .baseline-shift span { flex: 1 1 280px; }
+.baseline-panel textarea { width: 100%; min-height: 48px; margin: 6px 0; }
+.baseline-warning { color: var(--cp-text-danger); font-weight: 600; }
+

@@ -1,0 +1,87 @@
+#+TITLE: ADR-009: CascadePlan Baselines, Scope Changes and Their Records
+#+DATE: 2026-11-05
+#+STATUS: Approved
+
+* Status
+Approved - 2026-11-05 under the owner's instructions: DEC-1 Option B ("build the baseline features
+before submission", decided by the owner) and "fix all" without waiting for decisions. The choices
+below follow the fix plan (=docs/sdlc/cascadeplan-marketplace-review-2026-11/fix-plan-v4.md=,
+DEC-1, DEC-2, F-16, F-22, F-31, BL-5) and are open to the owner's review.
+
+* Context
+At commit =db08009= the governance resolvers existed with no user interface and these defects:
+- a baseline was one KVS value with every task's summary and assignee name, so a large plan did not
+  fit (F-16, review test R-27), and it held personal data (names);
+- baselines and scope-shift requests were keyed by the project key, not the project id (F-22), and
+  were not deleted with their plan (R-20, fixed earlier);
+- an unestimated task counted as 1 hour (a made-up value);
+- the shift requests of a plan were one growing list in one value;
+- nothing checked a stored baseline, and the listing claimed integrity and export that did not exist.
+
+DEC-1 Option B asks for: freeze, status, scope delta, shift request and approval, versions,
+comparison, export and integrity.
+
+* Decision
+1. *What a baseline is.* A frozen record of the committed scope of one plan: for each leaf work item
+   on the timeline (no epic, no parent whose dates come from its sub-tasks, so hours count once) its
+   issue id and key, Jira estimate in hours (none when unestimated, never a made-up value), start,
+   end and whether it was done. No summary and no person's name: they are read live when shown.
+2. *Storage* (F-16, F-22). Keys under the project id:
+   - =cp:<projectId>:bl:<planId>:index= = ={ v, active, ids }=, changed with a version check;
+   - =cp:<projectId>:bl:<planId>:h:<baselineId>= = the header: name, frozen at, frozen by (account
+     id), counts, total hours, number of chunks, SHA-256 digest, and the baseline it supersedes;
+   - =cp:<projectId>:bl:<planId>:c:<baselineId>:<n>= = at most 200 items per chunk;
+   - =cp:<projectId>:shift:<planId>:<shiftId>= = one key per scope-change request.
+   The chunks are written first, then the header, then the index, so a listed baseline is complete.
+   Deleting a plan deletes these keys. Older =ps:*= keys are moved once, on the first read.
+3. *Integrity.* The digest is SHA-256 of the canonical JSON of the header fields and the items. Each
+   read recomputes it and shows "intact" or "changed". This detects a stored baseline that no longer
+   matches what was frozen (for example a partial write). It is not a signature: the app itself can
+   still write its storage, and the listing must say exactly that.
+4. *Who may do what.* Freeze, set the active baseline and review a scope change: plan approvers
+   (BL-2). Read, compare, export and request a scope change: any project user. A request is reviewed
+   once, never by its requester. Approving a request freezes a new baseline version from the current
+   plan, which supersedes the old one and becomes active; rejecting keeps the active baseline.
+5. *Comparison.* Baseline against the current plan (the scope delta and the status bar) and baseline
+   against baseline (versions). Each lists added, removed and changed items (hours, start, end),
+   totals and the change in percent. Unestimated items are counted, not given hours.
+6. *Export.* CSV and JSON of a baseline, with its digest, built in the browser from the read result.
+7. *Personal data* (DEC-2, BL-5). Account ids are stored only as the subject of these audit records
+   (frozen by, requested by, reviewed by). They are kept in an index key, =cp:pd:accounts=, and a
+   weekly scheduled trigger reports them with Forge's personal data reporting API. A closed account
+   is replaced by "a deleted user" in every record that names it. This needs the scope
+   =report:personal-data=, a consent the site admin gives again on the next upgrade.
+
+* Alternatives Considered
+** Store no account id (DEC-2 Option A as written)
+- For: no reporting, no new scope.
+- Against: a review must not be made by the requester, and an audit record without its author is
+  of little use.
+- Verdict: rejected for these records only. The planner itself still stores no account id.
+** One value per baseline, compressed
+- Against: still has a size limit, and a partial write leaves a corrupt value with no way to know.
+- Verdict: rejected.
+
+* Consequences
+** Positive
+- A 5,000-item baseline saves and loads (R-27).
+- Every baseline claim of the listing is true of what is built.
+** Negative
+- The new scope needs the admin's consent on upgrade; until then the development installation keeps
+  the version before it.
+- A weekly job and an index key to keep in step with the records.
+
+* Implementation Notes
+Built on branch =feature/cascadeplan-marketplace-fixes=; see the progress log entry "ADR-009".
+- The =ps:*= baselines of the development builds had no user interface and are not carried over;
+  deleting a plan deletes them (=src/storage/baseline-repository.ts=).
+- The digest is computed by a pure SHA-256 (=src/domain/sha256.ts=, checked against Node's crypto),
+  so the same code runs in the Forge function and in the browser test harness. It does not cover
+  =frozenBy=, so erasing a closed account keeps the baseline intact.
+- =getProjectPlan= returns the active baseline's items; the browser compares them with the plan after
+  every change, so the status needs no extra call.
+- An approved request names its new version "<name> (version N)", N being the number of versions.
+
+* References
+- [[file:../../docs/sdlc/cascadeplan-marketplace-review-2026-11/fix-plan-v4.md][CascadePlan fix plan v4]], DEC-1, DEC-2, F-16, F-22, BL-5
+- [[file:adr-00004-cascadeplan-jira-holds-relationships.org][ADR-004: CascadePlan keeps every relationship in Jira]]

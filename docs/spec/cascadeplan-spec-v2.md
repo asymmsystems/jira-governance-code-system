@@ -25,7 +25,7 @@ CascadePlan is a Jira Cloud project page (Forge Custom UI) that plans issues on 
 | INV-01 | No Jira or payload text reaches `innerHTML`, `outerHTML`, `insertAdjacentHTML` or an HTML attribute string, except through the escaping `html` tagged template (`src/ui/safe-html.ts`). | v1, review FE section 1 |
 | INV-02 | The UI has no inline script and no `on*` attribute, and calls the backend only through `invoke` from `@forge/bridge`. | v1 |
 | INV-03 | CascadePlan writes a Jira value only when the user chose it in this action, or when it follows directly from the user's action and the preview listed it before the drop (a cascaded due date, a block-moved sub-task's due date). It never writes a default: no default span, no default estimate, no status change caused by a progress edit, no "Unassigned". | v1, F-06, F-11 |
-| INV-04 | KVS holds only app-owned planning data. Summary, status, assignee, Jira estimate, Jira due date, parent, issue links and leaf progress are read live from Jira on every load. `[ADOPTED DEC-2 A]` KVS holds no Atlassian account id. The baseline and shift audit records of DEC-1 Option B are the open question: ADR-009 decides whether they store the account id of who froze, requested and reviewed (which then needs personal data reporting) or not. | v1, ADR-004 |
+| INV-04 | KVS holds only app-owned planning data. Summary, status, assignee, Jira estimate, Jira due date, parent, issue links and leaf progress are read live from Jira on every load. `[ADOPTED DEC-2 A]` The planner's records hold no Atlassian account id. The only account ids stored are the subjects of the baseline audit records (who froze, requested and reviewed), reported weekly with Forge's personal data reporting API (ADR-009). | v1, ADR-004, ADR-009 |
 | INV-05 | Every resolver returns `{ ok: boolean, ... }`. Every write resolver also returns `jiraSync: { ok, error?, writes[] }`, and the UI shows every failure. A thrown call is reported as failed, never as success. | v1, F-13 |
 | INV-06 | All Jira calls run as the user (`asUser()`), except the issue-deleted trigger, which runs as the app and only deletes CascadePlan records. | v1, BL-9 |
 | INV-07 | No KVS value exceeds 8 KiB at 1,000 tasks. `getProjectPlan` writes nothing, and opening the planner deletes nothing. | v1, BL-9 |
@@ -161,7 +161,7 @@ app:
 
 - No `scripts` permission. No egress.
 - `write:jira-work` covers due dates, estimates, assignees, transitions the user chooses, issue links, issue properties, sub-task create and delete, parent changes and bulk moves. `read:jira-work` covers search, the permission checks, bulk move progress and the issue-deleted trigger.
-- `[ADOPTED DEC-2 A]` no `report:personal-data` scope. ADR-009 may add it if baseline audit records keep account ids.
+- `report:personal-data` and a weekly `scheduledTrigger` for the personal data report of the baseline audit records (ADR-009 decision 7). Adding the scope needs the site admin's consent on the next upgrade.
 - `[ADOPTED DEC-4 B]` no custom entity in v1.
 
 ## 5. Storage schema
@@ -173,6 +173,10 @@ Keys use the project id and the issue id, never the keys (a renamed project or i
 | `cp:<projectId>:we:<issueId>` | Main Plan `WorkEffortRecord` (its dates only until the task's first date change since ADR-008) |
 | `cp:<projectId>:plan:<planId>:we:<issueId>` | Scenario plan `WorkEffortRecord` |
 | `cp:<projectId>:settings`, `cp:<projectId>:plan:<planId>:settings` | `{ columnWidths, hiddenColumns, milestones (max 100), migratedAt, modelVersion }` |
+| `cp:<projectId>:bl:<planId>:index` | `{ v, active, ids }`: the baseline versions of a plan and the active one (ADR-009) |
+| `cp:<projectId>:bl:<planId>:h:<id>`, `cp:<projectId>:bl:<planId>:c:<id>:<n>` | a baseline header (name, frozen at and by, counts, hours, SHA-256 digest, supersedes) and its chunks of at most 200 items `{ id, key, hours?, start?, end?, done? }` |
+| `cp:<projectId>:shift:<planId>:<shiftId>` | one scope-change request |
+| `cp:pd:accounts` | account ids stored as audit subjects, with the keys that name them (personal data report) |
 | `cp:<projectId>:plans` | `{ v, plans }`: the list of plans, with a version that every change checks (F-22); each plan may carry `state` (`copying` or `deleting`) and `copyFrom` |
 | `cascadeplan:cfg:approver_policy` | approver groups (site) |
 | Jira issue property `cascadeplan.links` | trigger percents of the incoming links (ADR-006) |
@@ -212,7 +216,7 @@ All planner resolvers take the project from `req.context.extension.project` (key
 | `saveColumnWidths`, `saveHiddenColumns` | Shared column settings | none beyond Browse |
 | Admin function: `approver-policy-get-api`, `approver-policy-set-api`, `approver-group-search-api` | Approver groups | Jira administrator |
 
-Not registered: `pruneStaleEntries` (replaced by the issue-deleted trigger), `saveTaskDependency`, `saveProjectMilestone`, `previewCascade`, `getProjectPlans` and the `authority-*` aliases (no caller). DEC-1 Option B (owner): the governance resolvers (`freezePlanBaseline`, `getPlanBaselines`, `getScopeCreepReport`, `requestScopeShift`, `reviewScopeShift`, `getResourceUtilizationGrid`) are kept, with approver checks, and completed as ADR-009 describes.
+Not registered: `pruneStaleEntries` (replaced by the issue-deleted trigger), `saveTaskDependency`, `saveProjectMilestone`, `previewCascade`, `getProjectPlans` and the `authority-*` aliases (no caller). DEC-1 Option B (owner): the baseline resolvers of ADR-009 are `freezePlanBaseline`, `setActiveBaseline` and `reviewScopeShift` (plan approvers); `getPlanBaselines`, `getScopeCreepReport` (a baseline against the current plan), `compareBaselines`, `exportBaseline` (any project user who can read the plan); `requestScopeShift` (any project user). `getProjectPlan` also returns the active baseline's items, so the status follows each change with no extra call.
 
 `jiraSync = { ok, error?, writes: [{ key, fields, ok, error?, changes? }] }`. Every Jira write, including those before a conflict, is listed (F-07).
 
@@ -251,6 +255,6 @@ v1 decisions D-01 and D-03 to D-10 stand. Changes and additions:
 | D-15 | Dependencies are Jira links, shared by every plan; the percent is an issue property | ADR-006 |
 | D-16 | The shared UI package builds itself during install | ADR-007 |
 | D-17 | Records are deleted only when Jira reports the issue deleted (trigger), never on a user's 404 | Fix plan BL-9 |
-| D-18 | Baseline, scope creep and shift approval | Built before submission (DEC-1 Option B, owner); design in ADR-009 |
-| D-19 | Personal data | Store none (`[ADOPTED DEC-2 A]`); baseline audit records decided in ADR-009 |
+| D-18 | Baseline, scope creep and shift approval | Built (DEC-1 Option B, owner): freeze, status, scope delta, requests and review, versions, comparison, CSV export, SHA-256 integrity check (ADR-009) |
+| D-19 | Personal data | The planner stores none (`[ADOPTED DEC-2 A]`); baseline audit records store account ids, reported weekly (ADR-009) |
 | D-20 | The parent's Jira due date follows its sub-tasks | Yes (`[ADOPTED DEC-6 A]`) |

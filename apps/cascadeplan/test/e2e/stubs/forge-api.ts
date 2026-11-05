@@ -10,3 +10,5 @@ export function route(strings: TemplateStringsArray, ...values: any[]): string {
 }
 const requestJira = (url: any, opts?: any) => (globalThis as any).__jira(String(url), opts || {});
 export default { asApp: () => ({ requestJira }), asUser: () => ({ requestJira }) };
+/** The personal data report is a weekly server job; the harness never runs it. */
+export const privacy = { reportPersonalData: async () => [] as Array<{ accountId: string; status: string }> };
