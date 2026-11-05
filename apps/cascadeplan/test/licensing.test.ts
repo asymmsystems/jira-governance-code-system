@@ -43,7 +43,7 @@ describe('licensing check (B-21)', () => {
       },
       context: {
         license: { isActive: false },
-        extension: { project: { key: 'TEST' } }
+        extension: { project: { key: 'TEST', id: 'TEST' } }
       }
     };
 
@@ -66,7 +66,7 @@ describe('licensing check (B-21)', () => {
       },
       context: {
         license: { active: false },
-        extension: { project: { key: 'TEST' } }
+        extension: { project: { key: 'TEST', id: 'TEST' } }
       }
     };
 
@@ -85,7 +85,7 @@ describe('licensing check (B-21)', () => {
       },
       context: {
         license: { isActive: false },
-        extension: { project: { key: 'TEST' } }
+        extension: { project: { key: 'TEST', id: 'TEST' } }
       }
     };
 
@@ -109,7 +109,7 @@ describe('licensing check (B-21)', () => {
       },
       context: {
         license: { isActive: true, active: true },
-        extension: { project: { key: 'TEST' } }
+        extension: { project: { key: 'TEST', id: 'TEST' } }
       }
     };
 
@@ -130,7 +130,7 @@ describe('licensing check (B-21)', () => {
         payload: { projectKey: 'TEST' }
       },
       context: {
-        extension: { project: { key: 'TEST' } }
+        extension: { project: { key: 'TEST', id: 'TEST' } }
       }
     };
 
@@ -151,7 +151,7 @@ describe('licensing check (B-21)', () => {
       },
       context: {
         license: { isActive: false },
-        extension: { project: { key: 'TEST' } }
+        extension: { project: { key: 'TEST', id: 'TEST' } }
       }
     };
 
@@ -173,7 +173,7 @@ describe('licensing check (B-21)', () => {
       },
       context: {
         license: { active: false },
-        extension: { project: { key: 'TEST' } }
+        extension: { project: { key: 'TEST', id: 'TEST' } }
       }
     };
 
@@ -197,7 +197,7 @@ describe('licensing check (B-21)', () => {
       },
       context: {
         license: { isActive: false },
-        extension: { project: { key: 'TEST' } }
+        extension: { project: { key: 'TEST', id: 'TEST' } }
       }
     };
 
@@ -220,7 +220,7 @@ describe('licensing check (B-21)', () => {
       },
       context: {
         license: { isActive: false },
-        extension: { project: { key: 'TEST' } }
+        extension: { project: { key: 'TEST', id: 'TEST' } }
       }
     };
 

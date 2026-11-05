@@ -78,7 +78,7 @@ beforeEach(async () => {
       return { status: 204, json: async () => ({}) };
     }
     if (/\/rest\/api\/3\/issue\/TEST-\d+\?fields=project/.test(url)) {
-      return { status: 200, json: async () => ({ id: url.match(/TEST-(\d+)/)![1], fields: { project: { key: 'TEST' } } }) };
+      return { status: 200, json: async () => ({ id: url.match(/TEST-(\d+)/)![1], fields: { project: { key: 'TEST', id: 'TEST' } } }) };
     }
     if (url.includes('/search/jql')) return { status: 200, json: async () => ({ issues: url.includes('Epic') ? [] : searchKeys.map(issue), isLast: true }) };
     return { status: 204, json: async () => ({}) };
@@ -177,18 +177,18 @@ describe('F-07: Jira writes before the version check that the plan does not list
 });
 
 describe('N-01: a call without a project context', () => {
-  it('GAP FX-04: getProjectPlan from a context with no project migrates legacy keys under the project KEY and deletes them; the project page then finds no record', async () => {
+  it('FX-04: a planner call from a context with no project is refused, and the legacy keys are kept', async () => {
     const w = weeks[5];
     await storage.set('scheduleMap:TEST', { 'TEST-1': { startWeek: w.weekKey, spanWeeks: 1, startDate: start, endDate: add(start, 2) } });
-    // Admin page: same function, no context.extension.project (manifest.yml:9-15).
-    await handler({ call: { functionKey: 'getProjectPlan', payload: { projectKey: 'TEST' } }, context: { extension: { type: 'jira:adminPage' } } });
-    expect(await storage.get('scheduleMap:TEST')).toBeUndefined();         // legacy key deleted
-    expect((await storage.query('cp:TEST:we:')).length).toBe(1);           // record under the project key
-    // Project page: records are keyed by the project id (extractProjectId), so the task is in the backlog.
-    const res: any = await handler({ call: { functionKey: 'getProjectPlan', payload: {} },
+    // Admin page: no context.extension.project.
+    const res: any = await handler({ call: { functionKey: 'getProjectPlan', payload: { projectKey: 'TEST' } }, context: { extension: { type: 'jira:adminPage' } } });
+    expect(res).toMatchObject({ ok: false, error: 'validation' });
+    expect(await storage.get('scheduleMap:TEST')).toBeDefined();          // legacy key kept
+    expect((await storage.query('cp:TEST:we:')).length).toBe(0);          // nothing written under the project key
+    // Project page: the migration runs under the project id, and the task is on the timeline.
+    const page: any = await handler({ call: { functionKey: 'getProjectPlan', payload: {} },
       context: { extension: { type: 'jira:projectPage', project: { key: 'TEST', id: '10001' } } } });
-    expect(res.tasks.find((t: any) => t.key === 'TEST-1')).toBeUndefined();
-    expect(res.backlogTasks.find((t: any) => t.key === 'TEST-1')).toBeDefined();
+    expect(page.tasks.find((t: any) => t.key === 'TEST-1')).toBeDefined();
   });
 });
 

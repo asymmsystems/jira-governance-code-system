@@ -107,7 +107,7 @@ beforeEach(async () => {
       return { status: 204, json: async () => ({}) };
     }
     if (/\/rest\/api\/3\/issue\/TEST-\d+\?fields=project/.test(url)) {
-      return { status: 200, json: async () => ({ id: url.match(/TEST-(\d+)/)![1], fields: { project: { key: 'TEST' } } }) };
+      return { status: 200, json: async () => ({ id: url.match(/TEST-(\d+)/)![1], fields: { project: { key: 'TEST', id: 'TEST' } } }) };
     }
     if (url.includes('/search/jql')) return { status: 200, json: async () => ({ issues: url.includes('Epic') ? [] : searchKeys.map(issue), isLast: true }) };
     if (url === '/rest/api/3/issueLink' && opts?.method === 'POST') return { status: 201, json: async () => ({}) };
@@ -398,11 +398,12 @@ describe('Security and permissions (D11)', () => {
     expect(odd.request!.status).toBe('WHATEVER');
   });
 
-  it('FINDING R-17: checkPlanApprover sends the project key as an issue key to mypermissions', async () => {
-    override = url => (url.includes('mypermissions') ? { status: 404, json: async () => ({ errorMessages: ['Issue does not exist'] }) } : undefined);
-    const ok = await isPlanApprover(storage, 'TEST');
-    expect(ok).toBe(false);
-    expect(calls('GET', /mypermissions/)[0]).toContain('issueKey=TEST&');
+  it('R-17: the approver check asks mypermissions about the project id, never with a key (F-24)', async () => {
+    override = url => (url.includes('mypermissions') ? { status: 200, json: async () => ({ permissions: { ADMINISTER_PROJECTS: { havePermission: true } } }) } : undefined);
+    expect(await isPlanApprover(storage, { projectId: '10001' })).toBe(true);
+    expect(calls('GET', /mypermissions/)[0]).toContain('projectId=10001&');
+    expect(await isPlanApprover(storage, { projectId: 'TEST' })).toBe(false);
+    expect(calls('GET', /mypermissions/).length).toBe(1);
   });
 
   it('R-18: an issue the user cannot see keeps its record; there is no prune resolver, and loading deletes nothing (BL-9)', async () => {

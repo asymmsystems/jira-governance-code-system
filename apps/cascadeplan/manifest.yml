@@ -12,7 +12,7 @@ modules:
       render: native
       resource: admin
       resolver:
-        function: resolver
+        function: admin-resolver
   trigger:
     - key: issue-deleted
       function: issue-deleted-fn
@@ -21,6 +21,8 @@ modules:
   function:
     - key: resolver
       handler: index.handler
+    - key: admin-resolver
+      handler: index.adminHandler
     - key: issue-deleted-fn
       handler: index.issueDeletedTrigger
 

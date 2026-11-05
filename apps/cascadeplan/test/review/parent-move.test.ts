@@ -61,7 +61,7 @@ beforeEach(() => {
       return { status: 204, json: async () => ({}) };
     }
     if (/\/rest\/api\/3\/issue\/TEST-\d+\?fields=project/.test(url)) {
-      return { status: 200, json: async () => ({ id: url.match(/TEST-(\d+)/)![1], fields: { project: { key: 'TEST' } } }) };
+      return { status: 200, json: async () => ({ id: url.match(/TEST-(\d+)/)![1], fields: { project: { key: 'TEST', id: 'TEST' } } }) };
     }
     if (url.includes('/search/jql')) return { status: 200, json: async () => ({ issues: url.includes('Epic') ? [] : issues.map(f => f()), isLast: true }) };
     return { status: 204, json: async () => ({}) };

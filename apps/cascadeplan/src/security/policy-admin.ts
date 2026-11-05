@@ -46,13 +46,17 @@ export async function isJiraAdmin(): Promise<boolean> {
  * Checks Tier 1 admin permissions on an issue or project for the calling user.
  * Returns true if the user holds either ADMINISTER or ADMINISTER_PROJECTS.
  */
-export async function hasTier1AdminPermission(issueIdOrKey?: string): Promise<boolean> {
+export interface PermissionScope { projectId?: string; issueId?: string }
+
+export async function hasTier1AdminPermission(scope?: PermissionScope): Promise<boolean> {
+  // A check with no project or issue would answer for the user's rights anywhere: refuse it (F-24).
+  const projectId = scope?.projectId && /^\d+$/.test(scope.projectId) ? scope.projectId : undefined;
+  const issueId = scope?.issueId && /^\d+$/.test(scope.issueId) ? scope.issueId : undefined;
+  if (!projectId && !issueId) return false;
   try {
-    const path = issueIdOrKey
-      ? /^\d+$/.test(issueIdOrKey)
-        ? route`/rest/api/3/mypermissions?issueId=${issueIdOrKey}&permissions=ADMINISTER_PROJECTS,ADMINISTER`
-        : route`/rest/api/3/mypermissions?issueKey=${issueIdOrKey}&permissions=ADMINISTER_PROJECTS,ADMINISTER`
-      : route`/rest/api/3/mypermissions?permissions=ADMINISTER_PROJECTS,ADMINISTER`;
+    const path = projectId
+      ? route`/rest/api/3/mypermissions?projectId=${projectId}&permissions=ADMINISTER_PROJECTS,ADMINISTER`
+      : route`/rest/api/3/mypermissions?issueId=${issueId as string}&permissions=ADMINISTER_PROJECTS,ADMINISTER`;
     const res = await api.asUser().requestJira(path);
     if (res.status !== 200) return false;
     const body = await res.json();
@@ -75,10 +79,12 @@ export async function hasTier1AdminPermission(issueIdOrKey?: string): Promise<bo
  */
 export async function isPlanApprover(
   storage: StorageProvider,
-  issueIdOrKey?: string
+  scope?: PermissionScope
 ): Promise<boolean> {
+  // Without a project or issue there is no scope to approve in (F-24): fail closed.
+  if (!scope || (!scope.projectId && !scope.issueId)) return false;
   // Step 1: Tier 1 check
-  const isTier1 = await hasTier1AdminPermission(issueIdOrKey);
+  const isTier1 = await hasTier1AdminPermission(scope);
   if (isTier1) return true;
 
   // Step 2: Tier 2 check against configured policy groups

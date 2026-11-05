@@ -20,6 +20,7 @@ import {
   DEFAULT_MILESTONES,
   mapJiraStatus,
   extractProjectKey,
+  adminHandler,
   extractSiteUrl,
   syncTaskToJira,
   mirrorDependencyToJira,
@@ -1190,17 +1191,14 @@ describe('CascadePlan Index & Resolver Tests', () => {
 
 
   describe('extractProjectKey', () => {
-    it('extracts projectKey from payload first', () => {
-      expect(extractProjectKey({ payload: { projectKey: 'PROJ-PAYLOAD' } })).toBe('PROJ-PAYLOAD');
+    it('takes the project only from the Forge context, never from the payload (N-01)', () => {
+      expect(extractProjectKey({ payload: { projectKey: 'OTHER' }, context: { extension: { project: { key: 'PROJ-CTX' } } } })).toBe('PROJ-CTX');
     });
 
-    it('falls back to context extension project key', () => {
-      expect(extractProjectKey({ context: { extension: { project: { key: 'PROJ-CTX' } } } })).toBe('PROJ-CTX');
-    });
-
-    it('falls back to DEMO when neither payload nor context exists', () => {
-      expect(extractProjectKey({})).toBe('DEMO');
-      expect(extractProjectKey(undefined)).toBe('DEMO');
+    it('refuses a call without a project in the context (N-01)', () => {
+      expect(() => extractProjectKey({ payload: { projectKey: 'PROJ-PAYLOAD' } })).toThrow(/project page/);
+      expect(() => extractProjectKey({})).toThrow(/project page/);
+      expect(() => extractProjectKey(undefined)).toThrow(/project page/);
     });
   });
 
@@ -1222,16 +1220,17 @@ describe('CascadePlan Index & Resolver Tests', () => {
     it('handles bridge invocations for getProjectPlan with context fallback', async () => {
       const resContext: any = await handler({
         call: { functionKey: 'getProjectPlan' },
-        context: { extension: { project: { key: 'TEST' } }, siteUrl: 'https://asymmsystems.atlassian.net' }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } }, siteUrl: 'https://asymmsystems.atlassian.net' }
       } as any);
       expect(resContext.projectKey).toBe('TEST');
       expect(resContext.siteUrl).toBe('https://asymmsystems.atlassian.net');
 
+      // A call with no project in the context is refused; there is no default project (N-01).
       const resDefault: any = await handler({
         call: { functionKey: 'getProjectPlan' },
         context: {}
       } as any);
-      expect(resDefault.projectKey).toBe('DEMO');
+      expect(resDefault).toMatchObject({ ok: false, error: 'validation' });
     });
 
     it('prioritizes trusted context projectKey over payload projectKey to prevent cross-project manipulation (F3)', async () => {
@@ -1240,7 +1239,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
           functionKey: 'getProjectPlan',
           payload: { projectKey: 'ATTACK_PROJECT' }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(res.projectKey).toBe('TEST');
     });
@@ -1251,7 +1250,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
           functionKey: 'scheduleBacklogTask',
           payload: { taskId: 'TEST-3', startWeek: '12-Aug', spanWeeks: 2 }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(res.tasks.some((t: any) => t.key === 'TEST-3')).toBe(true);
     });
@@ -1262,7 +1261,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
           functionKey: 'createInlineTask',
           payload: { summary: 'Context Task', startWeek: '05-Aug', spanWeeks: 2 }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(res.success).toBe(true);
     });
@@ -1273,7 +1272,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
           functionKey: 'createJiraEpic',
           payload: { summary: 'New Microservice Epic' }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(res.success).toBe(true);
     });
@@ -1284,7 +1283,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
           functionKey: 'updateWbsTask',
           payload: { taskId: 'TEST-1', updates: { progress: 92 } }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(res.tasks.find((t: any) => t.key === 'TEST-1')?.progress).toBe(92);
     });
@@ -1300,7 +1299,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
             bufferValue: 4
           }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(res.tasks.find((t: any) => t.key === 'TEST-1')?.effortHours).toBeGreaterThan(0);
     });
@@ -1319,7 +1318,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
             }
           }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(res.tasks.find((t: any) => t.key === 'TEST-2')?.dependency?.predecessorKey).toBe('TEST-1');
     });
@@ -1330,7 +1329,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
           functionKey: 'saveColumnWidths',
           payload: { columnWidths: DEFAULT_COLUMN_WIDTHS }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(resCol.success).toBe(true);
 
@@ -1339,7 +1338,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
           functionKey: 'saveHiddenColumns',
           payload: { hiddenColumns: ['story', 'status'] }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(resHidden.success).toBe(true);
       expect(resHidden.hiddenColumns).toEqual(['story', 'status']);
@@ -1358,7 +1357,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
             }
           }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(resMilestone.success).toBe(true);
     });
@@ -1369,66 +1368,51 @@ describe('CascadePlan Index & Resolver Tests', () => {
           functionKey: 'updateWbsTask',
           payload: { taskId: 'NON_EXISTENT', updates: { summary: 'New' } }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(res.success).toBe(false);
       expect(res.error).toBe("Task 'NON_EXISTENT' not found in project plan");
     });
 
-    it('invokes checkPlanApprover and authority-check resolvers via handler', async () => {
+    it('checkPlanApprover asks Jira about the context project id, and authority-check no longer exists (N-01, F-24)', async () => {
       mockRequestJira.mockResolvedValueOnce({
         status: 200,
         json: async () => ({ permissions: { ADMINISTER: { havePermission: true } } })
       });
-
       const resCheck: any = await handler({
-        call: {
-          functionKey: 'checkPlanApprover',
-          payload: { projectKey: 'TEST' }
-        },
-        context: { extension: { project: { key: 'TEST' } } }
+        call: { functionKey: 'checkPlanApprover', payload: { projectKey: 'OTHER' } },
+        context: { extension: { project: { key: 'TEST', id: '10001' } } }
       } as any);
-
       expect(resCheck.ok).toBe(true);
       expect(resCheck.isApprover).toBe(true);
       expect(resCheck.guidance).toBeNull();
+      expect(String(mockRequestJira.mock.calls[mockRequestJira.mock.calls.length - 1][0])).toContain('projectId=10001');
 
       mockRequestJira.mockResolvedValueOnce({
         status: 200,
         json: async () => ({ permissions: { ADMINISTER: { havePermission: false }, ADMINISTER_PROJECTS: { havePermission: false } } })
       });
-
-      const resAuth: any = await handler({
-        call: {
-          functionKey: 'authority-check',
-          payload: { projectKey: 'TEST' }
-        },
-        context: { extension: { project: { key: 'TEST' } } }
+      const resNo: any = await handler({
+        call: { functionKey: 'checkPlanApprover', payload: {} },
+        context: { extension: { project: { key: 'TEST', id: '10001' } } }
       } as any);
+      expect(resNo.isApprover).toBe(false);
+      expect(resNo.guidance).toContain('Requires Project Admin, Jira Admin, or membership in an authorized group.');
 
-      expect(resAuth.ok).toBe(true);
-      expect(resAuth.isApprover).toBe(false);
-      expect(resAuth.guidance).toContain('Requires Project Admin, Jira Admin, or membership in an authorized group.');
+      await expect(handler({ call: { functionKey: 'authority-check', payload: {} },
+        context: { extension: { project: { key: 'TEST', id: '10001' } } } } as any)).rejects.toThrow(/no definition/i);
     });
 
-    it('invokes approver-policy-get-api via handler', async () => {
+    it('the admin page function serves the approver policy, and the planner function does not (N-01)', async () => {
       mockRequestJira.mockResolvedValueOnce({
         status: 200,
         json: async () => ({ permissions: { ADMINISTER: { havePermission: true } } })
       });
-
-      const resPolicy: any = await handler({
-        call: {
-          functionKey: 'approver-policy-get-api',
-          payload: {}
-        },
-        context: { accountId: 'admin-user' }
-      } as any);
-
+      const resPolicy: any = await adminHandler({ call: { functionKey: 'approver-policy-get-api', payload: {} }, context: { accountId: 'admin-user' } } as any);
       expect(resPolicy.ok).toBe(true);
+      await expect(handler({ call: { functionKey: 'approver-policy-get-api', payload: {} }, context: {} } as any)).rejects.toThrow(/no definition/i);
+      await expect(adminHandler({ call: { functionKey: 'getProjectPlan', payload: {} }, context: {} } as any)).rejects.toThrow(/no definition/i);
     });
-
-
   });
 
   describe('Two-Way Sync and Jira Issue Links', () => {
@@ -1817,13 +1801,13 @@ describe('CascadePlan Index & Resolver Tests', () => {
     it('handler invokes unscheduleTask, reorderWbsTasks, and createSubtaskForResource resolvers', async () => {
       const resUnsched: any = await handler({
         call: { functionKey: 'unscheduleTask', payload: { taskId: 'TEST-1' } },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(resUnsched.projectKey).toBe('TEST');
 
       const resReorder: any = await handler({
         call: { functionKey: 'reorderWbsTasks', payload: { taskId: 'TEST-2', targetIndex: 0 } },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(resReorder.projectKey).toBe('TEST');
 
@@ -1849,20 +1833,20 @@ describe('CascadePlan Index & Resolver Tests', () => {
       });
       const resSubtask: any = await handler({
         call: { functionKey: 'createSubtaskForResource', payload: { parentTaskId: 'TEST-1', effortHours: 8 } },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(resSubtask.success).toBe(true);
 
       const resUpdateErr: any = await handler({
         call: { functionKey: 'updateWbsTask', payload: { taskId: 'NONEXISTENT' } },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(resUpdateErr.success).toBe(false);
 
       jest.spyOn(mockStorage, 'get').mockRejectedValueOnce('string error without message');
       const resErrNoMsg: any = await handler({
         call: { functionKey: 'updateWbsTask', payload: { taskId: 'TEST-1', updates: {} } },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(resErrNoMsg.success).toBe(false);
       expect(resErrNoMsg.error).toBe('Failed to update task');

@@ -2480,20 +2480,22 @@ export async function renameProjectPlan(
  * Helper to extract projectKey from trusted Jira Forge context first, with payload fallback.
  */
 export function extractProjectKey(req: any): string {
-  // Enforce Jira context project key first to prevent cross-project manipulation (Finding F3)
+  // The project comes only from the Forge context of a project page, never from the payload (N-01).
   const contextKey = req?.context?.extension?.project?.key;
   if (contextKey && typeof contextKey === 'string' && contextKey.trim().length > 0) {
     return contextKey.trim();
   }
-  return req?.payload?.projectKey || 'DEMO';
+  throw new ValidationError('project', 'CascadePlan works only from a Jira project page.');
 }
 
 /**
  * Project id from the trusted Forge context; records are keyed by it (B-09).
  */
-export function extractProjectId(req: any): string | undefined {
+export function extractProjectId(req: any): string {
   const id = req?.context?.extension?.project?.id;
-  return id !== undefined && id !== null && String(id).trim().length > 0 ? String(id) : undefined;
+  if (id !== undefined && id !== null && String(id).trim().length > 0) return String(id);
+  // Records are keyed by the project id; a call without it is refused, so nothing lands under a key (N-01, FX-04).
+  throw new ValidationError('project', 'CascadePlan works only from a Jira project page.');
 }
 
 export function extractSiteUrl(req: any): string | undefined {
@@ -2729,30 +2731,25 @@ resolver.define('requestScopeShift', async (req) => withResolverHandler(req, () 
 resolver.define('reviewScopeShift', async (req) => withResolverHandler(req, () => reviewScopeShift({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) }, undefined, req.context)));
 resolver.define('getResourceUtilizationGrid', async (req) => withResolverHandler(req, () => getResourceUtilizationGrid({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('approver-policy-get-api', async (req) => getApproverPolicyFlow(resolveStorage(), req.context));
-resolver.define('approver-policy-set-api', async (req) => setApproverPolicyFlow(req.payload, resolveStorage(), req.context));
-resolver.define('approver-group-search-api', async (req) => searchGroupsFlow(req.payload, req.context));
+// The admin page has its own function with only the approver-policy resolvers, so no planner
+// resolver can run without a project (N-01).
+const adminResolver = new Resolver();
+adminResolver.define('approver-policy-get-api', async (req) => getApproverPolicyFlow(resolveStorage(), req.context));
+adminResolver.define('approver-policy-set-api', async (req) => setApproverPolicyFlow(req.payload, resolveStorage(), req.context));
+adminResolver.define('approver-group-search-api', async (req) => searchGroupsFlow(req.payload, req.context));
+const adminDefinitions = adminResolver.getDefinitions();
 
-resolver.define('authority-policy-get', async (req) => getApproverPolicyFlow(resolveStorage(), req.context));
-resolver.define('authority-policy-set', async (req) => setApproverPolicyFlow(req.payload, resolveStorage(), req.context));
-resolver.define('authority-group-search', async (req) => searchGroupsFlow(req.payload, req.context));
+/** Forge function of the admin page (manifest key admin-resolver). */
+export const adminHandler = async (event: any, context?: any) => adminDefinitions(event, context);
 
-resolver.define('checkPlanApprover', async (req) => {
-  const isApprover = await isPlanApprover(resolveStorage(), req.payload?.projectKey || extractProjectKey(req));
+resolver.define('checkPlanApprover', async (req) => withResolverHandler(req, async () => {
+  const isApprover = await isPlanApprover(resolveStorage(), { projectId: extractProjectId(req) });
   return {
     ok: true,
     isApprover,
     guidance: isApprover ? null : APPROVER_REQUIRED_MESSAGE
   };
-});
-resolver.define('authority-check', async (req) => {
-  const isApprover = await isPlanApprover(resolveStorage(), req.payload?.projectKey || extractProjectKey(req));
-  return {
-    ok: true,
-    isApprover,
-    guidance: isApprover ? null : APPROVER_REQUIRED_MESSAGE
-  };
-});
+}));
 
 const definitions = resolver.getDefinitions();
 

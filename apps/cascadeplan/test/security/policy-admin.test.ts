@@ -80,26 +80,26 @@ describe('CascadePlan Policy Admin and Authorization', () => {
         status: 200,
         json: async () => ({ permissions: { ADMINISTER_PROJECTS: { havePermission: true } } })
       });
-      const result = await hasTier1AdminPermission('10001');
+      const result = await hasTier1AdminPermission({ issueId: '10001' });
       expect(result).toBe(true);
     });
 
-    it('checks permission with issueKey', async () => {
+    it('checks permission for a project by its id (F-24)', async () => {
       mockAsUserRequest.mockResolvedValueOnce({
         status: 200,
-        json: async () => ({ permissions: { ADMINISTER: { havePermission: true } } })
+        json: async () => ({ permissions: { ADMINISTER_PROJECTS: { havePermission: true } } })
       });
-      const result = await hasTier1AdminPermission('PROJ-123');
+      const result = await hasTier1AdminPermission({ projectId: '10010' });
       expect(result).toBe(true);
+      expect(String(mockAsUserRequest.mock.calls[mockAsUserRequest.mock.calls.length - 1][0])).toContain('projectId=10010');
     });
 
-    it('checks permission without issue identifier', async () => {
-      mockAsUserRequest.mockResolvedValueOnce({
-        status: 200,
-        json: async () => ({ permissions: { ADMINISTER: { havePermission: false }, ADMINISTER_PROJECTS: { havePermission: false } } })
-      });
-      const result = await hasTier1AdminPermission();
-      expect(result).toBe(false);
+    it('refuses to check with no project or issue, or with a key instead of an id (F-24)', async () => {
+      mockAsUserRequest.mockClear();
+      expect(await hasTier1AdminPermission()).toBe(false);
+      expect(await hasTier1AdminPermission({})).toBe(false);
+      expect(await hasTier1AdminPermission({ projectId: 'DEMO' })).toBe(false);
+      expect(mockAsUserRequest).not.toHaveBeenCalled();
     });
 
     it('returns false when Jira permissions missing in response', async () => {
@@ -107,24 +107,30 @@ describe('CascadePlan Policy Admin and Authorization', () => {
         status: 200,
         json: async () => ({})
       });
-      const result = await hasTier1AdminPermission('TEST-1');
+      const result = await hasTier1AdminPermission({ issueId: '10001' });
       expect(result).toBe(false);
     });
 
     it('returns false on network error', async () => {
       mockAsUserRequest.mockRejectedValueOnce(new Error('Connection reset'));
-      const result = await hasTier1AdminPermission('TEST-1');
+      const result = await hasTier1AdminPermission({ issueId: '10001' });
       expect(result).toBe(false);
     });
   });
 
   describe('isPlanApprover', () => {
+    it('is false with no project or issue scope, and asks Jira nothing (F-24)', async () => {
+      mockAsUserRequest.mockClear();
+      expect(await isPlanApprover(storage)).toBe(false);
+      expect(mockAsUserRequest).not.toHaveBeenCalled();
+    });
+
     it('returns true when caller is Tier 1 admin', async () => {
       mockAsUserRequest.mockResolvedValueOnce({
         status: 200,
         json: async () => ({ permissions: { ADMINISTER: { havePermission: true } } })
       });
-      const result = await isPlanApprover(storage, 'PROJ-1');
+      const result = await isPlanApprover(storage, { projectId: '10010' });
       expect(result).toBe(true);
     });
 
@@ -133,7 +139,7 @@ describe('CascadePlan Policy Admin and Authorization', () => {
         status: 200,
         json: async () => ({ permissions: { ADMINISTER: { havePermission: false } } })
       });
-      const result = await isPlanApprover(storage, 'PROJ-1');
+      const result = await isPlanApprover(storage, { projectId: '10010' });
       expect(result).toBe(false);
     });
 
@@ -159,7 +165,7 @@ describe('CascadePlan Policy Admin and Authorization', () => {
         setByPartyId: 'admin'
       });
 
-      const result = await isPlanApprover(storage, 'PROJ-1');
+      const result = await isPlanApprover(storage, { projectId: '10010' });
       expect(result).toBe(true);
     });
 
@@ -185,7 +191,7 @@ describe('CascadePlan Policy Admin and Authorization', () => {
         setByPartyId: 'admin'
       });
 
-      const result = await isPlanApprover(storage, 'PROJ-1');
+      const result = await isPlanApprover(storage, { projectId: '10010' });
       expect(result).toBe(true);
     });
 
@@ -211,7 +217,7 @@ describe('CascadePlan Policy Admin and Authorization', () => {
         setByPartyId: 'admin'
       });
 
-      const result = await isPlanApprover(storage, 'PROJ-1');
+      const result = await isPlanApprover(storage, { projectId: '10010' });
       expect(result).toBe(false);
     });
 
@@ -232,7 +238,7 @@ describe('CascadePlan Policy Admin and Authorization', () => {
         setByPartyId: 'admin'
       });
 
-      const result = await isPlanApprover(storage, 'PROJ-1');
+      const result = await isPlanApprover(storage, { projectId: '10010' });
       expect(result).toBe(false);
 
       // Rejection test for fail-closed catch
@@ -243,7 +249,7 @@ describe('CascadePlan Policy Admin and Authorization', () => {
         })
         .mockRejectedValueOnce(new Error('Myself network timeout'));
 
-      const resultThrown = await isPlanApprover(storage, 'PROJ-1');
+      const resultThrown = await isPlanApprover(storage, { projectId: '10010' });
       expect(resultThrown).toBe(false);
     });
   });
