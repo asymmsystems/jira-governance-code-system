@@ -1498,7 +1498,8 @@ function updateColumnManagerUI() {
   const alertBar = document.getElementById('hiddenColsAlertBar');
   const alertText = document.getElementById('hiddenColsText');
   if (alertBar && alertText) {
-    if (hiddenColumns.size > 0) {
+    // Compact (Key and Summary only) is a view the user chose with its own toggle, so it needs no warning.
+    if (hiddenColumns.size > 0 && !isCompactMode()) {
       alertBar.style.display = 'flex';
       const hiddenNames = ALL_COLUMNS.filter(c => hiddenColumns.has(c.key)).map(c => c.label).join(', ');
       alertText.textContent = `${hiddenColumns.size} column${hiddenColumns.size > 1 ? 's' : ''} hidden (${hiddenNames}). Click Unhide All to restore them.`;
