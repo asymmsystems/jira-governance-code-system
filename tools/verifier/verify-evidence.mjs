@@ -8,8 +8,10 @@
  *
  * Usage:
  *   node verify-evidence.mjs <evidence.json> [public-key.pem]   exit 0 when every check passes, 1 when one fails
+ *   node verify-evidence.mjs --evidence <evidence.json> [--public-key <public-key.pem>]   same, with named flags
  *   node verify-evidence.mjs --self-test                         checks the canonical JSON against vectors.json
- * Without a key file, the key is read from ../keys/<keyId>.pub.pem next to this script.
+ * Exit 2 means a missing argument or file.
+ * Without a key file, the key is read from keys/<keyId>.pub.pem next to this script, then from ../keys/.
  *
  * @author Fahim Farook
  */

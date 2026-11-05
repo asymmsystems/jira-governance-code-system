@@ -58,6 +58,29 @@ describe('LedgerSeal Offline Verifier', () => {
     assert.match(res.stdout, /FAIL signature/);
   });
 
+  it('accepts named --evidence and --public-key flags in either order', () => {
+    const valid = run([
+      '--public-key', join(FIXTURES, 'test-key.pub.pem'),
+      '--evidence', join(FIXTURES, 'valid-evidence.json')
+    ]);
+    assert.strictEqual(valid.status, 0);
+    assert.match(valid.stdout, /PASS signature/);
+
+    const tampered = run([
+      '--evidence', join(FIXTURES, 'tampered-snapshot.json'),
+      '--public-key', join(FIXTURES, 'test-key.pub.pem')
+    ]);
+    assert.strictEqual(tampered.status, 1);
+    assert.match(tampered.stdout, /FAIL snapshot hash/);
+
+    const wrongKey = run([
+      '--evidence', join(FIXTURES, 'valid-evidence.json'),
+      '--public-key', join(FIXTURES, 'wrong-key.pub.pem')
+    ]);
+    assert.strictEqual(wrongKey.status, 1);
+    assert.match(wrongKey.stdout, /FAIL signature/);
+  });
+
   it('fails cleanly with exit code 2 when arguments or files are missing', () => {
     const noArgs = run([]);
     assert.strictEqual(noArgs.status, 2);
