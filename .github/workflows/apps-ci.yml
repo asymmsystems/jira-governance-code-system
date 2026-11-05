@@ -75,4 +75,7 @@ jobs:
 
       - name: Forge lint
         working-directory: apps/${{ matrix.app }}
-        run: npx --yes @forge/cli@15.0.0 lint
+        run: |
+          # CI has no terminal for the CLI's first-run analytics question, so answer it first.
+          npx --yes @forge/cli@15.0.0 settings set usage-analytics false
+          npx --yes @forge/cli@15.0.0 lint
