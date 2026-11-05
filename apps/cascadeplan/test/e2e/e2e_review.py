@@ -250,8 +250,9 @@ def main():
         pg.screenshot(path=str(OUT / 'R8c-after-reload.png'))
         check('R8a the user is told the due date was not written', any('due date' in f.lower() or 'not' in f.lower() for f in f8) or any('due' in c.lower() for c in changes),
               f'flags {str(f8)[:200]} changes {str(changes)[:300]}')
-        check('R8b (D3 edge a) KVS has the new dates while Jira keeps the old due date', saved['startDate'] != before29['startDate'],
-              f'KVS {saved["startDate"]}..{saved["endDate"]}, Jira due {jira_due_before}; bar after reload: {shown[:120]}')
+        # F-19: when Jira refuses the due date, the task keeps its old dates, so the planner and Jira agree.
+        check('R8b (D3 edge a, F-19) a refused due date leaves the task on its old dates', saved['startDate'] == before29['startDate'] and saved['endDate'] == before29['endDate'],
+              f'KVS {saved["startDate"]}..{saved["endDate"]} (before {before29["startDate"]}..{before29["endDate"]}), Jira due {jira_due_before}; bar after reload: {shown[:120]}')
         b.close()
     srv.shutdown()
     check('0 no page errors', not errors, str(errors)[:300])

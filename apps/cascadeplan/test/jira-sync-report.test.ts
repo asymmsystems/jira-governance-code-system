@@ -75,15 +75,17 @@ describe('Jira sync report (B-07)', () => {
     expect(res.tasks.length).toBe(2);
   });
 
-  it('a Jira rejection is reported with the Jira error text', async () => {
+  it('a Jira rejection of the due date is reported, and nothing moves (F-19)', async () => {
     failPutFor = 'TEST-1';
     const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { endDate: weeks[6].endDate, startDate: weeks[4].startDate } });
-    expect(res.ok).toBe(true);
+    expect(res).toMatchObject({ ok: false, error: 'due_date_refused' });
+    expect(res.message).toContain('TEST-1 keeps its dates and nothing else moved');
     expect(res.jiraSync.ok).toBe(false);
     expect(res.jiraSync.error).toContain('Field duedate cannot be set');
-    // TEST-2 (a 100% successor) also moves; the report lists each write by key.
     expect(res.jiraSync.writes).toContainEqual({ key: 'TEST-1', fields: ['duedate'], ok: false, error: expect.stringContaining('duedate'),
       changes: [{ field: 'due date', from: null, to: weeks[6].endDate }] });
+    // The 100% successor TEST-2 is not moved, so nothing is written for it.
+    expect(res.jiraSync.writes.find((w: any) => w.key === 'TEST-2')).toBeUndefined();
   });
 
   it('a failed write to a cascaded successor is reported by key', async () => {

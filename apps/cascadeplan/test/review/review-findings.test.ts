@@ -331,16 +331,18 @@ describe('Jira sync honesty (D2, D8)', () => {
     expect(calls('PUT', /\/issue\/TEST-1$/)).toEqual([]);
   });
 
-  it('FINDING R-12 (D3 edge a): a due date the screen rejects leaves the bar with the new start and the OLD Jira end', async () => {
+  it('R-12 (D3 edge a, F-19): a due date the screen rejects leaves the task on its old dates in every plan', async () => {
     jiraDue['TEST-3'] = add(start, 2);
+    const before = await planEntry(storage, 'default', 'TEST-3');
     override = (url, opts) => (opts?.method === 'PUT' && /\/issue\/TEST-3$/.test(url)
       ? { status: 400, json: async () => ({ errors: { duedate: 'Field duedate cannot be set. It is not on the appropriate screen.' } }) } : undefined);
-    const v = (await planEntry(storage, 'default', 'TEST-3')).version;
-    const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-3', updates: { startDate: add(start, 1), endDate: add(start, 9) }, expectedVersion: v }, storage);
+    const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-3', updates: { startDate: add(start, 1), endDate: add(start, 9) }, expectedVersion: before.version }, storage);
+    expect(res).toMatchObject({ ok: false, error: 'due_date_refused' });
     expect(res.jiraSync.ok).toBe(false);
-    const t3 = await planTask(storage, planB, 'TEST-3');
-    expect(t3.startDate).toBe(add(start, 1));
-    expect(t3.endDate).toBe(add(start, 2)); // the user asked for start+9
+    for (const p of ['default', planB]) {
+      const e = await planEntry(storage, p, 'TEST-3');
+      expect({ startDate: e.startDate, endDate: e.endDate }).toEqual({ startDate: before.startDate, endDate: before.endDate });
+    }
   });
 
   it('R-13: createSubtaskForResource and createInlineTask write no estimate or due date the user did not enter', async () => {

@@ -1930,6 +1930,28 @@ export async function updateWbsTask(
   const saved = await applyPlannedJiraWrites(store, projectKey, targetTask, targetPut.entry as any, entries.get(targetTask.key), jiraPlan, log);
   if (!saved.ok) return saved.result;
   targetPut = { ok: true, entry: saved.entry } as any;
+
+  // The target's fields go to Jira first. Dates are shared and successors move only when Jira accepted
+  // the due date; when it did not, the target keeps its old dates and nothing else moves (F-19, C6).
+  const targetSync: any = await syncTaskToJira(targetTask.key, sanitized, log, targetTask);
+  applyAcceptedDueDate(live, targetTask.key, sanitized, targetSync);
+  if (typeof sanitized.endDate === 'string' && !(targetSync.synced && targetSync.fields.includes('duedate'))) {
+    const prev: Record<string, unknown> = (entries.get(targetTask.key) || {}) as any;
+    const { issueKey: _k, issueId: _i, version, ...cur } = targetPut.entry as any;
+    const restored: Record<string, unknown> = { ...cur };
+    for (const f of SHARED_DATE_FIELDS) {
+      if (prev[f] === undefined) delete restored[f]; else restored[f] = prev[f];
+    }
+    if (!restored.startWeek) restored.isBacklog = true; else delete restored.isBacklog;
+    const back = await store.putEntry(targetTask.key, targetTask.id, stripJiraOwnedFields(restored as Partial<WbsTask>), version);
+    const reason = (targetSync.reasons && targetSync.reasons.duedate) || targetSync.error || 'Jira did not save the due date';
+    return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId), {
+      ok: false, success: false, error: 'due_date_refused', jiraSync: log.report(),
+      message: back.ok
+        ? `${reason}, so ${targetTask.key} keeps its dates and nothing else moved.`
+        : `${reason}. Someone else changed ${targetTask.key} since; reload to see the latest plan.`
+    });
+  }
   const datesSaved: Array<{ key: string; id?: string; entry: Partial<WbsTask> }> = [];
   if (SHARED_DATE_FIELDS.some(f => (sanitized as Record<string, unknown>)[f] !== undefined)) {
     datesSaved.push({ key: targetTask.key, id: targetTask.id, entry: targetPut.entry });
@@ -1947,7 +1969,6 @@ export async function updateWbsTask(
     if (notMoved.has(s.key)) continue;
     applyAcceptedDueDate(live, s.key, s.updates, await syncTaskToJira(s.key, s.updates, log, plan.tasks.find(t => t.key === s.key)));
   }
-  applyAcceptedDueDate(live, targetTask.key, sanitized, await syncTaskToJira(targetTask.key, sanitized, log, targetTask));
 
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId),
     { ok: true, jiraSync: log.report(), cascadeRemaining });
