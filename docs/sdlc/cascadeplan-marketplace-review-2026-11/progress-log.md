@@ -23,3 +23,9 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 
 - **What changed:** `legacy-planner.js` calls `addDaysIso` (the imported `addDays`) in the date editor, imports `showErrorBanner` from `banner.ts`, and no longer calls the missing `populateEpicDropdowns` (the epic picker and the create form rebuild their lists from `currentPlan.availableEpics` when they open). New test `test/frontend-names.test.ts`.
 - **Proof:** TypeScript (`checkJs`) found exactly these 6 call sites as TS2304 and no other undefined name. The new test fails on the old file with those 6 lines and passes on the fix. Full suite 770 passed, coverage thresholds met; bundle rebuilt.
+
+### F-03 (parts 1 and 2). The plan after a write shows the dates Jira accepted
+
+- **What changed:** new `applyAcceptedDueDate` in `src/index.ts`. After each due-date write that Jira accepted, it replaces that issue's due date in the call's own Jira data (a new list; the issue objects are not changed). Called for the target and every cascaded successor in `updateWbsTask`, and for each successor in `continueCascade`. `batchUpdateTasks` passes the same data to every item, so later items see the earlier items' due dates (FX-01).
+- **Proof:** R-30, R-31 and FX-01 failed on the fix (they asserted the defect) and were rewritten to assert the written dates; full suite 770 passed, coverage thresholds met. Harness `e2e_review.py`: R1c now passes (60.7 px before and after the response); `e2e.py` 30/30.
+- **Remaining for F-03:** part 3, `reconcileIssues` on the Jira searches that follow a write in a later call (the search is eventually consistent). Harness R2a to R2c (Undo and Redo after a drag) still fail; that is F-04.

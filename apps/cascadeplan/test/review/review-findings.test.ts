@@ -522,8 +522,8 @@ describe('Data model (D7, section 4.1)', () => {
   });
 });
 
-describe('Shorter bar right after a drag (owner observation 2026-11-05)', () => {
-  it('FINDING R-30: the plan returned by updateWbsTask ends the moved bar on the OLD Jira due date', async () => {
+describe('F-03: the plan returned after a write shows the written dates (owner observation 2026-11-05)', () => {
+  it('R-30: the plan returned by updateWbsTask ends the moved bar on the NEW Jira due date', async () => {
     // Jira already holds the due date of the current bar (as after any earlier move).
     const before = await planEntry(storage, 'default', 'TEST-1');
     jiraDue['TEST-1'] = before.endDate;
@@ -532,26 +532,24 @@ describe('Shorter bar right after a drag (owner observation 2026-11-05)', () => 
     expect(jiraDue['TEST-1']).toBe(add(before.endDate, 7));           // Jira has the new due date
     expect((await planEntry(storage, 'default', 'TEST-1')).endDate).toBe(add(before.endDate, 7)); // KVS too
     const returned = res.tasks.find((t: any) => t.key === 'TEST-1');
-    // The 3-day bar moved 7 days: the new start is after the old Jira end, so the start is pulled back
-    // to the old end too. The screen gets a one-day bar on the old end date.
-    expect(returned.startDate).toBe(before.endDate);
-    expect(returned.endDate).toBe(before.endDate);
-    // A fresh load (reload) is correct.
+    // The 3-day bar moved 7 days keeps its length in the response.
+    expect(returned).toMatchObject({ startDate: add(before.startDate, 7), endDate: add(before.endDate, 7) });
+    // A fresh load (reload) shows the same.
     expect(await planTask(storage, undefined, 'TEST-1')).toMatchObject({ startDate: add(before.startDate, 7), endDate: add(before.endDate, 7) });
 
-    // A 1-day move of a 3-day bar: new start, old end, so the bar is drawn 1 day shorter.
+    // A 1-day move of a 3-day bar keeps its length.
     const v2 = (await planEntry(storage, 'default', 'TEST-2'));
     jiraDue['TEST-2'] = v2.endDate;
     const r2: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2', expectedVersion: v2.version,
       updates: { startDate: add(v2.startDate, 1), endDate: add(v2.endDate, 1) } }, storage);
-    expect(r2.tasks.find((t: any) => t.key === 'TEST-2')).toMatchObject({ startDate: add(v2.startDate, 1), endDate: v2.endDate });
+    expect(r2.tasks.find((t: any) => t.key === 'TEST-2')).toMatchObject({ startDate: add(v2.startDate, 1), endDate: add(v2.endDate, 1) });
   });
 
-  it('FINDING R-31: same stale read in batchUpdateTasks and continueCascade', async () => {
+  it('R-31: batchUpdateTasks and continueCascade also return the written dates', async () => {
     const e1 = await planEntry(storage, 'default', 'TEST-1');
     jiraDue['TEST-1'] = e1.endDate;
     const res: any = await batchUpdateTasks({ projectKey: 'TEST', items: [{ taskId: 'TEST-1', updates: { startDate: add(e1.startDate, 7), endDate: add(e1.endDate, 7) } }] }, storage);
-    expect(res.tasks.find((t: any) => t.key === 'TEST-1').endDate).toBe(e1.endDate);
+    expect(res.tasks.find((t: any) => t.key === 'TEST-1').endDate).toBe(add(e1.endDate, 7));
 
     const store = new PlanStore(storage, 'TEST', 'TEST');
     const e5 = (await store.loadEntries()).get('TEST-5')!;
@@ -562,9 +560,9 @@ describe('Shorter bar right after a drag (owner observation 2026-11-05)', () => 
     const c: any = await continueCascade({ projectKey: 'TEST', taskId: 'TEST-5' }, storage);
     expect(await planEntry(storage, 'default', 'TEST-6')).toMatchObject({ startDate: add(start, 9), endDate: add(start, 10) });
     const t6 = c.tasks.find((t: any) => t.key === 'TEST-6');
-    // The new start is after the old Jira end, so the returned bar collapses to one day on the old end.
-    expect(t6.startDate).toBe(oldEnd6);
-    expect(t6.endDate).toBe(oldEnd6);
+    // The cascaded successor is returned with its new dates, not collapsed onto its old Jira end.
+    expect(t6).toMatchObject({ startDate: add(start, 9), endDate: add(start, 10) });
+    expect(oldEnd6).not.toBe(t6.endDate);
     expect((await planTask(storage, undefined, 'TEST-6')).startDate).toBe(add(start, 9));
   });
 });

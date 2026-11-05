@@ -1517,6 +1517,21 @@ export async function removeMirroredLink(linkId: string): Promise<boolean> {
 }
 
 /**
+ * Records a due date that Jira accepted in the Jira data this call already holds, so the plan built
+ * afterwards (the response, or the next item of a batch) shows the written end, not the end read
+ * before the write (F-03). A due date Jira refused is left as Jira holds it.
+ */
+export function applyAcceptedDueDate(
+  live: LiveData, issueKey: string, updates: Partial<WbsTask>, result: { synced: boolean; fields: string[] }
+): void {
+  if (!result.synced || !result.fields.includes('duedate') || typeof updates.endDate !== 'string') return;
+  const due = updates.endDate.slice(0, 10);
+  // A new list on this call's own data: the issue objects themselves are never changed.
+  live.raw = { ...live.raw, issues: (live.raw.issues || []).map((i: any) =>
+    (i && i.key === issueKey ? { ...i, fields: { ...(i.fields || {}), duedate: due } } : i)) };
+}
+
+/**
  * Updates a task schedule, dates, effort, progress, or resource.
  */
 export async function updateWbsTask(
@@ -1822,9 +1837,10 @@ export async function updateWbsTask(
   // the due date included, goes to Jira from whichever plan the change was made in.
   await shareDatesAndLog(storage, projectKey, projectId, planId, datesSaved, log);
   for (const s of pendingSyncs) {
-    if (!notMoved.has(s.key)) await syncTaskToJira(s.key, s.updates, log, plan.tasks.find(t => t.key === s.key));
+    if (notMoved.has(s.key)) continue;
+    applyAcceptedDueDate(live, s.key, s.updates, await syncTaskToJira(s.key, s.updates, log, plan.tasks.find(t => t.key === s.key)));
   }
-  await syncTaskToJira(targetTask.key, sanitized, log, targetTask);
+  applyAcceptedDueDate(live, targetTask.key, sanitized, await syncTaskToJira(targetTask.key, sanitized, log, targetTask));
 
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId),
     { ok: true, jiraSync: log.report(), cascadeRemaining });
@@ -1928,7 +1944,7 @@ export async function continueCascade(
       ...gridFor(plan.weeks, c.toStart, c.toEnd) }), cur ? cur.version : 0);
     if (!put.ok) { log.record(c.key, ['plan'], { synced: false, error: 'changed by someone else; not moved' }); continue; }
     await shareDatesAndLog(storage, projectKey, projectId, planId, [{ key: c.key, id: task?.id, entry: put.entry }], log);
-    await syncTaskToJira(c.key, { endDate: c.toEnd }, log, task);
+    applyAcceptedDueDate(live, c.key, { endDate: c.toEnd }, await syncTaskToJira(c.key, { endDate: c.toEnd }, log, task));
   }
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId),
     { ok: true, jiraSync: log.report(), cascadeRemaining: changes.slice(CASCADE_BATCH_LIMIT).map(c => c.key) });

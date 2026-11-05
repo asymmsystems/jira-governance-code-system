@@ -98,8 +98,8 @@ async function seedChain(): Promise<void> {
   mockRequestJira.mockClear();
 }
 
-describe('F-03: the stale Jira read is also an INPUT inside batchUpdateTasks, not only the response', () => {
-  it('GAP FX-01: a multi-select move of A and B writes a wrong due date for C (A -> B -> C), so patching only the response is not enough', async () => {
+describe('F-03: each batch item sees the due dates the earlier items wrote', () => {
+  it('FX-01: a multi-select move of A and B keeps C at its length (A -> B -> C)', async () => {
     await seedChain();
     const a = await entry('TEST-1');
     const b = await entry('TEST-2');
@@ -109,16 +109,13 @@ describe('F-03: the stale Jira read is also an INPUT inside batchUpdateTasks, no
       { taskId: 'TEST-2', updates: { startDate: add(start, 10), endDate: add(start, 12) }, expectedVersion: b.version }
     ] }, storage);
 
-    // Correct result: C keeps its 4-day length and starts after B: start+13 .. start+16.
-    // Actual: item 2 builds its plan from the Jira read taken before item 1 wrote C's due date, so C is
-    // seen as a one-day bar on its OLD due date, and item 2's cascade stores and writes that length.
+    // C keeps its 4-day length and starts after B: start+13 .. start+16, in KVS, in Jira and on reload,
+    // the same as with two separate calls (CONTROL FX-01b).
     const c = await entry('TEST-3');
-    expect(c.startDate).toBe(add(start, 13));
-    expect(c.endDate).toBe(add(start, 13));          // should be start+16
-    expect(jiraDue['TEST-3']).toBe(add(start, 13));  // a due date the user never chose (BL-3 class)
-    // A fresh load does not repair it: the wrong length is now stored.
+    expect(c).toMatchObject({ startDate: add(start, 13), endDate: add(start, 16) });
+    expect(jiraDue['TEST-3']).toBe(add(start, 16));
     const reloaded = (await getProjectPlan('TEST', storage)).tasks.find(t => t.key === 'TEST-3')!;
-    expect(reloaded.endDate).toBe(add(start, 13));
+    expect(reloaded).toMatchObject({ startDate: add(start, 13), endDate: add(start, 16) });
   });
 
   it('CONTROL FX-01b: the same two moves as two separate updateWbsTask calls (fresh Jira read each) keep C at 4 days', async () => {
