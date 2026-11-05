@@ -905,7 +905,7 @@ export async function getProjectPlan(
   const backlogTasks = liveData.backlogTasks;
 
   // An entry Jira did not return is not shown. When the Jira read worked and was complete it is listed, so the
-  // client can ask pruneStaleEntries to delete it once Jira confirms the issue is gone (B-18).
+  // client can say that some planned issues are not visible. Records are deleted only by the issue-deleted trigger (BL-9).
   const liveKeys = new Set([...tasks, ...backlogTasks].map(t => t.key));
   const staleEntries = !liveData.isLive || liveData.truncated ? [] : [...entries.keys()].filter(k => !liveKeys.has(k)).sort();
 
@@ -1888,29 +1888,53 @@ export async function updateWbsTask(
 }
 
 /**
- * Deletes the stored planning record of each listed issue that Jira confirms no longer exists (404).
- * An issue Jira still has, or cannot confirm, keeps its record. Writes nothing to Jira (B-18).
+ * Deletes every CascadePlan record of one issue, in the Main Plan and in every scenario plan (BL-9).
+ * Called only for Jira's issue-deleted event. Records are matched by the issue id and by the issue
+ * key, because older records can be stored under the key (FX-05). Both the project id and the
+ * project key prefixes are checked. Running it twice for the same issue changes nothing.
  */
-export async function pruneStaleEntries(
-  payload: { projectKey: string; projectId?: string; planId?: string; keys: string[] },
-  storageProvider?: StorageProvider
-): Promise<{ ok: boolean; success: boolean; pruned: string[]; jiraSync: JiraSyncReport }> {
-  const { projectKey, projectId, keys } = payload;
-  if (!Array.isArray(keys) || keys.length > 200) throw new ValidationError('keys', 'keys must be a list of at most 200 issue keys');
-  keys.forEach(k => assertIssueKey(k, 'keys'));
-  const storage = resolveStorage(storageProvider);
-  const store = openStore(storage, projectKey, projectId, await writablePlanId(storage, projectKey, projectId, payload.planId));
-  const entries = await store.loadEntries();
-  const pruned: string[] = [];
-  for (const key of keys) {
-    if (!entries.has(key)) continue;
-    const res = await getJiraCaller().requestJira(route`/rest/api/3/issue/${key}?fields=project`);
-    if (res && res.status === 404) {
-      await store.deleteEntry(key);
-      pruned.push(key);
+export async function deleteIssueRecords(
+  storage: StorageProvider,
+  target: { projectKey?: string; projectId?: string; issueKey?: string; issueId?: string }
+): Promise<{ deleted: string[] }> {
+  const deleted: string[] = [];
+  const projectKey = target.projectKey;
+  const scopes = new Set<string>([target.projectId, projectKey].filter((s): s is string => !!s));
+  for (const scope of scopes) {
+    const main = new PlanStore(storage, scope, projectKey || scope);
+    const planIds: Array<string | undefined> = [undefined, ...(await main.listPlans()).map(p => p.id).filter(id => id && id !== 'default')];
+    for (const planId of planIds) {
+      const store = new PlanStore(storage, scope, projectKey || scope, planId);
+      for (const [key, entry] of await store.loadEntries()) {
+        const matches = (target.issueKey && key === target.issueKey)
+          || (target.issueId && (entry.issueId === target.issueId || key === target.issueId));
+        if (!matches) continue;
+        await store.deleteEntry(key);
+        deleted.push(`${scope}:${planId || 'default'}:${key}`);
+      }
     }
   }
-  return { ok: true, success: true, pruned, jiraSync: noJiraWrites() };
+  return { deleted };
+}
+
+/**
+ * Forge trigger for avi:jira:deleted:issue (BL-9). Runs as the app; it never calls Jira, so no
+ * user's permissions can cause a delete. Logs one line per run, without names or summaries.
+ */
+export async function issueDeleted(event: any, storageProvider?: StorageProvider): Promise<{ deleted: string[] }> {
+  const issue = event?.issue || {};
+  const target = {
+    issueId: issue.id !== undefined ? String(issue.id) : undefined,
+    issueKey: typeof issue.key === 'string' ? issue.key : undefined,
+    projectId: issue.fields?.project?.id !== undefined ? String(issue.fields.project.id) : undefined,
+    projectKey: typeof issue.fields?.project?.key === 'string' ? issue.fields.project.key
+      : (typeof issue.key === 'string' ? issue.key.replace(/-\d+$/, '') : undefined)
+  };
+  if (!target.issueId && !target.issueKey) return { deleted: [] };
+  const res = await deleteIssueRecords(resolveStorage(storageProvider), target);
+  // eslint-disable-next-line no-console
+  console.log(`issue-deleted ${target.issueKey || target.issueId} (project id ${target.projectId ? 'present' : 'missing'}): ${res.deleted.length} record(s) deleted`);
+  return res;
 }
 
 /**
@@ -2647,7 +2671,6 @@ resolver.define('createProjectPlan', async (req) => withResolverHandler(req, () 
 resolver.define('deleteProjectPlan', async (req) => withResolverHandler(req, () => deleteProjectPlan({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 resolver.define('renameProjectPlan', async (req) => withResolverHandler(req, () => renameProjectPlan({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
-resolver.define('pruneStaleEntries', async (req) => withResolverHandler(req, () => pruneStaleEntries({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 resolver.define('batchUpdateTasks', async (req) => withResolverHandler(req, () => batchUpdateTasks({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 resolver.define('scheduleBacklogTask', async (req) => withResolverHandler(req, () => scheduleBacklogTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
 
@@ -2722,6 +2745,9 @@ resolver.define('authority-check', async (req) => {
 const definitions = resolver.getDefinitions();
 
 
+
+/** Forge function for the issue-deleted trigger (manifest key issue-deleted). */
+export const issueDeletedTrigger = async (event: any) => issueDeleted(event);
 
 export const handler = async (event: any, context?: any) => {
   const backendContext = context || (event?.context?.license ? { license: event.context.license } : undefined);

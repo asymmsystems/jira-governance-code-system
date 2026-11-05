@@ -17,7 +17,8 @@ import {
   setGlobalStorageProvider,
   setSleepForTests,
   getTimelineWeeks,
-  handler
+  handler,
+  issueDeleted
 } from '../../src/index';
 import { PlanStore } from '../../src/storage/plan-store';
 import { MemStorage } from '../helpers/mem-storage';
@@ -191,8 +192,8 @@ describe('N-01: a call without a project context', () => {
   });
 });
 
-describe('BL-9: record keys a deleted-issue trigger must find', () => {
-  it('GAP FX-05: a legacy entry whose issue the migrating user cannot see is stored under the issue KEY, not the issue id', async () => {
+describe('BL-9: the issue-deleted trigger finds records in both key forms', () => {
+  it('FX-05: a legacy entry stored under the issue KEY is deleted by the issue-deleted event', async () => {
     const w = weeks[5];
     searchKeys = [1];
     await storage.set('scheduleMap:TEST', {
@@ -202,8 +203,11 @@ describe('BL-9: record keys a deleted-issue trigger must find', () => {
     await getProjectPlan('TEST', storage);
     const keys = (await storage.query('cp:TEST:we:')).map(r => r.key).sort();
     expect(keys).toEqual(['cp:TEST:we:1', 'cp:TEST:we:TEST-9']);
-    // The record also holds issueId = 'TEST-9' (plan-store.ts:120), so a handler that matches on the
-    // numeric issue id from the event payload does not find it.
+    // The record holds issueId = 'TEST-9' (plan-store.ts:120); the event carries the numeric id and the key.
     expect(((await storage.get('cp:TEST:we:TEST-9')) as any).issueId).toBe('TEST-9');
+    const res = await issueDeleted({ issue: { id: '9', key: 'TEST-9', fields: { project: { id: 'TEST', key: 'TEST' } } } }, storage);
+    expect(res.deleted.length).toBe(1);
+    expect(await storage.get('cp:TEST:we:TEST-9')).toBeUndefined();
+    expect(await storage.get('cp:TEST:we:1')).toBeDefined();
   });
 });

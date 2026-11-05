@@ -13,9 +13,16 @@ modules:
       resource: admin
       resolver:
         function: resolver
+  trigger:
+    - key: issue-deleted
+      function: issue-deleted-fn
+      events:
+        - avi:jira:deleted:issue
   function:
     - key: resolver
       handler: index.handler
+    - key: issue-deleted-fn
+      handler: index.issueDeletedTrigger
 
 resources:
   - key: main

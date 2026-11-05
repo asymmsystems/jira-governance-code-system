@@ -1670,10 +1670,8 @@ async function loadProjectPlan() {
     updateColumnManagerUI();
     renderPlan();
     settleUndo();
-    // Entries Jira did not return: the resolver deletes those Jira confirms are gone (B-18).
-    if (Array.isArray(plan.staleEntries) && plan.staleEntries.length) {
-      rawCallResolver('pruneStaleEntries', { planId: activePlanId, keys: plan.staleEntries.slice(0, 200) });
-    }
+    // Opening the planner writes and deletes nothing. Records of deleted issues are removed by the
+    // issue-deleted trigger on the server (BL-9).
   } else {
     if (errBanner) {
       errBanner.style.display = 'flex';

@@ -9325,9 +9325,6 @@ Please see https://iframe-resizer.com/upgrade for more details.
       updateColumnManagerUI();
       renderPlan();
       settleUndo();
-      if (Array.isArray(plan.staleEntries) && plan.staleEntries.length) {
-        callResolver("pruneStaleEntries", { planId: activePlanId, keys: plan.staleEntries.slice(0, 200) });
-      }
     } else {
       if (errBanner) {
         errBanner.style.display = "flex";

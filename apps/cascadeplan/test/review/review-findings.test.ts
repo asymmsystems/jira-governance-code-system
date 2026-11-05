@@ -21,7 +21,8 @@ import {
   createSubtaskForResource,
   addSubtaskToTask,
   reorderWbsTasks,
-  pruneStaleEntries,
+  issueDeleted,
+  handler,
   createProjectPlan,
   deleteProjectPlan,
   freezePlanBaseline,
@@ -404,14 +405,17 @@ describe('Security and permissions (D11)', () => {
     expect(calls('GET', /mypermissions/)[0]).toContain('issueKey=TEST&');
   });
 
-  it('FINDING R-18 (plausible on Jira): a user whose search cannot see an issue causes its record to be pruned on a 404', async () => {
+  it('R-18: an issue the user cannot see keeps its record; there is no prune resolver, and loading deletes nothing (BL-9)', async () => {
     // Jira returns 404 both for a deleted issue and for an issue the caller has no permission to see.
     searchKeys = [1, 2, 3, 4, 6, 8];
     const plan = await getProjectPlan('TEST', storage);
     expect(plan.staleEntries).toContain('TEST-5');
-    override = url => (/\/issue\/TEST-5\?fields=project/.test(url) ? { status: 404, json: async () => ({ errorMessages: ['Issue does not exist or you do not have permission to see it.'] }) } : undefined);
-    const res = await pruneStaleEntries({ projectKey: 'TEST', keys: ['TEST-5'] }, storage);
-    expect(res.pruned).toEqual(['TEST-5']);
+    await expect(handler({ call: { functionKey: 'pruneStaleEntries', payload: { keys: ['TEST-5'] } },
+      context: { extension: { project: { key: 'TEST', id: 'TEST' } } } })).rejects.toThrow(/no definition/i);
+    await getProjectPlan('TEST', storage);
+    expect(await planEntry(storage, 'default', 'TEST-5')).toBeDefined();
+    // Only Jira's issue-deleted event removes it.
+    await issueDeleted({ issue: { id: '5', key: 'TEST-5', fields: { project: { id: 'TEST', key: 'TEST' } } } }, storage);
     expect(await planEntry(storage, 'default', 'TEST-5')).toBeUndefined();
   });
 

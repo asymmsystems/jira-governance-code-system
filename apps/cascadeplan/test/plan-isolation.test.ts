@@ -25,7 +25,7 @@ import {
   saveHiddenColumns,
   saveProjectMilestone,
   saveTaskDependency,
-  pruneStaleEntries,
+  issueDeleted,
   createProjectPlan,
   deleteProjectPlan,
   mapLiveIssues,
@@ -331,13 +331,12 @@ describe('named plans: one truth for each task (UX-05)', () => {
     expect(mainPlanSnapshot(storage)).toBe(main);
   });
 
-  it('pruneStaleEntries deletes the stale record of the plan that listed it', async () => {
-    const store = new PlanStore(storage, 'TEST', 'TEST', planB);
-    await store.putEntry('TEST-99', '99', { startWeek: weeks[5].weekKey });
-    mockRequestJira.mockImplementationOnce(async () => ({ status: 404, json: async () => ({}) }));
-    const res = await pruneStaleEntries({ projectKey: 'TEST', planId: planB, keys: ['TEST-99'] }, storage);
-    expect(res.pruned).toEqual(['TEST-99']);
+  it('the issue-deleted event deletes the record of that issue in every plan', async () => {
+    for (const p of [planB, undefined]) await new PlanStore(storage, 'TEST', 'TEST', p).putEntry('TEST-99', '99', { startWeek: weeks[5].weekKey });
+    const res = await issueDeleted({ issue: { id: '99', key: 'TEST-99', fields: { project: { id: 'TEST', key: 'TEST' } } } }, storage);
+    expect(res.deleted.length).toBe(2);
     expect(await planEntry(storage, planB, 'TEST-99')).toBeUndefined();
+    expect(await planEntry(storage, 'default', 'TEST-99')).toBeUndefined();
   });
 
   it('a read of a deleted or unknown plan returns the Main Plan', async () => {

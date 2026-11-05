@@ -128,7 +128,7 @@ modules:
         function: admin-resolver    # approver-policy resolvers only (N-01)
   trigger:
     - key: issue-deleted
-      function: issue-deleted
+      function: issue-deleted-fn
       events:
         - avi:jira:deleted:issue    # deletes the issue's records in every plan (BL-9)
   function:
@@ -136,8 +136,8 @@ modules:
       handler: index.handler
     - key: admin-resolver
       handler: index.adminHandler
-    - key: issue-deleted
-      handler: index.issueDeleted
+    - key: issue-deleted-fn         # module keys are unique across all modules
+      handler: index.issueDeletedTrigger
 resources:
   - key: main
     path: static/frontend/build
