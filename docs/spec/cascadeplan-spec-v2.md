@@ -208,7 +208,7 @@ All planner resolvers take the project from `req.context.extension.project` (key
 | `createInlineTask`, `createJiraEpic` | Create an issue (plan check first) | Jira's own create check |
 | `addSubtaskToTask`, `createSubtaskForResource` | Create a real Jira sub-task | `EDIT_ISSUES` on the parent |
 | `changeParent` | Hierarchy change through the edit endpoint (ADR-005) | `EDIT_ISSUES` |
-| `convertIssueType`, `getConversionStatus` | Type change through bulk move, and its progress (ADR-005) | "Make bulk changes", `MOVE_ISSUES`, `CREATE_ISSUES` |
+| `convertIssueType`, `checkConversion` | Type change through bulk move, and its progress (ADR-005) | "Make bulk changes", `MOVE_ISSUES`, `CREATE_ISSUES` |
 | `saveColumnWidths`, `saveHiddenColumns` | Shared column settings | none beyond Browse |
 | Admin function: `approver-policy-get-api`, `approver-policy-set-api`, `approver-group-search-api` | Approver groups | Jira administrator |
 

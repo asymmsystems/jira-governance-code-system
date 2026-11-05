@@ -8154,6 +8154,100 @@ Please see https://iframe-resizer.com/upgrade for more details.
     planOnlyNoted.add(scope);
     showFlag({ text: `${found.length} link${found.length === 1 ? "" : "s"} exist only in this plan, not in Jira (${found.slice(0, 5).join(", ")}${found.length > 5 ? ", ..." : ""}). They still schedule. Open a link marked "not in Jira" to create it in Jira or remove it.` });
   }
+  function levelOf(t) {
+    return t.isEpic ? 1 : t.isSubtask ? -1 : t.hierarchyLevel ?? 0;
+  }
+  function hierarchyActionFor(dragged, target) {
+    if (!dragged || !target || dragged.key === target.key) return null;
+    const all = (currentPlan.tasks || []).concat(currentPlan.backlogTasks || []);
+    const byKey = new Map(all.map((t) => [t.key, t]));
+    for (let k = target.parentKey; k; k = byKey.get(k)?.parentKey) if (k === dragged.key) return { refuse: `${target.key} is below ${dragged.key}.` };
+    const dl = levelOf(dragged), tl = levelOf(target);
+    if (dl >= 1) return { refuse: `${dragged.key} is an epic. An epic cannot move under another work item.` };
+    if (tl === -1) return { refuse: `${target.key} is a sub-task. A sub-task cannot have children in Jira.` };
+    if (dragged.parentKey === target.key) return { refuse: `${dragged.key} is already under ${target.key}.` };
+    if (dl === -1 && tl === 0) return { kind: "parent", parentKey: target.key, label: `Move under ${target.key}` };
+    if (dl === -1) return { refuse: `${dragged.key} is a sub-task: its parent must be a task or story.` };
+    if (tl >= 1) return { kind: "parent", parentKey: target.key, label: `Move under epic ${target.key}` };
+    if (all.some((t) => t.parentKey === dragged.key)) return { refuse: `${dragged.key} has sub-tasks, so Jira cannot make it a sub-task.` };
+    return { kind: "subtask", parentKey: target.key, label: `Make ${dragged.key} a sub-task of ${target.key}` };
+  }
+  function requestHierarchyChange(key, action, undoOf) {
+    if (!action || action.refuse) {
+      if (action) showFlag({ text: action.refuse, error: true });
+      return;
+    }
+    const question = action.kind === "parent" ? `Move ${key} under ${action.parentKey || "no parent"}? This changes the parent in Jira, so every plan shows it.` : action.kind === "subtask" ? `Make ${key} a sub-task of ${action.parentKey}? Jira changes its work type. If the types use different workflows, Jira may change its status.` : `Make ${key} a task? Jira changes its work type. If the types use different workflows, Jira may change its status.`;
+    const run = async () => {
+      const before = findAnyTask(key);
+      const oldParent = before ? before.parentKey || null : null;
+      const wasSub = before ? levelOf(before) === -1 : false;
+      let res;
+      if (action.kind === "parent") {
+        res = await callResolver2("changeParent", { taskId: key, newParentKey: action.parentKey || null });
+      } else {
+        const started = await callResolver2("convertIssueType", action.kind === "subtask" ? { taskId: key, toSubtaskOf: action.parentKey } : { taskId: key, toTypeName: "Task" });
+        if (!started || started.ok !== true || !started.jobId) return;
+        res = null;
+        for (let i = 0; i < 60; i++) {
+          await new Promise((r) => setTimeout(r, i === 0 ? 800 : 1500));
+          const c = await callResolver2("checkConversion", { jobId: started.jobId, taskId: key, oldParentKey: started.oldParentKey, newParentKey: started.newParentKey });
+          if (!c || c.done || c.ok === false) {
+            res = c;
+            break;
+          }
+          showFlag({ text: `Jira is converting ${key}: ${c.progress || 0}%.` });
+        }
+        if (!res) {
+          showFlag({ text: `Jira has not finished converting ${key}. Reload in a minute to see it.`, error: true });
+          return;
+        }
+      }
+      if (res && Array.isArray(res.tasks)) applyPlanInPlace(res);
+      else await loadProjectPlan();
+      if (res && res.ok !== false && !undoOf) {
+        const back = action.kind === "parent" ? { kind: "parent", parentKey: oldParent } : action.kind === "subtask" ? { kind: "task" } : wasSub && oldParent ? { kind: "subtask", parentKey: oldParent } : null;
+        showFlag({ text: `${action.label || "Changed"}: done in Jira.`, ...back ? { action: { label: "Undo", run: () => requestHierarchyChange(key, back, true) } } : {} });
+      }
+    };
+    if (undoOf) {
+      run();
+      return;
+    }
+    showFlag({ text: question, action: { label: action.kind === "parent" ? "Move" : "Convert", run } });
+  }
+  function renderParentControl(task) {
+    const sel = document.getElementById("parentSelect");
+    const btn = document.getElementById("btnApplyParent");
+    if (!sel || !btn) return;
+    const all = (currentPlan.tasks || []).concat(currentPlan.backlogTasks || []);
+    const lvl = levelOf(task);
+    const opts = [];
+    if (lvl === -1) {
+      opts.push({ value: "task:", text: "No parent: make it a task" });
+      for (const t of all) if (levelOf(t) === 0 && t.key !== task.parentKey) opts.push({ value: `parent:${t.key}`, text: `Under ${t.key}: ${t.summary}` });
+    } else if (lvl === 0) {
+      if (task.parentKey) opts.push({ value: "parent:", text: "No epic" });
+      for (const t of all) {
+        if (t.key === task.key || t.key === task.parentKey) continue;
+        const a = hierarchyActionFor(task, t);
+        if (a && !a.refuse) opts.push({ value: `${a.kind}:${t.key}`, text: a.kind === "parent" ? `Under epic ${t.key}: ${t.summary}` : `Sub-task of ${t.key}: ${t.summary}` });
+      }
+    }
+    sel.replaceChildren(...[{ value: "", text: task.parentKey ? `Now: under ${task.parentKey}` : "Now: no parent" }, ...opts].map((o) => {
+      const el2 = document.createElement("option");
+      el2.value = o.value;
+      el2.textContent = o.text;
+      return el2;
+    }));
+    sel.disabled = btn.disabled = lvl >= 1 || opts.length === 0;
+    btn.onclick = () => {
+      const [kind, parentKey] = String(sel.value).split(":");
+      if (!kind) return;
+      const label2 = kind === "task" ? `Make ${task.key} a task` : kind === "subtask" ? `Make ${task.key} a sub-task of ${parentKey}` : `Move under ${parentKey || "no parent"}`;
+      requestHierarchyChange(task.key, { kind, parentKey: parentKey || null, label: label2 });
+    };
+  }
   function isBlockParent(task) {
     return !!task && task.datesFromChildren === true && !task.isEpic && (task.hierarchyLevel ?? 0) === 0;
   }
@@ -11548,9 +11642,10 @@ Click to manage or assign.`;
       let grabOffsetY = ROW_H / 2;
       let hoveredTr = null;
       let dropTargetIndex = null;
+      let hierarchyDrop = null;
       function clearHoveredIndicator() {
         if (hoveredTr) {
-          hoveredTr.classList.remove("drop-insert-top", "drop-insert-bottom");
+          hoveredTr.classList.remove("drop-insert-top", "drop-insert-bottom", "drop-into", "drop-into-refused");
           hoveredTr = null;
         }
       }
@@ -11613,7 +11708,18 @@ Click to manage or assign.`;
         const overTr = under ? under.closest("tr.task-row") : null;
         if (overTr && overTr !== tr) {
           const r = overTr.getBoundingClientRect();
-          const isTop = curY - r.top < r.height / 2;
+          const rel = (curY - r.top) / r.height;
+          if (rel > 1 / 3 && rel < 2 / 3) {
+            hierarchyDrop = { target: overTr.dataset.taskId, action: hierarchyActionFor(task, findAnyTask(overTr.dataset.taskId)) };
+            overTr.classList.add("drop-into");
+            overTr.classList.toggle("drop-into-refused", !!(hierarchyDrop.action && hierarchyDrop.action.refuse));
+            if (ghost) ghost.dataset.hint = hierarchyDrop.action ? hierarchyDrop.action.refuse || hierarchyDrop.action.label : "";
+            hoveredTr = overTr;
+            return;
+          }
+          hierarchyDrop = null;
+          if (ghost) ghost.dataset.hint = "";
+          const isTop = rel < 0.5;
           overTr.classList.toggle("drop-insert-top", isTop);
           overTr.classList.toggle("drop-insert-bottom", !isTop);
           hoveredTr = overTr;
@@ -11664,8 +11770,13 @@ Click to manage or assign.`;
       async function onUp() {
         const wasActive = active;
         const targetIdx = dropTargetIndex;
+        const into = hierarchyDrop;
         cleanup();
         if (!wasActive) return;
+        if (into) {
+          requestHierarchyChange(task.key, into.action);
+          return;
+        }
         const suppressClick = (ce) => {
           ce.stopPropagation();
           ce.preventDefault();
@@ -13404,6 +13515,7 @@ Click to manage or assign.`;
     }
     handleEstimateUnitChange();
     renderModalSubtasks(task);
+    renderParentControl(task);
     document.getElementById("taskDetailModal").style.display = "flex";
   }
   function renderModalSubtasks(task) {

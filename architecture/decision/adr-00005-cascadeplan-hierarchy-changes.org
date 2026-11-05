@@ -86,9 +86,21 @@ the user (ADR-004):
 - A job that fails, or a site limit that is reached, is shown with Jira's own reason.
 
 * Implementation Notes
-Not implemented. First run the two trials of fix plan section 10, step 0: R2 through the edit
-endpoint, and one R3 and one R4 conversion through bulk move as the user from a Forge resolver.
-Record the answers in this section before the build starts.
+Trials, 2026-11-05 (=apps/cascadeplan/test/live/hierarchy_check.py=, throw-away issues DEMO-39 to
+DEMO-42, deleted after): run as the owner from a browser session on the development site, not yet
+from a Forge resolver; the resolver path is checked by the next live check of the planner.
+- R2: =PUT /rest/api/3/issue/{key}= with a new =parent=: 204. Key, id, due date and issue properties kept.
+- R3 and R4: =POST /rest/api/3/bulk/issues/move= with one mapping (=<project>,<type id>[,<parent>]=)
+  and the four =infer...Defaults= set to true: 201 with a task id; =GET /rest/api/3/bulk/queue/{id}=
+  reported =COMPLETE= with no failed issue. Key, id, due date, links and properties kept.
+So the planner's records, keyed by issue id, need no re-keying.
+
+Built on branch =feature/cascadeplan-marketplace-fixes=: resolvers =changeParent= (R1, R2),
+=convertIssueType= (R3, R4; returns Jira's job id) and =checkConversion= (follows the job; on
+=COMPLETE=, DEC-6 for the parents). A row dropped on the middle third of another row asks for the
+change Jira allows, with the rule as the reason when it does not; the task dialog offers the same
+choices ("Parent in Jira"). Every change is confirmed in a message first, and Undo makes the
+reverse change through the same route.
 
 * References
 - [[file:../../docs/sdlc/cascadeplan-marketplace-review-2026-11/fix-plan-v4.md][CascadePlan fix plan v4]], items N-07, N-08 and BL-2; decision DEC-7

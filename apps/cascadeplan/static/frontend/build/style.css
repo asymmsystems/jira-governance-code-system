@@ -1896,3 +1896,11 @@ body.is-dragging-backlog .drop-target-row.drag-over {
 .local-subtasks { margin-top: 8px; font-size: 12px; color: var(--cp-text-subtle); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .local-subtasks p { flex-basis: 100%; margin: 0; }
 
+/* N-08: a hierarchy drop target, and the parent control in the task dialog. */
+tr.task-row.drop-into > td { box-shadow: inset 0 0 0 2px var(--cp-border-brand); background: var(--cp-bg-selected); }
+tr.task-row.drop-into-refused > td { box-shadow: inset 0 0 0 2px var(--cp-border-danger); background: var(--cp-bg-danger-subtle); }
+.row-drag-ghost[data-hint]:not([data-hint=""])::after { content: attr(data-hint); position: absolute; left: 8px; top: -22px; padding: 2px 8px; border-radius: 4px; font-size: 12px; background: var(--cp-surface-overlay); color: var(--cp-text); border: 1px solid var(--cp-border); }
+.hierarchy-controls { margin-bottom: 12px; }
+.hierarchy-row { display: flex; gap: 8px; }
+.hierarchy-row select { flex: 1; }
+

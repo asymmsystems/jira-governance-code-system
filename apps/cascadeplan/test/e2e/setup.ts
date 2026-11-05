@@ -47,7 +47,17 @@ const props = (): Record<string, Record<string, any>> => JSON.parse(localStorage
 const jlinks = (): Array<{ id: string; pred: string; succ: string }> => JSON.parse(localStorage.getItem('__harness_jira_links') || '[]');
 const linksOn = (key: string) => jlinks().filter(l => l.succ === key)
   .map(l => ({ id: l.id, type: { name: 'Blocks' }, inwardIssue: { key: l.pred, id: l.pred.split('-')[1] } }));
-const withDue = (i: any) => ({ ...i, fields: { ...i.fields, duedate: dues()[i.key] || null, issuelinks: linksOn(i.key) }, properties: props()[i.key] || {} });
+// Parents changed through the edit endpoint (N-08): key -> new parent key, or '' for none.
+const parentsSet = (): Record<string, string> => JSON.parse(localStorage.getItem('__harness_jira_parents') || '{}');
+const parentRef = (key: string) => { const p = ISSUES.find((x: any) => x.key === key); return p ? ref(p) : { key }; };
+const withParent = (i: any) => {
+  const set = parentsSet();
+  if (!(i.key in set)) return i.fields;
+  const f = { ...i.fields };
+  if (set[i.key]) f.parent = parentRef(set[i.key]); else delete f.parent;
+  return f;
+};
+const withDue = (i: any) => ({ ...i, fields: { ...withParent(i), duedate: dues()[i.key] || null, issuelinks: linksOn(i.key) }, properties: props()[i.key] || {} });
 w.__jira = async (url: string, opts: any) => {
   const method = (opts && opts.method) || 'GET';
   if (method !== 'GET' && /\/rest\/api\/3\/issue\//.test(url)) {
@@ -74,6 +84,7 @@ w.__jira = async (url: string, opts: any) => {
       try {
         const f = JSON.parse(opts.body || '{}').fields || {};
         if (f.duedate) localStorage.setItem('__harness_jira_due', JSON.stringify({ ...dues(), [m[1]]: f.duedate }));
+        if ('parent' in f) localStorage.setItem('__harness_jira_parents', JSON.stringify({ ...parentsSet(), [m[1]]: f.parent ? f.parent.key : '' }));
       } catch {}
     }
     return ok({}, 204);
@@ -107,7 +118,9 @@ w.__jira = async (url: string, opts: any) => {
   if (url.includes('/rest/api/3/myself')) return ok({ groups: { items: [] } });
   // The harness user holds every permission on every issue (BL-2 bulk permission check).
   if (method === 'POST' && url.endsWith('/permissions/check')) {
-    const pp = JSON.parse(opts.body || '{}').projectPermissions?.[0] || {};
+    const body = JSON.parse(opts.body || '{}');
+    if (body.globalPermissions) return ok({ globalPermissions: body.globalPermissions });
+    const pp = body.projectPermissions?.[0] || {};
     return ok({ projectPermissions: (pp.permissions || []).map((permission: string) => ({ permission, issues: pp.issues || [] })) });
   }
   if (url.includes('/search/jql')) return ok({ issues: url.includes('Epic') ? [withDue(epic)] : ISSUES.map(withDue), isLast: true });

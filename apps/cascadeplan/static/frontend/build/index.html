@@ -561,6 +561,13 @@
 
         <!-- Subtasks & Buffer Section -->
         <div style="background: var(--cp-surface-sunken); border: 1px solid var(--cp-border); border-radius: 6px; padding: 12px;">
+          <div id="hierarchyControls" class="hierarchy-controls">
+            <label class="form-label" for="parentSelect">Parent in Jira (changes every plan)</label>
+            <div class="hierarchy-row">
+              <select id="parentSelect" class="form-input"></select>
+              <button class="btn btn-outline btn-sm" type="button" id="btnApplyParent">Apply</button>
+            </div>
+          </div>
           <div style="font-weight: 700; margin-bottom: 8px;">Jira sub-tasks and risk buffer</div>
           <div id="subtasksList" style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;"></div>
           <div style="display: flex; gap: 8px; margin-bottom: 12px;">

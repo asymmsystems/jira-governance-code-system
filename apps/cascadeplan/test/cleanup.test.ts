@@ -44,11 +44,12 @@ describe('no synthetic data or dead UI (B-18 criteria 1, 4 and 5; D-10)', () => 
     for (const src of [html, ui, api, read('src/domain/planner-engine.ts'), read('src/domain/models.ts')]) expect(src).not.toMatch(/[Hh]eatmap/);
   });
 
-  it('the unused React entry is deleted, and the local checklist is not called sub-tasks', () => {
+  it('the unused React entry is deleted, and the sub-task section says it creates Jira sub-tasks (F-23)', () => {
     expect(fs.existsSync(path.join(ROOT, 'src/frontend/index.tsx'))).toBe(false);
     expect(html).not.toContain('Subtasks &amp; Risk Buffer');
     expect(html).not.toContain('Subtasks & Risk Buffer');
-    expect(html).toContain('Checklist and risk buffer (CascadePlan only, not Jira sub-tasks)');
+    expect(html).toContain('Jira sub-tasks and risk buffer');
+    expect(html).toContain('Create sub-task in Jira');
   });
 });
 
