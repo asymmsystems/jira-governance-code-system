@@ -7732,9 +7732,22 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (a < 0 || b < 0) return [key];
     return order.slice(Math.min(a, b), Math.max(a, b) + 1);
   }
+  function selectedBlockParents(tasks, selected) {
+    return tasks.filter((t) => selected.has(t.key) && t.datesFromChildren && !t.isEpic && (t.hierarchyLevel ?? 0) === 0).map((t) => t.key);
+  }
   function moveSelectionBy(tasks, selected, days) {
     if (!days) return [];
-    return tasks.filter((t) => selected.has(t.key) && t.startDate && !t.isEpic && t.hierarchyLevel !== 1 && !t.datesFromChildren).sort((a, b) => a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0).map((t) => ({ taskId: t.key, updates: { startDate: addDays(t.startDate, days), endDate: addDays(t.endDate || t.startDate, days) }, expectedVersion: t.version || 0 }));
+    const blocks = new Set(selectedBlockParents(tasks, selected));
+    const byKey = new Map(tasks.map((t) => [t.key, t]));
+    const inSelectedBlock = (t) => {
+      const seen = /* @__PURE__ */ new Set();
+      for (let k = t.parentKey; k && !seen.has(k); k = byKey.get(k)?.parentKey) {
+        if (blocks.has(k)) return true;
+        seen.add(k);
+      }
+      return false;
+    };
+    return tasks.filter((t) => selected.has(t.key) && t.startDate && !t.isEpic && t.hierarchyLevel !== 1 && !t.datesFromChildren && !inSelectedBlock(t)).sort((a, b) => a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0).map((t) => ({ taskId: t.key, updates: { startDate: addDays(t.startDate, days), endDate: addDays(t.endDate || t.startDate, days) }, expectedVersion: t.version || 0 }));
   }
   function progressFromDigit(key) {
     return /^[0-9]$/.test(key) ? Number(key) * 10 : null;
@@ -13160,9 +13173,11 @@ Click to manage or assign.`;
       const p = Math.max(0, Math.min(100, parseInt(document.getElementById("selProgress").value, 10) || 0));
       runBatch([...selectedKeys].map((k) => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) })), "progress");
     });
-    document.getElementById("btnSelMove")?.addEventListener("click", () => {
+    document.getElementById("btnSelMove")?.addEventListener("click", async () => {
       const days = parseInt(document.getElementById("selDays").value, 10) || 0;
-      runBatch(moveSelectionBy(currentPlan.tasks, selectedKeys, days), "move");
+      const blocks = selectedBlockParents(currentPlan.tasks, selectedKeys);
+      await runBatch(moveSelectionBy(currentPlan.tasks, selectedKeys, days), "move");
+      for (const key of blocks) await moveBlock(key, days);
     });
     document.getElementById("btnSelAssign")?.addEventListener("click", () => {
       const sel = document.getElementById("selAssignee");

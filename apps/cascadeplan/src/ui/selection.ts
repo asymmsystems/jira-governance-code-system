@@ -26,16 +26,33 @@ export function rangeKeys(order: string[], anchor: string | null, key: string): 
   return order.slice(Math.min(a, b), Math.max(a, b) + 1);
 }
 
-interface Movable { key: string; startDate?: string; endDate?: string; version?: number; isEpic?: boolean; hierarchyLevel?: number; datesFromChildren?: boolean }
+interface Movable { key: string; startDate?: string; endDate?: string; version?: number; isEpic?: boolean; hierarchyLevel?: number; datesFromChildren?: boolean; parentKey?: string }
+
+/** Selected task or story parents whose dates follow their sub-tasks: each moves as a block (ADR-003). */
+export function selectedBlockParents(tasks: Movable[], selected: Set<string>): string[] {
+  return tasks.filter(t => selected.has(t.key) && t.datesFromChildren && !t.isEpic && (t.hierarchyLevel ?? 0) === 0).map(t => t.key);
+}
 
 /**
  * "Move by N days": exact new dates for each selected task that has dates, earliest first, so a
- * predecessor moves before its dependents. Epics and parents whose dates follow their children are left out.
+ * predecessor moves before its dependents. Epics and parents whose dates follow their children are left out;
+ * a selected sub-task of a selected block parent is left out too, because it moves with its block (each
+ * issue moves once, ADR-003 section 7).
  */
 export function moveSelectionBy(tasks: Movable[], selected: Set<string>, days: number): Array<{ taskId: string; updates: { startDate: string; endDate: string }; expectedVersion: number }> {
   if (!days) return [];
+  const blocks = new Set(selectedBlockParents(tasks, selected));
+  const byKey = new Map(tasks.map(t => [t.key, t]));
+  const inSelectedBlock = (t: Movable): boolean => {
+    const seen = new Set<string>();
+    for (let k = t.parentKey; k && !seen.has(k); k = byKey.get(k)?.parentKey) {
+      if (blocks.has(k)) return true;
+      seen.add(k);
+    }
+    return false;
+  };
   return tasks
-    .filter(t => selected.has(t.key) && t.startDate && !t.isEpic && t.hierarchyLevel !== 1 && !t.datesFromChildren)
+    .filter(t => selected.has(t.key) && t.startDate && !t.isEpic && t.hierarchyLevel !== 1 && !t.datesFromChildren && !inSelectedBlock(t))
     .sort((a, b) => (a.startDate! < b.startDate! ? -1 : a.startDate! > b.startDate! ? 1 : 0))
     .map(t => ({ taskId: t.key, updates: { startDate: addDays(t.startDate!, days), endDate: addDays(t.endDate || t.startDate!, days) }, expectedVersion: t.version || 0 }));
 }

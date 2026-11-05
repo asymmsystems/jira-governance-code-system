@@ -44,7 +44,7 @@ import { barRect, daysBetween, visibleRange, handleOffsets, snapDays, previewMov
 import { GRID_COLUMNS, navigate, rowCells, rowLevel, moveKey, moveAnnouncement } from '../ui/keyboard-grid';
 import { weeklyHours } from '../ui/weekly-hours';
 import { emptyState, showLinkHint } from '../ui/first-run';
-import { toggleKey, rangeKeys, moveSelectionBy, progressFromDigit } from '../ui/selection';
+import { toggleKey, rangeKeys, moveSelectionBy, selectedBlockParents, progressFromDigit } from '../ui/selection';
 import { addDays as addDaysIso } from '../domain/schedule-engine';
 import { planBlockMove } from '../domain/block-move';
 import { shouldAutoCompact, ZOOMS, zoomById, zoomStep, mondayOf, initialRange, rangeDays, extendRange, edgeToExtend, headerCells, gridLines, anchorScroll, dateAt } from '../ui/time-scale';
@@ -5907,9 +5907,13 @@ function initSelectionBar() {
     const p = Math.max(0, Math.min(100, parseInt(document.getElementById('selProgress').value, 10) || 0));
     runBatch([...selectedKeys].map(k => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) })), 'progress');
   });
-  document.getElementById('btnSelMove')?.addEventListener('click', () => {
+  document.getElementById('btnSelMove')?.addEventListener('click', async () => {
     const days = parseInt(document.getElementById('selDays').value, 10) || 0;
-    runBatch(moveSelectionBy(currentPlan.tasks, selectedKeys, days), 'move');
+    // Leaves move in one batch; each selected task or story parent then moves as a block, and its
+    // selected sub-tasks move only with it (each issue once, ADR-003).
+    const blocks = selectedBlockParents(currentPlan.tasks, selectedKeys);
+    await runBatch(moveSelectionBy(currentPlan.tasks, selectedKeys, days), 'move');
+    for (const key of blocks) await moveBlock(key, days);
   });
   document.getElementById('btnSelAssign')?.addEventListener('click', () => {
     const sel = document.getElementById('selAssignee');
