@@ -146,3 +146,8 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 
 - **What changed:** the epic column of a sub-task row (`isSubtask` or hierarchy level -1) shows `.epic-inherited` read-only text instead of the `.epic-link-chip` picker. `updateWbsTask` refuses `epicKey` on a sub-task: "<key> is a sub-task; its epic comes from its parent work item."
 - **Proof:** new test in `test/review/parent-move.test.ts` (refused, no Jira write). New `test/e2e/e2e_subtask_epic_probe.py`: sub-task rows (DEMO-30, DEMO-29, DEMO-28, DEMO-31) have no picker, standard rows keep it. Unit suite 792 passed; harness 30/30 and 25/25.
+
+### BL-2 step 8. Plan management is offered only to plan approvers
+
+- **What changed:** `legacy-planner.js` calls `checkPlanApprover` once after the first plan load (`loadPlanApprover`), disables the create-plan input and button for non-approvers with a title that says who creates plans, redraws the plan list, and adds the clone, rename and delete buttons only for approvers. Plan switching is unchanged.
+- **Proof:** new `test/e2e/e2e_plan_approver_probe.py` with the harness switch `__harness_not_approver`: approver 1 action button and create enabled; non-approver 0 action buttons, create disabled, plan rows still listed. Harness 30/30 and 25/25; unit suite 792 passed.
