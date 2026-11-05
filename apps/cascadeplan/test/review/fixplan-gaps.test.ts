@@ -44,8 +44,10 @@ let searchKeys: number[] = [];
 let override: ((url: string, opts?: any) => any) | null = null;
 let storage: MemStorage;
 
+/** Jira "Blocks" links on each successor, by key (ADR-006: a dependency is a Jira link). */
+let issueLinks: Record<string, any[]> = {};
 const issue = (n: number) => ({ id: String(n), key: `TEST-${n}`,
-  fields: { summary: `T${n}`, issuetype: { name: 'Task', hierarchyLevel: 0 }, status, duedate: jiraDue[`TEST-${n}`] || null } });
+  fields: { summary: `T${n}`, issuetype: { name: 'Task', hierarchyLevel: 0 }, status, duedate: jiraDue[`TEST-${n}`] || null, issuelinks: issueLinks[`TEST-${n}`] || [] } });
 
 function calls(method: string, re: RegExp): string[] {
   return mockRequestJira.mock.calls
@@ -58,6 +60,7 @@ async function entry(key: string, planId = 'default', projectId = 'TEST'): Promi
 }
 
 beforeEach(async () => {
+  issueLinks = {};
   storage = new MemStorage();
   setGlobalStorageProvider(storage);
   setSleepForTests(async () => undefined);
@@ -138,8 +141,8 @@ describe('F-07: no Jira write before the version check', () => {
     await store.saveSettings({ migratedAt: '2026-01-01', modelVersion: 2 });
     await store.putEntry('TEST-1', '1', { startWeek: w.weekKey, spanWeeks: 1, startDate: start, endDate: add(start, 2) });
     await store.putEntry('TEST-2', '2', { startWeek: w.weekKey, spanWeeks: 1, startDate: add(start, 3), endDate: add(start, 5),
-      dependencies: [{ predecessorKey: 'TEST-1', predecessorId: 'TEST-1', triggerPercent: 100, isTriggerSatisfied: false, jiraLinkId: '900' }],
       contributors: [{ accountId: 'acc-2', since: '2026-01-01', subtaskKey: 'TEST-77' }] } as any);
+    issueLinks = { 'TEST-2': [{ id: '900', type: { name: 'Blocks' }, inwardIssue: { key: 'TEST-1', id: '1' } }] };
     mockRequestJira.mockClear();
   }
   async function bumpByAnotherUser(): Promise<void> {

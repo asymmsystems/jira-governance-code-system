@@ -1,3 +1,4 @@
+import { FakeJiraLinks } from './helpers/fake-jira-links';
 import {
   getProjectPlan,
   fetchLiveJiraIssues,
@@ -85,6 +86,7 @@ const DEFAULT_WEEKS = getDefaultWeeks();
 
 describe('CascadePlan Index & Resolver Tests', () => {
   let mockStorage: MockStorage;
+  let jiraLinks: FakeJiraLinks;
 
   beforeEach(async () => {
     mockStorage = new MockStorage();
@@ -218,6 +220,20 @@ describe('CascadePlan Index & Resolver Tests', () => {
         weeklyAllocations: { '29-Jul': 25, '05-Aug': 25, '12-Aug': 25, '19-Aug': 25 }
       }
     });
+    // Links and issue properties the planner writes are read back by the next search (ADR-006, ADR-008).
+    jiraLinks = new FakeJiraLinks(key => String(10000 + Number(key.split('-')[1])));
+    const base = mockRequestJira.getMockImplementation()!;
+    mockRequestJira.mockImplementation(async (routeStr: any, options?: any) => {
+      const url = String(routeStr);
+      const handled = jiraLinks.handle(url, options);
+      if (handled) return handled;
+      const res: any = await base(routeStr, options);
+      if (url.includes('/search/jql') && res && res.status === 200) {
+        const body = await res.json();
+        return { ...res, json: async () => ({ ...body, issues: (body.issues || []).map((i: any) => jiraLinks.decorate(i)) }) };
+      }
+      return res;
+    });
   });
 
   describe('resolveStorage', () => {
@@ -336,7 +352,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
         {
           projectKey: 'TEST',
           taskId: 'TEST-3',
-          startWeek: '05-Aug',
+          startWeek: DEFAULT_WEEKS[3].weekKey,
           spanWeeks: 3,
           effortHours: 16,
           resource: 'Fahim Farook'
@@ -347,7 +363,9 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(updatedPlan.tasks.some(t => t.key === 'TEST-3')).toBe(true);
       expect(updatedPlan.backlogTasks!.some(t => t.key === 'TEST-3')).toBe(false);
       const scheduled = updatedPlan.tasks.find(t => t.key === 'TEST-3');
-      expect(scheduled?.startWeek).toBe('05-Aug');
+      // The week grid follows the shared start date (ADR-008).
+      expect(scheduled?.startWeek).toBe(DEFAULT_WEEKS[3].weekKey);
+      expect(scheduled?.startDate).toBe(DEFAULT_WEEKS[3].startDate);
       expect(scheduled?.spanWeeks).toBe(3);
     });
   });

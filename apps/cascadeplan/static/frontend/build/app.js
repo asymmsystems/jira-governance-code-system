@@ -6405,7 +6405,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
   // src/ui/undo-plan.ts
   var PLAIN = ["targetProgress", "status", "summary", "effortHours", "epicKey"];
   function snap(t, scheduled) {
-    const dep = t.dependency && t.dependency.predecessorKey ? { predecessorKey: t.dependency.predecessorKey, triggerPercent: t.dependency.triggerPercent } : null;
+    const all = t.dependencies || (t.dependency ? [t.dependency] : []);
+    const links = all.filter((d) => d && d.predecessorKey).map((d) => ({ predecessorKey: d.predecessorKey, triggerPercent: d.triggerPercent })).sort((a, b) => a.predecessorKey < b.predecessorKey ? -1 : a.predecessorKey > b.predecessorKey ? 1 : 0);
     return {
       key: t.key,
       scheduled,
@@ -6416,7 +6417,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       progress: t.progress,
       manualProgress: t.manualProgress,
       targetProgress: t.targetProgress,
-      dependency: dep,
+      links,
       summary: t.summary,
       effortHours: t.effortHours,
       status: t.status,
@@ -6443,8 +6444,19 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     for (const f of PLAIN) if (from[f] !== to[f]) u[f] = to[f];
     if (from.resourceAccountId !== to.resourceAccountId) u.resourceAccountId = to.resourceAccountId || "unassigned";
-    if (JSON.stringify(from.dependency) !== JSON.stringify(to.dependency)) u.dependency = to.dependency;
     return u;
+  }
+  function linkOps(key, from, to) {
+    const ops = [];
+    const target = new Map(to.links.map((l) => [l.predecessorKey, l.triggerPercent]));
+    const source = new Map(from.links.map((l) => [l.predecessorKey, l.triggerPercent]));
+    for (const [pred, pct] of target) {
+      if (source.get(pred) !== pct) ops.push({ kind: "update", key, updates: { dependency: { predecessorKey: pred, predecessorId: pred, triggerPercent: pct, isTriggerSatisfied: false } } });
+    }
+    for (const pred of source.keys()) {
+      if (!target.has(pred)) ops.push({ kind: "update", key, updates: { removeDependency: { predecessorKey: pred } } });
+    }
+    return ops;
   }
   function scheduleOp(s) {
     return { kind: "schedule", key: s.key, updates: { startWeek: s.startWeek, spanWeeks: s.spanWeeks, startDate: s.startDate, endDate: s.endDate } };
@@ -6467,10 +6479,14 @@ Please see https://iframe-resizer.com/upgrade for more details.
       }
       const rollUpOnly = parents.has(k);
       const back = updatesTo(a, b, rollUpOnly);
-      if (Object.keys(back).length === 0) continue;
+      const backLinks = linkOps(k, a, b);
+      if (Object.keys(back).length === 0 && backLinks.length === 0) continue;
       keys.push(k);
-      restore.push({ kind: "update", key: k, updates: back });
-      reapply.push({ kind: "update", key: k, updates: updatesTo(b, a, rollUpOnly) });
+      if (Object.keys(back).length) restore.push({ kind: "update", key: k, updates: back });
+      restore.push(...backLinks);
+      const fwd = updatesTo(b, a, rollUpOnly);
+      if (Object.keys(fwd).length) reapply.push({ kind: "update", key: k, updates: fwd });
+      reapply.push(...linkOps(k, b, a));
     }
     return keys.length ? { keys, restore, reapply } : null;
   }
@@ -6494,7 +6510,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (fn === "scheduleBacklogTask") return `Scheduled ${key}`;
     if (fn === "moveTaskGroup") return `Moved ${key} with its sub-tasks` + (others ? ` (${others} issue${others > 1 ? "s" : ""} changed)` : "");
     if (fn !== "updateWbsTask") return `Changed ${key}`;
-    if ("dependency" in u) return u.dependency ? `Linked ${key} to ${u.dependency.predecessorKey} at ${u.dependency.triggerPercent}%` : `Removed the link of ${key}`;
+    if ("dependency" in u) return u.dependency ? `Linked ${key} to ${u.dependency.predecessorKey} at ${u.dependency.triggerPercent}%` : `Removed the links of ${key}`;
+    if (u.removeDependency) return `Removed the link from ${u.removeDependency.predecessorKey} to ${key}`;
     if (u.startDate || u.endDate || u.startWeek) return `Moved ${key}${dependents}`;
     if (u.progress !== void 0) return `Set ${key} to ${u.progress}%`;
     return `Changed ${key}`;
@@ -7312,7 +7329,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
         ctx.fill();
         if (!active || connected) {
           const when = dep.triggerDate ? `, ${dep.triggerDate}` : "";
-          const text = violated ? `${dep.triggerPercent}%${when}: starts too early` : `${dep.triggerPercent}%${when}`;
+          const planOnlyNote = dep.planOnly ? " (not in Jira)" : "";
+          const text = (violated ? `${dep.triggerPercent}%${when}: starts too early` : `${dep.triggerPercent}%${when}`) + planOnlyNote;
           const tw = ctx.measureText(text).width + 10;
           const badgeX = (x1 + x2) / 2;
           const badgeY = (y1 + y2) / 2;
@@ -7322,6 +7340,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
             triggerPercent: typeof dep.triggerPercent === "number" ? dep.triggerPercent : 100,
             triggerDate: dep.triggerDate,
             isViolated: violated,
+            ...dep.planOnly ? { planOnly: true } : {},
             x: badgeX,
             y: badgeY,
             width: tw,
@@ -8124,6 +8143,16 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   function findAnyTask(key) {
     return findTask(key) || (currentPlan?.backlogTasks || []).find((t) => t.key === key);
+  }
+  var planOnlyNoted = /* @__PURE__ */ new Set();
+  function notePlanOnlyLinks(plan) {
+    const all = (plan.tasks || []).concat(plan.backlogTasks || []);
+    const found = [];
+    for (const t of all) for (const d of t.dependencies || []) if (d && d.planOnly) found.push(`${d.predecessorKey} \u2794 ${t.key}`);
+    const scope = `${activePlanId}:${found.join(",")}`;
+    if (!found.length || planOnlyNoted.has(scope)) return;
+    planOnlyNoted.add(scope);
+    showFlag({ text: `${found.length} link${found.length === 1 ? "" : "s"} exist only in this plan, not in Jira (${found.slice(0, 5).join(", ")}${found.length > 5 ? ", ..." : ""}). They still schedule. Open a link marked "not in Jira" to create it in Jira or remove it.` });
   }
   function isBlockParent(task) {
     return !!task && task.datesFromChildren === true && !task.isEpic && (task.hierarchyLevel ?? 0) === 0;
@@ -9547,6 +9576,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       currentPlan = plan;
       setActivePlan(served);
       updatePlansUI(plan.availablePlans, activePlanId);
+      notePlanOnlyLinks(plan);
       columnWidths = sanitizeLoadedColumnWidths(plan.columnWidths);
       if (Array.isArray(plan.hiddenColumns)) {
         hiddenColumns = new Set(plan.hiddenColumns);
@@ -12700,6 +12730,8 @@ Click to manage or assign.`;
     if (triggerInput) {
       triggerInput.value = String(link.triggerPercent);
     }
+    const planOnlyNote = document.getElementById("depEditPlanOnly");
+    if (planOnlyNote) planOnlyNote.hidden = !link.planOnly;
     refreshDepEditPopoverFields();
     pop.hidden = false;
     const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { bottom: 120, left: 120 };
@@ -12775,7 +12807,7 @@ Click to manage or assign.`;
     closeDependencyEditPopover();
     await callResolver2("updateWbsTask", {
       taskId: succKey,
-      updates: { dependency: null },
+      updates: { removeDependency: { predecessorKey: predKey } },
       expectedVersion: succTask && succTask.version || 0
     });
     await loadProjectPlan();

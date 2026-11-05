@@ -38,9 +38,21 @@ describe('buildUndoEntry', () => {
     const e = buildUndoEntry(snapshotPlan(before), snapshotPlan(after), 'A')!;
     expect(e.restore).toEqual([
       { kind: 'update', key: 'A', updates: { progress: 40, status: 'NOT_STARTED', summary: 'A', effortHours: 8, epicKey: 'E-1', resourceAccountId: 'acc-1' } },
-      { kind: 'update', key: 'B', updates: { dependency: { predecessorKey: 'A', triggerPercent: 30 } } }
+      { kind: 'update', key: 'B', updates: { dependency: { predecessorKey: 'A', predecessorId: 'A', triggerPercent: 30, isTriggerSatisfied: false } } }
     ]);
-    expect(e.reapply[1]).toEqual({ kind: 'update', key: 'B', updates: { dependency: null } });
+    // Redo removes exactly that link, never every link of B (ADR-006).
+    expect(e.reapply[1]).toEqual({ kind: 'update', key: 'B', updates: { removeDependency: { predecessorKey: 'A' } } });
+  });
+
+  it('several links: only the link that changed is restored; the others are not touched', () => {
+    const l = (k: string, p: number) => ({ predecessorKey: k, triggerPercent: p });
+    const before = plan([task('B', '2026-11-04', '2026-11-13', { dependencies: [l('X', 100), l('Y', 30)] })]);
+    const after = plan([task('B', '2026-11-04', '2026-11-13', { dependencies: [l('X', 100), l('Y', 50), l('Z', 100)] })]);
+    const e = buildUndoEntry(snapshotPlan(before), snapshotPlan(after), 'B')!;
+    expect(e.restore).toEqual([
+      { kind: 'update', key: 'B', updates: { dependency: { predecessorKey: 'Y', predecessorId: 'Y', triggerPercent: 30, isTriggerSatisfied: false } } },
+      { kind: 'update', key: 'B', updates: { removeDependency: { predecessorKey: 'Z' } } }
+    ]);
   });
 
   it('a computed progress is restored by going back to the roll-up, and an empty assignee to unassigned', () => {
@@ -78,7 +90,8 @@ describe('buildUndoEntry', () => {
     const e = { keys: ['A', 'B', 'C'], restore: [], reapply: [] };
     expect(actionLabel('updateWbsTask', { taskId: 'A', updates: { startDate: 'x' } }, e)).toBe('Moved A and 2 dependents');
     expect(actionLabel('updateWbsTask', { taskId: 'A', updates: { dependency: { predecessorKey: 'B', triggerPercent: 30 } } }, e)).toBe('Linked A to B at 30%');
-    expect(actionLabel('updateWbsTask', { taskId: 'A', updates: { dependency: null } }, e)).toBe('Removed the link of A');
+    expect(actionLabel('updateWbsTask', { taskId: 'A', updates: { dependency: null } }, e)).toBe('Removed the links of A');
+    expect(actionLabel('updateWbsTask', { taskId: 'A', updates: { removeDependency: { predecessorKey: 'B' } } }, e)).toBe('Removed the link from B to A');
     expect(actionLabel('updateWbsTask', { taskId: 'A', updates: { progress: 60 } }, e)).toBe('Set A to 60%');
     expect(actionLabel('updateWbsTask', { taskId: 'A', updates: { summary: 'x' } }, e)).toBe('Changed A');
     expect(actionLabel('reorderWbsTasks', { taskId: 'A' }, e)).toBe('Changed A');

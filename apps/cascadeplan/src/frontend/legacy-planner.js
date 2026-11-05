@@ -183,6 +183,18 @@ function findAnyTask(key) {
   return findTask(key) || (currentPlan?.backlogTasks || []).find(t => t.key === key);
 }
 
+// Links stored only in a plan record (before ADR-006) are listed once per plan and load.
+const planOnlyNoted = new Set();
+function notePlanOnlyLinks(plan) {
+  const all = (plan.tasks || []).concat(plan.backlogTasks || []);
+  const found = [];
+  for (const t of all) for (const d of (t.dependencies || [])) if (d && d.planOnly) found.push(`${d.predecessorKey} ➔ ${t.key}`);
+  const scope = `${activePlanId}:${found.join(',')}`;
+  if (!found.length || planOnlyNoted.has(scope)) return;
+  planOnlyNoted.add(scope);
+  showFlag({ text: `${found.length} link${found.length === 1 ? '' : 's'} exist only in this plan, not in Jira (${found.slice(0, 5).join(', ')}${found.length > 5 ? ', ...' : ''}). They still schedule. Open a link marked "not in Jira" to create it in Jira or remove it.` });
+}
+
 /** A task or story whose bar is the roll-up of its sub-tasks: it moves as a block (ADR-003, N-05). */
 function isBlockParent(task) {
   return !!task && task.datesFromChildren === true && !task.isEpic && (task.hierarchyLevel ?? 0) === 0;
@@ -1802,6 +1814,7 @@ async function loadProjectPlan() {
     currentPlan = plan;
     setActivePlan(served);
     updatePlansUI(plan.availablePlans, activePlanId);
+    notePlanOnlyLinks(plan);
     columnWidths = sanitizeLoadedColumnWidths(plan.columnWidths);
     if (Array.isArray(plan.hiddenColumns)) {
       hiddenColumns = new Set(plan.hiddenColumns);
@@ -5419,6 +5432,9 @@ function openDependencyEditPopover(link, anchor) {
   if (triggerInput) {
     triggerInput.value = String(link.triggerPercent);
   }
+  // A link from before ADR-006, stored only in this plan: Save creates it in Jira, Remove drops it.
+  const planOnlyNote = document.getElementById('depEditPlanOnly');
+  if (planOnlyNote) planOnlyNote.hidden = !link.planOnly;
 
   refreshDepEditPopoverFields();
 
@@ -5503,9 +5519,10 @@ async function removeDependencyLink() {
   const succTask = findTask(succKey);
 
   closeDependencyEditPopover();
+  // Exactly this link is removed, in Jira too, whoever created it (ADR-006, N-11 L3).
   await callResolver('updateWbsTask', {
     taskId: succKey,
-    updates: { dependency: null },
+    updates: { removeDependency: { predecessorKey: predKey } },
     expectedVersion: (succTask && succTask.version) || 0
   });
   await loadProjectPlan();

@@ -25,7 +25,7 @@ jest.mock('@forge/kvs', () => ({ kvs: { get: jest.fn(), set: jest.fn(), delete: 
 const weeks = getTimelineWeeks().weeks;
 const status = { statusCategory: { key: 'new' } };
 const type = (name: string, hierarchyLevel: number) => ({ name, hierarchyLevel, subtask: hierarchyLevel === -1 });
-const blocks = (pred: string, id: string) => ({ type: { name: 'Blocks' }, inwardIssue: { key: pred, id } });
+const blocks = (pred: string, id: string) => ({ id: `10${id}`, type: { name: 'Blocks' }, inwardIssue: { key: pred, id } });
 const USERS = [{ accountId: 'acc-1', displayName: 'Ann Lee', accountType: 'atlassian' }, { accountId: 'acc-2', displayName: 'Bo Chen', accountType: 'atlassian' }];
 let ISSUES: any[];
 const today = new Date().toISOString().slice(0, 10);
@@ -100,13 +100,17 @@ describe('WorkEffort model in the resolvers (B-28)', () => {
     expect(t4.jiraBlockedBy!.map(b => b.key)).toEqual(['TEST-5', 'TEST-6']);
   });
 
-  it('removing links ends them: no Jira link from those predecessors comes back (criterion 2)', async () => {
+  it('removing links deletes them in Jira (N-11 L3) and keeps them as ended history (criterion 2)', async () => {
     await seed({ 'TEST-4': { startWeek: weeks[2].weekKey, spanWeeks: 1 }, 'TEST-5': { startWeek: weeks[2].weekKey, spanWeeks: 1 }, 'TEST-6': { startWeek: weeks[2].weekKey, spanWeeks: 1 } });
     await plan();
     await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-4', updates: { dependency: null } });
+    const deleted = mockRequestJira.mock.calls.filter(c => c[1]?.method === 'DELETE').map(c => String(c[0])).sort();
+    expect(deleted).toEqual(['/rest/api/3/issueLink/105', '/rest/api/3/issueLink/106']);
     const rec = await recordOf(storage, 'TEST-4');
     expect(rec.assocs.map((a: any) => [a.workEffortIdFrom, a.workEffortAssocTypeId, a.thruDate])).toEqual([
       ['TEST-5', 'WORK_EFF_PRECEDENCY', today], ['TEST-6', 'WORK_EFF_PRECEDENCY', today]]);
+    // Jira no longer has the links, so the planner shows none.
+    ISSUES.find(i => i.key === 'TEST-4').fields.issuelinks = [];
     expect((await plan()).tasks.find(t => t.key === 'TEST-4')!.dependency).toBeUndefined();
   });
 
@@ -164,7 +168,8 @@ describe('model 1 record migration (B-28 criterion 6)', () => {
     const r4 = await storage.get<any>('cp:TEST:we:4');
     expect(r4.assocs.map((a: any) => [a.workEffortIdFrom, a.thruDate])).toEqual([['TEST-5', today], ['TEST-6', today]]);
     expect(r4.precedenceRemoved).toBeUndefined();
-    expect(p.tasks.find(t => t.key === 'TEST-4')!.dependency).toBeUndefined();
+    // Ended links are history only (N-11 L3): the Jira links of TEST-4 still show.
+    expect(p.tasks.find(t => t.key === 'TEST-4')!.dependencies!.map(d => d.predecessorKey)).toEqual(['TEST-5', 'TEST-6']);
     expect(p.tasks.find(t => t.key === 'TEST-5')!.contributingResources).toEqual(['Ann Lee', 'Former Person']);
     expect((await storage.get<any>('cp:TEST:settings')).modelVersion).toBe(2);
   });

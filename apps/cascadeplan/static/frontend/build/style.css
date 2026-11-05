@@ -1884,3 +1884,10 @@ body.is-dragging-backlog .drop-target-row.drag-over {
 
 /* A sub-task's inherited epic: read-only text (N-07). */
 .epic-inherited { font-size: 11px; color: var(--cp-text-subtle); white-space: nowrap; }
+
+/* A link stored only in one plan, not in Jira (ADR-006 migration). */
+.dep-edit-plan-only {
+  margin: 4px 0 8px;
+  font-size: 12px;
+  color: var(--cp-text-subtle);
+}

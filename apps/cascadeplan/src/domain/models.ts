@@ -62,7 +62,12 @@ export interface TaskDependency {
   earliestStartDate?: string;
   earliestStartReason?: string;
   notes?: string;
-  jiraLinkId?: string; // id of the "Blocks" link that CascadePlan created for this dependency
+  jiraLinkId?: string; // id of the Jira "Blocks" link of this dependency
+  /**
+   * A link stored only in this plan's record, with no Jira link (before ADR-006). It stays shown and
+   * scheduled until the user creates it in Jira or drops it (ADR-006 migration, N-11 L5).
+   */
+  planOnly?: boolean;
   since?: string;        // fromDate of the stored association (B-28)
   driverKey?: string;    // the predecessor that sets the earliest start (B-11)
   fixSuggestion?: string; // what the user can change to resolve a violation (B-11, B-12)

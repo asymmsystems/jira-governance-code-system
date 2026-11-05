@@ -21,6 +21,8 @@ export interface ArrowLink {
   triggerPercent: number;
   triggerDate?: string;
   isViolated: boolean;
+  /** Stored only in this plan's record, not in Jira (ADR-006 migration). */
+  planOnly?: boolean;
   x: number;
   y: number;
   width: number;
@@ -457,7 +459,8 @@ export class CanvasTimeline {
       ctx.fill();
       if (!active || connected) {
         const when = dep.triggerDate ? `, ${dep.triggerDate}` : '';
-        const text = violated ? `${dep.triggerPercent}%${when}: starts too early` : `${dep.triggerPercent}%${when}`;
+        const planOnlyNote = dep.planOnly ? ' (not in Jira)' : '';
+        const text = (violated ? `${dep.triggerPercent}%${when}: starts too early` : `${dep.triggerPercent}%${when}`) + planOnlyNote;
         const tw = ctx.measureText(text).width + 10;
         const badgeX = (x1 + x2) / 2;
         const badgeY = (y1 + y2) / 2;
@@ -467,6 +470,7 @@ export class CanvasTimeline {
           triggerPercent: typeof dep.triggerPercent === 'number' ? dep.triggerPercent : 100,
           triggerDate: dep.triggerDate,
           isViolated: violated,
+          ...(dep.planOnly ? { planOnly: true } : {}),
           x: badgeX,
           y: badgeY,
           width: tw,

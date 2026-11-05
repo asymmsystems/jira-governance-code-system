@@ -9,7 +9,7 @@
  * roll-up dates and the migration of old entries (B-28).
  */
 
-import { applyLinkUpdate, importJiraLinks, contributorsFromNames, contributorNames, rollUpParentDates, migrateEntry } from '../../src/domain/work-effort-links';
+import { applyLinkUpdate, dependenciesFromJira, contributorsFromNames, contributorNames, rollUpParentDates, migrateEntry } from '../../src/domain/work-effort-links';
 
 const dep = (k: string, pct: number, extra: any = {}) => ({ predecessorId: k, predecessorKey: k, triggerPercent: pct, isTriggerSatisfied: false, ...extra });
 const T = '2026-11-01';
@@ -45,12 +45,16 @@ describe('applyLinkUpdate (B-28 criteria 2 and 3)', () => {
   });
 });
 
-describe('importJiraLinks (B-28 criterion 3)', () => {
-  it('adds a 100% link for each Jira predecessor that is neither stored nor ended', () => {
-    const stored = [dep('A-1', 30)];
-    const out = importJiraLinks(stored, [{ predecessorKey: 'B-2', until: T }], [{ key: 'A-1', id: '1' }, { key: 'B-2', id: '2' }, { key: 'C-3', id: '3' }]);
-    expect(out).toEqual([dep('A-1', 30), { predecessorId: '3', predecessorKey: 'C-3', triggerPercent: 100, isTriggerSatisfied: false }]);
-    expect(importJiraLinks([], [], [])).toEqual([]);
+describe('dependenciesFromJira (ADR-006, N-11 L3 to L5)', () => {
+  const blocked = [{ key: 'A-1', id: '1', linkId: '71' }, { key: 'B-2', id: '2', linkId: '72' }, { key: 'C-3', id: '3' }];
+  it('one dependency per Jira link: the percent from the property, else a stored percent, else 100', () => {
+    const out = dependenciesFromJira(blocked, { '2': 60, '3': 'x' }, [dep('A-1', 30)]);
+    expect(out.map(d => [d.predecessorKey, d.triggerPercent, d.jiraLinkId])).toEqual([['A-1', 30, '71'], ['B-2', 60, '72'], ['C-3', 100, undefined]]);
+    expect(dependenciesFromJira([], {}, [])).toEqual([]);
+  });
+  it('a stored link with no Jira link is kept, marked planOnly (L5); an out-of-range percent is ignored', () => {
+    const out = dependenciesFromJira([{ key: 'A-1', id: '1' }], { '1': 150 }, [dep('A-1', 30), dep('Z-9', 45)]);
+    expect(out.map(d => [d.predecessorKey, d.triggerPercent, !!d.planOnly])).toEqual([['A-1', 30, false], ['Z-9', 45, true]]);
   });
 });
 

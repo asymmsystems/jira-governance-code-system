@@ -34,7 +34,7 @@ import {
 } from './domain/models';
 import { PlannerEngine } from './domain/planner-engine';
 import { describeJiraChanges, JiraFieldChange } from './domain/jira-change';
-import { applyLinkUpdate, importJiraLinks, contributorsFromNames, contributorNames, rollUpParentDates, migrateEntry } from './domain/work-effort-links';
+import { applyLinkUpdate, dependenciesFromJira, contributorsFromNames, contributorNames, rollUpParentDates, migrateEntry } from './domain/work-effort-links';
 import { formatSubtaskSummary } from './ui/second-person';
 import { evaluateEffort, cascade, ScheduleEffort, ScheduleLink, addDays } from './domain/schedule-engine';
 import { StorageProvider } from './storage/plan-repository';
@@ -375,6 +375,9 @@ export const SHARED_DATE_FIELDS = ['startDate', 'endDate', 'startWeek', 'endWeek
 /** The Jira issue property that holds a task's shared start, and its end when Jira has no due date (ADR-008). */
 export const DATES_PROPERTY = 'cascadeplan.dates';
 
+/** The Jira issue property on a successor: the trigger percent of each incoming link, by predecessor id (ADR-006). */
+export const LINKS_PROPERTY = 'cascadeplan.links';
+
 /**
  * The plan a write goes to: undefined for the Main Plan, else the id of a plan that still exists.
  * A write to a plan that was deleted (for example in another tab) is refused, so it never lands in
@@ -576,11 +579,11 @@ export async function fetchRawIssues(projectKey: string, reconcileIds: string[] 
     do {
       const res = ids.length
         ? (token
-          ? await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates&maxResults=100&nextPageToken=${token}&${reconcile}`)
-          : await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates&maxResults=100&${reconcile}`))
+          ? await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates,cascadeplan.links&maxResults=100&nextPageToken=${token}&${reconcile}`)
+          : await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates,cascadeplan.links&maxResults=100&${reconcile}`))
         : (token
-          ? await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates&maxResults=100&nextPageToken=${token}`)
-          : await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates&maxResults=100`));
+          ? await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates,cascadeplan.links&maxResults=100&nextPageToken=${token}`)
+          : await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates,cascadeplan.links&maxResults=100`));
       if (!res || res.status !== 200) {
         logFailure('fetchRawIssues', res || new Error('no answer'));
         if (pages === 0) return { issues: [], isLive: false, status: res ? res.status : 0 };
@@ -755,14 +758,14 @@ export function mapLiveIssues(
 
         const stored = storedScheduleMap[key] || storedScheduleMap[id];
 
-        // Jira "Blocks" predecessors, read live. Each one not stored and not ended by the user is
-        // imported as finish-to-start (B-11: no silent 30% default; B-28: an ended link stays ended).
+        // The dependencies are the Jira "Blocks" links, the same in every plan; the trigger percent is
+        // the issue property cascadeplan.links (ADR-006, N-11 L3 to L5).
         const jiraBlockedBy = (Array.isArray(iss.fields?.issuelinks) ? iss.fields.issuelinks : [])
           .filter((link: any) => ['blocks', 'dependency'].includes(String(link.type?.name || '').toLowerCase()) && link.inwardIssue?.key)
-          .map((link: any) => ({ key: String(link.inwardIssue.key), id: String(link.inwardIssue.id || link.inwardIssue.key) }));
+          .map((link: any) => ({ key: String(link.inwardIssue.key), id: String(link.inwardIssue.id || link.inwardIssue.key), ...(link.id ? { linkId: String(link.id) } : {}) }));
         const storedLinks = stored?.dependencies || (stored?.dependency ? [stored.dependency] : []);
-        const legacyRemoved = stored?.model === 1 && stored.dependency === null;
-        const liveDependencies: TaskDependency[] = legacyRemoved ? [] : importJiraLinks(storedLinks, stored?.endedLinks || [], jiraBlockedBy);
+        const percents = iss.properties?.[LINKS_PROPERTY]?.links;
+        const liveDependencies: TaskDependency[] = dependenciesFromJira(jiraBlockedBy, percents && typeof percents === 'object' ? percents : {}, storedLinks);
         const liveDependency: TaskDependency | undefined = liveDependencies[0];
 
         const finalSubtasks: SubtaskItem[] = (stored?.subtasks && stored.subtasks.length > 0)
@@ -1581,6 +1584,54 @@ async function findBlocksLinkId(successorKey: string, predecessorKey: string): P
  * Mirrors a dependency into a native Jira "Blocks" link. Reuses an existing link, so saving the
  * same dependency twice creates one link, and returns the link id.
  */
+/**
+ * Sets and removes trigger percents on the successor's issue property cascadeplan.links, as the user
+ * (ADR-006). Returns the saved value, or null when Jira did not save it.
+ */
+export async function updateLinkPercents(successorKey: string, set: Record<string, number>, remove: string[]): Promise<{ v: number; links: Record<string, number> } | null> {
+  const caller = getJiraCaller();
+  try {
+    const cur = await caller.requestJira(route`/rest/api/3/issue/${successorKey}/properties/${LINKS_PROPERTY}`);
+    let links: Record<string, number> = {};
+    if (cur && cur.status === 200) {
+      const body = await cur.json();
+      if (body?.value?.links && typeof body.value.links === 'object') links = { ...body.value.links };
+    } else if (!cur || cur.status !== 404) {
+      logFailure('updateLinkPercents', cur);
+      return null;
+    }
+    for (const id of remove) delete links[id];
+    Object.assign(links, set);
+    const value = { v: 1, links };
+    const res = await caller.requestJira(route`/rest/api/3/issue/${successorKey}/properties/${LINKS_PROPERTY}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value)
+    });
+    if (!res || ![200, 201, 204].includes(res.status)) { logFailure('updateLinkPercents', res); return null; }
+    return value;
+  } catch (err) {
+    logFailure('updateLinkPercents', err);
+    return null;
+  }
+}
+
+/** Records a link this call created or deleted in the Jira data it already holds (as applyAcceptedDueDate does). */
+function patchLiveLinks(live: LiveData, successorKey: string, add: { key: string; linkId?: string } | undefined, removeLinkIds: string[]): void {
+  const pred = add ? (live.raw.issues || []).find((i: any) => i && i.key === add.key) : undefined;
+  live.raw = { ...live.raw, issues: (live.raw.issues || []).map((i: any) => {
+    if (!i || i.key !== successorKey) return i;
+    let links = (Array.isArray(i.fields?.issuelinks) ? i.fields.issuelinks : []).filter((l: any) => !removeLinkIds.includes(String(l.id)));
+    if (add && !links.some((l: any) => l.inwardIssue?.key === add.key && ['blocks', 'dependency'].includes(String(l.type?.name || '').toLowerCase()))) {
+      links = [...links, { ...(add.linkId ? { id: add.linkId } : {}), type: { name: 'Blocks' }, inwardIssue: { key: add.key, id: pred ? String(pred.id) : add.key } }];
+    }
+    return { ...i, fields: { ...(i.fields || {}), issuelinks: links } };
+  }) };
+}
+
+function patchLiveProperty(live: LiveData, issueKey: string, property: string, value: unknown): void {
+  live.raw = { ...live.raw, issues: (live.raw.issues || []).map((i: any) =>
+    (!i || i.key !== issueKey ? i : { ...i, properties: { ...(i.properties || {}), [property]: value } })) };
+}
+
 export async function mirrorDependencyToJira(
   successorKey: string,
   predecessorKey: string
@@ -1650,8 +1701,9 @@ export function applyAcceptedDueDate(
 async function applyPlannedJiraWrites(
   store: PlanStore, projectKey: string, target: WbsTask, savedEntry: StoredEntry, previous: StoredEntry | undefined,
   plan: { link?: { predecessorKey: string }; removeLinkIds: string[]; newSubtasks: Array<{ accountId: string; summary: string }>;
-    subtaskAction?: { subtaskKey: string; action: 'delete' | 'unassign' | 'keep' } },
-  log: SyncLog
+    subtaskAction?: { subtaskKey: string; action: 'delete' | 'unassign' | 'keep' }; percents: Record<string, number>; removePercentIds: string[] },
+  log: SyncLog,
+  live?: LiveData
 ): Promise<{ ok: true; entry: StoredEntry } | { ok: false; result: any }> {
   let entry: any = { ...savedEntry };
   let changed = false;
@@ -1664,15 +1716,21 @@ async function applyPlannedJiraWrites(
       return { ok: false, result: { ok: false, success: false, error: 'link_refused', jiraSync: log.report(),
         message: `Jira did not create the link from ${plan.link.predecessorKey} to ${target.key}, so the dependency was not added and nothing was changed.` } };
     }
-    if (mirror.created && mirror.linkId) {
-      entry.dependencies = (entry.dependencies || []).map((d: TaskDependency) =>
-        (d.predecessorKey === plan.link!.predecessorKey ? { ...d, jiraLinkId: mirror.linkId } : d));
-      entry.dependency = entry.dependencies[0] || null;
-      changed = true;
-    }
+    if (live) patchLiveLinks(live, target.key, { key: plan.link.predecessorKey, linkId: mirror.linkId }, []);
   }
+  // Any Jira link the user removes is deleted, whoever created it (N-11 L3).
+  const removedLinkIds: string[] = [];
   for (const linkId of plan.removeLinkIds) {
-    log.record(target.key, ['issuelink'], { synced: await removeMirroredLink(linkId), error: 'Jira did not delete the link' });
+    const ok = await removeMirroredLink(linkId);
+    if (ok) removedLinkIds.push(linkId);
+    log.record(target.key, ['issuelink'], { synced: ok, error: 'Jira did not delete the link' });
+  }
+  if (live && removedLinkIds.length) patchLiveLinks(live, target.key, undefined, removedLinkIds);
+  // The trigger percents are the successor's issue property (ADR-006, N-11 L4).
+  if (Object.keys(plan.percents).length || plan.removePercentIds.length) {
+    const saved = await updateLinkPercents(target.key, plan.percents, plan.removePercentIds);
+    log.record(target.key, ['linkpercent'], { synced: !!saved, error: 'Jira did not save the trigger percent' });
+    if (live && saved) patchLiveProperty(live, target.key, LINKS_PROPERTY, saved);
   }
   if (plan.newSubtasks.length) {
     const caller = getJiraCaller();
@@ -1772,7 +1830,7 @@ export async function updateWbsTask(
   const needed: IssuePermission[] = ['EDIT_ISSUES'];
   const u = updates as Record<string, unknown>;
   if (['startDate', 'endDate', 'startWeek', 'spanWeeks', 'endWeek'].some(f => u[f] !== undefined)) needed.push('SCHEDULE_ISSUES');
-  if (u.dependency !== undefined || u.dependencies !== undefined) needed.push('LINK_ISSUES');
+  if (u.dependency !== undefined || u.dependencies !== undefined || u.removeDependency !== undefined) needed.push('LINK_ISSUES');
   const deniedTarget = await deniedIssues([{ key: targetTask.key, id: targetTask.id }], needed);
   if (deniedTarget.length) {
     return forbiddenResult(`You cannot change ${targetTask.key}: your Jira role lacks ${describeMissing(deniedTarget[0].missing)}.`);
@@ -1827,10 +1885,19 @@ export async function updateWbsTask(
   const jiraPlan: {
     link?: { predecessorKey: string };
     removeLinkIds: string[];
+    /** The trigger percents to set on this successor's cascadeplan.links property, and to remove (ADR-006). */
+    percents: Record<string, number>;
+    removePercentIds: string[];
     newSubtasks: Array<{ accountId: string; summary: string }>;
     subtaskAction?: { subtaskKey: string; action: 'delete' | 'unassign' | 'keep' };
-  } = { removeLinkIds: [], newSubtasks: [] };
-  if (sanitized.dependency !== undefined) {
+  } = { removeLinkIds: [], newSubtasks: [], percents: {}, removePercentIds: [] };
+  // Dependencies are Jira "Blocks" links, the same in every plan; the trigger percent is the issue
+  // property cascadeplan.links of the successor (ADR-006, N-11). A dependency adds or updates one link
+  // and keeps the others; removeDependency removes exactly one, whoever created it in Jira (L3);
+  // dependency null removes every link. The plan record keeps no links (L5).
+  let activeAfter: TaskDependency[] | undefined;
+  const removeKey = (updates as any).removeDependency?.predecessorKey as string | undefined;
+  if (sanitized.dependency !== undefined || removeKey) {
     const update = sanitized.dependency && sanitized.dependency.predecessorKey ? sanitized.dependency : null;
     if (update) {
       const validation = PlannerEngine.validateDependency(targetTask.key, update.predecessorKey, update.triggerPercent, plan.tasks);
@@ -1840,20 +1907,37 @@ export async function updateWbsTask(
     }
     const currentEntry = entries.get(targetTask.key);
     const activeNow = targetTask.dependencies || [];
-    const keep = update ? activeNow.find(d => d.predecessorKey === update.predecessorKey) : undefined;
-    let next: TaskDependency | null = null;
+    const storedNow: TaskDependency[] = currentEntry?.dependencies || (currentEntry?.dependency ? [currentEntry.dependency] : []);
+    let removing: TaskDependency[] = [];
+    if (removeKey) {
+      const d = activeNow.find(x => x.predecessorKey === removeKey);
+      if (!d) throw new ValidationError('removeDependency', `${targetTask.key} has no dependency on ${removeKey}`);
+      removing = [d];
+    } else if (!update && sanitized.dependency !== undefined) {
+      removing = activeNow;
+    }
+    const idOf = (key: string) => idByKey.get(key) || key;
     if (update) {
       // The Jira link is created only after the record is saved under its version check (F-07).
-      next = { predecessorId: update.predecessorKey, predecessorKey: update.predecessorKey, triggerPercent: update.triggerPercent, isTriggerSatisfied: false };
-      if (keep?.jiraLinkId) next.jiraLinkId = keep.jiraLinkId;
-      jiraPlan.link = { predecessorKey: update.predecessorKey };
+      if (!activeNow.some(d => d.predecessorKey === update.predecessorKey && !d.planOnly)) jiraPlan.link = { predecessorKey: update.predecessorKey };
+      jiraPlan.percents[idOf(update.predecessorKey)] = update.triggerPercent;
     }
-    const applied = applyLinkUpdate(activeNow, currentEntry?.endedLinks || targetTask.endedLinks || [], next, todayIso());
-    jiraPlan.removeLinkIds = applied.removed.filter(g => g.jiraLinkId).map(g => g.jiraLinkId as string);
-    sanitized.dependencies = applied.dependencies;
-    sanitized.endedLinks = applied.endedLinks;
-    sanitized.dependency = applied.dependencies[0] || null;
+    jiraPlan.removeLinkIds = removing.filter(d => !d.planOnly && d.jiraLinkId).map(d => d.jiraLinkId as string);
+    jiraPlan.removePercentIds = removing.filter(d => !d.planOnly).map(d => idOf(d.predecessorKey));
+    const touched = new Set([...(update ? [update.predecessorKey] : []), ...removing.map(d => d.predecessorKey)]);
+    activeAfter = activeNow.filter(d => !touched.has(d.predecessorKey));
+    if (update) activeAfter.unshift({ predecessorId: idOf(update.predecessorKey), predecessorKey: update.predecessorKey, triggerPercent: update.triggerPercent, isTriggerSatisfied: false });
+    // A plan-only link the user touched leaves the record (created in Jira, or dropped).
+    const keptStored = storedNow.filter(d => d && !touched.has(d.predecessorKey));
+    sanitized.dependencies = keptStored;
+    sanitized.dependency = keptStored[0] || null;
+    // Ended links are history only (B-28); they never hide a Jira link (L3).
+    const applied = applyLinkUpdate(removing, currentEntry?.endedLinks || [], undefined, todayIso());
+    sanitized.endedLinks = [...applied.endedLinks.filter(e => !touched.has(e.predecessorKey)),
+      ...removing.map(d => ({ predecessorKey: d.predecessorKey, triggerPercent: d.triggerPercent, until: todayIso(), ...(d.since ? { since: d.since } : {}) }))];
   }
+  // The dependencies the engine sees for the target after this update.
+  const depView = activeAfter ? { dependencies: activeAfter, dependency: activeAfter[0] || null } : {};
   // Second people: by account id from the picker, or names matched to exactly one Jira user (B-28).
   if ((updates as any).contributors !== undefined) {
     const prev = entries.get(targetTask.key)?.contributors || [];
@@ -1940,10 +2024,10 @@ export async function updateWbsTask(
   }
 
   // A new or changed dependency moves the task to its earliest start, keeping its duration (B-11).
-  if (!restoring && sanitized.dependency && sanitized.dependency.predecessorKey) {
+  if (!restoring && activeAfter && sanitized.dependency !== undefined && (updates as any).dependency && (updates as any).dependency.predecessorKey) {
     const start = sanitized.startDate || targetTask.startDate;
     const end = sanitized.endDate || targetTask.endDate;
-    const candidate = plan.tasks.map(t => (t.key === targetTask.key ? { ...t, startDate: start, endDate: end, dependency: sanitized.dependency, dependencies: sanitized.dependencies } : t));
+    const candidate = plan.tasks.map(t => (t.key === targetTask.key ? { ...t, startDate: start, endDate: end, ...depView } : t));
     const inputs = engineInputs(candidate);
     const ev = evaluateEffort(targetTask.key, inputs.efforts, inputs.links, todayIso());
     if (ev.earliestStartDate && isIsoDate(start) && start < ev.earliestStartDate) {
@@ -1985,9 +2069,9 @@ export async function updateWbsTask(
 
   // Cascade date shifts to conflicting successors, at most CASCADE_BATCH_LIMIT per call (B-10, B-11).
   let cascadeRemaining: string[] = [];
-  if (!restoring && (sanitized.startDate || sanitized.endDate || sanitized.dependency)) {
+  if (!restoring && (sanitized.startDate || sanitized.endDate || activeAfter)) {
     // The parents' roll-ups are recomputed with the new dates before the cascade (N-06 rule 1).
-    const candidateTasks = withRollUps(plan.tasks.map(t => (t.key === targetTask.key ? { ...t, ...sanitized } : t)));
+    const candidateTasks = withRollUps(plan.tasks.map(t => (t.key === targetTask.key ? { ...t, ...sanitized, ...depView } : t)));
     const inputs = engineInputs(candidateTasks);
     const first = cascade(inputs.efforts, inputs.links, targetTask.key, todayIso());
     reportCycle(first.cycle, log);
@@ -2029,7 +2113,7 @@ export async function updateWbsTask(
   // KVS first, with a version check per record; Jira only after the target record is saved.
   let targetPut = await store.putEntry(targetTask.key, targetTask.id, stripJiraOwnedFields(scheduleMap[targetTask.key]), baseVersion);
   if (!targetPut.ok) return conflictResult(targetTask.key);
-  const saved = await applyPlannedJiraWrites(store, projectKey, targetTask, targetPut.entry as any, entries.get(targetTask.key), jiraPlan, log);
+  const saved = await applyPlannedJiraWrites(store, projectKey, targetTask, targetPut.entry as any, entries.get(targetTask.key), jiraPlan, log, live);
   if (!saved.ok) return saved.result;
   targetPut = { ok: true, entry: saved.entry } as any;
 

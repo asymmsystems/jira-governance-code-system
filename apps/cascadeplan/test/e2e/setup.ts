@@ -43,7 +43,11 @@ const ok = (body: any, status = 200) => ({ status, json: async () => body, clone
 const dues = (): Record<string, string> => JSON.parse(localStorage.getItem('__harness_jira_due') || '{}');
 // Issue properties the fake Jira holds (ADR-008: the shared start is the property cascadeplan.dates).
 const props = (): Record<string, Record<string, any>> => JSON.parse(localStorage.getItem('__harness_jira_props') || '{}');
-const withDue = (i: any) => ({ ...i, fields: { ...i.fields, duedate: dues()[i.key] || null }, properties: props()[i.key] || {} });
+// Jira "Blocks" links the fake holds (ADR-006): a POST creates one, a DELETE removes it, a search shows them.
+const jlinks = (): Array<{ id: string; pred: string; succ: string }> => JSON.parse(localStorage.getItem('__harness_jira_links') || '[]');
+const linksOn = (key: string) => jlinks().filter(l => l.succ === key)
+  .map(l => ({ id: l.id, type: { name: 'Blocks' }, inwardIssue: { key: l.pred, id: l.pred.split('-')[1] } }));
+const withDue = (i: any) => ({ ...i, fields: { ...i.fields, duedate: dues()[i.key] || null, issuelinks: linksOn(i.key) }, properties: props()[i.key] || {} });
 w.__jira = async (url: string, opts: any) => {
   const method = (opts && opts.method) || 'GET';
   if (method !== 'GET' && /\/rest\/api\/3\/issue\//.test(url)) {
@@ -77,7 +81,16 @@ w.__jira = async (url: string, opts: any) => {
   // Jira creates an issue link with 201 (a dependency exists only as a Jira link, ADR-004).
   if (method === 'POST' && url.endsWith('/rest/api/3/issueLink')) {
     localStorage.setItem('__harness_jira_writes', JSON.stringify([...writes(), `${method} ${url} ${opts.body || ''}`]));
+    const b = JSON.parse(opts.body || '{}');
+    const all = jlinks();
+    localStorage.setItem('__harness_jira_links', JSON.stringify([...all, { id: String(5000 + all.length), pred: b.inwardIssue.key, succ: b.outwardIssue.key }]));
     return ok({}, 201);
+  }
+  const linkDel = method === 'DELETE' ? url.match(/\/rest\/api\/3\/issueLink\/(\d+)$/) : null;
+  if (linkDel) {
+    localStorage.setItem('__harness_jira_writes', JSON.stringify([...writes(), `${method} ${url}`]));
+    localStorage.setItem('__harness_jira_links', JSON.stringify(jlinks().filter(l => l.id !== linkDel[1])));
+    return ok({}, 204);
   }
   // The harness user is a project administrator, so a plan approver (BL-2).
   // Review switch __harness_not_approver: the user is not a plan approver (BL-2 step 8 check).
@@ -99,7 +112,8 @@ w.__jira = async (url: string, opts: any) => {
     const v = props()[gp[1]]?.[gp[2]];
     return v === undefined ? ok({ errorMessages: ['not found'] }, 404) : ok({ key: gp[2], value: v });
   }
-  if (url.includes('fields=issuelinks')) return ok({ fields: { issuelinks: [] } });
+  const lq = url.match(/\/rest\/api\/3\/issue\/(DEMO-\d+)\?fields=issuelinks/);
+  if (lq) return ok({ fields: { issuelinks: linksOn(lq[1]) } });
   if (url.includes('/transitions')) return ok({ transitions: [] });
   return ok({});
 };

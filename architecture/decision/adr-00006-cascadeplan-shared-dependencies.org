@@ -56,7 +56,20 @@ So a scenario plan differs from the Main Plan only in row order, columns and mil
 - Any user who can browse the issue can read the percent property.
 
 * Implementation Notes
-Not implemented. Fix plan items N-11 (L2 to L6) and BL-2 step 2a.
+Implemented on branch =feature/cascadeplan-marketplace-fixes= (L2 and BL-2 step 2a earlier; L3 to L5
+in the commit that adds this note). Details that the decision leaves open:
+- The issue search reads both properties in one parameter, =properties=cascadeplan.dates,cascadeplan.links=.
+  The property value is ={v: 1, links: {<predecessor id>: <percent>}}=.
+- =updateWbsTask= takes =dependency= to add or update one link (the other links stay),
+  =removeDependency: {predecessorKey}= to remove exactly one link, and =dependency: null= to remove
+  every link of the task. The planner sends only the first two. Undo and Redo replay one operation
+  per changed link, so an undo never removes a link the action did not touch.
+- Migration (decision 6): a link stored only in a plan record stays shown and scheduled, marked
+  "not in Jira", until the user opens it and either saves it (which creates the Jira link and the
+  percent) or removes it. The planner lists such links in a message once per load. Hiding them at
+  once would change existing schedules with no word to the user.
+- Before this ADR, the planner's percent of a link was in the plan record. When the property has no
+  percent for a Jira link, that stored percent is used, else 100%.
 
 * References
 - [[file:adr-00004-cascadeplan-jira-holds-relationships.org][ADR-004: CascadePlan keeps every relationship in Jira]]

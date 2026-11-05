@@ -137,6 +137,11 @@ export function validateTaskUpdates(updates: Record<string, unknown>): void {
       numberIn('dependency.triggerPercent', u.dependency.triggerPercent, 0, 100);
     }
   }
+  if (u.removeDependency !== undefined) {
+    // Removes exactly one link, by its predecessor (N-11 L3).
+    if (!isObject(u.removeDependency)) fail('removeDependency', 'removeDependency must be an object');
+    assertIssueKey(u.removeDependency.predecessorKey, 'removeDependency.predecessorKey');
+  }
   if (u.effortConfig !== undefined && !isObject(u.effortConfig)) fail('effortConfig', 'effortConfig must be an object');
 }
 
