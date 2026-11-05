@@ -32,7 +32,7 @@
 
 - CascadePlan runs entirely on Atlassian Forge. It has no external servers and makes no calls outside your Atlassian site.
 - Planning data (row order, columns, milestones, plans and baselines) is stored in Forge storage of your site. The shared start date and the trigger percents are Jira issue properties of the issues they belong to.
-- The only personal data CascadePlan stores is the Atlassian account id of who froze a baseline and who requested or reviewed a scope change. These ids are reported each week to Atlassian's personal data reporting service, and the records of a closed account are changed to name no one.
+- The personal data CascadePlan stores is the Atlassian account id of who froze a baseline, of who requested or reviewed a scope change, and of each person who works on a task through a Jira sub-task. These ids are reported each week to Atlassian's personal data reporting service, and the records of a closed account are changed to name no one. A contributor name that matches no account (for example a placeholder role) is kept as typed.
 
 ---
 

@@ -35,6 +35,14 @@ CascadePlan schedules your project's epics, stories, tasks and sub-tasks on a ti
 
 ---
 
+## Highlights (images 580 x 330: `docs/marketplace/assets/cascadeplan/highlight-1.png` to `highlight-3.png`)
+
+1. **Start at 30%, not 100%.** A successor can start when its predecessor reaches a percent of its work. "Why this date?" names the link that sets the earliest start.
+2. **Move a story with its sub-tasks.** Work not started moves, work in progress keeps its start, finished work stays. Before you drop, CascadePlan lists every Jira change the drop will make.
+3. **Freeze a baseline, review scope changes.** The toolbar shows the change since the baseline in hours, added work and later ends. A plan approver accepts or rejects a scope change.
+
+---
+
 ## Runs entirely on Atlassian Forge
 * No external servers and no calls outside your Atlassian site.
 * Planning data is stored in Forge storage of your site; the shared start dates and trigger percents are issue properties of your Jira issues.
@@ -44,8 +52,8 @@ CascadePlan schedules your project's epics, stories, tasks and sub-tasks on a ti
 ## Security and Permissions
 * **Your own permissions:** every write is made as you and checked against your Jira permissions first (Edit issues, Schedule issues, Link issues, Create issues, and for type changes Move issues and Make bulk changes).
 * **Plan approvers:** project administrators, Jira administrators, and members of groups named on the app's admin page manage plans and baselines.
-* **Personal data:** the only personal data stored is the Atlassian account id of who froze a baseline and who requested or reviewed a scope change. These ids are reported weekly to Atlassian's personal data reporting service.
-* **Scopes:** `read:jira-work`, `write:jira-work`, `read:jira-user`, `storage:app`, `report:personal-data`. No egress.
+* **Personal data:** Atlassian account ids: of who froze a baseline, of who requested or reviewed a scope change, and of each person who works on a task through a Jira sub-task. These ids are reported weekly to Atlassian's personal data reporting service, and the id of a closed account is removed. A contributor name that matches no account (for example a placeholder role) is kept as typed.
+* **Scopes:** `read:jira-work`, `write:jira-work`, `read:jira-user`, `storage:app`, `report:personal-data`. No egress, and no content permissions (no inline scripts or styles).
 
 ---
 

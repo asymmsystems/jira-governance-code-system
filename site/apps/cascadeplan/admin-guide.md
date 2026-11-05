@@ -36,7 +36,7 @@ Members of these groups are plan approvers in every project. A scope-change requ
 
 - **Forge storage of your site:** each plan's row order, columns and milestones; the dates of work items not moved since the shared start date was introduced; the plan list; baselines (issue id and key, Jira estimate, start, end, done) and scope-change requests.
 - **Jira issue properties:** `cascadeplan.dates` (the shared start and the planner's end) and `cascadeplan.links` (trigger percents). They belong to the issues.
-- **Personal data:** the Atlassian account id of who froze a baseline, and who requested or reviewed a scope change. CascadePlan reports these ids each week to Atlassian's personal data reporting service, and changes the records of a closed account to name no one. No names, summaries or other Jira text are stored.
+- **Personal data:** the Atlassian account id of who froze a baseline, of who requested or reviewed a scope change, and of each person who works on a task through a Jira sub-task. CascadePlan reports these ids each week to Atlassian's personal data reporting service, and changes the records of a closed account to name no one. A contributor name that matches no account (for example a placeholder role) is kept as typed; no summaries or other Jira text are stored.
 - **Deleting a plan** deletes its records, settings, baselines and requests.
 - **Uninstall:** Atlassian keeps Forge hosted storage for 28 days after an uninstall ("Forge hosted storage retains data for 28 days after uninstallation", Forge storage documentation). CascadePlan does not remove its issue properties when it is uninstalled; they stay with the issues.
 - CascadePlan makes no calls outside your Atlassian site.

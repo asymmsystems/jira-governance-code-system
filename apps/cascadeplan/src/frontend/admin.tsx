@@ -50,7 +50,7 @@ export const CascadePlanAdmin: React.FC = () => {
     chosen,
     results,
     appName: 'CascadePlan',
-    roleDescription: 'freeze delivery baseline, approve milestone variance, and manage plans'
+    roleDescription: 'create, rename and delete plans, freeze baselines, and accept or reject scope changes'
   });
 
   const search = async () => {

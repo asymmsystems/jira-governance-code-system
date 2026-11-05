@@ -58,6 +58,7 @@ comparison, export and integrity.
 - Against: a review must not be made by the requester, and an audit record without its author is
   of little use.
 - Verdict: rejected for these records only. The planner itself still stores no account id.
+- Correction (2026-11-05): that last sentence was wrong. The plan records also name contributors by account id (`parties[].partyId`, a person working on a task through a Jira sub-task, ADR-004). The weekly report (`reportPersonalData`) now reads these ids from the stored records each week, reports them with the audit subjects, and removes a closed account's id from the records (`src/storage/personal-data.ts`). A contributor name that matches no account is kept as typed (`legacyName`).
 ** One value per baseline, compressed
 - Against: still has a size limit, and a partial write leaves a corrupt value with no way to know.
 - Verdict: rejected.

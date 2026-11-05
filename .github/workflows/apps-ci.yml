@@ -60,6 +60,13 @@ jobs:
         working-directory: apps/cascadeplan/tools
         run: npm ci --no-audit --no-fund
 
+      # Marketplace security requirement 11: no known critical or high vulnerabilities in the
+      # production dependencies (MK-02, security questionnaire Q10).
+      - name: Dependency audit (production, high and critical)
+        if: matrix.app == 'cascadeplan'
+        working-directory: apps/cascadeplan
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Type check
         working-directory: apps/${{ matrix.app }}
         run: npx --no-install tsc --noEmit

@@ -14,6 +14,7 @@ import {
 } from '../src/index';
 import { ValidationError } from '../src/validation';
 import { MemStorage } from './helpers/mem-storage';
+import { PlanStore } from '../src/storage/plan-store';
 
 const mockRequestJira = jest.fn();
 jest.mock('@forge/api', () => ({
@@ -213,5 +214,26 @@ describe('baseline resolvers', () => {
     expect(l.activeIntact).toBe(true);
     expect(l.baselines[0].frozenByName).toBe('a deleted user');
     expect(await reportPersonalData(storage, async () => [])).toEqual({ reported: 0, closed: [] });
+  });
+
+  it('personal data: contributors named in plan records are reported too, and a closed one is removed from its records', async () => {
+    const store = new PlanStore(storage, 'TEST', 'TEST');
+    await store.putEntry('TEST-1', '1', { contributors: [{ accountId: 'acc-9', subtaskKey: 'TEST-77', since: '2026-10-01' }, { accountId: 'acc-8', subtaskKey: 'TEST-78' }] } as any);
+    // A copy of the record in another plan, written outside putEntry, is found as well.
+    await storage.set('cp:TEST:plan:p2:we:1', storage.store.get('cp:TEST:we:1'));
+    const reported: any[] = [];
+    const res = await reportPersonalData(storage, async accounts => { reported.push(...accounts); return [{ accountId: 'acc-9', status: 'closed' }]; });
+    expect(reported.map(a => a.accountId).sort()).toEqual(['acc-8', 'acc-9']);
+    expect(reported.find(a => a.accountId === 'acc-9').updatedAt).toBe('2026-10-01T00:00:00.000Z');
+    expect(res).toEqual({ reported: 2, closed: ['acc-9'] });
+    for (const key of ['cp:TEST:we:1', 'cp:TEST:plan:p2:we:1']) {
+      const parties = (storage.store.get(key) as any).parties;
+      expect(parties.map((p: any) => p.partyId)).toEqual([undefined, 'acc-8']);
+      expect(parties[0].subtaskKey).toBe('TEST-77');
+    }
+    // The next report no longer names the closed account.
+    const again: any[] = [];
+    await reportPersonalData(storage, async accounts => { again.push(...accounts); return []; });
+    expect(again.map(a => a.accountId)).toEqual(['acc-8']);
   });
 });

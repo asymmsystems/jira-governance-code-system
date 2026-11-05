@@ -14,9 +14,9 @@
 | Scope | User-facing capability | Justification |
 |---|---|---|
 | `read:jira-work` | The timeline, permission checks, bulk move progress | Reads the project's issues, estimates, due dates, links and issue properties as the user; checks the user's permissions before every write; follows a type-conversion job. The issue-deleted trigger removes the planner's records of a deleted issue. |
-| `write:jira-work` | Moves, links, sub-tasks, hierarchy changes | Writes only values the user chose: due dates, estimates, assignees, summaries, status transitions the user picks, "Blocks" links, the issue properties `cascadeplan.dates` and `cascadeplan.links`, sub-task create and delete, parent changes and type conversions (bulk move). |
+| `write:jira-work` | Moves, links, sub-tasks, hierarchy changes | Writes only values the user chose: due dates, estimates, assignees, summaries, status transitions the user picks, "Blocks" links, the issue properties `cascadeplan.dates`, `cascadeplan.links` and `cascadeplan.create` (the id of the call that created an issue, so a repeated create returns the first issue), sub-task create and delete, parent changes and type conversions (bulk move). |
 | `read:jira-user` | Assignee picker, approver groups, names of baseline authors | Lists assignable users; searches groups for the plan approver admin page; shows the names of who froze a baseline or reviewed a scope change, read live. |
-| `storage:app` | Plans and baselines | Stores row order, columns, milestones, plans, baselines and scope-change requests in Forge storage. |
+| `storage:app` | Plans and baselines | Stores row order, columns, milestones, a plan's optional JQL filter, plans, baselines and scope-change requests in Forge storage. |
 | `report:personal-data` | Personal data reporting | Reports the account ids stored in baseline and scope-change records once a week, and clears those of closed accounts. |
 
 ---
@@ -24,8 +24,9 @@
 ## 2. Architecture and Data
 
 - **No egress:** the manifest declares no external endpoint, and the app makes no call outside the customer's Atlassian site.
-- **Storage:** Forge storage of the site, and two issue properties on the customer's issues.
-- **Personal data:** only Atlassian account ids, as authors of baseline and scope-change records; reported weekly.
+- **Storage:** Forge storage of the site, and three issue properties on the customer's issues (`cascadeplan.dates`, `cascadeplan.links`, `cascadeplan.create`; the last is indexed for JQL by a `jira:entityProperty` module).
+- **Content Security Policy:** no `content` permissions: no inline scripts and no inline styles.
+- **Personal data:** Atlassian account ids, as authors of baseline and scope-change records and as contributors of a task (a person working on it through a Jira sub-task); reported weekly, and removed for a closed account. A contributor name that matches no account (for example a placeholder role) is kept as typed.
 
 ---
 
