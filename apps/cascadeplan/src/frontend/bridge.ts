@@ -15,11 +15,8 @@ import { classifyResult } from '../ui/result';
 import { showErrorBanner } from './banner';
 import { recordChanges } from './changes-panel';
 
-/**
- * Calls a resolver. A thrown call becomes { ok: false, error }, and every failed write
- * (ok false, success false, or a failed Jira sync) shows the error banner (B-07, INV-05).
- */
-export async function callResolver(fnName: string, payload: Record<string, unknown> = {}): Promise<any> {
+/** One resolver call: a thrown call becomes { ok: false }, and a failed write shows the error banner. */
+async function callOnce(fnName: string, payload: Record<string, unknown>): Promise<any> {
   let res: any;
   try {
     res = await invoke(fnName, payload);
@@ -34,13 +31,37 @@ export async function callResolver(fnName: string, payload: Record<string, unkno
     // Every Jira write goes to the Changes panel with its old value, new value and result (B-23).
     recordChanges(res);
   }
-  // A long cascade is applied in batches; keep going until nothing remains (B-10, D-05).
+  return res;
+}
+
+/**
+ * Calls a resolver. A thrown call becomes { ok: false, error }, and every failed write
+ * (ok false, success false, or a failed Jira sync) shows the error banner (B-07, INV-05).
+ * A long cascade is applied in batches: the call continues from each cascade root until nothing
+ * remains, with one round counter for the whole call (B-10, D-05, M3). A batch names its roots in
+ * cascadeRoots (F-20).
+ */
+export async function callResolver(fnName: string, payload: Record<string, unknown> = {}): Promise<any> {
+  let res = await callOnce(fnName, payload);
+  const pending = (r: any) => !!r && Array.isArray(r.cascadeRemaining) && r.cascadeRemaining.length > 0;
+  const roots: string[] = Array.isArray(res?.cascadeRoots) && res.cascadeRoots.length
+    ? res.cascadeRoots.map(String)
+    : (pending(res) && payload.taskId ? [String(payload.taskId)] : []);
   let rounds = 0;
-  while (res && Array.isArray(res.cascadeRemaining) && res.cascadeRemaining.length > 0 && rounds < MAX_CASCADE_ROUNDS) {
-    rounds++;
-    // The cascade continues in the plan the first write went to.
-    res = await callResolver('continueCascade', { taskId: payload.taskId, planId: payload.planId });
+  let unfinished = false;
+  for (const root of roots) {
+    let more = true;
+    while (more) {
+      if (rounds >= MAX_CASCADE_ROUNDS) { unfinished = true; break; }
+      rounds++;
+      // The cascade continues in the plan the first write went to.
+      const next = await callOnce('continueCascade', { taskId: root, planId: payload.planId });
+      if (next && Array.isArray(next.tasks)) res = next;
+      more = pending(next) && next.ok !== false;
+    }
+    if (unfinished) break;
   }
+  if (unfinished) showErrorBanner('The cascade did not finish. Move the task again to continue.');
   return res;
 }
 

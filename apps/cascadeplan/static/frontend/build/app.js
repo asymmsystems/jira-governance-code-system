@@ -6176,7 +6176,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
 
   // src/frontend/bridge.ts
-  async function callResolver(fnName, payload = {}) {
+  async function callOnce(fnName, payload) {
     let res;
     try {
       res = await (0, import_bridge.invoke)(fnName, payload);
@@ -6190,11 +6190,29 @@ Please see https://iframe-resizer.com/upgrade for more details.
       if (verdict.failed && verdict.message) showErrorBanner(verdict.message);
       recordChanges(res);
     }
+    return res;
+  }
+  async function callResolver(fnName, payload = {}) {
+    let res = await callOnce(fnName, payload);
+    const pending = (r) => !!r && Array.isArray(r.cascadeRemaining) && r.cascadeRemaining.length > 0;
+    const roots = Array.isArray(res?.cascadeRoots) && res.cascadeRoots.length ? res.cascadeRoots.map(String) : pending(res) && payload.taskId ? [String(payload.taskId)] : [];
     let rounds = 0;
-    while (res && Array.isArray(res.cascadeRemaining) && res.cascadeRemaining.length > 0 && rounds < MAX_CASCADE_ROUNDS) {
-      rounds++;
-      res = await callResolver("continueCascade", { taskId: payload.taskId, planId: payload.planId });
+    let unfinished = false;
+    for (const root of roots) {
+      let more = true;
+      while (more) {
+        if (rounds >= MAX_CASCADE_ROUNDS) {
+          unfinished = true;
+          break;
+        }
+        rounds++;
+        const next = await callOnce("continueCascade", { taskId: root, planId: payload.planId });
+        if (next && Array.isArray(next.tasks)) res = next;
+        more = pending(next) && next.ok !== false;
+      }
+      if (unfinished) break;
     }
+    if (unfinished) showErrorBanner("The cascade did not finish. Move the task again to continue.");
     return res;
   }
   var MAX_CASCADE_ROUNDS = 40;

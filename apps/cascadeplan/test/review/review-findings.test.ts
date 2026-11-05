@@ -259,7 +259,7 @@ describe('D3 shared dates: concurrency', () => {
     expect(res.jiraSync.writes).toEqual([]);
   });
 
-  it('FINDING R-07: a cascade batch skips a successor that another user moved, and does not list it as remaining', async () => {
+  it('R-07: a successor another user moved is not moved, and is returned and reported as skipped (F-20)', async () => {
     const store = new PlanStore(storage, 'TEST', 'TEST');
     const e5 = (await store.loadEntries()).get('TEST-5')!;
     await store.putEntry('TEST-5', '5', { ...e5, endDate: add(start, 8) }, e5.version);
@@ -275,11 +275,8 @@ describe('D3 shared dates: concurrency', () => {
       return realSwap<T>(k, value);
     };
     const res: any = await continueCascade({ projectKey: 'TEST', taskId: 'TEST-5' }, storage);
-    expect(res.cascadeRemaining).toEqual([]);
-    expect(res.jiraSync.writes.some((w: any) => w.key === 'TEST-6' && !w.ok)).toBe(true);
-    // TEST-6 still starts before TEST-5 ends; the client stops because nothing is "remaining".
-    const t6 = await planTask(storage, undefined, 'TEST-6');
-    expect(t6.dependency.isViolated).toBe(true);
+    expect(res.cascadeSkipped).toEqual(['TEST-6']);
+    expect(res.jiraSync.writes.find((w: any) => w.key === 'TEST-6')).toMatchObject({ ok: false, error: 'not moved: someone else changed it; move the task again' });
   });
 });
 

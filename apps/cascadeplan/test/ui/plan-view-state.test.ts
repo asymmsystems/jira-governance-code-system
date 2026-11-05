@@ -147,7 +147,7 @@ describe('planner source: plan-scoped calls', () => {
   });
 
   it('the cascade loop continues in the plan of the first write', () => {
-    expect(bridge).toMatch(/callResolver\('continueCascade', \{[^}]*planId: payload\.planId/);
+    expect(bridge).toMatch(/callOnce\('continueCascade', \{[^}]*planId: payload\.planId/);
   });
 
   it('the active plan is only changed through setActivePlan (which saves it), apart from start-up', () => {

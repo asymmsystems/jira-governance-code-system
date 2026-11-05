@@ -1960,7 +1960,7 @@ export async function updateWbsTask(
     if (key === targetTask.key) continue;
     const put = await store.putEntry(key, idByKey.get(key), stripJiraOwnedFields(scheduleMap[key]), entries.get(key)?.version ?? 0);
     if (put.ok) datesSaved.push({ key, id: idByKey.get(key), entry: put.entry });
-    else { notMoved.add(key); log.record(key, ['plan'], { synced: false, error: 'changed by someone else; not moved' }); }
+    else { notMoved.add(key); log.record(key, ['plan'], { synced: false, error: 'not moved: someone else changed it; move the task again' }); }
   }
   // Jira is the single truth for a task: the same dates go to every plan, and every changed field,
   // the due date included, goes to Jira from whichever plan the change was made in.
@@ -1971,7 +1971,7 @@ export async function updateWbsTask(
   }
 
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId),
-    { ok: true, jiraSync: log.report(), cascadeRemaining });
+    { ok: true, jiraSync: log.report(), cascadeRemaining, cascadeSkipped: [...notMoved] });
 }
 
 /**
@@ -2047,6 +2047,8 @@ export async function batchUpdateTasks(
   const startVersions = new Map([...(await store.loadEntries())].map(([k, e]) => [k, e.version]));
   const writes: JiraWriteRecord[] = [];
   const results: Array<{ taskId: string; ok: boolean; conflict?: boolean }> = [];
+  const cascadeRoots: string[] = [];
+  const remaining: string[] = [];
   let plan: ProjectPlanState | null = null;
   for (const item of items) {
     const run = (expectedVersion?: number) => updateWbsTask({ projectKey, projectId, planId, taskId: item.taskId, updates: item.updates, expectedVersion }, storage, live);
@@ -2058,6 +2060,10 @@ export async function batchUpdateTasks(
     }
     const conflict = !!(res && res.conflict);
     results.push(conflict ? { taskId: item.taskId, ok: false, conflict: true } : { taskId: item.taskId, ok: true });
+    if (res && Array.isArray(res.cascadeRemaining) && res.cascadeRemaining.length) {
+      cascadeRoots.push(item.taskId);
+      remaining.push(...res.cascadeRemaining);
+    }
     writes.push(...((res && res.jiraSync && res.jiraSync.writes) || []));
     if (res && Array.isArray(res.tasks)) plan = res;
   }
@@ -2065,7 +2071,8 @@ export async function batchUpdateTasks(
   const failed = writes.filter(w => !w.ok);
   const jiraSync: JiraSyncReport = { ok: failed.length === 0, writes };
   if (failed.length) jiraSync.error = failed.map(w => `${w.key}: ${w.error}`).join('; ');
-  return Object.assign(finalPlan, { ok: results.every(r => r.ok), jiraSync, results, cascadeRemaining: [] });
+  // Each item whose cascade has successors left is a root the client continues from (F-20).
+  return Object.assign(finalPlan, { ok: results.every(r => r.ok), jiraSync, results, cascadeRoots, cascadeRemaining: [...new Set(remaining)] });
 }
 
 export const CASCADE_BATCH_LIMIT = 25;
@@ -2091,21 +2098,23 @@ export async function continueCascade(
   const { changes } = cascade(inputs.efforts, inputs.links, taskId, todayIso());
   // BL-2: a successor the user may not edit and schedule is not moved, and is reported.
   const batch = changes.slice(0, CASCADE_BATCH_LIMIT);
+  // Successors this round could not move are returned, never dropped (F-20, INV-11).
+  const skipped: string[] = [];
   const denied = new Map((await deniedIssues(batch.map(c => ({ key: c.key, id: plan.tasks.find(t => t.key === c.key)?.id })),
     ['EDIT_ISSUES', 'SCHEDULE_ISSUES'])).map(d => [d.key, d.missing]));
   for (const c of batch) {
     const missing = denied.get(c.key);
-    if (missing) { log.record(c.key, ['plan'], { synced: false, error: `not moved: you lack ${describeMissing(missing)} on this issue in Jira` }); continue; }
+    if (missing) { skipped.push(c.key); log.record(c.key, ['plan'], { synced: false, error: `not moved: you lack ${describeMissing(missing)} on this issue in Jira` }); continue; }
     const cur = entries.get(c.key);
     const task = plan.tasks.find(t => t.key === c.key);
     const put = await store.putEntry(c.key, task?.id, stripJiraOwnedFields({ ...(cur || {}), startDate: c.toStart, endDate: c.toEnd,
       ...gridFor(plan.weeks, c.toStart, c.toEnd) }), cur ? cur.version : 0);
-    if (!put.ok) { log.record(c.key, ['plan'], { synced: false, error: 'changed by someone else; not moved' }); continue; }
+    if (!put.ok) { skipped.push(c.key); log.record(c.key, ['plan'], { synced: false, error: 'not moved: someone else changed it; move the task again' }); continue; }
     await shareDatesAndLog(storage, projectKey, projectId, planId, [{ key: c.key, id: task?.id, entry: put.entry }], log);
     applyAcceptedDueDate(live, c.key, { endDate: c.toEnd }, await syncTaskToJira(c.key, { endDate: c.toEnd }, log, task));
   }
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId),
-    { ok: true, jiraSync: log.report(), cascadeRemaining: changes.slice(CASCADE_BATCH_LIMIT).map(c => c.key) });
+    { ok: true, jiraSync: log.report(), cascadeRemaining: changes.slice(CASCADE_BATCH_LIMIT).map(c => c.key), cascadeSkipped: skipped });
 }
 
 /**

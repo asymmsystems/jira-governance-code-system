@@ -182,7 +182,7 @@ describe('conflict paths of each write resolver (B-09, INV-08)', () => {
     raceOnSwap(2);
     const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { startWeek: weeks[6].weekKey } });
     expect(res.ok).toBe(true);
-    expect(res.jiraSync.writes).toContainEqual({ key: 'TEST-2', fields: ['plan'], ok: false, error: 'changed by someone else; not moved' });
+    expect(res.jiraSync.writes).toContainEqual({ key: 'TEST-2', fields: ['plan'], ok: false, error: 'not moved: someone else changed it; move the task again' });
     expect((await recordOf(storage, 'TEST-2')).note).toBe('other writer');
   });
 

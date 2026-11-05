@@ -239,7 +239,7 @@ describe('continueCascade conflicts (B-10)', () => {
       return real(key, value);
     };
     const res: any = await continueCascade({ projectKey: 'TEST', taskId: 'TEST-1' });
-    expect(res.jiraSync.writes).toContainEqual({ key: 'TEST-2', fields: ['plan'], ok: false, error: 'changed by someone else; not moved' });
+    expect(res.jiraSync.writes).toContainEqual({ key: 'TEST-2', fields: ['plan'], ok: false, error: 'not moved: someone else changed it; move the task again' });
     expect(res.cascadeRemaining).toEqual([]);
   });
 });
