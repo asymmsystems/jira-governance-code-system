@@ -38,6 +38,33 @@ DefinitionGuard turns your Definition of Done from a checklist into a gate on th
 | **Hash-Chained History** | Every tick, reopen, waiver, reset, and template re-sync on the issue is recorded in a hash-chained history. The panel shows whether the chain is intact. | `apps/definitionguard/src/domain/event-log.ts`, `apps/definitionguard/test/domain/chain-verify.test.ts` |
 | **JSON History Export** | Project administrators click **Export history** in the issue panel and copy the JSON text, which holds every event and the result of the history check. The panel has no download button. | `apps/definitionguard/src/index.ts`, `apps/definitionguard/test/resolvers/export.test.ts` |
 
+**How the gate works.** A Jira admin adds the DefinitionGuard validator to each transition in the workflow editor. The app cannot add it for you. The Gate Coverage Check shows where it is missing. Works in company-managed projects; the validator is also offered in team-managed projects.
+
+### Each Capability and Its Backlog Item
+
+Each row names the backlog item in `docs/sdlc/definitionguard-usp-ux-research-2026-11/backlog.md` and its test in `apps/definitionguard/`.
+
+| Capability | Backlog item | Test |
+|---|---|---|
+| Fails closed: any error blocks the move and writes nothing | B-01 | `test/validator/validate-transition.test.ts` |
+| Permission checks as the user on every change | B-02 | `test/security/permissions.test.ts` |
+| No lost updates when two people tick at once | B-03 | `test/storage/checklist-store.test.ts` |
+| Bounded storage, history in pages | B-04 | `test/storage/size-budget.test.ts` |
+| History check with its stated limit | B-05 | `test/domain/chain-verify.test.ts` |
+| Project templates for admins | B-06 | `test/settings/project-templates.test.ts` |
+| People shown from their Jira account, never stored by name | B-07 | `test/ui/attribution.test.ts` |
+| Marketplace licensing | B-09 | `test/security/licence.test.ts` |
+| One rule for Done-category moves, exempt statuses | B-10 | `test/validator/gate-rule.test.ts` |
+| Evidence and evidence-required items | B-11 | `test/resolvers/evidence.test.ts` |
+| Required permission, not the assignee, waivers | B-12 | `test/resolvers/roles-waivers.test.ts` |
+| Clear panel text, accessible names, no raw errors | B-13 | `test/ui/panel-view-model.test.ts` |
+| Signed issue property on every change | B-14 | `test/integrity/attestation.test.ts` |
+| History export | B-15 | `test/resolvers/export.test.ts` |
+| Template versions and re-sync | B-16 | `test/settings/resync.test.ts` |
+| Coverage check | B-17 | `test/settings/coverage.test.ts` |
+| Retry on Jira rate limits | B-18 | `test/jira/jira-client.test.ts` |
+| Data model after the Silverston patterns (as Apache OFBiz implements them) | B-21 | `test/domain/event-log.test.ts` |
+
 ---
 
 ## Enterprise Compliance Grounding
@@ -48,7 +75,7 @@ DefinitionGuard provides records that support internal and external audits:
 - **ISO/IEC 27001:2022 (Control A.8.29 & A.8.32):** Supports compliance by recording that documented security and testing requirements were met before release.
 - **GxP / MedTech Quality Systems:** Supports compliance by keeping a hash-chained record of verification and review sign-offs and of waivers with reasons. The history check shows edits, removals, and reordering of the stored history. It does not stop someone who can rewrite all of the app's stored data, and that includes the app vendor.
 
-*Honest Compliance Boundary:* DefinitionGuard enforces the criteria you define. It does not certify your processes. Your auditor decides whether your quality management procedures meet these frameworks.
+*Honest Compliance Boundary:* DefinitionGuard enforces the criteria you define. DefinitionGuard does not certify your team against any standard. It does not certify your processes. Your auditor decides whether your quality management procedures meet these frameworks.
 
 ---
 
@@ -58,6 +85,22 @@ DefinitionGuard provides records that support internal and external audits:
 - **No External Egress:** The app manifest declares no external fetch permissions. The app calls only the Jira REST API of your site.
 - **Forge Storage:** Checklist state and history are kept in Atlassian Forge key-value storage for your site.
 - **Data Residency:** Data residency follows Atlassian's rules for Forge app storage.
+
+---
+
+## Security
+
+- **Scopes.** The app requests these scopes, and why:
+- `read:jira-work`: read issues, statuses and your Jira permissions.
+- `write:jira-work`: write the `definitionguard-dod` issue property.
+- `read:jira-user`: read group memberships and search groups for approver authority.
+- `storage:app`: keep checklists, their history and settings in Forge storage.
+- `read:workflow:jira`: read workflows for the coverage check. Read only.
+- **Who can change what.** Ticking needs Edit issues on the issue. An item can also need a chosen Jira permission, or be closed to the current assignee. Exporting and the project settings need Administer projects. Waiving and resetting need an approver: a project admin, a Jira admin, or a member of a group that a Jira admin chooses on the **DefinitionGuard approvers** page. A user with the waiver permission of the template can also waive. Each check runs as the user.
+- **Where data lives.** Checklists, history, templates and approver groups are stored in Forge storage for your site.
+- **The signature.** On every change the app writes a summary of the checklist to the `definitionguard-dod` issue property and signs it with Ed25519. The signature shows that DefinitionGuard wrote the issue property. The app vendor holds the signing key, so the signature does not protect against the vendor. The public key to check it is published in `docs/marketplace/definitionguard-public-key.pem`. If the signing key is not set, the property is written without a signature. Other apps and users can still write the issue property; the gate never reads it.
+- **The history check.** It shows edits, removals and reordering of the stored history. It does not stop someone who can rewrite all of the app's stored data and the history check with it, and that includes the app vendor.
+- **Tests.** The code has automated tests with at least 90% branch coverage for each source file. The UI files are rendered from tested view models; the UI files themselves are not measured.
 
 ---
 
