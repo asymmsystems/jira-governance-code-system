@@ -58,12 +58,15 @@ CascadePlan schedules your project's epics, stories, tasks and sub-tasks on a ti
 ---
 
 ## Pricing
-CascadePlan offers simple, tiered user-based pricing with automated Atlassian billing:
-* **Free Tier:** Free forever for small teams up to 10 users.
-* **Standard Tier (11 to 100 users):** $1.50 / user / month.
-* **Growth Tier (101 to 250 users):** $1.20 / user / month.
-* **Enterprise Tier (251+ users):** Volume pricing down to $0.60 / user / month.
-* **Annual Subscriptions:** 2 months free with an annual plan.
+CascadePlan is billed through your Atlassian invoice, per user, with the same tiers as the other Asymm Systems apps:
+
+| Tier | Monthly Price | Annual Price (2 Months Free) |
+|---|---|---|
+| **1 to 10 Users** | **Free** | **Free** |
+| **11 to 100 Users** | $1.50 per user / month | $15.00 per user / year |
+| **101 to 250 Users** | $1.20 per user / month | $12.00 per user / year |
+| **251 to 1,000 Users** | $0.90 per user / month | $9.00 per user / year |
+| **1,001+ Users** | Custom | Custom |
 
 ---
 

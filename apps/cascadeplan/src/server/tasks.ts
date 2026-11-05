@@ -813,15 +813,16 @@ export async function reorderWbsTasks(
   const pos = reordered.findIndex(t => t.key === taskId || t.id === taskId);
   if (pos !== -1) {
     const movedKey = reordered[pos].key;
-    // Scheduled rows always have a record. Rows without a sequence number get one first,
-    // in their current order (one write per such row, once).
+    // Rows without a sequence number sort after the numbered ones, in Jira's order. So every row
+    // above the new position gets a number first, in its current order (once per row); rows below
+    // keep Jira's order. A row can have no record at all: since ADR-008 its dates are the issue
+    // property, so a record is written with the number only.
     let last: number | undefined;
-    for (const row of reordered) {
+    for (const row of reordered.slice(0, pos)) {
       const e = entries.get(row.key);
-      if (row.key === movedKey || !e) continue;
-      if (typeof e.sequenceNum === 'number') { last = e.sequenceNum; continue; }
+      if (e && typeof e.sequenceNum === 'number') { last = e.sequenceNum; continue; }
       const seq = sequenceBetween(last, undefined);
-      const put = await store.putEntry(row.key, row.id, { ...e, sequenceNum: seq }, e.version);
+      const put = await store.putEntry(row.key, row.id, { ...(e || {}), sequenceNum: seq }, e ? e.version : 0);
       // A row someone else changed meanwhile: refuse, so the client reloads (F-28).
       if (!put.ok) return conflictResult(row.key);
       entries.set(row.key, put.entry);
@@ -829,10 +830,8 @@ export async function reorderWbsTasks(
     }
     const seqAt = (i: number) => (i >= 0 && i < reordered.length ? entries.get(reordered[i].key)?.sequenceNum : undefined);
     const moved = entries.get(movedKey);
-    if (moved) {
-      const put = await store.putEntry(movedKey, reordered[pos].id, { ...moved, sequenceNum: sequenceBetween(seqAt(pos - 1), seqAt(pos + 1)) }, moved.version);
-      if (!put.ok) return conflictResult(movedKey);
-    }
+    const put = await store.putEntry(movedKey, reordered[pos].id, { ...(moved || {}), sequenceNum: sequenceBetween(seqAt(pos - 1), seqAt(pos + 1)) }, moved ? moved.version : 0);
+    if (!put.ok) return conflictResult(movedKey);
   }
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId), { ok: true, jiraSync: noJiraWrites() });
 }
