@@ -182,3 +182,8 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 - **Live fact first:** a read-only search on DEMO showed that Jira refuses `reconcileIssues=10030,10029` (400, "Failed to convert 'reconcileIssues'") and accepts the repeated form `reconcileIssues=10030&reconcileIssues=10029` (200, 2 issues). The search uses the repeated form, built with `URLSearchParams` inside Forge's `route`.
 - **What changed:** `fetchRawIssues` and `loadLive` take reconcile ids (numeric, at most 50). `getProjectPlan`, `updateWbsTask`, `continueCascade` and `batchUpdateTasks` accept `reconcileIds` (validated by `reconcileIdsOf`). Their results return `writtenIssueIds` (issues with a successful Jira write). `bridge.ts` keeps written ids for 60 s and sends them as `reconcileIds` with every call.
 - **Proof:** new tests in `test/failure-states.test.ts` (the search URL holds the repeated parameter and no non-numeric id; invalid ids refused) and `test/frontend/bridge-cascade.test.ts` (an id written by one call is sent by the next). Unit suite 802 passed, coverage thresholds met; harness 30/30 and 25/25.
+
+### Live check on development after F-03 part 3 (build tag `f0d45b9`, version 2.50.0)
+
+- `live_move.py DEMO-29 7` then `-7`: 170 px before, after the answer and after the reload (which sends DEMO-29's id as `reconcileIds`), both ways; Changes panel "Written" both ways; restored to 2026-10-28 to 2026-11-10, Jira due date 2026-11-10. `forge logs` shows no `cascadeplan` failure line, so the search with the repeated `reconcileIssues` parameter is accepted by real Jira through Forge's `route`.
+- **Live site changes:** DEMO-29's due date 2026-11-10 -> 2026-11-17 -> 2026-11-10 (this check).
