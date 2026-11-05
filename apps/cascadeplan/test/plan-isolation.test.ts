@@ -30,7 +30,6 @@ import {
   deleteProjectPlan,
   mapLiveIssues,
   isMainPlan,
-  shareTaskDates,
   DEFAULT_COLUMN_WIDTHS,
   setGlobalStorageProvider,
   setSleepForTests,
@@ -57,8 +56,11 @@ const add = (iso: string, d: number) => new Date(Date.parse(`${iso}T00:00:00Z`) 
 
 /** Due dates the fake Jira holds, by issue key: a PUT with a due date changes it, a search returns it. */
 let jiraDue: Record<string, string> = {};
+/** The shared start property the fake Jira holds, by issue key (ADR-008); a search returns it. */
+let jiraDates: Record<string, any> = {};
 const issue = (n: number) => ({ id: String(n), key: `TEST-${n}`,
-  fields: { summary: `T${n}`, issuetype: { name: 'Task', hierarchyLevel: 0 }, status, duedate: jiraDue[`TEST-${n}`] || null } });
+  fields: { summary: `T${n}`, issuetype: { name: 'Task', hierarchyLevel: 0 }, status, duedate: jiraDue[`TEST-${n}`] || null },
+  properties: jiraDates[`TEST-${n}`] ? { 'cascadeplan.dates': jiraDates[`TEST-${n}`] } : {} });
 
 /** Issue-field writes to Jira (PUT/POST on an issue); searches and counts are reads. */
 function jiraIssueWrites(): string[] {
@@ -100,9 +102,15 @@ describe('named plans: one truth for each task (UX-05)', () => {
     setGlobalStorageProvider(storage);
     setSleepForTests(async () => undefined);
     jiraDue = {};
+    jiraDates = {};
     mockRequestJira.mockReset();
     mockRequestJira.mockImplementation(async (routeStr: any, opts?: any) => {
       const url = String(routeStr);
+      const prop = opts?.method === 'PUT' ? url.match(/^\/rest\/api\/3\/issue\/(TEST-\d+)\/properties\/cascadeplan\.dates$/) : null;
+      if (prop) {
+        jiraDates[prop[1]] = JSON.parse(opts.body);
+        return { status: 200, json: async () => ({}) };
+      }
       const put = opts?.method === 'PUT' ? url.match(/^\/rest\/api\/3\/issue\/(TEST-\d+)$/) : null;
       if (put) {
         const fields = JSON.parse(opts.body).fields || {};
@@ -147,14 +155,16 @@ describe('named plans: one truth for each task (UX-05)', () => {
     expect(res.planId).toBe(planB);
     expect(res.jiraSync.ok).toBe(true);
     for (const p of [planB, 'default']) {
-      expect(await planEntry(storage, p, 'TEST-5')).toMatchObject({ startDate: add(start, 3), endDate: add(start, 5) });
+      expect(await planTask(storage, p === 'default' ? undefined : p, 'TEST-5')).toMatchObject({ startDate: add(start, 3), endDate: add(start, 5) });
       // The dependent moved in every plan.
-      expect(await planEntry(storage, p, 'TEST-6')).toMatchObject({ startDate: add(start, 6) });
+      expect(await planTask(storage, p === 'default' ? undefined : p, 'TEST-6')).toMatchObject({ startDate: add(start, 6) });
     }
     expect(jiraFieldsSent('TEST-5')).toMatchObject({ duedate: add(start, 5) });
     expect(jiraIssueWrites()).toContain('PUT /rest/api/3/issue/TEST-6');
-    expect(jiraDue['TEST-6']).toBe((await planEntry(storage, 'default', 'TEST-6')).endDate);
+    expect(jiraDue['TEST-6']).toBe((await planTask(storage, undefined, 'TEST-6')).endDate);
     expect((await planTask(storage, undefined, 'TEST-5')).endDate).toBe(add(start, 5));
+    // One shared value per task (ADR-008): the Main Plan's own records were not written.
+    expect(jiraDates['TEST-5']).toEqual({ startDate: add(start, 3), endDate: add(start, 5), v: 1 });
   });
 
   it('the returned version lets the next move of the same task succeed (no stale-version conflict)', async () => {
@@ -170,7 +180,7 @@ describe('named plans: one truth for each task (UX-05)', () => {
     const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { startDate: add(start, 1), endDate: add(start, 3) }, expectedVersion: v }, storage);
     expect(res.ok).toBe(true);
     expect(jiraFieldsSent('TEST-1')).toMatchObject({ duedate: add(start, 3) });
-    expect(await planEntry(storage, planB, 'TEST-1')).toMatchObject({ startDate: add(start, 1), endDate: add(start, 3) });
+    expect(await planTask(storage, planB, 'TEST-1')).toMatchObject({ startDate: add(start, 1), endDate: add(start, 3) });
     expect((await planTask(storage, planB, 'TEST-1')).endDate).toBe(add(start, 3));
   });
 
@@ -195,7 +205,7 @@ describe('named plans: one truth for each task (UX-05)', () => {
       assignee: { accountId: 'acc-7' }
     });
     expect(jiraIssueWrites()).toContain('POST /rest/api/3/issue/TEST-1/transitions');
-    expect(await planEntry(storage, 'default', 'TEST-1')).toMatchObject({ startDate: add(start, 1), endDate: add(start, 3) });
+    expect(await planTask(storage, undefined, 'TEST-1')).toMatchObject({ startDate: add(start, 1), endDate: add(start, 3) });
   });
 
   it('an edit without dates writes Jira only and leaves every plan record as it was', async () => {
@@ -230,7 +240,7 @@ describe('named plans: one truth for each task (UX-05)', () => {
     expect(res.ok).toBe(true);
     expect(res.planId).toBe(planB);
     expect(jiraFieldsSent('TEST-8')).toEqual({ duedate: weeks[6].endDate, timetracking: { originalEstimate: '8h' } });
-    for (const p of [planB, 'default']) expect((await planEntry(storage, p, 'TEST-8')).startWeek).toBe(weeks[6].weekKey);
+    for (const p of [planB, 'default']) expect((await planTask(storage, p === 'default' ? undefined : p, 'TEST-8')).startWeek).toBe(weeks[6].weekKey);
     expect((await planTask(storage, undefined, 'TEST-8')).isBacklog).toBeFalsy();
   });
 
@@ -239,7 +249,7 @@ describe('named plans: one truth for each task (UX-05)', () => {
     const res: any = await batchUpdateTasks({ projectKey: 'TEST', planId: planB, items }, storage);
     expect(res.ok).toBe(true);
     expect(res.planId).toBe(planB);
-    for (const p of [planB, 'default']) for (const n of [1, 2]) expect(await planEntry(storage, p, `TEST-${n}`)).toMatchObject({ startDate: add(start, 4) });
+    for (const p of [planB, 'default']) for (const n of [1, 2]) expect(await planTask(storage, p === 'default' ? undefined : p, `TEST-${n}`)).toMatchObject({ startDate: add(start, 4) });
     expect(jiraDue['TEST-1']).toBe(add(start, 6));
     expect(jiraDue['TEST-2']).toBe(add(start, 6));
   });
@@ -247,7 +257,7 @@ describe('named plans: one truth for each task (UX-05)', () => {
   it('unscheduleTask takes the task off the timeline in every plan; reorderWbsTasks stays in its plan', async () => {
     const unscheduled: any = await unscheduleTask({ projectKey: 'TEST', planId: planB, taskId: 'TEST-2' }, storage);
     expect(unscheduled.planId).toBe(planB);
-    for (const p of [planB, 'default']) expect((await planEntry(storage, p, 'TEST-2')).startWeek).toBeUndefined();
+    for (const p of [planB, 'default']) expect((await planTask(storage, p === 'default' ? undefined : p, 'TEST-2')).startWeek).toBeUndefined();
     expect((await planTask(storage, undefined, 'TEST-2')).isBacklog).toBe(true);
 
     const main = mainPlanSnapshot(storage);
@@ -255,8 +265,9 @@ describe('named plans: one truth for each task (UX-05)', () => {
     expect(reordered.planId).toBe(planB);
     expect(reordered.tasks[0].key).toBe('TEST-3');
     expect(mainPlanSnapshot(storage)).toBe(main);
-    // The only Jira write: the shared start property is removed (ADR-008); the due date stays.
-    expect(jiraIssueWrites()).toEqual(['DELETE /rest/api/3/issue/TEST-2/properties/cascadeplan.dates']);
+    // The only Jira write: the shared property keeps no start (ADR-008); the due date stays.
+    expect(jiraIssueWrites()).toEqual(['PUT /rest/api/3/issue/TEST-2/properties/cascadeplan.dates']);
+    expect(jiraDates['TEST-2']).toEqual({ v: 1 });
   });
 
   it('continueCascade in a scenario plan moves the successors in every plan and writes their due dates', async () => {
@@ -270,42 +281,27 @@ describe('named plans: one truth for each task (UX-05)', () => {
 
     const res: any = await continueCascade({ projectKey: 'TEST', planId: planB, taskId: 'TEST-5' }, storage);
     expect(res.planId).toBe(planB);
-    for (const p of [planB, 'default']) expect((await planEntry(storage, p, 'TEST-6')).startDate).toBe(add(start, 9));
-    expect(jiraDue['TEST-6']).toBe((await planEntry(storage, planB, 'TEST-6')).endDate);
+    for (const p of [planB, 'default']) expect((await planTask(storage, p === 'default' ? undefined : p, 'TEST-6')).startDate).toBe(add(start, 9));
+    expect(jiraDue['TEST-6']).toBe((await planTask(storage, planB, 'TEST-6')).endDate);
   });
 
-  it('shareTaskDates applies the dates again when another writer saved the other record first', async () => {
-    const mainKey = 'cp:TEST:we:1';
-    const v0 = storage.store.get(mainKey).version;
-    const realGet = storage.get.bind(storage);
-    let raced = false;
-    storage.get = async <T>(key: string): Promise<T | undefined> => {
-      if (!raced && key === mainKey) {
-        raced = true;
-        const rec = storage.store.get(mainKey);
-        storage.store.set(mainKey, { ...rec, version: rec.version + 1 });
-      }
-      return realGet<T>(key);
-    };
-    const entry = { startDate: add(start, 2), endDate: add(start, 4), startWeek: weeks[5].weekKey, spanWeeks: 1 };
-    const failed = await shareTaskDates(storage, 'TEST', undefined, planB, [{ key: 'TEST-1', id: '1', entry }]);
-    expect(raced).toBe(true);
-    expect(failed).toEqual([]);
-    expect(await planEntry(storage, 'default', 'TEST-1')).toMatchObject({ startDate: add(start, 2), endDate: add(start, 4), version: v0 + 2 });
+  it('a move in one plan writes no record of any other plan; the other plan reads the shared property (ADR-008)', async () => {
+    const main = mainPlanSnapshot(storage);
+    const res: any = await updateWbsTask({ projectKey: 'TEST', planId: planB, taskId: 'TEST-1', updates: { startDate: add(start, 2), endDate: add(start, 4) } }, storage);
+    expect(res.ok).toBe(true);
+    expect(mainPlanSnapshot(storage)).toBe(main);
+    expect(await planTask(storage, undefined, 'TEST-1')).toMatchObject({ startDate: add(start, 2), endDate: add(start, 4) });
   });
 
-  it('shareTaskDates reports a task it could not update after 3 tries', async () => {
-    const mainKey = 'cp:TEST:we:1';
-    const realGet = storage.get.bind(storage);
-    storage.get = async <T>(key: string): Promise<T | undefined> => {
-      if (key === mainKey) {
-        const rec = storage.store.get(mainKey);
-        storage.store.set(mainKey, { ...rec, version: rec.version + 1 });
-      }
-      return realGet<T>(key);
-    };
-    const entry = { startDate: add(start, 2), endDate: add(start, 4), startWeek: weeks[5].weekKey, spanWeeks: 1 };
-    expect(await shareTaskDates(storage, 'TEST', undefined, planB, [{ key: 'TEST-1', id: '1', entry }])).toEqual(['TEST-1']);
+  it('a property without a start takes a task off the timeline in a plan whose record still has dates', async () => {
+    jiraDates['TEST-3'] = { v: 1 };
+    expect((await planEntry(storage, 'default', 'TEST-3')).startWeek).toBe(weeks[5].weekKey);
+    expect((await planTask(storage, undefined, 'TEST-3')).isBacklog).toBe(true);
+  });
+
+  it('a task with no property yet keeps the dates of its plan record (lazy migration, no write on read)', async () => {
+    expect(await planTask(storage, planB, 'TEST-4')).toMatchObject({ startDate: start, endDate: add(start, 2) });
+    expect(jiraIssueWrites()).toEqual([]);
   });
 
   it('column widths, hidden columns and milestones are saved per plan', async () => {

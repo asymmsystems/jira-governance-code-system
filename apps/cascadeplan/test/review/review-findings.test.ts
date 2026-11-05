@@ -27,7 +27,6 @@ import {
   deleteProjectPlan,
   freezePlanBaseline,
   reviewScopeShift,
-  shareTaskDates,
   migrateIfNeeded,
   openStore,
   setGlobalStorageProvider,
@@ -60,13 +59,16 @@ const start = weeks[5].startDate;
 
 /** Fake Jira state. */
 let jiraDue: Record<string, string> = {};
+/** The shared start property per issue key (ADR-008). */
+let jiraDates: Record<string, any> = {};
 let extraFields: Record<string, any> = {};
 let searchKeys: number[] = [];
 /** Per-test override; return undefined to fall through to the default fake. */
 let override: ((url: string, opts?: any) => any) | null = null;
 
 const issue = (n: number) => ({ id: String(n), key: `TEST-${n}`,
-  fields: { summary: `T${n}`, issuetype: { name: 'Task', hierarchyLevel: 0 }, status, duedate: jiraDue[`TEST-${n}`] || null, ...(extraFields[`TEST-${n}`] || {}) } });
+  fields: { summary: `T${n}`, issuetype: { name: 'Task', hierarchyLevel: 0 }, status, duedate: jiraDue[`TEST-${n}`] || null, ...(extraFields[`TEST-${n}`] || {}) },
+  properties: jiraDates[`TEST-${n}`] ? { 'cascadeplan.dates': jiraDates[`TEST-${n}`] } : {} });
 
 function calls(method: string, re: RegExp): string[] {
   return mockRequestJira.mock.calls
@@ -91,6 +93,7 @@ beforeEach(async () => {
   setGlobalStorageProvider(storage);
   setSleepForTests(async () => undefined);
   jiraDue = {};
+  jiraDates = {};
   extraFields = {};
   searchKeys = [1, 2, 3, 4, 5, 6, 8];
   override = null;
@@ -100,6 +103,11 @@ beforeEach(async () => {
     if (override) {
       const r = await override(url, opts);
       if (r !== undefined) return r;
+    }
+    const prop = opts?.method === 'PUT' ? url.match(/^\/rest\/api\/3\/issue\/(TEST-\d+)\/properties\/cascadeplan\.dates$/) : null;
+    if (prop) {
+      jiraDates[prop[1]] = JSON.parse(opts.body);
+      return { status: 200, json: async () => ({}) };
     }
     const put = opts?.method === 'PUT' ? url.match(/^\/rest\/api\/3\/issue\/(TEST-\d+)$/) : null;
     if (put) {
@@ -128,30 +136,22 @@ beforeEach(async () => {
 });
 
 describe('D3 shared dates: concurrency', () => {
-  it('FINDING R-01: two users move the same task in two plans at once; the plans end up with different dates', async () => {
-    const sA = new PlanStore(storage, 'TEST', 'TEST');
-    const sB = new PlanStore(storage, 'TEST', 'TEST', planB);
-    const eA = (await sA.loadEntries()).get('TEST-1')!;
-    const eB = (await sB.loadEntries()).get('TEST-1')!;
+  it('R-01: two users move the same task in two plans; both plans show the same dates, the last write (ADR-008)', async () => {
+    const vA = (await new PlanStore(storage, 'TEST', 'TEST').loadEntries()).get('TEST-1')!.version;
+    const vB = (await new PlanStore(storage, 'TEST', 'TEST', planB).loadEntries()).get('TEST-1')!.version;
     const X = { startDate: add(start, 1), endDate: add(start, 3) };
     const Y = { startDate: add(start, 6), endDate: add(start, 8) };
-    // Interleaving: A saves in Main, B saves in Plan B, A copies to Plan B, B copies to Main (what updateWbsTask does in order).
-    const pA = await sA.putEntry('TEST-1', '1', { ...eA, ...X }, eA.version);
-    const pB = await sB.putEntry('TEST-1', '1', { ...eB, ...Y }, eB.version);
-    expect(pA.ok && pB.ok).toBe(true);
-    expect(await shareTaskDates(storage, 'TEST', undefined, undefined, [{ key: 'TEST-1', id: '1', entry: pA.entry }])).toEqual([]);
-    expect(await shareTaskDates(storage, 'TEST', undefined, planB, [{ key: 'TEST-1', id: '1', entry: pB.entry }])).toEqual([]);
-    // Each plan now holds the OTHER user's dates.
-    expect((await planEntry(storage, 'default', 'TEST-1')).startDate).toBe(Y.startDate);
-    expect((await planEntry(storage, planB, 'TEST-1')).startDate).toBe(X.startDate);
-    // Jira got A's due date then B's due date; Plan B shows A's start with B's end: a bar nobody drew.
-    jiraDue['TEST-1'] = Y.endDate;
+    // A moves in the Main Plan, B in Plan B, each with the version it read: no copy between plans.
+    const a: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: X, expectedVersion: vA }, storage);
+    const b: any = await updateWbsTask({ projectKey: 'TEST', planId: planB, taskId: 'TEST-1', updates: Y, expectedVersion: vB }, storage);
+    expect(a.ok && b.ok).toBe(true);
+    // One value per issue: the property and the due date hold B's dates, the last write.
+    expect(jiraDates['TEST-1']).toEqual({ ...Y, v: 1 });
+    expect(jiraDue['TEST-1']).toBe(Y.endDate);
     const inB = await planTask(storage, planB, 'TEST-1');
     const inMain = await planTask(storage, undefined, 'TEST-1');
-    expect(inB.startDate).toBe(X.startDate);
-    expect(inB.endDate).toBe(Y.endDate);
-    expect(inMain.startDate).toBe(Y.startDate);
-    expect(inB.startDate).not.toBe(inMain.startDate);
+    expect(inMain).toMatchObject(Y);
+    expect(inB).toMatchObject(Y);
   });
 
   it('FINDING R-02: putEntry restore overwrites a third writer; that writer was told its write succeeded (lost update)', async () => {
@@ -615,7 +615,7 @@ describe('Sizes and costs (section 4.1, 4.5)', () => {
     expect(sizes[80]).toBeGreaterThan(240 * 1024);
   });
 
-  it('MEASURE R-28: KVS operations for one move, by number of plans (200 scheduled tasks)', async () => {
+  it('R-28: KVS operations for one move do not grow with the number of plans (200 scheduled tasks, ADR-008)', async () => {
     const results: Record<number, any> = {};
     for (const planCount of [1, 3, 10]) {
       const s = new MemStorage();
@@ -642,7 +642,8 @@ describe('Sizes and costs (section 4.1, 4.5)', () => {
     }
     // eslint-disable-next-line no-console
     console.log('KVS ops for one move (200 tasks)', JSON.stringify(results));
-    expect(results[10].query).toBeGreaterThan(results[1].query);
+    // No other plan is read or written on a move: the dates are the shared issue property.
+    for (const k of ['query', 'queryRows', 'get', 'swap', 'set'] as const) expect(results[10][k]).toBe(results[1][k]);
   });
 
   it('MEASURE R-29: KVS operations for batchUpdateTasks with 50 items (200 scheduled tasks, 1 plan)', async () => {

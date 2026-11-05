@@ -21,7 +21,7 @@ import sys
 
 from playwright.sync_api import sync_playwright
 
-from e2e import serve, wait_rows, row_keys, kvs, record, jira_writes, drag_bar, CHROME
+from e2e import serve, wait_rows, row_keys, kvs, record, shown as shared_dates, bar_dates, jira_writes, drag_bar, CHROME
 
 OUT = pathlib.Path(__file__).resolve().parent / 'results-review'
 results = []
@@ -152,7 +152,7 @@ def main():
         before30 = record(kvs(pg), plan_c, 'DEMO-30')
         drag_bar(pg, 'DEMO-30', day_dx(pg, 'DEMO-30', 7))
         s = kvs(pg)
-        c30, b30, m30 = record(s, plan_c, 'DEMO-30'), record(s, plan_b, 'DEMO-30'), record(s, 'default', 'DEMO-30')
+        c30, b30, m30 = record(s, plan_c, 'DEMO-30'), shared_dates(pg, plan_b, 'DEMO-30'), shared_dates(pg, 'default', 'DEMO-30')
         check('R3a a Plan C move changes DEMO-30', c30['startDate'] != before30['startDate'], f'{before30["startDate"]} -> {c30["startDate"]}')
         check('R3b Plan B and the Main Plan get the same dates', (b30['startDate'], b30['endDate']) == (c30['startDate'], c30['endDate']) == (m30['startDate'], m30['endDate']),
               f'C {c30["startDate"]}..{c30["endDate"]} B {b30["startDate"]}..{b30["endDate"]} M {m30["startDate"]}..{m30["endDate"]}')
@@ -203,13 +203,15 @@ def main():
         jw0 = len(jira_writes(pg))
         drag_bar(pg, 'DEMO-31', day_dx(pg, 'DEMO-31', 7))
         s = kvs(pg)
-        b31, b40, m40 = record(s, plan_b, 'DEMO-31'), record(s, plan_b, 'DEMO-40'), record(s, 'default', 'DEMO-40')
+        b31, b40, m40 = record(s, plan_b, 'DEMO-31'), record(s, plan_b, 'DEMO-40'), shared_dates(pg, 'default', 'DEMO-40')
         check('R6a the cascade moved DEMO-40 in Plan B to the new start of DEMO-31', b40['startDate'] == b31['startDate'], f'31 {b31["startDate"]} / 40 {b40["startDate"]}')
         check('R6b the Main Plan shows the cascaded dates of DEMO-40', (m40['startDate'], m40['endDate']) == (b40['startDate'], b40['endDate']),
               f'main {m40_before["startDate"]} -> {m40["startDate"]}..{m40["endDate"]}')
         check('R6c the cascaded due date went to Jira', any('DEMO-40' in w and b40['endDate'] in w for w in jira_writes(pg)[jw0:]), str(jira_writes(pg)[jw0:])[:300])
         switch_plan(pg, 'Main Plan')
         pg.screenshot(path=str(OUT / 'R6-cascade-from-plan-b-seen-in-main.png'))
+        check('R6d the Main Plan bar of DEMO-40 shows the cascaded dates on screen', bar_dates(pg, 'DEMO-40') == (b40['startDate'], b40['endDate']),
+              f"{bar_dates(pg, 'DEMO-40')} / B {b40['startDate']}..{b40['endDate']}")
 
         # ---- R7 conflict: two tabs, same plan, same bar ---------------------------------------
         pg2 = ctx.new_page()

@@ -65,6 +65,23 @@ def record(store, plan_id, key):
     return None
 
 
+def shown(pg, plan_id, key):
+    """The dates a plan shows for a task (ADR-008): the shared issue property when it exists, else the plan record."""
+    prop = pg.evaluate("JSON.parse(localStorage.getItem('__harness_jira_props') || '{}')").get(key, {}).get('cascadeplan.dates')
+    if prop is not None:
+        return {'startDate': prop.get('startDate'), 'endDate': prop.get('endDate')}
+    rec = record(kvs(pg), plan_id, key) or {}
+    return {'startDate': rec.get('startDate'), 'endDate': rec.get('endDate')}
+
+
+def bar_dates(pg, key):
+    """The start and end the bar's accessible label shows on screen."""
+    import re
+    label = pg.locator(f'.bar-hit[data-task-id="{key}"]').get_attribute('aria-label') or ''
+    m = re.search(r'(\d{4}-\d{2}-\d{2}) to (\d{4}-\d{2}-\d{2})', label)
+    return (m.group(1), m.group(2)) if m else (None, None)
+
+
 def jira_writes(pg):
     return pg.evaluate("JSON.parse(localStorage.getItem('__harness_jira_writes') || '[]')")
 
@@ -199,7 +216,7 @@ def main():
               f"{b40a.get('startDate')} -> {b40b.get('startDate')}")
         flags = pg.evaluate("[...document.querySelectorAll('.flag, [role=alert], .cp-flag')].map(f => f.textContent.trim()).filter(Boolean)")
         check('2c no conflict message shown', not any('changed' in f and 'moment ago' in f for f in flags), str(flags)[:200])
-        m40b = record(store, 'default', 'DEMO-40')
+        m40b = shown(pg, 'default', 'DEMO-40')
         check('2d a Plan B move gives the Main Plan the same dates', m40b['startDate'] == b40b['startDate'] and m40b['endDate'] == b40b['endDate'],
               f"main {m40b['startDate']}..{m40b['endDate']} / B {b40b['startDate']}..{b40b['endDate']}")
         b_writes = jira_writes(pg)[writes0:]
@@ -217,6 +234,8 @@ def main():
         wait_rows(pg)
         pg.wait_for_timeout(400)
         check('2g switching back to Main Plan saves that choice', pg.evaluate("localStorage.getItem('cp_active_plan_harness-cloud:DEMO')") == 'default')
+        check('2g2 the Main Plan bar shows the dates of the Plan B move', bar_dates(pg, 'DEMO-40') == (b40b['startDate'], b40b['endDate']),
+              f"{bar_dates(pg, 'DEMO-40')} / B {b40b['startDate']}..{b40b['endDate']}")
         m40 = record(kvs(pg), 'default', 'DEMO-40')
         writes_main0 = len(jira_writes(pg))
         calls0 = len(pg.evaluate('window.__calls || []'))
@@ -231,7 +250,7 @@ def main():
         check('2h a Main Plan move saves in the Main Plan', m40a['version'] == m40['version'] + 1 and m40a['startDate'] != m40['startDate'],
               f"{m40['startDate']} v{m40['version']} -> {m40a['startDate']} v{m40a['version']} {json.dumps(dbg)[:600]}")
         check('2i a Main Plan move writes the due date to Jira', any('PUT /rest/api/3/issue/DEMO-40' in w and f'"duedate":"{m40a["endDate"]}"' in w for w in new_writes), str(new_writes)[:200])
-        b40c = record(kvs(pg), plan_b, 'DEMO-40')
+        b40c = shown(pg, plan_b, 'DEMO-40')
         check('2j a Main Plan move gives Plan B the same dates', b40c['startDate'] == m40a['startDate'] and b40c['endDate'] == m40a['endDate'],
               f"B {b40c['startDate']}..{b40c['endDate']} / main {m40a['startDate']}..{m40a['endDate']}")
 

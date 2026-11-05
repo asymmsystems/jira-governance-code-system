@@ -210,7 +210,8 @@ describe('scheduling at an exact date outside the server week list (B-27 criteri
     const res: any = await scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-5', startWeek: '', startDate: '2028-03-06', spanWeeks: 2 } as any);
     const rec = await recordOf(storage, 'TEST-5');
     expect(rec.effort).toMatchObject({ estimatedStartDate: '2028-03-06', estimatedCompletionDate: '2028-03-19' });
-    expect(res.jiraSync.writes).toEqual([]);
+    // No due date; only the shared start property (ADR-008).
+    expect(res.jiraSync.writes).toEqual([{ key: 'TEST-5', fields: ['startdate'], ok: true, changes: [{ field: 'start date', from: null, to: '2028-03-06' }] }]);
     await expect(scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-5', startWeek: '', startDate: '6 March' } as any)).rejects.toThrow(/startDate/);
   });
 });

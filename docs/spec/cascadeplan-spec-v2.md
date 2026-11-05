@@ -1,12 +1,12 @@
 # CascadePlan: specification v2
 
 - **Date:** 2026-11-05
-- **Status:** draft for owner approval. Items marked `[OPEN DEC-n]` wait for an owner decision (fix plan v4, section 2.0). Everything else follows decisions the owner has already made (ADR-003 to ADR-007) or fixes in the fix plan.
+- **Status:** draft for owner approval. Every decision is recorded in fix plan v4, section 2.0. The owner decided DEC-1, DEC-5, DEC-7 and DEC-8. DEC-2, DEC-3, DEC-4 and DEC-6 follow the fix plan's recommendations, adopted under the owner's instruction ("Dont wait for me - fix all"); they are marked `[ADOPTED DEC-n]` so the owner can review them. Everything else follows ADR-003 to ADR-008 or fixes in the fix plan.
 - **Replaces:** `docs/spec/cascadeplan-spec.md` (v1, 2026-11-01), which stays as the record. v1 did not describe plans or shared dates, and its resolver names differed from the code.
 - **Inputs:**
   - `docs/sdlc/cascadeplan-marketplace-review-2026-11/report-v2.md` (the review of commit `db08009`);
   - `docs/sdlc/cascadeplan-marketplace-review-2026-11/fix-plan-v4.md` (the fixes and the decision register);
-  - `architecture/decision/adr-00003` to `adr-00007`;
+  - `architecture/decision/adr-00003` to `adr-00008`;
   - `docs/sdlc/cascadeplan-usp-ux-research-2026-11/` (the v1 research).
 - **Branch:** `feature/cascadeplan-marketplace-fixes`.
 
@@ -25,7 +25,7 @@ CascadePlan is a Jira Cloud project page (Forge Custom UI) that plans issues on 
 | INV-01 | No Jira or payload text reaches `innerHTML`, `outerHTML`, `insertAdjacentHTML` or an HTML attribute string, except through the escaping `html` tagged template (`src/ui/safe-html.ts`). | v1, review FE section 1 |
 | INV-02 | The UI has no inline script and no `on*` attribute, and calls the backend only through `invoke` from `@forge/bridge`. | v1 |
 | INV-03 | CascadePlan writes a Jira value only when the user chose it in this action, or when it follows directly from the user's action and the preview listed it before the drop (a cascaded due date, a block-moved sub-task's due date). It never writes a default: no default span, no default estimate, no status change caused by a progress edit, no "Unassigned". | v1, F-06, F-11 |
-| INV-04 | KVS holds only app-owned planning data. Summary, status, assignee, Jira estimate, Jira due date, parent, issue links and leaf progress are read live from Jira on every load. `[OPEN DEC-2]` whether KVS may hold Atlassian account ids at all. | v1, ADR-004 |
+| INV-04 | KVS holds only app-owned planning data. Summary, status, assignee, Jira estimate, Jira due date, parent, issue links and leaf progress are read live from Jira on every load. `[ADOPTED DEC-2 A]` KVS holds no Atlassian account id. The baseline and shift audit records of DEC-1 Option B are the open question: ADR-009 decides whether they store the account id of who froze, requested and reviewed (which then needs personal data reporting) or not. | v1, ADR-004 |
 | INV-05 | Every resolver returns `{ ok: boolean, ... }`. Every write resolver also returns `jiraSync: { ok, error?, writes[] }`, and the UI shows every failure. A thrown call is reported as failed, never as success. | v1, F-13 |
 | INV-06 | All Jira calls run as the user (`asUser()`), except the issue-deleted trigger, which runs as the app and only deletes CascadePlan records. | v1, BL-9 |
 | INV-07 | No KVS value exceeds 8 KiB at 1,000 tasks. `getProjectPlan` writes nothing, and opening the planner deletes nothing. | v1, BL-9 |
@@ -51,13 +51,13 @@ The Silverston WorkEffort pattern is the storage model (v1 decision D-03; `docs/
 |---|---|---|
 | `WorkEffort` | One per Jira issue on a plan | `workEffortId` (issue key), `estimatedStartDate`, `estimatedCompletionDate`, `sequenceNum`, `targetPercentComplete`, `manualProgress`, `percentComplete` (only when set by hand) |
 | `WorkEffortAssoc` | History of precedency links into this effort | `workEffortIdFrom`, `workEffortIdTo`, `WORK_EFF_PRECEDENCY`, `fromDate`, `thruDate`. A record only (ADR-006): the active links come from Jira. |
-| `WorkEffortPartyAssignment` | A second person on a task (U3), through a Jira sub-task | `subtaskKey`, `roleTypeId` = `CONTRIBUTOR`, `fromDate`, `thruDate`. `[OPEN DEC-2]` whether `partyId` (the account id) is stored, or read live from the sub-task's assignee. |
+| `WorkEffortPartyAssignment` | A second person on a task (U3), through a Jira sub-task | `subtaskKey`, `roleTypeId` = `CONTRIBUTOR`, `fromDate`, `thruDate`. `[ADOPTED DEC-2 A]` `partyId` is not stored; the person is read live from the sub-task's assignee. |
 | `WorkEffortEstimate` | The estimate as the user entered it | `estimateUnit`, `rawEstimate`, `normalizedHours`, buffer |
 
 Rules:
-- **Dates.** One set of dates per task, the same in every plan (D3). The end is the Jira due date. The start has no standard Jira field, so CascadePlan stores it. `[OPEN DEC-3]` whether the start is stored once per issue in KVS (Option A), copied into every plan (Option B), or stored as a Jira issue property (Option C).
+- **Dates.** One set of dates per task, the same in every plan (D3). The end is the Jira due date. The start has no standard Jira field, so it is the Jira issue property `cascadeplan.dates` (`startDate`, and the planner's `endDate` when Jira has no due date), set as the user and read in the same issue search (ADR-008, `[ADOPTED DEC-3 C]`). A property without a start marks a task taken off the timeline. A task with no property yet keeps the dates of its plan record until its next date change (lazy migration: opening the planner writes nothing).
 - **Dependencies** (ADR-006). The active dependencies of a task are its Jira "Blocks" links, the same in every plan. The trigger percent of each incoming link is the Jira issue property `cascadeplan.links` on the successor (predecessor id to percent). A link with no stored percent is finish to start (100%). Adding a dependency creates the Jira link; if Jira refuses, nothing is stored. Removing one deletes the Jira link.
-- **Parents.** A parent's dates are derived on load from its dated children: the earliest child start to the latest child end. They are never stored. A parent with at least one dated child is shown on the timeline, even with no record of its own. `[OPEN DEC-6]` whether the parent's Jira due date is written to follow that end.
+- **Parents.** A parent's dates are derived on load from its dated children: the earliest child start to the latest child end. They are never stored. A parent with at least one dated child is shown on the timeline, even with no record of its own. `[ADOPTED DEC-6 A]` When a planner action changes the roll-up end of a scheduled parent, the parent's Jira due date is written to follow it, and the preview and the Changes panel show that write.
 - **Parent moves** (ADR-003). Moving a task or story parent moves its block of sub-tasks by the state rules in section 3.4. Epics cannot be moved in this release. A parent cannot be resized.
 - **Sub-tasks.** Every sub-task is a real Jira sub-task. CascadePlan stores no sub-task of its own (ADR-004).
 - No engine output (trigger satisfied, violation, reason) is stored (INV-09).
@@ -161,8 +161,8 @@ app:
 
 - No `scripts` permission. No egress.
 - `write:jira-work` covers due dates, estimates, assignees, transitions the user chooses, issue links, issue properties, sub-task create and delete, parent changes and bulk moves. `read:jira-work` covers search, the permission checks, bulk move progress and the issue-deleted trigger.
-- `[OPEN DEC-2]` Option B would add `report:personal-data` and a scheduled trigger.
-- `[OPEN DEC-4]` Option A would add a custom entity under `storage`.
+- `[ADOPTED DEC-2 A]` no `report:personal-data` scope. ADR-009 may add it if baseline audit records keep account ids.
+- `[ADOPTED DEC-4 B]` no custom entity in v1.
 
 ## 5. Storage schema
 
@@ -170,14 +170,15 @@ Keys use the project id and the issue id, never the keys (a renamed project or i
 
 | Key | Value |
 |---|---|
-| `cp:<projectId>:we:<issueId>` | Main Plan `WorkEffortRecord` |
+| `cp:<projectId>:we:<issueId>` | Main Plan `WorkEffortRecord` (its dates only until the task's first date change since ADR-008) |
 | `cp:<projectId>:plan:<planId>:we:<issueId>` | Scenario plan `WorkEffortRecord` |
 | `cp:<projectId>:settings`, `cp:<projectId>:plan:<planId>:settings` | `{ columnWidths, hiddenColumns, milestones (max 100), migratedAt, modelVersion }` |
 | `cp:<projectId>:plans` | the list of plans, with a version |
 | `cascadeplan:cfg:approver_policy` | approver groups (site) |
 | Jira issue property `cascadeplan.links` | trigger percents of the incoming links (ADR-006) |
+| Jira issue property `cascadeplan.dates` | `{ startDate, endDate?, v: 1 }`: the shared start and the planner's end; `{ v: 1 }` alone marks a task taken off the timeline (ADR-008) |
 
-- `[OPEN DEC-3]` the store for the shared start date. `[OPEN DEC-4]` the version check: today `set` with `returnValue: 'PREVIOUS'` and restore (v1 D-02).
+- The shared start date is not in KVS: it is the Jira issue property `cascadeplan.dates` (ADR-008). The version check stays `set` with `returnValue: 'PREVIOUS'` and restore (v1 D-02, `[ADOPTED DEC-4 B]`).
 - The issue-deleted trigger finds a record by the issue id and by the issue key, because older records can be keyed by the key (FX-05).
 - Migrations run once, are idempotent, and delete old data only after the new data is written. A migration that would create anything in Jira (local sub-tasks, plan-only links) lists it to the user instead, and creates it only on the user's choice.
 
@@ -211,7 +212,7 @@ All planner resolvers take the project from `req.context.extension.project` (key
 | `saveColumnWidths`, `saveHiddenColumns` | Shared column settings | none beyond Browse |
 | Admin function: `approver-policy-get-api`, `approver-policy-set-api`, `approver-group-search-api` | Approver groups | Jira administrator |
 
-Not registered: `pruneStaleEntries` (replaced by the issue-deleted trigger), `saveTaskDependency`, `saveProjectMilestone`, `previewCascade`, `getProjectPlans` and the `authority-*` aliases (no caller). `[OPEN DEC-1]` the governance resolvers (`freezePlanBaseline`, `getPlanBaselines`, `getScopeCreepReport`, `requestScopeShift`, `reviewScopeShift`, `getResourceUtilizationGrid`): removed under Option A, kept with approver checks under Option B.
+Not registered: `pruneStaleEntries` (replaced by the issue-deleted trigger), `saveTaskDependency`, `saveProjectMilestone`, `previewCascade`, `getProjectPlans` and the `authority-*` aliases (no caller). DEC-1 Option B (owner): the governance resolvers (`freezePlanBaseline`, `getPlanBaselines`, `getScopeCreepReport`, `requestScopeShift`, `reviewScopeShift`, `getResourceUtilizationGrid`) are kept, with approver checks, and completed as ADR-009 describes.
 
 `jiraSync = { ok, error?, writes: [{ key, fields, ok, error?, changes? }] }`. Every Jira write, including those before a conflict, is listed (F-07).
 
@@ -242,14 +243,14 @@ v1 decisions D-01 and D-03 to D-10 stand. Changes and additions:
 
 | # | Decision | Record |
 |---|---|---|
-| D-02 | Version check | `[OPEN DEC-4]` (custom entity, swap-and-restore, or a new key per version) |
-| D-11 | Dates are the same in every plan; the end is the Jira due date | Commit `db08009`; storage `[OPEN DEC-3]` |
+| D-02 | Version check | Swap-and-restore for v1 (`[ADOPTED DEC-4 B]`, ADR-008); a new key per version if a lost update is seen |
+| D-11 | Dates are the same in every plan; the end is the Jira due date | Commit `db08009`; the start is the issue property `cascadeplan.dates` (ADR-008) |
 | D-12 | Moving a parent moves its block of sub-tasks by their state; epics later | ADR-003 |
 | D-13 | Jira holds every relationship the planner shows | ADR-004 |
 | D-14 | Every hierarchy change Jira allows, made in Jira | ADR-005 |
 | D-15 | Dependencies are Jira links, shared by every plan; the percent is an issue property | ADR-006 |
 | D-16 | The shared UI package builds itself during install | ADR-007 |
 | D-17 | Records are deleted only when Jira reports the issue deleted (trigger), never on a user's 404 | Fix plan BL-9 |
-| D-18 | Baseline, scope creep and shift approval | `[OPEN DEC-1]` |
-| D-19 | Personal data | `[OPEN DEC-2]` |
-| D-20 | The parent's Jira due date follows its sub-tasks | `[OPEN DEC-6]` |
+| D-18 | Baseline, scope creep and shift approval | Built before submission (DEC-1 Option B, owner); design in ADR-009 |
+| D-19 | Personal data | Store none (`[ADOPTED DEC-2 A]`); baseline audit records decided in ADR-009 |
+| D-20 | The parent's Jira due date follows its sub-tasks | Yes (`[ADOPTED DEC-6 A]`) |

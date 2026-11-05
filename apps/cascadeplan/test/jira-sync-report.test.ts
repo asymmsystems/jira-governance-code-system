@@ -96,23 +96,26 @@ describe('Jira sync report (B-07)', () => {
     expect(res.jiraSync.writes.find((w: any) => w.key === 'TEST-1').ok).toBe(true);
   });
 
-  it('scheduling with the default span writes nothing to Jira (INV-03)', async () => {
+  it('scheduling with the default span writes no due date; it reports the shared start it wrote (ADR-008)', async () => {
     const res: any = await scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-2', startWeek: weeks[5].weekKey });
     expect(res.ok).toBe(true);
-    expect(res.jiraSync).toEqual({ ok: true, writes: [] });
+    expect(res.jiraSync).toEqual({ ok: true, writes: [{ key: 'TEST-2', fields: ['startdate'], ok: true,
+      changes: [{ field: 'start date', from: null, to: weeks[5].startDate }] }] });
   });
 
   it('scheduling with an end the user chose reports its due date write', async () => {
     const res: any = await scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-2', startWeek: weeks[5].weekKey, endDate: weeks[6].endDate });
     expect(res.ok).toBe(true);
-    expect(res.jiraSync).toEqual({ ok: true, writes: [{ key: 'TEST-2', fields: ['duedate'], ok: true,
-      changes: [{ field: 'due date', from: null, to: weeks[6].endDate }] }] });
+    expect(res.jiraSync).toEqual({ ok: true, writes: [{ key: 'TEST-2', fields: ['duedate', 'startdate'], ok: true,
+      changes: [{ field: 'due date', from: null, to: weeks[6].endDate }, { field: 'start date', from: null, to: weeks[5].startDate }] }] });
   });
 
-  it('KVS-only writes report ok with no Jira writes', async () => {
+  it('unscheduling reports the shared start it cleared; KVS-only writes report no Jira writes', async () => {
     const res: any = await unscheduleTask({ projectKey: 'TEST', taskId: 'TEST-2' });
     expect(res.ok).toBe(true);
-    expect(res.jiraSync).toEqual({ ok: true, writes: [] });
+    // ADR-008: the shared property keeps no start, so the task leaves every plan.
+    expect(res.jiraSync.ok).toBe(true);
+    expect(res.jiraSync.writes).toEqual([{ key: 'TEST-2', fields: ['startdate'], ok: true, changes: [expect.objectContaining({ field: 'start date', to: null })] }]);
     const widths: any = await saveColumnWidths({ projectKey: 'TEST', columnWidths: { epic: 100 } as any });
     expect(widths.ok).toBe(true);
     expect(widths.jiraSync).toEqual({ ok: true, writes: [] });
