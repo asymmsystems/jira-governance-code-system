@@ -2,61 +2,50 @@
 
 ## App Information
 * **Name:** CascadePlan: Timeline, Dependencies and Fast Planning
-* **Tagline:** Fast project timelines with percent-trigger dependencies, transparent Jira updates, and keyboard control. Runs on Atlassian.
-* **Badges:** Runs on Atlassian | Cloud Fortified | 100% Data Residency Compliant
+* **Tagline:** A Jira timeline with percent-trigger dependencies, block moves, baselines, and Jira as the record of every change.
 * **Categories:** Project Management, Planning, Gantt Charts
 
 ---
 
 ## Short Description
-A fast timeline for Jira teams that need dependencies with percent triggers, clear explanations of why tasks start when they do, and honest Jira writes. Built on Atlassian Forge with zero external servers.
+A timeline inside Jira Cloud. Dependencies can start at a percent of their predecessor, dependent work moves for you, and every date, link and parent change is a Jira write you can see and undo. Plan approvers freeze baselines and review scope changes. Runs entirely on Atlassian Forge.
 
 ---
 
 ## Detailed Description
 
-### Fast, Honest Project Planning in Jira
-Many Jira teams struggle with rigid timeline tools that only support finish-to-start dependencies, write unwanted estimates to Jira tickets, or freeze when plans grow large.
-
-CascadePlan is designed from the ground up for speed, clarity, and trust:
+### Planning that keeps Jira as the record
+CascadePlan schedules your project's epics, stories, tasks and sub-tasks on a timeline. Every relationship it shows exists in Jira: dependencies are Jira "Blocks" links, parents are Jira parents, sub-tasks are Jira sub-tasks. It writes only the values you chose in the action you took, as you, with your Jira permissions.
 
 ### Key Capabilities
 
-1. **Percent-Trigger Dependencies with Clear Reasons**
-   Link tasks to start when a predecessor reaches a specific progress milestone rather than waiting for 100% completion (for example, start API integration when database design reaches 30%).
-   Hover over any bar or press `?` to see the driving task, trigger percentage, and driving dates. When a conflict occurs, CascadePlan names the driving item and suggests exact fixes (such as shifting the successor or adjusting the trigger threshold).
+1. **Percent-trigger dependencies with reasons.** A successor can start when its predecessor reaches 30%, 50% or any percent of its work, not only at 100%. "Why this date?" names the link that sets a work item's earliest start and offers fixes. With "Enforce dependencies" on, a bar cannot be dropped too early.
 
-2. **Transparent Jira Writes and 20-Step Undo**
-   CascadePlan never writes values to Jira that you did not enter. Only fields you explicitly change (such as due dates, assignees, summaries, or work estimates) are sent to Jira.
-   During a drag, an on-screen preview shows every planned Jira update before you release the mouse. Routine edits apply immediately and offer a 10-second undo toast, with full Ctrl+Z and Ctrl+Shift+Z undo/redo support. An in-app Changes panel lets you review every Jira write performed during your session.
+2. **Moves that carry their consequences.** Moving a work item moves the work that depends on it. A task or story moves with its sub-tasks: work not started moves, work in progress keeps its start, finished work stays. Before you drop a bar, a line lists every Jira change the drop will make.
 
-3. **Multi-Person Assignment via Native Jira Sub-Tasks**
-   Assign additional contributors to a task without leaving the timeline. CascadePlan creates native Jira sub-tasks assigned to each contributor, ensuring work appears directly in team members' personal queues and boards. When removing a contributor, CascadePlan prompts you inside the form to either unassign or delete the sub-task.
+3. **Hierarchy changes in Jira.** Drag a row onto another to move it under that work item, or change a task into a sub-task and back. CascadePlan asks first, checks Jira's rules, and makes the change in Jira.
 
-4. **High-Performance Canvas Timeline**
-   The timeline renders on HTML5 canvas with day-level snapping, zoom controls from Day to Year, sticky headers, frozen data columns, and live ghost previews of dependent tasks during drags. It delivers smooth 60 fps interactions on plans with thousands of tasks.
+4. **See and undo every write.** The Changes panel lists each Jira write of your session with the old and new value. Undo and Redo cover the last 20 changes.
 
-5. **Full Keyboard Accessibility and Table View**
-   Control the entire timeline without a mouse. Navigate tasks with arrow keys, press Space to enter move mode, shift dates with arrow keys or bracket shortcuts, and add dependencies in seconds. For users who prefer a non-canvas layout, a Table view toggle presents all tasks and dates in a clean DOM table with zero accessibility violations. In-app search (Ctrl+F) lets you find and jump to any task instantly.
+5. **Scenario plans.** Try a different row order, columns and milestones in a scenario plan. Dates, links and the hierarchy are Jira's, so they are the same in every plan.
 
-6. **Flexible Estimation Units**
-   Track effort in Hours, Story Points, or T-shirt sizes per task. CascadePlan preserves your chosen unit and converts values into hours for timeline scheduling without altering Jira fields you did not change.
+6. **Baselines and scope reviews.** A plan approver freezes the plan as a baseline. The toolbar then shows the change since that moment: hours, work items added, removed or ending later. Anyone in the project can ask for the new scope to be accepted; a plan approver other than the requester accepts or rejects it, and accepting freezes a new version. Compare versions, export one as CSV with its SHA-256 digest, and see if a stored baseline no longer matches what was frozen.
+
+7. **Keyboard and views.** Move bars with the keyboard, search with Ctrl+F, and switch to a Table view or a Utilization view of each person's hours per week.
 
 ---
 
-## Runs on Atlassian
-CascadePlan is built exclusively on Atlassian Forge:
-* Zero customer data leaves your Atlassian site.
-* No external servers, no third-party databases, and no cloud egress.
-* Inherits enterprise SOC 2, ISO 27001, and GDPR compliance natively from Atlassian Cloud.
+## Runs entirely on Atlassian Forge
+* No external servers and no calls outside your Atlassian site.
+* Planning data is stored in Forge storage of your site; the shared start dates and trigger percents are issue properties of your Jira issues.
 
 ---
 
 ## Security and Permissions
-* **Data Storage:** Project planning settings, milestone links, and contributors are stored in Atlassian Forge key-value storage.
-* **Jira Integration:** Reads Jira fields live as the logged-in user (`asUser`) and writes only user-approved edits.
-* **Least Privilege:** Manifest permissions are restricted strictly to required Jira read/write scopes and app licensing.
-* **Zero Egress:** The application manifest contains zero external fetch or egress permissions.
+* **Your own permissions:** every write is made as you and checked against your Jira permissions first (Edit issues, Schedule issues, Link issues, Create issues, and for type changes Move issues and Make bulk changes).
+* **Plan approvers:** project administrators, Jira administrators, and members of groups named on the app's admin page manage plans and baselines.
+* **Personal data:** the only personal data stored is the Atlassian account id of who froze a baseline and who requested or reviewed a scope change. These ids are reported weekly to Atlassian's personal data reporting service.
+* **Scopes:** `read:jira-work`, `write:jira-work`, `read:jira-user`, `storage:app`, `report:personal-data`. No egress.
 
 ---
 

@@ -8271,12 +8271,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
 
   // src/ui/plan-manager.ts
   function categorizePlan(plan) {
-    if (plan.isDefault) return "baseline";
-    const lower = (plan.name || "").toLowerCase();
-    if (lower.includes("baseline") || lower.includes("main") || lower.includes("actual")) {
-      return "baseline";
-    }
-    return "scenario";
+    return plan.isDefault || plan.id === "default" ? "main" : "scenario";
   }
   function validateNewPlanName(name) {
     if (typeof name !== "string") {
@@ -8304,7 +8299,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   function buildPlanListViewModel(plans, activePlanId2) {
     if (!plans || plans.length === 0) {
-      return [{ id: "default", name: "Main Plan", isDefault: true, isActive: true, canDelete: false, category: "baseline" }];
+      return [{ id: "default", name: "Main Plan", isDefault: true, isActive: true, canDelete: false, category: "main" }];
     }
     return plans.filter((p) => p.state !== "deleting").map((p) => {
       const isDefault = p.id === "default" || p.isDefault === true;
@@ -8322,7 +8317,6 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function filterPlans(plans, query = "", category = "all") {
     const q = (query || "").trim().toLowerCase();
     return plans.filter((p) => {
-      if (category === "baselines" && p.category !== "baseline") return false;
       if (category === "scenarios" && p.category !== "scenario") return false;
       if (q.length > 0 && !p.name.toLowerCase().includes(q)) return false;
       return true;
@@ -9721,12 +9715,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
       labelEl.textContent = activePlan ? activePlan.name : "Main Plan";
     }
     const allCount = plans.length;
-    const baselineCount = plans.filter((p) => categorizePlan(p) === "baseline").length;
     const scenarioCount = plans.filter((p) => categorizePlan(p) === "scenario").length;
     const countAllEl = document.getElementById("planTabCountAll");
     if (countAllEl) countAllEl.textContent = String(allCount);
-    const countBaselinesEl = document.getElementById("planTabCountBaselines");
-    if (countBaselinesEl) countBaselinesEl.textContent = String(baselineCount);
     const countScenariosEl = document.getElementById("planTabCountScenarios");
     if (countScenariosEl) countScenariosEl.textContent = String(scenarioCount);
     renderFilteredPlansList(plans, currentId);
@@ -9776,8 +9767,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const mainDiv = document.createElement("div");
       mainDiv.className = "plan-item-main";
       const catBadge = document.createElement("span");
-      catBadge.className = "plan-category-badge " + (p.category === "baseline" ? "is-baseline" : "is-scenario");
-      catBadge.textContent = p.category === "baseline" ? "Baseline" : "Scenario";
+      catBadge.className = "plan-category-badge " + (p.category === "main" ? "is-baseline" : "is-scenario");
+      catBadge.textContent = p.category === "main" ? "Main" : "Scenario";
       mainDiv.appendChild(catBadge);
       const nameSpan = document.createElement("span");
       nameSpan.className = "plan-item-name";

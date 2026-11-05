@@ -1636,13 +1636,10 @@ function updatePlansUI(availablePlans = [], currentId = 'default') {
   }
 
   const allCount = plans.length;
-  const baselineCount = plans.filter(p => categorizePlan(p) === 'baseline').length;
   const scenarioCount = plans.filter(p => categorizePlan(p) === 'scenario').length;
 
   const countAllEl = document.getElementById('planTabCountAll');
   if (countAllEl) countAllEl.textContent = String(allCount);
-  const countBaselinesEl = document.getElementById('planTabCountBaselines');
-  if (countBaselinesEl) countBaselinesEl.textContent = String(baselineCount);
   const countScenariosEl = document.getElementById('planTabCountScenarios');
   if (countScenariosEl) countScenariosEl.textContent = String(scenarioCount);
 
@@ -1707,8 +1704,8 @@ function renderFilteredPlansList(plans, currentId) {
     mainDiv.className = 'plan-item-main';
 
     const catBadge = document.createElement('span');
-    catBadge.className = 'plan-category-badge ' + (p.category === 'baseline' ? 'is-baseline' : 'is-scenario');
-    catBadge.textContent = p.category === 'baseline' ? 'Baseline' : 'Scenario';
+    catBadge.className = 'plan-category-badge ' + (p.category === 'main' ? 'is-baseline' : 'is-scenario');
+    catBadge.textContent = p.category === 'main' ? 'Main' : 'Scenario';
     mainDiv.appendChild(catBadge);
 
     const nameSpan = document.createElement('span');

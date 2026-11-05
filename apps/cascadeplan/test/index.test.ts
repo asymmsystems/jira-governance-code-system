@@ -1389,6 +1389,9 @@ describe('CascadePlan Index & Resolver Tests', () => {
 
       await expect(handler({ call: { functionKey: 'authority-check', payload: {} },
         context: { extension: { project: { key: 'TEST', id: '10001' } } } } as any)).rejects.toThrow(/no definition/i);
+      // BL-1 step 5: a resolver with no caller in the UI is not defined.
+      await expect(handler({ call: { functionKey: 'getResourceUtilizationGrid', payload: {} },
+        context: { extension: { project: { key: 'TEST', id: '10001' } } } } as any)).rejects.toThrow(/no definition/i);
     });
 
     it('the admin page function serves the approver policy, and the planner function does not (N-01)', async () => {

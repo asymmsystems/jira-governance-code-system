@@ -3695,7 +3695,6 @@ export const RESOLVER_RULES: Record<string, ResolverRule> = {
   checkPlanApprover: 'read',
   getPlanBaselines: 'read',
   getScopeCreepReport: 'read',
-  getResourceUtilizationGrid: 'read',
   updateWbsTask: 'issue-checked',
   batchUpdateTasks: 'issue-checked',
   continueCascade: 'issue-checked',
@@ -3780,7 +3779,6 @@ define('getPlanBaselines', async (req) => getPlanBaselines(withProject(req)));
 define('getScopeCreepReport', async (req) => getScopeCreepReport(withProject(req)));
 define('requestScopeShift', async (req) => requestScopeShift(withProject(req), undefined, req.context));
 define('reviewScopeShift', async (req) => reviewScopeShift(withProject(req), undefined, req.context));
-define('getResourceUtilizationGrid', async (req) => getResourceUtilizationGrid(withProject(req)));
 define('compareBaselines', async (req) => compareBaselines(withProject(req)));
 define('exportBaseline', async (req) => exportBaseline(withProject(req)));
 define('setActiveBaseline', async (req) => setActiveBaseline(withProject(req)));

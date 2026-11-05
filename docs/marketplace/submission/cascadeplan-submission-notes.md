@@ -11,64 +11,54 @@
 
 ## 1. OAuth Scopes Justification
 
-Every scope declared in `manifest.yml` directly maps to user-facing capabilities:
-
-| Scope | User-Facing Capability | Justification |
+| Scope | User-facing capability | Justification |
 |---|---|---|
-| `read:jira-work` | WBS Ingestion, Timeline Scheduling, & Baseline Freezing | Required to read project issues, epics, estimates, and assignees to construct the visual Work Breakdown Structure and freeze commitment baselines. |
-| `write:jira-work` | Two-Way Schedule & Estimate Synchronization | Required to write scheduled dates and estimates back to Jira issues when the user explicitly schedules work on the planner. |
-| `read:jira-user` | Resource Assignment & Approver Governance | Required to search assignees for resource allocation tracking and search Jira user groups for baseline shift approval authorities. |
-| `storage:app` | Baselines, Shift Approvals, & WBS Hierarchy Persistence | Required to persist frozen sprint commitment snapshots, formal shift approval requests, and WBS custom schedules in Forge KVS. |
+| `read:jira-work` | The timeline, permission checks, bulk move progress | Reads the project's issues, estimates, due dates, links and issue properties as the user; checks the user's permissions before every write; follows a type-conversion job. The issue-deleted trigger removes the planner's records of a deleted issue. |
+| `write:jira-work` | Moves, links, sub-tasks, hierarchy changes | Writes only values the user chose: due dates, estimates, assignees, summaries, status transitions the user picks, "Blocks" links, the issue properties `cascadeplan.dates` and `cascadeplan.links`, sub-task create and delete, parent changes and type conversions (bulk move). |
+| `read:jira-user` | Assignee picker, approver groups, names of baseline authors | Lists assignable users; searches groups for the plan approver admin page; shows the names of who froze a baseline or reviewed a scope change, read live. |
+| `storage:app` | Plans and baselines | Stores row order, columns, milestones, plans, baselines and scope-change requests in Forge storage. |
+| `report:personal-data` | Personal data reporting | Reports the account ids stored in baseline and scope-change records once a week, and clears those of closed accounts. |
 
 ---
 
-## 2. Architecture & Data Residency Statement
+## 2. Architecture and Data
 
-- **Zero External Egress:** CascadePlan declares zero external network endpoints. It makes no outbound network calls.
-- **Tenant Storage:** All baselines, task snapshots, shift approval records, and WBS custom schedules reside strictly in customer Atlassian Forge KVS (`storage:app`).
-- **Data Residency:** All data remains strictly within the customer's Atlassian Cloud data region.
-
----
-
-## 3. Test Credentials & Reviewer Environment Guidance
-
-> **Publisher Note for Submission:** Ensure the review instance (`asymmsystems.atlassian.net`) has project `DEMO` populated with sample tasks and milestones.
-
-### Sample Test Project
-- **Project Key:** `DEMO` or `TEST`
-- **Planner Page URL:** Accessible from the left project sidebar under **CascadePlan Planner**.
+- **No egress:** the manifest declares no external endpoint, and the app makes no call outside the customer's Atlassian site.
+- **Storage:** Forge storage of the site, and two issue properties on the customer's issues.
+- **Personal data:** only Atlassian account ids, as authors of baseline and scope-change records; reported weekly.
 
 ---
 
-## 4. Reviewer Test Plan Steps
+## 3. Reviewer Environment
 
-### Test Step 1: Visual WBS Planner Navigation
-1. Navigate to project `DEMO` and click the planner page in the left project sidebar.
-2. Observe the interactive WBS hierarchy (Epic -> Story -> Subtask) and timeline canvas.
-3. Verify that task duration bars, rolling sprint columns, and dependency links render smoothly.
-
-### Test Step 2: Sprint Baseline Freezing
-1. In the planner toolbar, click **Freeze Baseline**.
-2. Enter a baseline name (e.g. `Sprint 1 Commitment`) and confirm.
-3. Observe that CascadePlan records an immutable snapshot of all committed tasks and total hours.
-
-### Test Step 3: Scope Creep Detection
-1. Create a new task or edit an existing task's estimate on the schedule.
-2. Open the **Scope Creep** indicator in the toolbar.
-3. Observe that the app displays the commitment delta, highlights added tasks, and calculates the scope variance percentage.
-
-### Test Step 4: Formal Shift Approval Workflow
-1. In the scope creep view, click **Request Scope Shift**.
-2. Enter a justification reason and submit.
-3. As an authorized approver, review and approve the shift request to update the baseline.
-
-### Test Step 5: Resource Utilization Grid
-1. Switch to the **Resource Allocation** view.
-2. Observe the weekly workload distribution across team members, with clear indicators for balanced allocations and over-allocated capacity bottlenecks.
+- Site `asymmsystems.atlassian.net`, project `DEMO`, page **CascadePlan Planner** in the project sidebar. The reviewer account is a project administrator, so a plan approver.
 
 ---
 
-## 5. Known Review Risks & Technical Mitigations
+## 4. Reviewer Test Plan
 
-1. **Manifest Key Naming:** The project page module key in `manifest.yml` is `cascadeplan-project-planner`, matching the commercial brand **CascadePlan**.
-2. **Native Jira Synchronization:** CascadePlan only writes to Jira when an unestimated or rescheduled task is updated by the user, preserving Jira data integrity.
+### Step 1: Timeline and dependencies
+1. Open **CascadePlan Planner** in project `DEMO`. The grid lists the work items; the timeline shows their bars.
+2. Hover a bar and drag its right arrow onto another bar. Choose 30%. The successor's badge reads 30%.
+3. Drag the predecessor one week later. The line at the bottom lists the Jira writes before the drop; after it, the successor moved too. Open **Changes** to see each write with old and new values. Press **Ctrl+Z** to undo.
+
+### Step 2: Move a task with its sub-tasks
+1. Drag the bar of a task that has sub-tasks one week later. Its sub-tasks move with it; the task's Jira due date follows its new end.
+
+### Step 3: Plans
+1. Open the plan selector, create a plan as a copy of the Main Plan, and move a bar there. Switch back to the Main Plan: the same dates show, because dates are Jira's.
+
+### Step 4: Baselines and scope review
+1. Choose **Baseline** in the toolbar, enter `Sprint 1 commitment`, and choose **Freeze the plan as a baseline**. The button reads "on scope".
+2. Move a bar one week later. The button now shows "1 later". Open **Baseline**: the change is listed.
+3. Write a reason and choose **Request approval of this scope**. (A second user, a plan approver, can accept it; the requester cannot.)
+4. Under **Baseline versions**, choose **Export CSV**.
+
+### Step 5: Views
+1. Choose **Table view**, then the **Utilization** view: hours per person per week.
+
+---
+
+## 5. Notes
+- The project page module key is `cascadeplan-project-planner`.
+- CascadePlan never writes a default value: no default estimate, no default due date, and no status change caused by a progress edit.
