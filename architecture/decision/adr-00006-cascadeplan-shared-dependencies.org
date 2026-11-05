@@ -1,0 +1,64 @@
+#+TITLE: ADR-006: CascadePlan Dependencies Are Shared by Every Plan
+#+DATE: 2026-11-05
+#+STATUS: Approved
+
+* Status
+Approved - 2026-11-05 by the owner, in chat (decision DEC-8, Option A), during the Marketplace
+review of CascadePlan at commit =db08009= (fix plan item N-11).
+
+Not implemented.
+
+* Context
+- ADR-004 requires that every dependency the planner shows is a Jira "Blocks" link.
+- A Jira issue link belongs to the issues, not to a plan.
+- Today each plan stores its own links in its KVS records, and can hide a link imported from
+  Jira (an "ended link"). A link created in a scenario plan is mirrored to Jira, and so already
+  appears in every plan through the import (=importJiraLinks=,
+  =apps/cascadeplan/src/domain/work-effort-links.ts:65=).
+- The trigger percent (for example "can start when the predecessor is 30% done") has no field in a
+  Jira issue link.
+- Since commit =db08009=, the dates of a task are also the same in every plan (spec decision D3).
+
+* Decision
+1. Dependencies are the Jira "Blocks" links of the issues, the same in every plan.
+2. Adding a dependency in any plan creates the Jira link. If Jira refuses, the dependency is not
+   created, and the user sees Jira's reason.
+3. Removing a dependency in any plan deletes the Jira link, whoever created it. If the user lacks
+   =LINK_ISSUES=, the removal is refused with a message.
+4. The trigger percent is a Jira issue property on the successor (for example
+   =cascadeplan.links=, mapping predecessor id to percent). It is read in the same search as the
+   issues. A link with no stored percent is finish to start (100%).
+5. The plan records keep no links. The history of ended links stays only as a record
+   (=WorkEffortAssoc.thruDate=), not as a filter on Jira's links.
+6. Migration: every plan-only link with no Jira link is listed once to the user, who creates it in
+   Jira or drops it.
+
+So a scenario plan differs from the Main Plan only in row order, columns and milestones.
+
+* Alternatives Considered
+
+** Alternative B: Scenario plans keep plan-only links, marked "plan only, not in Jira"
+- For: what-if planning with different dependencies.
+- Against: breaks ADR-004 for scenario plans, and keeps two truths.
+- Verdict: Rejected by the owner.
+
+* Consequences
+
+** Positive
+- One dependency graph for every plan, for Jira, and for every other app.
+- The trigger percent survives an uninstall of the app, on the issue itself.
+
+** Negative
+- Scenario plans lose most of their purpose: with shared dates and shared links, they are views
+  with their own order, columns and milestones. The listing and the user guide must describe them
+  that way.
+- Each link change needs =LINK_ISSUES=, and the percent needs =EDIT_ISSUES= on the successor.
+- Any user who can browse the issue can read the percent property.
+
+* Implementation Notes
+Not implemented. Fix plan items N-11 (L2 to L6) and BL-2 step 2a.
+
+* References
+- [[file:adr-00004-cascadeplan-jira-holds-relationships.org][ADR-004: CascadePlan keeps every relationship in Jira]]
+- [[file:../../docs/sdlc/cascadeplan-marketplace-review-2026-11/fix-plan-v4.md][CascadePlan fix plan v4]], item N-11; decisions DEC-3 and DEC-8
+- [[file:../../docs/spec/cascadeplan-spec-v2.md][CascadePlan specification v2]], decision D3

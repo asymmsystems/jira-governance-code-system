@@ -1,0 +1,187 @@
+#+TITLE: ADR-003: CascadePlan Block Move of a Parent and Its Sub-tasks
+#+DATE: 2026-11-05
+#+STATUS: Approved
+
+* Status
+Approved - 2026-11-05 by the owner, in chat, during the Marketplace review of CascadePlan at
+commit =db08009= (fix plan item N-05; decisions DEC-5a and DEC-5b, and the owner requirement
+for N-05).
+
+Not implemented.
+
+This ADR replaces one sentence of =docs/spec/cascadeplan-spec.md= section 3.1 (Storage model):
+"a parent bar cannot be dragged". The rest of that section stays: a parent's dates are derived
+on load from its dated children and are never stored. =docs/spec/cascadeplan-spec-v2.md= carries
+the change.
+
+A related question is decided separately and is not part of this ADR: whether the parent's Jira
+due date follows the end of its sub-tasks (DEC-6).
+
+* Context
+
+** Jira hierarchy
+By default Jira has three levels: Epic (level 1), standard work items such as Task or Story
+(level 0), and Sub-task (level -1). A sub-task cannot have children, and it always has a parent
+in the same project. Sources, fetched 2026-11-05:
+- https://support.atlassian.com/jira-cloud-administration/docs/configure-the-issue-type-hierarchy/
+- https://support.atlassian.com/jira-cloud-administration/docs/what-are-issue-types/
+
+** How CascadePlan treats a parent today
+- A parent's bar is the roll-up of its dated children: from the earliest child start to the
+  latest child end (=rollUpParentDates=, =apps/cascadeplan/src/domain/work-effort-links.ts:98-109=;
+  applied in =getProjectPlan=, =apps/cascadeplan/src/index.ts:917-921=).
+- A parent with dated children cannot be moved. The drag, the keyboard move, the toolbar and the
+  multi-select move all refuse it with "Move a child instead"
+  (=apps/cascadeplan/src/frontend/legacy-planner.js:4200, 4832, 5046=;
+  =apps/cascadeplan/src/ui/selection.ts:38=).
+- The server does not refuse it. A direct =updateWbsTask= on such a parent writes the parent's
+  record and its Jira due date, and moves nothing on screen (review test PM-03).
+- A cascade that reaches a parent moves no sub-task, so the parent stays in violation
+  (review test PM-02).
+
+The review tests are in =apps/cascadeplan/test/review/parent-move.test.ts=.
+
+** "Started" in the schedule engine
+The engine counts a work effort as started when its Jira status category is In Progress or Done,
+or when its progress is above 0% (=apps/cascadeplan/src/domain/schedule-engine.ts:132=; status
+mapping =mapJiraStatus=, =apps/cascadeplan/src/index.ts:486-497=). A cascade never moves the start
+of a started work effort. It reports the conflict instead.
+
+** Owner requirement
+When the user moves a task that has sub-tasks, the parent and its sub-tasks move together, as one
+block. The owner also set the rule that every change the planner shows must exist in Jira itself.
+
+* Decision
+
+** 1. A move of a parent is a block move
+A move of a parent by N days moves its block. This applies to every way of moving: the drag, the
+keyboard move (Space), the toolbar "earlier" and "later", and the multi-select move. The parent
+has no dates of its own. After the move, its bar is the roll-up of its sub-tasks.
+
+Scope in v1 (DEC-5b): only task and story parents (hierarchy level 0) move as a block. An epic
+keeps "Move a child instead" until the cost of large blocks has been measured (fix plan items
+F-17 and N-02). The same rules then extend to epics in an update, through a new ADR.
+
+** 2. Each sub-task moves by its state
+The state comes from Jira, with the same rule the schedule engine uses.
+
+| State       | How it is determined                                                     | Rule                                                                                                  |
+|-------------+--------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------|
+| Not started | Status category "To Do" and progress 0%                                  | The start and the end move by N days.                                                                 |
+| In progress | Status category "In Progress", or progress above 0% and not done         | The start stays, because the work really began then. The end moves by N days, but never before today and never before the start. |
+| Done        | Status category "Done"                                                   | The start and the end stay. Their dates record finished work.                                         |
+| Undated     | No start date in the planner                                             | Stays undated. A block move never schedules a sub-task.                                               |
+
+"Today" is the user's local date (fix plan item F-29).
+
+A not-started sub-task may move to a start before today, as a single bar may today. It is then
+shown as late.
+
+Example. Today is 5 Nov. Story DEMO-9 is moved one week later:
+
+| Sub-task | State       | Before          | After           |
+|----------+-------------+-----------------+-----------------|
+| DEMO-30  | Done        | 27 Oct - 31 Oct | 27 Oct - 31 Oct |
+| DEMO-29  | In progress | 3 Nov - 10 Nov  | 3 Nov - 17 Nov  |
+| DEMO-28  | Not started | 11 Nov - 14 Nov | 18 Nov - 21 Nov |
+
+The DEMO-9 bar becomes 27 Oct to 21 Nov. The bar can get longer, because only the work that is
+not done moves.
+
+** 3. A cascade into a parent is a block move
+When a predecessor pushes a parent, the parent's block moves by the same rules. So a block moves
+the same way whether the user drags it or a predecessor pushes it.
+
+** 4. All or nothing
+Before any write, the server checks every sub-task that the move will change:
+- the permission, as the user: =EDIT_ISSUES= and =SCHEDULE_ISSUES= (fix plan item BL-2);
+- the record version.
+If one sub-task fails a check, nothing moves. The user is told which sub-task blocked the move,
+and why.
+
+** 5. Jira is written for every change
+Each sub-task whose end changes gets its new Jira due date, written as the user. The drag preview
+lists every sub-task's new dates before the drop, and marks the ones that stay fixed, with the
+reason ("done", "in progress: start kept"). The Changes panel lists every Jira write.
+
+** 6. Dependencies
+- Successors outside the block, of the parent or of any sub-task, are cascaded as usual.
+- The parent's own incoming links apply to each of its sub-tasks (fix plan item N-06 rule 5).
+  With "Enforce dependencies" on, the whole block stops at the earliest allowed day. Otherwise
+  the conflict dialog opens.
+- Links inside the block are evaluated after the move like any other link. A fixed done or
+  in-progress sub-task can make a link inside the block conflict. The conflict is shown, as for a
+  single bar.
+
+** 7. Other rules
+- A roll-up parent cannot be resized. Stretching a block has no single clear meaning for its
+  sub-tasks.
+- In a multi-select move, each issue moves once. A selected sub-task whose parent is also
+  selected moves as part of the parent's block, not a second time.
+- Undo restores the whole block in one step.
+- Blocks of more than 25 sub-tasks continue in later calls, as cascades do today
+  (=apps/cascadeplan/src/frontend/bridge.ts=).
+
+* Alternatives Considered
+
+** Alternative A: Keep "a parent bar cannot be dragged"
+- For: no change.
+- Against: fails the owner requirement. Users expect to move a parent in a Gantt chart.
+- Verdict: Rejected.
+
+** Alternative B: Move every sub-task by N days, whatever its state
+- For: the simplest rule, and the block keeps its exact shape.
+- Against: done work gets dates in the future, and its Jira due date is rewritten. In-progress
+  work is shown as starting later than it really began.
+- Verdict: Rejected.
+
+** Alternative C: Keep every started sub-task fixed, like done ones
+- For: never changes a date of a started work item.
+- Against: the remaining work of an in-progress sub-task does not move, so the block move does not
+  reschedule it.
+- Verdict: Rejected.
+
+** Alternative D: Keep each sub-task inside a parent window
+- For: a parent keeps a fixed frame.
+- Against: a parent has no dates of its own (=docs/spec/cascadeplan-spec.md= section 3.1), so
+  there is no window to keep a sub-task inside. A window would need a second set of dates for the
+  parent.
+- Verdict: Rejected.
+
+* Consequences
+
+** Positive
+- Moving a parent works the way Gantt users expect.
+- Finished work and real start dates are never rewritten.
+- Drags and cascades follow one rule.
+- Jira stays the record for every date that changes.
+
+** Negative
+- The block does not keep its exact shape. The parent bar and in-progress sub-tasks can get
+  longer or shorter.
+- One drag can mean many Jira writes, and every one needs the user's permission.
+- A new server operation is needed, for example =moveTaskGroup({ taskId, days, expectedVersions })=.
+
+** Mitigations
+- The drag preview shows every new date, and every date that stays, before the drop.
+- The all-or-nothing check prevents half-moved blocks.
+- The block move uses the single in-memory batch state of fix plan item F-17, and the fresh Jira
+  read of F-03.
+
+* Implementation Notes
+Not implemented. Prerequisites, from the fix plan:
+- F-03 (stale Jira read), F-17 (one in-memory batch state), BL-2 (permission check);
+- N-06 rules 1 to 4 (the roll-up is kept in step).
+
+Proof, when built:
+- unit tests for each state rule, for the all-or-nothing refusal, for the multi-select
+  de-duplication and for Undo;
+- review tests PM-02 and PM-03 rewritten as regression tests;
+- a harness check that drags a parent and shows every sub-task's new dates in the Changes panel.
+
+* References
+- [[file:../../docs/sdlc/cascadeplan-marketplace-review-2026-11/fix-plan-v4.md][CascadePlan fix plan v4]], items N-05 and N-06, decisions DEC-5 and DEC-6
+- [[file:../../docs/sdlc/cascadeplan-marketplace-review-2026-11/reparent-research.md][Jira re-parenting and hierarchy research, 2026-11-05]]
+- [[file:../../docs/spec/cascadeplan-spec-v2.md][CascadePlan specification v2]], sections 3.1 and 3.3
+- [[file:adr-00004-cascadeplan-jira-holds-relationships.org][ADR-004: Jira holds every relationship the planner shows]]
+- [[file:adr-00002-fourrealities-volatility-layering.org][ADR-002]], for the ADR format used here
