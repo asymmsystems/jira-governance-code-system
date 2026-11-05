@@ -8068,6 +8068,25 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return scheduled.length >= 2 && !scheduled.some((t) => t.dependency && t.dependency.predecessorKey);
   }
 
+  // src/frontend/dynamic-style.ts
+  var PROPERTIES = [
+    ["data-css-w", "width"],
+    ["data-css-left", "left"],
+    ["data-css-pl", "paddingLeft"]
+  ];
+  var SELECTOR = PROPERTIES.map(([a]) => `[${a}]`).join(",");
+  var LENGTH = /^-?\d+(\.\d+)?(px|%)$/;
+  function applyDynamicStyles(root) {
+    const below = Array.from(root.querySelectorAll(SELECTOR));
+    const elements = root.matches(SELECTOR) ? [root, ...below] : below;
+    for (const el3 of elements) {
+      for (const [attribute, property] of PROPERTIES) {
+        const value = el3.getAttribute(attribute);
+        if (value !== null && LENGTH.test(value)) el3.style[property] = value;
+      }
+    }
+  }
+
   // src/ui/selection.ts
   function toggleKey(selected, key) {
     const next = new Set(selected);
@@ -9718,10 +9737,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
         const isChecked = !hiddenColumns.has(col.key);
         row.innerHTML = html`
         <input type="checkbox" id="col_chk_${col.key}" ${isChecked ? "checked" : ""} ${col.locked ? "disabled" : ""} />
-        <label for="col_chk_${col.key}" class="col-option-label" style="cursor:${col.locked ? "default" : "pointer"};">
+        <label for="col_chk_${col.key}" class="col-option-label ${col.locked ? "is-locked" : ""}">
           <span>${col.icon}</span>
           <span>${col.label}</span>
-          ${col.locked ? html`<span class="badge badge-neutral" style="font-size:9px; padding:1px 4px;">Required</span>` : ""}
+          ${col.locked ? html`<span class="badge badge-neutral jx-badge-tiny">Required</span>` : ""}
         </label>
       `;
         if (!col.locked) {
@@ -9752,11 +9771,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
     menu.style.top = e.clientY + 12 + "px";
     menu.style.zIndex = "1200";
     menu.innerHTML = html`
-    <div style="font-weight:700; font-size:11px; color: var(--cp-text-subtle); margin-bottom:4px;">Column: ${colLabel}</div>
-    <button class="btn btn-outline btn-sm" id="btnHideThisCol" style="text-align:left; justify-content:flex-start; width:100%; font-size:12px; margin-bottom:4px;">
+    <div class="jx-menu-caption">Column: ${colLabel}</div>
+    <button class="btn btn-outline btn-sm jx-menu-btn-mb4" id="btnHideThisCol">
       🚫 Hide "${colLabel}"
     </button>
-    <button class="btn btn-subtle btn-sm" id="btnManageAllFromHeader" style="text-align:left; justify-content:flex-start; width:100%; font-size:12px;">
+    <button class="btn btn-subtle btn-sm jx-menu-btn" id="btnManageAllFromHeader">
       ⚙ Manage All Columns...
     </button>
   `;
@@ -10208,7 +10227,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     (currentPlan.milestones || []).forEach((m) => {
       const el3 = document.createElement("div");
       el3.className = "milestone-pill";
-      el3.innerHTML = html`<span class="milestone-icon">🔷</span><span>${m.title}</span><span style="color: var(--cp-text-subtle);">(${m.weekKey})</span>`;
+      el3.innerHTML = html`<span class="milestone-icon">🔷</span><span>${m.title}</span><span class="jx-subtle">(${m.weekKey})</span>`;
       strip.appendChild(el3);
     });
   }
@@ -10217,7 +10236,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     container.innerHTML = "";
     const backlog = currentPlan.backlogTasks || [];
     if (backlog.length === 0) {
-      container.innerHTML = '<div style="color: var(--cp-text-subtle); font-size:12px; text-align:center; padding:20px;">No unmapped backlog issues. Drag from timeline to unmap.</div>';
+      container.innerHTML = '<div class="jx-empty-tray">No unmapped backlog issues. Drag from timeline to unmap.</div>';
       return;
     }
     backlog.forEach((item) => {
@@ -10239,7 +10258,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       <div class="backlog-footer">
         <span>⏱️ ${effortDisplay}</span>
         <span>👤 ${item.resource || "Unassigned"}</span>
-        <button type="button" class="btn btn-outline btn-sm btn-schedule-backlog" title="Schedule onto timeline" style="margin-left: auto; padding: 2px 8px; font-size: 11px;">+ Schedule</button>
+        <button type="button" class="btn btn-outline btn-sm btn-schedule-backlog jx-schedule-btn" title="Schedule onto timeline">+ Schedule</button>
       </div>
     `;
       const bKeyLink = card.querySelector(".backlog-key-link");
@@ -10620,15 +10639,15 @@ Please see https://iframe-resizer.com/upgrade for more details.
         return;
       }
       currentContainer.style.display = "flex";
-      currentContainer.innerHTML = '<div style="width:100%; font-size:10px; font-weight:700; color: var(--cp-text-subtle); text-transform:uppercase; margin-bottom:2px;">Assigned Team:</div>';
+      currentContainer.innerHTML = '<div class="jx-picker-caption">Assigned Team:</div>';
       assignedResources.forEach((res) => {
         const chip = document.createElement("div");
         chip.className = "resource-current-chip" + (res.isParent ? " is-lead" : "");
         const initials = getInitials(res.name);
         chip.innerHTML = html`
-        <span class="resource-option-avatar" style="width:16px; height:16px; font-size:9px;">${initials}</span>
+        <span class="resource-option-avatar jx-avatar-small">${initials}</span>
         <span>${res.name}</span>
-        <span style="font-size:9px; opacity:0.8;">${res.isParent ? "(Lead)" : ""}</span>
+        <span class="jx-lead-note">${res.isParent ? "(Lead)" : ""}</span>
         ${!res.isParent ? html`<button class="resource-btn-make-lead" title="Make primary Jira assignee">★ Lead</button>` : ""}
         <span class="resource-current-chip-remove" title="Remove ${res.name}">✕</span>
       `;
@@ -10682,11 +10701,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
       promptContainer.className = "resource-removal-prompt";
       promptContainer.style.cssText = "width: 100%; padding: 8px; border: 1px solid var(--cp-border); border-radius: 4px; background: var(--cp-surface); margin-top: 4px; box-sizing: border-box;";
       promptContainer.innerHTML = html`
-      <div style="font-size: 11px; margin-bottom: 6px; color: var(--cp-text);">${formatRemovalPrompt(removing.name, subtaskKey)}</div>
-      <div style="display: flex; gap: 6px;">
-        <button type="button" class="btn btn-danger btn-sm btn-delete-subtask" style="padding: 2px 6px; font-size: 10px;">Delete sub-task</button>
-        <button type="button" class="btn btn-secondary btn-sm btn-unassign-subtask" style="padding: 2px 6px; font-size: 10px;">Unassign sub-task</button>
-        <button type="button" class="btn btn-subtle btn-sm btn-cancel-remove" style="padding: 2px 6px; font-size: 10px;">Cancel</button>
+      <div class="jx-remove-prompt">${formatRemovalPrompt(removing.name, subtaskKey)}</div>
+      <div class="jx-row-6">
+        <button type="button" class="btn btn-danger btn-sm btn-delete-subtask jx-btn-tiny">Delete sub-task</button>
+        <button type="button" class="btn btn-secondary btn-sm btn-unassign-subtask jx-btn-tiny">Unassign sub-task</button>
+        <button type="button" class="btn btn-subtle btn-sm btn-cancel-remove jx-btn-tiny">Cancel</button>
       </div>
     `;
       promptContainer.querySelector(".btn-delete-subtask").addEventListener("click", async (e) => {
@@ -10821,7 +10840,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         opt.innerHTML = html`
         <input type="checkbox" class="resource-option-checkbox" ${isUnassignedSelected ? "checked" : ""} />
         <span class="resource-option-avatar">U</span>
-        <span style="flex:1;">Unassigned</span>
+        <span class="jx-fill">Unassigned</span>
       `;
         opt.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -10833,7 +10852,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         (u) => u.displayName && u.displayName.toLowerCase().includes(q)
       );
       if (users.length === 0 && q && !"unassigned".includes(q)) {
-        listEl.innerHTML = '<div style="padding:10px; font-size:11px; color: var(--cp-text-subtle); text-align:center;">No matching team members</div>';
+        listEl.innerHTML = '<div class="jx-empty-list">No matching team members</div>';
         return;
       }
       users.forEach((u) => {
@@ -10843,7 +10862,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         const opt = document.createElement("div");
         opt.className = "resource-option" + (isAssigned ? " is-selected" : "");
         const initials = getInitials(u.displayName);
-        const isPlaceholder = u.isPlaceholder ? html` <span style="font-size:10px; color: var(--cp-text-subtlest);">(Placeholder)</span>` : "";
+        const isPlaceholder = u.isPlaceholder ? html` <span class="jx-placeholder-note">(Placeholder)</span>` : "";
         let badgeHtml = html``;
         if (isAssigned) {
           badgeHtml = isLead ? html`<span class="resource-badge-lead">Lead</span>` : html`<span class="resource-badge-contrib">Contributor</span>`;
@@ -10851,7 +10870,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         opt.innerHTML = html`
         <input type="checkbox" class="resource-option-checkbox" ${isAssigned ? "checked" : ""} />
         <span class="resource-option-avatar">${initials}</span>
-        <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${u.displayName}${isPlaceholder}</span>
+        <span class="jx-ellipsis-fill">${u.displayName}${isPlaceholder}</span>
         ${badgeHtml}
       `;
         opt.addEventListener("click", (e) => {
@@ -10914,7 +10933,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       if (!q || "none standalone".includes(q)) {
         const opt = document.createElement("div");
         opt.className = "resource-option";
-        opt.innerHTML = html`<span style="color: var(--cp-text-subtle); font-size:11px;">✕ (None / Standalone Task)</span>`;
+        opt.innerHTML = html`<span class="jx-subtle-11">✕ (None / Standalone Task)</span>`;
         opt.addEventListener("click", async () => {
           popover.style.display = "none";
           if (activePickerTaskKey === "NEW_INLINE_TASK") {
@@ -10935,7 +10954,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         (e) => e.summary && e.summary.toLowerCase().includes(q) || e.key && e.key.toLowerCase().includes(q)
       );
       if (epics.length === 0 && q) {
-        listEl.innerHTML = '<div style="padding:10px; font-size:11px; color: var(--cp-text-subtle); text-align:center;">No matching epics</div>';
+        listEl.innerHTML = '<div class="jx-empty-list">No matching epics</div>';
         return;
       }
       epics.forEach((ep) => {
@@ -11050,17 +11069,17 @@ Please see https://iframe-resizer.com/upgrade for more details.
     let cellsHtml = html``;
     if (visibleKeys.includes("epic")) {
       cellsHtml = html`${cellsHtml}
-      <td class="td-data td-epic-cell" style="width:${columnWidths.epic}px;">
+      <td class="td-data td-epic-cell" data-css-w="${columnWidths.epic}px">
         <span class="epic-link-chip new-task-epic-chip ${inheritedEpic ? "has-epic" : "no-epic"}" title="Choose Epic">${epicDisplay} ▾</span>
       </td>
     `;
     }
     if (visibleKeys.includes("story")) {
-      cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.story}px; color: var(--cp-text-brand); font-weight:700;">🔷 Task</td>`;
+      cellsHtml = html`${cellsHtml}<td class="td-data jx-brand-bold" data-css-w="${columnWidths.story}px">🔷 Task</td>`;
     }
     cellsHtml = html`${cellsHtml}
-    <td class="td-data td-task-summary" style="width:${colWidth("task")}px;">
-      <div style="display:flex; align-items:center; gap:6px; padding-left:14px;">
+    <td class="td-data td-task-summary" data-css-w="${colWidth("task")}px">
+      <div class="jx-create-row">
         <input type="text" class="inline-create-input" placeholder="Type new task summary & press Enter to save..." autocomplete="off" />
         <button class="btn-inline-save">Add</button>
         <button class="btn-inline-cancel" title="Cancel (Esc)">✕</button>
@@ -11069,34 +11088,34 @@ Please see https://iframe-resizer.com/upgrade for more details.
   `;
     if (visibleKeys.includes("resource")) {
       cellsHtml = html`${cellsHtml}
-      <td class="td-data td-resource-cell" style="width:${columnWidths.resource}px;">
+      <td class="td-data td-resource-cell" data-css-w="${columnWidths.resource}px">
         <div class="resource-chip-btn new-task-resource-btn" title="Assign team member">
           <span class="resource-option-avatar">U</span>
-          <span class="new-task-resource-name" style="flex:1; overflow:hidden; text-overflow:ellipsis;">Unassigned</span>
-          <span style="font-size:10px; color: var(--cp-text-subtle);">▾</span>
+          <span class="new-task-resource-name jx-ellipsis">Unassigned</span>
+          <span class="jx-caret">▾</span>
         </div>
       </td>
     `;
     }
     if (visibleKeys.includes("effort")) {
       cellsHtml = html`${cellsHtml}
-      <td class="td-data td-effort-cell" style="width:${columnWidths.effort}px; text-align:center;">
-        <input type="number" class="inline-edit-input new-task-hours" style="width:50px; text-align:center;" placeholder="h" min="0" />
+      <td class="td-data td-effort-cell jx-center" data-css-w="${columnWidths.effort}px">
+        <input type="number" class="inline-edit-input new-task-hours jx-hours-input" placeholder="h" min="0" />
       </td>
     `;
     }
     if (visibleKeys.includes("progress")) {
-      cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.progress}px; text-align:center; color: var(--cp-text-subtle); font-weight:600;">0%</td>`;
+      cellsHtml = html`${cellsHtml}<td class="td-data jx-center-subtle" data-css-w="${columnWidths.progress}px">0%</td>`;
     }
     if (visibleKeys.includes("target")) {
-      cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.target}px; text-align:center; color: var(--cp-text-subtle); font-weight:600;">0%</td>`;
+      cellsHtml = html`${cellsHtml}<td class="td-data jx-center-subtle" data-css-w="${columnWidths.target}px">0%</td>`;
     }
     if (visibleKeys.includes("status")) {
-      cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.status}px; text-align:center;"><span class="badge badge-neutral">NOT_STARTED</span></td>`;
+      cellsHtml = html`${cellsHtml}<td class="td-data jx-center" data-css-w="${columnWidths.status}px"><span class="badge badge-neutral">NOT_STARTED</span></td>`;
     }
     cellsHtml = html`${cellsHtml}
     <td class="timeline-track-cell">
-      <div class="ghost-timeline-bar" style="left:${barLeft}px; width:${barWidth}px;">
+      <div class="ghost-timeline-bar" data-css-left="${barLeft}px" data-css-w="${barWidth}px">
         <span>➕ New Task Preview (3 wks)</span>
       </div>
     </td>
@@ -11331,7 +11350,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       <div class="empty-state" id="emptyStateDropZone" role="region" aria-labelledby="emptyStateTitle">
         <h2 id="emptyStateTitle">${es.title}</h2>
         <p>${es.text}</p>
-        <div class="empty-state-drop-hint" style="margin: 12px 0 16px 0; padding: 12px 18px; border: 2px dashed var(--cp-border-brand); border-radius: 6px; background: var(--cp-bg-brand-subtle); color: var(--cp-text-brand); font-weight: 600; font-size: 13px;">
+        <div class="empty-state-drop-hint jx-drop-hint">
           📥 Drop backlog issues here to schedule, or click below
         </div>
         <div class="empty-state-actions">
@@ -11505,6 +11524,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     settleUndo();
   }
   function applyFrozen(tr) {
+    applyDynamicStyles(tr);
     const frozen = getFrozenLayout();
     const keys = frozen.visibleKeys;
     const cells = [...tr.children].filter((td) => !td.classList.contains("timeline-track-cell"));
@@ -11529,7 +11549,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       document.body.appendChild(menu);
     }
     menu.innerHTML = html`
-    <div class="menu-item-header" style="padding: 6px 10px; font-weight: 700; font-size: 11px; color: var(--cp-text-subtle); border-bottom: 1px solid var(--cp-border);">
+    <div class="menu-item-header jx-menu-header">
       ${task.key}: ${task.summary}
     </div>
     <button class="quick-menu-item" data-action="insert"><span>➕</span><span>Insert task below</span></button>
@@ -11539,7 +11559,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     <button class="quick-menu-item" data-action="team"><span>👥</span><span>Assign team member</span></button>
     <button class="quick-menu-item" data-action="edit"><span>✏️</span><span>Edit task details</span></button>
     <button class="quick-menu-item" data-action="jira"><span>↗</span><span>Open in native Jira</span></button>
-    <div style="border-top: 1px solid var(--cp-border); margin: 2px 0;"></div>
+    <div class="jx-menu-divider"></div>
     <button class="quick-menu-item item-danger" data-action="backlog"><span>📤</span><span>Move to backlog</span></button>
   `;
     const rect = anchorBtn.getBoundingClientRect();
@@ -11624,7 +11644,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     const siteUrl = getJiraBaseUrl();
     const summaryHtml = html`
-    <div style="display:flex; align-items:center; width:100%; padding-left:${indentPx}px;">
+    <div class="jx-summary-row" data-css-pl="${indentPx}px">
       <div class="row-insert-affordance" title="Insert task below (Row ${rowIdx + 2})">
         <button class="row-insert-plus-btn" title="Insert new task below">＋</button>
       </div>
@@ -11632,7 +11652,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       ${expandToggleHtml}
       ${badgeHtml}
       <a href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer" class="task-key-link" title="Open ${task.key} in native Jira (new tab)">${task.key} ↗</a>
-      <span class="task-summary-text" style="cursor:pointer; margin-left:6px; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="Click to edit summary, or press and hold row to reorder">
+      <span class="task-summary-text jx-summary-text" title="Click to edit summary, or press and hold row to reorder">
         : ${task.summary}
       </span>
       <div class="row-action-toolbar" role="toolbar" aria-label="Row actions for ${task.key}">
@@ -11663,21 +11683,21 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const visibleKeys = getVisibleColKeys();
     let rowColsHtml = html``;
     if (visibleKeys.includes("epic")) {
-      rowColsHtml = html`${rowColsHtml}<td class="td-data td-epic-cell" style="width:${columnWidths.epic}px;">${epicHtml}</td>`;
+      rowColsHtml = html`${rowColsHtml}<td class="td-data td-epic-cell" data-css-w="${columnWidths.epic}px">${epicHtml}</td>`;
     }
     if (visibleKeys.includes("story")) {
-      rowColsHtml = html`${rowColsHtml}<td class="td-data td-story-cell" style="width:${columnWidths.story}px;" title="${task.story || ""}">${task.story || (isEpic ? "Epic" : isSub ? "Subtask" : "Task")}</td>`;
+      rowColsHtml = html`${rowColsHtml}<td class="td-data td-story-cell" data-css-w="${columnWidths.story}px" title="${task.story || ""}">${task.story || (isEpic ? "Epic" : isSub ? "Subtask" : "Task")}</td>`;
     }
     if (visibleKeys.includes("task")) {
-      rowColsHtml = html`${rowColsHtml}<td class="td-data td-task-summary" style="width:${colWidth("task")}px;">${summaryHtml}</td>`;
+      rowColsHtml = html`${rowColsHtml}<td class="td-data td-task-summary" data-css-w="${colWidth("task")}px">${summaryHtml}</td>`;
     }
     if (visibleKeys.includes("resource")) {
-      rowColsHtml = html`${rowColsHtml}<td class="td-data td-resource-cell" style="width:${columnWidths.resource}px;"></td>`;
+      rowColsHtml = html`${rowColsHtml}<td class="td-data td-resource-cell" data-css-w="${columnWidths.resource}px"></td>`;
     }
     if (visibleKeys.includes("effort")) {
       rowColsHtml = html`${rowColsHtml}
-      <td class="td-data td-effort-cell" style="width:${columnWidths.effort}px; text-align:center; cursor:pointer;" title="Click to edit effort hours">
-        <span class="effort-text" style="font-weight:700;">${formatEffort(task.effortHours)}</span>
+      <td class="td-data td-effort-cell jx-center-pointer" data-css-w="${columnWidths.effort}px" title="Click to edit effort hours">
+        <span class="effort-text jx-bold">${formatEffort(task.effortHours)}</span>
       </td>
     `;
     }
@@ -11685,9 +11705,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const isProgRollup = isEpic || task.childrenCount && task.childrenCount > 0;
       const progTitle = isProgRollup ? `Actual progress: ${task.progress}% (Rollup from children: click to edit or override)` : `Click to set actual progress (${task.progress}%)`;
       rowColsHtml = html`${rowColsHtml}
-      <td class="td-data td-progress-cell" style="width:${columnWidths.progress}px; text-align:center; cursor:pointer;" title="${progTitle}">
+      <td class="td-data td-progress-cell jx-center-pointer" data-css-w="${columnWidths.progress}px" title="${progTitle}">
         <div class="progress-chip-cell ${task.progress === 100 ? "is-complete" : task.progress > 0 ? "is-active" : "is-zero"}">
-          <span class="progress-chip-fill" style="width:${task.progress}%;"></span>
+          <span class="progress-chip-fill" data-css-w="${task.progress}%"></span>
           <span class="progress-chip-text">${task.progress}% ▾</span>
         </div>
       </td>
@@ -11695,7 +11715,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     if (visibleKeys.includes("target")) {
       rowColsHtml = html`${rowColsHtml}
-      <td class="td-data td-target-cell" style="width:${columnWidths.target}px; text-align:center; cursor:pointer;" title="Click to set target progress (${task.targetProgress}%)">
+      <td class="td-data td-target-cell jx-center-pointer" data-css-w="${columnWidths.target}px" title="Click to set target progress (${task.targetProgress}%)">
         <div class="target-chip-cell">
           <span class="target-chip-text">🎯 ${task.targetProgress}% ▾</span>
         </div>
@@ -11704,7 +11724,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     if (visibleKeys.includes("status")) {
       rowColsHtml = html`${rowColsHtml}
-      <td class="td-data td-status-cell" style="width:${columnWidths.status}px; text-align:center;">
+      <td class="td-data td-status-cell jx-center" data-css-w="${columnWidths.status}px">
         <span class="badge editable-badge-chip ${task.status === "COMPLETED" ? "badge-success" : task.status === "IN_PROGRESS" ? "badge-primary" : "badge-neutral"}" title="Click to change status">
           ${task.status} ▾
         </span>
@@ -11751,7 +11771,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
             const initials = getInitials(res.name);
             const bg = aIdx === 0 ? "var(--cp-bg-neutral)" : aIdx === 1 ? "var(--cp-bg-selected)" : "var(--cp-bg-discovery)";
             const color = aIdx === 0 ? "var(--cp-text)" : aIdx === 1 ? "var(--cp-text-brand)" : "var(--cp-text-discovery)";
-            avatarHtml = html`${avatarHtml}<span class="resource-option-avatar" style="background:${bg}; color:${color}; z-index:${10 - aIdx};" title="${res.name}">${initials}</span>`;
+            avatarHtml = html`${avatarHtml}<span class="resource-option-avatar jx-avatar-${aIdx + 1}" title="${res.name}">${initials}</span>`;
           });
           avatarHtml = html`${avatarHtml}</div>`;
           const names = contributing.map((c) => c.name);
@@ -11776,9 +11796,9 @@ Click to manage or assign.`;
         resourceTd.innerHTML = html`
         <div class="resource-chip-btn ${isMultiple ? "has-multiple-resources" : ""}" title="${titleText}">
           ${avatarHtml}
-          <span class="resource-names-wrap" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${labelText}</span>
+          <span class="resource-names-wrap jx-ellipsis-fill">${labelText}</span>
           ${isMultiple ? html`<span class="res-count-badge">${contributing.length}</span>` : ""}
-          <span style="font-size:10px; color: var(--cp-text-subtle);">▾</span>
+          <span class="jx-caret">▾</span>
         </div>
       `;
         const resChip = resourceTd.querySelector(".resource-chip-btn");
@@ -11861,7 +11881,7 @@ Click to manage or assign.`;
             });
             await loadProjectPlan();
           } else {
-            effortTd.innerHTML = html`<span class="effort-text" style="font-weight:700;">${formatEffort(origHours)}</span>`;
+            effortTd.innerHTML = html`<span class="effort-text jx-bold">${formatEffort(origHours)}</span>`;
           }
         }
         input.addEventListener("keydown", (ke) => {
@@ -11870,7 +11890,7 @@ Click to manage or assign.`;
             saveInlineEffort();
           } else if (ke.key === "Escape") {
             saved = true;
-            effortTd.innerHTML = html`<span class="effort-text" style="font-weight:700;">${formatEffort(origHours)}</span>`;
+            effortTd.innerHTML = html`<span class="effort-text jx-bold">${formatEffort(origHours)}</span>`;
           }
         });
         input.addEventListener("blur", saveInlineEffort);
@@ -13592,7 +13612,7 @@ Click to manage or assign.`;
     if (trigger && pop) {
       trigger.addEventListener("click", (e) => {
         e.stopPropagation();
-        const isClosed = pop.style.display === "none";
+        const isClosed = getComputedStyle(pop).display === "none";
         pop.style.display = isClosed ? "flex" : "none";
         trigger.setAttribute("aria-expanded", isClosed ? "true" : "false");
         if (isClosed) {
@@ -13607,7 +13627,7 @@ Click to manage or assign.`;
     document.getElementById("btnManagePlans")?.addEventListener("click", (e) => {
       e.stopPropagation();
       if (pop) {
-        pop.style.display = pop.style.display === "none" ? "flex" : "none";
+        pop.style.display = getComputedStyle(pop).display === "none" ? "flex" : "none";
       }
     });
     document.getElementById("btnClosePlansPopover")?.addEventListener("click", () => {
@@ -13734,7 +13754,7 @@ Click to manage or assign.`;
       const conflictBanner = document.getElementById("depConflictBanner");
       if (!recentlyOpened && conflictBanner && !conflictBanner.hidden && !conflictBanner.contains(e.target)) closeDependencyConflictDialog();
       const plansPop = document.getElementById("plansManagerPopover");
-      if (plansPop && plansPop.style.display !== "none" && !plansPop.contains(e.target) && !e.target.closest("#planSelectorBtn") && !e.target.closest("#btnManagePlans")) {
+      if (plansPop && getComputedStyle(plansPop).display !== "none" && !plansPop.contains(e.target) && !e.target.closest("#planSelectorBtn") && !e.target.closest("#btnManagePlans")) {
         closePlansPopover();
       }
     });
@@ -13865,8 +13885,8 @@ Click to manage or assign.`;
     const isSub = task.isSubtask || task.hierarchyLevel === -1;
     const levelTitle = isEpic ? "\u{1F7EA} Epic Roadmap Level" : isSub ? "\u21B3 Subtask Execution Level" : "\u{1F537} Story / Task Plan Level";
     const dep = task.dependency;
-    const depInfo = dep && dep.predecessorKey ? html`<div style="margin-top:4px;">🔗 ${dep.earliestStartReason || `Waits for ${dep.predecessorKey} at ${dep.triggerPercent}%`}</div>${dep.isViolated ? html`<div style="font-weight:700;">⚠ ${dep.fixSuggestion || dep.violationReason || "Starts too early"}</div>` : ""}` : "";
-    const rollupInfo = isEpic && task.rollupStats ? html`<div style="font-weight:600;">Rollup: ${task.childrenCount || 0} child items | Total ${task.effortHours}h</div>` : "";
+    const depInfo = dep && dep.predecessorKey ? html`<div class="jx-mt-4">🔗 ${dep.earliestStartReason || `Waits for ${dep.predecessorKey} at ${dep.triggerPercent}%`}</div>${dep.isViolated ? html`<div class="jx-bold">⚠ ${dep.fixSuggestion || dep.violationReason || "Starts too early"}</div>` : ""}` : "";
+    const rollupInfo = isEpic && task.rollupStats ? html`<div class="jx-semibold">Rollup: ${task.childrenCount || 0} child items | Total ${task.effortHours}h</div>` : "";
     const subInfo = !isEpic && task.subtasks && task.subtasks.length > 0 ? html`<div>Subtasks: ${task.subtasks.length} items (${task.effortHours}h total)</div>` : "";
     const contributing = getTaskContributingResources(task);
     let assigneeHtml = html`<div>${isEpic ? "Epic Lead" : "Assignee"}: ${task.resource || "Unassigned"}</div>`;
@@ -13877,8 +13897,8 @@ Click to manage or assign.`;
     }
     const siteUrl = getJiraBaseUrl();
     tip.innerHTML = html`
-    <div style="font-size:10px; font-weight:700; margin-bottom:2px;">${levelTitle}</div>
-    <div><strong><a href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer" style="color: var(--cp-text-inverse); text-decoration:underline;">${task.key} ↗</a>: ${task.summary}</strong></div>
+    <div class="jx-tip-level">${levelTitle}</div>
+    <div><strong><a class="jx-tip-link" href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer">${task.key} ↗</a>: ${task.summary}</strong></div>
     ${assigneeHtml}
     <div>Effort: ${formatEffort(task.effortHours)} | Progress: ${task.progress}% (Target: ${task.targetProgress}%)</div>
     <div>Dates: ${task.startDate} to ${task.endDate}</div>
@@ -14030,14 +14050,14 @@ Click to manage or assign.`;
     list.innerHTML = "";
     const subs = task.subtasks || [];
     if (subs.length === 0) {
-      list.innerHTML = '<div style="font-size:11px; color: var(--cp-text-subtle);">No sub-tasks in Jira yet.</div>';
+      list.innerHTML = '<div class="jx-subtle-11">No sub-tasks in Jira yet.</div>';
     } else {
       subs.forEach((s) => {
         const item = document.createElement("div");
         item.style.display = "flex";
         item.style.justifyContent = "space-between";
         item.style.fontSize = "12px";
-        item.innerHTML = html`<span>• ${s.key ? s.key + ": " : ""}${s.summary}</span><span style="font-weight:700;">${s.normalizedHours ? s.normalizedHours + "h" : ""}</span>`;
+        item.innerHTML = html`<span>• ${s.key ? s.key + ": " : ""}${s.summary}</span><span class="jx-bold">${s.normalizedHours ? s.normalizedHours + "h" : ""}</span>`;
         list.appendChild(item);
       });
     }

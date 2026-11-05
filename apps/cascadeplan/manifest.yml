@@ -49,9 +49,8 @@ resources:
     path: src/frontend/admin.tsx
 
 permissions:
-  content:
-    styles:
-      - 'unsafe-inline'
+  # MK-09: no 'unsafe-inline' styles; the planner has no inline style attributes or <style> elements
+  # (checked by test/e2e/e2e_csp_probe.py under style-src 'self').
   scopes:
     - read:jira-work
     - write:jira-work

@@ -119,40 +119,59 @@ modules:
       icon: resource:main;icon.svg
       resource: main
       resolver:
-        function: resolver          # planner resolvers only
+        function: resolver
   jira:adminPage:
     - key: cascadeplan-admin
       title: CascadePlan approvers
       render: native
       resource: admin
       resolver:
-        function: admin-resolver    # approver-policy resolvers only (N-01)
+        function: admin-resolver
+  jira:entityProperty:
+    # C7: the create id of the call that created an issue, searchable by JQL, so a repeated create
+    # finds the issue the first call created instead of creating a second one.
+    - key: cascadeplan-create-id
+      entityType: issue
+      propertyKey: cascadeplan.create
+      values:
+        - path: id
+          type: string
   trigger:
     - key: issue-deleted
       function: issue-deleted-fn
       events:
-        - avi:jira:deleted:issue    # deletes the issue's records in every plan (BL-9)
+        - avi:jira:deleted:issue
+  scheduledTrigger:
+    # ADR-009 decision 7: the weekly personal data report of the baseline audit records.
+    - key: personal-data-report
+      function: personal-data-fn
+      interval: week
   function:
     - key: resolver
       handler: index.handler
     - key: admin-resolver
       handler: index.adminHandler
-    - key: issue-deleted-fn         # module keys are unique across all modules
+    - key: issue-deleted-fn
       handler: index.issueDeletedTrigger
+    - key: personal-data-fn
+      handler: index.personalDataTrigger
+
 resources:
   - key: main
     path: static/frontend/build
   - key: admin
     path: src/frontend/admin.tsx
+
 permissions:
-  content:
-    styles:
-      - 'unsafe-inline'
+  # MK-09: no 'unsafe-inline' styles; the planner has no inline style attributes or <style> elements
+  # (checked by test/e2e/e2e_csp_probe.py under style-src 'self').
   scopes:
     - read:jira-work
     - write:jira-work
     - read:jira-user
     - storage:app
+    - report:personal-data
+
 app:
   runtime:
     name: nodejs22.x
@@ -160,7 +179,8 @@ app:
     enabled: true
 ```
 
-- No `scripts` permission. No egress.
+- No `content` permissions: no `scripts` and, since MK-09, no `'unsafe-inline'` styles (every style is in `style.css`; values computed at run time are set through CSSOM from `data-css-*` attributes). No egress.
+- `jira:entityProperty` `cascadeplan-create-id` indexes the issue property `cascadeplan.create` for JQL, so a repeated create finds the issue it already created (C7).
 - `write:jira-work` covers due dates, estimates, assignees, transitions the user chooses, issue links, issue properties, sub-task create and delete, parent changes and bulk moves. `read:jira-work` covers search, the permission checks, bulk move progress and the issue-deleted trigger.
 - `report:personal-data` and a weekly `scheduledTrigger` for the personal data report of the baseline audit records (ADR-009 decision 7). Adding the scope needs the site admin's consent on the next upgrade.
 - `[ADOPTED DEC-4 B]` no custom entity in v1.

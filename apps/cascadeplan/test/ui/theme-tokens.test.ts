@@ -43,7 +43,9 @@ describe('ADS tokens only (B-17)', () => {
   });
 
   it('motion is under 150 ms and off with reduced motion', () => {
-    const durations = [...css.matchAll(/(?:transition|animation):[^;]*?(\d*\.?\d+)s/g)].map(m => Number(m[1]));
+    // The loading spinner (cpSpin, moved from index.html by MK-09) turns continuously; it is no transition,
+    // and the reduced-motion rule below stops it too.
+    const durations = [...css.matchAll(/(?:transition|animation):(?! cpSpin)[^;]*?(\d*\.?\d+)s/g)].map(m => Number(m[1]));
     expect(durations.filter(d => d >= 0.15 && d !== 1.2)).toEqual([]);
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*animation: none !important/);
   });
