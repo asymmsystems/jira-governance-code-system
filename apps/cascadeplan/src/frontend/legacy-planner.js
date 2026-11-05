@@ -4789,6 +4789,7 @@ function startBarPointerEdit(e, key, mode, hit) {
       }
       strip.textContent = desc;
       strip.hidden = false;
+      placeStripNear(strip, key);
     }
     timeline.requestDraw();
   }
@@ -5184,6 +5185,20 @@ function onGridKey(e) {
   }
 }
 
+/**
+ * Puts the preview line just above the moved bar's row. The planner's frame grows with its content, so a
+ * line fixed to the bottom of the frame can be below the window (owner report); the bar being moved
+ * is always where the user is looking.
+ */
+function placeStripNear(strip, key) {
+  const row = document.querySelector(`#ganttBody tr.task-row[data-task-id="${CSS.escape(key)}"]`);
+  if (!row) return;
+  const r = row.getBoundingClientRect();
+  const h = strip.offsetHeight || 32;
+  strip.style.top = `${Math.max(8, r.top - h - 6)}px`;
+  strip.style.bottom = 'auto';
+}
+
 /** Shows the live preview for day shifts of a task, as a drag does (B-13, B-23). */
 function showShiftPreview(key, startShift, endShift, label) {
   const moves = previewMoves(currentPlan.tasks, key, startShift, endShift, todayIso());
@@ -5197,6 +5212,7 @@ function showShiftPreview(key, startShift, endShift, label) {
   if (strip) {
     strip.textContent = describePendingWrites(currentPlan.tasks, moves, key).text;
     strip.hidden = false;
+    placeStripNear(strip, key);
   }
   timeline.requestDraw();
   return mine;

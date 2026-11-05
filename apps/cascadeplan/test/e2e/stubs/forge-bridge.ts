@@ -16,3 +16,5 @@ export async function invoke(fn: string, payload: any): Promise<any> {
 }
 export const view = { getContext: async () => CTX, theme: { enable: async () => undefined } };
 export const router = { open: async () => undefined };
+/** The harness has no Jira host: no host flags, so the planner draws its flags in the page. */
+export const showFlag: any = undefined;

@@ -6307,9 +6307,29 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
 
   // src/frontend/flag.ts
+  var import_bridge2 = __toESM(require_out3());
   var FLAG_MS = 1e4;
+  var hostFlagSeq = 0;
   var MAX_FLAGS = 3;
   function showFlag(opts) {
+    if (typeof import_bridge2.showFlag === "function") {
+      try {
+        let handle;
+        handle = (0, import_bridge2.showFlag)({
+          id: `cascadeplan-${Date.now()}-${hostFlagSeq++}`,
+          title: opts.error ? "CascadePlan: not saved" : "CascadePlan",
+          description: opts.text,
+          type: opts.error ? "error" : "info",
+          isAutoDismiss: !opts.error && !opts.action,
+          ...opts.action ? { actions: [{ text: opts.action.label, onClick: () => {
+            if (handle) handle.close();
+            opts.action.run();
+          } }] } : {}
+        });
+        return null;
+      } catch {
+      }
+    }
     const group = document.getElementById("flagGroup");
     if (!group) return null;
     const flag = document.createElement("div");
@@ -6520,10 +6540,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
 
   // src/frontend/theme.ts
-  var import_bridge2 = __toESM(require_out3());
+  var import_bridge3 = __toESM(require_out3());
   async function enableTheme() {
     try {
-      await import_bridge2.view.theme.enable();
+      await import_bridge3.view.theme.enable();
     } catch (err) {
       console.warn("Theming not available; using light fallbacks", err);
     }
@@ -12442,6 +12462,7 @@ Click to manage or assign.`;
         }
         strip.textContent = desc;
         strip.hidden = false;
+        placeStripNear(strip, key);
       }
       timeline.requestDraw();
     }
@@ -12806,6 +12827,14 @@ Click to manage or assign.`;
       openTaskDetailModal(task.key);
     }
   }
+  function placeStripNear(strip, key) {
+    const row = document.querySelector(`#ganttBody tr.task-row[data-task-id="${CSS.escape(key)}"]`);
+    if (!row) return;
+    const r = row.getBoundingClientRect();
+    const h = strip.offsetHeight || 32;
+    strip.style.top = `${Math.max(8, r.top - h - 6)}px`;
+    strip.style.bottom = "auto";
+  }
   function showShiftPreview(key, startShift, endShift, label2) {
     const moves = previewMoves(currentPlan.tasks, key, startShift, endShift, todayIso());
     if (isBlockParent(findTask(key)) && startShift === endShift && startShift !== 0) {
@@ -12817,6 +12846,7 @@ Click to manage or assign.`;
     if (strip) {
       strip.textContent = describePendingWrites(currentPlan.tasks, moves, key).text;
       strip.hidden = false;
+      placeStripNear(strip, key);
     }
     timeline.requestDraw();
     return mine;
