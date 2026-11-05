@@ -37,25 +37,23 @@ Every morning at 09:00 UTC, log into the **Atlassian Developer Console** (`devel
 - Check **Uninstalls / Churn:** If an uninstall occurs, inspect the feedback reason code immediately.
 
 ### 2. Live Runtime Log Inspection (`forge logs`)
-If a customer reports an issue or if install counts stall, inspect production error streams via the Forge CLI:
+If a customer reports an issue or if install counts stall, inspect production error streams via the Forge CLI. `forge logs` reads the app ID from the `manifest.yml` in the current directory (it has no app ID flag), so run each command from the repository root inside a subshell:
 
 ```bash
 # Inspect production logs for LedgerSeal
-cd apps/ledgerseal
-forge logs -e production -a <app-id> --limit 50
+(cd apps/ledgerseal && forge logs -e production --limit 50)
 
 # Inspect production logs for DefinitionGuard
-cd apps/definitionguard
-forge logs -e production -a <app-id> --limit 50
+(cd apps/definitionguard && forge logs -e production --limit 50)
 
 # Inspect production logs for FourRealities
-cd apps/fourrealities
-forge logs -e production -a <app-id> --limit 50
+(cd apps/fourrealities && forge logs -e production --limit 50)
 
 # Inspect production logs for CascadePlan
-cd apps/cascadeplan
-forge logs -e production -a <app-id> --limit 50
+(cd apps/cascadeplan && forge logs -e production --limit 50)
 ```
+
+Add `--since 1d` to limit output to the last day, or `--grouped` to group lines by invocation.
 
 Look specifically for:
 - Unhandled resolver rejections.
@@ -162,10 +160,27 @@ Your 30-day evaluation trial of LedgerSeal concludes next week on [Date].
 
 Because billing is handled natively through Atlassian Marketplace, no manual contract or invoice is required: the subscription will automatically continue on your organization's regular Atlassian invoice.
 
-If your procurement or billing team requires our vendor tax ID, W-9, or formal SOC 2 architecture packet to keep the subscription active, you can download them directly here:
+If your procurement or security team needs vendor details, reply to this email and I will send them. Our control mapping and pre-answered vendor security assessment are here:
 https://asymm.systems/product/jira-governance/compliance.html
 
 Thank you for trusting Asymm Systems with your release governance.
+```
+
+### Day 28: Trial Closing Check-in
+*Objective:* Two days before the trial ends, confirm the outcome and capture the reason if the customer does not continue.
+
+```text
+Subject: LedgerSeal trial ends in 2 days
+
+Hi [Name],
+
+Your LedgerSeal evaluation trial ends on [Date].
+
+If the trial worked for your team, no action is needed: the subscription continues on your Atlassian invoice.
+
+If something did not fit, I would value one line on what was missing. It goes straight into our product backlog.
+
+Either way, thank you for evaluating LedgerSeal.
 ```
 
 ---
