@@ -7117,6 +7117,46 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (barW >= HANDLE_PX * 2) return { left: -HANDLE_PX / 2, right: barW - HANDLE_PX / 2 };
     return { left: -HANDLE_PX, right: barW };
   }
+  var PORT_PX = 20;
+  function portOffsets(barW) {
+    const h = handleOffsets(barW);
+    return { left: h.left - PORT_PX, right: h.right + HANDLE_PX };
+  }
+  function bezierPoints(p0, p1, p2, p3, n = 16) {
+    const out = [];
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const u = 1 - t;
+      const a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+      out.push([a * p0[0] + b * p1[0] + c * p2[0] + d * p3[0], a * p0[1] + b * p1[1] + c * p2[1] + d * p3[1]]);
+    }
+    return out;
+  }
+  function distanceToPath(path, x, y) {
+    let best = Infinity;
+    for (let i = 0; i < path.length; i++) {
+      const [ax, ay] = path[i];
+      const [bx, by] = path[Math.min(i + 1, path.length - 1)];
+      const dx = bx - ax, dy = by - ay;
+      const len2 = dx * dx + dy * dy;
+      const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len2));
+      best = Math.min(best, Math.hypot(x - (ax + t * dx), y - (ay + t * dy)));
+    }
+    return best;
+  }
+  function nearestArrow(links, x, y, tolerance = 6) {
+    let best = null;
+    let bestD = tolerance;
+    for (const link of links) {
+      if (!link.path || link.path.length === 0) continue;
+      const d = distanceToPath(link.path, x, y);
+      if (d <= bestD) {
+        best = link;
+        bestD = d;
+      }
+    }
+    return best;
+  }
   function snapDays(deltaPx, dayPx2, mode) {
     const days = mode === "week" ? Math.round(deltaPx / (dayPx2 * 7)) * 7 : Math.round(deltaPx / dayPx2);
     return days === 0 ? 0 : days;
@@ -7376,7 +7416,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
       if (todayX !== null) this.drawTodayFlag(m, todayX, top);
       ctx.restore();
       this.onDraw?.(this.arrowLinks);
-      if (perf) performance.measure("cp:draw", "cp:draw:start");
+      if (perf) {
+        performance.measure("cp:draw", "cp:draw:start");
+        globalThis.__cpArrows = this.arrowLinks;
+      }
     }
     drawHoveredRow(m, left, cssW) {
       const hoverKey = this.hoveredRowKey || this.activeKey;
@@ -7555,76 +7598,91 @@ Please see https://iframe-resizer.com/upgrade for more details.
       ctx.textBaseline = "middle";
       for (const { i } of rects.values()) {
         const task = m.tasks[i];
-        const dep = task.dependency;
-        if (!dep || !dep.predecessorKey) continue;
-        const pred = rects.get(dep.predecessorKey);
-        const succ = rects.get(task.key);
-        if (!pred || !succ) continue;
-        const y1 = pred.r.y + pred.r.h / 2;
-        const y2 = succ.r.y + succ.r.h / 2;
-        if (Math.max(y1, y2) < top - ROW_H || Math.min(y1, y2) > top + h + ROW_H) continue;
-        const trigger = (typeof dep.triggerPercent === "number" ? dep.triggerPercent : 100) / 100;
-        const x1 = pred.r.x + pred.r.w * trigger;
-        const x2 = succ.r.x;
-        const connected = active === task.key || active === dep.predecessorKey;
-        const violated = Boolean(dep.isViolated);
-        const colour = this.c(violated ? CANVAS_TOKENS.arrowViolated : connected ? CANVAS_TOKENS.arrowActive : CANVAS_TOKENS.arrowOk);
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        if (x2 >= x1 + 16) {
-          const dx = Math.max(24, (x2 - x1) * 0.45);
-          ctx.bezierCurveTo(x1 + dx, y1, x2 - dx, y2, x2 - 6, y2);
-        } else {
-          const loopOutX = x1 + 16;
-          const loopInX = x2 - 16;
-          const midY = y1 < y2 ? y1 + ROW_H * 0.5 : y1 - ROW_H * 0.5;
-          ctx.bezierCurveTo(loopOutX, y1, loopOutX, midY, (loopOutX + loopInX) / 2, midY);
-          ctx.bezierCurveTo(loopInX, midY, loopInX, y2, x2 - 6, y2);
-        }
-        ctx.strokeStyle = colour;
-        ctx.lineWidth = active && !connected ? 1 : connected ? 2.5 : 1.75;
-        ctx.setLineDash(violated ? [4, 3] : []);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.beginPath();
-        ctx.moveTo(x2, y2);
-        ctx.lineTo(x2 - 8, y2 - 4.5);
-        ctx.lineTo(x2 - 8, y2 + 4.5);
-        ctx.closePath();
-        ctx.fillStyle = colour;
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(x1, y1, connected ? 4.5 : 3.5, 0, Math.PI * 2);
-        ctx.fill();
-        if (!active || connected) {
-          const when = dep.triggerDate ? `, ${dep.triggerDate}` : "";
-          const planOnlyNote = dep.planOnly ? " (not in Jira)" : "";
-          const text = (violated ? `${dep.triggerPercent}%${when}: starts too early` : `${dep.triggerPercent}%${when}`) + planOnlyNote;
-          const tw = ctx.measureText(text).width + 10;
-          const badgeX = (x1 + x2) / 2;
-          const badgeY = (y1 + y2) / 2;
-          this.arrowLinks.push({
-            predecessorKey: dep.predecessorKey,
-            successorKey: task.key,
-            triggerPercent: typeof dep.triggerPercent === "number" ? dep.triggerPercent : 100,
-            triggerDate: dep.triggerDate,
-            isViolated: violated,
-            ...dep.planOnly ? { planOnly: true } : {},
-            x: badgeX,
-            y: badgeY,
-            width: tw,
-            height: CHIP_H,
-            text
-          });
-          this.chip(
-            text,
-            badgeX - tw / 2,
-            badgeY,
-            this.c(violated ? CANVAS_TOKENS.badgeViolatedText : CANVAS_TOKENS.badgeOkText),
-            colour
-          );
+        const deps2 = Array.isArray(task.dependencies) && task.dependencies.length ? task.dependencies : task.dependency ? [task.dependency] : [];
+        for (const dep of deps2) {
+          if (dep && dep.predecessorKey) this.drawArrow(task, dep, rects, top, h, active);
         }
       }
+    }
+    drawArrow(task, dep, rects, top, h, active) {
+      const ctx = this.ctx;
+      const pred = rects.get(dep.predecessorKey);
+      const succ = rects.get(task.key);
+      if (!pred || !succ) return;
+      const y1 = pred.r.y + pred.r.h / 2;
+      const y2 = succ.r.y + succ.r.h / 2;
+      if (Math.max(y1, y2) < top - ROW_H || Math.min(y1, y2) > top + h + ROW_H) return;
+      const trigger = (typeof dep.triggerPercent === "number" ? dep.triggerPercent : 100) / 100;
+      const x1 = pred.r.x + pred.r.w * trigger;
+      const x2 = succ.r.x;
+      const connected = active === task.key || active === dep.predecessorKey;
+      const violated = Boolean(dep.isViolated);
+      const colour = this.c(violated ? CANVAS_TOKENS.arrowViolated : connected ? CANVAS_TOKENS.arrowActive : CANVAS_TOKENS.arrowOk);
+      let path;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      if (x2 >= x1 + 16) {
+        const dx = Math.max(24, (x2 - x1) * 0.45);
+        ctx.bezierCurveTo(x1 + dx, y1, x2 - dx, y2, x2 - 6, y2);
+        path = bezierPoints([x1, y1], [x1 + dx, y1], [x2 - dx, y2], [x2 - 6, y2]);
+      } else {
+        const loopOutX = x1 + 16;
+        const loopInX = x2 - 16;
+        const midY = y1 < y2 ? y1 + ROW_H * 0.5 : y1 - ROW_H * 0.5;
+        const midX = (loopOutX + loopInX) / 2;
+        ctx.bezierCurveTo(loopOutX, y1, loopOutX, midY, midX, midY);
+        ctx.bezierCurveTo(loopInX, midY, loopInX, y2, x2 - 6, y2);
+        path = [
+          ...bezierPoints([x1, y1], [loopOutX, y1], [loopOutX, midY], [midX, midY]),
+          ...bezierPoints([midX, midY], [loopInX, midY], [loopInX, y2], [x2 - 6, y2]).slice(1)
+        ];
+      }
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = active && !connected ? 1 : connected ? 2.5 : 1.75;
+      ctx.setLineDash(violated ? [4, 3] : []);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - 8, y2 - 4.5);
+      ctx.lineTo(x2 - 8, y2 + 4.5);
+      ctx.closePath();
+      ctx.fillStyle = colour;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x1, y1, connected ? 4.5 : 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      const when = dep.triggerDate ? `, ${dep.triggerDate}` : "";
+      const planOnlyNote = dep.planOnly ? " (not in Jira)" : "";
+      const text = (violated ? `${dep.triggerPercent}%${when}: starts too early` : `${dep.triggerPercent}%${when}`) + planOnlyNote;
+      const tw = ctx.measureText(text).width + 10;
+      const mid = path[Math.floor(path.length / 2)];
+      const badgeX = mid[0];
+      const badgeY = mid[1];
+      this.arrowLinks.push({
+        predecessorKey: dep.predecessorKey,
+        successorKey: task.key,
+        triggerPercent: typeof dep.triggerPercent === "number" ? dep.triggerPercent : 100,
+        triggerDate: dep.triggerDate,
+        isViolated: violated,
+        ...dep.planOnly ? { planOnly: true } : {},
+        x: badgeX,
+        y: badgeY,
+        width: tw,
+        height: CHIP_H,
+        text,
+        path
+      });
+      const dim = Boolean(active) && !connected;
+      if (dim) ctx.globalAlpha = 0.45;
+      this.chip(
+        text,
+        badgeX - tw / 2,
+        badgeY,
+        this.c(violated ? CANVAS_TOKENS.badgeViolatedText : CANVAS_TOKENS.badgeOkText),
+        colour
+      );
+      if (dim) ctx.globalAlpha = 1;
     }
     drawTodayLine(m, top, h) {
       const x = Math.round(m.trackLeft + xForDate(m.todayIso, m.originIso, m.dayPx) + m.dayPx / 2);
@@ -7998,6 +8056,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
         text: `${waiting === 1 ? "1 issue is" : `${waiting} issues are`} waiting in the backlog. Drag issues onto the timeline to plan them.`,
         action: { id: "schedule", label: "Schedule your first issues" }
       };
+    }
+    if (plan.jqlFilter) {
+      return { title: "No work items match this plan's filter", text: `The filter is: ${plan.jqlFilter}. A plan approver can change or clear it in the plan list.`, action: { id: "create", label: "Create an issue" } };
     }
     return { title: "This project has no issues yet", text: "Create an issue to start the plan. It is created in Jira.", action: { id: "create", label: "Create an issue" } };
   }
@@ -8805,6 +8866,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (wrapper) {
       timeline = new CanvasTimeline(wrapper);
       timeline.onDraw = (links) => renderDependencyBadges(links);
+      initArrowLineClicks(wrapper);
       wrapper.addEventListener("scroll", scheduleVirtualRows, { passive: true });
     }
     const tbody = document.getElementById("ganttBody");
@@ -12266,6 +12328,11 @@ Click to manage or assign.`;
     const right = hit.querySelector(".bar-handle-right");
     if (left) left.style.left = h.left + "px";
     if (right) right.style.left = h.right + "px";
+    const p = portOffsets(r.w);
+    const portL = hit.querySelector(".bar-link-port-left");
+    const portR = hit.querySelector(".bar-link-port-right");
+    if (portL) portL.style.left = p.left + "px";
+    if (portR) portR.style.left = p.right + "px";
     hit.setAttribute("aria-label", `${task.key}: ${task.summary || ""}, ${task.startDate} to ${task.endDate || task.startDate}, ${task.progress || 0}% done`);
   }
   function createBarHit(task, isEpic) {
@@ -13178,11 +13245,7 @@ Click to manage or assign.`;
     const viewRight = wrapper.scrollLeft + wrapper.clientWidth;
     const viewTop = wrapper.scrollTop + (layout.headerH || 0);
     const viewBottom = wrapper.scrollTop + wrapper.clientHeight;
-    const visibleLinks = (links || []).filter((link) => {
-      const hw = Math.max(12, (link.width || 28) / 2);
-      const hh = Math.max(10, (link.height || 18) / 2);
-      return link.x - hw >= viewLeft && link.x + hw <= viewRight && link.y - hh >= viewTop && link.y + hh <= viewBottom;
-    });
+    const visibleLinks = (links || []).filter((link) => link.x >= viewLeft && link.x <= viewRight && link.y >= viewTop && link.y <= viewBottom);
     const sig = visibleLinks.map((l) => `${l.predecessorKey}>${l.successorKey}@${Math.round(l.x)},${Math.round(l.y)}:${l.triggerPercent}:${l.isViolated ? 1 : 0}`).join("|");
     if (sig === lastDepBadgeSignature) return;
     lastDepBadgeSignature = sig;
@@ -13190,6 +13253,8 @@ Click to manage or assign.`;
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "dep-link-badge" + (link.isViolated ? " is-violated" : "");
+      btn.dataset.pred = link.predecessorKey;
+      btn.dataset.succ = link.successorKey;
       btn.style.left = `${link.x}px`;
       btn.style.top = `${link.y}px`;
       btn.style.width = `${Math.max(26, Math.round((link.width || 28) + 6))}px`;
@@ -13203,6 +13268,36 @@ Click to manage or assign.`;
       });
       return btn;
     }));
+  }
+  function arrowAt(wrapper, e) {
+    if (!timeline) return null;
+    if (e.target.closest(".bar-hit, .dep-link-badge, .btn, button, input, select, a, .resizer, .row-drag-handle, .th-col-menu-btn")) return null;
+    const rect = wrapper.getBoundingClientRect();
+    const vx = e.clientX - rect.left;
+    if (vx < (layout.trackLeft || 0)) return null;
+    const x = vx + wrapper.scrollLeft;
+    const y = e.clientY - rect.top + wrapper.scrollTop;
+    return nearestArrow(timeline.getArrowLinks(), x, y, 6);
+  }
+  function initArrowLineClicks(wrapper) {
+    let raf = 0;
+    wrapper.addEventListener("mousemove", (e) => {
+      if (raf || isDraggingBar) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        wrapper.classList.toggle("is-over-arrow", Boolean(arrowAt(wrapper, e)));
+      });
+    });
+    wrapper.addEventListener("mouseleave", () => wrapper.classList.remove("is-over-arrow"));
+    wrapper.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      const link = arrowAt(wrapper, e);
+      if (!link) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const badge = [...document.querySelectorAll("#depLinksLayer .dep-link-badge")].find((b) => b.dataset.pred === link.predecessorKey && b.dataset.succ === link.successorKey);
+      openDependencyEditPopover(link, badge || wrapper);
+    }, true);
   }
   function refreshDepEditPopoverFields() {
     if (!depEditState) return;

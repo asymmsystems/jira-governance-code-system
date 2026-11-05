@@ -52,6 +52,59 @@ export function handleOffsets(barW: number): { left: number; right: number } {
   return { left: -HANDLE_PX, right: barW };
 }
 
+/** Size of a link port (the arrow circle shown on hover at each end of a bar). */
+export const PORT_PX = 20;
+
+/**
+ * Link port positions relative to the bar's left edge. Each port sits just outside the resize handle
+ * of its end, touching it, so the handle (the bar edge) is never covered and the pointer can move from
+ * the bar to the port without leaving the bar's hover area.
+ */
+export function portOffsets(barW: number): { left: number; right: number } {
+  const h = handleOffsets(barW);
+  return { left: h.left - PORT_PX, right: h.right + HANDLE_PX };
+}
+
+export type Point = [number, number];
+
+/** n + 1 points along a cubic Bezier curve, from p0 to p3. */
+export function bezierPoints(p0: Point, p1: Point, p2: Point, p3: Point, n = 16): Point[] {
+  const out: Point[] = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const u = 1 - t;
+    const a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+    out.push([a * p0[0] + b * p1[0] + c * p2[0] + d * p3[0], a * p0[1] + b * p1[1] + c * p2[1] + d * p3[1]]);
+  }
+  return out;
+}
+
+/** The shortest distance from a point to a polyline. */
+export function distanceToPath(path: Point[], x: number, y: number): number {
+  let best = Infinity;
+  for (let i = 0; i < path.length; i++) {
+    const [ax, ay] = path[i];
+    const [bx, by] = path[Math.min(i + 1, path.length - 1)];
+    const dx = bx - ax, dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len2));
+    best = Math.min(best, Math.hypot(x - (ax + t * dx), y - (ay + t * dy)));
+  }
+  return best;
+}
+
+/** The arrow whose line passes nearest to (x, y), within tolerance px, or null. */
+export function nearestArrow<T extends { path?: Point[] }>(links: T[], x: number, y: number, tolerance = 6): T | null {
+  let best: T | null = null;
+  let bestD = tolerance;
+  for (const link of links) {
+    if (!link.path || link.path.length === 0) continue;
+    const d = distanceToPath(link.path, x, y);
+    if (d <= bestD) { best = link; bestD = d; }
+  }
+  return best;
+}
+
 /** Days for a horizontal drag, snapped to whole weeks or whole days. */
 export function snapDays(deltaPx: number, dayPx: number, mode: 'week' | 'day'): number {
   const days = mode === 'week' ? Math.round(deltaPx / (dayPx * 7)) * 7 : Math.round(deltaPx / dayPx);

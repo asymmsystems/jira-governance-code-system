@@ -41,7 +41,7 @@ import {
   clampColumnResize,
   computeFrozenLayout
 } from '../ui/column-layout';
-import { barRect, daysBetween, visibleRange, handleOffsets, snapDays, previewMoves, xForDate } from '../ui/timeline-geometry';
+import { barRect, daysBetween, visibleRange, handleOffsets, portOffsets, nearestArrow, snapDays, previewMoves, xForDate } from '../ui/timeline-geometry';
 import { GRID_COLUMNS, navigate, rowCells, rowLevel, moveKey, moveAnnouncement } from '../ui/keyboard-grid';
 import { weeklyHours } from '../ui/weekly-hours';
 import { emptyState, showLinkHint } from '../ui/first-run';
@@ -555,6 +555,7 @@ async function initApp() {
   if (wrapper) {
     timeline = new CanvasTimeline(wrapper);
     timeline.onDraw = (links) => renderDependencyBadges(links);
+    initArrowLineClicks(wrapper);
     wrapper.addEventListener('scroll', scheduleVirtualRows, { passive: true });
   }
   const tbody = document.getElementById('ganttBody');
@@ -4534,6 +4535,12 @@ function positionBarHit(hit, task) {
   const right = hit.querySelector('.bar-handle-right');
   if (left) left.style.left = h.left + 'px';
   if (right) right.style.left = h.right + 'px';
+  // The link ports sit outside the resize handles, so the bar's edges stay free for resizing.
+  const p = portOffsets(r.w);
+  const portL = hit.querySelector('.bar-link-port-left');
+  const portR = hit.querySelector('.bar-link-port-right');
+  if (portL) portL.style.left = p.left + 'px';
+  if (portR) portR.style.left = p.right + 'px';
   hit.setAttribute('aria-label', `${task.key}: ${task.summary || ''}, ${task.startDate} to ${task.endDate || task.startDate}, ${task.progress || 0}% done`);
 }
 
@@ -5559,11 +5566,9 @@ function renderDependencyBadges(links) {
   const viewTop = wrapper.scrollTop + (layout.headerH || 0);
   const viewBottom = wrapper.scrollTop + wrapper.clientHeight;
 
-  const visibleLinks = (links || []).filter(link => {
-    const hw = Math.max(12, (link.width || 28) / 2);
-    const hh = Math.max(10, (link.height || 18) / 2);
-    return (link.x - hw) >= viewLeft && (link.x + hw) <= viewRight && (link.y - hh) >= viewTop && (link.y + hh) <= viewBottom;
-  });
+  // A label gets its button when its centre is in the visible timeline (a label cut by the edge too).
+  const visibleLinks = (links || []).filter(link =>
+    link.x >= viewLeft && link.x <= viewRight && link.y >= viewTop && link.y <= viewBottom);
 
   const sig = visibleLinks
     .map(l => `${l.predecessorKey}>${l.successorKey}@${Math.round(l.x)},${Math.round(l.y)}:${l.triggerPercent}:${l.isViolated ? 1 : 0}`)
@@ -5575,6 +5580,8 @@ function renderDependencyBadges(links) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'dep-link-badge' + (link.isViolated ? ' is-violated' : '');
+    btn.dataset.pred = link.predecessorKey;
+    btn.dataset.succ = link.successorKey;
     btn.style.left = `${link.x}px`;
     btn.style.top = `${link.y}px`;
     btn.style.width = `${Math.max(26, Math.round((link.width || 28) + 6))}px`;
@@ -5588,6 +5595,44 @@ function renderDependencyBadges(links) {
     });
     return btn;
   }));
+}
+
+/**
+ * A click on a dependency arrow's line opens the same editor as its label. The canvas keeps the points
+ * of each drawn line; a pointer within 6 px of one is on that arrow (the pointer shows it).
+ */
+function arrowAt(wrapper, e) {
+  if (!timeline) return null;
+  if (e.target.closest('.bar-hit, .dep-link-badge, .btn, button, input, select, a, .resizer, .row-drag-handle, .th-col-menu-btn')) return null;
+  const rect = wrapper.getBoundingClientRect();
+  const vx = e.clientX - rect.left;
+  if (vx < (layout.trackLeft || 0)) return null;
+  const x = vx + wrapper.scrollLeft;
+  const y = e.clientY - rect.top + wrapper.scrollTop;
+  return nearestArrow(timeline.getArrowLinks(), x, y, 6);
+}
+
+function initArrowLineClicks(wrapper) {
+  let raf = 0;
+  wrapper.addEventListener('mousemove', (e) => {
+    if (raf || isDraggingBar) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      wrapper.classList.toggle('is-over-arrow', Boolean(arrowAt(wrapper, e)));
+    });
+  });
+  wrapper.addEventListener('mouseleave', () => wrapper.classList.remove('is-over-arrow'));
+  // Capture phase, so the click on a line does not also start a pan or select a row.
+  wrapper.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    const link = arrowAt(wrapper, e);
+    if (!link) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const badge = [...document.querySelectorAll('#depLinksLayer .dep-link-badge')]
+      .find(b => b.dataset.pred === link.predecessorKey && b.dataset.succ === link.successorKey);
+    openDependencyEditPopover(link, badge || wrapper);
+  }, true);
 }
 
 function refreshDepEditPopoverFields() {

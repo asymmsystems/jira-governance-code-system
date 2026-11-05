@@ -26,6 +26,13 @@ describe('emptyState (B-25 criterion 2)', () => {
     expect(emptyState(null)).toBeNull();
     expect(emptyState({})!.action.id).toBe('create');
   });
+
+  it('F-27: with a plan filter, an empty plan says that nothing matches the filter, and names it', () => {
+    const es = emptyState({ tasks: [], backlogTasks: [], jqlFilter: 'component = "A"' })!;
+    expect(es.title).toBe('No work items match this plan\'s filter');
+    expect(es.text).toContain('component = "A"');
+    expect(emptyState({ tasks: [], backlogTasks: [{ key: 'A-1' }], jqlFilter: 'x = 1' })!.title).toBe('Nothing is scheduled yet');
+  });
 });
 
 describe('showLinkHint (B-25 criterion 3)', () => {

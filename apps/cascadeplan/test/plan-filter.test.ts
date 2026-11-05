@@ -26,19 +26,21 @@ const COMPONENT: Record<number, string> = { 1: 'A', 2: 'A' };
 const issue = (n: number) => ({ id: String(n), key: `TEST-${n}`, fields: { summary: `T${n}`, issuetype: TASK, status: { statusCategory: { key: 'new' } }, duedate: null } });
 
 let storage: MemStorage;
-let searchStatus: number;
-let searchBody: any;
+// The answer of Jira's strict JQL parse: its HTTP status and body.
+let parseStatus: number;
+let parseBody: any;
 let countStatus: number;
 
-const searches = () => mockRequestJira.mock.calls.map(([u]) => String(u)).filter(u => u.startsWith('/rest/api/3/search/jql'));
+const searches = () => mockRequestJira.mock.calls.map(([u]) => String(u)).filter(u => u.startsWith('/rest/api/3/search/jql') || u.startsWith('/rest/api/3/jql/parse'));
+const parses = () => mockRequestJira.mock.calls.filter(([u]) => String(u) === '/rest/api/3/jql/parse?validation=strict').map(([, o]) => JSON.parse(o.body).queries);
 const countBodies = () => mockRequestJira.mock.calls.filter(([u]) => String(u) === '/rest/api/3/search/approximate-count').map(([, o]) => JSON.parse(o.body).jql);
 
 beforeEach(() => {
   storage = new MemStorage();
   setGlobalStorageProvider(storage);
   setSleepForTests(async () => undefined);
-  searchStatus = 200;
-  searchBody = null;
+  parseStatus = 200;
+  parseBody = null;
   countStatus = 200;
   mockRequestJira.mockReset();
   mockRequestJira.mockImplementation(async (r: any, o?: any) => {
@@ -46,8 +48,8 @@ beforeEach(() => {
     const ok = (status: number, body: any = {}) => ({ status, json: async () => body });
     if (url === '/rest/api/3/search/approximate-count') return ok(countStatus, { count: JSON.parse(o.body).jql.includes('component') ? 2 : 3 });
     if (url.includes('/search/jql') && url.includes('Epic')) return ok(200, { issues: [], isLast: true });
-    if (url.includes('/search/jql') && url.includes('maxResults=1&') === false && url.endsWith('maxResults=1')) {
-      return searchStatus === 200 ? ok(200, { issues: [issue(1)], isLast: false, nextPageToken: 'x' }) : ok(searchStatus, searchBody);
+    if (url === '/rest/api/3/jql/parse?validation=strict') {
+      return ok(parseStatus, parseBody ?? { queries: [{ query: JSON.parse(o.body).queries[0], errors: [] }] });
     }
     if (url.includes('/search/jql')) {
       const filtered = url.includes('AND (component = "A")');
@@ -113,15 +115,21 @@ describe('fetchRawIssues and testPlanFilter', () => {
     expect(searches()[0]).toContain('jql=project = "TEST" order by created desc&');
   });
 
-  it('testPlanFilter returns the count, Jira\'s own message on a refusal, or a plain message when Jira does not answer', async () => {
+  it('testPlanFilter asks Jira\'s strict JQL parser, then counts; it returns Jira\'s own messages, or a plain message when Jira does not answer', async () => {
     expect(await testPlanFilter('TEST', 'component = "A"')).toEqual({ ok: true, count: 2 });
+    expect(parses()).toEqual([['project = "TEST" AND (component = "A")']]);
     countStatus = 500;
     expect(await testPlanFilter('TEST', 'component = "A"')).toEqual({ ok: true });
-    searchStatus = 400;
-    searchBody = { errorMessages: ['Field \'compnent\' does not exist.'], errors: { jql: 'Bad JQL.' } };
-    expect(await testPlanFilter('TEST', 'compnent = A')).toEqual({ ok: false, message: 'Jira did not accept the filter: Field \'compnent\' does not exist. Bad JQL.' });
-    searchBody = undefined;
+    // Jira's search answers an unknown field with no issues; the strict parser names the error.
+    parseBody = { queries: [{ query: 'q', errors: ['Field \'compnent\' does not exist or you do not have permission to view it.'] }] };
+    expect(await testPlanFilter('TEST', 'compnent = A')).toEqual({ ok: false, message: 'Jira did not accept the filter: Field \'compnent\' does not exist or you do not have permission to view it.' });
+    parseStatus = 400;
+    parseBody = { errorMessages: ['Bad request.'], errors: { queries: 'Bad JQL.' } };
+    expect(await testPlanFilter('TEST', 'x = y')).toEqual({ ok: false, message: 'Jira did not accept the filter: Bad request. Bad JQL.' });
+    parseBody = { };
     expect(await testPlanFilter('TEST', 'x = y')).toEqual({ ok: false, message: 'Jira did not accept the filter (HTTP 400).' });
+    mockRequestJira.mockImplementationOnce(async () => ({ status: 403, json: async () => { throw new Error('not json'); } }));
+    expect(await testPlanFilter('TEST', 'x = y')).toEqual({ ok: false, message: 'Jira did not accept the filter (HTTP 403).' });
     mockRequestJira.mockImplementation(async () => { throw new Error('network'); });
     expect(await testPlanFilter('TEST', 'x = y')).toEqual({ ok: false, message: 'Jira did not answer. Try again.' });
   });
@@ -182,8 +190,7 @@ describe('setPlanFilter: a plan approver narrows a plan', () => {
     expect(await setPlanFilter({ projectKey: 'TEST', filter: 'x) OR (project = OTHER' }, storage))
       .toEqual({ ok: false, error: 'validation', message: 'The filter closes a parenthesis that it did not open.' });
     expect(searches()).toEqual([]);
-    searchStatus = 400;
-    searchBody = { errorMessages: ['Bad JQL.'] };
+    parseBody = { queries: [{ query: 'q', errors: ['Bad JQL.'] }] };
     expect(await setPlanFilter({ projectKey: 'TEST', filter: 'nofield = 1' }, storage))
       .toEqual({ ok: false, error: 'jql', message: 'Jira did not accept the filter: Bad JQL.' });
     expect((await new PlanStore(storage, 'TEST', 'TEST').getSettings()).jqlFilter).toBe('component = "A"');

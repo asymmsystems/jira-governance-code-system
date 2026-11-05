@@ -652,23 +652,27 @@ export async function fetchRawIssues(projectKey: string, reconcileIds: string[] 
 }
 
 /**
- * Asks Jira whether a plan filter is valid JQL, with one search of one issue, and how many issues it
- * matches (F-27). Jira's own message is returned when Jira refuses the JQL.
+ * Asks Jira whether a plan filter is valid JQL and how many issues it matches (F-27). Jira's JQL parser
+ * checks it in strict mode: the issue search answers an unknown field with no issues, not an error.
+ * Jira's own messages are returned when Jira refuses the JQL.
  */
 export async function testPlanFilter(projectKey: string, filter: string): Promise<{ ok: boolean; count?: number; message?: string }> {
   const caller = getJiraCaller();
   const scope = planJql(projectKey, filter);
   try {
-    const res = await caller.requestJira(route`/rest/api/3/search/jql?jql=${scope}&fields=summary&maxResults=1`);
-    if (!res || res.status !== 200) {
-      let message = `Jira did not accept the filter (HTTP ${res ? res.status : 0}).`;
-      try {
-        const body = await res.json();
-        const errors = [...(body?.errorMessages || []), ...Object.values(body?.errors || {})].filter(Boolean);
-        if (errors.length) message = `Jira did not accept the filter: ${errors.join(' ')}`;
-      } catch { /* the status is enough */ }
-      return { ok: false, message };
-    }
+    const res = await caller.requestJira(route`/rest/api/3/jql/parse?validation=strict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ queries: [scope] })
+    });
+    let body: any;
+    try { body = await res.json(); } catch { body = undefined; }
+    const errors: string[] = [
+      ...((res && res.status === 200 ? body?.queries?.[0]?.errors : body?.errorMessages) || []),
+      ...Object.values((res && res.status !== 200 && body?.errors) || {})
+    ].filter((e): e is string => typeof e === 'string' && e.length > 0);
+    if (errors.length) return { ok: false, message: `Jira did not accept the filter: ${errors.join(' ')}` };
+    if (!res || res.status !== 200) return { ok: false, message: `Jira did not accept the filter (HTTP ${res ? res.status : 0}).` };
     const count = await caller.requestJira(route`/rest/api/3/search/approximate-count`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

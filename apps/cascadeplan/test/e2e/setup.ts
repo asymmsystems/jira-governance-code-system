@@ -134,8 +134,11 @@ w.__jira = async (url: string, opts: any) => {
   // A search for one key returns that issue only (C3 reads the due date this way).
   const oneKey = url.match(/jql=key\+%3D\+(DEMO-\d+)/);
   if (url.includes('/search/jql') && oneKey) return ok({ issues: ISSUES.filter((i: any) => i.key === oneKey[1]).map(withDue), isLast: true });
-  // A plan filter (F-27): the harness knows "key in (...)"; a filter naming "nofield" is refused as Jira would.
-  if (url.includes('/search/jql') && url.includes('nofield')) return ok({ errorMessages: ['Field \'nofield\' does not exist or you do not have permission to view it.'] }, 400);
+  // A plan filter (F-27): the harness knows "key in (...)"; Jira's strict parser refuses a filter naming "nofield".
+  if (method === 'POST' && url.includes('/rest/api/3/jql/parse')) {
+    const q = (JSON.parse(opts.body || '{}').queries || [''])[0];
+    return ok({ queries: [{ query: q, errors: q.includes('nofield') ? ['Field \'nofield\' does not exist or you do not have permission to view it.'] : [] }] });
+  }
   const keyIn = url.match(/AND \(key in \(([^)]*)\)\)/);
   const inFilter = (i: any) => !keyIn || keyIn[1].split(',').map(k => k.trim()).includes(i.key);
   if (method === 'POST' && url.endsWith('/search/approximate-count')) {
