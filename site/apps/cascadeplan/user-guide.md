@@ -17,7 +17,7 @@ Every change you make is a Jira write made as you. If your Jira role does not al
 - **Drag** a bar to move it, or drag an end to change its start or end. The bar snaps to days or weeks, depending on the zoom.
 - Before you drop, a line at the bottom of the screen lists every Jira change the drop will make, including the work that moves with it.
 - **Keyboard:** select a row, put the focus on its Start or Due cell, press **Space**, use the arrow keys, then **Enter** to save or **Escape** to cancel.
-- **Undo and Redo:** each change offers **Undo** in a message; **Ctrl+Z** and **Ctrl+Shift+Z** also work, for the last 20 changes.
+- **Undo and Redo:** each change offers **Undo** in a message for 10 seconds; **Ctrl+Z** and **Ctrl+Shift+Z** also work, for the last 20 changes.
 - The **Changes** button lists every Jira write of this session, with the old and new value, and whether Jira accepted it.
 
 A bar's end is the issue's Jira due date. Its start is stored on the issue as the property `cascadeplan.dates`, so every plan shows the same dates.
@@ -68,3 +68,4 @@ Each read of a baseline checks its SHA-256 digest. If a stored baseline no longe
 - **Table view** shows the tasks and dates as a table.
 - **Utilization view** shows the work of each person per week, from the dates and the Jira estimates.
 - **Ctrl+F** searches the tasks by key or summary.
+- **Estimation unit:** in the task dialog, each task can use Hours, Story Points (1 point = 8 hours) or a T-Shirt Size; CascadePlan converts it to hours for scheduling.

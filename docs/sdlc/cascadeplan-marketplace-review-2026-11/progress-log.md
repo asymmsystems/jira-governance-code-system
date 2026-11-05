@@ -371,3 +371,7 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 - **Your action:** after this version is deployed, the development installation keeps the previous major version until the site admin accepts the new scope: `forge install --upgrade -e development` in `apps/cascadeplan` (choose the site), or the update prompt in Jira's app management. The same consent is needed for production.
 - **Proof:** unit suite 862 passed with coverage thresholds.
 - **Deployed:** build `17ab00e` to development as version 3.0.0 (`forge deploy --approve MAJOR_VERSION_RULE`, development only). Forge: "Run forge install --upgrade ... to put them into effect." Until you run it, the development site keeps 2.62.0 (everything except the weekly trigger and its scope).
+
+### Correction to the BL-1 entry (2026-11-05)
+
+- The BL-1 entry listed "a 10-second undo" and "story points and T-shirt sizes" among the false claims. Both exist: the Undo flag stays 10 seconds (`FLAG_MS = 10000`, `src/frontend/flag.ts`), and the task dialog has a per-task "Estimation Unit" (Hours, Story Points at 8 h per point, T-Shirt Size). What was false is the project-level estimation setting of the old admin guide. The user guide (`site/apps/cascadeplan/user-guide.md`) now states both facts again.
