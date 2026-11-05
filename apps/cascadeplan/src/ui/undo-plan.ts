@@ -152,7 +152,8 @@ export function actionLabel(fn: string, payload: { taskId?: string; updates?: an
   const u = payload.updates || {};
   const others = entry.keys.filter(k => k !== key).length;
   const dependents = others ? ` and ${others} dependent${others > 1 ? 's' : ''}` : '';
-  if (fn === 'unscheduleTask') return `Moved ${key} to the backlog`;
+  // N-03: unscheduling keeps the Jira due date, and the message says so.
+  if (fn === 'unscheduleTask') return `Moved ${key} to the backlog. Its Jira due date is kept`;
   if (fn === 'scheduleBacklogTask') return `Scheduled ${key}`;
   // A block move (ADR-003): the parent with its sub-tasks, as one undo.
   if (fn === 'moveTaskGroup') return `Moved ${key} with its sub-tasks` + (others ? ` (${others} issue${others > 1 ? 's' : ''} changed)` : '');

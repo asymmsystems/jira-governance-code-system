@@ -69,7 +69,7 @@ describe('buildUndoEntry', () => {
     const un = buildUndoEntry(snapshotPlan(on), snapshotPlan(off), 'A')!;
     expect(un.restore).toEqual([{ kind: 'schedule', key: 'A', updates: { startWeek: '03-Nov', spanWeeks: 2, startDate: '2026-11-04', endDate: '2026-11-13' } }]);
     expect(un.reapply).toEqual([{ kind: 'unschedule', key: 'A' }]);
-    expect(actionLabel('unscheduleTask', { taskId: 'A' }, un)).toBe('Moved A to the backlog');
+    expect(actionLabel('unscheduleTask', { taskId: 'A' }, un)).toBe('Moved A to the backlog. Its Jira due date is kept');
     const sch = buildUndoEntry(snapshotPlan(off), snapshotPlan(on), 'A')!;
     expect(sch.restore).toEqual([{ kind: 'unschedule', key: 'A' }]);
     expect(actionLabel('scheduleBacklogTask', { taskId: 'A' }, sch)).toBe('Scheduled A');
@@ -96,6 +96,7 @@ describe('buildUndoEntry', () => {
     expect(actionLabel('updateWbsTask', { taskId: 'A', updates: { summary: 'x' } }, e)).toBe('Changed A');
     expect(actionLabel('reorderWbsTasks', { taskId: 'A' }, e)).toBe('Changed A');
     expect(actionLabel('moveTaskGroup', { taskId: 'A' }, e)).toBe('Moved A with its sub-tasks (2 issues changed)');
+    expect(actionLabel('unscheduleTask', { taskId: 'A' }, e)).toBe('Moved A to the backlog. Its Jira due date is kept');
   });
 
   it('a block move undoes as the sub-tasks\' dates; the roll-up parent gets no date write (ADR-003)', () => {

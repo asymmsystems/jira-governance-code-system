@@ -337,3 +337,16 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 - **BL-7 search:** no user-facing "PlanShift" remains in the app, its documentation or listing; the hits left are the storage key `planshift:cfg:approver_policy` (data, kept on purpose) and internal suite planning prompts.
 - **Proof:** unit suite 861 passed with coverage thresholds.
 - **Your actions left for BL-4 and BL-7:** publish `/terms` and `/support`; rename the app in the Developer Console; new banner, screenshots and highlight images; check the install and consent screens.
+
+### Live check on development after ADR-009 and BL-1 (build tag `28a2d3f`, version 2.61.0)
+
+- New `test/live/live_baseline.py` on DEMO's Main Plan: status "Baseline: none"; froze "Live check 2144": "13 items, 557 h"; status "Baseline: Live check 2144 · on scope"; version line "Live check 2144, 2026-11-05 by Fahim Farook: 13 items, 557 h, 1 unestimated." (the name read live); scope "Hours 557 -> 557 (0 h, 0%). Items 13 -> 13."; **Export CSV** downloaded a file inside the Forge frame, first line with the SHA-256 digest. Earlier runs of this script timed out loading the page: the network of this machine was slow (owner confirmed), not the app.
+- **Live site changes:** a baseline "Live check 2144" of DEMO's Main Plan (Forge storage: index, header, 1 chunk; the account index `cp:pd:accounts` holds the owner's account id). It stays as sample data.
+
+### N-03, BL-3 harness check, MK-01, MK-04, MK-06, MK-07
+
+- **N-03:** the message after unscheduling says "Moved DEMO-40 to the backlog. Its Jira due date is kept" (the Undo label; unit test updated).
+- **BL-3:** new harness probe `test/e2e/e2e_no_unrequested_write_probe.py`, a scripted session: a drag, Undo and Redo, progress 50 on two selected rows, a dialog saved with no change, and a selection move. Every Jira write is the due date or the start property of the moved issue (2, 4 and 2 writes); progress and the unchanged save write nothing; no estimate, assignee, summary, transition or other issue is written. PASS. (The schedule-from-backlog, create and empty-estimate cases are covered by F-06, F-11 and F-23 checks.)
+- **MK-01:** `forge eligibility -e development`: "The version of your app [2.61.0] that's deployed to [development] is eligible for the Runs on Atlassian program." The production version must be checked again after its deploy.
+- **MK-04:** the scope justifications in the submission notes describe the built features (previous entry). **MK-06, MK-07:** the "60 fps on thousands of tasks" and "zero accessibility violations" claims are removed (previous entry).
+- **Your decisions left:** MK-02 (security and partner questionnaires, your sign-in), MK-03 (one price for 251+ users: the listing says $0.60, the checklist and FAQ $0.90), MK-05 (checklist rows), MK-08 (licence test after approval).

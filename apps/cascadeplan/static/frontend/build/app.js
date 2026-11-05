@@ -6506,7 +6506,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const u = payload.updates || {};
     const others = entry.keys.filter((k) => k !== key).length;
     const dependents = others ? ` and ${others} dependent${others > 1 ? "s" : ""}` : "";
-    if (fn === "unscheduleTask") return `Moved ${key} to the backlog`;
+    if (fn === "unscheduleTask") return `Moved ${key} to the backlog. Its Jira due date is kept`;
     if (fn === "scheduleBacklogTask") return `Scheduled ${key}`;
     if (fn === "moveTaskGroup") return `Moved ${key} with its sub-tasks` + (others ? ` (${others} issue${others > 1 ? "s" : ""} changed)` : "");
     if (fn !== "updateWbsTask") return `Changed ${key}`;
