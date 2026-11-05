@@ -58,13 +58,13 @@ The effort is a rough guess for one developer who knows this code base. It inclu
 
 | ID | Question | State | Record |
 |---|---|---|---|
-| DEC-1 | Baseline features: describe the app that exists, or build them first | Open | |
-| DEC-2 | Personal data: store none, or report it | Open | |
-| DEC-3 | Where the shared dates are stored | Open (test Option C first) | |
-| DEC-4 | Version check on the per-plan records | Open | |
+| DEC-1 | Baseline features: describe the app that exists, or build them first | **Decided 2026-11-05 by the owner: Option B.** Build the baseline features before submission: freeze, status, scope delta, shift request and approval, versions, comparison, export, integrity. Their backend is fixed first (F-01, F-16, F-22, F-31). Every public claim must be true of what is built. | ADR-008 (when the design is written) |
+| DEC-2 | Personal data: store none, or report it | **Adopted 2026-11-05: Option A** (the owner said "Dont wait for me - fix all", so the recommendation stands). Under DEC-1 Option B, baselines and shift requests record who froze, requested and reviewed: they store the Jira account id only as the subject of an audit record, and the plan then needs reporting (Option B) for those keys. Re-check when ADR-008 is written. | |
+| DEC-3 | Where the shared dates are stored | **Adopted 2026-11-05 (owner instruction): Option C if the step-0 development-site test passes, else Option A.** | |
+| DEC-4 | Version check on the per-plan records | **Adopted 2026-11-05 (owner instruction):** with DEC-3 Option C, Option B (keep swap-and-restore) for v1, Option C (a new key per version) if a lost update is seen; with DEC-3 Option A, Option A. | |
 | DEC-5a | How each sub-task moves in a block move | **Decided 2026-11-05:** not started moves; in progress keeps its start and moves its end (never before today); done stays fixed; undated stays undated | `architecture/decision/adr-00003-cascadeplan-parent-block-move.org` |
 | DEC-5b | Do epics move as a block in v1 | **Decided 2026-11-05: Option A.** Tasks and stories only in v1. Epics keep "Move a child instead" until the cost of large blocks is measured. | ADR-003 |
-| DEC-6 | Does the parent's Jira due date follow its sub-tasks | Open | |
+| DEC-6 | Does the parent's Jira due date follow its sub-tasks | **Adopted 2026-11-05 (owner instruction): Option A.** The parent's Jira due date follows its roll-up end, shown in the preview and the Changes panel. | |
 | DEC-7 | How the planner changes a parent or a type | **Decided 2026-11-05: Option A.** The planner makes every change Jira allows, as Jira writes. | `architecture/decision/adr-00005-cascadeplan-hierarchy-changes.org` |
 | DEC-8 | Are dependencies shared by every plan | **Decided 2026-11-05: Option A.** They are real Jira "Blocks" links, shared by every plan. The trigger percent is a Jira issue property. | `architecture/decision/adr-00006-cascadeplan-shared-dependencies.org` |
 | Rule | Jira holds every relationship the planner shows | **Owner rule 2026-11-05** | `architecture/decision/adr-00004-cascadeplan-jira-holds-relationships.org` |
