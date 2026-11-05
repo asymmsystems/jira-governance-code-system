@@ -148,10 +148,12 @@ function setActivePlan(planId) {
   setSavedPlanId(browserStore(), planScope, activePlanId);
 }
 
-async function callResolver(fn, payload = {}) {
+// opts.before: a snapshot taken before an optimistic change on screen, so Undo restores the dates the
+// user saw before the action, not the optimistic ones (F-04).
+async function callResolver(fn, payload = {}, opts = {}) {
   const mergedPayload = { planId: activePlanId, ...payload };
   if (!UNDOABLE.has(fn) || replayingUndo) return rawCallResolver(fn, mergedPayload);
-  if (!pendingUndo) pendingUndo = { before: snapshotPlan(currentPlan), fn, payload: mergedPayload };
+  if (!pendingUndo) pendingUndo = { before: opts.before || snapshotPlan(currentPlan), fn, payload: mergedPayload };
   const res = await rawCallResolver(fn, mergedPayload);
   const verdict = classifyResult(res);
   if (verdict.failed) {
@@ -4530,6 +4532,8 @@ function startBarPointerEdit(e, key, mode, hit) {
       const newDays = daysBetween(finalStart, finalEnd) + 1;
       updates.effortHours = Math.max(1, Math.round((task.effortHours * newDays) / oldDays));
     }
+    // The Undo snapshot is taken before the optimistic change below (F-04).
+    const undoBefore = snapshotPlan(currentPlan);
     // Optimistically update in-memory task dates immediately so the bar does not flicker or snap back while the network request is in flight
     const prevStart = task.startDate;
     const prevEnd = task.endDate;
@@ -4540,7 +4544,7 @@ function startBarPointerEdit(e, key, mode, hit) {
     drawTimeline(true);
 
     try {
-      const res = await callResolver('updateWbsTask', { taskId: key, updates, expectedVersion: task.version || 0 });
+      const res = await callResolver('updateWbsTask', { taskId: key, updates, expectedVersion: task.version || 0 }, { before: undoBefore });
       if (res && Array.isArray(res.tasks)) {
         applyPlanInPlace(res);
       } else {
@@ -4562,6 +4566,8 @@ function startBarPointerEdit(e, key, mode, hit) {
         candidateEnd: finalEnd,
         conflict,
         task,
+        prevStart,
+        prevEnd,
         hit: updatedHit,
         mode
       });
@@ -4646,12 +4652,15 @@ function applyConflictKeep() {
 
 async function applyConflictCancel() {
   if (!conflictState) return;
-  const { key, task } = conflictState;
+  // The dates before the drag: the task object already holds the new ones (F-04).
+  const { key, prevStart, prevEnd } = conflictState;
   closeDependencyConflictDialog();
-  if (task && task.startDate) {
-    await commitDates(key, task.startDate, task.endDate || task.startDate);
+  if (!prevStart) {
+    announce(`${key} had no dates before the move, so there is nothing to revert to.`);
+    return;
   }
-  announce(`Reverted ${key} to original schedule.`);
+  const res = await commitDates(key, prevStart, prevEnd || prevStart);
+  announce(classifyResult(res).failed ? `${key} could not be reverted.` : `Reverted ${key} to ${prevStart}.`);
 }
 
 

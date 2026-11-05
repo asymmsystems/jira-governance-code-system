@@ -29,3 +29,9 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 - **What changed:** new `applyAcceptedDueDate` in `src/index.ts`. After each due-date write that Jira accepted, it replaces that issue's due date in the call's own Jira data (a new list; the issue objects are not changed). Called for the target and every cascaded successor in `updateWbsTask`, and for each successor in `continueCascade`. `batchUpdateTasks` passes the same data to every item, so later items see the earlier items' due dates (FX-01).
 - **Proof:** R-30, R-31 and FX-01 failed on the fix (they asserted the defect) and were rewritten to assert the written dates; full suite 770 passed, coverage thresholds met. Harness `e2e_review.py`: R1c now passes (60.7 px before and after the response); `e2e.py` 30/30.
 - **Remaining for F-03:** part 3, `reconcileIssues` on the Jira searches that follow a write in a later call (the search is eventually consistent). Harness R2a to R2c (Undo and Redo after a drag) still fail; that is F-04.
+
+### F-04. A drag can be undone, and Cancel restores the old dates
+
+- **What changed:** `callResolver` takes an optional `before` snapshot. The drag takes it before its optimistic change and passes it. The dependency dialog keeps `prevStart` and `prevEnd`, and Cancel writes them through `commitDates` (current version), then announces whether the revert was saved.
+- **Proof:** harness `e2e_review.py` 25/25 (R2a Undo restores, R2b Redo re-applies, R2c both write the due date to Jira); `e2e_undo_probe.py`: the first drag offers Undo and Ctrl+Z restores the start; `e2e.py` 30/30; unit suite 770 passed.
+- **Not covered by a harness check yet:** Cancel in the dependency dialog (needs a scripted conflict drag); covered by reading.

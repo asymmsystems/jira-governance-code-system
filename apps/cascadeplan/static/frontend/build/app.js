@@ -7981,10 +7981,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
     activePlanId = next;
     setSavedPlanId(browserStore(), planScope, activePlanId);
   }
-  async function callResolver2(fn, payload = {}) {
+  async function callResolver2(fn, payload = {}, opts = {}) {
     const mergedPayload = { planId: activePlanId, ...payload };
     if (!UNDOABLE.has(fn) || replayingUndo) return callResolver(fn, mergedPayload);
-    if (!pendingUndo) pendingUndo = { before: snapshotPlan(currentPlan), fn, payload: mergedPayload };
+    if (!pendingUndo) pendingUndo = { before: opts.before || snapshotPlan(currentPlan), fn, payload: mergedPayload };
     const res = await callResolver(fn, mergedPayload);
     const verdict = classifyResult(res);
     if (verdict.failed) {
@@ -11808,6 +11808,7 @@ Click to manage or assign.`;
         const newDays = daysBetween(finalStart, finalEnd) + 1;
         updates.effortHours = Math.max(1, Math.round(task.effortHours * newDays / oldDays));
       }
+      const undoBefore = snapshotPlan(currentPlan);
       const prevStart = task.startDate;
       const prevEnd = task.endDate;
       task.startDate = finalStart;
@@ -11816,7 +11817,7 @@ Click to manage or assign.`;
       positionBarHit(hit, task);
       drawTimeline(true);
       try {
-        const res = await callResolver2("updateWbsTask", { taskId: key, updates, expectedVersion: task.version || 0 });
+        const res = await callResolver2("updateWbsTask", { taskId: key, updates, expectedVersion: task.version || 0 }, { before: undoBefore });
         if (res && Array.isArray(res.tasks)) {
           applyPlanInPlace(res);
         } else {
@@ -11837,6 +11838,8 @@ Click to manage or assign.`;
           candidateEnd: finalEnd,
           conflict,
           task,
+          prevStart,
+          prevEnd,
           hit: updatedHit,
           mode
         });
@@ -11911,12 +11914,14 @@ Click to manage or assign.`;
   }
   async function applyConflictCancel() {
     if (!conflictState) return;
-    const { key, task } = conflictState;
+    const { key, prevStart, prevEnd } = conflictState;
     closeDependencyConflictDialog();
-    if (task && task.startDate) {
-      await commitDates(key, task.startDate, task.endDate || task.startDate);
+    if (!prevStart) {
+      announce(`${key} had no dates before the move, so there is nothing to revert to.`);
+      return;
     }
-    announce(`Reverted ${key} to original schedule.`);
+    const res = await commitDates(key, prevStart, prevEnd || prevStart);
+    announce(classifyResult(res).failed ? `${key} could not be reverted.` : `Reverted ${key} to ${prevStart}.`);
   }
   var gridRoot = null;
   var lastGridKey = null;
