@@ -82,3 +82,11 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
   - Tests: `test/setup-permissions.ts` (jest `setupFilesAfterEnv`) installs an allow-all checker; `test/write-permissions.test.ts` restores the real check against a fake Jira. The browser harness uses the real check; its fake Jira answers the permission check and makes the user a project administrator.
 - **Proof:** R-11 (real check, no permission: `forbidden`, both plans unchanged, no Jira PUT), R-14 (no Jira create for a deleted plan), R-16 (non-approver refused through the resolver; self-approval, an odd status and a second review refused). `write-permissions.test.ts`: denial of an id missing from the answer and of a key without an id; a 500 from the check refuses the write; a successor without permission is not moved and is reported; a non-approver cannot create a plan; no top-level `resolver.define` in `src/index.ts`, and every `define` name has a rule. Full suite 781 passed, coverage thresholds met; `forge lint` clean; harness 30/30 and 25/25.
 - **Remaining:** BL-2 step 8 (hide plan rename and delete in the UI for non-approvers); the live test with a Browse-only user (needs the owner to create the user).
+
+### Live check on development after BL-2 (build tag `12c98f6`, version 2.49.0)
+
+- `test/live/live_move.py DEMO-29 7 L2`, then `-7 L3`, as the owner (project administrator), through the real Jira bulk permission check.
+- One week later: bar 170 px before the move, during it, after the server answered, and after a reload (the review measured 85 px after the answer). The flag offered Undo. The Changes panel: "DEMO-29 | due date | 2026-11-10 | 2026-11-17 | Written".
+- Back one week: 170 px after the answer (the review measured 255 px) and after a reload; Changes panel "2026-11-17 -> 2026-11-10 Written". DEMO-29 is restored to 2026-10-28 to 2026-11-10, Jira due date 2026-11-10.
+- So F-03 and F-04 hold live, and the permission check (BL-2) works against real Jira as the user.
+- **Live site changes:** DEMO-29's due date 2026-11-10 -> 2026-11-17 -> 2026-11-10 (both by this check, about 12:50Z on 2026-11-05). The script records Jira's history from before the move, so the two new entries are not in its JSON.
