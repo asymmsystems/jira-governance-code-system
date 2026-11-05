@@ -156,3 +156,9 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 
 - **What changed:** new `src/logger.ts` (`logFailure(where, detail)`: "cascadeplan <where>: HTTP <status>" or the error name and code). All 14 empty `catch {}` blocks in `src/index.ts` log with their function name. `fetchRawIssues` returns `status` (0 for no answer) when the first page fails; `getProjectPlan` returns it as `jiraStatus`. The planner shows "You cannot browse this project in Jira, so CascadePlan cannot show its plan." for 401 and 403, "Jira is not reachable right now, so the plan cannot be shown. Click Retry in a moment." otherwise, and "A CascadePlan licence is required on this site. Ask your Jira administrator." for an inactive licence on load.
 - **Proof:** new `test/failure-states.test.ts` (403 carried and logged as "cascadeplan fetchRawIssues: HTTP 403"; no answer is status 0; the log line holds no error message text). Unit suite 795 passed, coverage thresholds met; `forge lint` clean; harness 30/30 and 25/25.
+
+### C10. Storage rate limits are retried, then reported plainly
+
+- **What changed:** `withKvsRetry` wraps every call of the Forge storage provider (`get`, `set`, `delete`, each query page, `swap`). `isRateLimited` matches the code (`RATE_LIMIT_EXCEEDED`, `TOO_MANY_REQUESTS`) or status 429, not the error class. Waits 1, 2 and 4 s, then `StorageBusyError`, which `withValidation` turns into `{ ok: false, error: 'busy', message: 'CascadePlan is busy. Try again in a minute.' }`.
+- **Proof:** new `test/kvs-retry.test.ts` (codes and status recognised; two failures then success with waits 1000 and 2000; four failures give up with the busy result after waits 1000, 2000, 4000; other errors not retried). Unit suite 799 passed, coverage thresholds met.
+- **Remaining:** the quota itself (4,000 reads per minute per installation) is measured with F-17.

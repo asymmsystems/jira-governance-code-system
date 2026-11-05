@@ -66,18 +66,52 @@ import {
 } from './security/policy-admin';
 
 
+/** Forge storage refused the call for its rate limit, also after the retries (C10). */
+export class StorageBusyError extends Error {
+  constructor() {
+    super('CascadePlan is busy. Try again in a minute.');
+    this.name = 'StorageBusyError';
+  }
+}
+
+/** True for Forge storage's rate-limit errors, by code or status, not by error class (C10). */
+export function isRateLimited(err: any): boolean {
+  const code = err?.code;
+  const status = err?.responseDetails?.status ?? err?.status;
+  return code === 'RATE_LIMIT_EXCEEDED' || code === 'TOO_MANY_REQUESTS' || status === 429;
+}
+
+/**
+ * Retries a storage call after a rate-limit error: waits 1, 2 and 4 s (7 s in all, inside the 25 s
+ * resolver limit), then gives up with StorageBusyError, which the resolver reports plainly (C10).
+ */
+export async function withKvsRetry<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isRateLimited(err)) throw err;
+      if (attempt >= 3) {
+        logFailure('kvs', err);
+        throw new StorageBusyError();
+      }
+      await sleep(1000 * 2 ** attempt);
+    }
+  }
+}
+
 class ForgeKvsProvider implements StorageProvider {
   async get<T>(key: string): Promise<T | undefined> {
-    const val = await kvs.get(key);
+    const val = await withKvsRetry(() => kvs.get(key));
     return val as T;
   }
 
   async set(key: string, value: any): Promise<void> {
-    await kvs.set(key, value);
+    await withKvsRetry(() => kvs.set(key, value));
   }
 
   async delete(key: string): Promise<void> {
-    await kvs.delete(key);
+    await withKvsRetry(() => kvs.delete(key));
   }
 
   async query<T>(prefix: string): Promise<Array<{ key: string; value: T }>> {
@@ -86,7 +120,7 @@ class ForgeKvsProvider implements StorageProvider {
     do {
       let q = kvs.query().where('key', WhereConditions.beginsWith(prefix)).limit(100);
       if (cursor) q = q.cursor(cursor);
-      const page = await q.getMany<T>();
+      const page = await withKvsRetry(() => q.getMany<T>());
       for (const r of page.results) out.push({ key: r.key, value: r.value });
       cursor = page.nextCursor;
     } while (cursor);
@@ -94,7 +128,7 @@ class ForgeKvsProvider implements StorageProvider {
   }
 
   async swap<T>(key: string, value: T): Promise<T | undefined> {
-    const res = await kvs.set<T, T>(key, value, { keyPolicy: 'OVERRIDE', returnValue: 'PREVIOUS' });
+    const res = await withKvsRetry(() => kvs.set<T, T>(key, value, { keyPolicy: 'OVERRIDE', returnValue: 'PREVIOUS' }));
     return res ? res.value : undefined;
   }
 }
@@ -182,6 +216,7 @@ export async function withValidation<T>(fn: () => Promise<T>): Promise<T | Retur
   } catch (err) {
     // A permission check that could not run refuses the write (BL-2: fail closed).
     if (err instanceof PermissionCheckError || err instanceof ForbiddenError) return forbiddenResult(err.message);
+    if (err instanceof StorageBusyError) return { ok: false, success: false, error: 'busy', message: err.message } as any;
     const result = toValidationResult(err);
     if (result) return result;
     throw err;
