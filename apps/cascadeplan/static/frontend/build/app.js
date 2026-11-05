@@ -10849,7 +10849,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         listEl.appendChild(opt);
       }
       const users = (currentPlan?.availableUsers || []).filter(
-        (u) => u.displayName && u.displayName.toLowerCase().includes(q)
+        (u) => u.accountId !== "unassigned" && u.displayName && u.displayName.toLowerCase().includes(q)
       );
       if (users.length === 0 && q && !"unassigned".includes(q)) {
         listEl.innerHTML = '<div class="jx-empty-list">No matching team members</div>';

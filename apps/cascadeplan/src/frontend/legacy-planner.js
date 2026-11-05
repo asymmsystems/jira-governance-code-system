@@ -2816,8 +2816,9 @@ function openResourcePicker(targetEl, taskKey) {
       listEl.appendChild(opt);
     }
 
+    // The Unassigned row above stands for the server's "unassigned" entry, so it is listed once.
     const users = (currentPlan?.availableUsers || []).filter(u =>
-      u.displayName && u.displayName.toLowerCase().includes(q)
+      u.accountId !== 'unassigned' && u.displayName && u.displayName.toLowerCase().includes(q)
     );
 
     if (users.length === 0 && q && !'unassigned'.includes(q)) {
