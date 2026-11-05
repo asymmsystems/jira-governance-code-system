@@ -359,3 +359,8 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 - **F-30:** the copyright header is now in every source file of the app (11 files added, among them `src/index.ts`, `static/frontend/build/index.html` and `style.css`); the Atlaskit tokens file of the harness is third-party and keeps its own text.
 - **Proof:** unit suite 862 passed with coverage thresholds; every harness check passes (31/31, 26/26 and all probes, the new C3 probe included).
 - **Left (P3, with reasons):** F-27 (a JQL filter per plan for projects over 1,000 issues; M), F-29 (Monday week grid and the client's local date: needs a migration of stored week keys; M), F-31 (splitting `src/index.ts` and moving the planner to TypeScript; XL, spread over updates), MK-09 (inline styles), the C7 idempotent create (needs an indexed entity property module).
+
+### Live check on development after C3 (build tag `8354126`, version 2.62.0)
+
+- `live_move.py DEMO-29 7` then `-7`: 170 px after each reload; "Moved DEMO-29." both ways (no false "changed in Jira" refusal, so the `expectedDueDate` check with `reconcileIssues` agrees with real Jira); Jira due date 2026-11-17, then back to 2026-11-10; bar back at 2026-10-28 to 2026-11-10.
+- **Live site changes:** DEMO-29's due date and start property moved one week and back (final state as before).
