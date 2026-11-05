@@ -7481,27 +7481,42 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   function checkDependencyConflict(task, tasks, today) {
     if (!task.startDate) return { hasConflict: false };
-    const target = tasks.find((t) => t.key === task.key);
+    const byKey = new Map(tasks.map((t) => [t.key, t]));
+    const target = byKey.get(task.key);
     if (!target) return { hasConflict: false };
-    const deps = target.dependencies || (target.dependency ? [target.dependency] : []);
-    for (const dep of deps) {
-      if (!dep || !dep.predecessorKey) continue;
-      const pred = tasks.find((t) => t.key === dep.predecessorKey);
-      if (!pred || !pred.startDate) continue;
-      const triggerPercent = typeof dep.triggerPercent === "number" ? dep.triggerPercent : 100;
-      const preview = computeDependencyPreview(pred, triggerPercent, today);
-      if (preview.earliestStartDate && task.startDate < preview.earliestStartDate) {
-        return {
-          hasConflict: true,
-          predKey: pred.key,
-          triggerPercent,
-          earliestDate: preview.earliestStartDate,
-          triggerDate: preview.triggerDate,
-          reason: preview.summary
-        };
+    const chain = [];
+    for (let cur = target; cur && !chain.includes(cur); cur = cur.parentKey ? byKey.get(cur.parentKey) : void 0) chain.push(cur);
+    const isSelfOrBelow = (key) => {
+      const seen = /* @__PURE__ */ new Set();
+      for (let cur = byKey.get(key); cur && !seen.has(cur.key); cur = cur.parentKey ? byKey.get(cur.parentKey) : void 0) {
+        if (cur.key === task.key) return true;
+        seen.add(cur.key);
+      }
+      return false;
+    };
+    let worst = { hasConflict: false };
+    for (const holder of chain) {
+      const deps = holder.dependencies || (holder.dependency ? [holder.dependency] : []);
+      for (const dep of deps) {
+        if (!dep || !dep.predecessorKey || isSelfOrBelow(dep.predecessorKey)) continue;
+        const pred = byKey.get(dep.predecessorKey);
+        if (!pred || !pred.startDate) continue;
+        const triggerPercent = typeof dep.triggerPercent === "number" ? dep.triggerPercent : 100;
+        const preview = computeDependencyPreview(pred, triggerPercent, today);
+        if (preview.earliestStartDate && task.startDate < preview.earliestStartDate && (!worst.hasConflict || preview.earliestStartDate > worst.earliestDate)) {
+          worst = {
+            hasConflict: true,
+            predKey: pred.key,
+            triggerPercent,
+            earliestDate: preview.earliestStartDate,
+            triggerDate: preview.triggerDate,
+            reason: preview.summary,
+            ...holder.key !== task.key ? { viaParent: holder.key } : {}
+          };
+        }
       }
     }
-    return { hasConflict: false };
+    return worst;
   }
   function clampToEarliestStart(candidateStart, candidateEnd, earliestDate) {
     if (!earliestDate || candidateStart >= earliestDate) {
@@ -8104,9 +8119,32 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const members = (currentPlan.tasks || []).concat(currentPlan.backlogTasks || []).filter((t) => t.parentKey === key);
     return planBlockMove(members, days, todayIso());
   }
+  function blockConflict(plan) {
+    const all = (currentPlan.tasks || []).concat(currentPlan.backlogTasks || []);
+    let worst = null;
+    for (const c of plan.changes) {
+      if (c.state !== "not-started") continue;
+      const r = checkDependencyConflict({ key: c.key, startDate: c.toStart }, all, todayIso());
+      if (!r.hasConflict) continue;
+      const need = daysBetween(c.toStart, r.earliestDate);
+      if (!worst || need > worst.need) worst = { ...r, need, key: c.key };
+    }
+    return worst;
+  }
   async function moveBlock(key, days) {
     if (!days) return;
-    const plan = blockPlan(key, days);
+    let plan = blockPlan(key, days);
+    const conflict = blockConflict(plan);
+    const enforce = isEnforceDepsEnabled();
+    if (conflict && enforce) {
+      days += conflict.need;
+      if (!days) {
+        announce(`Enforce dependencies: ${key} cannot move earlier; ${conflict.key} cannot start before ${conflict.earliestDate} (dependency on ${conflict.predKey}).`);
+        drawTimeline(true);
+        return;
+      }
+      plan = blockPlan(key, days);
+    }
     if (plan.changes.length === 0) {
       showFlag({ text: `Nothing in ${key} can move: ${plan.fixed.map((f) => `${f.key} ${f.reason}`).join("; ")}.` });
       drawTimeline(true);
@@ -8119,6 +8157,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
     else await loadProjectPlan();
     if (res && res.ok && plan.fixed.length) {
       announce(`Moved ${key} by ${days} days. Kept: ${plan.fixed.map((f) => `${f.key} (${f.reason})`).join(", ")}.`);
+    }
+    if (res && res.ok && conflict) {
+      const via = conflict.viaParent ? ` (a link of ${conflict.viaParent})` : "";
+      if (enforce) announce(`Enforce dependencies: moved ${key} so ${conflict.key} starts on ${conflict.earliestDate}, after ${conflict.predKey}${via}.`);
+      else showFlag({ text: `${conflict.key} now starts before ${conflict.earliestDate}, the earliest day its dependency on ${conflict.predKey}${via} allows.` });
     }
   }
   async function replayUndo(ops) {

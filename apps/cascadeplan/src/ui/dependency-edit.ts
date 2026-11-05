@@ -116,6 +116,8 @@ export function computeDependencyPreview(
 export interface DependencyConflictResult {
   hasConflict: boolean;
   predKey?: string;
+  /** Set when the link that blocks is an incoming link of this ancestor (N-06 rule 5). */
+  viaParent?: string;
   triggerPercent?: number;
   earliestDate?: string | null;
   triggerDate?: string | null;
@@ -124,6 +126,9 @@ export interface DependencyConflictResult {
 
 /**
  * Checks whether a candidate task move conflicts with any of its incoming predecessor milestones.
+ * The incoming links of every ancestor bind the task too (N-06 rule 5): a sub-task cannot start
+ * before its parent may start. When several links block, the latest earliest day is returned, so
+ * a snap to it satisfies every link.
  */
 export function checkDependencyConflict(
   task: { key: string; startDate?: string },
@@ -131,28 +136,45 @@ export function checkDependencyConflict(
   today: string
 ): DependencyConflictResult {
   if (!task.startDate) return { hasConflict: false };
-  const target = tasks.find(t => t.key === task.key);
+  const byKey = new Map(tasks.map(t => [t.key, t]));
+  const target = byKey.get(task.key);
   if (!target) return { hasConflict: false };
-
-  const deps = target.dependencies || (target.dependency ? [target.dependency] : []);
-  for (const dep of deps) {
-    if (!dep || !dep.predecessorKey) continue;
-    const pred = tasks.find(t => t.key === dep.predecessorKey);
-    if (!pred || !pred.startDate) continue;
-    const triggerPercent = typeof dep.triggerPercent === 'number' ? dep.triggerPercent : 100;
-    const preview = computeDependencyPreview(pred, triggerPercent, today);
-    if (preview.earliestStartDate && task.startDate < preview.earliestStartDate) {
-      return {
-        hasConflict: true,
-        predKey: pred.key,
-        triggerPercent,
-        earliestDate: preview.earliestStartDate,
-        triggerDate: preview.triggerDate,
-        reason: preview.summary
-      };
+  // The task and its ancestors, nearest first; a link from the task itself or one of its own
+  // descendants is not a constraint on it (N-06 rule 6).
+  const chain: any[] = [];
+  for (let cur: any = target; cur && !chain.includes(cur); cur = cur.parentKey ? byKey.get(cur.parentKey) : undefined) chain.push(cur);
+  const isSelfOrBelow = (key: string): boolean => {
+    const seen = new Set<string>();
+    for (let cur: any = byKey.get(key); cur && !seen.has(cur.key); cur = cur.parentKey ? byKey.get(cur.parentKey) : undefined) {
+      if (cur.key === task.key) return true;
+      seen.add(cur.key);
+    }
+    return false;
+  };
+  let worst: DependencyConflictResult = { hasConflict: false };
+  for (const holder of chain) {
+    const deps = holder.dependencies || (holder.dependency ? [holder.dependency] : []);
+    for (const dep of deps) {
+      if (!dep || !dep.predecessorKey || isSelfOrBelow(dep.predecessorKey)) continue;
+      const pred = byKey.get(dep.predecessorKey);
+      if (!pred || !pred.startDate) continue;
+      const triggerPercent = typeof dep.triggerPercent === 'number' ? dep.triggerPercent : 100;
+      const preview = computeDependencyPreview(pred, triggerPercent, today);
+      if (preview.earliestStartDate && task.startDate < preview.earliestStartDate &&
+          (!worst.hasConflict || preview.earliestStartDate > (worst.earliestDate as string))) {
+        worst = {
+          hasConflict: true,
+          predKey: pred.key,
+          triggerPercent,
+          earliestDate: preview.earliestStartDate,
+          triggerDate: preview.triggerDate,
+          reason: preview.summary,
+          ...(holder.key !== task.key ? { viaParent: holder.key } : {})
+        };
+      }
     }
   }
-  return { hasConflict: false };
+  return worst;
 }
 
 /**

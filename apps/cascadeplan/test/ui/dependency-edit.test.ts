@@ -126,6 +126,29 @@ describe('dependency editing pure helpers', () => {
       expect(res.hasConflict).toBe(false);
     });
 
+    it('N-06 rule 5: a parent\'s incoming link binds its sub-task, and the latest earliest day wins', () => {
+      const tree = [
+        { key: 'X', startDate: '2026-10-01', endDate: '2026-10-10', progress: 0 },
+        { key: 'Y', startDate: '2026-10-01', endDate: '2026-10-04', progress: 0 },
+        { key: 'P', startDate: '2026-10-12', endDate: '2026-10-20', datesFromChildren: true, dependency: { predecessorKey: 'X', triggerPercent: 100 } },
+        { key: 'S', parentKey: 'P', startDate: '2026-10-12', endDate: '2026-10-20', dependency: { predecessorKey: 'Y', triggerPercent: 100 } },
+        { key: 'C', parentKey: 'S', startDate: '2026-10-12', endDate: '2026-10-13' }
+      ];
+      const res = checkDependencyConflict({ key: 'S', startDate: '2026-10-06' }, tree, '2026-10-01');
+      expect(res).toMatchObject({ hasConflict: true, predKey: 'X', earliestDate: '2026-10-11', viaParent: 'P' });
+      expect(checkDependencyConflict({ key: 'S', startDate: '2026-10-11' }, tree, '2026-10-01').hasConflict).toBe(false);
+      // Two levels up: the grandparent's link binds a sub-sub-task.
+      expect(checkDependencyConflict({ key: 'C', startDate: '2026-10-08' }, tree, '2026-10-01')).toMatchObject({ predKey: 'X', viaParent: 'P' });
+    });
+
+    it('N-06 rule 6: a link from a task\'s own descendant is not a constraint on it', () => {
+      const tree = [
+        { key: 'P', startDate: '2026-10-12', endDate: '2026-10-20', dependency: { predecessorKey: 'S', triggerPercent: 100 } },
+        { key: 'S', parentKey: 'P', startDate: '2026-10-12', endDate: '2026-10-20' }
+      ];
+      expect(checkDependencyConflict({ key: 'P', startDate: '2026-10-01' }, tree, '2026-10-01').hasConflict).toBe(false);
+    });
+
     it('reports no conflict when task has no incoming dependencies', () => {
       const res = checkDependencyConflict({ key: 'PROJ-1', startDate: '2026-09-20' }, tasks, '2026-10-01');
       expect(res.hasConflict).toBe(false);

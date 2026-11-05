@@ -194,10 +194,39 @@ function blockPlan(key, days) {
   return planBlockMove(members, days, todayIso());
 }
 
+/**
+ * The link that most limits a block move: each moving, not-started sub-task is bound by its own
+ * links and by its parent's (N-06 rule 5). Returns the extra days the block needs, or null.
+ */
+function blockConflict(plan) {
+  const all = (currentPlan.tasks || []).concat(currentPlan.backlogTasks || []);
+  let worst = null;
+  for (const c of plan.changes) {
+    if (c.state !== 'not-started') continue;
+    const r = checkDependencyConflict({ key: c.key, startDate: c.toStart }, all, todayIso());
+    if (!r.hasConflict) continue;
+    const need = daysBetween(c.toStart, r.earliestDate);
+    if (!worst || need > worst.need) worst = { ...r, need, key: c.key };
+  }
+  return worst;
+}
+
 /** Moves a parent and its sub-tasks as one block; one Undo restores them all. */
 async function moveBlock(key, days) {
   if (!days) return;
-  const plan = blockPlan(key, days);
+  let plan = blockPlan(key, days);
+  const conflict = blockConflict(plan);
+  const enforce = isEnforceDepsEnabled();
+  if (conflict && enforce) {
+    // Enforce dependencies: the whole block stops at the earliest day every link allows (ADR-003 section 6).
+    days += conflict.need;
+    if (!days) {
+      announce(`Enforce dependencies: ${key} cannot move earlier; ${conflict.key} cannot start before ${conflict.earliestDate} (dependency on ${conflict.predKey}).`);
+      drawTimeline(true);
+      return;
+    }
+    plan = blockPlan(key, days);
+  }
   if (plan.changes.length === 0) {
     showFlag({ text: `Nothing in ${key} can move: ${plan.fixed.map(f => `${f.key} ${f.reason}`).join('; ')}.` });
     drawTimeline(true);
@@ -210,6 +239,11 @@ async function moveBlock(key, days) {
   else await loadProjectPlan();
   if (res && res.ok && plan.fixed.length) {
     announce(`Moved ${key} by ${days} days. Kept: ${plan.fixed.map(f => `${f.key} (${f.reason})`).join(', ')}.`);
+  }
+  if (res && res.ok && conflict) {
+    const via = conflict.viaParent ? ` (a link of ${conflict.viaParent})` : '';
+    if (enforce) announce(`Enforce dependencies: moved ${key} so ${conflict.key} starts on ${conflict.earliestDate}, after ${conflict.predKey}${via}.`);
+    else showFlag({ text: `${conflict.key} now starts before ${conflict.earliestDate}, the earliest day its dependency on ${conflict.predKey}${via} allows.` });
   }
 }
 
