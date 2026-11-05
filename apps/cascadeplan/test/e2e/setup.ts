@@ -61,6 +61,13 @@ w.__jira = async (url: string, opts: any) => {
     }
     return ok({}, 204);
   }
+  // The harness user is a project administrator, so a plan approver (BL-2).
+  if (url.includes('/rest/api/3/mypermissions')) return ok({ permissions: { ADMINISTER_PROJECTS: { havePermission: true }, ADMINISTER: { havePermission: false } } });
+  // The harness user holds every permission on every issue (BL-2 bulk permission check).
+  if (method === 'POST' && url.endsWith('/permissions/check')) {
+    const pp = JSON.parse(opts.body || '{}').projectPermissions?.[0] || {};
+    return ok({ projectPermissions: (pp.permissions || []).map((permission: string) => ({ permission, issues: pp.issues || [] })) });
+  }
   if (url.includes('/search/jql')) return ok({ issues: url.includes('Epic') ? [withDue(epic)] : ISSUES.map(withDue), isLast: true });
   if (url.includes('/user/assignable')) return ok([]);
   if (/\/issue\/DEMO-\d+\?fields=project/.test(url)) return ok({ id: url.match(/DEMO-(\d+)/)![1], fields: { project: { key: 'DEMO' } } });

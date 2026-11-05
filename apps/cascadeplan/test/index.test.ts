@@ -1304,23 +1304,9 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(res.tasks.find((t: any) => t.key === 'TEST-1')?.effortHours).toBeGreaterThan(0);
     });
 
-    it('handles bridge invocations for saveTaskDependency with context fallback', async () => {
-      const res: any = await handler({
-        call: {
-          functionKey: 'saveTaskDependency',
-          payload: {
-            taskId: 'TEST-2',
-            dependency: {
-              predecessorId: '10001',
-              predecessorKey: 'TEST-1',
-              triggerPercent: 10,
-              isTriggerSatisfied: false
-            }
-          }
-        },
-        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
-      } as any);
-      expect(res.tasks.find((t: any) => t.key === 'TEST-2')?.dependency?.predecessorKey).toBe('TEST-1');
+    it('saveTaskDependency has no caller and is not registered; updateWbsTask sets dependencies (BL-2 rule table)', async () => {
+      await expect(handler({ call: { functionKey: 'saveTaskDependency', payload: { taskId: 'TEST-2' } },
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } } } as any)).rejects.toThrow(/no definition/i);
     });
 
     it('handles bridge invocations for saveColumnWidths and saveProjectMilestone', async () => {
@@ -1343,23 +1329,9 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(resHidden.success).toBe(true);
       expect(resHidden.hiddenColumns).toEqual(['story', 'status']);
 
-      const resMilestone: any = await handler({
-        call: {
-          functionKey: 'saveProjectMilestone',
-          payload: {
-            milestone: {
-              id: 'm-1',
-              title: 'Sprint 1 Target',
-              date: '2026-11-01',
-              weekKey: '01-Nov',
-              type: 'TARGET' as const,
-              isPassed: false
-            }
-          }
-        },
-        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
-      } as any);
-      expect(resMilestone.success).toBe(true);
+      // saveProjectMilestone has no caller in the planner, so it is not registered (BL-2 rule table).
+      await expect(handler({ call: { functionKey: 'saveProjectMilestone', payload: {} },
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } } } as any)).rejects.toThrow(/no definition/i);
     });
 
     it('returns error object when updateWbsTask fails in resolver', async () => {

@@ -34,6 +34,7 @@ import {
   setSleepForTests,
   getTimelineWeeks
 } from '../../src/index';
+import { setPermissionCheckerForTests } from '../../src/security/write-permissions';
 import { PlanStore } from '../../src/storage/plan-store';
 import { BaselineRepository } from '../../src/storage/baseline-repository';
 import { ValidationError } from '../../src/validation';
@@ -317,14 +318,17 @@ describe('Jira sync honesty (D2, D8)', () => {
     expect(calls('POST', /\/issue\/TEST-1\/transitions$/)).toEqual([]);
   });
 
-  it('FINDING R-11: a user who cannot edit the issue (Jira 403) still changes the shared dates in every plan', async () => {
-    override = (url, opts) => (opts?.method === 'PUT' && /\/issue\/TEST-1$/.test(url)
-      ? { status: 403, json: async () => ({ errorMessages: ['You do not have permission to edit issues in this project.'] }) } : undefined);
-    const v = (await planEntry(storage, 'default', 'TEST-1')).version;
-    const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { startDate: add(start, 2), endDate: add(start, 4) }, expectedVersion: v }, storage);
-    expect(res.jiraSync.ok).toBe(false);
-    expect((await planEntry(storage, 'default', 'TEST-1')).startDate).toBe(add(start, 2));
-    expect((await planEntry(storage, planB, 'TEST-1')).startDate).toBe(add(start, 2));
+  it('R-11: a user who may not edit the issue in Jira changes nothing in any plan, and is told why (BL-2)', async () => {
+    setPermissionCheckerForTests(); // the real Jira check
+    override = (url, opts) => (opts?.method === 'POST' && url.endsWith('/permissions/check')
+      ? { status: 200, json: async () => ({ projectPermissions: [{ permission: 'EDIT_ISSUES', issues: [] }, { permission: 'SCHEDULE_ISSUES', issues: [] }] }) } : undefined);
+    const before = await planEntry(storage, 'default', 'TEST-1');
+    const beforeB = await planEntry(storage, planB, 'TEST-1');
+    const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { startDate: add(start, 2), endDate: add(start, 4) }, expectedVersion: before.version }, storage);
+    expect(res).toMatchObject({ ok: false, error: 'forbidden', message: 'You cannot change TEST-1: your Jira role lacks Edit issues, Schedule issues.' });
+    expect(await planEntry(storage, 'default', 'TEST-1')).toEqual(before);
+    expect(await planEntry(storage, planB, 'TEST-1')).toEqual(beforeB);
+    expect(calls('PUT', /\/issue\/TEST-1$/)).toEqual([]);
   });
 
   it('FINDING R-12 (D3 edge a): a due date the screen rejects leaves the bar with the new start and the OLD Jira end', async () => {
@@ -358,11 +362,11 @@ describe('Jira sync honesty (D2, D8)', () => {
     expect(sentTo('TEST-50').some(f => f.duedate === weeks[6].endDate && f.timetracking?.originalEstimate === '6h')).toBe(true);
   });
 
-  it('FINDING R-14: createInlineTask creates the Jira issue before it checks that the plan still exists', async () => {
+  it('R-14: createInlineTask checks that the plan still exists before it creates the Jira issue', async () => {
     await deleteProjectPlan({ projectKey: 'TEST', planId: planB }, storage);
     mockRequestJira.mockClear();
     await expect(createInlineTask({ projectKey: 'TEST', planId: planB, summary: 'New' } as any, storage)).rejects.toThrow(ValidationError);
-    expect(calls('POST', /\/rest\/api\/3\/issue$/).length).toBe(1);
+    expect(calls('POST', /\/rest\/api\/3\/issue$/)).toEqual([]);
   });
 
   it('FINDING R-15: a cycle through a second (imported Jira) link passes validation, a Jira link is created, then the update throws', async () => {
@@ -382,20 +386,26 @@ describe('Jira sync honesty (D2, D8)', () => {
 });
 
 describe('Security and permissions (D11)', () => {
-  it('FINDING R-16: reviewScopeShift approves without any approver check', async () => {
+  it('R-16: a scope shift review needs an approver, never by the requester, only APPROVED or REJECTED, and only once', async () => {
     override = url => (url.includes('mypermissions')
       ? { status: 200, json: async () => ({ permissions: { ADMINISTER: { havePermission: false }, ADMINISTER_PROJECTS: { havePermission: false } } }) } : undefined);
     const repo = new BaselineRepository(storage);
     await repo.saveShiftRequest({ shiftId: 's1', planId: 'default', baselineId: 'b1', projectKey: 'TEST', requestedBy: 'acc-1', requestedAt: 'x',
       status: 'PENDING', deltaHours: 10, reason: 'r', addedTaskKeys: [], removedTaskKeys: [], modifiedTaskKeys: [] });
-    const res = await reviewScopeShift({ projectKey: 'TEST', shiftId: 's1', status: 'APPROVED' }, storage, { accountId: 'acc-1' });
-    expect(res.success).toBe(true);
-    expect(res.request!.status).toBe('APPROVED');
-    expect(res.request!.reviewedBy).toBe('acc-1'); // the requester approved their own request
-    expect(calls('GET', /mypermissions/)).toEqual([]);
-    // Any status string is stored.
-    const odd = await reviewScopeShift({ projectKey: 'TEST', shiftId: 's1', status: 'WHATEVER' as any }, storage, { accountId: 'acc-1' });
-    expect(odd.request!.status).toBe('WHATEVER');
+    // Through the resolver, a user who is not an approver is refused before anything is read or stored.
+    const viaHandler: any = await handler({ call: { functionKey: 'reviewScopeShift', payload: { shiftId: 's1', status: 'APPROVED' } },
+      context: { accountId: 'acc-2', extension: { project: { key: 'TEST', id: '10001' } } } });
+    expect(viaHandler).toMatchObject({ ok: false, error: 'forbidden' });
+    expect(calls('GET', /mypermissions/)[0]).toContain('projectId=10001');
+    // The review rules themselves.
+    expect((await reviewScopeShift({ projectKey: 'TEST', shiftId: 's1', status: 'APPROVED' }, storage, { accountId: 'acc-1' })).error)
+      .toBe('A request cannot be approved or rejected by the person who made it.');
+    expect((await reviewScopeShift({ projectKey: 'TEST', shiftId: 's1', status: 'WHATEVER' as any }, storage, { accountId: 'acc-2' })).error)
+      .toBe('The review must be APPROVED or REJECTED.');
+    const ok = await reviewScopeShift({ projectKey: 'TEST', shiftId: 's1', status: 'APPROVED' }, storage, { accountId: 'acc-2' });
+    expect(ok.request).toMatchObject({ status: 'APPROVED', reviewedBy: 'acc-2' });
+    expect((await reviewScopeShift({ projectKey: 'TEST', shiftId: 's1', status: 'REJECTED' }, storage, { accountId: 'acc-3' })).error)
+      .toBe('This request has already been reviewed.');
   });
 
   it('R-17: the approver check asks mypermissions about the project id, never with a key (F-24)', async () => {

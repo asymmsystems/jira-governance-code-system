@@ -39,6 +39,7 @@ import { formatSubtaskSummary } from './ui/second-person';
 import { evaluateEffort, cascade, ScheduleEffort, ScheduleLink, addDays } from './domain/schedule-engine';
 import { StorageProvider } from './storage/plan-repository';
 import { PlanStore, StoredEntry, sequenceBetween } from './storage/plan-store';
+import { IssuePermission, deniedIssues, describeMissing, forbiddenResult, PermissionCheckError, ForbiddenError, requireIssuePermissions } from './security/write-permissions';
 import {
   ValidationError,
   assertIssueKey,
@@ -177,6 +178,8 @@ export async function withValidation<T>(fn: () => Promise<T>): Promise<T | Retur
   try {
     return await fn();
   } catch (err) {
+    // A permission check that could not run refuses the write (BL-2: fail closed).
+    if (err instanceof PermissionCheckError || err instanceof ForbiddenError) return forbiddenResult(err.message);
     const result = toValidationResult(err);
     if (result) return result;
     throw err;
@@ -995,6 +998,7 @@ export async function scheduleBacklogTask(
   if (startDate !== undefined && !isIsoDate(startDate)) throw new ValidationError('startDate', 'startDate must be a date in YYYY-MM-DD form');
   if (request.endDate !== undefined && !isIsoDate(request.endDate)) throw new ValidationError('endDate', 'endDate must be a date in YYYY-MM-DD form');
   const issueId = await verifyIssueInProject(taskId, projectKey, 'taskId');
+  await requireIssuePermissions([{ key: taskId, id: issueId }], request.endDate ? ['EDIT_ISSUES', 'SCHEDULE_ISSUES'] : ['EDIT_ISSUES']);
   // INV-03 (F-06): the default span is planner data only. The bar ends on the Jira due date when the
   // issue has one, and a due date is written to Jira only when the user chose an end.
   const jiraDue = request.endDate ? undefined : await readJiraDueDate(taskId);
@@ -1121,6 +1125,9 @@ export async function createInlineTask(
 
   let jiraIssueId = '';
   let jiraIssueKey = '';
+  // The plan check runs before the Jira create, so a deleted plan creates no issue (R-14, H9).
+  const storage = resolveStorage(storageProvider);
+  const planId = await writablePlanId(storage, projectKey, projectId, request.planId);
 
   try {
     let res: any;
@@ -1196,8 +1203,6 @@ export async function createInlineTask(
     return { success: false, ok: false, error: message, jiraSync: failedCreate(message) };
   }
 
-  const storage = resolveStorage(storageProvider);
-  const planId = await writablePlanId(storage, projectKey, projectId, request.planId);
   const store = openStore(storage, projectKey, projectId, planId);
   if (isMainPlan(planId)) await migrateIfNeeded(store, projectKey);
   const entries = await store.loadEntries();
@@ -1608,6 +1613,15 @@ export async function updateWbsTask(
     // The user edited an older copy: refuse before any Jira write (INV-08).
     return conflictResult(targetTask.key);
   }
+  // BL-2, INV-16: the user's own Jira permissions on the target, before any KVS or Jira write.
+  const needed: IssuePermission[] = ['EDIT_ISSUES'];
+  const u = updates as Record<string, unknown>;
+  if (['startDate', 'endDate', 'startWeek', 'spanWeeks', 'endWeek'].some(f => u[f] !== undefined)) needed.push('SCHEDULE_ISSUES');
+  if (u.dependency !== undefined || u.dependencies !== undefined) needed.push('LINK_ISSUES');
+  const deniedTarget = await deniedIssues([{ key: targetTask.key, id: targetTask.id }], needed);
+  if (deniedTarget.length) {
+    return forbiddenResult(`You cannot change ${targetTask.key}: your Jira role lacks ${describeMissing(deniedTarget[0].missing)}.`);
+  }
   const idByKey = new Map([...plan.tasks, ...(plan.backlogTasks || [])].map(t => [t.key, t.id]));
   const planKeys = new Set([...plan.tasks, ...(plan.backlogTasks || [])].map(t => t.key));
   if (updates.dependency && updates.dependency.predecessorKey && !planKeys.has(updates.dependency.predecessorKey)) {
@@ -1860,6 +1874,15 @@ export async function updateWbsTask(
 
   // A parent's dates follow its children on every load (B-28); nothing is stored for the parent.
 
+  // A cascaded successor the user may not edit and schedule is not moved, and is reported (BL-2).
+  const notMoved = new Set<string>();
+  const successors = [...changedKeys].filter(k => k !== targetTask.key).map(k => ({ key: k, id: idByKey.get(k) }));
+  for (const d of await deniedIssues(successors, ['EDIT_ISSUES', 'SCHEDULE_ISSUES'])) {
+    notMoved.add(d.key);
+    changedKeys.delete(d.key);
+    log.record(d.key, ['plan'], { synced: false, error: `not moved: you lack ${describeMissing(d.missing)} on this issue in Jira` });
+  }
+
   // KVS first, with a version check per record; Jira only after the target record is saved.
   const targetPut = await store.putEntry(targetTask.key, targetTask.id, stripJiraOwnedFields(scheduleMap[targetTask.key]), baseVersion);
   if (!targetPut.ok) return conflictResult(targetTask.key);
@@ -1867,7 +1890,6 @@ export async function updateWbsTask(
   if (SHARED_DATE_FIELDS.some(f => (sanitized as Record<string, unknown>)[f] !== undefined)) {
     datesSaved.push({ key: targetTask.key, id: targetTask.id, entry: targetPut.entry });
   }
-  const notMoved = new Set<string>();
   for (const key of changedKeys) {
     if (key === targetTask.key) continue;
     const put = await store.putEntry(key, idByKey.get(key), stripJiraOwnedFields(scheduleMap[key]), entries.get(key)?.version ?? 0);
@@ -2002,7 +2024,13 @@ export async function continueCascade(
   const entries = await store.loadEntries();
   const inputs = engineInputs(plan.tasks);
   const { changes } = cascade(inputs.efforts, inputs.links, taskId, todayIso());
-  for (const c of changes.slice(0, CASCADE_BATCH_LIMIT)) {
+  // BL-2: a successor the user may not edit and schedule is not moved, and is reported.
+  const batch = changes.slice(0, CASCADE_BATCH_LIMIT);
+  const denied = new Map((await deniedIssues(batch.map(c => ({ key: c.key, id: plan.tasks.find(t => t.key === c.key)?.id })),
+    ['EDIT_ISSUES', 'SCHEDULE_ISSUES'])).map(d => [d.key, d.missing]));
+  for (const c of batch) {
+    const missing = denied.get(c.key);
+    if (missing) { log.record(c.key, ['plan'], { synced: false, error: `not moved: you lack ${describeMissing(missing)} on this issue in Jira` }); continue; }
     const cur = entries.get(c.key);
     const task = plan.tasks.find(t => t.key === c.key);
     const put = await store.putEntry(c.key, task?.id, stripJiraOwnedFields({ ...(cur || {}), startDate: c.toStart, endDate: c.toEnd,
@@ -2050,6 +2078,7 @@ export async function unscheduleTask(
 ): Promise<ProjectPlanState> {
   const { projectKey, projectId, taskId } = payload;
   const issueId = await verifyIssueInProject(taskId, projectKey, 'taskId');
+  await requireIssuePermissions([{ key: taskId, id: issueId }], ['EDIT_ISSUES']);
   const storage = resolveStorage(storageProvider);
   const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
   const store = openStore(storage, projectKey, projectId, planId);
@@ -2083,6 +2112,8 @@ export async function reorderWbsTasks(
 
   const live = await loadLive(projectKey);
   const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId);
+  const moving = plan.tasks.find(t => t.key === taskId || t.id === taskId);
+  if (moving) await requireIssuePermissions([{ key: moving.key, id: moving.id }], ['EDIT_ISSUES']);
   const reordered = PlannerEngine.reorderTasks(plan.tasks, taskId, targetIndex);
   const store = openStore(storage, projectKey, projectId, planId);
   const entries = await store.loadEntries();
@@ -2133,7 +2164,9 @@ export async function createSubtaskForResource(
   if (!parentKey) {
     return { success: false, ok: false, error: 'parentKey is required', jiraSync: noJiraWrites() };
   }
-  await verifyIssueInProject(parentKey, projectKey, 'parentKey');
+  const parentIssueId = await verifyIssueInProject(parentKey, projectKey, 'parentKey');
+  // The sub-task is created under the parent, and the parent's record changes (BL-2).
+  await requireIssuePermissions([{ key: parentKey, id: parentIssueId }], ['EDIT_ISSUES']);
   const storage = resolveStorage(storageProvider);
   const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
 
@@ -2257,6 +2290,7 @@ export async function addSubtaskToTask(
 ): Promise<ProjectPlanState> {
   const { projectKey, projectId, parentTaskId, subtask, bufferType = 'NONE', bufferValue = 0 } = payload;
   const parentId = await verifyIssueInProject(parentTaskId, projectKey, 'parentTaskId');
+  await requireIssuePermissions([{ key: parentTaskId, id: parentId }], ['EDIT_ISSUES']);
   const storage = resolveStorage(storageProvider);
   const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
   const store = openStore(storage, projectKey, projectId, planId);
@@ -2650,7 +2684,18 @@ export async function reviewScopeShift(
       return { success: false, error: 'Shift request not found' };
     }
 
-    const accountId = context?.accountId || 'approver';
+    // BL-2: only APPROVED or REJECTED, a request is reviewed once, and never by its own requester.
+    if (payload.status !== 'APPROVED' && payload.status !== 'REJECTED') {
+      return { success: false, error: 'The review must be APPROVED or REJECTED.' };
+    }
+    if (target.status === 'APPROVED' || target.status === 'REJECTED') {
+      return { success: false, error: 'This request has already been reviewed.' };
+    }
+    const accountId = context?.accountId;
+    if (!accountId) return { success: false, error: 'The reviewer could not be identified.' };
+    if (accountId === target.requestedBy) {
+      return { success: false, error: 'A request cannot be approved or rejected by the person who made it.' };
+    }
     const reviewed = ScopeCreepEngine.reviewShiftRequest(target, payload.status, accountId, payload.comment);
     await repo.saveShiftRequest(reviewed);
     return { success: true, request: reviewed };
@@ -2678,58 +2723,84 @@ export async function getResourceUtilizationGrid(
 // Register Forge Resolvers
 const resolver = new Resolver();
 
-resolver.define('getProjectPlan', async (req) => withResolverHandler(req, () => getProjectPlan(extractProjectKey(req), undefined, new Date(), extractSiteUrl(req), extractProjectId(req), undefined, req.payload?.planId)));
-resolver.define('getProjectPlans', async (req) => withResolverHandler(req, () => getProjectPlans({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
-resolver.define('createProjectPlan', async (req) => withResolverHandler(req, () => createProjectPlan({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
-resolver.define('deleteProjectPlan', async (req) => withResolverHandler(req, () => deleteProjectPlan({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
-resolver.define('renameProjectPlan', async (req) => withResolverHandler(req, () => renameProjectPlan({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+/**
+ * BL-2, INV-16: the permission rule of every planner resolver. define() refuses a name with no rule,
+ * so a new resolver cannot be registered without one.
+ * - read: reads only.
+ * - issue-checked: the resolver checks the user's Jira permissions on every issue it writes.
+ * - plan-approver: Jira administrator, project administrator, or a member of an approver group.
+ * - project-user: any user who can open the project page (writes only planner data).
+ */
+type ResolverRule = 'read' | 'issue-checked' | 'plan-approver' | 'project-user';
+export const RESOLVER_RULES: Record<string, ResolverRule> = {
+  getProjectPlan: 'read',
+  checkPlanApprover: 'read',
+  getPlanBaselines: 'read',
+  getScopeCreepReport: 'read',
+  getResourceUtilizationGrid: 'read',
+  updateWbsTask: 'issue-checked',
+  batchUpdateTasks: 'issue-checked',
+  continueCascade: 'issue-checked',
+  scheduleBacklogTask: 'issue-checked',
+  unscheduleTask: 'issue-checked',
+  reorderWbsTasks: 'issue-checked',
+  addSubtaskToTask: 'issue-checked',
+  createSubtaskForResource: 'issue-checked',
+  createInlineTask: 'issue-checked',
+  createJiraEpic: 'issue-checked',
+  createProjectPlan: 'plan-approver',
+  renameProjectPlan: 'plan-approver',
+  deleteProjectPlan: 'plan-approver',
+  freezePlanBaseline: 'plan-approver',
+  reviewScopeShift: 'plan-approver',
+  requestScopeShift: 'project-user',
+  saveColumnWidths: 'project-user',
+  saveHiddenColumns: 'project-user'
+};
 
-resolver.define('batchUpdateTasks', async (req) => withResolverHandler(req, () => batchUpdateTasks({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
-resolver.define('scheduleBacklogTask', async (req) => withResolverHandler(req, () => scheduleBacklogTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+function define(name: string, fn: (req: any) => Promise<any>): void {
+  const rule = RESOLVER_RULES[name];
+  if (!rule) throw new Error(`Resolver ${name} has no permission rule (BL-2).`);
+  resolver.define(name, async (req) => withResolverHandler(req, async () => {
+    if (rule === 'plan-approver' && !(await isPlanApprover(resolveStorage(), { projectId: extractProjectId(req) }))) {
+      return forbiddenResult(APPROVER_REQUIRED_MESSAGE);
+    }
+    return fn(req);
+  }));
+}
 
-resolver.define('createInlineTask', async (req) => withResolverHandler(req, () => createInlineTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+const withProject = (req: any) => ({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) });
 
-resolver.define('createJiraEpic', async (req) => withResolverHandler(req, () => createJiraEpic({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
-
-resolver.define('updateWbsTask', async (req) => {
-  if (!isLicenseActive(req?.context)) {
-    return licenceRequiredResult();
-  }
+define('getProjectPlan', async (req) => getProjectPlan(extractProjectKey(req), undefined, new Date(), extractSiteUrl(req), extractProjectId(req), undefined, req.payload?.planId));
+define('createProjectPlan', async (req) => createProjectPlan(withProject(req)));
+define('deleteProjectPlan', async (req) => deleteProjectPlan(withProject(req)));
+define('renameProjectPlan', async (req) => renameProjectPlan(withProject(req)));
+define('batchUpdateTasks', async (req) => batchUpdateTasks(withProject(req)));
+define('scheduleBacklogTask', async (req) => scheduleBacklogTask(withProject(req)));
+define('createInlineTask', async (req) => createInlineTask(withProject(req)));
+define('createJiraEpic', async (req) => createJiraEpic(withProject(req)));
+define('updateWbsTask', async (req) => {
   try {
-    return withOk(await withValidation(() => updateWbsTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+    return await updateWbsTask(withProject(req));
   } catch (err: any) {
+    if (err instanceof ValidationError || err instanceof ForbiddenError || err instanceof PermissionCheckError) throw err;
     const message = err?.message || 'Failed to update task';
     return { ok: false, success: false, error: message, message };
   }
 });
-
-resolver.define('addSubtaskToTask', async (req) => withResolverHandler(req, () => addSubtaskToTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
-
-resolver.define('saveTaskDependency', async (req) => withResolverHandler(req, () => saveTaskDependency({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
-
-resolver.define('saveColumnWidths', async (req) => withResolverHandler(req, () => saveColumnWidths({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
-
-resolver.define('saveHiddenColumns', async (req) => withResolverHandler(req, () => saveHiddenColumns({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
-
-resolver.define('saveProjectMilestone', async (req) => withResolverHandler(req, () => saveProjectMilestone({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
-
-
-resolver.define('continueCascade', async (req) => withResolverHandler(req, () => continueCascade({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
-
-resolver.define('previewCascade', async (req) => withResolverHandler(req, () => previewCascade({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
-
-resolver.define('unscheduleTask', async (req) => withResolverHandler(req, () => unscheduleTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
-
-resolver.define('reorderWbsTasks', async (req) => withResolverHandler(req, () => reorderWbsTasks({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
-
-resolver.define('createSubtaskForResource', async (req) => withResolverHandler(req, () => createSubtaskForResource({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
-
-resolver.define('freezePlanBaseline', async (req) => withResolverHandler(req, () => freezePlanBaseline({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) }, undefined, req.context)));
-resolver.define('getPlanBaselines', async (req) => withResolverHandler(req, () => getPlanBaselines({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
-resolver.define('getScopeCreepReport', async (req) => withResolverHandler(req, () => getScopeCreepReport({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
-resolver.define('requestScopeShift', async (req) => withResolverHandler(req, () => requestScopeShift({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) }, undefined, req.context)));
-resolver.define('reviewScopeShift', async (req) => withResolverHandler(req, () => reviewScopeShift({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) }, undefined, req.context)));
-resolver.define('getResourceUtilizationGrid', async (req) => withResolverHandler(req, () => getResourceUtilizationGrid({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
+define('addSubtaskToTask', async (req) => addSubtaskToTask(withProject(req)));
+define('saveColumnWidths', async (req) => saveColumnWidths(withProject(req)));
+define('saveHiddenColumns', async (req) => saveHiddenColumns(withProject(req)));
+define('continueCascade', async (req) => continueCascade(withProject(req)));
+define('unscheduleTask', async (req) => unscheduleTask(withProject(req)));
+define('reorderWbsTasks', async (req) => reorderWbsTasks(withProject(req)));
+define('createSubtaskForResource', async (req) => createSubtaskForResource(withProject(req)));
+define('freezePlanBaseline', async (req) => freezePlanBaseline(withProject(req), undefined, req.context));
+define('getPlanBaselines', async (req) => getPlanBaselines(withProject(req)));
+define('getScopeCreepReport', async (req) => getScopeCreepReport(withProject(req)));
+define('requestScopeShift', async (req) => requestScopeShift(withProject(req), undefined, req.context));
+define('reviewScopeShift', async (req) => reviewScopeShift(withProject(req), undefined, req.context));
+define('getResourceUtilizationGrid', async (req) => getResourceUtilizationGrid(withProject(req)));
 
 // The admin page has its own function with only the approver-policy resolvers, so no planner
 // resolver can run without a project (N-01).
@@ -2742,14 +2813,14 @@ const adminDefinitions = adminResolver.getDefinitions();
 /** Forge function of the admin page (manifest key admin-resolver). */
 export const adminHandler = async (event: any, context?: any) => adminDefinitions(event, context);
 
-resolver.define('checkPlanApprover', async (req) => withResolverHandler(req, async () => {
+define('checkPlanApprover', async (req) => {
   const isApprover = await isPlanApprover(resolveStorage(), { projectId: extractProjectId(req) });
   return {
     ok: true,
     isApprover,
     guidance: isApprover ? null : APPROVER_REQUIRED_MESSAGE
   };
-}));
+});
 
 const definitions = resolver.getDefinitions();
 
