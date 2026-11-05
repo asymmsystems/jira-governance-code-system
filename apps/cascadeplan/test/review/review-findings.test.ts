@@ -441,16 +441,13 @@ describe('Security and permissions (D11)', () => {
     expect([...storage.store.keys()].some(k => k.startsWith('ps:baseline:TEST:'))).toBe(true);
   });
 
-  it('FINDING R-20: deleting a plan leaves its baselines, active-baseline pointer and scope-shift requests in KVS', async () => {
+  it('R-20: deleting a plan also deletes its baselines, active-baseline pointer and scope-shift requests (F-22)', async () => {
     await freezePlanBaseline({ projectKey: 'TEST', planId: planB, name: 'B' }, storage, { accountId: 'acc-1' });
     await new BaselineRepository(storage).saveShiftRequest({ shiftId: 's1', planId: planB, baselineId: 'b', projectKey: 'TEST', requestedBy: 'acc-1', requestedAt: 'x',
       status: 'PENDING', deltaHours: 1, reason: 'r', addedTaskKeys: [], removedTaskKeys: [], modifiedTaskKeys: [] });
     await deleteProjectPlan({ projectKey: 'TEST', planId: planB }, storage);
     const left = [...storage.store.keys()].filter(k => k.includes(planB));
-    expect(left.some(k => k.startsWith('ps:baseline:'))).toBe(true);
-    expect(left.some(k => k.startsWith('ps:active_baseline:'))).toBe(true);
-    expect(left.some(k => k.startsWith('ps:shifts:'))).toBe(true);
-    expect(left.some(k => k.startsWith('cp:'))).toBe(false);
+    expect(left).toEqual([]);
   });
 });
 

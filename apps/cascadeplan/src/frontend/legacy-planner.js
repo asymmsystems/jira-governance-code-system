@@ -1397,14 +1397,39 @@ function openColumnHeaderMenu(e, colKey, colLabel) {
   setTimeout(() => document.addEventListener('click', onDocClick), 10);
 }
 
+/**
+ * Runs a paged plan copy or delete to the end (N-02): each call does one page on the server.
+ * Returns the last answer; `done` is true only when every page ran.
+ */
+async function finishPlanWork(resolverName, planId, label) {
+  let res = null;
+  for (let i = 0; i < 200; i++) {
+    res = await callResolver(resolverName, { planId });
+    if (!res || res.ok !== true || res.done === true) break;
+    showFlag({ text: `${label}: ${res.remaining} records left.` });
+  }
+  return res;
+}
+
+// Deletes stopped earlier (a closed tab, a timeout) are finished once per load, by a plan approver.
+const finishingDeletes = new Set();
+function finishStoppedDeletes(plans) {
+  if (planApprover !== true || !Array.isArray(plans)) return;
+  for (const p of plans) {
+    if (p.state !== 'deleting' || finishingDeletes.has(p.id)) continue;
+    finishingDeletes.add(p.id);
+    finishPlanWork('continuePlanDelete', p.id, `Deleting plan ${p.name}`).finally(() => finishingDeletes.delete(p.id));
+  }
+}
+
 let currentPlanCategoryFilter = 'all';
 let currentPlanSearchQuery = '';
 
 function updatePlansUI(availablePlans = [], currentId = 'default') {
   const switcher = document.getElementById('planSwitcher');
-  const plans = Array.isArray(availablePlans) && availablePlans.length > 0
-    ? availablePlans
-    : [{ id: 'default', name: 'Main Plan', isDefault: true }];
+  const listed = Array.isArray(availablePlans) ? availablePlans.filter(p => p.state !== 'deleting') : [];
+  const plans = listed.length > 0 ? listed : [{ id: 'default', name: 'Main Plan', isDefault: true }];
+  finishStoppedDeletes(availablePlans);
 
   if (switcher) {
     switcher.innerHTML = '';
@@ -1503,6 +1528,12 @@ function renderFilteredPlansList(plans, currentId) {
     nameSpan.className = 'plan-item-name';
     nameSpan.textContent = p.name;
     mainDiv.appendChild(nameSpan);
+    if (p.copying) {
+      const note = document.createElement('span');
+      note.className = 'plan-item-note';
+      note.textContent = 'copy not finished';
+      mainDiv.appendChild(note);
+    }
 
     if (p.isActive) {
       const activeCheck = document.createElement('span');
@@ -1530,7 +1561,13 @@ function renderFilteredPlansList(plans, currentId) {
         name: cloneName,
         cloneFromPlanId: p.id
       });
-      if (res && res.ok && res.plan) {
+      const copied = res && res.ok && res.plan && res.done === false
+        ? await finishPlanWork('continuePlanCopy', res.plan.id, `Copying to ${res.plan.name}`) : res;
+      if (res && res.ok && res.plan && !(copied && copied.ok && copied.done !== false)) {
+        showFlag({ text: `The copy to ${res.plan.name} stopped. Pick it in the plan list to finish it.`, error: true });
+        btnClone.disabled = false;
+        await loadProjectPlan();
+      } else if (res && res.ok && res.plan) {
         setActivePlan(res.plan.id);
         showFlag({ text: `Cloned plan to ${res.plan.name}.` });
         closePlansPopover();
@@ -1595,7 +1632,9 @@ function renderFilteredPlansList(plans, currentId) {
       btnDel.addEventListener('click', async (e) => {
         e.stopPropagation();
         if (btnDel.dataset.confirming === 'true') {
-          const res = await callResolver('deleteProjectPlan', { planId: p.id });
+          const first = await callResolver('deleteProjectPlan', { planId: p.id });
+          const res = first && first.ok && first.done === false
+            ? await finishPlanWork('continuePlanDelete', p.id, `Deleting plan ${p.name}`) : first;
           if (res && res.ok) {
             showFlag({ text: `Deleted plan ${p.name}.` });
             if (activePlanId === p.id) {
@@ -1623,6 +1662,11 @@ function renderFilteredPlansList(plans, currentId) {
 
     row.addEventListener('click', async (e) => {
       if (e.target.closest('button') || e.target.closest('input')) return;
+      if (p.copying) {
+        if (planApprover !== true) { showFlag({ text: `${p.name} is still being copied. A plan approver can finish the copy.` }); return; }
+        const done = await finishPlanWork('continuePlanCopy', p.id, `Copying to ${p.name}`);
+        if (!(done && done.ok && done.done !== false)) { showFlag({ text: done?.message || `The copy to ${p.name} stopped. Try again.`, error: true }); return; }
+      }
       if (p.id !== currentId) {
         setActivePlan(p.id);
         closePlansPopover();
@@ -1631,15 +1675,12 @@ function renderFilteredPlansList(plans, currentId) {
       }
     });
 
-    row.addEventListener('keydown', async (ke) => {
+    // The keyboard does what a click does, an unfinished copy included.
+    row.addEventListener('keydown', (ke) => {
+      if (ke.target !== row) return;
       if (ke.key === 'Enter' || ke.key === ' ') {
         ke.preventDefault();
-        if (p.id !== currentId) {
-          setActivePlan(p.id);
-          closePlansPopover();
-          await loadProjectPlan();
-          showFlag({ text: `Switched to plan ${p.name}.` });
-        }
+        row.click();
       }
     });
 
@@ -5594,7 +5635,12 @@ function initKeyboard() {
       name,
       cloneFromPlanId: clone ? activePlanId : undefined
     });
-    if (res && res.ok && res.plan) {
+    const copied = res && res.ok && res.plan && res.done === false
+      ? await finishPlanWork('continuePlanCopy', res.plan.id, `Copying to ${res.plan.name}`) : res;
+    if (res && res.ok && res.plan && !(copied && copied.ok && copied.done !== false)) {
+      showFlag({ text: `The copy to ${res.plan.name} stopped. Pick it in the plan list to finish it.`, error: true });
+      await loadProjectPlan();
+    } else if (res && res.ok && res.plan) {
       if (nameInp) nameInp.value = '';
       closePlansPopover();
       setActivePlan(res.plan.id);

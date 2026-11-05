@@ -181,6 +181,14 @@ export interface PlanMetadata {
   name: string;
   createdAt: string;
   isDefault?: boolean;
+  /**
+   * Absent when the plan is ready. 'copying': a clone whose records are still being copied, page by
+   * page; 'deleting': a delete whose records are still being removed (N-02). Such a plan is not
+   * opened, and every write to it is refused.
+   */
+  state?: 'copying' | 'deleting';
+  /** The plan a 'copying' plan is cloned from. */
+  copyFrom?: string;
 }
 
 export interface ProjectPlanState {

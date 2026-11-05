@@ -7928,7 +7928,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (!plans || plans.length === 0) {
       return [{ id: "default", name: "Main Plan", isDefault: true, isActive: true, canDelete: false, category: "baseline" }];
     }
-    return plans.map((p) => {
+    return plans.filter((p) => p.state !== "deleting").map((p) => {
       const isDefault = p.id === "default" || p.isDefault === true;
       return {
         id: p.id,
@@ -7936,7 +7936,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
         isDefault,
         isActive: p.id === activePlanId2,
         canDelete: !isDefault,
-        category: categorizePlan(p)
+        category: categorizePlan(p),
+        ...p.state === "copying" ? { copying: true } : {}
       };
     });
   }
@@ -9135,11 +9136,31 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     setTimeout(() => document.addEventListener("click", onDocClick), 10);
   }
+  async function finishPlanWork(resolverName, planId, label2) {
+    let res = null;
+    for (let i = 0; i < 200; i++) {
+      res = await callResolver2(resolverName, { planId });
+      if (!res || res.ok !== true || res.done === true) break;
+      showFlag({ text: `${label2}: ${res.remaining} records left.` });
+    }
+    return res;
+  }
+  var finishingDeletes = /* @__PURE__ */ new Set();
+  function finishStoppedDeletes(plans) {
+    if (planApprover !== true || !Array.isArray(plans)) return;
+    for (const p of plans) {
+      if (p.state !== "deleting" || finishingDeletes.has(p.id)) continue;
+      finishingDeletes.add(p.id);
+      finishPlanWork("continuePlanDelete", p.id, `Deleting plan ${p.name}`).finally(() => finishingDeletes.delete(p.id));
+    }
+  }
   var currentPlanCategoryFilter = "all";
   var currentPlanSearchQuery = "";
   function updatePlansUI(availablePlans = [], currentId = "default") {
     const switcher = document.getElementById("planSwitcher");
-    const plans = Array.isArray(availablePlans) && availablePlans.length > 0 ? availablePlans : [{ id: "default", name: "Main Plan", isDefault: true }];
+    const listed = Array.isArray(availablePlans) ? availablePlans.filter((p) => p.state !== "deleting") : [];
+    const plans = listed.length > 0 ? listed : [{ id: "default", name: "Main Plan", isDefault: true }];
+    finishStoppedDeletes(availablePlans);
     if (switcher) {
       switcher.innerHTML = "";
       for (const p of plans) {
@@ -9218,6 +9239,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
       nameSpan.className = "plan-item-name";
       nameSpan.textContent = p.name;
       mainDiv.appendChild(nameSpan);
+      if (p.copying) {
+        const note = document.createElement("span");
+        note.className = "plan-item-note";
+        note.textContent = "copy not finished";
+        mainDiv.appendChild(note);
+      }
       if (p.isActive) {
         const activeCheck = document.createElement("span");
         activeCheck.style.fontSize = "12px";
@@ -9241,7 +9268,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
           name: cloneName,
           cloneFromPlanId: p.id
         });
-        if (res && res.ok && res.plan) {
+        const copied = res && res.ok && res.plan && res.done === false ? await finishPlanWork("continuePlanCopy", res.plan.id, `Copying to ${res.plan.name}`) : res;
+        if (res && res.ok && res.plan && !(copied && copied.ok && copied.done !== false)) {
+          showFlag({ text: `The copy to ${res.plan.name} stopped. Pick it in the plan list to finish it.`, error: true });
+          btnClone.disabled = false;
+          await loadProjectPlan();
+        } else if (res && res.ok && res.plan) {
           setActivePlan(res.plan.id);
           showFlag({ text: `Cloned plan to ${res.plan.name}.` });
           closePlansPopover();
@@ -9301,7 +9333,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
         btnDel.addEventListener("click", async (e) => {
           e.stopPropagation();
           if (btnDel.dataset.confirming === "true") {
-            const res = await callResolver2("deleteProjectPlan", { planId: p.id });
+            const first = await callResolver2("deleteProjectPlan", { planId: p.id });
+            const res = first && first.ok && first.done === false ? await finishPlanWork("continuePlanDelete", p.id, `Deleting plan ${p.name}`) : first;
             if (res && res.ok) {
               showFlag({ text: `Deleted plan ${p.name}.` });
               if (activePlanId === p.id) {
@@ -9327,6 +9360,17 @@ Please see https://iframe-resizer.com/upgrade for more details.
       row.appendChild(actions);
       row.addEventListener("click", async (e) => {
         if (e.target.closest("button") || e.target.closest("input")) return;
+        if (p.copying) {
+          if (planApprover !== true) {
+            showFlag({ text: `${p.name} is still being copied. A plan approver can finish the copy.` });
+            return;
+          }
+          const done = await finishPlanWork("continuePlanCopy", p.id, `Copying to ${p.name}`);
+          if (!(done && done.ok && done.done !== false)) {
+            showFlag({ text: done?.message || `The copy to ${p.name} stopped. Try again.`, error: true });
+            return;
+          }
+        }
         if (p.id !== currentId) {
           setActivePlan(p.id);
           closePlansPopover();
@@ -9334,15 +9378,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
           showFlag({ text: `Switched to plan ${p.name}.` });
         }
       });
-      row.addEventListener("keydown", async (ke) => {
+      row.addEventListener("keydown", (ke) => {
+        if (ke.target !== row) return;
         if (ke.key === "Enter" || ke.key === " ") {
           ke.preventDefault();
-          if (p.id !== currentId) {
-            setActivePlan(p.id);
-            closePlansPopover();
-            await loadProjectPlan();
-            showFlag({ text: `Switched to plan ${p.name}.` });
-          }
+          row.click();
         }
       });
       container.appendChild(row);
@@ -12825,7 +12865,11 @@ Click to manage or assign.`;
         name,
         cloneFromPlanId: clone ? activePlanId : void 0
       });
-      if (res && res.ok && res.plan) {
+      const copied = res && res.ok && res.plan && res.done === false ? await finishPlanWork("continuePlanCopy", res.plan.id, `Copying to ${res.plan.name}`) : res;
+      if (res && res.ok && res.plan && !(copied && copied.ok && copied.done !== false)) {
+        showFlag({ text: `The copy to ${res.plan.name} stopped. Pick it in the plan list to finish it.`, error: true });
+        await loadProjectPlan();
+      } else if (res && res.ok && res.plan) {
         if (nameInp) nameInp.value = "";
         closePlansPopover();
         setActivePlan(res.plan.id);

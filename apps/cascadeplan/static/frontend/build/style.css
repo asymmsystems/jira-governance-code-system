@@ -1819,6 +1819,13 @@ body.is-dragging-backlog .drop-target-row.drag-over {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A clone whose records are still being copied (N-02). */
+.plan-item-note {
+  font-size: 11px;
+  color: var(--cp-text-subtle);
+  font-style: italic;
+  white-space: nowrap;
+}
 .plan-category-badge {
   font-size: 10px;
   padding: 1px 5px;

@@ -28,6 +28,8 @@ import {
   issueDeleted,
   createProjectPlan,
   deleteProjectPlan,
+  continuePlanCopy,
+  continuePlanDelete,
   mapLiveIssues,
   isMainPlan,
   DEFAULT_COLUMN_WIDTHS,
@@ -352,6 +354,39 @@ describe('named plans: one truth for each task (UX-05)', () => {
       .rejects.toThrow(ValidationError);
     expect(mainPlanSnapshot(storage)).toBe(main);
     expect(jiraIssueWrites()).toEqual([]);
+  });
+
+  it('N-02: a plan still being copied opens as the Main Plan and refuses writes; continuePlanCopy finishes it', async () => {
+    const store = new PlanStore(storage, 'TEST', 'TEST');
+    const copying = await store.createPlan('Half copied', planB);
+    expect(copying.state).toBe('copying');
+    const read = await getProjectPlan('TEST', storage, new Date(), undefined, undefined, undefined, copying.id);
+    expect(read.planId).toBe('default');
+    await expect(updateWbsTask({ projectKey: 'TEST', planId: copying.id, taskId: 'TEST-1', updates: { progress: 10 } }, storage))
+      .rejects.toThrow('still being copied');
+    expect(jiraIssueWrites()).toEqual([]);
+    const done: any = await continuePlanCopy({ projectKey: 'TEST', planId: copying.id }, storage);
+    expect(done).toMatchObject({ ok: true, done: true, remaining: 0 });
+    expect((await getProjectPlan('TEST', storage, new Date(), undefined, undefined, undefined, copying.id)).planId).toBe(copying.id);
+    expect((await planEntry(storage, copying.id, 'TEST-6')).dependency).toMatchObject({ predecessorKey: 'TEST-5' });
+  });
+
+  it('N-02: a stopped delete keeps the plan listed as deleting; continuePlanDelete finishes it', async () => {
+    const store = new PlanStore(storage, 'TEST', 'TEST');
+    expect(await store.deletePlan(planB)).toBe(true);
+    expect((await store.listPlans()).find(p => p.id === planB)!.state).toBe('deleting');
+    expect((await getProjectPlan('TEST', storage, new Date(), undefined, undefined, undefined, planB)).planId).toBe('default');
+    const res: any = await continuePlanDelete({ projectKey: 'TEST', planId: planB }, storage);
+    expect(res).toMatchObject({ ok: true, done: true, remaining: 0 });
+    expect(res.plans.map((p: any) => p.id)).not.toContain(planB);
+    expect([...storage.store.keys()].filter(k => k.startsWith(`cp:TEST:plan:${planB}:`))).toEqual([]);
+  });
+
+  it('a clone of a plan that is being deleted is refused', async () => {
+    await new PlanStore(storage, 'TEST', 'TEST').deletePlan(planB);
+    const res = await createProjectPlan({ projectKey: 'TEST', name: 'From B', cloneFromPlanId: planB }, storage);
+    expect(res.ok).toBe(false);
+    expect(res.message).toContain('cannot be copied now');
   });
 
   it('a plan id with characters outside the key alphabet is refused', async () => {

@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 /**
  * CascadePlan: Baseline and Scope Shift Storage Repository Layer
  * Manages persistence for frozen commitment baselines and scope shift approval records.
@@ -69,6 +75,22 @@ export class BaselineRepository {
     }
 
     return results;
+  }
+
+  /**
+   * Deletes every baseline, the active-baseline pointer and the scope-shift requests of one plan
+   * (F-22, R-20). Baselines missing from the index are found by their key prefix.
+   */
+  public async deletePlanData(projectKey: string, planId: string): Promise<void> {
+    const ids = new Set((await this.storage.get<string[]>(this.getBaselineIndexKey(projectKey, planId))) || []);
+    const keys = new Set([...ids].map(id => this.getBaselineKey(projectKey, planId, id)));
+    if (this.storage.query) {
+      for (const row of await this.storage.query(`ps:baseline:${projectKey}:${planId}:`)) keys.add(row.key);
+    }
+    for (const key of keys) await this.storage.delete(key);
+    await this.storage.delete(this.getBaselineIndexKey(projectKey, planId));
+    await this.storage.delete(this.getActiveBaselineKey(projectKey, planId));
+    await this.storage.delete(this.getShiftsKey(projectKey, planId));
   }
 
   public async getShiftRequests(projectKey: string, planId: string): Promise<ScopeShiftRequest[]> {

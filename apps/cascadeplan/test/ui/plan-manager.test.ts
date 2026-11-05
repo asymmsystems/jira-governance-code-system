@@ -76,6 +76,17 @@ describe('Plan Manager Pure Logic (UX-05)', () => {
   });
 
   describe('buildPlanListViewModel', () => {
+    it('N-02: hides a plan being deleted and marks a clone whose copy is not finished', () => {
+      const models = buildPlanListViewModel([
+        { id: 'default', name: 'Main Plan', createdAt: 'x', isDefault: true },
+        { id: 'plan-a', name: 'A', createdAt: 'x', state: 'copying', copyFrom: 'default' },
+        { id: 'plan-b', name: 'B', createdAt: 'x', state: 'deleting' }
+      ], 'default');
+      expect(models.map(m => m.id)).toEqual(['default', 'plan-a']);
+      expect(models.find(m => m.id === 'plan-a')!.copying).toBe(true);
+      expect(models.find(m => m.id === 'default')!.copying).toBeUndefined();
+    });
+
     it('constructs view models with active and delete permissions', () => {
       const models = buildPlanListViewModel(samplePlans, 'plan-scenario-a');
       expect(models).toEqual([

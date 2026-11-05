@@ -15,6 +15,8 @@ export interface PlanItemViewModel {
   isActive: boolean;
   canDelete: boolean;
   category: 'baseline' | 'scenario';
+  /** True for a clone whose records are not all copied yet (N-02): it opens only after the copy. */
+  copying?: boolean;
 }
 
 export function categorizePlan(plan: { name?: string; isDefault?: boolean }): 'baseline' | 'scenario' {
@@ -64,7 +66,8 @@ export function buildPlanListViewModel(plans: PlanMetadata[], activePlanId: stri
   if (!plans || plans.length === 0) {
     return [{ id: 'default', name: 'Main Plan', isDefault: true, isActive: true, canDelete: false, category: 'baseline' }];
   }
-  return plans.map(p => {
+  // A plan being deleted is not offered (N-02); its delete is finished in the background.
+  return plans.filter(p => p.state !== 'deleting').map(p => {
     const isDefault = p.id === 'default' || p.isDefault === true;
     return {
       id: p.id,
@@ -72,7 +75,8 @@ export function buildPlanListViewModel(plans: PlanMetadata[], activePlanId: stri
       isDefault,
       isActive: p.id === activePlanId,
       canDelete: !isDefault,
-      category: categorizePlan(p)
+      category: categorizePlan(p),
+      ...(p.state === 'copying' ? { copying: true } : {})
     };
   });
 }

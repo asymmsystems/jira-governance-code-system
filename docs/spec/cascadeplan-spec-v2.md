@@ -105,7 +105,7 @@ Refused before any write, with the Jira rule as the reason: a work item with sub
 - Each project has a Main Plan (`default`) and scenario plans. Every resolver reads and writes only the plan named by `planId`. A write to a plan that no longer exists is refused. A read of an unknown plan returns the Main Plan, and the UI says so.
 - Shared by every plan: dates, dependencies, the hierarchy and every Jira field. Per plan: row order, columns and milestones.
 - Creating, renaming and deleting a plan needs plan-approver rights: Jira administrator, project administrator of this project, or a member of an approver group set on the admin page.
-- Copying or deleting a large plan runs in pages over several calls, and a plan being copied refuses writes until the copy is done (N-02).
+- Copying or deleting a plan runs in pages of at most 100 records, one page per call, until done (N-02). A clone is listed as "copy not finished" and refuses writes until its last page. A plan being deleted is not listed, opens as the Main Plan, and refuses writes; it leaves the plan list with its last record, together with its baselines and scope-shift requests, so a stopped delete can always be finished.
 - The open plan is remembered per site and project in the browser's local storage, as a view preference only.
 
 ## 4. Manifest
@@ -173,7 +173,7 @@ Keys use the project id and the issue id, never the keys (a renamed project or i
 | `cp:<projectId>:we:<issueId>` | Main Plan `WorkEffortRecord` (its dates only until the task's first date change since ADR-008) |
 | `cp:<projectId>:plan:<planId>:we:<issueId>` | Scenario plan `WorkEffortRecord` |
 | `cp:<projectId>:settings`, `cp:<projectId>:plan:<planId>:settings` | `{ columnWidths, hiddenColumns, milestones (max 100), migratedAt, modelVersion }` |
-| `cp:<projectId>:plans` | the list of plans, with a version |
+| `cp:<projectId>:plans` | `{ v, plans }`: the list of plans, with a version that every change checks (F-22); each plan may carry `state` (`copying` or `deleting`) and `copyFrom` |
 | `cascadeplan:cfg:approver_policy` | approver groups (site) |
 | Jira issue property `cascadeplan.links` | trigger percents of the incoming links (ADR-006) |
 | Jira issue property `cascadeplan.dates` | `{ startDate, endDate?, v: 1 }`: the shared start and the planner's end; `{ v: 1 }` alone marks a task taken off the timeline (ADR-008) |
@@ -197,7 +197,7 @@ All planner resolvers take the project from `req.context.extension.project` (key
 | Resolver | Purpose | Permission |
 |---|---|---|
 | `getProjectPlan` | The plan, with `truncated` when capped at 1,000 issues | Browse |
-| `createProjectPlan`, `renameProjectPlan`, `deleteProjectPlan` | Plan management | Plan approver |
+| `createProjectPlan`, `continuePlanCopy`, `renameProjectPlan`, `deleteProjectPlan`, `continuePlanDelete` | Plan management; the `continue` resolvers run the next page of a clone or a delete (N-02) | Plan approver |
 | `checkPlanApprover` | Whether to show plan management to this user | none |
 | `updateWbsTask` | Dates, effort, progress, assignee, status the user chose, one dependency | `EDIT_ISSUES`; `SCHEDULE_ISSUES` for dates; `LINK_ISSUES` for links |
 | `batchUpdateTasks` | Up to 50 updates in one state (F-17) | as `updateWbsTask`, per issue |

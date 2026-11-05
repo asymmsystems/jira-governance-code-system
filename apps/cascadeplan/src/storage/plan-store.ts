@@ -9,12 +9,15 @@
  *
  * Keys:   cp:<projectId>:we:<issueId>   one record per issue (app-owned planning data only)
  *         cp:<projectId>:settings       column widths, hidden columns, milestones, migratedAt
+ *         cp:<projectId>:plans          { v, plans }: the list of plans, with a version (F-22)
  * Writes use an atomic swap that returns the previous value. When the previous version is not
  * the version the caller started from, the previous value is restored and a conflict is returned.
+ * A plan is cloned and deleted in pages of PLAN_PAGE_SIZE records, one page per call (N-02).
  */
 
 import { WbsTask, ColumnWidthConfig, ProjectMilestone, WorkEffortRecordBody, toWorkEffortRecord, fromWorkEffortRecord, PlanMetadata } from '../domain/models';
 import { StorageProvider } from './plan-repository';
+import { BaselineRepository } from './baseline-repository';
 
 export interface StoredEntry extends Partial<WbsTask> {
   issueKey: string;
@@ -42,6 +45,24 @@ export interface PlanSettings {
   migratedAt?: string;
   modelVersion?: number; // WorkEffort record model of every record (B-28)
 }
+
+/** Records copied or deleted in one call (N-02): small enough for one resolver call. */
+export const PLAN_PAGE_SIZE = 100;
+
+/** The stored plan list: the plans and a version that every change checks (F-22). */
+export interface PlanList {
+  v: number;
+  plans: PlanMetadata[];
+}
+
+/** The result of one page of a clone or a delete. */
+export interface PlanPageResult {
+  ok: boolean;
+  done: boolean;
+  remaining: number;
+}
+
+const MAIN_PLAN: PlanMetadata = { id: 'default', name: 'Main Plan', createdAt: new Date(0).toISOString(), isDefault: true };
 
 export interface PutResult {
   ok: boolean;
@@ -152,69 +173,127 @@ export class PlanStore {
     return next;
   }
 
+  private plansKey(): string {
+    return `cp:${this.projectId}:plans`;
+  }
+
+  /** The plan list and its version. An older list stored as a plain array reads as version 0. */
+  async readPlanList(): Promise<PlanList> {
+    const raw = await this.storage.get<PlanList | PlanMetadata[]>(this.plansKey());
+    const plans = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.plans) ? raw.plans : []);
+    const v = Array.isArray(raw) || !raw ? 0 : (raw.v || 0);
+    return { v, plans: plans.length > 0 ? plans : [{ ...MAIN_PLAN }] };
+  }
+
   async listPlans(): Promise<PlanMetadata[]> {
-    const raw = await this.storage.get<PlanMetadata[]>(`cp:${this.projectId}:plans`);
-    if (Array.isArray(raw) && raw.length > 0) return raw;
-    return [{ id: 'default', name: 'Main Plan', createdAt: new Date(0).toISOString(), isDefault: true }];
+    return (await this.readPlanList()).plans;
   }
 
-  async savePlans(plans: PlanMetadata[]): Promise<void> {
-    await this.storage.set(`cp:${this.projectId}:plans`, plans);
-  }
-
-  async createPlan(name: string, cloneFromPlanId?: string): Promise<PlanMetadata> {
-    const trimmed = name.trim();
-    const plans = await this.listPlans();
-    const id = `plan-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-    const newPlan: PlanMetadata = {
-      id,
-      name: trimmed,
-      createdAt: new Date().toISOString()
-    };
-    plans.push(newPlan);
-    await this.savePlans(plans);
-
-    if (cloneFromPlanId) {
-      const sourceStore = new PlanStore(this.storage, this.projectId, this.projectKey, cloneFromPlanId);
-      const entries = await sourceStore.loadEntries();
-      const settings = await sourceStore.getSettings();
-      const targetStore = new PlanStore(this.storage, this.projectId, this.projectKey, id);
-      for (const [key, entry] of entries) {
-        await targetStore.putEntry(key, entry.issueId, entry);
-      }
-      if (Object.keys(settings).length > 0) {
-        await targetStore.saveSettings(settings);
-      }
+  /**
+   * Changes the plan list with a version check (F-22). `change` gets a copy of the current plans and
+   * returns the new list, or null to change nothing. When another writer saved the list first, its
+   * value is put back and the change is applied again to it, at most 3 times.
+   */
+  async updatePlans(change: (plans: PlanMetadata[]) => PlanMetadata[] | null): Promise<{ ok: boolean; plans: PlanMetadata[] }> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const cur = await this.readPlanList();
+      const next = change(cur.plans.map(p => ({ ...p })));
+      if (!next) return { ok: false, plans: cur.plans };
+      const previous = await this.storage.swap!<PlanList | PlanMetadata[]>(this.plansKey(), { v: cur.v + 1, plans: next });
+      const prevV = !previous || Array.isArray(previous) ? 0 : (previous.v || 0);
+      if (prevV === cur.v) return { ok: true, plans: next };
+      if (previous) await this.storage.set(this.plansKey(), previous);
     }
+    throw new PlanListBusyError();
+  }
 
+  /** A new plan. A clone is listed as 'copying' until copyPlanPage has copied every record (N-02). */
+  async createPlan(name: string, cloneFromPlanId?: string): Promise<PlanMetadata> {
+    const id = `plan-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    const newPlan: PlanMetadata = { id, name: name.trim(), createdAt: new Date().toISOString() };
+    if (cloneFromPlanId) {
+      const source = new PlanStore(this.storage, this.projectId, this.projectKey, cloneFromPlanId);
+      // The settings first, so the copy is complete once the records are.
+      const settings = await source.getSettings();
+      if (Object.keys(settings).length > 0) {
+        await new PlanStore(this.storage, this.projectId, this.projectKey, id).saveSettings(settings);
+      }
+      newPlan.state = 'copying';
+      newPlan.copyFrom = cloneFromPlanId || 'default';
+    }
+    await this.updatePlans(plans => [...plans, newPlan]);
     return newPlan;
   }
 
+  /**
+   * Copies the next page of records of a 'copying' plan from its source. Records already copied
+   * are skipped, so a page can be run again. The last page marks the plan ready.
+   */
+  async copyPlanPage(planId: string): Promise<PlanPageResult> {
+    const plan = (await this.listPlans()).find(p => p.id === planId);
+    if (!plan || plan.state !== 'copying') return { ok: !!plan && !plan.state, done: true, remaining: 0 };
+    const source = new PlanStore(this.storage, this.projectId, this.projectKey, plan.copyFrom || 'default');
+    const target = new PlanStore(this.storage, this.projectId, this.projectKey, planId);
+    const copied = new Set((await this.storage.query!<StoredRecord>(target.prefix)).map(r => r.key.slice(target.prefix.length)));
+    const todo = (await this.storage.query!<StoredRecord>(source.prefix)).filter(r => !copied.has(r.key.slice(source.prefix.length)));
+    // The target records are new, and writes to a 'copying' plan are refused, so a plain set is safe.
+    for (const row of todo.slice(0, PLAN_PAGE_SIZE)) {
+      await this.storage.set(`${target.prefix}${row.key.slice(source.prefix.length)}`, { ...row.value, version: 1 });
+    }
+    const remaining = Math.max(0, todo.length - PLAN_PAGE_SIZE);
+    if (remaining === 0) {
+      await this.updatePlans(plans => plans.map(p => {
+        if (p.id !== planId || p.state !== 'copying') return p;
+        const { state: _s, copyFrom: _c, ...ready } = p;
+        return ready;
+      }));
+    }
+    return { ok: true, done: remaining === 0, remaining };
+  }
+
+  /**
+   * Starts a delete: the plan is marked 'deleting', so it is not opened and takes no writes. It
+   * stays in the list until deletePlanPage has removed its last record, so nothing is orphaned.
+   */
   async deletePlan(planId: string): Promise<boolean> {
     if (!planId || planId === 'default') return false;
-    const plans = await this.listPlans();
-    const idx = plans.findIndex(p => p.id === planId);
-    if (idx === -1) return false;
-    plans.splice(idx, 1);
-    await this.savePlans(plans);
+    const res = await this.updatePlans(plans => {
+      const idx = plans.findIndex(p => p.id === planId);
+      if (idx === -1) return null;
+      plans[idx] = { ...plans[idx], state: 'deleting' };
+      return plans;
+    });
+    return res.ok;
+  }
 
-    const targetStore = new PlanStore(this.storage, this.projectId, this.projectKey, planId);
-    const entries = await targetStore.loadEntries();
-    for (const key of entries.keys()) {
-      await targetStore.deleteEntry(key);
+  /** Deletes the next page of records of a 'deleting' plan; the last page removes it from the list. */
+  async deletePlanPage(planId: string): Promise<PlanPageResult> {
+    const plan = (await this.listPlans()).find(p => p.id === planId);
+    if (!plan || plan.state !== 'deleting') return { ok: !plan, done: true, remaining: 0 };
+    const target = new PlanStore(this.storage, this.projectId, this.projectKey, planId);
+    const rows = await this.storage.query!<StoredRecord>(target.prefix);
+    for (const row of rows.slice(0, PLAN_PAGE_SIZE)) await this.storage.delete(row.key);
+    const remaining = Math.max(0, rows.length - PLAN_PAGE_SIZE);
+    if (remaining === 0) {
+      // The plan's baselines and scope-shift requests go with it (F-22).
+      await new BaselineRepository(this.storage).deletePlanData(this.projectKey, planId);
+      await this.storage.delete(target.getSettingsKey());
+      await this.updatePlans(plans => plans.filter(p => p.id !== planId));
     }
-    await this.storage.delete(targetStore.getSettingsKey());
-    return true;
+    return { ok: true, done: remaining === 0, remaining };
   }
 
   async renamePlan(planId: string, newName: string): Promise<PlanMetadata | null> {
     const trimmed = newName.trim();
-    const plans = await this.listPlans();
-    const plan = plans.find(p => p.id === planId);
-    if (!plan) return null;
-    plan.name = trimmed;
-    await this.savePlans(plans);
-    return plan;
+    let renamed: PlanMetadata | null = null;
+    await this.updatePlans(plans => {
+      const plan = plans.find(p => p.id === planId && !p.state);
+      if (!plan) return null;
+      plan.name = trimmed;
+      renamed = plan;
+      return plans;
+    });
+    return renamed;
   }
 
   /**
@@ -254,5 +333,13 @@ export class PlanStore {
       for (const issueKey of Object.keys(map)) await this.storage.delete(`ps:${k}:task:${issueKey}`);
     }
     return legacy;
+  }
+}
+
+/** The plan list kept changing under this write (three tries); nothing was changed. */
+export class PlanListBusyError extends Error {
+  constructor() {
+    super('Someone else is changing the plans of this project. Try again.');
+    this.name = 'PlanListBusyError';
   }
 }
