@@ -417,9 +417,15 @@ describe('CascadePlan Index & Resolver Tests', () => {
         json: async () => ({ errorMessages: ['Summary is required and must not be blank'] })
       });
 
-      const res = await createInlineTask({ projectKey: 'TEST', summary: '' }, mockStorage);
+      const res = await createInlineTask({ projectKey: 'TEST', summary: 'New task' }, mockStorage);
       expect(res.success).toBe(false);
       expect(res.error).toBe('Summary is required and must not be blank');
+    });
+
+    it('refuses an empty summary before it calls Jira (F-18)', async () => {
+      mockRequestJira.mockClear();
+      await expect(createInlineTask({ projectKey: 'TEST', summary: '  ' }, mockStorage)).rejects.toThrow('summary must not be empty');
+      expect(mockRequestJira.mock.calls.filter(([, o]) => o?.method === 'POST')).toEqual([]);
     });
 
     it('handles Jira HTTP 400 with errors object in createInlineTask', async () => {

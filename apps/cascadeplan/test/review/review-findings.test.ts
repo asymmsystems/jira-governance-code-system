@@ -455,26 +455,30 @@ describe('Security and permissions (D11)', () => {
 });
 
 describe('Validation (spec section 6)', () => {
-  it('FINDING R-21: an end date before the start date is accepted and stored', async () => {
-    const v = (await planEntry(storage, 'default', 'TEST-1')).version;
-    const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { startDate: add(start, 5), endDate: add(start, 1) }, expectedVersion: v }, storage);
-    expect(res.ok).toBe(true);
-    const e = await planEntry(storage, 'default', 'TEST-1');
-    expect(e.startDate > e.endDate).toBe(true);
+  it('R-21 (F-18): an end before the start is refused, also when only one end is sent', async () => {
+    const before = await planEntry(storage, 'default', 'TEST-1');
+    await expect(updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { startDate: add(start, 5), endDate: add(start, 1) }, expectedVersion: before.version }, storage))
+      .rejects.toThrow('The end must be on or after the start.');
+    await expect(updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { endDate: add(before.startDate, -1) }, expectedVersion: before.version }, storage))
+      .rejects.toThrow('The end must be on or after the start.');
+    expect(await planEntry(storage, 'default', 'TEST-1')).toEqual(before);
   });
 
-  it('FINDING R-22: a date far outside the 10-year window is accepted and sent to Jira', async () => {
+  it('R-22 (F-18): a date outside the window is refused and never sent to Jira', async () => {
     const v = (await planEntry(storage, 'default', 'TEST-1')).version;
-    await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { startDate: '9999-12-01', endDate: '9999-12-31' }, expectedVersion: v }, storage);
-    expect(jiraDue['TEST-1']).toBe('9999-12-31');
+    await expect(updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { startDate: '9999-12-01', endDate: '9999-12-31' }, expectedVersion: v }, storage))
+      .rejects.toThrow(/startDate must be between/);
+    expect(jiraDue['TEST-1']).not.toBe('9999-12-31');
   });
 
-  it('FINDING R-23: scheduleBacklogTask does not validate spanWeeks; 0 crashes with a TypeError instead of a validation result', async () => {
+  it('R-23 (F-18): scheduleBacklogTask refuses spanWeeks 0 with a validation result, not a TypeError', async () => {
     await expect(scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-8', startWeek: weeks[0].weekKey, spanWeeks: 0 } as any, storage))
-      .rejects.toThrow(TypeError);
+      .rejects.toThrow(ValidationError);
+    await expect(scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-8', startWeek: weeks[0].weekKey, targetIndex: -1 } as any, storage))
+      .rejects.toThrow('targetIndex must be a whole number of at least 0');
   });
 
-  it('FINDING R-24: reorderWbsTasks returns ok when its record write lost a version race', async () => {
+  it('R-24 (F-28): reorderWbsTasks reports a conflict when its record write lost a version race', async () => {
     const realSwap = storage.swap.bind(storage);
     storage.swap = async <T>(k: string, value: T): Promise<T | undefined> => {
       const rec = storage.store.get(k);
@@ -482,7 +486,7 @@ describe('Validation (spec section 6)', () => {
       return realSwap<T>(k, value);
     };
     const res: any = await reorderWbsTasks({ projectKey: 'TEST', taskId: 'TEST-3', targetIndex: 0 }, storage);
-    expect(res.ok).toBe(true);
+    expect(res).toMatchObject({ ok: false, conflict: true });
     storage.swap = realSwap;
     const plan = await getProjectPlan('TEST', storage);
     expect(plan.tasks[0].key).not.toBe('TEST-3');

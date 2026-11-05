@@ -50,7 +50,8 @@ import {
   validateMilestone,
   validatePlanName,
   validatePlanId,
-  toValidationResult
+  toValidationResult,
+  validateSchedulePayload
 } from './validation';
 import { ResourceUtilizationEngine, ResourceUtilizationView } from './domain/resource-utilization';
 import { ScopeCreepEngine, PlanBaseline, ScopeShiftRequest, ScopeCreepReport } from './domain/scope-creep';
@@ -581,8 +582,8 @@ export async function fetchRawIssues(projectKey: string): Promise<RawIssues> {
   try {
     do {
       const res = token
-        ? await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100&nextPageToken=${token}`)
-        : await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100`);
+        ? await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100&nextPageToken=${token}`)
+        : await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100`);
       if (!res || res.status !== 200) {
         if (pages === 0) return { issues: [], isLive: false };
         break;
@@ -729,14 +730,18 @@ export function mapLiveIssues(
         const status = mapJiraStatus(iss.fields?.status?.statusCategory?.key, iss.fields?.status?.name);
 
         const rawSeconds = iss.fields?.timeoriginalestimate || 0;
-        const rawSpent = iss.fields?.aggregatetimespent || 0;
         const effortHours = rawSeconds > 0 ? Math.round(rawSeconds / 3600) : 0;
+        // Spec 3.3 item 9 (F-25): a leaf uses its own time spent and estimate; a parent with sub-tasks
+        // uses the aggregates, so time logged on sub-tasks is measured against the whole estimate.
+        const isParent = Array.isArray(iss.fields?.subtasks) && iss.fields.subtasks.length > 0;
+        const spent = isParent ? (iss.fields?.aggregatetimespent || 0) : (iss.fields?.timespent ?? iss.fields?.aggregatetimespent ?? 0);
+        const estimate = isParent ? (iss.fields?.aggregatetimeoriginalestimate || rawSeconds) : rawSeconds;
 
         let progress = 0;
         if (status === 'COMPLETED') {
           progress = 100;
-        } else if (rawSeconds > 0 && rawSpent > 0) {
-          progress = Math.min(100, Math.round((rawSpent / rawSeconds) * 100));
+        } else if (estimate > 0 && spent > 0) {
+          progress = Math.min(100, Math.round((spent / estimate) * 100));
         }
 
         const subtasks: SubtaskItem[] = (iss.fields?.subtasks || []).map((sub: any) => ({
@@ -1008,6 +1013,7 @@ export async function scheduleBacklogTask(
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState> {
   const weeksNow = getDefaultWeeks(); // computed per call (B-18)
+  validateSchedulePayload(request as unknown as Record<string, unknown>);
   const { projectKey, projectId, taskId, startWeek, startDate, spanWeeks = 3, effortHours, resource, targetIndex } = request;
   if (startDate !== undefined && !isIsoDate(startDate)) throw new ValidationError('startDate', 'startDate must be a date in YYYY-MM-DD form');
   if (request.endDate !== undefined && !isIsoDate(request.endDate)) throw new ValidationError('endDate', 'endDate must be a date in YYYY-MM-DD form');
@@ -1130,6 +1136,7 @@ export async function createInlineTask(
   request: InlineTaskCreateRequest,
   storageProvider?: StorageProvider
 ): Promise<{ success: boolean; ok: boolean; jiraSync: JiraSyncReport; task?: WbsTask; plan?: ProjectPlanState; error?: string }> {
+  validateSchedulePayload(request as unknown as Record<string, unknown>, { summaryRequired: true });
   const weeksNow = getDefaultWeeks(); // computed per call (B-18)
   const currentWeekKey = weeksNow.find(w => w.isCurrentWeek)?.weekKey || weeksNow[0].weekKey;
   const {
@@ -1836,6 +1843,8 @@ export async function updateWbsTask(
     // Dates the user picked are kept exactly; the week grid position is derived from them (CP-07).
     const s = sanitized.startDate || targetTask.startDate;
     const e = sanitized.endDate || targetTask.endDate;
+    // Also when only one end is sent, the end stays on or after the start (F-18).
+    if (isIsoDate(s) && isIsoDate(e) && e < s) throw new ValidationError('endDate', 'The end must be on or after the start.');
     sanitized.startDate = s;
     sanitized.endDate = e;
     const sIdx = weekIndexContaining(activeWeeks, s);
@@ -2270,13 +2279,16 @@ export async function reorderWbsTasks(
       if (typeof e.sequenceNum === 'number') { last = e.sequenceNum; continue; }
       const seq = sequenceBetween(last, undefined);
       const put = await store.putEntry(row.key, row.id, { ...e, sequenceNum: seq }, e.version);
+      // A row someone else changed meanwhile: refuse, so the client reloads (F-28).
+      if (!put.ok) return conflictResult(row.key);
       entries.set(row.key, put.entry);
       last = seq;
     }
     const seqAt = (i: number) => (i >= 0 && i < reordered.length ? entries.get(reordered[i].key)?.sequenceNum : undefined);
     const moved = entries.get(movedKey);
     if (moved) {
-      await store.putEntry(movedKey, reordered[pos].id, { ...moved, sequenceNum: sequenceBetween(seqAt(pos - 1), seqAt(pos + 1)) }, moved.version);
+      const put = await store.putEntry(movedKey, reordered[pos].id, { ...moved, sequenceNum: sequenceBetween(seqAt(pos - 1), seqAt(pos + 1)) }, moved.version);
+      if (!put.ok) return conflictResult(movedKey);
     }
   }
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId), { ok: true, jiraSync: noJiraWrites() });
@@ -2290,6 +2302,7 @@ export async function createSubtaskForResource(
   payload: CreateSubtaskForResourceRequest,
   storageProvider?: StorageProvider
 ): Promise<{ success: boolean; ok: boolean; jiraSync: JiraSyncReport; subtask?: WbsTask; plan?: ProjectPlanState; error?: string }> {
+  validateSchedulePayload(payload as unknown as Record<string, unknown>);
   const projectKey = payload.projectKey;
   const projectId = payload.projectId;
   const parentKey = payload.parentKey || payload.parentTaskId;
