@@ -6102,17 +6102,17 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function describePendingWrites(tasks, moves, key) {
     const byKey = new Map(tasks.map((t) => [t.key, t]));
     const jira = [];
-    const planOnly = [];
+    const starts = [];
     for (const [k, m] of moves) {
       const t = byKey.get(k);
       if (!t) continue;
       if (m.end !== t.endDate) jira.push(`${k} due ${m.end}`);
-      if (m.start !== t.startDate) planOnly.push(`${k} start ${m.start}`);
+      if (m.start !== t.startDate) starts.push(`${k} ${m.start}`);
     }
     const parent = byKey.get(key)?.parentKey;
-    if (parent && byKey.has(parent)) planOnly.push(`${parent} dates follow its children`);
-    const text = `Jira: ${jira.length ? jira.join(", ") : "no change"}.` + (planOnly.length ? ` Plan only: ${planOnly.join(", ")}.` : "");
-    return { jira, planOnly, text };
+    const rollUp = parent && byKey.has(parent) ? ` ${parent} dates follow its children.` : "";
+    const text = `Jira: ${jira.length ? jira.join(", ") : "no due date change"}.` + (starts.length ? ` Start dates (every plan): ${starts.join(", ")}.` : "") + rollUp;
+    return { jira, starts, text };
   }
 
   // src/frontend/changes-panel.ts

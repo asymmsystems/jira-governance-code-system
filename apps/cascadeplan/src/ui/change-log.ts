@@ -44,22 +44,24 @@ interface PlanTask {
 }
 
 /**
- * Every issue and field a drop will change. A new end date is a Jira due date write; a new start
- * date and the parent's roll-up change the plan only (INV-11: no task moves unseen).
+ * Every issue and field a drop will change. A new end date is a Jira due date write. A new start date
+ * is a write to the issue property cascadeplan.dates, so every plan shows it (ADR-008). The parent's
+ * dates follow its children (its due date in Jira too, DEC-6). (INV-11: no task moves unseen.)
  */
 export function describePendingWrites(tasks: PlanTask[], moves: Map<string, { start: string; end: string }>, key: string):
-  { jira: string[]; planOnly: string[]; text: string } {
+  { jira: string[]; starts: string[]; text: string } {
   const byKey = new Map(tasks.map(t => [t.key, t]));
   const jira: string[] = [];
-  const planOnly: string[] = [];
+  const starts: string[] = [];
   for (const [k, m] of moves) {
     const t = byKey.get(k);
     if (!t) continue;
     if (m.end !== t.endDate) jira.push(`${k} due ${m.end}`);
-    if (m.start !== t.startDate) planOnly.push(`${k} start ${m.start}`);
+    if (m.start !== t.startDate) starts.push(`${k} ${m.start}`);
   }
   const parent = byKey.get(key)?.parentKey;
-  if (parent && byKey.has(parent)) planOnly.push(`${parent} dates follow its children`);
-  const text = `Jira: ${jira.length ? jira.join(', ') : 'no change'}.` + (planOnly.length ? ` Plan only: ${planOnly.join(', ')}.` : '');
-  return { jira, planOnly, text };
+  const rollUp = parent && byKey.has(parent) ? ` ${parent} dates follow its children.` : '';
+  const text = `Jira: ${jira.length ? jira.join(', ') : 'no due date change'}.`
+    + (starts.length ? ` Start dates (every plan): ${starts.join(', ')}.` : '') + rollUp;
+  return { jira, starts, text };
 }
