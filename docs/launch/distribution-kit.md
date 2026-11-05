@@ -116,10 +116,10 @@ Jira's default history log shows modifications, but it doesn't prove integrity a
 
 We developed an Atlassian Forge suite to automate this proof:
 1. LedgerSeal: Hashes the approved issue state (SHA-256) and Ed25519 signs it. Gated workflow transitions reject release if the hash diverges.
-2. DefinitionGuard: Enforces mandatory DoD checklists, requires non-assignee reviews, and records immutable waiver justifications.
+2. DefinitionGuard: Enforces mandatory DoD checklists, lets admins mark items the assignee may not tick, and records waiver reasons in a hash-chained history.
 3. Standalone Verification: Outputs standalone evidence JSON that can be verified offline with an open-source Node script (https://asymm.systems/product/jira-governance/user-guide/open-verifier.html), meaning you don't have to rely on an app vendor during an audit.
 
-Architecture guarantee: 100% Forge native, zero external network egress, data resides in customer tenant storage.
+Architecture: 100% Forge native, zero external network egress, data resides in customer tenant storage.
 
 Full compliance mapping table (SOC 2, ISO 27001, 21 CFR Part 11):
 https://asymm.systems/product/jira-governance/compliance.html

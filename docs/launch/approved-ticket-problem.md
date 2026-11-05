@@ -140,7 +140,7 @@ If an audit tool operates as a "black box" hosted on a third-party server, audit
 
 LedgerSeal resolves this through an **open-source, zero-dependency offline verification engine**:
 
-1. **Evidence Export:** From the LedgerSeal issue panel, users can export the full cryptographic evidence bundle as a standalone JSON file (`evidence.json`).
+1. **Evidence Record:** In the LedgerSeal issue panel, users click **Show evidence (JSON)** and copy the full evidence record into a standalone JSON file (`evidence.json`).
 2. **Published Public Keys:** Asymm Systems publishes official Ed25519 verification public keys on public repositories and in documentation.
 3. **Standard Tooling Verification:** Anyone can verify the integrity of an approval seal using standard command-line tools without network access or Jira credentials:
 
@@ -150,12 +150,12 @@ node verify-evidence.mjs --evidence evidence.json --public-key ls-dev-2026-11.pu
 ```
 
 The script executes four independent mathematical checks:
-1. **Snapshot Hash Verification:** Recalculates the SHA-256 digest of the canonical snapshot payload and matches it against the sealed hash.
-2. **Digital Signature Verification:** Validates the Ed25519 cryptographic signature using the vendor public key.
-3. **Chain Continuity Verification:** Validates that every seal in the ticket's history points unambiguously to its predecessor's hash.
-4. **Terminal Integrity:** Confirms that the newest seal in the chain has not been revoked or superseded.
+1. **Snapshot Hash Verification:** Recalculates the SHA-256 digest of the canonical snapshot payload and matches it against the hash in the attestation.
+2. **Chain Continuity Verification:** Validates that every entry in the ticket's history points to its predecessor's hash, starting from the all-zero genesis value, with no gaps in the sequence.
+3. **Newest Seal:** Confirms that the attestation names the certificate of the newest seal in the history.
+4. **Digital Signature Verification:** Validates the Ed25519 signature over the attestation using the vendor public key.
 
-If all four checks succeed, the script outputs exit code `0` and a human-readable attestation certificate.
+If all four checks succeed, the script prints four `PASS` lines and exits with code `0`. If any check fails, it prints `FAIL` for that check and exits with code `1`.
 
 ---
 
