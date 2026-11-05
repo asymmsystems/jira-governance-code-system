@@ -2004,8 +2004,11 @@ export async function updateWbsTask(
       for (const c of more.changes) if (!changes.some(x => x.key === c.key)) changes.push(c);
       efforts = more.efforts;
     }
-    cascadeRemaining = changes.slice(CASCADE_BATCH_LIMIT).map(c => c.key);
-    for (const c of changes.slice(0, CASCADE_BATCH_LIMIT)) {
+    // A cascade into a task or story parent moves its block (N-06 rule 2).
+    const expanded = expandParentCascades(changes, [...plan.tasks, ...(plan.backlogTasks || [])], todayIso(), new Set([targetTask.key]));
+    reportEpicsNotMoved(expanded.epics, log);
+    cascadeRemaining = expanded.changes.slice(CASCADE_BATCH_LIMIT).map(c => c.key);
+    for (const c of expanded.changes.slice(0, CASCADE_BATCH_LIMIT)) {
       scheduleMap[c.key] = { ...(scheduleMap[c.key] || {}), startDate: c.toStart, endDate: c.toEnd, ...gridFor(activeWeeks, c.toStart, c.toEnd) };
       changedKeys.add(c.key);
       pendingSyncs.push({ key: c.key, updates: { startDate: c.toStart, endDate: c.toEnd } });
@@ -2221,6 +2224,39 @@ function reportCycle(cycle: string[] | undefined, log: SyncLog): void {
 export const CASCADE_BATCH_LIMIT = 25;
 
 /**
+ * N-06 rule 2, ADR-003 section 3: a cascade that reaches a task or story roll-up parent moves the
+ * parent's block by the block rules; the parent has no record of its own to write. A cascade into
+ * an epic is not applied in v1 (DEC-5b): the epic is returned, to be reported "not moved".
+ * Keys in `exclude` (the task the user moved) are never changed by the expansion.
+ */
+export function expandParentCascades<C extends { key: string; toStart: string; toEnd: string }>(
+  changes: C[], tasks: WbsTask[], today: string, exclude: Set<string> = new Set()
+): { changes: Array<{ key: string; toStart: string; toEnd: string }>; epics: string[] } {
+  const out: Array<{ key: string; toStart: string; toEnd: string }> = [];
+  const epics: string[] = [];
+  const seen = new Set(exclude);
+  for (const c of changes) {
+    const t = tasks.find(x => x.key === c.key);
+    if (!t || !t.datesFromChildren) {
+      if (!seen.has(c.key)) { out.push(c); seen.add(c.key); }
+      continue;
+    }
+    if (t.isEpic || (t.hierarchyLevel ?? 0) >= 1) { epics.push(c.key); continue; }
+    if (!isIsoDate(t.startDate)) continue;
+    const days = Math.round((Date.parse(`${c.toStart}T00:00:00Z`) - Date.parse(`${t.startDate}T00:00:00Z`)) / 86400000);
+    if (days === 0) continue;
+    for (const b of planBlockMove(tasks.filter(x => x.parentKey === t.key), days, today).changes) {
+      if (!seen.has(b.key)) { out.push({ key: b.key, toStart: b.toStart, toEnd: b.toEnd }); seen.add(b.key); }
+    }
+  }
+  return { changes: out, epics };
+}
+
+function reportEpicsNotMoved(epics: string[], log: SyncLog): void {
+  for (const key of epics) log.record(key, ['plan'], { synced: false, error: 'not moved: it is an epic; move its work items' });
+}
+
+/**
  * Applies the next batch of a cascade from a task: moves at most CASCADE_BATCH_LIMIT conflicting
  * successors and returns the keys still to move (D-05: the client calls again until empty).
  */
@@ -2238,19 +2274,23 @@ export async function continueCascade(
   const store = openStore(storage, projectKey, projectId, planId);
   const entries = await store.loadEntries();
   const inputs = engineInputs(plan.tasks);
-  const { changes, cycle } = cascade(inputs.efforts, inputs.links, taskId, todayIso());
-  reportCycle(cycle, log);
+  const first = cascade(inputs.efforts, inputs.links, taskId, todayIso());
+  reportCycle(first.cycle, log);
+  // A cascade into a task or story parent moves its block (N-06 rule 2).
+  const expanded = expandParentCascades(first.changes, [...plan.tasks, ...(plan.backlogTasks || [])], todayIso(), new Set([taskId]));
+  reportEpicsNotMoved(expanded.epics, log);
+  const changes = expanded.changes;
   // BL-2: a successor the user may not edit and schedule is not moved, and is reported.
   const batch = changes.slice(0, CASCADE_BATCH_LIMIT);
   // Successors this round could not move are returned, never dropped (F-20, INV-11).
   const skipped: string[] = [];
-  const denied = new Map((await deniedIssues(batch.map(c => ({ key: c.key, id: plan.tasks.find(t => t.key === c.key)?.id })),
+  const denied = new Map((await deniedIssues(batch.map(c => ({ key: c.key, id: [...plan.tasks, ...(plan.backlogTasks || [])].find(t => t.key === c.key)?.id })),
     ['EDIT_ISSUES', 'SCHEDULE_ISSUES'])).map(d => [d.key, d.missing]));
   for (const c of batch) {
     const missing = denied.get(c.key);
     if (missing) { skipped.push(c.key); log.record(c.key, ['plan'], { synced: false, error: `not moved: you lack ${describeMissing(missing)} on this issue in Jira` }); continue; }
     const cur = entries.get(c.key);
-    const task = plan.tasks.find(t => t.key === c.key);
+    const task = [...plan.tasks, ...(plan.backlogTasks || [])].find(t => t.key === c.key);
     const put = await store.putEntry(c.key, task?.id, stripJiraOwnedFields({ ...(cur || {}), startDate: c.toStart, endDate: c.toEnd,
       ...gridFor(plan.weeks, c.toStart, c.toEnd) }), cur ? cur.version : 0);
     if (!put.ok) { skipped.push(c.key); log.record(c.key, ['plan'], { synced: false, error: 'not moved: someone else changed it; move the task again' }); continue; }
@@ -2819,16 +2859,10 @@ export async function moveTaskGroup(
     const r = cascade(efforts, inputs.links, root, todayIso());
     reportCycle(r.cycle, log);
     efforts = r.efforts;
-    for (const c of r.changes) {
-      if (blockKeys.has(c.key) || cascaded.some(x => x.key === c.key)) continue;
-      // A cascade into another roll-up parent is not applied in v1 (N-06 rule 2): it is reported.
-      if (candidate.find(t => t.key === c.key)?.datesFromChildren) {
-        notMoved.add(c.key);
-        log.record(c.key, ['plan'], { synced: false, error: 'not moved: it takes its dates from its sub-tasks; move its block' });
-        continue;
-      }
-      cascaded.push(c);
-    }
+    // A cascade into another task or story parent moves that parent's block (N-06 rule 2).
+    const expanded = expandParentCascades(r.changes, all, todayIso(), blockKeys);
+    reportEpicsNotMoved(expanded.epics, log);
+    for (const c of expanded.changes) if (!cascaded.some(x => x.key === c.key)) cascaded.push(c);
   }
   const cascadeRemaining = cascaded.slice(CASCADE_BATCH_LIMIT).map(c => c.key);
   const now = cascaded.slice(0, CASCADE_BATCH_LIMIT);

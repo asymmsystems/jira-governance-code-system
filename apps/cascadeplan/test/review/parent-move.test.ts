@@ -114,7 +114,7 @@ describe('Parent and sub-task moves at db08009', () => {
     expect(putsTo('TEST-3')).toHaveLength(1);              // its due date went to Jira
   });
 
-  it('GAP PM-02: a cascade into a parent writes the parent\'s record and Jira due date, but moves none of its sub-tasks, so the parent stays in violation', async () => {
+  it('PM-02 (N-06 rule 2): a cascade into a parent moves its sub-tasks as a block; the parent bar, its link and its Jira due date agree', async () => {
     // TEST-1 predecessor, TEST-4 parent that depends on TEST-1, TEST-5 sub-task of TEST-4.
     issues = [jiraIssue(1, task), jiraIssue(4, task), jiraIssue(5, subtask, 4)];
     const w = weeks[5].weekKey;
@@ -126,13 +126,12 @@ describe('Parent and sub-task moves at db08009', () => {
     const a = await entry('TEST-1');
     await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { startDate: add(start, 7), endDate: add(start, 9) }, expectedVersion: a.version }, storage);
 
-    expect(putsTo('TEST-4').length).toBeGreaterThan(0);    // the parent's own Jira due date is written
-    expect(putsTo('TEST-5')).toHaveLength(0);               // the sub-task is not moved
+    expect(putsTo('TEST-5')).toEqual([JSON.stringify({ fields: { duedate: add(start, 12) } })]); // the sub-task moved 7 days
     const plan = await getProjectPlan('TEST', storage);
     const parent = plan.tasks.find(t => t.key === 'TEST-4')!;
-    expect(parent.startDate).toBe(add(start, 3));           // the bar shows the sub-task dates, unchanged
-    expect(parent.dependency!.isViolated).toBe(true);
-    expect(jiraDue['TEST-4']).not.toBe(parent.endDate);     // Jira due date of the parent disagrees with its bar
+    expect(parent).toMatchObject({ startDate: add(start, 10), endDate: add(start, 12), datesFromChildren: true });
+    expect(parent.dependency!.isViolated).toBeFalsy();
+    expect(jiraDue['TEST-4']).toBe(parent.endDate);         // DEC-6: the parent's Jira due date is its new end
   });
 
   it('PM-04 (N-06 rule 4): a parent with no schedule entry of its own is on the timeline when its sub-task is', async () => {

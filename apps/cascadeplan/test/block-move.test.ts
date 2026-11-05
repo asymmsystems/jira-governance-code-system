@@ -6,7 +6,7 @@
 
 /** N-05, ADR-003: a task or story moves with its sub-tasks as one block; DEC-6 for its due date. */
 import { planBlockMove, rollUpAfter, blockState } from '../src/domain/block-move';
-import { getProjectPlan, moveTaskGroup, updateWbsTask, setGlobalStorageProvider, setSleepForTests, getTimelineWeeks } from '../src/index';
+import { getProjectPlan, moveTaskGroup, updateWbsTask, setGlobalStorageProvider, setSleepForTests, getTimelineWeeks, expandParentCascades } from '../src/index';
 import { setPermissionCheckerForTests, allowAllPermissions } from '../src/security/write-permissions';
 import { PlanStore } from '../src/storage/plan-store';
 import { ValidationError } from '../src/validation';
@@ -53,6 +53,29 @@ describe('planBlockMove (ADR-003 rules)', () => {
     ]);
     expect(planBlockMove([{ key: 'A-3', startDate: '2026-11-01', endDate: '2026-11-05', status: 'IN_PROGRESS' }], -3, '2026-11-05').fixed[0].state).toBe('in-progress');
     expect(blockState({ key: 'x', startDate: '2026-11-01', progress: 0 })).toBe('not-started');
+  });
+});
+
+describe('expandParentCascades (N-06 rule 2)', () => {
+  const tasks: any[] = [
+    { key: 'P', startDate: '2026-11-02', endDate: '2026-11-13', datesFromChildren: true, hierarchyLevel: 0 },
+    { key: 'S1', parentKey: 'P', startDate: '2026-11-02', endDate: '2026-11-06', status: 'NOT_STARTED' },
+    { key: 'S2', parentKey: 'P', startDate: '2026-11-09', endDate: '2026-11-13', status: 'COMPLETED' },
+    { key: 'E', startDate: '2026-11-02', endDate: '2026-11-20', datesFromChildren: true, isEpic: true, hierarchyLevel: 1 },
+    { key: 'L', startDate: '2026-11-02', endDate: '2026-11-04' }
+  ];
+  it('turns a parent change into its block, keeps leaf changes, and returns epics unmoved', () => {
+    const r = expandParentCascades([
+      { key: 'P', toStart: '2026-11-09', toEnd: '2026-11-20' },
+      { key: 'E', toStart: '2026-11-09', toEnd: '2026-11-27' },
+      { key: 'L', toStart: '2026-11-05', toEnd: '2026-11-07' }
+    ], tasks, '2026-11-05');
+    expect(r.changes).toEqual([{ key: 'S1', toStart: '2026-11-09', toEnd: '2026-11-13' }, { key: 'L', toStart: '2026-11-05', toEnd: '2026-11-07' }]);
+    expect(r.epics).toEqual(['E']);
+  });
+  it('never changes an excluded key (the task the user moved)', () => {
+    const r = expandParentCascades([{ key: 'P', toStart: '2026-11-09', toEnd: '2026-11-20' }], tasks, '2026-11-05', new Set(['S1']));
+    expect(r.changes).toEqual([]);
   });
 });
 
