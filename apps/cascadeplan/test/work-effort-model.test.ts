@@ -63,6 +63,8 @@ describe('WorkEffort model in the resolvers (B-28)', () => {
       if (url.includes('/user/assignable/search')) return { status: 200, json: async () => USERS };
       if (url.includes('?fields=issuelinks')) return { status: 200, json: async () => ({ fields: { issuelinks: [] } }) };
       if (options?.method === 'POST' && url.endsWith('/issueLink')) return { status: 201, json: async () => ({}) };
+      // A sub-task create (a second person is a contributor through a real Jira sub-task, ADR-004).
+      if (options?.method === 'POST' && url.endsWith('/rest/api/3/issue')) return { status: 201, json: async () => ({ id: '90', key: 'TEST-90' }) };
       return { status: 204, json: async () => ({}) };
     });
   });
@@ -112,7 +114,7 @@ describe('WorkEffort model in the resolvers (B-28)', () => {
     await seed({ 'TEST-5': { startWeek: weeks[2].weekKey, spanWeeks: 1 } });
     await plan();
     await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-5', updates: { contributors: [{ accountId: 'acc-2' }] } as any });
-    expect((await recordOf(storage, 'TEST-5')).parties).toEqual([{ workEffortId: 'TEST-5', partyId: 'acc-2', roleTypeId: 'CONTRIBUTOR', fromDate: today }]);
+    expect((await recordOf(storage, 'TEST-5')).parties).toEqual([{ workEffortId: 'TEST-5', partyId: 'acc-2', roleTypeId: 'CONTRIBUTOR', fromDate: today, subtaskKey: 'TEST-90' }]);
     USERS[1].displayName = 'Bo Chen-Smith';
     expect((await plan()).tasks.find(t => t.key === 'TEST-5')!.contributingResources).toEqual(['Bo Chen-Smith']);
     USERS[1].displayName = 'Bo Chen';

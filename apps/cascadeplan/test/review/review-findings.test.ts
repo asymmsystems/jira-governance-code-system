@@ -199,7 +199,7 @@ describe('D3 shared dates: concurrency', () => {
     expect(calls('PUT', /\/issue\/TEST-1$/)).toEqual([]);
   });
 
-  it('FINDING R-04: a conflict after the Jira link is created hides the Jira write (jiraSync.writes is empty)', async () => {
+  it('R-04: on a conflict, no Jira link is created (F-07)', async () => {
     const key = 'cp:TEST:we:2';
     const realSwap = storage.swap.bind(storage);
     let bumped = false;
@@ -215,11 +215,11 @@ describe('D3 shared dates: concurrency', () => {
     const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2', expectedVersion: v,
       updates: { dependency: { predecessorKey: 'TEST-1', predecessorId: 'TEST-1', triggerPercent: 50, isTriggerSatisfied: false } } }, storage);
     expect(res.conflict).toBe(true);
-    expect(calls('POST', /\/rest\/api\/3\/issueLink$/).length).toBe(1);
+    expect(calls('POST', /\/rest\/api\/3\/issueLink$/)).toEqual([]);
     expect(res.jiraSync.writes).toEqual([]);
   });
 
-  it('FINDING R-05: a conflict after a second person is added leaves a new Jira sub-task that the user is not told about', async () => {
+  it('R-05: on a conflict, no Jira sub-task is created for a second person (F-07)', async () => {
     const key = 'cp:TEST:we:2';
     const realSwap = storage.swap.bind(storage);
     let bumped = false;
@@ -235,11 +235,11 @@ describe('D3 shared dates: concurrency', () => {
     const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2', expectedVersion: v,
       updates: { contributors: [{ accountId: 'acc-9' }] } as any }, storage);
     expect(res.conflict).toBe(true);
-    expect(calls('POST', /\/rest\/api\/3\/issue$/).length).toBe(1);
+    expect(calls('POST', /\/rest\/api\/3\/issue$/)).toEqual([]);
     expect(res.jiraSync.writes).toEqual([]);
   });
 
-  it('FINDING R-06: a sub-task DELETE runs before the version check that later refuses the update', async () => {
+  it('R-06: on a conflict, no sub-task is deleted (F-07)', async () => {
     const key = 'cp:TEST:we:2';
     const realSwap = storage.swap.bind(storage);
     let bumped = false;
@@ -255,7 +255,7 @@ describe('D3 shared dates: concurrency', () => {
     const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2', expectedVersion: v,
       updates: { removeSubtaskAction: { subtaskKey: 'TEST-77', action: 'delete' } } as any }, storage);
     expect(res.conflict).toBe(true);
-    expect(calls('DELETE', /\/rest\/api\/3\/issue\/TEST-77$/).length).toBe(1);
+    expect(calls('DELETE', /\/rest\/api\/3\/issue\/TEST-77$/)).toEqual([]);
     expect(res.jiraSync.writes).toEqual([]);
   });
 
@@ -369,7 +369,7 @@ describe('Jira sync honesty (D2, D8)', () => {
     expect(calls('POST', /\/rest\/api\/3\/issue$/)).toEqual([]);
   });
 
-  it('FINDING R-15: a cycle through a second (imported Jira) link passes validation, a Jira link is created, then the update throws', async () => {
+  it('R-15 (part, F-07): a cycle through a second (imported Jira) link is refused before any Jira link is created', async () => {
     // TEST-2 waits for TEST-3 (stored, first link) and is blocked by TEST-1 in Jira (imported, second link).
     const store = new PlanStore(storage, 'TEST', 'TEST');
     const e2 = (await store.loadEntries()).get('TEST-2')!;
@@ -381,7 +381,7 @@ describe('Jira sync honesty (D2, D8)', () => {
     await expect(updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', expectedVersion: v1,
       updates: { dependency: { predecessorKey: 'TEST-2', predecessorId: 'TEST-2', triggerPercent: 100, isTriggerSatisfied: false } } }, storage))
       .rejects.toThrow(/cycle/i);
-    expect(calls('POST', /\/rest\/api\/3\/issueLink$/).length).toBe(1);
+    expect(calls('POST', /\/rest\/api\/3\/issueLink$/)).toEqual([]);
   });
 });
 

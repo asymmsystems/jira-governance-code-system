@@ -131,7 +131,7 @@ describe('F-03: each batch item sees the due dates the earlier items wrote', () 
   });
 });
 
-describe('F-07: Jira writes before the version check that the plan does not list', () => {
+describe('F-07: no Jira write before the version check', () => {
   async function seedOwnedLink(): Promise<void> {
     const w = weeks[5];
     const store = new PlanStore(storage, 'TEST', 'TEST');
@@ -148,31 +148,38 @@ describe('F-07: Jira writes before the version check that the plan does not list
     await other.putEntry('TEST-2', '2', { ...cur, startDate: add(start, 4) }, cur.version);
   }
 
-  it('GAP FX-02: removing a dependency DELETEs the owned Jira link (index.ts:1624) before putEntry; the conflict hides it', async () => {
+  it('FX-02: on a conflict, removing a dependency deletes no Jira link', async () => {
     await seedOwnedLink();
-    override = async (url, opts) => {
-      if (opts?.method === 'DELETE' && url === '/rest/api/3/issueLink/900') { await bumpByAnotherUser(); return { status: 204, json: async () => ({}) }; }
-      return undefined;
-    };
-    const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2', updates: { dependency: null } as any }, storage);
-    expect(calls('DELETE', /issueLink\/900$/)).toHaveLength(1); // the Jira link is gone
-    expect(res.conflict).toBe(true);                             // the update was refused
-    expect(res.jiraSync.writes).toEqual([]);                     // and the Changes panel shows nothing
+    const stale = (await entry('TEST-2')).version;
+    await bumpByAnotherUser();
+    mockRequestJira.mockClear();
+    const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2', expectedVersion: stale, updates: { dependency: null } as any }, storage);
+    expect(res.conflict).toBe(true);
+    expect(calls('DELETE', /issueLink\/900$/)).toEqual([]);
+    expect(res.jiraSync.writes).toEqual([]);
   });
 
-  it('GAP FX-03: "unassign" of a contributor sub-task PUTs to Jira (index.ts:1691) before putEntry; the conflict hides it', async () => {
+  it('FX-03: on a conflict, a contributor sub-task is not unassigned', async () => {
     await seedOwnedLink();
-    override = async (url, opts) => {
-      if (opts?.method === 'PUT' && url === '/rest/api/3/issue/TEST-77') { await bumpByAnotherUser(); return { status: 204, json: async () => ({}) }; }
-      return undefined;
-    };
-    const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2',
+    const stale = (await entry('TEST-2')).version;
+    await bumpByAnotherUser();
+    mockRequestJira.mockClear();
+    const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2', expectedVersion: stale,
       updates: { contributors: [], removeSubtaskAction: { subtaskKey: 'TEST-77', action: 'unassign' } } as any }, storage);
-    expect(calls('PUT', /issue\/TEST-77$/)).toHaveLength(1);
-    expect(JSON.parse(mockRequestJira.mock.calls.find(([u, o]) => String(u).endsWith('TEST-77') && o?.method === 'PUT')![1].body))
-      .toEqual({ fields: { assignee: null } });
     expect(res.conflict).toBe(true);
+    expect(calls('PUT', /issue\/TEST-77$/)).toEqual([]);
     expect(res.jiraSync.writes).toEqual([]);
+  });
+
+  it('FX-02/03 without a conflict: the link delete and the unassign run after the save, and are reported', async () => {
+    await seedOwnedLink();
+    mockRequestJira.mockClear();
+    const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2',
+      updates: { dependency: null, contributors: [], removeSubtaskAction: { subtaskKey: 'TEST-77', action: 'unassign' } } as any }, storage);
+    expect(res.ok).toBe(true);
+    expect(calls('DELETE', /issueLink\/900$/)).toHaveLength(1);
+    expect(calls('PUT', /issue\/TEST-77$/)).toHaveLength(1);
+    expect(res.jiraSync.writes.map((w: any) => w.fields[0])).toEqual(expect.arrayContaining(['issuelink', 'unassign']));
   });
 });
 

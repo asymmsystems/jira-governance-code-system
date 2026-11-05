@@ -95,6 +95,21 @@ describe('BL-2: the real Jira permission check', () => {
   });
 });
 
+describe('N-11 L2: a dependency exists only as a Jira link', () => {
+  it('when Jira refuses the link, the dependency is not added and nothing changes', async () => {
+    granted = { EDIT_ISSUES: [10001, 10002], SCHEDULE_ISSUES: [10001, 10002], LINK_ISSUES: [10001, 10002] };
+    const store = new PlanStore(storage, 'TEST', 'TEST');
+    const before = (await store.loadEntries()).get('TEST-2')!;
+    // TEST-2's link to TEST-1 has no Jira link yet. The fake Jira answers 200 (not 201) to POST /issueLink.
+    const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2', expectedVersion: before.version,
+      updates: { dependency: { predecessorKey: 'TEST-1', predecessorId: '10001', triggerPercent: 50, isTriggerSatisfied: false } } }, storage);
+    expect(res).toMatchObject({ ok: false, error: 'link_refused' });
+    const after = (await new PlanStore(storage, 'TEST', 'TEST').loadEntries()).get('TEST-2')!;
+    expect(after.dependencies || []).toEqual(before.dependencies || []);
+    expect(after.startDate).toBe(before.startDate);
+  });
+});
+
 describe('BL-2: every resolver has a permission rule', () => {
   it('src/index.ts registers resolvers only through define(), which needs a rule', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.ts'), 'utf8');

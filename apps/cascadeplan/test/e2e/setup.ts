@@ -61,6 +61,11 @@ w.__jira = async (url: string, opts: any) => {
     }
     return ok({}, 204);
   }
+  // Jira creates an issue link with 201 (a dependency exists only as a Jira link, ADR-004).
+  if (method === 'POST' && url.endsWith('/rest/api/3/issueLink')) {
+    localStorage.setItem('__harness_jira_writes', JSON.stringify([...writes(), `${method} ${url} ${opts.body || ''}`]));
+    return ok({}, 201);
+  }
   // The harness user is a project administrator, so a plan approver (BL-2).
   if (url.includes('/rest/api/3/mypermissions')) return ok({ permissions: { ADMINISTER_PROJECTS: { havePermission: true }, ADMINISTER: { havePermission: false } } });
   // The harness user holds every permission on every issue (BL-2 bulk permission check).

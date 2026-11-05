@@ -1582,6 +1582,87 @@ export function applyAcceptedDueDate(
 }
 
 /**
+ * The Jira writes of one task update, run after its record is saved (F-07). A dependency exists only
+ * as a Jira link (ADR-004): when Jira refuses the link, the record is put back and nothing else is
+ * written. The link id and new sub-task keys Jira returns are stored with a second versioned write.
+ */
+async function applyPlannedJiraWrites(
+  store: PlanStore, projectKey: string, target: WbsTask, savedEntry: StoredEntry, previous: StoredEntry | undefined,
+  plan: { link?: { predecessorKey: string }; removeLinkIds: string[]; newSubtasks: Array<{ accountId: string; summary: string }>;
+    subtaskAction?: { subtaskKey: string; action: 'delete' | 'unassign' | 'keep' } },
+  log: SyncLog
+): Promise<{ ok: true; entry: StoredEntry } | { ok: false; result: any }> {
+  let entry: any = { ...savedEntry };
+  let changed = false;
+  if (plan.link) {
+    const mirror = await mirrorDependencyToJira(target.key, plan.link.predecessorKey);
+    log.record(target.key, ['issuelink'], { synced: mirror.linked, error: mirror.error || 'Jira did not create the link' });
+    if (!mirror.linked) {
+      const { issueKey: _k, issueId: _i, version: _v, ...prior } = (previous || {}) as any;
+      await store.putEntry(target.key, target.id, stripJiraOwnedFields(prior), savedEntry.version);
+      return { ok: false, result: { ok: false, success: false, error: 'link_refused', jiraSync: log.report(),
+        message: `Jira did not create the link from ${plan.link.predecessorKey} to ${target.key}, so the dependency was not added and nothing was changed.` } };
+    }
+    if (mirror.created && mirror.linkId) {
+      entry.dependencies = (entry.dependencies || []).map((d: TaskDependency) =>
+        (d.predecessorKey === plan.link!.predecessorKey ? { ...d, jiraLinkId: mirror.linkId } : d));
+      entry.dependency = entry.dependencies[0] || null;
+      changed = true;
+    }
+  }
+  for (const linkId of plan.removeLinkIds) {
+    log.record(target.key, ['issuelink'], { synced: await removeMirroredLink(linkId), error: 'Jira did not delete the link' });
+  }
+  if (plan.newSubtasks.length) {
+    const caller = getJiraCaller();
+    for (const s of plan.newSubtasks) {
+      let subtaskKey: string | undefined;
+      for (const stType of ['Sub-task', 'Subtask']) {
+        try {
+          const subRes = await caller.requestJira(route`/rest/api/3/issue`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fields: { project: { key: projectKey }, parent: { key: target.key }, summary: s.summary,
+              issuetype: { name: stType }, assignee: { accountId: s.accountId } } })
+          });
+          if (subRes && subRes.status === 201) {
+            subtaskKey = String((await subRes.json()).key);
+            log.record(subtaskKey, ['create'], { synced: true });
+            break;
+          }
+        } catch {}
+      }
+      // A person is a contributor only through a real Jira sub-task (ADR-004).
+      entry.contributors = (entry.contributors || []).flatMap((c: any) =>
+        (c.accountId === s.accountId && !c.subtaskKey ? (subtaskKey ? [{ ...c, subtaskKey }] : []) : [c]));
+      if (!subtaskKey) log.record(target.key, ['contributor'], { synced: false, error: 'Jira did not create the sub-task, so the person was not added' });
+      changed = true;
+    }
+  }
+  if (plan.subtaskAction && plan.subtaskAction.action !== 'keep') {
+    const { subtaskKey, action } = plan.subtaskAction;
+    const caller = getJiraCaller();
+    if (action === 'delete') {
+      const delRes = await caller.requestJira(route`/rest/api/3/issue/${subtaskKey}`, { method: 'DELETE' });
+      const ok = !!delRes && (delRes.status === 204 || delRes.status === 200);
+      log.record(subtaskKey, ['delete'], { synced: ok, error: ok ? undefined : 'Jira did not delete the subtask' });
+    } else if (action === 'unassign') {
+      const unassignRes = await caller.requestJira(route`/rest/api/3/issue/${subtaskKey}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: { assignee: null } })
+      });
+      const ok = !!unassignRes && (unassignRes.status === 200 || unassignRes.status === 204);
+      log.record(subtaskKey, ['unassign'], { synced: ok, error: ok ? undefined : 'Jira did not unassign the subtask' });
+    }
+  }
+  if (changed) {
+    const { issueKey: _k, issueId: _i, version, ...rest } = entry;
+    const put = await store.putEntry(target.key, target.id, stripJiraOwnedFields(rest), version);
+    if (put.ok) entry = put.entry;
+  }
+  return { ok: true, entry };
+}
+
+/**
  * Updates a task schedule, dates, effort, progress, or resource.
  */
 export async function updateWbsTask(
@@ -1668,6 +1749,13 @@ export async function updateWbsTask(
   // Fractional progress-threshold dependency validation and Jira link mirroring
   // Links are time-bound WORK_EFF_PRECEDENCY associations: a new link replaces the active set and the
   // others end; only the Jira links CascadePlan created are removed from Jira (B-28, NF-02).
+  // Jira writes this update needs, made only after the target record is saved (F-07).
+  const jiraPlan: {
+    link?: { predecessorKey: string };
+    removeLinkIds: string[];
+    newSubtasks: Array<{ accountId: string; summary: string }>;
+    subtaskAction?: { subtaskKey: string; action: 'delete' | 'unassign' | 'keep' };
+  } = { removeLinkIds: [], newSubtasks: [] };
   if (sanitized.dependency !== undefined) {
     const update = sanitized.dependency && sanitized.dependency.predecessorKey ? sanitized.dependency : null;
     if (update) {
@@ -1681,19 +1769,13 @@ export async function updateWbsTask(
     const keep = update ? activeNow.find(d => d.predecessorKey === update.predecessorKey) : undefined;
     let next: TaskDependency | null = null;
     if (update) {
-      const mirror = await mirrorDependencyToJira(targetTask.key, update.predecessorKey);
-      log.record(targetTask.key, ['issuelink'], { synced: mirror.linked, error: mirror.error || 'Jira did not create the link' });
+      // The Jira link is created only after the record is saved under its version check (F-07).
       next = { predecessorId: update.predecessorKey, predecessorKey: update.predecessorKey, triggerPercent: update.triggerPercent, isTriggerSatisfied: false };
-      // Remember the link only when CascadePlan created it (or already owned it).
-      const ownedLinkId = mirror.created ? mirror.linkId : (keep ? keep.jiraLinkId : undefined);
-      if (ownedLinkId) next.jiraLinkId = ownedLinkId;
+      if (keep?.jiraLinkId) next.jiraLinkId = keep.jiraLinkId;
+      jiraPlan.link = { predecessorKey: update.predecessorKey };
     }
     const applied = applyLinkUpdate(activeNow, currentEntry?.endedLinks || targetTask.endedLinks || [], next, todayIso());
-    for (const gone of applied.removed) {
-      if (gone.jiraLinkId) {
-        log.record(targetTask.key, ['issuelink'], { synced: await removeMirroredLink(gone.jiraLinkId), error: 'Jira did not delete the link' });
-      }
-    }
+    jiraPlan.removeLinkIds = applied.removed.filter(g => g.jiraLinkId).map(g => g.jiraLinkId as string);
     sanitized.dependencies = applied.dependencies;
     sanitized.endedLinks = applied.endedLinks;
     sanitized.dependency = applied.dependencies[0] || null;
@@ -1706,35 +1788,11 @@ export async function updateWbsTask(
       const prevMatch = prev.find(p => p.accountId === c.accountId);
       let subtaskKey = c.subtaskKey || prevMatch?.subtaskKey;
       if (!subtaskKey) {
-        // Criterion 1: Adding a second person creates a Jira sub-task assigned to that person
+        // Criterion 1: adding a second person creates a Jira sub-task assigned to that person,
+        // after the record is saved (F-07); until then the person has no sub-task key.
         const userObj = live.users.find(u => u.accountId === c.accountId);
         const displayName = userObj ? userObj.displayName : c.accountId;
-        const subtaskSummary = formatSubtaskSummary(targetTask.summary, displayName);
-        const caller = getJiraCaller();
-        for (const stType of ['Sub-task', 'Subtask']) {
-          try {
-            const body: any = {
-              fields: {
-                project: { key: projectKey },
-                parent: { key: targetTask.key },
-                summary: subtaskSummary,
-                issuetype: { name: stType },
-                assignee: { accountId: c.accountId }
-              }
-            };
-            const subRes = await caller.requestJira(route`/rest/api/3/issue`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(body)
-            });
-            if (subRes && subRes.status === 201) {
-              const subData = await subRes.json();
-              subtaskKey = String(subData.key);
-              log.record(subtaskKey, ['create'], { synced: true });
-              break;
-            }
-          } catch {}
-        }
+        jiraPlan.newSubtasks.push({ accountId: c.accountId, summary: formatSubtaskSummary(targetTask.summary, displayName) });
       }
       nextContributors.push({
         accountId: c.accountId,
@@ -1749,24 +1807,7 @@ export async function updateWbsTask(
 
   if ((updates as any).removeSubtaskAction) {
     const { subtaskKey, action } = (updates as any).removeSubtaskAction as { subtaskKey: string; action: 'delete' | 'unassign' | 'keep' };
-    if (subtaskKey && action) {
-      const caller = getJiraCaller();
-      if (action === 'delete') {
-        const delRes = await caller.requestJira(route`/rest/api/3/issue/${subtaskKey}`, {
-          method: 'DELETE'
-        });
-        const ok = delRes && (delRes.status === 204 || delRes.status === 200);
-        log.record(subtaskKey, ['delete'], { synced: ok, error: ok ? undefined : 'Jira did not delete the subtask' });
-      } else if (action === 'unassign') {
-        const unassignRes = await caller.requestJira(route`/rest/api/3/issue/${subtaskKey}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fields: { assignee: null } })
-        });
-        const ok = unassignRes && (unassignRes.status === 200 || unassignRes.status === 204);
-        log.record(subtaskKey, ['unassign'], { synced: ok, error: ok ? undefined : 'Jira did not unassign the subtask' });
-      }
-    }
+    if (subtaskKey && action) jiraPlan.subtaskAction = { subtaskKey, action };
   }
 
   // Derive schedule dates and weeks dynamically
@@ -1884,8 +1925,11 @@ export async function updateWbsTask(
   }
 
   // KVS first, with a version check per record; Jira only after the target record is saved.
-  const targetPut = await store.putEntry(targetTask.key, targetTask.id, stripJiraOwnedFields(scheduleMap[targetTask.key]), baseVersion);
+  let targetPut = await store.putEntry(targetTask.key, targetTask.id, stripJiraOwnedFields(scheduleMap[targetTask.key]), baseVersion);
   if (!targetPut.ok) return conflictResult(targetTask.key);
+  const saved = await applyPlannedJiraWrites(store, projectKey, targetTask, targetPut.entry as any, entries.get(targetTask.key), jiraPlan, log);
+  if (!saved.ok) return saved.result;
+  targetPut = { ok: true, entry: saved.entry } as any;
   const datesSaved: Array<{ key: string; id?: string; entry: Partial<WbsTask> }> = [];
   if (SHARED_DATE_FIELDS.some(f => (sanitized as Record<string, unknown>)[f] !== undefined)) {
     datesSaved.push({ key: targetTask.key, id: targetTask.id, entry: targetPut.entry });
