@@ -9,6 +9,7 @@
  * change to a child writes nothing to the parent issue in Jira (B-23, INV-03, INV-11).
  */
 
+import { setPermissionCheckerForTests, allowAllPermissions } from '../src/security/write-permissions';
 import { updateWbsTask, setGlobalStorageProvider, getTimelineWeeks, setSleepForTests } from '../src/index';
 import { MemStorage } from './helpers/mem-storage';
 
@@ -70,7 +71,9 @@ describe('write transparency (B-23)', () => {
     expect(res.jiraSync.writes).toEqual([{ key: 'TEST-2', fields: ['summary', 'duedate'], ok: true, changes: [
       { field: 'summary', from: 'Sub', to: 'Renamed' },
       { field: 'due date', from: null, to: weeks[6].endDate }
-    ] }]);
+    ] },
+    // DEC-6: the parent's due date follows its new roll-up end, listed with its old value.
+    { key: 'TEST-1', fields: ['duedate'], ok: true, changes: [{ field: 'due date', from: expect.any(String), to: weeks[6].endDate }] }]);
   });
 
   it('a due date the issue screen rejects is reported as not written, while the rest is written', async () => {
@@ -85,9 +88,21 @@ describe('write transparency (B-23)', () => {
     expect(puts.map(p => Object.keys(p.body.fields))).toEqual([['summary', 'duedate'], ['summary']]);
   });
 
-  it('moving a sub-task writes nothing to its parent issue in Jira (INV-03)', async () => {
+  it('moving a sub-task writes only the new roll-up end to its parent issue in Jira (DEC-6)', async () => {
     const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2', updates: { startDate: weeks[6].startDate, endDate: weeks[7].endDate } });
-    expect(puts.filter(p => p.url.endsWith('/issue/TEST-1'))).toEqual([]);
-    expect(res.jiraSync.writes.map((w: any) => w.key)).toEqual(['TEST-2']);
+    expect(puts.filter(p => p.url.endsWith('/issue/TEST-1'))).toEqual([{ url: '/rest/api/3/issue/TEST-1', body: { fields: { duedate: weeks[7].endDate } } }]);
+    expect(res.jiraSync.writes.map((w: any) => w.key)).toEqual(['TEST-2', 'TEST-1']);
+  });
+
+  it('DEC-6: a parent the user may not schedule keeps its due date; the sub-task move stands and the parent write is reported', async () => {
+    setPermissionCheckerForTests(async (ids, perms) => new Map(perms.map(p => [p, new Set(ids.filter(id => id !== '1' && id !== 'TEST-1'))])));
+    try {
+      const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2', updates: { startDate: weeks[6].startDate, endDate: weeks[7].endDate } });
+      expect(puts.filter(p => p.url.endsWith('/issue/TEST-1'))).toEqual([]);
+      expect(res.jiraSync.writes.find((w: any) => w.key === 'TEST-1')).toMatchObject({ ok: false, error: expect.stringContaining('not written: you lack Edit issues, Schedule issues') });
+      expect(res.jiraSync.writes.find((w: any) => w.key === 'TEST-2').ok).toBe(true);
+    } finally {
+      setPermissionCheckerForTests(allowAllPermissions);
+    }
   });
 });

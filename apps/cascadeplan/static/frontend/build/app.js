@@ -7724,6 +7724,45 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return /^[0-9]$/.test(key) ? Number(key) * 10 : null;
   }
 
+  // src/domain/block-move.ts
+  var ISO = /^\d{4}-\d{2}-\d{2}$/;
+  function addDays2(iso2, days) {
+    return new Date(Date.parse(`${iso2}T00:00:00Z`) + days * 864e5).toISOString().slice(0, 10);
+  }
+  function blockState(m) {
+    if (!m.startDate || !ISO.test(m.startDate)) return "undated";
+    if (m.status === "COMPLETED") return "done";
+    if (m.status === "IN_PROGRESS" || (m.progress || 0) > 0) return "in-progress";
+    return "not-started";
+  }
+  function planBlockMove(members, days, today) {
+    const changes = [];
+    const fixed = [];
+    for (const m of members) {
+      const state = blockState(m);
+      if (state === "undated") {
+        fixed.push({ key: m.key, state, reason: "undated: stays in the backlog" });
+        continue;
+      }
+      if (state === "done") {
+        fixed.push({ key: m.key, state, reason: "done: its dates record finished work" });
+        continue;
+      }
+      const fromStart = m.startDate;
+      const fromEnd = m.endDate && ISO.test(m.endDate) ? m.endDate : fromStart;
+      if (state === "not-started") {
+        changes.push({ key: m.key, state, fromStart, fromEnd, toStart: addDays2(fromStart, days), toEnd: addDays2(fromEnd, days) });
+        continue;
+      }
+      let toEnd = addDays2(fromEnd, days);
+      if (toEnd < today) toEnd = today;
+      if (toEnd < fromStart) toEnd = fromStart;
+      if (toEnd === fromEnd) fixed.push({ key: m.key, state, reason: "in progress: start kept, end not before today" });
+      else changes.push({ key: m.key, state, fromStart, fromEnd, toStart: fromStart, toEnd });
+    }
+    return { changes, fixed };
+  }
+
   // src/ui/time-scale.ts
   var ZOOMS = [
     { id: "day", label: "Day", dayPx: 40, snap: "day" },
@@ -8008,7 +8047,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       window.open(fullUrl, "_blank", "noopener,noreferrer");
     }
   }
-  var UNDOABLE = /* @__PURE__ */ new Set(["updateWbsTask", "unscheduleTask", "scheduleBacklogTask", "batchUpdateTasks"]);
+  var UNDOABLE = /* @__PURE__ */ new Set(["updateWbsTask", "unscheduleTask", "scheduleBacklogTask", "batchUpdateTasks", "moveTaskGroup"]);
   var undoStack = new UndoStack(20);
   var pendingUndo = null;
   var replayingUndo = false;
@@ -8056,6 +8095,30 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   function findAnyTask(key) {
     return findTask(key) || (currentPlan?.backlogTasks || []).find((t) => t.key === key);
+  }
+  function isBlockParent(task) {
+    return !!task && task.datesFromChildren === true && !task.isEpic && (task.hierarchyLevel ?? 0) === 0;
+  }
+  function blockPlan(key, days) {
+    const members = (currentPlan.tasks || []).concat(currentPlan.backlogTasks || []).filter((t) => t.parentKey === key);
+    return planBlockMove(members, days, todayIso());
+  }
+  async function moveBlock(key, days) {
+    if (!days) return;
+    const plan = blockPlan(key, days);
+    if (plan.changes.length === 0) {
+      showFlag({ text: `Nothing in ${key} can move: ${plan.fixed.map((f) => `${f.key} ${f.reason}`).join("; ")}.` });
+      drawTimeline(true);
+      return;
+    }
+    const expectedVersions = {};
+    for (const c of plan.changes) expectedVersions[c.key] = findAnyTask(c.key) && findAnyTask(c.key).version || 0;
+    const res = await callResolver2("moveTaskGroup", { taskId: key, days, expectedVersions });
+    if (res && Array.isArray(res.tasks)) applyPlanInPlace(res);
+    else await loadProjectPlan();
+    if (res && res.ok && plan.fixed.length) {
+      announce(`Moved ${key} by ${days} days. Kept: ${plan.fixed.map((f) => `${f.key} (${f.reason})`).join(", ")}.`);
+    }
   }
   async function replayUndo(ops) {
     replayingUndo = true;
@@ -11651,6 +11714,12 @@ Click to manage or assign.`;
         e.preventDefault();
         startBarPointerEdit(e, key, "move", hit);
       });
+    } else if (!isEpic && isBlockParent(task)) {
+      hit.addEventListener("mousedown", (e) => {
+        if (e.button !== 0 || e.target.closest(".bar-link-port")) return;
+        e.preventDefault();
+        startBarPointerEdit(e, key, "move", hit);
+      });
     }
     if (!isEpic) {
       for (const side of ["right", "left"]) {
@@ -11793,6 +11862,9 @@ Click to manage or assign.`;
       if (s === shift && timeline.drag) return;
       shift = s;
       const moves = previewMoves(currentPlan.tasks, key, mode === "right" ? 0 : s, mode === "left" ? 0 : s, today);
+      if (isBlockParent(task) && s !== 0) {
+        for (const c of blockPlan(key, s).changes) moves.set(c.key, { start: c.toStart, end: c.toEnd });
+      }
       const mine = moves.get(key);
       const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
       const isConflict = conflict.hasConflict;
@@ -11893,6 +11965,11 @@ Click to manage or assign.`;
         timeline.drag = null;
         positionBarHit(hit, task);
         drawTimeline();
+        return;
+      }
+      if (isBlockParent(task)) {
+        timeline.drag = null;
+        await moveBlock(key, shift);
         return;
       }
       const enforceDeps = isEnforceDepsEnabled();
@@ -12200,7 +12277,7 @@ Click to manage or assign.`;
       return;
     }
     if (e.key === " " && task.startDate && !(task.isEpic || task.hierarchyLevel === 1)) {
-      if (task.datesFromChildren) {
+      if (task.datesFromChildren && !isBlockParent(task)) {
         e.preventDefault();
         announce(`${task.key} follows the dates of its children. Move a child instead.`);
         return;
@@ -12214,6 +12291,9 @@ Click to manage or assign.`;
   }
   function showShiftPreview(key, startShift, endShift, label2) {
     const moves = previewMoves(currentPlan.tasks, key, startShift, endShift, todayIso());
+    if (isBlockParent(findTask(key)) && startShift === endShift && startShift !== 0) {
+      for (const c of blockPlan(key, startShift).changes) moves.set(c.key, { start: c.toStart, end: c.toEnd });
+    }
     const mine = moves.get(key);
     timeline.drag = { key, moves, label: label2(mine) };
     const strip = document.getElementById("writePreview");
@@ -12271,6 +12351,13 @@ Click to manage or assign.`;
     const strip = document.getElementById("writePreview");
     if (strip) strip.hidden = true;
     const task = findTask(key);
+    if (isBlockParent(task)) {
+      clearShiftPreview();
+      if (state.start !== state.end) announce(`${key} takes its dates from its sub-tasks, so it cannot be resized. Move it instead.`);
+      else await moveBlock(key, state.start);
+      focusGridCell();
+      return;
+    }
     const enforceDeps = isEnforceDepsEnabled();
     let finalStart = mine.start;
     let finalEnd = mine.end;
@@ -12392,6 +12479,10 @@ Click to manage or assign.`;
     const anchorRect = (barHit || btn).getBoundingClientRect();
     const barAnchor = { getBoundingClientRect: () => anchorRect };
     closeBarToolbar();
+    if ((action === "earlier" || action === "later") && isBlockParent(task)) {
+      await moveBlock(key, action === "later" ? 7 : -7);
+      return;
+    }
     if ((action === "earlier" || action === "later") && task.datesFromChildren) {
       showFlag({ text: `${key} follows the dates of its children. Move a child instead.` });
       return;

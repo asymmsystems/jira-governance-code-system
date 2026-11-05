@@ -46,6 +46,7 @@ import { weeklyHours } from '../ui/weekly-hours';
 import { emptyState, showLinkHint } from '../ui/first-run';
 import { toggleKey, rangeKeys, moveSelectionBy, progressFromDigit } from '../ui/selection';
 import { addDays as addDaysIso } from '../domain/schedule-engine';
+import { planBlockMove } from '../domain/block-move';
 import { shouldAutoCompact, ZOOMS, zoomById, zoomStep, mondayOf, initialRange, rangeDays, extendRange, edgeToExtend, headerCells, gridLines, anchorScroll, dateAt } from '../ui/time-scale';
 import { buildTableViewRows, toggleTableView } from '../ui/table-view';
 import { findMatchingTasks, findNextMatch, formatMatchCount, isSearchShortcut } from '../ui/in-app-search';
@@ -121,7 +122,7 @@ function openJiraIssueInNewTab(issueKey, event) {
 }
 
 // Undo (B-14): every undoable write is recorded with its inverse when the next plan arrives.
-const UNDOABLE = new Set(['updateWbsTask', 'unscheduleTask', 'scheduleBacklogTask', 'batchUpdateTasks']);
+const UNDOABLE = new Set(['updateWbsTask', 'unscheduleTask', 'scheduleBacklogTask', 'batchUpdateTasks', 'moveTaskGroup']);
 const undoStack = new UndoStack(20);
 let pendingUndo = null;
 let replayingUndo = false;
@@ -180,6 +181,36 @@ function settleUndo() {
 
 function findAnyTask(key) {
   return findTask(key) || (currentPlan?.backlogTasks || []).find(t => t.key === key);
+}
+
+/** A task or story whose bar is the roll-up of its sub-tasks: it moves as a block (ADR-003, N-05). */
+function isBlockParent(task) {
+  return !!task && task.datesFromChildren === true && !task.isEpic && (task.hierarchyLevel ?? 0) === 0;
+}
+
+/** The planned block move of a parent by `days`: each sub-task by its state (src/domain/block-move.ts). */
+function blockPlan(key, days) {
+  const members = (currentPlan.tasks || []).concat(currentPlan.backlogTasks || []).filter(t => t.parentKey === key);
+  return planBlockMove(members, days, todayIso());
+}
+
+/** Moves a parent and its sub-tasks as one block; one Undo restores them all. */
+async function moveBlock(key, days) {
+  if (!days) return;
+  const plan = blockPlan(key, days);
+  if (plan.changes.length === 0) {
+    showFlag({ text: `Nothing in ${key} can move: ${plan.fixed.map(f => `${f.key} ${f.reason}`).join('; ')}.` });
+    drawTimeline(true);
+    return;
+  }
+  const expectedVersions = {};
+  for (const c of plan.changes) expectedVersions[c.key] = (findAnyTask(c.key) && findAnyTask(c.key).version) || 0;
+  const res = await callResolver('moveTaskGroup', { taskId: key, days, expectedVersions });
+  if (res && Array.isArray(res.tasks)) applyPlanInPlace(res);
+  else await loadProjectPlan();
+  if (res && res.ok && plan.fixed.length) {
+    announce(`Moved ${key} by ${days} days. Kept: ${plan.fixed.map(f => `${f.key} (${f.reason})`).join(', ')}.`);
+  }
 }
 
 /** Applies undo or redo operations in order, with each task's current version. */
@@ -4304,6 +4335,13 @@ function createBarHit(task, isEpic) {
       e.preventDefault();
       startBarPointerEdit(e, key, 'move', hit);
     });
+  } else if (!isEpic && isBlockParent(task)) {
+    // A roll-up parent moves with its sub-tasks; it is never resized (ADR-003 section 7).
+    hit.addEventListener('mousedown', (e) => {
+      if (e.button !== 0 || e.target.closest('.bar-link-port')) return;
+      e.preventDefault();
+      startBarPointerEdit(e, key, 'move', hit);
+    });
   }
   if (!isEpic) {
     for (const side of ['right', 'left']) {
@@ -4474,6 +4512,9 @@ function startBarPointerEdit(e, key, mode, hit) {
     if (s === shift && timeline.drag) return;
     shift = s;
     const moves = previewMoves(currentPlan.tasks, key, mode === 'right' ? 0 : s, mode === 'left' ? 0 : s, today);
+    if (isBlockParent(task) && s !== 0) {
+      for (const c of blockPlan(key, s).changes) moves.set(c.key, { start: c.toStart, end: c.toEnd });
+    }
     const mine = moves.get(key);
 
     const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
@@ -4584,6 +4625,11 @@ function startBarPointerEdit(e, key, mode, hit) {
       timeline.drag = null;
       positionBarHit(hit, task);
       drawTimeline();
+      return;
+    }
+    if (isBlockParent(task)) {
+      timeline.drag = null;
+      await moveBlock(key, shift);
       return;
     }
 
@@ -4925,7 +4971,7 @@ function onGridKey(e) {
     return;
   }
   if (e.key === ' ' && task.startDate && !(task.isEpic || task.hierarchyLevel === 1)) {
-    if (task.datesFromChildren) {
+    if (task.datesFromChildren && !isBlockParent(task)) {
       e.preventDefault();
       announce(`${task.key} follows the dates of its children. Move a child instead.`);
       return;
@@ -4941,6 +4987,10 @@ function onGridKey(e) {
 /** Shows the live preview for day shifts of a task, as a drag does (B-13, B-23). */
 function showShiftPreview(key, startShift, endShift, label) {
   const moves = previewMoves(currentPlan.tasks, key, startShift, endShift, todayIso());
+  // A block parent's preview also shows where each sub-task goes (ADR-003).
+  if (isBlockParent(findTask(key)) && startShift === endShift && startShift !== 0) {
+    for (const c of blockPlan(key, startShift).changes) moves.set(c.key, { start: c.toStart, end: c.toEnd });
+  }
   const mine = moves.get(key);
   timeline.drag = { key, moves, label: label(mine) };
   const strip = document.getElementById('writePreview');
@@ -5004,6 +5054,14 @@ async function onMoveKey(e) {
   if (strip) strip.hidden = true;
 
   const task = findTask(key);
+  if (isBlockParent(task)) {
+    // A roll-up parent moves as a block and is never resized (ADR-003 section 7).
+    clearShiftPreview();
+    if (state.start !== state.end) announce(`${key} takes its dates from its sub-tasks, so it cannot be resized. Move it instead.`);
+    else await moveBlock(key, state.start);
+    focusGridCell();
+    return;
+  }
   const enforceDeps = isEnforceDepsEnabled();
   let finalStart = mine.start;
   let finalEnd = mine.end;
@@ -5139,6 +5197,10 @@ async function toolbarAction(action, key, btn) {
   const anchorRect = (barHit || btn).getBoundingClientRect();
   const barAnchor = { getBoundingClientRect: () => anchorRect };
   closeBarToolbar();
+  if ((action === 'earlier' || action === 'later') && isBlockParent(task)) {
+    await moveBlock(key, action === 'later' ? 7 : -7);
+    return;
+  }
   if ((action === 'earlier' || action === 'later') && task.datesFromChildren) {
     showFlag({ text: `${key} follows the dates of its children. Move a child instead.` });
     return;

@@ -82,6 +82,19 @@ describe('buildUndoEntry', () => {
     expect(actionLabel('updateWbsTask', { taskId: 'A', updates: { progress: 60 } }, e)).toBe('Set A to 60%');
     expect(actionLabel('updateWbsTask', { taskId: 'A', updates: { summary: 'x' } }, e)).toBe('Changed A');
     expect(actionLabel('reorderWbsTasks', { taskId: 'A' }, e)).toBe('Changed A');
+    expect(actionLabel('moveTaskGroup', { taskId: 'A' }, e)).toBe('Moved A with its sub-tasks (2 issues changed)');
+  });
+
+  it('a block move undoes as the sub-tasks\' dates; the roll-up parent gets no date write (ADR-003)', () => {
+    const before = plan([{ ...task('P', '2026-11-03', '2026-11-14'), datesFromChildren: true },
+      { ...task('S1', '2026-11-03', '2026-11-07'), parentKey: 'P' }, { ...task('S2', '2026-11-10', '2026-11-14'), parentKey: 'P' }]);
+    const after = plan([{ ...task('P', '2026-11-10', '2026-11-21'), datesFromChildren: true },
+      { ...task('S1', '2026-11-10', '2026-11-14'), parentKey: 'P' }, { ...task('S2', '2026-11-17', '2026-11-21'), parentKey: 'P' }]);
+    const entry = buildUndoEntry(snapshotPlan(before), snapshotPlan(after), 'P')!;
+    expect(entry.restore).toEqual([
+      { kind: 'update', key: 'S1', updates: { startDate: '2026-11-03', endDate: '2026-11-07' } },
+      { kind: 'update', key: 'S2', updates: { startDate: '2026-11-10', endDate: '2026-11-14' } }
+    ]);
   });
 });
 

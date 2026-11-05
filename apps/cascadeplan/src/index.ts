@@ -40,6 +40,7 @@ import { evaluateEffort, cascade, ScheduleEffort, ScheduleLink, addDays } from '
 import { StorageProvider } from './storage/plan-repository';
 import { PlanStore, StoredEntry, sequenceBetween } from './storage/plan-store';
 import { BatchStorage } from './storage/batch-storage';
+import { planBlockMove, BlockChange } from './domain/block-move';
 import { logFailure } from './logger';
 import { IssuePermission, deniedIssues, describeMissing, forbiddenResult, PermissionCheckError, ForbiddenError, requireIssuePermissions } from './security/write-permissions';
 import {
@@ -2057,6 +2058,11 @@ export async function updateWbsTask(
     if (notMoved.has(s.key)) continue;
     applyAcceptedDueDate(live, s.key, s.updates, await syncTaskToJira(s.key, s.updates, log, plan.tasks.find(t => t.key === s.key)));
   }
+  // DEC-6: a parent whose roll-up end changed gets that end as its Jira due date.
+  const movedDates = new Map<string, { startDate?: string; endDate?: string }>();
+  if (sanitized.startDate || sanitized.endDate) movedDates.set(targetTask.key, { startDate: sanitized.startDate || targetTask.startDate, endDate: sanitized.endDate || targetTask.endDate });
+  for (const s of pendingSyncs) if (!notMoved.has(s.key)) movedDates.set(s.key, { startDate: s.updates.startDate, endDate: s.updates.endDate });
+  await followParentDueDates([...plan.tasks, ...(plan.backlogTasks || [])], movedDates, log, live);
 
   const result = { ok: true, jiraSync: log.report(), cascadeRemaining, cascadeSkipped: [...notMoved], writtenIssueIds: writtenIssueIds(log, plan.tasks) };
   // A batch builds one plan at the end, so its items skip building their own (F-17).
@@ -2672,6 +2678,177 @@ export async function saveProjectMilestone(
 }
 
 /**
+ * DEC-6 (adopted Option A): when a planner action changes the roll-up end of a parent, the parent's
+ * Jira due date follows it, written as the user. A parent the user may not edit or schedule keeps
+ * its due date, and the write is reported "not written" (the sub-task move itself stands).
+ */
+async function followParentDueDates(
+  before: WbsTask[], moved: Map<string, { startDate?: string; endDate?: string }>, log: SyncLog, live: LiveData
+): Promise<void> {
+  if (moved.size === 0) return;
+  const after = withRollUps(before.map(t => (moved.has(t.key) ? { ...t, ...moved.get(t.key) } : t)));
+  const parents = new Set<string>();
+  for (const key of moved.keys()) for (const a of ancestorKeys(key, before)) if (!moved.has(a)) parents.add(a);
+  const targets: Array<{ key: string; id?: string; endDate: string; was: WbsTask }> = [];
+  for (const key of parents) {
+    const was = before.find(t => t.key === key);
+    const now = after.find(t => t.key === key);
+    if (!was || !now || !now.datesFromChildren || !isIsoDate(now.endDate) || was.endDate === now.endDate) continue;
+    if (String(was.jiraDueDate || '').slice(0, 10) === now.endDate) continue;
+    targets.push({ key, id: was.id, endDate: now.endDate as string, was });
+  }
+  if (targets.length === 0) return;
+  const denied = new Map((await deniedIssues(targets, ['EDIT_ISSUES', 'SCHEDULE_ISSUES'])).map(d => [d.key, d.missing]));
+  for (const t of targets) {
+    const change = describeJiraChanges(['duedate'], t.was, { endDate: t.endDate });
+    const missing = denied.get(t.key);
+    if (missing) {
+      log.record(t.key, ['duedate'], { synced: false, error: `not written: you lack ${describeMissing(missing)} on this parent in Jira` }, change);
+      continue;
+    }
+    applyAcceptedDueDate(live, t.key, { endDate: t.endDate }, await syncTaskToJira(t.key, { endDate: t.endDate }, log, t.was));
+  }
+}
+
+/** Sub-tasks moved by one block move at most; a larger block is refused with a plain message. */
+export const BLOCK_MOVE_LIMIT = 25;
+
+/**
+ * Moves a task or story and its sub-tasks as one block by `days` (ADR-003, N-05). Each sub-task
+ * moves by its state (src/domain/block-move.ts). All or nothing: every sub-task that will change is
+ * checked for the user's Jira permissions and its record version before any write, and when Jira
+ * refuses a sub-task's due date, the sub-tasks already moved are put back. Then the parent's Jira
+ * due date follows the new roll-up end (DEC-6), and successors outside the block are cascaded.
+ */
+export async function moveTaskGroup(
+  payload: { projectKey: string; projectId?: string; planId?: string; taskId: string; days: number; expectedVersions?: Record<string, number>; reconcileIds?: string[] },
+  storageProvider?: StorageProvider
+): Promise<any> {
+  const { projectKey, projectId, taskId, days } = payload;
+  assertIssueKey(taskId, 'taskId');
+  if (!Number.isInteger(days) || days === 0 || Math.abs(days) > 3660) throw new ValidationError('days', 'days must be a whole number of days, not 0, at most 3660 either way');
+  const expected = payload.expectedVersions;
+  if (expected !== undefined && (typeof expected !== 'object' || expected === null || Array.isArray(expected) ||
+      Object.keys(expected).length > 100 || Object.entries(expected).some(([k, v]) => !/^[A-Z][A-Z0-9_]+-\d+$/.test(k) || !Number.isInteger(v) || (v as number) < 0))) {
+    throw new ValidationError('expectedVersions', 'expectedVersions must map issue keys to whole numbers of at least 0');
+  }
+  const storage = new BatchStorage(resolveStorage(storageProvider));
+  const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
+  const log = new SyncLog();
+  const live = await loadLive(projectKey, reconcileIdsOf(payload.reconcileIds));
+  const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId);
+  const all = [...plan.tasks, ...(plan.backlogTasks || [])];
+  const parent = all.find(t => t.key === taskId || t.id === taskId);
+  if (!parent) throw new ValidationError('taskId', `${taskId} is not in project ${projectKey}`);
+  // DEC-5b: epics keep "move a child instead" in v1.
+  if (parent.isEpic || (parent.hierarchyLevel ?? 0) >= 1) throw new ValidationError('taskId', `${parent.key} is an epic. Move one of its work items instead.`);
+  const members = all.filter(t => t.parentKey === parent.key);
+  if (!parent.datesFromChildren || members.length === 0) throw new ValidationError('taskId', `${parent.key} has no dated sub-tasks. Move it directly.`);
+  const { changes, fixed } = planBlockMove(members, days, todayIso());
+  const block = { moved: changes, fixed };
+  if (changes.length === 0) {
+    return Object.assign(plan, { ok: true, jiraSync: log.report(), block, message: `Nothing in ${parent.key} can move: ${fixed.map(f => `${f.key} ${f.reason}`).join('; ')}.` });
+  }
+  if (changes.length > BLOCK_MOVE_LIMIT) {
+    throw new ValidationError('taskId', `${parent.key} has ${changes.length} sub-tasks to move; at most ${BLOCK_MOVE_LIMIT} move in one step. Move some of them on their own first.`);
+  }
+
+  // All or nothing, before any write: permissions as the user, then every record version.
+  const idByKey = new Map(all.map(t => [t.key, t.id]));
+  const denied = await deniedIssues(changes.map(c => ({ key: c.key, id: idByKey.get(c.key) })), ['EDIT_ISSUES', 'SCHEDULE_ISSUES']);
+  if (denied.length) {
+    return forbiddenResult(`Nothing moved: you cannot change ${denied[0].key}, a sub-task of ${parent.key}: your Jira role lacks ${describeMissing(denied[0].missing)}.`);
+  }
+  const store = openStore(storage, projectKey, projectId, planId);
+  const entries = await store.loadEntries();
+  for (const c of changes) {
+    const v = entries.get(c.key)?.version ?? 0;
+    if (expected && expected[c.key] !== undefined && expected[c.key] !== v) return conflictResult(c.key);
+  }
+  const activeWeeks = plan.weeks || getDefaultWeeks();
+  const written: Array<{ change: BlockChange; previous: Partial<WbsTask> | undefined; version: number }> = [];
+  const putBack = async () => {
+    for (const w of written.reverse()) {
+      const { issueKey: _k, issueId: _i, version: _v, ...prev } = (w.previous || {}) as any;
+      if (w.previous) await store.putEntry(w.change.key, idByKey.get(w.change.key), stripJiraOwnedFields(prev), w.version);
+      else await store.deleteEntry(w.change.key);
+    }
+  };
+  for (const c of changes) {
+    const cur = entries.get(c.key);
+    const next = stripJiraOwnedFields({ ...(cur || {}), startDate: c.toStart, endDate: c.toEnd, ...gridFor(activeWeeks, c.toStart, c.toEnd) });
+    const put = await store.putEntry(c.key, idByKey.get(c.key), next, cur?.version ?? 0);
+    if (!put.ok) { await putBack(); return conflictResult(c.key); }
+    written.push({ change: c, previous: cur, version: put.entry.version });
+  }
+
+  // Jira: each sub-task's due date and shared start. A refusal puts every sub-task back.
+  const synced: BlockChange[] = [];
+  for (const c of changes) {
+    const before = all.find(t => t.key === c.key);
+    const res: any = await syncTaskToJira(c.key, { startDate: c.toStart, endDate: c.toEnd }, log, before);
+    applyAcceptedDueDate(live, c.key, { startDate: c.toStart, endDate: c.toEnd }, res);
+    if (!(res.synced && res.fields.includes('duedate'))) {
+      for (const s of synced) {
+        applyAcceptedDueDate(live, s.key, { startDate: s.fromStart, endDate: s.fromEnd },
+          await syncTaskToJira(s.key, { startDate: s.fromStart, endDate: s.fromEnd }, log, { startDate: s.toStart, endDate: s.toEnd, jiraDueDate: s.toEnd }));
+      }
+      await putBack();
+      const reason = (res.reasons && res.reasons.duedate) || res.error || 'Jira did not save the due date';
+      return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId), {
+        ok: false, success: false, error: 'due_date_refused', jiraSync: log.report(), block,
+        message: `${reason} for ${c.key}, so nothing in ${parent.key} moved.`
+      });
+    }
+    synced.push(c);
+  }
+
+  // DEC-6 and the cascade, from the parent and from each moved sub-task, outside the block.
+  const moved = new Map(changes.map(c => [c.key, { startDate: c.toStart, endDate: c.toEnd }]));
+  const blockKeys = new Set([parent.key, ...members.map(m => m.key)]);
+  const candidate = withRollUps(all.map(t => (moved.has(t.key) ? { ...t, ...moved.get(t.key) } : t)));
+  const inputs = engineInputs(candidate);
+  let efforts = inputs.efforts;
+  const cascaded: Array<{ key: string; toStart: string; toEnd: string }> = [];
+  const notMoved = new Set<string>();
+  for (const root of [parent.key, ...changes.map(c => c.key), ...ancestorKeys(parent.key, all)]) {
+    const r = cascade(efforts, inputs.links, root, todayIso());
+    reportCycle(r.cycle, log);
+    efforts = r.efforts;
+    for (const c of r.changes) {
+      if (blockKeys.has(c.key) || cascaded.some(x => x.key === c.key)) continue;
+      // A cascade into another roll-up parent is not applied in v1 (N-06 rule 2): it is reported.
+      if (candidate.find(t => t.key === c.key)?.datesFromChildren) {
+        notMoved.add(c.key);
+        log.record(c.key, ['plan'], { synced: false, error: 'not moved: it takes its dates from its sub-tasks; move its block' });
+        continue;
+      }
+      cascaded.push(c);
+    }
+  }
+  const cascadeRemaining = cascaded.slice(CASCADE_BATCH_LIMIT).map(c => c.key);
+  const now = cascaded.slice(0, CASCADE_BATCH_LIMIT);
+  for (const d of await deniedIssues(now.map(c => ({ key: c.key, id: idByKey.get(c.key) })), ['EDIT_ISSUES', 'SCHEDULE_ISSUES'])) {
+    notMoved.add(d.key);
+    log.record(d.key, ['plan'], { synced: false, error: `not moved: you lack ${describeMissing(d.missing)} on this issue in Jira` });
+  }
+  for (const c of now) {
+    if (notMoved.has(c.key)) continue;
+    const cur = entries.get(c.key);
+    const put = await store.putEntry(c.key, idByKey.get(c.key), stripJiraOwnedFields({ ...(cur || {}), startDate: c.toStart, endDate: c.toEnd, ...gridFor(activeWeeks, c.toStart, c.toEnd) }), cur?.version ?? 0);
+    if (!put.ok) { notMoved.add(c.key); log.record(c.key, ['plan'], { synced: false, error: 'not moved: someone else changed it; move the task again' }); continue; }
+    applyAcceptedDueDate(live, c.key, { startDate: c.toStart, endDate: c.toEnd },
+      await syncTaskToJira(c.key, { startDate: c.toStart, endDate: c.toEnd }, log, all.find(t => t.key === c.key)));
+    moved.set(c.key, { startDate: c.toStart, endDate: c.toEnd });
+  }
+  await followParentDueDates(all, moved, log, live);
+
+  const result = { ok: true, jiraSync: log.report(), block, cascadeRemaining, cascadeSkipped: [...notMoved] };
+  const out = Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId), result);
+  return Object.assign(out, { writtenIssueIds: writtenIssueIds(log, out.tasks.concat(out.backlogTasks || [])) });
+}
+
+/**
  * Retrieves the available named plans for a project (UX-05).
  */
 export async function getProjectPlans(
@@ -3012,6 +3189,7 @@ export const RESOLVER_RULES: Record<string, ResolverRule> = {
   updateWbsTask: 'issue-checked',
   batchUpdateTasks: 'issue-checked',
   continueCascade: 'issue-checked',
+  moveTaskGroup: 'issue-checked',
   scheduleBacklogTask: 'issue-checked',
   unscheduleTask: 'issue-checked',
   reorderWbsTasks: 'issue-checked',
@@ -3049,6 +3227,7 @@ define('getProjectPlan', async (req) => getProjectPlan(extractProjectKey(req), u
 define('createProjectPlan', async (req) => createProjectPlan(withProject(req)));
 define('deleteProjectPlan', async (req) => deleteProjectPlan(withProject(req)));
 define('continuePlanCopy', async (req) => continuePlanCopy(withProject(req)));
+define('moveTaskGroup', async (req) => moveTaskGroup({ ...withProject(req), reconcileIds: reconcileIdsOf(req.payload?.reconcileIds) }));
 define('continuePlanDelete', async (req) => continuePlanDelete(withProject(req)));
 define('renameProjectPlan', async (req) => renameProjectPlan(withProject(req)));
 define('batchUpdateTasks', async (req) => batchUpdateTasks(withProject(req)));
