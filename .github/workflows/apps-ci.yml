@@ -1,0 +1,78 @@
+# Copyright (c) 2026 Asymm Systems. All rights reserved.
+#
+# @author Fahim Farook
+#
+# Clean-clone build of every Forge app (ADR-007): install the shared UI package first, then the
+# app, then type-check, test and lint. CascadePlan also rebuilds its UI bundle and fails when the
+# committed bundle differs.
+name: Apps CI
+
+on:
+  push:
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - '.github/workflows/apps-ci.yml'
+  pull_request:
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - '.github/workflows/apps-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apps-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [cascadeplan, definitionguard, ledgerseal, fourrealities]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install the shared UI package (builds dist through prepare)
+        working-directory: packages/asymm-jira-ui
+        run: npm ci --no-audit --no-fund
+
+      - name: Install the app
+        working-directory: apps/${{ matrix.app }}
+        run: |
+          npm ci --no-audit --no-fund
+          test -f node_modules/@asymm/jira-ui/dist/index.js
+
+      - name: Install the UI bundler
+        if: matrix.app == 'cascadeplan'
+        working-directory: apps/cascadeplan/tools
+        run: npm ci --no-audit --no-fund
+
+      - name: Type check
+        working-directory: apps/${{ matrix.app }}
+        run: npx --no-install tsc --noEmit
+
+      - name: Tests with coverage thresholds
+        working-directory: apps/${{ matrix.app }}
+        run: npm test
+
+      - name: Rebuild the UI bundle and compare with the committed one
+        if: matrix.app == 'cascadeplan'
+        working-directory: apps/cascadeplan
+        run: |
+          npm run build
+          git diff --exit-code -- static/frontend/build
+
+      - name: Forge lint
+        working-directory: apps/${{ matrix.app }}
+        run: npx --yes @forge/cli@15.0.0 lint

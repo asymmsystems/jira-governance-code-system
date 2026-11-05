@@ -232,6 +232,8 @@ Licensing: when `req.context.license` exists and is not active, every write reso
 | `static/frontend/build/app.js` | esbuild bundle, rebuilt from the app's own `node_modules` | |
 
 - **Shared UI package** (ADR-007): `@asymm/jira-ui` is a `file:` dependency with `install-links=true`, built by its own `prepare` script. Install order: `npm ci` in `packages/asymm-jira-ui`, then in the app, then in `tools`.
+- **CI** (`.github/workflows/apps-ci.yml`): every app from a clean checkout, in that install order: type check, tests with coverage thresholds, `forge lint`, and for CascadePlan a rebuild of the bundle that must equal the committed one.
+- **Deploy**: from a clean checkout of the commit, `forge build -t <short commit SHA>`, then `forge deploy -e <environment> -t <short commit SHA>`, so `forge deploy list` shows which commit each environment runs.
 - **Canvas layers.** The link ports and any other control that must be visible sit in a layer above the canvas (N-10). A mouse click on a bar shows the designed selected outline; the system focus ring is drawn only after keyboard input (N-09).
 
 ## 9. Decisions
