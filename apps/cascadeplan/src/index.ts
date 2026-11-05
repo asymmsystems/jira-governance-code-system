@@ -39,6 +39,7 @@ import { formatSubtaskSummary } from './ui/second-person';
 import { evaluateEffort, cascade, ScheduleEffort, ScheduleLink, addDays } from './domain/schedule-engine';
 import { StorageProvider } from './storage/plan-repository';
 import { PlanStore, StoredEntry, sequenceBetween } from './storage/plan-store';
+import { logFailure } from './logger';
 import { IssuePermission, deniedIssues, describeMissing, forbiddenResult, PermissionCheckError, ForbiddenError, requireIssuePermissions } from './security/write-permissions';
 import {
   ValidationError,
@@ -165,7 +166,7 @@ export async function verifyIssueInProject(issueKey: unknown, projectKey: string
       projectOfIssue = data?.fields?.project?.key;
       issueId = data?.id !== undefined ? String(data.id) : undefined;
     }
-  } catch {}
+  } catch (err) { logFailure('verifyIssueInProject', err); }
   if (projectOfIssue !== projectKey) {
     throw new ValidationError(field, `${issueKey} is not in project ${projectKey}`);
   }
@@ -526,7 +527,7 @@ export async function fetchProjectUsers(projectKey: string): Promise<JiraAssigna
         }
       }
     }
-  } catch {}
+  } catch (err) { logFailure('fetchProjectUsers', err); }
   return [UNASSIGNED_USER, ...realUsers];
 }
 
@@ -554,7 +555,7 @@ export async function fetchProjectEpics(projectKey: string): Promise<JiraEpicIte
         });
       }
     }
-  } catch {}
+  } catch (err) { logFailure('fetchProjectEpics', err); }
   return epics;
 }
 
@@ -567,6 +568,7 @@ export const MAX_PAGES = 10;
 export interface RawIssues {
   issues: any[];
   isLive: boolean;
+  status?: number; // Jira's HTTP status when the search failed (0 for no answer), F-21
   truncated?: { shown: number; total: number };
 }
 
@@ -585,7 +587,8 @@ export async function fetchRawIssues(projectKey: string): Promise<RawIssues> {
         ? await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100&nextPageToken=${token}`)
         : await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100`);
       if (!res || res.status !== 200) {
-        if (pages === 0) return { issues: [], isLive: false };
+        logFailure('fetchRawIssues', res || new Error('no answer'));
+        if (pages === 0) return { issues: [], isLive: false, status: res ? res.status : 0 };
         break;
       }
       const data = await res.json();
@@ -593,8 +596,9 @@ export async function fetchRawIssues(projectKey: string): Promise<RawIssues> {
       pages++;
       token = data.isLast ? undefined : data.nextPageToken;
     } while (token && pages < MAX_PAGES);
-  } catch {
-    if (pages === 0) return { issues: [], isLive: false };
+  } catch (err) {
+    logFailure('fetchRawIssues', err);
+    if (pages === 0) return { issues: [], isLive: false, status: 0 };
   }
   if (!token) return { issues, isLive: true };
   let total = issues.length;
@@ -605,7 +609,7 @@ export async function fetchRawIssues(projectKey: string): Promise<RawIssues> {
       body: JSON.stringify({ jql: `project = "${projectKey}"` })
     });
     if (res && res.status === 200) total = Math.max(total, Number((await res.json()).count) || total);
-  } catch {}
+  } catch (err) { logFailure('fetchRawIssues', err); }
   return { issues, isLive: true, truncated: { shown: issues.length, total } };
 }
 
@@ -848,7 +852,7 @@ export function mapLiveIssues(
 
       return { tasks, backlogTasks, isLive: true, truncated: raw.truncated };
     }
-  } catch {}
+  } catch (err) { logFailure('mapLiveIssues', err); }
 
   return { tasks: [], backlogTasks: [], isLive: false };
 }
@@ -997,6 +1001,7 @@ export async function getProjectPlan(
     hasEpic: live.hasEpic !== undefined ? live.hasEpic : (availableEpics.length > 0),
     lastUpdated: new Date().toISOString(),
     isLiveSynced: liveData.isLive,
+    jiraStatus: liveData.isLive ? undefined : (live.raw.status ?? 0),
     truncated: liveData.truncated,
     staleEntries,
     siteUrl: siteUrl || (process.env.JIRA_BASE_URL || undefined)
@@ -1188,7 +1193,7 @@ export async function createInlineTask(
         if (errStr.includes('issue type') || errStr.includes('issuetype')) {
           isIssueTypeError = true;
         }
-      } catch {}
+      } catch (err) { logFailure('createInlineTask', err); }
 
       if (isIssueTypeError) {
         const issueTypeMeta = await resolveProjectIssueType(projectKey, 'Task');
@@ -1212,7 +1217,7 @@ export async function createInlineTask(
         } else if (errJson.errors && Object.keys(errJson.errors).length > 0) {
           errMsg = Object.values(errJson.errors).join(', ');
         }
-      } catch {}
+      } catch (err) { logFailure('createInlineTask', err); }
       return { success: false, ok: false, error: errMsg, jiraSync: failedCreate(errMsg) };
     }
 
@@ -1301,7 +1306,7 @@ export async function createJiraEpic(
         if (errStr.includes('issue type') || errStr.includes('issuetype')) {
           isIssueTypeError = true;
         }
-      } catch {}
+      } catch (err) { logFailure('createJiraEpic', err); }
 
       if (isIssueTypeError) {
         const issueTypeMeta = await resolveProjectIssueType(projectKey, 'Epic');
@@ -1328,7 +1333,7 @@ export async function createJiraEpic(
         } else if (errJson.errors && Object.keys(errJson.errors).length > 0) {
           errMsg = Object.values(errJson.errors).join(', ');
         }
-      } catch {}
+      } catch (err) { logFailure('createJiraEpic', err); }
       return { success: false, ok: false, error: errMsg, jiraSync: failedCreate(errMsg) };
     }
 
@@ -1436,7 +1441,7 @@ async function syncTaskFields(
                 dropped = ['duedate'];
               }
             }
-          } catch {}
+          } catch (err) { logFailure('syncTaskFields', err); }
         }
 
         // Dedicated assignee fallback if resourceAccountId is set
@@ -1456,7 +1461,7 @@ async function syncTaskFields(
             if (assRes?.status >= 200 && assRes?.status < 300) {
               assigneeRecovered = true;
             }
-          } catch {}
+          } catch (err) { logFailure('syncTaskFields', err); }
         }
 
         if (res && res.status >= 200 && res.status < 300) {
@@ -1516,7 +1521,7 @@ async function syncTaskFields(
           statusReason = `No workflow transition leads to ${String(targetStatus).replace('_', ' ').toLowerCase()} from the current status`;
         }
       }
-    } catch {}
+    } catch (err) { logFailure('syncTaskFields', err); }
   }
 
   if (updates.status) {
@@ -1542,7 +1547,7 @@ async function findBlocksLinkId(successorKey: string, predecessorKey: string): P
         String(l.type?.name || '').toLowerCase() === 'blocks' && l.inwardIssue?.key === predecessorKey);
       return link ? String(link.id) : undefined;
     }
-  } catch {}
+  } catch (err) { logFailure('findBlocksLinkId', err); }
   return undefined;
 }
 
@@ -1651,7 +1656,7 @@ async function applyPlannedJiraWrites(
             log.record(subtaskKey, ['create'], { synced: true });
             break;
           }
-        } catch {}
+        } catch (err) { logFailure('applyPlannedJiraWrites', err); }
       }
       // A person is a contributor only through a real Jira sub-task (ADR-004).
       entry.contributors = (entry.contributors || []).flatMap((c: any) =>

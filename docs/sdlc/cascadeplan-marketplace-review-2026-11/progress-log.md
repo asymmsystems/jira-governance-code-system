@@ -151,3 +151,8 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 
 - **What changed:** `legacy-planner.js` calls `checkPlanApprover` once after the first plan load (`loadPlanApprover`), disables the create-plan input and button for non-approvers with a title that says who creates plans, redraws the plan list, and adds the clone, rename and delete buttons only for approvers. Plan switching is unchanged.
 - **Proof:** new `test/e2e/e2e_plan_approver_probe.py` with the harness switch `__harness_not_approver`: approver 1 action button and create enabled; non-approver 0 action buttons, create disabled, plan rows still listed. Harness 30/30 and 25/25; unit suite 792 passed.
+
+### F-21 (with M2). Failures are logged and shown with their real cause
+
+- **What changed:** new `src/logger.ts` (`logFailure(where, detail)`: "cascadeplan <where>: HTTP <status>" or the error name and code). All 14 empty `catch {}` blocks in `src/index.ts` log with their function name. `fetchRawIssues` returns `status` (0 for no answer) when the first page fails; `getProjectPlan` returns it as `jiraStatus`. The planner shows "You cannot browse this project in Jira, so CascadePlan cannot show its plan." for 401 and 403, "Jira is not reachable right now, so the plan cannot be shown. Click Retry in a moment." otherwise, and "A CascadePlan licence is required on this site. Ask your Jira administrator." for an inactive licence on load.
+- **Proof:** new `test/failure-states.test.ts` (403 carried and logged as "cascadeplan fetchRawIssues: HTTP 403"; no answer is status 0; the log line holds no error message text). Unit suite 795 passed, coverage thresholds met; `forge lint` clean; harness 30/30 and 25/25.

@@ -200,6 +200,7 @@ export interface ProjectPlanState {
   hasEpic?: boolean;                // Whether the project supports Epic issue type
   lastUpdated: string;
   isLiveSynced?: boolean;
+  jiraStatus?: number; // Jira's HTTP status when the issue search failed (0 for no answer), F-21
   siteUrl?: string;
   hiddenColumns?: string[];
   truncated?: { shown: number; total: number }; // more issues exist than were read (B-10)

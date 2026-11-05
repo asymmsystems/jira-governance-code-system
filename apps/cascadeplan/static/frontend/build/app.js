@@ -9350,6 +9350,14 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (errBanner) errBanner.style.display = "none";
     const plan = await callResolver2("getProjectPlan", { planId: activePlanId });
     if (loader) loader.style.display = "none";
+    if (plan && Array.isArray(plan.tasks) && plan.isLiveSynced === false) {
+      if (errBanner) {
+        errBanner.style.display = "flex";
+        const msg = document.getElementById("plannerErrorMsg");
+        if (msg) msg.textContent = plan.jiraStatus === 401 || plan.jiraStatus === 403 ? "You cannot browse this project in Jira, so CascadePlan cannot show its plan." : "Jira is not reachable right now, so the plan cannot be shown. Click Retry in a moment.";
+      }
+      return;
+    }
     if (plan && Array.isArray(plan.tasks)) {
       if (!planScope && plan.projectKey) {
         planScope = String(plan.projectKey);
@@ -9386,7 +9394,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       if (errBanner) {
         errBanner.style.display = "flex";
         const msg = document.getElementById("plannerErrorMsg");
-        if (msg) msg.textContent = "Unable to synchronize with Jira. Please verify your connection or click Retry.";
+        if (msg) msg.textContent = plan && plan.error === "license_required" ? "A CascadePlan licence is required on this site. Ask your Jira administrator." : plan && plan.message || "Unable to synchronize with Jira. Please verify your connection or click Retry.";
       }
     }
   }
