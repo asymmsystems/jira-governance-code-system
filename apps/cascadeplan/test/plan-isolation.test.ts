@@ -6,7 +6,8 @@
 
 /**
  * CascadePlan: named plans are isolated (UX-05). Every resolver reads and writes the plan named by
- * planId; a scenario plan never writes issue fields to Jira; a write to a deleted plan is refused;
+ * planId; a scenario plan never writes its schedule (the due date) to Jira, but its issue-field edits
+ * (summary, estimate, assignee, status, parent) sync to Jira as on the Main Plan; a write to a deleted plan is refused;
  * a read of an unknown plan falls back to the Main Plan.
  */
 
@@ -58,6 +59,12 @@ function jiraIssueWrites(): string[] {
   return mockRequestJira.mock.calls
     .filter(([url, opts]) => opts && ['PUT', 'POST', 'DELETE'].includes(opts.method) && /\/rest\/api\/3\/issue\//.test(String(url)))
     .map(([url, opts]) => `${opts.method} ${String(url)}`);
+}
+
+/** The issue fields of the last PUT on one issue, or undefined when nothing was written. */
+function jiraFieldsSent(key: string): Record<string, unknown> | undefined {
+  const puts = mockRequestJira.mock.calls.filter(([url, opts]) => opts?.method === 'PUT' && String(url) === `/rest/api/3/issue/${key}`);
+  return puts.length ? JSON.parse(puts[puts.length - 1][1].body).fields : undefined;
 }
 
 /** Every Main Plan key and value, to prove a scenario write left the Main Plan untouched. */
@@ -142,6 +149,44 @@ describe('named plan isolation (UX-05)', () => {
     const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { startDate: add(start, 1), endDate: add(start, 3) }, expectedVersion: v }, storage);
     expect(res.ok).toBe(true);
     expect(jiraIssueWrites()).toContain('PUT /rest/api/3/issue/TEST-1');
+    expect(jiraFieldsSent('TEST-1')).toMatchObject({ duedate: add(start, 3) });
+  });
+
+  it('issue-field edits on a scenario plan sync to Jira (summary, estimate, assignee, status, parent), the due date does not', async () => {
+    const base = mockRequestJira.getMockImplementation()!;
+    mockRequestJira.mockImplementation(async (routeStr: any, opts?: any) => {
+      if (String(routeStr).endsWith('/transitions') && !opts) {
+        return { status: 200, json: async () => ({ transitions: [{ id: '31', name: 'Done', to: { statusCategory: { key: 'done' } } }] }) };
+      }
+      return base(routeStr, opts);
+    });
+    const main = mainPlanSnapshot(storage);
+    const v = (await planEntry(storage, planB, 'TEST-1')).version;
+    const res: any = await updateWbsTask({ projectKey: 'TEST', planId: planB, taskId: 'TEST-1', expectedVersion: v,
+      updates: { summary: 'Renamed in Plan B', effortHours: 12, resourceAccountId: 'acc-7', status: 'COMPLETED', epicKey: 'TEST-9',
+        startDate: add(start, 1), endDate: add(start, 3) } }, storage);
+    expect(res.ok).toBe(true);
+    expect(jiraFieldsSent('TEST-1')).toEqual({
+      summary: 'Renamed in Plan B',
+      timetracking: { originalEstimate: '12h' },
+      parent: { key: 'TEST-9' },
+      assignee: { accountId: 'acc-7' }
+    });
+    expect(jiraIssueWrites()).toContain('POST /rest/api/3/issue/TEST-1/transitions');
+    // The new dates stay in Plan B; the Main Plan schedule is untouched.
+    expect(await planEntry(storage, planB, 'TEST-1')).toMatchObject({ startDate: add(start, 1), endDate: add(start, 3) });
+    expect(mainPlanSnapshot(storage)).toBe(main);
+  });
+
+  it('a date-only move on a scenario plan writes nothing to Jira', async () => {
+    const v = (await planEntry(storage, planB, 'TEST-2')).version;
+    await updateWbsTask({ projectKey: 'TEST', planId: planB, taskId: 'TEST-2', updates: { startDate: add(start, 1), endDate: add(start, 3) }, expectedVersion: v }, storage);
+    expect(jiraIssueWrites()).toEqual([]);
+  });
+
+  it('scheduleBacklogTask on a scenario plan syncs the estimate but not the due date', async () => {
+    await scheduleBacklogTask({ projectKey: 'TEST', planId: planB, taskId: 'TEST-8', startWeek: weeks[6].weekKey, spanWeeks: 1, effortHours: 8 }, storage);
+    expect(jiraFieldsSent('TEST-8')).toEqual({ timetracking: { originalEstimate: '8h' } });
   });
 
   it('batchUpdateTasks on a scenario plan updates that plan, returns it, and leaves the Main Plan alone', async () => {

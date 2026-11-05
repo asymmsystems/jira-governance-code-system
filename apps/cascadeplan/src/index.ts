@@ -317,11 +317,23 @@ export function openStore(storage: StorageProvider, projectKey: string, projectI
 }
 
 /**
- * True for the Main Plan. Only the Main Plan writes issue fields (due date, estimate, assignee, status,
- * summary, parent) back to Jira; a scenario plan keeps its dates and allocations in KVS only.
+ * True for the Main Plan. Only the Main Plan writes its schedule (the due date) to Jira; a scenario
+ * plan keeps its dates and allocations in KVS only.
  */
 export function isMainPlan(planId?: string): boolean {
   return !planId || planId === 'default';
+}
+
+/**
+ * The part of an edit that goes to Jira from this plan. Summary, estimate, assignee, status and parent
+ * describe the issue itself, so they are the same in every plan and sync from any plan. The due date
+ * is the plan's schedule, so it syncs from the Main Plan only.
+ */
+export function jiraUpdatesForPlan(planId: string | undefined, updates: Partial<WbsTask>): Partial<WbsTask> {
+  if (isMainPlan(planId)) return updates;
+  const { endDate, ...issueFields } = updates;
+  void endDate;
+  return issueFields;
 }
 
 /**
@@ -957,14 +969,12 @@ export async function scheduleBacklogTask(
   const put = await store.putEntry(taskId, issueId, entry, current ? current.version : 0);
   if (!put.ok) return conflictResult(taskId);
 
-  // Sync scheduled due date and effort back to Jira issue (Main Plan only)
+  // Sync the effort to Jira from any plan; the scheduled due date only from the Main Plan.
   const log = new SyncLog();
-  if (isMainPlan(planId)) {
-    await syncTaskToJira(taskId, {
-      endDate: entry.endDate,
-      effortHours
-    }, log);
-  }
+  await syncTaskToJira(taskId, jiraUpdatesForPlan(planId, {
+    endDate: entry.endDate,
+    effortHours
+  }), log);
 
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, undefined, planId), { ok: true, jiraSync: log.report() });
 }
@@ -1742,12 +1752,13 @@ export async function updateWbsTask(
     const put = await store.putEntry(key, idByKey.get(key), stripJiraOwnedFields(scheduleMap[key]), entries.get(key)?.version ?? 0);
     if (!put.ok) log.record(key, ['plan'], { synced: false, error: 'changed by someone else; not moved' });
   }
-  // Two-way sync: write-back changed fields to Jira. A scenario plan is a what-if: its dates and
-  // allocations stay in KVS and no issue field in Jira changes.
+  // Two-way sync: write-back changed fields to Jira. Issue fields (summary, estimate, assignee, status,
+  // parent) sync from any plan. A scenario plan is a what-if for the schedule: its dates, the cascade
+  // and allocations stay in KVS, so no due date in Jira changes.
   if (isMainPlan(planId)) {
     for (const s of pendingSyncs) await syncTaskToJira(s.key, s.updates, log, plan.tasks.find(t => t.key === s.key));
-    await syncTaskToJira(targetTask.key, sanitized, log, targetTask);
   }
+  await syncTaskToJira(targetTask.key, jiraUpdatesForPlan(planId, sanitized), log, targetTask);
 
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId),
     { ok: true, jiraSync: log.report(), cascadeRemaining });
