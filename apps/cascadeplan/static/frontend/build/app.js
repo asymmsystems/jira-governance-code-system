@@ -9155,6 +9155,25 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (countScenariosEl) countScenariosEl.textContent = String(scenarioCount);
     renderFilteredPlansList(plans, currentId);
   }
+  var planApprover = null;
+  async function loadPlanApprover() {
+    if (planApprover !== null) return planApprover;
+    const res = await callResolver("checkPlanApprover", {});
+    planApprover = !!(res && res.ok === true && res.isApprover === true);
+    applyPlanApproverToCreateForm();
+    if (currentPlan && Array.isArray(currentPlan.availablePlans)) renderFilteredPlansList(currentPlan.availablePlans, activePlanId);
+    return planApprover;
+  }
+  function applyPlanApproverToCreateForm() {
+    const nameInp = document.getElementById("newPlanNameInput");
+    const btn = document.getElementById("btnCreatePlan");
+    const allowed = planApprover === true;
+    for (const el2 of [nameInp, btn]) {
+      if (!el2) continue;
+      el2.disabled = !allowed;
+      el2.title = allowed ? "" : "Only plan approvers (project or Jira administrators, or an approver group) create plans.";
+    }
+  }
   function renderFilteredPlansList(plans, currentId) {
     const container = document.getElementById("plansListContainer");
     if (!container) return;
@@ -9221,8 +9240,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
           btnClone.disabled = false;
         }
       });
-      actions.appendChild(btnClone);
-      if (p.canDelete) {
+      if (planApprover === true) actions.appendChild(btnClone);
+      if (p.canDelete && planApprover === true) {
         const btnRename = document.createElement("button");
         btnRename.className = "btn btn-subtle btn-xs";
         btnRename.textContent = "\u270F\uFE0F";
@@ -9362,6 +9381,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       updateColumnManagerUI();
       renderPlan();
       settleUndo();
+      void loadPlanApprover();
     } else {
       if (errBanner) {
         errBanner.style.display = "flex";

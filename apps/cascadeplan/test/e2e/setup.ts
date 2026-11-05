@@ -69,7 +69,12 @@ w.__jira = async (url: string, opts: any) => {
     return ok({}, 201);
   }
   // The harness user is a project administrator, so a plan approver (BL-2).
-  if (url.includes('/rest/api/3/mypermissions')) return ok({ permissions: { ADMINISTER_PROJECTS: { havePermission: true }, ADMINISTER: { havePermission: false } } });
+  // Review switch __harness_not_approver: the user is not a plan approver (BL-2 step 8 check).
+  if (url.includes('/rest/api/3/mypermissions')) {
+    const approver = localStorage.getItem('__harness_not_approver') !== '1';
+    return ok({ permissions: { ADMINISTER_PROJECTS: { havePermission: approver }, ADMINISTER: { havePermission: false } } });
+  }
+  if (url.includes('/rest/api/3/myself')) return ok({ groups: { items: [] } });
   // The harness user holds every permission on every issue (BL-2 bulk permission check).
   if (method === 'POST' && url.endsWith('/permissions/check')) {
     const pp = JSON.parse(opts.body || '{}').projectPermissions?.[0] || {};

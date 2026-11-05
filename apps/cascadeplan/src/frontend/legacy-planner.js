@@ -1437,6 +1437,30 @@ function updatePlansUI(availablePlans = [], currentId = 'default') {
   renderFilteredPlansList(plans, currentId);
 }
 
+// Plan approver rights decide whether plan management is offered (BL-2 step 8). The server checks
+// every plan write again; this only avoids offering actions that would be refused.
+let planApprover = null;
+async function loadPlanApprover() {
+  if (planApprover !== null) return planApprover;
+  const res = await rawCallResolver('checkPlanApprover', {});
+  planApprover = !!(res && res.ok === true && res.isApprover === true);
+  applyPlanApproverToCreateForm();
+  // The list may have been drawn before the answer arrived.
+  if (currentPlan && Array.isArray(currentPlan.availablePlans)) renderFilteredPlansList(currentPlan.availablePlans, activePlanId);
+  return planApprover;
+}
+
+function applyPlanApproverToCreateForm() {
+  const nameInp = document.getElementById('newPlanNameInput');
+  const btn = document.getElementById('btnCreatePlan');
+  const allowed = planApprover === true;
+  for (const el of [nameInp, btn]) {
+    if (!el) continue;
+    el.disabled = !allowed;
+    el.title = allowed ? '' : 'Only plan approvers (project or Jira administrators, or an approver group) create plans.';
+  }
+}
+
 function renderFilteredPlansList(plans, currentId) {
   const container = document.getElementById('plansListContainer');
   if (!container) return;
@@ -1516,9 +1540,10 @@ function renderFilteredPlansList(plans, currentId) {
         btnClone.disabled = false;
       }
     });
-    actions.appendChild(btnClone);
+    // Clone, rename and delete are plan management: only plan approvers see them (BL-2 step 8).
+    if (planApprover === true) actions.appendChild(btnClone);
 
-    if (p.canDelete) {
+    if (p.canDelete && planApprover === true) {
       const btnRename = document.createElement('button');
       btnRename.className = 'btn btn-subtle btn-xs';
       btnRename.textContent = '✏️';
@@ -1672,6 +1697,7 @@ async function loadProjectPlan() {
     settleUndo();
     // Opening the planner writes and deletes nothing. Records of deleted issues are removed by the
     // issue-deleted trigger on the server (BL-9).
+    void loadPlanApprover();
   } else {
     if (errBanner) {
       errBanner.style.display = 'flex';
