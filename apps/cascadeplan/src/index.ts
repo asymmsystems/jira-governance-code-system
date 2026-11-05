@@ -993,7 +993,11 @@ export async function scheduleBacklogTask(
   const weeksNow = getDefaultWeeks(); // computed per call (B-18)
   const { projectKey, projectId, taskId, startWeek, startDate, spanWeeks = 3, effortHours, resource, targetIndex } = request;
   if (startDate !== undefined && !isIsoDate(startDate)) throw new ValidationError('startDate', 'startDate must be a date in YYYY-MM-DD form');
+  if (request.endDate !== undefined && !isIsoDate(request.endDate)) throw new ValidationError('endDate', 'endDate must be a date in YYYY-MM-DD form');
   const issueId = await verifyIssueInProject(taskId, projectKey, 'taskId');
+  // INV-03 (F-06): the default span is planner data only. The bar ends on the Jira due date when the
+  // issue has one, and a due date is written to Jira only when the user chose an end.
+  const jiraDue = request.endDate ? undefined : await readJiraDueDate(taskId);
   const storage = resolveStorage(storageProvider);
   const planId = await writablePlanId(storage, projectKey, projectId, request.planId);
   const store = openStore(storage, projectKey, projectId, planId);
@@ -1023,6 +1027,16 @@ export async function scheduleBacklogTask(
     // An exact day (B-27): the drop date and whole weeks from it, anywhere on the timeline.
     ...(startDate ? { startDate, endDate: addDays(startDate, spanWeeks * 7 - 1), ...gridFor(weeksNow, startDate, addDays(startDate, spanWeeks * 7 - 1)) } : {})
   });
+  const chosenEnd = request.endDate || jiraDue;
+  if (chosenEnd) {
+    const start = entry.startDate as string;
+    if (chosenEnd < start) {
+      throw new ValidationError(request.endDate ? 'endDate' : 'startDate', request.endDate
+        ? 'The end must be on or after the start.'
+        : `${taskId} is due on ${chosenEnd} in Jira, before ${start}. Drop it on or before ${chosenEnd}, or change its due date first.`);
+    }
+    Object.assign(entry, { endDate: chosenEnd }, gridFor(weeksNow, start, chosenEnd));
+  }
   void resource;
   const put = await store.putEntry(taskId, issueId, entry, current ? current.version : 0);
   if (!put.ok) return conflictResult(taskId);
@@ -1030,12 +1044,24 @@ export async function scheduleBacklogTask(
   // The dates are the same in every plan; the due date and effort go to Jira.
   const log = new SyncLog();
   await shareDatesAndLog(storage, projectKey, projectId, planId, [{ key: taskId, id: issueId, entry: put.entry }], log);
-  await syncTaskToJira(taskId, {
-    endDate: entry.endDate,
-    effortHours
-  }, log);
+  const jiraUpdates: Partial<WbsTask> = {};
+  if (request.endDate) jiraUpdates.endDate = request.endDate;
+  if (typeof effortHours === 'number') jiraUpdates.effortHours = effortHours;
+  if (Object.keys(jiraUpdates).length > 0) await syncTaskToJira(taskId, jiraUpdates, log);
 
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, undefined, planId), { ok: true, jiraSync: log.report() });
+}
+
+/** The issue's Jira due date as the user sees it, or undefined when it has none or Jira cannot say. */
+async function readJiraDueDate(issueKey: string): Promise<string | undefined> {
+  try {
+    const res = await getJiraCaller().requestJira(route`/rest/api/3/issue/${issueKey}?fields=duedate`);
+    if (!res || res.status !== 200) return undefined;
+    const due = (await res.json())?.fields?.duedate;
+    return isIsoDate(due) ? String(due).slice(0, 10) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -1200,8 +1226,9 @@ export async function createInlineTask(
   // The new issue has the same dates in every plan; its due date, estimate, assignee and epic go to Jira.
   const log = new SyncLog();
   if (created.ok) await shareDatesAndLog(storage, projectKey, projectId, planId, [{ key: jiraIssueKey, id: jiraIssueId, entry: created.entry }], log);
+  // The default span stays in the planner; only an end the user chose becomes the Jira due date (F-06).
   await syncTaskToJira(jiraIssueKey, {
-    endDate: weeksNow[endIdx].endDate,
+    ...(request.endDate ? { endDate: request.endDate } : {}),
     effortHours,
     resourceAccountId,
     epicKey
@@ -1609,11 +1636,7 @@ export async function updateWbsTask(
     if (sanitized.manualProgress === undefined) {
       sanitized.manualProgress = true;
     }
-    if (sanitized.progress === 100) {
-      sanitized.status = 'COMPLETED';
-    } else if (sanitized.progress > 0 && sanitized.progress < 100 && (sanitized.status === 'NOT_STARTED' || (!sanitized.status && targetTask.status === 'NOT_STARTED'))) {
-      sanitized.status = 'IN_PROGRESS';
-    }
+    // Progress never changes the Jira status: only a status the user chose is sent (F-06, INV-03).
   }
   if (sanitized.targetProgress !== undefined) {
     const rawT = Number(sanitized.targetProgress);
@@ -2077,9 +2100,11 @@ export async function createSubtaskForResource(
   const resource = payload.resource || payload.assigneeName || 'Unassigned';
   const resourceAccountId = payload.resourceAccountId || payload.assigneeAccountId;
   const summary = payload.summary || `Subtask: ${resource}`;
-  const effortHours = payload.effortHours ?? 20;
+  // Only what the user entered goes to Jira: no default estimate and no default due date (F-06, INV-03).
+  const effortHours = typeof payload.effortHours === 'number' && payload.effortHours > 0 ? payload.effortHours : undefined;
   const startWeek = payload.startWeek;
   const spanWeeks = payload.spanWeeks ?? 2;
+  if (payload.endDate !== undefined && !isIsoDate(payload.endDate)) throw new ValidationError('endDate', 'endDate must be a date in YYYY-MM-DD form');
 
   if (!parentKey) {
     return { success: false, ok: false, error: 'parentKey is required', jiraSync: noJiraWrites() };
@@ -2177,11 +2202,11 @@ export async function createSubtaskForResource(
     }
   }
 
-  // Sync estimate, due date and assignee to the new subtask, from any plan.
+  // Sync the estimate and the end the user entered, and the assignee, to the new subtask, from any plan.
   log.record(createdKey, ['create'], { synced: true });
   await syncTaskToJira(createdKey, {
-    effortHours,
-    endDate: activeWeeks[eIdx].endDate,
+    ...(effortHours !== undefined ? { effortHours } : {}),
+    ...(payload.endDate ? { endDate: payload.endDate } : {}),
     resourceAccountId
   }, log);
 

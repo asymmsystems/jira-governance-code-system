@@ -40,3 +40,13 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 
 - **What changed:** `syncTaskFields` records why the status was not written (no matching transition, transitions not readable, POST not 204) and returns it in `rejected` with a per-field `reasons` map. `syncTaskToJira` logs each refused field with its own reason (the due-date message stays for the due date).
 - **Proof:** R-08 and R-09 failed on the fix and were rewritten to assert `ok: false` with the reason; full suite 770 passed, coverage thresholds met.
+
+### F-06. No default values written to Jira (part of BL-3)
+
+- **What changed:**
+  - `scheduleBacklogTask`: the default span is planner data only. With a Jira due date on or after the drop day, the bar ends on it; with one before the drop day, the drop is refused ("TEST-2 is due on ... in Jira, before ..."); a due date is written only for a user-chosen `endDate` (new optional field). The estimate is written only when sent.
+  - `createInlineTask`: no due date from the default span; only a sent `endDate`.
+  - `createSubtaskForResource`: no 20 h estimate and no two-week due date; only sent values. The "Allocate resource" form sends no estimate when its hours field is empty.
+  - Progress no longer sets the status, on the server and in the task form.
+- **Proof:** R-10 and R-13 failed on the fix and were rewritten (R-13 now also covers `createInlineTask` and a positive case). New `test/schedule-due-date.test.ts` (3 tests). Four product tests that encoded the old default-span due date now assert no write, and a user-chosen end case was added. Full suite 774 passed, coverage thresholds met; harness `e2e.py` 30/30, `e2e_review.py` 25/25.
+- **Remaining:** the bar style "no due date in Jira" for a scheduled issue without a Jira due date (UI); the optional "Also move the issue to Done" checkbox was not added, because the form's status field already lets the user choose. The 8 h default of the planner-only sub-task goes with F-23.

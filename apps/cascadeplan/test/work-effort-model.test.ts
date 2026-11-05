@@ -204,11 +204,11 @@ describe('scheduling at an exact date outside the server week list (B-27 criteri
     });
   });
 
-  it('a startDate places the task on that exact day for the given weeks and writes that due date', async () => {
+  it('a startDate places the task on that exact day for the given weeks, and writes no due date to Jira', async () => {
     const res: any = await scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-5', startWeek: '', startDate: '2028-03-06', spanWeeks: 2 } as any);
     const rec = await recordOf(storage, 'TEST-5');
     expect(rec.effort).toMatchObject({ estimatedStartDate: '2028-03-06', estimatedCompletionDate: '2028-03-19' });
-    expect(res.jiraSync.writes[0].changes).toEqual([{ field: 'due date', from: null, to: '2028-03-19' }]);
+    expect(res.jiraSync.writes).toEqual([]);
     await expect(scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-5', startWeek: '', startDate: '6 March' } as any)).rejects.toThrow(/startDate/);
   });
 });

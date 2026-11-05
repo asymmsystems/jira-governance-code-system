@@ -13129,7 +13129,8 @@ Click to manage or assign.`;
     const selected = resSelect.options[resSelect.selectedIndex];
     const assigneeName = selected ? selected.value : "Unassigned";
     const assigneeAccountId = selected?.dataset?.accountId || void 0;
-    const hours = parseInt(document.getElementById("multiResourceHours").value, 10) || 20;
+    const enteredHours = parseInt(document.getElementById("multiResourceHours").value, 10);
+    const hours = Number.isFinite(enteredHours) && enteredHours > 0 ? enteredHours : void 0;
     const statusEl = document.getElementById("multiResourceStatus");
     const addBtn = document.getElementById("btnAddResourceSubtaskBtn");
     if (addBtn) {
@@ -13141,7 +13142,7 @@ Click to manage or assign.`;
         parentTaskId: activeTaskId,
         assigneeAccountId,
         assigneeName,
-        effortHours: hours
+        ...hours !== void 0 ? { effortHours: hours } : {}
       });
       if (!res || res.success !== true) {
         if (statusEl) {
@@ -13285,12 +13286,6 @@ Click to manage or assign.`;
       if (!isNaN(prog) && (prog !== (curTask.progress || 0) || modalUseRollupProgressFlag)) {
         updates.progress = prog;
         updates.manualProgress = !modalUseRollupProgressFlag;
-        const effectiveStatus = updates.status || curTask.status;
-        if (prog === 100 && effectiveStatus !== "COMPLETED") {
-          updates.status = "COMPLETED";
-        } else if (prog > 0 && effectiveStatus === "NOT_STARTED") {
-          updates.status = "IN_PROGRESS";
-        }
       }
     }
     const targetInput = document.getElementById("editTargetProgressInput");

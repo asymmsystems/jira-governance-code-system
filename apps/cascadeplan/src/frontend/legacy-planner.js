@@ -5980,7 +5980,9 @@ async function handleAddResourceSubtask() {
   const selected = resSelect.options[resSelect.selectedIndex];
   const assigneeName = selected ? selected.value : 'Unassigned';
   const assigneeAccountId = selected?.dataset?.accountId || undefined;
-  const hours = parseInt(document.getElementById('multiResourceHours').value, 10) || 20;
+  // An empty hours field sends no estimate (F-06, INV-03).
+  const enteredHours = parseInt(document.getElementById('multiResourceHours').value, 10);
+  const hours = Number.isFinite(enteredHours) && enteredHours > 0 ? enteredHours : undefined;
 
   const statusEl = document.getElementById('multiResourceStatus');
   const addBtn = document.getElementById('btnAddResourceSubtaskBtn');
@@ -5991,7 +5993,7 @@ async function handleAddResourceSubtask() {
       parentTaskId: activeTaskId,
       assigneeAccountId,
       assigneeName,
-      effortHours: hours
+      ...(hours !== undefined ? { effortHours: hours } : {})
     });
     if (!res || res.success !== true) {
       // Only a confirmed create shows success; a null or failed result is an error (B-07).
@@ -6140,12 +6142,7 @@ async function saveTaskModalChanges() {
     if (!isNaN(prog) && (prog !== (curTask.progress || 0) || modalUseRollupProgressFlag)) {
       updates.progress = prog;
       updates.manualProgress = !modalUseRollupProgressFlag;
-      const effectiveStatus = updates.status || curTask.status;
-      if (prog === 100 && effectiveStatus !== 'COMPLETED') {
-        updates.status = 'COMPLETED';
-      } else if (prog > 0 && effectiveStatus === 'NOT_STARTED') {
-        updates.status = 'IN_PROGRESS';
-      }
+      // The status changes only through the status field (F-06, INV-03).
     }
   }
   const targetInput = document.getElementById('editTargetProgressInput');

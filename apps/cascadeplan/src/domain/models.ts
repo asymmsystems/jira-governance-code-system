@@ -277,6 +277,7 @@ export interface ScheduleBacklogRequest {
   taskId: string;
   startWeek: string;
   startDate?: string; // an exact start day; the timeline is not limited to the server week list (B-27)
+  endDate?: string;   // an end the user chose; only then is a Jira due date written (F-06, INV-03)
   spanWeeks?: number;
   effortHours?: number;
   resource?: string;
@@ -304,6 +305,7 @@ export interface CreateSubtaskForResourceRequest {
   effortHours?: number;
   startWeek?: string;
   spanWeeks?: number;
+  endDate?: string;   // an end the user chose; only then is a Jira due date written (F-06)
   planId?: string;
 }
 

@@ -305,12 +305,15 @@ describe('Jira sync honesty (D2, D8)', () => {
     expect(res.jiraSync.writes.find((x: any) => x.fields.includes('status'))).toMatchObject({ ok: false, error: 'Jira did not apply the "Done" transition' });
   });
 
-  it('FINDING R-10: setting progress to 100 transitions the Jira status although the user did not edit the status (INV-03)', async () => {
+  it('R-10: setting progress to 100 or 50 does not change the Jira status (INV-03)', async () => {
     override = (url, opts) => (url.endsWith('/transitions') && !opts
       ? { status: 200, json: async () => ({ transitions: [{ id: '31', name: 'Done', to: { statusCategory: { key: 'done' } } }] }) } : undefined);
-    const v = (await planEntry(storage, 'default', 'TEST-1')).version;
-    await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { progress: 100 }, expectedVersion: v }, storage);
-    expect(calls('POST', /\/issue\/TEST-1\/transitions$/).length).toBe(1);
+    for (const progress of [100, 50]) {
+      const v = (await planEntry(storage, 'default', 'TEST-1')).version;
+      await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { progress }, expectedVersion: v }, storage);
+    }
+    expect(calls('GET', /\/issue\/TEST-1\/transitions$/)).toEqual([]);
+    expect(calls('POST', /\/issue\/TEST-1\/transitions$/)).toEqual([]);
   });
 
   it('FINDING R-11: a user who cannot edit the issue (Jira 403) still changes the shared dates in every plan', async () => {
@@ -335,12 +338,23 @@ describe('Jira sync honesty (D2, D8)', () => {
     expect(t3.endDate).toBe(add(start, 2)); // the user asked for start+9
   });
 
-  it('FINDING R-13: createSubtaskForResource writes a 20 h estimate and a 2-week due date that the user did not enter', async () => {
+  it('R-13: createSubtaskForResource and createInlineTask write no estimate or due date the user did not enter', async () => {
     await createSubtaskForResource({ projectKey: 'TEST', parentKey: 'TEST-1', resourceAccountId: 'acc-3' } as any, storage);
-    const puts = mockRequestJira.mock.calls.filter(([url, opts]) => opts?.method === 'PUT' && String(url) === '/rest/api/3/issue/TEST-50');
-    const fields = JSON.parse(puts[0][1].body).fields;
-    expect(fields.timetracking).toEqual({ originalEstimate: '20h' });
-    expect(fields.duedate).toBeDefined();
+    const sentTo = (key: string) => mockRequestJira.mock.calls
+      .filter(([url, opts]) => opts?.method === 'PUT' && String(url) === `/rest/api/3/issue/${key}`)
+      .map(([, opts]) => JSON.parse(opts.body).fields);
+    for (const fields of sentTo('TEST-50')) {
+      expect(fields.timetracking).toBeUndefined();
+      expect(fields.duedate).toBeUndefined();
+    }
+    mockRequestJira.mockClear();
+    const created: any = await createInlineTask({ projectKey: 'TEST', summary: 'New', startWeek: weeks[5].weekKey, spanWeeks: 3 } as any, storage);
+    const key = created.task?.key || 'TEST-50';
+    for (const fields of sentTo(key)) expect(fields.duedate).toBeUndefined();
+    // An end the user chose is written.
+    mockRequestJira.mockClear();
+    await createSubtaskForResource({ projectKey: 'TEST', parentKey: 'TEST-1', resourceAccountId: 'acc-3', effortHours: 6, endDate: weeks[6].endDate } as any, storage);
+    expect(sentTo('TEST-50').some(f => f.duedate === weeks[6].endDate && f.timetracking?.originalEstimate === '6h')).toBe(true);
   });
 
   it('FINDING R-14: createInlineTask creates the Jira issue before it checks that the plan still exists', async () => {

@@ -94,11 +94,17 @@ describe('Jira sync report (B-07)', () => {
     expect(res.jiraSync.writes.find((w: any) => w.key === 'TEST-1').ok).toBe(true);
   });
 
-  it('scheduling reports its due date write', async () => {
+  it('scheduling with the default span writes nothing to Jira (INV-03)', async () => {
     const res: any = await scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-2', startWeek: weeks[5].weekKey });
     expect(res.ok).toBe(true);
+    expect(res.jiraSync).toEqual({ ok: true, writes: [] });
+  });
+
+  it('scheduling with an end the user chose reports its due date write', async () => {
+    const res: any = await scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-2', startWeek: weeks[5].weekKey, endDate: weeks[6].endDate });
+    expect(res.ok).toBe(true);
     expect(res.jiraSync).toEqual({ ok: true, writes: [{ key: 'TEST-2', fields: ['duedate'], ok: true,
-      changes: [{ field: 'due date', from: null, to: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }] }] });
+      changes: [{ field: 'due date', from: null, to: weeks[6].endDate }] }] });
   });
 
   it('KVS-only writes report ok with no Jira writes', async () => {

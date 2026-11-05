@@ -225,8 +225,8 @@ describe('named plans: one truth for each task (UX-05)', () => {
     expect(t8.isBacklog).toBe(true);
   });
 
-  it('scheduleBacklogTask in a scenario plan schedules the task in every plan and syncs estimate and due date', async () => {
-    const res: any = await scheduleBacklogTask({ projectKey: 'TEST', planId: planB, taskId: 'TEST-8', startWeek: weeks[6].weekKey, spanWeeks: 1, effortHours: 8 }, storage);
+  it('scheduleBacklogTask in a scenario plan schedules the task in every plan and syncs the estimate and the chosen end', async () => {
+    const res: any = await scheduleBacklogTask({ projectKey: 'TEST', planId: planB, taskId: 'TEST-8', startWeek: weeks[6].weekKey, spanWeeks: 1, endDate: weeks[6].endDate, effortHours: 8 }, storage);
     expect(res.ok).toBe(true);
     expect(res.planId).toBe(planB);
     expect(jiraFieldsSent('TEST-8')).toEqual({ duedate: weeks[6].endDate, timetracking: { originalEstimate: '8h' } });
