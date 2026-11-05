@@ -42,3 +42,22 @@ describe('F-21: failure states', () => {
     expect(warn).toHaveBeenCalledWith('cascadeplan x: Error RATE_LIMIT_EXCEEDED');
   });
 });
+
+describe('F-03 part 3: read-after-write on the issue search', () => {
+  it('reconcile ids go to Jira as a repeated parameter (the form Jira accepts), at most 50, numbers only', async () => {
+    const { fetchRawIssues } = require('../src/index');
+    mockRequestJira.mockReset();
+    mockRequestJira.mockImplementation(async () => ({ status: 200, json: async () => ({ issues: [], isLast: true }) }));
+    await fetchRawIssues('TEST', ['10029', '10030', 'DEMO-1']);
+    const url = String(mockRequestJira.mock.calls[0][0]);
+    expect(url).toContain('reconcileIssues=10029&reconcileIssues=10030');
+    expect(url).not.toContain('DEMO-1');
+  });
+
+  it('the resolver refuses reconcile ids that are not issue ids', () => {
+    const { reconcileIdsOf } = require('../src/validation');
+    expect(reconcileIdsOf(['1', '2'])).toEqual(['1', '2']);
+    expect(() => reconcileIdsOf(['1; DROP'])).toThrow('reconcileIds must be a list of at most 50 issue ids');
+    expect(() => reconcileIdsOf(Array.from({ length: 51 }, (_, i) => String(i)))).toThrow();
+  });
+});

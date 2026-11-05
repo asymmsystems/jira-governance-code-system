@@ -176,3 +176,9 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 - Not tested: the refusal for a Browse-only user (no second user; documented by Atlassian) and a move to another project (DEMO only).
 - **Decision recorded:** DEC-3 Option C and DEC-4 Option B for v1, in ADR-008. Fix plan register updated.
 - **Live site changes:** DEMO-37 and DEMO-38 created and deleted (about 13:3xZ on 2026-11-05).
+
+### F-03 part 3. Reads after a write see the values just written
+
+- **Live fact first:** a read-only search on DEMO showed that Jira refuses `reconcileIssues=10030,10029` (400, "Failed to convert 'reconcileIssues'") and accepts the repeated form `reconcileIssues=10030&reconcileIssues=10029` (200, 2 issues). The search uses the repeated form, built with `URLSearchParams` inside Forge's `route`.
+- **What changed:** `fetchRawIssues` and `loadLive` take reconcile ids (numeric, at most 50). `getProjectPlan`, `updateWbsTask`, `continueCascade` and `batchUpdateTasks` accept `reconcileIds` (validated by `reconcileIdsOf`). Their results return `writtenIssueIds` (issues with a successful Jira write). `bridge.ts` keeps written ids for 60 s and sends them as `reconcileIds` with every call.
+- **Proof:** new tests in `test/failure-states.test.ts` (the search URL holds the repeated parameter and no non-numeric id; invalid ids refused) and `test/frontend/bridge-cascade.test.ts` (an id written by one call is sent by the next). Unit suite 802 passed, coverage thresholds met; harness 30/30 and 25/25.

@@ -175,6 +175,15 @@ export function validateSchedulePayload(p: Record<string, unknown>, opts: { summ
   }
 }
 
+/** Issue ids written a moment ago, for read-after-write searches: at most 50 numeric ids (F-03). */
+export function reconcileIdsOf(value: unknown): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > 50 || !value.every(id => typeof id === 'string' && /^\d{1,18}$/.test(id))) {
+    fail('reconcileIds', 'reconcileIds must be a list of at most 50 issue ids');
+  }
+  return value as string[];
+}
+
 export function validateColumnWidths(widths: Record<string, unknown>): void {
   if (!isObject(widths)) fail('columnWidths', 'columnWidths must be an object');
   for (const [k, v] of Object.entries(widths)) {

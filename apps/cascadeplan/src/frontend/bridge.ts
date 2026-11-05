@@ -15,11 +15,29 @@ import { classifyResult } from '../ui/result';
 import { showErrorBanner } from './banner';
 import { recordChanges } from './changes-panel';
 
+/**
+ * Issues written in the last minute. Jira's search is eventually consistent, so every call sends
+ * them as reconcileIds and the server asks Jira for read-after-write on them (F-03 part 3).
+ */
+const recentWrites = new Map<string, number>();
+const RECENT_MS = 60000;
+
+export function recentWriteIds(now = Date.now()): string[] {
+  for (const [id, at] of recentWrites) if (now - at > RECENT_MS) recentWrites.delete(id);
+  return [...recentWrites.keys()].slice(-50);
+}
+
+function rememberWrites(res: any, now = Date.now()): void {
+  for (const id of (res && Array.isArray(res.writtenIssueIds) ? res.writtenIssueIds : [])) recentWrites.set(String(id), now);
+}
+
 /** One resolver call: a thrown call becomes { ok: false }, and a failed write shows the error banner. */
 async function callOnce(fnName: string, payload: Record<string, unknown>): Promise<any> {
   let res: any;
+  const ids = recentWriteIds();
   try {
-    res = await invoke(fnName, payload);
+    res = await invoke(fnName, ids.length ? { ...payload, reconcileIds: ids } : payload);
+    rememberWrites(res);
   } catch (err: any) {
     console.error('Forge resolver error:', fnName, err);
     const message = err?.message || 'The planner could not reach Jira.';

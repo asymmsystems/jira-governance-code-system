@@ -52,7 +52,8 @@ import {
   validatePlanName,
   validatePlanId,
   toValidationResult,
-  validateSchedulePayload
+  validateSchedulePayload,
+  reconcileIdsOf
 } from './validation';
 import { ResourceUtilizationEngine, ResourceUtilizationView } from './domain/resource-utilization';
 import { ScopeCreepEngine, PlanBaseline, ScopeShiftRequest, ScopeCreepReport } from './domain/scope-creep';
@@ -611,16 +612,25 @@ export interface RawIssues {
  * Reads the project's issues page by page (nextPageToken), up to MAX_PAGES pages. When more
  * pages remain, reports how many were shown and Jira's approximate total (B-10).
  */
-export async function fetchRawIssues(projectKey: string): Promise<RawIssues> {
+export async function fetchRawIssues(projectKey: string, reconcileIds: string[] = []): Promise<RawIssues> {
   const caller = getJiraCaller();
+  // Issues written a moment ago: the search is eventually consistent, so it is asked for read-after-
+  // write on them (at most 50, repeated parameter; F-03 part 3).
+  const ids = [...new Set(reconcileIds.filter(id => /^\d+$/.test(id)))].slice(0, 50);
+  const reconcile = new URLSearchParams();
+  for (const id of ids) reconcile.append('reconcileIssues', id);
   const issues: any[] = [];
   let token: string | undefined;
   let pages = 0;
   try {
     do {
-      const res = token
-        ? await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100&nextPageToken=${token}`)
-        : await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100`);
+      const res = ids.length
+        ? (token
+          ? await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100&nextPageToken=${token}&${reconcile}`)
+          : await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100&${reconcile}`))
+        : (token
+          ? await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100&nextPageToken=${token}`)
+          : await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100`));
       if (!res || res.status !== 200) {
         logFailure('fetchRawIssues', res || new Error('no answer'));
         if (pages === 0) return { issues: [], isLive: false, status: res ? res.status : 0 };
@@ -900,8 +910,8 @@ export interface LiveData {
 }
 
 /** One read of everything a plan needs from Jira. */
-export async function loadLive(projectKey: string): Promise<LiveData> {
-  const [raw, users, epics] = await Promise.all([fetchRawIssues(projectKey), fetchProjectUsers(projectKey), fetchProjectEpics(projectKey)]);
+export async function loadLive(projectKey: string, reconcileIds: string[] = []): Promise<LiveData> {
+  const [raw, users, epics] = await Promise.all([fetchRawIssues(projectKey, reconcileIds), fetchProjectUsers(projectKey), fetchProjectEpics(projectKey)]);
   let hasEpic = epics.length > 0;
   if (!hasEpic) {
     const meta = await resolveProjectIssueType(projectKey, 'Epic');
@@ -920,7 +930,8 @@ export async function getProjectPlan(
   siteUrl?: string,
   projectId?: string,
   preloaded?: LiveData,
-  planId?: string
+  planId?: string,
+  reconcileIds: string[] = []
 ): Promise<ProjectPlanState> {
   const storage = resolveStorage(storageProvider);
   validatePlanId(planId);
@@ -943,7 +954,7 @@ export async function getProjectPlan(
   const storedHiddenColumns = settings.hiddenColumns || [];
 
   // Query live Jira issues and assignees (once per resolver call when preloaded)
-  const live = preloaded || await loadLive(projectKey);
+  const live = preloaded || await loadLive(projectKey, reconcileIds);
   const liveData = mapLiveIssues(live.raw, storedScheduleMap);
   const availableUsers = [...live.users];
   const availableEpics = [...live.epics];
@@ -1727,7 +1738,7 @@ async function applyPlannedJiraWrites(
  * Updates a task schedule, dates, effort, progress, or resource.
  */
 export async function updateWbsTask(
-  payload: { projectKey: string; projectId?: string; planId?: string; taskId: string; updates: Partial<WbsTask>; expectedVersion?: number },
+  payload: { projectKey: string; projectId?: string; planId?: string; taskId: string; updates: Partial<WbsTask>; expectedVersion?: number; reconcileIds?: string[] },
   storageProvider?: StorageProvider,
   preloaded?: LiveData,
   options?: { skipResponse?: boolean }
@@ -1742,7 +1753,7 @@ export async function updateWbsTask(
   const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
 
   // Jira is read once per update (or once per batch); the returned plan reuses the same read (B-10, B-16).
-  const live = preloaded || await loadLive(projectKey);
+  const live = preloaded || await loadLive(projectKey, reconcileIdsOf(payload.reconcileIds));
   const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId);
   const targetTask = plan.tasks.find(t => t.id === taskId || t.key === taskId) ||
     (plan.backlogTasks || []).find(t => t.id === taskId || t.key === taskId);
@@ -2057,7 +2068,7 @@ export async function updateWbsTask(
     applyAcceptedDueDate(live, s.key, s.updates, await syncTaskToJira(s.key, s.updates, log, plan.tasks.find(t => t.key === s.key)));
   }
 
-  const result = { ok: true, jiraSync: log.report(), cascadeRemaining, cascadeSkipped: [...notMoved] };
+  const result = { ok: true, jiraSync: log.report(), cascadeRemaining, cascadeSkipped: [...notMoved], writtenIssueIds: writtenIssueIds(log, plan.tasks) };
   // A batch builds one plan at the end, so its items skip building their own (F-17).
   if (options?.skipResponse) return result as any;
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId), result);
@@ -2120,7 +2131,7 @@ export async function issueDeleted(event: any, storageProvider?: StorageProvider
  * anyone else is reported as a conflict and the other items still apply.
  */
 export async function batchUpdateTasks(
-  payload: { projectKey: string; projectId?: string; planId?: string; items: Array<{ taskId: string; updates: Partial<WbsTask>; expectedVersion?: number }> },
+  payload: { projectKey: string; projectId?: string; planId?: string; items: Array<{ taskId: string; updates: Partial<WbsTask>; expectedVersion?: number }>; reconcileIds?: string[] },
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState & { results: Array<{ taskId: string; ok: boolean; conflict?: boolean }> }> {
   const { projectKey, projectId, items } = payload;
@@ -2132,7 +2143,7 @@ export async function batchUpdateTasks(
   const storage = resolveStorage(storageProvider);
   const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
   const store = openStore(storage, projectKey, projectId, planId);
-  const live = await loadLive(projectKey);
+  const live = await loadLive(projectKey, reconcileIdsOf(payload.reconcileIds));
   const startVersions = new Map([...(await store.loadEntries())].map(([k, e]) => [k, e.version]));
   const writes: JiraWriteRecord[] = [];
   const results: Array<{ taskId: string; ok: boolean; conflict?: boolean }> = [];
@@ -2161,7 +2172,15 @@ export async function batchUpdateTasks(
   const jiraSync: JiraSyncReport = { ok: failed.length === 0, writes };
   if (failed.length) jiraSync.error = failed.map(w => `${w.key}: ${w.error}`).join('; ');
   // Each item whose cascade has successors left is a root the client continues from (F-20).
-  return Object.assign(finalPlan, { ok: results.every(r => r.ok), jiraSync, results, cascadeRoots, cascadeRemaining: [...new Set(remaining)] });
+  return Object.assign(finalPlan, { ok: results.every(r => r.ok), jiraSync, results, cascadeRoots, cascadeRemaining: [...new Set(remaining)],
+    writtenIssueIds: writtenIssueIds({ report: () => jiraSync } as any, finalPlan.tasks) });
+}
+
+/** Ids of the issues this call wrote to Jira, for the client's next read-after-write search (F-03). */
+function writtenIssueIds(log: { report: () => JiraSyncReport }, tasks: Array<{ key: string; id?: string }>): string[] {
+  const idByKey = new Map(tasks.map(t => [t.key, t.id]));
+  const ids = log.report().writes.filter(w => w.ok).map(w => idByKey.get(w.key)).filter((id): id is string => !!id && /^\d+$/.test(id));
+  return [...new Set(ids)].slice(0, 50);
 }
 
 /** The keys of every ancestor of a task, nearest first. */
@@ -2204,7 +2223,7 @@ export const CASCADE_BATCH_LIMIT = 25;
  * successors and returns the keys still to move (D-05: the client calls again until empty).
  */
 export async function continueCascade(
-  payload: { projectKey: string; projectId?: string; planId?: string; taskId: string },
+  payload: { projectKey: string; projectId?: string; planId?: string; taskId: string; reconcileIds?: string[] },
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState> {
   const { projectKey, projectId, taskId } = payload;
@@ -2212,7 +2231,7 @@ export async function continueCascade(
   const storage = resolveStorage(storageProvider);
   const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
   const log = new SyncLog();
-  const live = await loadLive(projectKey);
+  const live = await loadLive(projectKey, reconcileIdsOf(payload.reconcileIds));
   const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId);
   const store = openStore(storage, projectKey, projectId, planId);
   const entries = await store.loadEntries();
@@ -2237,7 +2256,8 @@ export async function continueCascade(
     applyAcceptedDueDate(live, c.key, { endDate: c.toEnd }, await syncTaskToJira(c.key, { endDate: c.toEnd }, log, task));
   }
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId),
-    { ok: true, jiraSync: log.report(), cascadeRemaining: changes.slice(CASCADE_BATCH_LIMIT).map(c => c.key), cascadeSkipped: skipped });
+    { ok: true, jiraSync: log.report(), cascadeRemaining: changes.slice(CASCADE_BATCH_LIMIT).map(c => c.key), cascadeSkipped: skipped,
+      writtenIssueIds: writtenIssueIds(log, plan.tasks) });
 }
 
 /**
@@ -2972,7 +2992,8 @@ function define(name: string, fn: (req: any) => Promise<any>): void {
 
 const withProject = (req: any) => ({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) });
 
-define('getProjectPlan', async (req) => getProjectPlan(extractProjectKey(req), undefined, new Date(), extractSiteUrl(req), extractProjectId(req), undefined, req.payload?.planId));
+define('getProjectPlan', async (req) => getProjectPlan(extractProjectKey(req), undefined, new Date(), extractSiteUrl(req), extractProjectId(req), undefined, req.payload?.planId,
+  reconcileIdsOf(req.payload?.reconcileIds)));
 define('createProjectPlan', async (req) => createProjectPlan(withProject(req)));
 define('deleteProjectPlan', async (req) => deleteProjectPlan(withProject(req)));
 define('renameProjectPlan', async (req) => renameProjectPlan(withProject(req)));

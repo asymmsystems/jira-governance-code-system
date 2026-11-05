@@ -39,3 +39,14 @@ describe('bridge cascade continuation', () => {
     expect(showErrorBanner).toHaveBeenCalledWith('The cascade did not finish. Move the task again to continue.');
   });
 });
+
+describe('read-after-write ids (F-03 part 3)', () => {
+  it('ids a call wrote are sent as reconcileIds on the next calls, for one minute', async () => {
+    invoke.mockReset();
+    invoke.mockImplementation(async (fn: string) => (fn === 'updateWbsTask' ? { ok: true, tasks: [], writtenIssueIds: ['10029'] } : { ok: true, tasks: [] }));
+    await callResolver('updateWbsTask', { taskId: 'T-1', planId: 'p1' });
+    await callResolver('getProjectPlan', { planId: 'p1' });
+    expect(invoke.mock.calls[1]).toEqual(['getProjectPlan', { planId: 'p1', reconcileIds: ['10029'] }]);
+  });
+});
+

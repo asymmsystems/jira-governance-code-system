@@ -6176,10 +6176,21 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
 
   // src/frontend/bridge.ts
+  var recentWrites = /* @__PURE__ */ new Map();
+  var RECENT_MS = 6e4;
+  function recentWriteIds(now = Date.now()) {
+    for (const [id, at] of recentWrites) if (now - at > RECENT_MS) recentWrites.delete(id);
+    return [...recentWrites.keys()].slice(-50);
+  }
+  function rememberWrites(res, now = Date.now()) {
+    for (const id of res && Array.isArray(res.writtenIssueIds) ? res.writtenIssueIds : []) recentWrites.set(String(id), now);
+  }
   async function callOnce(fnName, payload) {
     let res;
+    const ids = recentWriteIds();
     try {
-      res = await (0, import_bridge.invoke)(fnName, payload);
+      res = await (0, import_bridge.invoke)(fnName, ids.length ? { ...payload, reconcileIds: ids } : payload);
+      rememberWrites(res);
     } catch (err) {
       console.error("Forge resolver error:", fnName, err);
       const message = err?.message || "The planner could not reach Jira.";
