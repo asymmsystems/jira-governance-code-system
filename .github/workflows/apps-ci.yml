@@ -30,6 +30,8 @@ concurrency:
 jobs:
   app:
     runs-on: ubuntu-latest
+    env:
+      FORGE_API_TOKEN: ${{ secrets.FORGE_API_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
@@ -73,7 +75,13 @@ jobs:
           npm run build
           git diff --exit-code -- static/frontend/build
 
+      # forge lint needs a Forge login. It runs when the repository has the secrets FORGE_EMAIL and
+      # FORGE_API_TOKEN (an Atlassian API token of the app owner); without them the step is skipped.
       - name: Forge lint
+        if: env.FORGE_API_TOKEN != ''
+        env:
+          FORGE_EMAIL: ${{ secrets.FORGE_EMAIL }}
+          FORGE_API_TOKEN: ${{ secrets.FORGE_API_TOKEN }}
         working-directory: apps/${{ matrix.app }}
         run: |
           # CI has no terminal for the CLI's first-run analytics question, so answer it first.
