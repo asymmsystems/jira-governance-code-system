@@ -368,7 +368,7 @@ describe('Jira sync honesty (D2, D8)', () => {
     expect(calls('POST', /\/rest\/api\/3\/issue$/)).toEqual([]);
   });
 
-  it('R-15 (part, F-07): a cycle through a second (imported Jira) link is refused before any Jira link is created', async () => {
+  it('R-15 (F-15, F-07): the validator follows every link, so a cycle through a second (imported Jira) link is refused before any Jira write', async () => {
     // TEST-2 waits for TEST-3 (stored, first link) and is blocked by TEST-1 in Jira (imported, second link).
     const store = new PlanStore(storage, 'TEST', 'TEST');
     const e2 = (await store.loadEntries()).get('TEST-2')!;
@@ -379,7 +379,7 @@ describe('Jira sync honesty (D2, D8)', () => {
     mockRequestJira.mockClear();
     await expect(updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', expectedVersion: v1,
       updates: { dependency: { predecessorKey: 'TEST-2', predecessorId: 'TEST-2', triggerPercent: 100, isTriggerSatisfied: false } } }, storage))
-      .rejects.toThrow(/cycle/i);
+      .rejects.toThrow('Cyclic dependency detected: TEST-1 -> TEST-2 -> TEST-1');
     expect(calls('POST', /\/rest\/api\/3\/issueLink$/)).toEqual([]);
   });
 });

@@ -6753,7 +6753,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         stack.push(s);
       }
     }
-    if (reach.has(changedKey)) throw new Error(`Dependency cycle through ${changedKey}`);
+    if (reach.has(changedKey)) return { changes: [], efforts: work, cycle: [changedKey] };
     const nodes = /* @__PURE__ */ new Set([changedKey, ...reach]);
     const indeg = new Map([...nodes].map((n) => [n, 0]));
     for (const l of links) if (nodes.has(l.workEffortIdFrom) && nodes.has(l.workEffortIdTo)) indeg.set(l.workEffortIdTo, indeg.get(l.workEffortIdTo) + 1);
@@ -6768,7 +6768,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         if (indeg.get(s) === 0) queue.push(s);
       }
     }
-    if (order.length !== nodes.size) throw new Error("Dependency cycle in the plan");
+    const cycle = [...nodes].filter((n) => !order.includes(n));
     const changes = [];
     for (const key of order) {
       if (key === changedKey) continue;
@@ -6790,7 +6790,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       cur.estimatedStartDate = toStart;
       cur.estimatedCompletionDate = toEnd;
     }
-    return { changes, efforts: work };
+    return cycle.length ? { changes, efforts: work, cycle } : { changes, efforts: work };
   }
 
   // src/ui/timeline-geometry.ts

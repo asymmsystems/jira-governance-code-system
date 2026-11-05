@@ -130,9 +130,19 @@ describe('cascade (forward pass, conflicts only)', () => {
     expect(cascade(efforts, [link('X', 'Y', 100)], 'A', TODAY).changes).toEqual([]);
   });
 
-  it('throws on a cycle', () => {
+  it('reports a cycle and moves nothing in it, instead of throwing (F-15)', () => {
     const efforts = new Map([['A', eff('A', '2026-11-04', '2026-11-05')], ['B', eff('B', '2026-11-04', '2026-11-05')]]);
-    expect(() => cascade(efforts, [link('A', 'B', 50), link('B', 'A', 50)], 'A', TODAY)).toThrow('cycle');
+    const res = cascade(efforts, [link('A', 'B', 50), link('B', 'A', 50)], 'A', TODAY);
+    expect(res.changes).toEqual([]);
+    expect(res.cycle).toEqual(['A']);
+  });
+
+  it('a cycle elsewhere in the plan does not stop the move of a task outside it (F-15)', () => {
+    const efforts = new Map([['A', eff('A', '2026-11-04', '2026-11-13')], ['C', eff('C', '2026-11-05', '2026-11-06')],
+      ['X', eff('X', '2026-11-04', '2026-11-05')], ['Y', eff('Y', '2026-11-04', '2026-11-05')]]);
+    const res = cascade(efforts, [link('A', 'C', 100), link('C', 'X', 100), link('X', 'Y', 100), link('Y', 'X', 100)], 'A', TODAY);
+    expect(res.changes.map(c => c.key)).toEqual(['C']);
+    expect(res.cycle).toEqual(['X', 'Y']);
   });
 });
 

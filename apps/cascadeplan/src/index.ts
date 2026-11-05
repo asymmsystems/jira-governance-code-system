@@ -1904,7 +1904,8 @@ export async function updateWbsTask(
   if (sanitized.startDate || sanitized.endDate || sanitized.dependency) {
     const candidateTasks = plan.tasks.map(t => (t.key === targetTask.key ? { ...t, ...sanitized } : t));
     const inputs = engineInputs(candidateTasks);
-    const { changes } = cascade(inputs.efforts, inputs.links, targetTask.key, todayIso());
+    const { changes, cycle } = cascade(inputs.efforts, inputs.links, targetTask.key, todayIso());
+    reportCycle(cycle, log);
     cascadeRemaining = changes.slice(CASCADE_BATCH_LIMIT).map(c => c.key);
     for (const c of changes.slice(0, CASCADE_BATCH_LIMIT)) {
       scheduleMap[c.key] = { ...(scheduleMap[c.key] || {}), startDate: c.toStart, endDate: c.toEnd, ...gridFor(activeWeeks, c.toStart, c.toEnd) };
@@ -2075,6 +2076,13 @@ export async function batchUpdateTasks(
   return Object.assign(finalPlan, { ok: results.every(r => r.ok), jiraSync, results, cascadeRoots, cascadeRemaining: [...new Set(remaining)] });
 }
 
+/** Tasks in a dependency cycle are not moved by a cascade; each is reported (F-15). */
+function reportCycle(cycle: string[] | undefined, log: SyncLog): void {
+  for (const key of cycle || []) {
+    log.record(key, ['plan'], { synced: false, error: 'not moved: it is in a dependency cycle; remove one of its links' });
+  }
+}
+
 export const CASCADE_BATCH_LIMIT = 25;
 
 /**
@@ -2095,7 +2103,8 @@ export async function continueCascade(
   const store = openStore(storage, projectKey, projectId, planId);
   const entries = await store.loadEntries();
   const inputs = engineInputs(plan.tasks);
-  const { changes } = cascade(inputs.efforts, inputs.links, taskId, todayIso());
+  const { changes, cycle } = cascade(inputs.efforts, inputs.links, taskId, todayIso());
+  reportCycle(cycle, log);
   // BL-2: a successor the user may not edit and schedule is not moved, and is reported.
   const batch = changes.slice(0, CASCADE_BATCH_LIMIT);
   // Successors this round could not move are returned, never dropped (F-20, INV-11).

@@ -158,7 +158,7 @@ export function cascade(
   links: ScheduleLink[],
   changedKey: string,
   today: string
-): { changes: CascadeChange[]; efforts: Map<string, ScheduleEffort> } {
+): { changes: CascadeChange[]; efforts: Map<string, ScheduleEffort>; cycle?: string[] } {
   const work = new Map([...efforts].map(([k, v]) => [k, { ...v }]));
   const succ = new Map<string, string[]>();
   for (const l of links) succ.set(l.workEffortIdFrom, [...(succ.get(l.workEffortIdFrom) || []), l.workEffortIdTo]);
@@ -170,7 +170,9 @@ export function cascade(
     const k = stack.pop() as string;
     for (const s of succ.get(k) || []) if (!reach.has(s)) { reach.add(s); stack.push(s); }
   }
-  if (reach.has(changedKey)) throw new Error(`Dependency cycle through ${changedKey}`);
+  // A cycle that already exists (for example through links made in Jira) does not block the move:
+  // nothing in the cycle moves, and the cycle is reported (F-15).
+  if (reach.has(changedKey)) return { changes: [], efforts: work, cycle: [changedKey] };
 
   // Kahn order over the reachable sub-graph (plus the changed effort).
   const nodes = new Set([changedKey, ...reach]);
@@ -187,7 +189,7 @@ export function cascade(
       if (indeg.get(s) === 0) queue.push(s);
     }
   }
-  if (order.length !== nodes.size) throw new Error('Dependency cycle in the plan');
+  const cycle = [...nodes].filter(n => !order.includes(n));
 
   const changes: CascadeChange[] = [];
   for (const key of order) {
@@ -204,7 +206,7 @@ export function cascade(
     cur.estimatedStartDate = toStart;
     cur.estimatedCompletionDate = toEnd;
   }
-  return { changes, efforts: work };
+  return cycle.length ? { changes, efforts: work, cycle } : { changes, efforts: work };
 }
 
 /**
