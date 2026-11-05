@@ -1729,7 +1729,8 @@ async function applyPlannedJiraWrites(
 export async function updateWbsTask(
   payload: { projectKey: string; projectId?: string; planId?: string; taskId: string; updates: Partial<WbsTask>; expectedVersion?: number },
   storageProvider?: StorageProvider,
-  preloaded?: LiveData
+  preloaded?: LiveData,
+  options?: { skipResponse?: boolean }
 ): Promise<ProjectPlanState> {
   const { projectKey, projectId, taskId, updates, expectedVersion } = payload;
   validateTaskUpdates(updates as Record<string, unknown>);
@@ -2056,8 +2057,10 @@ export async function updateWbsTask(
     applyAcceptedDueDate(live, s.key, s.updates, await syncTaskToJira(s.key, s.updates, log, plan.tasks.find(t => t.key === s.key)));
   }
 
-  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId),
-    { ok: true, jiraSync: log.report(), cascadeRemaining, cascadeSkipped: [...notMoved] });
+  const result = { ok: true, jiraSync: log.report(), cascadeRemaining, cascadeSkipped: [...notMoved] };
+  // A batch builds one plan at the end, so its items skip building their own (F-17).
+  if (options?.skipResponse) return result as any;
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId), result);
 }
 
 /**
@@ -2137,7 +2140,7 @@ export async function batchUpdateTasks(
   const remaining: string[] = [];
   let plan: ProjectPlanState | null = null;
   for (const item of items) {
-    const run = (expectedVersion?: number) => updateWbsTask({ projectKey, projectId, planId, taskId: item.taskId, updates: item.updates, expectedVersion }, storage, live);
+    const run = (expectedVersion?: number) => updateWbsTask({ projectKey, projectId, planId, taskId: item.taskId, updates: item.updates, expectedVersion }, storage, live, { skipResponse: true });
     let res: any = await run(item.expectedVersion);
     if (res && res.conflict) {
       const now = (await store.loadEntries()).get(item.taskId)?.version ?? 0;

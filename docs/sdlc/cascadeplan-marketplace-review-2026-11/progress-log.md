@@ -162,3 +162,9 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 - **What changed:** `withKvsRetry` wraps every call of the Forge storage provider (`get`, `set`, `delete`, each query page, `swap`). `isRateLimited` matches the code (`RATE_LIMIT_EXCEEDED`, `TOO_MANY_REQUESTS`) or status 429, not the error class. Waits 1, 2 and 4 s, then `StorageBusyError`, which `withValidation` turns into `{ ok: false, error: 'busy', message: 'CascadePlan is busy. Try again in a minute.' }`.
 - **Proof:** new `test/kvs-retry.test.ts` (codes and status recognised; two failures then success with waits 1000 and 2000; four failures give up with the busy result after waits 1000, 2000, 4000; other errors not retried). Unit suite 799 passed, coverage thresholds met.
 - **Remaining:** the quota itself (4,000 reads per minute per installation) is measured with F-17.
+
+### F-17 (part). A batch builds one plan, not one per item
+
+- **What changed:** `updateWbsTask` takes `options.skipResponse`; `batchUpdateTasks` passes it, so items return only their result and the batch builds one plan at the end.
+- **Proof (R-29, 50 items, 200 tasks, 1 plan):** before: 151 prefix queries, 30,200 rows, 453 pages, 400 gets; after: 102 queries, 20,400 rows, 306 pages, 253 gets. Jira calls unchanged (54). Unit suite 799 passed.
+- **Remaining:** the plan's target (at most 5 prefix queries for such a batch) needs one in-memory state for the whole batch, and the shared-date storage of DEC-3, which removes the scans of the other plans. Both come with the phase 3 storage work.
