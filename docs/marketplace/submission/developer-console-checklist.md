@@ -39,7 +39,7 @@ For each app:
    - *CascadePlan:* `Visual sprint baseline control, scope creep detection, and WBS planning for Jira`
 2. **Icon Upload:** Upload `docs/marketplace/assets/<app>/icon.png` (144x144 px PNG).
 3. **Hero Banner:** Upload `docs/marketplace/assets/<app>/banner.png` (2280x1140 px PNG; CascadePlan: 1120x548 px, BL-7). CascadePlan also has three highlight images, `highlight-1.png` to `highlight-3.png` (580x330 px), with the captions in its listing file.
-4. **Screenshot Gallery:** Upload all 5 screenshots in numerical order (`01-*.png` through `05-*.png`) from `docs/marketplace/assets/<app>/` and copy the manifest captions.
+4. **Screenshot Gallery:** Upload all 5 screenshots in numerical order (`01-*.png` through `05-*.png`) from `docs/marketplace/assets/<app>/` with their captions (CascadePlan: the listing's Screenshots and Highlights sections; 1840x900 px).
 5. **Detailed Description:** Paste the complete Markdown body from the listing file into the Marketplace description field.
 
 ### Step 2.3: Standardized Suite Pricing Configuration

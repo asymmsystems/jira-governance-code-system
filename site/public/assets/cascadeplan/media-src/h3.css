@@ -1,0 +1,4 @@
+/* Copyright (c) 2026 Asymm Systems. All rights reserved. @author Fahim Farook */
+.s1 { left: 24px; top: 20px; }
+.p3 { left: 24px; top: 66px; width: 532px; border-top-color: var(--rose); padding: 14px 16px; }
+.actions { margin-top: 12px; display: flex; gap: 8px; justify-content: flex-end; }

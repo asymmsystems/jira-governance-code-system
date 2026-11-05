@@ -1,0 +1,29 @@
+/*
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ *
+ * Banner layout: 1120 x 548 px.
+ */
+body { width: 1120px; height: 548px; position: relative; background: var(--off-white); }
+.band { position: absolute; right: 0; top: 0; bottom: 0; width: 560px;
+  background: linear-gradient(135deg, var(--sand-light) 0%, var(--sand) 100%); }
+.copy { position: absolute; left: 64px; top: 70px; width: 460px; }
+.brand { display: flex; align-items: center; gap: 18px; }
+.mark-lg { width: 68px; height: 68px; }
+h1 { font-size: 52px; font-weight: 800; letter-spacing: -1px; color: var(--ink); }
+.tagline { margin-top: 26px; font-size: 21px; line-height: 1.45; color: var(--ink-soft); }
+.points { list-style: none; margin-top: 30px; display: grid; gap: 14px; }
+.points li { display: flex; align-items: center; gap: 12px; font-size: 18px; font-weight: 700; color: var(--ink); }
+.dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+.dot.teal { background: var(--teal); } .dot.sage { background: var(--sage); } .dot.rose { background: var(--rose); }
+.foot { position: absolute; top: 400px; font-size: 14px; font-weight: 700; color: var(--teal-ink); letter-spacing: 0.3px; }
+.board { position: absolute; right: 45px; top: 124px; width: 470px; height: 300px; }
+.board .grid { background-size: 58px 100%; }
+.t1 { left: 230px; }
+.b1 { left: 20px; top: 53px; width: 263px; } .f1 { width: 30%; }
+.b2 { left: 162px; top: 113px; width: 170px; } .f2 { width: 0; }
+.b3 { left: 362px; top: 173px; width: 92px; }
+.b4 { left: 300px; top: 233px; width: 150px; } .f4 { width: 55%; }
+.c1 { left: 130px; top: 96px; }
+.c2 { left: 347px; top: 156px; }

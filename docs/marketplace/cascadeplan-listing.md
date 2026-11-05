@@ -43,6 +43,16 @@ CascadePlan schedules your project's epics, stories, tasks and sub-tasks on a ti
 
 ---
 
+## Screenshots (1840 x 900: `docs/marketplace/assets/cascadeplan/01-timeline.png` to `05-link-editor.png`)
+
+1. **A plan on the timeline.** Epics, stories, tasks and sub-tasks with their progress, and links that start at 30% or 50% of their predecessor.
+2. **Why this date?** The planner names the link that sets a work item's start, and whether it waits.
+3. **See every Jira change before you drop.** Moving a story moves its sub-tasks and the work that depends on it; the line above lists each due date and start date that will change.
+4. **Baselines and scope reviews.** The change since the frozen baseline: hours, added work and changed estimates, with a request for approval.
+5. **Change a link.** Click an arrow or its label to set the percent, swap the direction or remove the Jira link.
+
+---
+
 ## Runs entirely on Atlassian Forge
 * No external servers and no calls outside your Atlassian site.
 * Planning data is stored in Forge storage of your site; the shared start dates and trigger percents are issue properties of your Jira issues.
