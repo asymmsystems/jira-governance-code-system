@@ -5864,9 +5864,23 @@ function openTaskDetailModal(taskKey) {
     opt.value = u.displayName;
     opt.dataset.accountId = u.accountId || '';
     opt.textContent = u.displayName + (u.isPlaceholder ? ' [Placeholder]' : '');
-    if (u.displayName === task.resource) opt.selected = true;
     assSelect.appendChild(opt);
   });
+  // The current assignee is always offered and selected by account id, also when Jira did not list
+  // them among the first assignable users, so a save never unassigns by accident (F-11).
+  const curAccountId = task.resourceAccountId && task.resourceAccountId !== 'unassigned' ? task.resourceAccountId : '';
+  let curOption = [...assSelect.options].find(o => (curAccountId ? o.dataset.accountId === curAccountId : o.value === (task.resource || 'Unassigned')));
+  if (!curOption && curAccountId) {
+    curOption = document.createElement('option');
+    curOption.value = task.resource || curAccountId;
+    curOption.dataset.accountId = curAccountId;
+    curOption.textContent = task.resource || curAccountId;
+    assSelect.insertBefore(curOption, assSelect.firstChild);
+  }
+  if (curOption) curOption.selected = true;
+  assSelect.dataset.touched = '';
+  assSelect.dataset.originalAccountId = curAccountId || 'unassigned';
+  assSelect.onchange = () => { assSelect.dataset.touched = '1'; };
 
   // Start & End Date Inputs
   const startInput = document.getElementById('editStartDateInput');
@@ -6107,7 +6121,8 @@ async function saveTaskModalChanges() {
   const curTask = (currentPlan?.tasks || []).find(t => t.key === activeTaskId) || {};
   const updates = {};
   if (summary && summary !== curTask.summary) updates.summary = summary;
-  if (resource !== (curTask.resource || 'Unassigned')) {
+  // The assignee goes to Jira only when the user changed the field to another person (F-11).
+  if (assSelect.dataset.touched === '1' && (resourceAccountId || 'unassigned') !== assSelect.dataset.originalAccountId) {
     updates.resource = resource;
     if (resourceAccountId) updates.resourceAccountId = resourceAccountId;
   }

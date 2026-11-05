@@ -29,7 +29,9 @@ const task26: any = { id: '26', key: 'DEMO-26', fields: { summary: 'Fraud checks
 const s30 = sub(30, story9), s29 = sub(29, story9), s28 = sub(28, task26), s31 = sub(31, task26);
 story9.fields.subtasks = [ref(s30), ref(s29)];
 task26.fields.subtasks = [ref(s28), ref(s31)];
-const task40 = { id: '40', key: 'DEMO-40', fields: { summary: 'Release notes', issuetype: type('Task', 0), status: st('new'), timeoriginalestimate: 8 * 3600 } };
+// DEMO-40's assignee is not among the assignable users the fixture returns (F-11).
+const task40 = { id: '40', key: 'DEMO-40', fields: { summary: 'Release notes', issuetype: type('Task', 0), status: st('new'), timeoriginalestimate: 8 * 3600,
+  assignee: { accountId: 'acc-ann', displayName: 'Ann Lee' } } };
 const task41 = { id: '41', key: 'DEMO-41', fields: { summary: 'Unplanned task', issuetype: type('Task', 0), status: st('new') } };
 const ISSUES = [epic, story9, s30, s29, task26, s28, s31, task40, task41];
 
