@@ -10886,7 +10886,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
         const epObj = (currentPlan.availableEpics || []).find((e) => e.key === task.epicKey);
         epicLabel = epObj ? epObj.summary : task.epicKey;
       }
-      if (epicLabel) {
+      if (task.isSubtask || task.hierarchyLevel === -1) {
+        epicHtml = epicLabel ? html`<span class="epic-inherited" title="Epic of the parent work item">🟪 ${epicLabel}</span>` : html``;
+      } else if (epicLabel) {
         epicHtml = html`<span class="epic-link-chip has-epic" title="Click to change epic">🟪 ${epicLabel} ▾</span>`;
       } else {
         epicHtml = html`<span class="epic-link-chip no-epic" title="Click to link epic">+ Link Epic</span>`;

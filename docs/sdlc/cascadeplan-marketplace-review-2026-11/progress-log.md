@@ -141,3 +141,8 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 - **N-09:** `canvas-timeline.ts` records the last input type (`pointerdown` or `keydown`). A focused bar gets a designed outline (2 px focus colour, 2 px outside, glow 6 px, no glow in forced colours); `drawFocusIfNeeded` (the system ring) runs only after keyboard input or in forced colours.
 - **Proof:** `test/e2e/e2e_bar_ux_probe.py` now asserts: "PASS N-10 link ports visible above the canvas on hover" (port opacity 0.72, hit layer 32 over canvas 30). Screenshots `evidence/screenshots/harness/UX1-hover-ports-fixed.png` (both ports visible on hover) and `UX2-after-click-fixed.png` (blue outline, no black ring, ports shown). Harness 30/30, 25/25 and the F-11 check; unit suite 791 passed.
 - **Remaining:** a contrast check of the outline in both themes, and an axe run (MK-07); a check that Tab focus still draws the ring.
+
+### N-07. A sub-task shows its parent's epic and offers no epic picker
+
+- **What changed:** the epic column of a sub-task row (`isSubtask` or hierarchy level -1) shows `.epic-inherited` read-only text instead of the `.epic-link-chip` picker. `updateWbsTask` refuses `epicKey` on a sub-task: "<key> is a sub-task; its epic comes from its parent work item."
+- **Proof:** new test in `test/review/parent-move.test.ts` (refused, no Jira write). New `test/e2e/e2e_subtask_epic_probe.py`: sub-task rows (DEMO-30, DEMO-29, DEMO-28, DEMO-31) have no picker, standard rows keep it. Unit suite 792 passed; harness 30/30 and 25/25.

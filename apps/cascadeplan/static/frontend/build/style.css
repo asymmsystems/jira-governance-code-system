@@ -1874,3 +1874,6 @@ body.is-dragging-backlog .drop-target-row.drag-over {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
+
+/* A sub-task's inherited epic: read-only text (N-07). */
+.epic-inherited { font-size: 11px; color: var(--cp-text-subtle); white-space: nowrap; }

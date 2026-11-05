@@ -159,3 +159,14 @@ describe('Parent and sub-task moves at db08009', () => {
     expect(putsTo('TEST-2')).toHaveLength(0);
   });
 });
+
+describe('N-07: a sub-task epic change', () => {
+  it('is refused with a plain message, and nothing is written', async () => {
+    issues = [jiraIssue(1, task), jiraIssue(2, subtask, 1)];
+    const w = weeks[5].weekKey;
+    await seed({ 'TEST-2': { startWeek: w, spanWeeks: 1, startDate: start, endDate: add(start, 2) } }, {});
+    await expect(updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2', updates: { epicKey: 'TEST-9', epic: 'E' } as any }, storage))
+      .rejects.toThrow('TEST-2 is a sub-task; its epic comes from its parent work item.');
+    expect(putsTo('TEST-2')).toEqual([]);
+  });
+});

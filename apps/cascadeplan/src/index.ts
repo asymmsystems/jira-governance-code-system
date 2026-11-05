@@ -1715,6 +1715,10 @@ export async function updateWbsTask(
     // The user edited an older copy: refuse before any Jira write (INV-08).
     return conflictResult(targetTask.key);
   }
+  // A sub-task's epic comes from its parent; an epic write would change its parent instead (N-07).
+  if ((targetTask.isSubtask || targetTask.hierarchyLevel === -1) && (updates as Record<string, unknown>).epicKey !== undefined) {
+    throw new ValidationError('epicKey', `${targetTask.key} is a sub-task; its epic comes from its parent work item.`);
+  }
   // A parent whose dates come from its sub-tasks is not moved directly (N-06 rule 3, ADR-003).
   if (targetTask.datesFromChildren && ['startDate', 'endDate', 'startWeek', 'spanWeeks', 'endWeek'].some(f => (updates as Record<string, unknown>)[f] !== undefined)) {
     throw new ValidationError('startDate', `${targetTask.key} takes its dates from its sub-tasks. Move its sub-tasks instead.`);
