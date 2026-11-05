@@ -48,6 +48,8 @@ import { StorageProvider } from './storage/plan-repository';
 import { PlanStore, StoredEntry, sequenceBetween } from './storage/plan-store';
 import { BatchStorage } from './storage/batch-storage';
 import { planBlockMove, BlockChange } from './domain/block-move';
+import { sha256Hex } from './domain/sha256';
+import { cleanPlanFilter, planJql } from './domain/plan-filter';
 import { logFailure } from './logger';
 import { IssuePermission, deniedIssues, describeMissing, forbiddenResult, PermissionCheckError, ForbiddenError, requireIssuePermissions } from './security/write-permissions';
 import {
@@ -524,14 +526,23 @@ export const UNASSIGNED_USER: JiraAssignableUser = {
 /**
  * Fetches the real Jira project assignees, plus "Unassigned" (B-18: no placeholder people).
  */
+/** Assignable users read per page, and the most pages read (1,000 users; F-27). */
+export const USER_PAGE_SIZE = 50;
+export const MAX_USER_PAGES = 20;
+
 export async function fetchProjectUsers(projectKey: string): Promise<JiraAssignableUser[]> {
   const realUsers: JiraAssignableUser[] = [];
+  const seen = new Set<string>();
   try {
-    const res = await getJiraCaller().requestJira(route`/rest/api/3/user/assignable/search?project=${projectKey}&maxResults=50`);
-    if (res.status === 200) {
+    // Jira returns at most one page per call; a short page is the last one.
+    for (let page = 0; page < MAX_USER_PAGES; page++) {
+      const startAt = page * USER_PAGE_SIZE;
+      const res = await getJiraCaller().requestJira(route`/rest/api/3/user/assignable/search?project=${projectKey}&startAt=${startAt}&maxResults=${USER_PAGE_SIZE}`);
+      if (res.status !== 200) break;
       const data: any[] = await res.json();
       for (const u of data) {
-        if (u.accountId && u.displayName) {
+        if (u.accountId && u.displayName && !seen.has(u.accountId)) {
+          seen.add(u.accountId);
           realUsers.push({
             accountId: u.accountId,
             displayName: u.displayName,
@@ -540,6 +551,7 @@ export async function fetchProjectUsers(projectKey: string): Promise<JiraAssigna
           });
         }
       }
+      if (!Array.isArray(data) || data.length < USER_PAGE_SIZE) break;
     }
   } catch (err) { logFailure('fetchProjectUsers', err); }
   return [UNASSIGNED_USER, ...realUsers];
@@ -590,8 +602,11 @@ export interface RawIssues {
  * Reads the project's issues page by page (nextPageToken), up to MAX_PAGES pages. When more
  * pages remain, reports how many were shown and Jira's approximate total (B-10).
  */
-export async function fetchRawIssues(projectKey: string, reconcileIds: string[] = []): Promise<RawIssues> {
+export async function fetchRawIssues(projectKey: string, reconcileIds: string[] = [], filter?: string): Promise<RawIssues> {
   const caller = getJiraCaller();
+  // The plan's filter narrows the project (F-27); route encodes the whole JQL as one query value.
+  const scope = planJql(projectKey, filter);
+  const jql = `${scope} order by created desc`;
   // Issues written a moment ago: the search is eventually consistent, so it is asked for read-after-
   // write on them (at most 50, repeated parameter; F-03 part 3).
   const ids = [...new Set(reconcileIds.filter(id => /^\d+$/.test(id)))].slice(0, 50);
@@ -604,11 +619,11 @@ export async function fetchRawIssues(projectKey: string, reconcileIds: string[] 
     do {
       const res = ids.length
         ? (token
-          ? await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates,cascadeplan.links&maxResults=100&nextPageToken=${token}&${reconcile}`)
-          : await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates,cascadeplan.links&maxResults=100&${reconcile}`))
+          ? await caller.requestJira(route`/rest/api/3/search/jql?jql=${jql}&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates,cascadeplan.links&maxResults=100&nextPageToken=${token}&${reconcile}`)
+          : await caller.requestJira(route`/rest/api/3/search/jql?jql=${jql}&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates,cascadeplan.links&maxResults=100&${reconcile}`))
         : (token
-          ? await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates,cascadeplan.links&maxResults=100&nextPageToken=${token}`)
-          : await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates,cascadeplan.links&maxResults=100`));
+          ? await caller.requestJira(route`/rest/api/3/search/jql?jql=${jql}&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates,cascadeplan.links&maxResults=100&nextPageToken=${token}`)
+          : await caller.requestJira(route`/rest/api/3/search/jql?jql=${jql}&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates,cascadeplan.links&maxResults=100`));
       if (!res || res.status !== 200) {
         logFailure('fetchRawIssues', res || new Error('no answer'));
         if (pages === 0) return { issues: [], isLive: false, status: res ? res.status : 0 };
@@ -629,11 +644,73 @@ export async function fetchRawIssues(projectKey: string, reconcileIds: string[] 
     const res = await caller.requestJira(route`/rest/api/3/search/approximate-count`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jql: `project = "${projectKey}"` })
+      body: JSON.stringify({ jql: scope })
     });
     if (res && res.status === 200) total = Math.max(total, Number((await res.json()).count) || total);
   } catch (err) { logFailure('fetchRawIssues', err); }
   return { issues, isLive: true, truncated: { shown: issues.length, total } };
+}
+
+/**
+ * Asks Jira whether a plan filter is valid JQL, with one search of one issue, and how many issues it
+ * matches (F-27). Jira's own message is returned when Jira refuses the JQL.
+ */
+export async function testPlanFilter(projectKey: string, filter: string): Promise<{ ok: boolean; count?: number; message?: string }> {
+  const caller = getJiraCaller();
+  const scope = planJql(projectKey, filter);
+  try {
+    const res = await caller.requestJira(route`/rest/api/3/search/jql?jql=${scope}&fields=summary&maxResults=1`);
+    if (!res || res.status !== 200) {
+      let message = `Jira did not accept the filter (HTTP ${res ? res.status : 0}).`;
+      try {
+        const body = await res.json();
+        const errors = [...(body?.errorMessages || []), ...Object.values(body?.errors || {})].filter(Boolean);
+        if (errors.length) message = `Jira did not accept the filter: ${errors.join(' ')}`;
+      } catch { /* the status is enough */ }
+      return { ok: false, message };
+    }
+    const count = await caller.requestJira(route`/rest/api/3/search/approximate-count`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jql: scope })
+    });
+    if (count && count.status === 200) return { ok: true, count: Number((await count.json()).count) || 0 };
+    return { ok: true };
+  } catch (err) {
+    logFailure('testPlanFilter', err);
+    return { ok: false, message: 'Jira did not answer. Try again.' };
+  }
+}
+
+/** The JQL filter of a plan, or undefined (F-27). */
+async function planFilterOf(storage: StorageProvider, projectKey: string, projectId: string | undefined, planId?: string): Promise<string | undefined> {
+  return (await openStore(storage, projectKey, projectId, planId).getSettings()).jqlFilter || undefined;
+}
+
+/**
+ * Sets or clears the JQL filter of a plan (F-27). Plan approvers only. The filter is checked here and
+ * by Jira before it is saved; an empty filter reads the whole project again.
+ */
+export async function setPlanFilter(
+  payload: { projectKey: string; projectId?: string; planId?: string; filter?: string },
+  storageProvider?: StorageProvider
+): Promise<{ ok: boolean; filter?: string; count?: number; error?: string; message?: string }> {
+  let filter: string;
+  try {
+    filter = cleanPlanFilter(payload.filter);
+  } catch (err: any) {
+    return { ok: false, error: 'validation', message: err.message };
+  }
+  const storage = resolveStorage(storageProvider);
+  const planId = await writablePlanId(storage, payload.projectKey, payload.projectId, payload.planId);
+  let count: number | undefined;
+  if (filter) {
+    const test = await testPlanFilter(payload.projectKey, filter);
+    if (!test.ok) return { ok: false, error: 'jql', message: test.message };
+    count = test.count;
+  }
+  await openStore(storage, payload.projectKey, payload.projectId, planId).saveSettings({ jqlFilter: filter || undefined });
+  return { ok: true, filter, count };
 }
 
 export async function fetchLiveJiraIssues(
@@ -901,8 +978,8 @@ export interface LiveData {
 }
 
 /** One read of everything a plan needs from Jira. */
-export async function loadLive(projectKey: string, reconcileIds: string[] = []): Promise<LiveData> {
-  const [raw, users, epics] = await Promise.all([fetchRawIssues(projectKey, reconcileIds), fetchProjectUsers(projectKey), fetchProjectEpics(projectKey)]);
+export async function loadLive(projectKey: string, reconcileIds: string[] = [], filter?: string): Promise<LiveData> {
+  const [raw, users, epics] = await Promise.all([fetchRawIssues(projectKey, reconcileIds, filter), fetchProjectUsers(projectKey), fetchProjectEpics(projectKey)]);
   let hasEpic = epics.length > 0;
   if (!hasEpic) {
     const meta = await resolveProjectIssueType(projectKey, 'Epic');
@@ -946,7 +1023,7 @@ export async function getProjectPlan(
   const storedHiddenColumns = settings.hiddenColumns || [];
 
   // Query live Jira issues and assignees (once per resolver call when preloaded)
-  const live = preloaded || await loadLive(projectKey, reconcileIds);
+  const live = preloaded || await loadLive(projectKey, reconcileIds, settings.jqlFilter || undefined);
   const liveData = mapLiveIssues(live.raw, storedScheduleMap);
   const availableUsers = [...live.users];
   const availableEpics = [...live.epics];
@@ -957,7 +1034,8 @@ export async function getProjectPlan(
   // An entry Jira did not return is not shown. When the Jira read worked and was complete it is listed, so the
   // client can say that some planned issues are not visible. Records are deleted only by the issue-deleted trigger (BL-9).
   const liveKeys = new Set([...tasks, ...backlogTasks].map(t => t.key));
-  const staleEntries = !liveData.isLive || liveData.truncated ? [] : [...entries.keys()].filter(k => !liveKeys.has(k)).sort();
+  // With a plan filter, a record outside the filter is expected, not stale (F-27).
+  const staleEntries = !liveData.isLive || liveData.truncated || settings.jqlFilter ? [] : [...entries.keys()].filter(k => !liveKeys.has(k)).sort();
 
   // Second people are stored by account id; their names are read live from Jira (B-28, INV-04).
   for (const t of tasks) {
@@ -1042,6 +1120,7 @@ export async function getProjectPlan(
     isLiveSynced: liveData.isLive,
     jiraStatus: liveData.isLive ? undefined : (live.raw.status ?? 0),
     truncated: liveData.truncated,
+    jqlFilter: settings.jqlFilter || undefined,
     staleEntries,
     siteUrl: siteUrl || (process.env.JIRA_BASE_URL || undefined)
   };
@@ -1176,6 +1255,62 @@ export async function resolveProjectIssueType(
 /**
  * Creates a new Jira issue and places it on the schedule or backlog.
  */
+/**
+ * C7: a create is safe to repeat. The client sends a create id with a create; the new issue keeps it
+ * in the issue property `cascadeplan.create` (indexed by the jira:entityProperty module), set in the
+ * same create request. When a call ended without an answer and the user repeats it, the client sends
+ * the same id, and an issue that the first call created is found and returned instead of a second one.
+ */
+export const CREATE_PROPERTY = 'cascadeplan.create';
+const CREATE_ID = /^[A-Za-z0-9-]{8,60}$/;
+
+/** The create id of a payload, or undefined when there is none. */
+export function createIdOf(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'string' || !CREATE_ID.test(value)) throw new ValidationError('createId', 'createId must be 8 to 60 letters, digits or hyphens');
+  return value;
+}
+
+/** The issue of the project that a call with this create id already created, or undefined. */
+export async function findCreatedIssue(projectKey: string, createId: string): Promise<{ id: string; key: string } | undefined> {
+  const jql = `project = "${projectKey}" AND issue.property[${CREATE_PROPERTY}].id = "${createId}"`;
+  try {
+    const res = await getJiraCaller().requestJira(route`/rest/api/3/search/jql?jql=${jql}&fields=summary&maxResults=1`);
+    if (!res || res.status !== 200) return undefined;
+    const found = ((await res.json()).issues || [])[0];
+    return found && found.id && found.key ? { id: String(found.id), key: String(found.key) } : undefined;
+  } catch (err) {
+    logFailure('findCreatedIssue', err);
+    return undefined;
+  }
+}
+
+/**
+ * POST /rest/api/3/issue as the user. With a create id, an issue an earlier call created with it is
+ * returned as if Jira had just created it (status 201, `reused: true`), and a new issue carries the id.
+ */
+export async function postIssueOnce(projectKey: string, body: any, createId?: string): Promise<any> {
+  if (createId) {
+    const found = await findCreatedIssue(projectKey, createId);
+    if (found) return { status: 201, reused: true, json: async () => found };
+    body = { ...body, properties: [...(body.properties || []), { key: CREATE_PROPERTY, value: { id: createId, v: 1 } }] };
+  }
+  return getJiraCaller().requestJira(route`/rest/api/3/issue`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+}
+
+/**
+ * The create id of one of several issues one call creates, from a value that names that issue in
+ * every repeat of the call (an account id, a stored sub-task id), never from its position: a repeat
+ * after a partial success has fewer items to create.
+ */
+export function partCreateId(createId: string | undefined, part: string): string | undefined {
+  return createId ? `${createId}-${sha256Hex(part).slice(0, 12)}` : undefined;
+}
+
 export async function createInlineTask(
   request: InlineTaskCreateRequest,
   storageProvider?: StorageProvider
@@ -1188,6 +1323,7 @@ export async function createInlineTask(
     resource = 'Unassigned', resourceAccountId, assigneeAccountId, startWeek, spanWeeks = 3, targetIndex
   } = request;
 
+  const createId = createIdOf(request.createId);
   let jiraIssueId = '';
   let jiraIssueKey = '';
   // The plan check runs before the Jira create, so a deleted plan creates no issue (R-14, H9).
@@ -1196,7 +1332,6 @@ export async function createInlineTask(
 
   try {
     let res: any;
-    const caller = getJiraCaller();
     const effectiveParent = parentKey || epicKey;
     const rawAssignee = (assigneeAccountId && assigneeAccountId !== 'unassigned' && assigneeAccountId !== 'Unassigned')
       ? assigneeAccountId
@@ -1217,11 +1352,7 @@ export async function createInlineTask(
       body.fields.assignee = { accountId: effectiveAssignee };
     }
 
-    res = await caller.requestJira(route`/rest/api/3/issue`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
+    res = await postIssueOnce(projectKey, body, createId);
 
     if (res && res.status === 400) {
       let isIssueTypeError = false;
@@ -1238,11 +1369,7 @@ export async function createInlineTask(
         const issueTypeMeta = await resolveProjectIssueType(projectKey, 'Task');
         if (issueTypeMeta.id) {
           body.fields.issuetype = { id: issueTypeMeta.id } as any;
-          res = await caller.requestJira(route`/rest/api/3/issue`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-          });
+          res = await postIssueOnce(projectKey, body, createId);
         }
       }
     }
@@ -1316,13 +1443,13 @@ export async function createInlineTask(
  * Creates a new Jira Epic.
  */
 export async function createJiraEpic(
-  payload: { projectKey: string; summary: string },
+  payload: { projectKey: string; summary: string; createId?: string },
   storageProvider?: StorageProvider
 ): Promise<{ success: boolean; ok: boolean; jiraSync: JiraSyncReport; epic?: JiraEpicItem; error?: string }> {
   const { projectKey, summary } = payload;
+  const createId = createIdOf(payload.createId);
   try {
     let res: any;
-    const caller = getJiraCaller();
     let body = {
       fields: {
         project: { key: projectKey },
@@ -1331,11 +1458,7 @@ export async function createJiraEpic(
       }
     };
 
-    res = await caller.requestJira(route`/rest/api/3/issue`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
+    res = await postIssueOnce(projectKey, body, createId);
 
     if (res && res.status === 400) {
       let isIssueTypeError = false;
@@ -1352,11 +1475,7 @@ export async function createJiraEpic(
         const issueTypeMeta = await resolveProjectIssueType(projectKey, 'Epic');
         if (issueTypeMeta.id) {
           body.fields.issuetype = { id: issueTypeMeta.id } as any;
-          res = await caller.requestJira(route`/rest/api/3/issue`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-          });
+          res = await postIssueOnce(projectKey, body, createId);
         } else {
           const errMsg = 'Epics are not enabled in this project type';
           return { success: false, ok: false, error: errMsg, jiraSync: failedCreate(errMsg) };
@@ -1751,7 +1870,8 @@ async function applyPlannedJiraWrites(
   plan: { link?: { predecessorKey: string }; removeLinkIds: string[]; newSubtasks: Array<{ accountId: string; summary: string }>;
     subtaskAction?: { subtaskKey: string; action: 'delete' | 'unassign' | 'keep' }; percents: Record<string, number>; removePercentIds: string[] },
   log: SyncLog,
-  live?: LiveData
+  live?: LiveData,
+  createId?: string
 ): Promise<{ ok: true; entry: StoredEntry } | { ok: false; result: any }> {
   let entry: any = { ...savedEntry };
   let changed = false;
@@ -1781,17 +1901,12 @@ async function applyPlannedJiraWrites(
     if (live && saved) patchLiveProperty(live, target.key, LINKS_PROPERTY, saved);
   }
   if (plan.newSubtasks.length) {
-    const caller = getJiraCaller();
     for (const s of plan.newSubtasks) {
       let subtaskKey: string | undefined;
       for (const stType of ['Sub-task', 'Subtask']) {
         try {
-          const subRes = await caller.requestJira(route`/rest/api/3/issue`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fields: { project: { key: projectKey }, parent: { key: target.key }, summary: s.summary,
-              issuetype: { name: stType }, assignee: { accountId: s.accountId } } })
-          });
+          const subRes = await postIssueOnce(projectKey, { fields: { project: { key: projectKey }, parent: { key: target.key }, summary: s.summary,
+            issuetype: { name: stType }, assignee: { accountId: s.accountId } } }, partCreateId(createId, s.accountId));
           if (subRes && subRes.status === 201) {
             subtaskKey = String((await subRes.json()).key);
             log.record(subtaskKey, ['create'], { synced: true });
@@ -1852,7 +1967,7 @@ export async function updateWbsTask(
   const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
 
   // Jira is read once per update (or once per batch); the returned plan reuses the same read (B-10, B-16).
-  const live = preloaded || await loadLive(projectKey, reconcileIdsOf(payload.reconcileIds));
+  const live = preloaded || await loadLive(projectKey, reconcileIdsOf(payload.reconcileIds), await planFilterOf(storage, projectKey, projectId, planId));
   const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId);
   const targetTask = plan.tasks.find(t => t.id === taskId || t.key === taskId) ||
     (plan.backlogTasks || []).find(t => t.id === taskId || t.key === taskId);
@@ -2172,7 +2287,7 @@ export async function updateWbsTask(
   // KVS first, with a version check per record; Jira only after the target record is saved.
   let targetPut = await store.putEntry(targetTask.key, targetTask.id, stripJiraOwnedFields(scheduleMap[targetTask.key]), baseVersion);
   if (!targetPut.ok) return conflictResult(targetTask.key);
-  const saved = await applyPlannedJiraWrites(store, projectKey, targetTask, targetPut.entry as any, entries.get(targetTask.key), jiraPlan, log, live);
+  const saved = await applyPlannedJiraWrites(store, projectKey, targetTask, targetPut.entry as any, entries.get(targetTask.key), jiraPlan, log, live, createIdOf((payload as any).createId));
   if (!saved.ok) return saved.result;
   targetPut = { ok: true, entry: saved.entry } as any;
 
@@ -2291,7 +2406,7 @@ export async function batchUpdateTasks(
   const storage = new BatchStorage(resolveStorage(storageProvider));
   const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
   const store = openStore(storage, projectKey, projectId, planId);
-  const live = await loadLive(projectKey, reconcileIdsOf(payload.reconcileIds));
+  const live = await loadLive(projectKey, reconcileIdsOf(payload.reconcileIds), await planFilterOf(storage, projectKey, projectId, planId));
   const startVersions = new Map([...(await store.loadEntries())].map(([k, e]) => [k, e.version]));
   const writes: JiraWriteRecord[] = [];
   const results: Array<{ taskId: string; ok: boolean; conflict?: boolean }> = [];
@@ -2412,7 +2527,7 @@ export async function continueCascade(
   const storage = resolveStorage(storageProvider);
   const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
   const log = new SyncLog();
-  const live = await loadLive(projectKey, reconcileIdsOf(payload.reconcileIds));
+  const live = await loadLive(projectKey, reconcileIdsOf(payload.reconcileIds), await planFilterOf(storage, projectKey, projectId, planId));
   const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId);
   const store = openStore(storage, projectKey, projectId, planId);
   const entries = await store.loadEntries();
@@ -2532,7 +2647,7 @@ export async function reorderWbsTasks(
   const storage = resolveStorage(storageProvider);
   const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
 
-  const live = await loadLive(projectKey);
+  const live = await loadLive(projectKey, [], await planFilterOf(storage, projectKey, projectId, planId));
   const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId);
   const moving = plan.tasks.find(t => t.key === taskId || t.id === taskId);
   if (moving) await requireIssuePermissions([{ key: moving.key, id: moving.id }], ['EDIT_ISSUES']);
@@ -2590,13 +2705,12 @@ export async function createSubtaskForResource(
   if (!parentKey) {
     return { success: false, ok: false, error: 'parentKey is required', jiraSync: noJiraWrites() };
   }
+  const createId = createIdOf(payload.createId);
   const parentIssueId = await verifyIssueInProject(parentKey, projectKey, 'parentKey');
   // The sub-task is created under the parent, and the parent's record changes (BL-2).
   await requireIssuePermissions([{ key: parentKey, id: parentIssueId }], ['EDIT_ISSUES']);
   const storage = resolveStorage(storageProvider);
   const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
-
-  const caller = getJiraCaller();
 
   let createdId = '';
   let createdKey = '';
@@ -2617,11 +2731,7 @@ export async function createSubtaskForResource(
         body.fields.assignee = { accountId: resourceAccountId };
       }
 
-      const res = await caller.requestJira(route`/rest/api/3/issue`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
+      const res = await postIssueOnce(projectKey, body, createId);
 
       if (res && res.status === 201) {
         const data = await res.json();
@@ -2717,6 +2827,7 @@ export async function addSubtaskToTask(
   // A sub-task is a real Jira sub-task, created as the user (ADR-004, F-23); nothing is stored in the
   // plan. Only an estimate the user entered goes to Jira: there is no default (BL-3, INV-03).
   const { projectKey, projectId, parentTaskId, subtask } = payload;
+  const createId = createIdOf((payload as any).createId);
   const parentId = await verifyIssueInProject(parentTaskId, projectKey, 'parentTaskId');
   await requireIssuePermissions([{ key: parentTaskId, id: parentId }], ['EDIT_ISSUES', 'CREATE_ISSUES']);
   const storage = resolveStorage(storageProvider);
@@ -2731,7 +2842,7 @@ export async function addSubtaskToTask(
     effortHours = PlannerEngine.normalizeEstimateToHours(subtask.estimateUnit || 'HOURS', subtask.estimateValue);
   }
   const log = new SyncLog();
-  const created = await createJiraSubtask(projectKey, parentTaskId, summary, effortHours);
+  const created = await createJiraSubtask(projectKey, parentTaskId, summary, effortHours, createId);
   if (!created.key) {
     log.record(parentTaskId, ['subtask'], { synced: false, error: `Jira did not create the sub-task: ${created.error}` });
     return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, undefined, planId),
@@ -2744,14 +2855,13 @@ export async function addSubtaskToTask(
 }
 
 /** Creates a Jira sub-task under a parent, as the user, trying the two usual type names. */
-async function createJiraSubtask(projectKey: string, parentKey: string, summary: string, effortHours?: number): Promise<{ key?: string; id?: string; error?: string }> {
-  const caller = getJiraCaller();
+async function createJiraSubtask(projectKey: string, parentKey: string, summary: string, effortHours?: number, createId?: string): Promise<{ key?: string; id?: string; error?: string }> {
   let error = 'no sub-task issue type';
   for (const stType of ['Sub-task', 'Subtask']) {
     try {
       const fields: any = { project: { key: projectKey }, parent: { key: parentKey }, summary, issuetype: { name: stType } };
       if (effortHours) fields.timetracking = { originalEstimate: `${effortHours}h` };
-      const res = await caller.requestJira(route`/rest/api/3/issue`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) });
+      const res = await postIssueOnce(projectKey, { fields }, createId);
       if (res && res.status === 201) {
         const data = await res.json();
         return { key: String(data.key), id: String(data.id) };
@@ -2776,6 +2886,7 @@ export async function resolveLocalSubtasks(
 ): Promise<any> {
   const { projectKey, projectId, parentTaskId, action } = payload;
   if (action !== 'create' && action !== 'drop') throw new ValidationError('action', 'action must be create or drop');
+  const createId = createIdOf((payload as any).createId);
   const parentId = await verifyIssueInProject(parentTaskId, projectKey, 'parentTaskId');
   await requireIssuePermissions([{ key: parentTaskId, id: parentId }], action === 'create' ? ['EDIT_ISSUES', 'CREATE_ISSUES'] : ['EDIT_ISSUES']);
   const storage = resolveStorage(storageProvider);
@@ -2788,7 +2899,7 @@ export async function resolveLocalSubtasks(
   const ids: string[] = [parentId].filter((id): id is string => !!id);
   if (action === 'create') {
     for (const s of local) {
-      const created = await createJiraSubtask(projectKey, parentTaskId, s.summary, s.normalizedHours > 0 ? s.normalizedHours : undefined);
+      const created = await createJiraSubtask(projectKey, parentTaskId, s.summary, s.normalizedHours > 0 ? s.normalizedHours : undefined, partCreateId(createId, s.id || s.summary));
       if (created.key) { log.record(created.key, ['create'], { synced: true }); if (created.id) ids.push(created.id); }
       else { left.push(s); log.record(parentTaskId, ['subtask'], { synced: false, error: `Jira did not create "${s.summary}": ${created.error}` }); }
     }
@@ -2815,7 +2926,7 @@ export async function saveTaskDependency(
   const storage = resolveStorage(storageProvider);
   const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
 
-  const live = await loadLive(projectKey);
+  const live = await loadLive(projectKey, [], await planFilterOf(storage, projectKey, projectId, planId));
   const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId);
   const planKeys = new Set([...plan.tasks, ...(plan.backlogTasks || [])].map(t => t.key));
   if (!planKeys.has(dependency.predecessorKey)) {
@@ -3033,7 +3144,7 @@ export async function changeParent(
   const storage = resolveStorage(storageProvider);
   const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
   const log = new SyncLog();
-  const live = await loadLive(projectKey, reconcileIdsOf(payload.reconcileIds));
+  const live = await loadLive(projectKey, reconcileIdsOf(payload.reconcileIds), await planFilterOf(storage, projectKey, projectId, planId));
   const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId);
   const all = [...plan.tasks, ...(plan.backlogTasks || [])];
   const task = all.find(t => t.key === taskId);
@@ -3205,7 +3316,7 @@ export async function checkConversion(
   log.record(payload.taskId, ['type'], { synced: true }, [{ field: 'parent', from: payload.oldParentKey || null, to: payload.newParentKey || null }]);
   const storage = resolveStorage(storageProvider);
   const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
-  const live = await loadLive(projectKey);
+  const live = await loadLive(projectKey, [], await planFilterOf(storage, projectKey, projectId, planId));
   const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId);
   const all = [...plan.tasks, ...(plan.backlogTasks || [])];
   // DEC-6: each parent whose roll-up end now differs from its Jira due date gets that end.
@@ -3248,7 +3359,7 @@ export async function moveTaskGroup(
   const storage = new BatchStorage(resolveStorage(storageProvider));
   const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
   const log = new SyncLog();
-  const live = await loadLive(projectKey, reconcileIdsOf(payload.reconcileIds));
+  const live = await loadLive(projectKey, reconcileIdsOf(payload.reconcileIds), await planFilterOf(storage, projectKey, projectId, planId));
   const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId);
   const all = [...plan.tasks, ...(plan.backlogTasks || [])];
   const parent = all.find(t => t.key === taskId || t.id === taskId);
@@ -3362,7 +3473,7 @@ export async function continueBlockMove(
   const storage = new BatchStorage(resolveStorage(storageProvider));
   const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
   const log = new SyncLog();
-  const live = await loadLive(projectKey, reconcileIdsOf(payload.reconcileIds));
+  const live = await loadLive(projectKey, reconcileIdsOf(payload.reconcileIds), await planFilterOf(storage, projectKey, projectId, planId));
   const plan = await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId);
   const all = [...plan.tasks, ...(plan.backlogTasks || [])];
   const parent = all.find(t => t.key === taskId);
@@ -3857,6 +3968,7 @@ export const RESOLVER_RULES: Record<string, ResolverRule> = {
   createProjectPlan: 'plan-approver',
   continuePlanCopy: 'plan-approver',
   renameProjectPlan: 'plan-approver',
+  setPlanFilter: 'plan-approver',
   deleteProjectPlan: 'plan-approver',
   continuePlanDelete: 'plan-approver',
   freezePlanBaseline: 'plan-approver',
@@ -3898,6 +4010,7 @@ define('convertIssueType', async (req) => convertIssueType(withProject(req)));
 define('checkConversion', async (req) => checkConversion(withProject(req)));
 define('continuePlanDelete', async (req) => continuePlanDelete(withProject(req)));
 define('renameProjectPlan', async (req) => renameProjectPlan(withProject(req)));
+define('setPlanFilter', async (req) => setPlanFilter(withProject(req)));
 define('batchUpdateTasks', async (req) => batchUpdateTasks(withProject(req)));
 define('scheduleBacklogTask', async (req) => scheduleBacklogTask(withProject(req)));
 define('createInlineTask', async (req) => createInlineTask(withProject(req)));

@@ -6185,17 +6185,37 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function rememberWrites(res, now = Date.now()) {
     for (const id of res && Array.isArray(res.writtenIssueIds) ? res.writtenIssueIds : []) recentWrites.set(String(id), now);
   }
-  async function callOnce(fnName, payload) {
+  var CREATE_RESOLVERS = /* @__PURE__ */ new Set(["createInlineTask", "createJiraEpic", "createSubtaskForResource", "addSubtaskToTask", "resolveLocalSubtasks", "updateWbsTask"]);
+  var unansweredCreates = /* @__PURE__ */ new Map();
+  function newCreateId() {
+    const c = globalThis.crypto;
+    if (c && typeof c.randomUUID === "function") return c.randomUUID();
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  }
+  function withCreateId(fnName, payload) {
+    if (!CREATE_RESOLVERS.has(fnName)) return { payload };
+    const signature = `${fnName}:${JSON.stringify(payload)}`;
+    return { payload: { ...payload, createId: unansweredCreates.get(signature) || newCreateId() }, signature };
+  }
+  function noteCreateOutcome(signature, createId, answered) {
+    if (!signature) return;
+    if (answered) unansweredCreates.delete(signature);
+    else unansweredCreates.set(signature, String(createId));
+  }
+  async function callOnce(fnName, rawPayload) {
     let res;
+    const { payload, signature } = withCreateId(fnName, rawPayload);
     const ids = recentWriteIds();
     try {
       const d = /* @__PURE__ */ new Date();
       const clientToday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       res = await (0, import_bridge.invoke)(fnName, { ...ids.length ? { ...payload, reconcileIds: ids } : payload, clientToday });
       rememberWrites(res);
+      noteCreateOutcome(signature, payload.createId, true);
     } catch (err) {
       console.error("Forge resolver error:", fnName, err);
-      const message = fnName.startsWith("get") || fnName.startsWith("check") ? err?.message || "The planner could not reach Jira." : "The result is unknown. Check the plan before you try again.";
+      noteCreateOutcome(signature, payload.createId, false);
+      const message = fnName.startsWith("get") || fnName.startsWith("check") ? err?.message || "The planner could not reach Jira." : signature ? "The result is unknown. Check the plan, or make the same request again: CascadePlan will not create the work item twice." : "The result is unknown. Check the plan before you try again.";
       res = { ok: false, success: false, error: fnName.startsWith("get") || fnName.startsWith("check") ? "unavailable" : "unknown", message };
     }
     if (!fnName.startsWith("get")) {
@@ -9771,6 +9791,32 @@ Please see https://iframe-resizer.com/upgrade for more details.
       el3.disabled = !allowed;
       el3.title = allowed ? "" : "Only plan approvers (project or Jira administrators, or an approver group) create plans.";
     }
+    renderPlanFilter();
+  }
+  function renderPlanFilter() {
+    const inp = document.getElementById("planJqlInput");
+    const btn = document.getElementById("btnSavePlanJql");
+    if (!inp || !btn) return;
+    if (document.activeElement !== inp) inp.value = currentPlan && currentPlan.jqlFilter || "";
+    const allowed = planApprover === true;
+    inp.readOnly = !allowed;
+    btn.hidden = !allowed;
+    inp.title = allowed ? "" : "Only plan approvers change the filter of a plan.";
+  }
+  async function savePlanFilter() {
+    const inp = document.getElementById("planJqlInput");
+    const btn = document.getElementById("btnSavePlanJql");
+    if (!inp || !btn || planApprover !== true) return;
+    btn.disabled = true;
+    const res = await callResolver2("setPlanFilter", { filter: inp.value });
+    btn.disabled = false;
+    if (res && res.ok) {
+      const text = res.filter ? `Filter saved. About ${res.count ?? "an unknown number of"} work items match it.` : "Filter removed. The plan reads the whole project.";
+      showFlag({ text });
+      await loadProjectPlan();
+    } else {
+      showFlag({ text: res?.message || "The filter was not saved.", error: true });
+    }
   }
   function renderFilteredPlansList(plans, currentId) {
     const container = document.getElementById("plansListContainer");
@@ -10085,8 +10131,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const truncatedNote = document.getElementById("truncatedNote");
     if (truncatedNote) {
       truncatedNote.hidden = !currentPlan.truncated;
-      truncatedNote.textContent = currentPlan.truncated ? `Showing the newest ${currentPlan.truncated.shown} of about ${currentPlan.truncated.total} issues` : "";
+      truncatedNote.textContent = currentPlan.truncated ? `Showing the newest ${currentPlan.truncated.shown} of about ${currentPlan.truncated.total} issues${currentPlan.jqlFilter ? " that match this plan's filter" : ". A plan approver can narrow the plan with a JQL filter in the plan list"}` : "";
     }
+    renderPlanFilter();
     const curWk = (currentPlan.weeks || []).find((w) => w.isCurrentWeek);
     if (curWk) {
       const el3 = document.getElementById("legendCurrentWeek");
@@ -13525,6 +13572,13 @@ Click to manage or assign.`;
       }
     };
     document.getElementById("btnCreatePlan")?.addEventListener("click", submitCreatePlan);
+    document.getElementById("btnSavePlanJql")?.addEventListener("click", savePlanFilter);
+    document.getElementById("planJqlInput")?.addEventListener("keydown", (ke) => {
+      if (ke.key === "Enter") {
+        ke.preventDefault();
+        savePlanFilter();
+      }
+    });
     document.getElementById("newPlanNameInput")?.addEventListener("keydown", (ke) => {
       if (ke.key === "Enter") {
         ke.preventDefault();

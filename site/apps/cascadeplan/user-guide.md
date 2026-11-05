@@ -49,6 +49,8 @@ Remove a link from its badge on the timeline: **Remove Link** deletes exactly th
 
 The **plan selector** in the toolbar lists the Main Plan and your scenario plans. A plan approver can create a plan (empty or as a copy of the open plan), rename it and delete it. Each plan keeps its own row order, columns and milestones. Dates, links and the hierarchy are Jira's, so a change in any plan shows in every plan.
 
+**Work items in this plan (JQL filter).** A plan reads at most the newest 1,000 work items of the project. For a larger project, a plan approver can narrow the open plan with a JQL filter in the plan list, for example `fixVersion = "2.0"` or `component = "Payments"`, then choose **Save filter**. Jira checks the filter first and CascadePlan says how many work items match. The plan then shows only those work items. Work outside the filter is not shown, and a move or a cascade does not move it. To read the whole project again, clear the field and save.
+
 ---
 
 ## 6. Baselines and scope changes

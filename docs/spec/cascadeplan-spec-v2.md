@@ -107,6 +107,7 @@ Refused before any write, with the Jira rule as the reason: a work item with sub
 - Creating, renaming and deleting a plan needs plan-approver rights: Jira administrator, project administrator of this project, or a member of an approver group set on the admin page.
 - Copying or deleting a plan runs in pages of at most 100 records, one page per call, until done (N-02). A clone is listed as "copy not finished" and refuses writes until its last page. A plan being deleted is not listed, opens as the Main Plan, and refuses writes; it leaves the plan list with its last record, together with its baselines and scope-shift requests, so a stopped delete can always be finished.
 - The open plan is remembered per site and project in the browser's local storage, as a view preference only.
+- **JQL filter (F-27).** A plan may have a JQL filter, for projects with more issues than one plan reads (10 pages of 100). The plan then reads `project = "X" AND (<filter>) order by created desc`, for the view and for every write. The filter can only narrow the project: it is one line of at most 1,000 characters, has balanced parentheses outside quoted strings and has no ORDER BY. Jira checks it with a one-issue search before it is saved, and Jira's own message is shown when Jira refuses it. Plan approvers set and clear it; everyone sees it. Work outside the filter is not shown, a cascade or a move does not move it, and a record of an issue outside the filter is not listed as stale. A copy of the plan keeps the filter. The epic list and the one-time record migration still read the whole project.
 
 ## 4. Manifest
 
@@ -172,7 +173,7 @@ Keys use the project id and the issue id, never the keys (a renamed project or i
 |---|---|
 | `cp:<projectId>:we:<issueId>` | Main Plan `WorkEffortRecord` (its dates only until the task's first date change since ADR-008) |
 | `cp:<projectId>:plan:<planId>:we:<issueId>` | Scenario plan `WorkEffortRecord` |
-| `cp:<projectId>:settings`, `cp:<projectId>:plan:<planId>:settings` | `{ columnWidths, hiddenColumns, milestones (max 100), migratedAt, modelVersion }` |
+| `cp:<projectId>:settings`, `cp:<projectId>:plan:<planId>:settings` | `{ columnWidths, hiddenColumns, milestones (max 100), migratedAt, modelVersion, jqlFilter? }` |
 | `cp:<projectId>:bl:<planId>:index` | `{ v, active, ids }`: the baseline versions of a plan and the active one (ADR-009) |
 | `cp:<projectId>:bl:<planId>:h:<id>`, `cp:<projectId>:bl:<planId>:c:<id>:<n>` | a baseline header (name, frozen at and by, counts, hours, SHA-256 digest, supersedes) and its chunks of at most 200 items `{ id, key, hours?, start?, end?, done? }` |
 | `cp:<projectId>:shift:<planId>:<shiftId>` | one scope-change request |
@@ -181,6 +182,7 @@ Keys use the project id and the issue id, never the keys (a renamed project or i
 | `cascadeplan:cfg:approver_policy` | approver groups (site) |
 | Jira issue property `cascadeplan.links` | trigger percents of the incoming links (ADR-006) |
 | Jira issue property `cascadeplan.dates` | `{ startDate, endDate?, v: 1 }`: the shared start and the planner's end; `{ v: 1 }` alone marks a task taken off the timeline (ADR-008) |
+| Jira issue property `cascadeplan.create` | `{ id, v: 1 }`: the create id of the call that created the issue, set in the create request and indexed for JQL by the `jira:entityProperty` module `cascadeplan-create-id` (C7) |
 
 - The shared start date is not in KVS: it is the Jira issue property `cascadeplan.dates` (ADR-008). The version check stays `set` with `returnValue: 'PREVIOUS'` and restore (v1 D-02, `[ADOPTED DEC-4 B]`).
 - The issue-deleted trigger finds a record by the issue id and by the issue key, because older records can be keyed by the key (FX-05).
@@ -200,7 +202,8 @@ All planner resolvers take the project from `req.context.extension.project` (key
 
 | Resolver | Purpose | Permission |
 |---|---|---|
-| `getProjectPlan` | The plan, with `truncated` when capped at 1,000 issues | Browse |
+| `getProjectPlan` | The plan, with `truncated` when capped at 1,000 issues, and the plan's `jqlFilter` | Browse |
+| `setPlanFilter` | Sets or clears the JQL filter of a plan after Jira accepts it (F-27) | Plan approver |
 | `createProjectPlan`, `continuePlanCopy`, `renameProjectPlan`, `deleteProjectPlan`, `continuePlanDelete` | Plan management; the `continue` resolvers run the next page of a clone or a delete (N-02) | Plan approver |
 | `checkPlanApprover` | Whether to show plan management to this user | none |
 | `updateWbsTask` | Dates, effort, progress, assignee, status the user chose; one link added or updated (`dependency`) or removed (`removeDependency`); `restore` for Undo and Redo (exact dates, no cascade) | `EDIT_ISSUES`; `SCHEDULE_ISSUES` for dates; `LINK_ISSUES` for links |
@@ -217,6 +220,8 @@ All planner resolvers take the project from `req.context.extension.project` (key
 | Admin function: `approver-policy-get-api`, `approver-policy-set-api`, `approver-group-search-api` | Approver groups | Jira administrator |
 
 Not registered: `pruneStaleEntries` (replaced by the issue-deleted trigger), `saveTaskDependency`, `saveProjectMilestone`, `previewCascade`, `getProjectPlans` and the `authority-*` aliases (no caller). DEC-1 Option B (owner): the baseline resolvers of ADR-009 are `freezePlanBaseline`, `setActiveBaseline` and `reviewScopeShift` (plan approvers); `getPlanBaselines`, `getScopeCreepReport` (a baseline against the current plan), `compareBaselines`, `exportBaseline` (any project user who can read the plan); `requestScopeShift` (any project user). `getProjectPlan` also returns the active baseline's items, so the status follows each change with no extra call.
+
+Creates are safe to repeat (C7): `createInlineTask`, `createJiraEpic`, `createSubtaskForResource`, `addSubtaskToTask`, `resolveLocalSubtasks` and the contributor sub-tasks of `updateWbsTask` take an optional `createId` (8 to 60 letters, digits or hyphens). Before a create, the server searches `issue.property[cascadeplan.create].id` for it and returns an issue found there instead of creating another; a new issue carries the id. A call that creates several sub-tasks gives each one the id plus a hash of a value that names it in every repeat (the account id, the stored sub-task id), never its position. The client keeps the id of a create that ended without an answer, and sends it again when the same request is made again. The search is eventually consistent, so a repeat within a moment of the lost answer can still miss the first issue.
 
 `jiraSync = { ok, error?, writes: [{ key, fields, ok, error?, changes? }] }`. Every Jira write, including those before a conflict, is listed (F-07).
 

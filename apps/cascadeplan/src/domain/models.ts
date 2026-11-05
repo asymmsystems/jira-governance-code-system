@@ -225,6 +225,7 @@ export interface ProjectPlanState {
   siteUrl?: string;
   hiddenColumns?: string[];
   truncated?: { shown: number; total: number }; // more issues exist than were read (B-10)
+  jqlFilter?: string; // the plan's JQL filter, when it has one (F-27)
   ok?: boolean;                     // set by write resolvers (B-07)
   jiraSync?: JiraSyncReport;        // set by write resolvers (B-07)
   staleEntries?: string[];          // stored entries Jira did not return (complete reads only, B-18)
@@ -269,6 +270,7 @@ export interface ResourceUtilizationProfile {
 
 
 export interface InlineTaskCreateRequest {
+  createId?: string; // C7: the same id on a repeated create finds the issue the first call created
   projectKey: string;
   projectId?: string; // from the Forge context; keys records by project id (B-09)
   parentKey?: string;
@@ -315,6 +317,7 @@ export interface UnscheduleTaskRequest {
 }
 
 export interface CreateSubtaskForResourceRequest {
+  createId?: string; // C7: the same id on a repeated create finds the issue the first call created
   projectKey: string;
   projectId?: string; // from the Forge context; keys records by project id (B-09)
   parentKey?: string;

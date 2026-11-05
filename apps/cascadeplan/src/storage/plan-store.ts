@@ -45,6 +45,7 @@ export interface PlanSettings {
   milestones?: ProjectMilestone[];
   migratedAt?: string;
   modelVersion?: number; // WorkEffort record model of every record (B-28)
+  jqlFilter?: string; // the plan reads only the project's issues that match this JQL (F-27)
 }
 
 /** Records copied or deleted in one call (N-02): small enough for one resolver call. */

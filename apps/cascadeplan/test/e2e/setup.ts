@@ -93,7 +93,15 @@ w.__jira = async (url: string, opts: any) => {
   if (method === 'POST' && url.endsWith('/rest/api/3/issue')) {
     localStorage.setItem('__harness_jira_writes', JSON.stringify([...writes(), `${method} ${url} ${opts.body || ''}`]));
     const n = 60 + writes().filter(w => w.startsWith('POST /rest/api/3/issue ')).length;
+    // C7: the create id goes into the issue property, which the search below finds.
+    const prop = (JSON.parse(opts.body || '{}').properties || []).find((x: any) => x.key === 'cascadeplan.create');
+    if (prop) localStorage.setItem('__harness_create_ids', JSON.stringify({ ...JSON.parse(localStorage.getItem('__harness_create_ids') || '{}'), [prop.value.id]: { id: String(n), key: `DEMO-${n}` } }));
     return ok({ id: String(n), key: `DEMO-${n}` }, 201);
+  }
+  const byCreateId = url.includes('/search/jql') ? url.match(/issue\.property\[cascadeplan\.create\]\.id = "([^"]+)"/) : null;
+  if (byCreateId) {
+    const hit = JSON.parse(localStorage.getItem('__harness_create_ids') || '{}')[byCreateId[1]];
+    return ok({ issues: hit ? [hit] : [], isLast: true });
   }
   // Jira creates an issue link with 201 (a dependency exists only as a Jira link, ADR-004).
   if (method === 'POST' && url.endsWith('/rest/api/3/issueLink')) {
@@ -126,7 +134,16 @@ w.__jira = async (url: string, opts: any) => {
   // A search for one key returns that issue only (C3 reads the due date this way).
   const oneKey = url.match(/jql=key\+%3D\+(DEMO-\d+)/);
   if (url.includes('/search/jql') && oneKey) return ok({ issues: ISSUES.filter((i: any) => i.key === oneKey[1]).map(withDue), isLast: true });
-  if (url.includes('/search/jql')) return ok({ issues: url.includes('Epic') ? [withDue(epic)] : ISSUES.map(withDue), isLast: true });
+  // A plan filter (F-27): the harness knows "key in (...)"; a filter naming "nofield" is refused as Jira would.
+  if (url.includes('/search/jql') && url.includes('nofield')) return ok({ errorMessages: ['Field \'nofield\' does not exist or you do not have permission to view it.'] }, 400);
+  const keyIn = url.match(/AND \(key in \(([^)]*)\)\)/);
+  const inFilter = (i: any) => !keyIn || keyIn[1].split(',').map(k => k.trim()).includes(i.key);
+  if (method === 'POST' && url.endsWith('/search/approximate-count')) {
+    const jql = JSON.parse(opts.body || '{}').jql || '';
+    const keys = jql.match(/AND \(key in \(([^)]*)\)\)/);
+    return ok({ count: keys ? keys[1].split(',').length : ISSUES.length });
+  }
+  if (url.includes('/search/jql')) return ok({ issues: url.includes('Epic') ? [withDue(epic)] : ISSUES.filter(inFilter).map(withDue), isLast: true });
   if (url.includes('/user/assignable')) return ok([]);
   if (/\/issue\/DEMO-\d+\?fields=project/.test(url)) return ok({ id: url.match(/DEMO-(\d+)/)![1], fields: { project: { key: 'DEMO' } } });
   const gp = url.match(/\/rest\/api\/3\/issue\/(DEMO-\d+)\/properties\/([^/?]+)$/);

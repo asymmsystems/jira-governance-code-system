@@ -12,7 +12,13 @@ export async function invoke(fn: string, payload: any): Promise<any> {
   w.__calls.push({ fn, planId: payload && payload.planId });
   const def = w.__resolvers[fn];
   if (!def) throw new Error('no resolver ' + fn);
-  return JSON.parse(JSON.stringify(await def({ payload, context: CTX })));
+  const answer = JSON.parse(JSON.stringify(await def({ payload, context: CTX })));
+  // Review switch __harness_lose_answer: the resolver runs, then its answer is lost once (C7 check).
+  if (localStorage.getItem('__harness_lose_answer') === fn) {
+    localStorage.removeItem('__harness_lose_answer');
+    throw new Error('The call timed out');
+  }
+  return answer;
 }
 export const view = { getContext: async () => CTX, theme: { enable: async () => undefined } };
 export const router = { open: async () => undefined };

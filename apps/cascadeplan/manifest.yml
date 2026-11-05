@@ -13,6 +13,15 @@ modules:
       resource: admin
       resolver:
         function: admin-resolver
+  jira:entityProperty:
+    # C7: the create id of the call that created an issue, searchable by JQL, so a repeated create
+    # finds the issue the first call created instead of creating a second one.
+    - key: cascadeplan-create-id
+      entityType: issue
+      propertyKey: cascadeplan.create
+      values:
+        - path: id
+          type: string
   trigger:
     - key: issue-deleted
       function: issue-deleted-fn

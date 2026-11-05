@@ -1870,6 +1870,34 @@ body.is-dragging-backlog .drop-target-row.drag-over {
   color: var(--cp-text-subtle);
   cursor: pointer;
 }
+/* The JQL filter of the open plan (F-27). */
+.plan-jql-section {
+  border-top: 1px solid var(--cp-border);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.plan-jql-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cp-text-subtle);
+}
+.plan-jql-row {
+  display: flex;
+  gap: 6px;
+}
+.plan-jql-input {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+.plan-jql-help {
+  margin: 0;
+  font-size: 11px;
+  color: var(--cp-text-subtle);
+}
 .empty-state.drop-active {
   background: var(--cp-bg-selected) !important;
   border: 2px dashed var(--cp-border-brand) !important;

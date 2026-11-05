@@ -40,7 +40,7 @@
             <button class="btn-icon-subtle" id="btnClosePlansPopover" title="Close" type="button">✕</button>
           </div>
           <div class="col-popover-info">
-            Switch plans, create scenarios, or baseline alternatives.
+            Switch plans, create scenarios, or narrow a plan with a JQL filter.
           </div>
           <div class="plans-filter-section">
             <input type="search" id="planSearchInput" class="in-app-search-input" placeholder="Search plans..." aria-label="Search plans by name" autocomplete="off">
@@ -58,6 +58,14 @@
             <label class="clone-plan-label">
               <input type="checkbox" id="cloneCurrentPlanCheckbox" checked> Clone current plan tasks &amp; settings
             </label>
+          </div>
+          <div class="plan-jql-section">
+            <label for="planJqlInput" class="plan-jql-label">Work items in this plan (JQL filter, optional)</label>
+            <div class="plan-jql-row">
+              <input type="text" id="planJqlInput" class="in-app-search-input plan-jql-input" maxlength="1000" autocomplete="off" spellcheck="false" placeholder="for example: component = &quot;Payments&quot;">
+              <button class="btn btn-outline btn-sm" id="btnSavePlanJql" type="button">Save filter</button>
+            </div>
+            <p class="plan-jql-help" id="planJqlHelp">The plan reads only the project's work items that match. Work outside the filter is not shown, and a move does not move it.</p>
           </div>
         </div>
       </div>

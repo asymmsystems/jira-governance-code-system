@@ -1678,6 +1678,37 @@ function applyPlanApproverToCreateForm() {
     el.disabled = !allowed;
     el.title = allowed ? '' : 'Only plan approvers (project or Jira administrators, or an approver group) create plans.';
   }
+  renderPlanFilter();
+}
+
+// The JQL filter of the open plan (F-27): everyone sees it, plan approvers change it.
+function renderPlanFilter() {
+  const inp = document.getElementById('planJqlInput');
+  const btn = document.getElementById('btnSavePlanJql');
+  if (!inp || !btn) return;
+  if (document.activeElement !== inp) inp.value = (currentPlan && currentPlan.jqlFilter) || '';
+  const allowed = planApprover === true;
+  inp.readOnly = !allowed;
+  btn.hidden = !allowed;
+  inp.title = allowed ? '' : 'Only plan approvers change the filter of a plan.';
+}
+
+async function savePlanFilter() {
+  const inp = document.getElementById('planJqlInput');
+  const btn = document.getElementById('btnSavePlanJql');
+  if (!inp || !btn || planApprover !== true) return;
+  btn.disabled = true;
+  const res = await callResolver('setPlanFilter', { filter: inp.value });
+  btn.disabled = false;
+  if (res && res.ok) {
+    const text = res.filter
+      ? `Filter saved. About ${res.count ?? 'an unknown number of'} work items match it.`
+      : 'Filter removed. The plan reads the whole project.';
+    showFlag({ text });
+    await loadProjectPlan();
+  } else {
+    showFlag({ text: res?.message || 'The filter was not saved.', error: true });
+  }
 }
 
 function renderFilteredPlansList(plans, currentId) {
@@ -2041,11 +2072,13 @@ function renderPlanSummary() {
   const truncatedNote = document.getElementById('truncatedNote');
   if (truncatedNote) {
     // More issues exist than one plan reads (B-10).
+    // With a plan filter, the count is of the work items that match it (F-27).
     truncatedNote.hidden = !currentPlan.truncated;
     truncatedNote.textContent = currentPlan.truncated
-      ? `Showing the newest ${currentPlan.truncated.shown} of about ${currentPlan.truncated.total} issues`
+      ? `Showing the newest ${currentPlan.truncated.shown} of about ${currentPlan.truncated.total} issues${currentPlan.jqlFilter ? ' that match this plan\'s filter' : '. A plan approver can narrow the plan with a JQL filter in the plan list'}`
       : '';
   }
+  renderPlanFilter();
 
   const curWk = (currentPlan.weeks || []).find(w => w.isCurrentWeek);
   if (curWk) {
@@ -5936,6 +5969,13 @@ function initKeyboard() {
   };
 
   document.getElementById('btnCreatePlan')?.addEventListener('click', submitCreatePlan);
+  document.getElementById('btnSavePlanJql')?.addEventListener('click', savePlanFilter);
+  document.getElementById('planJqlInput')?.addEventListener('keydown', (ke) => {
+    if (ke.key === 'Enter') {
+      ke.preventDefault();
+      savePlanFilter();
+    }
+  });
   document.getElementById('newPlanNameInput')?.addEventListener('keydown', (ke) => {
     if (ke.key === 'Enter') {
       ke.preventDefault();

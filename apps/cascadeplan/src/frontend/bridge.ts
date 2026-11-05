@@ -31,9 +31,38 @@ function rememberWrites(res: any, now = Date.now()): void {
   for (const id of (res && Array.isArray(res.writtenIssueIds) ? res.writtenIssueIds : [])) recentWrites.set(String(id), now);
 }
 
+/**
+ * C7: resolvers that create Jira issues take a create id. A create that ended without an answer keeps
+ * its id, so the same request made again sends the same id and the server returns the issue the first
+ * call created, if it did, instead of creating a second one.
+ */
+export const CREATE_RESOLVERS = new Set(['createInlineTask', 'createJiraEpic', 'createSubtaskForResource', 'addSubtaskToTask', 'resolveLocalSubtasks', 'updateWbsTask']);
+const unansweredCreates = new Map<string, string>();
+
+function newCreateId(): string {
+  const c: any = (globalThis as any).crypto;
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+/** The payload with its create id: the id of an unanswered identical request, or a new one. */
+export function withCreateId(fnName: string, payload: Record<string, unknown>): { payload: Record<string, unknown>; signature?: string } {
+  if (!CREATE_RESOLVERS.has(fnName)) return { payload };
+  const signature = `${fnName}:${JSON.stringify(payload)}`;
+  return { payload: { ...payload, createId: unansweredCreates.get(signature) || newCreateId() }, signature };
+}
+
+/** Records the outcome of a create: an unanswered one keeps its id for a repeat, an answered one drops it. */
+export function noteCreateOutcome(signature: string | undefined, createId: unknown, answered: boolean): void {
+  if (!signature) return;
+  if (answered) unansweredCreates.delete(signature);
+  else unansweredCreates.set(signature, String(createId));
+}
+
 /** One resolver call: a thrown call becomes { ok: false }, and a failed write shows the error banner. */
-async function callOnce(fnName: string, payload: Record<string, unknown>): Promise<any> {
+async function callOnce(fnName: string, rawPayload: Record<string, unknown>): Promise<any> {
   let res: any;
+  const { payload, signature } = withCreateId(fnName, rawPayload);
   const ids = recentWriteIds();
   try {
     // F-29: the user's local date is "today" for the server's schedule rules.
@@ -41,13 +70,18 @@ async function callOnce(fnName: string, payload: Record<string, unknown>): Promi
     const clientToday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     res = await invoke(fnName, { ...(ids.length ? { ...payload, reconcileIds: ids } : payload), clientToday });
     rememberWrites(res);
+    noteCreateOutcome(signature, payload.createId, true);
   } catch (err: any) {
     console.error('Forge resolver error:', fnName, err);
+    noteCreateOutcome(signature, payload.createId, false);
     // C7: a write call that ended without an answer (for example a timeout) may already have written
-    // to Jira, so the planner never says it failed or succeeded: the result is unknown.
+    // to Jira, so the planner never says it failed or succeeded: the result is unknown. A create made
+    // again with the same values is safe: it returns the issue the first call created, if it did.
     const message = fnName.startsWith('get') || fnName.startsWith('check')
       ? (err?.message || 'The planner could not reach Jira.')
-      : 'The result is unknown. Check the plan before you try again.';
+      : (signature
+        ? 'The result is unknown. Check the plan, or make the same request again: CascadePlan will not create the work item twice.'
+        : 'The result is unknown. Check the plan before you try again.');
     res = { ok: false, success: false, error: fnName.startsWith('get') || fnName.startsWith('check') ? 'unavailable' : 'unknown', message };
   }
   if (!fnName.startsWith('get')) {
