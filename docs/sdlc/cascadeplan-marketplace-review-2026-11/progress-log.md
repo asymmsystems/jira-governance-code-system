@@ -212,3 +212,9 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 - **Proof:** unit suite 803 passed with coverage thresholds; tsc clean; harness `e2e.py` 31/31, `e2e_review.py` 26/26; undo, F-11, N-10, N-07 and BL-2 step 8 probes pass.
 - **Docs:** spec v2 has no OPEN markers left: decisions are stated, with `[ADOPTED DEC-n]` on those adopted under the owner's instruction. Storage table lists `cascadeplan.dates`. ADR-008 status and implementation notes updated. Fix plan v4 register: the baseline design is ADR-009 (ADR-008 is taken).
 - **Remaining:** R-29 (batch of 50) still makes 102 prefix queries: F-17 needs one in-memory state per batch.
+
+### Live check on development after ADR-008 step 2 (build tag `cabc808`, version 2.52.0)
+
+- `live_move.py DEMO-29 7` then `-7`: 170 px before, after the answer and after the reload, both ways. Changes panel both ways: "start date ... Written" and "due date ... Written". `prop_read.py DEMO-29` after each move: the property and the due date agree (2026-11-04 to 2026-11-17, then 2026-10-28 to 2026-11-10). `forge logs -e development --since 15m`: no `cascadeplan` failure line.
+- Not checked live: the cross-plan read, which needs a move in a second plan on DEMO. The harness covers it (checks 2g2 and R6d).
+- **Live site changes:** DEMO-29's due date 2026-11-10 -> 2026-11-17 -> 2026-11-10, and its property `cascadeplan.dates` the same way. Final state as before this check.
