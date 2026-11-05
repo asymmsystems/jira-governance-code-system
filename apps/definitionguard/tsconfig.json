@@ -8,8 +8,6 @@
     "outDir": "./dist",
     "baseUrl": ".",
     "paths": {
-      "@asymm/jira-ui": ["../../packages/asymm-jira-ui/src"],
-      "@asymm/jira-ui/*": ["../../packages/asymm-jira-ui/src/*"],
       "react": ["node_modules/@types/react"],
       "@forge/react": ["node_modules/@forge/react"]
     },

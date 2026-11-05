@@ -36,7 +36,7 @@
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
   var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
-  // ../ledgerseal/node_modules/tslib/tslib.es6.mjs
+  // node_modules/tslib/tslib.es6.mjs
   var tslib_es6_exports = {};
   __export(tslib_es6_exports, {
     __addDisposableResource: () => __addDisposableResource,
@@ -465,8 +465,17 @@
     }
     return next();
   }
-  function __rewriteRelativeImportExtension(path, preserveJsx) {
+  function __rewriteRelativeImportExtension(path, preserveJsx, extraExtensions, ignoreCase) {
     if (typeof path === "string" && /^\.\.?\//.test(path)) {
+      if (extraExtensions) {
+        for (var extension in extraExtensions) {
+          var suffix = path.slice(-extension.length);
+          if (suffix === extension || ignoreCase && suffix.toLowerCase() === extension.toLowerCase()) {
+            var output = extraExtensions[extension];
+            return output === extension ? path : path.slice(0, -extension.length) + output;
+          }
+        }
+      }
       return path.replace(/\.(tsx)$|((?:\.d)?)((?:\.[^./]+?)?)\.([cm]?)ts$/i, function(m, tsx, d, ext, cm) {
         return tsx ? preserveJsx ? ".jsx" : ".js" : d && (!ext || !cm) ? m : d + ext + "." + cm.toLowerCase() + "js";
       });
@@ -475,7 +484,7 @@
   }
   var extendStatics, __assign, __createBinding, __setModuleDefault, ownKeys, _SuppressedError, tslib_es6_default;
   var init_tslib_es6 = __esm({
-    "../ledgerseal/node_modules/tslib/tslib.es6.mjs"() {
+    "node_modules/tslib/tslib.es6.mjs"() {
       extendStatics = function(d, b) {
         extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d2, b2) {
           d2.__proto__ = b2;
@@ -561,9 +570,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/router/targets.js
+  // node_modules/@forge/bridge/out/router/targets.js
   var require_targets = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/router/targets.js"(exports) {
+    "node_modules/@forge/bridge/out/router/targets.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.NavigationTarget = void 0;
@@ -608,9 +617,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/errors.js
+  // node_modules/@forge/bridge/out/errors.js
   var require_errors = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/errors.js"(exports) {
+    "node_modules/@forge/bridge/out/errors.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.BridgeAPIError = void 0;
@@ -620,9 +629,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/bridge.js
+  // node_modules/@forge/bridge/out/bridge.js
   var require_bridge = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/bridge.js"(exports) {
+    "node_modules/@forge/bridge/out/bridge.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getCallBridge = void 0;
@@ -643,9 +652,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/utils/index.js
+  // node_modules/@forge/bridge/out/utils/index.js
   var require_utils = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/utils/index.js"(exports) {
+    "node_modules/@forge/bridge/out/utils/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.withRateLimiter = void 0;
@@ -671,9 +680,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/invoke/invoke.js
+  // node_modules/@forge/bridge/out/invoke/invoke.js
   var require_invoke = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/invoke/invoke.js"(exports) {
+    "node_modules/@forge/bridge/out/invoke/invoke.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.invoke = invoke2;
@@ -706,9 +715,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/invoke/index.js
+  // node_modules/@forge/bridge/out/invoke/index.js
   var require_invoke2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/invoke/index.js"(exports) {
+    "node_modules/@forge/bridge/out/invoke/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -716,9 +725,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-endpoint.js
+  // node_modules/@forge/bridge/out/invoke-endpoint/invoke-endpoint.js
   var require_invoke_endpoint = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-endpoint.js"(exports) {
+    "node_modules/@forge/bridge/out/invoke-endpoint/invoke-endpoint.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.InvokeType = void 0;
@@ -767,9 +776,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-remote.js
+  // node_modules/@forge/bridge/out/invoke-endpoint/invoke-remote.js
   var require_invoke_remote = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-remote.js"(exports) {
+    "node_modules/@forge/bridge/out/invoke-endpoint/invoke-remote.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.invokeRemote = void 0;
@@ -782,9 +791,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-service.js
+  // node_modules/@forge/bridge/out/invoke-endpoint/invoke-service.js
   var require_invoke_service = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-service.js"(exports) {
+    "node_modules/@forge/bridge/out/invoke-endpoint/invoke-service.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.invokeService = void 0;
@@ -797,9 +806,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/index.js
+  // node_modules/@forge/bridge/out/invoke-endpoint/index.js
   var require_invoke_endpoint2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/index.js"(exports) {
+    "node_modules/@forge/bridge/out/invoke-endpoint/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -808,9 +817,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/submit.js
+  // node_modules/@forge/bridge/out/view/submit.js
   var require_submit = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/submit.js"(exports) {
+    "node_modules/@forge/bridge/out/view/submit.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.submit = void 0;
@@ -827,9 +836,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/close.js
+  // node_modules/@forge/bridge/out/view/close.js
   var require_close = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/close.js"(exports) {
+    "node_modules/@forge/bridge/out/view/close.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.close = void 0;
@@ -850,9 +859,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/open.js
+  // node_modules/@forge/bridge/out/view/open.js
   var require_open = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/open.js"(exports) {
+    "node_modules/@forge/bridge/out/view/open.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.open = void 0;
@@ -873,9 +882,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/refresh.js
+  // node_modules/@forge/bridge/out/view/refresh.js
   var require_refresh = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/refresh.js"(exports) {
+    "node_modules/@forge/bridge/out/view/refresh.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.refresh = void 0;
@@ -892,9 +901,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/createHistory.js
+  // node_modules/@forge/bridge/out/view/createHistory.js
   var require_createHistory = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/createHistory.js"(exports) {
+    "node_modules/@forge/bridge/out/view/createHistory.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.createHistory = void 0;
@@ -911,9 +920,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/constants.js
+  // node_modules/@forge/i18n/out/constants.js
   var require_constants = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/constants.js"(exports) {
+    "node_modules/@forge/i18n/out/constants.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.FORGE_SUPPORTED_LOCALE_CODES = exports.I18N_BUNDLE_FOLDER_NAME = exports.I18N_INFO_FILE_NAME = void 0;
@@ -950,9 +959,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/translationsGetter.js
+  // node_modules/@forge/i18n/out/translationsGetter.js
   var require_translationsGetter = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/translationsGetter.js"(exports) {
+    "node_modules/@forge/i18n/out/translationsGetter.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.TranslationsGetter = exports.TranslationGetterError = void 0;
@@ -1060,25 +1069,25 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/isArray.js
+  // node_modules/lodash/isArray.js
   var require_isArray = __commonJS({
-    "../ledgerseal/node_modules/lodash/isArray.js"(exports, module) {
+    "node_modules/lodash/isArray.js"(exports, module) {
       var isArray = Array.isArray;
       module.exports = isArray;
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_freeGlobal.js
+  // node_modules/lodash/_freeGlobal.js
   var require_freeGlobal = __commonJS({
-    "../ledgerseal/node_modules/lodash/_freeGlobal.js"(exports, module) {
+    "node_modules/lodash/_freeGlobal.js"(exports, module) {
       var freeGlobal = typeof global == "object" && global && global.Object === Object && global;
       module.exports = freeGlobal;
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_root.js
+  // node_modules/lodash/_root.js
   var require_root = __commonJS({
-    "../ledgerseal/node_modules/lodash/_root.js"(exports, module) {
+    "node_modules/lodash/_root.js"(exports, module) {
       var freeGlobal = require_freeGlobal();
       var freeSelf = typeof self == "object" && self && self.Object === Object && self;
       var root = freeGlobal || freeSelf || Function("return this")();
@@ -1086,18 +1095,18 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_Symbol.js
+  // node_modules/lodash/_Symbol.js
   var require_Symbol = __commonJS({
-    "../ledgerseal/node_modules/lodash/_Symbol.js"(exports, module) {
+    "node_modules/lodash/_Symbol.js"(exports, module) {
       var root = require_root();
       var Symbol2 = root.Symbol;
       module.exports = Symbol2;
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_getRawTag.js
+  // node_modules/lodash/_getRawTag.js
   var require_getRawTag = __commonJS({
-    "../ledgerseal/node_modules/lodash/_getRawTag.js"(exports, module) {
+    "node_modules/lodash/_getRawTag.js"(exports, module) {
       var Symbol2 = require_Symbol();
       var objectProto = Object.prototype;
       var hasOwnProperty = objectProto.hasOwnProperty;
@@ -1124,9 +1133,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_objectToString.js
+  // node_modules/lodash/_objectToString.js
   var require_objectToString = __commonJS({
-    "../ledgerseal/node_modules/lodash/_objectToString.js"(exports, module) {
+    "node_modules/lodash/_objectToString.js"(exports, module) {
       var objectProto = Object.prototype;
       var nativeObjectToString = objectProto.toString;
       function objectToString(value) {
@@ -1136,9 +1145,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_baseGetTag.js
+  // node_modules/lodash/_baseGetTag.js
   var require_baseGetTag = __commonJS({
-    "../ledgerseal/node_modules/lodash/_baseGetTag.js"(exports, module) {
+    "node_modules/lodash/_baseGetTag.js"(exports, module) {
       var Symbol2 = require_Symbol();
       var getRawTag = require_getRawTag();
       var objectToString = require_objectToString();
@@ -1155,9 +1164,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/isObjectLike.js
+  // node_modules/lodash/isObjectLike.js
   var require_isObjectLike = __commonJS({
-    "../ledgerseal/node_modules/lodash/isObjectLike.js"(exports, module) {
+    "node_modules/lodash/isObjectLike.js"(exports, module) {
       function isObjectLike(value) {
         return value != null && typeof value == "object";
       }
@@ -1165,9 +1174,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/isSymbol.js
+  // node_modules/lodash/isSymbol.js
   var require_isSymbol = __commonJS({
-    "../ledgerseal/node_modules/lodash/isSymbol.js"(exports, module) {
+    "node_modules/lodash/isSymbol.js"(exports, module) {
       var baseGetTag = require_baseGetTag();
       var isObjectLike = require_isObjectLike();
       var symbolTag = "[object Symbol]";
@@ -1178,9 +1187,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_isKey.js
+  // node_modules/lodash/_isKey.js
   var require_isKey = __commonJS({
-    "../ledgerseal/node_modules/lodash/_isKey.js"(exports, module) {
+    "node_modules/lodash/_isKey.js"(exports, module) {
       var isArray = require_isArray();
       var isSymbol = require_isSymbol();
       var reIsDeepProp = /\.|\[(?:[^[\]]*|(["'])(?:(?!\1)[^\\]|\\.)*?\1)\]/;
@@ -1199,9 +1208,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/isObject.js
+  // node_modules/lodash/isObject.js
   var require_isObject = __commonJS({
-    "../ledgerseal/node_modules/lodash/isObject.js"(exports, module) {
+    "node_modules/lodash/isObject.js"(exports, module) {
       function isObject(value) {
         var type = typeof value;
         return value != null && (type == "object" || type == "function");
@@ -1210,9 +1219,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/isFunction.js
+  // node_modules/lodash/isFunction.js
   var require_isFunction = __commonJS({
-    "../ledgerseal/node_modules/lodash/isFunction.js"(exports, module) {
+    "node_modules/lodash/isFunction.js"(exports, module) {
       var baseGetTag = require_baseGetTag();
       var isObject = require_isObject();
       var asyncTag = "[object AsyncFunction]";
@@ -1230,18 +1239,18 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_coreJsData.js
+  // node_modules/lodash/_coreJsData.js
   var require_coreJsData = __commonJS({
-    "../ledgerseal/node_modules/lodash/_coreJsData.js"(exports, module) {
+    "node_modules/lodash/_coreJsData.js"(exports, module) {
       var root = require_root();
       var coreJsData = root["__core-js_shared__"];
       module.exports = coreJsData;
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_isMasked.js
+  // node_modules/lodash/_isMasked.js
   var require_isMasked = __commonJS({
-    "../ledgerseal/node_modules/lodash/_isMasked.js"(exports, module) {
+    "node_modules/lodash/_isMasked.js"(exports, module) {
       var coreJsData = require_coreJsData();
       var maskSrcKey = (function() {
         var uid = /[^.]+$/.exec(coreJsData && coreJsData.keys && coreJsData.keys.IE_PROTO || "");
@@ -1254,9 +1263,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_toSource.js
+  // node_modules/lodash/_toSource.js
   var require_toSource = __commonJS({
-    "../ledgerseal/node_modules/lodash/_toSource.js"(exports, module) {
+    "node_modules/lodash/_toSource.js"(exports, module) {
       var funcProto = Function.prototype;
       var funcToString = funcProto.toString;
       function toSource(func) {
@@ -1276,9 +1285,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_baseIsNative.js
+  // node_modules/lodash/_baseIsNative.js
   var require_baseIsNative = __commonJS({
-    "../ledgerseal/node_modules/lodash/_baseIsNative.js"(exports, module) {
+    "node_modules/lodash/_baseIsNative.js"(exports, module) {
       var isFunction = require_isFunction();
       var isMasked = require_isMasked();
       var isObject = require_isObject();
@@ -1303,9 +1312,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_getValue.js
+  // node_modules/lodash/_getValue.js
   var require_getValue = __commonJS({
-    "../ledgerseal/node_modules/lodash/_getValue.js"(exports, module) {
+    "node_modules/lodash/_getValue.js"(exports, module) {
       function getValue(object, key) {
         return object == null ? void 0 : object[key];
       }
@@ -1313,9 +1322,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_getNative.js
+  // node_modules/lodash/_getNative.js
   var require_getNative = __commonJS({
-    "../ledgerseal/node_modules/lodash/_getNative.js"(exports, module) {
+    "node_modules/lodash/_getNative.js"(exports, module) {
       var baseIsNative = require_baseIsNative();
       var getValue = require_getValue();
       function getNative(object, key) {
@@ -1326,18 +1335,18 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_nativeCreate.js
+  // node_modules/lodash/_nativeCreate.js
   var require_nativeCreate = __commonJS({
-    "../ledgerseal/node_modules/lodash/_nativeCreate.js"(exports, module) {
+    "node_modules/lodash/_nativeCreate.js"(exports, module) {
       var getNative = require_getNative();
       var nativeCreate = getNative(Object, "create");
       module.exports = nativeCreate;
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_hashClear.js
+  // node_modules/lodash/_hashClear.js
   var require_hashClear = __commonJS({
-    "../ledgerseal/node_modules/lodash/_hashClear.js"(exports, module) {
+    "node_modules/lodash/_hashClear.js"(exports, module) {
       var nativeCreate = require_nativeCreate();
       function hashClear() {
         this.__data__ = nativeCreate ? nativeCreate(null) : {};
@@ -1347,9 +1356,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_hashDelete.js
+  // node_modules/lodash/_hashDelete.js
   var require_hashDelete = __commonJS({
-    "../ledgerseal/node_modules/lodash/_hashDelete.js"(exports, module) {
+    "node_modules/lodash/_hashDelete.js"(exports, module) {
       function hashDelete(key) {
         var result = this.has(key) && delete this.__data__[key];
         this.size -= result ? 1 : 0;
@@ -1359,9 +1368,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_hashGet.js
+  // node_modules/lodash/_hashGet.js
   var require_hashGet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_hashGet.js"(exports, module) {
+    "node_modules/lodash/_hashGet.js"(exports, module) {
       var nativeCreate = require_nativeCreate();
       var HASH_UNDEFINED = "__lodash_hash_undefined__";
       var objectProto = Object.prototype;
@@ -1378,9 +1387,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_hashHas.js
+  // node_modules/lodash/_hashHas.js
   var require_hashHas = __commonJS({
-    "../ledgerseal/node_modules/lodash/_hashHas.js"(exports, module) {
+    "node_modules/lodash/_hashHas.js"(exports, module) {
       var nativeCreate = require_nativeCreate();
       var objectProto = Object.prototype;
       var hasOwnProperty = objectProto.hasOwnProperty;
@@ -1392,9 +1401,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_hashSet.js
+  // node_modules/lodash/_hashSet.js
   var require_hashSet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_hashSet.js"(exports, module) {
+    "node_modules/lodash/_hashSet.js"(exports, module) {
       var nativeCreate = require_nativeCreate();
       var HASH_UNDEFINED = "__lodash_hash_undefined__";
       function hashSet(key, value) {
@@ -1407,9 +1416,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_Hash.js
+  // node_modules/lodash/_Hash.js
   var require_Hash = __commonJS({
-    "../ledgerseal/node_modules/lodash/_Hash.js"(exports, module) {
+    "node_modules/lodash/_Hash.js"(exports, module) {
       var hashClear = require_hashClear();
       var hashDelete = require_hashDelete();
       var hashGet = require_hashGet();
@@ -1432,9 +1441,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_listCacheClear.js
+  // node_modules/lodash/_listCacheClear.js
   var require_listCacheClear = __commonJS({
-    "../ledgerseal/node_modules/lodash/_listCacheClear.js"(exports, module) {
+    "node_modules/lodash/_listCacheClear.js"(exports, module) {
       function listCacheClear() {
         this.__data__ = [];
         this.size = 0;
@@ -1443,9 +1452,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/eq.js
+  // node_modules/lodash/eq.js
   var require_eq = __commonJS({
-    "../ledgerseal/node_modules/lodash/eq.js"(exports, module) {
+    "node_modules/lodash/eq.js"(exports, module) {
       function eq(value, other) {
         return value === other || value !== value && other !== other;
       }
@@ -1453,9 +1462,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_assocIndexOf.js
+  // node_modules/lodash/_assocIndexOf.js
   var require_assocIndexOf = __commonJS({
-    "../ledgerseal/node_modules/lodash/_assocIndexOf.js"(exports, module) {
+    "node_modules/lodash/_assocIndexOf.js"(exports, module) {
       var eq = require_eq();
       function assocIndexOf(array, key) {
         var length = array.length;
@@ -1470,9 +1479,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_listCacheDelete.js
+  // node_modules/lodash/_listCacheDelete.js
   var require_listCacheDelete = __commonJS({
-    "../ledgerseal/node_modules/lodash/_listCacheDelete.js"(exports, module) {
+    "node_modules/lodash/_listCacheDelete.js"(exports, module) {
       var assocIndexOf = require_assocIndexOf();
       var arrayProto = Array.prototype;
       var splice = arrayProto.splice;
@@ -1494,9 +1503,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_listCacheGet.js
+  // node_modules/lodash/_listCacheGet.js
   var require_listCacheGet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_listCacheGet.js"(exports, module) {
+    "node_modules/lodash/_listCacheGet.js"(exports, module) {
       var assocIndexOf = require_assocIndexOf();
       function listCacheGet(key) {
         var data = this.__data__, index = assocIndexOf(data, key);
@@ -1506,9 +1515,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_listCacheHas.js
+  // node_modules/lodash/_listCacheHas.js
   var require_listCacheHas = __commonJS({
-    "../ledgerseal/node_modules/lodash/_listCacheHas.js"(exports, module) {
+    "node_modules/lodash/_listCacheHas.js"(exports, module) {
       var assocIndexOf = require_assocIndexOf();
       function listCacheHas(key) {
         return assocIndexOf(this.__data__, key) > -1;
@@ -1517,9 +1526,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_listCacheSet.js
+  // node_modules/lodash/_listCacheSet.js
   var require_listCacheSet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_listCacheSet.js"(exports, module) {
+    "node_modules/lodash/_listCacheSet.js"(exports, module) {
       var assocIndexOf = require_assocIndexOf();
       function listCacheSet(key, value) {
         var data = this.__data__, index = assocIndexOf(data, key);
@@ -1535,9 +1544,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_ListCache.js
+  // node_modules/lodash/_ListCache.js
   var require_ListCache = __commonJS({
-    "../ledgerseal/node_modules/lodash/_ListCache.js"(exports, module) {
+    "node_modules/lodash/_ListCache.js"(exports, module) {
       var listCacheClear = require_listCacheClear();
       var listCacheDelete = require_listCacheDelete();
       var listCacheGet = require_listCacheGet();
@@ -1560,9 +1569,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_Map.js
+  // node_modules/lodash/_Map.js
   var require_Map = __commonJS({
-    "../ledgerseal/node_modules/lodash/_Map.js"(exports, module) {
+    "node_modules/lodash/_Map.js"(exports, module) {
       var getNative = require_getNative();
       var root = require_root();
       var Map2 = getNative(root, "Map");
@@ -1570,9 +1579,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_mapCacheClear.js
+  // node_modules/lodash/_mapCacheClear.js
   var require_mapCacheClear = __commonJS({
-    "../ledgerseal/node_modules/lodash/_mapCacheClear.js"(exports, module) {
+    "node_modules/lodash/_mapCacheClear.js"(exports, module) {
       var Hash = require_Hash();
       var ListCache = require_ListCache();
       var Map2 = require_Map();
@@ -1588,9 +1597,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_isKeyable.js
+  // node_modules/lodash/_isKeyable.js
   var require_isKeyable = __commonJS({
-    "../ledgerseal/node_modules/lodash/_isKeyable.js"(exports, module) {
+    "node_modules/lodash/_isKeyable.js"(exports, module) {
       function isKeyable(value) {
         var type = typeof value;
         return type == "string" || type == "number" || type == "symbol" || type == "boolean" ? value !== "__proto__" : value === null;
@@ -1599,9 +1608,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_getMapData.js
+  // node_modules/lodash/_getMapData.js
   var require_getMapData = __commonJS({
-    "../ledgerseal/node_modules/lodash/_getMapData.js"(exports, module) {
+    "node_modules/lodash/_getMapData.js"(exports, module) {
       var isKeyable = require_isKeyable();
       function getMapData(map, key) {
         var data = map.__data__;
@@ -1611,9 +1620,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_mapCacheDelete.js
+  // node_modules/lodash/_mapCacheDelete.js
   var require_mapCacheDelete = __commonJS({
-    "../ledgerseal/node_modules/lodash/_mapCacheDelete.js"(exports, module) {
+    "node_modules/lodash/_mapCacheDelete.js"(exports, module) {
       var getMapData = require_getMapData();
       function mapCacheDelete(key) {
         var result = getMapData(this, key)["delete"](key);
@@ -1624,9 +1633,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_mapCacheGet.js
+  // node_modules/lodash/_mapCacheGet.js
   var require_mapCacheGet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_mapCacheGet.js"(exports, module) {
+    "node_modules/lodash/_mapCacheGet.js"(exports, module) {
       var getMapData = require_getMapData();
       function mapCacheGet(key) {
         return getMapData(this, key).get(key);
@@ -1635,9 +1644,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_mapCacheHas.js
+  // node_modules/lodash/_mapCacheHas.js
   var require_mapCacheHas = __commonJS({
-    "../ledgerseal/node_modules/lodash/_mapCacheHas.js"(exports, module) {
+    "node_modules/lodash/_mapCacheHas.js"(exports, module) {
       var getMapData = require_getMapData();
       function mapCacheHas(key) {
         return getMapData(this, key).has(key);
@@ -1646,9 +1655,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_mapCacheSet.js
+  // node_modules/lodash/_mapCacheSet.js
   var require_mapCacheSet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_mapCacheSet.js"(exports, module) {
+    "node_modules/lodash/_mapCacheSet.js"(exports, module) {
       var getMapData = require_getMapData();
       function mapCacheSet(key, value) {
         var data = getMapData(this, key), size = data.size;
@@ -1660,9 +1669,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_MapCache.js
+  // node_modules/lodash/_MapCache.js
   var require_MapCache = __commonJS({
-    "../ledgerseal/node_modules/lodash/_MapCache.js"(exports, module) {
+    "node_modules/lodash/_MapCache.js"(exports, module) {
       var mapCacheClear = require_mapCacheClear();
       var mapCacheDelete = require_mapCacheDelete();
       var mapCacheGet = require_mapCacheGet();
@@ -1685,9 +1694,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/memoize.js
+  // node_modules/lodash/memoize.js
   var require_memoize = __commonJS({
-    "../ledgerseal/node_modules/lodash/memoize.js"(exports, module) {
+    "node_modules/lodash/memoize.js"(exports, module) {
       var MapCache = require_MapCache();
       var FUNC_ERROR_TEXT = "Expected a function";
       function memoize(func, resolver) {
@@ -1711,9 +1720,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_memoizeCapped.js
+  // node_modules/lodash/_memoizeCapped.js
   var require_memoizeCapped = __commonJS({
-    "../ledgerseal/node_modules/lodash/_memoizeCapped.js"(exports, module) {
+    "node_modules/lodash/_memoizeCapped.js"(exports, module) {
       var memoize = require_memoize();
       var MAX_MEMOIZE_SIZE = 500;
       function memoizeCapped(func) {
@@ -1730,9 +1739,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_stringToPath.js
+  // node_modules/lodash/_stringToPath.js
   var require_stringToPath = __commonJS({
-    "../ledgerseal/node_modules/lodash/_stringToPath.js"(exports, module) {
+    "node_modules/lodash/_stringToPath.js"(exports, module) {
       var memoizeCapped = require_memoizeCapped();
       var rePropName = /[^.[\]]+|\[(?:(-?\d+(?:\.\d+)?)|(["'])((?:(?!\2)[^\\]|\\.)*?)\2)\]|(?=(?:\.|\[\])(?:\.|\[\]|$))/g;
       var reEscapeChar = /\\(\\)?/g;
@@ -1750,9 +1759,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_arrayMap.js
+  // node_modules/lodash/_arrayMap.js
   var require_arrayMap = __commonJS({
-    "../ledgerseal/node_modules/lodash/_arrayMap.js"(exports, module) {
+    "node_modules/lodash/_arrayMap.js"(exports, module) {
       function arrayMap(array, iteratee) {
         var index = -1, length = array == null ? 0 : array.length, result = Array(length);
         while (++index < length) {
@@ -1764,9 +1773,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_baseToString.js
+  // node_modules/lodash/_baseToString.js
   var require_baseToString = __commonJS({
-    "../ledgerseal/node_modules/lodash/_baseToString.js"(exports, module) {
+    "node_modules/lodash/_baseToString.js"(exports, module) {
       var Symbol2 = require_Symbol();
       var arrayMap = require_arrayMap();
       var isArray = require_isArray();
@@ -1791,9 +1800,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/toString.js
+  // node_modules/lodash/toString.js
   var require_toString = __commonJS({
-    "../ledgerseal/node_modules/lodash/toString.js"(exports, module) {
+    "node_modules/lodash/toString.js"(exports, module) {
       var baseToString = require_baseToString();
       function toString(value) {
         return value == null ? "" : baseToString(value);
@@ -1802,9 +1811,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_castPath.js
+  // node_modules/lodash/_castPath.js
   var require_castPath = __commonJS({
-    "../ledgerseal/node_modules/lodash/_castPath.js"(exports, module) {
+    "node_modules/lodash/_castPath.js"(exports, module) {
       var isArray = require_isArray();
       var isKey = require_isKey();
       var stringToPath = require_stringToPath();
@@ -1819,9 +1828,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_toKey.js
+  // node_modules/lodash/_toKey.js
   var require_toKey = __commonJS({
-    "../ledgerseal/node_modules/lodash/_toKey.js"(exports, module) {
+    "node_modules/lodash/_toKey.js"(exports, module) {
       var isSymbol = require_isSymbol();
       var INFINITY = 1 / 0;
       function toKey(value) {
@@ -1835,9 +1844,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_baseGet.js
+  // node_modules/lodash/_baseGet.js
   var require_baseGet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_baseGet.js"(exports, module) {
+    "node_modules/lodash/_baseGet.js"(exports, module) {
       var castPath = require_castPath();
       var toKey = require_toKey();
       function baseGet(object, path) {
@@ -1852,9 +1861,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/get.js
+  // node_modules/lodash/get.js
   var require_get = __commonJS({
-    "../ledgerseal/node_modules/lodash/get.js"(exports, module) {
+    "node_modules/lodash/get.js"(exports, module) {
       var baseGet = require_baseGet();
       function get(object, path, defaultValue) {
         var result = object == null ? void 0 : baseGet(object, path);
@@ -1864,9 +1873,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/translationValueGetter.js
+  // node_modules/@forge/i18n/out/translationValueGetter.js
   var require_translationValueGetter = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/translationValueGetter.js"(exports) {
+    "node_modules/@forge/i18n/out/translationValueGetter.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getTranslationValueFromContent = exports.getTranslationValue = void 0;
@@ -1894,9 +1903,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/translator.js
+  // node_modules/@forge/i18n/out/translator.js
   var require_translator = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/translator.js"(exports) {
+    "node_modules/@forge/i18n/out/translator.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.Translator = void 0;
@@ -1936,9 +1945,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/ensureLocale.js
+  // node_modules/@forge/i18n/out/ensureLocale.js
   var require_ensureLocale = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/ensureLocale.js"(exports) {
+    "node_modules/@forge/i18n/out/ensureLocale.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.ensureLocale = void 0;
@@ -1969,9 +1978,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/moduleI18nHelper.js
+  // node_modules/@forge/i18n/out/moduleI18nHelper.js
   var require_moduleI18nHelper = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/moduleI18nHelper.js"(exports) {
+    "node_modules/@forge/i18n/out/moduleI18nHelper.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.extractI18nPropertiesFromModules = exports.extractI18nKeysFromModules = exports.getI18nSupportedModuleEntries = void 0;
@@ -2036,17 +2045,17 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/types.js
+  // node_modules/@forge/i18n/out/types.js
   var require_types = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/types.js"(exports) {
+    "node_modules/@forge/i18n/out/types.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/index.js
+  // node_modules/@forge/i18n/out/index.js
   var require_out = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/index.js"(exports) {
+    "node_modules/@forge/i18n/out/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getI18nSupportedModuleEntries = exports.extractI18nPropertiesFromModules = exports.extractI18nKeysFromModules = exports.getTranslationValue = void 0;
@@ -2073,9 +2082,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/getContext.js
+  // node_modules/@forge/bridge/out/view/getContext.js
   var require_getContext = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/getContext.js"(exports) {
+    "node_modules/@forge/bridge/out/view/getContext.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getContext = void 0;
@@ -2095,9 +2104,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/changeWindowTitle.js
+  // node_modules/@forge/bridge/out/view/changeWindowTitle.js
   var require_changeWindowTitle = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/changeWindowTitle.js"(exports) {
+    "node_modules/@forge/bridge/out/view/changeWindowTitle.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.changeWindowTitle = void 0;
@@ -2115,9 +2124,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/theme.js
+  // node_modules/@forge/bridge/out/view/theme.js
   var require_theme = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/theme.js"(exports) {
+    "node_modules/@forge/bridge/out/view/theme.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.theme = void 0;
@@ -2129,9 +2138,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/utils/blobParser.js
+  // node_modules/@forge/bridge/out/utils/blobParser.js
   var require_blobParser = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/utils/blobParser.js"(exports) {
+    "node_modules/@forge/bridge/out/utils/blobParser.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.blobToBase64 = exports.base64ToBlob = void 0;
@@ -2163,9 +2172,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/events/serialiseBlob.js
+  // node_modules/@forge/bridge/out/events/serialiseBlob.js
   var require_serialiseBlob = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/events/serialiseBlob.js"(exports) {
+    "node_modules/@forge/bridge/out/events/serialiseBlob.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.containsSerialisedBlobs = exports.containsBlobs = exports.deserialiseBlobsInPayload = exports.serialiseBlobsInPayload = void 0;
@@ -2260,9 +2269,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/events/events.js
+  // node_modules/@forge/bridge/out/events/events.js
   var require_events = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/events/events.js"(exports) {
+    "node_modules/@forge/bridge/out/events/events.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.events = void 0;
@@ -2307,9 +2316,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/emitReadyEvent.js
+  // node_modules/@forge/bridge/out/view/emitReadyEvent.js
   var require_emitReadyEvent = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/emitReadyEvent.js"(exports) {
+    "node_modules/@forge/bridge/out/view/emitReadyEvent.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.emitReadyEvent = void 0;
@@ -2332,9 +2341,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/iframe-resizer/js/iframeResizer.js
+  // node_modules/iframe-resizer/js/iframeResizer.js
   var require_iframeResizer = __commonJS({
-    "../ledgerseal/node_modules/iframe-resizer/js/iframeResizer.js"(exports, module) {
+    "node_modules/iframe-resizer/js/iframeResizer.js"(exports, module) {
       console.info(`
 IFRAME-RESIZER
 
@@ -3388,9 +3397,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/iframe-resizer/js/iframeResizer.contentWindow.js
+  // node_modules/iframe-resizer/js/iframeResizer.contentWindow.js
   var require_iframeResizer_contentWindow = __commonJS({
-    "../ledgerseal/node_modules/iframe-resizer/js/iframeResizer.contentWindow.js"(exports, module) {
+    "node_modules/iframe-resizer/js/iframeResizer.contentWindow.js"(exports, module) {
       (function(undefined2) {
         if (typeof window === "undefined") return;
         var autoResize = true, base = 10, bodyBackground = "", bodyMargin = 0, bodyMarginStr = "", bodyObserver = null, bodyPadding = "", calculateWidth = false, doubleEventList = { resize: 1, click: 1 }, eventCancelTimer = 128, firstRun = true, height = 1, heightCalcModeDefault = "bodyOffset", heightCalcMode = heightCalcModeDefault, initLock = true, initMsg = "", inPageLinks = {}, interval = 32, intervalTimer = null, logging = false, mouseEvents = false, msgID = "[iFrameSizer]", msgIdLen = msgID.length, myID = "", resetRequiredMethods = {
@@ -4338,9 +4347,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/iframe-resizer/index.js
+  // node_modules/iframe-resizer/index.js
   var require_iframe_resizer = __commonJS({
-    "../ledgerseal/node_modules/iframe-resizer/index.js"(exports, module) {
+    "node_modules/iframe-resizer/index.js"(exports, module) {
       var iframeResize = require_iframeResizer();
       module.exports = {
         iframeResize,
@@ -4351,9 +4360,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/adf-renderer.js
+  // node_modules/@forge/bridge/out/view/adf-renderer.js
   var require_adf_renderer = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/adf-renderer.js"(exports) {
+    "node_modules/@forge/bridge/out/view/adf-renderer.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.createAdfRendererIframeProps = exports.sendMessageWhenReady = void 0;
@@ -4420,9 +4429,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/onClose.js
+  // node_modules/@forge/bridge/out/view/onClose.js
   var require_onClose = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/onClose.js"(exports) {
+    "node_modules/@forge/bridge/out/view/onClose.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.onClose = void 0;
@@ -4443,9 +4452,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/getFrameDispatch.js
+  // node_modules/@forge/bridge/out/view/getFrameDispatch.js
   var require_getFrameDispatch = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/getFrameDispatch.js"(exports) {
+    "node_modules/@forge/bridge/out/view/getFrameDispatch.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getFrameDispatch = void 0;
@@ -4458,9 +4467,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/view.js
+  // node_modules/@forge/bridge/out/view/view.js
   var require_view = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/view.js"(exports) {
+    "node_modules/@forge/bridge/out/view/view.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.view = void 0;
@@ -4493,9 +4502,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/index.js
+  // node_modules/@forge/bridge/out/view/index.js
   var require_view2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/index.js"(exports) {
+    "node_modules/@forge/bridge/out/view/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -4503,9 +4512,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/router/router.js
+  // node_modules/@forge/bridge/out/router/router.js
   var require_router = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/router/router.js"(exports) {
+    "node_modules/@forge/bridge/out/router/router.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.router = void 0;
@@ -4555,9 +4564,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/router/index.js
+  // node_modules/@forge/bridge/out/router/index.js
   var require_router2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/router/index.js"(exports) {
+    "node_modules/@forge/bridge/out/router/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -4565,9 +4574,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/modal/modal.js
+  // node_modules/@forge/bridge/out/modal/modal.js
   var require_modal = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/modal/modal.js"(exports) {
+    "node_modules/@forge/bridge/out/modal/modal.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.Modal = void 0;
@@ -4628,9 +4637,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/modal/index.js
+  // node_modules/@forge/bridge/out/modal/index.js
   var require_modal2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/modal/index.js"(exports) {
+    "node_modules/@forge/bridge/out/modal/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -4638,9 +4647,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/fetch/fetch.js
+  // node_modules/@forge/bridge/out/fetch/fetch.js
   var require_fetch = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/fetch/fetch.js"(exports) {
+    "node_modules/@forge/bridge/out/fetch/fetch.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.productFetchApi = exports.remoteFetchApi = void 0;
@@ -4733,9 +4742,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/fetch/index.js
+  // node_modules/@forge/bridge/out/fetch/index.js
   var require_fetch2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/fetch/index.js"(exports) {
+    "node_modules/@forge/bridge/out/fetch/index.js"(exports) {
       "use strict";
       var _a;
       Object.defineProperty(exports, "__esModule", { value: true });
@@ -4752,9 +4761,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/requestTeamworkGraph/index.js
+  // node_modules/@forge/bridge/out/requestTeamworkGraph/index.js
   var require_requestTeamworkGraph = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/requestTeamworkGraph/index.js"(exports) {
+    "node_modules/@forge/bridge/out/requestTeamworkGraph/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.requestTeamworkGraph = void 0;
@@ -4768,9 +4777,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/flag/flag.js
+  // node_modules/@forge/bridge/out/flag/flag.js
   var require_flag = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/flag/flag.js"(exports) {
+    "node_modules/@forge/bridge/out/flag/flag.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.showFlag = void 0;
@@ -4797,9 +4806,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/flag/index.js
+  // node_modules/@forge/bridge/out/flag/index.js
   var require_flag2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/flag/index.js"(exports) {
+    "node_modules/@forge/bridge/out/flag/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.showFlag = void 0;
@@ -4810,9 +4819,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/events/index.js
+  // node_modules/@forge/bridge/out/events/index.js
   var require_events2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/events/index.js"(exports) {
+    "node_modules/@forge/bridge/out/events/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -4820,9 +4829,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/realtime/realtime.js
+  // node_modules/@forge/bridge/out/realtime/realtime.js
   var require_realtime = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/realtime/realtime.js"(exports) {
+    "node_modules/@forge/bridge/out/realtime/realtime.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.realtime = void 0;
@@ -4858,9 +4867,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/realtime/productContext.js
+  // node_modules/@forge/bridge/out/realtime/productContext.js
   var require_productContext = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/realtime/productContext.js"(exports) {
+    "node_modules/@forge/bridge/out/realtime/productContext.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.Bitbucket = exports.Confluence = exports.Jira = void 0;
@@ -4883,9 +4892,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/realtime/index.js
+  // node_modules/@forge/bridge/out/realtime/index.js
   var require_realtime2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/realtime/index.js"(exports) {
+    "node_modules/@forge/bridge/out/realtime/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.Bitbucket = exports.Confluence = exports.Jira = exports.realtime = void 0;
@@ -4906,9 +4915,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/rovo/open.js
+  // node_modules/@forge/bridge/out/rovo/open.js
   var require_open2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/rovo/open.js"(exports) {
+    "node_modules/@forge/bridge/out/rovo/open.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.open = exports.OPEN_ROVO_BRIDGE_ERROR_MESSAGE = void 0;
@@ -4953,9 +4962,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/rovo/isEnabled.js
+  // node_modules/@forge/bridge/out/rovo/isEnabled.js
   var require_isEnabled = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/rovo/isEnabled.js"(exports) {
+    "node_modules/@forge/bridge/out/rovo/isEnabled.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.isEnabled = void 0;
@@ -4968,9 +4977,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/rovo/rovo.js
+  // node_modules/@forge/bridge/out/rovo/rovo.js
   var require_rovo = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/rovo/rovo.js"(exports) {
+    "node_modules/@forge/bridge/out/rovo/rovo.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.rovo = void 0;
@@ -4983,9 +4992,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/rovo/index.js
+  // node_modules/@forge/bridge/out/rovo/index.js
   var require_rovo2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/rovo/index.js"(exports) {
+    "node_modules/@forge/bridge/out/rovo/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -4993,9 +5002,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/cookieConsent/getCookieConsentPreferences.js
+  // node_modules/@forge/bridge/out/cookieConsent/getCookieConsentPreferences.js
   var require_getCookieConsentPreferences = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/cookieConsent/getCookieConsentPreferences.js"(exports) {
+    "node_modules/@forge/bridge/out/cookieConsent/getCookieConsentPreferences.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getCookieConsentPreferences = void 0;
@@ -5013,9 +5022,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/cookieConsent/index.js
+  // node_modules/@forge/bridge/out/cookieConsent/index.js
   var require_cookieConsent = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/cookieConsent/index.js"(exports) {
+    "node_modules/@forge/bridge/out/cookieConsent/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -5023,9 +5032,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/i18n/index.js
+  // node_modules/@forge/bridge/out/i18n/index.js
   var require_i18n = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/i18n/index.js"(exports) {
+    "node_modules/@forge/bridge/out/i18n/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.createTranslationFunction = exports.getTranslations = exports.resetTranslationsCache = void 0;
@@ -5081,9 +5090,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/permissions/permissions.js
+  // node_modules/@forge/bridge/out/permissions/permissions.js
   var require_permissions = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/permissions/permissions.js"(exports) {
+    "node_modules/@forge/bridge/out/permissions/permissions.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.permissions = void 0;
@@ -5122,9 +5131,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/egress/out/egress/url-parser.js
+  // node_modules/@forge/egress/out/egress/url-parser.js
   var require_url_parser = __commonJS({
-    "../ledgerseal/node_modules/@forge/egress/out/egress/url-parser.js"(exports) {
+    "node_modules/@forge/egress/out/egress/url-parser.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.parseUrl = parseUrl;
@@ -5139,9 +5148,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/egress/out/egress/utils.js
+  // node_modules/@forge/egress/out/egress/utils.js
   var require_utils2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/egress/out/egress/utils.js"(exports) {
+    "node_modules/@forge/egress/out/egress/utils.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getEgressesBasedOnToggles = exports.sortAndGroupEgressPermissionsByDomain = exports.EgressCategory = exports.EgressType = void 0;
@@ -5221,9 +5230,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/egress/out/egress/egress-filtering-service.js
+  // node_modules/@forge/egress/out/egress/egress-filtering-service.js
   var require_egress_filtering_service = __commonJS({
-    "../ledgerseal/node_modules/@forge/egress/out/egress/egress-filtering-service.js"(exports) {
+    "node_modules/@forge/egress/out/egress/egress-filtering-service.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.EgressFilteringService = void 0;
@@ -5296,9 +5305,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/egress/out/egress/index.js
+  // node_modules/@forge/egress/out/egress/index.js
   var require_egress = __commonJS({
-    "../ledgerseal/node_modules/@forge/egress/out/egress/index.js"(exports) {
+    "node_modules/@forge/egress/out/egress/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -5308,9 +5317,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/egress/out/index.js
+  // node_modules/@forge/egress/out/index.js
   var require_out2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/egress/out/index.js"(exports) {
+    "node_modules/@forge/egress/out/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -5318,9 +5327,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/permissions/permissionsUtil.js
+  // node_modules/@forge/bridge/out/permissions/permissionsUtil.js
   var require_permissionsUtil = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/permissions/permissionsUtil.js"(exports) {
+    "node_modules/@forge/bridge/out/permissions/permissionsUtil.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.createPermissionUtils = createPermissionUtils;
@@ -5495,9 +5504,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/permissions/index.js
+  // node_modules/@forge/bridge/out/permissions/index.js
   var require_permissions2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/permissions/index.js"(exports) {
+    "node_modules/@forge/bridge/out/permissions/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -5506,9 +5515,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/upload.js
+  // node_modules/@forge/bridge/out/object-store/upload.js
   var require_upload = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/upload.js"(exports) {
+    "node_modules/@forge/bridge/out/object-store/upload.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.upload = exports.createUploadPromises = void 0;
@@ -5637,9 +5646,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/deleteObjects.js
+  // node_modules/@forge/bridge/out/object-store/deleteObjects.js
   var require_deleteObjects = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/deleteObjects.js"(exports) {
+    "node_modules/@forge/bridge/out/object-store/deleteObjects.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.deleteObjects = void 0;
@@ -5663,9 +5672,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/download.js
+  // node_modules/@forge/bridge/out/object-store/download.js
   var require_download = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/download.js"(exports) {
+    "node_modules/@forge/bridge/out/object-store/download.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.download = void 0;
@@ -5723,9 +5732,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/getMetadata.js
+  // node_modules/@forge/bridge/out/object-store/getMetadata.js
   var require_getMetadata = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/getMetadata.js"(exports) {
+    "node_modules/@forge/bridge/out/object-store/getMetadata.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getMetadata = void 0;
@@ -5757,9 +5766,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/objectStore.js
+  // node_modules/@forge/bridge/out/object-store/objectStore.js
   var require_objectStore = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/objectStore.js"(exports) {
+    "node_modules/@forge/bridge/out/object-store/objectStore.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.createUploadPromises = exports.objectStore = void 0;
@@ -5779,17 +5788,17 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/types.js
+  // node_modules/@forge/bridge/out/object-store/types.js
   var require_types2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/types.js"(exports) {
+    "node_modules/@forge/bridge/out/object-store/types.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/index.js
+  // node_modules/@forge/bridge/out/object-store/index.js
   var require_object_store = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/index.js"(exports) {
+    "node_modules/@forge/bridge/out/object-store/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -5798,9 +5807,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/featureFlags/evaluator.js
+  // node_modules/@forge/bridge/out/featureFlags/evaluator.js
   var require_evaluator = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/featureFlags/evaluator.js"(exports) {
+    "node_modules/@forge/bridge/out/featureFlags/evaluator.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.Evaluator = void 0;
@@ -5857,9 +5866,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/featureFlags/initFeatureFlags.js
+  // node_modules/@forge/bridge/out/featureFlags/initFeatureFlags.js
   var require_initFeatureFlags = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/featureFlags/initFeatureFlags.js"(exports) {
+    "node_modules/@forge/bridge/out/featureFlags/initFeatureFlags.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.initFeatureFlags = void 0;
@@ -5888,9 +5897,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/featureFlags/featureFlags.js
+  // node_modules/@forge/bridge/out/featureFlags/featureFlags.js
   var require_featureFlags = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/featureFlags/featureFlags.js"(exports) {
+    "node_modules/@forge/bridge/out/featureFlags/featureFlags.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.FeatureFlags = void 0;
@@ -5941,9 +5950,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/featureFlags/index.js
+  // node_modules/@forge/bridge/out/featureFlags/index.js
   var require_featureFlags2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/featureFlags/index.js"(exports) {
+    "node_modules/@forge/bridge/out/featureFlags/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.FeatureFlags = void 0;
@@ -5954,9 +5963,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/frontendCustomMetrics/frontendCustomMetrics.js
+  // node_modules/@forge/bridge/out/frontendCustomMetrics/frontendCustomMetrics.js
   var require_frontendCustomMetrics = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/frontendCustomMetrics/frontendCustomMetrics.js"(exports) {
+    "node_modules/@forge/bridge/out/frontendCustomMetrics/frontendCustomMetrics.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.frontendCustomMetrics = void 0;
@@ -6001,9 +6010,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/frontendCustomMetrics/index.js
+  // node_modules/@forge/bridge/out/frontendCustomMetrics/index.js
   var require_frontendCustomMetrics2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/frontendCustomMetrics/index.js"(exports) {
+    "node_modules/@forge/bridge/out/frontendCustomMetrics/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -6011,9 +6020,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/index.js
+  // node_modules/@forge/bridge/out/index.js
   var require_out3 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/index.js"(exports) {
+    "node_modules/@forge/bridge/out/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.i18n = exports.NavigationTarget = void 0;
