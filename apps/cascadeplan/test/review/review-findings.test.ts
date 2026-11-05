@@ -282,17 +282,17 @@ describe('D3 shared dates: concurrency', () => {
 });
 
 describe('Jira sync honesty (D2, D8)', () => {
-  it('FINDING R-08: a status change is reported as written when no workflow transition matches', async () => {
+  it('R-08: a status change with no matching workflow transition is reported as not written, with the reason', async () => {
     override = (url, opts) => (url.endsWith('/transitions') && !opts ? { status: 200, json: async () => ({ transitions: [] }) } : undefined);
     const v = (await planEntry(storage, 'default', 'TEST-1')).version;
     const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { status: 'COMPLETED' }, expectedVersion: v }, storage);
     expect(calls('POST', /transitions$/)).toEqual([]);
     const w = res.jiraSync.writes.find((x: any) => x.fields.includes('status'));
-    expect(w.ok).toBe(true);
-    expect(res.jiraSync.ok).toBe(true);
+    expect(w).toMatchObject({ ok: false, error: 'No workflow transition leads to completed from the current status' });
+    expect(res.jiraSync.ok).toBe(false);
   });
 
-  it('FINDING R-09: a status change is reported as written when the transition POST fails', async () => {
+  it('R-09: a status change whose transition POST fails is reported as not written', async () => {
     override = (url, opts) => {
       if (url.endsWith('/transitions') && !opts) return { status: 200, json: async () => ({ transitions: [{ id: '31', name: 'Done', to: { statusCategory: { key: 'done' } } }] }) };
       if (url.endsWith('/transitions') && opts?.method === 'POST') return { status: 400, json: async () => ({ errorMessages: ['Resolution is required'] }) };
@@ -301,7 +301,8 @@ describe('Jira sync honesty (D2, D8)', () => {
     const v = (await planEntry(storage, 'default', 'TEST-1')).version;
     const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { status: 'COMPLETED' }, expectedVersion: v }, storage);
     expect(calls('POST', /transitions$/).length).toBe(1);
-    expect(res.jiraSync.ok).toBe(true);
+    expect(res.jiraSync.ok).toBe(false);
+    expect(res.jiraSync.writes.find((x: any) => x.fields.includes('status'))).toMatchObject({ ok: false, error: 'Jira did not apply the "Done" transition' });
   });
 
   it('FINDING R-10: setting progress to 100 transitions the Jira status although the user did not edit the status (INV-03)', async () => {

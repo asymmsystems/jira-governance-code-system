@@ -1305,8 +1305,11 @@ export async function syncTaskToJira(
   if (log) {
     // Each write is logged with its old and new values; a field Jira refused is logged as not written (B-23).
     log.record(taskIdOrKey, result.fields, result, describeJiraChanges(result.fields, before, updates));
-    log.record(taskIdOrKey, result.rejected, { synced: false, error: 'Jira did not accept the due date on this issue screen' },
-      describeJiraChanges(result.rejected, before, updates));
+    // Each refused field is reported with its own reason (F-08).
+    for (const field of result.rejected) {
+      log.record(taskIdOrKey, [field], { synced: false, error: result.reasons[field] || 'Jira did not accept the change' },
+        describeJiraChanges([field], before, updates));
+    }
   }
   return result;
 }
@@ -1314,9 +1317,11 @@ export async function syncTaskToJira(
 async function syncTaskFields(
   taskIdOrKey: string,
   updates: Partial<WbsTask>
-): Promise<{ synced: boolean; error?: string; fields: string[]; rejected: string[] }> {
+): Promise<{ synced: boolean; error?: string; fields: string[]; rejected: string[]; reasons: Record<string, string> }> {
   const fields: Record<string, any> = {};
   let dropped: string[] = [];
+  const reasons: Record<string, string> = {};
+  let statusReason: string | undefined;
 
   if (updates.summary && typeof updates.summary === 'string' && updates.summary.trim()) {
     fields.summary = updates.summary.trim();
@@ -1422,15 +1427,18 @@ async function syncTaskFields(
         }
       }
     } catch (err: any) {
-      return { synced: false, error: err?.message || 'Network error updating Jira issue', fields: Object.keys(fields), rejected: [] };
+      return { synced: false, error: err?.message || 'Network error updating Jira issue', fields: Object.keys(fields), rejected: [], reasons };
     }
   }
 
   // After a successful retry without the due date, the due date was not written.
-  const rejected = syncSuccess ? dropped : [];
+  const rejected = syncSuccess ? [...dropped] : [];
+  if (rejected.includes('duedate')) reasons.duedate = 'Jira did not accept the due date on this issue screen';
   const sentFields = Object.keys(fields).filter(f => !rejected.includes(f));
   // Status workflow transition sync
   if (updates.status) {
+    // The status counts as written only when Jira applied a transition (F-08).
+    statusReason = 'Jira could not read the workflow transitions of this issue';
     try {
       const transRes = await caller.requestJira(route`/rest/api/3/issue/${taskIdOrKey}/transitions`);
       if (transRes.status === 200) {
@@ -1445,18 +1453,28 @@ async function syncTaskFields(
           return false;
         });
         if (match) {
-          await caller.requestJira(route`/rest/api/3/issue/${taskIdOrKey}/transitions`, {
+          const postRes = await caller.requestJira(route`/rest/api/3/issue/${taskIdOrKey}/transitions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ transition: { id: match.id } })
           });
+          statusReason = postRes && postRes.status === 204 ? undefined : `Jira did not apply the "${match.name || match.id}" transition`;
+        } else {
+          statusReason = `No workflow transition leads to ${String(targetStatus).replace('_', ' ').toLowerCase()} from the current status`;
         }
       }
     } catch {}
   }
 
-  if (updates.status) sentFields.push('status');
-  return { synced: syncSuccess, error: errMsg, fields: sentFields, rejected };
+  if (updates.status) {
+    if (statusReason) {
+      rejected.push('status');
+      reasons.status = statusReason;
+    } else {
+      sentFields.push('status');
+    }
+  }
+  return { synced: syncSuccess, error: errMsg, fields: sentFields, rejected, reasons };
 }
 
 /**

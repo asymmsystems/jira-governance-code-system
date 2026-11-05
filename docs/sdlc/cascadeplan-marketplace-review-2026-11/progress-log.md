@@ -35,3 +35,8 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 - **What changed:** `callResolver` takes an optional `before` snapshot. The drag takes it before its optimistic change and passes it. The dependency dialog keeps `prevStart` and `prevEnd`, and Cancel writes them through `commitDates` (current version), then announces whether the revert was saved.
 - **Proof:** harness `e2e_review.py` 25/25 (R2a Undo restores, R2b Redo re-applies, R2c both write the due date to Jira); `e2e_undo_probe.py`: the first drag offers Undo and Ctrl+Z restores the start; `e2e.py` 30/30; unit suite 770 passed.
 - **Not covered by a harness check yet:** Cancel in the dependency dialog (needs a scripted conflict drag); covered by reading.
+
+### F-08. A status change is reported only when Jira applied it
+
+- **What changed:** `syncTaskFields` records why the status was not written (no matching transition, transitions not readable, POST not 204) and returns it in `rejected` with a per-field `reasons` map. `syncTaskToJira` logs each refused field with its own reason (the due-date message stays for the due date).
+- **Proof:** R-08 and R-09 failed on the fix and were rewritten to assert `ok: false` with the reason; full suite 770 passed, coverage thresholds met.
