@@ -78,6 +78,8 @@ export interface TaskDependency {
 export interface WbsTask {
   id: string;
   key: string;
+  /** Sub-tasks an earlier build stored only in the plan record (before ADR-004), waiting for the user's choice (F-23). */
+  localSubtasks?: SubtaskItem[];
   /** Due date as Jira holds it, read live and never stored (B-23). */
   jiraDueDate?: string;
   summary: string;

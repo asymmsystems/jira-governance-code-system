@@ -9,6 +9,7 @@ import {
   createJiraEpic,
   updateWbsTask,
   addSubtaskToTask,
+  resolveLocalSubtasks,
   saveTaskDependency,
   saveColumnWidths,
   saveHiddenColumns,
@@ -925,84 +926,75 @@ describe('CascadePlan Index & Resolver Tests', () => {
     });
   });
 
-  describe('addSubtaskToTask', () => {
-    it('adds a subtask and recalculates parent effort with PERCENTAGE buffer', async () => {
-      const updatedPlan = await addSubtaskToTask(
-        {
-          projectKey: 'TEST',
-          parentTaskId: 'TEST-1',
-          subtask: {
-            summary: 'Implement schema migration',
-            estimateValue: 2, // 2 story points = 16h
-            estimateUnit: 'STORY_POINTS'
-          },
-          bufferType: 'PERCENTAGE',
-          bufferValue: 25 // +25% buffer
-        },
-        mockStorage
-      );
+  describe('addSubtaskToTask (F-23: a real Jira sub-task, ADR-004)', () => {
+    const createdBodies = (): any[] => mockRequestJira.mock.calls
+      .filter(c => c[1]?.method === 'POST' && String(c[0]) === '/rest/api/3/issue').map(c => JSON.parse(c[1].body).fields);
+    const acceptCreate = () => {
+      const base = mockRequestJira.getMockImplementation()!;
+      mockRequestJira.mockImplementation(async (r: any, o?: any) => (String(r) === '/rest/api/3/issue' && o?.method === 'POST'
+        ? { status: 201, json: async () => ({ id: '10050', key: 'TEST-50' }) } : base(r, o)));
+    };
 
-      const parent = updatedPlan.tasks.find(t => t.key === 'TEST-1');
-      expect(parent?.effortConfig?.subtasks?.length).toBeGreaterThanOrEqual(1);
-      expect(parent?.effortConfig?.bufferHours).toBeGreaterThan(0);
+    it('creates a Jira sub-task under the parent with the estimate the user entered, and stores nothing in the plan', async () => {
+      acceptCreate();
+      await getProjectPlan('TEST', mockStorage);
+      const before = await entryOf(mockStorage, 'TEST-1');
+      const res: any = await addSubtaskToTask({ projectKey: 'TEST', parentTaskId: 'TEST-1',
+        subtask: { summary: 'Implement schema migration', estimateValue: 2, estimateUnit: 'STORY_POINTS' } }, mockStorage);
+      expect(res.ok).toBe(true);
+      expect(res.createdKey).toBe('TEST-50');
+      expect(createdBodies()).toEqual([{ project: { key: 'TEST' }, parent: { key: 'TEST-1' }, summary: 'Implement schema migration',
+        issuetype: { name: 'Sub-task' }, timetracking: { originalEstimate: '16h' } }]);
+      expect(await entryOf(mockStorage, 'TEST-1')).toEqual(before);
     });
 
-    it('adds subtask with default buffer arguments when omitted', async () => {
-      const updatedPlan = await addSubtaskToTask(
-        {
-          projectKey: 'TEST',
-          parentTaskId: 'TEST-1',
-          subtask: {
-            summary: 'Default buffer subtask',
-            estimateValue: 8,
-            estimateUnit: 'HOURS'
-          }
-        },
-        mockStorage
-      );
-
-      const parent = updatedPlan.tasks.find(t => t.key === 'TEST-1');
-      expect(parent?.effortConfig?.bufferType).toBe('NONE');
-      expect(parent?.effortConfig?.bufferHours).toBe(0);
+    it('an empty estimate sends no estimate to Jira (no default, BL-3)', async () => {
+      acceptCreate();
+      await addSubtaskToTask({ projectKey: 'TEST', parentTaskId: 'TEST-3', subtask: { summary: 'No estimate' } }, mockStorage);
+      expect(createdBodies()[0].timetracking).toBeUndefined();
     });
 
-    it('adds subtask with FIXED_HOURS buffer', async () => {
-      const updatedPlan = await addSubtaskToTask(
-        {
-          projectKey: 'TEST',
-          parentTaskId: 'TEST-1',
-          subtask: {
-            summary: 'Fixed hours subtask',
-            estimateValue: 16,
-            estimateUnit: 'HOURS'
-          },
-          bufferType: 'FIXED_HOURS',
-          bufferValue: 8
-        },
-        mockStorage
-      );
-
-      const parent = updatedPlan.tasks.find(t => t.key === 'TEST-1');
-      expect(parent?.effortConfig?.bufferType).toBe('FIXED_HOURS');
-      expect(parent?.effortConfig?.bufferHours).toBe(8);
+    it('a sub-task Jira refuses is reported, and nothing is stored', async () => {
+      const base = mockRequestJira.getMockImplementation()!;
+      mockRequestJira.mockImplementation(async (r: any, o?: any) => (String(r) === '/rest/api/3/issue' && o?.method === 'POST'
+        ? { status: 400, json: async () => ({ errorMessages: ['Issue type not found'] }) } : base(r, o)));
+      const res: any = await addSubtaskToTask({ projectKey: 'TEST', parentTaskId: 'TEST-1', subtask: { summary: 'X', estimateValue: 1, estimateUnit: 'HOURS' } }, mockStorage);
+      expect(res.ok).toBe(false);
+      expect(res.message).toContain('Issue type not found');
+      expect(res.jiraSync.ok).toBe(false);
     });
 
-    it('adds subtask to a task that has no prior scheduleMap entry', async () => {
-      const updatedPlan = await addSubtaskToTask(
-        {
-          projectKey: 'TEST',
-          parentTaskId: 'TEST-3',
-          subtask: {
-            summary: 'Brand new subtask on unscheduled item',
-            estimateValue: 4,
-            estimateUnit: 'HOURS'
-          }
-        },
-        mockStorage
-      );
+    it('refuses an empty summary or a bad estimate', async () => {
+      await expect(addSubtaskToTask({ projectKey: 'TEST', parentTaskId: 'TEST-1', subtask: { summary: ' ' } }, mockStorage)).rejects.toThrow('summary');
+      await expect(addSubtaskToTask({ projectKey: 'TEST', parentTaskId: 'TEST-1', subtask: { summary: 'A', estimateValue: -1, estimateUnit: 'HOURS' } }, mockStorage)).rejects.toThrow('estimate');
+    });
 
-      const item = updatedPlan.backlogTasks!.find(t => t.key === 'TEST-3');
-      expect(item?.effortConfig?.subtasks?.length).toBeGreaterThan(0);
+    it('sub-tasks stored only in a plan record are listed, never hide Jira\'s, and are created in Jira only on request', async () => {
+      acceptCreate();
+      await getProjectPlan('TEST', mockStorage);
+      const store = new PlanStore(mockStorage, 'TEST', 'TEST');
+      const cur = (await store.loadEntries()).get('TEST-1')!;
+      await store.putEntry('TEST-1', '10001', { ...cur, subtasks: [{ id: 'sub-1', summary: 'Local only', estimateValue: 3, estimateUnit: 'HOURS', normalizedHours: 3, status: 'NOT_STARTED' }] } as any, cur.version);
+      const plan = await getProjectPlan('TEST', mockStorage);
+      const t1 = plan.tasks.find(t => t.key === 'TEST-1')!;
+      expect(t1.subtasks!.map(s => s.key)).toEqual(['TEST-11']);
+      expect(t1.localSubtasks!.map(s => s.summary)).toEqual(['Local only']);
+      expect(createdBodies()).toEqual([]);
+      const res: any = await resolveLocalSubtasks({ projectKey: 'TEST', parentTaskId: 'TEST-1', action: 'create' }, mockStorage);
+      expect(res.ok).toBe(true);
+      expect(createdBodies()).toEqual([expect.objectContaining({ summary: 'Local only', timetracking: { originalEstimate: '3h' } })]);
+      expect((await entryOf(mockStorage, 'TEST-1')).subtasks || []).toEqual([]);
+    });
+
+    it('drop removes local sub-tasks with no Jira write', async () => {
+      await getProjectPlan('TEST', mockStorage);
+      const store = new PlanStore(mockStorage, 'TEST', 'TEST');
+      const cur = (await store.loadEntries()).get('TEST-1')!;
+      await store.putEntry('TEST-1', '10001', { ...cur, subtasks: [{ id: 'sub-1', summary: 'Local only', estimateValue: 3, estimateUnit: 'HOURS', normalizedHours: 3, status: 'NOT_STARTED' }] } as any, cur.version);
+      await resolveLocalSubtasks({ projectKey: 'TEST', parentTaskId: 'TEST-1', action: 'drop' }, mockStorage);
+      expect(createdBodies()).toEqual([]);
+      expect((await getProjectPlan('TEST', mockStorage)).tasks.find(t => t.key === 'TEST-1')!.localSubtasks).toBeUndefined();
+      await expect(resolveLocalSubtasks({ projectKey: 'TEST', parentTaskId: 'TEST-1', action: 'x' as any }, mockStorage)).rejects.toThrow('action');
     });
   });
 
@@ -1655,14 +1647,15 @@ describe('CascadePlan Index & Resolver Tests', () => {
 
       // Test with empty scheduleMap
       await clearRecords(mockStorage);
-      const addSubRes = await addSubtaskToTask({
+      const addSubRes: any = await addSubtaskToTask({
         projectKey: 'TEST',
         parentTaskId: 'TEST-1',
         subtask: { summary: 'New Sub', estimateValue: 4, estimateUnit: 'HOURS' }
       }, mockStorage);
       expect(addSubRes.projectKey).toBe('TEST');
-
-      expect((await entryOf(mockStorage, 'TEST-1')).subtasks[0].summary).toBe('New Sub');
+      // A real Jira sub-task (F-23); nothing is stored in the plan.
+      expect(addSubRes.createdKey).toBe('TEST-99');
+      expect((await entryOf(mockStorage, 'TEST-1'))?.subtasks).toBeUndefined();
     });
 
     it('createSubtaskForResource retries with Subtask if Sub-task type fails', async () => {

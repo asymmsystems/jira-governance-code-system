@@ -561,12 +561,12 @@
 
         <!-- Subtasks & Buffer Section -->
         <div style="background: var(--cp-surface-sunken); border: 1px solid var(--cp-border); border-radius: 6px; padding: 12px;">
-          <div style="font-weight: 700; margin-bottom: 8px;">Checklist and risk buffer (CascadePlan only, not Jira sub-tasks)</div>
+          <div style="font-weight: 700; margin-bottom: 8px;">Jira sub-tasks and risk buffer</div>
           <div id="subtasksList" style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;"></div>
           <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-            <input type="text" class="form-input" id="newSubtaskSummary" aria-label="New checklist item" placeholder="New checklist item..." style="flex: 1;" />
-            <input type="number" class="form-input" id="newSubtaskHours" aria-label="New sub-task hours" value="8" style="width: 70px;" />
-            <button class="btn btn-outline" id="btnAddSubtaskBtn">+ Add checklist item</button>
+            <input type="text" class="form-input" id="newSubtaskSummary" aria-label="New Jira sub-task summary" placeholder="New sub-task summary..." style="flex: 1;" />
+            <input type="number" class="form-input" id="newSubtaskHours" aria-label="New sub-task hours (optional)" placeholder="hours" style="width: 70px;" />
+            <button class="btn btn-outline" id="btnAddSubtaskBtn">+ Create sub-task in Jira</button>
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <div class="form-group">

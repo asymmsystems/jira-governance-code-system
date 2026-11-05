@@ -1891,3 +1891,8 @@ body.is-dragging-backlog .drop-target-row.drag-over {
   font-size: 12px;
   color: var(--cp-text-subtle);
 }
+
+/* Sub-tasks kept only in the planner by an earlier build (F-23). */
+.local-subtasks { margin-top: 8px; font-size: 12px; color: var(--cp-text-subtle); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.local-subtasks p { flex-basis: 100%; margin: 0; }
+

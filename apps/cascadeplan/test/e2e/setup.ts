@@ -78,6 +78,12 @@ w.__jira = async (url: string, opts: any) => {
     }
     return ok({}, 204);
   }
+  // Jira creates an issue (a sub-task, F-23) with 201 and a new key.
+  if (method === 'POST' && url.endsWith('/rest/api/3/issue')) {
+    localStorage.setItem('__harness_jira_writes', JSON.stringify([...writes(), `${method} ${url} ${opts.body || ''}`]));
+    const n = 60 + writes().filter(w => w.startsWith('POST /rest/api/3/issue ')).length;
+    return ok({ id: String(n), key: `DEMO-${n}` }, 201);
+  }
   // Jira creates an issue link with 201 (a dependency exists only as a Jira link, ADR-004).
   if (method === 'POST' && url.endsWith('/rest/api/3/issueLink')) {
     localStorage.setItem('__harness_jira_writes', JSON.stringify([...writes(), `${method} ${url} ${opts.body || ''}`]));

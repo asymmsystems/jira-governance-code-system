@@ -13411,28 +13411,51 @@ Click to manage or assign.`;
     list.innerHTML = "";
     const subs = task.subtasks || [];
     if (subs.length === 0) {
-      list.innerHTML = '<div style="font-size:11px; color: var(--cp-text-subtle);">No subtasks added yet.</div>';
+      list.innerHTML = '<div style="font-size:11px; color: var(--cp-text-subtle);">No sub-tasks in Jira yet.</div>';
     } else {
-      subs.forEach((s, idx) => {
+      subs.forEach((s) => {
         const item = document.createElement("div");
         item.style.display = "flex";
         item.style.justifyContent = "space-between";
         item.style.fontSize = "12px";
-        item.innerHTML = html`<span>• ${s.summary}</span><span style="font-weight:700;">${s.normalizedHours}h</span>`;
+        item.innerHTML = html`<span>• ${s.key ? s.key + ": " : ""}${s.summary}</span><span style="font-weight:700;">${s.normalizedHours ? s.normalizedHours + "h" : ""}</span>`;
         list.appendChild(item);
       });
+    }
+    const local = task.localSubtasks || [];
+    if (local.length) {
+      const box = document.createElement("div");
+      box.className = "local-subtasks";
+      const note = document.createElement("p");
+      note.textContent = `${local.length} sub-task${local.length === 1 ? "" : "s"} exist only in the planner, not in Jira: ${local.map((s) => s.summary).join(", ")}.`;
+      box.appendChild(note);
+      for (const [action, label2] of [["create", "Create in Jira"], ["drop", "Remove"]]) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = action === "create" ? "btn btn-primary btn-xs" : "btn btn-outline btn-xs";
+        b.textContent = label2;
+        b.addEventListener("click", async () => {
+          b.disabled = true;
+          const res = await callResolver2("resolveLocalSubtasks", { parentTaskId: task.key, action });
+          if (res && res.ok !== false) showFlag({ text: action === "create" ? `Created the sub-tasks of ${task.key} in Jira.` : `Removed the planner-only sub-tasks of ${task.key}.` });
+          await loadProjectPlan();
+          const updated = findAnyTask(task.key);
+          if (updated) renderModalSubtasks(updated);
+        });
+        box.appendChild(b);
+      }
+      list.appendChild(box);
     }
   }
   async function handleAddSubtask() {
     const summary = document.getElementById("newSubtaskSummary").value.trim();
-    const hours = parseInt(document.getElementById("newSubtaskHours").value, 10) || 8;
+    const hours = parseFloat(document.getElementById("newSubtaskHours").value);
     if (!summary || !activeTaskId) return;
-    await callResolver2("addSubtaskToTask", {
+    const res = await callResolver2("addSubtaskToTask", {
       parentTaskId: activeTaskId,
-      subtask: { summary, estimateValue: hours, estimateUnit: "HOURS" },
-      bufferType: document.getElementById("editBufferTypeSelect").value,
-      bufferValue: parseFloat(document.getElementById("editBufferValueInput").value) || 0
+      subtask: { summary, ...hours > 0 ? { estimateValue: hours, estimateUnit: "HOURS" } : {} }
     });
+    if (res && res.ok && res.createdKey) showFlag({ text: `Created sub-task ${res.createdKey} in Jira.` });
     document.getElementById("newSubtaskSummary").value = "";
     await loadProjectPlan();
     const updated = currentPlan.tasks.find((t) => t.key === activeTaskId);

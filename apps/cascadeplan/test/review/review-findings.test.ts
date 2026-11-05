@@ -542,13 +542,16 @@ describe('Data model (D7, section 4.1)', () => {
     expect(await s2.get('scheduleMap:TEST')).toBeUndefined();
   });
 
-  it('FINDING R-26: addSubtaskToTask stores local sub-tasks that then hide the live Jira sub-tasks of the issue', async () => {
+  it('R-26 (F-23): addSubtaskToTask creates a Jira sub-task; nothing local hides the live Jira sub-tasks', async () => {
     extraFields['TEST-1'] = { subtasks: [{ id: '91', key: 'TEST-91', fields: { summary: 'Real Jira subtask', status: { statusCategory: { key: 'done' } } } }] };
     let t1 = await planTask(storage, undefined, 'TEST-1');
     expect(t1.subtasks.map((s: any) => s.key)).toEqual(['TEST-91']);
-    await addSubtaskToTask({ projectKey: 'TEST', parentTaskId: 'TEST-1', subtask: { summary: 'Local only', estimateValue: 2, estimateUnit: 'HOURS' } }, storage);
+    const res: any = await addSubtaskToTask({ projectKey: 'TEST', parentTaskId: 'TEST-1', subtask: { summary: 'New one', estimateValue: 2, estimateUnit: 'HOURS' } }, storage);
+    expect(res.createdKey).toBe('TEST-50');
+    expect(calls('POST', /^\/rest\/api\/3\/issue$/)).toHaveLength(1);
     t1 = await planTask(storage, undefined, 'TEST-1');
-    expect(t1.subtasks.map((s: any) => s.summary)).toEqual(['Local only']);
+    expect(t1.subtasks.map((s: any) => s.key)).toEqual(['TEST-91']);
+    expect(t1.localSubtasks).toBeUndefined();
   });
 });
 

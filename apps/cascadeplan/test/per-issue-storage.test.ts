@@ -160,14 +160,13 @@ describe('conflict paths of each write resolver (B-09, INV-08)', () => {
     await getProjectPlan('TEST', storage);
   });
 
-  it('scheduleBacklogTask, unscheduleTask, addSubtaskToTask and saveTaskDependency return conflict', async () => {
-    const { unscheduleTask, addSubtaskToTask, saveTaskDependency } = require('../src/index');
+  // addSubtaskToTask writes no plan record since F-23 (a real Jira sub-task), so it cannot conflict.
+  it('scheduleBacklogTask, unscheduleTask and saveTaskDependency return conflict', async () => {
+    const { unscheduleTask, saveTaskDependency } = require('../src/index');
     raceOnSwap(1);
     expect(await scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-3', startWeek: weeks[5].weekKey })).toMatchObject({ ok: false, error: 'conflict' });
     raceOnSwap(1);
     expect(await unscheduleTask({ projectKey: 'TEST', taskId: 'TEST-1' })).toMatchObject({ ok: false, error: 'conflict' });
-    raceOnSwap(1);
-    expect(await addSubtaskToTask({ projectKey: 'TEST', parentTaskId: 'TEST-1', subtask: { summary: 's', estimateValue: 1, estimateUnit: 'HOURS' } })).toMatchObject({ ok: false, error: 'conflict' });
     raceOnSwap(1);
     expect(await saveTaskDependency({ projectKey: 'TEST', taskId: 'TEST-3', dependency: { predecessorId: 'TEST-1', predecessorKey: 'TEST-1', triggerPercent: 30, isTriggerSatisfied: false } })).toMatchObject({ ok: false, error: 'conflict' });
   });

@@ -262,7 +262,7 @@ function failedCreate(error: string): JiraSyncReport {
 export const JIRA_OWNED_FIELDS = [
   'summary', 'status', 'resource', 'resourceAccountId', 'isPlaceholderResource', 'epic', 'epicKey', 'story', 'storyKey',
   'effortHours', 'parentKey', 'parentId', 'isSubtask', 'isEpic', 'hierarchyLevel', 'id', 'key', 'jiraDueDate',
-  'contributingResources', 'jiraBlockedBy', 'datesFromChildren', 'model'
+  'contributingResources', 'jiraBlockedBy', 'datesFromChildren', 'model', 'localSubtasks'
 ];
 
 /**
@@ -768,9 +768,11 @@ export function mapLiveIssues(
         const liveDependencies: TaskDependency[] = dependenciesFromJira(jiraBlockedBy, percents && typeof percents === 'object' ? percents : {}, storedLinks);
         const liveDependency: TaskDependency | undefined = liveDependencies[0];
 
-        const finalSubtasks: SubtaskItem[] = (stored?.subtasks && stored.subtasks.length > 0)
-          ? stored.subtasks
-          : subtasks;
+        // The sub-tasks are Jira's (ADR-004, F-23). Sub-tasks stored only in a plan record by an
+        // earlier build never hide them; they are listed for the user to create in Jira or drop.
+        const finalSubtasks: SubtaskItem[] = subtasks;
+        const localSubtasks: SubtaskItem[] | undefined = stored?.subtasks && stored.subtasks.length > 0
+          ? stored.subtasks.filter((s: SubtaskItem) => !s.key) : undefined;
 
         const calculatedEffortConfig = PlannerEngine.calculateEffortWithSubtasksAndBuffer({
           unit: 'HOURS',
@@ -839,6 +841,7 @@ export function mapLiveIssues(
           jiraBlockedBy: jiraBlockedBy.length ? jiraBlockedBy : undefined,
           model: stored?.model,
           subtasks: finalSubtasks,
+          ...(localSubtasks && localSubtasks.length ? { localSubtasks } : {}),
           isSubtask,
           isEpic,
           hierarchyLevel,
@@ -2649,49 +2652,99 @@ export async function addSubtaskToTask(
     projectId?: string;
     planId?: string;
     parentTaskId: string;
-    subtask: { summary: string; estimateValue: number; estimateUnit: EstimateUnit };
+    subtask: { summary: string; estimateValue?: number; estimateUnit?: EstimateUnit };
     bufferType?: 'PERCENTAGE' | 'FIXED_HOURS' | 'NONE';
     bufferValue?: number;
   },
   storageProvider?: StorageProvider
 ): Promise<ProjectPlanState> {
-  const { projectKey, projectId, parentTaskId, subtask, bufferType = 'NONE', bufferValue = 0 } = payload;
+  // A sub-task is a real Jira sub-task, created as the user (ADR-004, F-23); nothing is stored in the
+  // plan. Only an estimate the user entered goes to Jira: there is no default (BL-3, INV-03).
+  const { projectKey, projectId, parentTaskId, subtask } = payload;
   const parentId = await verifyIssueInProject(parentTaskId, projectKey, 'parentTaskId');
-  await requireIssuePermissions([{ key: parentTaskId, id: parentId }], ['EDIT_ISSUES']);
+  await requireIssuePermissions([{ key: parentTaskId, id: parentId }], ['EDIT_ISSUES', 'CREATE_ISSUES']);
+  const storage = resolveStorage(storageProvider);
+  const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
+  const summary = typeof subtask?.summary === 'string' ? subtask.summary.trim() : '';
+  if (!summary || summary.length > 255) throw new ValidationError('subtask.summary', 'A sub-task needs a summary of at most 255 characters');
+  let effortHours: number | undefined;
+  if (subtask.estimateValue !== undefined && subtask.estimateValue !== null) {
+    if (typeof subtask.estimateValue !== 'number' || !(subtask.estimateValue > 0) || subtask.estimateValue > 10000) {
+      throw new ValidationError('subtask.estimateValue', 'The estimate must be a number above 0');
+    }
+    effortHours = PlannerEngine.normalizeEstimateToHours(subtask.estimateUnit || 'HOURS', subtask.estimateValue);
+  }
+  const log = new SyncLog();
+  const created = await createJiraSubtask(projectKey, parentTaskId, summary, effortHours);
+  if (!created.key) {
+    log.record(parentTaskId, ['subtask'], { synced: false, error: `Jira did not create the sub-task: ${created.error}` });
+    return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, undefined, planId),
+      { ok: false, success: false, error: 'subtask_refused', message: `Jira did not create the sub-task: ${created.error}`, jiraSync: log.report() });
+  }
+  log.record(created.key, ['create'], { synced: true });
+  const reconcile = [parentId, created.id].filter((id): id is string => !!id && /^\d+$/.test(id));
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, undefined, planId, reconcile),
+    { ok: true, jiraSync: log.report(), createdKey: created.key, writtenIssueIds: reconcile });
+}
+
+/** Creates a Jira sub-task under a parent, as the user, trying the two usual type names. */
+async function createJiraSubtask(projectKey: string, parentKey: string, summary: string, effortHours?: number): Promise<{ key?: string; id?: string; error?: string }> {
+  const caller = getJiraCaller();
+  let error = 'no sub-task issue type';
+  for (const stType of ['Sub-task', 'Subtask']) {
+    try {
+      const fields: any = { project: { key: projectKey }, parent: { key: parentKey }, summary, issuetype: { name: stType } };
+      if (effortHours) fields.timetracking = { originalEstimate: `${effortHours}h` };
+      const res = await caller.requestJira(route`/rest/api/3/issue`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) });
+      if (res && res.status === 201) {
+        const data = await res.json();
+        return { key: String(data.key), id: String(data.id) };
+      }
+      const errJson = await res.json().catch(() => ({}));
+      error = errJson.errorMessages?.join(', ') || JSON.stringify(errJson.errors || {}) || `HTTP ${res?.status}`;
+    } catch (err: any) {
+      error = err?.message || 'Network error';
+    }
+  }
+  return { error };
+}
+
+/**
+ * Sub-tasks an earlier build stored only in the plan record (before ADR-004): the user creates them
+ * in Jira or drops them, never silently (F-23). 'create' makes one Jira sub-task for each, with its
+ * stored estimate; each one Jira creates leaves the record. 'drop' removes them from the record.
+ */
+export async function resolveLocalSubtasks(
+  payload: { projectKey: string; projectId?: string; planId?: string; parentTaskId: string; action: 'create' | 'drop' },
+  storageProvider?: StorageProvider
+): Promise<any> {
+  const { projectKey, projectId, parentTaskId, action } = payload;
+  if (action !== 'create' && action !== 'drop') throw new ValidationError('action', 'action must be create or drop');
+  const parentId = await verifyIssueInProject(parentTaskId, projectKey, 'parentTaskId');
+  await requireIssuePermissions([{ key: parentTaskId, id: parentId }], action === 'create' ? ['EDIT_ISSUES', 'CREATE_ISSUES'] : ['EDIT_ISSUES']);
   const storage = resolveStorage(storageProvider);
   const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
   const store = openStore(storage, projectKey, projectId, planId);
-  if (isMainPlan(planId)) await migrateIfNeeded(store, projectKey);
   const stored = (await store.loadEntries()).get(parentTaskId);
-  const current: Partial<WbsTask> = stored || {};
-  const existingSubtasks: SubtaskItem[] = (current.subtasks || []);
-
-  const normalized = PlannerEngine.normalizeEstimateToHours(subtask.estimateUnit, subtask.estimateValue);
-
-  const newSubtask: SubtaskItem = {
-    id: `sub-${Date.now()}`,
-    summary: subtask.summary,
-    estimateValue: subtask.estimateValue,
-    estimateUnit: subtask.estimateUnit,
-    normalizedHours: normalized,
-    status: 'NOT_STARTED'
-  };
-
-  const updatedSubtasks = [...existingSubtasks, newSubtask];
-  const effortConfig = PlannerEngine.calculateEffortWithSubtasksAndBuffer({
-    unit: 'HOURS',
-    subtasks: updatedSubtasks,
-    bufferType,
-    bufferValue
-  });
-
-  const put = await store.putEntry(parentTaskId, parentId, stripJiraOwnedFields({
-    ...current,
-    subtasks: updatedSubtasks,
-    effortConfig
-  }), stored ? stored.version : 0);
-  if (!put.ok) return conflictResult(parentTaskId);
-  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, undefined, planId), { ok: true, jiraSync: noJiraWrites() });
+  const local: SubtaskItem[] = (stored?.subtasks || []).filter((s: SubtaskItem) => !s.key);
+  const log = new SyncLog();
+  const left: SubtaskItem[] = [];
+  const ids: string[] = [parentId].filter((id): id is string => !!id);
+  if (action === 'create') {
+    for (const s of local) {
+      const created = await createJiraSubtask(projectKey, parentTaskId, s.summary, s.normalizedHours > 0 ? s.normalizedHours : undefined);
+      if (created.key) { log.record(created.key, ['create'], { synced: true }); if (created.id) ids.push(created.id); }
+      else { left.push(s); log.record(parentTaskId, ['subtask'], { synced: false, error: `Jira did not create "${s.summary}": ${created.error}` }); }
+    }
+  }
+  if (stored) {
+    const { issueKey: _k, issueId: _i, version, ...rest } = stored as any;
+    const put = await store.putEntry(parentTaskId, parentId, stripJiraOwnedFields({ ...rest, subtasks: left }), version);
+    if (!put.ok) return conflictResult(parentTaskId);
+  }
+  const reconcile = ids.filter(id => /^\d+$/.test(id));
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, undefined, planId, reconcile),
+    { ok: left.length === 0, jiraSync: log.report(), writtenIssueIds: reconcile });
 }
 
 /**
@@ -3316,6 +3369,7 @@ export const RESOLVER_RULES: Record<string, ResolverRule> = {
   unscheduleTask: 'issue-checked',
   reorderWbsTasks: 'issue-checked',
   addSubtaskToTask: 'issue-checked',
+  resolveLocalSubtasks: 'issue-checked',
   createSubtaskForResource: 'issue-checked',
   createInlineTask: 'issue-checked',
   createJiraEpic: 'issue-checked',
@@ -3366,6 +3420,7 @@ define('updateWbsTask', async (req) => {
   }
 });
 define('addSubtaskToTask', async (req) => addSubtaskToTask(withProject(req)));
+define('resolveLocalSubtasks', async (req) => resolveLocalSubtasks(withProject(req)));
 define('saveColumnWidths', async (req) => saveColumnWidths(withProject(req)));
 define('saveHiddenColumns', async (req) => saveHiddenColumns(withProject(req)));
 define('continueCascade', async (req) => continueCascade(withProject(req)));
