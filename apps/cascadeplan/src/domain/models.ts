@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 /**
  * CascadePlan: Domain Data Models
  * Supports flexible estimation (Hours, Story Points, T-Shirts), subtask rollups with buffers,

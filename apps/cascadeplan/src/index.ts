@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 /**
  * CascadePlan: Main Forge Resolver & Entry Point
  * Implements Project Plan retrieval, live Jira issue/epic ingestion, multi-unit estimation,
@@ -1617,6 +1623,23 @@ export async function updateLinkPercents(successorKey: string, set: Record<strin
   }
 }
 
+/** The Jira due date of one issue, read with reconcileIssues (C3); null when it has none, undefined when Jira does not say. */
+async function currentJiraDueDate(key: string, id: string | undefined): Promise<string | null | undefined> {
+  try {
+    const params = new URLSearchParams({ jql: `key = ${key}`, fields: 'duedate' });
+    if (id && /^\d+$/.test(id)) params.append('reconcileIssues', id);
+    const res = await getJiraCaller().requestJira(route`/rest/api/3/search/jql?${params}`);
+    if (!res || res.status !== 200) return undefined;
+    const issue = ((await res.json())?.issues || [])[0];
+    if (!issue) return undefined;
+    const due = issue.fields?.duedate;
+    return isIsoDate(due) ? String(due).slice(0, 10) : null;
+  } catch (err) {
+    logFailure('currentJiraDueDate', err);
+    return undefined;
+  }
+}
+
 /** Records a link this call created or deleted in the Jira data it already holds (as applyAcceptedDueDate does). */
 function patchLiveLinks(live: LiveData, successorKey: string, add: { key: string; linkId?: string } | undefined, removeLinkIds: string[]): void {
   const pred = add ? (live.raw.issues || []).find((i: any) => i && i.key === add.key) : undefined;
@@ -1788,7 +1811,7 @@ async function applyPlannedJiraWrites(
  * Updates a task schedule, dates, effort, progress, or resource.
  */
 export async function updateWbsTask(
-  payload: { projectKey: string; projectId?: string; planId?: string; taskId: string; updates: Partial<WbsTask>; expectedVersion?: number; reconcileIds?: string[]; restore?: boolean },
+  payload: { projectKey: string; projectId?: string; planId?: string; taskId: string; updates: Partial<WbsTask>; expectedVersion?: number; reconcileIds?: string[]; restore?: boolean; expectedDueDate?: string | null },
   storageProvider?: StorageProvider,
   preloaded?: LiveData,
   options?: { skipResponse?: boolean }
@@ -1820,6 +1843,17 @@ export async function updateWbsTask(
   if (expectedVersion !== undefined && expectedVersion !== baseVersion) {
     // The user edited an older copy: refuse before any Jira write (INV-08).
     return conflictResult(targetTask.key);
+  }
+  // C3: a date change carries the Jira due date the user saw. When someone changed it in Jira since,
+  // the move is refused before any write. The check reads with reconcileIssues for this issue,
+  // because the plain search can still show the old value.
+  if (payload.expectedDueDate !== undefined && (updates.startDate !== undefined || updates.endDate !== undefined)) {
+    if (payload.expectedDueDate !== null && !isIsoDate(payload.expectedDueDate)) throw new ValidationError('expectedDueDate', 'expectedDueDate must be a date in YYYY-MM-DD form, or null');
+    const now = await currentJiraDueDate(targetTask.key, targetTask.id);
+    if (now !== undefined && now !== (payload.expectedDueDate ? String(payload.expectedDueDate).slice(0, 10) : null)) {
+      return { ...conflictResult(targetTask.key), error: 'due_date_changed',
+        message: `${targetTask.key}'s due date was changed in Jira a moment ago (now ${now || 'none'}). Reload to see it, then move it again.` };
+    }
   }
   // A sub-task's epic comes from its parent; an epic write would change its parent instead (N-07).
   if ((targetTask.isSubtask || targetTask.hierarchyLevel === -1) && (updates as Record<string, unknown>).epicKey !== undefined) {

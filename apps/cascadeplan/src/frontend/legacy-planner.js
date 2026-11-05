@@ -4865,7 +4865,9 @@ function startBarPointerEdit(e, key, mode, hit) {
     drawTimeline(true);
 
     try {
-      const res = await callResolver('updateWbsTask', { taskId: key, updates, expectedVersion: task.version || 0 }, { before: undoBefore });
+      // C3: the Jira due date this user saw; the server refuses the move when Jira changed it since.
+      const res = await callResolver('updateWbsTask', { taskId: key, updates, expectedVersion: task.version || 0,
+        expectedDueDate: task.jiraDueDate ? String(task.jiraDueDate).slice(0, 10) : null }, { before: undoBefore });
       if (res && Array.isArray(res.tasks)) {
         applyPlanInPlace(res);
       } else {
@@ -5200,7 +5202,9 @@ function clearShiftPreview() {
 /** One updateWbsTask call with exact dates and the version; the returned plan is used (B-13, B-14). */
 async function commitDates(key, start, end) {
   const task = findTask(key);
-  const res = await callResolver('updateWbsTask', { taskId: key, updates: { startDate: start, endDate: end }, expectedVersion: (task && task.version) || 0 });
+  // C3: the Jira due date this user saw; the server refuses the move when Jira changed it since.
+  const res = await callResolver('updateWbsTask', { taskId: key, updates: { startDate: start, endDate: end }, expectedVersion: (task && task.version) || 0,
+    expectedDueDate: (task && task.jiraDueDate) ? String(task.jiraDueDate).slice(0, 10) : null });
   timeline.drag = null;
   if (res && Array.isArray(res.tasks)) applyPlanInPlace(res);
   else await loadProjectPlan();
@@ -6043,6 +6047,11 @@ function clearSelection() {
 async function runBatch(items, kind) {
   if (!items.length) return;
   const res = await callResolver('batchUpdateTasks', { items });
+  // C9: the items another user changed first are named; the others are saved.
+  const skipped = res && Array.isArray(res.results) ? res.results.filter(r => r && r.ok === false).map(r => r.taskId) : [];
+  if (skipped.length) {
+    showFlag({ text: `Not saved, because someone else changed ${skipped.length === 1 ? 'it' : 'them'} a moment ago: ${skipped.join(', ')}. The other ${items.length - skipped.length} saved. Reload and try those again.`, error: true });
+  }
   if (res && Array.isArray(res.tasks)) {
     if (kind === 'move') applyPlanInPlace(res);
     else {

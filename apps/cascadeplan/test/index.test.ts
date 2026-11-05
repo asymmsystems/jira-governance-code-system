@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 import { FakeJiraLinks } from './helpers/fake-jira-links';
 import {
   getProjectPlan,

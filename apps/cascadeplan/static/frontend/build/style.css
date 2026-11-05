@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 :root {
   /* ADS token aliases (B-17). Each points to a real ADS token; the fallback is that token's light value
      from the Forge CDN sheet (fetched 2026-11-01), used only when theming is not active. */

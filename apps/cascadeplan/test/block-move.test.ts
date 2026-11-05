@@ -114,6 +114,8 @@ describe('moveTaskGroup (N-05)', () => {
         return { status: 204, json: async () => ({}) };
       }
       if (/\/rest\/api\/3\/issue\/TEST-\d+\?fields=project/.test(url)) return { status: 200, json: async () => ({ id: url.match(/TEST-(\d+)/)![1], fields: { project: { key: 'TEST', id: 'TEST' } } }) };
+      const one = url.match(/jql=key\+%3D\+(TEST-\d+)/);
+      if (url.includes('/search/jql') && one) return { status: 200, json: async () => ({ issues: issues().filter(i => i.key === one[1]), isLast: true }) };
       if (url.includes('/search/jql')) return { status: 200, json: async () => ({ issues: url.includes('Epic') ? [issue(20, type.epic)] : issues(), isLast: true }) };
       return { status: 204, json: async () => ({}) };
     });
@@ -212,6 +214,21 @@ describe('moveTaskGroup (N-05)', () => {
       else expect(t5.startDate > add(s0, 2)).toBe(true);
     });
   }
+
+  it('C3: a move refused when Jira\'s due date changed since the user saw it; the check reads with reconcileIssues', async () => {
+    const v = (await entry('TEST-11')).version;
+    const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-11', updates: { startDate: add(s0, 4), endDate: add(s0, 6) }, expectedVersion: v, expectedDueDate: add(s0, 2) }, storage);
+    expect(res).toMatchObject({ ok: false, conflict: true, error: 'due_date_changed' });
+    expect(res.message).toContain(`now ${add(s0, 5)}`);
+    expect(fieldPuts('TEST-11')).toEqual([]);
+    const check = mockRequestJira.mock.calls.map(c => String(c[0])).find(u => u.includes('search/jql') && u.includes('fields=duedate') && u.includes('key+%3D+TEST-11'));
+    expect(check).toContain('reconcileIssues=11');
+    // The due date the user saw matches: the move goes ahead.
+    const ok: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-11', updates: { startDate: add(s0, 4), endDate: add(s0, 6) }, expectedVersion: v, expectedDueDate: add(s0, 5) }, storage);
+    expect(ok.ok).not.toBe(false);
+    expect(fieldPuts('TEST-11')).toEqual([{ duedate: add(s0, 6) }]);
+    await expect(updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-11', updates: { startDate: add(s0, 4) }, expectedDueDate: 'soon' as any }, storage)).rejects.toThrow(ValidationError);
+  });
 
   it('restore must be true or false', async () => {
     await expect(updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-11', updates: { progress: 5 }, restore: 'yes' as any }, storage)).rejects.toThrow(ValidationError);

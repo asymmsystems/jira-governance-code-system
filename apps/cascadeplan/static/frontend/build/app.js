@@ -6193,8 +6193,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
       rememberWrites(res);
     } catch (err) {
       console.error("Forge resolver error:", fnName, err);
-      const message = err?.message || "The planner could not reach Jira.";
-      res = { ok: false, success: false, error: "unavailable", message };
+      const message = fnName.startsWith("get") || fnName.startsWith("check") ? err?.message || "The planner could not reach Jira." : "The result is unknown. Check the plan before you try again.";
+      res = { ok: false, success: false, error: fnName.startsWith("get") || fnName.startsWith("check") ? "unavailable" : "unknown", message };
     }
     if (!fnName.startsWith("get")) {
       const verdict = classifyResult(res);
@@ -12510,7 +12510,12 @@ Click to manage or assign.`;
       positionBarHit(hit, task);
       drawTimeline(true);
       try {
-        const res = await callResolver2("updateWbsTask", { taskId: key, updates, expectedVersion: task.version || 0 }, { before: undoBefore });
+        const res = await callResolver2("updateWbsTask", {
+          taskId: key,
+          updates,
+          expectedVersion: task.version || 0,
+          expectedDueDate: task.jiraDueDate ? String(task.jiraDueDate).slice(0, 10) : null
+        }, { before: undoBefore });
         if (res && Array.isArray(res.tasks)) {
           applyPlanInPlace(res);
         } else {
@@ -12813,7 +12818,12 @@ Click to manage or assign.`;
   }
   async function commitDates(key, start, end) {
     const task = findTask(key);
-    const res = await callResolver2("updateWbsTask", { taskId: key, updates: { startDate: start, endDate: end }, expectedVersion: task && task.version || 0 });
+    const res = await callResolver2("updateWbsTask", {
+      taskId: key,
+      updates: { startDate: start, endDate: end },
+      expectedVersion: task && task.version || 0,
+      expectedDueDate: task && task.jiraDueDate ? String(task.jiraDueDate).slice(0, 10) : null
+    });
     timeline.drag = null;
     if (res && Array.isArray(res.tasks)) applyPlanInPlace(res);
     else await loadProjectPlan();
@@ -13600,6 +13610,10 @@ Click to manage or assign.`;
   async function runBatch(items, kind) {
     if (!items.length) return;
     const res = await callResolver2("batchUpdateTasks", { items });
+    const skipped = res && Array.isArray(res.results) ? res.results.filter((r) => r && r.ok === false).map((r) => r.taskId) : [];
+    if (skipped.length) {
+      showFlag({ text: `Not saved, because someone else changed ${skipped.length === 1 ? "it" : "them"} a moment ago: ${skipped.join(", ")}. The other ${items.length - skipped.length} saved. Reload and try those again.`, error: true });
+    }
     if (res && Array.isArray(res.tasks)) {
       if (kind === "move") applyPlanInPlace(res);
       else {

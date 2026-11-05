@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 import { PlanRepository, StorageProvider } from '../../src/storage/plan-repository';
 import { ProjectPlanState, TaskDependency } from '../../src/domain/models';
 

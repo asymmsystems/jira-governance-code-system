@@ -123,6 +123,9 @@ w.__jira = async (url: string, opts: any) => {
     const pp = body.projectPermissions?.[0] || {};
     return ok({ projectPermissions: (pp.permissions || []).map((permission: string) => ({ permission, issues: pp.issues || [] })) });
   }
+  // A search for one key returns that issue only (C3 reads the due date this way).
+  const oneKey = url.match(/jql=key\+%3D\+(DEMO-\d+)/);
+  if (url.includes('/search/jql') && oneKey) return ok({ issues: ISSUES.filter((i: any) => i.key === oneKey[1]).map(withDue), isLast: true });
   if (url.includes('/search/jql')) return ok({ issues: url.includes('Epic') ? [withDue(epic)] : ISSUES.map(withDue), isLast: true });
   if (url.includes('/user/assignable')) return ok([]);
   if (/\/issue\/DEMO-\d+\?fields=project/.test(url)) return ok({ id: url.match(/DEMO-(\d+)/)![1], fields: { project: { key: 'DEMO' } } });

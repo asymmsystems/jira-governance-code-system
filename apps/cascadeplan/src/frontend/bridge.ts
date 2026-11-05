@@ -40,8 +40,12 @@ async function callOnce(fnName: string, payload: Record<string, unknown>): Promi
     rememberWrites(res);
   } catch (err: any) {
     console.error('Forge resolver error:', fnName, err);
-    const message = err?.message || 'The planner could not reach Jira.';
-    res = { ok: false, success: false, error: 'unavailable', message };
+    // C7: a write call that ended without an answer (for example a timeout) may already have written
+    // to Jira, so the planner never says it failed or succeeded: the result is unknown.
+    const message = fnName.startsWith('get') || fnName.startsWith('check')
+      ? (err?.message || 'The planner could not reach Jira.')
+      : 'The result is unknown. Check the plan before you try again.';
+    res = { ok: false, success: false, error: fnName.startsWith('get') || fnName.startsWith('check') ? 'unavailable' : 'unknown', message };
   }
   if (!fnName.startsWith('get')) {
     const verdict = classifyResult(res);

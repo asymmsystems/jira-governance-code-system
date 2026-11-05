@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 /**
  * CascadePlan: Resource Allocation Utilization Domain Engine
  * Computes weekly resource workloads, detects allocation bottlenecks,

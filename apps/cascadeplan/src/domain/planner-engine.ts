@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 /**
  * CascadePlan: Pure Deterministic Planning & Calculation Engine
  * Implements multi-unit estimation reconciliation, subtask summation with buffers,

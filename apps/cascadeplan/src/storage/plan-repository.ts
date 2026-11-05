@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 /**
  * CascadePlan: Storage Repository Layer
  * Manages persistence for project plans, tasks, allocations, and partial completion dependencies.
