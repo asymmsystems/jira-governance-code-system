@@ -58,3 +58,9 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 - **Live (development, build tag `66e91cc`, version 2.48.0):** `test/live/trigger_check.py` created DEMO-36 (Task) as the signed-in user and deleted it (204). `forge logs` 12:14:36Z: "issue-deleted DEMO-36 (project id present): 0 record(s) deleted". So the event reaches the app, and its payload carries the issue key and `issue.fields.project.id` (not documented by Atlassian; now observed). 0 records, because DEMO-36 never had a plan record.
 - **Live site changes:** DEMO-36 created and deleted (2026-11-05 12:14Z). Nothing else.
 - **Remaining:** the quiet "N planned issues are not visible to you" note in the UI. Moved issues (BL-9 step 3, P3).
+
+### F-13 (with M6 and part of M7). A failed or unreachable call never shows as a success
+
+- **What changed:** `withOk` in `src/index.ts` gives every result passed through `withResolverHandler`, and the special `updateWbsTask` wrapper, a boolean `ok`. `bridge.ts` turns a thrown invoke into `{ ok: false, success: false, error: 'unavailable', message }`. In `legacy-planner.js`, the inline create, the create-task form, the epic form and the allocate-resource form test `ok !== true` and show `message` first; the three schedule flows show "Scheduled ..." only for `ok === true`.
+- **Proof:** new `test/result-ok.test.ts` (2 tests). Full suite 776 passed, coverage thresholds met; harness 30/30 and 25/25.
+- **Remaining:** a harness check that forces `invoke` to throw in a create flow. M7 outside the create flows (the task form shows `res.error` on a conflict).

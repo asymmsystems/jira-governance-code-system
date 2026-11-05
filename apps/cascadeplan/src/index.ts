@@ -2532,7 +2532,18 @@ export async function withResolverHandler<T>(req: any, fn: () => Promise<T>): Pr
   if (!isLicenseActive(req?.context)) {
     return licenceRequiredResult();
   }
-  return withValidation(fn);
+  return withOk(await withValidation(fn));
+}
+
+/**
+ * Every resolver result carries a boolean ok, so the client tests one field (F-13, INV-05). A result
+ * that has none takes it from success, and is ok when success is not false.
+ */
+export function withOk<T>(result: T): T {
+  if (result && typeof result === 'object' && typeof (result as any).ok !== 'boolean') {
+    (result as any).ok = (result as any).success !== false;
+  }
+  return result;
 }
 
 export async function freezePlanBaseline(
@@ -2683,9 +2694,10 @@ resolver.define('updateWbsTask', async (req) => {
     return licenceRequiredResult();
   }
   try {
-    return await withValidation(() => updateWbsTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) }));
+    return withOk(await withValidation(() => updateWbsTask({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) })));
   } catch (err: any) {
-    return { success: false, error: err?.message || 'Failed to update task' };
+    const message = err?.message || 'Failed to update task';
+    return { ok: false, success: false, error: message, message };
   }
 });
 

@@ -25,7 +25,8 @@ export async function callResolver(fnName: string, payload: Record<string, unkno
     res = await invoke(fnName, payload);
   } catch (err: any) {
     console.error('Forge resolver error:', fnName, err);
-    res = { ok: false, error: err?.message || 'The planner could not reach Jira.' };
+    const message = err?.message || 'The planner could not reach Jira.';
+    res = { ok: false, success: false, error: 'unavailable', message };
   }
   if (!fnName.startsWith('get')) {
     const verdict = classifyResult(res);

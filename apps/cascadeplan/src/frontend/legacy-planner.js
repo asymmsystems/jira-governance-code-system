@@ -1844,7 +1844,7 @@ function renderBacklogTray() {
           } else {
             await loadProjectPlan();
           }
-          showFlag({ text: 'Scheduled ' + item.key + ' to timeline.' });
+          if (res && res.ok === true) showFlag({ text: 'Scheduled ' + item.key + ' to timeline.' });
         } catch (err) {
           showFlag({ text: 'Failed to schedule ' + item.key, error: true });
         }
@@ -2900,8 +2900,9 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
         targetIndex: insertIndex
       });
 
-      if (res && res.success === false) {
-        showFlag({ text: res.error || 'Failed to create task in Jira.', error: true });
+      // Only a result with ok: true is a success; a thrown call or a refused create is not (F-13).
+      if (!res || res.ok !== true) {
+        showFlag({ text: (res && (res.message || res.error)) || 'Failed to create task in Jira.', error: true });
         input.disabled = false;
         saveBtn.disabled = false;
         saveBtn.textContent = 'Add';
@@ -3176,7 +3177,7 @@ function renderTimelineRows() {
             } else {
               await loadProjectPlan();
             }
-            showFlag({ text: 'Scheduled ' + data.taskId + ' to timeline.' });
+            if (res && res.ok === true) showFlag({ text: 'Scheduled ' + data.taskId + ' to timeline.' });
           }
         } catch (err) {
           console.error('Error handling empty state drop:', err);
@@ -5599,7 +5600,7 @@ function initKeyboard() {
           } else {
             await loadProjectPlan();
           }
-          showFlag({ text: 'Scheduled ' + data.taskId + ' to timeline.' });
+          if (res && res.ok === true) showFlag({ text: 'Scheduled ' + data.taskId + ' to timeline.' });
         }
       } catch (err) {
         console.error('Error on wrapper drop:', err);
@@ -5993,7 +5994,7 @@ async function handleAddResourceSubtask() {
       assigneeName,
       ...(hours !== undefined ? { effortHours: hours } : {})
     });
-    if (!res || res.success !== true) {
+    if (!res || res.ok !== true) {
       // Only a confirmed create shows success; a null or failed result is an error (B-07).
       if (statusEl) {
         statusEl.textContent = (res && (res.message || res.error)) || 'Jira did not create the subtask.';
@@ -6293,9 +6294,9 @@ async function executeCreateTask() {
       spanWeeks: 3
     });
 
-    if (res && res.success === false) {
+    if (!res || res.ok !== true) {
       if (errEl) {
-        errEl.textContent = res.error || 'Failed to create task in Jira.';
+        errEl.textContent = (res && (res.message || res.error)) || 'Failed to create task in Jira.';
         errEl.style.display = 'block';
       }
       return;
@@ -6387,9 +6388,9 @@ async function executeCreateEpic() {
 
   try {
     const res = await callResolver('createJiraEpic', { summary });
-    if (res && res.success === false) {
+    if (!res || res.ok !== true) {
       if (errEl) {
-        errEl.textContent = res.error || 'Failed to create epic in Jira.';
+        errEl.textContent = (res && (res.message || res.error)) || 'Failed to create epic in Jira.';
         errEl.style.display = 'block';
       }
       return;

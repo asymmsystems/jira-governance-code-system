@@ -6182,7 +6182,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
       res = await (0, import_bridge.invoke)(fnName, payload);
     } catch (err) {
       console.error("Forge resolver error:", fnName, err);
-      res = { ok: false, error: err?.message || "The planner could not reach Jira." };
+      const message = err?.message || "The planner could not reach Jira.";
+      res = { ok: false, success: false, error: "unavailable", message };
     }
     if (!fnName.startsWith("get")) {
       const verdict = classifyResult(res);
@@ -9473,7 +9474,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
             } else {
               await loadProjectPlan();
             }
-            showFlag({ text: "Scheduled " + item.key + " to timeline." });
+            if (res && res.ok === true) showFlag({ text: "Scheduled " + item.key + " to timeline." });
           } catch (err) {
             showFlag({ text: "Failed to schedule " + item.key, error: true });
           }
@@ -10382,8 +10383,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
           spanWeeks: 3,
           targetIndex: insertIndex
         });
-        if (res && res.success === false) {
-          showFlag({ text: res.error || "Failed to create task in Jira.", error: true });
+        if (!res || res.ok !== true) {
+          showFlag({ text: res && (res.message || res.error) || "Failed to create task in Jira.", error: true });
           input.disabled = false;
           saveBtn.disabled = false;
           saveBtn.textContent = "Add";
@@ -10589,7 +10590,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
               } else {
                 await loadProjectPlan();
               }
-              showFlag({ text: "Scheduled " + data.taskId + " to timeline." });
+              if (res && res.ok === true) showFlag({ text: "Scheduled " + data.taskId + " to timeline." });
             }
           } catch (err) {
             console.error("Error handling empty state drop:", err);
@@ -12798,7 +12799,7 @@ Click to manage or assign.`;
             } else {
               await loadProjectPlan();
             }
-            showFlag({ text: "Scheduled " + data.taskId + " to timeline." });
+            if (res && res.ok === true) showFlag({ text: "Scheduled " + data.taskId + " to timeline." });
           }
         } catch (err) {
           console.error("Error on wrapper drop:", err);
@@ -13141,7 +13142,7 @@ Click to manage or assign.`;
         assigneeName,
         ...hours !== void 0 ? { effortHours: hours } : {}
       });
-      if (!res || res.success !== true) {
+      if (!res || res.ok !== true) {
         if (statusEl) {
           statusEl.textContent = res && (res.message || res.error) || "Jira did not create the subtask.";
           statusEl.style.color = "var(--cp-text-danger)";
@@ -13422,9 +13423,9 @@ Click to manage or assign.`;
         startWeek,
         spanWeeks: 3
       });
-      if (res && res.success === false) {
+      if (!res || res.ok !== true) {
         if (errEl) {
-          errEl.textContent = res.error || "Failed to create task in Jira.";
+          errEl.textContent = res && (res.message || res.error) || "Failed to create task in Jira.";
           errEl.style.display = "block";
         }
         return;
@@ -13512,9 +13513,9 @@ Click to manage or assign.`;
     }
     try {
       const res = await callResolver2("createJiraEpic", { summary });
-      if (res && res.success === false) {
+      if (!res || res.ok !== true) {
         if (errEl) {
-          errEl.textContent = res.error || "Failed to create epic in Jira.";
+          errEl.textContent = res && (res.message || res.error) || "Failed to create epic in Jira.";
           errEl.style.display = "block";
         }
         return;
