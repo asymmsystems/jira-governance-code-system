@@ -6965,6 +6965,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
       __publicField(this, "activeLinking", null);
       /** Focused element of the treegrid in the canvas fallback content, for drawFocusIfNeeded (B-15). */
       __publicField(this, "focusElement", null);
+      /** The last input type: the system focus ring is drawn only after keyboard input (N-09). */
+      __publicField(this, "lastInput", "pointer");
       __publicField(this, "forced", false);
       __publicField(this, "arrowLinks", []);
       __publicField(this, "onDraw");
@@ -6974,6 +6976,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
       if (getComputedStyle(host).position === "static") host.style.position = "relative";
       host.appendChild(this.canvas);
       this.ctx = this.canvas.getContext("2d");
+      document.addEventListener("pointerdown", () => {
+        this.lastInput = "pointer";
+      }, true);
+      document.addEventListener("keydown", () => {
+        this.lastInput = "keyboard";
+      }, true);
       const mq = window.matchMedia ? window.matchMedia("(forced-colors: active)") : null;
       const apply = () => {
         this.forced = !!(mq && mq.matches);
@@ -7218,7 +7226,17 @@ Please see https://iframe-resizer.com/upgrade for more details.
       ctx.setLineDash(isConflict ? [4, 3] : isDriver ? [5, 3] : []);
       ctx.stroke();
       ctx.setLineDash([]);
-      if (isFocused && this.focusElement) {
+      if (isFocused && !isConflict) {
+        ctx.save();
+        ctx.strokeStyle = focus;
+        ctx.lineWidth = 2;
+        ctx.shadowColor = focus;
+        ctx.shadowBlur = this.forced ? 0 : 6;
+        this.path({ x: r.x - 2, y: r.y - 2, w: r.w + 4, h: r.h + 4 }, RADIUS + 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      if (isFocused && this.focusElement && (this.lastInput === "keyboard" || this.forced)) {
         this.path(r);
         ctx.drawFocusIfNeeded(this.focusElement);
       }

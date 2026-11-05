@@ -86,6 +86,8 @@ export class CanvasTimeline {
   activeLinking: ActiveLinking | null = null;
   /** Focused element of the treegrid in the canvas fallback content, for drawFocusIfNeeded (B-15). */
   focusElement: Element | null = null;
+  /** The last input type: the system focus ring is drawn only after keyboard input (N-09). */
+  private lastInput: 'pointer' | 'keyboard' = 'pointer';
   private forced = false;
   private arrowLinks: ArrowLink[] = [];
   onDraw?: (links: ArrowLink[]) => void;
@@ -99,6 +101,8 @@ export class CanvasTimeline {
     if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
     host.appendChild(this.canvas);
     this.ctx = this.canvas.getContext('2d') as CanvasRenderingContext2D;
+    document.addEventListener('pointerdown', () => { this.lastInput = 'pointer'; }, true);
+    document.addEventListener('keydown', () => { this.lastInput = 'keyboard'; }, true);
     // Forced colours (Windows contrast themes) replace tokens with system colours (B-15).
     const mq = window.matchMedia ? window.matchMedia('(forced-colors: active)') : null;
     const apply = () => {
@@ -369,7 +373,19 @@ export class CanvasTimeline {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    if (isFocused && this.focusElement) {
+    if (isFocused && !isConflict) {
+      // A designed "selected" outline: 2 px in the focus colour, 2 px outside the bar, with a soft glow (N-09).
+      ctx.save();
+      ctx.strokeStyle = focus;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = focus;
+      ctx.shadowBlur = this.forced ? 0 : 6;
+      this.path({ x: r.x - 2, y: r.y - 2, w: r.w + 4, h: r.h + 4 }, RADIUS + 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    // The system focus ring is for keyboard users only; a mouse click shows the outline above (N-09).
+    if (isFocused && this.focusElement && (this.lastInput === 'keyboard' || this.forced)) {
       this.path(r);
       ctx.drawFocusIfNeeded(this.focusElement);
     }

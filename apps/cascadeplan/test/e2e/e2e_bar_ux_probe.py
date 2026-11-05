@@ -46,3 +46,8 @@ with sync_playwright() as p:
     print(json.dumps({'hover': hover, 'afterClick': click}, indent=1))
     b.close()
 srv.shutdown()
+# N-10: on hover the port shows, and the hit layer (with its ports) is above the canvas.
+ok = float(hover['portOpacity']) > 0 and int(hover['hitZ']) > int(hover['canvasZ'])
+print(('PASS' if ok else 'FAIL') + ' N-10 link ports visible above the canvas on hover')
+import sys
+sys.exit(0 if ok else 1)

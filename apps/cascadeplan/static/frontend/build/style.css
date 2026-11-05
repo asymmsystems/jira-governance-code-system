@@ -462,8 +462,10 @@ body { font-family: var(--cp-font); color: var(--cp-text); background: var(--cp-
 .timeline-canvas {
   position: absolute; left: 0; top: 0; z-index: 30; pointer-events: none; display: none;
 }
+/* The hit layer sits above the canvas (30) so its link ports are visible, and below the frozen
+   columns (36) and the sticky header (38). It is transparent; the canvas draws the bars (N-10). */
 .bar-hit {
-  position: absolute; z-index: 20; cursor: grab; border-radius: 6px; outline: none;
+  position: absolute; z-index: 32; cursor: grab; border-radius: 6px; outline: none;
 }
 .bar-hit.is-epic { cursor: pointer; }
 .bar-handle {
@@ -1548,8 +1550,8 @@ body.is-dragging-backlog .drop-target-row.drag-over {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: var(--cp-surface-raised);
   border: 1.5px solid var(--cp-border-brand);
@@ -1568,17 +1570,27 @@ body.is-dragging-backlog .drop-target-row.drag-over {
   z-index: 26;
 }
 .bar-link-port-right {
-  right: -8px;
+  right: -14px;
 }
 .bar-link-port-left {
-  left: -8px;
+  left: -14px;
   transform: translateY(-50%) rotate(180deg);
 }
+/* Light, partly transparent ports appear on hover and on the selected bar, after a short pause so a
+   passing pointer does not flash them; a port under the pointer turns solid (N-10). */
 .bar-hit:hover .bar-link-port,
-.bar-hit.is-pinned .bar-link-port,
+.bar-hit.is-pinned .bar-link-port {
+  opacity: 0.72;
+  pointer-events: auto;
+  transition-delay: 0.15s;
+}
 .bar-link-port:hover {
   opacity: 1;
   pointer-events: auto;
+  transition-delay: 0s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar-link-port { transition: none; }
 }
 .bar-link-port-right:hover {
   transform: translateY(-50%) scale(1.18);
