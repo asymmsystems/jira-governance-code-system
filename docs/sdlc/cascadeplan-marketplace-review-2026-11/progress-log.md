@@ -375,3 +375,9 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 ### Correction to the BL-1 entry (2026-11-05)
 
 - The BL-1 entry listed "a 10-second undo" and "story points and T-shirt sizes" among the false claims. Both exist: the Undo flag stays 10 seconds (`FLAG_MS = 10000`, `src/frontend/flag.ts`), and the task dialog has a per-task "Estimation Unit" (Hours, Story Points at 8 h per point, T-Shirt Size). What was false is the project-level estimation setting of the old admin guide. The user guide (`site/apps/cascadeplan/user-guide.md`) now states both facts again.
+
+### Correction: the coverage threshold failed in CI; fixed
+
+- **What was wrong:** since about `cbd7d28` the CI job "Tests with coverage thresholds" failed: all tests passed, but branch coverage was 88.7%, under the 90% threshold (CI run 42064567083). My local runs used `jest` without `--coverage`, so the threshold never ran, and the entries above that say "with coverage thresholds" for those commits are wrong: the tests passed, the threshold did not.
+- **Fix:** new `test/error-paths.test.ts` (7 tests: every refusal of `convertIssueType`, unknown and failed jobs of `checkConversion` and a parent the user may not schedule, unknown issues in `changeParent`, bad `expectedVersions` in `moveTaskGroup`, a due-date check Jira does not answer does not block a move, the baseline store and resolvers on missing data, a busy index, a missing reviewer and an already-reviewed request) and 3 fail-closed tests of the approver check (`test/security/policy-admin.test.ts`). `npm test` (with coverage): 872 passed, branches 90.08%.
+- From here on every proof line uses `npm test`, which runs the threshold.

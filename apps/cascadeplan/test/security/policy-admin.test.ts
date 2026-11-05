@@ -437,4 +437,35 @@ describe('CascadePlan Policy Admin and Authorization', () => {
       ]);
     });
   });
+
+  describe('fail-closed edges of the approver check (BL-2, F-24)', () => {
+    const ok = (body: any, status = 200) => ({ status, json: async () => body });
+
+    it('a mypermissions answer that is not 200, or has no permissions, is not an approver', async () => {
+      mockAsUserRequest.mockResolvedValueOnce(ok({}, 403));
+      expect(await hasTier1AdminPermission({ projectId: '10001' })).toBe(false);
+      mockAsUserRequest.mockResolvedValueOnce(ok({}));
+      expect(await hasTier1AdminPermission({ issueId: '22' })).toBe(false);
+      expect(String(mockAsUserRequest.mock.calls[1][0])).toContain('issueId=22');
+    });
+
+    it('no scope, a failed myself call, or a user with no groups is not an approver', async () => {
+      expect(await isPlanApprover(storage)).toBe(false);
+      expect(await isPlanApprover(storage, {})).toBe(false);
+      await new PolicyRepository(storage).saveApproverPolicy({ parties: [{ partyId: 'g-id', partyTypeId: 'GROUP', name: 'Release managers' }] } as any);
+      mockAsUserRequest.mockResolvedValueOnce(ok({ permissions: {} })).mockResolvedValueOnce(ok({}, 500));
+      expect(await isPlanApprover(storage, { projectId: '10001' })).toBe(false);
+      mockAsUserRequest.mockResolvedValueOnce(ok({ permissions: {} })).mockResolvedValueOnce(ok({}));
+      expect(await isPlanApprover(storage, { projectId: '10001' })).toBe(false);
+    });
+
+    it('membership is matched by group id or, for an older entry, by group name', async () => {
+      await new PolicyRepository(storage).saveApproverPolicy({ parties: [{ partyId: 'g-id', partyTypeId: 'GROUP', name: 'Release managers' }] } as any);
+      mockAsUserRequest.mockResolvedValueOnce(ok({ permissions: {} })).mockResolvedValueOnce(ok({ groups: { items: [{ name: 'Release managers' }] } }));
+      expect(await isPlanApprover(storage, { projectId: '10001' })).toBe(true);
+      mockAsUserRequest.mockResolvedValueOnce(ok({ permissions: {} })).mockResolvedValueOnce(ok({ groups: { items: [{ groupId: 'other' }, {}] } }));
+      expect(await isPlanApprover(storage, { projectId: '10001' })).toBe(false);
+    });
+  });
 });
+
