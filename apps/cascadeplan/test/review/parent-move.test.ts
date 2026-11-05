@@ -93,7 +93,7 @@ describe('Parent and sub-task moves at db08009', () => {
     expect(p).toMatchObject({ startDate: add(start, 2), endDate: add(start, 6), datesFromChildren: true });
   });
 
-  it('GAP PM-01: moving a sub-task past the start of the parent\'s successor does not cascade that successor', async () => {
+  it('PM-01 (N-06 rule 1): moving a sub-task past the start of the parent\'s successor cascades that successor', async () => {
     // TEST-1 parent, TEST-2 its sub-task, TEST-3 depends on TEST-1 (finish to start).
     issues = [jiraIssue(1, task), jiraIssue(2, subtask, 1), jiraIssue(3, task)];
     const w = weeks[5].weekKey;
@@ -109,9 +109,9 @@ describe('Parent and sub-task moves at db08009', () => {
     const plan = await getProjectPlan('TEST', storage);
     expect(plan.tasks.find(t => t.key === 'TEST-1')!.endDate).toBe(add(start, 9));
     const succ = plan.tasks.find(t => t.key === 'TEST-3')!;
-    expect(succ.startDate).toBe(add(start, 3));          // not moved
-    expect(succ.dependency!.isViolated).toBe(true);       // and now in violation
-    expect(putsTo('TEST-3')).toHaveLength(0);             // no Jira write for the successor
+    expect(succ.startDate).toBe(add(start, 10));          // moved to the day after the parent's new end
+    expect(succ.dependency!.isViolated).toBe(false);
+    expect(putsTo('TEST-3')).toHaveLength(1);              // its due date went to Jira
   });
 
   it('GAP PM-02: a cascade into a parent writes the parent\'s record and Jira due date, but moves none of its sub-tasks, so the parent stays in violation', async () => {
@@ -135,17 +135,17 @@ describe('Parent and sub-task moves at db08009', () => {
     expect(jiraDue['TEST-4']).not.toBe(parent.endDate);     // Jira due date of the parent disagrees with its bar
   });
 
-  it('GAP PM-04: a parent with no schedule entry of its own stays in the backlog, although its sub-task is on the timeline', async () => {
+  it('PM-04 (N-06 rule 4): a parent with no schedule entry of its own is on the timeline when its sub-task is', async () => {
     issues = [jiraIssue(1, task), jiraIssue(2, subtask, 1)];
     const w = weeks[5].weekKey;
     await seed({ 'TEST-2': { startWeek: w, spanWeeks: 1, startDate: start, endDate: add(start, 2) } }, { 'TEST-2': add(start, 2) });
     const plan = await getProjectPlan('TEST', storage);
     expect(plan.tasks.find(t => t.key === 'TEST-2')).toBeDefined();
-    expect(plan.tasks.find(t => t.key === 'TEST-1')).toBeUndefined();
-    expect((plan.backlogTasks || []).find(t => t.key === 'TEST-1')).toBeDefined();
+    expect(plan.tasks.find(t => t.key === 'TEST-1')).toMatchObject({ startDate: start, endDate: add(start, 2), datesFromChildren: true });
+    expect((plan.backlogTasks || []).find(t => t.key === 'TEST-1')).toBeUndefined();
   });
 
-  it('GAP PM-03: the server accepts a direct move of a roll-up parent; only its Jira due date changes, its bar does not', async () => {
+  it('PM-03 (N-06 rule 3): a direct move of a roll-up parent is refused, and nothing is written', async () => {
     issues = [jiraIssue(1, task), jiraIssue(2, subtask, 1)];
     const w = weeks[5].weekKey;
     await seed({
@@ -153,11 +153,9 @@ describe('Parent and sub-task moves at db08009', () => {
       'TEST-2': { startWeek: w, spanWeeks: 1, startDate: start, endDate: add(start, 2) }
     }, { 'TEST-1': add(start, 2), 'TEST-2': add(start, 2) });
     const p = await entry('TEST-1');
-    const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { startDate: add(start, 7), endDate: add(start, 9) }, expectedVersion: p.version }, storage);
-    expect(res.ok).toBe(true);
-    expect(jiraDue['TEST-1']).toBe(add(start, 9));          // parent due date moved in Jira
-    expect(putsTo('TEST-2')).toHaveLength(0);               // sub-task not moved
-    const plan = await getProjectPlan('TEST', storage);
-    expect(plan.tasks.find(t => t.key === 'TEST-1')!.startDate).toBe(start); // bar unchanged (roll-up)
+    await expect(updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { startDate: add(start, 7), endDate: add(start, 9) }, expectedVersion: p.version }, storage))
+      .rejects.toThrow('TEST-1 takes its dates from its sub-tasks. Move its sub-tasks instead.');
+    expect(putsTo('TEST-1')).toHaveLength(0);
+    expect(putsTo('TEST-2')).toHaveLength(0);
   });
 });

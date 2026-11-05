@@ -916,11 +916,25 @@ export async function getProjectPlan(
   for (const t of tasks) {
     if (t.contributors) t.contributingResources = contributorNames(t.contributors, availableUsers);
   }
-  // A parent's dates are derived from its dated children on every load, never stored (B-28).
-  for (const [key, span] of rollUpParentDates(tasks)) {
-    const parent = tasks.find(t => t.key === key);
-    if (!parent) continue;
-    Object.assign(parent, span, gridFor(activeWeeks, span.startDate, span.endDate), { datesFromChildren: true });
+  // A parent's dates are derived from its dated children on every load, never stored (B-28). A parent
+  // with a dated child is on the timeline even with no record of its own, and so is its own parent
+  // (N-06 rule 4).
+  for (let pass = 0; pass < 4; pass++) {
+    let added = false;
+    for (const [key, span] of rollUpParentDates(tasks)) {
+      let parent = tasks.find(t => t.key === key);
+      if (!parent) {
+        // Epics stay in the backlog until scheduled (B-05; epic blocks come later, DEC-5b).
+        const idx = backlogTasks.findIndex(t => t.key === key && !t.isEpic && t.hierarchyLevel !== 1);
+        if (idx === -1) continue;
+        parent = backlogTasks.splice(idx, 1)[0];
+        parent.isBacklog = false;
+        tasks.push(parent);
+        added = true;
+      }
+      Object.assign(parent, span, gridFor(activeWeeks, span.startDate, span.endDate), { datesFromChildren: true });
+    }
+    if (!added) break;
   }
 
   // Evaluate every dependency with the schedule engine: earliest start, reason, driver, fix (B-11).
@@ -1694,6 +1708,10 @@ export async function updateWbsTask(
     // The user edited an older copy: refuse before any Jira write (INV-08).
     return conflictResult(targetTask.key);
   }
+  // A parent whose dates come from its sub-tasks is not moved directly (N-06 rule 3, ADR-003).
+  if (targetTask.datesFromChildren && ['startDate', 'endDate', 'startWeek', 'spanWeeks', 'endWeek'].some(f => (updates as Record<string, unknown>)[f] !== undefined)) {
+    throw new ValidationError('startDate', `${targetTask.key} takes its dates from its sub-tasks. Move its sub-tasks instead.`);
+  }
   // BL-2, INV-16: the user's own Jira permissions on the target, before any KVS or Jira write.
   const needed: IssuePermission[] = ['EDIT_ISSUES'];
   const u = updates as Record<string, unknown>;
@@ -1902,10 +1920,24 @@ export async function updateWbsTask(
   // Cascade date shifts to conflicting successors, at most CASCADE_BATCH_LIMIT per call (B-10, B-11).
   let cascadeRemaining: string[] = [];
   if (sanitized.startDate || sanitized.endDate || sanitized.dependency) {
-    const candidateTasks = plan.tasks.map(t => (t.key === targetTask.key ? { ...t, ...sanitized } : t));
+    // The parents' roll-ups are recomputed with the new dates before the cascade (N-06 rule 1).
+    const candidateTasks = withRollUps(plan.tasks.map(t => (t.key === targetTask.key ? { ...t, ...sanitized } : t)));
     const inputs = engineInputs(candidateTasks);
-    const { changes, cycle } = cascade(inputs.efforts, inputs.links, targetTask.key, todayIso());
-    reportCycle(cycle, log);
+    const first = cascade(inputs.efforts, inputs.links, targetTask.key, todayIso());
+    reportCycle(first.cycle, log);
+    const changes = [...first.changes];
+    let efforts = first.efforts;
+    // Every ancestor whose roll-up changed also cascades to its own successors. (The parent's own Jira
+    // due date follows only when the drag preview lists it, INV-03; DEC-6 is not built yet.)
+    for (const anc of ancestorKeys(targetTask.key, plan.tasks)) {
+      const was = plan.tasks.find(t => t.key === anc);
+      const now = candidateTasks.find(t => t.key === anc);
+      if (!was || !now || !now.datesFromChildren || (was.startDate === now.startDate && was.endDate === now.endDate)) continue;
+      const more = cascade(efforts, inputs.links, anc, todayIso());
+      reportCycle(more.cycle, log);
+      for (const c of more.changes) if (!changes.some(x => x.key === c.key)) changes.push(c);
+      efforts = more.efforts;
+    }
     cascadeRemaining = changes.slice(CASCADE_BATCH_LIMIT).map(c => c.key);
     for (const c of changes.slice(0, CASCADE_BATCH_LIMIT)) {
       scheduleMap[c.key] = { ...(scheduleMap[c.key] || {}), startDate: c.toStart, endDate: c.toEnd, ...gridFor(activeWeeks, c.toStart, c.toEnd) };
@@ -2074,6 +2106,32 @@ export async function batchUpdateTasks(
   if (failed.length) jiraSync.error = failed.map(w => `${w.key}: ${w.error}`).join('; ');
   // Each item whose cascade has successors left is a root the client continues from (F-20).
   return Object.assign(finalPlan, { ok: results.every(r => r.ok), jiraSync, results, cascadeRoots, cascadeRemaining: [...new Set(remaining)] });
+}
+
+/** The keys of every ancestor of a task, nearest first. */
+function ancestorKeys(key: string, tasks: Array<{ key: string; parentKey?: string }>): string[] {
+  const byKey = new Map(tasks.map(t => [t.key, t]));
+  const out: string[] = [];
+  let cur = byKey.get(key)?.parentKey;
+  while (cur && !out.includes(cur)) { out.push(cur); cur = byKey.get(cur)?.parentKey; }
+  return out;
+}
+
+/** A copy of the tasks with every roll-up parent's dates recomputed from its dated children. */
+export function withRollUps<T extends { key: string; parentKey?: string; startDate?: string; endDate?: string; datesFromChildren?: boolean }>(tasks: T[]): T[] {
+  let out = tasks.map(t => ({ ...t }));
+  for (let pass = 0; pass < 4; pass++) {
+    const spans = rollUpParentDates(out);
+    let changed = false;
+    out = out.map(t => {
+      const span = spans.get(t.key);
+      if (!span || (t.startDate === span.startDate && t.endDate === span.endDate)) return t;
+      changed = true;
+      return { ...t, ...span, datesFromChildren: true };
+    });
+    if (!changed) break;
+  }
+  return out;
 }
 
 /** Tasks in a dependency cycle are not moved by a cascade; each is reported (F-15). */

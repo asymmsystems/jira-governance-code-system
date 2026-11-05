@@ -65,21 +65,22 @@ describe('write transparency (B-23)', () => {
   });
 
   it('a write reports each field with its old and new value', async () => {
-    const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { summary: 'Renamed', endDate: weeks[6].endDate } });
-    expect(res.jiraSync.writes).toEqual([{ key: 'TEST-1', fields: ['summary', 'duedate'], ok: true, changes: [
-      { field: 'summary', from: 'Story', to: 'Renamed' },
-      { field: 'due date', from: weeks[5].endDate, to: weeks[6].endDate }
+    // TEST-1 takes its dates from its sub-task (ADR-003), so the leaf TEST-2 is changed.
+    const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2', updates: { summary: 'Renamed', endDate: weeks[6].endDate } });
+    expect(res.jiraSync.writes).toEqual([{ key: 'TEST-2', fields: ['summary', 'duedate'], ok: true, changes: [
+      { field: 'summary', from: 'Sub', to: 'Renamed' },
+      { field: 'due date', from: null, to: weeks[6].endDate }
     ] }]);
   });
 
   it('a due date the issue screen rejects is reported as not written, while the rest is written', async () => {
     rejectDueDate = true;
-    const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { summary: 'Renamed', endDate: weeks[6].endDate } });
+    const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-2', updates: { summary: 'Renamed', endDate: weeks[6].endDate } });
     expect(res.jiraSync.ok).toBe(false);
     expect(res.jiraSync.writes).toEqual([
-      { key: 'TEST-1', fields: ['summary'], ok: true, changes: [{ field: 'summary', from: 'Story', to: 'Renamed' }] },
-      { key: 'TEST-1', fields: ['duedate'], ok: false, error: 'Jira did not accept the due date on this issue screen',
-        changes: [{ field: 'due date', from: weeks[5].endDate, to: weeks[6].endDate }] }
+      { key: 'TEST-2', fields: ['summary'], ok: true, changes: [{ field: 'summary', from: 'Sub', to: 'Renamed' }] },
+      { key: 'TEST-2', fields: ['duedate'], ok: false, error: 'Jira did not accept the due date on this issue screen',
+        changes: [{ field: 'due date', from: null, to: weeks[6].endDate }] }
     ]);
     expect(puts.map(p => Object.keys(p.body.fields))).toEqual([['summary', 'duedate'], ['summary']]);
   });
