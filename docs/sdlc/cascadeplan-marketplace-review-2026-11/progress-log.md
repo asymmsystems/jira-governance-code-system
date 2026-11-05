@@ -364,3 +364,9 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 
 - `live_move.py DEMO-29 7` then `-7`: 170 px after each reload; "Moved DEMO-29." both ways (no false "changed in Jira" refusal, so the `expectedDueDate` check with `reconcileIssues` agrees with real Jira); Jira due date 2026-11-17, then back to 2026-11-10; bar back at 2026-10-28 to 2026-11-10.
 - **Live site changes:** DEMO-29's due date and start property moved one week and back (final state as before).
+
+### ADR-009 decision 7 in the manifest: the weekly personal data report
+
+- `manifest.yml`: scope `report:personal-data`; `scheduledTrigger` `personal-data-report` (interval week) calling `personal-data-fn` = `index.personalDataTrigger` (built and tested with ADR-009). `forge lint`: no error; one approval note, "This deployment triggers a major version upgrade ... Change due to scope modification".
+- **Your action:** after this version is deployed, the development installation keeps the previous major version until the site admin accepts the new scope: `forge install --upgrade -e development` in `apps/cascadeplan` (choose the site), or the update prompt in Jira's app management. The same consent is needed for production.
+- **Proof:** unit suite 862 passed with coverage thresholds.

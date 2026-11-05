@@ -18,6 +18,11 @@ modules:
       function: issue-deleted-fn
       events:
         - avi:jira:deleted:issue
+  scheduledTrigger:
+    # ADR-009 decision 7: the weekly personal data report of the baseline audit records.
+    - key: personal-data-report
+      function: personal-data-fn
+      interval: week
   function:
     - key: resolver
       handler: index.handler
@@ -25,6 +30,8 @@ modules:
       handler: index.adminHandler
     - key: issue-deleted-fn
       handler: index.issueDeletedTrigger
+    - key: personal-data-fn
+      handler: index.personalDataTrigger
 
 resources:
   - key: main
@@ -41,6 +48,7 @@ permissions:
     - write:jira-work
     - read:jira-user
     - storage:app
+    - report:personal-data
 
 app:
   runtime:
