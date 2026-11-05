@@ -168,3 +168,11 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 - **What changed:** `updateWbsTask` takes `options.skipResponse`; `batchUpdateTasks` passes it, so items return only their result and the batch builds one plan at the end.
 - **Proof (R-29, 50 items, 200 tasks, 1 plan):** before: 151 prefix queries, 30,200 rows, 453 pages, 400 gets; after: 102 queries, 20,400 rows, 306 pages, 253 gets. Jira calls unchanged (54). Unit suite 799 passed.
 - **Remaining:** the plan's target (at most 5 prefix queries for such a batch) needs one in-memory state for the whole batch, and the shared-date storage of DEC-3, which removes the scans of the other plans. Both come with the phase 3 storage work.
+
+### DEC-3 development-site test (fix plan section 10, step 0)
+
+- `test/live/property_check.py`, as the owner, on DEMO-37 and DEMO-38 (both created and deleted by the test, 2026-11-05).
+- Results: property set as the user: 201. Read in `search/jql` with `properties=cascadeplan.dates`: returned only with `reconcileIssues` (the first run, without it, returned no properties for the new issue: the search lag is real, which also confirms F-03 part 3). Direct read: 200. After deleting the issue: 404.
+- Not tested: the refusal for a Browse-only user (no second user; documented by Atlassian) and a move to another project (DEMO only).
+- **Decision recorded:** DEC-3 Option C and DEC-4 Option B for v1, in ADR-008. Fix plan register updated.
+- **Live site changes:** DEMO-37 and DEMO-38 created and deleted (about 13:3xZ on 2026-11-05).

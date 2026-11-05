@@ -1,0 +1,74 @@
+#+TITLE: ADR-008: CascadePlan Shared Start Date as a Jira Issue Property
+#+DATE: 2026-11-05
+#+STATUS: Approved
+
+* Status
+Approved - 2026-11-05. The owner told the fix session not to wait for decisions ("Dont wait for me -
+fix all"), so the fix plan's recommendation for DEC-3 was adopted: Option C if the development-site
+test passes, else Option A. The test passed for every point it could check (Context below).
+
+Not implemented. Decision DEC-4 (version check) follows from it: see Consequences.
+
+* Context
+Since commit =db08009=, a task has one set of dates in every plan (spec v2 decision D-11). The end is
+the Jira due date. The start has no standard Jira field, so the planner copies it into the KVS record
+of every plan (=shareTaskDates=). The copy loses updates when two users move the same task in two
+plans (review test R-01) and costs one prefix scan per other plan on every move (R-28).
+
+The fix plan (=docs/sdlc/cascadeplan-marketplace-review-2026-11/fix-plan-v4.md=, DEC-3) offered:
+- A: one shared date record per issue in KVS;
+- B: keep the copy, make it conditional;
+- C: store the start as a Jira issue property.
+
+Development-site test, 2026-11-05 (=apps/cascadeplan/test/live/property_check.py=, issues DEMO-37
+and DEMO-38, both created and deleted by the test):
+
+| Check                                                              | Result                                    |
+|--------------------------------------------------------------------+-------------------------------------------|
+| Set the property =cascadeplan.dates= as the user                     | 201                                       |
+| Read it in =search/jql= with =properties= (the planner's read)        | Returned only with =reconcileIssues=; without it the new issue's property was missing (search lag) |
+| Read it directly                                                   | 200, same value                           |
+| Deleted with the issue                                             | 404 after the issue delete                |
+| Refused for a user without Edit issues                             | Not tested (no second user); Atlassian documents that setting a property needs Browse projects and Edit issues |
+| Kept when the issue moves to another project                       | Not tested (the test may change only DEMO); not needed by a plan of the old project |
+
+* Decision
+1. The shared start date of a task is the Jira issue property =cascadeplan.dates= (=startDate=), set as
+   the user. The end stays the Jira due date. A task is on the timeline when the property has a start.
+2. The planner reads the property in the same =search/jql= call as the issues (=properties=). Every
+   search that follows a write passes =reconcileIssues= with the written issue ids (at most 50).
+3. Per-plan KVS records keep only per-plan data: row order, columns, milestones and planning settings.
+   =shareTaskDates= is removed.
+4. Migration is lazy, so opening the planner writes nothing (INV-07): when a task has no property, the
+   planner reads the start from its KVS record; the next date change of that task writes the property
+   and stops using the KVS start.
+5. Each property write is a Jira write: it is checked against the user's permissions (BL-2), and shown
+   in the Changes panel like a due-date write.
+
+* Alternatives Considered
+** Option A: one shared date record per issue in KVS
+- For: no Jira data written; the app keeps a compare-and-set with DEC-4 Option A.
+- Against: one more prefix scan per load, two records and two versions per task, and the app must
+  check Edit issues itself for every date write.
+- Verdict: the fallback, not chosen, because the test passed.
+** Option B: keep the copy in every plan, made conditional
+- Against: keeps the copy, which is the source of R-01 and R-28.
+- Verdict: Rejected.
+
+* Consequences
+** Positive
+- One value per issue: two plans can no longer disagree on a start (R-01).
+- No KVS scan per other plan on a move (R-28); the dates come with the issue search.
+- Jira enforces Edit issues on the start, as it does on the due date.
+** Negative
+- The last writer wins for the start, as for the due date; there is no compare-and-set.
+- Any user who can browse the issue can read the property.
+- The properties stay on the issues after an uninstall; the privacy text must say so (BL-4).
+** DEC-4
+With the dates out of the per-plan records, those records change rarely. DEC-4 therefore keeps the
+existing swap-and-restore version check for v1 (Option B), as the fix plan recommends for this case.
+
+* References
+- [[file:../../docs/sdlc/cascadeplan-marketplace-review-2026-11/fix-plan-v4.md][CascadePlan fix plan v4]], decisions DEC-3 and DEC-4, item F-10
+- [[file:adr-00004-cascadeplan-jira-holds-relationships.org][ADR-004: CascadePlan keeps every relationship in Jira]]
+- [[file:adr-00006-cascadeplan-shared-dependencies.org][ADR-006: CascadePlan dependencies are shared by every plan]]
