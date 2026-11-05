@@ -39,6 +39,7 @@ import { formatSubtaskSummary } from './ui/second-person';
 import { evaluateEffort, cascade, ScheduleEffort, ScheduleLink, addDays } from './domain/schedule-engine';
 import { StorageProvider } from './storage/plan-repository';
 import { PlanStore, StoredEntry, sequenceBetween } from './storage/plan-store';
+import { BatchStorage } from './storage/batch-storage';
 import { logFailure } from './logger';
 import { IssuePermission, deniedIssues, describeMissing, forbiddenResult, PermissionCheckError, ForbiddenError, requireIssuePermissions } from './security/write-permissions';
 import {
@@ -2129,7 +2130,9 @@ export async function batchUpdateTasks(
     assertIssueKey(item.taskId, 'taskId');
     validateTaskUpdates(item.updates as Record<string, unknown>);
   }
-  const storage = resolveStorage(storageProvider);
+  // One read of each KVS key and prefix for the whole batch (F-17): later items read the batch's own
+  // writes from memory. The version check still reaches KVS on every write.
+  const storage = new BatchStorage(resolveStorage(storageProvider));
   const planId = await writablePlanId(storage, projectKey, projectId, payload.planId);
   const store = openStore(storage, projectKey, projectId, planId);
   const live = await loadLive(projectKey, reconcileIdsOf(payload.reconcileIds));

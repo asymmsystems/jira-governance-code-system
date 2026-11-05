@@ -643,7 +643,25 @@ describe('Sizes and costs (section 4.1, 4.5)', () => {
     for (const k of ['query', 'queryRows', 'get', 'swap', 'set'] as const) expect(results[10][k]).toBe(results[1][k]);
   });
 
-  it('MEASURE R-29: KVS operations for batchUpdateTasks with 50 items (200 scheduled tasks, 1 plan)', async () => {
+  it('F-17 timing: a batch of 50 items at 1,000 scheduled tasks finishes in under 10 s', async () => {
+    const s = new MemStorage();
+    setGlobalStorageProvider(s);
+    const map: any = {};
+    for (let n = 1; n <= 1000; n++) map[`TEST-${n}`] = { startWeek: weeks[5].weekKey, spanWeeks: 1, startDate: start, endDate: add(start, 2) };
+    await s.set('scheduleMap:TEST', map);
+    searchKeys = Array.from({ length: 1000 }, (_, i) => i + 1);
+    await getProjectPlan('TEST', s);
+    const items = Array.from({ length: 50 }, (_, i) => ({ taskId: `TEST-${i + 1}`, updates: { startDate: add(start, 1), endDate: add(start, 3) } }));
+    const t0 = Date.now();
+    const res: any = await batchUpdateTasks({ projectKey: 'TEST', items }, s);
+    const ms = Date.now() - t0;
+    // eslint-disable-next-line no-console
+    console.log('batch of 50 at 1,000 tasks, ms', ms);
+    expect(res.ok).toBe(true);
+    expect(ms).toBeLessThan(10000);
+  }, 30000);
+
+  it('R-29: a batch of 50 items at 200 tasks makes at most 5 prefix queries (F-17)', async () => {
     const s = new MemStorage();
     setGlobalStorageProvider(s);
     const map: any = {};
@@ -663,6 +681,8 @@ describe('Sizes and costs (section 4.1, 4.5)', () => {
     const out = { ...counts, queryPagesAt100: counts.query + Math.ceil(counts.queryRows / 100), jiraCalls: mockRequestJira.mock.calls.length };
     // eslint-disable-next-line no-console
     console.log('batch of 50 (200 tasks)', JSON.stringify(out));
-    expect(out.query).toBeGreaterThan(100);
+    expect(out.query).toBeLessThanOrEqual(5);
+    // Every item is still written with its own version check.
+    expect(out.swap).toBe(50);
   });
 });
