@@ -48,6 +48,8 @@ export function describeJiraChanges(sent: string[], before: ChangeValues, after:
           to: after.resourceAccountId === 'unassigned' ? null : person(after.resource) || text(after.resourceAccountId) };
       case 'status':
         return { field, from: text(before.status), to: text(after.status) };
+      case 'startdate':
+        return { field: 'start date', from: text((before as any).startDate), to: (after as any).startDate ? String((after as any).startDate).slice(0, 10) : null };
       default:
         return { field, from: null, to: null };
     }

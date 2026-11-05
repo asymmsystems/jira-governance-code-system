@@ -41,11 +41,22 @@ w.__jiraWrites = writes;
 const ok = (body: any, status = 200) => ({ status, json: async () => body, clone() { return this; } });
 // Due dates the fake Jira holds: a PUT with a due date changes it, and every search returns it.
 const dues = (): Record<string, string> => JSON.parse(localStorage.getItem('__harness_jira_due') || '{}');
-const withDue = (i: any) => ({ ...i, fields: { ...i.fields, duedate: dues()[i.key] || null } });
+// Issue properties the fake Jira holds (ADR-008: the shared start is the property cascadeplan.dates).
+const props = (): Record<string, Record<string, any>> => JSON.parse(localStorage.getItem('__harness_jira_props') || '{}');
+const withDue = (i: any) => ({ ...i, fields: { ...i.fields, duedate: dues()[i.key] || null }, properties: props()[i.key] || {} });
 w.__jira = async (url: string, opts: any) => {
   const method = (opts && opts.method) || 'GET';
   if (method !== 'GET' && /\/rest\/api\/3\/issue\//.test(url)) {
     localStorage.setItem('__harness_jira_writes', JSON.stringify([...writes(), `${method} ${url} ${opts.body || ''}`]));
+    const pm = url.match(/\/rest\/api\/3\/issue\/(DEMO-\d+)\/properties\/([^/?]+)$/);
+    if (pm) {
+      const all = props();
+      const forIssue = { ...(all[pm[1]] || {}) };
+      if (method === 'PUT') forIssue[pm[2]] = JSON.parse(opts.body || '{}');
+      if (method === 'DELETE') delete forIssue[pm[2]];
+      localStorage.setItem('__harness_jira_props', JSON.stringify({ ...all, [pm[1]]: forIssue }));
+      return ok({}, method === 'PUT' ? 200 : 204);
+    }
     const m = method === 'PUT' ? url.match(/\/rest\/api\/3\/issue\/(DEMO-\d+)$/) : null;
     // Review addition: keys listed in __harness_reject_due get the screen error for a due date.
     const reject: string[] = JSON.parse(localStorage.getItem('__harness_reject_due') || '[]');
@@ -83,6 +94,11 @@ w.__jira = async (url: string, opts: any) => {
   if (url.includes('/search/jql')) return ok({ issues: url.includes('Epic') ? [withDue(epic)] : ISSUES.map(withDue), isLast: true });
   if (url.includes('/user/assignable')) return ok([]);
   if (/\/issue\/DEMO-\d+\?fields=project/.test(url)) return ok({ id: url.match(/DEMO-(\d+)/)![1], fields: { project: { key: 'DEMO' } } });
+  const gp = url.match(/\/rest\/api\/3\/issue\/(DEMO-\d+)\/properties\/([^/?]+)$/);
+  if (gp) {
+    const v = props()[gp[1]]?.[gp[2]];
+    return v === undefined ? ok({ errorMessages: ['not found'] }, 404) : ok({ key: gp[2], value: v });
+  }
   if (url.includes('fields=issuelinks')) return ok({ fields: { issuelinks: [] } });
   if (url.includes('/transitions')) return ok({ transitions: [] });
   return ok({});

@@ -255,7 +255,8 @@ describe('named plans: one truth for each task (UX-05)', () => {
     expect(reordered.planId).toBe(planB);
     expect(reordered.tasks[0].key).toBe('TEST-3');
     expect(mainPlanSnapshot(storage)).toBe(main);
-    expect(jiraIssueWrites()).toEqual([]);
+    // The only Jira write: the shared start property is removed (ADR-008); the due date stays.
+    expect(jiraIssueWrites()).toEqual(['DELETE /rest/api/3/issue/TEST-2/properties/cascadeplan.dates']);
   });
 
   it('continueCascade in a scenario plan moves the successors in every plan and writes their due dates', async () => {

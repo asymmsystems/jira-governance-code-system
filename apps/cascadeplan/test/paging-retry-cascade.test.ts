@@ -159,7 +159,8 @@ describe('one plan build and a bounded cascade (B-10)', () => {
   it('a long cascade moves at most the batch limit per call and continues', async () => {
     mockRequestJira.mockClear();
     const first: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { startWeek: weeks[2].weekKey } });
-    const putsFirst = mockRequestJira.mock.calls.filter(c => c[1]?.method === 'PUT').length;
+    // Field writes only; each moved issue also gets its start property (ADR-008).
+    const putsFirst = mockRequestJira.mock.calls.filter(c => c[1]?.method === 'PUT' && !String(c[0]).includes('/properties/')).length;
     expect(putsFirst).toBeLessThanOrEqual(CASCADE_BATCH_LIMIT + 1);
     expect(first.cascadeRemaining.length).toBeGreaterThan(0);
     let res: any = first;

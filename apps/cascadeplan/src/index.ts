@@ -369,6 +369,9 @@ export function isMainPlan(planId?: string): boolean {
  */
 export const SHARED_DATE_FIELDS = ['startDate', 'endDate', 'startWeek', 'endWeek', 'spanWeeks', 'weeklyAllocations'] as const;
 
+/** The Jira issue property that holds a task's shared start, and its end when Jira has no due date (ADR-008). */
+export const DATES_PROPERTY = 'cascadeplan.dates';
+
 /** The other plan's record with the shared date fields of `source`, or null when it has them already. */
 function withSharedDates(cur: Partial<WbsTask> | undefined, source: Partial<WbsTask>): Partial<WbsTask> | null {
   const next: Record<string, unknown> = { ...(cur || {}) };
@@ -626,11 +629,11 @@ export async function fetchRawIssues(projectKey: string, reconcileIds: string[] 
     do {
       const res = ids.length
         ? (token
-          ? await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100&nextPageToken=${token}&${reconcile}`)
-          : await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100&${reconcile}`))
+          ? await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates&maxResults=100&nextPageToken=${token}&${reconcile}`)
+          : await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates&maxResults=100&${reconcile}`))
         : (token
-          ? await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100&nextPageToken=${token}`)
-          : await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&maxResults=100`));
+          ? await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates&maxResults=100&nextPageToken=${token}`)
+          : await caller.requestJira(route`/rest/api/3/search/jql?jql=project = "${projectKey}" order by created desc&fields=summary,status,issuetype,assignee,timeoriginalestimate,aggregatetimeoriginalestimate,timespent,aggregatetimespent,duedate,parent,subtasks,epic,issuelinks&properties=cascadeplan.dates&maxResults=100`));
       if (!res || res.status !== 200) {
         logFailure('fetchRawIssues', res || new Error('no answer'));
         if (pages === 0) return { issues: [], isLive: false, status: res ? res.status : 0 };
@@ -833,13 +836,19 @@ export function mapLiveIssues(
         // Jira is the single truth for a task's dates. A scheduled task ends on the Jira due date in
         // every plan, also when someone changed it directly in Jira. The start date has no standard Jira
         // field, so it is the one shared by every plan; it moves only when it would fall after the end.
-        const savedStart = stored?.startDate || weekDates(stored, weeksNow).startDate;
-        const savedEnd = stored?.endDate || weekDates(stored, weeksNow).endDate;
+        // ADR-008: the shared start (and a planner-only end) is the Jira issue property cascadeplan.dates,
+        // the same in every plan. Without it, the plan's own record still holds them (lazy migration).
+        const prop = iss.properties?.[DATES_PROPERTY];
+        const propStart = isIsoDate(prop?.startDate) ? String(prop.startDate).slice(0, 10) : undefined;
+        const propEnd = isIsoDate(prop?.endDate) ? String(prop.endDate).slice(0, 10) : undefined;
+        const scheduled = !!propStart || !!stored?.startWeek;
+        const savedStart = propStart || stored?.startDate || weekDates(stored, weeksNow).startDate;
+        const savedEnd = propEnd || stored?.endDate || weekDates(stored, weeksNow).endDate;
         const jiraDue = isIsoDate(iss.fields?.duedate) ? String(iss.fields.duedate).slice(0, 10) : undefined;
-        const endFromJira = !!stored?.startWeek && !!jiraDue && jiraDue !== savedEnd && weeksNow.length > 0;
+        const endFromJira = scheduled && !!jiraDue && jiraDue !== savedEnd && weeksNow.length > 0;
         const taskEnd = endFromJira ? jiraDue! : (savedEnd || iss.fields?.duedate || '');
         const taskStart = endFromJira && (!isIsoDate(savedStart) || savedStart > jiraDue!) ? jiraDue! : savedStart;
-        const jiraGrid = endFromJira ? gridFor(weeksNow, taskStart, taskEnd) : undefined;
+        const jiraGrid = (endFromJira || (!!propStart && weeksNow.length > 0)) ? gridFor(weeksNow, taskStart, taskEnd) : undefined;
         const autoTarget = PlannerEngine.calculateTargetProgress(taskStart, taskEnd);
         const targetProgress = stored?.manualTargetProgress === true && stored.targetProgress !== undefined
           ? stored.targetProgress
@@ -1408,7 +1417,9 @@ export async function syncTaskToJira(
   const result = await syncTaskFields(taskIdOrKey, updates);
   if (log) {
     // Each write is logged with its old and new values; a field Jira refused is logged as not written (B-23).
-    log.record(taskIdOrKey, result.fields, result, describeJiraChanges(result.fields, before, updates));
+    // A start date written unchanged (moving the task onto the shared property, ADR-008) is not listed.
+    const shown = result.fields.filter(f => !(f === 'startdate' && typeof updates.startDate === 'string' && before.startDate === updates.startDate));
+    log.record(taskIdOrKey, shown, result, describeJiraChanges(shown, before, updates));
     // Each refused field is reported with its own reason (F-08).
     for (const field of result.rejected) {
       log.record(taskIdOrKey, [field], { synced: false, error: result.reasons[field] || 'Jira did not accept the change' },
@@ -1539,6 +1550,21 @@ async function syncTaskFields(
   const rejected = syncSuccess ? [...dropped] : [];
   if (rejected.includes('duedate')) reasons.duedate = 'Jira did not accept the due date on this issue screen';
   const sentFields = Object.keys(fields).filter(f => !rejected.includes(f));
+  // ADR-008: the shared start is the issue property, written after Jira accepted the due date (or when
+  // the end did not change). It needs the start; an update with only an end leaves the property alone.
+  if (typeof updates.startDate === 'string' && syncSuccess && !rejected.includes('duedate')) {
+    const value = { startDate: updates.startDate.slice(0, 10), ...(typeof updates.endDate === 'string' ? { endDate: updates.endDate.slice(0, 10) } : {}), v: 1 };
+    let ok = false;
+    try {
+      const res = await caller.requestJira(route`/rest/api/3/issue/${taskIdOrKey}/properties/${DATES_PROPERTY}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value)
+      });
+      ok = !!res && (res.status === 200 || res.status === 201 || res.status === 204);
+      if (!ok) logFailure('startDateProperty', res);
+    } catch (err) { logFailure('startDateProperty', err); }
+    if (ok) sentFields.push('startdate');
+    else { rejected.push('startdate'); reasons.startdate = 'Jira did not save the start date'; }
+  }
   // Status workflow transition sync
   if (updates.status) {
     // The status counts as written only when Jira applied a transition (F-08).
@@ -1646,11 +1672,20 @@ export async function removeMirroredLink(linkId: string): Promise<boolean> {
 export function applyAcceptedDueDate(
   live: LiveData, issueKey: string, updates: Partial<WbsTask>, result: { synced: boolean; fields: string[] }
 ): void {
-  if (!result.synced || !result.fields.includes('duedate') || typeof updates.endDate !== 'string') return;
-  const due = updates.endDate.slice(0, 10);
+  if (!result.synced) return;
+  const due = result.fields.includes('duedate') && typeof updates.endDate === 'string' ? updates.endDate.slice(0, 10) : undefined;
+  // The start property this call wrote (ADR-008) is recorded the same way.
+  const prop = result.fields.includes('startdate') && typeof updates.startDate === 'string'
+    ? { startDate: updates.startDate.slice(0, 10), ...(typeof updates.endDate === 'string' ? { endDate: updates.endDate.slice(0, 10) } : {}), v: 1 }
+    : undefined;
+  if (!due && !prop) return;
   // A new list on this call's own data: the issue objects themselves are never changed.
-  live.raw = { ...live.raw, issues: (live.raw.issues || []).map((i: any) =>
-    (i && i.key === issueKey ? { ...i, fields: { ...(i.fields || {}), duedate: due } } : i)) };
+  live.raw = { ...live.raw, issues: (live.raw.issues || []).map((i: any) => {
+    if (!i || i.key !== issueKey) return i;
+    return { ...i,
+      fields: due ? { ...(i.fields || {}), duedate: due } : i.fields,
+      properties: prop ? { ...(i.properties || {}), [DATES_PROPERTY]: prop } : i.properties };
+  }) };
 }
 
 /**
@@ -1914,7 +1949,9 @@ export async function updateWbsTask(
       sanitized.weeklyAllocations = evenAllocations(activeWeeks, sIdx, sanitized.spanWeeks);
     }
   } else if (sanitized.startWeek || sanitized.spanWeeks) {
-    const oldIdx = activeWeeks.findIndex(w => w.weekKey === targetTask.startWeek);
+    // The old week is the week of the start date itself (ADR-008: the date is the truth, the week is derived).
+    const hasDates = isIsoDate(targetTask.startDate) && isIsoDate(targetTask.endDate);
+    const oldIdx = hasDates ? weekIndexContaining(activeWeeks, targetTask.startDate as string) : -1;
     const oldSpan = targetTask.spanWeeks || 3;
     const sWk = sanitized.startWeek || targetTask.startWeek || activeWeeks[0].weekKey;
     const span = sanitized.spanWeeks || oldSpan;
@@ -1924,11 +1961,17 @@ export async function updateWbsTask(
     sanitized.startWeek = activeWeeks[sIdx].weekKey;
     sanitized.endWeek = activeWeeks[eIdx].weekKey;
     sanitized.spanWeeks = span;
-    if (oldIdx !== -1 && isIsoDate(targetTask.startDate) && isIsoDate(targetTask.endDate)) {
+    if (oldIdx !== -1) {
       // A move or resize by whole weeks keeps the exact days of the bar.
       const shiftStart = (sIdx - oldIdx) * 7;
-      sanitized.startDate = addDaysIso(targetTask.startDate, shiftStart);
-      sanitized.endDate = addDaysIso(targetTask.endDate, shiftStart + (span - oldSpan) * 7);
+      sanitized.startDate = addDaysIso(targetTask.startDate as string, shiftStart);
+      sanitized.endDate = addDaysIso(targetTask.endDate as string, shiftStart + (span - oldSpan) * 7);
+    } else if (hasDates) {
+      // A start outside the visible weeks has no week to shift from: the bar starts in the chosen week
+      // and keeps its length in days.
+      const days = Math.max(0, Math.round((Date.parse(`${targetTask.endDate}T00:00:00Z`) - Date.parse(`${targetTask.startDate}T00:00:00Z`)) / 86400000));
+      sanitized.startDate = activeWeeks[sIdx].startDate;
+      sanitized.endDate = addDaysIso(activeWeeks[sIdx].startDate, days + (span - oldSpan) * 7);
     } else {
       sanitized.startDate = activeWeeks[sIdx].startDate;
       sanitized.endDate = activeWeeks[eIdx].endDate;
@@ -2007,7 +2050,7 @@ export async function updateWbsTask(
     for (const c of changes.slice(0, CASCADE_BATCH_LIMIT)) {
       scheduleMap[c.key] = { ...(scheduleMap[c.key] || {}), startDate: c.toStart, endDate: c.toEnd, ...gridFor(activeWeeks, c.toStart, c.toEnd) };
       changedKeys.add(c.key);
-      pendingSyncs.push({ key: c.key, updates: { endDate: c.toEnd } });
+      pendingSyncs.push({ key: c.key, updates: { startDate: c.toStart, endDate: c.toEnd } });
     }
   }
 
@@ -2253,7 +2296,7 @@ export async function continueCascade(
       ...gridFor(plan.weeks, c.toStart, c.toEnd) }), cur ? cur.version : 0);
     if (!put.ok) { skipped.push(c.key); log.record(c.key, ['plan'], { synced: false, error: 'not moved: someone else changed it; move the task again' }); continue; }
     await shareDatesAndLog(storage, projectKey, projectId, planId, [{ key: c.key, id: task?.id, entry: put.entry }], log);
-    applyAcceptedDueDate(live, c.key, { endDate: c.toEnd }, await syncTaskToJira(c.key, { endDate: c.toEnd }, log, task));
+    applyAcceptedDueDate(live, c.key, { startDate: c.toStart, endDate: c.toEnd }, await syncTaskToJira(c.key, { startDate: c.toStart, endDate: c.toEnd }, log, task));
   }
   return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, live, planId),
     { ok: true, jiraSync: log.report(), cascadeRemaining: changes.slice(CASCADE_BATCH_LIMIT).map(c => c.key), cascadeSkipped: skipped,
@@ -2310,10 +2353,26 @@ export async function unscheduleTask(
     // The task leaves the timeline in every plan. Its Jira due date is left as it is.
     const log = new SyncLog();
     await shareDatesAndLog(storage, projectKey, projectId, planId, [{ key: taskId, id: issueId, entry: put.entry }], log);
-    return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, undefined, planId), { ok: true, jiraSync: log.report() });
+    await removeDatesProperty(taskId, log);
+    return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, undefined, planId, issueId ? [issueId] : []),
+      { ok: true, jiraSync: log.report() });
   }
+  // Scheduled only through the shared property (ADR-008): removing it takes the task off every plan.
+  const log = new SyncLog();
+  await removeDatesProperty(taskId, log);
+  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, undefined, planId, issueId ? [issueId] : []),
+    { ok: true, jiraSync: log.report() });
+}
 
-  return Object.assign(await getProjectPlan(projectKey, storage, new Date(), undefined, projectId, undefined, planId), { ok: true, jiraSync: noJiraWrites() });
+/** Removes the shared start property of an issue (ADR-008). A missing property is not an error. */
+async function removeDatesProperty(issueKey: string, log: SyncLog): Promise<void> {
+  let ok = false;
+  try {
+    const res = await getJiraCaller().requestJira(route`/rest/api/3/issue/${issueKey}/properties/${DATES_PROPERTY}`, { method: 'DELETE' });
+    ok = !!res && (res.status === 204 || res.status === 200 || res.status === 404);
+    if (!ok) logFailure('removeDatesProperty', res);
+  } catch (err) { logFailure('removeDatesProperty', err); }
+  if (!ok) log.record(issueKey, ['startdate'], { synced: false, error: 'Jira did not remove the start date' });
 }
 
 /**

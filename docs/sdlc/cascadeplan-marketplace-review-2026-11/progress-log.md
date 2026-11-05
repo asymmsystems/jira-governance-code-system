@@ -187,3 +187,11 @@ Branch `feature/cascadeplan-marketplace-fixes`, from `master` at `db08009`. One 
 
 - `live_move.py DEMO-29 7` then `-7`: 170 px before, after the answer and after the reload (which sends DEMO-29's id as `reconcileIds`), both ways; Changes panel "Written" both ways; restored to 2026-10-28 to 2026-11-10, Jira due date 2026-11-10. `forge logs` shows no `cascadeplan` failure line, so the search with the repeated `reconcileIssues` parameter is accepted by real Jira through Forge's `route`.
 - **Live site changes:** DEMO-29's due date 2026-11-10 -> 2026-11-17 -> 2026-11-10 (this check).
+
+### ADR-008 step 1. The shared start date is written to and read from the Jira issue property
+
+- **What changed:** every issue search asks for `properties=cascadeplan.dates`. A task's start (and a planner-only end) comes from the property when it exists, else from the plan's own record (lazy migration: opening the planner writes nothing). Every date write that Jira accepts also sets the property as the user (`{startDate, endDate, v:1}`); a refused due date writes no property. Unscheduling a task removes the property (after the Edit issues check). The Changes panel lists a start date only when it changed.
+- **Week moves:** the old week of a bar is now the week of its start date, because the date is the truth and the week is derived. A start outside the visible weeks has no week to shift from: the bar starts in the chosen week and keeps its length in days (found by the index test "preserves existing dependency when moving timeline bar", whose fixture holds an August start with an October week key).
+- **Tests:** `write-transparency` (no unchanged start date listed), `plan-isolation` (unschedule writes only the property delete), `paging-retry-cascade` (the batch limit counts field writes; each moved issue also gets its property). Harness fake Jira stores, returns and deletes issue properties.
+- **Proof:** unit suite 802 passed; tsc clean; harness `e2e.py` 30/30, `e2e_review.py` 25/25, undo probe (2026-11-16 -> 2026-11-23, Ctrl+Z back to 2026-11-16), F-11, N-10, N-07 and BL-2 step 8 probes pass. The harness results show the property writes.
+- **Remaining (step 2):** remove `shareTaskDates`, make the unit test fakes return properties, rewrite R-01 and R-28.
