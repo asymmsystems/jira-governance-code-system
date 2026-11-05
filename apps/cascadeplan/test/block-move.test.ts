@@ -173,6 +173,27 @@ describe('moveTaskGroup (N-05)', () => {
     await expect(moveTaskGroup({ projectKey: 'TEST', taskId: 'TEST-1', days: 7, expectedVersions: { 'bad key': 1 } as any }, storage)).rejects.toThrow(ValidationError);
   });
 
+  for (const restore of [false, true]) {
+    it(`Undo ${restore ? 'with' : 'without'} restore: a successor that broke its link before the action ${restore ? 'gets its exact old dates back' : 'is cascaded again'} (B-14)`, async () => {
+      // Before the action TEST-5 starts on s0+2, before its predecessor TEST-1 ends (s0+5).
+      const store = new PlanStore(storage, 'TEST', 'TEST');
+      const e5: any = await entry('TEST-5');
+      await store.putEntry('TEST-5', '5', { ...e5, startDate: add(s0, 2), endDate: add(s0, 4) }, e5.version);
+      const moved: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-11', updates: { startDate: add(s0, 4), endDate: add(s0, 7) }, expectedVersion: (await entry('TEST-11')).version }, storage);
+      expect(moved.ok).toBe(true);
+      // Undo replays the cascaded successor first, then the moved sub-task (the order of the live failure).
+      await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-5', updates: { startDate: add(s0, 2), endDate: add(s0, 4) }, expectedVersion: (await entry('TEST-5')).version, restore }, storage);
+      await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-11', updates: { startDate: add(s0, 3), endDate: add(s0, 5) }, expectedVersion: (await entry('TEST-11')).version, restore }, storage);
+      const t5 = (await getProjectPlan('TEST', storage)).tasks.find(x => x.key === 'TEST-5')!;
+      if (restore) expect(t5).toMatchObject({ startDate: add(s0, 2), endDate: add(s0, 4) });
+      else expect(t5.startDate > add(s0, 2)).toBe(true);
+    });
+  }
+
+  it('restore must be true or false', async () => {
+    await expect(updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-11', updates: { progress: 5 }, restore: 'yes' as any }, storage)).rejects.toThrow(ValidationError);
+  });
+
   it('a direct date write to the parent is still refused (N-06 rule 3)', async () => {
     await expect(updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { startDate: add(s0, 7), endDate: add(s0, 9) } }, storage))
       .rejects.toThrow('takes its dates from its sub-tasks');

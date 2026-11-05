@@ -1727,13 +1727,17 @@ async function applyPlannedJiraWrites(
  * Updates a task schedule, dates, effort, progress, or resource.
  */
 export async function updateWbsTask(
-  payload: { projectKey: string; projectId?: string; planId?: string; taskId: string; updates: Partial<WbsTask>; expectedVersion?: number; reconcileIds?: string[] },
+  payload: { projectKey: string; projectId?: string; planId?: string; taskId: string; updates: Partial<WbsTask>; expectedVersion?: number; reconcileIds?: string[]; restore?: boolean },
   storageProvider?: StorageProvider,
   preloaded?: LiveData,
   options?: { skipResponse?: boolean }
 ): Promise<ProjectPlanState> {
   const { projectKey, projectId, taskId, updates, expectedVersion } = payload;
   validateTaskUpdates(updates as Record<string, unknown>);
+  // Undo and Redo send restore: they write the exact dates of every task the action changed, so no
+  // new cascade runs; a cascade would move again a successor whose old dates broke a link (B-14).
+  if (payload.restore !== undefined && typeof payload.restore !== 'boolean') throw new ValidationError('restore', 'restore must be true or false');
+  const restoring = payload.restore === true;
   if (expectedVersion !== undefined && (!Number.isInteger(expectedVersion) || expectedVersion < 0)) {
     throw new ValidationError('expectedVersion', 'expectedVersion must be a whole number of at least 0');
   }
@@ -1936,7 +1940,7 @@ export async function updateWbsTask(
   }
 
   // A new or changed dependency moves the task to its earliest start, keeping its duration (B-11).
-  if (sanitized.dependency && sanitized.dependency.predecessorKey) {
+  if (!restoring && sanitized.dependency && sanitized.dependency.predecessorKey) {
     const start = sanitized.startDate || targetTask.startDate;
     const end = sanitized.endDate || targetTask.endDate;
     const candidate = plan.tasks.map(t => (t.key === targetTask.key ? { ...t, startDate: start, endDate: end, dependency: sanitized.dependency, dependencies: sanitized.dependencies } : t));
@@ -1981,7 +1985,7 @@ export async function updateWbsTask(
 
   // Cascade date shifts to conflicting successors, at most CASCADE_BATCH_LIMIT per call (B-10, B-11).
   let cascadeRemaining: string[] = [];
-  if (sanitized.startDate || sanitized.endDate || sanitized.dependency) {
+  if (!restoring && (sanitized.startDate || sanitized.endDate || sanitized.dependency)) {
     // The parents' roll-ups are recomputed with the new dates before the cascade (N-06 rule 1).
     const candidateTasks = withRollUps(plan.tasks.map(t => (t.key === targetTask.key ? { ...t, ...sanitized } : t)));
     const inputs = engineInputs(candidateTasks);

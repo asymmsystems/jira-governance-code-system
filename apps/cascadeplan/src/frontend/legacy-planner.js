@@ -231,7 +231,8 @@ async function replayUndo(ops) {
         }
       } else {
         const t = findAnyTask(op.key);
-        res = await rawCallResolver('updateWbsTask', { planId, taskId: op.key, updates: op.updates, expectedVersion: (t && t.version) || 0 });
+        // restore: the exact dates of each changed task, with no new cascade (B-14).
+        res = await rawCallResolver('updateWbsTask', { planId, taskId: op.key, updates: op.updates, expectedVersion: (t && t.version) || 0, restore: true });
       }
       const verdict = classifyResult(res);
       if (verdict.failed) {

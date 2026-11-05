@@ -6492,6 +6492,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const dependents = others ? ` and ${others} dependent${others > 1 ? "s" : ""}` : "";
     if (fn === "unscheduleTask") return `Moved ${key} to the backlog`;
     if (fn === "scheduleBacklogTask") return `Scheduled ${key}`;
+    if (fn === "moveTaskGroup") return `Moved ${key} with its sub-tasks` + (others ? ` (${others} issue${others > 1 ? "s" : ""} changed)` : "");
     if (fn !== "updateWbsTask") return `Changed ${key}`;
     if ("dependency" in u) return u.dependency ? `Linked ${key} to ${u.dependency.predecessorKey} at ${u.dependency.triggerPercent}%` : `Removed the link of ${key}`;
     if (u.startDate || u.endDate || u.startWeek) return `Moved ${key}${dependents}`;
@@ -8136,7 +8137,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
           }
         } else {
           const t = findAnyTask(op.key);
-          res = await callResolver("updateWbsTask", { planId, taskId: op.key, updates: op.updates, expectedVersion: t && t.version || 0 });
+          res = await callResolver("updateWbsTask", { planId, taskId: op.key, updates: op.updates, expectedVersion: t && t.version || 0, restore: true });
         }
         const verdict = classifyResult(res);
         if (verdict.failed) {
