@@ -208,25 +208,20 @@ export class PlannerEngine {
     pastWeeksCount: number = 6,
     futureWeeksCount: number = 8
   ): { weeks: WeeklySprintColumn[]; currentWeekIndex: number } {
-    const ref = new Date(referenceDate);
-    const day = ref.getDay();
-    const diffToWed = (day >= 3 ? day - 3 : day + 4);
-    const currentWeekStart = new Date(ref);
-    currentWeekStart.setDate(ref.getDate() - diffToWed);
-    currentWeekStart.setHours(0, 0, 0, 0);
+    // F-29: weeks start on Monday, like the timeline header, and are computed in UTC, like the dates.
+    const ref = new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), referenceDate.getUTCDate()));
+    const diffToMon = (ref.getUTCDay() + 6) % 7;
+    const currentWeekStart = new Date(ref.getTime() - diffToMon * 86400000);
 
     const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const weeks: WeeklySprintColumn[] = [];
 
     for (let i = -pastWeeksCount; i <= futureWeeksCount; i++) {
-      const wkStart = new Date(currentWeekStart);
-      wkStart.setDate(currentWeekStart.getDate() + i * 7);
+      const wkStart = new Date(currentWeekStart.getTime() + i * 7 * 86400000);
+      const wkEnd = new Date(wkStart.getTime() + 6 * 86400000);
 
-      const wkEnd = new Date(wkStart);
-      wkEnd.setDate(wkStart.getDate() + 6);
-
-      const startDay = String(wkStart.getDate()).padStart(2, '0');
-      const startMon = MONTHS[wkStart.getMonth()];
+      const startDay = String(wkStart.getUTCDate()).padStart(2, '0');
+      const startMon = MONTHS[wkStart.getUTCMonth()];
       const weekKey = `${startDay}-${startMon}`;
 
       const sprintNum = Math.floor((i + pastWeeksCount) / 2);

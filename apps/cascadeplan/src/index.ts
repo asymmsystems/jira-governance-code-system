@@ -11,6 +11,7 @@
  */
 
 import api, { route, privacy } from '@forge/api';
+import { AsyncLocalStorage } from 'async_hooks';
 import Resolver from '@forge/resolver';
 import { kvs, WhereConditions } from '@forge/kvs';
 import {
@@ -305,8 +306,26 @@ export function weekIndexContaining(weeks: WeeklySprintColumn[], iso: string | u
   return weeks.findIndex(w => w.startDate <= iso && w.endDate >= iso);
 }
 
-function todayIso(d: Date = new Date()): string {
-  return d.toISOString().slice(0, 10);
+/**
+ * F-29: "today" of the request is the user's local date when the client sent one within a day of the
+ * server's UTC date (requestScope, set per resolver call); otherwise the UTC date.
+ */
+const requestScope = new AsyncLocalStorage<{ today?: string }>();
+
+export function clientTodayOf(value: unknown, now: Date = new Date()): string | undefined {
+  if (typeof value !== 'string' || !isIsoDate(value)) return undefined;
+  const diff = Math.abs(Date.parse(`${value}T00:00:00Z`) - Date.parse(`${now.toISOString().slice(0, 10)}T00:00:00Z`)) / 86400000;
+  return diff <= 1 ? value : undefined;
+}
+
+/** Runs fn with the client's local date as "today" for this request. */
+export function withClientToday<T>(clientToday: unknown, fn: () => Promise<T>): Promise<T> {
+  return requestScope.run({ today: clientTodayOf(clientToday) }, fn);
+}
+
+function todayIso(d?: Date): string {
+  if (d) return d.toISOString().slice(0, 10);
+  return requestScope.getStore()?.today || new Date().toISOString().slice(0, 10);
 }
 
 /**
@@ -808,7 +827,9 @@ export function mapLiveIssues(
         const endFromJira = scheduled && !!jiraDue && jiraDue !== savedEnd && weeksNow.length > 0;
         const taskEnd = endFromJira ? jiraDue! : (savedEnd || iss.fields?.duedate || '');
         const taskStart = endFromJira && (!isIsoDate(savedStart) || savedStart > jiraDue!) ? jiraDue! : savedStart;
-        const jiraGrid = (endFromJira || (!!propStart && weeksNow.length > 0)) ? gridFor(weeksNow, taskStart, taskEnd) : undefined;
+        // The week grid follows the dates on every read, so stored week keys of any earlier grid
+        // (before F-29 weeks started on Wednesday) never place a bar (F-29, migration by derivation).
+        const jiraGrid = scheduled && weeksNow.length > 0 && isIsoDate(taskStart) && isIsoDate(taskEnd) ? gridFor(weeksNow, taskStart, taskEnd) : undefined;
         const autoTarget = PlannerEngine.calculateTargetProgress(taskStart, taskEnd);
         const targetProgress = stored?.manualTargetProgress === true && stored.targetProgress !== undefined
           ? stored.targetProgress
@@ -965,7 +986,8 @@ export async function getProjectPlan(
 
   // Evaluate every dependency with the schedule engine: earliest start, reason, driver, fix (B-11).
   const engine = engineInputs(tasks);
-  const today = todayIso(referenceDate);
+  // The reference date given by a caller wins; otherwise the request's today (F-29).
+  const today = referenceDate && Math.abs(referenceDate.getTime() - Date.now()) > 60000 ? todayIso(referenceDate) : todayIso();
   for (const t of tasks) {
     if (t.dependency) {
       const ev = evaluateEffort(t.key, engine.efforts, engine.links, today);
@@ -2045,9 +2067,9 @@ export async function updateWbsTask(
       const shiftStart = (sIdx - oldIdx) * 7;
       sanitized.startDate = addDaysIso(targetTask.startDate as string, shiftStart);
       sanitized.endDate = addDaysIso(targetTask.endDate as string, shiftStart + (span - oldSpan) * 7);
-    } else if (hasDates) {
+    } else if (hasDates && !(updates as any).spanWeeks) {
       // A start outside the visible weeks has no week to shift from: the bar starts in the chosen week
-      // and keeps its length in days.
+      // and keeps its length in days. (A span given in weeks uses the week boundaries, below.)
       const days = Math.max(0, Math.round((Date.parse(`${targetTask.endDate}T00:00:00Z`) - Date.parse(`${targetTask.startDate}T00:00:00Z`)) / 86400000));
       sanitized.startDate = activeWeeks[sIdx].startDate;
       sanitized.endDate = addDaysIso(activeWeeks[sIdx].startDate, days + (span - oldSpan) * 7);
@@ -3850,12 +3872,12 @@ export const RESOLVER_RULES: Record<string, ResolverRule> = {
 function define(name: string, fn: (req: any) => Promise<any>): void {
   const rule = RESOLVER_RULES[name];
   if (!rule) throw new Error(`Resolver ${name} has no permission rule (BL-2).`);
-  resolver.define(name, async (req) => withResolverHandler(req, async () => {
+  resolver.define(name, async (req) => withClientToday(req?.payload?.clientToday, () => withResolverHandler(req, async () => {
     if (rule === 'plan-approver' && !(await isPlanApprover(resolveStorage(), { projectId: extractProjectId(req) }))) {
       return forbiddenResult(APPROVER_REQUIRED_MESSAGE);
     }
     return fn(req);
-  }));
+  })));
 }
 
 const withProject = (req: any) => ({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) });

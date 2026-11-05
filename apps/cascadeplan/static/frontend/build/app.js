@@ -6189,7 +6189,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     let res;
     const ids = recentWriteIds();
     try {
-      res = await (0, import_bridge.invoke)(fnName, ids.length ? { ...payload, reconcileIds: ids } : payload);
+      const d = /* @__PURE__ */ new Date();
+      const clientToday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      res = await (0, import_bridge.invoke)(fnName, { ...ids.length ? { ...payload, reconcileIds: ids } : payload, clientToday });
       rememberWrites(res);
     } catch (err) {
       console.error("Forge resolver error:", fnName, err);

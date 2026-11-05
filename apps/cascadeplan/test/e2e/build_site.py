@@ -41,7 +41,8 @@ def main() -> int:
     cmd = [str(ESBUILD), 'entry.ts', '--bundle', '--format=iife', '--target=es2020', '--outfile=site/app.js',
            '--banner:js=var process={env:{}};',
            '--alias:@forge/api=./stubs/forge-api.ts', '--alias:@forge/kvs=./stubs/forge-kvs.ts',
-           '--alias:@forge/resolver=./stubs/forge-resolver.ts', '--alias:@forge/bridge=./stubs/forge-bridge.ts']
+           '--alias:@forge/resolver=./stubs/forge-resolver.ts', '--alias:@forge/bridge=./stubs/forge-bridge.ts',
+           '--alias:async_hooks=./stubs/async-hooks.ts']
     return subprocess.run(cmd, cwd=HERE).returncode
 
 

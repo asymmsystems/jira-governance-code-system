@@ -36,7 +36,10 @@ async function callOnce(fnName: string, payload: Record<string, unknown>): Promi
   let res: any;
   const ids = recentWriteIds();
   try {
-    res = await invoke(fnName, ids.length ? { ...payload, reconcileIds: ids } : payload);
+    // F-29: the user's local date is "today" for the server's schedule rules.
+    const d = new Date();
+    const clientToday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    res = await invoke(fnName, { ...(ids.length ? { ...payload, reconcileIds: ids } : payload), clientToday });
     rememberWrites(res);
   } catch (err: any) {
     console.error('Forge resolver error:', fnName, err);

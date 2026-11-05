@@ -46,7 +46,7 @@ describe('read-after-write ids (F-03 part 3)', () => {
     invoke.mockImplementation(async (fn: string) => (fn === 'updateWbsTask' ? { ok: true, tasks: [], writtenIssueIds: ['10029'] } : { ok: true, tasks: [] }));
     await callResolver('updateWbsTask', { taskId: 'T-1', planId: 'p1' });
     await callResolver('getProjectPlan', { planId: 'p1' });
-    expect(invoke.mock.calls[1]).toEqual(['getProjectPlan', { planId: 'p1', reconcileIds: ['10029'] }]);
+    expect(invoke.mock.calls[1]).toEqual(['getProjectPlan', { planId: 'p1', reconcileIds: ['10029'], clientToday: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }]);
   });
 });
 
