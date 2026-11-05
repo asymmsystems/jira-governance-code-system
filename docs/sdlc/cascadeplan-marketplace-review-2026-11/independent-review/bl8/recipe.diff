@@ -1,0 +1,27 @@
+diff --git a/apps/cascadeplan/package.json b/apps/cascadeplan/package.json
+index 18cdc85..d20735d 100644
+--- a/apps/cascadeplan/package.json
++++ b/apps/cascadeplan/package.json
+@@ -30,6 +30,7 @@
+     "typescript": "^5.7.2"
+   },
+   "dependencies": {
++    "@asymm/jira-ui": "file:../../packages/asymm-jira-ui",
+     "@forge/api": "^8.4.0",
+     "@forge/bridge": "^7.2.1",
+     "@forge/kvs": "^2.1.1",
+diff --git a/packages/asymm-jira-ui/package.json b/packages/asymm-jira-ui/package.json
+index 9780395..3f7586b 100644
+--- a/packages/asymm-jira-ui/package.json
++++ b/packages/asymm-jira-ui/package.json
+@@ -5,8 +5,8 @@
+   "author": "Fahim Farook",
+   "license": "UNLICENSED",
+   "private": true,
+-  "main": "src/index.ts",
+-  "types": "src/index.ts",
++  "main": "dist/index.js",
++  "types": "dist/index.d.ts",
+   "peerDependencies": {
+     "@forge/react": ">=10.0.0",
+     "react": ">=18.0.0"
