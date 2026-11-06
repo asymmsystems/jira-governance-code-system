@@ -37,6 +37,27 @@ Can it be a shared address such as sudo@asymm.systems? Not for these steps:
 
    Every statement in it is true of the apps today; it makes no compliance or customer claim. If the form refuses the link, remove the last sentence (571 characters).
 
+   **Support hours** section (it must match https://asymm.systems/support, which promises a first answer within 24 business hours, Monday to Friday):
+
+   | Field | Value |
+   |---|---|
+   | Provide support hours | ticked |
+   | Region | the Asia Pacific option |
+   | Time zone | Asia/Colombo (UTC+05:30) |
+   | 24 hour support | **not ticked**: ticking it promises support at every hour, which the support page does not offer |
+   | Support time from / until | 09:00 / 17:00 (8 hours, the Top Partner minimum) |
+   | Days supported | Monday to Friday |
+
+   **Support contact details** section:
+
+   | Field | Value |
+   |---|---|
+   | Provide support contact details | ticked |
+   | Support name | leave blank (the partner name, Asymm Systems, is used) |
+   | Support email | support@asymm.systems |
+   | Support URL | https://asymm.systems/support |
+   | Support phone | leave blank: one mode is enough, and a phone number adds a channel you must answer |
+
 4. If the form asks you to accept the Marketplace Partner Agreement, read it first. If you want, send me the agreement link before you accept, and I will list any clause about interest or late-payment charges.
 5. Result: at https://marketplace.atlassian.com your profile menu (top right) now has **Manage vendor account**.
 
