@@ -73,13 +73,15 @@ LedgerSeal provides technical controls that support compliance in regulated indu
 | **11 to 100 Users** | $0.95 per user / month | $9.50 per user / year |
 | **101 to 250 Users** | $0.75 per user / month | $7.50 per user / year |
 | **251 to 1,000 Users** | $0.24 per user / month | $2.40 per user / year |
-| **More than 1,000 Users** | Custom price | Custom price |
+| **More than 1,000 Users** | $0.24 per user / month | $2.40 per user / year |
 
 *All billing is handled natively through your existing Atlassian invoice.*
 
 ---
 
-## Highlights (images 580 x 330: `docs/marketplace/assets/ledgerseal/highlight-1.png` to `highlight-3.png`)
+## Highlights (images 1840 x 900: the Marketplace form needs at least 920 x 450, so the matching screenshots are used; `highlight-1.png` to `highlight-3.png` in `docs/marketplace/assets/ledgerseal/` are too small)
+
+Images used: highlight 1 `01-sealed-panel.png`, highlight 2 `02-tamper-detected.png`, highlight 3 `03-transition-blocked.png`.
 
 1. **Sealed at approval.** Sealing stores a SHA-256 hash of the covered fields, comments and attachments, who signed and the sign-off role, in a hash-chained history.
 2. **Changes after approval, named.** Each changed item shows its value at approval, its value now and who changed it. The person who made the changes cannot approve them; another approver must.

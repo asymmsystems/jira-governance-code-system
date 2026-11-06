@@ -23,7 +23,7 @@ This checklist consolidates all operational actions that require direct human ex
   - Set Primary Category and Secondary Category.
 - [ ] **Upload Visual Assets:**
   - Upload `docs/marketplace/assets/<app>/icon.png` (144x144 px PNG).
-  - Upload `docs/marketplace/assets/<app>/banner.png` (1120 x 548 px PNG) and `highlight-1.png` to `highlight-3.png` (580 x 330 px PNGs).
+  - Upload `docs/marketplace/assets/<app>/banner.png` (1120 x 548 px PNG). Highlight images are 1840 x 900 screenshots (the form needs at least 920 x 450; the 580 x 330 `highlight-N.png` files are too small).
   - Upload all 5 screenshots from `docs/marketplace/assets/<app>/` (1840 x 900 px PNGs).
 - [ ] **Configure Pricing & Licensing:**
   - Select **Paid via Atlassian**.

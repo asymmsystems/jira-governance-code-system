@@ -5,12 +5,16 @@
 ## 1. Licensing & Pricing
 
 ### How does pricing work?
-Every app in the Asymm Systems Jira Governance Suite follows a transparent tiered pricing model:
-- **1 to 10 Users:** **Free** (Fully functional evaluation tier).
-- **11 to 100 Users:** **$1.50 per user / month** ($15.00 / user / year).
-- **101 to 250 Users:** **$1.20 per user / month** ($12.00 / user / year).
-- **251 to 1,000 Users:** **$0.90 per user / month** ($9.00 / user / year).
-- **Annual Discount:** 2 months free when billed annually.
+Each app in the Asymm Systems Jira Governance Suite has its own price per user per month:
+
+| App | 1 to 10 users | 11 to 100 | 101 to 250 | 251 and more |
+|---|---|---|---|---|
+| CascadePlan | Free | $1.50 | $1.20 | $0.90 |
+| FourRealities | Free | $1.40 | $1.10 | $0.80 |
+| DefinitionGuard | Free | $0.95 | $0.75 | $0.24 |
+| LedgerSeal | Free | $0.95 | $0.75 | $0.24 |
+
+The free tier has every feature. Annual billing costs 10 times the monthly price.
 
 ### How is the app tier determined?
 Atlassian Marketplace licensing follows the user tier of your Jira Cloud instance, not the number of people who actively click in the app. For example, if your Jira instance has 25 licensed users, the app runs at the 25-user tier.

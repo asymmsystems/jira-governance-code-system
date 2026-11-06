@@ -51,11 +51,11 @@ Configure native Atlassian billing under **Pricing**:
 - **Pricing Model:** Per-User Tiered Pricing (Monthly & Annual).
 - **Free Evaluation Tier:**
   - `1 to 10 Users`: **$0.00 / month (Free)**
-- **Commercial Tiers:**
-  - `11 to 100 Users`: **$1.50 per user / month** ($15.00 / user / year)
-  - `101 to 250 Users`: **$1.20 per user / month** ($12.00 / user / year)
-  - `251 to 1,000 Users`: **$0.90 per user / month** ($9.00 / user / year)
-  - `1,001+ Users`: Custom enterprise tier.
+- **Commercial Tiers** (per user per month; annual is 10 times monthly; the 251 to 1,000 price applies to every larger tier, up to 100,000 users):
+  - CascadePlan: $1.50 (11 to 100), $1.20 (101 to 250), $0.90 (251 and more)
+  - FourRealities: $1.40, $1.10, $0.80
+  - DefinitionGuard: $0.95, $0.75, $0.24
+  - LedgerSeal: $0.95, $0.75, $0.24
 
 ### Step 2.4: Security questionnaires and the Privacy & Security tab
 The Security Self-Assessment was retired by Atlassian on 13 August 2023. The current gates are the Forge app security questionnaire (it has blocking items), the partner security questionnaire (information only), partner identity verification, the vulnerability scan on submission, and the Privacy & Security tab. Answers per app:

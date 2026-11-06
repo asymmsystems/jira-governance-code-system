@@ -29,7 +29,7 @@ describe('FourRealities listing (BL-4)', () => {
     expect(listing).toContain('| **11 to 100 Users** | $1.40 per user / month | $14.00 per user / year |');
     expect(listing).toContain('| **101 to 250 Users** | $1.10 per user / month | $11.00 per user / year |');
     expect(listing).toContain('| **251 to 1,000 Users** | $0.80 per user / month | $8.00 per user / year |');
-    expect(listing).toContain('| **Above 1,000 Users** | Custom | Custom |');
+    expect(listing).toContain('| **Above 1,000 Users** | $0.80 per user / month | $8.00 per user / year |');
     expect(listing).not.toMatch(/\$1\.50|\$1\.20|\$0\.90/);
   });
 

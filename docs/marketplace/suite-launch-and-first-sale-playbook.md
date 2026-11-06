@@ -122,11 +122,7 @@ Publish the open-source Node verification script directly in the docs and in a p
 ### 3.1 Atlassian Developer Console Checklist
 For each of the 4 apps on [developer.atlassian.com/console](https://developer.atlassian.com/console):
 1. **Licensing:** Enable paid via Atlassian (or free with paid tier).
-2. **Pricing Structure (Standardized Across Suite):**
-   - **Up to 10 Users:** **Free** (The wedge for self-serve trials and small teams).
-   - **11 to 100 Users:** **\$1.50 per user/month** (e.g. 50 users = \$75/mo).
-   - **101 to 250 Users:** **\$1.20 per user/month**.
-   - **251 to 1,000 Users:** **\$0.90 per user/month**.
+2. **Pricing:** each app has its own price, free for up to 10 users; the 251 to 1,000 price applies to every larger tier. The decided prices are in `docs/sdlc/suite-readiness-review-2026-11/README.md`, section 4.
 3. **Cloud Security & Privacy Tab:**
    - Complete the Atlassian Security Self-Assessment.
    - Confirm "No external data storage" and "No outbound network traffic".

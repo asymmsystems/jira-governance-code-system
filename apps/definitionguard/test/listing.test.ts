@@ -98,7 +98,7 @@ describe('B-08 listing v2', () => {
     expect(table).toContain('| **11 to 100 Users** | $0.95 per user / month | $9.50 per user / year |');
     expect(table).toContain('| **101 to 250 Users** | $0.75 per user / month | $7.50 per user / year |');
     expect(table).toContain('| **251 to 1,000 Users** | $0.24 per user / month | $2.40 per user / year |');
-    expect(table).toContain('| **More than 1,000 Users** | Custom price | Custom price |');
+    expect(table).toContain('| **More than 1,000 Users** | $0.24 per user / month | $2.40 per user / year |');
     expect(read()).not.toMatch(/\$(1\.50|1\.20|0\.90|1\.00|0\.80|0\.40)\b/);
   });
 
