@@ -98,6 +98,11 @@ describe('reviewer notes', () => {
     expect(notes.match(/^\| `[a-z:-]+` \|/gm)).toHaveLength(scopes.length);
   });
 
+  it('M-8: describes the closed mark, not a deleted key', () => {
+    expect(notes).toContain('replaces the account\'s token-to-account entry with a closed mark');
+    expect(notes).not.toMatch(/token-to-account key is deleted|deletes the account's token-to-account key/);
+  });
+
   it('needs no Asymm Systems site', () => {
     expect(notes).toContain('Install LedgerSeal on your own test site');
     expect(notes).not.toMatch(/asymmsystems\.atlassian\.net|LSP-3|DEMO-34/);
