@@ -29,6 +29,7 @@ Every scope declared in `manifest.yml` is listed below with how the code uses it
 - **Forge Storage:** Seal records, history, and approver groups are kept in Atlassian Forge key-value storage (`storage:app`). No third-party databases are used.
 - **Data Residency:** Data residency follows Atlassian's rules for Forge app storage.
 - **Signing:** Every seal attestation and evidence export is signed with Ed25519 by the Asymm Systems key of the production environment (`ls-prod-2026-11`). The private key is a Forge encrypted variable; the public key is in https://github.com/asymmsystems/ledgerseal-verifier.
+- **Restricted comments:** Comments restricted to a project role or group are covered only when Jira lets the LedgerSeal app read them, that is when the app's user is in that role or group; otherwise a change to such a comment is not detected. A covered restricted comment's text is shown in the panel, and the evidence is exported, only to a user who can see the comment in Jira.
 - **Personal data:** Hashed seal records name people by a pseudonymous party token (HMAC-SHA-256 of the account id under a per-site key in app storage), never by account id or name. The `ledgerseal-cert` issue property holds no account id. Account ids are reported weekly; a closed account's token-to-account entry keeps only a closed mark, with no account id. A deleted issue's records are deleted by a trigger on `avi:jira:deleted:issue`.
 
 ---
@@ -42,7 +43,7 @@ Install LedgerSeal on your own test site; nothing depends on the Asymm Systems s
 ## 4. Reviewer Test Plan Steps
 
 ### Test Step 1: Seal an issue
-1. Open any issue, open the **Approval Seal** panel from the issue's app button (**View app actions**, then **Approval Seal**).
+1. Open any issue. The **Approval seal** entry in the details column shows the seal state; expand it to see it. Open the **Approval Seal** panel from the issue's app button (**View app actions**, then **Approval Seal**).
 2. Click **Seal this issue**, choose the sign-off role, tick the declaration, click **Sign and seal**.
 3. Observe the green `SEALED` lozenge and "Approval seal: Sealed. No change detected since approval."
 4. Click **Show details** to see the signer, sign-off role, hash and covered fields; **Show history** lists the seal with who acted.

@@ -231,6 +231,8 @@ Every other field with a value is covered, including reporter, issue type, proje
 ### 4.4 Comments
 All comments come from `/rest/api/3/issue/{id}/comment`, paged by 100 (LS-15). Each is `{ id, authorAccountId, created (UTC), body (ADF, section 4.3) }`, sorted by id. An edit changes `body` and so breaks the seal.
 
+Restricted comments (F-06): the comments come from the app's own read, so a comment restricted to a project role or group the app user is not in is not returned by Jira and is not covered (seen live on LSP-5, 2026-11-06, with a comment restricted to the Administrators role). The snapshot records the restricted comments it covers in `restrictedComments` (`{ id, type, value }`, outside the hashed form). The panel shows a changed restricted comment's text only to a viewer whose own comment list (read as the user) contains it, otherwise "A restricted comment that you cannot see in Jira"; a removed restricted comment is never shown. `seal-evidence-api` answers `RESTRICTED_EVIDENCE` to a viewer who cannot see every restricted comment of the seal.
+
 ### 4.5 Attachments
 Each is `{ id, filename, size, mimeType, created (UTC), authorAccountId }`, sorted by id. Content is not hashed. Jira gives a replaced file a new id.
 
@@ -243,6 +245,7 @@ Each is `{ id, filename, size, mimeType, created (UTC), authorAccountId }`, sort
 
 ```yaml
 modules:
+  jira:issueContext:    ledgerseal-context (UI Kit, native, resource context; the seal state in the issue details column, F-12)
   jira:issuePanel:      ledgerseal-panel (UI Kit, native, resource main, icon resource:icons;icon.svg)
   jira:workflowValidator: ledgerseal-validator, function validate-transition
   jira:entityProperty:  ledgerseal-cert-index on issue property ledgerseal-cert
