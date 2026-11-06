@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Asymm Systems. All rights reserved.
+#
+# @author Fahim Farook
 """Live L2: one-week drag of DEMO-29, bar length before/optimistic/response/reload; then drag back.
 Asymm Systems. @author Fahim Farook"""
 import json, sys

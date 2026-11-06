@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Asymm Systems. All rights reserved.
+#
+# @author Fahim Farook
 """Discovery 3: open the planner page. Asymm Systems. @author Fahim Farook"""
 from playwright.sync_api import sync_playwright
 from live_common import open_browser, SITE, OUT, planner_frame

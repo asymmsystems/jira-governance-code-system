@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Asymm Systems. All rights reserved.
+#
+# @author Fahim Farook
 """Probe: link ports on hover and the ring on click. Copyright (c) 2026 Asymm Systems. @author Fahim Farook"""
 import json
 import pathlib
