@@ -59,7 +59,7 @@ Each fact has a source in `marketplace-commercial-rules.md` or `pricing-research
 
 ## 4. Price
 
-**Decided by the owner, 2026-11-06** (per user per month; free for 1 to 10 users; custom above 1,000):
+**Decided by the owner, 2026-11-06** (per user per month; free for 1 to 10 users). Above 1,000 users, the owner chose option A on 2026-11-07: each app keeps its 251 to 1,000 price for every larger tier, up to 100,000 users, instead of a custom price.
 
 | App | 11 to 100 | 101 to 250 | 251 to 1,000 | Rule |
 |---|---|---|---|---|
@@ -70,7 +70,7 @@ Each fact has a source in `marketplace-commercial-rules.md` or `pricing-research
 
 The analysis that led to it follows.
 
-Current plan for all four (owner, 2026-11-06): free 1 to 10 users, $1.50 (11 to 100), $1.20 (101 to 250), $0.90 (251 to 1,000), custom above.
+Earlier plan for all four, replaced by the decision above (owner, 2026-11-06): free 1 to 10 users, $1.50 (11 to 100), $1.20 (101 to 250), $0.90 (251 to 1,000), custom above.
 
 Research recommendation (judgment, not sourced fact):
 

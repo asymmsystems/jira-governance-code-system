@@ -123,6 +123,8 @@ DefinitionGuard provides records that support internal and external audits:
 
 ## Highlights (images 1840 x 900: the Marketplace form needs at least 920 x 450, so the matching screenshots are used; `highlight-1.png` to `highlight-3.png` in `docs/marketplace/assets/definitionguard/` are too small)
 
+Images used: highlight 1 `02-evidence-link.png`, highlight 2 `03-transition-blocked.png`, highlight 3 `05-audit-export.png`.
+
 1. **Evidence on the items that need it.** An item marked "Evidence required" is ticked only with a link (http or https), a note, or both. The app checks the link format, not what it points to.
 2. **The move to Done waits.** The DefinitionGuard DoD Enforcement validator blocks a move into a Done status while a mandatory item is open and not waived. A Jira admin adds it to each transition.
 3. **A history you can check.** Every tick, reopen, waiver and reset is kept in a hash-chained history; waivers carry a reason. The panel shows whether the chain is intact, and admins can export it as JSON.

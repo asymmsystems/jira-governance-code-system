@@ -81,6 +81,8 @@ LedgerSeal provides technical controls that support compliance in regulated indu
 
 ## Highlights (images 1840 x 900: the Marketplace form needs at least 920 x 450, so the matching screenshots are used; `highlight-1.png` to `highlight-3.png` in `docs/marketplace/assets/ledgerseal/` are too small)
 
+Images used: highlight 1 `01-sealed-panel.png`, highlight 2 `02-tamper-detected.png`, highlight 3 `03-transition-blocked.png`.
+
 1. **Sealed at approval.** Sealing stores a SHA-256 hash of the covered fields, comments and attachments, who signed and the sign-off role, in a hash-chained history.
 2. **Changes after approval, named.** Each changed item shows its value at approval, its value now and who changed it. The person who made the changes cannot approve them; another approver must.
 3. **The move waits for approval.** The Require Valid LedgerSeal workflow validator blocks a transition when the issue is not sealed, was changed after approval, or the seal was revoked.

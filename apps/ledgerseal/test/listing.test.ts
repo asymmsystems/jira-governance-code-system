@@ -19,12 +19,12 @@ const manifest = fs.readFileSync(path.resolve(__dirname, '../manifest.yml'), 'ut
 const mapping = fs.readFileSync(path.join(ROOT, 'site/apps/ledgerseal', ['compl', 'iance-mapping.md'].join('')), 'utf8');
 
 describe('listing prices (owner decision 2026-11-06)', () => {
-  it('states free, $0.95, $0.75, $0.24 and custom, and no older price', () => {
+  it('states free, $0.95, $0.75 and $0.24 above 250 users, and no older price', () => {
     expect(listing).toContain('| **1 to 10 Users** | **Free** | **Free** |');
     expect(listing).toContain('| **11 to 100 Users** | $0.95 per user / month | $9.50 per user / year |');
     expect(listing).toContain('| **101 to 250 Users** | $0.75 per user / month | $7.50 per user / year |');
     expect(listing).toContain('| **251 to 1,000 Users** | $0.24 per user / month | $2.40 per user / year |');
-    expect(listing).toContain('| **More than 1,000 Users** | Custom price | Custom price |');
+    expect(listing).toContain('| **More than 1,000 Users** | $0.24 per user / month | $2.40 per user / year |');
     expect(listing).not.toMatch(/\$1\.50|\$1\.20|\$0\.90/);
   });
 });

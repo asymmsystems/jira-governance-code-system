@@ -91,6 +91,8 @@ FourRealities collects delivery evidence in one place. It can support compliance
 
 ## Highlights (images 1840 x 900: the Marketplace form needs at least 920 x 450, so the matching screenshots are used; `highlight-1.png` to `highlight-3.png` in `docs/marketplace/assets/fourrealities/` are too small)
 
+Images used: highlight 1 `02-issue-panel.png`, highlight 2 `04-inspect.png`, highlight 3 `01-dashboard.png`.
+
 1. **Four checks per issue, each with its source.** Intent, Process, Code and Audit, each with a state, a plain sentence and where the evidence comes from.
 2. **Signed records are checked, not trusted.** A DefinitionGuard or LedgerSeal record counts only when its signature is verified and it is not older than one already seen; a hand-written record counts like no record.
 3. **Only the checks your site uses.** A check that is not in use is not scored and says so; the dashboard lists the checks in use.

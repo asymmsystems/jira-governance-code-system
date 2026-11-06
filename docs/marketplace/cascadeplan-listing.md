@@ -81,6 +81,8 @@ CascadePlan is a planning tool. It can support compliance with change-management
 
 ## Highlights (images 1840 x 900: the Marketplace form needs at least 920 x 450, so the matching screenshots are used; `highlight-1.png` to `highlight-3.png` in `docs/marketplace/assets/cascadeplan/` are too small)
 
+Images used: highlight 1 `01-timeline.png`, highlight 2 `03-move-preview.png`, highlight 3 `04-baseline.png`.
+
 1. **Start at 30%, not 100%.** A successor can start when its predecessor reaches a percent of its work. "Why this date?" names the link that sets the earliest start.
 2. **Move a story with its sub-tasks.** Work not started moves, work in progress keeps its start, finished work stays. Before you drop, CascadePlan lists every Jira change the drop will make.
 3. **Freeze a baseline, review scope changes.** The toolbar shows the change since the baseline in hours, added work and later ends. A plan approver accepts or rejects a scope change.
