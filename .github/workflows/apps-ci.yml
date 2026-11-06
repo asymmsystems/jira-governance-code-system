@@ -93,4 +93,18 @@ jobs:
         run: |
           # CI has no terminal for the CLI's first-run analytics question, so answer it first.
           npx --yes @forge/cli@15.0.0 settings set usage-analytics false
-          npx --yes @forge/cli@15.0.0 lint
+          # forge lint also exits 1 on "approval" notices, for example a scope change that makes the
+          # next deploy a major version. Those are deploy decisions, not code faults: the step fails
+          # only on errors or warnings.
+          set +e
+          out=$(npx --yes @forge/cli@15.0.0 lint 2>&1)
+          code=$?
+          set -e
+          echo "$out"
+          if [ $code -ne 0 ]; then
+            if echo "$out" | grep -qE '\(0 errors, 0 warnings, [0-9]+ approvals?\)'; then
+              echo "Only approval notices: not a lint failure."
+            else
+              exit $code
+            fi
+          fi
