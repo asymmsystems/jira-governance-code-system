@@ -121,7 +121,21 @@ DefinitionGuard provides records that support internal and external audits:
 
 ---
 
-## Retina Screenshot Gallery Manifest
+## Highlights (images 580 x 330: `docs/marketplace/assets/definitionguard/highlight-1.png` to `highlight-3.png`)
+
+1. **Evidence on the items that need it.** An item marked "Evidence required" is ticked only with a link (http or https), a note, or both. The app checks the link format, not what it points to.
+2. **The move to Done waits.** The DefinitionGuard DoD Enforcement validator blocks a move into a Done status while a mandatory item is open and not waived. A Jira admin adds it to each transition.
+3. **A history you can check.** Every tick, reopen, waiver and reset is kept in a hash-chained history; waivers carry a reason. The panel shows whether the chain is intact, and admins can export it as JSON.
+
+---
+
+## Banner (1120 x 548: `docs/marketplace/assets/definitionguard/banner.png`)
+
+Sources of the banner and highlights: `docs/marketplace/assets/definitionguard/media-src/` (rendered by `render.py`).
+
+---
+
+## Retina Screenshot Gallery Manifest (1840 x 900)
 
 Real captures of DefinitionGuard 6.x on a Jira Cloud site, project "Payments Platform", issue "Load test checkout at 3x peak traffic", cropped to the app, 1840 x 900 px (`docs/marketplace/assets/definitionguard/`, made by `apps/definitionguard/test/live/marketplace_shots.py`).
 
