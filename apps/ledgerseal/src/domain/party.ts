@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  *
- * LedgerSeal: pseudonymous parties (ADR-010). Hashed records name a person by a party token, never by an
+ * LedgerSeal: pseudonymous parties (ADR-011). Hashed records name a person by a party token, never by an
  * account id. A token is the first 128 bits of HMAC-SHA-256 over the account id, keyed with the site key that
  * only the app can read, so the live issue gives the same token again after the account is closed, and nobody
  * without the site key can link a token to an account.
@@ -53,7 +53,7 @@ function isMention(node: any): boolean {
 }
 
 /**
- * Replaces every person in Jira data by its token (ADR-010 decision 1). A user object (any object with a
+ * Replaces every person in Jira data by its token (ADR-011 decision 1). A user object (any object with a
  * non-empty string `accountId`) becomes `{ accountId: token, displayName: token }`, so names, emails and avatars
  * are dropped. A rich text mention keeps its other attributes and gets the token as its id and its text.
  * The input is not changed.

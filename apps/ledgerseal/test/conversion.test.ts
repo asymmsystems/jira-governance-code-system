@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  *
- * ADR-010 decision 7 (readiness review B1): a record written before ADR-010 is converted once by a recorded
+ * ADR-011 decision 7 (readiness review B1): a record written before ADR-011 is converted once by a recorded
  * redaction event. Afterwards no record holds an account id or a name, the seal still matches the live issue,
  * the chain is valid, and both the old and the new evidence verify with the open verifier.
  *
@@ -74,7 +74,7 @@ const RAW = /"(ann|bob|dev-1|zed-9|abe-0|rep-1|mallory)"|Ann Approver|Dana|Zed|A
 const recordsText = (storage: MemoryStore) => JSON.stringify([...storage.map.entries()].filter(([k]) => !k.startsWith('ls3:party')));
 const quiet = () => jest.spyOn(console, 'log').mockImplementation(() => undefined);
 
-describe('ADR-010 conversion of an old record', () => {
+describe('ADR-011 conversion of an old record', () => {
   it('an old record is read as before, and its old evidence verifies', async () => {
     const { storage, as } = setup();
     await writeOldRecord(storage, peopleIssue(), { fields: FIELDS });

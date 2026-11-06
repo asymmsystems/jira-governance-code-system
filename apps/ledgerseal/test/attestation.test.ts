@@ -48,7 +48,7 @@ const FIELDS = [
 ];
 
 describe('B-09 signed attestation', () => {
-  it('writes the schema 3 body on seal, under 2 KiB, with every field and no account id (ADR-010)', async () => {
+  it('writes the schema 3 body on seal, under 2 KiB, with every field and no account id (ADR-011)', async () => {
     const { jira } = await sealedWithSigner();
     const body = jira.propertyWrites[0].body;
     expect(Object.keys(body).sort()).toEqual(FIELDS);

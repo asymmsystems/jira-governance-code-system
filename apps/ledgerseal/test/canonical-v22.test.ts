@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  *
- * Canonical form 2.2.0 (ADR-010 decision 6, readiness finding F-07). The vectors in fixtures/vectors-2.2.0.json
+ * Canonical form 2.2.0 (ADR-011 decision 6, readiness finding F-07). The vectors in fixtures/vectors-2.2.0.json
  * were written by hand from the rules, so these tests compare the code with the rules, not with itself.
  *
  * @author Fahim Farook

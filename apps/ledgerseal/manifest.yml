@@ -50,7 +50,7 @@ modules:
       events:
         - avi:jira:deleted:issue
   scheduledTrigger:
-    # ADR-010 decision 5: the weekly personal data report; closed accounts are erased from the party map.
+    # ADR-011 decision 5: the weekly personal data report; closed accounts are erased from the party map.
     - key: ledgerseal-personal-data-report
       function: personal-data-report
       interval: week

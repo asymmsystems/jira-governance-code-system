@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  *
- * LedgerSeal: the weekly personal data report and the deletion of an issue's records (ADR-010 decisions 5 and 9).
+ * LedgerSeal: the weekly personal data report and the deletion of an issue's records (ADR-011 decisions 5 and 9).
  * The report sends every account id the app holds: the token-to-account map and the admin who last saved the
  * approver policy. For a closed account it deletes the map key, so its tokens name no one, and removes the admin id.
  *
@@ -72,7 +72,7 @@ export interface WeeklyResult extends ReportResult {
 }
 
 /**
- * The weekly job (ADR-010 decisions 5 and 7): first finish converting old records (each converted record's
+ * The weekly job (ADR-011 decisions 5 and 7): first finish converting old records (each converted record's
  * property is written again without the account id) and remove personal data from old-format records, then report.
  */
 export async function weeklyPersonalDataJob(deps: LedgerSealDeps, report: ReportFn, budgetMs: number): Promise<WeeklyResult> {

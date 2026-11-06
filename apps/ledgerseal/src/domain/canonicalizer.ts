@@ -106,7 +106,7 @@ const RULES: Record<string, ExclusionRules> = {
 };
 
 /**
- * 2.2.0 (ADR-010, readiness finding F-07): the exclusions of 2.1.0. People are party tokens (the caller
+ * 2.2.0 (ADR-011, readiness finding F-07): the exclusions of 2.1.0. People are party tokens (the caller
  * pseudonymises the issue first), and an object with an `id` is reduced to `{ id }` only in a reference field.
  */
 RULES['2.2.0'] = { ...RULES['2.1.0'], idOnlyInReferenceFields: true };

@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  *
- * ADR-010 (readiness review B1): hashed records name people by party token, the token-to-account map is one key
+ * ADR-011 (readiness review B1): hashed records name people by party token, the token-to-account map is one key
  * per account outside the records, and a closed account (its map key deleted) leaves every seal valid and names
  * no one.
  *
@@ -36,7 +36,7 @@ function recordsText(storage: MemoryStore): string {
   return JSON.stringify([...storage.map.entries()].filter(([k]) => !k.startsWith(PARTY_PREFIX) && k !== SITE_KEY));
 }
 
-describe('party tokens (ADR-010 decisions 1 and 2)', () => {
+describe('party tokens (ADR-011 decisions 1 and 2)', () => {
   it('is HMAC-SHA-256 of the account id under the site key, cut to 128 bits, with the pty_ prefix', () => {
     const expected = 'pty_' + crypto.createHmac('sha256', KEY).update('557058:abc', 'utf8').digest('hex').slice(0, 32);
     expect(party('557058:abc')).toBe(expected);
@@ -73,7 +73,7 @@ describe('party tokens (ADR-010 decisions 1 and 2)', () => {
   });
 });
 
-describe('the token-to-account map (ADR-010 decision 4)', () => {
+describe('the token-to-account map (ADR-011 decision 4)', () => {
   it('creates the site key once; a writer that loses the race uses the stored key', async () => {
     const storage = new MemoryStore();
     const repo = new PartyRepository(storage);

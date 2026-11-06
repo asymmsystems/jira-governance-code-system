@@ -109,7 +109,7 @@ export class SealRepository {
   }
 
   /**
-   * The newest row that set the current status. A redaction row (ADR-010 decision 7) is not a status change,
+   * The newest row that set the current status. A redaction row (ADR-011 decision 7) is not a status change,
    * so it is skipped.
    */
   async getCurrentStatusRow(workEffort: SealedWorkEffort): Promise<WorkEffortStatus | null> {

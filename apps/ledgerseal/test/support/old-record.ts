@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  *
- * Test support: writes a seal record the way LedgerSeal wrote it before ADR-010 (canonical form 2.1.0, account
+ * Test support: writes a seal record the way LedgerSeal wrote it before ADR-011 (canonical form 2.1.0, account
  * ids and the signer's display name in hashed data), to test the conversion of existing records.
  *
  * @author Fahim Farook
@@ -27,7 +27,7 @@ export interface OldRecordOptions {
   changedTo?: { issue: any; by: string; at: string };
 }
 
-/** Writes a pre-ADR-010 record of `issue` and returns its parts. */
+/** Writes a pre-ADR-011 record of `issue` and returns its parts. */
 export async function writeOldRecord(storage: MemoryStore, issue: any, options: OldRecordOptions = {}) {
   const issueId = options.issueId ?? String(issue.id);
   const signer = options.signer ?? 'ann';

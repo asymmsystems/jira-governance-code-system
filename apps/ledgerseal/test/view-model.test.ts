@@ -287,7 +287,7 @@ describe('B-15 structure', () => {
   });
 });
 
-describe('ADR-010 closed accounts in the panel', () => {
+describe('ADR-011 closed accounts in the panel', () => {
   it('shows "a closed account" for a closed signer, revoker and changer', () => {
     const closedSeal = { ...seal, sealedByAccountId: '', sealedByClosed: true, revocation: { revokedAt: '2026-11-02T00:00:00.000Z', revokedByAccountId: '', revokedByClosed: true, reason: 'x' } };
     const revoked = view(result('SEAL_REVOKED', { seal: closedSeal }));

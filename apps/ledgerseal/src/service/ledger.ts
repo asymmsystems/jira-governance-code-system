@@ -112,7 +112,7 @@ export function rawComments(raw: any): any[] {
 
 /**
  * One read of the live issue: the issue as Jira returned it, the same issue with every person replaced by a
- * party token (ADR-010), the field list, and its snapshot in the current canonical form.
+ * party token (ADR-011), the field list, and its snapshot in the current canonical form.
  */
 export interface LiveRead {
   raw: any;
@@ -177,7 +177,7 @@ export function withParty(live: LiveRead, party: PartyFn, at: string): LiveRead 
   };
 }
 
-/** True when a sealed issue's records name people by party token (ADR-010 decisions 6 and 7). */
+/** True when a sealed issue's records name people by party token (ADR-011 decisions 6 and 7). */
 export function recordUsesTokens(we: SealedWorkEffort): boolean {
   return PSEUDONYMOUS_VERSIONS.has(we.attributes.canonicalizerVersion) || we.attributes.parties === 'TOKEN';
 }
@@ -287,7 +287,7 @@ export async function evaluate(repo: SealRepository, issueId: string, live: Live
   if (!isConsistent(seal)) return { kind: 'RECORD_INVALID', workEffort: we };
   const sealedSnapshot = await repo.getContent(we);
   if (!sealedSnapshot || computeSnapshotHash(sealedSnapshot) !== we.attributes.snapshotHash) return { kind: 'RECORD_INVALID', workEffort: we };
-  // Compare under the canonical form, and the party form, the seal was made with (spec v2 section 4.1, ADR-010)
+  // Compare under the canonical form, and the party form, the seal was made with (spec v2 section 4.1, ADR-011)
   let liveSnapshot: CanonicalIssueSnapshot;
   try {
     liveSnapshot = liveSnapshotFor(live, we, at);
@@ -349,7 +349,7 @@ export async function recordIncidentIfNew(
   }
   const changelog = await deps.jira.getChangelog(we.workEffortId);
   const attributed = attribute(analysis.tamperedFields, changelog.ok ? changelog.value : [], seal.assignment.fromDate, evaluation.liveComments, evaluation.liveRaw);
-  // History rows name people by party token, never by account id (ADR-010 decision 1)
+  // History rows name people by party token, never by account id (ADR-011 decision 1)
   const parties = new PartyRepository(deps.storage);
   const party = knownParty ?? (await parties.partyForWrite());
   await parties.register(attributed.flatMap(c => c.changedBy), party, at);
@@ -411,7 +411,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   // F-05: the seal covers what the approver reviewed; a change since the panel loaded refuses the seal
   if (typeof payload?.viewHash === 'string' && payload.viewHash !== viewHash(read, now)) return fail('ISSUE_CHANGED');
   const repo = new SealRepository(deps.storage);
-  // A record written before ADR-010 is converted first, so the new seal continues a record with tokens only
+  // A record written before ADR-011 is converted first, so the new seal continues a record with tokens only
   const conversion = await convertIfNeeded(deps, repo, issue.id);
   if (conversion === 'JIRA_UNREACHABLE') return fail('JIRA_UNREACHABLE');
   if (conversion === 'BUSY') return fail('CONFLICT');
@@ -550,13 +550,13 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
     }
   }
 
-  // The ledgerseal-cert property names no person (ADR-010 decision 8)
+  // The ledgerseal-cert property names no person (ADR-011 decision 8)
   await writeAttestation(deps, { workEffort, assignment, sealingRow: row }, 'SEAL_VALID', now);
 
   return { ok: true as const, certificateId, snapshotHash, sealedAt: now };
 }
 
-/** Converts the issue's record when it was written before ADR-010 (decision 7). */
+/** Converts the issue's record when it was written before ADR-011 (decision 7). */
 async function convertIfNeeded(deps: LedgerSealDeps, repo: SealRepository, issueId: string) {
   const we = await repo.getWorkEffort(issueId);
   if (!we || we.attributes.parties === 'TOKEN') return 'ALREADY' as const;
@@ -676,7 +676,7 @@ async function verifyAgainstSeal(
   const we = seal.workEffort;
   const incident = we.currentStatusId === 'LS_CHANGED' ? await repo.getCurrentStatusRow(we) : null;
   const recorded = new Map(((incident?.data?.changes as any[]) || []).map(c => [c.fieldId, c]));
-  // Party tokens become account ids, and names in the change text, only for display (ADR-010 decision 4)
+  // Party tokens become account ids, and names in the change text, only for display (ADR-011 decision 4)
   const resolver = new PartyResolver(new PartyRepository(deps.storage));
   const names = await tokenNames(analysis.tamperedFields.flatMap(d => [String(d.sealedValue ?? ''), String(d.liveValue ?? '')]), live, resolver, deps.jira);
   const named = (text: any) => (typeof text === 'string' ? text.replace(TOKEN_IN_TEXT, token => names.get(token) ?? UNNAMED_PERSON) : text);
@@ -704,7 +704,7 @@ async function verifyAgainstSeal(
 
 /**
  * Shown in a changed value for a person LedgerSeal cannot name: no longer on the issue and not someone who
- * sealed, changed or revoked (only those are in the map), or a closed account (ADR-010).
+ * sealed, changed or revoked (only those are in the map), or a closed account (ADR-011).
  */
 export const UNNAMED_PERSON = 'a user no longer on this issue';
 
@@ -822,7 +822,7 @@ const VERIFICATION_STEPS = [
 export const UNSIGNED_EVIDENCE =
   'This installation has no LedgerSeal signing key, so this evidence is unsigned and the offline verifier fails its signature check. Contact support@asymm.systems.';
 
-/** Every party token named in the history, for the unsigned parties map of the evidence (ADR-010 decision 10). */
+/** Every party token named in the history, for the unsigned parties map of the evidence (ADR-011 decision 10). */
 function historyTokens(history: WorkEffortStatus[]): string[] {
   const ids = history.flatMap(row => [
     row.setByPartyId,

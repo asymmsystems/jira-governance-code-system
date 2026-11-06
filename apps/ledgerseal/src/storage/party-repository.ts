@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  *
- * LedgerSeal: the site key and the token-to-account map (ADR-010 decisions 2 and 4).
+ * LedgerSeal: the site key and the token-to-account map (ADR-011 decisions 2 and 4).
  * The map holds one key per account, outside every hashed record, so closing an account deletes one key.
  *
  * @author Fahim Farook
@@ -75,7 +75,7 @@ export class PartyRepository {
       .filter(row => isPartyToken(row.token) && row.entry && typeof row.entry.accountId === 'string');
   }
 
-  /** Closure: the token then names no one (ADR-010 decision 4). */
+  /** Closure: the token then names no one (ADR-011 decision 4). */
   async forget(token: string): Promise<void> {
     await this.storage.delete(PARTY_PREFIX + token);
   }
@@ -83,7 +83,7 @@ export class PartyRepository {
 
 /**
  * Turns stored party ids into account ids for display. A token is looked up in the map; an id that is not a
- * token is an account id from a record written before ADR-010. Null means a closed account.
+ * token is an account id from a record written before ADR-011. Null means a closed account.
  */
 export class PartyResolver {
   private readonly cache = new Map<string, Promise<string | null>>();

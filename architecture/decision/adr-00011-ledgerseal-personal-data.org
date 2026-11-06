@@ -1,4 +1,4 @@
-#+TITLE: ADR-010: LedgerSeal Personal Data in Hashed Records
+#+TITLE: ADR-011: LedgerSeal Personal Data in Hashed Records
 #+DATE: 2026-11-06
 #+STATUS: Adopted
 

@@ -119,7 +119,7 @@ describe('Workflow Validator', () => {
     const result = validateTransitionGate(fromCertificate(cert), validSnapshot, info(cert));
     expect(result.isValid).toBe(true);
     expect(result.details?.certificateId).toBe(cert.certificateId);
-    // The validator result names no person (ADR-010)
+    // The validator result names no person (ADR-011)
     expect(JSON.stringify(result)).not.toContain(cert.sealedBy.signerDisplayName);
   });
 });

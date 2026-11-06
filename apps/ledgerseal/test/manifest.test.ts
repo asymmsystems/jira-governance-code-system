@@ -42,15 +42,15 @@ describe('approver policy admin page', () => {
     expect(manifest).toMatch(/  - key: admin\n    path: src\/frontend\/admin\.tsx/);
   });
 
-  it('declares the four work scopes and the personal data report scope, nothing else (ADR-010)', () => {
+  it('declares the four work scopes and the personal data report scope, nothing else (ADR-011)', () => {
     expect(manifest).toMatch(/scopes:\n    - read:jira-work\n    - write:jira-work\n    - read:jira-user\n    - storage:app\n    - report:personal-data\n?$/);
   });
 });
 
-describe('ADR-010 personal data and deleted issues', () => {
+describe('ADR-011 personal data and deleted issues', () => {
   it('runs the personal data report weekly and deletes the records of a deleted issue', () => {
     expect(manifest).toContain(`  scheduledTrigger:
-    # ADR-010 decision 5: the weekly personal data report; closed accounts are erased from the party map.
+    # ADR-011 decision 5: the weekly personal data report; closed accounts are erased from the party map.
     - key: ledgerseal-personal-data-report
       function: personal-data-report
       interval: week`);

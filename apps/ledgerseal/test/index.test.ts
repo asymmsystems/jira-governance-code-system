@@ -50,7 +50,7 @@ describe('Forge Function Entry Points (index.ts)', () => {
 
       const stored = await model.workEffort(storage);
       expect(stored.attributes.snapshotHash).toBe(result.snapshotHash);
-      // The seal names the signer by party token, and stores no account id and no name (ADR-010)
+      // The seal names the signer by party token, and stores no account id and no name (ADR-011)
       expect(model.assignments(storage)[0].partyId).toBe(await model.token(storage, 'lead'));
       expect(JSON.stringify([...storage.map.entries()].filter(([k]) => !k.startsWith('ls3:party:')))).not.toMatch(/"lead"|Lead Engineer/);
       expect(jira.propertyWrites[0].body).toMatchObject({ status: 'SEAL_VALID', snapshotHash: result.snapshotHash });

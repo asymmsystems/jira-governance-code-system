@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  *
- * LedgerSeal: the signed ledgerseal-cert attestation, schema 3 (spec v2 section 8, ADR-010 decision 8).
+ * LedgerSeal: the signed ledgerseal-cert attestation, schema 3 (spec v2 section 8, ADR-011 decision 8).
  * It names no person: any user who can browse the issue can read the property.
  * The app signs with an Ed25519 private key held in a Forge encrypted variable. Anyone verifies with the public key.
  * The vendor holds the private key, so a valid signature shows that LedgerSeal wrote the record, not that the vendor could not.

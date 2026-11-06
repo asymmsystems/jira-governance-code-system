@@ -108,7 +108,7 @@ export interface FieldDiff {
   detail?: string;
   /** Set on panel responses: who changed the item after the seal, and when (from the change log or the comment). */
   changedBy?: string[];
-  /** How many of the people who changed the item have closed accounts (ADR-010). */
+  /** How many of the people who changed the item have closed accounts (ADR-011). */
   changedByClosed?: number;
   changedAt?: string | null;
 }
@@ -129,7 +129,7 @@ export interface ApproverPolicy {
   roleTypeId: 'LS_APPROVER';
   parties: { partyId: string; partyTypeId: 'GROUP'; name: string }[];
   fromDate: string;
-  /** The Jira admin who saved the policy; null after that account was closed (ADR-010 decision 5). */
+  /** The Jira admin who saved the policy; null after that account was closed (ADR-011 decision 5). */
   setByPartyId: string | null;
 }
 
@@ -208,7 +208,7 @@ export interface SealedWorkEffort {
     declarationVersion: string;
     statusAtSeal: string;
     snapshotParts: number;
-    /** Set by the redaction event of ADR-010 decision 7: an older-version record whose people are party tokens. */
+    /** Set by the redaction event of ADR-011 decision 7: an older-version record whose people are party tokens. */
     parties?: 'TOKEN';
   };
   everCompromised: boolean;
@@ -232,7 +232,7 @@ export interface WorkEffortPartyAssignment {
 /** One state change, created once (Silverston WorkEffortStatus with the LedgerSeal hash chain). */
 export interface WorkEffortStatus {
   workEffortId: string;
-  /** LS_REDACTED is not a seal state: it records the conversion of ADR-010 decision 7. */
+  /** LS_REDACTED is not a seal state: it records the conversion of ADR-011 decision 7. */
   statusId: LedgerSealStatusId | 'LS_REDACTED';
   statusDatetime: string;
   setByPartyId: string | null;

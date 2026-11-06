@@ -297,7 +297,7 @@ export async function onIssueChanged(event: any, context?: any, deps: LedgerSeal
 }
 
 /**
- * Product event trigger: a deleted issue's LedgerSeal records are deleted with it (ADR-010 decision 9).
+ * Product event trigger: a deleted issue's LedgerSeal records are deleted with it (ADR-011 decision 9).
  */
 export async function onIssueDeleted(event: any, context?: any, storage: StorageProvider = new ForgeKvsProvider()) {
   const issueId = event?.issue?.id ? String(event.issue.id) : '';
@@ -313,7 +313,7 @@ export async function onIssueDeleted(event: any, context?: any, storage: Storage
 }
 
 /**
- * Weekly scheduled trigger: the personal data report (ADR-010 decision 5).
+ * Weekly scheduled trigger: the personal data report (ADR-011 decision 5).
  */
 export async function personalDataReport(
   event?: any,

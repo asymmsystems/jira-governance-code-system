@@ -1,7 +1,7 @@
 {
   "format": "ledgerseal-canonical-vectors/1",
   "canonicalizerVersion": "2.2.0",
-  "note": "Written by hand from spec v2 section 4 and ADR-010. Each vector names its party table (account id to token) and its field schemas. The canonical text is the expected hash input.",
+  "note": "Written by hand from spec v2 section 4 and ADR-011. Each vector names its party table (account id to token) and its field schemas. The canonical text is the expected hash input.",
   "parties": { "acct-a": "pty_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "acct-b": "pty_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
   "vectors": [
     {

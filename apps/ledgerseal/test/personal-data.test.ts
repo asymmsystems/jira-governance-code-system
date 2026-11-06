@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  *
- * ADR-010 decisions 5 and 9 (readiness review B1, F-11): the weekly personal data report, the erasure of a
+ * ADR-011 decisions 5 and 9 (readiness review B1, F-11): the weekly personal data report, the erasure of a
  * closed account, and the deletion of a deleted issue's records.
  *
  * @author Fahim Farook
@@ -37,7 +37,7 @@ function reporter(closed: string[] = []) {
   return { calls, report };
 }
 
-describe('ADR-010 weekly personal data report', () => {
+describe('ADR-011 weekly personal data report', () => {
   it('reports nothing and calls nothing when the app holds no account id', async () => {
     const { calls, report } = reporter();
     await expect(personalDataReport({}, {}, { jira: new FakeJira(sampleIssue()), storage: new MemoryStore() }, report)).resolves.toMatchObject({ reported: 0, closed: [] });

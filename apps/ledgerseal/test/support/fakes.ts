@@ -214,7 +214,7 @@ export const model = {
   workEffortKey(issueId = '10001') {
     return `ls3:we:${issueId}`;
   },
-  /** The party token of an account on this site (ADR-010): records hold it in place of the account id. */
+  /** The party token of an account on this site (ADR-011): records hold it in place of the account id. */
   async token(storage: MemoryStore, accountId: string): Promise<string> {
     const site = await storage.get('ls3:partykey');
     if (!site) throw new Error('No site key: nothing was sealed yet');

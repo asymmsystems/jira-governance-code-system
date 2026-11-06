@@ -57,7 +57,7 @@ export interface PanelView {
   excluded: { name: string; reason: string }[];
   seal?: {
     certificateId: string;
-    /** Empty when the signer's account was closed (ADR-010); then `signerClosed` is true. */
+    /** Empty when the signer's account was closed (ADR-011); then `signerClosed` is true. */
     signerAccountId: string;
     signerClosed: boolean;
     sealedAt: string;

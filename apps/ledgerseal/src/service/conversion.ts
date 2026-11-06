@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  *
- * LedgerSeal: the recorded redaction event (ADR-010 decision 7). A record written before ADR-010 holds account
+ * LedgerSeal: the recorded redaction event (ADR-011 decision 7). A record written before ADR-011 holds account
  * ids and a display name inside hashed data. It is converted once: every account id becomes its party token, the
  * name is removed, the hashes and the chain are computed again, and an LS_REDACTED row records the head hash
  * before the conversion, the number of values replaced and the tokens. The conversion never makes a record that
@@ -157,7 +157,7 @@ async function convertedIncidentHash(deps: ConversionDeps, we: SealedWorkEffort,
 }
 
 /**
- * Converts one issue's record (ADR-010 decision 7). Safe to run again: a finished record gives ALREADY, and a
+ * Converts one issue's record (ADR-011 decision 7). Safe to run again: a finished record gives ALREADY, and a
  * conversion stopped midway is finished from its journal.
  */
 export async function convertRecord(deps: ConversionDeps, issueId: string, now: string = new Date().toISOString()): Promise<ConversionResult> {
@@ -226,7 +226,7 @@ export async function convertRecord(deps: ConversionDeps, issueId: string, now: 
       statusId: 'LS_REDACTED',
       statusDatetime: journal.startedAt,
       setByPartyId: null,
-      reason: 'Account ids replaced by party tokens (ADR-010)',
+      reason: 'Account ids replaced by party tokens (ADR-011)',
       transitionName: 'REDACT',
       data: {
         previousHeadSeq: journal.previousHead.seq,
