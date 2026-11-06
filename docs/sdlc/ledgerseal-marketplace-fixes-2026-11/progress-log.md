@@ -391,3 +391,9 @@ The review is `docs/sdlc/merge-reviews-2026-11/ledgerseal-followups-3-merge-revi
 - `docs/launch/approved-ticket-problem.md`: check 4 says the verifier skips redaction entries; "(see the § 11.10e row)" matches the row label.
 - `site/apps/ledgerseal/open-verifier.md`: exit code 0 says what a PASS means and what it does not, as the public verifier README says.
 - **Site change needed (item 20):** `product/jira-governance/user-guide/open-verifier.html`, the exit-code text. Old: "All four verification stages passed. The evidence is authentic and untampered." (or the current five-stage text with the same sentence). New: "All five checks passed. The evidence file has not been changed since it was exported and signed, and it was signed with the private key that belongs to the public key you used. This does not show that nobody could have written a different, consistent record: Asymm Systems holds the signing key, and anyone who can rewrite the app's stored data, including the vendor, could write a new consistent chain."
+
+### Deploy, live check and gate (fourth follow-ups)
+
+- `forge deploy -e development`: 4.6.0 (code of `4b833ab`). Production not touched.
+- PAY-10 evidence exported from the panel: 5 of 5 PASS with `tools/verifier` and the development key; property schema 3, signed, no account id. M-9 not run live (it needs a stalled conversion and another run in between); proven by the tests above. No live write.
+- Gate: `npx tsc --noEmit` 0 errors; `npm test` 47 suites, 512 tests passed; coverage statements 97.99%, branches 94.42%, functions 96.8%, lines 98.68%; build, `npm audit --omit=dev --audit-level=high` and `forge lint` clean.
