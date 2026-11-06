@@ -115,7 +115,7 @@ Touchpoints we control, and who changes each, are in `docs/launch/trial-conversi
 
 ### 4.4 Review requests
 
-Ask for a Marketplace review only from a paying customer who is in a conversation with us, and never offer a reward (Partner Agreement, section 8.2). Copy the Reviews tab URL from the public listing; do not build it by hand.
+Ask for a Marketplace review only from a paying customer who is in a conversation with us, and never offer a reward for a review (our own rule). Copy the Reviews tab URL from the public listing; do not build it by hand.
 
 ## 5. Weekly metrics
 
@@ -144,12 +144,12 @@ What must be done before week 0 is in `docs/sdlc/suite-readiness-review-2026-11/
 | 0 (approval day) | Runbook steps 1 to 4 for each approved app: check the public listing, check production logs, release the site links, fill in the slugs | Prepare the release branch reverts for apps not yet public; check each listing against its listing file | Each approved listing is public and correct; the site buttons open it |
 | 1 | Posts D+1 to D+6 in the runbook order; answer comments the same day; answer support mail | Check `forge logs` daily; check each post against its claim table in the runbook, step 5; draft answers to technical comments for the owner | Six posts out; no post claim found wrong; no support mail past its promise |
 | 2 | First Monday metrics; LinkedIn messages (kit 6.7), a few a day, to people found outside Marketplace data; two or three Community answers | Read Feedback and logs for first-run problems; draft Community answers for the owner to approve and post | First evaluations logged; no first-run error left open |
-| 3 | Approve one technical article per lead app (LedgerSeal, DefinitionGuard) for asymm.systems; record the LedgerSeal video; write to Atlassian Solution Partners that resell apps | Draft the articles from `docs/launch/approved-ticket-problem.md` and the listings; check `docs/launch/video-scripts.md` against the listings before recording (it still says "hard-blocked" and "Auditors don't have to trust us") | Articles live; video recorded; active evaluations counted |
+| 3 | Approve one technical article per lead app (LedgerSeal, DefinitionGuard) for asymm.systems; record the LedgerSeal video; write to Atlassian Solution Partners that resell apps | Draft the articles from `docs/launch/approved-ticket-problem.md` and the listings; check `docs/launch/video-scripts.md` against the listings before recording | Articles live; video recorded; active evaluations counted |
 | 4 | Monday metrics; pick at most one change from the signals table (`trial-conversion.md`, section 4) and approve it | Prepare that one change (listing text, quick start, empty state or admin hint) for review; log it under "Changes made" | One change made and dated, or a recorded reason for none |
 | 5 | Watch the first trials end; answer fast on any thread where an evaluator asks about price, billing or the validator | Count evaluations ending this week and next; check the licence messages on the test site (MK-08) | Every trial end counted; every question answered within the promise |
 | 6 | Monday metrics: Cloud conversions and Sales for the week before | Write a one-page review: evaluations, conversions, uninstall reasons, the change made in week 4 | **First paid licence in the reports**, or a review that names the reason and the next single change |
 
-If no listing has a paid licence by week 6, keep the weekly loop. Do not change the prices: the readiness review sets no price change before 30 to 50 paying sites (section 4).
+If no listing has a paid licence by week 6, keep the weekly loop. Do not change the prices: our working rule is no price change before 30 to 50 paying sites (from the price research note in the readiness review, section 4).
 
 ## 7. Economics
 
