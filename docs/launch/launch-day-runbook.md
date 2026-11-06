@@ -98,7 +98,7 @@ Do this after step 1 passes for at least one app.
 
 1. Fill in the slug of each public app in the table at the end of this file.
 2. Optional: replace the id URLs in the "Live variants" section of `docs/launch/distribution-kit.md` with the slug URLs. The id URLs keep working, so this is cosmetic.
-3. The review request template in `docs/launch/first-sale-playbook.md` (section 5) uses `https://marketplace.atlassian.com/apps/ledgerseal/reviews`, which is not the Marketplace URL pattern. When you need it, open the public listing, click its Reviews tab and copy that URL (the exact form of the reviews URL was not checked: the Marketplace answers 200 to any path under `/apps/`). See `docs/launch/trial-conversion.md` for when a review request is allowed.
+3. Review requests follow `docs/launch/go-to-market-plan.md`, section 4.4. When you need the reviews URL, open the public listing, click its Reviews tab and copy that URL (the exact form of the reviews URL was not checked: the Marketplace answers 200 to any path under `/apps/`). See `docs/launch/trial-conversion.md` for when a review request is allowed.
 
 **Rollback:** documentation only; revert the commit.
 

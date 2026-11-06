@@ -37,7 +37,7 @@ Our privacy policy cites the same agreement (section 8.4(e)) on `https://asymm.s
 
 ### 1.3 Parts of `first-sale-playbook.md` that need consent first
 
-`docs/launch/first-sale-playbook.md` was written before this check. These parts are allowed **only** when the evaluator wrote to us first or consented; they must never be triggered by an install or evaluation seen in Marketplace reports:
+`docs/launch/first-sale-playbook.md` was written before this check. It is superseded by `docs/launch/go-to-market-plan.md` (2026-11-07), which is the current guidance; if any of its templates is reused, these parts are allowed **only** when the evaluator wrote to us first or consented; they must never be triggered by an install or evaluation seen in Marketplace reports:
 
 - Section 3, Step 1 "Detect Qualified Install" and Step 2 "Day 2 Concierge Welcome": the welcome opens with "I saw you recently installed LedgerSeal". Do not send it to an evaluator who has not written to us.
 - Section 4, the Day 7, 14, 21 and 28 nurture mails: only on an open thread with an evaluator who asked for help, and only with their consent to follow-ups.

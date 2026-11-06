@@ -29,7 +29,7 @@ For every new mail:
    (cd apps/<app> && forge logs -e production --since 1d)
    ```
 
-6. **Record** the case in the pipeline table of `docs/launch/first-sale-playbook.md`, section 6, only with what the customer wrote to us.
+6. **Record** the case in the table of `docs/launch/go-to-market-plan.md`, section 4.3, only with what the customer wrote to us.
 
 ## 3. Severity
 
