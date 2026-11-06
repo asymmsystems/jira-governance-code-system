@@ -5,9 +5,10 @@ LedgerSeal lets an approver seal a Jira issue. Approvers are project admins, Jir
 After that, LedgerSeal:
 - shows which covered fields changed since the seal, with the old and the new value and who changed them;
 - keeps every seal, change incident and reseal in a hash-chained history that a reseal cannot hide;
-- lets only an approver who did not make a change approve it, with a reason;
+- lets only an approver who did not make a change approve it, with a reason, or revoke the seal;
 - can block a workflow transition until the issue is sealed and unchanged, when a Jira admin adds the validator to the workflow;
-- writes an Ed25519-signed summary to the `ledgerseal-cert` issue property, which other tools can check with the public key in `keys/`.
+- writes an Ed25519-signed summary to the `ledgerseal-cert` issue property, which other tools can check with the public key in `keys/`; the property holds no account id;
+- names people in its records by a pseudonymous party token, reports the account ids it holds every week, and erases a closed account's link (ADR-011).
 
 LedgerSeal is tamper-evident, not tamper-proof: it detects changes, it does not stop them. Where a status lock fits, also set the workflow property `jira.issue.editable` to `false`. LedgerSeal does not provide regulated electronic signatures by itself, and it does not ask the signer to log in again. Your own validation and procedures decide whether it fits a regulated process.
 
@@ -15,6 +16,8 @@ Built on Atlassian Forge. The app backend makes no outbound network calls, and t
 
 ## How it decides
 
+- **Separation of duties:** a user who changed covered content after the last seal (a covered field in Jira's change log, a comment or work log they added or edited, an attachment they added) cannot approve the changes, revoke the seal, or seal again after another approver revokes it. Status, Rank and Sprint changes do not count. Jira does not record who deleted a comment or a work log, so a deletion cannot be attributed.
+- **What was seen is what is sealed:** the panel sends the hash of the issue as it showed it; a seal is refused if the issue changed since.
 - **Covered fields** are chosen by field type from the site field list (`/rest/api/3/field`). Rank, Sprint, SLA timers, satisfaction, request participants, approvals, development summary, Sentiment, forms counts, Agent Sessions, status, resolution and Jira's own timestamps are left out, and the panel lists each with the reason. Every other field with a value is covered.
 - **Trust:** the panel and the validator decide only from app storage, which only the app can read and write. The `ledgerseal-cert` property is an output for other tools. Any user who can edit an issue can change its properties, so a reader must check the signature.
 - **Integrity check:** every read recomputes the hash of the stored seal record and the stored snapshot. A mismatch shows "the seal record failed its integrity check".
@@ -27,13 +30,16 @@ Built on Atlassian Forge. The app backend makes no outbound network calls, and t
 | `jira:issuePanel` `ledgerseal-panel` | UI Kit panel: seal, approve changes, history |
 | `jira:workflowValidator` `ledgerseal-validator` | Blocks a transition unless the issue is sealed and unchanged |
 | `jira:adminPage` `ledgerseal-admin` | Jira admins choose the approver groups |
+| `trigger` `ledgerseal-issue-changed`, `ledgerseal-issue-deleted` | Record a change when Jira reports it; delete a deleted issue's records |
+| `scheduledTrigger` `ledgerseal-personal-data-report` | Weekly personal data report; converts records made before ADR-011 |
 
 | Scope | Why |
 |---|---|
 | `read:jira-work` | Read the issue, comments, change log, field list and the user's own permissions |
 | `write:jira-work` | Write the app's own `ledgerseal-cert` issue property. The app never edits issue fields |
-| `read:jira-user` | Read the signer's display name, the caller's own groups, and groups for the admin page |
-| `storage:app` | Keep seal records and history |
+| `read:jira-user` | Read display names to show who changed an item (never stored), the caller's own groups, and groups for the admin page |
+| `storage:app` | Keep seal records, history and the token-to-account map |
+| `report:personal-data` | Report the account ids the app holds every week, and erase closed accounts (ADR-011) |
 
 ## Storage (Forge KVS)
 
@@ -46,7 +52,10 @@ Seals are stored on the Silverston WorkEffort, Party and Status patterns (ADR-01
 | `ls3:wes:{issueId}:{seq}` | One state change, created once, holding the hash of the row before it |
 | `ls3:content:{contentId}:{part}` | The sealed snapshot, in parts |
 | `ls3:partyrole:LS_APPROVER` | The approver groups (party role), set on the admin page |
-| `cert:active:{issueId}` | Old-format records, read only |
+| `ls3:partykey` | The site key of the party tokens (ADR-011) |
+| `ls3:party:{token}` | One account behind a party token; deleted when the account is closed |
+| `ls3:convert:{issueId}` | Journal of a conversion of an old record, while it runs |
+| `cert:active:{issueId}` | Old-format records, read only; their personal data is replaced by a stub |
 
 ## Find issues by seal state (JQL)
 
@@ -74,19 +83,23 @@ node ../../tools/verifier/verify-evidence.mjs --self-test
 
 The verifier uses the Node standard library only. It exits 0 only when the snapshot hash, the history chain, the certificate and the signature all pass.
 
-The full design is in `docs/spec/ledgerseal-spec-v2.md`.
+The full design is in `docs/spec/ledgerseal-spec-v3.md`.
 
 ## Tests
 
-Measured on the last change to this file:
+Measured on the last change to this file (2026-11-06):
 
 | Measure | Value |
 |---|---|
-| Tests | 307 in 35 suites |
-| Branch coverage (all files in `src/` except the UI Kit component files; both view models are included) | 95.35% |
+| Tests | 484 in 46 suites |
+| Coverage (all files in `src/` except the UI Kit component files; both view models are included) | statements 97.88%, branches 94.26%, functions 96.61%, lines 98.67% |
+
+Install the shared UI package first; its `prepare` step builds it with its own TypeScript:
 
 ```bash
-npm install
+cd ../../packages/asymm-jira-ui && npm ci
+cd ../../apps/ledgerseal && npm ci
 npm test
 npm run build
+npm audit --omit=dev --audit-level=high
 ```
