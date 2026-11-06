@@ -13,7 +13,7 @@ Status: approved. Part B in progress on branch `feature/fourrealities-research-b
   - **[MANIFEST]** adds a manifest module or block, with no scope change.
   - **[MIGRATE]** changes or deletes stored KVS data.
   - **[OTHER-APP]** needs a change in another app or a shared package.
-- **Test types:** unit (pure module, node environment), resolver (resolver function with separate `asApp` and `asUser` mocks), UI render (`react-test-renderer`, UI Kit and bridge mocked), harness (`~/.cache/gemini-earning-fourrealities-research/harness`).
+- **Test types:** unit (pure module, node environment), resolver (resolver function with separate `asApp` and `asUser` mocks), UI render (`react-test-renderer`, UI Kit and bridge mocked), harness (`docs/sdlc/fourrealities-usp-ux-research-2026-11/evidence/harness`).
 
 ## Summary
 

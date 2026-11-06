@@ -12,7 +12,7 @@
   - the Partner Agreement as fetched for the previous review;
   - Atlassian's reports glossary (https://developer.atlassian.com/platform/marketplace/glossary-reports/, fetched 2026-11-07);
   - `tools/verifier/README.md`.
-- Pages, not committed: `/home/fahimfarookme/.cache/jira-suite-merge-review/go-to-market-plan/`.
+- Pages, not committed: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/go-to-market-plan/`.
 
 ## 1. Verdict
 

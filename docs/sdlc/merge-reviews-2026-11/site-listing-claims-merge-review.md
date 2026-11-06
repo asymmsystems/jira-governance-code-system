@@ -9,7 +9,7 @@
 - **Only `9a3f876` was merged.** It was cherry-picked alone (`git cherry-pick -x`) onto a new branch `feature/site-listing-claims` from `develop`, as `d399540`. That branch was merged into `develop` with `--no-ff` as `23226e3` and pushed.
 - The five link commits stay on `feature/marketplace-live-links` for launch day; `git log origin/develop` contains none of them.
 - `main` (`72e1ba0`) and the tags are untouched.
-- Build log, not committed: `/home/fahimfarookme/.cache/jira-suite-merge-review/site-listing-claims/build.txt`.
+- Build log, not committed: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/site-listing-claims/build.txt`.
 
 ## 1. Verdict
 

@@ -1,12 +1,12 @@
 # CascadePlan fix plan review: test log
 
 - Reviewer: independent review session, 2026-11-05 (started 15:29 +0530).
-- Document under review: `/home/fahimfarookme/.cache/gemini-earning-cascadeplan-marketplace-review/fix-plan.md`.
+- Document under review: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cascadeplan-marketplace-review/fix-plan.md`.
 - Code: `asymmsystems/jira-governance-code-system`, commit `db080096007208d2cad97f79c620d49964aa05c9`, folder `apps/cascadeplan`.
-- Output folder: `/home/fahimfarookme/.cache/gemini-earning-cascadeplan-fixplan-review/` (called OUT below).
+- Output folder: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cascadeplan-fixplan-review/` (called OUT below).
 - Raw logs: `OUT/logs/`.
 - Shell: VS Code Flatpak sandbox. node 26.13.0, npm 11.20.0 and forge 15.0.0 run on the host through `flatpak-spawn --host`.
-- Nothing was committed, pushed or deployed. No file in `/home/fahimfarookme/.cache/gemini-earning-cascadeplan-marketplace-review/` was changed.
+- Nothing was committed, pushed or deployed. No file in `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cascadeplan-marketplace-review/` was changed.
 
 ## 1. Checkout
 
@@ -14,7 +14,7 @@
 |---|---|---|
 | 1 | `ls OUT` | OUT already held a folder `checkout`, created at 15:07 by another session (`apps/cascadeplan/package.json` modified, untracked `package-lock.json` and `test/review/`). I did not touch it, because I did not create it. |
 | 2 | `git clone https://github.com/asymmsystems/jira-governance-code-system.git OUT/checkout-claude` | Failed: no GitHub credential helper in the sandbox (`/usr/bin/gh: No such file`). |
-| 3 | `git clone --no-checkout /home/fahimfarookme/Documents/projects/gemini-earning OUT/checkout-claude` then `git checkout db080096007208d2cad97f79c620d49964aa05c9` | OK. HEAD `db08009 feat(planner): keep one set of task dates across every plan`. The local repository was the `origin` of the other checkout. My clone is `OUT/checkout-claude` (a sibling of `OUT/checkout`, not the path in the brief, for the reason in row 1). |
+| 3 | `git clone --no-checkout /home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system OUT/checkout-claude` then `git checkout db080096007208d2cad97f79c620d49964aa05c9` | OK. HEAD `db08009 feat(planner): keep one set of task dates across every plan`. The local repository was the `origin` of the other checkout. My clone is `OUT/checkout-claude` (a sibling of `OUT/checkout`, not the path in the brief, for the reason in row 1). |
 
 ## 2. Static and unit gate (in `OUT/checkout-claude/apps/cascadeplan`)
 

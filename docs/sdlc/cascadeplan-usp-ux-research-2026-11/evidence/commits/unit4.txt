@@ -1,0 +1,9 @@
+feat(cascadeplan): visual drag to link and dependency conflict prevention
+
+- Add interactive connector anchors on bar edges for visual drag-to-link dependency creation
+- Draw live arrow connection between source and target bars during drag
+- Open dependency configuration popover on target bar drop with trigger percentage selection
+- Detect live scheduling conflicts when task start date is earlier than predecessor milestone trigger
+- Render violated bars and preview ghost with warning stroke during drag
+- Add enforce dependencies toggle option to auto-clamp moves to earliest valid start
+- Add dependency conflict resolution dialog offering snap to earliest start, adjust trigger to fit, keep with violation, or cancel move

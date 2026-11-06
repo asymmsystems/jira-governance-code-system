@@ -1,0 +1,13 @@
+feat(cascadeplan): canvas timeline alignment and dual horizontal scrollbars
+
+Align canvas timeline trackLeft precisely with the outer boundary of the
+frozen data columns and add synchronized dual horizontal scrollbars.
+
+- Compute layout.trackLeft directly from frozen columns boundary (frozenWidth),
+  eliminating the 131 px gap (2-week offset) where canvas bars were previously
+  clipped or hidden under week columns.
+- Add pinned bottom synchronized scrollbar (ganttBottomScrollbar) docked
+  at the base of the planner view, maintaining bidirectional scroll sync
+  between ganttWrapper, ganttTopScrollbar, and ganttBottomScrollbar.
+- Style top and bottom scrollbars with 14 px height and high-contrast
+  Atlassian design tokens.

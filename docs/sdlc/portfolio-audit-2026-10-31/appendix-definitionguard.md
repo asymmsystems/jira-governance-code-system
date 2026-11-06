@@ -1,8 +1,8 @@
 # DefinitionGuard commercial-readiness review
 
 Reviewer: independent reviewer 4 of 4 (DefinitionGuard only). Date: 2026-10-31. Repo HEAD: 5097bf5.
-App path: /home/fahimfarookme/Documents/projects/gemini-earning/apps/definitionguard
-Mode: read-only. No deploy, no tunnel, no network calls. Scratch work is in /home/fahimfarookme/.cache/gemini-earning-portfolio-audit/definitionguard-scratch/.
+App path: /home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system/apps/definitionguard
+Mode: read-only. No deploy, no tunnel, no network calls. Scratch work is in docs/sdlc/portfolio-audit-2026-10-31/evidence/definitionguard-scratch/.
 
 ## 1. Header
 
@@ -36,7 +36,7 @@ Cross-app facts in section 6 come from grep only on apps/fourrealities and apps/
 ### 1.2 Commands and results
 
 1. `npx tsc --noEmit -p .` on host: no output, exit 0. Result: 0 type errors. `strict: true` (tsconfig.json:10).
-2. `npx jest --coverage --coverageDirectory=/home/fahimfarookme/.cache/gemini-earning-portfolio-audit/cov-definitionguard`: exit 0.
+2. `npx jest --coverage --coverageDirectory=/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/portfolio-audit/cov-definitionguard`: exit 0.
    - Test Suites: 5 passed, 5 total. Tests: 59 passed, 59 total. 0 failed. 0 skipped.
    - Coverage table:
 
@@ -51,7 +51,7 @@ Cross-app facts in section 6 come from grep only on apps/fourrealities and apps/
 
    - Coverage exclusions (jest.config.js:6-10): `src/frontend/**` is excluded. The whole UI (src/frontend/index.tsx, 250 lines) has 0 tests. `*.d.ts` is excluded. models.ts has no executable code.
    - Threshold is global 90% (jest.config.js:12-19). Global branch passes at 90.36%. src/index.ts alone is below 90% branch.
-3. `node probe.js` (scratch script /home/fahimfarookme/.cache/gemini-earning-portfolio-audit/definitionguard-scratch/probe.js, run against a scratch tsc build of src/domain, src/storage, src/validator). Output:
+3. `node probe.js` (scratch script docs/sdlc/portfolio-audit-2026-10-31/evidence/definitionguard-scratch/probe.js, run against a scratch tsc build of src/domain, src/storage, src/validator). Output:
 
 ```
 1 stored hash equals recompute: true

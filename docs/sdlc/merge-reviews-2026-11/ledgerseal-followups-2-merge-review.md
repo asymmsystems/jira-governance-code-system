@@ -3,7 +3,7 @@
 - Date: 2026-11-06. Reviewer: independent merge review session (not the session that wrote the fixes).
 - Branch: `feature/ledgerseal-review-followups-2` at `a57d950`, cut from master `47ad030`. Master at merge: `2f62ec1` (holds the FourRealities follow-ups merge `094f202` and the production public keys `9085514`, `2f62ec1`).
 - Read: the "Second follow-ups" entries of `docs/sdlc/ledgerseal-marketplace-fixes-2026-11/progress-log.md`, the previous review `docs/sdlc/merge-reviews-2026-11/ledgerseal-followups-merge-review.md` (M-5, M-6, L-8, L-9, L-10), the full diff (16 files), `src/service/conversion.ts` in full, the seal, revoke and incident paths of `src/service/ledger.ts`, `src/storage/party-repository.ts`, `src/service/personal-data.ts`, ADR-011 and spec v3.
-- Probes (not committed): `/home/fahimfarookme/.cache/jira-suite-merge-review/ledgerseal-followups-2/probes/zz-probe-m5.test.ts` (Q1 to Q4), and the earlier probe P1 (`/home/fahimfarookme/.cache/jira-suite-merge-review/ledgerseal-followups/probes/zz-probe-concurrent.test.ts`).
+- Probes (not committed): `docs/sdlc/merge-reviews-2026-11/evidence/ledgerseal-followups-2/probes/zz-probe-m5.test.ts` (Q1 to Q4), and the earlier probe P1 (`docs/sdlc/merge-reviews-2026-11/evidence/ledgerseal-followups/probes/zz-probe-concurrent.test.ts`).
 - No live check and no deploy. M-3 (production key) is not treated as open: the key `ls-prod-2026-11` exists in the Forge production variables, and `feature/production-public-keys` publishes its public key.
 
 ## 1. Verdict

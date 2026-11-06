@@ -1,9 +1,9 @@
 # Independent review of the CascadePlan fix plan
 
 - **Reviewer:** second, independent review session, 2026-11-05.
-- **Document under review:** `/home/fahimfarookme/.cache/gemini-earning-cascadeplan-marketplace-review/fix-plan.md` (called `fix-plan.md` below).
+- **Document under review:** `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cascadeplan-marketplace-review/fix-plan.md` (called `fix-plan.md` below).
 - **Sources of the problems:** `report.md` and `frontend-review.md` in the same folder.
-- **Code:** commit `db080096007208d2cad97f79c620d49964aa05c9`. Paths are relative to `apps/cascadeplan/` unless they start with `packages/` or `docs/`. My clone is `/home/fahimfarookme/.cache/gemini-earning-cascadeplan-fixplan-review/checkout-claude`. `test-log.md` section 1 explains why it is not at `.../checkout`.
+- **Code:** commit `db080096007208d2cad97f79c620d49964aa05c9`. Paths are relative to `apps/cascadeplan/` unless they start with `packages/` or `docs/`. My clone is `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cascadeplan-fixplan-review/checkout-claude`. `test-log.md` section 1 explains why it is not at `.../checkout`.
 - **My tests:** `tests/fixplan-gaps.test.ts` in this folder (6 tests, all pass at `db08009`). A "GAP" test passes while the code has the behaviour. It shows a code path that a fix in `fix-plan.md` does not name.
 - **Commands and results:** `test-log.md` in this folder.
 - **Status:** a report for the owner (Fahim Farook). Nothing in the product was changed.

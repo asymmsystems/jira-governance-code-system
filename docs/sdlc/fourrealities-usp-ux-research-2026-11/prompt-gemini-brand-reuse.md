@@ -6,14 +6,14 @@ You work on one of the owner's other Jira apps: LedgerSeal, DefinitionGuard, Pla
 
 | Thing | Full path |
 |---|---|
-| The prompt the FourRealities session follows (it defines the standard; read sections 1, 1b and 2) | `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/sdlc/fourrealities-usp-ux-research-2026-11/handover-gemini-ux.md` |
-| The standard, once written | `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/design/asymm-jira-ui-standard.md` |
-| The brand module, once built | `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities/src/brand/brand.ts` |
-| The shared layout components, once built | `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/apps/fourrealities/src/brand/layout.tsx` |
+| The prompt the FourRealities session follows (it defines the standard; read sections 1, 1b and 2) | `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system/docs/sdlc/fourrealities-usp-ux-research-2026-11/handover-gemini-ux.md` |
+| The standard, once written | `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system/docs/design/asymm-jira-ui-standard.md` |
+| The brand module, once built | `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system/apps/fourrealities/src/brand/brand.ts` |
+| The shared layout components, once built | `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system/apps/fourrealities/src/brand/layout.tsx` |
 | The shared package | `packages/asymm-jira-ui` at the repository root |
-| FourRealities worktree (read-only for you) | `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build` (branch `feature/fourrealities-research-build`) |
-| LedgerSeal worktree | `/home/fahimfarookme/Documents/projects/gemini-earning-ls-build` (branch `feature/ledgerseal-research-build`) |
-| DefinitionGuard worktree | `/home/fahimfarookme/Documents/projects/gemini-earning-dg-build` (branch `feature/definitionguard-completion`) |
+| FourRealities worktree (read-only for you) | `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system` (branch `feature/fourrealities-research-build`) |
+| LedgerSeal worktree | `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system` (branch `feature/ledgerseal-research-build`) |
+| DefinitionGuard worktree | `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system` (branch `feature/definitionguard-completion`) |
 
 Work only in your own app's worktree. Never edit files in another session's worktree. Read them only.
 
@@ -21,7 +21,7 @@ Work only in your own app's worktree. Never edit files in another session's work
 
 Run these checks at the start of every UI task, and say the result to the owner in one line:
 
-1. **Is the standard written?** Check that `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/design/asymm-jira-ui-standard.md` exists. (Yes)
+1. **Is the standard written?** Check that `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system/docs/design/asymm-jira-ui-standard.md` exists. (Yes)
 2. **Is the brand module built?** Check that `packages/asymm-jira-ui/src/brand.ts` exists. (Yes)
 3. **Is the shared package approved and available on your branch?** Approved on 2026-11-03. Check that `packages/asymm-jira-ui` exists in **your** worktree root.
 
@@ -50,7 +50,7 @@ Run these checks at the start of every UI task, and say the result to the owner 
 ## 4. What the brand is (for reference; the standard wins if they differ)
 
 - **Owner palette:** teal #5295A3 / #9CC8D1, rose #BA6E8F / #C985A3, sage #8FA96D / #AFC29C, sand #F8DBA9 / #FDF5E5, surfaces #F9F7F6 (app area) and #FFFFFF (sections), ink #1A1C1E and #333333.
-- **Muted additions:** slate, plum, clay and stone, with text shades. The full table and the contrast numbers are in section 1b of `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/sdlc/fourrealities-usp-ux-research-2026-11/handover-gemini-ux.md`.
+- **Muted additions:** slate, plum, clay and stone, with text shades. The full table and the contrast numbers are in section 1b of `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system/docs/sdlc/fourrealities-usp-ux-research-2026-11/handover-gemini-ux.md`.
 - **Inside Jira (UI Kit native render), only Atlassian design tokens work, never hex.** Each brand role maps to the nearest token, for example #F9F7F6 to `elevation.surface.sunken`. Exact hex colours need Custom UI, which is a separate owner decision. Do not adopt Custom UI.
 - **Text colour rule:** strong colours (teal, rose and especially sage) are never used for normal-size text. Use the text shades or ink.
 

@@ -23,12 +23,12 @@ Do not work in any existing worktree. Other sessions use them. Make your own clo
 
 ```
 git clone https://github.com/asymmsystems/jira-governance-code-system.git \
-  /home/fahimfarookme/.cache/gemini-earning-cascadeplan-marketplace-review/checkout
-cd /home/fahimfarookme/.cache/gemini-earning-cascadeplan-marketplace-review/checkout
+  /home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cascadeplan-marketplace-review/checkout
+cd /home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cascadeplan-marketplace-review/checkout
 git checkout <review SHA>
 ```
 
-Put all your output in `/home/fahimfarookme/.cache/gemini-earning-cascadeplan-marketplace-review/`.
+Put all your output in `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cascadeplan-marketplace-review/`.
 Do not write anywhere else. Do not commit, push, merge, or open pull requests.
 
 ### 1.2 Tool rules
@@ -223,7 +223,7 @@ in the output folder. Do not commit them.
 ### 5.3 Local browser test
 
 The previous session built a browser harness at
-`/home/fahimfarookme/.cache/gemini-earning-cascadeplan-bugfix/harness/` (Forge stubs, a DEMO Jira
+`/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cascadeplan-bugfix/harness/` (Forge stubs, a DEMO Jira
 fixture whose due dates persist, and `e2e.py`, a Python Playwright script with 30 checks). Read it in
 full first. Copy it into your output folder and change the two absolute import paths in `entry.ts`
 and `setup.ts` to your checkout. Build the bundle from the harness folder with:

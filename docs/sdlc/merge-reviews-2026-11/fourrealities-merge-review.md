@@ -41,7 +41,7 @@ Two rounds. Round 2 (section R2, below) is the current verdict. Round 1 follows 
 | `git status --porcelain` | empty |
 | Apps CI on the branch head `025a148` | run 42197644006, success |
 
-Logs: `/home/fahimfarookme/.cache/jira-suite-merge-review/fourrealities/logs/gate-trial2.log`, `gate-merge.log`, `mutations-r2.log`.
+Logs: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/fourrealities/logs/gate-trial2.log`, `gate-merge.log`, `mutations-r2.log`.
 
 ### R2.4 After the merge
 
@@ -53,7 +53,7 @@ Logs: `/home/fahimfarookme/.cache/jira-suite-merge-review/fourrealities/logs/gat
 - Date: 2026-11-06. Reviewer: independent merge review session (brief: `docs/sdlc/cascadeplan-marketplace-review-2026-11/merge-review-prompt.md` on `origin/master`).
 - Branch: `feature/fourrealities-marketplace-fixes`, head `2badcb4`. Merge base with master: `7f87747`. `git log master..branch` = 9 commits (`4284717` to `2badcb4`); the old CascadePlan commits from the base are already on master.
 - Master at review: `8666cad` (CascadePlan `e1b0192`, DefinitionGuard `32e86ca`, CI `8666cad`). `git merge-base --is-ancestor origin/feature/ledgerseal-marketplace-fixes origin/master` = 1: LedgerSeal (`6b6e996`) is NOT on master yet.
-- Clone: `/home/fahimfarookme/.cache/jira-suite-merge-review/fourrealities/checkout`. Trial merge (master, then LedgerSeal `6b6e996`, then this branch): worktree `/home/fahimfarookme/.cache/jira-suite-merge-review/fourrealities/trial`, local branch `trial`, never pushed.
+- Clone: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/fourrealities/checkout`. Trial merge (master, then LedgerSeal `6b6e996`, then this branch): worktree `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/fourrealities/trial`, local branch `trial`, never pushed.
 - Logs: `.../fourrealities/logs/gate-branch.log`, `gate-trial.log`, `ls-audit.log`, `mutations.log`. Probe: `.../fourrealities/probes/forged-unsigned.test.ts`.
 
 ## 1. Verdict

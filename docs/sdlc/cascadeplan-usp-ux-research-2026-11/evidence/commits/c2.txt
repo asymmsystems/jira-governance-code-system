@@ -1,0 +1,6 @@
+fix(cascadeplan): close openEpicPicker so the planner script parses
+
+openEpicPicker ends before the progress and target picker state, so
+the inline planner script parses and the timeline renders.
+
+Refs: NF-01

@@ -1,7 +1,7 @@
 # CascadePlan: Marketplace external-requirements research and URL checks
 
 - Scope: external requirements, URL checks, checklist comparison and media checks only. No file in the checkout was edited. Nothing was deployed, signed in to, or submitted. No email address or credential was sent anywhere. All HTTP requests used User-Agent "review-bot".
-- Checkout: /home/fahimfarookme/.cache/gemini-earning-cascadeplan-marketplace-review/checkout (branch master, HEAD db08009, "feat(planner): keep one set of task dates across every plan", 2026-11-05 13:11 +0530).
+- Checkout: /home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cascadeplan-marketplace-review/checkout (branch master, HEAD db08009, "feat(planner): keep one set of task dates across every plan", 2026-11-05 13:11 +0530).
 - All Atlassian pages were fetched on 2026-11-05 with curl and read as text. Each page's own "Last updated" date is shown in the table. Quotes are verbatim except where marked [paraphrase]. Some Atlassian text contains typographic dashes; those passages are paraphrased so this file stays ASCII.
 - Raw fetched pages (text): /tmp/claude-1001/-home-fahimfarookme-Documents-projects/249b789e-d4bd-4827-b237-0a7a35210c9f/scratchpad/atl/*.body (scratch, not durable).
 
@@ -197,7 +197,7 @@ Non-blocking or informational:
 
 ## Section D: Media assets vs rules
 
-Location: /home/fahimfarookme/.cache/gemini-earning-cascadeplan-marketplace-review/checkout/docs/marketplace/assets/cascadeplan/. Identical copies (same md5) exist in site/public/assets/cascadeplan/. Sizes from `file`; icon alpha checked by decoding the PNG.
+Location: /home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cascadeplan-marketplace-review/checkout/docs/marketplace/assets/cascadeplan/. Identical copies (same md5) exist in site/public/assets/cascadeplan/. Sizes from `file`; icon alpha checked by decoding the PNG.
 
 | File | Format and size | Rule (ID) | Meets rule? | Notes |
 |---|---|---|---|---|

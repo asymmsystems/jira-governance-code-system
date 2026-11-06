@@ -1,0 +1,11 @@
+test(cascadeplan): test suite asserts behaviour not defaults
+
+Assert explicit property values and response fields across the test suite
+rather than unconstrained existence checks. PlannerEngine calculates task
+effort with a raw estimate defaulting to zero instead of forty hours, and
+unit tests assert that zero default. All toBeDefined assertions across the
+test suites are replaced with exact property or call-body comparisons.
+Separate mocks for asApp and asUser ensure reads execute as the user and
+fail if asApp is invoked.
+
+Refs: B-22

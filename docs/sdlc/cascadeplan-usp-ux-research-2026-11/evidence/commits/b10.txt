@@ -1,0 +1,14 @@
+feat(cascadeplan): page Jira reads, back off on 429 and apply cascades in batches
+
+Issue search follows nextPageToken up to 10 pages of 100. When more
+issues exist, the plan reports how many were shown and Jira's
+approximate total, and the planner says so in the header. Every Jira
+call retries a 429 after Retry-After, at most three times and within a
+20 second budget.
+
+updateWbsTask reads Jira once and builds the returned plan from the same
+read. A cascade moves at most 25 successors per call and returns the
+rest; the planner calls continueCascade until none remain.
+previewCascade lists the moves a change would cause without writing.
+
+Refs: B-10, CP-10, CP-17

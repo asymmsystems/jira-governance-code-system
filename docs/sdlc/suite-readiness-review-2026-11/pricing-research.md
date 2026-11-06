@@ -84,7 +84,7 @@ A7. Which user count sets the tier. [SECONDARY, search result summary of Atlassi
 - 109 of 376 apps charge $0.50 to $0.99 on the 11-100 band, 89 charge $1.00 to $1.49, 48 charge $1.50 to $1.99, and 88 charge $2.00 or more. 42 charge under $0.50.
 - Median shape: the 101-250 rate is 68 percent of the 11-100 rate, and the 251-1,000 rate is 35 percent of it. Your plan has 80 percent and 60 percent.
 - Your current rates rank like this among the 376 apps (share of apps that charge less): $1.50 on 11-100 = 64th percentile; $1.20 on 101-250 = 74th; $0.90 on 251-1,000 = 88th.
-- Files: scratch data in `/home/fahimfarookme/.cache/suite-readiness-2026-11/pricing/survey.json`.
+- Files: scratch data in `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/suite-readiness/pricing/survey.json`.
 
 ### B2. What Jira itself costs, and the Premium uplift (CascadePlan)
 
@@ -290,7 +290,7 @@ Other points to decide, not covered by price tables:
 - Appfire's own pages (`appfire.com/pricing-updates`, `appfire.com/bigpicture/plans-and-pricing`, `appfire.com/products/bigpicture/pricing`) returned HTTP 429, so Appfire app prices (BigPicture, BigGantt, Swanly, JMWE and others) rest on the Marketplace API only. Most other rows also rest on the API alone; only Planyway, Tempo and Easy Agile were cross-checked on vendor pages.
 - Vera, Ketryx (beyond its Free plan) and Aha! have no public Marketplace price.
 - The statement that Jira's built-in timeline is in every plan comes from a search snippet and an Atlassian Community article I did not open (B2). Treat it as likely.
-- Prices change at any time (A6), and 2026-10-13 was a common change date. Re-run the API calls before publishing prices. The helper scripts are in `/home/fahimfarookme/.cache/suite-readiness-2026-11/pricing/` (`calc.py`, `tables.py`, `survey.py`, `groups.py`).
+- Prices change at any time (A6), and 2026-10-13 was a common change date. Re-run the API calls before publishing prices. The helper scripts are in `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/suite-readiness/pricing/` (`calc.py`, `tables.py`, `survey.py`, `groups.py`).
 
 ## Sources
 

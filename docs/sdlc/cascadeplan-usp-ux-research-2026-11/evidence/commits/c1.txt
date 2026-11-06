@@ -1,0 +1,17 @@
+feat(cascadeplan): multi-level WBS planner with inline editing and resource picker
+
+The planner models Epic, Story/Task and Sub-task levels from the Jira
+issue type hierarchy level and rolls up dates, effort and progress to
+each parent, with a per-parent manual progress override.
+
+Adds:
+- Quick popovers for progress, target progress, status and epic link.
+- Searchable team picker with lead and contributor roles.
+- Column manager (hide, show, reset, resize) stored per project.
+- Inline task creation below any row.
+- Earliest-start week calculation from the predecessor's weekly
+  allocation, used by the schedule cascade.
+- WorkEffort, WorkEffortAssoc, WorkEffortPartyAssignment and
+  WorkEffortEstimate types with WbsTask conversion functions.
+
+Refs: CP-08, CP-14, CP-23

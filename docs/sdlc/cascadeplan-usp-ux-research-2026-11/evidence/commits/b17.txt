@@ -1,0 +1,12 @@
+feat(cascadeplan): use real Atlassian design tokens and support dark mode
+
+The planner enables Jira theming before its first load. Every colour in
+the stylesheet, the page and the planner code is a --cp alias that
+points to a real ADS token, with that token's light value from the
+Forge CDN sheet as fallback, so the page follows the Jira light and dark
+themes and live theme changes. Each text pair meets 4.5:1 and each bar,
+border and focus colour meets 3:1 in both themes, checked against the
+CDN token values. Animations are shorter than 150 ms and turn off with
+reduced motion.
+
+Refs: B-17, CP-21

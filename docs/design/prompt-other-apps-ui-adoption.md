@@ -83,7 +83,7 @@ import {
 
 ### A. LedgerSeal (`apps/ledgerseal`)
 
-Follow [asymm-jira-ui-standard.md](file:///home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/design/asymm-jira-ui-standard.md) Section 5.2:
+Follow [asymm-jira-ui-standard.md](asymm-jira-ui-standard.md) Section 5.2:
 
 1. **Outer Shell**:
    Wrap the issue panel in `<AppSurface>` (and `<AppSurface compact>` for glance mode).
@@ -112,7 +112,7 @@ Follow [asymm-jira-ui-standard.md](file:///home/fahimfarookme/Documents/projects
 
 ### B. DefinitionGuard (`apps/definitionguard`)
 
-Follow [asymm-jira-ui-standard.md](file:///home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/design/asymm-jira-ui-standard.md) Section 5.3:
+Follow [asymm-jira-ui-standard.md](asymm-jira-ui-standard.md) Section 5.3:
 
 1. **Outer Shell**:
    Wrap in `<AppSurface>` (and `<AppSurface compact>` for glance mode).
@@ -139,7 +139,7 @@ Follow [asymm-jira-ui-standard.md](file:///home/fahimfarookme/Documents/projects
    - Rework notes and waiver history inside `<NoteBox>`.
 ### C. Uniform Admin Policy Page (`src/frontend/admin.tsx`)
 
-Follow [uniform-permission-management-standard.md](file:///home/fahimfarookme/Documents/projects/gemini-earning-fr-build/docs/design/uniform-permission-management-standard.md):
+Follow [uniform-permission-management-standard.md](uniform-permission-management-standard.md):
 
 Every app in the suite provides a native `jira:adminPage` where Jira administrators configure authorized groups. Do not write custom group picker forms; import the shared admin panel from `@asymm/jira-ui`:
 

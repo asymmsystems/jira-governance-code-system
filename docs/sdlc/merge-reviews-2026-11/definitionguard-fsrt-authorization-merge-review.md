@@ -5,7 +5,7 @@
   - `f454379`: the code;
   - `2cc51fd`: `docs/security/fsrt-scan-2026-11-07.md`.
 - Purpose: fix the Marketplace rejection AMS-76722, FSRT `Custom-Check-Authorization-16711047855292326038` (High, Requirement 1.2) on DefinitionGuard.
-- Output and scripts, not committed: `/home/fahimfarookme/.cache/jira-suite-merge-review/definitionguard-fsrt/` (FSRT reports, `gate-branch.txt`, `mutate.py`, `mutations.txt`).
+- Output and scripts, not committed: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/definitionguard-fsrt/` (FSRT reports, `gate-branch.txt`, `mutate.py`, `mutations.txt`).
 - Nothing deployed by this review. The fixing session deployed 7.1.0 to development. With `forge lint -e production` there is no approval (no scope change), so the production deploy is a minor version.
 
 ## 1. Verdict

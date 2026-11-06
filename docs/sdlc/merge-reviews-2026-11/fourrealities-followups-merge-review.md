@@ -38,7 +38,7 @@ That leaves about 5 s to Forge's 25 s for the one in-flight history batch and th
 
 ## 2. Fix-log entries: tests fail without each fix
 
-Each mutation applied alone in my clone, full suite run, file restored (`git status` clean after each run). Runner: `/home/fahimfarookme/.cache/jira-suite-merge-review/fourrealities-followups/mutate.py`.
+Each mutation applied alone in my clone, full suite run, file restored (`git status` clean after each run). Runner: `docs/sdlc/merge-reviews-2026-11/evidence/fourrealities-followups/mutate.py`.
 
 | Mutation | Result | Fix log claim |
 |---|---|---|

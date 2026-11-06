@@ -1,0 +1,13 @@
+feat(cascadeplan): first run without setup, empty states and a first-link hint
+
+A project with scheduled issues opens straight into a working timeline.
+With nothing scheduled, the timeline shows one primary action, Schedule
+your first issues, which opens the backlog, or Create an issue when the
+project has none, and a link to a short help popup.
+
+The dependency popup asks for the trigger percent first; choosing the
+issue it waits for adds the link, so the first percent link takes three
+clicks. A one-time hint above the timeline shows that path until the
+plan has a link or the user closes it.
+
+Refs: B-25

@@ -82,7 +82,7 @@ seal after the closure, or every such issue would show CHANGED.
    issue: the sealed issue, the seals, the history and the snapshots.
 10. *Evidence and the verifier.* The evidence export holds tokens. It adds an unsigned =parties=
     map from each history token to its account id, or null for a closed account (closed mark), so an
-    auditor can still see who acted; a token with no entry is left out. The open verifier (public repository =asymmsystems/ledgerseal-verifier=) checks
+    auditor can still see who acted; a token with no entry is left out. The open verifier (public repository =asymmsystems/jira-governance-code-cli=) checks
     the chain across a redaction row and prints a note naming it. Evidence exported before this
     change still verifies.
 11. *Other personal data.* Free text that people type into the issue (descriptions, comments, the

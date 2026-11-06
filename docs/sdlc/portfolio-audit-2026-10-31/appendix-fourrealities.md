@@ -1,7 +1,7 @@
 # FourRealities commercial-readiness audit (reviewer 3 of 4)
 
 Reviewer: Claude (independent reviewer). Date: 2026-10-31. Repo HEAD: 5097bf5 (`git log` output: "feat(fourrealities): remediate audit defects and deliver trustworthy delivery integrity pipeline").
-Scope: apps/fourrealities. Mode: read-only. I made no change under gemini-earning/.
+Scope: apps/fourrealities. Mode: read-only. I made no change under jira-governance-code-system/.
 
 ## 1. Header
 
@@ -40,7 +40,7 @@ Not read: dist/ (build output), coverage/ (old report), static/icons/icon.svg, R
 
 1. `flatpak-spawn --host bash -c 'cd .../apps/fourrealities && npx tsc --noEmit -p .'`
    Result: no output, exit code 0. Zero type errors.
-2. `flatpak-spawn --host bash -c 'cd .../apps/fourrealities && npx jest --coverage --coverageDirectory=/home/fahimfarookme/.cache/gemini-earning-portfolio-audit/cov-fourrealities'`
+2. `flatpak-spawn --host bash -c 'cd .../apps/fourrealities && npx jest --coverage --coverageDirectory=/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/portfolio-audit/cov-fourrealities'`
    Result: Test Suites 3 passed, 3 total. Tests 54 passed, 54 total. Time 283 s. Exit code 0.
 
 ```

@@ -1,0 +1,11 @@
+feat(cascadeplan): honest second person subtasks in jira
+
+Adding a second person to a task creates a Jira subtask assigned
+to that person from both the resource picker and the task modal,
+recording the subtask key on the parent contributor record. Removing
+a contributor with an existing subtask presents an in-form prompt
+to delete or unassign the subtask without using browser dialogs,
+executing Jira delete or unassign on the user choice. Create Task
+and inline drafts send the parent key and assignee account id.
+
+Refs: B-19

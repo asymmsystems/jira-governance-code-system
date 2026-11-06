@@ -6,7 +6,7 @@ One entry per research round and per build item. Dates are local (UTC+5:30).
 
 - **Repo state.** HEAD `5097bf5`. `git status -s` shows uncommitted changes in 7 files under `apps/planshift` (models.ts, planner-engine.ts, index.ts, index.html, style.css, and two test files; `git diff --stat`: 7,180 insertions, 256 deletions). The research did not make these changes. Part A reviewed this working tree as "current code".
 - **Read in full:** the audit (sections 1 and 7, and section 4.1), `appendix-planshift.md`, `models.ts`, `planner-engine.ts`, `index.ts`, `plan-repository.ts` (via the compiled probe), `index.html` (4,076 lines), `manifest.yml`, `package.json`, `jest.config.js`, and the `loop-engine` README, agents and graders.
-- **Scratch location:** `~/.cache/gemini-earning-cascadeplan-research/` (`sources/`, `harness/`, `probes/`).
+- **Scratch location:** `~/Documents/projects/jira-governance/.tmp/cache/cascadeplan-research/` (`sources/`, `harness/`, `probes/`).
 - **Tools:** headless Chrome 153 at `/opt/google/chrome/chrome` driven by Python Playwright; host node 26.13 through `flatpak-spawn --host`; TypeScript compiled to the cache only (`npx tsc -p . --outDir ~/.cache/.../probes/build`).
 
 ## Round 1: collect and synthesise (2026-11-01)
@@ -83,7 +83,7 @@ One entry per research round and per build item. Dates are local (UTC+5:30).
 
 Approved 2026-11-01: `B-01..B-27`. Spec: `docs/spec/cascadeplan-spec.md` (commit `11953b1`); `grade_spec.py` passes on a copy named `planshift-spec.md` (the grader looks for the folder name; the brief names the file `cascadeplan-spec.md`).
 
-Checks per item: `tsc --noEmit`; `npx jest --coverage` with 90% branches for each changed file; `grade_tdd`, `grade_security`, `grade_ui` (`~/.cache/gemini-earning-cascadeplan-research/run_graders.sh`); Playwright harness for UI items; no em dash.
+Checks per item: `tsc --noEmit`; `npx jest --coverage` with 90% branches for each changed file; `grade_tdd`, `grade_security`, `grade_ui` (`docs/sdlc/cascadeplan-usp-ux-research-2026-11/evidence/run_graders.sh`); Playwright harness for UI items; no em dash.
 
 | Item | Date | Tests added | Result | Commit |
 |---|---|---|---|---|

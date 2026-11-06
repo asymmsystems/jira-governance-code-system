@@ -1,0 +1,17 @@
+feat(cascadeplan): undo every write with Flags instead of dialogs
+
+Each schedule, unschedule and task update is recorded with its inverse:
+the plan before the write is compared with the plan after it, and every
+changed task, including the dependents the cascade moved, can be
+restored and applied again. Twenty steps are kept. A parent whose dates
+only follow a child is not restored separately, so an undo writes no
+parent value to Jira. Ctrl+Z and Ctrl+Shift+Z (Cmd on macOS) undo and
+redo in the planner; text fields keep their own undo.
+
+Each write shows a Flag with one Undo action that stays for 10 seconds
+and while the pointer or focus is on it. A failed write shows an error
+Flag that stays until it is closed. The planner opens no browser dialog.
+A form with unsaved edits asks inside the form before Escape or a
+backdrop click closes it.
+
+Refs: B-14, CP-20, INV-12

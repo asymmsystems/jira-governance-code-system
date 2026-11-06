@@ -7,7 +7,7 @@
 readiness review (=docs/sdlc/suite-readiness-review-2026-11/fourrealities-readiness.md=, BL-1, F-H1,
 F-M3, backlog B-26) to be adopted without further questions. This ADR records the choices made.
 
-Amended 2026-11-06 after the merge review (=~/.cache/jira-suite-merge-review/fourrealities/fourrealities-merge-review.md=,
+Amended 2026-11-06 after the merge review (=~/Documents/projects/jira-governance/.tmp/cache/merge-review/fourrealities/fourrealities-merge-review.md=,
 H-1 and M-1): decision 4 now scores an unverified record like no record (the first version left it
 out of the score, so a forged "complete" record removed a "missing" check), and decision 7 adds the
 rollback rule.

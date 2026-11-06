@@ -1,0 +1,19 @@
+refactor(cascadeplan): remove synthetic data, ghost rows and dead code
+
+The page shows no fixed values before the plan loads, creates issues
+without invented epic names, and offers only real Jira users. The
+heatmap with invented department data is removed; the remaining view
+shows hours per person per week from the Jira estimates on the plan.
+
+An entry that Jira did not return is not shown. When the Jira read was
+complete, the plan lists it, and pruneStaleEntries deletes its record
+only after Jira confirms the issue no longer exists. A newly created
+issue appears in the returned plan from Jira's create response until
+the search index returns it.
+
+Each resolver computes its week list when it runs, and an entry stored
+with only a week key takes its dates from that week. The unused React
+entry point is deleted, and the local checklist is labelled as
+CascadePlan only, not Jira sub-tasks.
+
+Refs: B-18, D-10, CP-15, CP-18, CP-19, CP-24, CP-25

@@ -6,21 +6,21 @@ You continue a build that a previous agent (Claude) ran on 2026-11-01. Read this
 
 | Thing | Location |
 |---|---|
-| Git worktree (work only here) | `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build` |
+| Git worktree (work only here) | `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system` |
 | Branch | `feature/fourrealities-research-build` (latest commit: run `git log --oneline -1`) |
 | App | `apps/fourrealities` (Atlassian Forge, UI Kit, TypeScript) |
 | Research, backlog, round log, final report | `docs/sdlc/fourrealities-usp-ux-research-2026-11/` (`research-brief.md`, `ux-spec.md`, `backlog.md`, `round-log.md`, `final-report.md`, this file) |
 | Spec (working copy; v1 is frozen) | `docs/spec/fourrealities-spec-v2.md` |
 | ADRs and HLD | `architecture/decision/adr-00001-fourrealities-evidence-data-model.org`, `adr-00002-fourrealities-volatility-layering.org`, `architecture/model/fourrealities-domain-model.org` |
 | Listing (the 2026-11-01 draft `fourrealities-listing-v2.md` was deleted on 2026-11-06; its content is superseded) | `docs/marketplace/fourrealities-listing.md` |
-| Harness, graders, sources | `~/.cache/gemini-earning-fourrealities-research/` (`run.sh`, `graders.sh`, `harness/resolver-after.test.ts`, `sources/`) |
+| Harness, graders, sources | `~/Documents/projects/jira-governance/.tmp/cache/fourrealities-research/` (`run.sh`, `graders.sh`, `harness/resolver-after.test.ts`, `sources/`) |
 | Jira site | `https://asymmsystems.atlassian.net` |
 | Dashboard on DEMO | `https://asymmsystems.atlassian.net/jira/servicedesk/projects/DEMO/apps/974e4981-7626-4b1c-a41f-7eaccb7f3605/c9d5ad8b-0b9e-41eb-9bca-a0384f708c20` |
 | Probe issue (the only issue you may write to) | `https://asymmsystems.atlassian.net/browse/AUDT-1` (label `fr-probe`, project AUDT, software) |
 
 Checkpoint at the handover: branch `feature/fourrealities-claude-checkpoint` and annotated tag `fourrealities-claude-checkpoint` (commit `a31c554`). Never move, reset or delete them; keep working on `feature/fourrealities-research-build`.
 
-The worktree has no git remote. You cannot push. Do not touch the main checkout `gemini-earning/`; other sessions have uncommitted work there.
+The worktree has no git remote. You cannot push. Do not touch the main checkout `jira-governance-code-system/`; other sessions have uncommitted work there.
 
 ## 2. Hard rules (from the owner's agent definition; do not break them)
 
@@ -39,10 +39,10 @@ The worktree has no git remote. You cannot push. Do not touch the main checkout 
 
 The shell runs inside a VS Code Flatpak sandbox. Node, npx and forge run on the host through `flatpak-spawn --host`.
 
-- Type check and tests: `~/.cache/gemini-earning-fourrealities-research/run.sh --coverage` (runs `npx tsc --noEmit` and jest on the host). Expect `TSC_OK` and all tests passing.
-- Graders: `~/.cache/gemini-earning-fourrealities-research/graders.sh` (tdd, security, ui must PASS).
+- Type check and tests: `docs/sdlc/fourrealities-usp-ux-research-2026-11/evidence/run.sh --coverage` (runs `npx tsc --noEmit` and jest on the host). Expect `TSC_OK` and all tests passing.
+- Graders: `docs/sdlc/fourrealities-usp-ux-research-2026-11/evidence/graders.sh` (tdd, security, ui must PASS).
 - Coverage: `jest.config.js` enforces 90% per file on every metric. Keep it.
-- Harness: `flatpak-spawn --host bash -c "cd ~/.cache/gemini-earning-fourrealities-research/harness && FR_OUT=<name>.json /home/fahimfarookme/Documents/projects/gemini-earning/apps/ledgerseal/node_modules/.bin/jest -c jest.config.js resolver-after"`; results in `harness/results/`.
+- Harness: `flatpak-spawn --host bash -c "cd docs/sdlc/fourrealities-usp-ux-research-2026-11/evidence/harness && FR_OUT=<name>.json /home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system/apps/ledgerseal/node_modules/.bin/jest -c jest.config.js resolver-after"`; results in `harness/results/`.
 - Lint: `cd apps/fourrealities && flatpak-spawn --host bash -lc "cd $PWD && forge lint"`.
 - Deploy: `cd apps/fourrealities && flatpak-spawn --host bash -lc "cd $PWD && forge deploy -e development --non-interactive"`. The CLI warns about the host Node version; it still works.
 - Work test-first: write the test, run it and see it fail, then implement. Record each item in `round-log.md` (tests, result, coverage, graders, commit) and mark it DONE in `backlog.md`.

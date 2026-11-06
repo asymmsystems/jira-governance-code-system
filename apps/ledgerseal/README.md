@@ -82,7 +82,7 @@ node ../../tools/verifier/verify-evidence.mjs evidence.json keys/ls-prod-2026-11
 node ../../tools/verifier/verify-evidence.mjs --self-test
 ```
 
-`tools/verifier` is the one copy of the open verifier in this repository. It is identical to the public repository https://github.com/asymmsystems/ledgerseal-verifier (Apache-2.0), where auditors download it.
+`tools/verifier` is the one copy of the open verifier in this repository. It is identical to the public repository https://github.com/asymmsystems/jira-governance-code-cli (Apache-2.0), where auditors download it.
 
 The verifier uses the Node standard library only. It exits 0 only when the snapshot hash, the history chain, the certificate and the signature all pass.
 

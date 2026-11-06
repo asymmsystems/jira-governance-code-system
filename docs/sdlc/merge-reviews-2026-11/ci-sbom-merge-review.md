@@ -6,7 +6,7 @@
   - a CycloneDX step: `npx --yes @cyclonedx/cyclonedx-npm@4.0.0 --ignore-npm-errors --omit dev --output-format JSON`;
   - a `node -e` check that `bomFormat` is `CycloneDX` and that `components` is not empty;
   - `actions/upload-artifact@v4` with `retention-days: 90`.
-- Output, not committed: `/home/fahimfarookme/.cache/jira-suite-merge-review/ci-sbom/` (local SBOM, `npm ls` output, the downloaded CI artifact).
+- Output, not committed: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/ci-sbom/` (local SBOM, `npm ls` output, the downloaded CI artifact).
 
 ## 1. Verdict
 

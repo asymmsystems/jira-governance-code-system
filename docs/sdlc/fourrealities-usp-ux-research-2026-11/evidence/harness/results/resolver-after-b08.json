@@ -1,0 +1,246 @@
+{
+  "runAt": "2026-11-01T02:47:21.951Z",
+  "app": "/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system/apps/fourrealities",
+  "node": "v26.13.0",
+  "results": [
+    {
+      "resolver": "getProjectDashboard",
+      "issues": 50,
+      "views": [
+        {
+          "view": 1,
+          "cpuMs": 25.1,
+          "jiraCalls": 40,
+          "jiraByPrincipal": {
+            "asApp": 40,
+            "asUser": 0
+          },
+          "kvsGets": 7,
+          "kvsSets": 6,
+          "kvsQueries": 1,
+          "rows": 50,
+          "uniqueIssues": 50,
+          "averageRAI": 63
+        },
+        {
+          "view": 2,
+          "cpuMs": 0.4,
+          "jiraCalls": 0,
+          "jiraByPrincipal": {
+            "asApp": 0,
+            "asUser": 0
+          },
+          "kvsGets": 4,
+          "kvsSets": 0,
+          "kvsQueries": 0,
+          "rows": 50,
+          "uniqueIssues": 50,
+          "averageRAI": 63
+        },
+        {
+          "view": 52,
+          "cpuMs": 0.2,
+          "jiraCalls": 0,
+          "jiraByPrincipal": {
+            "asApp": 0,
+            "asUser": 0
+          },
+          "kvsGets": 4,
+          "kvsSets": 0,
+          "kvsQueries": 0,
+          "rows": 50,
+          "uniqueIssues": 50,
+          "averageRAI": 63
+        }
+      ],
+      "failures": 0,
+      "firstError": null,
+      "maxValueBytes": {
+        "fr:projects": 8,
+        "fr:cfg:site": 102,
+        "fr:p:PERF:chunk:{i}": 30902,
+        "fr:p:PERF:summary": 593,
+        "fr:p:PERF:meta": 219,
+        "fr:p:PERF:trend": 285
+      },
+      "maxReadViewCpuMs": 4.6,
+      "maxReadViewKvsGets": 4
+    },
+    {
+      "resolver": "getProjectDashboard",
+      "issues": 300,
+      "views": [
+        {
+          "view": 1,
+          "cpuMs": 26.1,
+          "jiraCalls": 214,
+          "jiraByPrincipal": {
+            "asApp": 214,
+            "asUser": 0
+          },
+          "kvsGets": 7,
+          "kvsSets": 8,
+          "kvsQueries": 1,
+          "rows": 300,
+          "uniqueIssues": 300,
+          "averageRAI": 68
+        },
+        {
+          "view": 2,
+          "cpuMs": 2.5,
+          "jiraCalls": 0,
+          "jiraByPrincipal": {
+            "asApp": 0,
+            "asUser": 0
+          },
+          "kvsGets": 6,
+          "kvsSets": 0,
+          "kvsQueries": 0,
+          "rows": 300,
+          "uniqueIssues": 300,
+          "averageRAI": 68
+        },
+        {
+          "view": 52,
+          "cpuMs": 1.7,
+          "jiraCalls": 0,
+          "jiraByPrincipal": {
+            "asApp": 0,
+            "asUser": 0
+          },
+          "kvsGets": 6,
+          "kvsSets": 0,
+          "kvsQueries": 0,
+          "rows": 300,
+          "uniqueIssues": 300,
+          "averageRAI": 68
+        }
+      ],
+      "failures": 0,
+      "firstError": null,
+      "maxValueBytes": {
+        "fr:projects": 8,
+        "fr:cfg:site": 102,
+        "fr:p:PERF:chunk:{i}": 63099,
+        "fr:p:PERF:summary": 607,
+        "fr:p:PERF:meta": 222,
+        "fr:p:PERF:trend": 291
+      },
+      "maxReadViewCpuMs": 20.1,
+      "maxReadViewKvsGets": 6
+    },
+    {
+      "resolver": "getProjectDashboard",
+      "issues": 1000,
+      "views": [
+        {
+          "view": 1,
+          "cpuMs": 165.2,
+          "jiraCalls": 706,
+          "jiraByPrincipal": {
+            "asApp": 706,
+            "asUser": 0
+          },
+          "kvsGets": 7,
+          "kvsSets": 15,
+          "kvsQueries": 1,
+          "rows": 1000,
+          "uniqueIssues": 1000,
+          "averageRAI": 68
+        },
+        {
+          "view": 2,
+          "cpuMs": 21,
+          "jiraCalls": 0,
+          "jiraByPrincipal": {
+            "asApp": 0,
+            "asUser": 0
+          },
+          "kvsGets": 13,
+          "kvsSets": 0,
+          "kvsQueries": 0,
+          "rows": 1000,
+          "uniqueIssues": 1000,
+          "averageRAI": 68
+        },
+        {
+          "view": 52,
+          "cpuMs": 5.6,
+          "jiraCalls": 0,
+          "jiraByPrincipal": {
+            "asApp": 0,
+            "asUser": 0
+          },
+          "kvsGets": 13,
+          "kvsSets": 0,
+          "kvsQueries": 0,
+          "rows": 1000,
+          "uniqueIssues": 1000,
+          "averageRAI": 68
+        }
+      ],
+      "failures": 0,
+      "firstError": null,
+      "maxValueBytes": {
+        "fr:projects": 8,
+        "fr:cfg:site": 102,
+        "fr:p:PERF:chunk:{i}": 63099,
+        "fr:p:PERF:summary": 619,
+        "fr:p:PERF:meta": 225,
+        "fr:p:PERF:trend": 298
+      },
+      "maxReadViewCpuMs": 33.4,
+      "maxReadViewKvsGets": 13
+    },
+    {
+      "resolver": "refreshProjectSnapshot",
+      "issues": 1000,
+      "ok": true,
+      "cpuMs": 46.9,
+      "jiraCalls": 706,
+      "searchCalls": 10,
+      "remoteLinkCalls": 694,
+      "kvsGets": 6,
+      "kvsSets": 15,
+      "kvsQueries": 1,
+      "maxValueBytes": {
+        "fr:projects": 8,
+        "fr:cfg:site": 102,
+        "fr:p:PERF:chunk:{i}": 63099,
+        "fr:p:PERF:summary": 619,
+        "fr:p:PERF:meta": 225,
+        "fr:p:PERF:trend": 298
+      }
+    },
+    {
+      "resolver": "getIssueAlignment",
+      "cpuMs": 0.1,
+      "jiraCalls": [
+        "asUser GET /rest/api/3/issue/10003",
+        "asUser GET /rest/api/3/issue/10003/remotelink"
+      ],
+      "gates": {
+        "intent": {
+          "state": "MISSING",
+          "reason": "INTENT_NONE"
+        },
+        "process": {
+          "state": "MISSING",
+          "reason": "DOD_NONE"
+        },
+        "code": {
+          "state": "MISSING",
+          "reason": "PR_NONE"
+        },
+        "audit": {
+          "state": "FOUND",
+          "verification": "NOT_VERIFIED",
+          "reason": "SEAL_VALID_LS",
+          "args": {
+            "sealedAt": "2026-10-01T00:00:00.000Z"
+          }
+        }
+      }
+    }
+  ]
+}

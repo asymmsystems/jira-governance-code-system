@@ -3,7 +3,7 @@
 - Date: 2026-11-06. Reviewer: independent merge review session (not the session that wrote the fixes).
 - Branch: `feature/ledgerseal-review-followups-3` at `ab7a63b`, cut from master `a215c9b`. Master at merge: `a215c9b` (it did not move).
 - Read: the "Third follow-ups" entries of `docs/sdlc/ledgerseal-marketplace-fixes-2026-11/progress-log.md`, the previous review `docs/sdlc/merge-reviews-2026-11/ledgerseal-followups-2-merge-review.md` (M-7, M-8, L-11, L-12, L-13), the full diff (11 files), `apps/ledgerseal/src/service/conversion.ts` in full, the seal and revoke paths of `src/service/ledger.ts` (`convertIfNeeded`, `sealFlow`, `revokeFlow`), `src/storage/party-repository.ts`, `src/service/personal-data.ts`, `createIfAbsent` and `commit` in `src/index.ts`, `tools/verifier/verify-evidence.mjs`.
-- Probes (not committed): `/home/fahimfarookme/.cache/jira-suite-merge-review/ledgerseal-followups-3/probes/zz-probe-m7.test.ts` (R1 to R3) and `zz-probe-m7-master.test.ts` (R1 against master's `conversion.ts`). Mutation script: `/home/fahimfarookme/.cache/jira-suite-merge-review/ledgerseal-followups-3/scripts/mutate.py`.
+- Probes (not committed): `docs/sdlc/merge-reviews-2026-11/evidence/ledgerseal-followups-3/probes/zz-probe-m7.test.ts` (R1 to R3) and `zz-probe-m7-master.test.ts` (R1 against master's `conversion.ts`). Mutation script: `docs/sdlc/merge-reviews-2026-11/evidence/ledgerseal-followups-3/scripts/mutate.py`.
 - No live check and no deploy. These conversion paths only touch records written before ADR-011, which exist only on the development site; LedgerSeal has never been deployed to production.
 
 ## 1. Verdict

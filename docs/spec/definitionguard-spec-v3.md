@@ -17,7 +17,7 @@
 | RS-13 | OFBiz project overview (CascadePlan research) | OFBiz chose its data model after "finding The Data Model Resource Book ... by Len Silverston" | Reported |
 | CP | `apps/planshift/src/domain/models.ts` (read only) | CascadePlan names: WorkEffort, WorkEffortAssoc, WorkEffortPartyAssignment, RoleType values | Observed-code |
 
-Scratch copies of S-01 to S-05: `~/.cache/gemini-earning-definitionguard-research/sources/ofbiz/`.
+Scratch copies of S-01 to S-05: `~/Documents/projects/jira-governance/.tmp/cache/definitionguard-research/sources/ofbiz/`.
 
 **Limit.** I did not read Silverston's books. "Silverston pattern" in this spec means "the pattern as OFBiz implements it". Field names follow OFBiz. Where DefinitionGuard keeps less than OFBiz, section 4 says so.
 

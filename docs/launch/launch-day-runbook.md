@@ -134,7 +134,7 @@ Proof paths are in the Jira repo unless they start with `https://`. "Listing" me
 | Signed with Ed25519, appended to a hash chain in Forge storage | Listing rows "Ed25519 Signed Attestation" and "Tamper-Evident History Chain"; `apps/ledgerseal/src/domain/attestation.ts`, `apps/ledgerseal/src/domain/history.ts` |
 | A workflow validator blocks the transition after a covered change until another approver approves it, and names the changed fields | `apps/ledgerseal/manifest.yml` (`ledgerseal-validator`, "Require Valid LedgerSeal"), `apps/ledgerseal/src/validator/workflow-validator.ts` (`changedItemsMessage`), `apps/ledgerseal/test/workflow-validator.test.ts`, `apps/ledgerseal/test/separation-of-duties.test.ts`. The validator blocks only on the transitions where a Jira admin adds it. |
 | No outbound fetch, no external servers | Listing, "No External Egress" (`permissions.external` absent in `apps/ledgerseal/manifest.yml`) |
-| Open-source, zero-dependency offline verifier | `tools/verifier/package.json` (no dependencies, Apache-2.0), https://github.com/asymmsystems/ledgerseal-verifier |
+| Open-source, zero-dependency offline verifier | `tools/verifier/package.json` (no dependencies, Apache-2.0), https://github.com/asymmsystems/jira-governance-code-cli |
 | Free up to 10 users, then $0.95 per user per month, less for larger sites | Listing, "Transparent Pricing"; the public listing's pricing tab (step 1) |
 
 **6.2 r/devops**
@@ -142,7 +142,7 @@ Proof paths are in the Jira repo unless they start with `https://`. "Listing" me
 | Claim | Proof |
 |---|---|
 | Approval fields are metadata; edits after approval still deploy | Listing, "The Unaddressed Native Problem" |
-| "with an open-source verifier" | `tools/verifier/package.json` (Apache-2.0), https://github.com/asymmsystems/ledgerseal-verifier. The app itself is not open source. |
+| "with an open-source verifier" | `tools/verifier/package.json` (Apache-2.0), https://github.com/asymmsystems/jira-governance-code-cli. The app itself is not open source. |
 | SHA-256 of canonical JSON, Ed25519 seal in Forge storage | As in 6.1 |
 | The validator blocks after a covered field, comment or attachment change; the panel shows what changed | As in 6.1; listing row "Post-Approval Change Detection" |
 | Zero external egress | Listing, "No External Egress" |

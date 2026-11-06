@@ -168,7 +168,7 @@ interface ChangeRow { fieldId: string; fieldName: string; was: string; now: stri
 
 ## 4. Canonical Form v2 (`canonicalizerVersion` 2.2.0 for new seals; 2.0.0 and 2.1.0 still checked)
 
-An outside verifier recomputes the hash of an exported snapshot. `verify-evidence.mjs` (https://github.com/asymmsystems/ledgerseal-verifier; copy in `tools/verifier`) does it with the Node standard library only.
+An outside verifier recomputes the hash of an exported snapshot. `verify-evidence.mjs` (https://github.com/asymmsystems/jira-governance-code-cli; copy in `tools/verifier`) does it with the Node standard library only.
 
 ### 4.1 Canonical JSON
 - Objects: keys sorted by UTF-16 code unit order, at every level. No whitespace. Strings use `JSON.stringify` escaping. UTF-8 bytes.
@@ -418,7 +418,7 @@ The seal form shows this exact text with "(Declaration v1)". The record stores t
 ## 11. Evidence export and open verifier
 
 - `seal-evidence-api` returns `{ format: "ledgerseal-evidence/1", attestation, publicKeyId, snapshot (canonical form), history, parties, verification, warning? }`. `parties` maps each party token of the history to its account id, or null for a closed account (closed mark); a token with no map entry is left out. It is not signed. The size limit is 5 MB (FG-04).
-- `verify-evidence.mjs <file> [publicKey.pem]` (https://github.com/asymmsystems/ledgerseal-verifier, Apache-2.0, release v1.2.0; identical copy in `tools/verifier`) uses the Node standard library only. It checks five things:
+- `verify-evidence.mjs <file> [publicKey.pem]` (https://github.com/asymmsystems/jira-governance-code-cli, Apache-2.0, release v1.2.0; identical copy in `tools/verifier`) uses the Node standard library only. It checks five things:
   1. the snapshot hash against the attestation;
   2. the history chain;
   3. that the attestation's certificate id matches the head of the history;
@@ -433,7 +433,7 @@ The seal form shows this exact text with "(Declaration v1)". The record stores t
 ## 12. Quality Gates
 
 - `tsc --noEmit` passes. `jest --coverage` passes with at least 90% branch coverage per changed file, `src/frontend/view-model.ts` included.
-- Each T-02 scenario in `~/.cache/gemini-earning-ledgerseal-research/probes/` meets its "after" expectation in `round-log.md`.
+- Each T-02 scenario in `docs/sdlc/ledgerseal-usp-ux-research-2026-11/evidence/probes/` meets its "after" expectation in `round-log.md`.
 - No production code reads `process.env.NODE_ENV`.
 - `forge lint` reports no error.
 

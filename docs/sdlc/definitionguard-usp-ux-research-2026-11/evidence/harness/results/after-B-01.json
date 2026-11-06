@@ -1,0 +1,378 @@
+{
+  "label": "after-B-01",
+  "date": "2026-11-01T02:04:07.763Z",
+  "node": "v26.13.0",
+  "kvsLimitBytes": 245760,
+  "size": {
+    "6": {
+      "10": 5657,
+      "100": 42998,
+      "1000": 296501,
+      "togglesTo32KiB": 76,
+      "togglesTo240KiB": 817
+    },
+    "20": {
+      "10": 8873,
+      "100": 47423,
+      "1000": 347095,
+      "togglesTo32KiB": 67,
+      "togglesTo240KiB": 623
+    },
+    "50": {
+      "10": 13439,
+      "100": 49780,
+      "1000": 421301,
+      "togglesTo32KiB": 45,
+      "togglesTo240KiB": 564
+    }
+  },
+  "panelLoad": {
+    "6": {
+      "10": {
+        "healthy": {
+          "jira": {
+            "total": 0,
+            "by": {}
+          },
+          "kvsGets": 1,
+          "kvsSets": 0,
+          "bytesWritten": 0
+        },
+        "degraded": {
+          "jira": {
+            "total": 0,
+            "by": {}
+          },
+          "kvsGets": 1,
+          "kvsSets": 0
+        }
+      },
+      "100": {
+        "healthy": {
+          "jira": {
+            "total": 0,
+            "by": {}
+          },
+          "kvsGets": 1,
+          "kvsSets": 0,
+          "bytesWritten": 0
+        },
+        "degraded": {
+          "jira": {
+            "total": 0,
+            "by": {}
+          },
+          "kvsGets": 1,
+          "kvsSets": 0
+        }
+      },
+      "1000": {
+        "healthy": {
+          "jira": {
+            "total": 0,
+            "by": {}
+          },
+          "kvsGets": 1,
+          "kvsSets": 0,
+          "bytesWritten": 0
+        },
+        "degraded": {
+          "jira": {
+            "total": 0,
+            "by": {}
+          },
+          "kvsGets": 1,
+          "kvsSets": 0
+        }
+      }
+    },
+    "20": {
+      "10": {
+        "healthy": {
+          "jira": {
+            "total": 0,
+            "by": {}
+          },
+          "kvsGets": 1,
+          "kvsSets": 0,
+          "bytesWritten": 0
+        },
+        "degraded": {
+          "jira": {
+            "total": 0,
+            "by": {}
+          },
+          "kvsGets": 1,
+          "kvsSets": 0
+        }
+      },
+      "100": {
+        "healthy": {
+          "jira": {
+            "total": 0,
+            "by": {}
+          },
+          "kvsGets": 1,
+          "kvsSets": 0,
+          "bytesWritten": 0
+        },
+        "degraded": {
+          "jira": {
+            "total": 0,
+            "by": {}
+          },
+          "kvsGets": 1,
+          "kvsSets": 0
+        }
+      },
+      "1000": {
+        "healthy": {
+          "jira": {
+            "total": 0,
+            "by": {}
+          },
+          "kvsGets": 1,
+          "kvsSets": 0,
+          "bytesWritten": 0
+        },
+        "degraded": {
+          "jira": {
+            "total": 0,
+            "by": {}
+          },
+          "kvsGets": 1,
+          "kvsSets": 0
+        }
+      }
+    },
+    "50": {
+      "10": {
+        "healthy": {
+          "jira": {
+            "total": 0,
+            "by": {}
+          },
+          "kvsGets": 1,
+          "kvsSets": 0,
+          "bytesWritten": 0
+        },
+        "degraded": {
+          "jira": {
+            "total": 0,
+            "by": {}
+          },
+          "kvsGets": 1,
+          "kvsSets": 0
+        }
+      },
+      "100": {
+        "healthy": {
+          "jira": {
+            "total": 0,
+            "by": {}
+          },
+          "kvsGets": 1,
+          "kvsSets": 0,
+          "bytesWritten": 0
+        },
+        "degraded": {
+          "jira": {
+            "total": 0,
+            "by": {}
+          },
+          "kvsGets": 1,
+          "kvsSets": 0
+        }
+      },
+      "1000": {
+        "healthy": {
+          "jira": {
+            "total": 0,
+            "by": {}
+          },
+          "kvsGets": 1,
+          "kvsSets": 0,
+          "bytesWritten": 0
+        },
+        "degraded": {
+          "jira": {
+            "total": 0,
+            "by": {}
+          },
+          "kvsGets": 1,
+          "kvsSets": 0
+        }
+      }
+    }
+  },
+  "toggle": {
+    "6x10": {
+      "jira": {
+        "total": 2,
+        "by": {
+          "app:user": 1,
+          "app:property": 1
+        }
+      },
+      "resolverMsMock": 0.15
+    },
+    "6x100": {
+      "jira": {
+        "total": 2,
+        "by": {
+          "app:user": 1,
+          "app:property": 1
+        }
+      },
+      "resolverMsMock": 0.23
+    },
+    "6x1000": {
+      "jira": {
+        "total": 2,
+        "by": {
+          "app:user": 1,
+          "app:property": 1
+        }
+      },
+      "resolverMsMock": 1.42
+    },
+    "20x10": {
+      "jira": {
+        "total": 2,
+        "by": {
+          "app:user": 1,
+          "app:property": 1
+        }
+      },
+      "resolverMsMock": 0.12
+    },
+    "20x100": {
+      "jira": {
+        "total": 2,
+        "by": {
+          "app:user": 1,
+          "app:property": 1
+        }
+      },
+      "resolverMsMock": 0.26
+    },
+    "20x1000": {
+      "jira": {
+        "total": 2,
+        "by": {
+          "app:user": 1,
+          "app:property": 1
+        }
+      },
+      "resolverMsMock": 1.65
+    },
+    "50x10": {
+      "jira": {
+        "total": 2,
+        "by": {
+          "app:user": 1,
+          "app:property": 1
+        }
+      },
+      "resolverMsMock": 0.15
+    },
+    "50x100": {
+      "jira": {
+        "total": 2,
+        "by": {
+          "app:user": 1,
+          "app:property": 1
+        }
+      },
+      "resolverMsMock": 0.32
+    },
+    "50x1000": {
+      "jira": {
+        "total": 2,
+        "by": {
+          "app:user": 1,
+          "app:property": 1
+        }
+      },
+      "resolverMsMock": 4.13
+    }
+  },
+  "validator": {
+    "blocksAnyTransition": {
+      "result": false,
+      "errorMessage": "Definition of Done incomplete: 5 mandatory item(s) must be satisfied before transition. Pending items: Synthetic checklist item number 0 with a realistic title length; Synthetic checklist item number 1 with a realistic title length; Synthetic checklist item number 2 with a realistic title length; Synthetic checklist item number 3 with a realistic title length; Synthetic checklist item number 5 with a realistic title length"
+    },
+    "missingRecord": {
+      "result": {
+        "result": false,
+        "errorMessage": "Definition of Done incomplete: 5 mandatory item(s) must be satisfied before transition. Pending items: Automated test suite passes with zero regressions; Branch test coverage meets or exceeds policy threshold; Peer code review approved by authorized reviewers; Static analysis and dependency vulnerability scan clear; Compliance and regulatory sign-off criteria satisfied"
+      },
+      "kvsSets": 0,
+      "jira": {
+        "total": 1,
+        "by": {
+          "app:issue": 1
+        }
+      }
+    },
+    "storageReadError": {
+      "returned": {
+        "result": false,
+        "errorMessage": "DefinitionGuard could not check the Definition of Done, so this move is blocked. Try again. If it keeps failing, ask your Jira admin."
+      }
+    },
+    "storageWriteError": {
+      "returned": {
+        "result": false,
+        "errorMessage": "Definition of Done incomplete: 5 mandatory item(s) must be satisfied before transition. Pending items: Automated test suite passes with zero regressions; Branch test coverage meets or exceeds policy threshold; Peer code review approved by authorized reviewers; Static analysis and dependency vulnerability scan clear; Compliance and regulatory sign-off criteria satisfied"
+      }
+    },
+    "propertyReads": 0,
+    "zeroMandatory": {
+      "validatorAllows": true,
+      "panelGateOpen": false
+    }
+  },
+  "integrity": {
+    "concurrent": {
+      "completed": [
+        "item-02"
+      ],
+      "stateVersion": 2,
+      "auditEvents": 1
+    },
+    "permissions": {
+      "permissionCalls": 0,
+      "userCalls": 0
+    },
+    "templateWriteKeys": [
+      "dod-templates:OTHER"
+    ],
+    "nameRewrite": {
+      "completedByBefore": "712020:0123456789abcdef01234567",
+      "completedByAfter": "Firstname Lastname",
+      "storedHashMatchesRecompute": false
+    }
+  },
+  "panelLoadWorstCase6Items200Toggles": {
+    "total": 154,
+    "by": {
+      "app:user": 154
+    }
+  },
+  "firstLoad": {
+    "jira": {
+      "total": 2,
+      "by": {
+        "app:issue": 1,
+        "app:property": 1
+      }
+    },
+    "kvsSets": 1
+  },
+  "sizeWithNotes6Items": {
+    "10": 8859,
+    "100": 45940,
+    "1000": 299441
+  }
+}

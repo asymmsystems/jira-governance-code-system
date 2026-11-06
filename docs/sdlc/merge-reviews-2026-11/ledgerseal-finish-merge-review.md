@@ -3,8 +3,8 @@
 - Date: 2026-11-06. Reviewer: independent merge review session (not the session that wrote the fixes).
 - Branch: `feature/ledgerseal-finish` at `a15694d` (7 commits plus one merge of master). Target: `master` at `daa6cb0`, which is the merge base, so there is no conflict.
 - Read: the "Finish" entries of `docs/sdlc/ledgerseal-marketplace-fixes-2026-11/progress-log.md`, the previous review `docs/sdlc/merge-reviews-2026-11/ledgerseal-followups-4-merge-review.md` (M-10, L-16, L-17), the full diff (24 files), `verifyIssueFlow`, `verifyAgainstSeal`, `hiddenComments`, `evidenceFlow`, `recordIncidentIfNew` and `writeAttestation` in `apps/ledgerseal/src/service/ledger.ts`, `convertRecord` and `convertHeld` in `src/service/conversion.ts`, `canonicalForm` in `src/domain/crypto.ts`, every Jira call in `src/jira/jira-client.ts`, the validator message in `src/validator/workflow-validator.ts`, and the new frontend `src/frontend/context.tsx`.
-- Probes and scripts (not committed), in `/home/fahimfarookme/.cache/jira-suite-merge-review/ledgerseal-finish/`: `probes/zz-probe-f06.test.ts` (P2, P3), `scripts/mutate.py` with `mutation-results.txt` and `mutation-g12.txt` (16 guard mutations), `scripts/gate.sh` with `gate-branch.txt`.
-- Clone: `/home/fahimfarookme/Documents/projects/gemini-earning-cp-fixes/.tmp/review-ls-finish`. Every mutation and probe was undone; `git status` is clean.
+- Probes and scripts (not committed), in `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/ledgerseal-finish/`: `probes/zz-probe-f06.test.ts` (P2, P3), `scripts/mutate.py` with `mutation-results.txt` and `mutation-g12.txt` (16 guard mutations), `scripts/gate.sh` with `gate-branch.txt`.
+- Clone: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cp-fixes-scratch/review-ls-finish`. Every mutation and probe was undone; `git status` is clean.
 - No live check, no deploy, no change to any Jira site.
 
 ## 1. Verdict
@@ -87,7 +87,7 @@ With a High finding, nothing was merged or committed to `master`. The fixing ses
 ## Round 2 (branch at `0ec66bc`)
 
 - Date: 2026-11-06. Same reviewer. New commits: `22cc3e1` (export rule, L-18), `e14667f` (L-19, L-20, L-21 docs), `0ec66bc` (fix log only). Master still at `daa6cb0`, the merge base.
-- Probes (not committed): `probes/zz-probe-f06.test.ts` (P2, P3) and the new `probes/zz-probe-f06-r2.test.ts` (P4). New tests against the old code: `round2-new-tests-at-a15694d.txt`. Gate: `gate-branch-0ec66bc.txt`. All in `/home/fahimfarookme/.cache/jira-suite-merge-review/ledgerseal-finish/`.
+- Probes (not committed): `probes/zz-probe-f06.test.ts` (P2, P3) and the new `probes/zz-probe-f06-r2.test.ts` (P4). New tests against the old code: `round2-new-tests-at-a15694d.txt`. Gate: `gate-branch-0ec66bc.txt`. All in `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/ledgerseal-finish/`.
 
 ### R2.1 Verdict
 
@@ -163,7 +163,7 @@ With H-2 open, nothing was merged or committed to `master`.
 
 - Date: 2026-11-06. Same reviewer. New commits: `9aeb3ef` (H-2 fail closed), `e493a8a` (L-22, decision recorded), `28907f6` (fix log only). Master still at `daa6cb0`.
 - The H-2 choice (option 1, fail closed) was passed to me by the coordinating session as the suite owner's decision. It is recorded as such in spec v3 section 4.4 and in the fix log. I did not see it from the owner directly.
-- Probes (not committed): P2, P3, P4 as before, and the new `probes/zz-probe-r3-worklog.test.ts` (P5). New tests against the old code: `round3-new-tests-at-0ec66bc.txt`. Mutations: `mutation-r3.txt`. Gate: `gate-branch-28907f6.txt`. All in `/home/fahimfarookme/.cache/jira-suite-merge-review/ledgerseal-finish/`.
+- Probes (not committed): P2, P3, P4 as before, and the new `probes/zz-probe-r3-worklog.test.ts` (P5). New tests against the old code: `round3-new-tests-at-0ec66bc.txt`. Mutations: `mutation-r3.txt`. Gate: `gate-branch-28907f6.txt`. All in `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/ledgerseal-finish/`.
 
 ### R3.1 Verdict
 

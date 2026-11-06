@@ -9,7 +9,7 @@ APPROVED 2026-11-01 B-01..B-27 (owner, in chat: "APPROVED today full"; bundler c
   - `[DEP]` new npm dependency or devDependency (`node_modules` is shared with LedgerSeal).
   - `[SCOPE]` manifest change (scope, permission, module or licensing).
   - `[MIGRATE]` KVS data migration.
-- **Test types:** Unit (Jest, pure module), Resolver (Jest, `src/index.ts` with mocked Forge APIs), UI module (Jest, pure front-end module with no DOM), Playwright (harness in `~/.cache/gemini-earning-cascadeplan-research/harness/`).
+- **Test types:** Unit (Jest, pure module), Resolver (Jest, `src/index.ts` with mocked Forge APIs), UI module (Jest, pure front-end module with no DOM), Playwright (harness in `~/Documents/projects/jira-governance/.tmp/cache/cascadeplan-research/harness/`).
 
 ## Precondition P-0 (owner action, not a build item)
 
@@ -178,7 +178,7 @@ Opportunity IDs O1 to O10 come from `ux-spec.md` section 5.2 (research round 3).
 ### B-13. Canvas timeline with an accessible DOM layer, within the performance budget
 - **Serves:** UX; owner decision "keep canvas" (research-brief 4.3).
 - **Closes:** NF-07 (hover redraws every arrow: 347 ms at 1,000 tasks; drag frames up to 250 ms; measured 2026-11-01).
-- **Design:** bars, arrows, grid and the today line are drawn on one `<canvas>` (scaled by `devicePixelRatio`), drawing only visible rows. The data columns stay DOM, with row virtualisation. A transparent DOM layer holds one focusable `role="gridcell"` element per visible bar, with an accessible name, so focus, screen readers and keyboard moves do not depend on canvas pixels. Colours come from CSS custom properties read at draw time, so ADS tokens and dark mode apply. Reference prototype: `~/.cache/gemini-earning-cascadeplan-research/harness/canvas-proto.js` (T-06).
+- **Design:** bars, arrows, grid and the today line are drawn on one `<canvas>` (scaled by `devicePixelRatio`), drawing only visible rows. The data columns stay DOM, with row virtualisation. A transparent DOM layer holds one focusable `role="gridcell"` element per visible bar, with an accessible name, so focus, screen readers and keyboard moves do not depend on canvas pixels. Colours come from CSS custom properties read at draw time, so ADS tokens and dark mode apply. Reference prototype: `docs/sdlc/cascadeplan-usp-ux-research-2026-11/evidence/harness/canvas-proto.js` (T-06).
 - **Acceptance criteria (budgets from `ux-spec.md` section 3):**
   1. Bars and arrows are drawn on a `<canvas>` element; no bar is a DOM element with a background. (Playwright: canvas present, `.gantt-bar` count 0.)
   2. Hover on a bar at 1,000 tasks costs at most 8 ms of script time. (Playwright harness.)

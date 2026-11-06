@@ -1,0 +1,9 @@
+feat(cascadeplan): multiple named plans per project
+
+- Store named plan records isolated under cp:<projectId>:plan:<planId>:we:
+- Maintain full backwards compatibility for default plan under cp:<projectId>:we:
+- Add resolvers getProjectPlans, createProjectPlan, deleteProjectPlan, and renameProjectPlan
+- Add pure module plan-manager with full branch coverage
+- Add plan selector dropdown in toolbar with plan manager popover
+- Support cloning existing plan tasks and settings when creating new plan
+- Use inline confirmations and toast flags without browser dialogs

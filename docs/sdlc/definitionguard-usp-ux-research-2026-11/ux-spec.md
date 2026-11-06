@@ -39,7 +39,7 @@ Rules for every task: the validator decides from app storage only, never from th
 
 ## 3. Scale baseline and budgets
 
-Harness: `~/.cache/gemini-earning-definitionguard-research/harness/` (T-01 to T-13), mocked `asApp()` and `asUser()` as separate mocks, storage mock that serialises on every call. Bytes are UTF-8 JSON bytes of the stored value. Real KVS rejects any value above 240 KiB (N-11), so values above that line are what the code would try to write.
+Harness: `docs/sdlc/definitionguard-usp-ux-research-2026-11/evidence/harness/` (T-01 to T-13), mocked `asApp()` and `asUser()` as separate mocks, storage mock that serialises on every call. Bytes are UTF-8 JSON bytes of the stored value. Real KVS rejects any value above 240 KiB (N-11), so values above that line are what the code would try to write.
 
 ### 3.1 Largest stored value (bytes)
 

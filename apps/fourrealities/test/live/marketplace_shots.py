@@ -173,7 +173,7 @@ def link(pg):
         pg.get_by_text('Template - Decision documentation').first.wait_for(timeout=30000)
     except Exception:
         print('DIALOG:', pg.get_by_role('dialog').first.inner_text().replace('\n', ' | '))
-        pg.screenshot(path='/home/fahimfarookme/.cache/jira-suite-fixes/scratch-fourrealities/shots/link-fail.png')
+        pg.screenshot(path='/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/suite-fixes/scratch-fourrealities/shots/link-fail.png')
         raise
     pg.wait_for_timeout(1500)
     calm(pg)

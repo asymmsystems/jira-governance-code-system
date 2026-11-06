@@ -4,7 +4,7 @@
 - **Scope:** Part A (research only) of `loop-engine/agents/definitionguard_usp_ux_research.md`. No file under `apps/` changed. No commit, deploy or `forge` command.
 - **Code baseline:** all 17 source and test files, `manifest.yml`, `package.json`, `tsconfig.json` and `jest.config.js` have the md5 listed in `docs/sdlc/portfolio-audit-2026-10-31/appendix-definitionguard.md` section 1.1. Every DG finding is therefore **still open** at the cited line. `apps/definitionguard` has no uncommitted change.
 - **Evidence grades:** Observed-code, Observed-test, Observed-live, Reported, Inferred (audit scheme). Source IDs: M- (Marketplace apps), N- (native Jira, workflow apps, Forge, audit frameworks), R- (round 2 refute and library code), L- (live GET, this research), T- (harness tests, this research). Section 8 lists every source.
-- **Scratch:** `~/.cache/gemini-earning-definitionguard-research/` (`sources/`, `harness/`, `merge_sources.py`).
+- **Scratch:** `~/Documents/projects/jira-governance/.tmp/cache/definitionguard-research/` (`sources/`, `harness/`, `merge_sources.py`).
 
 ## 1. Executive summary
 
@@ -112,7 +112,7 @@ Conditions: **Gap** (2 sources), **Pain** (votes, reviews, threads), **Feasible*
 
 ## 7. Harness tests (this research)
 
-All in `~/.cache/gemini-earning-definitionguard-research/harness/scale.harness.ts`, results in `harness/results/baseline.json`, run 2026-11-01 on host node v26.13.0, Jest 29.7.0. 16 of 16 pass. The harness imports `apps/definitionguard/src` in place and writes nothing under `apps/`.
+All in `docs/sdlc/definitionguard-usp-ux-research-2026-11/evidence/harness/scale.harness.ts`, results in `harness/results/baseline.json`, run 2026-11-01 on host node v26.13.0, Jest 29.7.0. 16 of 16 pass. The harness imports `apps/definitionguard/src` in place and writes nothing under `apps/`.
 
 | ID | Test | Result |
 |---|---|---|

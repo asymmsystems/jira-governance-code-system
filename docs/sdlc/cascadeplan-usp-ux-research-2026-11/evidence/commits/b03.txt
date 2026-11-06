@@ -1,0 +1,12 @@
+fix(cascadeplan): write to Jira only the values the user entered
+
+Scheduling or creating an issue sends an estimate only when the user
+typed one, and stores no assignee unless one was chosen. Unestimated
+issues show "Unestimated". Resizing a bar changes its dates only; the
+estimate is scaled only when the user ticks the option, which is off by
+default. Dates picked in the task form are stored and sent to Jira
+exactly, and a move or resize by whole weeks keeps the bar's exact days.
+The unused time inputs are gone, and a drop on a week slot sends one
+schedule call for the chosen week.
+
+Refs: B-03, CP-03, CP-04, CP-07

@@ -1,7 +1,7 @@
 # DefinitionGuard: Marketplace readiness review (paid app)
 
 - Date: 2026-11-06. Reviewer: independent review session. Static review, unit tests, build and local checks only. No live Jira site, no cookies, no deploy.
-- Code reviewed: clone of `/home/fahimfarookme/Documents/projects/gemini-earning-cp-fixes` at HEAD `1e1318bcf7f1176f69adacdf74faf8e8ef6989f4` (branch `feature/cascadeplan-marketplace-fixes`), in `~/.cache/suite-readiness-2026-11/definitionguard/checkout`. App folder `apps/definitionguard`.
+- Code reviewed: clone of `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system` at HEAD `1e1318bcf7f1176f69adacdf74faf8e8ef6989f4` (branch `feature/cascadeplan-marketplace-fixes`), in `~/Documents/projects/jira-governance/.tmp/cache/suite-readiness/definitionguard/checkout`. App folder `apps/definitionguard`.
 - The brief says DefinitionGuard on this branch is identical to `origin/master` (`907ccd7`). It is not. `git diff --stat 907ccd7 HEAD -- apps/definitionguard` shows 5 files: `package-lock.json` (new), `.npmrc` (new), `package.json` (adds `@asymm/jira-ui` as `file:` dependency), `tsconfig.json` and `jest.config.js` (path mapping removed). Source and tests are the same. These 5 changes are needed for a clean-clone build (commit `628bb79`).
 - Forge CLI note: `forge lint`, `forge eligibility`, `forge variables list` and `forge environments list` ran with a scratch `HOME`, but the CLI still used the owner's stored Forge login (system keychain). All four calls are read only. Nothing was deployed or changed.
 

@@ -142,7 +142,7 @@ docs.asymm.systems/
 ```
 
 ### Task 2.3: Open Verifier Publication (LedgerSeal Hero Asset)
-Host and document the standalone verification script directly in the docs site and in a public repository (`asymm-systems/ledgerseal-verifier`):
+Host and document the standalone verification script directly in the docs site and in a public repository (`asymm-systems/jira-governance-code-cli`):
 - Uses standard library `node:crypto` only (zero dependencies).
 - Verifies Ed25519 signatures, SHA-256 snapshot hashes, and hash chains offline against published public key (`keys/ls-dev-2026-11.pub.pem`).
 

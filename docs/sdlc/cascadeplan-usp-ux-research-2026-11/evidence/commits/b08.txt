@@ -1,0 +1,6 @@
+fix(cascadeplan): read Jira issues, epics and users as the user
+
+All Jira reads go through the user caller, so issue security levels
+and browse permissions apply to what the planner shows.
+
+Refs: B-08, CP-06

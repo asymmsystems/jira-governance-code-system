@@ -1,7 +1,7 @@
 # CascadePlan review: test log
 
 - Review commit: `db080096007208d2cad97f79c620d49964aa05c9` (master HEAD at start, 2026-11-05 13:11 +0530).
-- Checkout: `/home/fahimfarookme/.cache/gemini-earning-cascadeplan-marketplace-review/checkout` (own clone).
+- Checkout: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cascadeplan-marketplace-review/checkout` (own clone).
 - Shell: VS Code Flatpak sandbox; node, npm, forge and git with GitHub credentials run on the host through `flatpak-spawn --host`. Python Playwright runs in the sandbox with `/opt/google/chrome/chrome`.
 - Raw logs: `logs/` in the output folder.
 
@@ -46,7 +46,7 @@ A test named "FINDING" passes when the defect is present. "OK" tests prove corre
 
 ## 4. Local browser harness (prompt section 5.3)
 
-Harness copied from `~/.cache/gemini-earning-cascadeplan-bugfix/harness/` to `harness/`. Changes: the two absolute imports in `entry.ts` and `setup.ts` point to my checkout; `setup.ts` got two review switches (`__harness_reject_due` returns the Jira screen error for a due date; `__harness_put_delay_ms` delays issue writes). Added `e2e_review.py` and `e2e_undo_probe.py`.
+Harness copied from `~/Documents/projects/jira-governance/.tmp/cache/cascadeplan-bugfix/harness/` to `harness/`. Changes: the two absolute imports in `entry.ts` and `setup.ts` point to my checkout; `setup.ts` got two review switches (`__harness_reject_due` returns the Jira screen error for a due date; `__harness_put_delay_ms` delays issue writes). Added `e2e_review.py` and `e2e_undo_probe.py`.
 
 | # | Command | Result |
 |---|---|---|

@@ -1,0 +1,13 @@
+fix(cascadeplan): read Jira-owned fields live and keep only planning data in KVS
+
+Summary, status, assignee, epic, estimate and computed progress come
+from Jira on every load. The schedule map stores only app-owned planning
+data: dates, week position, allocations, dependency, contributors,
+target progress, and a progress value only when the user set it by hand.
+Stored entries that hold Jira fields are migrated once on load.
+
+Summary, epic (as the Jira parent), estimate, assignee and status edits
+are written to Jira and not stored. The task form sends only the fields
+the user changed, and sends nothing when nothing changed.
+
+Refs: B-04, CP-05, CP-13, NF-06

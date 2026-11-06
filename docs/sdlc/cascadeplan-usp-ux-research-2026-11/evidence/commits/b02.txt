@@ -1,0 +1,14 @@
+fix(cascadeplan): escape all planner text and validate every resolver payload
+
+Every innerHTML assignment in the planner is either a constant string or
+an html tagged template that escapes each interpolated value, so Jira
+summaries, names, epics, milestones and payload strings render as text.
+
+Each write resolver validates its payload before any KVS or Jira write:
+issue keys must match the Jira key pattern and belong to the context
+project (checked against Jira), predecessors must be in the plan, and
+updateWbsTask, column, hidden-column and milestone payloads are checked
+for type and size. A failed check returns { ok: false, error:
+'validation', field, message }.
+
+Refs: B-02, CP-01, CP-16

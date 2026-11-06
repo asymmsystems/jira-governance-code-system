@@ -63,7 +63,7 @@ We built LedgerSeal on Atlassian Forge, with an open-source verifier:
 - We also published an open-source offline verification script using only the Node.js standard library, so auditors can check evidence files themselves, offline.
 
 Article with technical architecture: https://asymm.systems/product/jira-governance/user-guide/ledgerseal.html
-Verifier repo: https://github.com/asymmsystems/ledgerseal-verifier
+Verifier repo: https://github.com/asymmsystems/jira-governance-code-cli
 
 How are other teams ensuring approved tickets aren't modified prior to automated deployment?
 ```
@@ -149,7 +149,7 @@ We built LedgerSeal to solve this with mathematics:
 - 100% Atlassian Forge native: zero external egress, data in Atlassian Forge storage.
 
 We also open-sourced the offline verifier so compliance teams can check evidence files themselves, offline:
-https://github.com/asymmsystems/ledgerseal-verifier
+https://github.com/asymmsystems/jira-governance-code-cli
 
 #DevOps #Jira #Cybersecurity #SOC2 #ISO27001 #Compliance #Atlassian
 ```
@@ -317,7 +317,7 @@ We built LedgerSeal on Atlassian Forge, with an open-source verifier:
 - We also published an open-source offline verification script using only the Node.js standard library, so auditors can check evidence files themselves, offline.
 
 Article with technical architecture: https://asymm.systems/product/jira-governance/user-guide/ledgerseal.html
-Verifier repo: https://github.com/asymmsystems/ledgerseal-verifier
+Verifier repo: https://github.com/asymmsystems/jira-governance-code-cli
 Atlassian Marketplace: https://marketplace.atlassian.com/apps/1226135152
 
 How are other teams ensuring approved tickets aren't modified prior to automated deployment?
@@ -400,7 +400,7 @@ We built LedgerSeal to solve this with mathematics:
 - 100% Atlassian Forge native: zero external egress, data in Atlassian Forge storage.
 
 We also open-sourced the offline verifier so compliance teams can check evidence files themselves, offline:
-https://github.com/asymmsystems/ledgerseal-verifier
+https://github.com/asymmsystems/jira-governance-code-cli
 
 LedgerSeal on the Atlassian Marketplace:
 https://marketplace.atlassian.com/apps/1226135152

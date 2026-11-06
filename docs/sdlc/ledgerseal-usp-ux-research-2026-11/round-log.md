@@ -4,22 +4,22 @@ One entry per research round and per build item. Dates are 2026-11-01 unless sta
 
 ## Setup checks (Part A)
 
-- `git -C gemini-earning status -s`: no change under `apps/ledgerseal`. Uncommitted changes exist under `apps/planshift` and `loop-engine/agents/` (not made by this research, not touched).
+- `git -C jira-governance-code-system status -s`: no change under `apps/ledgerseal`. Uncommitted changes exist under `apps/planshift` and `loop-engine/agents/` (not made by this research, not touched).
 - Repo HEAD `423b9b2`, branch `feature/cascadeplan-research-build` (another session's branch). Part A did not switch branches and made no commit.
 - md5 of every LedgerSeal file in the audit snapshot equals the current file (manifest, package, tsconfig, jest config, all `src/` and `test/` files, README, spec, listing). Every LS finding is therefore unchanged at its cited lines.
 - `loop-engine/runs/ledgerseal_state.json` says `ALL_LOOPS_COMPLETE` with grade_tdd score 93.26. The graders check section keywords, the presence of two scope strings, banned import names, and global branch coverage (`loop-engine/graders/*.py`). None of them checks permissions, identity, storage growth or claims. A grader pass is not evidence for any verdict in this research.
 
 ## Round 1: collect
 
-- Three research agents, run in parallel, each writing one evidence file in `~/.cache/gemini-earning-ledgerseal-research/sources/`:
+- Three research agents, run in parallel, each writing one evidence file in `~/Documents/projects/jira-governance/.tmp/cache/ledgerseal-research/sources/`:
   - `reg-sources.md`: 109 items (REG-01 to REG-109). The Part 11 text comes from the eCFR API (current to 2026-10-29). The FDA guidance, NIST, PIC/S and EU draft Annex 11 PDFs were extracted verbatim.
   - `native-forge-sources.md`: 107 items (NJ-01 to NJ-45, JAC-01 to JAC-20, FG-01 to FG-42). Ticket votes come from the public jira.atlassian.com API.
   - `marketplace-sources.md`: 15 apps, MP-01 to MP-69. Installs, prices and reviews come from the public Marketplace REST API.
 - Rule incidents, recorded:
   - The Marketplace agent opened one third-party vendor page on `werkstack.atlassian.net` by mistake, and a second fetch to `polscheit.atlassian.net` returned a redirect only. No content from either is used.
   - The owner's site (`asymmsystems.atlassian.net`) was not contacted by any agent or probe.
-- Probes (T-01 to T-03), written in `~/.cache/gemini-earning-ledgerseal-research/probes/`. They import `apps/ledgerseal/src` read-only, mock `@forge/api` (separate `asApp` and `asUser` entries) and `@forge/kvs`, and run with `NODE_ENV=production`, so the LS-14 bypasses are off except in T-02 A8.
-  - Command: `flatpak-spawn --host /home/fahimfarookme/Documents/projects/gemini-earning/apps/ledgerseal/node_modules/.bin/jest -c ~/.cache/gemini-earning-ledgerseal-research/probes/jest.config.js`
+- Probes (T-01 to T-03), written in `docs/sdlc/ledgerseal-usp-ux-research-2026-11/evidence/probes/`. They import `apps/ledgerseal/src` read-only, mock `@forge/api` (separate `asApp` and `asUser` entries) and `@forge/kvs`, and run with `NODE_ENV=production`, so the LS-14 bypasses are off except in T-02 A8.
+  - Command: `flatpak-spawn --host /home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system/apps/ledgerseal/node_modules/.bin/jest -c docs/sdlc/ledgerseal-usp-ux-research-2026-11/evidence/probes/jest.config.js`
   - Result: 3 suites, 16 tests, all pass (the tests record outcomes; they do not assert fixes). Host Node v26.13.0. Time 19.8 s.
   - Part B re-runs the same command with `LS_LABEL=after` to write `results-after*.json`.
   - `git status` after the run: no change under `apps/ledgerseal`. Jest cache is in the probes folder, and no coverage folder was written.
@@ -56,7 +56,7 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 
 ### Gate and setup
 - Owner approval in chat on 2026-11-01: "APPROVED now all". Recorded as the first line of `backlog.md`: B-01 to B-20, with the [MANIFEST], [VAR] and [MIGRATE] flags and the D-1 to D-3 recommendations.
-- The main checkout is on another session's branch with its uncommitted work, so Part B uses a separate worktree: `/home/fahimfarookme/Documents/projects/gemini-earning-ls-build`, branch `feature/ledgerseal-research-build` from `master` (`5097bf5`, the audit commit). `apps/ledgerseal/node_modules` there is a symbolic link to the shared folder in the main checkout. No dependency was added.
+- The main checkout is on another session's branch with its uncommitted work, so Part B uses a separate worktree: `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system`, branch `feature/ledgerseal-research-build` from `master` (`5097bf5`, the audit commit). `apps/ledgerseal/node_modules` there is a symbolic link to the shared folder in the main checkout. No dependency was added.
 - The four research files moved from the main checkout into this worktree.
 
 ### Baseline (B-00 check)
@@ -84,7 +84,7 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 
 ### B-02 Tamper record that survives a reseal (LS-02, LS-13 history)
 - Tests: `test/seal-history.test.ts` (B-02 and B-03 incident cases), `test/canonical-json.test.ts`, `test/seal-repository.test.ts` (rewritten for v2).
-- Test-first record: the service was drafted before the tests. To check the tests honestly, they ran against the B-01 commit in `~/.cache/gemini-earning-ledgerseal-research/tdd-red/b02/` (a `git archive` copy):
+- Test-first record: the service was drafted before the tests. To check the tests honestly, they ran against the B-01 commit in `docs/sdlc/ledgerseal-usp-ux-research-2026-11/evidence/tdd-red/b02/` (a `git archive` copy):
   - With the new imports, the suite failed to compile (`getSealHistory` and `src/domain/history` missing).
   - With those imports stubbed, 10 of 11 cases failed on assertions. The one that passed, "changed back keeps the gate closed", is v1 behaviour that v2 keeps.
 - Code:
@@ -176,7 +176,7 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
   - `src/domain/attestation.ts` builds the schema v2 body (audit section 5.1), signs the canonical JSON of every other field with Ed25519 through Node's built-in `crypto` (no npm package), and verifies it against public keys by `keyId`, checking `issueId`.
   - `src/service/ledger.ts` writes the signed attestation on seal, reseal and each new incident. `src/index.ts` reads the signer from `LEDGERSEAL_SIGNING_KEY` and `LEDGERSEAL_KEY_ID` only. With no key, the body is written without `keyId` and `sig`.
 - Key handling:
-  - A development key pair was generated on the host with Node `crypto` into `~/.cache/gemini-earning-ledgerseal-research/keys/` (directory 700, file 600). The private key was never printed.
+  - A development key pair was generated on the host with Node `crypto` into `~/Documents/projects/jira-governance/.tmp/secrets/ledgerseal-research-keys/` (directory 700, file 600). The private key was never printed.
   - The public key is committed as `apps/ledgerseal/keys/ls-dev-2026-11.pub.pem`, with `keys/README.md`. The Forge variable is set in Loop 3.
   - Tests make their own key at test start. A test fails if any file under `src`, `test`, `keys` or `verifier` holds a private key.
 - Contract change: the B-03 test now asserts the v2 fields. `everCompromised` (a string) and `incidentCount` replace the v1 `isCompromised` and `tamperedFieldCount`.
@@ -219,7 +219,7 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
   - The model had not been checked against Silverston. That was a gap.
 - Owner chose to pause and model first ("Ok" to the recommended option), then approved ADR-01 ("approve").
 - ADR-01 (`adr-01-silverston-data-model.md`) uses entity and field names from the Apache OFBiz entity definitions, trunk `f1865809` (Silverston-derived; the book itself was not read). It was committed with spec v2 decision D-10 and backlog item B-21 as `f8d8469`.
-- The B-12 test file was parked in `~/.cache/gemini-earning-ledgerseal-research/parked/` during B-21 and restored afterwards.
+- The B-12 test file was parked in `~/Documents/projects/jira-governance/.tmp/cache/ledgerseal-research/parked/` during B-21 and restored afterwards.
 
 ### B-21 Silverston WorkEffort, Party and Status model (ADR-01, D-10)
 - Tests first: `test/silverston-model.test.ts`. First run: failed for the right reason (`src/domain/status` missing).
@@ -353,7 +353,7 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 - B-20 commit: `e9fb5a1`.
 
 ### Loop 3, step 1: re-run of the size, time and attack probes
-- The Part A probe files are kept, unchanged in logic, in `~/.cache/gemini-earning-ledgerseal-research/probes/baseline-v1/` with their results (`results-baseline*.json`). The `harness.ts` copy there was restored from this session, because the first rewrite overwrote it.
+- The Part A probe files are kept, unchanged in logic, in `docs/sdlc/ledgerseal-usp-ux-research-2026-11/evidence/probes/baseline-v1/` with their results (`results-baseline*.json`). The `harness.ts` copy there was restored from this session, because the first rewrite overwrote it.
 - The after-build probes call the app's real `createJiraClient` over a mocked REST layer. Results are in `results-after*.json`. All 15 probe cases ran.
 - Performance defect found and fixed:
   - Sealing the 400-paragraph fixture took a p95 of 210.7 ms, over the 50 ms budget, because `splitUtf8` called `JSON.stringify` per character.
@@ -371,8 +371,8 @@ Stop rule: in round 3 only U1 condition 1 changed, and no verdict in the hypothe
 
 ### Loop 3, step 2: lint, deploy and live check on DEMO (12.3, 12.4)
 - `forge lint`: "No issues found" on every deploy. Forge CLI 15.0.0 warns: "Unsupported Node.js versions are not guaranteed to work correctly." (host Node v26). The deploys worked.
-- Forge variables, development only: `LEDGERSEAL_SIGNING_KEY` (encrypted) and `LEDGERSEAL_KEY_ID=ls-dev-2026-11`. The private key is in `~/.cache/gemini-earning-ledgerseal-research/keys/` (mode 600). It was never printed or committed.
-- Deploys, development environment only: 3.3.0 (`6f97669`), 3.4.0 (`5ddb3a8`), 3.5.0 (`f4ecb33`), 3.6.0 (`b2688f9`). Log: `~/.cache/gemini-earning-ledgerseal-research/forge-deploy.log`. The CLI says each version "is eligible for the Runs on Atlassian program". That is eligibility, not the badge.
+- Forge variables, development only: `LEDGERSEAL_SIGNING_KEY` (encrypted) and `LEDGERSEAL_KEY_ID=ls-dev-2026-11`. The private key is in `~/Documents/projects/jira-governance/.tmp/secrets/ledgerseal-research-keys/` (mode 600). It was never printed or committed.
+- Deploys, development environment only: 3.3.0 (`6f97669`), 3.4.0 (`5ddb3a8`), 3.5.0 (`f4ecb33`), 3.6.0 (`b2688f9`). Log: `~/Documents/projects/jira-governance/.tmp/cache/ledgerseal-research/forge-deploy.log`. The CLI says each version "is eligible for the Runs on Atlassian program". That is eligibility, not the badge.
 - No validator was attached to a workflow. No workflow was changed. No other DEMO issue page was opened. No issue was deleted. CascadePlan and the FourRealities "Seal Issue" action were not used on the probe issue.
 
 Live results (Observed-live, asymmsystems.atlassian.net, DEMO-34):
@@ -476,7 +476,7 @@ The project, the validator and LSP-1 stay in place. Whether to remove them is th
 
 ### Owner instruction "fix all open stuff" (2026-11-01)
 
-**1. Old unsigned v1 properties.** Deleting issues is not done (permanent deletion stays with the owner). Instead the stale property on each issue was marked, keeping the old value on the issue. Old values first saved to `~/.cache/gemini-earning-ledgerseal-research/live/legacy-v1-properties-before.json`.
+**1. Old unsigned v1 properties.** Deleting issues is not done (permanent deletion stays with the owner). Instead the stale property on each issue was marked, keeping the old value on the issue. Old values first saved to `~/Documents/projects/jira-governance/.tmp/cache/ledgerseal-research/live/legacy-v1-properties-before.json`.
 
 | Issues | Item | Old value | New value |
 |---|---|---|---|

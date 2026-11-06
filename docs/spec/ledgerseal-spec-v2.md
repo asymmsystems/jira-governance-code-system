@@ -413,7 +413,7 @@ The seal form shows this exact text with "(Declaration v1)". The record stores t
 ## 12. Quality Gates
 
 - `tsc --noEmit` passes. `jest --coverage` passes with at least 90% branch coverage per changed file, `src/frontend/view-model.ts` included.
-- Each T-02 scenario in `~/.cache/gemini-earning-ledgerseal-research/probes/` meets its "after" expectation in `round-log.md`.
+- Each T-02 scenario in `docs/sdlc/ledgerseal-usp-ux-research-2026-11/evidence/probes/` meets its "after" expectation in `round-log.md`.
 - No production code reads `process.env.NODE_ENV`.
 - `forge lint` reports no error.
 

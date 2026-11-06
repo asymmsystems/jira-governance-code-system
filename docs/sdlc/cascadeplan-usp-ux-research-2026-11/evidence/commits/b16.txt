@@ -1,0 +1,15 @@
+feat(cascadeplan): standup flow with multi-select and batch edits
+
+Ctrl or Cmd+click toggles a row, Shift+click selects a range and Space
+selects the focused row; Space on the Start or Due cell still moves the
+bar. A selection bar sets progress, moves the selection by a number of
+days or sets the assignee. In the schedule grid, digits set progress in
+steps of ten and Enter saves every pending value.
+
+Each batch is one batchUpdateTasks call with one Jira read: every item
+runs like a single update, including its cascade, an item whose version
+was changed by an earlier item of the same batch is retried, and a
+version changed elsewhere is reported as a conflict. A batch is one
+undo step.
+
+Refs: B-16

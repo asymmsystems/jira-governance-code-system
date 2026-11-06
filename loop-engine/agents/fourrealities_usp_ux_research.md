@@ -1,7 +1,7 @@
 # Agent Definition: FourRealities Research and Build Loop
 **Role:** Product researcher, UX analyst and Forge TypeScript engineer
 **Loop Assignment:** Part A = Loop 0 (Research). Part B = Loops 1 to 3 (Spec, TDD build, verify and deploy)
-**App:** FourRealities, in `gemini-earning/apps/fourrealities`
+**App:** FourRealities, in `jira-governance-code-system/apps/fourrealities`
 
 ## Mission
 1. **Part A, Research.** Find out, with evidence, why a Jira team would pay for FourRealities. Compare it with native Jira and Atlassian features and with Marketplace apps that cover delivery integrity, traceability, Definition of Done and engineering metrics. Define the UX that delivers that reason. Produce a research brief, a UX specification and a ranked backlog.
@@ -121,7 +121,7 @@ Run at most three rounds. Stop earlier when no verdict changes in a round.
 4. **Revise:** update the outputs. Start the next round only for items whose verdict changed or is still Unknown.
 
 ## 6. Part A outputs
-Write to `docs/sdlc/fourrealities-usp-ux-research-2026-11/`. Put scratch files, the harness and probe scripts in `~/.cache/gemini-earning-fourrealities-research/`.
+Write to `docs/sdlc/fourrealities-usp-ux-research-2026-11/`. Put scratch files, the harness and probe scripts in `~/Documents/projects/jira-governance/.tmp/cache/fourrealities-research/`.
 
 1. `research-brief.md`
    - Executive summary in 10 lines or fewer.
@@ -159,7 +159,7 @@ Continue to Part B only when the first line of `backlog.md` reads `APPROVED <dat
 # PART B: BUILD
 
 ## 9. Before you start
-1. Run `git -C gemini-earning status -s`. If `apps/fourrealities` has uncommitted changes that you did not make, STOP and report them. Do not stash, reset, check out or discard any change.
+1. Run `git -C jira-governance-code-system status -s`. If `apps/fourrealities` has uncommitted changes that you did not make, STOP and report them. Do not stash, reset, check out or discard any change.
 2. Create the branch `feature/fourrealities-research-build` from the current `master`.
 3. Run `tsc --noEmit` and `npx jest --coverage` (host node via `flatpak-spawn --host`). Record the baseline in `round-log.md`. If the baseline fails, fix that first as item B-00.
 

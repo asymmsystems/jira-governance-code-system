@@ -1,0 +1,16 @@
+feat(cascadeplan): plain DOM table view and in-app search
+
+Add a plain DOM table view as a canvas fallback and in-app task search.
+
+A Table view toggle button and viewSwitcher option display all planned
+issues, summaries, types, epics, assignees, dates, progress, statuses
+and dependencies in a plain DOM table without canvas. The Table view
+passes axe-core with zero accessibility violations.
+
+An in-app search field with match counter finds tasks by key or summary
+case-insensitively. Pressing Ctrl+F or Cmd+F while focus is in the planner
+focuses the search field, and matches scroll and move focus to their rows
+in both timeline grid and table views. ArrowDown, ArrowUp and Enter navigate
+through matches, and Escape clears the search.
+
+Refs: B-26

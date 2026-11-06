@@ -1,0 +1,10 @@
+fix(cascadeplan): remove dependencies for good and manage the Blocks link they own
+
+A dependency records the id of the Jira "Blocks" link that CascadePlan
+created for it. Saving the same dependency again reuses that link.
+Choosing None stores an explicit null, deletes only the link CascadePlan
+created, and stops a Jira link made by a user from bringing the
+dependency back on the next load. Changing the predecessor removes the
+old CascadePlan link.
+
+Refs: B-06, NF-02, CP-16

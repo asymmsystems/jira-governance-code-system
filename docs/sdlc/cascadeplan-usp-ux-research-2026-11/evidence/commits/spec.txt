@@ -1,0 +1,8 @@
+docs(cascadeplan): specification for the approved backlog B-01 to B-27
+
+Invariants, WorkEffort storage model, date-based schedule engine
+equations, manifest, per-issue KVS schema with version check and
+migration, payload validator, resolver contracts, UI module layout and
+the design decisions with the options considered.
+
+Refs: B-01..B-27

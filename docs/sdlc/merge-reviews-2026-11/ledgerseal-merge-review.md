@@ -2,9 +2,9 @@
 
 - Date: 2026-11-06. Reviewer: independent merge review session (not the session that wrote the fixes).
 - Branch: `feature/ledgerseal-marketplace-fixes` at `6b6e996`, cut from `7f87747`. Master at review end: `8666cad` (holds CascadePlan `e1b0192`, DefinitionGuard `32e86ca`, the CI change `8666cad`).
-- Public verifier: `asymmsystems/ledgerseal-verifier` `main` `2504985`, release `v1.1.0`.
+- Public verifier: `asymmsystems/jira-governance-code-cli` `main` `2504985`, release `v1.1.0`.
 - Read: the fix log `docs/sdlc/ledgerseal-marketplace-fixes-2026-11/progress-log.md`, the readiness review `docs/sdlc/suite-readiness-review-2026-11/ledgerseal-readiness.md`, the suite plan `README.md`, ADR-00011, spec v3, the full diff (103 files), and every changed `src/` file in full.
-- Probes (not committed): `/home/fahimfarookme/.cache/jira-suite-merge-review/ledgerseal/probes/zz-review.test.ts` and `zz-review2.test.ts`. They import master's own LedgerSeal code (extracted with `git archive origin/master`) next to the branch code. Output files: `/home/fahimfarookme/.cache/jira-suite-merge-review/ledgerseal/probe-out/`.
+- Probes (not committed): `docs/sdlc/merge-reviews-2026-11/evidence/ledgerseal/probes/zz-review.test.ts` and `zz-review2.test.ts`. They import master's own LedgerSeal code (extracted with `git archive origin/master`) next to the branch code. Output files: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/ledgerseal/probe-out/`.
 - No live check and no deploy: the probes cover the questions without the site.
 
 ## 1. Verdict
@@ -63,7 +63,7 @@ Could not confirm: the live checks of the fix log (not re-run; development site)
 
 ## 4. Public verifier
 
-`asymmsystems/ledgerseal-verifier` is public, Apache-2.0 (`LICENSE`, the headers of `verify-evidence.mjs` and `test/verify.test.mjs`, `package.json`). It is identical to `tools/verifier` at `6b6e996`. No "without trusting", "independence" or similar claim (grep over the repository); the README says what a PASS does not show. No em or en dash. Old evidence (exported by master's code, canonical form 2.1.0, account ids) and redacted evidence (with the LS_REDACTED NOTE) both pass with exit 0.
+`asymmsystems/jira-governance-code-cli` is public, Apache-2.0 (`LICENSE`, the headers of `verify-evidence.mjs` and `test/verify.test.mjs`, `package.json`). It is identical to `tools/verifier` at `6b6e996`. No "without trusting", "independence" or similar claim (grep over the repository); the README says what a PASS does not show. No em or en dash. Old evidence (exported by master's code, canonical form 2.1.0, account ids) and redacted evidence (with the LS_REDACTED NOTE) both pass with exit 0.
 
 ## 5. Gate
 

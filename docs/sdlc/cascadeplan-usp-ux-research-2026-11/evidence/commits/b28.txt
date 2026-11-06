@@ -1,0 +1,24 @@
+feat(cascadeplan): conform the WorkEffort model to the Silverston pattern
+
+Dependencies are stored as WORK_EFF_PRECEDENCY associations, a subtype
+of WORK_EFF_DEPENDENCY, with a from date, an optional thru date and the
+trigger percent and Jira link id as association attributes. Engine
+results are computed on every load and not stored. Removing a link sets
+its thru date and keeps the record, so a Jira link from that predecessor
+is not imported again. An issue can have several predecessors; Jira
+Blocks links that are neither stored nor ended are imported live as
+finish-to-start links, and the engine uses every link.
+
+Second people are party assignments keyed by Atlassian account id with
+the CONTRIBUTOR role and a from date; their names are read live from
+Jira. A parent's dates are derived on load from its dated children,
+are never stored, and a parent bar cannot be moved.
+
+A one-time migration rewrites records of the earlier shape under the
+version check: old links start on the migration day, an old removal
+flag becomes ended links for the Jira links it suppressed, and an old
+name becomes the account id of the one matching Jira user or is kept as
+a legacy name. The unused converters, types, statuses and roles are
+removed, and spec sections 3.1 and 3.2 describe the stored model.
+
+Refs: B-28, INV-04, INV-09
