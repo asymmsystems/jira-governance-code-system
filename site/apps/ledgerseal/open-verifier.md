@@ -67,10 +67,23 @@ Official public keys are published in the verifier repository under `keys/`:
 
 | Key ID | Environment | Algorithm | Public Key Path |
 |---|---|---|---|
-| `ls-dev-2026-11` | Atlassian Forge Development / Staging | Ed25519 | `keys/ls-dev-2026-11.pub.pem` |
+| `ls-prod-2026-11` | Atlassian Forge Production (the Marketplace app) | Ed25519 | `keys/ls-prod-2026-11.pub.pem` |
+| `ls-dev-2026-11` | Atlassian Forge Development / Staging (development builds only) | Ed25519 | `keys/ls-dev-2026-11.pub.pem` |
+
+`ls-prod-2026-11` (production, the Marketplace app; SHA-256 of the DER public key `09f2b807adc803a7f687e0561e90b8dcadadd6c1d752c66b55980a27b89cc5d3`, release v1.3.0):
+
+```text
+-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEATeL77D87DnKc6DSKrt1kAfh0SIW0ok4NoALB371b/VE=
+-----END PUBLIC KEY-----
+```
+
+`ls-dev-2026-11` (development builds only; SHA-256 of the DER public key `cecef4ee9d75298c9107ede72389edd5be59562027363aca90092b70b8c7d283`):
 
 ```text
 -----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEA3tGVQVDUPkk1+tAc9mYyPIAeTY+/qruaXJyTXrFKQpw=
 -----END PUBLIC KEY-----
 ```
+
+Fingerprint: `openssl pkey -pubin -in <key file> -outform DER | sha256sum`.

@@ -186,7 +186,7 @@ DefinitionGuard's shapes: schema 3 and 2 (`mandatoryCompleted`, `mandatoryTotal`
 
 ### Signature check (ADR-012)
 
-Both producers sign the canonical JSON (keys sorted at every level, no white space) of every field except `sig`, with Ed25519 and the key named by `keyId`. FourRealities checks it with public keys bundled in `src/accessor/attestation-keys.ts`, each trusted per Forge environment: `dg-dev-2026-11` and `ls-dev-2026-11` in development and staging only. Production trusts no key until the producers publish production keys. Results: verified, unsigned, unknown key, signed for another issue (`issueId` differs), bad signature. A signature shows who wrote a record, not that it is the latest: the rollback rule above covers an earlier signed record put back after a newer one.
+Both producers sign the canonical JSON (keys sorted at every level, no white space) of every field except `sig`, with Ed25519 and the key named by `keyId`. FourRealities checks it with public keys bundled in `src/accessor/attestation-keys.ts`, each trusted per Forge environment: `dg-dev-2026-11` and `ls-dev-2026-11` in development and staging only; `dg-prod-2026-11` and `ls-prod-2026-11` (published 2026-11-06) in production only. Results: verified, unsigned, unknown key, signed for another issue (`issueId` differs), bad signature. A signature shows who wrote a record, not that it is the latest: the rollback rule above covers an earlier signed record put back after a newer one.
 
 ### Code (heuristic)
 

@@ -113,7 +113,7 @@ docs.asymm.systems/
 ### 2.3 Standalone Verifier Publication (LedgerSeal USP)
 Publish the open-source Node verification script directly in the docs and in a public repository (`asymm-systems/ledgerseal-verifier`):
 - Uses **zero dependencies** (`node:crypto` standard library only).
-- Allows external compliance auditors to verify signed attestations offline against the published public key (`keys/ls-dev-2026-11.pub.pem`).
+- Allows external compliance auditors to verify signed attestations offline against the published production public key (`keys/ls-prod-2026-11.pub.pem`).
 
 ---
 

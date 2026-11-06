@@ -191,14 +191,14 @@ A temporary diagnostic: to explain a UI-path result, 6.3.0 logged the issue id a
 
 Nothing below has been run by this session. Run in `apps/definitionguard` of this branch after review and merge.
 
-1. **Production signing key** (BL-2). Key id `dg-prod-2026-11`. Make the key in a private folder and keep the private key out of every repository:
+1. **Production signing key** (BL-2). **Done 2026-11-06.** Key id `dg-prod-2026-11`. Make the key in a private folder and keep the private key out of every repository:
    ```bash
    umask 077 && mkdir -p ~/.keys/definitionguard && cd ~/.keys/definitionguard
    openssl genpkey -algorithm ed25519 -out dg-prod-2026-11.key
    openssl pkey -in dg-prod-2026-11.key -pubout -out dg-prod-2026-11.pem
    openssl pkey -pubin -in dg-prod-2026-11.pem -outform DER | sha256sum   # fingerprint for the key page
    ```
-2. **Production variables** (encrypted key; the value is base64 of the PEM, as the app reads it):
+2. **Production variables** **Done 2026-11-06.** (encrypted key; the value is base64 of the PEM, as the app reads it):
    ```bash
    cd <repo>/apps/definitionguard
    forge variables set -e production --encrypt DG_SIGNING_KEY "$(base64 -w0 ~/.keys/definitionguard/dg-prod-2026-11.key)"

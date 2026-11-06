@@ -12,6 +12,9 @@ H-1 and M-1): decision 4 now scores an unverified record like no record (the fir
 out of the score, so a forged "complete" record removed a "missing" check), and decision 7 adds the
 rollback rule.
 
+Updated 2026-11-06: the production keys =dg-prod-2026-11= and =ls-prod-2026-11= are published and
+listed in =src/accessor/attestation-keys.ts= for production only (decision 3).
+
 * Context
 FourRealities reads two issue properties that other apps of the suite write:
 - =definitionguard-dod=, written by DefinitionGuard. Schema v2
@@ -25,7 +28,8 @@ FourRealities reads two issue properties that other apps of the suite write:
 Any user with Edit issues can write any issue property. Before this ADR a well-formed record from any
 writer raised the Reality Alignment Index (RAI) like verified evidence (F-H1). Both producers now sign
 v2 records with Ed25519 over the canonical JSON of every field except =sig=. Development keys exist
-(=dg-dev-2026-11=, =ls-dev-2026-11=); production keys do not exist yet.
+(=dg-dev-2026-11=, =ls-dev-2026-11=). The production keys (=dg-prod-2026-11=, =ls-prod-2026-11=)
+were published on 2026-11-06.
 
 The sessions that fix DefinitionGuard and LedgerSeal remove account id fields from these records at
 the same time. The names of the count and status fields stay.
@@ -48,9 +52,9 @@ actions (a comment, a remote link) move =updated=, so its own actions turned a s
    another issue (=issueId= differs from the issue read), bad signature.
 3. *Trusted keys.* The public keys are part of the app (=src/accessor/attestation-keys.ts=), each
    with its producer and the Forge environments it is trusted in. The development keys are trusted
-   in the development and staging environments only. Production trusts only production keys, and
-   none exist yet, so in production every sibling record is "not verified" until the producers
-   publish production keys and this file lists them (owner command in the progress log). The
+   in the development and staging environments only. Production trusts only the production keys
+   =dg-prod-2026-11= and =ls-prod-2026-11= (published 2026-11-06); a record signed with a
+   development key is "not verified" in production. The
    environment comes from the Forge app context; an unknown environment is treated as production.
 4. *What counts.*
    - Verified record: FOUND (verification VERIFIED) when it says complete or sealed; MISSING when it
@@ -106,9 +110,9 @@ actions (a comment, a remote link) move =updated=, so its own actions turned a s
   earlier signed record put back after a newer one counts as missing (M-1).
 - FourRealities' own comments and links no longer change a seal's state (F-M3).
 ** Negative
-- Until production keys exist, a Process or Audit check that an administrator turns on by hand in
-  production is MISSING on every Done issue, even where the sibling app wrote a record. "Detect"
-  leaves those checks off until then. The guide and listing say so.
+- Before the production keys were published (2026-11-06), a Process or Audit check that an
+  administrator turned on by hand in production was MISSING on every Done issue. A FourRealities
+  build without the production keys in =attestation-keys.ts= still behaves so.
 - With Checklists for Jira as the Process source, Process is MISSING on every Done issue.
 - A key rotation needs a FourRealities release that adds the new public key.
 

@@ -73,9 +73,10 @@ Exit codes: `0` every check passed; `1` at least one check failed (the FAIL line
 
 | Key id | Used by | File |
 |---|---|---|
+| `ls-prod-2026-11` | LedgerSeal production, the Marketplace app | `keys/ls-prod-2026-11.pub.pem` |
 | `ls-dev-2026-11` | LedgerSeal development builds only (test sites) | `keys/ls-dev-2026-11.pub.pem` |
 
-The key of the Marketplace app will be added here, and on https://asymm.systems, before the app is listed. Evidence names its key in `attestation.keyId`.
+Evidence names its key in `attestation.keyId`. The same keys are listed on https://asymm.systems/product/jira-governance/signing-keys.html. The SHA-256 fingerprint of the DER public key (`openssl pkey -pubin -in keys/ls-prod-2026-11.pub.pem -outform DER | sha256sum`) of `ls-prod-2026-11` is `09f2b807adc803a7f687e0561e90b8dcadadd6c1d752c66b55980a27b89cc5d3`.
 
 Check a download against `SHA256SUMS` in the release:
 
