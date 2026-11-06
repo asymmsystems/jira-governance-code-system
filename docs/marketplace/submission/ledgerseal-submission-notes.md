@@ -46,7 +46,7 @@ Install LedgerSeal on your own test site; nothing depends on the Asymm Systems s
 2. Click **Seal this issue**, choose the sign-off role, tick the declaration, click **Sign and seal**.
 3. Observe the green `SEALED` lozenge and "Approval seal: Sealed. No change detected since approval."
 4. Click **Show details** to see the signer, sign-off role, hash and covered fields; **Show history** lists the seal with who acted.
-5. Click **Show evidence (JSON)**. Save it to a file and run `node verify-evidence.mjs <file>` from https://github.com/asymmsystems/ledgerseal-verifier: all four checks pass.
+5. Click **Show evidence (JSON)**. Save it to a file and run `node verify-evidence.mjs <file>` from https://github.com/asymmsystems/ledgerseal-verifier: all five checks pass.
 
 ### Test Step 2: Change detection and separation of duties
 1. As the first user, edit the summary and add a comment.
@@ -67,6 +67,6 @@ Install LedgerSeal on your own test site; nothing depends on the Asymm Systems s
 
 ## 5. Known Review Risks & Mitigations
 
-1. **Compliance Claims:** LedgerSeal documentation states that it supports compliance with SOC 2, ISO/IEC 27001 and 21 CFR Part 11 and that the customer's auditor decides. It does not claim certification, and it states that it does not perform the two-component signing of 21 CFR 11.200.
-3. **Major version:** the `report:personal-data` scope was added, so the site admin consents to it on install or upgrade.
+1. **Compliance Claims:** LedgerSeal documentation states that it supports compliance with SOC 2, ISO/IEC 27001 and 21 CFR Part 11 and that the customer's auditor decides. It does not claim certification. It states that 21 CFR 11.50 is partly met (Each seal records the date, time and meaning of the signature. The signer's name is shown from their Atlassian account while it exists; after the account is closed, it is shown as a deleted user, so a printed name is not kept in the record.) and that it does not perform the two-component signing of 21 CFR 11.200.
 2. **Icon & Static Assets:** The module icon is bundled with the app (`static/icons/icon.svg`). The manifest contains no external URLs.
+3. **Major version:** the `report:personal-data` scope was added, so the site admin consents to it on install or upgrade.

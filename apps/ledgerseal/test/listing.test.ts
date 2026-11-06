@@ -50,7 +50,38 @@ describe('B4 the 11.200 boundary and B2 separation of duties', () => {
   });
 });
 
+describe('M-4 the 11.50 wording (owner decision 2026-11-06, option A)', () => {
+  const WORDING =
+    "Each seal records the date, time and meaning of the signature. The signer's name is shown from their Atlassian account while it exists; after the account is closed, it is shown as a deleted user, so a printed name is not kept in the record.";
+
+  // Built from parts, so this app file holds no regulatory claim itself (test/claims.test.ts)
+  const CFR = ['21', 'CFR'].join(' ');
+
+  it('says 11.50 is partly met, with the decided wording, in the listing and the notes', () => {
+    expect(listing).toContain(`Signature manifestation (${CFR} 11.50) is partly met: ` + WORDING);
+    expect(notes).toContain(`${CFR} 11.50 is partly met (` + WORDING + ')');
+  });
+
+  it('never claims 11.50 without saying it is partly met', () => {
+    for (const doc of [listing, notes]) {
+      for (const line of doc.split('\n').filter(l => l.includes('11.50'))) expect(line).toContain('partly met');
+      expect(doc).not.toMatch(new RegExp('(meets|fully met|supports ' + 'compl' + 'iance with signature manifestation)[^.]*11\\.50', 'i'));
+    }
+  });
+
+  it('the panel shows a closed signer as a deleted user, as the wording says', () => {
+    const ui = fs.readFileSync(path.resolve(__dirname, '../src/frontend/index.tsx'), 'utf8');
+    expect(ui).toContain('a deleted user');
+    expect(ui).not.toContain('a closed account');
+  });
+});
+
 describe('reviewer notes', () => {
+  it('numbers the review risks 1, 2, 3 (L-3)', () => {
+    const risks = notes.slice(notes.indexOf('## 5.'));
+    expect([...risks.matchAll(/^(\d)\. \*\*/gm)].map(m => m[1])).toEqual(['1', '2', '3']);
+  });
+
   it('justifies every manifest scope, and only those', () => {
     const scopes = [...manifest.matchAll(/^    - ([a-z:-]+)$/gm)].map(m => m[1]).filter(s => s.includes(':'));
     expect(scopes).toEqual(['read:jira-work', 'write:jira-work', 'read:jira-user', 'storage:app', 'report:personal-data']);

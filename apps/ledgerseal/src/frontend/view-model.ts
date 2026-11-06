@@ -37,7 +37,7 @@ export interface ChangeRowView {
   showFullToggle: boolean;
   detail?: string;
   changedBy: string[];
-  /** People who changed the item and whose accounts are closed, shown as "a closed account". */
+  /** People who changed the item and whose accounts are closed, shown as "a deleted user" (the account was closed). */
   changedByClosed: number;
   changedAt: string;
 }
