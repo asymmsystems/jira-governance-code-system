@@ -9,7 +9,7 @@
  * Fail-Closed: any network error or permission check failure evaluates to DENIED.
  */
 import api, { route } from '@forge/api';
-import { withRetry } from '../jira/jira-client';
+import { retryAfter, withRetry } from '../jira/jira-client';
 import { StorageProvider } from '../storage/checklist-repository';
 import { PolicyRepository } from '../storage/policy-repository';
 import { PermissionDeniedError } from './permissions';
@@ -23,10 +23,18 @@ export interface JiraGroupItem {
   name?: string;
 }
 
-/** Checks whether the calling user holds the global ADMINISTER Jira permission. */
+/**
+ * Checks whether the calling user holds the global ADMINISTER Jira permission.
+ * The mypermissions call is made directly here, not in a closure, so that static scanners such as
+ * Atlassian's FSRT see the check (AMS-76722); retryAfter keeps the 429 policy of withRetry.
+ */
 export async function isJiraAdmin(): Promise<boolean> {
   try {
-    const res = await withRetry(() => api.asUser().requestJira(route`/rest/api/3/mypermissions?permissions=ADMINISTER`));
+    let res: any;
+    for (let attempt = 1; ; attempt++) {
+      res = await api.asUser().requestJira(route`/rest/api/3/mypermissions?permissions=ADMINISTER`);
+      if (!(await retryAfter(res, attempt))) break;
+    }
     if (res.status !== 200) return false;
     const body = await res.json();
     return body?.permissions?.ADMINISTER?.havePermission === true;
@@ -38,15 +46,19 @@ export async function isJiraAdmin(): Promise<boolean> {
 /**
  * Checks Tier 1 admin permissions on an issue for the calling user.
  * Returns true if the user holds either ADMINISTER or ADMINISTER_PROJECTS.
+ * Each mypermissions call is written out with its literal route, for the same reason as above.
  */
 export async function hasTier1AdminPermission(issueIdOrKey: string): Promise<boolean> {
   if (!issueIdOrKey) return false;
   try {
     const isId = /^\d+$/.test(issueIdOrKey);
-    const path = isId
-      ? route`/rest/api/3/mypermissions?issueId=${issueIdOrKey}&permissions=ADMINISTER_PROJECTS,ADMINISTER`
-      : route`/rest/api/3/mypermissions?issueKey=${issueIdOrKey}&permissions=ADMINISTER_PROJECTS,ADMINISTER`;
-    const res = await withRetry(() => api.asUser().requestJira(path));
+    let res: any;
+    for (let attempt = 1; ; attempt++) {
+      res = isId
+        ? await api.asUser().requestJira(route`/rest/api/3/mypermissions?issueId=${issueIdOrKey}&permissions=ADMINISTER_PROJECTS,ADMINISTER`)
+        : await api.asUser().requestJira(route`/rest/api/3/mypermissions?issueKey=${issueIdOrKey}&permissions=ADMINISTER_PROJECTS,ADMINISTER`);
+      if (!(await retryAfter(res, attempt))) break;
+    }
     if (res.status !== 200) return false;
     const body = await res.json();
     const perms = body?.permissions;

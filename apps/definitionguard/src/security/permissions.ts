@@ -8,7 +8,7 @@
  * report EDIT_ISSUES for a user who lacks it on a given issue. Any failure denies (fail closed).
  */
 import api, { route } from '@forge/api';
-import { withRetry } from '../jira/jira-client';
+import { retryAfter } from '../jira/jira-client';
 
 export type JiraPermissionKey = string;
 
@@ -22,15 +22,16 @@ export class PermissionDeniedError extends Error {
 export const PERMISSION_CHECK_FAILED =
   'DefinitionGuard could not check your Jira permissions, so the change was not saved. Try again.';
 
-/** Calls /mypermissions as the user for one route and reads the requested keys. Any failure denies. */
-async function fetchGranted(request: () => Promise<any>, keys: JiraPermissionKey[]): Promise<Record<string, boolean>> {
-  let res: any;
-  try {
-    res = await request();
-  } catch {
-    throw new PermissionDeniedError(PERMISSION_CHECK_FAILED);
-  }
-  if (res.status !== 200) {
+/*
+ * Each check below calls /rest/api/3/mypermissions as the user directly in its own body, in a
+ * retry loop (retryAfter), not inside a closure. Atlassian's FSRT authorization check (AMS-76722)
+ * recognises a permissions call only where it is made directly; a call inside a closure given to a
+ * helper is invisible to it, and the asApp() work after the check is then reported as unauthorised.
+ */
+
+/** Reads the requested keys from a /mypermissions response. Any failure denies. */
+async function grantedIn(res: any, keys: JiraPermissionKey[]): Promise<Record<string, boolean>> {
+  if (res?.status !== 200) {
     throw new PermissionDeniedError(PERMISSION_CHECK_FAILED);
   }
   const body = await res.json();
@@ -49,7 +50,16 @@ export async function getIssuePermissions(issueKey: string, keys: JiraPermission
   if (!issueKey || keys.length === 0) {
     throw new PermissionDeniedError(PERMISSION_CHECK_FAILED);
   }
-  return fetchGranted(() => withRetry(() => api.asUser().requestJira(route`/rest/api/3/mypermissions?issueKey=${issueKey}&permissions=${keys.join(',')}`)), keys);
+  let res: any;
+  try {
+    for (let attempt = 1; ; attempt++) {
+      res = await api.asUser().requestJira(route`/rest/api/3/mypermissions?issueKey=${issueKey}&permissions=${keys.join(',')}`);
+      if (!(await retryAfter(res, attempt))) break;
+    }
+  } catch {
+    throw new PermissionDeniedError(PERMISSION_CHECK_FAILED);
+  }
+  return grantedIn(res, keys);
 }
 
 /**
@@ -59,7 +69,16 @@ export async function getProjectPermissions(projectKey: string, keys: JiraPermis
   if (!projectKey || keys.length === 0) {
     throw new PermissionDeniedError(PERMISSION_CHECK_FAILED);
   }
-  return fetchGranted(() => withRetry(() => api.asUser().requestJira(route`/rest/api/3/mypermissions?projectKey=${projectKey}&permissions=${keys.join(',')}`)), keys);
+  let res: any;
+  try {
+    for (let attempt = 1; ; attempt++) {
+      res = await api.asUser().requestJira(route`/rest/api/3/mypermissions?projectKey=${projectKey}&permissions=${keys.join(',')}`);
+      if (!(await retryAfter(res, attempt))) break;
+    }
+  } catch {
+    throw new PermissionDeniedError(PERMISSION_CHECK_FAILED);
+  }
+  return grantedIn(res, keys);
 }
 
 /**
@@ -116,10 +135,12 @@ export async function requireBrowseIssue(issueId: string): Promise<void> {
   let granted: Record<string, boolean>;
   try {
     if (!issueId) throw new Error('no issue id');
-    granted = await fetchGranted(
-      () => withRetry(() => api.asUser().requestJira(route`/rest/api/3/mypermissions?issueId=${issueId}&permissions=BROWSE_PROJECTS`)),
-      ['BROWSE_PROJECTS']
-    );
+    let res: any;
+    for (let attempt = 1; ; attempt++) {
+      res = await api.asUser().requestJira(route`/rest/api/3/mypermissions?issueId=${issueId}&permissions=BROWSE_PROJECTS`);
+      if (!(await retryAfter(res, attempt))) break;
+    }
+    granted = await grantedIn(res, ['BROWSE_PROJECTS']);
   } catch {
     throw new PermissionDeniedError(BROWSE_CHECK_FAILED);
   }
