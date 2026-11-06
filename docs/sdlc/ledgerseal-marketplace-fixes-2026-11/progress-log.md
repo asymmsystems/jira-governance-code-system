@@ -309,3 +309,19 @@ The review is `docs/sdlc/merge-reviews-2026-11/ledgerseal-followups-merge-review
 ### L-10
 
 - The M-2 proof above now says three tests.
+
+### Deploy and live checks (development 4.4.0)
+
+- `forge deploy -e development`: the first attempt timed out at 300 s; the retry deployed 4.4.0 (branch head `39e3d66` code).
+
+| Check | Result |
+|---|---|
+| Evidence of PAY-10 (sealed), PAY-13 (changed), LSP-3 (converted, resealed) with verifier 1.2.0 | 5 of 5 PASS each; properties schema 3, signed, no account id |
+| PAY-13 panel | CHANGED; "Changed by: Fahim Farook" for the edits. Two rows say "unknown": the comments deleted when PAY-13 was restored, because Jira does not record who deletes a comment (not a token) |
+| M-5, L-8 live | not run live: M-5 needs two invocations on one old record at the same moment, L-8 a deactivated or unreadable account; both proven by the tests above |
+
+No live write in this round.
+
+### Final gate (second follow-ups)
+
+`npx tsc --noEmit` 0 errors; `npm test`: 47 suites, 501 tests passed; coverage statements 97.89%, branches 94.19%, functions 96.74%, lines 98.65%; `npm run build` exit 0; `npm audit --omit=dev --audit-level=high` exit 0; `forge lint` "No issues found". Development version 4.4.0.
