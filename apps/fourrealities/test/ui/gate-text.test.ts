@@ -152,3 +152,14 @@ describe('ADR-010: text for reported and signature-failed records', () => {
     expect(sourceLine({ state: 'FOUND', verification: 'VERIFIED', reason: 'SEAL_VALID_LS' })).toBe('Source: LedgerSeal property ledgerseal-cert, verified by FourRealities.');
   });
 });
+
+describe('ADR-011: text for a check that is not in use and a missing checklist', () => {
+  const notUsed: GateResult = { state: 'NOT_APPLICABLE', reason: 'SOURCE_NOT_IN_USE' };
+  it('says the check is not used on this site and where to turn it on', () => {
+    expect(stateLabel(notUsed)).toBe('Not used on this site');
+    expect(chipText('audit', notUsed)).toBe('Audit: not used');
+    expect(detailText(notUsed)).toBe('This check is not used on this site, so it is not scored. A Jira administrator can turn it on in Jira settings > Apps > FourRealities gate authority.');
+    expect(sourceLine(notUsed)).toBe('Source: FourRealities gate authority settings.');
+    expect(detailText({ state: 'MISSING', reason: 'CHECKLIST_NONE' })).toBe('No Checklists for Jira checklist on this issue.');
+  });
+});

@@ -4,7 +4,7 @@
  * FourRealities: gate evaluation. Pure functions from issue facts to gate results (spec v2, Gates).
  */
 
-import { AttestationCheck, DefinitionGuardRecord, GateResult, HeroCodersChecklistRecord, IssueFacts, IssueGates, LedgerSealRecord } from '../contract/data/models';
+import { AttestationCheck, DefinitionGuardRecord, GateResult, HeroCodersChecklistRecord, IssueFacts, IssueGates, LedgerSealRecord, SourcesInUse } from '../contract/data/models';
 import { DEFAULT_CATALOG, EVIDENCE_REF_MAX, EvidenceCatalog } from '../contract/data/catalog';
 import { GateEngine } from '../contract/engines';
 
@@ -38,13 +38,18 @@ function isSameSiteContentPage(url: string | undefined, siteHost: string | undef
   }
 }
 
+/** A check the site does not use: not scored, shown as "Not used on this site" (ADR-011). */
+const NOT_IN_USE: GateResult = { state: 'NOT_APPLICABLE', reason: 'SOURCE_NOT_IN_USE' };
+
 /**
  * Intent: a Confluence page on this site, or an issue of a decision or specification type,
  * is linked. FourRealities reads the link itself (VERIFIED) and does not read the page.
- * Title keywords never count (FR-13).
+ * Title keywords never count (FR-13). The decision issue types come from the settings (F-M6).
+ * Without `sources` every check is in use (the rules before ADR-011).
  */
-export function evaluateIntent(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG): GateResult {
-  const rule = c.intent;
+export function evaluateIntent(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG, sources?: SourcesInUse): GateResult {
+  if (sources && !sources.intent) return NOT_IN_USE;
+  const rule = sources ? { ...c.intent, issueTypes: sources.decisionIssueTypes.map(t => t.trim().toLowerCase()) } : c.intent;
   const page = (f.remoteLinks || []).find(rl =>
     rule.contentApplicationTypes.includes(String(rl.applicationType || '')) || isSameSiteContentPage(rl.url, f.siteHost, rule.sameSiteContentPath));
   if (page) {
@@ -144,8 +149,9 @@ function stated(trust: Trust, positive: boolean, result: Omit<GateResult, 'state
  * property. A verified DefinitionGuard record is scored; any record FourRealities cannot verify,
  * including every HeroCoders record, is REPORTED and not scored (ADR-010, spec v3, Process).
  */
-export function evaluateProcess(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG): GateResult {
-  const dod = f.properties.dod;
+export function evaluateProcess(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG, sources?: SourcesInUse): GateResult {
+  if (sources && sources.process === null) return NOT_IN_USE;
+  const dod = sources?.process === 'herocoders' ? undefined : f.properties.dod;
   if (dod !== undefined && dod !== null) {
     const record = parseDefinitionGuardRecord(dod);
     if (!record) {
@@ -162,7 +168,7 @@ export function evaluateProcess(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATA
     }
     return isDone(f) ? seen(stated(trust, false, { reason: 'DOD_OPEN_DG', args })) : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
   }
-  const checklist = f.properties.checklist;
+  const checklist = sources?.process === 'definitionguard' ? undefined : f.properties.checklist;
   if (isHeroCodersChecklistShape(checklist)) {
     const open = checklist.uncheckedMandatoryItems;
     const seen = (result: GateResult) => observed(c, 'HEROCODERS_CHECKLIST_PROPERTY', result, checklist.progressText);
@@ -171,7 +177,7 @@ export function evaluateProcess(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATA
     return isDone(f) ? seen(stated(unverifiable, false, { reason: 'DOD_OPEN_HC', args: { open } })) : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
   }
   return isDone(f)
-    ? { state: 'MISSING', reason: 'DOD_NONE' }
+    ? { state: 'MISSING', reason: sources?.process === 'herocoders' ? 'CHECKLIST_NONE' : 'DOD_NONE' }
     : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
 }
 
@@ -180,10 +186,11 @@ export function evaluateProcess(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATA
  * read review approvals (research H11), so a merged pull request is never shown as approved.
  * A Code exception applies only to work with no pull request (FR-10).
  */
-export function evaluateCode(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG): GateResult {
+export function evaluateCode(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG, sources?: SourcesInUse): GateResult {
   if (!f.devField.present) {
     return { state: 'NOT_APPLICABLE', reason: 'NO_DEV_TOOL' };
   }
+  if (sources && !sources.code) return NOT_IN_USE;
   const pr = f.devField.summary;
   const merged = pr.mergedCount > 0 || (pr.state === 'MERGED' && pr.count > 0);
   const open = !merged && (pr.openCount > 0 || (pr.state === 'OPEN' && pr.count > 0));
@@ -211,7 +218,8 @@ export function evaluateCode(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG
  * update time is not compared (ADR-010, F-M3). Shapes LedgerSeal does not write, such as
  * {valid: true}, are evidence missing.
  */
-export function evaluateAudit(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG): GateResult {
+export function evaluateAudit(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG, sources?: SourcesInUse): GateResult {
+  if (sources && !sources.audit) return NOT_IN_USE;
   const cert = f.properties.ledgerseal;
   if (cert !== undefined && cert !== null) {
     if (!isLedgerSealShape(cert)) {
@@ -237,12 +245,12 @@ export function evaluateAudit(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALO
     : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
 }
 
-export function evaluateGates(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG): IssueGates {
+export function evaluateGates(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG, sources?: SourcesInUse): IssueGates {
   return {
-    intent: evaluateIntent(f, c),
-    process: evaluateProcess(f, c),
-    code: evaluateCode(f, c),
-    audit: evaluateAudit(f, c)
+    intent: evaluateIntent(f, c, sources),
+    process: evaluateProcess(f, c, sources),
+    code: evaluateCode(f, c, sources),
+    audit: evaluateAudit(f, c, sources)
   };
 }
 
@@ -251,7 +259,7 @@ export class DefaultGateEngine implements GateEngine {
 
   constructor(private readonly catalog: EvidenceCatalog = DEFAULT_CATALOG) {}
 
-  evaluate(facts: IssueFacts): IssueGates {
-    return evaluateGates(facts, this.catalog);
+  evaluate(facts: IssueFacts, sources?: SourcesInUse): IssueGates {
+    return evaluateGates(facts, this.catalog, sources);
   }
 }

@@ -6,7 +6,7 @@
  */
 
 import Resolver from '@forge/resolver';
-import { CallerContext, DecideExceptionPayload, ForgeContext, IssueRow, LinkDecisionPayload, ProjectDashboardView, RecordExceptionPayload, RequestReviewPayload, ResolverResult, ScheduledRunResult, WriteResult } from './contract/data/models';
+import { AdminResult, AdminView, ApprovalView, CallerContext, DecideExceptionPayload, ForgeContext, IssueRow, LinkDecisionPayload, ProjectDashboardView, RecordExceptionPayload, RequestReviewPayload, ResolverResult, ScheduledRunResult, WriteResult } from './contract/data/models';
 import { ConfluencePage, ConfluencePageSearchAccessor, StorageProvider } from './contract/accessors';
 import { DefaultForgeKvsStore } from './accessor/default-forge-kvs-store';
 import { DefaultForgeConfluenceSearchAccessor } from './accessor/default-forge-confluence-search-accessor';
@@ -26,6 +26,10 @@ import { DefaultPolicyEngine } from './engine/default-policy-engine';
 import { DefaultExceptionPolicyEngine } from './engine/default-exception-policy-engine';
 import { DefaultSnapshotManager } from './manager/default-snapshot-manager';
 import { DefaultIssueEvidenceManager } from './manager/default-issue-evidence-manager';
+import { DefaultKvsSettingsAccessor } from './accessor/default-kvs-settings-accessor';
+import { DefaultForgeJiraDirectoryAccessor } from './accessor/default-forge-jira-directory-accessor';
+import { DefaultSourcePolicyEngine } from './engine/default-source-policy-engine';
+import { DefaultAdminManager } from './manager/default-admin-manager';
 import { DefaultExceptionManager } from './manager/default-exception-manager';
 
 /** Time a resolver may spend on Jira reads, inside the 25 s Forge limit. */
@@ -72,7 +76,13 @@ export function compose(storageProvider: StorageProvider | undefined, budgetMs: 
   const gates = new DefaultGateEngine();
   const metrics = new DefaultMetricsEngine();
   const policy = new DefaultPolicyEngine();
+  const settings = new DefaultKvsSettingsAccessor(storage);
+  const sources = new DefaultSourcePolicyEngine();
+  const directory = new DefaultForgeJiraDirectoryAccessor(requestAs('user', () => deadline));
   return {
+    settings,
+    sources,
+    directory,
     projects: new DefaultSnapshotManager({
       jira: appJira,
       viewerJira: userJira,
@@ -84,10 +94,13 @@ export function compose(storageProvider: StorageProvider | undefined, budgetMs: 
       lifecycle,
       gates,
       metrics,
-      snapshot: new DefaultSnapshotEngine()
+      snapshot: new DefaultSnapshotEngine(),
+      settings,
+      sources
     }),
-    issues: new DefaultIssueEvidenceManager({ userJira, siteConfig, notes, events, lifecycle, gates, metrics, policy }),
-    exceptions: new DefaultExceptionManager({ userJira, siteConfig, notes, events, policy, lifecycle })
+    issues: new DefaultIssueEvidenceManager({ userJira, siteConfig, notes, events, lifecycle, gates, metrics, policy, settings, sources }),
+    exceptions: new DefaultExceptionManager({ userJira, appJira, directory, settings, siteConfig, notes, events, policy, lifecycle }),
+    admin: new DefaultAdminManager({ directory, settings, siteConfig, sources })
   };
 }
 
@@ -143,9 +156,15 @@ export const snapshot = async (): Promise<void> => {
 };
 
 /** Evaluates one Jira issue. The issue comes from the Forge context only. */
-export async function getIssueAlignment(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<ResolverResult<{ row: IssueRow }>> {
+export async function getIssueAlignment(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<ResolverResult<{ row: IssueRow; approval?: ApprovalView }>> {
   if (licenceInactive(context)) return LICENCE_READ_ERROR;
-  return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user').issues.evaluate(callerOf(context));
+  const app = compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user');
+  const caller = callerOf(context);
+  const evaluated = await app.issues.evaluate(caller);
+  if (!evaluated.ok) return evaluated;
+  // The decision buttons the viewer may use, checked as the viewer (ADR-011 decision 5).
+  const approval = await app.exceptions.approval(caller, evaluated.row);
+  return approval ? { ...evaluated, approval } : evaluated;
 }
 
 /**
@@ -155,7 +174,9 @@ export async function getIssueAlignment(payload: unknown, context?: ForgeContext
 async function withRow(app: ReturnType<typeof compose>, caller: CallerContext, result: WriteResult): Promise<WriteResult> {
   if (!result.success || !caller.issueId) return result;
   const evaluated = await app.issues.evaluate(caller);
-  return evaluated.ok ? { ...result, row: evaluated.row } : result;
+  if (!evaluated.ok) return result;
+  const approval = await app.exceptions.approval(caller, evaluated.row);
+  return { ...result, row: evaluated.row, ...(approval ? { approval } : {}) };
 }
 
 /**
@@ -256,3 +277,38 @@ resolver.define('searchConfluencePages', async (req) => {
 });
 
 export const handler = resolver.getDefinitions();
+
+const ADMIN_LICENCE_ERROR = { ok: false as const, code: 'LICENSE_INACTIVE' as const, message: LICENCE_INACTIVE_MESSAGE };
+
+/** Admin page: the settings, the checks in use and the approver groups (ADR-011). Jira administrators only. */
+export async function getAdminSettings(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<AdminResult<AdminView>> {
+  if (licenceInactive(context)) return ADMIN_LICENCE_ERROR;
+  return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user').admin.view();
+}
+
+/** Admin page: saves the evidence sources and the decision issue types. */
+export async function saveAdminSources(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<AdminResult<AdminView>> {
+  if (licenceInactive(context)) return ADMIN_LICENCE_ERROR;
+  return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user').admin.saveSources(payload);
+}
+
+/** Admin page: searches Jira groups by name. */
+export async function searchAdminGroups(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<AdminResult<{ groups: Array<{ groupId: string; name: string }> }>> {
+  if (licenceInactive(context)) return ADMIN_LICENCE_ERROR;
+  return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user').admin.searchGroups(payload);
+}
+
+/** Admin page: saves the approver groups (Tier 2). */
+export async function saveAdminApprovers(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<AdminResult<AdminView>> {
+  if (licenceInactive(context)) return ADMIN_LICENCE_ERROR;
+  return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user').admin.saveApprovers(payload);
+}
+
+const adminResolver = new Resolver();
+adminResolver.define('fr-admin-get', async req => getAdminSettings(req.payload, req.context));
+adminResolver.define('fr-admin-save-sources', async req => saveAdminSources(req.payload, req.context));
+adminResolver.define('fr-admin-search-groups', async req => searchAdminGroups(req.payload, req.context));
+adminResolver.define('fr-admin-save-approvers', async req => saveAdminApprovers(req.payload, req.context));
+
+/** Forge function of the admin page (manifest function admin-resolver). */
+export const adminHandler = adminResolver.getDefinitions();

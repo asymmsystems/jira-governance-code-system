@@ -35,6 +35,14 @@ describe('ADR-010: drift sentence with a reported record', () => {
   });
 });
 
+describe('drift sentence for signature failures and a missing checklist', () => {
+  it('names the failed check', () => {
+    expect(driftText({ gates: gates({ intent: F, process: miss('DOD_SIGNATURE_INVALID') }) })).toBe('The Definition of Done record failed its signature check.');
+    expect(driftText({ gates: gates({ intent: F, process: miss('CHECKLIST_NONE') }) })).toBe('No Checklists for Jira checklist is on this issue.');
+    expect(driftText({ gates: gates({ intent: F, audit: miss('SEAL_SIGNATURE_INVALID') }) })).toBe('The LedgerSeal record failed its signature check.');
+  });
+});
+
 describe('F-L5: score parts add up to the shown score', () => {
   it('gives the rounding remainder to the first found gates', () => {
     const lines = scoreParts({ rai: 67, applicableGates: 3, recoverablePoints: 33, gates: gates({ intent: miss('INTENT_NONE'), process: F, audit: F }) });
@@ -67,10 +75,11 @@ describe('B-36: drift sentence from the first missing gate', () => {
 
   it('gives one next action for the first missing gate', () => {
     expect(nextActionText({ gates: gates({ intent: miss('INTENT_NONE'), code: miss('PR_NONE') }) })).toBe('Next: link the decision record.');
-    expect(nextActionText({ gates: gates({ intent: F, process: miss('DOD_NONE') }) })).toBe('Next: complete the Definition of Done in DefinitionGuard.');
+    expect(nextActionText({ gates: gates({ intent: F, process: miss('DOD_NONE') }) })).toBe('Next: complete the items in the Definition of Done panel on this issue (DefinitionGuard).');
+    expect(nextActionText({ gates: gates({ intent: F, process: miss('CHECKLIST_NONE') }) })).toBe('Next: add and complete the checklist in Checklists for Jira.');
     expect(nextActionText({ gates: gates({ intent: F, code: miss('PR_NONE') }) })).toBe('Next: link a pull request, or request a Code exception.');
     expect(nextActionText({ gates: gates({ intent: F, code: miss('PR_OPEN_AT_DONE') }) })).toBe('Next: merge the pull request.');
-    expect(nextActionText({ gates: gates({ intent: F, audit: miss('SEAL_NONE') }) })).toBe('Next: seal the issue in LedgerSeal.');
+    expect(nextActionText({ gates: gates({ intent: F, audit: miss('SEAL_NONE') }) })).toBe('Next: seal the issue in its Approval Seal panel (LedgerSeal).');
     expect(nextActionText({ gates: gates({ intent: F }) })).toBeUndefined();
   });
 });
@@ -157,7 +166,7 @@ describe('B-44: audit readiness sentence and gaps text', () => {
       statusWord: 'Incomplete',
       appearance: 'removed',
       summary: 'Evidence found for 2 of 5 gates across 2 rated issues.',
-      nextStep: 'Next step: complete Definition of Done for 2 issues in DefinitionGuard.'
+      nextStep: 'Next step: complete the Definition of Done for 2 issues.'
     });
 
     const singleMissingIntent = row('AUDT-1', 25, { intent: miss('INTENT_NONE') });

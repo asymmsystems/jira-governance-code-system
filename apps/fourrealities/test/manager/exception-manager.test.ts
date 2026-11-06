@@ -17,7 +17,7 @@ const requested: GateExceptionEvent = {
 };
 const approved: GateExceptionEvent = { ...requested, status: 'APPROVED', at: '2026-11-01T11:00:00.000Z', byAccountId: 'admin-1', asRole: 'APPROVER', reason: 'ok' };
 
-function setup(o: { events?: GateExceptionEvent[]; admin?: boolean; assignee?: string; prCount?: number; put?: number; project?: any; permission?: any; rework?: any[] } = {}) {
+function setup(o: { events?: GateExceptionEvent[]; admin?: boolean; assignee?: string; prCount?: number; put?: number; project?: any; permission?: any; rework?: any[]; appJira?: any; groups?: any; policy?: any } = {}) {
   const userJira: any = {
     serviceType: 'accessor',
     issueProject: jest.fn().mockResolvedValue(o.project || { status: 200, issueKey: 'DEMO-1', projectKey: 'DEMO', assigneeAccountId: o.assignee }),
@@ -28,8 +28,11 @@ function setup(o: { events?: GateExceptionEvent[]; admin?: boolean; assignee?: s
   const events: any = { serviceType: 'accessor', append: jest.fn(), list: jest.fn().mockResolvedValue(o.events || []), listAll: jest.fn(), migrateV2CodeNotes: jest.fn() };
   const notes: any = { serviceType: 'accessor', append: jest.fn(), list: jest.fn().mockResolvedValue(o.rework || []), listAll: jest.fn(), migrateV2ReworkNotes: jest.fn() };
   const siteConfig: any = { serviceType: 'accessor', get: jest.fn().mockResolvedValue({ devFieldId: 'customfield_10000', siteHost: 's', readAt: 't' }) };
-  const manager = new DefaultExceptionManager({ userJira, siteConfig, notes, events, policy: new DefaultPolicyEngine(), lifecycle: new DefaultExceptionPolicyEngine(), now: NOW });
-  return { manager, userJira, events, notes };
+  // The decision projection is written as the app (F-M1); this suite reads both writes from one mock.
+  const directory: any = { serviceType: 'accessor', myGroups: jest.fn().mockResolvedValue(o.groups || { status: 200, groups: [] }) };
+  const settings: any = { serviceType: 'accessor', getApproverPolicy: jest.fn().mockResolvedValue(o.policy) };
+  const manager = new DefaultExceptionManager({ userJira, appJira: o.appJira || userJira, directory, settings, siteConfig, notes, events, policy: new DefaultPolicyEngine(), lifecycle: new DefaultExceptionPolicyEngine(), now: NOW });
+  return { manager, userJira, events, notes, directory };
 }
 
 const issueView = (accountId: string) => ({ issueId: '1', accountId });
@@ -113,7 +116,7 @@ describe('DefaultExceptionManager.decide (Option C)', () => {
 
   it('refuses a non-administrator, the requester and the assignee, and appends nothing', async () => {
     const cases: Array<[any, string, string]> = [
-      [{ events: [requested], admin: false }, 'dev-2', 'Only a project administrator or a Jira administrator can approve, reject or revoke an exception.'],
+      [{ events: [requested], admin: false }, 'dev-2', 'Requires Project Admin, Jira Admin, or membership in an authorized group. Configured by your Jira administrator in Jira Settings > Apps > FourRealities gate authority.'],
       [{ events: [requested] }, 'dev-1', 'The person who requested the exception cannot approve, reject or revoke it.'],
       [{ events: [requested], assignee: 'admin-1' }, 'admin-1', "The issue's assignee cannot approve, reject or revoke its exception."]
     ];
@@ -164,5 +167,52 @@ describe('DefaultExceptionManager.decide (Option C)', () => {
     const thrown = setup({ events: [requested] });
     thrown.userJira.putExceptionProperty.mockRejectedValue({});
     expect((await thrown.manager.decide(issueView('admin-1'), { decision: 'APPROVE' })).error).toBe('Failed to record exception.');
+  });
+});
+
+describe('ADR-011: Tier 2 approver groups, the panel approval, and the app-written projection (F-M4, F-M1)', () => {
+  const policy = { roleTypeId: 'FR_APPROVER', parties: [{ partyId: 'g1', partyTypeId: 'GROUP', name: 'release-managers' }], fromDate: 't' };
+
+  it('lets a member of an approver group approve, matched by id or name, and writes the projection as the app', async () => {
+    for (const groups of [[{ groupId: 'g1', name: 'x' }], [{ groupId: 'other', name: 'release-managers' }]]) {
+      const appJira: any = { putExceptionProperty: jest.fn().mockResolvedValue(200) };
+      const { manager, userJira, events } = setup({ events: [requested], admin: false, policy, groups: { status: 200, groups }, appJira });
+      expect((await manager.decide(issueView('rm-1'), { decision: 'APPROVE' })).success).toBe(true);
+      expect(appJira.putExceptionProperty).toHaveBeenCalledTimes(1);
+      expect(userJira.putExceptionProperty).not.toHaveBeenCalled();
+      expect(events.append).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('denies when the group read fails, when no group matches, or when no group is configured', async () => {
+    for (const o of [{ groups: { status: 500, groups: [] }, policy }, { groups: { status: 200, groups: [{ groupId: 'g9', name: 'other' }] }, policy }, {}]) {
+      const { manager, directory } = setup({ events: [requested], admin: false, ...o });
+      expect((await manager.decide(issueView('rm-1'), { decision: 'APPROVE' })).error).toContain('Requires Project Admin, Jira Admin, or membership in an authorized group.');
+      if (!('policy' in o)) expect(directory.myGroups).not.toHaveBeenCalled();
+    }
+  });
+
+  it('writes a withdrawal as the requester, not as the app', async () => {
+    const appJira: any = { putExceptionProperty: jest.fn().mockResolvedValue(200) };
+    const { manager, userJira } = setup({ events: [requested], appJira });
+    expect((await manager.decide(issueView('dev-1'), { decision: 'WITHDRAW' })).success).toBe(true);
+    expect(userJira.putExceptionProperty).toHaveBeenCalledTimes(1);
+    expect(appJira.putExceptionProperty).not.toHaveBeenCalled();
+  });
+
+  it('tells the panel whether the viewer may decide, and fails closed', async () => {
+    const row = (codeException?: any) => ({ issueId: '1', issueKey: 'DEMO-1', codeException } as any);
+    const waiting = { status: 'REQUESTED', requestedBy: 'dev-1', requestedAt: 't', reason: 'r', issueKey: 'DEMO-1' };
+    expect(await setup().manager.approval(issueView('admin-1'), row())).toBeUndefined();
+    expect(await setup().manager.approval(issueView('admin-1'), row({ ...waiting, status: 'REJECTED' }))).toBeUndefined();
+    expect(await setup().manager.approval({ issueId: '1' }, row(waiting))).toBeUndefined();
+    expect(await setup().manager.approval(issueView('admin-1'), row(waiting))).toEqual({ canDecide: true, isRequester: false });
+    expect(await setup().manager.approval(issueView('dev-1'), row(waiting))).toEqual({ canDecide: false, isRequester: true, note: 'You requested this exception, so another approver must decide.' });
+    expect(await setup({ assignee: 'admin-1' }).manager.approval(issueView('admin-1'), row(waiting))).toEqual({ canDecide: false, isRequester: false, note: 'You are the assignee of this issue, so another approver must decide.' });
+    const failed = await setup({ project: { status: 404 } }).manager.approval(issueView('admin-1'), row(waiting));
+    expect(failed?.canDecide).toBe(false);
+    const thrown = setup();
+    thrown.userJira.issueProject.mockRejectedValue(new Error('net'));
+    expect((await thrown.manager.approval(issueView('admin-1'), row({ ...waiting, status: 'APPROVED' })))?.canDecide).toBe(false);
   });
 });

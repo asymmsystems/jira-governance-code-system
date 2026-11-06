@@ -25,7 +25,7 @@ export function stateLabel(result: GateResult): string {
     case 'REPORTED': return 'Reported, not verified';
     case 'EXCEPTED': return 'Excepted';
     case 'NEEDS_RECHECK': return 'Needs re-check';
-    default: return 'Not applicable';
+    default: return result.reason === 'SOURCE_NOT_IN_USE' ? 'Not used on this site' : 'Not applicable';
   }
 }
 
@@ -64,7 +64,7 @@ function shortState(result: GateResult): string {
     case 'REPORTED': return 'reported, not verified';
     case 'EXCEPTED': return 'excepted';
     case 'NEEDS_RECHECK': return 're-check';
-    default: return 'n/a';
+    default: return result.reason === 'SOURCE_NOT_IN_USE' ? 'not used' : 'n/a';
   }
 }
 
@@ -87,6 +87,7 @@ const SOURCE: Record<GateReason, string> = {
   DOD_OPEN_HC: 'Checklists for Jira (HeroCoders) property checklist',
   DOD_NONE: 'DefinitionGuard property definitionguard-dod',
   DOD_SIGNATURE_INVALID: 'DefinitionGuard property definitionguard-dod',
+  CHECKLIST_NONE: 'Checklists for Jira (HeroCoders) property checklist',
   CODE_EXCEPTED: 'FourRealities exception record',
   PR_MERGED: 'Jira Development field',
   PR_OPEN: 'Jira Development field',
@@ -99,7 +100,8 @@ const SOURCE: Record<GateReason, string> = {
   SEAL_SHAPE_UNKNOWN: 'property ledgerseal-cert',
   SEAL_NONE: 'LedgerSeal property ledgerseal-cert',
   SEAL_SIGNATURE_INVALID: 'LedgerSeal property ledgerseal-cert',
-  CHANGED_SINCE_ATTESTATION: 'Jira issue update time'
+  CHANGED_SINCE_ATTESTATION: 'Jira issue update time',
+  SOURCE_NOT_IN_USE: 'FourRealities gate authority settings'
 };
 
 const VERIFICATION_TEXT: Record<Verification, string> = {
@@ -159,6 +161,8 @@ function statement(result: GateResult): string {
     case 'SEAL_NONE': return 'No LedgerSeal record on this issue.';
     case 'SEAL_SIGNATURE_INVALID': return `The LedgerSeal record failed its signature check (${arg(result, 'why')}). It was changed after LedgerSeal wrote it, or copied from another issue.`;
     case 'CHANGED_SINCE_ATTESTATION': return 'The issue changed after the record was written.';
+    case 'CHECKLIST_NONE': return 'No Checklists for Jira checklist on this issue.';
+    case 'SOURCE_NOT_IN_USE': return 'This check is not used on this site, so it is not scored. A Jira administrator can turn it on in Jira settings > Apps > FourRealities gate authority.';
   }
 }
 

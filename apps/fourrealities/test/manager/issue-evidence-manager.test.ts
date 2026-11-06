@@ -5,6 +5,8 @@
  */
 
 import { DefaultIssueEvidenceManager } from '../../src/manager/default-issue-evidence-manager';
+import { DefaultSourcePolicyEngine } from '../../src/engine/default-source-policy-engine';
+import { DEFAULT_SOURCE_SETTINGS } from '../../src/contract/data/models';
 import { DefaultGateEngine } from '../../src/engine/default-gate-engine';
 import { DefaultMetricsEngine } from '../../src/engine/default-metrics-engine';
 import { DefaultPolicyEngine } from '../../src/engine/default-policy-engine';
@@ -36,7 +38,9 @@ function manager(jira: JiraIssueAccessor, events: any[] = []) {
     lifecycle: new DefaultExceptionPolicyEngine(),
     gates: new DefaultGateEngine(),
     metrics: new DefaultMetricsEngine(),
-    policy: new DefaultPolicyEngine()
+    policy: new DefaultPolicyEngine(),
+    settings: { serviceType: 'accessor', getSettings: jest.fn().mockResolvedValue({ ...DEFAULT_SOURCE_SETTINGS, code: 'on' }), getDetected: jest.fn().mockResolvedValue({}), saveDetected: jest.fn(), saveSettings: jest.fn(), getApproverPolicy: jest.fn(), saveApproverPolicy: jest.fn() },
+    sources: new DefaultSourcePolicyEngine()
   });
 }
 

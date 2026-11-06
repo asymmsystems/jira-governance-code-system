@@ -5,7 +5,7 @@
  */
 
 import { Manager } from './service-types';
-import { CallerContext, DecideExceptionPayload, IssueRow, LinkDecisionPayload, ProjectDashboardView, ProjectSummary, RecordExceptionPayload, RequestReviewPayload, ResolverResult, ScheduledRunResult, SnapshotMeta, WriteResult } from './data/models';
+import { AdminResult, AdminView, ApprovalView, CallerContext, DecideExceptionPayload, IssueRow, LinkDecisionPayload, ProjectDashboardView, ProjectSummary, RecordExceptionPayload, RequestReviewPayload, ResolverResult, ScheduledRunResult, SnapshotMeta, WriteResult } from './data/models';
 
 export interface DashboardManager extends Manager {
   /** Stored snapshot (built once when absent), filtered to what the viewer can browse. */
@@ -23,9 +23,19 @@ export interface ExceptionManager extends Manager {
   record(caller: CallerContext, payload: RecordExceptionPayload | undefined): Promise<WriteResult>;
   /** Approves, rejects, revokes or withdraws a Code exception (ADR-001, Option C). */
   decide(caller: CallerContext, payload: DecideExceptionPayload | undefined): Promise<WriteResult>;
+  /** What the issue panel may offer the viewer for the row's Code exception (ADR-011). */
+  approval(caller: CallerContext, row: IssueRow): Promise<ApprovalView | undefined>;
 }
 
 export interface SnapshotManager extends Manager {
   build(projectKey: string, generatedBy: string, deadline: number): Promise<ResolverResult<{ meta: SnapshotMeta; rows: IssueRow[]; summary: ProjectSummary }>>;
   runScheduled(deadline: number): Promise<ScheduledRunResult>;
+}
+
+/** The admin page "FourRealities gate authority": Jira administrators only, checked on every call (ADR-011). */
+export interface AdminManager extends Manager {
+  view(): Promise<AdminResult<AdminView>>;
+  saveSources(payload: unknown): Promise<AdminResult<AdminView>>;
+  searchGroups(payload: unknown): Promise<AdminResult<{ groups: Array<{ groupId: string; name: string }> }>>;
+  saveApprovers(payload: unknown): Promise<AdminResult<AdminView>>;
 }

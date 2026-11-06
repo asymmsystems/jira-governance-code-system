@@ -78,15 +78,16 @@ import {
   TwoColumnGrid
 } from '../brand/layout';
 import { TextChange } from './modals';
+import { gateInUse, sourcesLine } from '../ui/sources-text';
 
 type Option<T extends string = string> = { label: string; value: T };
 const asOption = (value: string | null): Option | null => (value === null ? null : { label: value, value });
 
 const METRIC: Record<GateName, string> = {
   intent: 'Metric M11: share of rated issues traced to a decision record.',
-  process: 'Metric DoD rate: share of rated done issues with a complete Definition of Done.',
+  process: 'Metric DoD rate: share of rated done issues with a complete, verified Definition of Done.',
   code: 'Metric M29: share of rated done issues with a merged pull request.',
-  audit: 'Metric seal rate: share of rated done issues with a LedgerSeal record.'
+  audit: 'Metric seal rate: share of rated done issues with a verified LedgerSeal seal.'
 };
 
 const RISK_BUTTONS: Array<[RiskLevel, 'critical' | 'high' | 'medium' | 'low']> = [
@@ -109,24 +110,45 @@ export const RealityCard: React.FC<{
   gate: GateName;
   count: GateCount;
   isSelected?: boolean;
+  /** False when the site does not use this check (ADR-011): no rate, no "Show missing". */
+  inUse?: boolean;
   onShowMissing: () => void;
-}> = ({ gate, count, isSelected = false, onShowMissing }) => {
+}> = ({ gate, count, isSelected = false, inUse = true, onShowMissing }) => {
   const of = count.found + count.missing;
   const rate = of === 0 ? null : Math.round((count.found * 100) / of);
   const counted = of === 0 ? 'No issue is rated for this gate yet.' : `${count.found} of ${of} rated issues have evidence`;
+  const heading = (
+    <Inline spread="space-between" space={SPACE.item} alignBlock="center" shouldWrap>
+      <Tooltip content={METRIC[gate]}>
+        <Heading size="small" as="h4">{GATE_LABEL[gate]}</Heading>
+      </Tooltip>
+      {inUse
+        ? <Lozenge maxWidth="100%" appearance={rateAppearance(rate)} isBold>{rateText(rate)}</Lozenge>
+        : <Lozenge maxWidth="100%" appearance="default">Not used</Lozenge>}
+    </Inline>
+  );
+  if (!inUse) {
+    return (
+      <GateCard gate={gate}>
+        <Stack space={SPACE.item}>
+          {heading}
+          <Text as="span" size="small" color={TEXT_ROLE.secondary}>{GATE_QUESTION[gate]}</Text>
+        </Stack>
+        <Text as="span" size="small" weight="medium">Not used on this site, so not scored.</Text>
+      </GateCard>
+    );
+  }
   return (
     <GateCard gate={gate}>
       <Stack space={SPACE.item}>
-        <Inline spread="space-between" space={SPACE.item} alignBlock="center" shouldWrap>
-          <Tooltip content={METRIC[gate]}>
-            <Heading size="small" as="h4">{GATE_LABEL[gate]}</Heading>
-          </Tooltip>
-          <Lozenge maxWidth="100%" appearance={rateAppearance(rate)} isBold>{rateText(rate)}</Lozenge>
-        </Inline>
+        {heading}
         <Text as="span" size="small" color={TEXT_ROLE.secondary}>{GATE_QUESTION[gate]}</Text>
       </Stack>
       {of > 0 ? <ProgressBar value={count.found / of} ariaLabel={`${GATE_LABEL[gate]}: ${counted}`} /> : null}
       <Text as="span" size="small" weight="medium">{counted}</Text>
+      {count.reported > 0 ? (
+        <Text as="span" size="small" color={TEXT_ROLE.secondary}>{`${count.reported} more reported, not verified (not scored)`}</Text>
+      ) : null}
       {count.missing > 0 ? (
         <ActionRow>
           <Button
@@ -374,10 +396,20 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
             gate={g}
             count={summary.gates[g]}
             isSelected={filters.missingGate === g}
+            inUse={gateInUse(view.sources, g)}
             onShowMissing={() => set({ missingGate: filters.missingGate === g ? null : g })}
           />
         ))}
       </FourColumnGrid>
+
+      {view.sources || view.sourceNotes ? (
+        <NoteBox>
+          {view.sources ? <Text as="span" size="small" color={TEXT_ROLE.secondary}>{sourcesLine(view.sources)}</Text> : null}
+          {(view.sourceNotes || []).map(n => (
+            <Text as="span" key={n} size="small" color={TEXT_ROLE.secondary}>{n}</Text>
+          ))}
+        </NoteBox>
+      ) : null}
 
       <TwoColumnGrid>
         <Card>

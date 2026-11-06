@@ -6,6 +6,9 @@
 
 import { Accessor } from './service-types';
 import {
+  ApproverPolicy,
+  DetectedSources,
+  EvidenceSourceSettings,
   ExceptionProperty,
   GateExceptionEvent,
   IssueFacts,
@@ -103,3 +106,33 @@ export interface ConfluencePageSearchAccessor extends Accessor {
   searchPages(query: string): Promise<{ readonly ok: boolean; readonly pages: ConfluencePage[]; readonly error?: string }>;
 }
 
+
+/** Site settings of the admin page and what FourRealities has seen on the site (ADR-011). */
+export interface SettingsAccessor extends Accessor {
+  /** The saved settings, or the defaults when none are saved. */
+  getSettings(): Promise<EvidenceSourceSettings>;
+  saveSettings(settings: EvidenceSourceSettings): Promise<void>;
+  getDetected(): Promise<DetectedSources>;
+  saveDetected(detected: DetectedSources): Promise<void>;
+  getApproverPolicy(): Promise<ApproverPolicy | undefined>;
+  saveApproverPolicy(policy: ApproverPolicy): Promise<void>;
+}
+
+export interface GroupRef {
+  readonly groupId: string;
+  readonly name: string;
+}
+
+/** Jira users and groups, as the user (Uniform Permission Management Standard). Every check fails closed. */
+export interface JiraDirectoryAccessor extends Accessor {
+  /** The caller holds the global ADMINISTER permission; false on any error. */
+  isJiraAdmin(): Promise<boolean>;
+  /** The caller's groups; status other than 200 on error. */
+  myGroups(): Promise<{ status: number; groups: GroupRef[] }>;
+  /** Groups whose name matches the query, at most 20. */
+  searchGroups(query: string): Promise<{ status: number; groups: GroupRef[] }>;
+  /** Names of groups by id; an id that cannot be read keeps the id as its name. */
+  groupNames(groupIds: string[]): Promise<GroupRef[]>;
+  /** Display names by account id, read now and never stored (ADR-012); unreadable ids are left out. */
+  userNames(accountIds: string[]): Promise<Record<string, string>>;
+}

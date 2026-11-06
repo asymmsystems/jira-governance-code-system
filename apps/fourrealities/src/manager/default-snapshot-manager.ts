@@ -6,8 +6,8 @@
  */
 
 import { CallerContext, CHUNK_SIZE_HINT, IssueRow, ProjectDashboardView, ProjectSummary, ResolverResult, ScheduledRunResult, SiteConfig, SnapshotMeta, StoredSnapshot } from '../contract/data/models';
-import { ExceptionEventAccessor, ReworkNoteAccessor, JiraIssueAccessor, SiteConfigAccessor, SnapshotAccessor } from '../contract/accessors';
-import { ExceptionPolicyEngine, GateEngine, MetricsEngine, SnapshotEngine } from '../contract/engines';
+import { ExceptionEventAccessor, ReworkNoteAccessor, JiraIssueAccessor, SettingsAccessor, SiteConfigAccessor, SnapshotAccessor } from '../contract/accessors';
+import { ExceptionPolicyEngine, GateEngine, MetricsEngine, SnapshotEngine, SourcePolicyEngine } from '../contract/engines';
 import { DashboardManager, SnapshotManager } from '../contract/managers';
 import { jiraError, messageOf } from '../contract/data/errors';
 
@@ -25,6 +25,8 @@ export interface SnapshotManagerDeps {
   gates: GateEngine;
   metrics: MetricsEngine;
   snapshot: SnapshotEngine;
+  settings: SettingsAccessor;
+  sources: SourcePolicyEngine;
   now?: () => Date;
 }
 
@@ -52,7 +54,12 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
       return jiraError(search.status, `Live Jira sync failed (${search.error}).`);
     }
 
-    const ids = search.facts.map(f => f.issueId);
+    // Sources seen in this read are recorded first, so a first build already uses them (ADR-011).
+    const settings = await this.d.settings.getSettings();
+    const merged = this.d.sources.merge(await this.d.settings.getDetected(), this.d.sources.sightings(search.facts, now().toISOString()));
+    if (merged.changed) await this.d.settings.saveDetected(merged.detected);
+    const sources = this.d.sources.resolve(settings, merged.detected, config);
+
     const notes = await this.d.notes.listAll();
     const events = await this.d.events.listAll();
     const previous = new Map((await this.d.snapshots.loadSnapshot(projectKey))?.rows.map(r => [r.issueId, r]) || []);
@@ -68,7 +75,7 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
         codeException: this.d.lifecycle.currentState(events.get(id) || []),
         remoteLinks: links.get(id) ?? (base.started ? undefined : [])
       };
-      const gates = this.d.snapshot.keepPreviousIntent(this.d.gates.evaluate(facts), read, previous.get(id));
+      const gates = this.d.snapshot.keepPreviousIntent(this.d.gates.evaluate(facts, sources), read, previous.get(id));
       return this.d.metrics.buildRow(facts, gates);
     });
 
@@ -127,6 +134,11 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
     await this.d.snapshots.registerProject(projectKey);
 
     let stored: StoredSnapshot | undefined = rebuild ? undefined : await this.d.snapshots.loadSnapshot(projectKey);
+    const settings = await this.d.settings.getSettings();
+    // A snapshot built before the administrator changed the settings is built again (ADR-011).
+    if (stored && settings.updatedAt && settings.updatedAt > stored.meta.generatedAt) {
+      stored = undefined;
+    }
     if (!stored) {
       const built = await this.build(projectKey, caller.accountId || 'unknown-user', Date.now() + this.d.budgetMs);
       if (!built.ok) {
@@ -149,6 +161,15 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
       coverage: { shown: stored.meta.shownCount, totalKnown: stored.meta.totalKnown, capped: stored.meta.capped },
       meta: stored.meta
     };
+    try {
+      const detected = await this.d.settings.getDetected();
+      const sources = this.d.sources.resolve(settings, detected, await this.d.siteConfig.get());
+      view.sources = sources;
+      const sourceNotes = this.d.sources.notes(settings, detected, sources);
+      if (sourceNotes.length > 0) view.sourceNotes = sourceNotes;
+    } catch {
+      // The view still shows the stored gates; only the list of checks in use is left out.
+    }
     const stale = this.d.snapshot.staleWarning(stored.meta, Date.now());
     if (stale) view.warning = stale;
     if (!visible.complete) {

@@ -68,6 +68,7 @@ export type GateReason =
   | 'DOD_OPEN_HC'
   | 'DOD_NONE'
   | 'DOD_SIGNATURE_INVALID'
+  | 'CHECKLIST_NONE'
   | 'CODE_EXCEPTED'
   | 'PR_MERGED'
   | 'PR_OPEN'
@@ -80,7 +81,8 @@ export type GateReason =
   | 'SEAL_SHAPE_UNKNOWN'
   | 'SEAL_NONE'
   | 'SEAL_SIGNATURE_INVALID'
-  | 'CHANGED_SINCE_ATTESTATION';
+  | 'CHANGED_SINCE_ATTESTATION'
+  | 'SOURCE_NOT_IN_USE';
 
 export interface GateResult {
   state: GateState;
@@ -147,7 +149,8 @@ export interface GateExceptionState {
 /** The person acting on an exception, as checked in Jira. */
 export interface ExceptionActor {
   accountId: string;
-  isProjectAdmin: boolean;
+  /** A project or Jira administrator, or a member of an approver group (ADR-011). */
+  isApprover: boolean;
 }
 
 /** The fourrealities-exception issue property: a projection of the current state for other tools. */
@@ -306,6 +309,10 @@ export interface ProjectDashboardView {
   coverage: { shown: number; totalKnown: number | null; capped: boolean };
   meta?: SnapshotMeta;
   warning?: string;
+  /** The checks in use on this site (ADR-011). */
+  sources?: SourcesInUse;
+  /** Notes about sources found on the site but not in use (ADR-011). */
+  sourceNotes?: string[];
 }
 
 export type ResolverError = {
@@ -326,7 +333,80 @@ export interface SiteConfig {
   siteHost: string | null;
   /** Status id to status category key, from GET /rest/api/3/status (B-24). */
   statusCategories: Record<string, StatusCategory>;
+  /**
+   * Whether any issue the reader can see has pull request data (JQL development[pullrequests].all > 0);
+   * null when the probe failed (ADR-011).
+   */
+  pullRequestsSeen?: boolean | null;
   readAt: string;
+}
+
+/** Evidence source modes an administrator sets on the admin page (ADR-011). "auto" is "Detect". */
+export type IntentMode = 'on' | 'off';
+export type ProcessMode = 'auto' | 'definitionguard' | 'herocoders' | 'off';
+export type CodeMode = 'auto' | 'on' | 'off';
+export type AuditMode = 'auto' | 'ledgerseal' | 'off';
+
+/** Site-wide settings at fr:cfg:sources. They hold no account id. */
+export interface EvidenceSourceSettings {
+  schemaVersion: 1;
+  intent: IntentMode;
+  process: ProcessMode;
+  code: CodeMode;
+  audit: AuditMode;
+  /** Linked issue types that count as a decision record for Intent, compared without case (F-M6). */
+  decisionIssueTypes: string[];
+  updatedAt?: string;
+}
+
+/** Default decision issue types (spec v2, Intent). */
+export const DEFAULT_DECISION_ISSUE_TYPES: string[] = ['adr', 'architecture decision', 'decision', 'decision record', 'spec', 'specification', 'requirement'];
+
+export const DEFAULT_SOURCE_SETTINGS: EvidenceSourceSettings = {
+  schemaVersion: 1,
+  intent: 'on',
+  process: 'auto',
+  code: 'auto',
+  audit: 'auto',
+  decisionIssueTypes: DEFAULT_DECISION_ISSUE_TYPES
+};
+
+/** When FourRealities first saw each source on this site, at fr:cfg:detected (dates only). */
+export interface DetectedSources {
+  definitionguard?: { seenAt: string; verifiedAt?: string };
+  herocoders?: { seenAt: string };
+  ledgerseal?: { seenAt: string; verifiedAt?: string };
+  pullRequests?: { seenAt: string };
+}
+
+export type ProcessSource = 'definitionguard' | 'herocoders';
+
+/** The checks in use on this site, resolved from the settings and the detection (ADR-011). */
+export interface SourcesInUse {
+  intent: boolean;
+  process: ProcessSource | null;
+  code: boolean;
+  audit: boolean;
+  decisionIssueTypes: string[];
+  /** True where a check is in use because FourRealities detected its source ("Detect"). */
+  detected: { process: boolean; code: boolean; audit: boolean };
+}
+
+/** Tier 2 approver groups (Uniform Permission Management Standard section 3), at fr:cfg:approver_policy. */
+export interface ApproverPolicy {
+  roleTypeId: 'FR_APPROVER';
+  parties: Array<{ partyId: string; partyTypeId: 'GROUP'; name: string }>;
+  fromDate: string;
+}
+
+/** What the issue panel may offer the viewer for the current Code exception (ADR-011 decision 5). */
+export interface ApprovalView {
+  /** The viewer may approve, reject or revoke. */
+  canDecide: boolean;
+  /** The viewer requested the exception (only the requester may withdraw it). */
+  isRequester: boolean;
+  /** Why the viewer may not decide, when they may not. */
+  note?: string;
 }
 
 export interface ProjectSearchResult {
@@ -414,7 +494,20 @@ export interface WriteResult {
   record?: ExceptionProperty;
   remoteLink?: unknown;
   row?: IssueRow;
+  /** What the panel may offer the viewer for the Code exception after the write (ADR-011). */
+  approval?: ApprovalView;
 }
+
+/** Everything the admin page shows (ADR-011). `policy` has the shape the shared AdminPolicyPanel reads. */
+export interface AdminView {
+  settings: EvidenceSourceSettings;
+  detected: DetectedSources;
+  sources: SourcesInUse;
+  policy: { parties: Array<{ partyId: string; name: string }> };
+  defaultDecisionIssueTypes: string[];
+}
+
+export type AdminResult<T> = ({ ok: true } & T) | { ok: false; code: 'NOT_ADMIN' | 'INVALID_INPUT' | 'JIRA_ERROR' | 'LICENSE_INACTIVE'; message: string };
 
 /** Who calls, from where: the parts of the Forge context that Managers use. */
 export interface CallerContext {

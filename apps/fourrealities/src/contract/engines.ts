@@ -6,6 +6,11 @@
 
 import { Engine } from './service-types';
 import {
+  ApprovalView,
+  DetectedSources,
+  EvidenceSourceSettings,
+  SiteConfig,
+  SourcesInUse,
   ExceptionActor,
   ExceptionDecision,
   ExceptionStatus,
@@ -21,9 +26,23 @@ import {
   TrendPoint
 } from './data/models';
 
-/** Evaluates the four gates from issue facts (spec v2, Gates). */
+/** Evaluates the four gates from issue facts (spec v3, Gates), for the checks in use (ADR-011). */
 export interface GateEngine extends Engine {
-  evaluate(facts: IssueFacts): IssueGates;
+  evaluate(facts: IssueFacts, sources?: SourcesInUse): IssueGates;
+}
+
+/** Which evidence sources are in use on the site, and what the reads show of them (ADR-011). */
+export interface SourcePolicyEngine extends Engine {
+  /** The checks in use from the settings, the detection and the site configuration. */
+  resolve(settings: EvidenceSourceSettings, detected: DetectedSources, config: SiteConfig): SourcesInUse;
+  /** What these issue reads show of each source; only the fields seen are set. */
+  sightings(facts: IssueFacts[], at: string): DetectedSources;
+  /** The detection with the sightings added (earliest dates kept), and whether anything changed. */
+  merge(detected: DetectedSources, seen: DetectedSources): { detected: DetectedSources; changed: boolean };
+  /** Notes for the dashboard: sources found on the site whose check is not in use. */
+  notes(settings: EvidenceSourceSettings, detected: DetectedSources, sources: SourcesInUse): string[];
+  /** Settings from an admin's input, or an error text. */
+  validate(input: unknown, now: string): { settings?: EvidenceSourceSettings; error?: string };
 }
 
 /** RAI, risk, recoverable points and project summaries (spec v2, Metrics). */
@@ -62,6 +81,8 @@ export interface ExceptionPolicyEngine extends Engine {
   requestError(current: GateExceptionState | undefined, pullRequestCount: number, issueKey: string): string | undefined;
   /** The status a decision leads to. */
   targetStatus(decision: ExceptionDecision): ExceptionStatus;
+  /** What the panel may offer this viewer for the current exception (ADR-011). */
+  approvalView(current: GateExceptionState | undefined, actor: ExceptionActor, assigneeAccountId: string | undefined): ApprovalView;
   /** Error text when the actor may not make this decision now, else undefined. */
   decisionError(current: GateExceptionState | undefined, decision: ExceptionDecision, actor: ExceptionActor, assigneeAccountId: string | undefined, reason: string): string | undefined;
 }

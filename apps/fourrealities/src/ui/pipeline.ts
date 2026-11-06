@@ -15,7 +15,7 @@ export const GATE_QUESTION: Record<GateName, string> = {
   intent: 'Is the work traced to a decision record?',
   process: 'Is the Definition of Done complete?',
   code: 'Was the work merged through a pull request?',
-  audit: 'Is completion sealed in LedgerSeal?'
+  audit: 'Is the finished work sealed?'
 };
 
 /** Fewest rated issues in each of two weeks before a delta is shown. */
@@ -42,10 +42,13 @@ export function driftText(row: GatesOnly): string {
       return isFound(gates.code) ? 'Code was merged, but it does not trace to a decision record.' : 'No decision record is linked.';
     case 'process':
       if (gates.process.reason === 'DOD_SHAPE_UNKNOWN') return 'The Definition of Done record has a shape DefinitionGuard does not write.';
+      if (gates.process.reason === 'DOD_SIGNATURE_INVALID') return 'The Definition of Done record failed its signature check.';
+      if (gates.process.reason === 'CHECKLIST_NONE') return 'No Checklists for Jira checklist is on this issue.';
       return gates.process.reason === 'DOD_NONE' ? 'No Definition of Done record is on this issue.' : 'The Definition of Done is not complete.';
     case 'code':
       return gates.code.reason === 'PR_OPEN_AT_DONE' ? 'The issue is done, but its pull request is not merged.' : 'The issue is done, but no pull request is linked.';
     case 'audit':
+      if (gates.audit.reason === 'SEAL_SIGNATURE_INVALID') return 'The LedgerSeal record failed its signature check.';
       return gates.audit.reason === 'SEAL_SHAPE_UNKNOWN' ? 'The LedgerSeal record has a shape LedgerSeal does not write.' : 'The issue is not sealed in LedgerSeal.';
     default: {
       const recheck = GATE_NAMES.find(n => gates[n].state === 'NEEDS_RECHECK');
@@ -65,9 +68,11 @@ export function driftText(row: GatesOnly): string {
 export function nextActionText(row: GatesOnly): string | undefined {
   switch (firstMissing(row)) {
     case 'intent': return 'Next: link the decision record.';
-    case 'process': return 'Next: complete the Definition of Done in DefinitionGuard.';
+    case 'process': return row.gates.process.reason === 'CHECKLIST_NONE'
+      ? 'Next: add and complete the checklist in Checklists for Jira.'
+      : 'Next: complete the items in the Definition of Done panel on this issue (DefinitionGuard).';
     case 'code': return row.gates.code.reason === 'PR_OPEN_AT_DONE' ? 'Next: merge the pull request.' : 'Next: link a pull request, or request a Code exception.';
-    case 'audit': return 'Next: seal the issue in LedgerSeal.';
+    case 'audit': return 'Next: seal the issue in its Approval Seal panel (LedgerSeal).';
     default: return undefined;
   }
 }
@@ -200,7 +205,7 @@ export function auditReadiness(issues: IssueRow[]): AuditReadinessSummary {
         nextStep = `Next step: link decision records for ${count} ${issueWord}.`;
         break;
       case 'process':
-        nextStep = `Next step: complete Definition of Done for ${count} ${issueWord} in DefinitionGuard.`;
+        nextStep = `Next step: complete the Definition of Done for ${count} ${issueWord}.`;
         break;
       case 'code':
         nextStep = `Next step: link pull requests or request Code exceptions for ${count} ${issueWord}.`;

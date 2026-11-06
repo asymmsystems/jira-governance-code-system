@@ -33,10 +33,10 @@ describe('getSiteConfig', () => {
     const first = await getSiteConfig(storage, request, NOW);
     expect(first.devFieldId).toBe('customfield_10042');
     expect((await storage.get(SITE_CONFIG_KEY)).devFieldId).toBe('customfield_10042');
-    expect(request.mock.calls.map(c => pathOf(c[0]))).toEqual(['/rest/api/3/field', '/rest/api/3/status', '/rest/api/3/serverInfo']);
+    expect(request.mock.calls.map(c => pathOf(c[0]))).toEqual(['/rest/api/3/field', '/rest/api/3/status', '/rest/api/3/search/jql?jql=development%5Bpullrequests%5D.all%20%3E%200&maxResults=1&fields=created', '/rest/api/3/serverInfo']);
     const second = await getSiteConfig(storage, request, NOW + 60_000);
     expect(second.devFieldId).toBe('customfield_10042');
-    expect(request).toHaveBeenCalledTimes(3);
+    expect(request).toHaveBeenCalledTimes(4);
   });
 
   it('B-24: reads the status category of every status id, and reads again a cache that lacks them', async () => {

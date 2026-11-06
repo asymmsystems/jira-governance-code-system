@@ -22,6 +22,14 @@ modules:
       resource: main
       resolver:
         function: resolver
+  jira:adminPage:
+    # ADR-011: evidence sources, decision issue types and approver groups (permission standard).
+    - key: fourrealities-admin
+      title: FourRealities gate authority
+      render: native
+      resource: admin
+      resolver:
+        function: admin-resolver
   scheduledTrigger:
     - key: fourrealities-daily-snapshot
       function: snapshot
@@ -32,10 +40,14 @@ modules:
     - key: snapshot
       handler: index.snapshot
       timeoutSeconds: 600
+    - key: admin-resolver
+      handler: index.adminHandler
 
 resources:
   - key: main
     path: src/frontend/index.tsx
+  - key: admin
+    path: src/frontend/admin.tsx
   - key: icons
     path: static/icons
 

@@ -7,7 +7,7 @@
 import React, { useEffect, useState } from 'react';
 import { Inline, SectionMessage, Spinner, Text } from '@forge/react';
 import { invoke, view } from '@forge/bridge';
-import { ForgeContext, IssueRow, ProjectDashboardView, ResolverError } from '../contract/data/models';
+import { ApprovalView, ForgeContext, IssueRow, ProjectDashboardView, ResolverError } from '../contract/data/models';
 import { SPACE, TEXT_ROLE } from '../brand/brand';
 import { AppSurface } from '../brand/layout';
 import { IssuePanel } from './issue-panel';
@@ -15,12 +15,13 @@ import { ProjectDashboard } from './project-dashboard';
 import { errorText } from '../ui/triage';
 
 /** What the load resolvers return: an error envelope, an issue row, or a dashboard view. */
-type LoadResult = { ok?: boolean; row?: IssueRow; error?: ResolverError } & Partial<ProjectDashboardView>;
+type LoadResult = { ok?: boolean; row?: IssueRow; approval?: ApprovalView; error?: ResolverError } & Partial<ProjectDashboardView>;
 
 export const FourRealitiesApp: React.FC = () => {
   // All hooks run on every render, before any early return (React rules of hooks, FR-01).
   const [isIssueView, setIsIssueView] = useState<boolean>(false);
   const [row, setRow] = useState<IssueRow | null>(null);
+  const [approval, setApproval] = useState<ApprovalView | undefined>(undefined);
   const [dashboard, setDashboard] = useState<ProjectDashboardView | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -45,6 +46,7 @@ export const FourRealitiesApp: React.FC = () => {
         setErrorMessage(errorText(res, 'Failed to load delivery evidence.'));
       } else if (issueView) {
         setRow(res.row || null);
+        setApproval(res.approval);
       } else {
         setDashboard(res as ProjectDashboardView);
       }
@@ -91,6 +93,14 @@ export const FourRealitiesApp: React.FC = () => {
   }
 
   return isIssueView
-    ? <IssuePanel row={row as IssueRow} onReload={() => load()} onRow={setRow} compact={compact} />
+    ? (
+      <IssuePanel
+        row={row as IssueRow}
+        approval={approval}
+        onReload={() => load()}
+        onRow={(next, nextApproval) => { setRow(next); setApproval(nextApproval); }}
+        compact={compact}
+      />
+    )
     : <ProjectDashboard view={dashboard as ProjectDashboardView} onRefresh={() => load(true)} viewerAccountId={viewerAccountId} />;
 };

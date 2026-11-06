@@ -37,4 +37,10 @@ describe('manifest.yml', () => {
     expect(manifest).toMatch(/jira:issuePanel:\s*\n\s*- key: fourrealities-issue-panel\s*\n\s*title: Four Realities/);
     expect(manifest).toMatch(/jira:issueContext:\s*\n\s*- key: fourrealities-issue-context\s*\n\s*title: Four Realities\s*\n\s*label: Four Realities/);
   });
+
+  it('ADR-011: declares the admin page of the permission standard, with its own resolver function', () => {
+    expect(manifest).toMatch(/jira:adminPage:\s*\n(?:\s*#.*\n)?\s*- key: fourrealities-admin\s*\n\s*title: FourRealities gate authority\s*\n\s*render: native\s*\n\s*resource: admin\s*\n\s*resolver:\s*\n\s*function: admin-resolver/);
+    expect(manifest).toMatch(/- key: admin-resolver\s*\n\s*handler: index\.adminHandler/);
+    expect(manifest).toMatch(/- key: admin\s*\n\s*path: src\/frontend\/admin\.tsx/);
+  });
 });

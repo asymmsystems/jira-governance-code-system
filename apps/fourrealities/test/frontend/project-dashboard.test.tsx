@@ -183,7 +183,7 @@ describe('ProjectDashboard', () => {
     expect(findAll(cards[0], 'ProgressBar')[0].props).toEqual(expect.objectContaining({ value: 1 / 3, ariaLabel: 'Intent: 1 of 3 rated issues have evidence' }));
     expect(findAll(cards[0], 'Tooltip')[0].props.content).toBe('Metric M11: share of rated issues traced to a decision record.');
     const audit = textOf(TestRenderer.create(cards[3].props.children).toJSON());
-    expect(audit).toContain('Is completion sealed in LedgerSeal?');
+    expect(audit).toContain('Is the finished work sealed?');
     const intentButton = findButton(r.root, 'Show 2 missing Intent');
     expect(intentButton.props.appearance).toBe('subtle');
     expect(intentButton.props.iconAfter).toBe('arrow-down');
@@ -377,3 +377,20 @@ describe('ProjectDashboard', () => {
 });
 
 
+
+describe('ADR-011, ADR-010: checks in use and reported records on the dashboard', () => {
+  it('shows a check that is not in use as not used, with no rate and no missing button, and lists the checks in use', async () => {
+    const NOT_USED = { state: 'NOT_APPLICABLE', reason: 'SOURCE_NOT_IN_USE' } as const;
+    const REP = { state: 'REPORTED', verification: 'NOT_VERIFIED', reason: 'DOD_COMPLETE_DG' } as const;
+    const rows = [row('DEMO-1', { intent: F, process: REP, code: NOT_USED, audit: NOT_USED })];
+    const sources = { intent: true, process: 'definitionguard' as const, code: false, audit: false, decisionIssueTypes: ['adr'], detected: { process: true, code: false, audit: false } };
+    let r: any;
+    await act(async () => { r = TestRenderer.create(<ProjectDashboard view={dashboard(rows, { sources, sourceNotes: ['LedgerSeal records were found on this site.'] })} onRefresh={jest.fn()} />); });
+    const text = textOf(r.toJSON());
+    expect(text).toContain('Not used on this site, so not scored.');
+    expect(text).toContain('Checks in use on this site: Intent; Process (DefinitionGuard, detected). Not used on this site: Code, Audit.');
+    expect(text).toContain('LedgerSeal records were found on this site.');
+    expect(text).toContain('1 more reported, not verified (not scored)');
+    expect(() => findButton(r.root, 'Show 1 missing Audit')).toThrow('No button');
+  });
+});
