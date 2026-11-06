@@ -33,7 +33,7 @@ Can it be a shared address such as sudo@asymm.systems? Not for these steps:
    Asymm Systems builds software for teams that must show how their work was planned, approved and done. Our Jira Governance Suite runs entirely on Atlassian Forge, with no outside servers: CascadePlan, a Jira timeline with percent-trigger dependencies, baselines and undo; LedgerSeal, approval seals that show any change made after sign-off; DefinitionGuard, an enforceable Definition of Done with evidence and a workflow gate; and FourRealities, which checks each issue for evidence of its decision, process, code and audit. We also publish Eliya, an OpenJDK distribution. Documentation and support: https://asymm.systems
    ```
 
-   Every statement in it is true of the apps today; it makes no compliance or customer claim. If the form refuses the link, remove the last sentence (563 characters).
+   Every statement in it is true of the apps today; it makes no compliance or customer claim. If the form refuses the link, remove the last sentence (571 characters).
 
 4. If the form asks you to accept the Marketplace Partner Agreement, read it first. If you want, send me the agreement link before you accept, and I will list any clause about interest or late-payment charges.
 5. Result: at https://marketplace.atlassian.com your profile menu (top right) now has **Manage vendor account**.
