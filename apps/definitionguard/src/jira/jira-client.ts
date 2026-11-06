@@ -22,6 +22,20 @@ export function backoffMs(res: any, attempt: number): number {
   return Math.min(ms, MAX_WAIT_MS);
 }
 
+/**
+ * The same policy for a call written inline in a loop. After try number `attempt` gave `res`:
+ * waits and returns true when the caller should try again (a 429 with tries left), else false.
+ *
+ * The permission checks use this form, so that their mypermissions call stays in the checking
+ * function's own body. A static scanner such as Atlassian's FSRT then sees the check; it does not
+ * follow a call made inside a closure given to withRetry (AMS-76722).
+ */
+export async function retryAfter(res: { status: number } | undefined, attempt: number): Promise<boolean> {
+  if (res?.status !== 429 || attempt >= MAX_TRIES) return false;
+  await retryPolicy.sleep(backoffMs(res, attempt));
+  return true;
+}
+
 export async function withRetry<T extends { status: number }>(call: () => Promise<T>): Promise<T> {
   let res = await call();
   for (let attempt = 1; attempt < MAX_TRIES && res.status === 429; attempt++) {

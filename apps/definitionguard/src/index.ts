@@ -55,13 +55,13 @@ export { issueDeletedTrigger } from './privacy/issue-deleted';
 export { setGlobalStorageProvider, resolveStorage } from './storage/forge-storage';
 
 /**
- * Reads the issue type and project of an issue as the app, to choose its checklist template.
+ * Reads the issue type and project of an issue as the user, to choose its checklist template.
  * Called only through templateFor, after the panel resolver has checked that the user can
- * browse the issue (issueContext).
+ * browse the issue (issueContext), so the user's own permissions are enough (AMS-76722).
  */
 export async function fetchLiveJiraIssue(issueIdOrKey: string): Promise<any | null> {
   try {
-    const res = await withRetry(() => api.asApp().requestJira(route`/rest/api/3/issue/${issueIdOrKey}?fields=issuetype,project,status`));
+    const res = await withRetry(() => api.asUser().requestJira(route`/rest/api/3/issue/${issueIdOrKey}?fields=issuetype,project,status`));
     if (res.status === 200) {
       return await res.json();
     }
