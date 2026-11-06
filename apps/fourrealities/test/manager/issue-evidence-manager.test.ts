@@ -41,7 +41,8 @@ function manager(jira: JiraIssueAccessor, events: any[] = []) {
     policy: new DefaultPolicyEngine(),
     settings: { serviceType: 'accessor', getSettings: jest.fn().mockResolvedValue({ ...DEFAULT_SOURCE_SETTINGS, code: 'on' }), getDetected: jest.fn().mockResolvedValue({}), saveDetected: jest.fn(), saveSettings: jest.fn(), getApproverPolicy: jest.fn(), saveApproverPolicy: jest.fn() },
     sources: new DefaultSourcePolicyEngine(),
-    confluence: { serviceType: 'accessor', existingPages: async () => null, checkPages: async (m: any) => m } as any
+    confluence: { serviceType: 'accessor', existingPages: async () => null, checkPages: async (m: any) => m } as any,
+    history: { serviceType: 'accessor', get: async () => ({}), listAll: async () => new Map(), raise: async () => false } as any
   });
 }
 

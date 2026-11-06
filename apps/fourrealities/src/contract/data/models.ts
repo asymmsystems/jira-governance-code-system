@@ -47,6 +47,18 @@ export type SiblingProducer = 'definitionguard' | 'ledgerseal';
  */
 export type AttestationCheck = 'VERIFIED' | 'UNSIGNED' | 'UNKNOWN_KEY' | 'WRONG_ISSUE' | 'BAD_SIGNATURE';
 
+/** How new a sibling record is: DefinitionGuard's stateVersion, and issuedAt for both producers. */
+export interface AttestationVersion {
+  stateVersion?: number;
+  issuedAt?: string;
+}
+
+/** The newest verified sibling records seen on one issue, at fr:att:{issueId} (dates and numbers only). */
+export interface AttestationHistory {
+  dod?: AttestationVersion;
+  ledgerseal?: AttestationVersion;
+}
+
 /**
  * How FourRealities knows a FOUND fact: it read the fact itself (VERIFIED), another app
  * reports it and nothing verifies it (NOT_VERIFIED), it is inferred (HEURISTIC), or a link to a
@@ -219,6 +231,8 @@ export interface IssueFacts {
   properties: { ledgerseal?: unknown; dod?: unknown; checklist?: unknown };
   /** Signature check of each sibling record that is present (ADR-012); absent means not checked. */
   attestations?: { dod?: AttestationCheck; ledgerseal?: AttestationCheck };
+  /** The newest verified record of each producer seen before on this issue; an older one is a rollback (ADR-012). */
+  attestationHistory?: AttestationHistory;
   /** Rework notes, oldest first (ADR-001 Pattern 6). */
   reworkNotes?: ExceptionNote[];
   /** Current Code exception state from the events (B-30); takes precedence over exception.code. */

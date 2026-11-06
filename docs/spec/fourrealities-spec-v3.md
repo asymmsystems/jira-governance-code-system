@@ -13,7 +13,7 @@ FourRealities shows, for each Jira issue, whether four kinds of delivery evidenc
 3. **Code:** the Development field shows a pull request. FourRealities cannot read review approvals, so this gate is a heuristic.
 4. **Audit:** a LedgerSeal record says the issue is sealed.
 
-Every gate names its source and says whether FourRealities verified the fact (a link it read, a page Confluence returned, or a sibling record whose signature it checked), read an unverified record from another app (shown, not scored), or used a heuristic. A check that the site does not use is not scored and says so. FourRealities never writes evidence that another app owns. It runs on Forge with no external egress.
+Every gate names its source and says whether FourRealities verified the fact (a link it read, a page Confluence returned, or a sibling record whose signature it checked), or used a heuristic. A record from another app that it cannot verify counts like no record. A check that the site does not use is not scored and says so. FourRealities never writes evidence that another app owns. It runs on Forge with no external egress.
 
 ## Invariants
 
@@ -36,7 +36,7 @@ type GateName = 'intent' | 'process' | 'code' | 'audit';
 type GateState =
   | 'FOUND'           // evidence found
   | 'MISSING'         // the gate applies and the evidence is absent
-  | 'REPORTED'        // another app's record says something; not verified, so not scored (ADR-012)
+  | 'REPORTED'        // rows stored before the ADR-012 amendment only; no longer produced
   | 'EXCEPTED'        // a recorded exception (Code only), with who, when and why
   | 'NEEDS_RECHECK'   // the evidence may be stale or was not read yet
   | 'NOT_APPLICABLE'; // the gate does not apply yet, no data source exists, or the check is not in use (SOURCE_NOT_IN_USE)
@@ -143,11 +143,11 @@ Every name the gates match on is data in one catalog (`src/contract/data/catalog
 |---|---|---|---|
 | `CONFLUENCE_PAGE_LINK` | Intent | VERIFIED when Confluence returns the page by id, else LINK_ONLY | the link URL |
 | `DECISION_ISSUE_LINK` | Intent | VERIFIED | the linked issue key |
-| `DEFINITIONGUARD_PROPERTY` | Process | VERIFIED (signature checked); otherwise the record is REPORTED | `headHash` (schema 2 and 3) or `checklistHash` (older shape) |
-| `HEROCODERS_CHECKLIST_PROPERTY` | Process | always REPORTED (cannot be signed) | the property's `progressText` (B-25) |
+| `DEFINITIONGUARD_PROPERTY` | Process | VERIFIED (signature checked); an unverified record scores like no record | `headHash` (schema 2 and 3) or `checklistHash` (older shape) |
+| `HEROCODERS_CHECKLIST_PROPERTY` | Process | never verified (cannot be signed): scores like no record | the property's `progressText` (B-25) |
 | `DEVELOPMENT_FIELD` | Code | HEURISTIC | `pull requests: n` |
 | `GATE_EXCEPTION` | Code | (EXCEPTED) | `approved <time>` |
-| `LEDGERSEAL_PROPERTY` | Audit | VERIFIED (signature checked); otherwise the record is REPORTED | the certificate id, when the shape is LedgerSeal's |
+| `LEDGERSEAL_PROPERTY` | Audit | VERIFIED (signature checked); an unverified record scores like no record | the certificate id, when the shape is LedgerSeal's |
 
 A gate result is an observation: `method` names the source whose record it rests on, including a record that was read and did not count. A result with no source record (for example `INTENT_NONE`, `DOD_NONE`, `NOT_DONE`) has no `method`. Verification is taken from the catalog source.
 
@@ -176,8 +176,9 @@ The Process source is a setting (ADR-013): DefinitionGuard, Checklists for Jira,
 | Signature does not match, or the record was signed for another issue | MISSING | | `DOD_SIGNATURE_INVALID` (args: why) |
 | Verified record, `isFullySatisfied === true` | FOUND | VERIFIED | `DOD_COMPLETE_DG` (args: completed, total) |
 | Verified record, `isFullySatisfied === false` | MISSING (Done) or NOT_APPLICABLE | | `DOD_OPEN_DG` |
-| Unsigned record, or signed with a key not trusted in this environment | REPORTED (complete, or open when Done), else NOT_APPLICABLE | NOT_VERIFIED | `DOD_COMPLETE_DG` or `DOD_OPEN_DG` (args: why) |
-| HeroCoders `checklist` with a numeric `uncheckedMandatoryItems` | REPORTED (0, or open when Done), else NOT_APPLICABLE | NOT_VERIFIED | `DOD_COMPLETE_HC` or `DOD_OPEN_HC` |
+| Unsigned record, or signed with a key not trusted in this environment: scored like no record | MISSING (Done, verification NOT_VERIFIED) or NOT_APPLICABLE (`NOT_DONE`) | NOT_VERIFIED | `DOD_COMPLETE_DG` or `DOD_OPEN_DG` (args: why) |
+| A verified record older than the newest verified record already seen on the issue (`fr:att:{issueId}`, by `stateVersion`, else `issuedAt`): a rollback | MISSING | | `DOD_SIGNATURE_INVALID` (why: older than a record already seen) |
+| HeroCoders `checklist` with a numeric `uncheckedMandatoryItems` (cannot be signed): scored like no record | MISSING (Done) or NOT_APPLICABLE | NOT_VERIFIED | `DOD_COMPLETE_HC` or `DOD_OPEN_HC` |
 | No record, Done | MISSING | | `DOD_NONE` (DefinitionGuard) or `CHECKLIST_NONE` (Checklists for Jira) |
 | No complete record, not Done | NOT_APPLICABLE | | `NOT_DONE` |
 
@@ -185,7 +186,7 @@ DefinitionGuard's shapes: schema 3 and 2 (`mandatoryCompleted`, `mandatoryTotal`
 
 ### Signature check (ADR-012)
 
-Both producers sign the canonical JSON (keys sorted at every level, no white space) of every field except `sig`, with Ed25519 and the key named by `keyId`. FourRealities checks it with public keys bundled in `src/accessor/attestation-keys.ts`, each trusted per Forge environment: `dg-dev-2026-11` and `ls-dev-2026-11` in development and staging only. Production trusts no key until the producers publish production keys. Results: verified, unsigned, unknown key, signed for another issue (`issueId` differs), bad signature.
+Both producers sign the canonical JSON (keys sorted at every level, no white space) of every field except `sig`, with Ed25519 and the key named by `keyId`. FourRealities checks it with public keys bundled in `src/accessor/attestation-keys.ts`, each trusted per Forge environment: `dg-dev-2026-11` and `ls-dev-2026-11` in development and staging only. Production trusts no key until the producers publish production keys. Results: verified, unsigned, unknown key, signed for another issue (`issueId` differs), bad signature. A signature shows who wrote a record, not that it is the latest: the rollback rule above covers an earlier signed record put back after a newer one.
 
 ### Code (heuristic)
 
@@ -228,7 +229,8 @@ The Tier 1 check is one call, `GET /rest/api/3/mypermissions?projectKey={key}&pe
 | Verified, `status === 'SEAL_VALID'` and `isCompromised !== true` | FOUND | VERIFIED | `SEAL_VALID_LS` (args: sealedAt) |
 | Verified, `SEAL_BROKEN` or `SEAL_COMPROMISED` | MISSING | | `SEAL_BROKEN_LS` |
 | Verified, any other status | MISSING (Done) or NOT_APPLICABLE | | `SEAL_OTHER_LS` (args: status) |
-| Unsigned or untrusted key | REPORTED (or NOT_APPLICABLE before Done for other statuses) | NOT_VERIFIED | as above (args: why) |
+| Unsigned or untrusted key: scored like no record | MISSING (Done) or NOT_APPLICABLE (`NOT_DONE`) | NOT_VERIFIED | as above (args: why) |
+| A verified record older than the newest verified one already seen (by `issuedAt`): a rollback | MISSING | | `SEAL_SIGNATURE_INVALID` (why: older than a record already seen) |
 | No record, Done | MISSING | | `SEAL_NONE` |
 | No record, not Done | NOT_APPLICABLE | | `NOT_DONE` |
 
@@ -323,6 +325,7 @@ Preset views (B-40, B-48) set several filters at once, reflect `isSelected` when
 | `fr:cfg:sources` | admin settings: the mode of each check and the decision issue types; no account id | under 2 KiB |
 | `fr:cfg:approver_policy` | `{ roleTypeId: 'FR_APPROVER', parties: [{ partyId, partyTypeId: 'GROUP', name }], fromDate }`, at most 20 groups | under 4 KiB |
 | `fr:cfg:detected` | the date each source was first seen (and verified) on the site | under 1 KiB |
+| `fr:att:{issueId}` | the newest verified DefinitionGuard (`stateVersion`, `issuedAt`) and LedgerSeal (`issuedAt`) record seen on the issue, against rollbacks | under 1 KiB |
 | `fr:p:{projectKey}:accounts` | `{ generatedAt, accountIds }`: the distinct assignee ids of the snapshot, for the personal data report | under 64 KiB |
 
 The snapshot is rebuilt by writing new chunks, then the meta. A reader that finds a chunk missing treats the snapshot as absent and rebuilds.

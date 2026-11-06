@@ -74,9 +74,10 @@ export function normalizeException(value: unknown): ExceptionRecord | undefined 
  */
 export function confluencePageId(globalId: string | undefined, url: string | undefined): string | undefined {
   const fromGlobal = /(?:^|&)pageId=(\d+)/.exec(String(globalId || ''));
-  if (fromGlobal) return fromGlobal[1];
   const fromUrl = /\/pages\/(\d+)(?:[/?#]|$)/.exec(String(url || '')) || /[?&]pageId=(\d+)/.exec(String(url || ''));
-  return fromUrl ? fromUrl[1] : undefined;
+  // A global id and an address that name different pages cannot be checked (merge review L-2).
+  if (fromGlobal && fromUrl && fromGlobal[1] !== fromUrl[1]) return undefined;
+  return fromGlobal ? fromGlobal[1] : fromUrl ? fromUrl[1] : undefined;
 }
 
 /** Jira remote link objects to contract RemoteLinks. */

@@ -11,8 +11,7 @@ Open **Four Realities** from an issue's app actions, or in the issue context on 
 | Evidence found | FourRealities read the evidence (a link, a page Confluence returned, or a record whose signature it verified) | Yes, 100 |
 | Evidence found (heuristic) | A merged or open pull request in the Development field | Yes, 100 |
 | Evidence found (link only) | A Confluence link whose page could not be checked | Yes, 100 |
-| Evidence missing | The check applies and there is no evidence, or a record failed its signature check | Yes, 0 |
-| Reported, not verified | Another app's record that FourRealities cannot verify | No |
+| Evidence missing | The check applies and there is no evidence, or the record could not be verified (unsigned, unknown key, changed, copied, or older than one already seen); the text says which | Yes, 0 |
 | Not used on this site | The administrator does not use this check | No |
 | Not applicable | The check does not apply yet (for example, work not started or not done) | No |
 | Excepted | An approved Code exception | No |

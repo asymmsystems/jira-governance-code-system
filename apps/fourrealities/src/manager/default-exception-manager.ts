@@ -207,9 +207,9 @@ export class DefaultExceptionManager implements ExceptionManager {
     if (parties.length === 0) return { granted: false };
     const mine = await this.d.directory.myGroups();
     if (mine.status !== 200) return { granted: false };
+    // By group id only: a new group with a deleted group's name grants nothing (merge review L-1).
     const ids = new Set(parties.map(p => p.partyId));
-    const names = new Set(parties.map(p => p.name));
-    return { granted: mine.groups.some(g => ids.has(g.groupId) || names.has(g.name)) };
+    return { granted: mine.groups.some(g => ids.has(g.groupId)) };
   }
 
   /** Writes the property projection (as the given principal), then appends the event (never before Jira accepts). */

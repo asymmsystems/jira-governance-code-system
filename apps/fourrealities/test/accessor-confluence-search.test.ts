@@ -145,6 +145,9 @@ describe('F-H4: Confluence pages are checked by id', () => {
     expect(confluencePageId(undefined, 'https://s.atlassian.net/wiki/pages/viewpage.action?pageId=321')).toBe('321');
     expect(confluencePageId(undefined, 'https://s.atlassian.net/wiki/x/AbCd')).toBeUndefined();
     expect(confluencePageId(undefined, undefined)).toBeUndefined();
+    // L-2: a global id and an address that name different pages give no id to check.
+    expect(confluencePageId('appId=abc&pageId=123', 'https://s.atlassian.net/wiki/spaces/A/pages/999/Other')).toBeUndefined();
+    expect(confluencePageId('appId=abc&pageId=123', 'https://s.atlassian.net/wiki/spaces/A/pages/123/Same')).toBe('123');
   });
 
   it('asks Confluence for the ids in batches of 50 and marks each link', async () => {

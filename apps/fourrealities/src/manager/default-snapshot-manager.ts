@@ -6,7 +6,7 @@
  */
 
 import { CallerContext, CHUNK_SIZE_HINT, IssueRow, ProjectDashboardView, ProjectSummary, ResolverResult, ScheduledRunResult, SiteConfig, SnapshotMeta, StoredSnapshot } from '../contract/data/models';
-import { ConfluencePageCheckAccessor, ExceptionEventAccessor, JiraDirectoryAccessor, ReworkNoteAccessor, JiraIssueAccessor, SettingsAccessor, SiteConfigAccessor, SnapshotAccessor } from '../contract/accessors';
+import { AttestationHistoryAccessor, ConfluencePageCheckAccessor, ExceptionEventAccessor, JiraDirectoryAccessor, ReworkNoteAccessor, JiraIssueAccessor, SettingsAccessor, SiteConfigAccessor, SnapshotAccessor } from '../contract/accessors';
 import { ExceptionPolicyEngine, GateEngine, MetricsEngine, SnapshotEngine, SourcePolicyEngine } from '../contract/engines';
 import { DashboardManager, SnapshotManager } from '../contract/managers';
 import { jiraError, messageOf } from '../contract/data/errors';
@@ -32,6 +32,8 @@ export interface SnapshotManagerDeps {
   sources: SourcePolicyEngine;
   /** Confluence as the app: checks that linked pages exist (F-H4). */
   confluence: ConfluencePageCheckAccessor;
+  /** The newest verified sibling records seen per issue (ADR-012, rollback). */
+  history: AttestationHistoryAccessor;
   /** Jira users as the viewer: assignee names for the view. */
   directory: JiraDirectoryAccessor;
   now?: () => Date;
@@ -75,6 +77,7 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
     if (merged.changed) await this.d.settings.saveDetected(merged.detected);
     const sources = this.d.sources.resolve(settings, merged.detected, config);
 
+    const history = await this.d.history.listAll();
     const notes = await this.d.notes.listAll();
     const events = await this.d.events.listAll();
     const previous = new Map((await this.d.snapshots.loadSnapshot(projectKey))?.rows.map(r => [r.issueId, r]) || []);
@@ -86,6 +89,7 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
       const read = links.has(id) || !base.started;
       const facts = {
         ...base,
+        attestationHistory: history.get(id) || {},
         reworkNotes: notes.get(id),
         codeException: this.d.lifecycle.currentState(events.get(id) || []),
         remoteLinks: links.get(id) ?? (base.started ? undefined : [])
@@ -93,6 +97,11 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
       const gates = this.d.snapshot.keepPreviousIntent(this.d.gates.evaluate(facts, sources), read, previous.get(id));
       return this.d.snapshot.storedRow(this.d.metrics.buildRow(facts, gates));
     });
+
+    for (const f of search.facts) {
+      const seen = this.d.gates.verifiedVersions({ ...f, attestationHistory: history.get(f.issueId) || {} });
+      if (seen.dod || seen.ledgerseal) await this.d.history.raise(f.issueId, seen, history.get(f.issueId) || {});
+    }
 
     const summary = this.d.metrics.summarize(rows);
     const generatedAt = now().toISOString();
@@ -186,7 +195,8 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
     };
     // Names of the assignees, read as the viewer now and never stored (ADR-014).
     const assignees = Array.from(new Set(rows.map(r => r.assigneeAccountId).filter((id): id is string => Boolean(id))));
-    if (assignees.length > 0) view.people = await this.d.directory.userNames(assignees);
+    // Only while the invocation has time left; without names the table says "Name not available" (L-5).
+    if (assignees.length > 0 && Date.now() < this.deadline - VISIBLE_RESERVE_MS) view.people = await this.d.directory.userNames(assignees);
     try {
       const detected = await this.d.settings.getDetected();
       const sources = this.d.sources.resolve(settings, detected, await this.d.siteConfig.get());

@@ -7,6 +7,7 @@
 import { Engine } from './service-types';
 import {
   ApprovalView,
+  AttestationHistory,
   DetectedSources,
   EvidenceSourceSettings,
   SiteConfig,
@@ -29,6 +30,8 @@ import {
 /** Evaluates the four gates from issue facts (spec v3, Gates), for the checks in use (ADR-013). */
 export interface GateEngine extends Engine {
   evaluate(facts: IssueFacts, sources?: SourcesInUse): IssueGates;
+  /** Versions of the issue's verified, current sibling records, for the rollback history (ADR-012). */
+  verifiedVersions(facts: IssueFacts): AttestationHistory;
 }
 
 /** Which evidence sources are in use on the site, and what the reads show of them (ADR-013). */

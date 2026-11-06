@@ -41,6 +41,7 @@ export function driftText(row: GatesOnly): string {
     case 'intent':
       return isFound(gates.code) ? 'Code was merged, but it does not trace to a decision record.' : 'No decision record is linked.';
     case 'process':
+      if (gates.process.verification === 'NOT_VERIFIED') return 'The Definition of Done record is not verified, so it counts as missing.';
       if (gates.process.reason === 'DOD_SHAPE_UNKNOWN') return 'The Definition of Done record has a shape DefinitionGuard does not write.';
       if (gates.process.reason === 'DOD_SIGNATURE_INVALID') return 'The Definition of Done record failed its signature check.';
       if (gates.process.reason === 'CHECKLIST_NONE') return 'No Checklists for Jira checklist is on this issue.';
@@ -48,6 +49,7 @@ export function driftText(row: GatesOnly): string {
     case 'code':
       return gates.code.reason === 'PR_OPEN_AT_DONE' ? 'The issue is done, but its pull request is not merged.' : 'The issue is done, but no pull request is linked.';
     case 'audit':
+      if (gates.audit.verification === 'NOT_VERIFIED') return 'The seal record is not verified, so it counts as missing.';
       if (gates.audit.reason === 'SEAL_SIGNATURE_INVALID') return 'The LedgerSeal record failed its signature check.';
       return gates.audit.reason === 'SEAL_SHAPE_UNKNOWN' ? 'The LedgerSeal record has a shape LedgerSeal does not write.' : 'The issue is not sealed in LedgerSeal.';
     default: {

@@ -53,6 +53,9 @@ describe('FourRealities listing (BL-4)', () => {
 
   it('claims no feature the app does not have, and names the real admin page and panels', () => {
     expect(listing).not.toMatch(/listing-v2|Audit Gate panel|Checklist panel|100% (automated )?test coverage|no settings page/i);
+    // Merge review H-1: an unverified record counts like no record; the listing must not say it is only left out.
+    expect(listing).not.toMatch(/Reported, not verified|reported and not scored/);
+    expect(listing).toContain('counts exactly like no record');
     expect(fs.existsSync(path.join(ROOT, 'docs/marketplace/fourrealities-listing-v2.md'))).toBe(false);
     expect(manifest).toContain('title: FourRealities gate authority');
     expect(listing).toContain('FourRealities gate authority');

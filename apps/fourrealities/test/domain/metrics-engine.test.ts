@@ -183,3 +183,13 @@ describe('B-14: UNRATED issues, denominators and recoverable points', () => {
     expect(s.sealRate).toBeNull();
   });
 });
+
+describe('L-3: a row carries no display name', () => {
+  it('stores the assignee account id only, even when the facts carry a name', () => {
+    const facts = { ...makeFacts({ assigneeAccountId: 'acc-1' }), assigneeName: 'Ana Silva', displayName: 'Ana Silva' } as unknown as Parameters<typeof MetricsEngine.buildRow>[0];
+    const row = MetricsEngine.buildRow(facts, gates(FOUND_V, NA, NA, NA));
+    expect(Object.keys(row)).not.toContain('assigneeName');
+    expect(JSON.stringify(row)).not.toContain('Ana Silva');
+    expect(row.assigneeAccountId).toBe('acc-1');
+  });
+});

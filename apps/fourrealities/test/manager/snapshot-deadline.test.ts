@@ -36,7 +36,8 @@ function manager(o: { deadline: number; storage?: MemoryStorage; searchProject?:
     settings: { serviceType: 'accessor', getSettings: async () => DEFAULT_SOURCE_SETTINGS, getDetected: async () => ({}), saveDetected: async () => undefined } as any,
     sources: new DefaultSourcePolicyEngine(),
     directory: { serviceType: 'accessor', userNames: async () => ({}) } as any,
-    confluence: { serviceType: 'accessor', existingPages: async () => null, checkPages: async (m: any) => m } as any
+    confluence: { serviceType: 'accessor', existingPages: async () => null, checkPages: async (m: any) => m } as any,
+    history: { serviceType: 'accessor', get: async () => ({}), listAll: async () => new Map(), raise: async () => false } as any
   });
   return { m, jira, storage };
 }
@@ -71,5 +72,18 @@ describe('F-L1: a failed project does not stop the scheduled run', () => {
     const res = await m.runScheduled(Date.now() + 60_000);
     expect(res.failed).toEqual(['BAD']);
     expect(res.built).toEqual(['PAY']);
+  });
+});
+
+describe('L-5: assignee names only while the invocation has time', () => {
+  it('skips the name lookup once the deadline is too close', async () => {
+    const { m, jira } = manager({ deadline: Date.now() + 500 });
+    jira.searchProject.mockResolvedValue({ facts: [makeFacts({ issueId: '1', assigneeAccountId: 'acc-1' })], capped: false, totalKnown: 1 });
+    const names = jest.fn().mockResolvedValue({ 'acc-1': 'Ana' });
+    (m as any).d.directory.userNames = names;
+    const res: any = await m.view({ projectKey: 'PAY' }, true);
+    expect(res.ok).toBe(true);
+    expect(names).not.toHaveBeenCalled();
+    expect(res.people).toBeUndefined();
   });
 });

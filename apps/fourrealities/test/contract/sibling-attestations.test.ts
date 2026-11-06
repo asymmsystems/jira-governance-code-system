@@ -72,11 +72,11 @@ describe('BL-1: DefinitionGuard records from its own writer', () => {
     expect(r).toMatchObject({ state: 'MISSING', reason: 'DOD_OPEN_DG', args: { completed: 1, total: 2 } });
   });
 
-  it('reads the unsigned record (no signing key set) as reported, not verified', () => {
+  it('H-1: reads the unsigned record (no signing key set) as missing, not verified', () => {
     const att = { ...dgApi.buildAttestation(dodState(['DOD_DONE']), '2026-11-06T10:00:00.000Z'), keyId: null, sig: null };
     const r = evaluateProcess(factsFromIssue(issueWith('definitionguard-dod', att), { verify }));
-    expect(r).toMatchObject({ state: 'REPORTED', verification: 'NOT_VERIFIED', reason: 'DOD_COMPLETE_DG' });
-    expect(detailText(r)).toContain('could not verify this record (unsigned), so it is not scored');
+    expect(r).toMatchObject({ state: 'MISSING', verification: 'NOT_VERIFIED', reason: 'DOD_COMPLETE_DG' });
+    expect(detailText(r)).toContain('could not verify this record (unsigned), so it counts as missing');
   });
 
   it('accepts the same record without account id fields, as the DefinitionGuard fix writes it', () => {
@@ -120,8 +120,8 @@ describe('BL-1: LedgerSeal records from its own writer', () => {
       .toMatchObject({ state: 'MISSING', reason: 'SEAL_OTHER_LS', args: { status: 'SEAL_REVOKED' } });
   });
 
-  it('reads the unsigned record as reported, and a record with no account id field as verified', () => {
-    expect(evaluateAudit(factsFromIssue(issueWith('ledgerseal-cert', lsApi.buildAttestation(source, 'SEAL_VALID', '2026-11-06T09:00:01.000Z', null)), { verify })).state).toBe('REPORTED');
+  it('H-1: reads the unsigned record as missing, and a record with no account id field as verified', () => {
+    expect(evaluateAudit(factsFromIssue(issueWith('ledgerseal-cert', lsApi.buildAttestation(source, 'SEAL_VALID', '2026-11-06T09:00:01.000Z', null)), { verify })).state).toBe('MISSING');
     const { sealedByAccountId: _gone, ...noIds } = source;
     const att = lsApi.buildAttestation(noIds, 'SEAL_VALID', '2026-11-06T09:00:01.000Z', lsApi.createSigner(PRIVATE_DER_B64, 'ls-contract'));
     expect(evaluateAudit(factsFromIssue(issueWith('ledgerseal-cert', att), { verify })).state).toBe('FOUND');

@@ -27,6 +27,7 @@ import { DefaultExceptionPolicyEngine } from './engine/default-exception-policy-
 import { DefaultSnapshotManager } from './manager/default-snapshot-manager';
 import { DefaultIssueEvidenceManager } from './manager/default-issue-evidence-manager';
 import { DefaultKvsSettingsAccessor } from './accessor/default-kvs-settings-accessor';
+import { DefaultKvsAttestationHistoryAccessor } from './accessor/default-kvs-attestation-history-accessor';
 import { DefaultForgeJiraDirectoryAccessor } from './accessor/default-forge-jira-directory-accessor';
 import { DefaultSourcePolicyEngine } from './engine/default-source-policy-engine';
 import { DefaultAdminManager } from './manager/default-admin-manager';
@@ -84,6 +85,7 @@ export function compose(storageProvider: StorageProvider | undefined, budgetMs: 
   const policy = new DefaultPolicyEngine();
   const settings = new DefaultKvsSettingsAccessor(storage);
   const sources = new DefaultSourcePolicyEngine();
+  const history = new DefaultKvsAttestationHistoryAccessor(storage);
   const directory = new DefaultForgeJiraDirectoryAccessor(requestAs('user', () => deadline));
   const appConfluence = new DefaultForgeConfluenceSearchAccessor('app');
   const userConfluence = new DefaultForgeConfluenceSearchAccessor();
@@ -107,9 +109,10 @@ export function compose(storageProvider: StorageProvider | undefined, budgetMs: 
       settings,
       sources,
       directory,
-      confluence: appConfluence
+      confluence: appConfluence,
+      history
     }),
-    issues: new DefaultIssueEvidenceManager({ userJira, siteConfig, notes, events, lifecycle, gates, metrics, policy, settings, sources, confluence: userConfluence }),
+    issues: new DefaultIssueEvidenceManager({ userJira, siteConfig, notes, events, lifecycle, gates, metrics, policy, settings, sources, confluence: userConfluence, history }),
     exceptions: new DefaultExceptionManager({ userJira, appJira, directory, settings, siteConfig, notes, events, policy, lifecycle }),
     admin: new DefaultAdminManager({ directory, settings, siteConfig, sources }),
     personalData: (privacy: PrivacyReportAccessor) => new DefaultPersonalDataManager({ data: new DefaultKvsPersonalDataAccessor(storage), privacy, events, notes, lifecycle, appJira })

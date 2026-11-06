@@ -39,6 +39,7 @@ function buildSnapshot(o: { projectKey: string; storage: any; request: any; dead
     sources: new DefaultSourcePolicyEngine(),
     directory: { serviceType: 'accessor', userNames: async () => ({}) } as any,
     confluence: { serviceType: 'accessor', existingPages: async () => null, checkPages: async (m: any) => m } as any,
+    history: { serviceType: 'accessor', get: async () => ({}), listAll: async () => new Map(), raise: async () => false } as any,
     now: o.now
   });
   return manager.build(o.projectKey, o.generatedBy, o.deadline);

@@ -4,7 +4,7 @@
  * FourRealities: gate evaluation. Pure functions from issue facts to gate results (spec v2, Gates).
  */
 
-import { AttestationCheck, DefinitionGuardRecord, GateResult, HeroCodersChecklistRecord, IssueFacts, IssueGates, LedgerSealRecord, SourcesInUse } from '../contract/data/models';
+import { AttestationCheck, AttestationHistory, AttestationVersion, DefinitionGuardRecord, GateResult, HeroCodersChecklistRecord, IssueFacts, IssueGates, LedgerSealRecord, SourcesInUse } from '../contract/data/models';
 import { DEFAULT_CATALOG, EVIDENCE_REF_MAX, EvidenceCatalog } from '../contract/data/catalog';
 import { GateEngine } from '../contract/engines';
 
@@ -19,6 +19,8 @@ export function isDone(f: IssueFacts): boolean {
 
 /** An observation of one catalog source: verification from the catalog, reference cut to size. */
 function observed(c: EvidenceCatalog, method: string, result: GateResult, ref?: unknown): GateResult {
+  // "Not done yet" rests on the Jira status, not on a record: the same result as no record.
+  if (result.state === 'NOT_APPLICABLE' && result.reason === 'NOT_DONE') return result;
   const verification = c.sources[method]?.verification;
   return {
     ...result,
@@ -55,7 +57,8 @@ export function evaluateIntent(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATAL
   const page = pages[0];
   if (page) {
     // VERIFIED only when Confluence returned the page by its id; else the link alone (F-H4).
-    const checked = pages.find(p => p.pageExists === true);
+    // The page Confluence returned, and the link's address on this site (merge review L-2).
+    const checked = pages.find(p => p.pageExists === true && (!p.url || isSameSiteContentPage(p.url, f.siteHost, rule.sameSiteContentPath)));
     const shown = checked || page;
     return observed(c, 'CONFLUENCE_PAGE_LINK', {
       state: 'FOUND', reason: 'INTENT_CONFLUENCE_LINK', args: { title: String(shown.title || shown.url || '') },
@@ -143,12 +146,53 @@ function trustOf(check: AttestationCheck | undefined): Trust {
   return { kind: 'reported', why: UNVERIFIED_WHY[c] };
 }
 
-/** A sibling record's statement as a gate result: FOUND or MISSING when verified, else REPORTED. */
-function stated(trust: Trust, positive: boolean, result: Omit<GateResult, 'state'>): GateResult {
+/**
+ * A sibling record's statement as a gate result. Verified: FOUND or MISSING. Not verified: scored
+ * exactly like no record (ADR-012, merge review H-1): MISSING on a Done issue, not applicable
+ * before Done; the text still says what the record reports and why it was not verified.
+ */
+function stated(trust: Trust, positive: boolean, done: boolean, result: Omit<GateResult, 'state'>): GateResult {
   if (trust.kind === 'verified') {
     return { ...result, state: positive ? 'FOUND' : 'MISSING', ...(positive ? { verification: 'VERIFIED' as const } : {}) };
   }
-  return { ...result, state: 'REPORTED', verification: 'NOT_VERIFIED', args: { ...(result.args || {}), why: trust.kind === 'reported' ? trust.why : '' } };
+  if (!done) return { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
+  return { ...result, state: 'MISSING', verification: 'NOT_VERIFIED', args: { ...(result.args || {}), why: trust.kind === 'reported' ? trust.why : '' } };
+}
+
+/** True when a record is older than the newest verified record already seen on the issue (a rollback). */
+export function isOlder(record: AttestationVersion, seen: AttestationVersion | undefined): boolean {
+  if (!seen) return false;
+  // DefinitionGuard numbers its states: the same number is the same record.
+  if (typeof record.stateVersion === 'number' && typeof seen.stateVersion === 'number') {
+    return record.stateVersion < seen.stateVersion;
+  }
+  return Boolean(record.issuedAt && seen.issuedAt && record.issuedAt < seen.issuedAt);
+}
+
+/** The version fields of a record, read defensively. */
+function versionOf(value: unknown): AttestationVersion {
+  const v = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
+  return {
+    ...(typeof v.stateVersion === 'number' && Number.isFinite(v.stateVersion) ? { stateVersion: v.stateVersion } : {}),
+    ...(isIsoDate(v.issuedAt) ? { issuedAt: v.issuedAt as string } : {})
+  };
+}
+
+/** The trust of a record, with a verified record older than one already seen treated as a rollback. */
+function trustWithHistory(check: AttestationCheck | undefined, record: unknown, seen: AttestationVersion | undefined): Trust {
+  const trust = trustOf(check);
+  return trust.kind === 'verified' && isOlder(versionOf(record), seen) ? { kind: 'invalid', why: 'older than a record already seen' } : trust;
+}
+
+/**
+ * The versions of this issue's sibling records that are verified and not a rollback, for the
+ * history the managers keep (ADR-012).
+ */
+export function verifiedVersions(f: IssueFacts): AttestationHistory {
+  const out: AttestationHistory = {};
+  if (f.properties.dod && trustWithHistory(f.attestations?.dod, f.properties.dod, f.attestationHistory?.dod).kind === 'verified') out.dod = versionOf(f.properties.dod);
+  if (f.properties.ledgerseal && trustWithHistory(f.attestations?.ledgerseal, f.properties.ledgerseal, f.attestationHistory?.ledgerseal).kind === 'verified') out.ledgerseal = versionOf(f.properties.ledgerseal);
+  return out;
 }
 
 /**
@@ -165,23 +209,23 @@ export function evaluateProcess(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATA
       return observed(c, 'DEFINITIONGUARD_PROPERTY', { state: 'MISSING', reason: 'DOD_SHAPE_UNKNOWN' });
     }
     const seen = (result: GateResult) => observed(c, 'DEFINITIONGUARD_PROPERTY', result, record.reference);
-    const trust = trustOf(f.attestations?.dod);
+    const trust = trustWithHistory(f.attestations?.dod, dod, f.attestationHistory?.dod);
     if (trust.kind === 'invalid') {
       return seen({ state: 'MISSING', reason: 'DOD_SIGNATURE_INVALID', args: { why: trust.why } });
     }
     const args = { completed: record.completed, total: record.total };
     if (record.isFullySatisfied) {
-      return seen(stated(trust, true, { reason: 'DOD_COMPLETE_DG', args }));
+      return seen(stated(trust, true, isDone(f), { reason: 'DOD_COMPLETE_DG', args }));
     }
-    return isDone(f) ? seen(stated(trust, false, { reason: 'DOD_OPEN_DG', args })) : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
+    return isDone(f) ? seen(stated(trust, false, true, { reason: 'DOD_OPEN_DG', args })) : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
   }
   const checklist = sources?.process === 'definitionguard' ? undefined : f.properties.checklist;
   if (isHeroCodersChecklistShape(checklist)) {
     const open = checklist.uncheckedMandatoryItems;
     const seen = (result: GateResult) => observed(c, 'HEROCODERS_CHECKLIST_PROPERTY', result, checklist.progressText);
     const unverifiable: Trust = { kind: 'reported', why: 'Checklists for Jira records are not signed' };
-    if (open === 0) return seen(stated(unverifiable, true, { reason: 'DOD_COMPLETE_HC' }));
-    return isDone(f) ? seen(stated(unverifiable, false, { reason: 'DOD_OPEN_HC', args: { open } })) : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
+    if (open === 0) return seen(stated(unverifiable, true, isDone(f), { reason: 'DOD_COMPLETE_HC' }));
+    return isDone(f) ? seen(stated(unverifiable, false, true, { reason: 'DOD_OPEN_HC', args: { open } })) : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
   }
   return isDone(f)
     ? { state: 'MISSING', reason: sources?.process === 'herocoders' ? 'CHECKLIST_NONE' : 'DOD_NONE' }
@@ -233,18 +277,18 @@ export function evaluateAudit(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALO
       return observed(c, 'LEDGERSEAL_PROPERTY', { state: 'MISSING', reason: 'SEAL_SHAPE_UNKNOWN' });
     }
     const seen = (result: GateResult) => observed(c, 'LEDGERSEAL_PROPERTY', result, cert.certificateId);
-    const trust = trustOf(f.attestations?.ledgerseal);
+    const trust = trustWithHistory(f.attestations?.ledgerseal, cert, f.attestationHistory?.ledgerseal);
     if (trust.kind === 'invalid') {
       return seen({ state: 'MISSING', reason: 'SEAL_SIGNATURE_INVALID', args: { why: trust.why } });
     }
     if (cert.status === 'SEAL_BROKEN' || cert.status === 'SEAL_COMPROMISED' || cert.isCompromised === true) {
-      return seen(stated(trust, false, { reason: 'SEAL_BROKEN_LS' }));
+      return isDone(f) || trust.kind === 'verified' ? seen(stated(trust, false, true, { reason: 'SEAL_BROKEN_LS' })) : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
     }
     if (cert.status === 'SEAL_VALID') {
-      return seen(stated(trust, true, { reason: 'SEAL_VALID_LS', args: { sealedAt: cert.sealedAt } }));
+      return seen(stated(trust, true, isDone(f), { reason: 'SEAL_VALID_LS', args: { sealedAt: cert.sealedAt } }));
     }
     return isDone(f)
-      ? seen(stated(trust, false, { reason: 'SEAL_OTHER_LS', args: { status: cert.status } }))
+      ? seen(stated(trust, false, true, { reason: 'SEAL_OTHER_LS', args: { status: cert.status } }))
       : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
   }
   return isDone(f)
@@ -268,5 +312,9 @@ export class DefaultGateEngine implements GateEngine {
 
   evaluate(facts: IssueFacts, sources?: SourcesInUse): IssueGates {
     return evaluateGates(facts, this.catalog, sources);
+  }
+
+  verifiedVersions(facts: IssueFacts): AttestationHistory {
+    return verifiedVersions(facts);
   }
 }

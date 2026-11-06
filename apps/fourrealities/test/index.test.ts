@@ -231,12 +231,12 @@ describe('FourRealities Index / Forge Handlers', () => {
       expect(await read()).toMatchObject({ state: 'FOUND', verification: 'VERIFIED' });
     });
 
-    it('reports, and does not score, a record signed with a key the environment does not trust', async () => {
+    it('H-1: scores a record signed with a key the environment does not trust like no record', async () => {
       await mockStorage.set('fr:cfg:sources', { schemaVersion: 1, intent: 'on', process: 'auto', code: 'auto', audit: 'ledgerseal', decisionIssueTypes: ['adr'] });
       mockAppContext.get = () => ({ environmentType: 'DEVELOPMENT' });
-      expect(await read()).toMatchObject({ state: 'REPORTED', args: { why: 'unknown key' } });
+      expect(await read()).toMatchObject({ state: 'MISSING', verification: 'NOT_VERIFIED', args: { why: 'unknown key' } });
       mockAppContext.get = () => { throw new Error('outside the Forge runtime'); };
-      expect((await read()).state).toBe('REPORTED');
+      expect((await read()).state).toBe('MISSING');
     });
   });
 

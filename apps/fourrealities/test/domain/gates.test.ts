@@ -35,8 +35,10 @@ describe('B-15: Intent from link structure, never title keywords', () => {
   const intent = (o: any) => evaluateIntent(makeFacts({ siteHost: SITE, ...o }));
 
   it('finds a Confluence app link, verified only when Confluence returned the page (F-H4), with its title', () => {
-    expect(judged(intent({ remoteLinks: [{ url: 'https://other.example/x', title: 'Payment flow', applicationType: 'com.atlassian.confluence', pageId: '1', pageExists: true }] })))
+    expect(judged(intent({ remoteLinks: [{ url: `https://${SITE}/wiki/spaces/A/pages/1`, title: 'Payment flow', applicationType: 'com.atlassian.confluence', pageId: '1', pageExists: true }] })))
       .toEqual({ state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK', args: { title: 'Payment flow' } });
+    // L-2: a page id Confluence returned, but an address on another host, is a link only.
+    expect(intent({ remoteLinks: [{ url: 'https://other.example/x', title: 'Payment flow', applicationType: 'com.atlassian.confluence', pageId: '1', pageExists: true }] }).verification).toBe('LINK_ONLY');
     for (const pageExists of [false, undefined]) {
       expect(judged(intent({ remoteLinks: [{ url: 'https://other.example/x', title: 'Payment flow', applicationType: 'com.atlassian.confluence', pageExists }] })))
         .toEqual({ state: 'FOUND', verification: 'LINK_ONLY', reason: 'INTENT_CONFLUENCE_LINK', args: { title: 'Payment flow' } });
@@ -124,16 +126,18 @@ describe('ADR-012: Audit reads ledgerseal-cert and scores only a verified record
       .toEqual({ state: 'FOUND', verification: 'VERIFIED', reason: 'SEAL_VALID_LS', args: { sealedAt: '2026-10-30T10:29:00.000Z' } });
   });
 
-  it('reads an unverified SEAL_VALID as reported, not verified', () => {
+  it('H-1: scores an unverified SEAL_VALID like no record: missing when done, not applicable before', () => {
     expect(judged(evaluateAudit(makeFacts({ properties: { ledgerseal: lsCert() } }))))
-      .toEqual({ state: 'REPORTED', verification: 'NOT_VERIFIED', reason: 'SEAL_VALID_LS', args: { sealedAt: '2026-10-30T10:29:00.000Z', why: 'unsigned' } });
+      .toEqual({ state: 'MISSING', verification: 'NOT_VERIFIED', reason: 'SEAL_VALID_LS', args: { sealedAt: '2026-10-30T10:29:00.000Z', why: 'unsigned' } });
+    expect(evaluateAudit(makeFacts({ statusCategory: 'indeterminate', properties: { ledgerseal: lsCert() } }))).toEqual({ state: 'NOT_APPLICABLE', reason: 'NOT_DONE' });
   });
 
   it('reads verified SEAL_BROKEN and SEAL_COMPROMISED as missing: seal broken; unverified as reported', () => {
     expect(judged(evaluateAudit(makeFacts({ ...v, properties: { ledgerseal: lsCert({ status: 'SEAL_BROKEN' }) } })))).toEqual({ state: 'MISSING', reason: 'SEAL_BROKEN_LS' });
     expect(judged(evaluateAudit(makeFacts({ ...v, properties: { ledgerseal: lsCert({ status: 'SEAL_COMPROMISED' }) } })))).toEqual({ state: 'MISSING', reason: 'SEAL_BROKEN_LS' });
     expect(judged(evaluateAudit(makeFacts({ ...v, properties: { ledgerseal: lsCert({ isCompromised: true }) } })))).toEqual({ state: 'MISSING', reason: 'SEAL_BROKEN_LS' });
-    expect(evaluateAudit(makeFacts({ properties: { ledgerseal: lsCert({ status: 'SEAL_BROKEN' }) } })).state).toBe('REPORTED');
+    expect(evaluateAudit(makeFacts({ properties: { ledgerseal: lsCert({ status: 'SEAL_BROKEN' }) } })).state).toBe('MISSING');
+    expect(evaluateAudit(makeFacts({ statusCategory: 'indeterminate', properties: { ledgerseal: lsCert({ status: 'SEAL_BROKEN' }) } })).state).toBe('NOT_APPLICABLE');
   });
 
   it('names other statuses, and they apply only when done', () => {
@@ -182,16 +186,17 @@ describe('ADR-012: Process reads definitionguard-dod and scores only a verified 
       .toEqual({ state: 'FOUND', verification: 'VERIFIED', reason: 'DOD_COMPLETE_DG', args: { completed: 5, total: 5 } });
   });
 
-  it('reads an unverified complete record as reported, not verified, with why', () => {
+  it('H-1: scores an unverified complete record like no record, and says why', () => {
     expect(judged(evaluateProcess(makeFacts({ properties: { dod: dgDod() } }))))
-      .toEqual({ state: 'REPORTED', verification: 'NOT_VERIFIED', reason: 'DOD_COMPLETE_DG', args: { completed: 5, total: 5, why: 'unsigned' } });
+      .toEqual({ state: 'MISSING', verification: 'NOT_VERIFIED', reason: 'DOD_COMPLETE_DG', args: { completed: 5, total: 5, why: 'unsigned' } });
+    expect(evaluateProcess(makeFacts({ statusCategory: 'indeterminate', properties: { dod: dgDod() } }))).toEqual({ state: 'NOT_APPLICABLE', reason: 'NOT_DONE' });
     expect(evaluateProcess(makeFacts({ attestations: { dod: 'UNKNOWN_KEY' }, properties: { dod: dgDod() } })).args?.why).toBe('unknown key');
   });
 
   it('reads verified open items as missing when done, unverified as reported, and not applicable before done', () => {
     const open = dgDod({ isFullySatisfied: false, completedCount: 3 });
     expect(judged(evaluateProcess(makeFacts({ ...v, properties: { dod: open } })))).toEqual({ state: 'MISSING', reason: 'DOD_OPEN_DG', args: { completed: 3, total: 5 } });
-    expect(evaluateProcess(makeFacts({ properties: { dod: open } })).state).toBe('REPORTED');
+    expect(evaluateProcess(makeFacts({ properties: { dod: open } })).state).toBe('MISSING');
     expect(evaluateProcess(makeFacts({ statusCategory: 'indeterminate', properties: { dod: open } })).state).toBe('NOT_APPLICABLE');
   });
 
@@ -304,21 +309,21 @@ describe('B-10: Code gate from the Development field, labelled heuristic', () =>
   });
 });
 
-describe('B-25, ADR-012: the HeroCoders checklist property is always reported, never scored', () => {
+describe('B-25, ADR-012, H-1: a HeroCoders checklist cannot be verified, so it scores like no record', () => {
   const { sourceLine } = require('../../src/ui/gate-text');
   // Shape from the vendor documentation (DD-21): uncheckedMandatoryItems is a top-level number.
   const hc = (uncheckedMandatoryItems: unknown) => ({ completedText: 'Not Completed', allMandatoryItems: 3, uncheckedMandatoryItems, progressText: 'Checklist: 2/4' });
 
-  it('reads no open mandatory items as reported, not verified, with its own source', () => {
+  it('reads no open mandatory items as missing on a Done issue, not verified, with its own source', () => {
     const r = evaluateProcess(makeFacts({ properties: { checklist: hc(0) } }));
-    expect(judged(r)).toEqual({ state: 'REPORTED', verification: 'NOT_VERIFIED', reason: 'DOD_COMPLETE_HC', args: { why: 'Checklists for Jira records are not signed' } });
+    expect(judged(r)).toEqual({ state: 'MISSING', verification: 'NOT_VERIFIED', reason: 'DOD_COMPLETE_HC', args: { why: 'Checklists for Jira records are not signed' } });
     expect(r).toMatchObject({ method: 'HEROCODERS_CHECKLIST_PROPERTY', evidenceRef: 'Checklist: 2/4' });
     expect(sourceLine(r)).toBe('Source: Checklists for Jira (HeroCoders) property checklist, not verified by FourRealities.');
   });
 
-  it('reads open mandatory items as reported when done and not applicable before', () => {
+  it('reads open mandatory items as missing when done and not applicable before', () => {
     expect(judged(evaluateProcess(makeFacts({ properties: { checklist: hc(2) } }))))
-      .toEqual({ state: 'REPORTED', verification: 'NOT_VERIFIED', reason: 'DOD_OPEN_HC', args: { open: 2, why: 'Checklists for Jira records are not signed' } });
+      .toEqual({ state: 'MISSING', verification: 'NOT_VERIFIED', reason: 'DOD_OPEN_HC', args: { open: 2, why: 'Checklists for Jira records are not signed' } });
     expect(evaluateProcess(makeFacts({ statusCategory: 'indeterminate', properties: { checklist: hc(2) } })).state).toBe('NOT_APPLICABLE');
   });
 

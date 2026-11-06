@@ -15,7 +15,7 @@ Go to **Jira settings > Apps > FourRealities gate authority** (Jira administrato
 - **Code:** Detect (default), In use, or Not in use. Detect uses Code once pull request data exists on the site (your GitHub, GitLab or Bitbucket integration for Jira fills the Development field).
 - **Audit:** Detect (default), LedgerSeal, or Not in use. Detect uses LedgerSeal once a LedgerSeal record with a verified signature has been read.
 
-The page shows what FourRealities has seen of each source. A check that is not in use is not scored. Records that FourRealities cannot verify (unsigned, or signed with a key it does not trust) are shown as "Reported, not verified" and are not scored; in that case turn the check on by hand if you want missing records to count.
+The page shows what FourRealities has seen of each source. A check that is not in use is not scored. Records that FourRealities cannot verify (unsigned, signed with a key it does not trust, or older than one already seen) count like no record: evidence missing on a Done issue. Until DefinitionGuard and LedgerSeal have production signing keys, that is every record in production, so leave Process and Audit on Detect until then. A Checklists for Jira checklist cannot be verified, so with that source Process never counts a checklist as evidence.
 
 **Decision issue types** are the issue type names that count as a decision record for Intent (default: adr, architecture decision, decision, decision record, spec, specification, requirement).
 

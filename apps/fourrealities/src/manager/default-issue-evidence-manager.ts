@@ -6,7 +6,7 @@
  */
 
 import { CallerContext, IssueRow, LinkDecisionPayload, RequestReviewPayload, ResolverResult, WriteResult } from '../contract/data/models';
-import { ConfluencePageCheckAccessor, ExceptionEventAccessor, ReworkNoteAccessor, JiraIssueAccessor, SettingsAccessor, SiteConfigAccessor } from '../contract/accessors';
+import { AttestationHistoryAccessor, ConfluencePageCheckAccessor, ExceptionEventAccessor, ReworkNoteAccessor, JiraIssueAccessor, SettingsAccessor, SiteConfigAccessor } from '../contract/accessors';
 import { ExceptionPolicyEngine, GateEngine, MetricsEngine, PolicyEngine, SourcePolicyEngine } from '../contract/engines';
 import { IssueEvidenceManager } from '../contract/managers';
 import { jiraError, messageOf } from '../contract/data/errors';
@@ -24,6 +24,8 @@ export interface IssueEvidenceManagerDeps {
   sources: SourcePolicyEngine;
   /** Confluence as the user: checks that linked pages exist (F-H4). */
   confluence: ConfluencePageCheckAccessor;
+  /** The newest verified sibling records seen per issue (ADR-012, rollback). */
+  history: AttestationHistoryAccessor;
   now?: () => Date;
 }
 
@@ -51,7 +53,10 @@ export class DefaultIssueEvidenceManager implements IssueEvidenceManager {
         return jiraError(read.status, `FourRealities: Jira returned HTTP ${read.status} for issue '${issueKey}'.`);
       }
       const checked = await this.d.confluence.checkPages(new Map([[issueId, read.facts.remoteLinks || []]]), Date.now() + PAGE_CHECK_MS);
-      const facts = { ...read.facts, ...(read.facts.remoteLinks ? { remoteLinks: checked.get(issueId) } : {}), reworkNotes, codeException };
+      const attestationHistory = await this.d.history.get(issueId);
+      const facts = { ...read.facts, ...(read.facts.remoteLinks ? { remoteLinks: checked.get(issueId) } : {}), reworkNotes, codeException, attestationHistory };
+      const seenVersions = this.d.gates.verifiedVersions(facts);
+      if (seenVersions.dod || seenVersions.ledgerseal) await this.d.history.raise(issueId, seenVersions, attestationHistory);
       // The checks in use on this site (ADR-013); a source first seen on this issue is recorded.
       const settings = await this.d.settings.getSettings();
       const at = (this.d.now || (() => new Date()))().toISOString();

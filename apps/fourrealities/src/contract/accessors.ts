@@ -7,6 +7,7 @@
 import { Accessor } from './service-types';
 import {
   ApproverPolicy,
+  AttestationHistory,
   DetectedSources,
   EvidenceSourceSettings,
   ExceptionProperty,
@@ -166,4 +167,13 @@ export interface PersonalDataAccessor extends Accessor {
 /** The Forge personal data reporting API (scope report:personal-data). */
 export interface PrivacyReportAccessor extends Accessor {
   report(accounts: Array<{ accountId: string; updatedAt: string }>): Promise<Array<{ accountId: string; status: string }>>;
+}
+
+/** The newest verified sibling record seen per issue, against rollbacks (ADR-012). */
+export interface AttestationHistoryAccessor extends Accessor {
+  get(issueId: string): Promise<AttestationHistory>;
+  /** Every issue's history, by issue id, read with paged prefix queries. */
+  listAll(): Promise<Map<string, AttestationHistory>>;
+  /** Stores the newer of `current` and `seen` per producer; true when it wrote. */
+  raise(issueId: string, seen: AttestationHistory, current: AttestationHistory): Promise<boolean>;
 }

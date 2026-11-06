@@ -173,8 +173,8 @@ describe('DefaultExceptionManager.decide (Option C)', () => {
 describe('ADR-013: Tier 2 approver groups, the panel approval, and the app-written projection (F-M4, F-M1)', () => {
   const policy = { roleTypeId: 'FR_APPROVER', parties: [{ partyId: 'g1', partyTypeId: 'GROUP', name: 'release-managers' }], fromDate: 't' };
 
-  it('lets a member of an approver group approve, matched by id or name, and writes the projection as the app', async () => {
-    for (const groups of [[{ groupId: 'g1', name: 'x' }], [{ groupId: 'other', name: 'release-managers' }]]) {
+  it('lets a member of an approver group approve, matched by group id, and writes the projection as the app', async () => {
+    for (const groups of [[{ groupId: 'g1', name: 'x' }]]) {
       const appJira: any = { putExceptionProperty: jest.fn().mockResolvedValue(200) };
       const { manager, userJira, events } = setup({ events: [requested], admin: false, policy, groups: { status: 200, groups }, appJira });
       expect((await manager.decide(issueView('rm-1'), { decision: 'APPROVE' })).success).toBe(true);
@@ -184,8 +184,8 @@ describe('ADR-013: Tier 2 approver groups, the panel approval, and the app-writt
     }
   });
 
-  it('denies when the group read fails, when no group matches, or when no group is configured', async () => {
-    for (const o of [{ groups: { status: 500, groups: [] }, policy }, { groups: { status: 200, groups: [{ groupId: 'g9', name: 'other' }] }, policy }, {}]) {
+  it('denies when the group read fails, when no group matches, when only the name matches (L-1), or when no group is configured', async () => {
+    for (const o of [{ groups: { status: 500, groups: [] }, policy }, { groups: { status: 200, groups: [{ groupId: 'new-id', name: 'release-managers' }] }, policy }, { groups: { status: 200, groups: [{ groupId: 'g9', name: 'other' }] }, policy }, {}]) {
       const { manager, directory } = setup({ events: [requested], admin: false, ...o });
       expect((await manager.decide(issueView('rm-1'), { decision: 'APPROVE' })).error).toContain('Requires Project Admin, Jira Admin, or membership in an authorized group.');
       if (!('policy' in o)) expect(directory.myGroups).not.toHaveBeenCalled();

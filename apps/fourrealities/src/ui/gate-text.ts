@@ -116,7 +116,7 @@ const VERIFICATION_TEXT: Record<Verification, string> = {
 /** "Source: <source>", plus how FourRealities knows it when evidence was found. */
 export function sourceLine(result: GateResult): string {
   const base = `Source: ${SOURCE[result.reason]}`;
-  return (result.state === 'FOUND' || result.state === 'REPORTED') && result.verification ? `${base}, ${VERIFICATION_TEXT[result.verification]}.` : `${base}.`;
+  return (result.state === 'FOUND' || result.state === 'REPORTED' || unverifiedMissing(result)) && result.verification ? `${base}, ${VERIFICATION_TEXT[result.verification]}.` : `${base}.`;
 }
 
 function arg(result: GateResult, name: string): string {
@@ -124,16 +124,20 @@ function arg(result: GateResult, name: string): string {
   return value === undefined ? '' : String(value);
 }
 
-/** Why an unverified record is not scored, in words (ADR-012). */
-function reportedSuffix(result: GateResult): string {
+/** Why an unverified record does not count, in words (ADR-012). */
+function reportedSuffix(result: GateResult, outcome: string): string {
   const why = arg(result, 'why');
-  return ` FourRealities could not verify this record${why ? ` (${why})` : ''}, so it is not scored.`;
+  return ` FourRealities could not verify this record${why ? ` (${why})` : ''}, so it ${outcome}.`;
 }
+
+/** An unverified record of a check in use: scored like no record (merge review H-1). */
+const unverifiedMissing = (result: GateResult) => result.state === 'MISSING' && result.verification === 'NOT_VERIFIED';
 
 /** One plain sentence that says what was found or what is missing. */
 export function detailText(result: GateResult): string {
   const text = statement(result);
-  return result.state === 'REPORTED' ? text + reportedSuffix(result) : text;
+  if (result.state === 'REPORTED') return text + reportedSuffix(result, 'is not scored');
+  return unverifiedMissing(result) ? text + reportedSuffix(result, 'counts as missing') : text;
 }
 
 function statement(result: GateResult): string {

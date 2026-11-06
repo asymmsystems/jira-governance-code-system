@@ -7,6 +7,11 @@
 readiness review (=docs/sdlc/suite-readiness-review-2026-11/fourrealities-readiness.md=, BL-1, F-H1,
 F-M3, backlog B-26) to be adopted without further questions. This ADR records the choices made.
 
+Amended 2026-11-06 after the merge review (=~/.cache/jira-suite-merge-review/fourrealities/fourrealities-merge-review.md=,
+H-1 and M-1): decision 4 now scores an unverified record like no record (the first version left it
+out of the score, so a forged "complete" record removed a "missing" check), and decision 7 adds the
+rollback rule.
+
 * Context
 FourRealities reads two issue properties that other apps of the suite write:
 - =definitionguard-dod=, written by DefinitionGuard. Schema v2
@@ -50,16 +55,24 @@ actions (a comment, a remote link) move =updated=, so its own actions turned a s
 4. *What counts.*
    - Verified record: FOUND (verification VERIFIED) when it says complete or sealed; MISSING when it
      says open items, a broken or compromised seal, or (on a Done issue) any other seal status.
-   - Not verified (unsigned, or signed with a key FourRealities does not trust): a new gate state,
-     REPORTED. The panel shows what the record says, with "not verified", and the gate is not
-     scored either way: it neither raises nor lowers the RAI.
+   - Not verified (unsigned, or signed with a key FourRealities does not trust), when the check is
+     in use: scored exactly like no record. On a Done issue it is MISSING (verification
+     NOT_VERIFIED); before Done it is not applicable. The panel still shows what the record says and
+     why it was not verified ("... so it counts as missing").
    - Bad signature, or signed for another issue: MISSING, with the reason in words.
-   - The Checklists for Jira (HeroCoders) =checklist= property cannot be signed, so it is always
-     REPORTED when present.
+   - The Checklists for Jira (HeroCoders) =checklist= property cannot be signed, so the same rule
+     applies: with Checklists for Jira as the Process source, a checklist never counts as evidence.
+   - The state REPORTED stays in the model only for rows stored before this amendment.
 5. *Freshness.* FourRealities no longer compares =issuedAt= with the issue's =updated= time. The
    producer's own status decides: LedgerSeal writes =SEAL_BROKEN= itself when sealed content
    changes, and DefinitionGuard rewrites its record on every change. The reason code
    =CHANGED_SINCE_ATTESTATION= stays only so that rows stored before this change still render.
+7. *Rollback.* A signature shows who wrote a record, not that it is the latest one. FourRealities
+   keeps, per issue and producer, the newest verified record it has seen (=fr:att:{issueId}=:
+   DefinitionGuard =stateVersion= and =issuedAt=, LedgerSeal =issuedAt=). A verified record older
+   than that one (for example an earlier =SEAL_VALID= put back over a newer =SEAL_BROKEN=) is MISSING,
+   "older than a record already seen". A rollback before FourRealities first read the newer record
+   cannot be detected.
 6. *Where.* The check needs Node =crypto=, so it lives in the Accessor layer (it reads the key
    store and the property); the gate engine receives the result as a fact. The layering test allows
    =crypto= in Accessors only.
@@ -69,10 +82,11 @@ actions (a comment, a remote link) move =updated=, so its own actions turned a s
 - For: a team with the sibling apps in production gets some credit before production keys exist.
 - Against: the weight is arbitrary and hard to explain; a forged record still raises the score.
 - Verdict: rejected.
-** Score an unverified "complete" record as not scored, but an unverified "open" record as missing
-- For: a forged record can only lower the score.
-- Against: a team that uses the sibling app could only lose points by using it.
-- Verdict: rejected; REPORTED is not scored in either direction.
+** Leave an unverified record out of the score (the first version of this ADR)
+- For: a team with the sibling app in production is not marked down before production keys exist.
+- Against: a forged "complete" record then removes a "missing" check, so the score rises (merge
+  review H-1).
+- Verdict: rejected by the amendment; an unverified record scores like no record.
 ** Trust the development keys in production
 - For: records signed on the owner's development site would verify everywhere.
 - Against: the development private key is held in a less protected environment.
@@ -81,11 +95,14 @@ actions (a comment, a remote link) move =updated=, so its own actions turned a s
 * Consequences
 ** Positive
 - A genuine DefinitionGuard record is read again (BL-1).
-- A hand-written property no longer raises the RAI (F-H1).
+- A hand-written or copied property no longer raises the RAI (F-H1, merge review H-1), and an
+  earlier signed record put back after a newer one counts as missing (M-1).
 - FourRealities' own comments and links no longer change a seal's state (F-M3).
 ** Negative
-- Until production keys exist, Process and Audit are REPORTED (not scored) in production when
-  records exist, and MISSING only when no record exists. The guide and listing say so.
+- Until production keys exist, a Process or Audit check that an administrator turns on by hand in
+  production is MISSING on every Done issue, even where the sibling app wrote a record. "Detect"
+  leaves those checks off until then. The guide and listing say so.
+- With Checklists for Jira as the Process source, Process is MISSING on every Done issue.
 - A key rotation needs a FourRealities release that adds the new public key.
 
 * Implementation Notes

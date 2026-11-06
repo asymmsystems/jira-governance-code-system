@@ -5,7 +5,7 @@ FourRealities shows, for each Jira issue, whether four kinds of delivery evidenc
 | Check | Evidence | How FourRealities knows |
 |---|---|---|
 | **Intent** | A link to a Confluence page on this site, or to an issue of a decision type | It reads the link from Jira; a Confluence page is "verified" when Confluence returns it, otherwise "link only" |
-| **Process** | The Definition of Done record of DefinitionGuard, or the `checklist` property of Checklists for Jira | A DefinitionGuard record counts when its Ed25519 signature is verified; otherwise it is "Reported, not verified" and not scored |
+| **Process** | The Definition of Done record of DefinitionGuard, or the `checklist` property of Checklists for Jira | A DefinitionGuard record counts when its Ed25519 signature is verified; otherwise it counts like no record |
 | **Code** | Pull request count and state from the Jira Development field | A heuristic: apps cannot read review approvals |
 | **Audit** | The approval seal record of LedgerSeal | Counts when its Ed25519 signature is verified |
 
