@@ -55,5 +55,5 @@ This document provides standardized answers to common questions found in enterpr
 | Question | Answer |
 |---|---|
 | **Vulnerability Reporting Policy** | Dedicated security inbox (`security@asymm.systems`) with initial acknowledgement within 72 hours. |
-| **Incident Response SLA** | Critical security incidents evaluated within 24 hours; patches deployed through Forge automated pipelines. |
+| **Incident Response SLA** | Incidents are handled under the incident response process at https://asymm.systems/security. Security fixes for the Marketplace apps follow Atlassian's Marketplace security bug fix policy (for cloud apps: critical within 10 days, high within 4 weeks) and are released through Forge deploys. |
 | **Offline Verifiability** | Cryptographic evidence can be verified offline using our open-source, zero-dependency Node.js verifier. |
