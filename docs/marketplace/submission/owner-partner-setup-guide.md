@@ -24,6 +24,7 @@ Can it be a shared address such as sudo@asymm.systems? Not for these steps:
    | Website | https://asymm.systems |
    | Contact email | fahim@asymm.systems |
    | Support email or page | support@asymm.systems, https://asymm.systems/support |
+   | Logo | `/home/fahimfarookme/Documents/projects/asymm-corporate/repository/code/asymm-corporate-code-brand/dist/asymm-mark-dark-400.png` (400 x 400, the `[ }` mark on a dark square; `asymm-mark-dark-1000.png` if a larger image is asked for). BRAND-SPEC.md uses the square mark for avatars; the wordmark is not readable below about 120 px. |
    | SLA statement URL | https://asymm.systems/support (it states the response times; after the next site release the Jira section is also at https://asymm.systems/support#jira-apps) |
    | Address | the company's registered address |
    | "Describe your organization in 750 characters or less" (shown on your partner page) | the text below (620 characters) |
