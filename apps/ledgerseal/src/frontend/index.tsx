@@ -105,6 +105,8 @@ export const LedgerSealPanel: React.FC = () => {
         form === 'revoke'
           ? ((await invoke('revoke-seal-api', { reason: reason.trim() })) as { ok: boolean; message?: string } | undefined)
           : ((await invoke('seal-issue-api', {
+              // F-05: the state this panel showed; the seal is refused when the issue changed since
+              viewHash: result?.viewHash,
               signature: {
                 meaning,
                 declarationVersion: DECLARATION.version,

@@ -46,7 +46,8 @@ export type SealErrorCode =
   | 'NOT_SEALED'
   | 'SNAPSHOT_TOO_LARGE'
   | 'LICENSE_INACTIVE'
-  | 'NOT_ADMIN';
+  | 'NOT_ADMIN'
+  | 'ISSUE_CHANGED';
 
 export interface SealFailure {
   ok: false;
@@ -67,8 +68,17 @@ const MESSAGES: Record<SealErrorCode, string> = {
   NOT_SEALED: 'This issue is not sealed, so there is no evidence to export.',
   SNAPSHOT_TOO_LARGE: 'This issue is too large to seal (over about 2.6 MB of content). Nothing was saved.',
   LICENSE_INACTIVE: 'The LedgerSeal licence is not active. Ask your Jira admin to renew it.',
-  NOT_ADMIN: 'Only a Jira admin can change who can seal.'
+  NOT_ADMIN: 'Only a Jira admin can change who can seal.',
+  ISSUE_CHANGED: 'The issue changed since you opened it. Nothing was saved. Refresh, review the issue, and seal again.'
 };
+
+/**
+ * The hash of the issue as the viewer saw it (F-05): the current canonical form of the live issue as Jira returned
+ * it. It does not depend on the site key, so the panel and the seal compute it the same way.
+ */
+export function viewHash(live: LiveRead, at: string): string {
+  return computeSnapshotHash(canonicalizeIssueState(live.raw, at, live.fields, CANONICALIZER_VERSION));
+}
 
 export const SELF_REVOKE_MESSAGE = 'You changed this issue after it was sealed, so another approver must revoke the seal.';
 
@@ -398,6 +408,8 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   const parties = new PartyRepository(deps.storage);
   const read = await readLiveSnapshot(deps.jira, issue.id, now, { party: await parties.partyForRead() });
   if (!read) return fail('JIRA_UNREACHABLE');
+  // F-05: the seal covers what the approver reviewed; a change since the panel loaded refuses the seal
+  if (typeof payload?.viewHash === 'string' && payload.viewHash !== viewHash(read, now)) return fail('ISSUE_CHANGED');
   const repo = new SealRepository(deps.storage);
   // A record written before ADR-010 is converted first, so the new seal continues a record with tokens only
   const conversion = await convertIfNeeded(deps, repo, issue.id);
@@ -595,6 +607,7 @@ export async function verifyIssueFlow(payload: any, context: any, deps: LedgerSe
     issueKey: issue.key,
     rights: await viewerRights(deps, issue.id, String(context.accountId), result, live),
     approverGroups: await approverGroupNames(deps.storage),
+    viewHash: viewHash(live, now),
     // B5: the panel says so when this installation writes unsigned attestations
     signing: { signed: Boolean(deps.signer), keyId: deps.signer?.keyId ?? null }
   };
