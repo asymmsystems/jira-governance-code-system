@@ -1,3 +1,9 @@
+/**
+ * Tests of the v1 checklist engine and the built-in templates.
+ *
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ * @author Fahim Farook
+ */
 import { ChecklistEngine, DEFAULT_DEFINITION_OF_DONE, getTemplateForCategory } from '../../src/domain/checklist-engine';
 import { ChecklistTemplate } from '../../src/domain/models';
 

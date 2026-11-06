@@ -12,8 +12,8 @@ const APP = path.join(__dirname, '..');
 const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap(f => (f.isDirectory() ? walk(path.join(d, f.name)) : [path.join(d, f.name)]));
 
 describe('B-19 hygiene', () => {
-  it('every source file carries the Asymm Systems copyright header and @author Fahim Farook', () => {
-    const missing = walk(path.join(APP, 'src'))
+  it('every source and test file carries the Asymm Systems copyright header and @author Fahim Farook', () => {
+    const missing = [...walk(path.join(APP, 'src')), ...walk(path.join(APP, 'test'))]
       .filter(f => /\.tsx?$/.test(f))
       .filter(f => {
         const head = fs.readFileSync(f, 'utf8').slice(0, 600);
@@ -34,6 +34,14 @@ describe('B-19 hygiene', () => {
   it('does not depend on the unused @forge/storage package', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(APP, 'package.json'), 'utf8'));
     expect(pkg.dependencies['@forge/storage']).toBeUndefined();
+  });
+
+  it('(BL-5) pins prosemirror-view to a fixed release, as CascadePlan does, and the lock file uses it', () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(APP, 'package.json'), 'utf8'));
+    expect(pkg.overrides).toEqual({ 'prosemirror-view': '^1.42.3' });
+    const lock = JSON.parse(fs.readFileSync(path.join(APP, 'package-lock.json'), 'utf8'));
+    const [major, minor] = String(lock.packages['node_modules/prosemirror-view'].version).split('.').map(Number);
+    expect(major === 1 && minor >= 42).toBe(true);
   });
 
   it('bundles the panel icon as a resource, with no remote icon URL', () => {
