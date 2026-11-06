@@ -1,0 +1,27 @@
+# Copyright (c) 2026 Asymm Systems. All rights reserved.
+#
+# @author Fahim Farook
+#
+# FSRT canary. This is a test fixture, never deployed. Its one UI resolver calls Jira as the app
+# without an authorization check, so FSRT's authorization scanner must report it. The FSRT
+# workflow fails when it does not, so a scanner that has stopped analysing cannot pass silently.
+modules:
+  jira:issuePanel:
+    - key: fsrt-canary-issue-panel
+      resource: main
+      resolver:
+        function: resolver
+      title: FSRT canary
+  function:
+    - key: resolver
+      handler: index.handler
+resources:
+  - key: main
+    path: static
+permissions:
+  scopes:
+    - read:jira-work
+app:
+  runtime:
+    name: nodejs22.x
+  id: ari:cloud:ecosystem::app/00000000-0000-0000-0000-000000000000

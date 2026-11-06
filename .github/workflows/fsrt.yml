@@ -5,7 +5,10 @@
 # Scans every Forge app with FSRT, Atlassian's Forge Security Requirements Tester, the scanner
 # behind Marketplace security tickets such as AMS-76722 (Custom-Check-Authorization). FSRT is
 # built from a pinned commit and cached by that commit. The job fails on any finding that
-# docs/security/fsrt-allowlist.txt does not justify, and on a scan that does not complete.
+# docs/security/fsrt-allowlist.txt does not justify, on a scan that does not complete, and on a
+# scan that analysed nothing (no source file parsed or no function checked). Before any app is
+# scanned, FSRT scans the canary in tools/ci/fsrt-canary, an app with one unchecked asApp() call;
+# when FSRT does not report it, the workflow fails and no app scan runs.
 # The rule FSRT applies is written down in docs/security/fsrt-scan-2026-11-07.md.
 name: FSRT security scan
 
@@ -16,6 +19,7 @@ on:
       - 'packages/**'
       - '.github/workflows/fsrt.yml'
       - 'tools/ci/fsrt_gate.py'
+      - 'tools/ci/fsrt-canary/**'
       - 'docs/security/fsrt-allowlist.txt'
   pull_request:
     paths:
@@ -23,6 +27,7 @@ on:
       - 'packages/**'
       - '.github/workflows/fsrt.yml'
       - 'tools/ci/fsrt_gate.py'
+      - 'tools/ci/fsrt-canary/**'
       - 'docs/security/fsrt-allowlist.txt'
   workflow_dispatch:
 
@@ -85,9 +90,48 @@ jobs:
           test "$(cat ~/fsrt-bin/FSRT_SHA)" = "$FSRT_SHA"
           ~/fsrt-bin/fsrt --version
 
+  # A scanner that has stopped analysing reports nothing, which looks like a pass. The canary
+  # proves, on every run, that this FSRT build still finds an unchecked asApp() call.
+  canary:
+    name: FSRT canary
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Restore the FSRT binary
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/fsrt-bin
+          key: fsrt-bin-${{ runner.os }}-${{ env.FSRT_SHA }}
+          fail-on-cache-miss: true
+
+      - name: Run FSRT on the canary
+        env:
+          FORGE_LOG: info,fsrt=debug
+        run: |
+          mkdir -p fsrt-out
+          ~/fsrt-bin/fsrt --appkey systems.asymm.fsrt-canary \
+            --out fsrt-out/fsrt-canary.json tools/ci/fsrt-canary 2> fsrt-out/fsrt-canary.log
+          cat fsrt-out/fsrt-canary.json
+
+      - name: Keep the raw FSRT output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fsrt-canary-${{ github.sha }}
+          path: fsrt-out/
+          retention-days: 90
+
+      - name: Fail unless FSRT reports the canary
+        run: python3 tools/ci/fsrt_gate.py --canary fsrt-canary fsrt-out/fsrt-canary.json fsrt-out/fsrt-canary.log
+
   scan:
     name: FSRT ${{ matrix.app }}
-    needs: build
+    needs: [build, canary]
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -109,14 +153,19 @@ jobs:
       # The default scanners are the ones Atlassian runs on a submission: authentication,
       # authorization (AMS-76722), auth-header, permission, secret and runtime-version. The report
       # carries the Marketplace app key, as Atlassian's does. secret-logging is opt-in in FSRT, so
-      # it runs as a second scan and is gated the same way.
+      # it runs as a second scan and is gated the same way. FORGE_LOG makes FSRT log each file it
+      # parses and each function it checks; the gate reads that log to fail a scan of nothing.
       - name: Run FSRT
+        env:
+          FORGE_LOG: info,fsrt=debug
         run: |
           mkdir -p fsrt-out
           ~/fsrt-bin/fsrt --appkey "systems.asymm.${{ matrix.app }}" \
-            --out "fsrt-out/fsrt-${{ matrix.app }}.json" "apps/${{ matrix.app }}"
+            --out "fsrt-out/fsrt-${{ matrix.app }}.json" "apps/${{ matrix.app }}" \
+            2> "fsrt-out/fsrt-${{ matrix.app }}.log"
           ~/fsrt-bin/fsrt --scanners secret-logging --appkey "systems.asymm.${{ matrix.app }}" \
-            --out "fsrt-out/fsrt-${{ matrix.app }}-secret-logging.json" "apps/${{ matrix.app }}"
+            --out "fsrt-out/fsrt-${{ matrix.app }}-secret-logging.json" "apps/${{ matrix.app }}" \
+            2> "fsrt-out/fsrt-${{ matrix.app }}-secret-logging.log"
           cat fsrt-out/*.json
 
       - name: Keep the raw FSRT output
@@ -130,6 +179,8 @@ jobs:
       - name: Fail on findings not in the allowlist
         run: |
           status=0
-          python3 tools/ci/fsrt_gate.py "${{ matrix.app }}" "fsrt-out/fsrt-${{ matrix.app }}.json" docs/security/fsrt-allowlist.txt || status=1
-          python3 tools/ci/fsrt_gate.py "${{ matrix.app }}" "fsrt-out/fsrt-${{ matrix.app }}-secret-logging.json" docs/security/fsrt-allowlist.txt || status=1
+          python3 tools/ci/fsrt_gate.py "${{ matrix.app }}" "fsrt-out/fsrt-${{ matrix.app }}.json" \
+            docs/security/fsrt-allowlist.txt "fsrt-out/fsrt-${{ matrix.app }}.log" || status=1
+          python3 tools/ci/fsrt_gate.py "${{ matrix.app }}" "fsrt-out/fsrt-${{ matrix.app }}-secret-logging.json" \
+            docs/security/fsrt-allowlist.txt "fsrt-out/fsrt-${{ matrix.app }}-secret-logging.log" || status=1
           exit $status
