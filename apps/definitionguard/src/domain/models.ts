@@ -179,7 +179,7 @@ export interface CriterionState extends TemplateCriterion {
   evidenceContentId?: string;              // WorkEffortContent DOD_EVIDENCE for the current DONE
   legacyName?: string;                     // v1 display name, only when v1 recorded no accountId
   breakdownFromDate?: string;              // fromDate of the WORK_EFF_BREAKDOWN link (part of its key)
-  openedAt?: string;                       // when the criterion last became open (H-2); derived in the fold
+  openedAt?: string;                       // when a closed criterion was last opened again (H-2); none = since the issue exists
 }
 
 export interface LegacyRef {

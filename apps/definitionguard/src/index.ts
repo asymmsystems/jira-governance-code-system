@@ -194,7 +194,7 @@ async function evaluateTransition(payload: any, context?: any, storageProvider?:
     const changes = await assigneeChanges(issueId, 'app');
     const parties = new PartyStore(resolveStorage(storageProvider));
     for (const c of checked) {
-      const ids = await parties.idsOf(assigneesSince(changes, current, c.openedAt || c.breakdownFromDate));
+      const ids = await parties.idsOf(assigneesSince(changes, current, c.openedAt));
       if (c.lastStatusByPartyId && ids.has(c.lastStatusByPartyId)) excludedIds.add(c.workEffortId);
     }
   }
@@ -388,11 +388,11 @@ export const ASSIGNEE_WAIVE_DENIED =
  * True when the actor is the current assignee, or was the assignee at any moment after the item
  * was last opened (H-2). Read as the user; fails closed when Jira cannot be read.
  */
-async function actorWasAssignee(issueKey: string, actorAccountId: string, criterion: { openedAt?: string; breakdownFromDate?: string }): Promise<'current' | 'former' | false> {
+async function actorWasAssignee(issueKey: string, actorAccountId: string, criterion: { openedAt?: string }): Promise<'current' | 'former' | false> {
   const current = await currentAssignee(issueKey);
   if (current === actorAccountId) return 'current';
   const changes = await assigneeChanges(issueKey, 'user');
-  return assigneesSince(changes, current, criterion.openedAt || criterion.breakdownFromDate).has(actorAccountId) ? 'former' : false;
+  return assigneesSince(changes, current, criterion.openedAt).has(actorAccountId) ? 'former' : false;
 }
 export const WAIVER_REASON_INVALID = 'Give a reason of 10 to 500 characters for the waiver.';
 

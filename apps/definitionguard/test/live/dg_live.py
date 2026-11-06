@@ -55,3 +55,50 @@ def rest(pg, method, path, body=None):
 def save(name, data):
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / name).write_text(json.dumps(data, indent=2))
+
+
+# ---- Issue panel helpers (UI Kit renders in the page, not in a frame) ----
+
+def open_issue(pg, key, wait_ms=8000):
+    pg.goto(SITE + '/browse/' + key, wait_until='domcontentloaded', timeout=150000)
+    pg.get_by_role('button', name='View app actions').first.wait_for(timeout=90000)
+    pg.wait_for_timeout(wait_ms)
+
+
+def ensure_panel(pg):
+    """Opens the Definition of Done panel, adding it from View app actions when it is not shown."""
+    if pg.get_by_text('Definition of Done items').count() == 0:
+        if pg.get_by_role('button', name='Refresh').count() == 0:
+            pg.get_by_role('button', name='View app actions').first.click()
+            pg.wait_for_timeout(1500)
+            pg.get_by_role('menuitem', name='Definition of Done').first.click()
+    pg.get_by_text('Definition of Done items').first.wait_for(timeout=90000)
+    pg.wait_for_timeout(2500)
+
+
+def row_button(pg, title, button):
+    """The button (Waive, Tick with evidence, Show evidence) in the row of the item with this title."""
+    # The nearest ancestor that holds exactly one checkbox is the item's own row.
+    return pg.locator(f"xpath=//*[normalize-space(text())='{title}']/ancestor::*[count(.//input[@type='checkbox'])=1][last()]//button[normalize-space()='{button}']").first
+
+
+def item_checkbox(pg, title):
+    return pg.get_by_role('checkbox', name=title, exact=True).first
+
+
+def panel_error(pg):
+    loc = pg.locator("xpath=//*[normalize-space(text())='Not saved']/ancestor::section[1]")
+    return loc.first.inner_text() if loc.count() else ''
+
+
+def wait_quiet(pg, ms=6000):
+    pg.wait_for_timeout(ms)
+
+
+def expand_history(pg):
+    """Opens the "Checklist audit history" section and loads it."""
+    if pg.get_by_role('button', name='Load audit history').count() == 0:
+        pg.locator("xpath=//*[normalize-space(text())='Checklist audit history']/ancestor::*[.//button[normalize-space()='Show details']][1]//button[normalize-space()='Show details']").first.click()
+        pg.wait_for_timeout(2000)
+    pg.get_by_role('button', name='Load audit history').first.click()
+    pg.wait_for_timeout(8000)

@@ -258,7 +258,6 @@ function foldRows(state: DodState, transitionName: TransitionName, seq: number, 
           if (c && !row.thruDate) {
             if (row.sequenceNum !== undefined) c.sequenceNum = row.sequenceNum;
             c.breakdownFromDate = row.fromDate;
-            if (!c.openedAt) c.openedAt = row.fromDate;
           }
         }
         break;
@@ -268,6 +267,9 @@ function foldRows(state: DodState, transitionName: TransitionName, seq: number, 
         if (transitionName !== 'Migrate' && !isValidChange(c.currentStatusId, row.statusId, transitionName)) {
           throw new Error(`DefinitionGuard: ${c.currentStatusId} to ${row.statusId} is not a valid ${transitionName}`);
         }
+        // H-2: openedAt is set only when a closed item is opened again (Reopen, Reset). A criterion that
+        // was never reopened has none, so the not-the-assignee rule looks at the whole issue history:
+        // the checklist exists, at least in memory, from the moment the issue exists.
         if (row.statusId === 'DOD_OPEN' && c.currentStatusId !== 'DOD_OPEN') c.openedAt = row.statusDatetime;
         c.currentStatusId = row.statusId;
         c.lastStatusUpdate = row.statusId === 'DOD_OPEN' ? undefined : row.statusDatetime;

@@ -173,9 +173,21 @@ describe('B-12 roles and waivers', () => {
       expect(res.items.find(i => i.id === 'peer-review')!.isCompleted).toBe(true);
     });
 
-    it('lets someone tick who was the assignee only before the item was opened', async () => {
+    it('(live 2026-11-06) refuses the former assignee when nothing was stored before the unassign', async () => {
+      // Probe PAY-23: assigned to the user, unassigned, then the user ticked the first item ever stored.
+      assignee = null;
+      changes = [{ created: new Date(Date.now() - 60000).toISOString(), from: 'dev', to: null }];
+      storage.sets = [];
+      await expect(call('dev', () => toggleChecklistItem({ itemId: 'peer-review', isCompleted: true }, as('dev'), storage)))
+        .rejects.toThrow(FORMER_ASSIGNEE_DENIED);
+      expect(storage.sets.filter(k => k.startsWith('dg:evt:') || k.startsWith('dg:state:'))).toEqual([]);
+    });
+
+    it('lets someone tick who was the assignee only before the item was reopened', async () => {
       assignee = 'reviewer';
       changes = [{ created: '2020-01-01T00:00:00.000+0000', from: 'dev', to: 'reviewer' }];
+      await call('lead', () => toggleChecklistItem({ itemId: 'peer-review', isCompleted: true }, as('lead'), storage));
+      await call('lead', () => toggleChecklistItem({ itemId: 'peer-review', isCompleted: false }, as('lead'), storage));
       const res = await call('dev', () => toggleChecklistItem({ itemId: 'peer-review', isCompleted: true }, as('dev'), storage));
       expect(res.items.find(i => i.id === 'peer-review')!.isCompleted).toBe(true);
     });

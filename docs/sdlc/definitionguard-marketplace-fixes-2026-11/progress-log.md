@@ -117,6 +117,13 @@ Baseline at `7f87747` (clean install of `packages/asymm-jira-ui`, then the app):
 - **What changed:** `src/security/permissions.ts`: `ADMIN_KEYS`, `checkAnyProjectPermission`, `checkAnyIssuePermission` (one `mypermissions` call with both keys, as the user, fail closed). `requireProjectAdmin` (settings, coverage) and `exportChecklistHistory` use them. Messages: "Only a project admin or a Jira admin can change DefinitionGuard templates." and "... can export this history." The block message names the button as Jira labels it: "(from the View app actions button if it is not shown)"; the reviewer notes say the same. Listing: "Exporting and the project settings need Administer projects on the project, or Jira admin."
 - **Proof:** `test/settings/project-templates.test.ts` "lets a Jira admin who is not a project admin use the settings, as Jira does (found live on PAY)" (and the call asks for `ADMINISTER_PROJECTS,ADMINISTER`); `test/resolvers/export.test.ts` "lets a Jira admin who is not a project admin export"; the refusal tests use the new messages. Full suite 419 passed.
 
+### Live finding. H-2 missed a former assignee when nothing was stored yet
+
+- **Found live** on 2026-11-06 (version 6.1.0), probe PAY-23 (created assigned to the owner): the owner was unassigned at 07:07:55 (changelog) and ticked "Code review approved by another engineer" at 07:08; the tick was accepted. PAY-23 had no stored checklist before that tick, so the checklist was built in memory and the item's "opened" time was the moment of the tick, after the unassign.
+- **Decision:** [ADOPTED: owner instruction 'do NOW', 2026-11-06] an item that was never reopened counts the whole issue history: the checklist exists, at least in memory, from the moment the issue exists. `openedAt` is set only when a closed item is opened again (Reopen, Reset).
+- **What changed:** `src/domain/event-log.ts` (no `openedAt` from the template link date), `src/index.ts` (no `breakdownFromDate` fallback in the tick, waive and validator checks).
+- **Proof:** `test/resolvers/roles-waivers.test.ts` "(live 2026-11-06) refuses the former assignee when nothing was stored before the unassign": fails on `754ceb6` ("1 failed, 18 passed") and passes with the fix ("19 passed"); "lets someone tick who was the assignee only before the item was reopened" replaces the test that assumed the old window. Full suite 420 passed.
+
 ## Site changes needed
 
 (The main session applies these to the asymm.systems site repository, `asymm-corporate/repository/code/asymm-corporate-code-pfw/src/main/jbake/`, read at `6d838f9`. Each: page, old text, new text.)
