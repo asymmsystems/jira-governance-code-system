@@ -7,18 +7,25 @@
  * - asApp() and asUser() are separate mocks, so a test can tell which identity made a call.
  * - route`` interpolates values, so a test can assert the real path.
  * - CountingStorage serialises on every call, like a remote store, and counts operations.
+ * - The Browse projects check that starts every issue panel resolver (requireBrowseIssue) is
+ *   answered by jira.browse: 'grant' (the default after reset), 'deny', a failing HTTP status, or
+ *   'handler' to pass it to jira.handler. The call is still recorded in jira.calls.
  */
 import { StorageProvider } from '../../src/storage/checklist-repository';
 
 export type JiraReply = { status: number; body?: any };
 export type JiraCall = { who: 'app' | 'user'; method: string; path: string; body?: any };
 
+export const BROWSE_CHECK = /\/rest\/api\/3\/mypermissions\?issueId=[^&]+&permissions=BROWSE_PROJECTS$/;
+
 export const jira = {
   calls: [] as JiraCall[],
   handler: (_call: JiraCall): JiraReply => ({ status: 200, body: {} }),
+  browse: 'grant' as 'grant' | 'deny' | 'handler' | number,
   reset() {
     this.calls = [];
     this.handler = () => ({ status: 200, body: {} });
+    this.browse = 'grant';
   },
   callsTo(fragment: string, who?: 'app' | 'user') {
     return this.calls.filter(c => c.path.includes(fragment) && (!who || c.who === who));
@@ -29,7 +36,9 @@ export function makeRequester(who: 'app' | 'user') {
   return jest.fn(async (path: string, opts?: any) => {
     const call: JiraCall = { who, method: opts?.method || 'GET', path, body: opts?.body ? JSON.parse(opts.body) : undefined };
     jira.calls.push(call);
-    const reply = jira.handler(call);
+    const reply = who === 'user' && BROWSE_CHECK.test(path) && jira.browse !== 'handler'
+      ? browseReply()
+      : jira.handler(call);
     if ((reply as any).throws) throw new Error(String((reply as any).throws));
     const retryAfter = (reply as any).retryAfter;
     return {
@@ -39,6 +48,11 @@ export function makeRequester(who: 'app' | 'user') {
       headers: { get: (name: string) => (name.toLowerCase() === 'retry-after' && retryAfter !== undefined ? String(retryAfter) : null) }
     };
   });
+}
+
+function browseReply(): JiraReply {
+  if (typeof jira.browse === 'number') return { status: jira.browse };
+  return { status: 200, body: { permissions: { BROWSE_PROJECTS: { havePermission: jira.browse === 'grant' } } } };
 }
 
 export function routeImpl(strings: TemplateStringsArray, ...values: any[]): string {

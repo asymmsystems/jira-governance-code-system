@@ -34,6 +34,7 @@ import {
   resolveStorage,
   fetchLiveJiraIssue
 } from '../../src/index';
+import { ITEM_ID_INVALID } from '../../src/domain/input-rules';
 import { eventKey, stateKey, legacyKey } from '../../src/storage/checklist-store';
 import { ChecklistEngine, DEFAULT_DEFINITION_OF_DONE, BUG_DEFINITION_OF_DONE, STORY_DEFINITION_OF_DONE } from '../../src/domain/checklist-engine';
 
@@ -97,7 +98,7 @@ describe('panel resolvers (v3 change log)', () => {
     });
 
     it('returns an empty history for an issue with no record', async () => {
-      const history: any = await handler({ call: { functionKey: 'getHistory', payload: { cursor: 7 } }, context: ctx('49999') } as any);
+      const history: any = await handler({ call: { functionKey: 'getHistory', payload: {} }, context: ctx('49999') } as any);
       expect(history).toMatchObject({ events: [], auditTrail: [], eventCount: 0, chain: { ok: true, checked: 0 } });
     });
   });
@@ -147,14 +148,17 @@ describe('panel resolvers (v3 change log)', () => {
       expect(storage.read(eventKey('40001', 3)).actorPartyId).toBe(storage.read(eventKey('40001', 2)).actorPartyId);
     });
 
-    it('refuses a change that StatusValidChange does not allow, before any Jira call or write (B-21)', async () => {
+    it('refuses a change that StatusValidChange does not allow, before any Jira call but the Browse check, and before any write (B-21)', async () => {
       await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx(), storage);
       storage.sets = [];
       jira.calls = [];
       await expect(toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx(), storage)).rejects.toThrow('This item is already done.');
       await expect(toggleChecklistItem({ itemId: 'item-peer-review', isCompleted: false }, ctx(), storage)).rejects.toThrow('This item is already open.');
       expect(storage.sets).toEqual([]);
-      expect(jira.calls).toEqual([]);
+      expect(jira.calls.map(c => `${c.who} ${c.path}`)).toEqual([
+        'user /rest/api/3/mypermissions?issueId=40001&permissions=BROWSE_PROJECTS',
+        'user /rest/api/3/mypermissions?issueId=40001&permissions=BROWSE_PROJECTS'
+      ]);
     });
 
     it('rejects an unknown item and writes nothing', async () => {
@@ -163,7 +167,8 @@ describe('panel resolvers (v3 change log)', () => {
     });
 
     it('rejects a missing itemId', async () => {
-      await expect(toggleChecklistItem({}, ctx(), storage)).rejects.toThrow('Missing itemId');
+      await expect(toggleChecklistItem({}, ctx(), storage)).rejects.toThrow(ITEM_ID_INVALID);
+      expect(jira.calls).toEqual([]);
     });
 
     it('publishes the schema v3 property with the counts and the head hash', async () => {

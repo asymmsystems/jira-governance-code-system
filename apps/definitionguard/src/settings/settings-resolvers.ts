@@ -22,6 +22,7 @@ import { publishAttestation } from '../integrity/attestation';
 import { ProjectConfigStore } from './project-config';
 import { withRetry } from '../jira/jira-client';
 import { PartyStore } from '../storage/party-store';
+import { cursorOf } from '../domain/input-rules';
 
 export const TEMPLATE_DENIED = 'Only a project admin or a Jira admin can change DefinitionGuard templates.';
 
@@ -119,6 +120,7 @@ export async function saveTemplate(payload: any, context?: any, storageProvider?
 // M-8: each issue costs several KVS reads, two writes and a property PUT with up to 3 tries, so a
 // page of 10 stays well inside the 25 s invocation limit even under Jira rate limiting.
 export const RESYNC_PAGE = 10;
+export const RESYNC_CURSOR_INVALID = 'DefinitionGuard could not continue the re-sync. Start it again.';
 export const NO_TEMPLATE_TO_RESYNC = 'This issue type has no project template to re-sync to.';
 
 /**
@@ -136,7 +138,7 @@ export async function resyncIssues(payload: any, context?: any, storageProvider?
     throw new Error(NO_TEMPLATE_TO_RESYNC);
   }
   const jql = `project = ${c.projectId} AND issuetype = ${issueTypeId} AND statusCategory != Done`;
-  const cursor = typeof payload?.cursor === 'string' ? payload.cursor : '';
+  const cursor = cursorOf(payload?.cursor, RESYNC_CURSOR_INVALID) || '';
   const res = cursor
     ? await withRetry(() => api.asApp().requestJira(route`/rest/api/3/search/jql?jql=${jql}&maxResults=${RESYNC_PAGE}&fields=id,key&nextPageToken=${cursor}`))
     : await withRetry(() => api.asApp().requestJira(route`/rest/api/3/search/jql?jql=${jql}&maxResults=${RESYNC_PAGE}&fields=id,key`));

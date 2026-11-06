@@ -4,7 +4,7 @@
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
  */
-import { jira, CountingStorage, JiraCall, JiraReply } from '../helpers/forge-mocks';
+import { jira, BROWSE_CHECK, CountingStorage, JiraCall, JiraReply } from '../helpers/forge-mocks';
 
 jest.mock('@forge/api', () => {
   const m = require('../helpers/forge-mocks');
@@ -76,9 +76,10 @@ describe('B-02 permission checks', () => {
     grant({ EDIT_ISSUES: true });
     await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx, storage);
     const userCalls = jira.callsTo('/mypermissions', 'user');
-    expect(userCalls).toHaveLength(1);
-    expect(userCalls[0].path).toContain('issueKey=DEMO-21');
-    expect(userCalls[0].path).toContain('permissions=EDIT_ISSUES');
+    expect(userCalls).toHaveLength(2);
+    expect(userCalls[0].path).toMatch(BROWSE_CHECK);
+    expect(userCalls[1].path).toContain('issueKey=DEMO-21');
+    expect(userCalls[1].path).toContain('permissions=EDIT_ISSUES');
     expect(jira.callsTo('/mypermissions', 'app')).toEqual([]);
   });
 

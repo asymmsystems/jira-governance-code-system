@@ -79,7 +79,7 @@ describe('B-18 resolvers and the validator retry a 429', () => {
     expect(jira.callsTo('/mypermissions')).toHaveLength(2);
   });
 
-  it('a toggle makes 2 Jira calls on the happy path: the permission check and the property write', async () => {
+  it('a toggle makes 3 Jira calls on the happy path: the Browse check, the permission check and the property write', async () => {
     jira.handler = (c: JiraCall) => (c.path.includes('/mypermissions') ? { status: 200, body: { permissions: { EDIT_ISSUES: { havePermission: true } } } } : { status: 204 });
     const ctx = { accountId: 'a', extension: { issue: { id: '97001', key: 'DEMO-97001', type: 'Task', typeId: '10004' }, project: { id: '10000' } } };
     const storage = new CountingStorage();
@@ -87,6 +87,7 @@ describe('B-18 resolvers and the validator retry a 429', () => {
     jira.calls = [];
     await toggleChecklistItem({ itemId: 'item-peer-review', isCompleted: true }, ctx, storage);
     expect(jira.calls.map(c => `${c.who} ${c.method} ${c.path.split('?')[0]}`)).toEqual([
+      'user GET /rest/api/3/mypermissions',
       'user GET /rest/api/3/mypermissions',
       'app PUT /rest/api/3/issue/97001/properties/definitionguard-dod'
     ]);

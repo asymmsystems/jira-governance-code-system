@@ -37,6 +37,23 @@ describe('B-20 manifest', () => {
     expect(manifest).toContain('- read:jira-user');
   });
 
+  it('(MK-02 Q7) declares the granular issue property write scope, not write:jira-work', () => {
+    expect(manifest).toMatch(/scopes:\n    - read:jira-work\n    - write:issue\.property:jira\n    - read:jira-user\n    - storage:app\n    - read:workflow:jira\n    - report:personal-data\n?$/);
+    expect(manifest).not.toContain('write:jira-work');
+  });
+
+  it('(MK-02 Q7) makes only one Jira write, a PUT of its own issue property', () => {
+    const src = path.join(__dirname, '../src');
+    const files = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true })
+      .flatMap(e => (e.isDirectory() ? files(path.join(dir, e.name)) : [path.join(dir, e.name)]))
+      .filter(f => /\.tsx?$/.test(f));
+    const writes = files(src).flatMap(f => [...fs.readFileSync(f, 'utf8').matchAll(/method:\s*'([A-Z]+)'/g)]
+      .map(m => `${path.relative(src, f)} ${m[1]}`));
+    expect(writes).toEqual(['integrity/attestation.ts PUT']);
+    const attestation = fs.readFileSync(path.join(src, 'integrity/attestation.ts'), 'utf8');
+    expect(attestation).toMatch(/requestJira\(route`\/rest\/api\/3\/issue\/\$\{[^}]+\}\/properties\/\$\{PROPERTY_KEY\}`,\s*\{\s*method: 'PUT'/);
+  });
+
   it('(BL-1, ADR-010) declares report:personal-data and a weekly trigger bound to personalDataTrigger', () => {
     expect(manifest).toContain('- report:personal-data');
     expect(manifest).toMatch(/scheduledTrigger:\n(?:\s+#.*\n)*\s+- key: personal-data-report\n\s+function: personal-data-fn\n\s+interval: week/);

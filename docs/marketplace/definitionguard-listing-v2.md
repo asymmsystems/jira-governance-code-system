@@ -93,11 +93,12 @@ DefinitionGuard provides records that support internal and external audits:
 
 - **Scopes.** The app requests these scopes, and why:
 - `read:jira-work`: read issues, statuses and your Jira permissions.
-- `write:jira-work`: write the `definitionguard-dod` issue property.
+- `write:issue.property:jira`: write the `definitionguard-dod` issue property. The app writes nothing else in Jira.
 - `read:jira-user`: read group memberships and search groups for approver authority.
 - `storage:app`: keep checklists, their history and settings in Forge storage.
 - `read:workflow:jira`: read workflows for the coverage check. Read only.
 - `report:personal-data`: report the stored people to Atlassian once a week, so the app can erase the link to each closed account.
+- **Who can see what.** Seeing an issue's checklist, its evidence and its history needs Browse projects on that issue, checked as the user before anything is read. If Jira cannot answer, the panel shows nothing.
 - **Who can change what.** Ticking needs Edit issues on the issue. An item can also need a chosen Jira permission, or be closed to the current assignee. Exporting and the project settings need Administer projects on the project, or Jira admin. Waiving and resetting need an approver: a project admin, a Jira admin, or a member of a group that a Jira admin chooses on the **DefinitionGuard approvers** page. A user with the waiver permission of the template can also waive. Each check runs as the user.
 - **Where data lives.** Checklists, history, templates and approver groups are stored in Forge storage for your site.
 - **The signature.** On every change the app writes a summary of the checklist to the `definitionguard-dod` issue property: `schemaVersion` (3), `issueId`, `templateId`, `templateVersion`, `stateVersion`, `mandatoryTotal`, `mandatoryCompleted`, `openMandatoryItemIds`, `isFullySatisfied`, `headHash` (the hash of the newest history event), `issuedAt`, `keyId` and `sig`. `sig` is an Ed25519 signature over the canonical JSON (sorted keys, no spaces) of every other field, `keyId` included. The production key id is `dg-prod-2026-11`; its public key is published at https://asymm.systems/product/jira-governance/signing-keys.html. The signature shows that DefinitionGuard wrote the issue property. The app vendor holds the signing key, so the signature does not protect against the vendor. If the signing key is not set, the property is written with `keyId` and `sig` set to null, the app logs a warning, and the panel's history section says "Property not signed"; it never signs with an unnamed key. Other apps and users can still write the issue property; the gate never reads it.

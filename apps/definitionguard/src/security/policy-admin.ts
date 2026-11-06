@@ -15,6 +15,7 @@ import { StorageProvider } from '../storage/checklist-repository';
 import { PolicyRepository } from '../storage/policy-repository';
 import { isJiraAdmin } from './approver';
 import { PartyStore } from '../storage/party-store';
+import { isGroupId, MAX_GROUP_ID_CHARS } from '../domain/input-rules';
 
 export const MAX_APPROVER_GROUPS = 20;
 export const MAX_QUERY_CHARS = 100;
@@ -22,6 +23,9 @@ export const MAX_QUERY_CHARS = 100;
 export const NOT_ADMIN_MESSAGE =
   'DefinitionGuard: you do not have permission to view or manage authorization settings. ' +
   'Contact your Jira site administrator.';
+
+export const GROUP_IDS_INVALID =
+  `Each group id must be text of 1 to ${MAX_GROUP_ID_CHARS} characters. Choose the groups from the search.`;
 
 export interface GroupSearchResult {
   groupId: string;
@@ -93,7 +97,10 @@ export async function setApproverPolicyFlow(
   if (!Array.isArray(raw)) {
     return { ok: false, message: 'Invalid group list provided.' };
   }
-  const groupIds = [...new Set(raw.map(id => String(id)).filter(id => id.length > 0))];
+  if (!raw.every(isGroupId)) {
+    return { ok: false, message: GROUP_IDS_INVALID };
+  }
+  const groupIds = [...new Set(raw as string[])];
   if (groupIds.length > MAX_APPROVER_GROUPS) {
     return { ok: false, message: `Choose at most ${MAX_APPROVER_GROUPS} groups.` };
   }
