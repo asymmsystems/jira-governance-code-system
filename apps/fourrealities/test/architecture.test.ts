@@ -50,7 +50,7 @@ describe('ADR-002 volatility layering', () => {
     expect(violations(f => !inside(f, 'accessor'), s => !/^@forge\/(api|kvs)$/.test(s))).toEqual([]);
   });
 
-  it('Accessors import only contracts, other accessors and the platform (Node crypto for signatures, ADR-010)', () => {
+  it('Accessors import only contracts, other accessors and the platform (Node crypto for signatures, ADR-012)', () => {
     expect(violations(f => inside(f, 'accessor'), s => inside(s, 'contract') || inside(s, 'accessor') || /^@forge\/(api|kvs)$/.test(s) || s === 'crypto')).toEqual([]);
   });
 

@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: the weekly personal data run (ADR-012). Reports every stored account id to
+ * FourRealities: the weekly personal data run (ADR-014). Reports every stored account id to
  * Atlassian, erases the accounts Atlassian reports as closed, and writes the fourrealities-exception
  * projection of each affected issue again as the app, so it no longer names the closed account.
  */

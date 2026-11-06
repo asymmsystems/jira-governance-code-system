@@ -23,7 +23,7 @@ modules:
       resolver:
         function: resolver
   jira:adminPage:
-    # ADR-011: evidence sources, decision issue types and approver groups (permission standard).
+    # ADR-013: evidence sources, decision issue types and approver groups (permission standard).
     - key: fourrealities-admin
       title: FourRealities gate authority
       render: native
@@ -34,7 +34,7 @@ modules:
     - key: fourrealities-daily-snapshot
       function: snapshot
       interval: day
-    # ADR-012: the weekly personal data report and the erasure of closed accounts.
+    # ADR-014: the weekly personal data report and the erasure of closed accounts.
     - key: fourrealities-personal-data
       function: personal-data
       interval: week

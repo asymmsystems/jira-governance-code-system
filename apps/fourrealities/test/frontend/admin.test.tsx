@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: the admin page "FourRealities gate authority" (ADR-011).
+ * FourRealities: the admin page "FourRealities gate authority" (ADR-013).
  */
 
 import * as React from 'react';

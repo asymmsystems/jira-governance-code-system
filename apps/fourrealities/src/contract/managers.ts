@@ -23,7 +23,7 @@ export interface ExceptionManager extends Manager {
   record(caller: CallerContext, payload: RecordExceptionPayload | undefined): Promise<WriteResult>;
   /** Approves, rejects, revokes or withdraws a Code exception (ADR-001, Option C). */
   decide(caller: CallerContext, payload: DecideExceptionPayload | undefined): Promise<WriteResult>;
-  /** What the issue panel may offer the viewer for the row's Code exception (ADR-011). */
+  /** What the issue panel may offer the viewer for the row's Code exception (ADR-013). */
   approval(caller: CallerContext, row: IssueRow): Promise<ApprovalView | undefined>;
 }
 
@@ -32,7 +32,7 @@ export interface SnapshotManager extends Manager {
   runScheduled(deadline: number): Promise<ScheduledRunResult>;
 }
 
-/** The admin page "FourRealities gate authority": Jira administrators only, checked on every call (ADR-011). */
+/** The admin page "FourRealities gate authority": Jira administrators only, checked on every call (ADR-013). */
 export interface AdminManager extends Manager {
   view(): Promise<AdminResult<AdminView>>;
   saveSources(payload: unknown): Promise<AdminResult<AdminView>>;
@@ -40,7 +40,7 @@ export interface AdminManager extends Manager {
   saveApprovers(payload: unknown): Promise<AdminResult<AdminView>>;
 }
 
-/** The weekly personal data report and the erasure of closed accounts (ADR-012). */
+/** The weekly personal data report and the erasure of closed accounts (ADR-014). */
 export interface PersonalDataManager extends Manager {
   run(): Promise<PersonalDataRunResult>;
 }

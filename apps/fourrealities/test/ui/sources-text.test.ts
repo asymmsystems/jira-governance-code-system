@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: words for the checks in use and the admin page (ADR-011).
+ * FourRealities: words for the checks in use and the admin page (ADR-013).
  */
 
 import { DEFAULT_SOURCE_SETTINGS, SourcesInUse } from '../../src/contract/data/models';

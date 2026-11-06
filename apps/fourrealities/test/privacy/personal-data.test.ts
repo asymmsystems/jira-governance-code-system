@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: the weekly personal data report and erasure (BL-3, ADR-012), and the storage
+ * FourRealities: the weekly personal data report and erasure (BL-3, ADR-014), and the storage
  * minimisation behind it (F-M2).
  */
 
@@ -21,7 +21,7 @@ const NOW = '2026-11-06T10:00:00.000Z';
 const metrics = new DefaultMetricsEngine();
 const snapshotEngine = new DefaultSnapshotEngine();
 
-/** A site with every kind of stored account id, including a snapshot written before ADR-012. */
+/** A site with every kind of stored account id, including a snapshot written before ADR-014. */
 async function site(): Promise<MemoryStorage> {
   const s = new MemoryStorage();
   await s.set('fr:ex:101:code:2026-11-01T00:00:00.000Z:a', { schemaVersion: 3, issueId: '101', issueKey: 'PAY-1', gate: 'code', status: 'REQUESTED', at: '2026-11-01T00:00:00.000Z', byAccountId: 'dev-1', asRole: 'REQUESTER', reason: 'Configuration change only' });
@@ -34,7 +34,7 @@ async function site(): Promise<MemoryStorage> {
   await s.set('fr:p:PAY:meta', { schemaVersion: 2, projectKey: 'PAY', snapshotId: 's1', generatedAt: '2026-11-05T00:00:00.000Z', generatedBy: 'scheduled', chunkCount: 1 });
   await s.set('fr:p:PAY:chunk:0', { snapshotId: 's1', rows: [{ issueId: '101', assigneeAccountId: 'dev-1' }, { issueId: '106', assigneeAccountId: 'dev-4' }] });
   await s.set('fr:p:PAY:accounts', { generatedAt: '2026-11-05T00:00:00.000Z', accountIds: ['dev-1', 'dev-4'] });
-  // Written before ADR-012: no index, a name, an exception and a note in the row, the viewer in the meta.
+  // Written before ADR-014: no index, a name, an exception and a note in the row, the viewer in the meta.
   await s.set('fr:p:OLD:meta', { schemaVersion: 2, projectKey: 'OLD', snapshotId: 's0', generatedAt: '2026-10-20T00:00:00.000Z', generatedBy: 'viewer-1', chunkCount: 2 });
   await s.set('fr:p:OLD:chunk:0', { snapshotId: 's0', rows: [{ issueId: '201', assigneeName: 'Ana Silva', assigneeAccountId: 'dev-5', codeException: { requestedBy: 'dev-6', decidedBy: 'admin-1' }, reworkNote: { recordedBy: 'dev-7' } }] });
   return s;
@@ -61,7 +61,7 @@ describe('DefaultKvsPersonalDataAccessor', () => {
     expect(await new DefaultKvsPersonalDataAccessor(s).accounts(NOW)).toEqual([{ accountId: 'dev-1', updatedAt: NOW, issueIds: ['1'] }]);
   });
 
-  it('erases closed accounts everywhere, keeps the steps and the work text, and drops the fields ADR-012 no longer stores', async () => {
+  it('erases closed accounts everywhere, keeps the steps and the work text, and drops the fields ADR-014 no longer stores', async () => {
     const s = await site();
     const a = new DefaultKvsPersonalDataAccessor(s);
     await a.erase(['dev-1', 'dev-2', 'dev-3', 'dev-5']);
@@ -183,7 +183,7 @@ describe('DefaultPersonalDataManager', () => {
   });
 });
 
-describe('F-M2, ADR-012: what a snapshot row stores', () => {
+describe('F-M2, ADR-014: what a snapshot row stores', () => {
   it('stores no exception, no note and no name, and cuts free text', () => {
     const long = 'x'.repeat(500);
     const facts = makeFacts({

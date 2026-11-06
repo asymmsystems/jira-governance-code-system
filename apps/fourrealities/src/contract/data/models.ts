@@ -33,17 +33,17 @@ export const NO_PULL_REQUEST: DevFieldSummary = { count: 0, state: null, openCou
 /**
  * Evidence state of one gate. FOUND and MISSING are scored; the other states are excluded
  * from every score and rate. REPORTED: another app's record says something, and FourRealities
- * could not verify it, so it is shown and not scored (ADR-010).
+ * could not verify it, so it is shown and not scored (ADR-012).
  */
 export type GateState = 'FOUND' | 'MISSING' | 'REPORTED' | 'EXCEPTED' | 'NEEDS_RECHECK' | 'NOT_APPLICABLE';
 
-/** The apps whose signed issue properties FourRealities reads (ADR-010). */
+/** The apps whose signed issue properties FourRealities reads (ADR-012). */
 export type SiblingProducer = 'definitionguard' | 'ledgerseal';
 
 /**
  * Result of checking a sibling record's Ed25519 signature: verified with a trusted key, unsigned,
  * signed with a key FourRealities does not trust, signed for another issue, or a signature that
- * does not match the record (ADR-010).
+ * does not match the record (ADR-012).
  */
 export type AttestationCheck = 'VERIFIED' | 'UNSIGNED' | 'UNKNOWN_KEY' | 'WRONG_ISSUE' | 'BAD_SIGNATURE';
 
@@ -150,7 +150,7 @@ export interface GateExceptionState {
 /** The person acting on an exception, as checked in Jira. */
 export interface ExceptionActor {
   accountId: string;
-  /** A project or Jira administrator, or a member of an approver group (ADR-011). */
+  /** A project or Jira administrator, or a member of an approver group (ADR-013). */
   isApprover: boolean;
 }
 
@@ -201,7 +201,7 @@ export interface IssueFacts {
   summary: string;
   statusName: string;
   statusCategory: StatusCategory;
-  /** The assignee's account id. FourRealities stores no names (ADR-012). */
+  /** The assignee's account id. FourRealities stores no names (ADR-014). */
   assigneeAccountId?: string;
   sprintNames: string[];
   updated?: string;
@@ -217,7 +217,7 @@ export interface IssueFacts {
   devField: { present: boolean; summary: DevFieldSummary };
   /** Sibling records as read; the gate engine checks each shape before use. */
   properties: { ledgerseal?: unknown; dod?: unknown; checklist?: unknown };
-  /** Signature check of each sibling record that is present (ADR-010); absent means not checked. */
+  /** Signature check of each sibling record that is present (ADR-012); absent means not checked. */
   attestations?: { dod?: AttestationCheck; ledgerseal?: AttestationCheck };
   /** Rework notes, oldest first (ADR-001 Pattern 6). */
   reworkNotes?: ExceptionNote[];
@@ -232,7 +232,7 @@ export interface IssueRow {
   summary: string;
   statusName: string;
   statusCategory: StatusCategory;
-  /** The assignee's account id, for the Assignee and My issues filters; no name is stored (ADR-012). */
+  /** The assignee's account id, for the Assignee and My issues filters; no name is stored (ADR-014). */
   assigneeAccountId?: string;
   sprintNames: string[];
   updated?: string;
@@ -243,7 +243,7 @@ export interface IssueRow {
   risk: RiskLevel;
   applicableGates: number;
   recoverablePoints: number;
-  /** Current Code exception, whatever its status (shown in the panel; never stored in a snapshot, ADR-012). */
+  /** Current Code exception, whatever its status (shown in the panel; never stored in a snapshot, ADR-014). */
   codeException?: GateExceptionState;
   /** The latest rework note, and how many exist (panel only; never stored in a snapshot). */
   reworkNote?: ExceptionNote;
@@ -253,7 +253,7 @@ export interface IssueRow {
 export interface GateCount {
   found: number;
   missing: number;
-  /** Records found and not verified (ADR-010); not scored. */
+  /** Records found and not verified (ADR-012); not scored. */
   reported: number;
   excepted: number;
   recheck: number;
@@ -291,7 +291,7 @@ export interface SnapshotMeta {
   projectKey: string;
   snapshotId: string;
   generatedAt: string;
-  /** "user" (a page view or Refresh) or "scheduled"; never an account id (ADR-012). */
+  /** "user" (a page view or Refresh) or "scheduled"; never an account id (ADR-014). */
   generatedBy: string;
   chunkCount: number;
   shownCount: number;
@@ -313,18 +313,18 @@ export interface ProjectDashboardView {
   coverage: { shown: number; totalKnown: number | null; capped: boolean; timedOut?: boolean };
   meta?: SnapshotMeta;
   warning?: string;
-  /** The checks in use on this site (ADR-011). */
+  /** The checks in use on this site (ADR-013). */
   sources?: SourcesInUse;
-  /** Notes about sources found on the site but not in use (ADR-011). */
+  /** Notes about sources found on the site but not in use (ADR-013). */
   sourceNotes?: string[];
-  /** Display names of the assignees, read as the viewer for this view and never stored (ADR-012). */
+  /** Display names of the assignees, read as the viewer for this view and never stored (ADR-014). */
   people?: Record<string, string>;
 }
 
-/** Stands for the account id of a closed account in FourRealities' records (ADR-012). */
+/** Stands for the account id of a closed account in FourRealities' records (ADR-014). */
 export const ERASED_ACCOUNT = 'erased-account';
 
-/** What the weekly personal data run did (ADR-012). */
+/** What the weekly personal data run did (ADR-014). */
 export interface PersonalDataRunResult {
   reported: number;
   closed: number;
@@ -355,13 +355,13 @@ export interface SiteConfig {
   statusCategories: Record<string, StatusCategory>;
   /**
    * Whether any issue the reader can see has pull request data (JQL development[pullrequests].all > 0);
-   * null when the probe failed (ADR-011).
+   * null when the probe failed (ADR-013).
    */
   pullRequestsSeen?: boolean | null;
   readAt: string;
 }
 
-/** Evidence source modes an administrator sets on the admin page (ADR-011). "auto" is "Detect". */
+/** Evidence source modes an administrator sets on the admin page (ADR-013). "auto" is "Detect". */
 export type IntentMode = 'on' | 'off';
 export type ProcessMode = 'auto' | 'definitionguard' | 'herocoders' | 'off';
 export type CodeMode = 'auto' | 'on' | 'off';
@@ -401,7 +401,7 @@ export interface DetectedSources {
 
 export type ProcessSource = 'definitionguard' | 'herocoders';
 
-/** The checks in use on this site, resolved from the settings and the detection (ADR-011). */
+/** The checks in use on this site, resolved from the settings and the detection (ADR-013). */
 export interface SourcesInUse {
   intent: boolean;
   process: ProcessSource | null;
@@ -419,7 +419,7 @@ export interface ApproverPolicy {
   fromDate: string;
 }
 
-/** What the issue panel may offer the viewer for the current Code exception (ADR-011 decision 5). */
+/** What the issue panel may offer the viewer for the current Code exception (ADR-013 decision 5). */
 export interface ApprovalView {
   /** The viewer may approve, reject or revoke. */
   canDecide: boolean;
@@ -463,7 +463,7 @@ export interface ScheduledRunResult {
 
 /**
  * The record DefinitionGuard writes at definitionguard-dod, read from schema v2 (mandatoryCompleted,
- * mandatoryTotal, headHash) or the older shape (completedCount, totalCount, checklistHash) (ADR-010).
+ * mandatoryTotal, headHash) or the older shape (completedCount, totalCount, checklistHash) (ADR-012).
  */
 export interface DefinitionGuardRecord {
   isFullySatisfied: boolean;
@@ -516,11 +516,11 @@ export interface WriteResult {
   record?: ExceptionProperty;
   remoteLink?: unknown;
   row?: IssueRow;
-  /** What the panel may offer the viewer for the Code exception after the write (ADR-011). */
+  /** What the panel may offer the viewer for the Code exception after the write (ADR-013). */
   approval?: ApprovalView;
 }
 
-/** Everything the admin page shows (ADR-011). `policy` has the shape the shared AdminPolicyPanel reads. */
+/** Everything the admin page shows (ADR-013). `policy` has the shape the shared AdminPolicyPanel reads. */
 export interface AdminView {
   settings: EvidenceSourceSettings;
   detected: DetectedSources;

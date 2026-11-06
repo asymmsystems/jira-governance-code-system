@@ -58,7 +58,7 @@ export class DefaultSnapshotEngine implements SnapshotEngine {
   }
 
   /**
-   * The row as a snapshot stores it (ADR-012, F-M2): no Code exception, no rework note and no
+   * The row as a snapshot stores it (ADR-014, F-M2): no Code exception, no rework note and no
    * other person's id; the gate state already says what counts. Free text is cut.
    */
   storedRow(row: IssueRow): IssueRow {

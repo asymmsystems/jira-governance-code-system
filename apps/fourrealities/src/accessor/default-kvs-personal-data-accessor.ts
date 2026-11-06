@@ -1,11 +1,11 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: every Atlassian account id the app stores, and its erasure (ADR-012).
+ * FourRealities: every Atlassian account id the app stores, and its erasure (ADR-014).
  * Account ids sit in: Code exception events (fr:ex:*, byAccountId), rework notes (fr:note:*,
  * recordedBy), v1 and v2 exception records kept for migration (fr:issue:*:exception, recordedBy),
  * and snapshot rows (fr:p:{key}:chunk:*, assigneeAccountId, indexed at fr:p:{key}:accounts).
- * Snapshots written before ADR-012 may also hold names and exception fields; erasure removes them.
+ * Snapshots written before ADR-014 may also hold names and exception fields; erasure removes them.
  */
 
 import { ERASED_ACCOUNT, IssueRow, SnapshotMeta } from '../contract/data/models';
@@ -18,14 +18,14 @@ type Note = { recordedBy?: string; recordedAt?: string };
 /** The later of two ISO times. */
 const later = (a: string, b: string) => (a >= b ? a : b);
 
-/** Account ids a snapshot row written before ADR-012 can hold. */
+/** Account ids a snapshot row written before ADR-014 can hold. */
 function rowIds(row: Rec): string[] {
   const ex = (row.codeException || {}) as Rec;
   const note = (row.reworkNote || {}) as Rec;
   return [row.assigneeAccountId, ex.requestedBy, ex.decidedBy, note.recordedBy].filter((id): id is string => typeof id === 'string' && id.length > 0);
 }
 
-/** A snapshot row with the closed accounts removed, and the fields that ADR-012 no longer stores. */
+/** A snapshot row with the closed accounts removed, and the fields that ADR-014 no longer stores. */
 function erasedRow(row: Rec, closed: Set<string>): Rec {
   const { codeException: _e, reworkNote: _n, reworkNoteCount: _c, assigneeName: _a, ...rest } = row;
   if (typeof rest.assigneeAccountId === 'string' && closed.has(rest.assigneeAccountId)) delete rest.assigneeAccountId;
@@ -68,7 +68,7 @@ export class DefaultKvsPersonalDataAccessor implements PersonalDataAccessor {
         for (const id of index.accountIds || []) add(id, index.generatedAt);
         continue;
       }
-      // A snapshot written before ADR-012 has no index: read its rows.
+      // A snapshot written before ADR-014 has no index: read its rows.
       const meta = await this.storage.get<SnapshotMeta>(`fr:p:${projectKey}:meta`);
       for (const row of await this.rows(projectKey, meta)) for (const id of rowIds(row)) add(id, meta?.generatedAt);
     }
@@ -114,7 +114,7 @@ export class DefaultKvsPersonalDataAccessor implements PersonalDataAccessor {
     for (const projectKey of await this.projects()) {
       const key = `fr:p:${projectKey}:meta`;
       const meta = await this.storage.get<SnapshotMeta>(key);
-      // Snapshots written before ADR-012 named the viewer who built them; now "user" or "scheduled".
+      // Snapshots written before ADR-014 named the viewer who built them; now "user" or "scheduled".
       if (meta && meta.generatedBy !== 'user' && meta.generatedBy !== 'scheduled') {
         await this.storage.set(key, { ...meta, generatedBy: 'user' });
         changed++;

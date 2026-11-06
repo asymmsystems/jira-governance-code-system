@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: the admin page use cases (ADR-011): evidence sources, decision issue types and
+ * FourRealities: the admin page use cases (ADR-013): evidence sources, decision issue types and
  * approver groups. Every call first checks, as the user, that the caller is a Jira administrator
  * (global ADMINISTER), and fails closed (Uniform Permission Management Standard, section 2.2).
  */
@@ -64,7 +64,7 @@ export class DefaultAdminManager implements AdminManager {
     const groupIds = Array.from(new Set(raw.map(id => String(id)).filter(id => id.length > 0)));
     if (groupIds.length > MAX_APPROVER_GROUPS) return { ok: false, code: 'INVALID_INPUT', message: `Choose at most ${MAX_APPROVER_GROUPS} groups.` };
     const named = await this.d.directory.groupNames(groupIds);
-    // No account id is stored: the policy names groups only (ADR-012).
+    // No account id is stored: the policy names groups only (ADR-014).
     await this.d.settings.saveApproverPolicy({
       roleTypeId: 'FR_APPROVER',
       parties: named.map(g => ({ partyId: g.groupId, partyTypeId: 'GROUP' as const, name: g.name })),

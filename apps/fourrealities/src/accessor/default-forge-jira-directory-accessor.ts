@@ -2,7 +2,7 @@
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
  * FourRealities: Jira users and groups as the user, for the admin page, the Tier 2 approver check
- * and the names on the dashboard (Uniform Permission Management Standard; ADR-011, ADR-012).
+ * and the names on the dashboard (Uniform Permission Management Standard; ADR-013, ADR-014).
  * Scope read:jira-user (groups, users) and read:jira-work (permissions).
  */
 

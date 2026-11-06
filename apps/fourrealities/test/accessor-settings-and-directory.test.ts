@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: admin settings in KVS and the Jira directory reads as the user (ADR-011, ADR-012).
+ * FourRealities: admin settings in KVS and the Jira directory reads as the user (ADR-013, ADR-014).
  */
 
 jest.mock('@forge/api', () => {

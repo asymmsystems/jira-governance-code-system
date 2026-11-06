@@ -1,4 +1,4 @@
-#+TITLE: ADR-010: FourRealities Reads and Verifies the Records of DefinitionGuard and LedgerSeal
+#+TITLE: ADR-012: FourRealities Reads and Verifies the Records of DefinitionGuard and LedgerSeal
 #+DATE: 2026-11-06
 #+STATUS: Adopted
 

@@ -135,7 +135,7 @@ describe('B-17: afterActionText (feedback from the re-evaluated state, FR-20)', 
   });
 });
 
-describe('ADR-010: text for reported and signature-failed records', () => {
+describe('ADR-012: text for reported and signature-failed records', () => {
   const reported: GateResult = { state: 'REPORTED', verification: 'NOT_VERIFIED', reason: 'DOD_COMPLETE_DG', args: { completed: 2, total: 3, why: 'unknown key' } };
 
   it('says what the record reports and why it is not scored', () => {
@@ -153,7 +153,7 @@ describe('ADR-010: text for reported and signature-failed records', () => {
   });
 });
 
-describe('ADR-011: text for a check that is not in use and a missing checklist', () => {
+describe('ADR-013: text for a check that is not in use and a missing checklist', () => {
   const notUsed: GateResult = { state: 'NOT_APPLICABLE', reason: 'SOURCE_NOT_IN_USE' };
   it('says the check is not used on this site and where to turn it on', () => {
     expect(stateLabel(notUsed)).toBe('Not used on this site');

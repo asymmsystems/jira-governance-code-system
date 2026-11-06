@@ -208,7 +208,7 @@ describe('FourRealities Index / Forge Handlers', () => {
     });
   });
 
-  describe('ADR-010: sibling signatures are checked with the keys of the Forge environment', () => {
+  describe('ADR-012: sibling signatures are checked with the keys of the Forge environment', () => {
     const { publicKey, privateKey } = nodeCrypto.generateKeyPairSync('ed25519');
     const pem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
     const cert = (issueId: string) => {
@@ -240,7 +240,7 @@ describe('FourRealities Index / Forge Handlers', () => {
     });
   });
 
-  describe('ADR-011: admin page resolvers', () => {
+  describe('ADR-013: admin page resolvers', () => {
     const admin = (granted: boolean) => mockRequestJira.mockImplementation(async (path: string) => {
       if (path.startsWith('/rest/api/3/mypermissions?permissions=ADMINISTER')) return { status: 200, json: async () => ({ permissions: { ADMINISTER: { havePermission: granted } } }) };
       if (path.startsWith('/rest/api/3/groups/picker')) return { status: 200, json: async () => ({ groups: [{ groupId: 'g1', name: 'release-managers' }] }) };
@@ -297,7 +297,7 @@ describe('FourRealities Index / Forge Handlers', () => {
     });
   });
 
-  describe('ADR-012: the weekly personal data run and names on the dashboard', () => {
+  describe('ADR-014: the weekly personal data run and names on the dashboard', () => {
     it('reports the stored ids and erases a closed account, whatever the licence', async () => {
       await mockStorage.set('fr:note:7:t:a', { schemaVersion: 1, issueId: '7', issueKey: 'DEMO-7', reason: 'Requirement changed', recordedBy: 'gone-1', recordedAt: '2026-11-01T00:00:00.000Z' });
       mockRequestJira.mockResolvedValue({ status: 200 });
@@ -1118,7 +1118,7 @@ describe('B-08: bounded storage and a scheduled snapshot', () => {
     const storage = seeded();
     const first: any = await getProjectDashboard({}, ctx, storage);
     expect(first.ok).toBe(true);
-    // ADR-012: no account id in the snapshot.
+    // ADR-014: no account id in the snapshot.
     expect(first.meta.generatedBy).toBe('user');
     expect(await storage.get('fr:projects')).toEqual(['DEMO']);
     const jiraCalls = mockAppRequestJira.mock.calls.length;
@@ -1126,7 +1126,7 @@ describe('B-08: bounded storage and a scheduled snapshot', () => {
     const second: any = await getProjectDashboard({}, ctx, storage);
     expect(second.rows).toHaveLength(250);
     expect(mockAppRequestJira.mock.calls.length).toBe(jiraCalls);
-    // Meta, chunks, trend, projects, plus the settings, the detection and the site configuration (ADR-011).
+    // Meta, chunks, trend, projects, plus the settings, the detection and the site configuration (ADR-013).
     expect(storage.count('get')).toBeLessThanOrEqual(6 + Math.ceil(250 / 100));
     expect(storage.count('set')).toBe(0);
     expect(second.generatedAt).toBe(first.generatedAt);

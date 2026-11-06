@@ -165,7 +165,7 @@ export function auditReadiness(issues: IssueRow[]): AuditReadinessSummary {
     for (const g of GATE_NAMES) {
       const state = issue.gates[g].state;
       if (state === 'REPORTED') {
-        // Not verified, so not scored: counted apart, never as evidence (ADR-010).
+        // Not verified, so not scored: counted apart, never as evidence (ADR-012).
         reportedGates++;
       } else if (state !== 'NOT_APPLICABLE') {
         applicableGates++;

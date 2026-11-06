@@ -12,7 +12,7 @@ export interface EvidenceSource {
   gate: GateName;
   /**
    * How strongly FourRealities knows a fact from this source when it is found. A sibling record is
-   * FOUND only when its signature is verified; an unverified one is REPORTED (ADR-010).
+   * FOUND only when its signature is verified; an unverified one is REPORTED (ADR-012).
    */
   verification?: Verification;
 }

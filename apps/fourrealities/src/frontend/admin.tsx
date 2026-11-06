@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: the admin page "FourRealities gate authority" (ADR-011). Jira administrators set
+ * FourRealities: the admin page "FourRealities gate authority" (ADR-013). Jira administrators set
  * the evidence source of each check, the decision issue types, and the approver groups (Uniform
  * Permission Management Standard, with the shared AdminPolicyPanel). The server checks every call.
  */

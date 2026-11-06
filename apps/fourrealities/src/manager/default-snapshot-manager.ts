@@ -69,7 +69,7 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
       return jiraError(search.status, `Live Jira sync failed (${search.error}).`);
     }
 
-    // Sources seen in this read are recorded first, so a first build already uses them (ADR-011).
+    // Sources seen in this read are recorded first, so a first build already uses them (ADR-013).
     const settings = await this.d.settings.getSettings();
     const merged = this.d.sources.merge(await this.d.settings.getDetected(), this.d.sources.sightings(search.facts, now().toISOString()));
     if (merged.changed) await this.d.settings.saveDetected(merged.detected);
@@ -156,12 +156,12 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
 
     let stored: StoredSnapshot | undefined = rebuild ? undefined : await this.d.snapshots.loadSnapshot(projectKey);
     const settings = await this.d.settings.getSettings();
-    // A snapshot built before the administrator changed the settings is built again (ADR-011).
+    // A snapshot built before the administrator changed the settings is built again (ADR-013).
     if (stored && settings.updatedAt && settings.updatedAt > stored.meta.generatedAt) {
       stored = undefined;
     }
     if (!stored) {
-      // No account id in the snapshot (ADR-012). One deadline for the whole invocation; the build
+      // No account id in the snapshot (ADR-014). One deadline for the whole invocation; the build
       // stops early enough to leave time for the writes and the viewer check (F-H2).
       const built = await this.build(projectKey, 'user', this.deadline - VIEW_RESERVE_MS);
       if (!built.ok) {
@@ -184,7 +184,7 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
       coverage: { shown: stored.meta.shownCount, totalKnown: stored.meta.totalKnown, capped: stored.meta.capped, ...(stored.meta.timedOut ? { timedOut: true } : {}) },
       meta: stored.meta
     };
-    // Names of the assignees, read as the viewer now and never stored (ADR-012).
+    // Names of the assignees, read as the viewer now and never stored (ADR-014).
     const assignees = Array.from(new Set(rows.map(r => r.assigneeAccountId).filter((id): id is string => Boolean(id))));
     if (assignees.length > 0) view.people = await this.d.directory.userNames(assignees);
     try {

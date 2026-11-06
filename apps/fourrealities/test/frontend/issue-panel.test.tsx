@@ -293,7 +293,7 @@ describe('IssuePanel', () => {
       expect(bridgeState.invoke).toHaveBeenLastCalledWith('decideException', expect.objectContaining({ decision: 'WITHDRAW', reason: '' }));
     });
 
-    it('ADR-011: disables the decisions with the standard note when the viewer may not decide, and offers Withdraw only to the requester', async () => {
+    it('ADR-013: disables the decisions with the standard note when the viewer may not decide, and offers Withdraw only to the requester', async () => {
       const waiting = row('DEMO-22', missingCode, { codeException: { ...base, status: 'REQUESTED' } });
       const note = 'Requires Project Admin, Jira Admin, or membership in an authorized group. Configured by your Jira administrator in Jira Settings > Apps > FourRealities gate authority.';
       const r = await mount(waiting, jest.fn(), jest.fn(), false, { canDecide: false, isRequester: false, note });
@@ -309,7 +309,7 @@ describe('IssuePanel', () => {
       expect(textOf(approved.toJSON())).toContain('You are the assignee of this issue, so another approver must decide.');
     });
 
-    it('ADR-012: shows "a former user" for an erased account', async () => {
+    it('ADR-014: shows "a former user" for an erased account', async () => {
       const r = await mount(row('DEMO-24', { intent: F, process: NA, code: { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' }, audit: NA }, { codeException: { ...base, requestedBy: 'erased-account', status: 'APPROVED', decidedBy: 'erased-account', decidedAt: '2026-11-02T00:00:00Z' } }));
       expect(textOf(r.toJSON())).toContain('a former user');
       expect(findAll(r.root, 'User', p => p.accountId === 'erased-account')).toHaveLength(0);

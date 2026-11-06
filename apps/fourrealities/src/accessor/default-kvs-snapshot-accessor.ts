@@ -47,7 +47,7 @@ export class SnapshotRepository {
 
   /**
    * Writes the rows in chunks, the assignee account ids of the rows (for the personal data report,
-   * ADR-012), then the project summary, then the meta. A reader that finds a chunk missing or from
+   * ADR-014), then the project summary, then the meta. A reader that finds a chunk missing or from
    * another snapshot treats the snapshot as absent.
    */
   public async saveSnapshot(meta: SnapshotMeta, rows: IssueRow[], summary: ProjectSummary): Promise<void> {

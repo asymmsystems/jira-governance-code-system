@@ -15,7 +15,7 @@ const r = (key: string, assigneeAccountId: string | undefined, sprintNames: stri
 } as IssueRow);
 
 const rows = [r('A-1', 'acc-ana', ['Sprint 2']), r('A-2', undefined, ['Sprint 1', 'Sprint 2'], M), r('A-3', 'acc-bo', [], M)];
-/** Names as the dashboard reads them for one view; they are never stored (ADR-012). */
+/** Names as the dashboard reads them for one view; they are never stored (ADR-014). */
 const PEOPLE = { 'acc-bo': 'Bo Chen', 'acc-ana': 'Ana Silva' };
 
 describe('filterOptions', () => {

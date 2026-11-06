@@ -378,7 +378,7 @@ describe('ProjectDashboard', () => {
 
 
 
-describe('ADR-011, ADR-010: checks in use and reported records on the dashboard', () => {
+describe('ADR-013, ADR-012: checks in use and reported records on the dashboard', () => {
   it('shows a check that is not in use as not used, with no rate and no missing button, and lists the checks in use', async () => {
     const NOT_USED = { state: 'NOT_APPLICABLE', reason: 'SOURCE_NOT_IN_USE' } as const;
     const REP = { state: 'REPORTED', verification: 'NOT_VERIFIED', reason: 'DOD_COMPLETE_DG' } as const;

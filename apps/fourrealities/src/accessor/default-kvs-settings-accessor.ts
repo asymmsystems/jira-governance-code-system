@@ -1,8 +1,8 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: admin settings, approver policy and source detection in Forge KVS (ADR-011).
- * None of these values holds an account id (ADR-012).
+ * FourRealities: admin settings, approver policy and source detection in Forge KVS (ADR-013).
+ * None of these values holds an account id (ADR-014).
  */
 
 import { ApproverPolicy, DEFAULT_SOURCE_SETTINGS, DetectedSources, EvidenceSourceSettings } from '../contract/data/models';

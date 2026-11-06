@@ -129,7 +129,7 @@ describe('MetricsEngine.summarize', () => {
   });
 });
 
-describe('ADR-010: a reported (unverified) record is counted apart and never scored', () => {
+describe('ADR-012: a reported (unverified) record is counted apart and never scored', () => {
   it('leaves REPORTED out of RAI and the gate rate, and counts it as reported', () => {
     const reported = { state: 'REPORTED', verification: 'NOT_VERIFIED', reason: 'SEAL_VALID_LS' } as const;
     const row = MetricsEngine.buildRow(makeFacts(), gates(FOUND_V, MISSING, NA, reported));

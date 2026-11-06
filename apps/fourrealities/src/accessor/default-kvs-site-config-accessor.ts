@@ -45,7 +45,7 @@ async function readStatusCategories(request: JiraRequest): Promise<Record<string
 }
 
 /**
- * Whether any issue the reader can see has pull request data (ADR-011, F-H5). Jira Software sites
+ * Whether any issue the reader can see has pull request data (ADR-013, F-H5). Jira Software sites
  * have a Development field even without a Git integration, so the field alone does not show that
  * Code evidence can exist. null when the probe fails.
  */

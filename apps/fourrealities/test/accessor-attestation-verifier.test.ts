@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: Ed25519 check of sibling records and the trusted keys per environment (ADR-010).
+ * FourRealities: Ed25519 check of sibling records and the trusted keys per environment (ADR-012).
  */
 
 import * as crypto from 'crypto';

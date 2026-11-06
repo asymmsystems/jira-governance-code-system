@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: public keys of the sibling apps, trusted per Forge environment (ADR-010).
+ * FourRealities: public keys of the sibling apps, trusted per Forge environment (ADR-012).
  * A production key is added here when its producer publishes it; until then production trusts no key.
  */
 

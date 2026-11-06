@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: which evidence source each check uses on this site (ADR-011). Pure rules: the
+ * FourRealities: which evidence source each check uses on this site (ADR-013). Pure rules: the
  * settings an administrator chose, what FourRealities has seen on the site, and the site
  * configuration give the checks in use. "Detect" (auto) turns a check on only after its source was
  * seen: a verified sibling record, or pull request data.

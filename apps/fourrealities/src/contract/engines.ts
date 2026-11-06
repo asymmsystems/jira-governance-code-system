@@ -26,12 +26,12 @@ import {
   TrendPoint
 } from './data/models';
 
-/** Evaluates the four gates from issue facts (spec v3, Gates), for the checks in use (ADR-011). */
+/** Evaluates the four gates from issue facts (spec v3, Gates), for the checks in use (ADR-013). */
 export interface GateEngine extends Engine {
   evaluate(facts: IssueFacts, sources?: SourcesInUse): IssueGates;
 }
 
-/** Which evidence sources are in use on the site, and what the reads show of them (ADR-011). */
+/** Which evidence sources are in use on the site, and what the reads show of them (ADR-013). */
 export interface SourcePolicyEngine extends Engine {
   /** The checks in use from the settings, the detection and the site configuration. */
   resolve(settings: EvidenceSourceSettings, detected: DetectedSources, config: SiteConfig): SourcesInUse;
@@ -60,7 +60,7 @@ export interface SnapshotEngine extends Engine {
   weekStartOf(iso: string): string;
   trendPoint(summary: ProjectSummary, generatedAt: string): TrendPoint;
   keepPreviousIntent(gates: IssueGates, remoteLinksRead: boolean, previous?: IssueRow): IssueGates;
-  /** The row as a snapshot stores it: no exception, no note, text cut (ADR-012, F-M2). */
+  /** The row as a snapshot stores it: no exception, no note, text cut (ADR-014, F-M2). */
   storedRow(row: IssueRow): IssueRow;
   visibleRows(rows: IssueRow[], ids: Set<string>): IssueRow[];
   staleWarning(meta: SnapshotMeta, now: number): string | undefined;
@@ -83,7 +83,7 @@ export interface ExceptionPolicyEngine extends Engine {
   requestError(current: GateExceptionState | undefined, pullRequestCount: number, issueKey: string): string | undefined;
   /** The status a decision leads to. */
   targetStatus(decision: ExceptionDecision): ExceptionStatus;
-  /** What the panel may offer this viewer for the current exception (ADR-011). */
+  /** What the panel may offer this viewer for the current exception (ADR-013). */
   approvalView(current: GateExceptionState | undefined, actor: ExceptionActor, assigneeAccountId: string | undefined): ApprovalView;
   /** Error text when the actor may not make this decision now, else undefined. */
   decisionError(current: GateExceptionState | undefined, decision: ExceptionDecision, actor: ExceptionActor, assigneeAccountId: string | undefined, reason: string): string | undefined;

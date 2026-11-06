@@ -22,7 +22,7 @@ export function row(key: string, gates: { intent: GateResult; process: GateResul
 }
 
 export function dashboard(rows: IssueRow[], extra: Partial<ProjectDashboardView> = {}): ProjectDashboardView {
-  // Names are read as the viewer for each view and never stored (ADR-012).
+  // Names are read as the viewer for each view and never stored (ADR-014).
   const people = { 'acc-ana': 'Ana Silva', 'acc-bo': 'Bo Chen' };
   return { projectKey: 'DEMO', generatedAt: '2026-11-01T08:30:00.000Z', summary: MetricsEngine.summarize(rows), rows, trend: [], coverage: { shown: rows.length, totalKnown: rows.length, capped: false }, people, ...extra };
 }

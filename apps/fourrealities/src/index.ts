@@ -51,7 +51,7 @@ export function setTrustedKeys(keys: readonly TrustedKey[] | null): void {
   trustedKeysOverride = keys;
 }
 
-/** The keys trusted in this Forge environment (ADR-010). */
+/** The keys trusted in this Forge environment (ADR-012). */
 function trustedKeys(): readonly TrustedKey[] {
   return trustedKeysOverride || trustedKeysFor(new DefaultForgeAppContextAccessor().environmentType());
 }
@@ -168,7 +168,7 @@ export const snapshot = async (): Promise<void> => {
 };
 
 /**
- * Weekly personal data run (ADR-012): reports every stored account id, erases closed accounts.
+ * Weekly personal data run (ADR-014): reports every stored account id, erases closed accounts.
  * It runs whatever the licence state: the duty to report and erase does not end with a licence.
  */
 export async function reportPersonalData(storageProvider?: StorageProvider, privacy: PrivacyReportAccessor = new DefaultForgePrivacyAccessor()): Promise<PersonalDataRunResult> {
@@ -192,7 +192,7 @@ export async function getIssueAlignment(payload: unknown, context?: ForgeContext
   const caller = callerOf(context);
   const evaluated = await app.issues.evaluate(caller);
   if (!evaluated.ok) return evaluated;
-  // The decision buttons the viewer may use, checked as the viewer (ADR-011 decision 5).
+  // The decision buttons the viewer may use, checked as the viewer (ADR-013 decision 5).
   const approval = await app.exceptions.approval(caller, evaluated.row);
   return approval ? { ...evaluated, approval } : evaluated;
 }
@@ -310,7 +310,7 @@ export const handler = resolver.getDefinitions();
 
 const ADMIN_LICENCE_ERROR = { ok: false as const, code: 'LICENSE_INACTIVE' as const, message: LICENCE_INACTIVE_MESSAGE };
 
-/** Admin page: the settings, the checks in use and the approver groups (ADR-011). Jira administrators only. */
+/** Admin page: the settings, the checks in use and the approver groups (ADR-013). Jira administrators only. */
 export async function getAdminSettings(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<AdminResult<AdminView>> {
   if (licenceInactive(context)) return ADMIN_LICENCE_ERROR;
   return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user').admin.view();

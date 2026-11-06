@@ -27,7 +27,7 @@ describe('B-33: pipeline tips and questions', () => {
   });
 });
 
-describe('ADR-010: drift sentence with a reported record', () => {
+describe('ADR-012: drift sentence with a reported record', () => {
   const rep: GateResult = { state: 'REPORTED', verification: 'NOT_VERIFIED', reason: 'SEAL_VALID_LS' };
   it('says the record is not verified, with or without other evidence', () => {
     expect(driftText({ gates: gates({ intent: F, audit: rep }) })).toBe('Every rated gate has evidence. Audit has a record that is not verified, so it is not scored.');
@@ -188,7 +188,7 @@ describe('B-44: audit readiness sentence and gaps text', () => {
     });
   });
 
-  it('ADR-010: leaves reported records out of readiness and names how many there are', () => {
+  it('ADR-012: leaves reported records out of readiness and names how many there are', () => {
     const rep: GateResult = { state: 'REPORTED', verification: 'NOT_VERIFIED', reason: 'SEAL_VALID_LS' };
     expect(auditReadiness([row('AUDT-4', 100, { intent: F, audit: rep })])).toMatchObject({
       statusWord: 'Complete',

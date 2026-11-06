@@ -1,4 +1,4 @@
-#+TITLE: ADR-012: FourRealities Personal Data: Fewer Ids, a Weekly Report, Erasure
+#+TITLE: ADR-014: FourRealities Personal Data: Fewer Ids, a Weekly Report, Erasure
 #+DATE: 2026-11-06
 #+STATUS: Adopted
 

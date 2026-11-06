@@ -111,7 +111,7 @@ export const RealityCard: React.FC<{
   gate: GateName;
   count: GateCount;
   isSelected?: boolean;
-  /** False when the site does not use this check (ADR-011): no rate, no "Show missing". */
+  /** False when the site does not use this check (ADR-013): no rate, no "Show missing". */
   inUse?: boolean;
   onShowMissing: () => void;
 }> = ({ gate, count, isSelected = false, inUse = true, onShowMissing }) => {

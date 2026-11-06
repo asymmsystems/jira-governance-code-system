@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: words for the evidence sources in use and for the admin page (ADR-011). Pure functions.
+ * FourRealities: words for the evidence sources in use and for the admin page (ADR-013). Pure functions.
  */
 
 import { AuditMode, CodeMode, DetectedSources, EvidenceSourceSettings, GateName, IntentMode, ProcessMode, SourcesInUse } from '../contract/data/models';

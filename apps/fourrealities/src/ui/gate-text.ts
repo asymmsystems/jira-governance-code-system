@@ -124,7 +124,7 @@ function arg(result: GateResult, name: string): string {
   return value === undefined ? '' : String(value);
 }
 
-/** Why an unverified record is not scored, in words (ADR-010). */
+/** Why an unverified record is not scored, in words (ADR-012). */
 function reportedSuffix(result: GateResult): string {
   const why = arg(result, 'why');
   return ` FourRealities could not verify this record${why ? ` (${why})` : ''}, so it is not scored.`;

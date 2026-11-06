@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: the Forge personal data reporting API (scope report:personal-data, ADR-012).
+ * FourRealities: the Forge personal data reporting API (scope report:personal-data, ADR-014).
  * The platform sends at most 90 accounts per call; @forge/api pages longer lists itself.
  */
 

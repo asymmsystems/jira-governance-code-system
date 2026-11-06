@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: checks the Ed25519 signature of a DefinitionGuard or LedgerSeal record (ADR-010).
+ * FourRealities: checks the Ed25519 signature of a DefinitionGuard or LedgerSeal record (ADR-012).
  * Both producers sign the canonical JSON (keys sorted at every level, no white space) of every
  * field except sig, with the key named by keyId.
  */

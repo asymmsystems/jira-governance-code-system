@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: contract test with the real writers of the sibling apps (BL-1, ADR-010). The
+ * FourRealities: contract test with the real writers of the sibling apps (BL-1, ADR-012). The
  * records come from buildAttestation() of DefinitionGuard and LedgerSeal in this repository, signed
  * with a key generated here, and go through the same path as a Jira read: factsFromIssue with the
  * signature check, then the gate engine.

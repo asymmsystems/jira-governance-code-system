@@ -158,7 +158,7 @@ describe('FourRealitiesApp rendering', () => {
     expect(text).toContain('Next: link the decision record.');
   });
 
-  it('passes the approval from the resolver to the panel (ADR-011)', async () => {
+  it('passes the approval from the resolver to the panel (ADR-013)', async () => {
     bridgeState.context = { extension: { issue: { id: '10001', key: 'DEMO-1' } } };
     const state = { status: 'REQUESTED', issueKey: 'DEMO-1', requestedBy: 'dev-1', requestedAt: '2026-11-01T00:00:00Z', reason: 'Configuration change only' };
     bridgeState.invoke.mockResolvedValue({ ok: true, row: row('DEMO-1', { intent: F, process: NA, code: { state: 'MISSING', reason: 'PR_NONE' }, audit: NA }, { codeException: state }), approval: { canDecide: false, isRequester: true, note: 'You requested this exception, so another approver must decide.' } });

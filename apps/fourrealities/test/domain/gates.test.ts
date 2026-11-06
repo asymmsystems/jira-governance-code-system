@@ -111,7 +111,7 @@ const dgDod = (extra: any = {}) => ({ isFullySatisfied: true, completedCount: 5,
 const DEMO26_CERT = { status: 'SEAL_VALID', valid: true, sealedAt: '2026-10-30T16:12:35.631Z', isCompromised: false };
 const DEMO26_DOD = { isFullySatisfied: true, satisfied: true, completedAt: '2026-10-30T16:12:22.188Z' };
 
-describe('ADR-010: Audit reads ledgerseal-cert and scores only a verified record', () => {
+describe('ADR-012: Audit reads ledgerseal-cert and scores only a verified record', () => {
   const v = { attestations: { ledgerseal: 'VERIFIED' as const } };
 
   it('ignores the valid alias: {valid: true, snapshotHash: "x"} is evidence missing', () => {
@@ -170,7 +170,7 @@ describe('ADR-010: Audit reads ledgerseal-cert and scores only a verified record
 });
 
 
-describe('ADR-010: Process reads definitionguard-dod and scores only a verified record', () => {
+describe('ADR-012: Process reads definitionguard-dod and scores only a verified record', () => {
   const v = { attestations: { dod: 'VERIFIED' as const } };
 
   it('ignores the satisfied alias', () => {
@@ -233,7 +233,7 @@ describe('ADR-010: Process reads definitionguard-dod and scores only a verified 
 });
 
 
-describe('ADR-010: a sibling record is verified only when its signature check says so', () => {
+describe('ADR-012: a sibling record is verified only when its signature check says so', () => {
   it('never returns VERIFIED or "verified by FourRealities" for Audit or Process without a verified signature', () => {
     const { sourceLine } = require('../../src/ui/gate-text');
     const certs = [undefined, lsCert(), lsCert({ status: 'SEAL_BROKEN' }), lsCert({ status: 'UNSEALED' }), DEMO26_CERT, { valid: true }];
@@ -304,7 +304,7 @@ describe('B-10: Code gate from the Development field, labelled heuristic', () =>
   });
 });
 
-describe('B-25, ADR-010: the HeroCoders checklist property is always reported, never scored', () => {
+describe('B-25, ADR-012: the HeroCoders checklist property is always reported, never scored', () => {
   const { sourceLine } = require('../../src/ui/gate-text');
   // Shape from the vendor documentation (DD-21): uncheckedMandatoryItems is a top-level number.
   const hc = (uncheckedMandatoryItems: unknown) => ({ completedText: 'Not Completed', allMandatoryItems: 3, uncheckedMandatoryItems, progressText: 'Checklist: 2/4' });

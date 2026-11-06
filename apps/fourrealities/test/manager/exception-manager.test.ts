@@ -170,7 +170,7 @@ describe('DefaultExceptionManager.decide (Option C)', () => {
   });
 });
 
-describe('ADR-011: Tier 2 approver groups, the panel approval, and the app-written projection (F-M4, F-M1)', () => {
+describe('ADR-013: Tier 2 approver groups, the panel approval, and the app-written projection (F-M4, F-M1)', () => {
   const policy = { roleTypeId: 'FR_APPROVER', parties: [{ partyId: 'g1', partyTypeId: 'GROUP', name: 'release-managers' }], fromDate: 't' };
 
   it('lets a member of an approver group approve, matched by id or name, and writes the projection as the app', async () => {

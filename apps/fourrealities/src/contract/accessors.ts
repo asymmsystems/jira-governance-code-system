@@ -116,7 +116,7 @@ export interface ConfluencePageCheckAccessor extends Accessor {
 }
 
 
-/** Site settings of the admin page and what FourRealities has seen on the site (ADR-011). */
+/** Site settings of the admin page and what FourRealities has seen on the site (ADR-013). */
 export interface SettingsAccessor extends Accessor {
   /** The saved settings, or the defaults when none are saved. */
   getSettings(): Promise<EvidenceSourceSettings>;
@@ -142,7 +142,7 @@ export interface JiraDirectoryAccessor extends Accessor {
   searchGroups(query: string): Promise<{ status: number; groups: GroupRef[] }>;
   /** Names of groups by id; an id that cannot be read keeps the id as its name. */
   groupNames(groupIds: string[]): Promise<GroupRef[]>;
-  /** Display names by account id, read now and never stored (ADR-012); unreadable ids are left out. */
+  /** Display names by account id, read now and never stored (ADR-014); unreadable ids are left out. */
   userNames(accountIds: string[]): Promise<Record<string, string>>;
 }
 
@@ -153,7 +153,7 @@ export interface StoredAccount {
   issueIds: string[];
 }
 
-/** Finds and erases the account ids FourRealities stores (ADR-012). */
+/** Finds and erases the account ids FourRealities stores (ADR-014). */
 export interface PersonalDataAccessor extends Accessor {
   /** Every stored account id, with the date of its latest record. */
   accounts(now: string): Promise<StoredAccount[]>;

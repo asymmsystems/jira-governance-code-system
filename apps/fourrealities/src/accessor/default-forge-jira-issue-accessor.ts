@@ -30,7 +30,7 @@ export class DefaultForgeJiraIssueAccessor implements JiraIssueAccessor {
   readonly serviceType = 'accessor' as const;
   private readonly request: JiraRequest;
 
-  /** verify checks sibling signatures (ADR-010); without it no sibling record counts as verified. */
+  /** verify checks sibling signatures (ADR-012); without it no sibling record counts as verified. */
   constructor(principal: Principal, deadline: () => number, request?: JiraRequest, private readonly verify?: AttestationCheckFn) {
     this.request = request || requestAs(principal, deadline);
   }

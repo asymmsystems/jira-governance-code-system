@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: the admin page use cases, Jira administrators only (ADR-011, permission standard 2.2).
+ * FourRealities: the admin page use cases, Jira administrators only (ADR-013, permission standard 2.2).
  */
 
 import { DEFAULT_SOURCE_SETTINGS } from '../../src/contract/data/models';

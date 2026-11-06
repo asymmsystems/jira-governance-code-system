@@ -2,7 +2,7 @@
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
  * FourRealities: issue panel. Shows the four gates with sources; remediation links or records, never writes evidence.
- * The decision buttons follow what the server says the viewer may do (ADR-011 decision 5).
+ * The decision buttons follow what the server says the viewer may do (ADR-013 decision 5).
  */
 
 import React, { useState } from 'react';
@@ -15,7 +15,7 @@ import { SPACE, TEXT_ROLE } from '../brand/brand';
 import { ActionRow, AppSurface, AttributionLine, ListRow, NoteBox, PanelHeader, Section, SubSection, SummaryBlock } from '../brand/layout';
 import { DecisionModal, ExceptionModal, LinkDecisionModal, ReviewModal } from './modals';
 
-/** The text for an account that was closed and erased (ADR-012); undefined for a live account. */
+/** The text for an account that was closed and erased (ADR-014); undefined for a live account. */
 const formerUser = (accountId?: string): string | undefined => (accountId === ERASED_ACCOUNT ? 'a former user' : undefined);
 
 /** Who and why for an exception or a rework reason. The name comes from the UI Kit User component. */

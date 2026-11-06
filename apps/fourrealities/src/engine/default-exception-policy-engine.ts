@@ -60,7 +60,7 @@ export class DefaultExceptionPolicyEngine implements ExceptionPolicyEngine {
   }
 
   /**
-   * What the panel offers the viewer for the current exception (ADR-011 decision 5): the same
+   * What the panel offers the viewer for the current exception (ADR-013 decision 5): the same
    * rules as decisionError, before any click, so a button the server would refuse is disabled.
    */
   approvalView(current: GateExceptionState | undefined, actor: ExceptionActor, assigneeAccountId: string | undefined): ApprovalView {

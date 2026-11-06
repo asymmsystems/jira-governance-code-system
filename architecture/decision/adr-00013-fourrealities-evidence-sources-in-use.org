@@ -1,4 +1,4 @@
-#+TITLE: ADR-011: FourRealities Evidence Sources in Use, and Its Admin Page
+#+TITLE: ADR-013: FourRealities Evidence Sources in Use, and Its Admin Page
 #+DATE: 2026-11-06
 #+STATUS: Adopted
 
@@ -45,7 +45,7 @@ asks every app for a =jira:adminPage= (FourRealities: key =fourrealities-admin=,
    Settings are site-wide (=fr:cfg:sources=, =fr:cfg:approver_policy=). They hold no account id.
 2. *What "Detect" means.* A check is in use only when FourRealities has seen the source on this site:
    - Process (DefinitionGuard) and Audit (LedgerSeal): a record whose signature FourRealities
-     verified (ADR-010) was read on any issue of the site. A record that cannot be verified does not
+     verified (ADR-012) was read on any issue of the site. A record that cannot be verified does not
      turn a check on; the admin page and the dashboard say that records were found, so an
      administrator can turn the check on.
    - Code: the site has a Development field and at least one issue has pull request data (a JQL
@@ -110,4 +110,4 @@ asks every app for a =jira:adminPage= (FourRealities: key =fourrealities-admin=,
 * References
 - Readiness review BL-2, F-H5, F-M1, F-M4, F-M5, F-M6, section 4.
 - Uniform Permission Management Standard, sections 2 to 6.
-- ADR-010 (verified records).
+- ADR-012 (verified records).

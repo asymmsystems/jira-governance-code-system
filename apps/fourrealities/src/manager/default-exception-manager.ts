@@ -24,7 +24,7 @@ const NO_COMMENT: Partial<Record<ExceptionDecision, string>> = {
 
 export interface ExceptionManagerDeps {
   userJira: JiraIssueAccessor;
-  /** Jira as the app: writes the projection property after an approver's decision (ADR-011, F-M1). */
+  /** Jira as the app: writes the projection property after an approver's decision (ADR-013, F-M1). */
   appJira: JiraIssueAccessor;
   /** The caller's groups, as the user (Tier 2). */
   directory: JiraDirectoryAccessor;
@@ -164,12 +164,12 @@ export class DefaultExceptionManager implements ExceptionManager {
       reason: reason || NO_COMMENT[decision] || ''
     };
     // The approver check passed: the projection is written as the app, so an approver without Edit
-    // issues can decide (ADR-011, F-M1). A withdrawal is the requester's own edit and stays the user's.
+    // issues can decide (ADR-013, F-M1). A withdrawal is the requester's own edit and stays the user's.
     return this.commit(event, events, await this.d.notes.list(String(issueId)), decision === 'WITHDRAW' ? this.d.userJira : this.d.appJira);
   }
 
   /**
-   * What the issue panel may offer the viewer for the current exception (ADR-011 decision 5).
+   * What the issue panel may offer the viewer for the current exception (ADR-013 decision 5).
    * Undefined when there is nothing to decide. Fails closed: a failed check means "may not decide".
    */
   async approval(caller: CallerContext, row: IssueRow): Promise<ApprovalView | undefined> {

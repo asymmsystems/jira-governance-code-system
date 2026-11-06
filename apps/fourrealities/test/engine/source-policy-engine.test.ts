@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: evidence sources in use, detection and the standalone matrix (ADR-011, BL-2, F-H5).
+ * FourRealities: evidence sources in use, detection and the standalone matrix (ADR-013, BL-2, F-H5).
  */
 
 import { DEFAULT_SOURCE_SETTINGS, EvidenceSourceSettings, NO_PULL_REQUEST, SiteConfig } from '../../src/contract/data/models';

@@ -52,7 +52,7 @@ export class DefaultIssueEvidenceManager implements IssueEvidenceManager {
       }
       const checked = await this.d.confluence.checkPages(new Map([[issueId, read.facts.remoteLinks || []]]), Date.now() + PAGE_CHECK_MS);
       const facts = { ...read.facts, ...(read.facts.remoteLinks ? { remoteLinks: checked.get(issueId) } : {}), reworkNotes, codeException };
-      // The checks in use on this site (ADR-011); a source first seen on this issue is recorded.
+      // The checks in use on this site (ADR-013); a source first seen on this issue is recorded.
       const settings = await this.d.settings.getSettings();
       const at = (this.d.now || (() => new Date()))().toISOString();
       const merged = this.d.sources.merge(await this.d.settings.getDetected(), this.d.sources.sightings([facts], at));

@@ -38,14 +38,14 @@ function isSameSiteContentPage(url: string | undefined, siteHost: string | undef
   }
 }
 
-/** A check the site does not use: not scored, shown as "Not used on this site" (ADR-011). */
+/** A check the site does not use: not scored, shown as "Not used on this site" (ADR-013). */
 const NOT_IN_USE: GateResult = { state: 'NOT_APPLICABLE', reason: 'SOURCE_NOT_IN_USE' };
 
 /**
  * Intent: a Confluence page on this site, or an issue of a decision or specification type,
  * is linked. FourRealities reads the link itself (VERIFIED) and does not read the page.
  * Title keywords never count (FR-13). The decision issue types come from the settings (F-M6).
- * Without `sources` every check is in use (the rules before ADR-011).
+ * Without `sources` every check is in use (the rules before ADR-013).
  */
 export function evaluateIntent(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG, sources?: SourcesInUse): GateResult {
   if (sources && !sources.intent) return NOT_IN_USE;
@@ -88,7 +88,7 @@ function isCount(value: unknown): value is number {
 /**
  * Reads a DefinitionGuard record: schema v2 (mandatoryCompleted, mandatoryTotal, headHash) or the
  * older shape (completedCount, totalCount, checklistHash). Other fields, and missing account id
- * fields, are allowed. Undefined when the value is neither shape (ADR-010).
+ * fields, are allowed. Undefined when the value is neither shape (ADR-012).
  */
 export function parseDefinitionGuardRecord(value: unknown): DefinitionGuardRecord | undefined {
   if (!value || typeof value !== 'object') return undefined;
@@ -130,7 +130,7 @@ const UNVERIFIED_WHY: Record<Exclude<AttestationCheck, 'VERIFIED'>, string> = {
 };
 
 /**
- * What a sibling record's signature check means for its gate (ADR-010): verified records are
+ * What a sibling record's signature check means for its gate (ADR-012): verified records are
  * scored; unsigned records and records signed with a key FourRealities does not trust are
  * REPORTED (shown, not scored); a bad signature or a record signed for another issue is MISSING.
  */
@@ -154,7 +154,7 @@ function stated(trust: Trust, positive: boolean, result: Omit<GateResult, 'state
 /**
  * Process: the Definition of Done record from DefinitionGuard, else the HeroCoders checklist
  * property. A verified DefinitionGuard record is scored; any record FourRealities cannot verify,
- * including every HeroCoders record, is REPORTED and not scored (ADR-010, spec v3, Process).
+ * including every HeroCoders record, is REPORTED and not scored (ADR-012, spec v3, Process).
  */
 export function evaluateProcess(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG, sources?: SourcesInUse): GateResult {
   if (sources && sources.process === null) return NOT_IN_USE;
@@ -222,7 +222,7 @@ export function evaluateCode(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG
 /**
  * Audit: the LedgerSeal record. A verified record is scored; LedgerSeal's own status decides
  * whether the seal still holds (it writes SEAL_BROKEN when sealed content changes), so the issue's
- * update time is not compared (ADR-010, F-M3). Shapes LedgerSeal does not write, such as
+ * update time is not compared (ADR-012, F-M3). Shapes LedgerSeal does not write, such as
  * {valid: true}, are evidence missing.
  */
 export function evaluateAudit(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG, sources?: SourcesInUse): GateResult {

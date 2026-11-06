@@ -12,7 +12,7 @@ import { GATE_LABEL } from './gate-text';
 export const UNASSIGNED = 'Unassigned';
 
 export interface DashboardFilters {
-  /** Account id of the assignee, or UNASSIGNED. Names are only shown, never stored (ADR-012). */
+  /** Account id of the assignee, or UNASSIGNED. Names are only shown, never stored (ADR-014). */
   assignee: string | null;
   sprint: string | null;
   missingGate: GateName | null;

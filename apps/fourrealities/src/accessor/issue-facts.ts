@@ -100,7 +100,7 @@ export interface FactOptions {
   devFieldId?: string | null;
   /** Status id to category key, from the site configuration. */
   statusCategories?: Readonly<Record<string, StatusCategory>>;
-  /** Signature check of sibling records (ADR-010); without it no record counts as verified. */
+  /** Signature check of sibling records (ADR-012); without it no record counts as verified. */
   verify?: AttestationCheckFn;
 }
 
