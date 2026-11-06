@@ -61,7 +61,7 @@ export class FakeJira implements JiraClient {
     return { ok: true, value: list.map((c: any) => String(c.id)).filter((id: string) => !hidden.has(id)) };
   }
 
-    async getComments(): Promise<JiraResult<any[]>> {
+  async getComments(): Promise<JiraResult<any[]>> {
     if (this.failComments) return { ok: false, error: 'UNREACHABLE' };
     const list = this.comments ?? this.issue.fields?.comment?.comments ?? [];
     return { ok: true, value: JSON.parse(JSON.stringify(list)) };

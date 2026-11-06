@@ -131,7 +131,7 @@ describe('F-06 the evidence export', () => {
     await expect(getSealEvidence({}, panelContext('insider'), as('insider'))).resolves.toMatchObject({ ok: false, code: 'JIRA_UNREACHABLE' });
   });
 
-  it('an export with no restricted comment asks Jira nothing extra', async () => {
+  it('an export with no restricted comment does not ask for the viewer\'s own comment list', async () => {
     const { jira, as } = setup([comment('1', 'Approved')]);
     await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
     jira.failVisibleComments = true;
@@ -156,5 +156,61 @@ describe('F-06 the Jira client', () => {
     await expect(createJiraClient(asApp, failing).getVisibleCommentIds('9')).resolves.toMatchObject({ ok: false, error: 'FORBIDDEN' });
     const endless = { requestJira: jest.fn().mockImplementation(async () => reply(200, { total: 99999, comments: [{ id: 'x' }] })) };
     await expect(createJiraClient(asApp, endless).getVisibleCommentIds('9')).resolves.toEqual({ ok: false, error: 'TOO_LARGE' });
+  });
+});
+
+describe('H-1 the export follows the same rule as the panel (probes P2, P3)', () => {
+  it('P3: a comment open at the seal and restricted later is not exported to a viewer who cannot see it', async () => {
+    const { jira, as } = setup([comment('1', 'SECRET-P3')]);
+    await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
+    jira.issue.fields.comment.comments = [comment('1', 'SECRET-P3', true)];
+    jira.hiddenFrom = { outsider: ['1'] };
+    const evidence: any = await getSealEvidence({}, panelContext('outsider'), as('outsider'));
+    expect(evidence).toMatchObject({ ok: false, code: 'RESTRICTED_EVIDENCE' });
+    expect(JSON.stringify(evidence)).not.toContain('SECRET-P3');
+    await expect(getSealEvidence({}, panelContext('insider'), as('insider'))).resolves.toMatchObject({ format: 'ledgerseal-evidence/1' });
+  });
+
+  it('P2: a seal made before F-06 whose restricted comment was deleted is not exported (its visibility is unknown)', async () => {
+    const { jira, storage, as } = setup([comment('1', 'SECRET-P2', true)]);
+    await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
+    const we = await model.workEffort(storage);
+    const snap = JSON.parse(storage.map.get(model.contentKey(we)));
+    delete snap.restrictedComments;
+    storage.map.set(model.contentKey(we), JSON.stringify(snap));
+    jira.issue.fields.comment.comments = [];
+    const panel: any = await verifyIssue({}, panelContext('outsider'), as('outsider'));
+    expect(JSON.stringify(panel)).not.toContain('SECRET-P2');
+    const evidence: any = await getSealEvidence({}, panelContext('outsider'), as('outsider'));
+    expect(evidence).toMatchObject({ ok: false, code: 'RESTRICTED_EVIDENCE' });
+    expect(JSON.stringify(evidence)).not.toContain('SECRET-P2');
+  });
+
+  it('a removed comment that was open at a seal made after F-06 does not stop the export', async () => {
+    const { jira, as } = setup([comment('1', 'Open note')]);
+    await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
+    jira.issue.fields.comment.comments = [];
+    await expect(getSealEvidence({}, panelContext('viewer'), as('viewer'))).resolves.toMatchObject({ format: 'ledgerseal-evidence/1' });
+  });
+
+  it('the export fails closed when the live comments cannot be read', async () => {
+    const { jira, as } = setup([comment('1', 'Open note')]);
+    await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
+    jira.failComments = true;
+    await expect(getSealEvidence({}, panelContext('viewer'), as('viewer'))).resolves.toMatchObject({ ok: false, code: 'JIRA_UNREACHABLE' });
+  });
+});
+
+describe('L-18 a hidden comment row names no author and no time', () => {
+  it('shows that a comment changed, but not who changed it or when', async () => {
+    const { jira, as } = setup([comment('1', 'Approved')]);
+    await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
+    jira.issue.fields.comment.comments.push(comment('2', 'Secret', true, { created: '2099-01-01T00:00:00.000Z', author: { accountId: 'dev' } }));
+    jira.hiddenFrom = { outsider: ['2'] };
+    const outsider: any = await verifyIssue({}, panelContext('outsider'), as('outsider'));
+    expect(rowOf(outsider, '2')).toMatchObject({ fieldName: 'Comment added', changedBy: [], changedAt: null });
+    expect(rowOf(outsider, '2')).not.toHaveProperty('changedByUnknown');
+    const insider: any = await verifyIssue({}, panelContext('insider'), as('insider'));
+    expect(rowOf(insider, '2').changedBy).toEqual(['dev']);
   });
 });

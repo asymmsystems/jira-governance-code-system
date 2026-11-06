@@ -720,9 +720,13 @@ async function verifyAgainstSeal(
   const hidden = await hiddenComments(deps, issueId, sealed, live.raw, commentIds);
   analysis.tamperedFields = analysis.tamperedFields.map(diff => {
     if (!hidden.has(diff.fieldId.slice('comment:'.length)) || !diff.fieldId.startsWith('comment:')) return diff;
-    const { detail: _detail, ...rest } = diff;
+    // L-18: Jira hides a restricted comment entirely from such a viewer, its author and time included, so the row
+    // says only that a comment changed
+    const { detail: _detail, changedByClosed: _closed, changedByUnknown: _unknown, ...rest } = diff;
     return {
       ...rest,
+      changedBy: [],
+      changedAt: null,
       // An empty side (no comment before, or none now) stays empty
       sealedValue: isEmptySide(diff.sealedValue) ? diff.sealedValue : RESTRICTED_COMMENT_TEXT,
       liveValue: isEmptySide(diff.liveValue) ? diff.liveValue : RESTRICTED_COMMENT_TEXT,
@@ -917,20 +921,24 @@ export async function evidenceFlow(payload: any, context: any, deps: LedgerSealD
   if (seal === 'missing' || !isConsistent(seal)) return fail('INVALID_REQUEST', 'The seal record failed its integrity check, so no evidence can be exported.');
   const snapshot = await repo.getContent(seal.workEffort);
   if (!snapshot) return fail('INVALID_REQUEST', 'The sealed snapshot could not be read.');
-  // F-06: the snapshot holds the text of every comment it covers, and that text is hashed, so it cannot be cut out.
-  // The evidence goes only to a viewer who can see every restricted comment of the seal in Jira.
-  let restricted = (snapshot.restrictedComments ?? []).map(c => c.id);
-  if (!Array.isArray(snapshot.restrictedComments)) {
-    const live = await deps.jira.getComments(issue.id);
-    if (!live.ok) return fail('JIRA_UNREACHABLE');
-    const sealedIds = new Set((snapshot.comments ?? []).map(c => c.id));
-    restricted = live.value.filter(c => c?.visibility && sealedIds.has(String(c.id))).map(c => String(c.id));
-  }
-  if (restricted.length > 0) {
+  // F-06, H-1: the snapshot holds the text of every comment it covers, and that text is hashed, so it cannot be cut
+  // out. The evidence goes only to a viewer who can see every sealed comment that is restricted, by the same rule as
+  // the panel: restricted at the seal, or restricted now, or (a seal made before F-06) removed since.
+  const live = await deps.jira.getComments(issue.id);
+  if (!live.ok) return fail('JIRA_UNREACHABLE');
+  const sealedIds = (snapshot.comments ?? []).map(c => c.id);
+  const liveIds = new Set(live.value.map(c => String(c?.id)));
+  const restrictedNow = new Set(live.value.filter(c => c?.visibility).map(c => String(c.id)));
+  const recorded = Array.isArray(snapshot.restrictedComments);
+  const restricted = new Set([
+    ...(snapshot.restrictedComments ?? []).map(c => c.id),
+    ...sealedIds.filter(id => restrictedNow.has(id) || (!recorded && !liveIds.has(id)))
+  ]);
+  if (restricted.size > 0) {
     const visible = await deps.jira.getVisibleCommentIds(issue.id);
     if (!visible.ok) return fail('JIRA_UNREACHABLE');
     const seen = new Set(visible.value);
-    if (restricted.some(id => !seen.has(id))) return fail('RESTRICTED_EVIDENCE');
+    if ([...restricted].some(id => !seen.has(id))) return fail('RESTRICTED_EVIDENCE');
   }
   const history: WorkEffortStatus[] = [];
   for (let from = 1; from <= seal.workEffort.statusHead.seq; from += HISTORY_PAGE_SIZE) {
