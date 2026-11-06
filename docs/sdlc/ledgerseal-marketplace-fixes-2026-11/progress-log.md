@@ -475,3 +475,9 @@ Production runs 2.0.0 (deployed by the main session); this branch deploys to dev
 ### Site changes needed (finish review)
 
 25. `product/jira-governance/user-guide/ledgerseal.html` (replaces the text of item 22): "Comments restricted to a project role or group are covered only when Jira lets the LedgerSeal app read them, that is when the app's user is in that role or group; otherwise a change to such a comment is not detected. A covered comment that is restricted, at the seal or now, is shown in the panel only to a user who can see it in Jira; others see that a comment changed, without its text, author or time. The evidence is exported only to a user who can see every such comment; for a seal made before LedgerSeal recorded restrictions, a covered comment deleted since counts as restricted, so seal the issue again to export its evidence."
+
+### Deploy, live check and gate (finish review fixes)
+
+- `forge deploy -e development`: 5.2.0 (code of `22cc3e1`). Production not touched.
+- PAY-10 (no restricted comment): the evidence still exports from the panel and passes 5 of 5 checks; property schema 3, signed, no account id. H-1 itself needs a second user outside a role, so it is proven by the tests. No live write.
+- Gate: `npx tsc --noEmit` 0 errors; `npm test` 49 suites, 536 tests passed; coverage statements 98.06%, branches 94.15%, functions 96.99%, lines 98.71%; build, `npm audit --omit=dev --audit-level=high` and `forge lint` clean.
