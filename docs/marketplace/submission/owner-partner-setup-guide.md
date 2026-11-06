@@ -3,6 +3,19 @@
 Date: 2026-11-06 (rewritten). For: Fahim Farook.
 Sources: Atlassian pages fetched on 2026-11-06 ("Become a partner", "Register as an Atlassian Marketplace Partner", "Due diligence business and identity verification"), and `docs/sdlc/suite-readiness-review-2026-11/marketplace-commercial-rules.md`. Where Atlassian does not say something clearly, the step says "not confirmed".
 
+## Progress (updated 2026-11-06)
+
+| Step | Status |
+|---|---|
+| 1. Partner profile | DONE: vendor "Asymm Systems", Vendor ID 334643263 |
+| 2. Contact roles | DONE: you are Admin and Primary (nothing else is needed while you are the only member) |
+| 3. Partner verification | IN PROGRESS: ticket ECOHELP-182280; Identity Information Collection SUBMITTED; Partner Security Questionnaire not attached yet; Stripe ID check not yet |
+| 4. Two support questions | NEXT |
+| 5. Payout and tax details | after step 4's answer |
+| 6. Forge billing | to do |
+| 7. Developer space check | to do |
+| 8. Two-step verification, old sessions | later, when I tell you |
+
 ## Before you start: which account
 
 Use **fahim@asymm.systems**, the Atlassian account you already use. It owns the four Forge apps, and it is the account my live tests sign in with. You do not create a new account, and you do not change any email.
@@ -12,7 +25,7 @@ Can it be a shared address such as sudo@asymm.systems? Not for these steps:
 - But the partner verification checks a **person**: the primary contact uploads a passport and takes a selfie. And every partner contact must be an Atlassian account. So the profile and the verification are done by you, as fahim@asymm.systems.
 - A shared mailbox is not needed. You can add one later as an extra contact, but only if it has its own Atlassian account.
 
-## Step 1. Create the partner profile (15 minutes)
+## Step 1. Create the partner profile (DONE)
 
 1. Open https://marketplace.atlassian.com/login?redirect=%2F and sign in as fahim@asymm.systems.
 2. Open https://marketplace.atlassian.com/manage/vendor/create.
@@ -61,13 +74,25 @@ Can it be a shared address such as sudo@asymm.systems? Not for these steps:
 4. If the form asks you to accept the Marketplace Partner Agreement, read it first. If you want, send me the agreement link before you accept, and I will list any clause about interest or late-payment charges.
 5. Result: at https://marketplace.atlassian.com your profile menu (top right) now has **Manage vendor account**.
 
-## Step 2. Give yourself the contact roles (5 minutes)
+## Step 2. Give yourself the contact roles (DONE)
 
-1. At https://marketplace.atlassian.com, open the profile menu, then **Manage vendor account**, then **Contacts**, then **Manage**.
+What happened: the vendor page's **Team** tab (Atlassian's documentation calls it Contacts) lists you as **Admin** and **Primary**. Your own row cannot be edited, which is normal for the only admin. Primary is the contact for every area, so nothing else is needed. The roles below matter only when you add a second person with **Add team member**.
+
+1. At https://marketplace.atlassian.com, open the profile menu, then **Manage partner account**, then the **Team** tab.
 2. Give fahim@asymm.systems these roles: Primary Contact, Support Contact, Licensing/Finance Contact, Security, Engineering, Sales support & approvals.
 3. Why: Atlassian contacts the person in each role (refunds, security reports, API changes). With one person, that is you for all of them.
 
-## Step 3. Start the partner verification now (30 minutes of forms, then waiting)
+## Step 3. Partner verification (IN PROGRESS)
+
+Where it stands: ticket **ECOHELP-182280** in the support portal. Identity Information Collection: **Submitted**. Partner Security Questionnaire: **not attached** to the ticket yet. Deadline for both forms: **6 December 2026**. Do NOT submit the "Re-Assign This Ticket" form: it restarts the verification.
+
+Next in this step:
+- Reload the ticket later. If the questionnaire is still not attached, click **Request for Help** and write: "I submitted the Identity Information Collection form. The Partner Security Questionnaire mentioned in the ticket is not attached. Please attach it so I can complete it."
+- When the questionnaire appears, paste its questions to me; I draft the answers.
+- Then the Stripe ID link arrives (passport photo, selfie, phone).
+- Keep a scan of the business registration certificate (and the tax registration, if any) ready, in case Atlassian asks for it on the ticket.
+
+How it was started (for the record): the support portal (ecosystem.atlassian.net) is a separate Atlassian site; the first visit asked you to set a password. The request type is under **App listing**: "Submit Partner Verification to publish your app on the Marketplace". The Partner / Vendor ID is the number in the vendor page's address after `/vendors/`.
 
 Atlassian normally opens this ticket only when you first ask for an app approval. Start it now so it does not delay the launch.
 
@@ -79,9 +104,9 @@ Atlassian normally opens this ticket only when you first ask for an app approval
 4. Business verification then runs by itself. The ticket ends as **Verified** (or Rejected, with an appeal form).
 5. Time: Atlassian says 2 to 3 business days; one sole trader reported about 3 weeks.
 
-## Step 4. Ask support two questions (5 minutes)
+## Step 4. Ask support two questions (NEXT)
 
-In the Developer and Marketplace Support portal (https://ecosystem.atlassian.net/servicedesk/customer/portal/34), open a new request (not a comment on the verification ticket) and paste:
+In the Developer and Marketplace Support portal (https://ecosystem.atlassian.net/servicedesk/customer/portal/34), choose **App listing**, then **Questions about Marketplace**, and paste (as a new request, not a comment on the verification ticket):
 
 > We are Asymm Systems, a company registered in Sri Lanka, preparing four paid Forge apps for Jira Cloud.
 > 1. Can Atlassian pay our Marketplace payouts by SWIFT transfer in USD to a bank account in Sri Lanka in the company's legal name? Is there anything we must set up first?
