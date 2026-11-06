@@ -52,6 +52,8 @@ export interface CanonicalIssueSnapshot {
   excluded?: { id: string; name: string; reason: string }[];
   /** F-06: comments restricted to a role or group at capture (not hashed). Absent on snapshots made before. */
   restrictedComments?: { id: string; type: string; value: string }[];
+  /** M-11: covered work logs restricted to a role or group at capture (not hashed). Absent on snapshots made before. */
+  restrictedWorklogs?: { id: string; type: string; value: string }[];
   capturedAt: string;
 }
 

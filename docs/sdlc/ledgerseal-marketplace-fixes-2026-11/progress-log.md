@@ -501,3 +501,28 @@ Production runs 2.0.0 (deployed by the main session); this branch deploys to dev
 - `forge deploy -e development`: 5.3.0 (code of `9aeb3ef`). Production not touched.
 - PAY-10 (no comments): the panel shows SEALED; the evidence exports from the panel and passes 5 of 5 checks (two earlier attempts timed out on the page's buttons, the third succeeded; the script now names the button it could not click). H-2 needs a comment restricted to a role the app user is not in and a second viewer, so it is proven by the tests. No live write.
 - Gate: `npx tsc --noEmit` 0 errors; `npm test` 49 suites, 537 tests passed; coverage statements 98.06%, branches 94.13%, functions 97.01%, lines 98.71%; build, `npm audit --omit=dev --audit-level=high` and `forge lint` clean.
+
+
+## Restricted work logs (M-11, finish merge review round 3)
+
+Branch `feature/ledgerseal-restricted-worklogs`, cut from `origin/master` `b877067`.
+
+### M-11. The evidence gave a restricted work log's comment text to any viewer
+
+- **Decision (suite owner, 2026-11-06, the comment rule, fail closed):** a covered work log that is restricted at the seal or now, or that the app can no longer read, makes the export refuse (`RESTRICTED_EVIDENCE`) any viewer whose own Jira work log list does not contain it. A work log the app can no longer read refuses the export to everyone. The panel already shows only counts ("N work log entries"), and keeps that.
+- **What changed:** the snapshot records the covered work logs restricted to a role or group in `restrictedWorklogs` (`{ id, type, value }`, outside the hashed and exported form; empty when the seal does not cover the `worklog` field). `evidenceFlow` calls `checkSealedWorklogs` after the comment checks: when the seal covers work logs, it reads them as the app (all pages), refuses everyone when a sealed id is missing, and otherwise reads the viewer's own work log ids as the user (`getVisibleWorklogIds`, paged, `TOO_LARGE` past the page limit) when any sealed work log is restricted at the seal or now. A seal with no work logs makes no extra read. A failed read gives `JIRA_UNREACHABLE`. The `RESTRICTED_EVIDENCE` message now names comments or work logs. The Jira client's paging helper takes the requester, so the visible comment and work log ids use the same paging. Snapshots made with the v1 form never covered work logs (v1 excluded the field), so every snapshot that holds work log text uses the id form.
+- **Cost:** after a covered work log is deleted, that seal's evidence cannot be exported, by anyone; approving the changes makes a new seal whose evidence can be exported. Recorded in spec v3 section 4.4.
+- **Proof:** `test/restricted-worklogs.test.ts` (9 tests). Probe P5 as a test: a work log restricted to a role at the seal is refused to an outsider without "SECRET-P5", exported to an insider, and the panel after a change shows SEAL_BROKEN with "1 work log entries" and no text. Other tests: restricted later, restricted at the seal while the live read shows no restriction, a seal made before M-11, a work log the app can no longer read (refused to the sealer and a viewer, then exported after an approval), work logs past the first page, failed reads, no reads when no work logs are covered, and the client read as the user.
+  - With `ledger.ts` of `b877067`: 5 of the 9 tests fail, and the reviewer's probe prints "P5 export leaks: true ledgerseal-evidence/1". With all of `src` of `b877067`, the test file does not compile (no `getVisibleWorklogIds`). After the fix: 9 of 9 pass, and the probe prints "P5 export leaks: false RESTRICTED_EVIDENCE"; "P5 panel leaks: false" before and after.
+  - Mutations: the refusal for a missing work log removed, 1 test fails; the restricted-now part removed, 2 fail; the at-seal record removed, 1 fails.
+- **Commits:** `a90d952` (code and tests), `756279e` (listing, notes, README, spec v3).
+
+### Site changes needed (M-11)
+
+26. `product/jira-governance/user-guide/ledgerseal.html` (replaces the text of item 25): "Comments and work logs restricted to a project role or group are covered only when Jira lets the LedgerSeal app read them, that is when the app's user is in that role or group; otherwise a change to such a comment or work log is not detected. A covered comment that is restricted, at the seal or now, is shown in the panel only to a user who can see it in Jira; others see that a comment changed, without its text, author or time. The panel shows only the number of work logs, never their text. The evidence is exported only to a user who can see every such comment and work log. If LedgerSeal can no longer read a covered comment or work log (it was deleted, or restricted since to a role or group the app's user is not in), the panel shows that comment's sealed text to no one, and for that seal: its evidence is not exported to anyone; approving the changes makes a new seal whose evidence can be exported."
+
+### Deploy, live check and gate (M-11)
+
+- `forge deploy -e development`: 5.4.0 (code of `756279e`). Production not touched.
+- PAY-10: the property is schema 3, SEAL_VALID, signed with `ls-dev-2026-11`, no account id; the evidence exports from the panel and `tools/verifier` passes 5 of 5 checks. A restricted work log needs a second user outside a role, so M-11 is proven by the tests. No live write.
+- Gate (`756279e`): `npx tsc --noEmit` 0 errors; `npm test` 50 suites, 547 tests passed; coverage statements 98.09%, branches 94.19%, functions 97.12%, lines 98.73%; `npm run build`, `npm audit --omit=dev --audit-level=high` and `forge lint` clean.

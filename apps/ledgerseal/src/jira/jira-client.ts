@@ -33,6 +33,8 @@ export interface JiraClient {
   getComments(issueId: string): Promise<JiraResult<any[]>>;
   /** F-06: the ids of the comments the calling user can see (read as the user). */
   getVisibleCommentIds(issueId: string): Promise<JiraResult<string[]>>;
+  /** M-11: the ids of the work logs the calling user can see (read as the user). */
+  getVisibleWorklogIds(issueId: string): Promise<JiraResult<string[]>>;
   /** All work log entries, from the paged work log endpoint. */
   getWorklogs(issueId: string): Promise<JiraResult<any[]>>;
   /** The site's field list (GET /rest/api/3/field), read once per client. */
@@ -136,10 +138,10 @@ export function createJiraClient(asApp: JiraRequester, asUser: JiraRequester | n
    * Reads a startAt/total paged list until every item is read. A list longer than MAX_PAGES pages fails closed
    * with TOO_LARGE, so a seal or a check never works from a part of the list (F-10).
    */
-  async function pages(path: (startAt: number) => any, listKey: string): Promise<JiraResult<any[]>> {
+  async function pages(path: (startAt: number) => any, listKey: string, as: JiraRequester = asApp): Promise<JiraResult<any[]>> {
     const items: any[] = [];
     for (let page = 0; page < MAX_PAGES; page++) {
-      const res = await getJson<any>(asApp, path(items.length));
+      const res = await getJson<any>(as, path(items.length));
       if (!res.ok) return res;
       const values: any[] = Array.isArray(res.value?.[listKey]) ? res.value[listKey] : [];
       items.push(...values);
@@ -147,6 +149,13 @@ export function createJiraClient(asApp: JiraRequester, asUser: JiraRequester | n
     }
     console.error(`LedgerSeal: more than ${MAX_PAGES * PAGE_SIZE} ${listKey}; the issue is too large to check`);
     return { ok: false, error: 'TOO_LARGE' };
+  }
+
+  /** The ids in a paged list read as the calling user, so Jira leaves out what that user cannot see. */
+  async function visibleIds(path: (startAt: number) => any, listKey: string): Promise<JiraResult<string[]>> {
+    if (!asUser) return { ok: false, error: 'FORBIDDEN' };
+    const res = await pages(path, listKey, asUser);
+    return res.ok ? { ok: true, value: res.value.map(item => String(item?.id ?? '')) } : res;
   }
 
   const changelogs = new Map<string, Promise<JiraResult<ChangelogEntry[]>>>();
@@ -178,17 +187,12 @@ export function createJiraClient(asApp: JiraRequester, asUser: JiraRequester | n
       return pages(startAt => route`/rest/api/3/issue/${issueId}/comment?startAt=${startAt}&maxResults=${PAGE_SIZE}&orderBy=created`, 'comments');
     },
 
-    async getVisibleCommentIds(issueId) {
-      if (!asUser) return { ok: false, error: 'FORBIDDEN' };
-      const ids: string[] = [];
-      for (let page = 0; page < MAX_PAGES; page++) {
-        const res = await getJson<any>(asUser, route`/rest/api/3/issue/${issueId}/comment?startAt=${ids.length}&maxResults=${PAGE_SIZE}`);
-        if (!res.ok) return res;
-        const values: any[] = Array.isArray(res.value?.comments) ? res.value.comments : [];
-        ids.push(...values.map(c => String(c?.id ?? '')));
-        if (values.length === 0 || ids.length >= Number(res.value?.total ?? 0)) return { ok: true, value: ids };
-      }
-      return { ok: false, error: 'TOO_LARGE' };
+    getVisibleCommentIds(issueId) {
+      return visibleIds(startAt => route`/rest/api/3/issue/${issueId}/comment?startAt=${startAt}&maxResults=${PAGE_SIZE}`, 'comments');
+    },
+
+    getVisibleWorklogIds(issueId) {
+      return visibleIds(startAt => route`/rest/api/3/issue/${issueId}/worklog?startAt=${startAt}&maxResults=${PAGE_SIZE}`, 'worklogs');
     },
 
     getWorklogs(issueId) {

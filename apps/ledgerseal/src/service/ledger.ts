@@ -72,7 +72,7 @@ const MESSAGES: Record<SealErrorCode, string> = {
   NOT_ADMIN: 'Only a Jira admin can change who can seal.',
   ISSUE_CHANGED: 'The issue changed since you opened it. Nothing was saved. Refresh, review the issue, and seal again.',
   RESTRICTED_EVIDENCE:
-    'This seal covers comments that are restricted to a role or group you are not in, or that LedgerSeal can no longer read (deleted or restricted since), so LedgerSeal does not export its evidence. If a covered comment was deleted, approving the changes makes a new seal whose evidence can be exported.'
+    'This seal covers comments or work logs that are restricted to a role or group you are not in, or that LedgerSeal can no longer read (deleted or restricted since), so LedgerSeal does not export its evidence. If a covered comment or work log was deleted, approving the changes makes a new seal whose evidence can be exported.'
 };
 
 const isEmptySide = (value: unknown) => value === null || value === undefined || value === '(empty)';
@@ -909,6 +909,28 @@ function historyTokens(history: WorkEffortStatus[]): string[] {
 }
 
 /**
+ * M-11 (owner decision 2026-11-06, fail closed, the comment rule): a covered work log's comment is in the snapshot.
+ * A sealed work log the app can no longer read refuses the export to everyone; one restricted at the seal or now
+ * refuses it to a viewer whose own work log list (read as the user) does not contain it. Null when the export may go.
+ */
+async function checkSealedWorklogs(snapshot: CanonicalIssueSnapshot, issueId: string, deps: LedgerSealDeps) {
+  const field = (snapshot.fields ?? []).find(f => f.id === 'worklog');
+  const sealedIds = Array.isArray(field?.value) ? (field!.value as any[]).map(w => String(w?.id ?? '')) : [];
+  if (sealedIds.length === 0) return null;
+  const live = await deps.jira.getWorklogs(issueId);
+  if (!live.ok) return fail('JIRA_UNREACHABLE');
+  const liveIds = new Set(live.value.map(w => String(w?.id)));
+  if (sealedIds.some(id => !liveIds.has(id))) return fail('RESTRICTED_EVIDENCE');
+  const restrictedNow = new Set(live.value.filter(w => w?.visibility).map(w => String(w.id)));
+  const restricted = new Set([...(snapshot.restrictedWorklogs ?? []).map(w => w.id), ...sealedIds.filter(id => restrictedNow.has(id))]);
+  if (restricted.size === 0) return null;
+  const visible = await deps.jira.getVisibleWorklogIds(issueId);
+  if (!visible.ok) return fail('JIRA_UNREACHABLE');
+  const seen = new Set(visible.value);
+  return [...restricted].some(id => !seen.has(id)) ? fail('RESTRICTED_EVIDENCE') : null;
+}
+
+/**
  * Evidence for an auditor (spec v2 section 11): a signed attestation of the stored state, the canonical
  * snapshot that was hashed, and the full status history. Reads only.
  */
@@ -944,6 +966,8 @@ export async function evidenceFlow(payload: any, context: any, deps: LedgerSealD
     const seen = new Set(visible.value);
     if ([...restricted].some(id => !seen.has(id))) return fail('RESTRICTED_EVIDENCE');
   }
+  const worklogs = await checkSealedWorklogs(snapshot, issue.id, deps);
+  if (worklogs) return worklogs;
   const history: WorkEffortStatus[] = [];
   for (let from = 1; from <= seal.workEffort.statusHead.seq; from += HISTORY_PAGE_SIZE) {
     history.push(...(await repo.getStatusRows(issue.id, from, seal.workEffort.statusHead.seq)));

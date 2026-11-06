@@ -311,6 +311,14 @@ const BUILT_IN_NAMES: Record<string, string> = {
   worklog: 'Work log'
 };
 
+/** Items (comments or work logs) that Jira restricts to a role or group, with that role or group, by id. */
+function restrictedItems(items: any[]): { id: string; type: string; value: string }[] {
+  return items
+    .filter(c => c?.visibility && typeof c.visibility === 'object' && (c.visibility.value || c.visibility.identifier))
+    .map(c => ({ id: String(c.id ?? ''), type: String(c.visibility.type ?? ''), value: String(c.visibility.value ?? c.visibility.identifier ?? '') }))
+    .sort((a, b) => codeUnitCompare(a.id, b.id));
+}
+
 /**
  * Extracts and canonicalizes issue fields, attachments, and comments from raw Jira REST API response.
  * `version` picks the canonical form rules; an unknown version throws rather than guess its rules.
@@ -396,10 +404,10 @@ export function canonicalizeIssueState(
 
   // F-06: which comments Jira restricts to a role or group. Kept next to the snapshot, outside the hashed form, so
   // the panel and the evidence export show such a comment only to a viewer who can see it in Jira.
-  const restrictedComments = rawComments
-    .filter(c => c?.visibility && typeof c.visibility === 'object' && (c.visibility.value || c.visibility.identifier))
-    .map(c => ({ id: String(c.id ?? ''), type: String(c.visibility.type ?? ''), value: String(c.visibility.value ?? c.visibility.identifier ?? '') }))
-    .sort((a, b) => codeUnitCompare(a.id, b.id));
+  const restrictedComments = restrictedItems(rawComments);
+  // M-11: the same record for the work logs the seal covers (a work log's comment is in the hashed value)
+  const coversWorklogs = canonicalFields.some(f => f.id === 'worklog');
+  const restrictedWorklogs = coversWorklogs && Array.isArray(fieldsObj.worklog?.worklogs) ? restrictedItems(fieldsObj.worklog.worklogs) : [];
 
   return {
     canonicalizerVersion: version,
@@ -415,6 +423,7 @@ export function canonicalizeIssueState(
     comments: canonicalComments,
     excluded,
     restrictedComments,
+    restrictedWorklogs,
     capturedAt
   };
 }
