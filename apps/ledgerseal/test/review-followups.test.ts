@@ -9,7 +9,8 @@
  */
 
 import { convertRecord } from '../src/service/conversion';
-import { getSealEvidence, onIssueDeleted, personalDataReport, revokeSeal, sealIssue, verifyIssue } from '../src/index';
+import { getSealEvidence, getSealHistory, onIssueDeleted, personalDataReport, revokeSeal, sealIssue, verifyIssue } from '../src/index';
+import { buildPanelView } from '../src/frontend/view-model';
 import { createJiraClient } from '../src/jira/jira-client';
 import { PARTY_PREFIX } from '../src/storage/party-repository';
 import { FakeJira, MemoryStore, model, panelContext, sampleIssue, validSignature } from './support/fakes';
@@ -94,13 +95,41 @@ describe('M-2 an erased account is never stored again (probe R2)', () => {
     expect(view.tamperedFields[0].changedByClosed).toBe(1);
   });
 
-  it('adds no account Jira cannot confirm as active; a known account only gets a new time', async () => {
+  it('L-8: an account Jira cannot read, or a deactivated one, keeps its name; a gone account is marked closed', async () => {
     const { jira, storage, as } = setup();
     await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
     jira.unknownUsers.add('dora');
+    jira.inactive.add('dino');
+    jira.gone.add('gus');
     jira.edit('dora', '2099-03-01T00:00:00.000Z', 'summary', 'dora');
-    await verifyIssue({}, panelContext('ann'), as('ann'));
-    expect(JSON.stringify([...storage.map.entries()])).not.toContain('dora');
+    jira.edit('dino', '2099-03-01T00:01:00.000Z', 'summary', 'dino');
+    jira.edit('gus', '2099-03-01T00:02:00.000Z', 'summary', 'gus');
+    const view: any = await verifyIssue({}, panelContext('ann'), as('ann'));
+    expect(storage.map.get(PARTY_PREFIX + (await model.token(storage, 'dora')))).toMatchObject({ accountId: 'dora' });
+    expect(storage.map.get(PARTY_PREFIX + (await model.token(storage, 'dino')))).toMatchObject({ accountId: 'dino' });
+    expect(storage.map.get(PARTY_PREFIX + (await model.token(storage, 'gus')))).toEqual({ closed: true, closedAt: expect.any(String) });
+    expect(JSON.stringify([...storage.map.entries()])).not.toContain('"gus"');
+    expect(view.tamperedFields[0]).toMatchObject({ changedBy: ['dora', 'dino'], changedByClosed: 1 });
+  });
+
+  it('L-8: a token with no map entry is unknown, not deleted, in the panel, the history and the evidence', async () => {
+    const { storage, as } = setup();
+    await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
+    storage.map.delete(PARTY_PREFIX + (await model.token(storage, 'ann')));
+    const view: any = await verifyIssue({}, panelContext('bob'), as('bob'));
+    expect(view.seal).toMatchObject({ sealedByAccountId: '', sealedByUnknown: true });
+    expect(view.seal).not.toHaveProperty('sealedByClosed');
+    const panel = buildPanelView({ loading: false, result: view });
+    expect(panel.seal).toMatchObject({ signerClosed: false, signerUnknown: true });
+    const history: any = await getSealHistory({}, panelContext('bob'), as('bob'));
+    expect(history.entries[0]).toMatchObject({ actorAccountId: '', actorClosed: false, actorUnknown: true });
+    const evidence: any = await getSealEvidence({}, panelContext('bob'), as('bob'));
+    expect(evidence.parties).toEqual({});
+    await revokeSeal({ reason: 'x' }, panelContext('bob'), as('bob'));
+    storage.map.delete(PARTY_PREFIX + (await model.token(storage, 'bob')));
+    const revoked: any = await verifyIssue({}, panelContext('carol'), as('carol'));
+    expect(revoked.seal.revocation).toMatchObject({ revokedByAccountId: '', revokedByUnknown: true });
+    expect(buildPanelView({ loading: false, result: revoked }).revokedByUnknown).toBe(true);
   });
 
   it('the conversion of an old record does not store a closed account', async () => {
@@ -109,7 +138,7 @@ describe('M-2 an erased account is never stored again (probe R2)', () => {
     changed.fields.summary = 'changed';
     await writeOldRecord(storage, sampleIssue(), { changedTo: { issue: changed, by: 'mallory', at: '2026-10-02T00:00:00.000Z' } });
     jira.issue = changed;
-    jira.inactive.add('mallory');
+    jira.gone.add('mallory');
     expect(await convertRecord(as(null), '10001')).toBe('CONVERTED');
     expect(JSON.stringify([...storage.map.entries()])).not.toContain('mallory');
     expect(storage.map.get(PARTY_PREFIX + (await model.token(storage, 'ann')))).toMatchObject({ accountId: 'ann' });
@@ -126,11 +155,11 @@ describe('M-2 an erased account is never stored again (probe R2)', () => {
         .mockResolvedValueOnce(reply(401))
     };
     const client = createJiraClient(asApp, null, { maxRetries: 0 });
-    expect(await client.isActiveUser('a')).toBe(true);
-    expect(await client.isActiveUser('b')).toBe(false);
-    expect(await client.isActiveUser('c')).toBeNull();
-    expect(await client.isActiveUser('d')).toBe(false);
-    expect(await client.isActiveUser('e')).toBeNull();
+    expect(await client.accountState('a')).toBe('active');
+    expect(await client.accountState('b')).toBe('inactive');
+    expect(await client.accountState('c')).toBeNull();
+    expect(await client.accountState('d')).toBe('gone');
+    expect(await client.accountState('e')).toBeNull();
   });
 });
 
@@ -141,5 +170,67 @@ describe('L-2 a deleted issue takes its conversion journal with it', () => {
     await onIssueDeleted({ issue: { id: '10001' } }, {}, storage);
     log.mockRestore();
     expect([...storage.map.keys()].filter(k => k.includes('10001'))).toEqual([]);
+  });
+});
+
+describe('M-5 two conversions of one record never overlap (probe P1)', () => {
+  it('P1: while the weekly run is inside its commit, a revoke answers CONFLICT and nothing is rolled back', async () => {
+    const { storage, as } = setup();
+    await writeOldRecord(storage, sampleIssue());
+    const realCommit = storage.commit.bind(storage);
+    let release!: () => void;
+    let reached!: () => void;
+    const gate = new Promise<void>(r => (release = r));
+    const atCommit = new Promise<void>(r => (reached = r));
+    let first = true;
+    storage.commit = async (items: any[]) => {
+      if (first && items.some(i => i.key === 'ls3:we:10001')) {
+        first = false;
+        reached();
+        await gate;
+      }
+      return realCommit(items);
+    };
+    const weekly = convertRecord(as(null), '10001');
+    await atCommit;
+    await expect(revokeSeal({ reason: 'probe revoke' }, panelContext('bob'), as('bob'))).resolves.toMatchObject({ ok: false, code: 'CONFLICT' });
+    release();
+    expect(await weekly).toBe('CONVERTED');
+    // The user tries again: the record is converted and the revoke goes in
+    await expect(revokeSeal({ reason: 'probe revoke' }, panelContext('bob'), as('bob'))).resolves.toMatchObject({ ok: true });
+    const view: any = await verifyIssue({}, panelContext('bob'), as('bob'));
+    expect(view.status).toBe('SEAL_REVOKED');
+    const evidence: any = await getSealEvidence({}, panelContext('bob'), as('bob'));
+    expect(evidence.history.map((r: any) => r.transitionName)).toEqual(['SEAL', 'REDACT', 'REVOKE']);
+    await expect(sealIssue({ signature: validSignature({ reason: 'again' }) }, panelContext('carol'), as('carol'))).resolves.toMatchObject({ ok: true });
+  });
+
+  it('a stalled run past its lease is taken over; when it wakes it finds the record moved on and stops (BUSY)', async () => {
+    const { storage, as } = setup();
+    await writeOldRecord(storage, sampleIssue());
+    let release!: () => void;
+    let reached!: () => void;
+    const gate = new Promise<void>(r => (release = r));
+    const atCheck = new Promise<void>(r => (reached = r));
+    const realGet = storage.get.bind(storage);
+    let paused = false;
+    // The stalled run pauses on its last check before the commit (the row after the redaction row)
+    storage.get = async (key: string) => {
+      if (!paused && key === 'ls3:wes:10001:000003') {
+        paused = true;
+        reached();
+        await gate;
+      }
+      return realGet(key);
+    };
+    const stalled = convertRecord(as(null), '10001', '2000-01-01T00:00:00.000Z');
+    await atCheck;
+    await expect(revokeSeal({ reason: 'probe revoke' }, panelContext('bob'), as('bob'))).resolves.toMatchObject({ ok: true });
+    release();
+    expect(await stalled).toBe('BUSY');
+    const view: any = await verifyIssue({}, panelContext('bob'), as('bob'));
+    expect(view.status).toBe('SEAL_REVOKED');
+    expect(view.seal.revocation.reason).toBe('probe revoke');
+    await expect(sealIssue({ signature: validSignature({ reason: 'again' }) }, panelContext('carol'), as('carol'))).resolves.toMatchObject({ ok: true });
   });
 });

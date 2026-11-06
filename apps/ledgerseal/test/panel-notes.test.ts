@@ -108,7 +108,7 @@ describe('F-15 history', () => {
       ['SEAL', 'ann', false],
       ['CHANGE', '', false]
     ]);
-    await new PartyRepository(storage).forget(await model.token(storage, 'ann'));
+    await new PartyRepository(storage).markClosed(await model.token(storage, 'ann'));
     page = await getSealHistory({}, panelContext('viewer'), as('viewer'));
     expect(page.entries[0]).toMatchObject({ actorAccountId: '', actorClosed: true });
   });

@@ -352,8 +352,8 @@ export async function recordIncidentIfNew(
   // History rows name people by party token, never by account id (ADR-011 decision 1)
   const parties = new PartyRepository(deps.storage);
   const party = knownParty ?? (await parties.partyForWrite());
-  // M-2: a person is added to the map only while Jira reports the account active, so an erased id is never stored again
-  await parties.register(attributed.flatMap(c => c.changedBy), party, at, id => deps.jira.isActiveUser(id));
+  // M-2: a closed account is never stored again; L-8: an account that exists keeps its name
+  await parties.register(attributed.flatMap(c => c.changedBy), party, at, id => deps.jira.accountState(id));
   const changes = attributed.map(c => ({ ...c, changedBy: c.changedBy.map(party) }));
   const row = buildStatusRow(we.statusHead, {
     workEffortId: we.workEffortId,
@@ -682,17 +682,26 @@ async function verifyAgainstSeal(
   // Party tokens become account ids, and names in the change text, only for display (ADR-011 decision 4)
   const resolver = new PartyResolver(new PartyRepository(deps.storage));
   const names = await tokenNames(analysis.tamperedFields.flatMap(d => [String(d.sealedValue ?? ''), String(d.liveValue ?? '')]), live, resolver, deps.jira);
-  const named = (text: any) => (typeof text === 'string' ? text.replace(TOKEN_IN_TEXT, token => names.get(token) ?? UNNAMED_PERSON) : text);
+  const closedTokens = new Set<string>();
+  for (const token of new Set(analysis.tamperedFields.flatMap(d => `${d.sealedValue ?? ''} ${d.liveValue ?? ''}`.match(TOKEN_IN_TEXT) ?? []))) {
+    if (!names.has(token) && (await resolver.isClosed(token))) closedTokens.add(token);
+  }
+  const named = (text: any) =>
+    typeof text === 'string' ? text.replace(TOKEN_IN_TEXT, token => names.get(token) ?? (closedTokens.has(token) ? DELETED_USER : UNNAMED_PERSON)) : text;
   analysis.tamperedFields = await Promise.all(
     analysis.tamperedFields.map(async diff => {
-      const ids = await Promise.all(((recorded.get(diff.fieldId)?.changedBy as string[]) ?? []).map(id => resolver.resolve(id)));
-      const closed = ids.filter(id => !id).length;
+      const stored = (recorded.get(diff.fieldId)?.changedBy as string[]) ?? [];
+      const ids = await Promise.all(stored.map(id => resolver.resolve(id)));
+      const unresolved = stored.filter((_, i) => !ids[i]);
+      const closed = (await Promise.all(unresolved.map(id => resolver.isClosed(id)))).filter(Boolean).length;
+      const unknown = unresolved.length - closed;
       return {
         ...diff,
         sealedValue: named(diff.sealedValue),
         liveValue: named(diff.liveValue),
         changedBy: ids.filter((id): id is string => Boolean(id)),
         ...(closed > 0 ? { changedByClosed: closed } : {}),
+        ...(unknown > 0 ? { changedByUnknown: unknown } : {}),
         changedAt: recorded.get(diff.fieldId)?.changedAt ?? null
       };
     })
@@ -710,6 +719,8 @@ async function verifyAgainstSeal(
  * sealed, changed or revoked (only those are in the map), or a closed account (ADR-011).
  */
 export const UNNAMED_PERSON = 'a user no longer on this issue';
+/** Shown for a person whose account was closed (the 11.50 wording, owner decision 2026-11-06). */
+export const DELETED_USER = 'a deleted user';
 
 /** The display name of each party token found in the texts: from the live issue, else from the map and Jira. */
 async function tokenNames(texts: string[], live: LiveRead, resolver: PartyResolver, jira: JiraClient): Promise<Map<string, string>> {
@@ -731,14 +742,21 @@ async function tokenNames(texts: string[], live: LiveRead, resolver: PartyResolv
 /** The seal summary with account ids in place of party tokens; a closed account gives an empty id and a flag. */
 async function resolveSummary(summary: SealSummary | undefined, resolver: PartyResolver): Promise<SealSummary | undefined> {
   if (!summary) return summary;
+  // L-8: "closed" only for a closed mark; a token with no entry is unknown and shown neutrally
+  const flags = async (id: string, resolved: string | null, closedKey: string, unknownKey: string) =>
+    resolved ? {} : (await resolver.isClosed(id)) ? { [closedKey]: true } : { [unknownKey]: true };
   const sealedBy = await resolver.resolve(summary.sealedByAccountId);
   const revokedBy = summary.revocation ? await resolver.resolve(summary.revocation.revokedByAccountId) : null;
   return {
     ...summary,
     sealedByAccountId: sealedBy ?? '',
-    ...(sealedBy ? {} : { sealedByClosed: true }),
+    ...(await flags(summary.sealedByAccountId, sealedBy, 'sealedByClosed', 'sealedByUnknown')),
     revocation: summary.revocation
-      ? { ...summary.revocation, revokedByAccountId: revokedBy ?? '', ...(revokedBy ? {} : { revokedByClosed: true }) }
+      ? {
+          ...summary.revocation,
+          revokedByAccountId: revokedBy ?? '',
+          ...(await flags(summary.revocation.revokedByAccountId, revokedBy, 'revokedByClosed', 'revokedByUnknown'))
+        }
       : null
   };
 }
@@ -766,9 +784,15 @@ export async function historyFlow(payload: any, context: any, deps: LedgerSealDe
   // Who acted, as an account id for the UI Kit User component; empty for the app itself or a closed account (F-15)
   const resolver = new PartyResolver(new PartyRepository(deps.storage));
   const actors = await Promise.all(page.map(row => resolver.resolve(row.setByPartyId)));
+  const closed = await Promise.all(page.map((row, i) => (actors[i] ? false : resolver.isClosed(row.setByPartyId))));
   return {
     ok: true as const,
-    entries: page.map((row, i) => ({ ...row, actorAccountId: actors[i] ?? '', actorClosed: Boolean(row.setByPartyId) && !actors[i] })),
+    entries: page.map((row, i) => ({
+      ...row,
+      actorAccountId: actors[i] ?? '',
+      actorClosed: closed[i],
+      actorUnknown: Boolean(row.setByPartyId) && !actors[i] && !closed[i]
+    })),
     chainValid: check.valid && complete,
     nextFromSeq: toSeq < head.seq ? toSeq + 1 : null
   };
@@ -857,7 +881,12 @@ export async function evidenceFlow(payload: any, context: any, deps: LedgerSealD
   const now = new Date().toISOString();
   const resolver = new PartyResolver(new PartyRepository(deps.storage));
   const parties: Record<string, string | null> = {};
-  for (const token of historyTokens(history)) parties[token] = await resolver.resolve(token);
+  for (const token of historyTokens(history)) {
+    const accountId = await resolver.resolve(token);
+    // null means a closed account; a token the app cannot name is left out (L-8)
+    if (accountId) parties[token] = accountId;
+    else if (await resolver.isClosed(token)) parties[token] = null;
+  }
   if (!deps.signer) console.error(`${UNSIGNED_LOG} Evidence of issue ${issue.id}.`);
   return {
     format: 'ledgerseal-evidence/1',

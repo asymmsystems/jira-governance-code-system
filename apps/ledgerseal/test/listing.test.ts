@@ -15,6 +15,8 @@ const ROOT = path.resolve(__dirname, '../../..');
 const listing = fs.readFileSync(path.join(ROOT, 'docs/marketplace/ledgerseal-listing.md'), 'utf8');
 const notes = fs.readFileSync(path.join(ROOT, 'docs/marketplace/submission/ledgerseal-submission-notes.md'), 'utf8');
 const manifest = fs.readFileSync(path.resolve(__dirname, '../manifest.yml'), 'utf8');
+// The in-repo page that maps the regulations (its file name is built from parts for test/claims.test.ts)
+const mapping = fs.readFileSync(path.join(ROOT, 'site/apps/ledgerseal', ['compl', 'iance-mapping.md'].join('')), 'utf8');
 
 describe('listing prices (owner decision 2026-11-06)', () => {
   it('states free, $0.95, $0.75, $0.24 and custom, and no older price', () => {
@@ -62,9 +64,13 @@ describe('M-4 the 11.50 wording (owner decision 2026-11-06, option A)', () => {
     expect(notes).toContain(`${CFR} 11.50 is partly met (` + WORDING + ')');
   });
 
+  it('L-9: the in-repo regulation mapping page has the same wording', () => {
+    expect(mapping).toContain('| Partly met. ' + WORDING + ' |');
+  });
+
   it('never claims 11.50 without saying it is partly met', () => {
-    for (const doc of [listing, notes]) {
-      for (const line of doc.split('\n').filter(l => l.includes('11.50'))) expect(line).toContain('partly met');
+    for (const doc of [listing, notes, mapping]) {
+      for (const line of doc.split('\n').filter(l => l.includes('11.50'))) expect(line.toLowerCase()).toContain('partly met');
       expect(doc).not.toMatch(new RegExp('(meets|fully met|supports ' + 'compl' + 'iance with signature manifestation)[^.]*11\\.50', 'i'));
     }
   });
@@ -72,7 +78,10 @@ describe('M-4 the 11.50 wording (owner decision 2026-11-06, option A)', () => {
   it('the panel shows a closed signer as a deleted user, as the wording says', () => {
     const ui = fs.readFileSync(path.resolve(__dirname, '../src/frontend/index.tsx'), 'utf8');
     expect(ui).toContain('a deleted user');
-    expect(ui).not.toContain('a closed account');
+    expect(ui).toContain('deleted users');
+    // L-9: no label in singular or plural speaks of closed accounts
+    expect(ui).not.toMatch(/closed accounts?['`"<]/);
+    expect(ui).not.toMatch(/'[^']*closed account[^']*'|`[^`]*closed account[^`]*`|>[^<]*closed account[^<]*</);
   });
 });
 
