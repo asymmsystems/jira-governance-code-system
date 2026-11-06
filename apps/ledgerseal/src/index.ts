@@ -28,6 +28,7 @@ import {
 import { getPolicyFlow, searchGroupsFlow, setPolicyFlow } from './service/policy-admin';
 import { deleteIssueRecords, ReportFn, weeklyPersonalDataJob } from './service/personal-data';
 import { privacy } from '@forge/api';
+import { logFailure } from './service/log';
 
 export { LedgerSealDeps } from './service/ledger';
 
@@ -307,7 +308,7 @@ export async function onIssueDeleted(event: any, context?: any, storage: Storage
     console.log(`LedgerSeal: issue ${issueId} deleted, ${deleted} record key(s) deleted`);
     return { deleted };
   } catch (err) {
-    console.error(`LedgerSeal: could not delete the records of deleted issue ${issueId}`, err);
+    logFailure(`could not delete the records of deleted issue ${issueId}`, err);
     return { deleted: 0 };
   }
 }
@@ -330,7 +331,7 @@ export async function personalDataReport(
     );
     return result;
   } catch (err) {
-    console.error('LedgerSeal: the personal data report failed', err);
+    logFailure('the personal data report failed', err);
     return { reported: 0, closed: [] };
   }
 }

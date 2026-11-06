@@ -104,6 +104,17 @@ export class FakeJira implements JiraClient {
     return this.inactive.has(accountId) ? 'inactive' : 'active';
   }
 
+  /** Q3: users without Browse projects on the issue, and a failure of the permission check. */
+  cannotBrowse = new Set<string>();
+  browseError: 'UNREACHABLE' | 'FORBIDDEN' | 'NOT_FOUND' | null = null;
+  browseChecks: string[] = [];
+
+  async canBrowseIssue(issueId: string): Promise<JiraResult<boolean>> {
+    this.browseChecks.push(issueId);
+    if (this.browseError) return { ok: false, error: this.browseError };
+    return { ok: true, value: !this.cannotBrowse.has(this.currentUser ?? '') };
+  }
+
   async hasApproverPermission(issueId: string): Promise<JiraResult<boolean>> {
     this.permissionChecks.push(issueId);
     if (this.permissionError) return { ok: false, error: this.permissionError };

@@ -223,6 +223,7 @@ function messageLines(state: PanelState, input: PanelInput, seal: SealSummary | 
     case 'LICENSE_INACTIVE':
       return ['Ask your Jira admin to renew the LedgerSeal licence. Seals stay in place.'];
     case 'ERROR':
+      if (r?.ok === false && r.code === 'NO_BROWSE_PERMISSION') return [String(r.message)];
       return r?.errorReason === 'STORAGE'
         ? ['LedgerSeal could not read its seal record. The seal state is unknown. Try again.']
         : ['Jira did not answer. The seal state is unknown. Try again.'];

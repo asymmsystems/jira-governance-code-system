@@ -25,6 +25,7 @@ import { newSiteKey, PartyRepository, PartyResolver } from '../storage/party-rep
 import { approverGroupNames, isApprover } from './approver';
 import { convertRecord, hasConversionJournal } from './conversion';
 import { HISTORY_PAGE_SIZE, MAX_CONTENT_PARTS, MAX_PART_BYTES, SealRepository, splitUtf8, StorageProvider } from '../storage/seal-repository';
+import { logFailure } from './log';
 
 export interface LedgerSealDeps {
   jira: JiraClient;
@@ -48,7 +49,8 @@ export type SealErrorCode =
   | 'LICENSE_INACTIVE'
   | 'NOT_ADMIN'
   | 'ISSUE_CHANGED'
-  | 'RESTRICTED_EVIDENCE';
+  | 'RESTRICTED_EVIDENCE'
+  | 'NO_BROWSE_PERMISSION';
 
 export interface SealFailure {
   ok: false;
@@ -60,6 +62,7 @@ const MESSAGES: Record<SealErrorCode, string> = {
   NO_IDENTITY: 'LedgerSeal could not identify you. Reload the page and try again.',
   MISSING_ISSUE: 'LedgerSeal could not tell which issue this is.',
   NOT_APPROVER: 'You cannot seal this issue. Ask a project admin.',
+  NO_BROWSE_PERMISSION: 'You do not have permission to browse this issue in Jira, so LedgerSeal shows nothing about it.',
   SELF_APPROVAL: 'You changed this issue, so another approver must approve it.',
   JIRA_UNREACHABLE: 'LedgerSeal could not read the issue from Jira. Nothing was saved. Try again.',
   INVALID_REQUEST: 'LedgerSeal: invalid seal request.',
@@ -92,6 +95,17 @@ export const SELF_REVOKE_MESSAGE = 'You changed this issue after it was sealed, 
 
 export function fail(code: SealErrorCode, message: string = MESSAGES[code]): SealFailure {
   return { ok: false, code, message };
+}
+
+/**
+ * Q3 of the Marketplace security questionnaire: every resolver that acts on the context issue first asks Jira, as
+ * the calling user and with the permissions REST API, whether that user may browse the issue. Only then does it read
+ * the issue as the app or return anything about it. A refusal, a missing issue or a failed check refuses (fail closed).
+ */
+export async function browseDenied(deps: LedgerSealDeps, issueId: string): Promise<SealFailure | null> {
+  const res = await deps.jira.canBrowseIssue(issueId);
+  if (!res.ok) return fail(res.error === 'FORBIDDEN' || res.error === 'NOT_FOUND' ? 'NO_BROWSE_PERMISSION' : 'JIRA_UNREACHABLE');
+  return res.value ? null : fail('NO_BROWSE_PERMISSION');
 }
 
 /**
@@ -402,6 +416,8 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   if (!issue) return fail('MISSING_ISSUE');
   const signature = payload?.signature;
   if (!signature) return fail('INVALID_REQUEST');
+  const denied = await browseDenied(deps, issue.id);
+  if (denied) return denied;
 
   const permission = await isApprover(deps.jira, deps.storage, issue.id);
   if (!permission.ok) return fail(permission.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
@@ -555,7 +571,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
     try {
       await repo.deleteContent(previousWorkEffort.currentContentId);
     } catch (err) {
-      console.error(`LedgerSeal: could not delete the replaced snapshot of issue ${issue.id}`, err);
+      logFailure(`could not delete the replaced snapshot of issue ${issue.id}`, err);
     }
   }
 
@@ -594,13 +610,15 @@ export async function verifyIssueFlow(payload: any, context: any, deps: LedgerSe
   if (licenseInactive(context)) return fail('LICENSE_INACTIVE');
   const issue = contextIssue(context);
   if (!issue) return fail('MISSING_ISSUE');
+  const denied = await browseDenied(deps, issue.id);
+  if (denied) return denied;
 
   const now = new Date().toISOString();
   let party: PartyFn | null;
   try {
     party = await new PartyRepository(deps.storage).partyForRead();
   } catch (err) {
-    console.error('LedgerSeal: verify failed', err);
+    logFailure('verify failed', err);
     return errorResult('STORAGE', now);
   }
   const live = await readLiveSnapshot(deps.jira, issue.id, now, { party });
@@ -610,7 +628,7 @@ export async function verifyIssueFlow(payload: any, context: any, deps: LedgerSe
   try {
     result = await verifyAgainstSeal(deps, issue.id, live, now);
   } catch (err) {
-    console.error('LedgerSeal: verify failed', err);
+    logFailure('verify failed', err);
     return errorResult('STORAGE', now);
   }
   return {
@@ -818,6 +836,8 @@ export async function historyFlow(payload: any, context: any, deps: LedgerSealDe
   if (licenseInactive(context)) return fail('LICENSE_INACTIVE');
   const issue = contextIssue(context);
   if (!issue) return fail('MISSING_ISSUE');
+  const denied = await browseDenied(deps, issue.id);
+  if (denied) return denied;
   const repo = new SealRepository(deps.storage);
   const we = await repo.getWorkEffort(issue.id);
   if (!we) return { ok: true as const, entries: [] as WorkEffortStatus[], chainValid: true, nextFromSeq: null };
@@ -873,7 +893,7 @@ export async function issueChangedFlow(event: any, deps: LedgerSealDeps): Promis
     const { recorded } = await recordIncidentIfNew(deps, repo, evaluation, now);
     return { recorded };
   } catch (err) {
-    console.error('LedgerSeal: issue event handling failed', err);
+    logFailure('issue event handling failed', err);
     return { recorded: false };
   }
 }
@@ -939,6 +959,8 @@ export async function evidenceFlow(payload: any, context: any, deps: LedgerSealD
   if (licenseInactive(context)) return fail('LICENSE_INACTIVE');
   const issue = contextIssue(context);
   if (!issue) return fail('MISSING_ISSUE');
+  const denied = await browseDenied(deps, issue.id);
+  if (denied) return denied;
   const repo = new SealRepository(deps.storage);
   const seal = await repo.getSeal(issue.id);
   if (!seal) return fail('NOT_SEALED');
@@ -1006,6 +1028,8 @@ export async function revokeFlow(payload: any, context: any, deps: LedgerSealDep
   if (!issue) return fail('MISSING_ISSUE');
   const reason = validReason(payload?.reason);
   if (!reason) return fail('REASON_REQUIRED', 'Give a reason for revoking the seal (1 to 500 characters).');
+  const denied = await browseDenied(deps, issue.id);
+  if (denied) return denied;
 
   const permission = await isApprover(deps.jira, deps.storage, issue.id);
   if (!permission.ok) return fail(permission.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');

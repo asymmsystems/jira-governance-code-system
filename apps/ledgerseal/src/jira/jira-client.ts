@@ -45,6 +45,8 @@ export interface JiraClient {
   accountState(accountId: string): Promise<'active' | 'inactive' | 'gone' | null>;
   /** True when the calling user may seal, reseal or revoke on this issue (spec v2 section 7.1). */
   hasApproverPermission(issueId: string): Promise<JiraResult<boolean>>;
+  /** Q3: whether the calling user has Browse projects on the issue (read as the user, permissions REST API). */
+  canBrowseIssue(issueId: string): Promise<JiraResult<boolean>>;
   /** Group ids of the calling user, for the approver group policy. */
   getMyGroupIds(): Promise<JiraResult<string[]>>;
   /** True when the calling user is a Jira admin (global Administer Jira permission). */
@@ -233,6 +235,13 @@ export function createJiraClient(asApp: JiraRequester, asUser: JiraRequester | n
       if (res.ok) return typeof res.value?.active === 'boolean' ? (res.value.active ? 'active' : 'inactive') : null;
       // Jira answers 404 for an account that no longer exists
       return res.error === 'NOT_FOUND' ? 'gone' : null;
+    },
+
+    async canBrowseIssue(issueId) {
+      if (!asUser) return { ok: false, error: 'FORBIDDEN' };
+      const res = await getJson<any>(asUser, route`/rest/api/3/mypermissions?issueId=${issueId}&permissions=${'BROWSE_PROJECTS'}`);
+      if (!res.ok) return res;
+      return { ok: true, value: res.value?.permissions?.BROWSE_PROJECTS?.havePermission === true };
     },
 
     async hasApproverPermission(issueId) {

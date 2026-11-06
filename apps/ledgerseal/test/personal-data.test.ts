@@ -109,7 +109,7 @@ describe('ADR-011 weekly personal data report', () => {
     await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
     const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     await expect(personalDataReport({}, {}, { jira: new FakeJira(sampleIssue()), storage }, async () => Promise.reject(new Error('429')))).resolves.toEqual({ reported: 0, closed: [] });
-    expect(error).toHaveBeenCalledWith('LedgerSeal: the personal data report failed', expect.any(Error));
+    expect(error).toHaveBeenCalledWith('LedgerSeal: the personal data report failed: Error');
     error.mockRestore();
   });
 });
