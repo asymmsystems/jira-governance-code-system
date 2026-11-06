@@ -50,7 +50,7 @@ export class FakeJira implements JiraClient {
     return { ok: true, value: JSON.parse(JSON.stringify(this.fields)) };
   }
 
-  /** F-06: comment ids each user cannot see (a restricted comment outside their role or group). */
+  /** F-06, M-11: comment and work log ids each user cannot see (a restricted comment outside their role or group). */
   hiddenFrom: Record<string, string[]> = {};
   failVisibleComments = false;
 
@@ -67,12 +67,21 @@ export class FakeJira implements JiraClient {
     return { ok: true, value: JSON.parse(JSON.stringify(list)) };
   }
 
-  worklogs: any[] = [];
+  /** All work logs the app reads; null means the work logs in the issue body. */
+  worklogs: any[] | null = null;
   failWorklogs = false;
+  failVisibleWorklogs = false;
 
   async getWorklogs(): Promise<JiraResult<any[]>> {
     if (this.failWorklogs) return { ok: false, error: 'UNREACHABLE' };
-    return { ok: true, value: JSON.parse(JSON.stringify(this.worklogs)) };
+    return { ok: true, value: JSON.parse(JSON.stringify(this.worklogs ?? this.issue.fields?.worklog?.worklogs ?? [])) };
+  }
+
+  async getVisibleWorklogIds(): Promise<JiraResult<string[]>> {
+    if (this.failVisibleWorklogs) return { ok: false, error: 'UNREACHABLE' };
+    const list = this.worklogs ?? this.issue.fields?.worklog?.worklogs ?? [];
+    const hidden = new Set(this.hiddenFrom[this.currentUser ?? ''] ?? []);
+    return { ok: true, value: list.map((w: any) => String(w.id)).filter((id: string) => !hidden.has(id)) };
   }
 
   async getChangelog(): Promise<JiraResult<ChangelogEntry[]>> {
