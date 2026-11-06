@@ -85,6 +85,51 @@ export function forgeDeps(asUser: boolean): LedgerSealDeps {
   };
 }
 
+/**
+ * The values typed on the transition screen. Forge documents `modifiedFields` at the top level of the validator
+ * payload; an older source names `transition.modifiedFields`. Both are read, and the top level wins (F-03).
+ */
+export function transitionScreenValues(payload: any): Record<string, any> {
+  const nested = payload?.transition?.modifiedFields;
+  const top = payload?.modifiedFields;
+  const asObject = (v: any) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+  return { ...asObject(nested), ...asObject(top) };
+}
+
+/** The body of a comment typed on the transition screen, in any shape Jira may send; null when empty. */
+function transitionComment(value: any): unknown {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') return value.trim() ? value : null;
+  if (Array.isArray(value)) return value.map(v => transitionComment(v?.add?.body ?? v?.body ?? v)).find(Boolean) ?? null;
+  if (typeof value === 'object') {
+    if (value.type === 'doc') return Array.isArray(value.content) && value.content.length > 0 ? value : null;
+    if ('body' in value) return transitionComment(value.body);
+    if (Array.isArray(value.comments)) return null;
+    return Object.keys(value).length > 0 ? JSON.stringify(value) : null;
+  }
+  return String(value);
+}
+
+/**
+ * Applies the transition-screen values to the live issue (F-02). A comment typed there is added to the comment
+ * list as a new comment, so it shows as "Comment added"; it never replaces the list. Attachments and work logs
+ * come only from Jira.
+ */
+export function applyTransitionScreen(raw: any, values: Record<string, any>, at: string): any {
+  if (!raw?.fields || Object.keys(values).length === 0) return raw;
+  const fields = { ...raw.fields };
+  for (const [key, value] of Object.entries(values)) {
+    if (key === 'comment' || key === 'attachment' || key === 'worklog') continue;
+    fields[key] = value;
+  }
+  const body = transitionComment(values.comment);
+  if (body !== null) {
+    const comments = Array.isArray(fields.comment?.comments) ? fields.comment.comments : [];
+    fields.comment = { ...(fields.comment || {}), comments: [...comments, { id: 'transition-screen', created: at, body }] };
+  }
+  return { ...raw, fields };
+}
+
 export const JIRA_UNREACHABLE_MESSAGE =
   'LedgerSeal could not read the issue from Jira, so this transition is blocked. Try again in a minute.';
 
@@ -92,7 +137,7 @@ export const JIRA_UNREACHABLE_MESSAGE =
  * Handles workflow transition validation:
  * Reads the seal from app storage and verifies it against the live issue before allowing the transition.
  * Supports both documented Forge validator payloads: { issue: { key } } and { issue: { id } }.
- * Evaluates transition.modifiedFields to prevent transition-screen bypasses.
+ * Applies the values typed on the transition screen (modifiedFields) before the check, so they cannot bypass it.
  */
 export async function validateTransition(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(false)) {
   const issueKey = payload?.issue?.key || payload?.issueKey;
@@ -108,13 +153,12 @@ export async function validateTransition(payload: any, context?: any, deps: Ledg
   const repository = new SealRepository(deps.storage);
   const now = new Date().toISOString();
 
-  // Read the live issue and apply transition-screen modifiedFields if present
-  const modifiedFields = payload?.transition?.modifiedFields;
+  // Read the live issue and apply the transition-screen values (F-02, F-03)
+  const screen = transitionScreenValues(payload);
   const party = await new PartyRepository(deps.storage).partyForRead();
   const live = await readLiveSnapshot(deps.jira, issueId || issueKey, now, {
     party,
-    apply: raw =>
-      modifiedFields && typeof modifiedFields === 'object' && raw?.fields ? { ...raw, fields: { ...raw.fields, ...modifiedFields } } : raw
+    apply: raw => applyTransitionScreen(raw, screen, now)
   });
   // Fail closed, name the real cause, and write nothing (LS-08, LS-19)
   if (!live) {
@@ -159,8 +203,9 @@ export async function validateTransition(payload: any, context?: any, deps: Ledg
     }
   );
 
-  if (!validation.isValid) {
-    // A new change is recorded once, and the property is updated with the real count (Fixes C-3)
+  // A new change is recorded once, and the property is updated with the real count (Fixes C-3). Values typed on
+  // the transition screen are not in Jira yet, and a blocked transition never saves them, so they record nothing.
+  if (!validation.isValid && Object.keys(screen).length === 0) {
     await recordIncidentIfNew(deps, repository, evaluation, now);
   }
 
