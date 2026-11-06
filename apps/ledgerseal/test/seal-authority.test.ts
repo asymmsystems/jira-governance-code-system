@@ -53,8 +53,9 @@ describe('B-01 approver policy and separation of duties', () => {
     const { storage, deps } = setup();
     const result = await sealIssue({ signature: sig }, panelContext('ann'), deps('ann'));
     expect(result).toMatchObject({ ok: true });
-    expect(model.assignments(storage)[0].partyId).toBe('ann');
-    expect(model.statusRows(storage)[0]).toMatchObject({ setByPartyId: 'ann', data: { signerName: 'Ann Approver' } });
+    const ann = await model.token(storage, 'ann');
+    expect(model.assignments(storage)[0].partyId).toBe(ann);
+    expect(model.statusRows(storage)[0]).toMatchObject({ setByPartyId: ann });
   });
 
   it('refuses a seal from a user outside the policy and writes nothing', async () => {
@@ -135,12 +136,13 @@ describe('B-01 failure paths', () => {
     await expect(sealIssue({ signature: sig }, panelContext('mallory'), deps('mallory'))).resolves.toMatchObject({ code: 'SELF_APPROVAL' });
   });
 
-  it('adversarial (live, DEMO-34): the editor cannot revoke and then seal their own change', async () => {
+  it('adversarial (live, DEMO-34, B2): the editor cannot revoke, and cannot seal their own change after another revokes', async () => {
     const { jira, storage, deps } = setup();
     jira.approvers.add('mallory');
     await sealIssue({ signature: sig }, panelContext('ann'), deps('ann'));
     jira.edit('mallory', '2099-01-01T00:00:00.000Z', 'summary', 'Rotate credentials and drop the audit table');
-    await expect(revokeSeal({ reason: 'Clearing the way' }, panelContext('mallory'), deps('mallory'))).resolves.toMatchObject({ ok: true });
+    await expect(revokeSeal({ reason: 'Clearing the way' }, panelContext('mallory'), deps('mallory'))).resolves.toMatchObject({ ok: false, code: 'SELF_APPROVAL' });
+    await expect(revokeSeal({ reason: 'Scope changed' }, panelContext('ann'), deps('ann'))).resolves.toMatchObject({ ok: true });
     const before = storage.sets.length;
     const writesBefore = jira.propertyWrites.length;
 
@@ -163,7 +165,7 @@ describe('B-01 failure paths', () => {
 
     expect(sealed).toMatchObject({ ok: true });
     const rows = model.statusRows(storage);
-    expect(rows[rows.length - 1]).toMatchObject({ statusId: 'LS_SEALED', setByPartyId: 'bob', reason: 'Reviewed the new scope' });
+    expect(rows[rows.length - 1]).toMatchObject({ statusId: 'LS_SEALED', setByPartyId: await model.token(storage, 'bob'), reason: 'Reviewed the new scope' });
   });
 
   it('a seal after a revoke with no change since the last seal needs no reason, even from the revoker', async () => {

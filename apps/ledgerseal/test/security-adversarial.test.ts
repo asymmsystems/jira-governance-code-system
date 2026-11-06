@@ -1,3 +1,9 @@
+/**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 import * as fs from 'fs';
 import * as path from 'path';
 import { generateSealCertificate, verifyCertificateIntegrity, computeSnapshotHash } from '../src/domain/crypto';

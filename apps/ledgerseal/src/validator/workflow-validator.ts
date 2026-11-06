@@ -1,6 +1,10 @@
 /**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
  * LedgerSeal: Jira Workflow Transition Validator Gate
  * Blocks issue transitions if issue is unsealed, certificate is revoked, or seal is broken.
+ *
+ * @author Fahim Farook
  */
 
 import { CanonicalIssueSnapshot, WorkflowTransitionValidationResult } from '../domain/models';
@@ -10,7 +14,6 @@ import { compareToSeal, SealedState } from '../domain/tamper-detector';
 export interface SealInfo {
   certificateId?: string;
   sealedAt?: string;
-  signerName?: string;
   revocationReason?: string;
   revokedAt?: string;
 }
@@ -38,7 +41,7 @@ export function validateTransitionGate(
     return {
       isValid: false,
       errorMessage:
-        'LedgerSeal: this issue is not sealed. To proceed: open the LedgerSeal panel on this issue, select your sign-off role, agree to the declaration, and click "Seal issue".'
+        'LedgerSeal: this issue is not sealed. To proceed: open the LedgerSeal panel on this issue, select your sign-off role, agree to the declaration, and click "Seal this issue".'
     };
   }
 
@@ -61,7 +64,6 @@ export function validateTransitionGate(
       details: {
         certificateId: info.certificateId,
         sealedAt: info.sealedAt,
-        signerName: info.signerName,
         tamperCount: totalTampered
       }
     };
@@ -75,7 +77,6 @@ export function validateTransitionGate(
       details: {
         certificateId: info.certificateId,
         sealedAt: info.sealedAt,
-        signerName: info.signerName,
         tamperCount: 1
       }
     };
@@ -86,7 +87,6 @@ export function validateTransitionGate(
     details: {
       certificateId: info.certificateId,
       sealedAt: info.sealedAt,
-      signerName: info.signerName,
       tamperCount: 0
     }
   };

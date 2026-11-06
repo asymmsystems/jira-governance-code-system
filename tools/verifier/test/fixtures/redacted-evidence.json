@@ -1,0 +1,94 @@
+{
+  "format": "ledgerseal-evidence/1",
+  "exportedAt": "2026-11-06T00:00:00.000Z",
+  "publicKeyId": "redaction-test-key",
+  "attestation": {
+    "schemaVersion": 3,
+    "issueId": "10001",
+    "status": "SEAL_VALID",
+    "certificateId": "33333333-3333-4333-8333-333333333333",
+    "snapshotHash": "1a840452ae810a7d8b1eb2946e66180c02124cef0c40fc9d1766d95f12e39407",
+    "canonicalizerVersion": "2.1.0",
+    "sealedAt": "2026-11-04T00:00:00.000Z",
+    "everCompromised": "false",
+    "incidentCount": 0,
+    "issuedAt": "2026-11-06T01:21:01.894Z",
+    "keyId": "redaction-test-key",
+    "sig": "bmhPodTs4SbXvsZyntJ1jF4rs8pbiVHAB9dpn/VRzMniG1rOU9Ht1YBwQJlv2za91gm2T56sqPybWPXGYU3+Dg=="
+  },
+  "snapshot": {
+    "canonicalizerVersion": "2.1.0",
+    "issueId": "10001",
+    "issueKey": "SEC-102",
+    "projectId": "100",
+    "issueTypeId": "3",
+    "fields": [
+      {
+        "id": "assignee",
+        "value": {
+          "accountId": "pty_1d47c68b81187031deed2e1695c40a13"
+        }
+      },
+      {
+        "id": "summary",
+        "value": "Rotate the payment gateway API key"
+      }
+    ],
+    "attachments": [],
+    "comments": []
+  },
+  "history": [
+    {
+      "workEffortId": "10001",
+      "statusId": "LS_SEALED",
+      "statusDatetime": "2026-11-04T00:00:00.000Z",
+      "setByPartyId": "pty_e245bea7c5f008ec38b4478b5d8e0c64",
+      "reason": null,
+      "transitionName": "SEAL",
+      "data": {
+        "certificateId": "33333333-3333-4333-8333-333333333333",
+        "snapshotHash": "025b207b2da72a55ce931a3dc20980a59898b225311b204e00bc6d77b698adef",
+        "meaning": "APPROVAL",
+        "declarationVersion": "1",
+        "previousCertificateId": null,
+        "previousState": null
+      },
+      "seq": 1,
+      "prevEntryHash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entryHash": "4f8119ac84fe6a7ef29036d92dd15ec85b3008c393e09987ea55c99ab3f4098f"
+    },
+    {
+      "workEffortId": "10001",
+      "statusId": "LS_REDACTED",
+      "statusDatetime": "2026-11-06T00:00:00.000Z",
+      "setByPartyId": null,
+      "reason": "Account ids replaced by party tokens (ADR-010)",
+      "transitionName": "REDACT",
+      "data": {
+        "previousHeadSeq": 1,
+        "previousHeadHash": "9d753fff15fc42f465cd155e7b9eda007416d146d6bb08a97222799a761628ce",
+        "redactedValues": 5,
+        "parties": [
+          "pty_1d47c68b81187031deed2e1695c40a13",
+          "pty_e245bea7c5f008ec38b4478b5d8e0c64"
+        ],
+        "certificateId": "33333333-3333-4333-8333-333333333333"
+      },
+      "seq": 2,
+      "prevEntryHash": "4f8119ac84fe6a7ef29036d92dd15ec85b3008c393e09987ea55c99ab3f4098f",
+      "entryHash": "0c471797bc8e19bfbf1219589533bf8015eb7ebf018fd891406b019ee0e735e2"
+    }
+  ],
+  "parties": {
+    "pty_e245bea7c5f008ec38b4478b5d8e0c64": null
+  },
+  "verification": [
+    "Compute the canonical JSON of \"snapshot\": keys sorted by UTF-16 code unit at every level, no whitespace (spec v2 section 4.1).",
+    "Check that the SHA-256 of that text, in lowercase hex, equals attestation.snapshotHash.",
+    "Check the history: each entry's entryHash is the SHA-256 of the canonical JSON of the entry without entryHash, and each prevEntryHash equals the entryHash before it (64 zeros for the first).",
+    "Check that the newest LS_SEALED entry names attestation.certificateId.",
+    "Check the Ed25519 signature attestation.sig over the canonical JSON of the attestation without sig, with the public key named by attestation.keyId.",
+    "Run: node verify-evidence.mjs <this file> <public key file>. It performs every step and exits 0 only when all pass.",
+    "Records name people by party token (pty_...). \"parties\" maps each token in the history to its account id, or null when the account was closed. It is not signed and is not part of any hash."
+  ]
+}

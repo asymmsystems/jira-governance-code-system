@@ -1,5 +1,9 @@
 /**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
  * LedgerSeal: Domain Data Models and Contracts
+ *
+ * @author Fahim Farook
  */
 
 import { LedgerSealRoleTypeId, LedgerSealStatusId, TransitionName } from './status';
@@ -104,6 +108,8 @@ export interface FieldDiff {
   detail?: string;
   /** Set on panel responses: who changed the item after the seal, and when (from the change log or the comment). */
   changedBy?: string[];
+  /** How many of the people who changed the item have closed accounts (ADR-011). */
+  changedByClosed?: number;
   changedAt?: string | null;
 }
 
@@ -123,7 +129,8 @@ export interface ApproverPolicy {
   roleTypeId: 'LS_APPROVER';
   parties: { partyId: string; partyTypeId: 'GROUP'; name: string }[];
   fromDate: string;
-  setByPartyId: string;
+  /** The Jira admin who saved the policy; null after that account was closed (ADR-011 decision 5). */
+  setByPartyId: string | null;
 }
 
 export interface ViewerRights {
@@ -138,8 +145,9 @@ export interface SealSummary {
   certificateId: string;
   state: 'ACTIVE' | 'REVOKED';
   sealedAt: string;
+  /** The signer's account id; empty when the account was closed (then `sealedByClosed`). */
   sealedByAccountId: string;
-  sealedByName: string;
+  sealedByClosed?: boolean;
   meaning: string;
   reason: string | null;
   declarationVersion: string;
@@ -147,7 +155,7 @@ export interface SealSummary {
   canonicalizerVersion: string;
   everCompromised: boolean;
   incidentCount: number;
-  revocation: { revokedAt: string; revokedByAccountId: string; reason: string } | null;
+  revocation: { revokedAt: string; revokedByAccountId: string; revokedByClosed?: boolean; reason: string } | null;
   historyLength: number;
 }
 
@@ -200,6 +208,8 @@ export interface SealedWorkEffort {
     declarationVersion: string;
     statusAtSeal: string;
     snapshotParts: number;
+    /** Set by the redaction event of ADR-011 decision 7: an older-version record whose people are party tokens. */
+    parties?: 'TOKEN';
   };
   everCompromised: boolean;
   incidentCount: number;
@@ -222,7 +232,8 @@ export interface WorkEffortPartyAssignment {
 /** One state change, created once (Silverston WorkEffortStatus with the LedgerSeal hash chain). */
 export interface WorkEffortStatus {
   workEffortId: string;
-  statusId: LedgerSealStatusId;
+  /** LS_REDACTED is not a seal state: it records the conversion of ADR-011 decision 7. */
+  statusId: LedgerSealStatusId | 'LS_REDACTED';
   statusDatetime: string;
   setByPartyId: string | null;
   reason: string | null;
@@ -239,7 +250,6 @@ export interface WorkflowTransitionValidationResult {
   details?: {
     certificateId?: string;
     sealedAt?: string;
-    signerName?: string;
     tamperCount?: number;
   };
 }

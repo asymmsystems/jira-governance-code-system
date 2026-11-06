@@ -1,0 +1,127 @@
+#+TITLE: ADR-011: LedgerSeal Personal Data in Hashed Records
+#+DATE: 2026-11-06
+#+STATUS: Adopted
+
+* Status
+[ADOPTED: owner instruction 'do NOW', 2026-11-06]
+
+Adopted from the recommendation in the readiness review
+(=docs/sdlc/suite-readiness-review-2026-11/ledgerseal-readiness.md=, blocker B1, section 4) and the
+suite plan (=docs/sdlc/suite-readiness-review-2026-11/README.md=, section 2, item 1). Decision 3
+refines the review's "random token" for the reason given there. Open to the owner's review.
+
+* Context
+LedgerSeal stores Atlassian account ids, and one display name per seal, inside records that are
+hashed and chained:
+- the seal (=ls3:wepa:=, =partyId=), the sealed issue (=ls3:we:=, =currentAssignment.partyId=);
+- the history rows (=ls3:wes:=: =setByPartyId=, =data.signerName=, =data.changes[].changedBy=);
+- the sealed snapshot (=ls3:content:=): every user field value, the author of each comment,
+  attachment and work log, and each mention in rich text (its id and its text);
+- the approver policy (=ls3:partyrole:LS_APPROVER=, =setByPartyId=);
+- the =ledgerseal-cert= issue property (=sealedByAccountId=), which any issue viewer can read;
+- old-format records =cert:active:= (development site only: signer id, name and email).
+
+The Marketplace Partner Agreement and Forge require an app that stores account ids to report them
+with the personal data reporting API and to erase the data of closed accounts. LedgerSeal has no
+report. Deleting an id in place is not possible: =entryHash=, =recordHash=, =assignmentHash= and
+=snapshotHash= cover it, so every read would fail its integrity check.
+
+A second fact shapes the design. When an account is closed, Jira keeps its account id on the issue
+(the person is shown as "Former user"). A sealed issue that names the person must still match its
+seal after the closure, or every such issue would show CHANGED.
+
+* Decision
+1. *Pseudonymous parties in every new record.* LedgerSeal stores a party token, never an account
+   id, in every record it hashes: the seal, the sealed issue, the history rows, the sealed
+   snapshot. The live issue is turned into the same tokens before it is compared with a seal.
+   A user value becomes ={ accountId: <token> }= and a mention node keeps only the token as its id
+   and its text. No display name is stored.
+2. *Token format.* =pty_= followed by 32 lowercase hex characters: the first 128 bits of
+   HMAC-SHA-256 over the account id, keyed with a random 256-bit site key. The site key is
+   created once per installation in app storage (=ls3:partykey=) before the first seal, and only
+   the app can read it.
+3. *Why a keyed hash and not a plain random token.* After a closure the live issue still holds the
+   account id. To match the seal, the app must turn that id into the same token again. A random
+   token can do that only if the app keeps the id next to the token, which is the data that must be
+   erased. A keyed hash gives the same token without keeping the id. Without the site key nobody
+   (including Asymm Systems, which cannot read the customer's app storage) can link a token to an
+   account. The review's design (b) asked for a per-account random token; the keyed hash is a
+   per-account pseudo-random token with this one difference.
+4. *The token-to-account map.* One key per account, =ls3:party:<token>= =
+   ={ accountId, updatedAt }=, outside every hashed record. The panel uses it to show who sealed,
+   changed or revoked. The weekly report reads it. On closure this key is deleted. From then on the
+   token in the records names no one: the panel shows "a closed account", and no record holds the
+   id or a name.
+5. *Weekly report.* Scope =report:personal-data= and a weekly =scheduledTrigger=, as CascadePlan
+   (ADR-009 decision 7). The report sends every account id in the map, plus the admin who last saved
+   the approver policy. For each closed account it deletes the map key and removes the admin id
+   from the policy. Each run first finishes the conversion of any old record (decision 7).
+6. *New canonical form 2.2.0* for new seals: decision 1 plus readiness finding F-07 (an object with
+   an =id= is reduced to ={ id }= only when its field is a known reference type, such as an option,
+   version, component, priority or issue; every other object is hashed in full). Versions 2.0.0 and
+   2.1.0 keep their rules, so old seals are still checked with the rules they were made with.
+7. *A recorded redaction event for existing records.* A record written before this change is
+   converted once: every account id in its rows, seals and current snapshot is replaced by its
+   token, display names are removed, the hashes and the chain are computed again, and a history row
+   =LS_REDACTED= (transition =REDACT=) is appended. That row records the head hash before the
+   conversion, the number of values replaced and the tokens. Older snapshots of superseded seals,
+   which nothing reads, are deleted. The conversion runs before any write to that record and in the
+   weekly job. The sealed issue is marked =attributes.parties: "TOKEN"=, so a 2.0.0 or 2.1.0 seal is
+   then compared with a tokenised live issue. A redaction row is not a seal state: the seal keeps
+   its state, and the next row chains after the redaction row. Rows are never rewritten in any
+   other case.
+8. *Issue property without personal data.* The =ledgerseal-cert= attestation becomes schema 3. It
+   has no =sealedByAccountId= and no other account id. Its other fields keep their names and types,
+   so FourRealities and JQL keep working. The conversion of decision 7 writes the property again.
+9. *Deleted issues.* A trigger on =avi:jira:deleted:issue= deletes every LedgerSeal key of that
+   issue: the sealed issue, the seals, the history and the snapshots.
+10. *Evidence and the verifier.* The evidence export holds tokens. It adds an unsigned =parties=
+    map from each token to its account id, or null for a closed account, so an auditor can still
+    see who acted. The open verifier (public repository =asymmsystems/ledgerseal-verifier=) checks
+    the chain across a redaction row and prints a note naming it. Evidence exported before this
+    change still verifies.
+11. *Other personal data.* Free text that people type into the issue (descriptions, comments, the
+    reasons given for a reseal or a revoke) is issue content and is sealed as it is, like Jira
+    keeps it. The privacy policy says so. The development site's old-format records
+    (=cert:active:=) are replaced by a stub that holds no personal data.
+
+* Alternatives Considered
+** Redact only on closure (review design a, without tokens)
+- For: existing records keep account ids until a closure, so nothing changes for most records.
+- Against: each closure rewrites every record that names the person, and every live comparison
+  must know which ids were closed. That needs a list of closed accounts, which is again personal
+  data. Records would be in two forms for ever.
+- Verdict: rejected. Converting each old record once gives one form for every record.
+** A random token per account (review design b as written)
+- Against: decision 3. After closure the live issue cannot be matched to the seal without the id.
+- Verdict: replaced by the keyed hash.
+** Store no person at all in the snapshot (drop user fields from the seal)
+- Against: a change of assignee or reporter after approval would not be detected. That is a
+  change an auditor asks about.
+- Verdict: rejected.
+** Delete records of closed accounts
+- Against: it deletes approval evidence of other people on the same issue and breaks the gate.
+- Verdict: rejected.
+
+* Consequences
+** Positive
+- No hashed record holds an account id or a name. Closing an account needs one key deleted.
+- The issue property can be read by anyone without exposing the signer.
+- Old and new evidence both verify with the open verifier.
+** Negative
+- The new scope =report:personal-data= needs the site admin's consent on the next upgrade.
+- Each seal writes one small map key per person on the issue.
+- Display needs one map read per person shown.
+- A converted record's hashes differ from evidence exported before the conversion. The redaction
+  row records the old head hash, so the change is visible, not hidden.
+- Anyone who can run code as the app on the customer's site (the app itself) can link a token to
+  an account id it already has. That is the purpose of the site key.
+
+* Implementation Notes
+Built on branch =feature/ledgerseal-marketplace-fixes=; see
+=docs/sdlc/ledgerseal-marketplace-fixes-2026-11/progress-log.md=, entries "B1".
+
+* References
+- [[file:../../docs/sdlc/suite-readiness-review-2026-11/ledgerseal-readiness.md][LedgerSeal readiness review]], B1 and section 4
+- [[file:adr-00009-cascadeplan-baselines.org][ADR-009: CascadePlan baselines]], decision 7 (the weekly report)
+- [[file:../../docs/sdlc/ledgerseal-usp-ux-research-2026-11/adr-01-silverston-data-model.md][LedgerSeal ADR-01: Silverston data model]]

@@ -1,13 +1,21 @@
+/**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 import api from '@forge/api';
 import Resolver from '@forge/resolver';
-import { kvs } from '@forge/kvs';
+import { kvs, WhereConditions } from '@forge/kvs';
 import { validateTransitionGate } from './validator/workflow-validator';
 import { SealRepository, StorageProvider } from './storage/seal-repository';
+import { PartyRepository } from './storage/party-repository';
 import { createJiraClient } from './jira/jira-client';
 import { signerFromEnvironment } from './domain/attestation';
 import {
   evaluate,
   evidenceFlow,
+  licenseInactive,
   historyFlow,
   issueChangedFlow,
   LedgerSealDeps,
@@ -18,6 +26,8 @@ import {
   verifyIssueFlow
 } from './service/ledger';
 import { getPolicyFlow, searchGroupsFlow, setPolicyFlow } from './service/policy-admin';
+import { deleteIssueRecords, ReportFn, weeklyPersonalDataJob } from './service/personal-data';
+import { privacy } from '@forge/api';
 
 export { LedgerSealDeps } from './service/ledger';
 
@@ -53,6 +63,19 @@ class ForgeKvsProvider implements StorageProvider {
     }
     await tx.execute();
   }
+
+  async query(prefix: string): Promise<{ key: string; value: any }[]> {
+    const out: { key: string; value: any }[] = [];
+    let cursor: string | undefined;
+    do {
+      let q = kvs.query().where('key', WhereConditions.beginsWith(prefix)).limit(100);
+      if (cursor) q = q.cursor(cursor);
+      const page = await q.getMany<any>();
+      for (const r of page.results) out.push({ key: r.key, value: r.value });
+      cursor = page.nextCursor;
+    } while (cursor);
+    return out;
+  }
 }
 
 export function forgeDeps(asUser: boolean): LedgerSealDeps {
@@ -63,6 +86,63 @@ export function forgeDeps(asUser: boolean): LedgerSealDeps {
   };
 }
 
+/**
+ * The values typed on the transition screen. Forge documents `modifiedFields` at the top level of the validator
+ * payload; an older source names `transition.modifiedFields`. Both are read, and the top level wins (F-03).
+ */
+export function transitionScreenValues(payload: any): Record<string, any> {
+  const nested = payload?.transition?.modifiedFields;
+  const top = payload?.modifiedFields;
+  const asObject = (v: any) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+  return { ...asObject(nested), ...asObject(top) };
+}
+
+/** The body of a comment typed on the transition screen, in any shape Jira may send; null when empty. */
+function transitionComment(value: any): unknown {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') return value.trim() ? value : null;
+  if (Array.isArray(value)) return value.map(v => transitionComment(v?.add?.body ?? v?.body ?? v)).find(Boolean) ?? null;
+  if (typeof value === 'object') {
+    if (value.type === 'doc') return Array.isArray(value.content) && value.content.length > 0 ? value : null;
+    if ('body' in value) return transitionComment(value.body);
+    if (Array.isArray(value.comments)) return null;
+    return Object.keys(value).length > 0 ? JSON.stringify(value) : null;
+  }
+  return String(value);
+}
+
+/**
+ * Applies the transition-screen values to the live issue (F-02). A comment typed there is added to the comment
+ * list as a new comment, so it shows as "Comment added"; it never replaces the list. Attachments and work logs
+ * come only from Jira.
+ */
+export function applyTransitionScreen(raw: any, values: Record<string, any>, at: string): any {
+  if (!raw?.fields || Object.keys(values).length === 0) return raw;
+  const fields = { ...raw.fields };
+  for (const [key, value] of Object.entries(values)) {
+    if (key === 'comment' || key === 'attachment' || key === 'worklog') continue;
+    fields[key] = value;
+  }
+  const body = transitionComment(values.comment);
+  if (body !== null) {
+    const comments = Array.isArray(fields.comment?.comments) ? fields.comment.comments : [];
+    fields.comment = { ...(fields.comment || {}), comments: [...comments, { id: 'transition-screen', created: at, body }] };
+  }
+  return { ...raw, fields };
+}
+
+export const LICENCE_INACTIVE_GATE_MESSAGE =
+  'LedgerSeal: the LedgerSeal licence is not active, so this issue cannot be sealed or approved. Ask your Jira admin to renew the licence or to remove the Require Valid LedgerSeal validator from this workflow.';
+
+/**
+ * F-08: a lapsed licence does not change what the gate decides (spec D-8), but sealing and approving need a licence,
+ * so a blocked transition says how to get out instead of pointing at a panel that cannot act.
+ */
+function withLicenceNote(result: { result: boolean; errorMessage?: string }, payload: any, context: any) {
+  if (result.result || !licenseInactive(context?.license ? context : payload?.context)) return result;
+  return { result: false, errorMessage: LICENCE_INACTIVE_GATE_MESSAGE };
+}
+
 export const JIRA_UNREACHABLE_MESSAGE =
   'LedgerSeal could not read the issue from Jira, so this transition is blocked. Try again in a minute.';
 
@@ -70,9 +150,13 @@ export const JIRA_UNREACHABLE_MESSAGE =
  * Handles workflow transition validation:
  * Reads the seal from app storage and verifies it against the live issue before allowing the transition.
  * Supports both documented Forge validator payloads: { issue: { key } } and { issue: { id } }.
- * Evaluates transition.modifiedFields to prevent transition-screen bypasses.
+ * Applies the values typed on the transition screen (modifiedFields) before the check, so they cannot bypass it.
  */
 export async function validateTransition(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(false)) {
+  return withLicenceNote(await gate(payload, deps), payload, context);
+}
+
+async function gate(payload: any, deps: LedgerSealDeps): Promise<{ result: boolean; errorMessage?: string }> {
   const issueKey = payload?.issue?.key || payload?.issueKey;
   let issueId = String(payload?.issue?.id || payload?.issueId || '');
 
@@ -86,11 +170,13 @@ export async function validateTransition(payload: any, context?: any, deps: Ledg
   const repository = new SealRepository(deps.storage);
   const now = new Date().toISOString();
 
-  // Read the live issue and apply transition-screen modifiedFields if present
-  const modifiedFields = payload?.transition?.modifiedFields;
-  const live = await readLiveSnapshot(deps.jira, issueId || issueKey, now, raw =>
-    modifiedFields && typeof modifiedFields === 'object' && raw?.fields ? { ...raw, fields: { ...raw.fields, ...modifiedFields } } : raw
-  );
+  // Read the live issue and apply the transition-screen values (F-02, F-03)
+  const screen = transitionScreenValues(payload);
+  const party = await new PartyRepository(deps.storage).partyForRead();
+  const live = await readLiveSnapshot(deps.jira, issueId || issueKey, now, {
+    party,
+    apply: raw => applyTransitionScreen(raw, screen, now)
+  });
   // Fail closed, name the real cause, and write nothing (LS-08, LS-19)
   if (!live) {
     return { result: false, errorMessage: JIRA_UNREACHABLE_MESSAGE };
@@ -129,14 +215,14 @@ export async function validateTransition(payload: any, context?: any, deps: Ledg
     {
       certificateId: we.currentContentId,
       sealedAt: summary?.sealedAt,
-      signerName: summary?.sealedByName,
       revocationReason: summary?.revocation?.reason,
       revokedAt: summary?.revocation?.revokedAt
     }
   );
 
-  if (!validation.isValid) {
-    // A new change is recorded once, and the property is updated with the real count (Fixes C-3)
+  // A new change is recorded once, and the property is updated with the real count (Fixes C-3). Values typed on
+  // the transition screen are not in Jira yet, and a blocked transition never saves them, so they record nothing.
+  if (!validation.isValid && Object.keys(screen).length === 0) {
     await recordIncidentIfNew(deps, repository, evaluation, now);
   }
 
@@ -208,6 +294,45 @@ export async function searchApproverGroups(payload: any, context?: any, deps: Le
  */
 export async function onIssueChanged(event: any, context?: any, deps: LedgerSealDeps = forgeDeps(false)) {
   return issueChangedFlow(event, deps);
+}
+
+/**
+ * Product event trigger: a deleted issue's LedgerSeal records are deleted with it (ADR-011 decision 9).
+ */
+export async function onIssueDeleted(event: any, context?: any, storage: StorageProvider = new ForgeKvsProvider()) {
+  const issueId = event?.issue?.id ? String(event.issue.id) : '';
+  if (!issueId) return { deleted: 0 };
+  try {
+    const deleted = await deleteIssueRecords(storage, issueId);
+    console.log(`LedgerSeal: issue ${issueId} deleted, ${deleted} record key(s) deleted`);
+    return { deleted };
+  } catch (err) {
+    console.error(`LedgerSeal: could not delete the records of deleted issue ${issueId}`, err);
+    return { deleted: 0 };
+  }
+}
+
+/**
+ * Weekly scheduled trigger: the personal data report (ADR-011 decision 5).
+ */
+export async function personalDataReport(
+  event?: any,
+  context?: any,
+  deps: LedgerSealDeps = forgeDeps(false),
+  report: ReportFn = accounts => privacy.reportPersonalData(accounts)
+) {
+  try {
+    // The function may run 300 s (manifest); conversions stop after 200 s and continue next week
+    const result = await weeklyPersonalDataJob(deps, report, 200000);
+    console.log(
+      `LedgerSeal: personal data report: ${result.reported} account(s) reported, ${result.closed.length} closed and erased; ` +
+        `${result.conversions.CONVERTED} record(s) converted, ${result.legacyStubbed} old-format record(s) cleared`
+    );
+    return result;
+  } catch (err) {
+    console.error('LedgerSeal: the personal data report failed', err);
+    return { reported: 0, closed: [] };
+  }
 }
 
 // Register Forge Resolver for UI Kit 2 bridge invocations

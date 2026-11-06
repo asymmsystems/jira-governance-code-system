@@ -67,10 +67,10 @@ describe('B-03 a read never writes', () => {
     const writes = jira.propertyWrites.length;
     for (let i = 0; i < 500; i++) await verifyIssue({}, panelContext('viewer'), as('viewer'));
     for (let i = 0; i < 5; i++) await validateTransition({ issue: { key: 'CHG-1' } }, {}, as(null));
-    expect(storage.sets.length - sets).toBe(2); // the incident entry and the updated record
+    expect(storage.sets.length - sets).toBe(3); // the incident entry, the updated record and the map key of the changer
     expect(jira.propertyWrites.length - writes).toBe(1);
     expect(jira.propertyWrites[jira.propertyWrites.length - 1].body).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       status: 'SEAL_BROKEN',
       everCompromised: 'true',
       incidentCount: 1

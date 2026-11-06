@@ -50,10 +50,11 @@ async function sealAsVersion200(as: (user: string | null) => any) {
 afterEach(() => jest.restoreAllMocks());
 
 describe('canonical form rule sets', () => {
-  it('new seals use 2.1.0, and both 2.0.0 and 2.1.0 are known', () => {
-    expect(CANONICALIZER_VERSION).toBe('2.1.0');
+  it('new seals use 2.2.0, and 2.0.0, 2.1.0 and 2.2.0 are known', () => {
+    expect(CANONICALIZER_VERSION).toBe('2.2.0');
     expect(isKnownCanonicalizerVersion('2.0.0')).toBe(true);
     expect(isKnownCanonicalizerVersion('2.1.0')).toBe(true);
+    expect(isKnownCanonicalizerVersion('2.2.0')).toBe(true);
     expect(isKnownCanonicalizerVersion('9.9.9')).toBe(false);
   });
 
@@ -65,7 +66,8 @@ describe('canonical form rule sets', () => {
     expect(old.fields.map(f => f.id)).toEqual(['customfield_10024', 'resolution', 'summary']);
     expect(current.canonicalizerVersion).toBe('2.1.0');
     expect(current.fields.map(f => f.id)).toEqual(['summary']);
-    expect(canonicalizeIssueState(raw(), 't', [SENTIMENT]).canonicalizerVersion).toBe('2.1.0');
+    expect(canonicalizeIssueState(raw(), 't', [SENTIMENT]).canonicalizerVersion).toBe('2.2.0');
+    expect(canonicalizeIssueState(raw(), 't', [SENTIMENT]).fields.map(f => f.id)).toEqual(['summary']);
   });
 
   it('refuses an unknown canonical form instead of guessing its rules', () => {
@@ -125,8 +127,8 @@ describe('a seal is checked with the rules it was made with', () => {
     await revokeSeal({ reason: 'Scope withdrawn' }, panelContext('ann'), as('ann'));
     jira.edit('bob', '2099-01-01T00:01:00.000Z', 'summary', sampleIssue().fields.summary);
 
-    // Unchanged under 2.0.0, so no reason is needed, although the 2.1.0 hash differs from the stored one
+    // Unchanged under 2.0.0, so no reason is needed, although the current form's hash differs from the stored one
     await expect(sealIssue({ signature: validSignature({ reason: undefined }) }, panelContext('ann'), as('ann'))).resolves.toMatchObject({ ok: true });
-    expect((await model.workEffort(storage)).attributes.canonicalizerVersion).toBe('2.1.0');
+    expect((await model.workEffort(storage)).attributes.canonicalizerVersion).toBe('2.2.0');
   });
 });
