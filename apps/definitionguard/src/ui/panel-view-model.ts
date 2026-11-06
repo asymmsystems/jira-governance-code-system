@@ -86,12 +86,18 @@ export interface PanelViewModel {
   licenceNotice?: string;
 }
 
-/** Formats the authorized approvers audit line. */
-export function formatApproverLine(groups?: string[]): string {
-  if (!groups || groups.length === 0) {
-    return 'Authorized approvers: project administrators and Jira administrators.';
-  }
-  return `Authorized approvers: ${groups.join(', ')}, and project administrators.`;
+/**
+ * Who can waive and reset on this issue (M-1): project and Jira administrators, the approver groups
+ * a Jira admin chose, and, for waivers, users with the template's waiver permission.
+ */
+export function formatApproverLine(groups?: string[], waiverPermissionLabel?: string): string {
+  const who = groups && groups.length > 0
+    ? `project administrators, Jira administrators and members of ${groups.join(', ')}`
+    : 'project administrators and Jira administrators';
+  const extra = waiverPermissionLabel && waiverPermissionLabel !== 'Administer projects'
+    ? ` Users with the ${waiverPermissionLabel} Jira permission can also waive.`
+    : '';
+  return `Authorized approvers (waive and reset): ${who}.${extra}`;
 }
 
 /** Local date and time, for example "1 Nov 2026, 09:30". Unparseable text is shown as is. */
@@ -142,7 +148,7 @@ export function buildPanelViewModel(response: IssueChecklistState | null, format
     },
     progress: { text: `${done} of ${response.items.length} done`, appearance: done > 0 && done === response.items.length ? 'success' : 'default' },
     items,
-    approverLine: formatApproverLine(response.approverGroups),
+    approverLine: formatApproverLine(response.approverGroups, response.waiverPermissionLabel),
     ...(response.licenceInactive ? { licenceNotice: LICENCE_GATE_OFF } : {})
   };
 }

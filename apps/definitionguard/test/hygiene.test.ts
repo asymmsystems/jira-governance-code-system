@@ -31,6 +31,20 @@ describe('B-19 hygiene', () => {
     expect(fs.readFileSync(path.join(APP, 'src/storage/checklist-repository.ts'), 'utf8')).not.toContain('class ChecklistRepository');
   });
 
+  it('(M-2) the panel has no "Open Four Realities panel" button, which only reopened the same issue', () => {
+    const panel = fs.readFileSync(path.join(APP, 'src/frontend/index.tsx'), 'utf8');
+    expect(panel).not.toContain('Four Realities');
+    expect(panel).not.toContain('router.open');
+  });
+
+  it('(M-3) the admin page describes only what approvers can do, with the shared wording', () => {
+    const admin = fs.readFileSync(path.join(APP, 'src/frontend/admin.tsx'), 'utf8');
+    expect(admin).not.toMatch(/baseline criteria|sign off Definition of Done|authorize deviations/);
+    expect(admin).toContain('roleDescription={APPROVER_ROLE_DESCRIPTION}');
+    expect(admin).toContain('loadPolicy(');
+    expect(admin).toContain('saveOutcome(');
+  });
+
   it('does not depend on the unused @forge/storage package', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(APP, 'package.json'), 'utf8'));
     expect(pkg.dependencies['@forge/storage']).toBeUndefined();

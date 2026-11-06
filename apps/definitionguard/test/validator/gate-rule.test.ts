@@ -90,7 +90,7 @@ describe('B-10 evaluateGate (one rule)', () => {
 
   it('words the block message with every open item and a next step', () => {
     expect(blockMessage([item({ workEffortName: 'A' }), item({ workEffortName: 'B' })]))
-      .toBe('Definition of Done is not complete. Open mandatory items: A; B. Open the DefinitionGuard panel on this issue to finish them.');
+      .toBe('Definition of Done is not complete. Open mandatory items: A; B. Open the Definition of Done panel on this issue (from the Apps button if it is not shown) to finish them.');
   });
 });
 
@@ -107,7 +107,7 @@ describe('B-10 validator: Done-category moves only', () => {
     const res = await validateTransition(move('10001'), {}, storage);
     expect(res.result).toBe(false);
     for (const i of DEFAULT_DEFINITION_OF_DONE.items.filter(x => x.isMandatory)) expect(res.errorMessage).toContain(i.title);
-    expect(res.errorMessage).toContain('Open the DefinitionGuard panel');
+    expect(res.errorMessage).toContain('Open the Definition of Done panel');
   });
 
   it('allows a move into a status that is not DONE category', async () => {

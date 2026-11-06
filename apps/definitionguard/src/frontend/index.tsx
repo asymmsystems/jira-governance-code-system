@@ -19,7 +19,7 @@ import ForgeReconciler, {
   Textfield,
   CodeBlock
 } from '@forge/react';
-import { invoke, router } from '@forge/bridge';
+import { invoke } from '@forge/bridge';
 import { IssueChecklistState, ChecklistAuditEvent } from '../domain/models';
 import { buildPanelViewModel, historyRows, panelErrorText, Attribution } from '../ui/panel-view-model';
 import {
@@ -206,14 +206,6 @@ export const DefinitionGuardPanel: React.FC = () => {
                 Complete DoD
               </Button>
             ) : null}
-            <Button
-              appearance="subtle"
-              spacing="compact"
-              iconAfter="shortcut"
-              onClick={() => router.open(`/browse/${checklist?.issueKey || ''}`)}
-            >
-              Open Four Realities panel
-            </Button>
           </ActionRow>
         </SummaryBlock>
       )}

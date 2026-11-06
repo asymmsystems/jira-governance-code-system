@@ -132,6 +132,15 @@ describe('panel resolvers (v3 change log)', () => {
       expect(jira.callsTo('/rest/api/3/user')).toEqual([]);
     });
 
+    it('(M-1) returns the approver groups a Jira admin chose and the waiver permission, for the approver line', async () => {
+      storage.put('dg:cfg:approver_policy', { roleTypeId: 'DG_APPROVER', parties: [{ partyId: 'g2', partyTypeId: 'GROUP', name: 'qa-leads' }, { partyId: 'g1', partyTypeId: 'GROUP', name: 'dev-leads' }], fromDate: T, setByPartyId: 'dgp-x' });
+      const res = await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx(), storage);
+      expect(res.approverGroups).toEqual(['dev-leads', 'qa-leads']);
+      expect(res.waiverPermissionLabel).toBe('Administer projects');
+      const loaded = await getIssueChecklist({}, ctx(), storage);
+      expect(loaded.approverGroups).toEqual(['dev-leads', 'qa-leads']);
+    });
+
     it('(ADR-010) reuses the same pseudonym for the same person', async () => {
       await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx(), storage);
       await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: false }, ctx(), storage);

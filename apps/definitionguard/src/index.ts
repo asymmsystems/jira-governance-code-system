@@ -311,7 +311,12 @@ function partiesIn(state: DodState, entries: ChangeEntry[]): string[] {
 
 /** The panel response with every stored pseudonym resolved to the person, read only. */
 export async function panelResponse(storage: StorageProvider, state: DodState, entries: ChangeEntry[] = []): Promise<IssueChecklistState> {
-  return toPanelResponse(state, entries, await new PartyStore(storage).show(partiesIn(state, entries)));
+  return {
+    ...toPanelResponse(state, entries, await new PartyStore(storage).show(partiesIn(state, entries))),
+    // M-1: the approver line names the configured groups and the template's waiver permission.
+    approverGroups: await approverGroupNames(storage),
+    waiverPermissionLabel: permissionLabel(permissionKeyOf(state.template.waiverRoleTypeId))
+  };
 }
 
 /** The template for a panel action: ids from the context, else from one issue lookup. */

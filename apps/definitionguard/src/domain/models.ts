@@ -84,6 +84,7 @@ export interface IssueChecklistState {
   auditTrail?: ChecklistAuditEvent[];
   openMandatoryTitles?: string[];  // v2 panel response: from the shared gate rule
   approverGroups?: string[];
+  waiverPermissionLabel?: string;  // panel response: the template's waiver permission in plain words (M-1)
   canApprove?: boolean;
   licenceInactive?: boolean;       // panel response: the licence is not active, so the gate is off (BL-4)
 }

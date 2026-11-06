@@ -50,5 +50,5 @@ export function evaluateGate(state: { criteria: CriterionState[] }, excluded?: E
 
 export function blockMessage(openMandatory: Array<Pick<CriterionState, 'workEffortName'>>): string {
   return `Definition of Done is not complete. Open mandatory items: ${openMandatory.map(c => c.workEffortName).join('; ')}. ` +
-    'Open the DefinitionGuard panel on this issue to finish them.';
+    'Open the Definition of Done panel on this issue (from the Apps button if it is not shown) to finish them.';
 }
