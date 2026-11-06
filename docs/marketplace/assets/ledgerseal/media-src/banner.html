@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<!-- Copyright (c) 2026 Asymm Systems. All rights reserved. @author Fahim Farook -->
+<html lang="en"><head><meta charset="UTF-8"><title>LedgerSeal banner</title><link rel="stylesheet" href="media.css"></head>
+<body class="banner">
+  <div class="band"></div>
+  <main class="copy">
+    <h1>LedgerSeal</h1>
+    <p class="tagline">Tamper-evident approval seals and post-approval change control for Jira.</p>
+    <ul class="points">
+      <li><b class="dot teal"></b>A SHA-256 seal of the issue at approval</li>
+      <li><b class="dot rose"></b>Each change after approval, and who made it</li>
+      <li><b class="dot sage"></b>A workflow validator that blocks the move</li>
+    </ul>
+  </main>
+  <p class="foot">by Asymm Systems · Runs on Atlassian Forge · Jira Cloud</p>
+  <section class="card" style="right:44px; top:70px; width:470px;">
+    <div class="head"><h4>LedgerSeal</h4><span class="loz sealed">SEALED</span></div>
+    <p class="line">Approval seal: Sealed. No change detected since approval.</p>
+    <div class="hash"><b>Tamper-evident seal</b><br>SHA-256 hash of covered fields, comments and attachments.<br><b>Hash:</b> <span class="mono">88f028a8...0a38c908</span></div>
+  </section>
+  <section class="card" style="right:44px; top:262px; width:470px;">
+    <div class="head"><h4>LedgerSeal</h4><span class="loz changed">CHANGED</span></div>
+    <p class="line" style="margin-top:0">Approval seal: Changed after approval. 1 item modified.</p>
+    <div class="item"><span class="name">Summary</span><br>
+      <span class="was">Was (at approval): Manual review queue for flagged orders</span><br>
+      <span class="now"><em>Now (current edit):</em> Manual review queue for flagged and high-value orders</span></div>
+  </section>
+</body></html>

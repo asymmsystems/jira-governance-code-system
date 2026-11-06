@@ -78,7 +78,21 @@ LedgerSeal provides technical controls that support compliance in regulated indu
 
 ---
 
-## Screenshot Gallery Manifest
+## Highlights (images 580 x 330: `docs/marketplace/assets/ledgerseal/highlight-1.png` to `highlight-3.png`)
+
+1. **Sealed at approval.** Sealing stores a SHA-256 hash of the covered fields, comments and attachments, who signed and the sign-off role, in a hash-chained history.
+2. **Changes after approval, named.** Each changed item shows its value at approval, its value now and who changed it. The person who made the changes cannot approve them; another approver must.
+3. **The move waits for approval.** The Require Valid LedgerSeal workflow validator blocks a transition when the issue is not sealed, was changed after approval, or the seal was revoked.
+
+---
+
+## Banner (1120 x 548: `docs/marketplace/assets/ledgerseal/banner.png`)
+
+Sources of the banner and highlights: `docs/marketplace/assets/ledgerseal/media-src/` (rendered by `render.py`).
+
+---
+
+## Screenshot Gallery Manifest (1840 x 900)
 
 Real captures of LedgerSeal 4.1.0 on the development site (project PAY "Payments Platform"; 03 in project LSP, the project with the LedgerSeal validator on a transition), 2026-11-06. Each image is cropped to the app (no Jira header, no DEV badge), 1840 x 900 px. Script: `apps/ledgerseal/test/live/shots.py`, `shot_admin.py`, `shot_blocked.py`.
 
