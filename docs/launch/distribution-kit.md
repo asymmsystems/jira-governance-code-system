@@ -29,7 +29,7 @@ LedgerSeal solves this mathematically:
 1. When an authorized reviewer approves a ticket, LedgerSeal canonicalizes the issue specification (RFC 8785) and computes a deterministic SHA-256 snapshot hash across covered fields, attachments, and sign-offs.
 2. The snapshot hash is digitally signed with an Ed25519 key and appended to a cryptographic hash chain stored in Atlassian Forge KVS.
 3. A native Jira workflow transition validator (ledgerseal-validator) recalculates the snapshot hash when the ticket attempts to transition to Done or Released. If a covered field, comment or attachment changed after approval, the release transition is blocked until another approver approves the change, and the message names the changed fields.
-4. It is 100% Forge native: zero external network calls (no outbound fetch), zero external servers, runs entirely on Atlassian Forge, with no external servers.
+4. It is 100% Forge native: zero external network calls (no outbound fetch) and zero external servers; it runs entirely on Atlassian Forge.
 5. Evidence verification is completely offline: we open-sourced a zero-dependency CLI verifier using only the Node.js standard library (https://asymm.systems/product/jira-governance/user-guide/open-verifier.html) so auditors can check the signatures and hash chains themselves, offline.
 
 Pricing: free up to 10 users, then $0.95 per user per month (less for larger sites) on the Marketplace.
@@ -63,7 +63,7 @@ We built an open solution called LedgerSeal on Atlassian Forge:
 - We also published an open-source offline verification script using only the Node.js standard library, so auditors can check evidence files themselves, offline.
 
 Article with technical architecture: https://asymm.systems/product/jira-governance/user-guide/ledgerseal.html
-Verifier repo: https://asymm.systems/product/jira-governance/user-guide/open-verifier.html
+Verifier repo: https://github.com/asymmsystems/ledgerseal-verifier
 
 How are other teams ensuring approved tickets aren't modified prior to automated deployment?
 ```
@@ -86,17 +86,16 @@ The classic Jira problem:
 - If you build custom automation rules to reset statuses on edit, you get noisy transition loops and broken webhooks.
 
 We built LedgerSeal (Forge native) to solve this cleanly:
-Instead of freezing the whole issue, it takes a deterministic SHA-256 snapshot of covered fields (summary, description, components, attachments, custom fields) when an authorized user seals it.
+Instead of freezing the whole issue, it takes a deterministic SHA-256 snapshot of covered fields (summary, description, components, custom fields), comments, attachments and work logs when an authorized user seals it.
 
 A transition validator on the transition to Done or Released checks:
 `current_snapshot_hash === sealed_snapshot_hash`
 
-If someone edited a covered field, the transition blocks with an error explaining what changed. If they only added a comment or updated an uncovered field, it transitions smoothly.
+If someone edited a covered field, comment or attachment, the transition blocks and the panel shows what changed. If they only changed an uncovered field such as Rank or Sprint, it transitions smoothly.
 
-It's live on the Atlassian Marketplace (free tier for up to 10 users).
+Coming soon to the Atlassian Marketplace (free for up to 10 users).
 
 Documentation: https://asymm.systems/product/jira-governance/user-guide/ledgerseal.html
-Marketplace: https://marketplace.atlassian.com/apps/ledgerseal
 
 Would love to know how other admins solve post-approval change control in their workflows.
 ```
@@ -105,7 +104,7 @@ Would love to know how other admins solve post-approval change control in their 
 
 ### C. r/compliance (Focus: SOC 2 CC8.1, ISO 27001 A.8.32, FDA 21 CFR Part 11)
 
-**Title:** Eliminating "post-approval change risk" in Jira for SOC 2 and GxP audits
+**Title:** Detecting post-approval changes in Jira for SOC 2 and GxP audits
 
 **Body:**
 ```text
@@ -150,7 +149,7 @@ We built LedgerSeal to solve this with mathematics:
 - 100% Atlassian Forge native: zero external egress, data in Atlassian Forge storage.
 
 We also open-sourced the offline verifier so compliance teams can check evidence files themselves, offline:
-https://asymm.systems/product/jira-governance/user-guide/ledgerseal.html
+https://github.com/asymmsystems/ledgerseal-verifier
 
 #DevOps #Jira #Cybersecurity #SOC2 #ISO27001 #Compliance #Atlassian
 ```
@@ -181,8 +180,7 @@ We designed LedgerSeal to solve this natively within Forge:
 - You place the LedgerSeal Validator on your transition to Done or Released.
 - If the ticket has not been modified since approval, the transition proceeds. If anyone altered a covered field, the transition is blocked and the panel shows what changed.
 
-You can evaluate it for free up to 10 users on the Atlassian Marketplace:
-https://marketplace.atlassian.com/apps/ledgerseal
+It is coming soon to the Atlassian Marketplace, free for up to 10 users.
 
 Documentation and audit mapping: https://asymm.systems/product/jira-governance/user-guide/
 ```
