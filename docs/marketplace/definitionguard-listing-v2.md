@@ -109,9 +109,10 @@ DefinitionGuard provides records that support internal and external audits:
 | Tier | Monthly Price | Annual Price (2 Months Free) |
 |---|---|---|
 | **1 to 10 Users** | **Free** | **Free** |
-| **11 to 100 Users** | $1.50 per user / month | $15.00 per user / year |
-| **101 to 250 Users** | $1.20 per user / month | $12.00 per user / year |
-| **251 to 1,000 Users** | $0.90 per user / month | $9.00 per user / year |
+| **11 to 100 Users** | $0.95 per user / month | $9.50 per user / year |
+| **101 to 250 Users** | $0.75 per user / month | $7.50 per user / year |
+| **251 to 1,000 Users** | $0.24 per user / month | $2.40 per user / year |
+| **More than 1,000 Users** | Custom price | Custom price |
 
 *All billing is integrated directly into your Atlassian subscription.*
 

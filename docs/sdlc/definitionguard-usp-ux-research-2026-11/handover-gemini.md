@@ -98,7 +98,7 @@ The scale harness is `~/.cache/gemini-earning-definitionguard-research/harness/`
    - A live test of the validator when it throws (DG-08): it would need a deliberately broken build. Unit tests already prove it blocks. Recommend leaving it.
    - Production: a separate signing key pair for production, its public key, and the production deploy are the owner's decisions.
    - FourRealities reads `definitionguard-dod`. It should verify the signature with the public key and treat an unsigned or failing value as unknown. That is FourRealities work for its own session; tell the owner, do not change it.
-   - The listing `docs/marketplace/definitionguard-listing-v2.md` and its price ($1.00 per user per month at 11 to 100 users) need the owner's review before any Marketplace use.
+   - The listing `docs/marketplace/definitionguard-listing-v2.md` needs the owner's review before any Marketplace use. Price (owner decision, 2026-11-06): free for 1 to 10 users, $0.95 per user per month for 11 to 100, $0.75 for 101 to 250, $0.24 for 251 to 1,000, custom above 1,000.
 3. **Final report** in the format of section 15 of the brief: each file you created or changed with its full path and commit SHA; test and coverage summary; `forge lint` and `forge deploy` output if you deployed; every live write.
 
 ## 9. If something goes wrong

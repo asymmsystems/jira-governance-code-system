@@ -31,9 +31,19 @@ Baseline at `7f87747` (clean install of `packages/asymm-jira-ui`, then the app):
 - **Proof:** `test/security/licence.test.ts` (11 tests): "(BL-4) the validator lets every move through when the licence is inactive, complete or not, and writes nothing" (no Jira call, no write); "(BL-4) still blocks an incomplete move when the licence is active or absent"; "(H-3) reads the licence from the Forge app context when the call context has none" (validator passes, toggle refused); "(H-3) the call context wins ..."; "(H-3) outside the Forge runtime ..."; "(BL-4) the panel and the settings page say the gate is off ...". The old test "(V-a, V-b) the validator blocks with a licence message" asserted the old rule and was replaced. Full suite 353 passed; `licence.ts` 100% branches; `tsc` exit 0.
 - **Live:** licence states can only be set on a development install with `forge install --upgrade --license inactive`, which changes the installation on the shared site; see "Live checks" below for what was run.
 
+### Price. Owner pricing decision for DefinitionGuard (2026-11-06)
+
+- **Decision (owner, through the coordinator, 2026-11-06, final):** free for 1 to 10 users; $0.95 per user per month for 11 to 100 users; $0.75 for 101 to 250; $0.24 for 251 to 1,000; custom above 1,000. Reason: a few cents below the dearest of the three leading paid checklist apps (HeroCoders Enterprise $1.00 / $0.80 / $0.25; `docs/sdlc/suite-readiness-review-2026-11/pricing-research.md` section B5).
+- **What changed:** `docs/marketplace/definitionguard-listing-v2.md` pricing table (annual = 10 times monthly: $9.50, $7.50, $2.40; a "More than 1,000 Users: Custom price" row); `docs/sdlc/definitionguard-usp-ux-research-2026-11/handover-gemini.md` line 101 (it said $1.00). The submission notes state no price. `research-brief.md` keeps its 2026-11-01 research figures (a dated record of competitor prices, not a statement of our price). The superseded `docs/marketplace/definitionguard-listing.md` ($1.00 / $0.80 / $0.40) is deleted with BL-6.
+- **Proof:** new test in `test/listing.test.ts`: "states the owner prices of 2026-11-06 ..." (each row, and none of $1.50, $1.20, $0.90, $1.00, $0.80, $0.40 anywhere in the listing). 7 of 7 listing tests pass.
+- **Shared file not edited (main session):** `docs/marketplace/submission/developer-console-checklist.md` step 2.3 gives one price for all four apps ($1.50 / $1.20 / $0.90). It needs a DefinitionGuard line: "DefinitionGuard: 11 to 100 users $0.95 ($9.50 per year), 101 to 250 $0.75 ($7.50), 251 to 1,000 $0.24 ($2.40), 1,001+ custom."
+
 ## Site changes needed
 
-(The main session applies these to the asymm.systems site repository. Each: page, old text, new text.)
+(The main session applies these to the asymm.systems site repository, `asymm-corporate/repository/code/asymm-corporate-code-pfw/src/main/jbake/`, read at `6d838f9`. Each: page, old text, new text.)
+
+1. **Price, suite product page** `content/product/jira-governance.html`, pricing table (lines 158 to 186). It gives one price for every app: "$1.50", "$1.20", "$0.90". New: keep the table for the apps whose price it is, and add under it: "DefinitionGuard has its own price: free for 1 to 10 users, $0.95 per user per month for 11 to 100 users, $0.75 for 101 to 250, $0.24 for 251 to 1,000, and a custom price above 1,000 users. Annual billing: pay for 10 months, get 12."
+2. **Price, FAQ** `content/product/jira-governance/faq.html`, "How is billing calculated for larger instances?" (lines 29 to 31: "$1.50 per user per month.", "$1.20 ...", "$0.90 ..."). New: after the list, add "<p>DefinitionGuard costs less: $0.95 per user per month for 11 to 100 users, $0.75 for 101 to 250 and $0.24 for 251 to 1,000.</p>".
 
 ## Owner commands
 

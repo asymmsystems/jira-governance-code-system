@@ -61,6 +61,16 @@ describe('B-08 listing v2', () => {
     expect(text).toContain('definitionguard-public-key.pem');
   });
 
+  it('states the owner prices of 2026-11-06: free to 10 users, then $0.95, $0.75 and $0.24, annual 10 times monthly', () => {
+    const table = read().slice(read().indexOf('## Transparent Pricing'));
+    expect(table).toContain('| **1 to 10 Users** | **Free** | **Free** |');
+    expect(table).toContain('| **11 to 100 Users** | $0.95 per user / month | $9.50 per user / year |');
+    expect(table).toContain('| **101 to 250 Users** | $0.75 per user / month | $7.50 per user / year |');
+    expect(table).toContain('| **251 to 1,000 Users** | $0.24 per user / month | $2.40 per user / year |');
+    expect(table).toContain('| **More than 1,000 Users** | Custom price | Custom price |');
+    expect(read()).not.toMatch(/\$(1\.50|1\.20|0\.90|1\.00|0\.80|0\.40)\b/);
+  });
+
   it('says the gate needs an admin to add the validator, and does not claim compliance', () => {
     const text = read();
     expect(text).toContain('A Jira admin adds the DefinitionGuard validator to each transition');
