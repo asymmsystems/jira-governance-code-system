@@ -50,7 +50,18 @@ export class FakeJira implements JiraClient {
     return { ok: true, value: JSON.parse(JSON.stringify(this.fields)) };
   }
 
-  async getComments(): Promise<JiraResult<any[]>> {
+  /** F-06: comment ids each user cannot see (a restricted comment outside their role or group). */
+  hiddenFrom: Record<string, string[]> = {};
+  failVisibleComments = false;
+
+  async getVisibleCommentIds(): Promise<JiraResult<string[]>> {
+    if (this.failVisibleComments) return { ok: false, error: 'UNREACHABLE' };
+    const list = this.comments ?? this.issue.fields?.comment?.comments ?? [];
+    const hidden = new Set(this.hiddenFrom[this.currentUser ?? ''] ?? []);
+    return { ok: true, value: list.map((c: any) => String(c.id)).filter((id: string) => !hidden.has(id)) };
+  }
+
+    async getComments(): Promise<JiraResult<any[]>> {
     if (this.failComments) return { ok: false, error: 'UNREACHABLE' };
     const list = this.comments ?? this.issue.fields?.comment?.comments ?? [];
     return { ok: true, value: JSON.parse(JSON.stringify(list)) };

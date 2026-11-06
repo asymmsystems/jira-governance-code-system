@@ -50,6 +50,8 @@ export interface CanonicalIssueSnapshot {
   comments?: CanonicalComment[];
   /** Fields with a value that the seal does not cover, and why (not hashed). */
   excluded?: { id: string; name: string; reason: string }[];
+  /** F-06: comments restricted to a role or group at capture (not hashed). Absent on snapshots made before. */
+  restrictedComments?: { id: string; type: string; value: string }[];
   capturedAt: string;
 }
 
