@@ -133,6 +133,7 @@ describe('ADR-010 conversion of an old record', () => {
     const run = verify(evidence);
     expect(run.status).toBe(0);
     expect(run.out).toContain('PASS history chain (2 entries)');
+    expect(run.out).toContain('NOTE entry 2 is a redaction');
   });
 
   it('runs once: a second run finds nothing to convert and changes nothing', async () => {

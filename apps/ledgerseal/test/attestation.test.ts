@@ -107,7 +107,7 @@ describe('B-09 signed attestation', () => {
     const root = path.resolve(__dirname, '..');
     const walk = (d: string): string[] =>
       fs.readdirSync(d).flatMap(n => (fs.statSync(path.join(d, n)).isDirectory() ? walk(path.join(d, n)) : [path.join(d, n)]));
-    const files = ['src', 'test', 'keys', 'verifier']
+    const files = ['src', 'test', 'keys', '../../tools/verifier']
       .map(d => path.join(root, d))
       .filter(d => fs.existsSync(d))
       .flatMap(walk);

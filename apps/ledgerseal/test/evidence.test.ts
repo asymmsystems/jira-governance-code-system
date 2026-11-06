@@ -18,7 +18,8 @@ import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from
 jest.mock('@forge/api', () => ({ __esModule: true, default: {}, route: () => '' }));
 jest.mock('@forge/kvs', () => ({ kvs: {} }));
 
-const VERIFIER = path.resolve(__dirname, '../verifier/verify-evidence.mjs');
+// The one copy of the open verifier, identical to the public repository asymmsystems/ledgerseal-verifier
+const VERIFIER = path.resolve(__dirname, '../../../tools/verifier/verify-evidence.mjs');
 const pair = crypto.generateKeyPairSync('ed25519');
 const signer = createSigner(pair.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64'), 'ls-test-1');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ls-evidence-'));

@@ -66,9 +66,11 @@ The property is a summary for searching. Any user who can edit an issue can chan
 The `seal-evidence-api` resolver returns a JSON export: a signed attestation of the stored seal, the canonical snapshot that was hashed, and the full history. An auditor checks it without access to LedgerSeal:
 
 ```bash
-node verifier/verify-evidence.mjs evidence.json keys/ls-dev-2026-11.pub.pem
-node verifier/verify-evidence.mjs --self-test
+node ../../tools/verifier/verify-evidence.mjs evidence.json keys/ls-dev-2026-11.pub.pem
+node ../../tools/verifier/verify-evidence.mjs --self-test
 ```
+
+`tools/verifier` is the one copy of the open verifier in this repository. It is identical to the public repository https://github.com/asymmsystems/ledgerseal-verifier (Apache-2.0), where auditors download it.
 
 The verifier uses the Node standard library only. It exits 0 only when the snapshot hash, the history chain, the certificate and the signature all pass.
 

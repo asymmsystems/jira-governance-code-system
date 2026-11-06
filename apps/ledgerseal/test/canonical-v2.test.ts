@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  *
- * B-13: canonical form v2 (spec v2 section 4). The vectors in verifier/vectors.json were written by hand
+ * B-13: canonical form v2 (spec v2 section 4). The vectors in tools/verifier/vectors.json were written by hand
  * from the specification, so these tests compare the code with the specification, not with itself.
  *
  * @author Fahim Farook
@@ -18,7 +18,7 @@ import { FakeJira, MemoryStore, model, panelContext, sampleIssue, validSignature
 jest.mock('@forge/api', () => ({ __esModule: true, default: {}, route: () => '' }));
 jest.mock('@forge/kvs', () => ({ kvs: {} }));
 
-const VECTORS = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../verifier/vectors.json'), 'utf8'));
+const VECTORS = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../../tools/verifier/vectors.json'), 'utf8'));
 const T = '2026-11-01T00:00:00Z';
 const hash = (issue: any, fields: any[] = []) => computeSnapshotHash(canonicalizeIssueState(issue, T, fields));
 const base = () => ({ id: '1', key: 'X-1', fields: { summary: 'Release v1' } as any });
