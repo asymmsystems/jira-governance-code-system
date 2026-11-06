@@ -12,7 +12,7 @@ APPROVED 2026-11-01 B-01..B-20 (owner, in chat: "APPROVED now all"; read as ever
   - `[ENV]` Forge environment variable.
   - `[MIGRATE]` KVS data migration.
   - `[OTHER-APP]` change in another app. No item has this flag.
-- **Test types:** Unit (pure module), Resolver (`src/index.ts` with mocked Forge APIs, `asApp()` and `asUser()` mocked apart), Validator (validator entry point), View model (pure panel module, no DOM), Harness (`~/.cache/gemini-earning-definitionguard-research/harness/`), Live (DEMO, `[DG-PROBE]` issues only).
+- **Test types:** Unit (pure module), Resolver (`src/index.ts` with mocked Forge APIs, `asApp()` and `asUser()` mocked apart), Validator (validator entry point), View model (pure panel module, no DOM), Harness (`docs/sdlc/definitionguard-usp-ux-research-2026-11/evidence/harness/`), Live (DEMO, `[DG-PROBE]` issues only).
 - **Validator rule for every item that touches it:** the item keeps two acceptance criteria. (V-a) With no stored record, the validator returns `result: false`. (V-b) The error message names every open mandatory item by title.
 
 ## Summary

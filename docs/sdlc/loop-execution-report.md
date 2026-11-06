@@ -8,7 +8,7 @@
 
 ## 1. Loop 1: Specification & Contract Loop
 * **Status:** PASS
-* **Deliverable:** [ledgerseal-spec.md](file:///home/fahimfarookme/Documents/projects/gemini-earning/docs/spec/ledgerseal-spec.md)
+* **Deliverable:** [ledgerseal-spec.md](../spec/ledgerseal-spec.md)
 * **Gates Verified:**
   - [x] Defined `CanonicalIssueSnapshot`, `SealCertificate`, and `ElectronicSignature` schemas.
   - [x] Established deterministic sorting and newline normalization rules.
@@ -62,6 +62,6 @@
 ## 5. Loop 5: Marketplace Packaging & Release Loop
 * **Status:** PASS
 * **Deliverables:**
-  - [README.md](file:///home/fahimfarookme/Documents/projects/gemini-earning/apps/ledgerseal/README.md)
-  - [ledgerseal-listing.md](file:///home/fahimfarookme/Documents/projects/gemini-earning/docs/marketplace/ledgerseal-listing.md)
+  - [README.md](../../apps/ledgerseal/README.md)
+  - [ledgerseal-listing.md](../marketplace/ledgerseal-listing.md)
 * **Outcome:** Clean, certified codebase ready for staging deployment and Atlassian Marketplace submission.

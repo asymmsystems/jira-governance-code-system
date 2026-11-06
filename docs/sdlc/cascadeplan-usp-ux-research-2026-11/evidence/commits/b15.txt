@@ -1,0 +1,23 @@
+feat(cascadeplan): keyboard and single-pointer scheduling with a treegrid
+
+The canvas fallback content holds a treegrid of the rendered rows with
+row count, absolute row index and level, and seven cells per row: key,
+summary, start, due, progress, status and dependencies in words. It has
+one tab stop; arrow keys, Home, End and Page keys move between cells.
+Space starts move mode: arrows move a day, Shift a week, [ and ] change
+the due date, Enter saves and Escape cancels, announced in a live
+region. A focus ring is drawn with drawFocusIfNeeded and the focus
+token.
+
+A click on a bar opens a toolbar with Move 1 week earlier, Move 1 week
+later, Edit dates, Add dependency and Set progress. Add dependency opens
+a popup with a searchable issue list and a trigger percent, usable by
+keyboard alone. Single-letter shortcuts work only outside text fields
+and can be turned off. In forced-colours mode the canvas uses system
+colours. Form fields have labels, and axe reports no WCAG 2.2 A or AA
+violation on the page, popups and forms.
+
+The canvas sits next to the scroll container, the page height follows
+the header, and a form counts as unsaved only after a user edit.
+
+Refs: B-15, CP-21, INV-13

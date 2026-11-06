@@ -2,7 +2,7 @@
 
 Session cookies are read at run time from the file named by CASCADEPLAN_LIVE_COOKIES (outside
 this repository). Never copy its values anywhere. Output (screenshots, JSON) goes to DG_LIVE_OUT,
-default /home/fahimfarookme/.cache/jira-suite-fixes/scratch-definitionguard/live.
+default /home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/suite-fixes/scratch-definitionguard/live.
 
 Copyright (c) 2026 Asymm Systems. All rights reserved.
 @author Fahim Farook
@@ -15,7 +15,7 @@ import sys
 
 SITE = 'https://asymmsystems.atlassian.net'
 CHROME = '/opt/google/chrome/chrome'
-OUT = pathlib.Path(os.environ.get('DG_LIVE_OUT', '/home/fahimfarookme/.cache/jira-suite-fixes/scratch-definitionguard/live'))
+OUT = pathlib.Path(os.environ.get('DG_LIVE_OUT', '/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/suite-fixes/scratch-definitionguard/live'))
 APP_ID = '73e4f63d-7d60-450c-96d5-f81ca68a709c'
 
 

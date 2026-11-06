@@ -6,7 +6,7 @@
   - `.github/workflows/fsrt.yml`: build FSRT once at a pinned commit, scan each app with the default scanners and with `secret-logging`, keep the raw JSON for 90 days, and gate the result;
   - `tools/ci/fsrt_gate.py`;
   - `docs/security/fsrt-allowlist.txt` (empty).
-- Test cases and outputs, not committed: `/home/fahimfarookme/.cache/jira-suite-merge-review/ci-fsrt/`.
+- Test cases and outputs, not committed: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/ci-fsrt/`.
 
 ## 1. Verdict
 

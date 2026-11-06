@@ -1,0 +1,10 @@
+docs(cascadeplan): WorkEffort model conformance audit against the Silverston pattern
+
+The audit compares the stored WorkEffort model and its use in the
+resolvers with the Apache OFBiz work effort entities and seed types,
+which OFBiz built from the Silverston Data Model Resource Book. It lists
+eleven findings, each graded as error, extension or deliberate, with the
+backlog items they affect and a proposed target model that needs a
+storage migration approval.
+
+Refs: B-24, INV-04, INV-09

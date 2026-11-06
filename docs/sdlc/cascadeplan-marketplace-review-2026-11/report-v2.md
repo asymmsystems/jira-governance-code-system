@@ -1,13 +1,13 @@
 # CascadePlan: review and Marketplace readiness verdict
 
-- **Version:** v2, 2026-11-05. The first version, `report.md`, is frozen (read-only, md5 `187b128ad4d586b2d5b55a0d1f26a73f`). v2 applies the corrections from the independent review of the fix plan (`/home/fahimfarookme/.cache/gemini-earning-cascadeplan-fixplan-review/fixplan-review.md`, section 6). Changes from v1:
+- **Version:** v2, 2026-11-05. The first version, `report.md`, is frozen (read-only, md5 `187b128ad4d586b2d5b55a0d1f26a73f`). v2 applies the corrections from the independent review of the fix plan (`/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cascadeplan-fixplan-review/fixplan-review.md`, section 6). Changes from v1:
   - BL-7: the claim that the registered app name is shown on install and consent screens is marked as not verified.
   - Section 5, "Rate": the KVS per-minute quota is added as a limit that may bind before the 25 s runtime.
   - The review of the fix plan also found a wrong line reference: `src/index.ts:1907` for `cascadeRemaining: []`. The correct line is `:1900`. That reference is in `frontend-review.md` (M5 and section 3), not in this report. `frontend-review.md` is kept unchanged as evidence.
 - **Reviewer:** independent review session, 2026-11-05.
 - **Review commit:** `db080096007208d2cad97f79c620d49964aa05c9` (`master` HEAD at start).
 - **Scope:** `apps/cascadeplan`, its specification, research folder, listing, submission notes, public guide pages and standards.
-- **Evidence files** (all in `/home/fahimfarookme/.cache/gemini-earning-cascadeplan-marketplace-review/`):
+- **Evidence files** (all in `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cascadeplan-marketplace-review/`):
   - `test-log.md`: every command and its result.
   - `review-tests/review-findings.test.ts` and `review-findings.result.log`: 32 review tests (tests R-01 to R-31).
   - `harness/`: browser harness, `e2e_review.py`, screenshots in `harness/results-review/`.

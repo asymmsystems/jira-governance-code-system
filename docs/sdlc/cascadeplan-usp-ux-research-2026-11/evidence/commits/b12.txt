@@ -1,0 +1,14 @@
+feat(cascadeplan): show why each task starts when it does
+
+Each dependent bar explains its start: the tooltip gives the engine's
+reason, the connector shows the trigger percent and the trigger date,
+and a "Why this date?" popup (row button or the ? key) lists the chain
+of driving predecessors back to the first task with no constraint. Each
+step focuses its row, and the driving bars get a dashed outline with a
+"Driver" label. A violation states what to change and offers one button
+per fix: move the task to its earliest start, or lower the trigger.
+
+The engine is the only judge of a violation; the connector drawing no
+longer adds its own test.
+
+Refs: B-12, NF-03

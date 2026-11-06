@@ -5,7 +5,7 @@ Date: 2026-11-01. Requested by the owner after B-15 ("Did you check if the model
 ## 1. Reference and limits
 
 - **Book not read.** I do not have *The Data Model Resource Book* (Len Silverston). The reference is Apache OFBiz, whose data model was built from that book: "finding The Data Model Resource Book, Revised Edition, Volumes 1 and 2 by Len Silverston" (RS-13, `sources/team-size-silverston-forge.md`).
-- **Files read in full** (downloaded 2026-11-01, kept in `~/.cache/gemini-earning-cascadeplan-research/sources/ofbiz/`):
+- **Files read in full** (downloaded 2026-11-01, kept in `~/Documents/projects/jira-governance/.tmp/cache/cascadeplan-research/sources/ofbiz/`):
   - `ofbiz-framework` trunk `applications/datamodel/entitydef/workeffort-entitymodel.xml`;
   - `applications/datamodel/data/seed/WorkEffortSeedData.xml`;
   - `applications/workeffort/data/WorkEffortTypeData.xml`;

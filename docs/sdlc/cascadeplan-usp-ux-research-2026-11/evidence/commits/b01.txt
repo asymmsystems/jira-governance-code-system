@@ -1,0 +1,13 @@
+refactor(cascadeplan): planner UI runs from a bundled module through @forge/bridge
+
+index.html holds markup and one script tag for app.js. The planner logic
+lives in src/frontend as an ES module that reaches the backend only
+through invoke and router from @forge/bridge. esbuild, installed in
+tools/ with its own node_modules, bundles it (npm run build:ui).
+
+Timeline geometry, the undo stack and the week-grid cascade preview are
+pure modules in src/ui with unit tests. Static tests check that the page
+has no inline script or inline handler, that no frontend source uses the
+private bridge global, and that the manifest grants no script policy.
+
+Refs: B-01, CP-02, CP-29

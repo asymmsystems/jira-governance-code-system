@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-01
 - **Question:** why would a Jira team pay for FourRealities, compared with native Atlassian features and Marketplace apps, and what UX delivers that reason?
-- **Code reviewed:** `apps/fourrealities` in the working tree of `gemini-earning` (branch `feature/cascadeplan-research-build`). The md5 of every FourRealities file equals the audit snapshot (T-00), so all file:line references match the audit.
+- **Code reviewed:** `apps/fourrealities` in the working tree of `jira-governance-code-system` (branch `feature/cascadeplan-research-build`). The md5 of every FourRealities file equals the audit snapshot (T-00), so all file:line references match the audit.
 - **Evidence grades** (audit scheme): Observed-live, Observed-code, Observed-test, Reported, Inferred. Unknown means searched and not verified.
 - **Source IDs:** NA (native Atlassian), DD (DoD and checklist apps), AU (audit and approval apps), TR (traceability apps), EM (time in status and workflow apps), EX (external metrics tools), CM (composite metrics), BY (buyers and Runs on Atlassian), PR (pricing), EV (evidence, ADS, WCAG), RF (refute searches), FL (Forge limits), T (tests in this research, see `round-log.md`). Section 9 lists every source.
 - **Quote caveat:** most web quotes came through a fetch tool that summarises page text. SPACE (CM-03), ISA 500 (EV-01, EV-02) and the Marketplace pricing JSON (PR-05 to PR-16) were checked against the primary text. Check any other quote against its URL before external use.
@@ -179,7 +179,7 @@ All files match the audit md5 (T-00), so no finding is fixed or changed. "Still 
 ## 8. Method notes
 
 - Part A changed no file under `apps/`, ran no `forge` command, and made no Jira write (round-log, T-05).
-- The resolver harness and the FR-01 probe live in `~/.cache/gemini-earning-fourrealities-research/` and import the app source by absolute path.
+- The resolver harness and the FR-01 probe live in `~/Documents/projects/jira-governance/.tmp/cache/fourrealities-research/` and import the app source by absolute path.
 - Click and keystroke counts for competitors were not available from documents (all four research agents). No trial was used.
 
 ## 9. Sources
@@ -212,7 +212,7 @@ All files match the audit md5 (T-00), so no finding is fixed or changed. "Still 
 
 ### 9.3 Native Atlassian features (NA)
 
-Copied from `~/.cache/gemini-earning-fourrealities-research/sources/native-atlassian.md`, which also holds the full matrices and review tables. Quote caveat as stated at the top of this brief.
+Copied from `~/Documents/projects/jira-governance/.tmp/cache/fourrealities-research/sources/native-atlassian.md`, which also holds the full matrices and review tables. Quote caveat as stated at the top of this brief.
 
 | ID | URL | Accessed | Exact quote (short) | Grade |
 |---|---|---|---|---|
@@ -254,7 +254,7 @@ Copied from `~/.cache/gemini-earning-fourrealities-research/sources/native-atlas
 
 ### 9.4 DoD, checklist, audit and approval apps (DD, AU)
 
-Copied from `~/.cache/gemini-earning-fourrealities-research/sources/dod-and-audit-apps.md`, which also holds the full matrices and review tables. Quote caveat as stated at the top of this brief.
+Copied from `~/Documents/projects/jira-governance/.tmp/cache/fourrealities-research/sources/dod-and-audit-apps.md`, which also holds the full matrices and review tables. Quote caveat as stated at the top of this brief.
 
 | ID | URL | Accessed | Exact quote (short) | Grade |
 |---|---|---|---|---|
@@ -324,7 +324,7 @@ Copied from `~/.cache/gemini-earning-fourrealities-research/sources/dod-and-audi
 
 ### 9.5 Traceability, time in status and external tools (TR, EM, EX)
 
-Copied from `~/.cache/gemini-earning-fourrealities-research/sources/traceability-and-metrics.md`, which also holds the full matrices and review tables. Quote caveat as stated at the top of this brief.
+Copied from `~/Documents/projects/jira-governance/.tmp/cache/fourrealities-research/sources/traceability-and-metrics.md`, which also holds the full matrices and review tables. Quote caveat as stated at the top of this brief.
 
 | ID | URL | Accessed | Exact quote (short) | Grade |
 |---|---|---|---|---|
@@ -384,7 +384,7 @@ Copied from `~/.cache/gemini-earning-fourrealities-research/sources/traceability
 
 ### 9.6 Composite metrics, buyers, pricing, evidence and accessibility (CM, BY, PR, EV)
 
-Copied from `~/.cache/gemini-earning-fourrealities-research/sources/metrics-buyers-pricing.md`, which also holds the full matrices and review tables. Quote caveat as stated at the top of this brief.
+Copied from `~/Documents/projects/jira-governance/.tmp/cache/fourrealities-research/sources/metrics-buyers-pricing.md`, which also holds the full matrices and review tables. Quote caveat as stated at the top of this brief.
 
 | ID | URL | Accessed | Exact quote (short) | Grade |
 |---|---|---|---|---|

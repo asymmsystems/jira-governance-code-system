@@ -11,7 +11,7 @@
   - the website `asymmsystems/asymm-corporate-code-pfw` `develop` at `784f151`;
   - the Atlassian Marketplace Partner Agreement (https://www.atlassian.com/licensing/marketplace/partneragreement, fetched 2026-11-07);
   - Atlassian Purchasing & Licensing (https://www.atlassian.com/licensing/purchase-licensing, fetched 2026-11-07).
-- Downloaded pages, not committed: `/home/fahimfarookme/.cache/jira-suite-merge-review/launch-day-readiness/`.
+- Downloaded pages, not committed: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/launch-day-readiness/`.
 
 ## 1. Verdict
 

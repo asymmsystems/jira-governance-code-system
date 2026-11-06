@@ -5,7 +5,7 @@
 - Branch: `feature/definitionguard-marketplace-fixes` at `f54f215` (12 DefinitionGuard commits over `7f87747`)
 - `master`: `907ccd7` during the review; `1c54b6d` at the merge (CascadePlan merged in `e1b0192`, its review in `1c54b6d`)
 - Merge: `32e86ca` (`git merge --no-ff` of `f54f215` onto `1c54b6d`, no conflict, only DefinitionGuard files changed)
-- Clone: `/home/fahimfarookme/.cache/jira-suite-merge-review/definitionguard/checkout` (local branch `review` at `f54f215`)
+- Clone: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/definitionguard/checkout` (local branch `review` at `f54f215`)
 - Brief: `docs/sdlc/cascadeplan-marketplace-review-2026-11/merge-review-prompt.md` (on the CascadePlan branch)
 - Read: the fix log `docs/sdlc/definitionguard-marketplace-fixes-2026-11/progress-log.md`, the readiness review `docs/sdlc/suite-readiness-review-2026-11/definitionguard-readiness.md`, ADR-010 `architecture/decision/adr-00010-definitionguard-personal-data-pseudonyms.org`, and the full diff `7f87747..f54f215` (69 files).
 - No live check was run. Nothing was deployed. No live site was changed.
@@ -20,7 +20,7 @@ The first verdict, kept as a record, follows.
 
 The one High finding is about the merge itself, not about the DefinitionGuard code. The branch was cut from `7f87747`, so it also carries 76 CascadePlan commits as they stood at `7f87747`. That CascadePlan state has the round 1 High findings H1 and H2 of the CascadePlan merge review. They were fixed later, in `7551e2f` and `ebb490a`, which are not on this branch. A merge of this branch into `master` now would put that unfixed CascadePlan code on `master`. The brief allows no merge while a High finding is open.
 
-The CascadePlan round 2 review (`/home/fahimfarookme/.cache/jira-suite-merge-review/cascadeplan-r2/cascadeplan-merge-review.md`) says "Merge" for `e9e85e8`. When `master` holds that branch, this branch merges with no conflict. I checked this with a local trial merge: `origin/master` + `origin/feature/cascadeplan-marketplace-fixes` (`e9e85e8`) + this branch. The trial merge changed only the 69 DefinitionGuard files, and the full gate on it was green (section 3). The trial was local only, and I deleted its branch.
+The CascadePlan round 2 review (`/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/cascadeplan-r2/cascadeplan-merge-review.md`) says "Merge" for `e9e85e8`. When `master` holds that branch, this branch merges with no conflict. I checked this with a local trial merge: `origin/master` + `origin/feature/cascadeplan-marketplace-fixes` (`e9e85e8`) + this branch. The trial merge changed only the 69 DefinitionGuard files, and the full gate on it was green (section 3). The trial was local only, and I deleted its branch.
 
 ## 1. Findings
 
@@ -30,7 +30,7 @@ None.
 
 ### High
 
-- **HM-1 (resolved: CascadePlan merged to master in `e1b0192` before this merge) A merge now would put CascadePlan code with open High findings on master.** `git log 7f87747..origin/feature/cascadeplan-marketplace-fixes` lists 21 commits that this branch does not have. Among them are `7551e2f` "fix(cascadeplan): baseline items reach only users who can browse their issues" and `ebb490a` "fix(cascadeplan): the server holds a parent's links on its sub-tasks when dependencies are enforced". These are the fixes for the round 1 High findings H1 and H2 (`/home/fahimfarookme/.cache/jira-suite-merge-review/cascadeplan/cascadeplan-merge-review.md`, verdict "Do not merge" at `935c399`). This branch holds CascadePlan at `7f87747`, which is before both fixes. **Fix:** merge the CascadePlan branch to `master` first. Then merge this branch (no app-code change is needed). Or merge `origin/feature/cascadeplan-marketplace-fixes` into this branch first. No change to the DefinitionGuard code is needed.
+- **HM-1 (resolved: CascadePlan merged to master in `e1b0192` before this merge) A merge now would put CascadePlan code with open High findings on master.** `git log 7f87747..origin/feature/cascadeplan-marketplace-fixes` lists 21 commits that this branch does not have. Among them are `7551e2f` "fix(cascadeplan): baseline items reach only users who can browse their issues" and `ebb490a` "fix(cascadeplan): the server holds a parent's links on its sub-tasks when dependencies are enforced". These are the fixes for the round 1 High findings H1 and H2 (`/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/cascadeplan/cascadeplan-merge-review.md`, verdict "Do not merge" at `935c399`). This branch holds CascadePlan at `7f87747`, which is before both fixes. **Fix:** merge the CascadePlan branch to `master` first. Then merge this branch (no app-code change is needed). Or merge `origin/feature/cascadeplan-marketplace-fixes` into this branch first. No change to the DefinitionGuard code is needed.
 
 ### Medium
 
@@ -81,7 +81,7 @@ Host Node 26.13.0 (CI uses 22). The order follows `.github/workflows/apps-ci.yml
 
 Merge result `32e86ca` (onto `1c54b6d`): `npm ci` exit 0, `tsc` exit 0, 33 suites and 421 of 421 tests passed (statements 98.94%, branches 96.10%, functions 96.41%, lines 99.18%), build exit 0, audit exit 0 (7 moderate), `forge lint` "No issues found.", `git status` clean.
 
-Logs: `/home/fahimfarookme/.cache/jira-suite-merge-review/definitionguard/gate-branch.log`, `gate-trial-merge.log` and `gate-merge.log`.
+Logs: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/definitionguard/gate-branch.log`, `gate-trial-merge.log` and `gate-merge.log`.
 
 The fix log's last count is 420 tests at `dca26d0`. 421 at `f54f215` includes the BL-3 screenshot test added in that commit.
 

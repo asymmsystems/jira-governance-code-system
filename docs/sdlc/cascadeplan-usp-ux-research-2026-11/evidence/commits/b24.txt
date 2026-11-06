@@ -1,0 +1,11 @@
+feat(cascadeplan): store planning data as Silverston WorkEffort records
+
+Each issue's KVS record is a WorkEffort record: the stored WorkEffort
+(dates, sequence, target and hand-set percent), its WorkEffortAssoc
+precedence link (FRACTIONAL_MILESTONE with the trigger percent and the
+Jira link id), WorkEffortPartyAssignment contributors and the
+WorkEffortEstimate, plus the week-grid position. Jira-owned fields are
+not part of the record. toWorkEffortRecord and fromWorkEffortRecord
+convert between the record and the planner view without loss.
+
+Refs: B-24

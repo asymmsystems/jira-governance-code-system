@@ -3,7 +3,7 @@
 - Date: 2026-11-07. Reviewer: independent merge review session.
 - Branch: `feature/fsrt-canary-exact-match` at `1afce7d` (one commit), cut from master `fd75917`. Master had not moved, so the merge result has the same tree as `1afce7d`.
 - Purpose: fix L-56 of `fsrt-gate-empty-scan-merge-review.md`. In `tools/ci/fsrt_gate.py` the canary now uses `re.compile(r"through " + re.escape("handler.readIssue") + r" in ")` instead of a substring test.
-- Cases and outputs, not committed: `/home/fahimfarookme/.cache/jira-suite-merge-review/fsrt-canary-exact-match/`.
+- Cases and outputs, not committed: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/fsrt-canary-exact-match/`.
 
 ## 1. Verdict
 

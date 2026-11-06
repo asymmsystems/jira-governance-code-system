@@ -4,9 +4,9 @@
 - Reviewer: independent review session, round 2 (not the session that wrote the fixes, and not the round 1 reviewer's clone)
 - Branch: `feature/cascadeplan-marketplace-fixes` at `e9e85e8` (reviewed at `3f6828a`; `e9e85e8` changes only `docs/marketplace/submission/owner-partner-setup-guide.md`, 12 lines, no dashes)
 - `master`: `907ccd7`, which is the merge base, so the merge has no conflict
-- Clone: `/home/fahimfarookme/.cache/jira-suite-merge-review/cascadeplan-r2/checkout`
+- Clone: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/cascadeplan-r2/checkout`
 - Brief: `docs/sdlc/cascadeplan-marketplace-review-2026-11/merge-review-prompt.md`
-- Round 1 report (used as a checklist only): `/home/fahimfarookme/.cache/jira-suite-merge-review/cascadeplan/cascadeplan-merge-review.md`
+- Round 1 report (used as a checklist only): `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/cascadeplan/cascadeplan-merge-review.md`
 
 ## Verdict: Merge
 

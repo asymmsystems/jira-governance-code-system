@@ -1,9 +1,9 @@
 # FourRealities: Marketplace readiness review (paid app)
 
 - Date: 2026-11-06. Reviewer: independent review session. Static review, unit tests, build and local checks only. No live Jira site, no deploy.
-- Code reviewed: own clone `~/.cache/suite-readiness-2026-11/fourrealities/checkout` at HEAD `1e1318bcf7f1176f69adacdf74faf8e8ef6989f4` (branch `feature/cascadeplan-marketplace-fixes`, contains `907ccd7`). All file:line references below are in `apps/fourrealities/` unless another path is given.
+- Code reviewed: own clone `~/Documents/projects/jira-governance/.tmp/cache/suite-readiness/fourrealities/checkout` at HEAD `1e1318bcf7f1176f69adacdf74faf8e8ef6989f4` (branch `feature/cascadeplan-marketplace-fixes`, contains `907ccd7`). All file:line references below are in `apps/fourrealities/` unless another path is given.
 - Note on "identical to master": `git diff --stat 907ccd7 HEAD -- apps/fourrealities` shows 5 changed build files (`.npmrc`, `jest.config.js`, `package.json`, `package-lock.json`, `tsconfig.json`; commit `628bb79`, shared UI package as a real dependency). The `src/` and `test/` trees are the same.
-- Probes written for this review (scratch, not in the repo): `~/.cache/suite-readiness-2026-11/fourrealities/probes/sibling-shapes.js` and `chunk-size.js`, run with node against the built `dist/`.
+- Probes written for this review (scratch, not in the repo): `~/Documents/projects/jira-governance/.tmp/cache/suite-readiness/fourrealities/probes/sibling-shapes.js` and `chunk-size.js`, run with node against the built `dist/`.
 
 ## 1. Verdict
 
@@ -160,7 +160,7 @@ Source of truth for submission: `docs/marketplace/fourrealities-listing.md` (upd
 
 ## 9. Test results
 
-Run in the clone on the host (node v26.13.0, npm 11.20.0, forge CLI 15.0.0). Logs: `~/.cache/suite-readiness-2026-11/fourrealities/gate.log`, `gate2.log`.
+Run in the clone on the host (node v26.13.0, npm 11.20.0, forge CLI 15.0.0). Logs: `~/Documents/projects/jira-governance/.tmp/cache/suite-readiness/fourrealities/gate.log`, `gate2.log`.
 
 | Check | Result |
 |---|---|

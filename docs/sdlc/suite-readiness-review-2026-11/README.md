@@ -35,7 +35,7 @@ Findings checked by hand in this session (not only reported by an agent):
 
 1. **Personal data reporting** (LedgerSeal, DefinitionGuard, FourRealities). Same pattern as CascadePlan's `reportPersonalData`. In LedgerSeal and DefinitionGuard the account ids sit inside hashed history, so erasing them in place breaks the hash checks. Design: store a per-site pseudonym in hashed records from now on, keep the pseudonym-to-account map in one separate key, delete that key on account closure; existing records get a redaction event. Needs a new canonical form version and verifier support (LedgerSeal).
 2. **Production signing keys** (LedgerSeal, DefinitionGuard). Owner runs `forge variables set -e production --encrypt ...`. The public keys go to the public verifier repository and asymm.systems.
-3. **Verifier** (owner decision A, 2026-11-06): its own public repository `asymmsystems/ledgerseal-verifier` plus a download on asymm.systems with SHA-256 checksums; Apache-2.0 header on the verifier files; one copy only (the two copies in the monorepo differ); the "without trusting Asymm Systems" sentence corrected.
+3. **Verifier** (owner decision A, 2026-11-06): its own public repository `asymmsystems/jira-governance-code-cli` plus a download on asymm.systems with SHA-256 checksums; Apache-2.0 header on the verifier files; one copy only (the two copies in the monorepo differ); the "without trusting Asymm Systems" sentence corrected.
 4. **npm advisories**: the `prosemirror-view` override CascadePlan uses, in DefinitionGuard and FourRealities; the CI audit step for every app.
 5. **Screenshots** for LedgerSeal, DefinitionGuard and FourRealities: real captures from a realistic project, cropped to the app, 1840 x 900, like CascadePlan's.
 6. **Listing and site claims**: delete the superseded `definitionguard-listing.md` and `fourrealities-listing-v2.md`; remove the per-tier extras on the product page that the support policy does not promise ("designated technical concierge", "compliance review assistance"); the "Open Four Realities panel" button in LedgerSeal and DefinitionGuard that only reloads the issue.
@@ -151,3 +151,5 @@ The partner-led rule is for Eliya and Dial, not for this suite (owner, 2026-11-0
 1. Launch order: answered 2026-11-06, all four together.
 2. Price per app: decided 2026-11-06 (section 4).
 3. FourRealities on a site without the other apps: hide the two checks it cannot make, or keep them and explain (after the DefinitionGuard and LedgerSeal fixes).
+
+Paths updated 2026-11-07 for the repository move.

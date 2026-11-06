@@ -1,0 +1,18 @@
+feat(cascadeplan): toolbar redesign, column resizing, and project-aware epic creation
+
+Redesign top toolbar into Atlassian Design System button groups, prevent
+button text wrapping, widen default column widths, and support project-aware
+epic creation.
+
+- Add white-space: nowrap to buttons, preventing wrapping on Backlog Tray
+  and Changes buttons.
+- Group toolbar controls cleanly into Brand, Search/Navigation, Views,
+  and Actions button groups with standard heights and dividers.
+- Widen default column widths for effort (75 px), progress (95 px),
+  target (95 px), and status (125 px) to prevent column header truncation.
+- Enhance column resizer with an 8 px hit area and active guidelines;
+  update column widths and sticky offsets in-place on mousemove without
+  destroying the active DOM resizer element.
+- Query project issue types to detect whether Epic is supported; hide or
+  disable + New Epic button and return a clean error instead of HTTP 400
+  when creating epics in projects that lack an Epic issue type.

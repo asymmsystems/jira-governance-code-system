@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "module": "commonjs", "lib": ["ES2022", "DOM"], "jsx": "react",
+    "declaration": true, "strict": true, "esModuleInterop": true, "skipLibCheck": true,
+    "rootDir": "../../../../../packages/asymm-jira-ui/src",
+    "outDir": "../../../../../packages/asymm-jira-ui/dist",
+    "baseUrl": ".",
+    "paths": { "react": ["../../../node_modules/@types/react"], "@forge/react": ["../../../node_modules/@forge/react"] },
+    "typeRoots": ["../../../node_modules/@types"]
+  },
+  "include": ["../../../../../packages/asymm-jira-ui/src/**/*"]
+}

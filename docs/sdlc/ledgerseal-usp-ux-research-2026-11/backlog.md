@@ -7,7 +7,7 @@ APPROVED 2026-11-01 B-01..B-20 (owner, in chat: "APPROVED now all"; [MANIFEST], 
 - **Inputs:** `research-brief.md` (verdicts, USP table, clause map), `ux-spec.md` (target interactions, budgets), audit findings LS-01 to LS-22 and PX-01 to PX-04.
 - **Order:** release-blocking findings first, in the brief's order: LS-01, LS-02, LS-06, LS-03, LS-04 and LS-05, LS-08, LS-09, LS-10. Then PX-02 and PX-04. Then the rest by value.
 - **Trust boundary (all items):** the panel and the validator verify against app storage (KVS), never against the `ledgerseal-cert` entity property. Any editor can change the property (NJ-30).
-- **Test types:** U = unit (pure domain code), R = resolver test with an injected Jira client and an in-memory store, V = UI view-model test (no React), P = live probe on `[LS-PROBE]` issues in DEMO after deploy (Loop 3), A = adversarial re-run of a T-02 scenario in `~/.cache/gemini-earning-ledgerseal-research/probes/`.
+- **Test types:** U = unit (pure domain code), R = resolver test with an injected Jira client and an in-memory store, V = UI view-model test (no React), P = live probe on `[LS-PROBE]` issues in DEMO after deploy (Loop 3), A = adversarial re-run of a T-02 scenario in `docs/sdlc/ledgerseal-usp-ux-research-2026-11/evidence/probes/`.
 - **Every item also needs the brief's section 11.2 checks:** `tsc --noEmit`, jest with at least 90% branch coverage per changed file, behaviour assertions, and no em dash.
 
 ## Approval flags

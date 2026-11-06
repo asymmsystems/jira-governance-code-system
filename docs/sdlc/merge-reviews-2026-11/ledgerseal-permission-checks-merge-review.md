@@ -7,7 +7,7 @@
   - `8e44b40` and `35d23b8`: the questionnaire file.
 - Purpose: make the answers to questions 3 and 8 of the Marketplace Forge app security questionnaire true for LedgerSeal.
 - Read: the full source diff (`src/service/ledger.ts`, `src/jira/jira-client.ts`, `src/service/log.ts`, `src/index.ts`, `src/service/conversion.ts`, `src/frontend/view-model.ts`), `src/service/policy-admin.ts`, the validator and trigger entry points in `src/index.ts`, `manifest.yml`, the two new test files and the fake changes, `docs/marketplace/submission/ledgerseal-security-questionnaires.md` and the new progress log section.
-- Gate output and mutation script (not committed): `/home/fahimfarookme/.cache/jira-suite-merge-review/ledgerseal-permission-checks/` (`gate-branch.txt`, `mutations.txt`, `mutate.py`).
+- Gate output and mutation script (not committed): `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/ledgerseal-permission-checks/` (`gate-branch.txt`, `mutations.txt`, `mutate.py`).
 - **No live check.** The fixing session's live run (`evidence_check.py PAY-10`) stopped at the Atlassian login page, because the saved Jira session cookie had expired. I did not run one either. The development deploy 5.5.0 is not proven on a real site. Owner action: refresh the cookie file, then run `evidence_check.py PAY-10` and one call as a user without Browse projects.
 - Nothing deployed by this review.
 

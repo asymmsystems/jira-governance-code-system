@@ -1,6 +1,6 @@
 # LedgerSeal commercial-readiness audit (reviewer 1 of 4)
 
-App: /home/fahimfarookme/Documents/projects/gemini-earning/apps/ledgerseal (Forge UI Kit). Repo HEAD 5097bf5. Audit date 2026-10-31. Read-only on the repo.
+App: /home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system/apps/ledgerseal (Forge UI Kit). Repo HEAD 5097bf5. Audit date 2026-10-31. Read-only on the repo.
 
 ## 1. Header
 
@@ -59,7 +59,7 @@ All files               |   98.01 |    90.24 |     100 |   98.41 |
 
 Coverage exclusions (jest.config.js:6-10): `src/**/*.d.ts` and `src/frontend/**`. The whole UI (src/frontend/index.tsx, 260 lines) has zero tests and is outside the coverage number. Global branch coverage is 90.24%, which passes the 90% gate by 0.24 points. canonicalizer.ts branch coverage is 87.7%, below 90%.
 
-Scratch scripts: /home/fahimfarookme/.cache/gemini-earning-portfolio-audit/ledgerseal-scratch/probe.js and flow.js.
+Scratch scripts: docs/sdlc/portfolio-audit-2026-10-31/evidence/ledgerseal-scratch/probe.js and flow.js.
 
 ## 2. Verdict table
 

@@ -1,0 +1,7 @@
+test(cascadeplan): lock epic, story and sub-task levels from Jira hierarchy
+
+Stories under an epic are level 0 with the epic as parent, sub-tasks are
+level -1 and follow their story, and a story whose epic is not on the
+timeline is a top-level row.
+
+Refs: B-05, CP-08

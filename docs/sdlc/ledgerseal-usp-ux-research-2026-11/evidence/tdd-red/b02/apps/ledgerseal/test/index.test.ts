@@ -1,0 +1,188 @@
+import { validateTransition, sealIssue, verifyIssue, renderIssuePanel, handler } from '../src/index';
+import { FakeJira, MemoryStore, panelContext } from './support/fakes';
+
+jest.mock('@forge/api', () => ({
+  __esModule: true,
+  default: { asApp: jest.fn(), asUser: jest.fn() },
+  route: (strings: any, ...values: any[]) =>
+    strings.reduce((acc: string, str: string, i: number) => acc + str + (values[i] !== undefined ? values[i] : ''), '')
+}));
+jest.mock('@forge/kvs', () => ({ kvs: {} }));
+
+const sampleIssue = {
+  id: '10001',
+  key: 'PROD-10',
+  fields: {
+    project: { key: 'PROD' },
+    issuetype: { name: 'Bug' },
+    status: { name: 'Done' },
+    summary: 'Critical security fix'
+  }
+};
+
+describe('Forge Function Entry Points (index.ts)', () => {
+  let storage: MemoryStore;
+  let jira: FakeJira;
+  const deps = () => ({ jira, storage });
+  const ctx = panelContext('lead');
+
+  const sampleSig = {
+    meaning: 'Approved for deployment',
+    reasonCode: 'APPROVAL' as const,
+    declarationText: 'Code reviewed and verified.',
+    reauthConfirmation: 'CONFIRM'
+  };
+
+  beforeEach(() => {
+    storage = new MemoryStore();
+    jira = new FakeJira(JSON.parse(JSON.stringify(sampleIssue)));
+    jira.approvers = new Set(['lead']);
+    jira.currentUser = 'lead';
+    jira.users = { lead: 'Lead Engineer' };
+  });
+
+  describe('sealIssue', () => {
+    it('successfully seals an issue and stores certificate', async () => {
+      const result: any = await sealIssue({ signature: sampleSig }, ctx, deps());
+      expect(result.ok).toBe(true);
+      expect(result.snapshotHash).toHaveLength(64);
+
+      const storedCert = await storage.get('cert:active:10001');
+      expect(storedCert.snapshotHash).toBe(result.snapshotHash);
+      expect(storedCert.sealedBy.signerDisplayName).toBe('Lead Engineer');
+      expect(jira.propertyWrites[0].body).toMatchObject({ status: 'SEAL_VALID', snapshotHash: result.snapshotHash });
+    });
+
+    it('returns an error result if signature or issue context is missing', async () => {
+      await expect(sealIssue({ signature: null }, ctx, deps())).resolves.toMatchObject({ ok: false, code: 'INVALID_REQUEST' });
+      await expect(sealIssue({ signature: sampleSig }, { accountId: 'lead' }, deps())).resolves.toMatchObject({
+        ok: false,
+        code: 'MISSING_ISSUE'
+      });
+    });
+
+    it('requires the confirmation text', async () => {
+      await expect(sealIssue({ signature: { ...sampleSig, reauthConfirmation: ' ' } }, ctx, deps())).resolves.toMatchObject({
+        ok: false,
+        code: 'INVALID_REQUEST'
+      });
+    });
+
+    it('writes nothing when Jira cannot be read', async () => {
+      jira.failIssueGet = true;
+      await expect(sealIssue({ signature: sampleSig }, ctx, deps())).resolves.toMatchObject({ ok: false, code: 'JIRA_UNREACHABLE' });
+      expect(storage.sets).toEqual([]);
+    });
+
+    it('falls back to the account id when Jira hides the display name', async () => {
+      jira.users = {};
+      await sealIssue({ signature: sampleSig }, ctx, deps());
+      expect((await storage.get('cert:active:10001')).sealedBy.signerDisplayName).toBe('lead');
+    });
+  });
+
+  describe('verifyIssue', () => {
+    it('returns SEAL_VALID when live issue matches sealed state', async () => {
+      await sealIssue({ signature: sampleSig }, ctx, deps());
+      const analysis: any = await verifyIssue({}, ctx, deps());
+      expect(analysis.status).toBe('SEAL_VALID');
+    });
+
+    it('returns SEAL_COMPROMISED when issue was previously tampered and reverted', async () => {
+      await sealIssue({ signature: sampleSig }, ctx, deps());
+      const storedCert = await storage.get('cert:active:10001');
+      storedCert.isCompromised = true;
+      storedCert.tamperHistory = [{ detectedAt: '2026-10-30T00:00:00Z', alteredFields: ['Summary'], liveHash: 'x', sealedHash: 'y', incidentType: 'ACTIVE_TAMPER' }];
+      await storage.set('cert:active:10001', storedCert);
+
+      const analysis: any = await verifyIssue({}, ctx, deps());
+      expect(analysis.status).toBe('SEAL_COMPROMISED');
+      expect(analysis.isCompromised).toBe(true);
+    });
+
+    it('returns SEAL_BROKEN when live issue has been modified', async () => {
+      await sealIssue({ signature: sampleSig }, ctx, deps());
+      jira.issue.fields.summary = 'Tampered summary';
+      const analysis: any = await verifyIssue({}, ctx, deps());
+      expect(analysis.status).toBe('SEAL_BROKEN');
+      expect(analysis.tamperedFields).toHaveLength(1);
+    });
+
+    it('throws if issue context is missing or Jira cannot be read', async () => {
+      await expect(verifyIssue({}, { accountId: 'lead' }, deps())).rejects.toThrow('Missing issue');
+      jira.failIssueGet = true;
+      await expect(verifyIssue({}, ctx, deps())).rejects.toThrow('Unable to retrieve');
+    });
+  });
+
+  describe('validateTransition', () => {
+    it('returns result=true when seal is valid and untampered', async () => {
+      await sealIssue({ signature: sampleSig }, ctx, deps());
+      const res = await validateTransition({ issue: { key: 'PROD-10' } }, {}, deps());
+      expect(res).toEqual({ result: true });
+    });
+
+    it('returns result=false when issue is not sealed', async () => {
+      const res = await validateTransition({ issue: { key: 'PROD-10' } }, {}, deps());
+      expect(res.result).toBe(false);
+      expect(res.errorMessage).toContain('must be cryptographically sealed');
+    });
+
+    it('returns result=false when issueId is missing', async () => {
+      const res = await validateTransition({}, {}, deps());
+      expect(res.result).toBe(false);
+      expect(res.errorMessage).toContain('Missing issue context');
+    });
+
+    it('applies transition-screen modifiedFields before comparing', async () => {
+      await sealIssue({ signature: sampleSig }, ctx, deps());
+      const res = await validateTransition(
+        { issue: { key: 'PROD-10' }, transition: { modifiedFields: { summary: 'Changed on the transition screen' } } },
+        {},
+        deps()
+      );
+      expect(res.result).toBe(false);
+      expect(res.errorMessage).toContain('Summary');
+    });
+  });
+
+  describe('renderIssuePanel and resolver', () => {
+    it('returns panel configuration', async () => {
+      const res = await renderIssuePanel({ platformContext: { issueId: '10001' } });
+      expect(res.moduleKey).toBe('ledgerseal-panel');
+    });
+
+    it('registers the panel resolvers', async () => {
+      await expect(handler({ call: { functionKey: 'unknown-api', payload: {} }, context: ctx } as any)).rejects.toThrow('unknown-api');
+      const noUser = { extension: { issue: { id: '10001' } } };
+      await expect(handler({ call: { functionKey: 'verify-issue-api', payload: {} }, context: noUser } as any)).resolves.toMatchObject({
+        code: 'NO_IDENTITY'
+      });
+      await expect(handler({ call: { functionKey: 'seal-issue-api', payload: {} }, context: noUser } as any)).resolves.toMatchObject({
+        code: 'NO_IDENTITY'
+      });
+    });
+  });
+
+  describe('forgeDeps', () => {
+    it('uses Forge KVS for storage and builds the Jira client with or without a user', async () => {
+      const { kvs } = require('@forge/kvs');
+      kvs.get = jest.fn().mockResolvedValue({ a: 1 });
+      kvs.set = jest.fn().mockResolvedValue(undefined);
+      kvs.delete = jest.fn().mockResolvedValue(undefined);
+      const { forgeDeps } = require('../src/index');
+      const withUser = forgeDeps(true);
+      await expect(withUser.storage.get('k')).resolves.toEqual({ a: 1 });
+      await withUser.storage.set('k', { b: 2 });
+      await withUser.storage.delete('k');
+      expect(kvs.set).toHaveBeenCalledWith('k', { b: 2 });
+      expect(kvs.delete).toHaveBeenCalledWith('k');
+      const api = require('@forge/api').default;
+      expect(api.asUser).toHaveBeenCalled();
+      api.asUser.mockClear();
+      const appOnly = forgeDeps(false);
+      await expect(appOnly.jira.hasApproverPermission('1')).resolves.toEqual({ ok: false, error: 'FORBIDDEN' });
+      expect(api.asUser).not.toHaveBeenCalled();
+    });
+  });
+});

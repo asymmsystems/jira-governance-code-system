@@ -52,7 +52,7 @@ None.
 - **L-34. The r/jira post says the app is "live on the Atlassian Marketplace"** (`:96`), and two posts link `https://marketplace.atlassian.com/apps/ledgerseal` (`:99`, `:185`). On 2026-11-06, a Marketplace search for "ledgerseal" (`/rest/2/addons?text=ledgerseal`) returns no LedgerSeal app. The URL returns HTTP 200, but so does a made-up path, and Marketplace app URLs usually carry a numeric id. Post these only after the listing is live, and copy the real URL from it.
 - **L-35. The r/compliance title says "Eliminating 'post-approval change risk'"** (`:108`). The listing says LedgerSeal detects changes to covered items and blocks the release transition. Uncovered fields, and comments or work logs the app cannot read, stay outside it. Possible owner wording: "Catching post-approval changes in Jira for SOC 2 and GxP audits".
 - **L-36. The LinkedIn post promises the verifier but links the LedgerSeal page** (`:152` to `:153`). "We also open-sourced the offline verifier ...:" is followed by `.../user-guide/ledgerseal.html`. The other posts link `.../user-guide/open-verifier.html`.
-- **L-37. The r/devops post labels a documentation page as the "Verifier repo"** (`:66`). The link is `.../user-guide/open-verifier.html`. The repository is `https://github.com/asymmsystems/ledgerseal-verifier` (public, Apache-2.0).
+- **L-37. The r/devops post labels a documentation page as the "Verifier repo"** (`:66`). The link is `.../user-guide/open-verifier.html`. The repository is `https://github.com/asymmsystems/jira-governance-code-cli` (public, Apache-2.0).
 
 ### Considered, no finding
 

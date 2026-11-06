@@ -1,0 +1,10 @@
+feat(cascadeplan): licensing check in manifest and resolvers
+
+Add app.licensing configuration with enabled true to manifest.yml, as
+approved in scope review. In resolvers, evaluate context.license for active
+state; when the installation is unlicensed (isActive or active is false),
+return a licence required error result and perform zero writes to Jira or
+KVS. Permitted contexts and environments without license enforcement continue
+normal execution.
+
+Refs: B-21

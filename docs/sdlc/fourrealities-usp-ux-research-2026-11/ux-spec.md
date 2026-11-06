@@ -71,7 +71,7 @@ Rules that apply to every task:
 
 ## 3. Performance: baseline and budgets
 
-Baseline from the resolver harness T-04 (`~/.cache/gemini-earning-fourrealities-research/harness/results/resolver-baseline.json`), run 2026-11-01 on host node v26.13.0 with mocked Jira and KVS. CPU time excludes network time. Wall-clock time on the live site was not measured, because the mocks have no latency model and the live page does not render.
+Baseline from the resolver harness T-04 (`docs/sdlc/fourrealities-usp-ux-research-2026-11/evidence/harness/results/resolver-baseline.json`), run 2026-11-01 on host node v26.13.0 with mocked Jira and KVS. CPU time excludes network time. Wall-clock time on the live site was not measured, because the mocks have no latency model and the live page does not render.
 
 ### 3.1 Baseline
 

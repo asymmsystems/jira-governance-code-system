@@ -1,0 +1,10 @@
+feat(cascadeplan): estimation unit stored per task
+
+Keep mixed estimation units (Hours, Story Points, T-Shirt) per task in the
+WorkEffortEstimate extension without requiring data migration. When a task
+is edited, changing the estimate updates the unit and raw estimate in KVS
+and sends only the converted estimate in hours to Jira when hours actually
+change. Reopening a task in the task detail modal restores the saved unit
+and raw value, displaying the reconciled hours badge live.
+
+Refs: B-20

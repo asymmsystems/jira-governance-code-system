@@ -15,7 +15,7 @@
 Re-check of the page:
 - The issue file lists controls that are "Not answered yet": logs (17), backups and continuity (18), SBOM (19), and disk encryption, a pentest and an incident-plan test, which are never claimed. The page states none of them.
 - The excluded claims are still absent.
-- Build `./mvnw -o clean process-resources` (Eliya 25.0.3): exit 0. The warnings are JVM and JBake runtime notices (`sun.misc.Unsafe`, script engine, OrientDB default password), not page problems. Log, not committed: `/home/fahimfarookme/.cache/jira-suite-merge-review/security-policy-site/build-round2.txt`.
+- Build `./mvnw -o clean process-resources` (Eliya 25.0.3): exit 0. The warnings are JVM and JBake runtime notices (`sun.misc.Unsafe`, script engine, OrientDB default password), not page problems. Log, not committed: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/security-policy-site/build-round2.txt`.
 - 37 internal links on `security.html` and `compliance.html`: none missing.
 - No em or en dashes added.
 
@@ -28,7 +28,7 @@ Open, outside this branch: the Jira questionnaires (question 16) quote the live 
 - Change:
   - A new page, `src/main/jbake/content/security.html` (URL `/security`).
   - A "Security" link in the status bar and in the mobile drawer footer of `src/main/jbake/templates/partial/menu/menu.ftl`.
-- Checkout: `/home/fahimfarookme/Documents/projects/gemini-earning-cp-fixes/.tmp/review-site-security` (my own clone). Build log, not committed: `/home/fahimfarookme/.cache/jira-suite-merge-review/security-policy-site/build.txt`.
+- Checkout: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cp-fixes-scratch/review-site-security` (my own clone). Build log, not committed: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/security-policy-site/build.txt`.
 - Facts I was given as owner-confirmed:
   - About 5 people.
   - MFA on all accounts, including the GitHub organisation.

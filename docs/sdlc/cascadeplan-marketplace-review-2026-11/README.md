@@ -19,7 +19,7 @@
 Frozen versions, kept as the record: `report.md`, `fix-plan.md`, `fix-plan-v2.md`, `fix-plan-v3.md`.
 
 The frozen files were written before they moved into this repository. Their paths under
-`/home/fahimfarookme/.cache/gemini-earning-cascadeplan-marketplace-review/` map as follows:
+`/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cascadeplan-marketplace-review/` map as follows:
 
 | Old path | Repository path |
 |---|---|
@@ -30,7 +30,7 @@ The frozen files were written before they moved into this repository. Their path
 | `live/*.py` | `apps/cascadeplan/test/live/` |
 | `live/shots/*.png`, `live/*.json` | `evidence/screenshots/live/`, `evidence/live/` |
 | `logs/` | `evidence/logs/` (text logs under 100 KB; the large bundle copies are not kept) |
-| `.../gemini-earning-cascadeplan-fixplan-review/` | `independent-review/` |
+| `~/Documents/projects/jira-governance/.tmp/cache/cascadeplan-fixplan-review/` | `independent-review/` |
 | `.../checkout/architecture/decision/adr-00003-*.org` | `architecture/decision/` |
 
 ## Tests from the review
@@ -48,3 +48,5 @@ fails. The fix then rewrites it as a regression test with the same number. The r
 
 Owner decisions from this review are recorded as ADRs in `architecture/decision/`, starting at
 ADR-003. `fix-plan-v4.md` section 2 lists every decision and its state.
+
+Paths updated 2026-11-07 for the repository move.

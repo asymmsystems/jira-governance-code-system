@@ -28,7 +28,7 @@ Every scope declared in `manifest.yml` is listed below with how the code uses it
 - **No External Egress:** LedgerSeal declares no external fetch permissions (`permissions.external` is absent). The app calls only the Jira REST API of the customer's site. It sends no telemetry.
 - **Forge Storage:** Seal records, history, and approver groups are kept in Atlassian Forge key-value storage (`storage:app`). No third-party databases are used.
 - **Data Residency:** Data residency follows Atlassian's rules for Forge app storage.
-- **Signing:** Every seal attestation and evidence export is signed with Ed25519 by the Asymm Systems key of the production environment (`ls-prod-2026-11`). The private key is a Forge encrypted variable; the public key is in https://github.com/asymmsystems/ledgerseal-verifier.
+- **Signing:** Every seal attestation and evidence export is signed with Ed25519 by the Asymm Systems key of the production environment (`ls-prod-2026-11`). The private key is a Forge encrypted variable; the public key is in https://github.com/asymmsystems/jira-governance-code-cli.
 - **Restricted comments and work logs:** Comments and work logs restricted to a project role or group are covered only when Jira lets the LedgerSeal app read them, that is when the app's user is in that role or group; otherwise a change to such a comment or work log is not detected. A covered comment that is restricted, at the seal or now, is shown in the panel only to a user who can see it in Jira; others see that a comment changed, without its text, author or time. The panel shows only the number of work logs, never their text. The evidence is exported only to a user who can see every such comment and work log. If LedgerSeal can no longer read a covered comment or work log (it was deleted, or restricted since to a role or group the app's user is not in), the panel shows that comment's sealed text to no one, and for that seal: its evidence is not exported to anyone; approving the changes makes a new seal whose evidence can be exported.
 - **Personal data:** Hashed seal records name people by a pseudonymous party token (HMAC-SHA-256 of the account id under a per-site key in app storage), never by account id or name. The `ledgerseal-cert` issue property holds no account id. Account ids are reported weekly; a closed account's token-to-account entry keeps only a closed mark, with no account id. A deleted issue's records are deleted by a trigger on `avi:jira:deleted:issue`.
 
@@ -47,7 +47,7 @@ Install LedgerSeal on your own test site; nothing depends on the Asymm Systems s
 2. Click **Seal this issue**, choose the sign-off role, tick the declaration, click **Sign and seal**.
 3. Observe the green `SEALED` lozenge and "Approval seal: Sealed. No change detected since approval."
 4. Click **Show details** to see the signer, sign-off role, hash and covered fields; **Show history** lists the seal with who acted.
-5. Click **Show evidence (JSON)**. Save it to a file and run `node verify-evidence.mjs <file>` from https://github.com/asymmsystems/ledgerseal-verifier: all five checks pass.
+5. Click **Show evidence (JSON)**. Save it to a file and run `node verify-evidence.mjs <file>` from https://github.com/asymmsystems/jira-governance-code-cli: all five checks pass.
 
 ### Test Step 2: Change detection and separation of duties
 1. As the first user, edit the summary and add a comment.

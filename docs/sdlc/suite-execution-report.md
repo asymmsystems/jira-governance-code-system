@@ -30,7 +30,7 @@ All three applications are built natively on Atlassian Forge ("Runs on Atlassian
 - **Branch Coverage**: **93.26%** (Line Coverage: 100%).
 - **Security Check**: PASSED (zero egress, scopes: `read:jira-work`, `storage:app`).
 - **UI Kit 2**: PASSED (clean `tsc`, native `@forge/react` issue panel).
-- **Frozen State File**: [ledgerseal_state.json](file:///home/fahimfarookme/Documents/projects/gemini-earning/loop-engine/runs/ledgerseal_state.json).
+- **Frozen State File**: [ledgerseal_state.json](../../loop-engine/runs/ledgerseal_state.json).
 
 ### 2. DefinitionGuard (`apps/definitionguard`)
 - **Purpose**: Enforces mandatory Definition-of-Done checklists and blocks workflow transitions until 100% of required checks are satisfied with audit attribution.
@@ -38,7 +38,7 @@ All three applications are built natively on Atlassian Forge ("Runs on Atlassian
 - **Branch Coverage**: **93.15%** (Line Coverage: 98.38%).
 - **Security Check**: PASSED (zero egress, scopes: `read:jira-work`, `storage:app`).
 - **UI Kit 2**: PASSED (clean `tsc`, native `@forge/react` issue panel with item toggles and gate lozenges).
-- **Frozen State File**: [definitionguard_state.json](file:///home/fahimfarookme/Documents/projects/gemini-earning/loop-engine/runs/definitionguard_state.json).
+- **Frozen State File**: [definitionguard_state.json](../../loop-engine/runs/definitionguard_state.json).
 
 ### 3. FourRealities (`apps/fourrealities`)
 - **Purpose**: Audits alignment across the four realities of software engineering: Intent (Confluence ADRs), Process (Jira workflows), Code (Git PRs), and Audit (LedgerSeal / DefinitionGuard). Calculates M11, M29, M30, and RAI.
@@ -46,7 +46,7 @@ All three applications are built natively on Atlassian Forge ("Runs on Atlassian
 - **Branch Coverage**: **93.75%** (Line Coverage: 100%).
 - **Security Check**: PASSED (zero egress, scopes: `read:jira-work`, `storage:app`).
 - **UI Kit 2**: PASSED (clean `tsc`, native `@forge/react` project dashboard and issue panels).
-- **Frozen State File**: [fourrealities_state.json](file:///home/fahimfarookme/Documents/projects/gemini-earning/loop-engine/runs/fourrealities_state.json).
+- **Frozen State File**: [fourrealities_state.json](../../loop-engine/runs/fourrealities_state.json).
 
 ---
 

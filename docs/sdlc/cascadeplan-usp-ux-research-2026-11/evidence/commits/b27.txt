@@ -1,0 +1,17 @@
+feat(cascadeplan): zoom levels, an open-ended timeline and frozen columns
+
+The time axis is computed in the browser: one timeline column whose
+width and header cells follow the zoom level, Day, Week, Month, Quarter
+or Year, chosen from a toolbar or with Ctrl or Cmd and plus or minus.
+The issue with grid focus stays in view when the zoom changes. The
+range covers every scheduled date and grows by 26 weeks when the user
+scrolls near either edge, without moving the view. Drops schedule an
+exact start date, so they work anywhere on the timeline.
+
+Drags snap to days at Day and Week zoom and to weeks above that; Alt
+gives days at any zoom. The header row and the data columns stay in
+place while the timeline scrolls, and a compact mode shows only Key and
+Summary. Today, Earlier and Later move the view directly. Every line of
+the hover tooltip uses inverse text on its dark background.
+
+Refs: B-27

@@ -2,9 +2,9 @@
 
 - Date: 2026-11-06. Reviewer: independent merge review session.
 - Branch: `feature/listing-pricing-and-highlights` at `a043f83`, rebased on master `fc8ca40`. It has two commits: `166f473` (the round 1 change, re-applied) and `a043f83` (the fixes).
-- Round 1 reviewed `1830d92` and said "do not merge" (H-3). That report was not committed. It is at `/home/fahimfarookme/.cache/jira-suite-merge-review/listing-pricing-and-highlights/listing-pricing-and-highlights-merge-review.md`.
+- Round 1 reviewed `1830d92` and said "do not merge" (H-3). That report was not committed. It is at `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/listing-pricing-and-highlights/listing-pricing-and-highlights-merge-review.md`.
 - Read: the full diff from `fc8ca40` (12 files), section 4 "Price" of `docs/sdlc/suite-readiness-review-2026-11/README.md`, step 2.3 of `docs/marketplace/submission/developer-console-checklist.md`, `site/faq.md`, `docs/marketplace/suite-launch-and-first-sale-playbook.md`, the pricing parts of `docs/launch/manual-actions-checklist.md` and `docs/launch/first-sale-playbook.md`, and the listing tests of three apps.
-- Gate output (not committed): `/home/fahimfarookme/.cache/jira-suite-merge-review/listing-pricing-and-highlights/gate-merge-round2.txt`.
+- Gate output (not committed): `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/listing-pricing-and-highlights/gate-merge-round2.txt`.
 - No live check. I did not open the Marketplace drafts or the developer console.
 
 ## 1. Verdict

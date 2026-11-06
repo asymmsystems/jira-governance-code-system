@@ -2,9 +2,9 @@
 
 - Date: 2026-11-06. Reviewer: independent merge review session (not the session that wrote the fixes).
 - Branch: `feature/ledgerseal-review-followups` at `7f6dce8`, cut from master `42e79fa`. Master at merge: `494e68c` (holds the FourRealities merge `51c0d28`, `27e7dbe`, `494e68c`).
-- Public verifier: `asymmsystems/ledgerseal-verifier` `main` `67776e4`, release `v1.2.0`.
+- Public verifier: `asymmsystems/jira-governance-code-cli` `main` `67776e4`, release `v1.2.0`.
 - Read: the follow-up entries of `docs/sdlc/ledgerseal-marketplace-fixes-2026-11/progress-log.md`, the previous review `docs/sdlc/merge-reviews-2026-11/ledgerseal-merge-review.md` (M-1, M-2, M-4, L-1 to L-7), the full diff (25 files) and `src/service/conversion.ts` in full.
-- Probe (not committed): `/home/fahimfarookme/.cache/jira-suite-merge-review/ledgerseal-followups/probes/zz-probe-concurrent.test.ts` (P1).
+- Probe (not committed): `docs/sdlc/merge-reviews-2026-11/evidence/ledgerseal-followups/probes/zz-probe-concurrent.test.ts` (P1).
 - No live check and no deploy. `isActiveUser` uses the same request as `getUserName` (`GET /rest/api/3/user?accountId=`, as the app), which the panel already uses on the development site.
 
 ## 1. Verdict
@@ -51,7 +51,7 @@ Could not confirm: the live checks in the log (verifier 1.2.0 on PAY-10, PAY-13,
 
 ## 4. Public verifier
 
-`asymmsystems/ledgerseal-verifier` `main` = `67776e4` = tag `v1.2.0`. `diff -r` against `tools/verifier` on the branch: empty. The Apache-2.0 header is present on `verify-evidence.mjs`, `test/verify.test.mjs` and `.github/workflows/test.yml`. The fifth check (`verify-evidence.mjs:83-86`) maps LS_SEALED, LS_CHANGED and LS_REVOKED to SEAL_VALID, SEAL_BROKEN and SEAL_REVOKED, and compares the result with `attestation.status` for the newest entry that is not LS_REDACTED. The app's export takes the status from the stored `currentStatusId` and the history up to the stored head, so they agree. Release assets: `sha256sum -c SHA256SUMS` OK for all four files, and `verify-evidence.mjs`, `vectors.json`, `LICENSE` and the key are byte-identical to the repository. The four sums equal those in the fix log. CI: run 42196616081 (pull request) and run 42196827209 (push to `main`) on `67776e4`, both successful. I did not push to the verifier repository.
+`asymmsystems/jira-governance-code-cli` `main` = `67776e4` = tag `v1.2.0`. `diff -r` against `tools/verifier` on the branch: empty. The Apache-2.0 header is present on `verify-evidence.mjs`, `test/verify.test.mjs` and `.github/workflows/test.yml`. The fifth check (`verify-evidence.mjs:83-86`) maps LS_SEALED, LS_CHANGED and LS_REVOKED to SEAL_VALID, SEAL_BROKEN and SEAL_REVOKED, and compares the result with `attestation.status` for the newest entry that is not LS_REDACTED. The app's export takes the status from the stored `currentStatusId` and the history up to the stored head, so they agree. Release assets: `sha256sum -c SHA256SUMS` OK for all four files, and `verify-evidence.mjs`, `vectors.json`, `LICENSE` and the key are byte-identical to the repository. The four sums equal those in the fix log. CI: run 42196616081 (pull request) and run 42196827209 (push to `main`) on `67776e4`, both successful. I did not push to the verifier repository.
 
 ## 5. Gate
 

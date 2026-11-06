@@ -165,7 +165,7 @@ Checked 2026-11-01 against the working tree. "Probe" refers to T-05.
 
 | ID | Location | Date | What it shows | Grade |
 |---|---|---|---|---|
-| T-01 | `~/.cache/gemini-earning-cascadeplan-research/probes/inline-script.js` | 2026-11-01 | "SyntaxError: Unexpected end of input" from `node --check` | Observed-test |
+| T-01 | `~/Documents/projects/jira-governance/.tmp/cache/cascadeplan-research/probes/inline-script.js` | 2026-11-01 | "SyntaxError: Unexpected end of input" from `node --check` | Observed-test |
 | T-02 | `.../harness/build_site.py`, `smoke.py` | 2026-11-01 | Harness renders 50 rows, 18 arrows, 0 page errors after patch P-01 | Observed-test |
 | T-03 | `.../harness/results/perf-baseline.json` | 2026-11-01 | Load, hover and drag timings at 50, 300, 1,000 tasks | Observed-test |
 | T-04 | `.../harness/results/ux-baseline.json` | 2026-11-01 | Benchmark tasks 1 to 9, payloads, axe-core, dark mode | Observed-test |
@@ -174,7 +174,7 @@ Checked 2026-11-01 against the working tree. "Probe" refers to T-05.
 
 ### 8.2 Jira Plans (JP)
 
-Copied from `~/.cache/gemini-earning-cascadeplan-research/sources/jira-plans.md`. 41 sources.
+Copied from `~/Documents/projects/jira-governance/.tmp/cache/cascadeplan-research/sources/jira-plans.md`. 41 sources.
 
 | ID | URL | Accessed | Quote (short) | Grade |
 |---|---|---|---|---|
@@ -222,7 +222,7 @@ Copied from `~/.cache/gemini-earning-cascadeplan-research/sources/jira-plans.md`
 
 ### 8.3 Marketplace apps (MP)
 
-Copied from `~/.cache/gemini-earning-cascadeplan-research/sources/marketplace-apps.md`. 60 sources.
+Copied from `~/Documents/projects/jira-governance/.tmp/cache/cascadeplan-research/sources/marketplace-apps.md`. 60 sources.
 
 | ID | URL | Accessed | Quote (short) | Grade |
 |---|---|---|---|---|
@@ -289,7 +289,7 @@ Copied from `~/.cache/gemini-earning-cascadeplan-research/sources/marketplace-ap
 
 ### 8.4 Team size, Silverston, Forge limits (RS)
 
-Copied from `~/.cache/gemini-earning-cascadeplan-research/sources/team-size-silverston-forge.md`. 31 sources.
+Copied from `~/Documents/projects/jira-governance/.tmp/cache/cascadeplan-research/sources/team-size-silverston-forge.md`. 31 sources.
 
 | ID | URL | Accessed | Quote (short) | Grade |
 |---|---|---|---|---|
@@ -327,7 +327,7 @@ Copied from `~/.cache/gemini-earning-cascadeplan-research/sources/team-size-silv
 
 ### 8.5 Round 3: competitor UX and reviews (UX)
 
-Copied from `~/.cache/gemini-earning-cascadeplan-research/sources/round3-competitor-ux.md`. 45 sources.
+Copied from `~/Documents/projects/jira-governance/.tmp/cache/cascadeplan-research/sources/round3-competitor-ux.md`. 45 sources.
 
 | ID | URL | Accessed | Quote (short) | Grade |
 |---|---|---|---|---|
@@ -379,7 +379,7 @@ Copied from `~/.cache/gemini-earning-cascadeplan-research/sources/round3-competi
 
 ### 8.6 Round 3: UX patterns, accessibility, canvas (UP)
 
-Copied from `~/.cache/gemini-earning-cascadeplan-research/sources/round3-ux-patterns.md`. 70 sources.
+Copied from `~/Documents/projects/jira-governance/.tmp/cache/cascadeplan-research/sources/round3-ux-patterns.md`. 70 sources.
 
 | ID | URL | Accessed | Quote (short) | Grade |
 |---|---|---|---|---|

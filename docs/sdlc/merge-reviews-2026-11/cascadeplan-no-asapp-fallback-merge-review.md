@@ -6,7 +6,7 @@
   - `getJiraCaller` (`apps/cascadeplan/src/server/core.ts`) returns `withRetry(api.asUser())`, and throws when `api.asUser` is not a function, instead of falling back to `api.asApp()`;
   - new tests in `test/reads-as-user.test.ts`, and an updated test in `test/index.test.ts`;
   - questionnaire question 3 and section 2.1 (`cascadeplan-security-questionnaires.md`).
-- Output and scripts, not committed: `/home/fahimfarookme/.cache/jira-suite-merge-review/cascadeplan-no-asapp/`.
+- Output and scripts, not committed: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/cascadeplan-no-asapp/`.
 - Nothing deployed by this review. `forge lint -e production` reports no approval, so this is a minor version.
 
 ## 1. Verdict

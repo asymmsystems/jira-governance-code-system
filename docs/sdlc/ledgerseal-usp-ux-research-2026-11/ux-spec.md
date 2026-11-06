@@ -4,7 +4,7 @@
 - **Scope:** the LedgerSeal issue panel (UI Kit, `src/frontend/index.tsx`), the workflow validator messages, and the resolver contracts behind them.
 - **Code reviewed:** `apps/ledgerseal` in the working tree at repo HEAD `423b9b2`. Every LedgerSeal file is byte-identical to the audit snapshot (`docs/sdlc/portfolio-audit-2026-10-31/snapshot-md5.txt`). File:line references are valid for both.
 - **Source IDs:** the same as `research-brief.md` section 9. MP = Marketplace apps, NJ = native Jira, JAC = jira.atlassian.com tickets, FG = Forge platform, REG = regulation, T = tests run in this research.
-- **Tests:** T-01 = `measure.probe.ts`, T-02 = `adversarial.probe.ts`, T-03 = `coverage.probe.ts`. All three live in `~/.cache/gemini-earning-ledgerseal-research/probes/`. They import the app source read-only and mock the Forge APIs. `round-log.md` gives the command.
+- **Tests:** T-01 = `measure.probe.ts`, T-02 = `adversarial.probe.ts`, T-03 = `coverage.probe.ts`. All three live in `docs/sdlc/ledgerseal-usp-ux-research-2026-11/evidence/probes/`. They import the app source read-only and mock the Forge APIs. `round-log.md` gives the command.
 - **Limit:** Part A opened no live issue page and no LedgerSeal panel (brief section 14). LedgerSeal click counts come from the code. Competitor counts come from vendor documents only. No competitor video was readable (MP section 7).
 
 ## 1. Benchmark table

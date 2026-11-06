@@ -10,15 +10,15 @@ Read this whole prompt before you act. When this prompt and a file disagree, the
 
 ## 1. Where things are
 
-- Repository: `/home/fahimfarookme/Documents/projects/gemini-earning` (git). It has NO git remote. Nothing can be pushed. Do not add a remote.
+- Repository: `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system` (git). It has NO git remote. Nothing can be pushed. Do not add a remote.
 - Worktrees (one per app session; other people's work is in progress in them):
-  - `/home/fahimfarookme/Documents/projects/gemini-earning` on `feature/cascadeplan-research-build`: CascadePlan, actively developed by another session. Do not edit, stash, reset or check out anything there.
-  - `/home/fahimfarookme/Documents/projects/gemini-earning-fr-build` on `feature/fourrealities-research-build`: FourRealities. Not yours.
-  - `/home/fahimfarookme/Documents/projects/gemini-earning-ls-build` on `feature/ledgerseal-research-build`: LedgerSeal. Not yours.
-  - `/home/fahimfarookme/Documents/projects/gemini-earning-dg-build`: DefinitionGuard. YOURS. Work only here.
+  - `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system` on `feature/cascadeplan-research-build`: CascadePlan, actively developed by another session. Do not edit, stash, reset or check out anything there.
+  - `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system` on `feature/fourrealities-research-build`: FourRealities. Not yours.
+  - `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system` on `feature/ledgerseal-research-build`: LedgerSeal. Not yours.
+  - `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system`: DefinitionGuard. YOURS. Work only here.
 - Restore point: the tag `definitionguard-handover-2026-11-01` and the branch `snapshot/definitionguard-handover-2026-11-01` mark the state you start from. Never move, delete, rebase or force-update either of them, and never rewrite any commit they contain.
 - Never change any file under `apps/planshift`, `apps/fourrealities` or `apps/ledgerseal`, and never run `git stash`, `git reset`, `git checkout` or `git clean` in a worktree that is not yours. The stash stack is shared by all worktrees.
-- App: `apps/definitionguard`. `node_modules` there is a symbolic link to `/home/fahimfarookme/Documents/projects/gemini-earning/apps/ledgerseal/node_modules`, shared with LedgerSeal and CascadePlan. Never run `npm install`, `npm update` or anything that changes it. Ask the owner first if a dependency seems needed.
+- App: `apps/definitionguard`. `node_modules` there is a symbolic link to `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system/apps/ledgerseal/node_modules`, shared with LedgerSeal and CascadePlan. Never run `npm install`, `npm update` or anything that changes it. Ask the owner first if a dependency seems needed.
 - Your shell runs inside a VS Code Flatpak sandbox. Run host tools (node, npx, jest, tsc, forge) through `flatpak-spawn --host sh -c 'cd <absolute path> && <command>'`. Use absolute paths; never chain `cd ..`.
 
 ## 2. Read these first, in this order
@@ -43,12 +43,12 @@ Read this whole prompt before you act. When this prompt and a file disagree, the
 ## 4. How to check your work (run all of these for every change)
 
 ```
-flatpak-spawn --host sh ~/.cache/gemini-earning-definitionguard-research/check_item.sh <commit before your change>
+flatpak-spawn --host sh docs/sdlc/definitionguard-usp-ux-research-2026-11/evidence/check_item.sh <commit before your change>
 ```
 
-It runs `tsc --noEmit`, Jest with coverage, the 90% branch check on each changed source file, `loop-engine/graders/grade_tdd.py`, `grade_security.py`, `grade_ui.py`, and an em dash scan. All must pass. Also run `flatpak-spawn --host sh -c 'cd /home/fahimfarookme/Documents/projects/gemini-earning-dg-build/apps/definitionguard && forge lint'` before any deploy.
+It runs `tsc --noEmit`, Jest with coverage, the 90% branch check on each changed source file, `loop-engine/graders/grade_tdd.py`, `grade_security.py`, `grade_ui.py`, and an em dash scan. All must pass. Also run `flatpak-spawn --host sh -c 'cd /home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system/apps/definitionguard && forge lint'` before any deploy.
 
-The scale harness is `~/.cache/gemini-earning-definitionguard-research/harness/` (run it with `HARNESS_APP=<app path> HARNESS_LABEL=<label> npx jest -c <harness>/jest.config.js` from the app folder). Results go to `harness/results/<label>.json`.
+The scale harness is `docs/sdlc/definitionguard-usp-ux-research-2026-11/evidence/harness/` (run it with `HARNESS_APP=<app path> HARNESS_LABEL=<label> npx jest -c <harness>/jest.config.js` from the app folder). Results go to `harness/results/<label>.json`.
 
 ## 5. Rules you must follow (from the owner)
 

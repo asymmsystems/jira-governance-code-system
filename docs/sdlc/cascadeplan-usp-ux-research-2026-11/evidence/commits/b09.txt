@@ -1,0 +1,15 @@
+feat(cascadeplan): store one planning record per issue with a version check
+
+Planning data lives in one KVS record per issue, keyed by project id and
+issue id, plus one settings record per project. Records are listed with
+a prefix query, and each write is an atomic swap that returns the
+previous value: when its version is not the version the caller started
+from, the previous value is restored and the resolver returns conflict.
+Callers can pass expectedVersion, and the UI does so for drag, resize
+and the task form.
+
+getProjectPlan only reads. Row order uses sequence numbers with gaps.
+Legacy keys (schedule map, task order, column settings, milestones and
+the cached plan) are migrated once and then deleted.
+
+Refs: B-09, CP-09, CP-11, CP-26

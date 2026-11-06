@@ -7,7 +7,7 @@
   - Q7: `write:jira-work` replaced by `write:issue.property:jira`.
   - Q9: limits on payload ids and cursors.
 - Read: the full source diff; every resolver in `src/index.ts` and `src/settings/settings-resolvers.ts`; `src/settings/coverage.ts`; `manifest.yml`; `test/security/browse-check.test.ts`; `test/manifest.test.ts`; and `docs/marketplace/submission/definitionguard-security-questionnaires.md`.
-- Gate output and mutation script (not committed): `/home/fahimfarookme/.cache/jira-suite-merge-review/definitionguard-permission-checks/`.
+- Gate output and mutation script (not committed): `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/definitionguard-permission-checks/`.
 - **No live smoke test.** The fixing session deployed 7.0.0 to development and upgraded the installation, but could not open the panel, because the saved Jira session had expired (`/rest/api/3/myself` answered 401). I did not run one either. Owner action: the smoke script named in the questionnaire, Open issue 1.
 - Nothing deployed by this review.
 

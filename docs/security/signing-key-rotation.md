@@ -14,7 +14,7 @@ Each signed record names its key in the field `keyId`. A key id has the form `<l
 Who checks the signatures:
 
 - **FourRealities** checks LedgerSeal and DefinitionGuard records against its trust list, `apps/fourrealities/src/accessor/attestation-keys.ts` (ADR-012). Production trusts only the keys listed with `environments: ['PRODUCTION']`. A record with a key id that is not in the list counts like no record (`UNKNOWN_KEY`).
-- **The open verifier** (public repository `asymmsystems/ledgerseal-verifier`, copy in `tools/verifier`) checks LedgerSeal evidence. Without a key argument it reads `keys/<keyId>.pub.pem`.
+- **The open verifier** (public repository `asymmsystems/jira-governance-code-cli`, copy in `tools/verifier`) checks LedgerSeal evidence. Without a key argument it reads `keys/<keyId>.pub.pem`.
 - **Customers and auditors** take the public keys from https://asymm.systems/product/jira-governance/signing-keys.html.
 
 ## 2. Who and when
@@ -52,7 +52,7 @@ Add the new key; change no existing key. On a branch `feature/<app>-key-<key id>
    - LedgerSeal: `apps/ledgerseal/keys/<key id>.pub.pem` and `tools/verifier/keys/<key id>.pub.pem`, and a row in the table of `apps/ledgerseal/keys/README.md`.
    - DefinitionGuard: `docs/marketplace/definitionguard-public-key-<key id>.pem`.
 3. **Documents that name the current production key.** Find them with `git grep -n '<old key id>'` and update each one that names the key in use: at least `site/apps/ledgerseal/open-verifier.md`, `site/apps/fourrealities/admin-guide.md`, `apps/ledgerseal/README.md` and `tools/verifier/README.md`. Records of past work (progress logs, merge reviews) stay as they are.
-4. **Verifier repository** `asymmsystems/ledgerseal-verifier` (LedgerSeal only). Add `keys/<key id>.pub.pem`, bump the minor version in `package.json`, merge to `main`, tag `vX.Y.0`, and publish a GitHub release with the same assets as v1.3.0: every `keys/*.pub.pem`, `verify-evidence.mjs`, `vectors.json`, `SHA256SUMS` and `LICENSE`. Then make `tools/verifier` in this repository equal to the tag: `diff -r --exclude=.git <verifier clone> tools/verifier` prints nothing.
+4. **Verifier repository** `asymmsystems/jira-governance-code-cli` (LedgerSeal only). Add `keys/<key id>.pub.pem`, bump the minor version in `package.json`, merge to `main`, tag `vX.Y.0`, and publish a GitHub release with the same assets as v1.3.0: every `keys/*.pub.pem`, `verify-evidence.mjs`, `vectors.json`, `SHA256SUMS` and `LICENSE`. Then make `tools/verifier` in this repository equal to the tag: `diff -r --exclude=.git <verifier clone> tools/verifier` prints nothing.
 5. **Website** (repository `asymm-corporate`, page `src/main/jbake/content/product/jira-governance/signing-keys.html`): add the new key with its key id, fingerprint and PEM text in the production section, and point the verifier links to the new release. Move the old key to a "Retired production keys" part of the page with the date it stopped signing (the date of step 5). Publish the site.
 6. Check that every published copy is the same key: `openssl pkey -pubin -in <file> -outform DER | sha256sum` gives the fingerprint from step 1 for each file, and the PEM text on the website and in `attestation-keys.ts` equals the file.
 

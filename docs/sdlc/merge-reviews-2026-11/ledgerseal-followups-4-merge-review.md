@@ -3,7 +3,7 @@
 - Date: 2026-11-06. Reviewer: independent merge review session (not the session that wrote the fixes).
 - Branch: `feature/ledgerseal-review-followups-4` at `354fa33`, cut from master `c8be4c9`. Master at merge: `3c76131` (one docs commit, `docs/marketplace/submission/owner-partner-setup-guide.md`; no conflict).
 - Read: the "Fourth follow-ups" entries of `docs/sdlc/ledgerseal-marketplace-fixes-2026-11/progress-log.md`, the previous review `docs/sdlc/merge-reviews-2026-11/ledgerseal-followups-3-merge-review.md` (M-9, L-14, L-15), the full diff (5 files), `apps/ledgerseal/src/service/conversion.ts` in full, `convertIfNeeded`, `sealIssue` and `revokeSeal` in `src/service/ledger.ts`, `appendStatus` in `src/storage/seal-repository.ts`, the status check of `tools/verifier/verify-evidence.mjs`.
-- Probes and scripts (not committed), in `/home/fahimfarookme/.cache/jira-suite-merge-review/ledgerseal-followups-4/`: `probes/zz-probe-m9.test.ts` (P1), `probes/conversion.reviewer-patch.ts` (reviewer patch), `scripts/mutate.py` and `probes/mutation-results.txt` (guard mutations), `scripts/gate.sh`.
+- Probes and scripts (not committed), in `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/ledgerseal-followups-4/`: `probes/zz-probe-m9.test.ts` (P1), `probes/conversion.reviewer-patch.ts` (reviewer patch), `scripts/mutate.py` and `probes/mutation-results.txt` (guard mutations), `scripts/gate.sh`.
 - No live check and no deploy. These conversion paths only touch records written before ADR-011. Such records exist only on the development site; production (2.0.0, deployed from `c8be4c9`) has none, because a production record is TOKEN from its first seal.
 
 ## 1. Verdict

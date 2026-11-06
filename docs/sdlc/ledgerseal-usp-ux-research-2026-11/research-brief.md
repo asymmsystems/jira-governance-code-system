@@ -208,13 +208,13 @@ Drop first: claims 1 to 3 (Part 11 and certification keywords), 5 (Cloud Fortifi
 
 ## 9. Sources
 
-All sources were accessed on 2026-11-01. Grades: "Reported (primary)" means regulation or standard text. "Reported" means official guidance or vendor documentation. "Observed-test" means a test in this research. The tables below come from the three evidence files in `~/.cache/gemini-earning-ledgerseal-research/sources/`, unchanged.
+All sources were accessed on 2026-11-01. Grades: "Reported (primary)" means regulation or standard text. "Reported" means official guidance or vendor documentation. "Observed-test" means a test in this research. The tables below come from the three evidence files in `~/Documents/projects/jira-governance/.tmp/cache/ledgerseal-research/sources/`, unchanged.
 
 ### 9.1 Tests run in this research (T)
 
 | ID | What | Location | Grade |
 |---|---|---|---|
-| T-01 | Size and time per scenario; 500 tampered views | `~/.cache/gemini-earning-ledgerseal-research/probes/measure.probe.ts`, result `results-baseline.json` | Observed-test |
+| T-01 | Size and time per scenario; 500 tampered views | `docs/sdlc/ledgerseal-usp-ux-research-2026-11/evidence/probes/measure.probe.ts`, result `results-baseline.json` | Observed-test |
 | T-02 | Audit failure scenarios A1 to A11 | `.../probes/adversarial.probe.ts`, result `results-baseline-adversarial.json` | Observed-test |
 | T-03 | Field coverage matrix C01 to C28 | `.../probes/coverage.probe.ts`, result `results-baseline-coverage.json` | Observed-test |
 

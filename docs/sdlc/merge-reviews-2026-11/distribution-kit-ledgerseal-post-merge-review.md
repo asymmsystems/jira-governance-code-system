@@ -45,7 +45,7 @@ None.
 | The validator names the changed field | `workflow-validator.ts` `changedItemsMessage`: it names up to five changed fields, plus "Attachments", and counts the rest. |
 | Ed25519 signature, hash chain in Forge KVS | Listing: the Ed25519 and history chain rows, and Forge Storage |
 | RFC 8785 canonicalization | Neither the listing nor the README names RFC 8785. The README states the rule: keys sorted by UTF-16 code unit, no whitespace. The verifier's `canonicalJson` serializes keys, strings and numbers with `JSON.stringify`, as RFC 8785 does. No test uses the RFC's own test vectors, so full conformance is not proven. `docs/launch/approved-ticket-problem.md:82,94,97` makes the same claim. |
-| "we open-sourced" the verifier | `github.com/asymmsystems/ledgerseal-verifier` is public, licence Apache-2.0 (GitHub API, 2026-11-06) |
+| "we open-sourced" the verifier | `github.com/asymmsystems/jira-governance-code-cli` is public, licence Apache-2.0 (GitHub API, 2026-11-06) |
 | Links in the post | HTTP 200, 2026-11-06: `.../user-guide/open-verifier.html`, `.../user-guide/`, `.../user-guide/ledgerseal.html`, `.../jira-governance.html` |
 
 ## 5. Gate

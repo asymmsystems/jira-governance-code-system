@@ -4,7 +4,7 @@
 - **Audience:** Product owner deciding on production readiness and an Atlassian Marketplace listing
 - **App:** PlanShift Planner (Forge app `cac8499e-e92e-4ba6-95cc-af398b1be791`), `jira:projectPage`, UI Kit (`render: native`)
 - **Site:** https://asymmsystems.atlassian.net, space DEMO, development environment `5dfcdd60-51aa-4ea9-a5e2-c94d7e294677`
-- **Source:** `gemini-earning/apps/planshift/` (no git repository, so files are pinned by MD5 below)
+- **Source:** `jira-governance-code-system/apps/planshift/` (no git repository, so files are pinned by MD5 below)
 
 ## How to read this report
 
@@ -303,7 +303,7 @@ Dimension 6 is graded as a market assessment (section 4), not as defects. IDs F2
 #### F24. Medium. The source has no version control and was changing during the audit
 **Evidence:** Observed.
 
-- `gemini-earning/apps/planshift` is not a git repository. No commit identifies the deployed build.
+- `jira-governance-code-system/apps/planshift` is not a git repository. No commit identifies the deployed build.
 - `src/domain/models.ts` was rewritten at 14:43 while this audit ran. Its header now reads "CascadePlan" and it adds type fields (`backlogTasks`, `isViolated`, `isLiveSynced`, `spanWeeks`, `ScheduleBacklogRequest`). No code uses these fields yet, so the findings above still apply.
 - The deployed app matches the earlier source (live behaviour equals the code paths cited).
 

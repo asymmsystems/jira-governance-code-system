@@ -1,0 +1,10 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "../../..",
+    "paths": { "react": ["node_modules/@types/react"], "@forge/react": ["node_modules/@forge/react"] },
+    "noEmit": true
+  },
+  "include": ["../../../src/**/*"],
+  "exclude": ["../../../node_modules"]
+}

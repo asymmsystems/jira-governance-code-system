@@ -1,0 +1,284 @@
+{
+  "correct": 12,
+  "total": 28,
+  "sealedFieldIds": [
+    "assignee",
+    "components",
+    "customfield_20000",
+    "customfield_20002",
+    "customfield_20004",
+    "fixVersions",
+    "labels",
+    "priority",
+    "security",
+    "summary",
+    "timetracking"
+  ],
+  "excludedFieldIds": [
+    "project",
+    "issuetype",
+    "status",
+    "reporter",
+    "resolution",
+    "customfield_10001",
+    "customfield_10050",
+    "customfield_20001",
+    "customfield_20003",
+    "attachment",
+    "comment"
+  ],
+  "rows": [
+    {
+      "id": "C01",
+      "change": "summary changed",
+      "shouldBreak": true,
+      "broke": true,
+      "status": "SEAL_BROKEN",
+      "correct": true,
+      "named": "Summary"
+    },
+    {
+      "id": "C02",
+      "change": "status changed",
+      "shouldBreak": true,
+      "broke": false,
+      "status": "SEAL_VALID",
+      "correct": false,
+      "named": ""
+    },
+    {
+      "id": "C03",
+      "change": "reporter changed",
+      "shouldBreak": true,
+      "broke": false,
+      "status": "SEAL_VALID",
+      "correct": false,
+      "named": ""
+    },
+    {
+      "id": "C04",
+      "change": "resolution set",
+      "shouldBreak": true,
+      "broke": false,
+      "status": "SEAL_VALID",
+      "correct": false,
+      "named": ""
+    },
+    {
+      "id": "C05",
+      "change": "issue type changed",
+      "shouldBreak": true,
+      "broke": true,
+      "status": "SEAL_BROKEN",
+      "correct": true,
+      "named": ""
+    },
+    {
+      "id": "C06",
+      "change": "worklog added",
+      "shouldBreak": true,
+      "broke": false,
+      "status": "SEAL_VALID",
+      "correct": false,
+      "named": ""
+    },
+    {
+      "id": "C07",
+      "change": "timeoriginalestimate changed (flat field)",
+      "shouldBreak": true,
+      "broke": false,
+      "status": "SEAL_VALID",
+      "correct": false,
+      "named": ""
+    },
+    {
+      "id": "C08",
+      "change": "timetracking estimate changed (composite field)",
+      "shouldBreak": true,
+      "broke": true,
+      "status": "SEAL_BROKEN",
+      "correct": true,
+      "named": "timetracking"
+    },
+    {
+      "id": "C09",
+      "change": "customfield_10001 changed (hard-coded id)",
+      "shouldBreak": true,
+      "broke": false,
+      "status": "SEAL_VALID",
+      "correct": false,
+      "named": ""
+    },
+    {
+      "id": "C10",
+      "change": "customfield_10050 changed (hard-coded id)",
+      "shouldBreak": true,
+      "broke": false,
+      "status": "SEAL_VALID",
+      "correct": false,
+      "named": ""
+    },
+    {
+      "id": "C11",
+      "change": "text containing \"pullrequest\" changed",
+      "shouldBreak": true,
+      "broke": false,
+      "status": "SEAL_VALID",
+      "correct": false,
+      "named": ""
+    },
+    {
+      "id": "C12",
+      "change": "array of objects with .state changed",
+      "shouldBreak": true,
+      "broke": false,
+      "status": "SEAL_VALID",
+      "correct": false,
+      "named": ""
+    },
+    {
+      "id": "C13",
+      "change": "select field changed (Class II to Class III)",
+      "shouldBreak": true,
+      "broke": true,
+      "status": "SEAL_BROKEN",
+      "correct": true,
+      "named": "customfield_20004"
+    },
+    {
+      "id": "C14",
+      "change": "ordered list reordered",
+      "shouldBreak": true,
+      "broke": false,
+      "status": "SEAL_VALID",
+      "correct": false,
+      "named": ""
+    },
+    {
+      "id": "C15",
+      "change": "summary trailing spaces added",
+      "shouldBreak": true,
+      "broke": false,
+      "status": "SEAL_VALID",
+      "correct": false,
+      "named": ""
+    },
+    {
+      "id": "C16",
+      "change": "field set to [] from absent",
+      "shouldBreak": false,
+      "broke": false,
+      "status": "SEAL_VALID",
+      "correct": true,
+      "named": ""
+    },
+    {
+      "id": "C17",
+      "change": "labels reordered (set)",
+      "shouldBreak": false,
+      "broke": false,
+      "status": "SEAL_VALID",
+      "correct": true,
+      "named": ""
+    },
+    {
+      "id": "C18",
+      "change": "same instant, other time zone",
+      "shouldBreak": false,
+      "broke": true,
+      "status": "SEAL_BROKEN",
+      "correct": false,
+      "named": "customfield_20002"
+    },
+    {
+      "id": "C19",
+      "change": "assignee display name renamed only",
+      "shouldBreak": false,
+      "broke": true,
+      "status": "SEAL_BROKEN",
+      "correct": false,
+      "named": "Assignee"
+    },
+    {
+      "id": "C20",
+      "change": "assignee changed",
+      "shouldBreak": true,
+      "broke": true,
+      "status": "SEAL_BROKEN",
+      "correct": true,
+      "named": "Assignee"
+    },
+    {
+      "id": "C21",
+      "change": "security level changed",
+      "shouldBreak": true,
+      "broke": true,
+      "status": "SEAL_BROKEN",
+      "correct": true,
+      "named": "security"
+    },
+    {
+      "id": "C22",
+      "change": "component renamed, same id",
+      "shouldBreak": false,
+      "broke": true,
+      "status": "SEAL_BROKEN",
+      "correct": false,
+      "named": "Components"
+    },
+    {
+      "id": "C23",
+      "change": "fix version swapped, same name",
+      "shouldBreak": true,
+      "broke": false,
+      "status": "SEAL_VALID",
+      "correct": false,
+      "named": ""
+    },
+    {
+      "id": "C24",
+      "change": "comment edited",
+      "shouldBreak": true,
+      "broke": true,
+      "status": "SEAL_BROKEN",
+      "correct": true,
+      "named": "Comments / Discussion"
+    },
+    {
+      "id": "C25",
+      "change": "comment added",
+      "shouldBreak": true,
+      "broke": true,
+      "status": "SEAL_BROKEN",
+      "correct": true,
+      "named": "Comments / Discussion"
+    },
+    {
+      "id": "C26",
+      "change": "attachment removed",
+      "shouldBreak": true,
+      "broke": true,
+      "status": "SEAL_BROKEN",
+      "correct": true,
+      "named": ""
+    },
+    {
+      "id": "C27",
+      "change": "priority changed",
+      "shouldBreak": true,
+      "broke": true,
+      "status": "SEAL_BROKEN",
+      "correct": true,
+      "named": "Priority"
+    },
+    {
+      "id": "C28",
+      "change": "label duplicated",
+      "shouldBreak": false,
+      "broke": true,
+      "status": "SEAL_BROKEN",
+      "correct": false,
+      "named": "Labels"
+    }
+  ]
+}

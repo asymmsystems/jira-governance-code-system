@@ -1,0 +1,92 @@
+{
+  "A1": {
+    "validatorAfterTamper": false,
+    "resealAccepted": true,
+    "validatorAfterReseal": true,
+    "signer": "mallory-9"
+  },
+  "A2": {
+    "activeIsCompromised": null,
+    "activeTamperHistory": null,
+    "historyRows": [
+      "SUPERSEDED",
+      "SUPERSEDED"
+    ],
+    "auditorSees": "SEAL_VALID",
+    "everCompromisedVisible": false
+  },
+  "A3": {
+    "storedEmail": "cfo@victim.example",
+    "storedName": "Mallory",
+    "noAccountIdAccepted": true,
+    "noAccountIdSigner": "cfo-acc",
+    "noAccountIdName": "CFO"
+  },
+  "A4": {
+    "validView": {
+      "kvsWrites": 0,
+      "propertyWrites": 1
+    },
+    "tamperedRepeatView": {
+      "kvsWrites": 3,
+      "propertyWrites": 1,
+      "keysWritten": [
+        "cert:archive:<certId>",
+        "cert:history:10001",
+        "cert:active:10001"
+      ]
+    }
+  },
+  "A5": {
+    "byKey": {
+      "result": false,
+      "errorMessage": "This issue must be cryptographically sealed with an authorized electronic signature before this transition is permitted."
+    },
+    "byId": {
+      "result": false,
+      "errorMessage": "Cryptographic seal broken! 6 item(s) modified after sign-off (Assignee, Description, Labels, Priority, Summary). Re-authorization required."
+    },
+    "propertyWrites": [
+      "SEAL_BROKEN/1"
+    ],
+    "verifyOutcome": "LedgerSeal: Unable to retrieve authentic issue state from Jira."
+  },
+  "A6": {
+    "stored": "I electronically sign and seal this issue per compliance guidelines.",
+    "shown": "I certify that I am the authorized signer and this record is complete, accurate, and ready for release.",
+    "equal": false,
+    "reauthAcceptsAnyText": true
+  },
+  "A7": {
+    "statusAfterSignerRewrite": "SEAL_VALID",
+    "shownSigner": "Someone Else"
+  },
+  "A8": {
+    "accepted": true,
+    "sealedSummary": "client supplied"
+  },
+  "A9": {
+    "validator": true
+  },
+  "A10": {
+    "exports": [
+      "fetchJiraUser",
+      "fetchLiveJiraIssue",
+      "handler",
+      "renderIssuePanel",
+      "resolveStorage",
+      "sealIssue",
+      "setGlobalStorageProvider",
+      "validateTransition",
+      "verifyIssue"
+    ],
+    "revokeResolver": "not reachable: Resolver has no definition for 'revoke-seal-api'."
+  },
+  "A11": {
+    "status": "SEAL_BROKEN",
+    "altered": [
+      "timetracking",
+      "Due Date"
+    ]
+  }
+}

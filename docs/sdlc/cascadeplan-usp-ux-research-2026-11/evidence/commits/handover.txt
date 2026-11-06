@@ -1,0 +1,7 @@
+docs(cascadeplan): handover of the build loop to the next agent
+
+The handover lists where the work stands, the remaining backlog items
+in order, the open known limits, the hard rules, Loop 3 and the final
+report contents, and how to build, test and run the browser checks.
+
+Refs: B-26, B-19, B-20, B-21, B-22

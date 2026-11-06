@@ -1,6 +1,6 @@
 # FourRealities research and build: final report
 
-Date: 2026-11-01. Branch `feature/fourrealities-research-build` in the worktree `gemini-earning-fr-build`. Not pushed: the worktree has no git remote. Not merged, not tagged.
+Date: 2026-11-01. Branch `feature/fourrealities-research-build` in the worktree `jira-governance-code-system`. Not pushed: the worktree has no git remote. Not merged, not tagged.
 
 ## 1. What was done
 

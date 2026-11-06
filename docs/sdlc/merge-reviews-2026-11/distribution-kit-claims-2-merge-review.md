@@ -17,7 +17,7 @@
 | L-33 | `:32` | Fixed. "Zero external servers" appears once. |
 | L-34 | `:96`, `:183` | Fixed. Both say "coming soon to the Atlassian Marketplace". No `marketplace.atlassian.com` link is left in the file. |
 | L-35 | `:107` | Fixed. The title says "Detecting post-approval changes in Jira for SOC 2 and GxP audits". This matches the listing ("detects edits made after approval"). |
-| L-36 | `:152` | Fixed. The LinkedIn verifier sentence links `https://github.com/asymmsystems/ledgerseal-verifier`. |
+| L-36 | `:152` | Fixed. The LinkedIn verifier sentence links `https://github.com/asymmsystems/jira-governance-code-cli`. |
 | L-37 | `:66` | Fixed. "Verifier repo" links the repository. It returns HTTP 200 and is public under Apache-2.0. |
 
 ## 3. Considered, no finding

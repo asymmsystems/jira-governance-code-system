@@ -10,7 +10,7 @@
   - `exportBaseline` (`src/server/baselines.ts`);
   - the export button (`src/frontend/baseline-panel.ts`);
   - `test/csv-injection.test.ts` and the progress log entry.
-- Output and scripts (not committed): `/home/fahimfarookme/.cache/jira-suite-merge-review/cascadeplan-csv-injection/` (`gate-branch.txt`, `old-code.txt`, `payloads.txt`).
+- Output and scripts (not committed): `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/cascadeplan-csv-injection/` (`gate-branch.txt`, `old-code.txt`, `payloads.txt`).
 - No live check: no exported file was opened in Excel, LibreOffice Calc or Google Sheets. The fixing session says the same.
 - Nothing deployed by this review. CascadePlan production is 2.0.0 (`c8be4c9`). This branch changes no scope (`forge lint -e production`: no approval), so its production deploy is a minor version.
 

@@ -1,0 +1,18 @@
+feat(cascadeplan): one date-based schedule engine with a stated reason
+
+src/domain/schedule-engine.ts computes the earliest start of every
+dependent task from WorkEffort efforts and FRACTIONAL_MILESTONE links,
+in calendar days: planned basis (start plus the trigger share of the
+predecessor's duration) or observed basis (the progress rate so far).
+Each result names the driving predecessor and gives the reason, such as
+"Starts 2026-11-13 because API-4 reaches 30% on 2026-11-12 (planned:
+27 days)", and a violation says what to change.
+
+The same engine drives the plan view, the move to the earliest start
+when a dependency is set, the cascade (Kahn order, conflicting
+successors only, durations kept), its continuation and its preview.
+A dependency needs a trigger percent, and a plain Jira Blocks link
+imports as finish-to-start. The team factor, capped at five people,
+only suggests an end date.
+
+Refs: B-11, CP-14, NF-03, NF-04

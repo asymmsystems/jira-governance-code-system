@@ -1,0 +1,87 @@
+{
+  "A1": {
+    "validatorAfterTamper": false,
+    "resealByEditor": "SELF_APPROVAL",
+    "resealByNonApprover": "NOT_APPROVER",
+    "validatorAfterEditorTry": false,
+    "resealByOtherApprover": true
+  },
+  "A2": {
+    "auditorSees": "SEAL_VALID",
+    "everCompromised": true,
+    "incidentCount": 1,
+    "historyTransitions": [
+      "SEAL",
+      "CHANGE",
+      "RESEAL"
+    ]
+  },
+  "A3": {
+    "storedEmail": false,
+    "storedCfoName": false,
+    "storedCfoAccount": false,
+    "noAccountId": "NO_IDENTITY"
+  },
+  "A4": {
+    "validView": {
+      "kvsWrites": 0,
+      "propertyWrites": 0
+    },
+    "tamperedRepeatView": {
+      "kvsWrites": 0,
+      "propertyWrites": 0
+    }
+  },
+  "A5": {
+    "byKey": {
+      "result": false,
+      "errorMessage": "LedgerSeal could not read the issue from Jira, so this transition is blocked. Try again in a minute."
+    },
+    "byId": {
+      "result": false,
+      "errorMessage": "LedgerSeal could not read the issue from Jira, so this transition is blocked. Try again in a minute."
+    },
+    "propertyWrites": 0,
+    "verifyOutcome": "ERROR/JIRA_UNREACHABLE"
+  },
+  "A6": {
+    "stored": {
+      "version": "1",
+      "text": "I approve this issue as it is now. I agree that this seal records my approval of its covered fields, comments and attachments."
+    },
+    "shownFromSameConstant": true,
+    "otherTextOutcome": "DECLARATION_MISMATCH",
+    "uiHasReauthField": false
+  },
+  "A7": {
+    "statusAfterSignerRewrite": "RECORD_INVALID",
+    "gate": {
+      "result": false,
+      "errorMessage": "LedgerSeal: the seal record failed its integrity check. Contact your Jira admin."
+    }
+  },
+  "A8": {
+    "outcome": "JIRA_UNREACHABLE",
+    "wroteAnything": false
+  },
+  "A9": {
+    "validatorWhenTheUpdateEventArrived": false,
+    "validatorWhenNoEventArrived": true
+  },
+  "A10": {
+    "revoke": true,
+    "historyTransitions": [
+      "SEAL",
+      "REVOKE"
+    ],
+    "chainValid": true
+  },
+  "A11": {
+    "status": "SEAL_BROKEN",
+    "altered": [
+      "Time tracking by cascadeplan-user",
+      "Due Date by cascadeplan-user"
+    ],
+    "propertyStatus": "SEAL_BROKEN"
+  }
+}

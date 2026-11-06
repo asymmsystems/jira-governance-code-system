@@ -1,0 +1,18 @@
+docs(cascadeplan): USP and UX research brief, UX specification and ranked backlog
+
+Research for CascadePlan against Jira Plans and five Marketplace planning
+apps, with three research rounds (the third on UX).
+
+Adds:
+- research-brief.md: competitor matrix, hypothesis verdicts H1 to H12,
+  USP test with five conditions, owner decisions, status of audit
+  findings CP-01 to CP-29, new findings NF-01 to NF-09, 247 sources.
+- ux-spec.md: nine-task UX benchmark against six products, target
+  interactions, measured performance baseline and budgets, canvas
+  prototype results, ADS and WCAG 2.2 gaps, review themes, interaction
+  rules UR-01 to UR-13, canvas risks R1 to R18.
+- backlog.md: 27 ranked items with testable acceptance criteria and
+  approval flags; awaits the owner's APPROVED scope line.
+- round-log.md: rounds, tests run, owner decisions, test baseline.
+
+Refs: B-01..B-27, CP-01..CP-29

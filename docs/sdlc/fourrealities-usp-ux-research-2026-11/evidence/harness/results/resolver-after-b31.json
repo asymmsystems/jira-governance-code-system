@@ -1,0 +1,248 @@
+{
+  "runAt": "2026-11-01T03:39:09.572Z",
+  "app": "/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system/apps/fourrealities",
+  "node": "v26.13.0",
+  "results": [
+    {
+      "resolver": "getProjectDashboard",
+      "issues": 50,
+      "views": [
+        {
+          "view": 1,
+          "cpuMs": 7.8,
+          "jiraCalls": 41,
+          "jiraByPrincipal": {
+            "asApp": 40,
+            "asUser": 1
+          },
+          "kvsGets": 7,
+          "kvsSets": 6,
+          "kvsQueries": 3,
+          "rows": 50,
+          "uniqueIssues": 50,
+          "averageRAI": 63
+        },
+        {
+          "view": 2,
+          "cpuMs": 0.5,
+          "jiraCalls": 1,
+          "jiraByPrincipal": {
+            "asApp": 0,
+            "asUser": 1
+          },
+          "kvsGets": 4,
+          "kvsSets": 0,
+          "kvsQueries": 0,
+          "rows": 50,
+          "uniqueIssues": 50,
+          "averageRAI": 63
+        },
+        {
+          "view": 52,
+          "cpuMs": 0.3,
+          "jiraCalls": 1,
+          "jiraByPrincipal": {
+            "asApp": 0,
+            "asUser": 1
+          },
+          "kvsGets": 4,
+          "kvsSets": 0,
+          "kvsQueries": 0,
+          "rows": 50,
+          "uniqueIssues": 50,
+          "averageRAI": 63
+        }
+      ],
+      "failures": 0,
+      "firstError": null,
+      "maxValueBytes": {
+        "fr:projects": 8,
+        "fr:cfg:site": 102,
+        "fr:p:PERF:chunk:{i}": 36310,
+        "fr:p:PERF:summary": 593,
+        "fr:p:PERF:meta": 219,
+        "fr:p:PERF:trend": 285
+      },
+      "maxReadViewCpuMs": 4.7,
+      "maxReadViewKvsGets": 4
+    },
+    {
+      "resolver": "getProjectDashboard",
+      "issues": 300,
+      "views": [
+        {
+          "view": 1,
+          "cpuMs": 9.5,
+          "jiraCalls": 217,
+          "jiraByPrincipal": {
+            "asApp": 214,
+            "asUser": 3
+          },
+          "kvsGets": 7,
+          "kvsSets": 8,
+          "kvsQueries": 3,
+          "rows": 300,
+          "uniqueIssues": 300,
+          "averageRAI": 68
+        },
+        {
+          "view": 2,
+          "cpuMs": 2,
+          "jiraCalls": 3,
+          "jiraByPrincipal": {
+            "asApp": 0,
+            "asUser": 3
+          },
+          "kvsGets": 6,
+          "kvsSets": 0,
+          "kvsQueries": 0,
+          "rows": 300,
+          "uniqueIssues": 300,
+          "averageRAI": 68
+        },
+        {
+          "view": 52,
+          "cpuMs": 1.6,
+          "jiraCalls": 3,
+          "jiraByPrincipal": {
+            "asApp": 0,
+            "asUser": 3
+          },
+          "kvsGets": 6,
+          "kvsSets": 0,
+          "kvsQueries": 0,
+          "rows": 300,
+          "uniqueIssues": 300,
+          "averageRAI": 68
+        }
+      ],
+      "failures": 0,
+      "firstError": null,
+      "maxValueBytes": {
+        "fr:projects": 8,
+        "fr:cfg:site": 102,
+        "fr:p:PERF:chunk:{i}": 75816,
+        "fr:p:PERF:summary": 607,
+        "fr:p:PERF:meta": 222,
+        "fr:p:PERF:trend": 291
+      },
+      "maxReadViewCpuMs": 3.6,
+      "maxReadViewKvsGets": 6
+    },
+    {
+      "resolver": "getProjectDashboard",
+      "issues": 1000,
+      "views": [
+        {
+          "view": 1,
+          "cpuMs": 29.5,
+          "jiraCalls": 716,
+          "jiraByPrincipal": {
+            "asApp": 706,
+            "asUser": 10
+          },
+          "kvsGets": 7,
+          "kvsSets": 15,
+          "kvsQueries": 3,
+          "rows": 1000,
+          "uniqueIssues": 1000,
+          "averageRAI": 68
+        },
+        {
+          "view": 2,
+          "cpuMs": 5.7,
+          "jiraCalls": 10,
+          "jiraByPrincipal": {
+            "asApp": 0,
+            "asUser": 10
+          },
+          "kvsGets": 13,
+          "kvsSets": 0,
+          "kvsQueries": 0,
+          "rows": 1000,
+          "uniqueIssues": 1000,
+          "averageRAI": 68
+        },
+        {
+          "view": 52,
+          "cpuMs": 5,
+          "jiraCalls": 10,
+          "jiraByPrincipal": {
+            "asApp": 0,
+            "asUser": 10
+          },
+          "kvsGets": 13,
+          "kvsSets": 0,
+          "kvsQueries": 0,
+          "rows": 1000,
+          "uniqueIssues": 1000,
+          "averageRAI": 68
+        }
+      ],
+      "failures": 0,
+      "firstError": null,
+      "maxValueBytes": {
+        "fr:projects": 8,
+        "fr:cfg:site": 102,
+        "fr:p:PERF:chunk:{i}": 76066,
+        "fr:p:PERF:summary": 619,
+        "fr:p:PERF:meta": 225,
+        "fr:p:PERF:trend": 298
+      },
+      "maxReadViewCpuMs": 6.5,
+      "maxReadViewKvsGets": 13
+    },
+    {
+      "resolver": "refreshProjectSnapshot",
+      "issues": 1000,
+      "ok": true,
+      "cpuMs": 20.3,
+      "jiraCalls": 716,
+      "searchCalls": 20,
+      "remoteLinkCalls": 694,
+      "kvsGets": 6,
+      "kvsSets": 15,
+      "kvsQueries": 3,
+      "maxValueBytes": {
+        "fr:projects": 8,
+        "fr:cfg:site": 102,
+        "fr:p:PERF:chunk:{i}": 76066,
+        "fr:p:PERF:summary": 619,
+        "fr:p:PERF:meta": 225,
+        "fr:p:PERF:trend": 298
+      }
+    },
+    {
+      "resolver": "getIssueAlignment",
+      "cpuMs": 0.1,
+      "jiraCalls": [
+        "asUser GET /rest/api/3/issue/10003",
+        "asUser GET /rest/api/3/issue/10003/remotelink"
+      ],
+      "gates": {
+        "intent": {
+          "state": "MISSING",
+          "reason": "INTENT_NONE"
+        },
+        "process": {
+          "state": "MISSING",
+          "reason": "DOD_NONE"
+        },
+        "code": {
+          "state": "MISSING",
+          "reason": "PR_NONE"
+        },
+        "audit": {
+          "state": "FOUND",
+          "reason": "SEAL_VALID_LS",
+          "args": {
+            "sealedAt": "2026-10-01T00:00:00.000Z"
+          },
+          "verification": "NOT_VERIFIED",
+          "method": "LEDGERSEAL_PROPERTY",
+          "evidenceRef": "3f2b8c1e-9d4a-4e7b-8c2d-1a2b3c4d5e6f"
+        }
+      }
+    }
+  ]
+}

@@ -137,7 +137,7 @@ Source: `/privacy`; FAQ section 2; listings, "Personal Data".
 
 > To give an auditor the evidence of a seal: open the issue's Approval Seal panel, open the seal details and click Show evidence (JSON). Copy the text into a file such as evidence.json.
 >
-> The auditor checks it offline with our open-source verifier (Apache-2.0, Node.js 18 or later, no dependencies): https://github.com/asymmsystems/ledgerseal-verifier
+> The auditor checks it offline with our open-source verifier (Apache-2.0, Node.js 18 or later, no dependencies): https://github.com/asymmsystems/jira-governance-code-cli
 >
 >     node verify-evidence.mjs evidence.json
 >

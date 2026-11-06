@@ -1,0 +1,12 @@
+feat(cascadeplan): report the Jira result of every write and show failures
+
+Every write resolver returns ok and jiraSync { ok, error, writes }, where
+writes lists each Jira write by issue key and field with its result, and
+error carries Jira's own message. A per-call SyncLog collects the
+results, including cascaded successors, parent roll-ups and issue links.
+
+The UI treats a thrown, null, ok false or partly failed result as an
+error and shows it in a banner that stays until the user dismisses it.
+The resource form reports "Created" only when Jira confirms the subtask.
+
+Refs: B-07, CP-12

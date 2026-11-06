@@ -2,8 +2,8 @@
 
 - Reviewer: independent reviewer 3 of 4 (code review only, no live access)
 - Date: 2026-10-31
-- Scope: the working tree of `gemini-earning/apps/planshift`. Repo HEAD is `5097bf5`. The working tree has uncommitted changes in 7 files (`git diff --stat`: 1483 insertions, 96 deletions).
-- Rules kept: read-only on the repo. No `forge` command. No network call. All scratch output went to `~/.cache/gemini-earning-portfolio-audit/`.
+- Scope: the working tree of `jira-governance-code-system/apps/planshift`. Repo HEAD is `5097bf5`. The working tree has uncommitted changes in 7 files (`git diff --stat`: 1483 insertions, 96 deletions).
+- Rules kept: read-only on the repo. No `forge` command. No network call. All scratch output went to `~/Documents/projects/jira-governance/.tmp/cache/portfolio-audit/`.
 
 ## 1. Snapshot and commands
 
@@ -34,7 +34,7 @@ I also read `docs/sdlc/planshift-audit-2026-10-30.md`, only to check which of it
 | # | Command (host node via flatpak-spawn) | Result |
 |---|---|---|
 | 1 | `npx tsc --noEmit -p .` (TypeScript 5.9.3) | Exit 0. No errors. |
-| 2 | `npx jest --coverage --coverageDirectory=~/.cache/gemini-earning-portfolio-audit/cov-planshift` (Jest 29.7.0) | 3 suites passed, 152 tests passed, 0 failed. |
+| 2 | `npx jest --coverage --coverageDirectory=~/Documents/projects/jira-governance/.tmp/cache/portfolio-audit/cov-planshift` (Jest 29.7.0) | 3 suites passed, 152 tests passed, 0 failed. |
 | 3 | `grep` counts on src and index.html | See questions 6 and 7. |
 | 4 | `npx tsc -p . --outDir ~/.cache/.../planshift-scripts/build`, then `node probe.js` | Behaviour probes of PlannerEngine. Output quoted in findings as "probe P1" to "probe P9". |
 | 5 | `node size.js` (synthetic JSON shaped like `WbsTask`, no repo code) | KVS payload size estimate. See CP-09. |

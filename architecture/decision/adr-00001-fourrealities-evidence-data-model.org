@@ -267,6 +267,6 @@ issue (=fr:note:{issueId}:{at}:{seq}=), with author and time. It never changes a
 - Len Silverston, "The Data Model Resource Book" Vol 1 and Vol 3 (not read in this review; patterns verified through OFBiz and M360)
 - Martin Fowler, "Analysis Patterns: Reusable Object Models" (Observation, Accountability, Knowledge Level)
 - Research brief =docs/sdlc/fourrealities-usp-ux-research-2026-11/research-brief.md=: EV-01 (ISA 500), EV-03 (NIST AC-5), FL-01 (KVS limits), H5, H9
-- [[https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json][Jira Cloud platform OpenAPI v3]]: "Get my permissions", =/rest/api/3/mypermissions=, scope =read:jira-work= (read 2026-11-01; copy in =~/.cache/gemini-earning-fourrealities-research/sources/jira-openapi/=)
+- [[https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json][Jira Cloud platform OpenAPI v3]]: "Get my permissions", =/rest/api/3/mypermissions=, scope =read:jira-work= (read 2026-11-01; copy in =~/Documents/projects/jira-governance/.tmp/cache/fourrealities-research/sources/jira-openapi/=)
 - [[file:adr-00002-fourrealities-volatility-layering.org][ADR-002: FourRealities Volatility Layering]]
 - [[file:../model/fourrealities-domain-model.org][FourRealities Domain Model (HLD)]]

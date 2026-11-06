@@ -1,7 +1,7 @@
 # CascadePlan: recommended fix plan (v2)
 
 - **Version:** v2, 2026-11-05. The first version, `fix-plan.md`, is frozen (read-only, md5 `408d964b9df232171937f3805570e527`).
-- **What changed:** v2 applies the independent review of v1, `/home/fahimfarookme/.cache/gemini-earning-cascadeplan-fixplan-review/fixplan-review.md`. The owner approved every point of that review on 2026-11-05. Section 12 lists each change from v1.
+- **What changed:** v2 applies the independent review of v1, `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cascadeplan-fixplan-review/fixplan-review.md`. The owner approved every point of that review on 2026-11-05. Section 12 lists each change from v1.
 - **Companion to:** `report-v2.md` in the same folder. It is the review of commit `db080096007208d2cad97f79c620d49964aa05c9`. The first version, `report.md`, is frozen.
 - **Purpose:** one recommended fix for every blocker, finding, concurrency case, Marketplace item and frontend item in the review. Each fix has a priority, a rough effort and the test that proves it.
 - **Status:** a recommendation. Nothing in the product was changed. The owner (Fahim Farook) decides.
@@ -39,7 +39,7 @@ The effort is a rough guess for one developer who knows this code base. It inclu
 ### 1.3 Proof
 
 - "R-xx" is a test in `test/review/review-findings.test.ts`.
-- "FX-nn" is a test in `test/review/fixplan-gaps.test.ts`. The source is `/home/fahimfarookme/.cache/gemini-earning-cascadeplan-fixplan-review/tests/fixplan-gaps.test.ts`. A copy is in the review checkout, not committed.
+- "FX-nn" is a test in `test/review/fixplan-gaps.test.ts`. The source is `docs/sdlc/cascadeplan-marketplace-review-2026-11/independent-review/evidence/tests/fixplan-gaps.test.ts`. A copy is in the review checkout, not committed.
 - A test named "FINDING" or "GAP" passes **while the defect is present**. When a fix lands, that test fails. Rewrite it as a regression test that asserts the correct behaviour, and keep the same number.
 - "CONTROL FX-01b" passes now and must keep passing.
 - "Harness R1c" and similar names are checks in `harness/e2e_review.py`. "Harness 2d" and similar names are checks in `harness/e2e.py`.

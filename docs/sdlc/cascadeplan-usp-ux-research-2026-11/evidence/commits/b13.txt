@@ -1,0 +1,24 @@
+feat(cascadeplan): draw the timeline on a canvas with virtualised rows
+
+The timeline area is one canvas, scaled by devicePixelRatio, that draws
+the week grid, the bars with their progress, label chips, dependency
+arrows with trigger labels, the today line and the drag preview. Colours
+come from the --cp design tokens at draw time, so the Jira theme applies
+and a theme change repaints. Every canvas colour pair reaches WCAG
+contrast in light and dark mode, and a label sits on its own opaque chip
+inside the bar or to the right of it.
+
+Only the rows in view plus a buffer are DOM rows. Each visible bar has a
+transparent, focusable hit element with an accessible name and 24 px
+resize handles. Dragging snaps to days (Alt snaps to weeks) and previews
+dependents live with the same schedule engine the backend uses, with
+dashed outlines at their old positions. A drop sends one updateWbsTask
+call with exact dates and the version, and the planner uses the plan it
+returns without rebuilding rows. Drops from the backlog land on the week
+under the pointer.
+
+At 1,000 tasks the first render takes 140 ms and a hover 7 ms at most;
+a drag costs 2.9 ms of script per frame at 1,000 and 5,000 tasks. A full
+progress chip uses inverse text on the bold green fill.
+
+Refs: B-13, NF-07

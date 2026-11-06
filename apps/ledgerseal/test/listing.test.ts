@@ -32,7 +32,7 @@ describe('listing prices (owner decision 2026-11-06)', () => {
 describe('B3 verifier links and claims', () => {
   it('links the public verifier repository and the site page, never the private repository', () => {
     for (const doc of [listing, notes]) {
-      expect(doc).toContain('https://github.com/asymmsystems/ledgerseal-verifier');
+      expect(doc).toContain('https://github.com/asymmsystems/jira-governance-code-cli');
       expect(doc).not.toContain('jira-governance-code-system');
       expect(doc).not.toMatch(/without trusting|cryptographic independence/i);
     }

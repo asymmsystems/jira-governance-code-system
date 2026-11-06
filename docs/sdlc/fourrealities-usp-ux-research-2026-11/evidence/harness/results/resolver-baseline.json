@@ -1,0 +1,526 @@
+{
+  "runAt": "2026-11-01T00:31:13.379Z",
+  "node": "v26.13.0",
+  "results": [
+    {
+      "resolver": "getProjectDashboard",
+      "issues": 50,
+      "views": [
+        {
+          "view": 1,
+          "cpuMs": 3.7,
+          "jiraCalls": 1,
+          "jiraByPrincipal": {
+            "asApp": 1,
+            "asUser": 0
+          },
+          "kvsGets": 52,
+          "kvsSets": 2,
+          "rows": 50,
+          "uniqueIssues": 50,
+          "averageRAI": 69
+        },
+        {
+          "view": 2,
+          "cpuMs": 2.5,
+          "jiraCalls": 1,
+          "jiraByPrincipal": {
+            "asApp": 1,
+            "asUser": 0
+          },
+          "kvsGets": 52,
+          "kvsSets": 2,
+          "rows": 50,
+          "uniqueIssues": 50,
+          "averageRAI": 69
+        },
+        {
+          "view": 3,
+          "cpuMs": 3,
+          "jiraCalls": 1,
+          "jiraByPrincipal": {
+            "asApp": 1,
+            "asUser": 0
+          },
+          "kvsGets": 52,
+          "kvsSets": 2,
+          "rows": 50,
+          "uniqueIssues": 50,
+          "averageRAI": 69
+        },
+        {
+          "view": 4,
+          "cpuMs": 2.8,
+          "jiraCalls": 1,
+          "jiraByPrincipal": {
+            "asApp": 1,
+            "asUser": 0
+          },
+          "kvsGets": 52,
+          "kvsSets": 2,
+          "rows": 50,
+          "uniqueIssues": 50,
+          "averageRAI": 69
+        },
+        {
+          "view": 5,
+          "cpuMs": 3,
+          "jiraCalls": 1,
+          "jiraByPrincipal": {
+            "asApp": 1,
+            "asUser": 0
+          },
+          "kvsGets": 52,
+          "kvsSets": 2,
+          "rows": 50,
+          "uniqueIssues": 50,
+          "averageRAI": 69
+        },
+        {
+          "view": 6,
+          "cpuMs": 3.4,
+          "jiraCalls": 1,
+          "jiraByPrincipal": {
+            "asApp": 1,
+            "asUser": 0
+          },
+          "kvsGets": 52,
+          "kvsSets": 2,
+          "rows": 50,
+          "uniqueIssues": 50,
+          "averageRAI": 69
+        },
+        {
+          "view": 7,
+          "cpuMs": 2,
+          "jiraCalls": 1,
+          "jiraByPrincipal": {
+            "asApp": 1,
+            "asUser": 0
+          },
+          "kvsGets": 52,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 272855 bytes"
+        },
+        {
+          "view": 8,
+          "cpuMs": 2,
+          "jiraCalls": 1,
+          "jiraByPrincipal": {
+            "asApp": 1,
+            "asUser": 0
+          },
+          "kvsGets": 52,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 311837 bytes"
+        },
+        {
+          "view": 9,
+          "cpuMs": 2.2,
+          "jiraCalls": 1,
+          "jiraByPrincipal": {
+            "asApp": 1,
+            "asUser": 0
+          },
+          "kvsGets": 52,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 350819 bytes"
+        },
+        {
+          "view": 10,
+          "cpuMs": 2.2,
+          "jiraCalls": 1,
+          "jiraByPrincipal": {
+            "asApp": 1,
+            "asUser": 0
+          },
+          "kvsGets": 52,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 389801 bytes"
+        },
+        {
+          "view": 11,
+          "cpuMs": 2.4,
+          "jiraCalls": 1,
+          "jiraByPrincipal": {
+            "asApp": 1,
+            "asUser": 0
+          },
+          "kvsGets": 52,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 389811 bytes"
+        }
+      ],
+      "maxValueBytes": {
+        "fr:project:PERF:latest": 38981,
+        "fr:project:PERF:history": 389811
+      },
+      "firstFailingView": 7,
+      "firstError": "KVS value too large: fr:project:PERF:history 272855 bytes"
+    },
+    {
+      "resolver": "getProjectDashboard",
+      "issues": 300,
+      "views": [
+        {
+          "view": 1,
+          "cpuMs": 5.4,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 200,
+          "uniqueIssues": 100,
+          "averageRAI": 65
+        },
+        {
+          "view": 2,
+          "cpuMs": 6.2,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 314377 bytes"
+        },
+        {
+          "view": 3,
+          "cpuMs": 5.7,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 471575 bytes"
+        },
+        {
+          "view": 4,
+          "cpuMs": 7,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 628773 bytes"
+        },
+        {
+          "view": 5,
+          "cpuMs": 8.1,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 785971 bytes"
+        },
+        {
+          "view": 6,
+          "cpuMs": 8.3,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 943169 bytes"
+        },
+        {
+          "view": 7,
+          "cpuMs": 9.1,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 1100367 bytes"
+        },
+        {
+          "view": 8,
+          "cpuMs": 8.3,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 1257565 bytes"
+        },
+        {
+          "view": 9,
+          "cpuMs": 8.8,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 1414763 bytes"
+        },
+        {
+          "view": 10,
+          "cpuMs": 10.6,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 1571961 bytes"
+        },
+        {
+          "view": 11,
+          "cpuMs": 10.3,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 1571971 bytes"
+        }
+      ],
+      "maxValueBytes": {
+        "fr:project:PERF:latest": 157197,
+        "fr:project:PERF:history": 1571971
+      },
+      "firstFailingView": 2,
+      "firstError": "KVS value too large: fr:project:PERF:history 314377 bytes"
+    },
+    {
+      "resolver": "getProjectDashboard",
+      "issues": 1000,
+      "views": [
+        {
+          "view": 1,
+          "cpuMs": 3.9,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 200,
+          "uniqueIssues": 100,
+          "averageRAI": 65
+        },
+        {
+          "view": 2,
+          "cpuMs": 3.8,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 314377 bytes"
+        },
+        {
+          "view": 3,
+          "cpuMs": 4,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 471575 bytes"
+        },
+        {
+          "view": 4,
+          "cpuMs": 4.4,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 628773 bytes"
+        },
+        {
+          "view": 5,
+          "cpuMs": 6.1,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 785971 bytes"
+        },
+        {
+          "view": 6,
+          "cpuMs": 6.5,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 943169 bytes"
+        },
+        {
+          "view": 7,
+          "cpuMs": 6.4,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 1100367 bytes"
+        },
+        {
+          "view": 8,
+          "cpuMs": 6.6,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 1257565 bytes"
+        },
+        {
+          "view": 9,
+          "cpuMs": 6.9,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 1414763 bytes"
+        },
+        {
+          "view": 10,
+          "cpuMs": 11.7,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 1571961 bytes"
+        },
+        {
+          "view": 11,
+          "cpuMs": 8.4,
+          "jiraCalls": 2,
+          "jiraByPrincipal": {
+            "asApp": 2,
+            "asUser": 0
+          },
+          "kvsGets": 202,
+          "kvsSets": 2,
+          "rows": 0,
+          "uniqueIssues": 0,
+          "error": "KVS value too large: fr:project:PERF:history 1571971 bytes"
+        }
+      ],
+      "maxValueBytes": {
+        "fr:project:PERF:latest": 157197,
+        "fr:project:PERF:history": 1571971
+      },
+      "firstFailingView": 2,
+      "firstError": "KVS value too large: fr:project:PERF:history 314377 bytes"
+    },
+    {
+      "resolver": "getIssueAlignment",
+      "cpuMs": 0.5,
+      "jiraCalls": [
+        "asApp GET /rest/api/3/issue/10002",
+        "asApp GET /rest/api/3/issue/10002/remotelink",
+        "asApp GET /rest/dev-status/latest/issue/detail",
+        "asApp GET /rest/dev-status/latest/issue/detail",
+        "asApp GET /rest/dev-status/latest/issue/detail"
+      ],
+      "kvsGets": 1,
+      "kvsSets": 1,
+      "maxValueBytes": {
+        "fr:issue:{id}:signals": 513
+      },
+      "gates": {
+        "intent": "BLOCKED",
+        "process": "ATTENTION",
+        "code": "BLOCKED",
+        "audit": "PASSED"
+      }
+    }
+  ]
+}

@@ -43,7 +43,7 @@ export const TRUSTED_KEYS: readonly TrustedKey[] = [
     pem: '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAiZby7ZujEzTGnRBc0StyzcxBjzs9+WCcd6zXfIfnEg8=\n-----END PUBLIC KEY-----\n'
   },
   {
-    // apps/ledgerseal/keys/ls-prod-2026-11.pub.pem, published 2026-11-06 (asymmsystems/ledgerseal-verifier v1.3.0).
+    // apps/ledgerseal/keys/ls-prod-2026-11.pub.pem, published 2026-11-06 (asymmsystems/jira-governance-code-cli v1.3.0).
     // SHA-256 (DER): 09f2b807adc803a7f687e0561e90b8dcadadd6c1d752c66b55980a27b89cc5d3.
     producer: 'ledgerseal',
     keyId: 'ls-prod-2026-11',

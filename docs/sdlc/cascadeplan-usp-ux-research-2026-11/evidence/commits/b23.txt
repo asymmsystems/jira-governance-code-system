@@ -1,0 +1,18 @@
+feat(cascadeplan): show every Jira write before and after it happens
+
+While a bar is dragged, a status strip names every issue and field the
+drop will change: the Jira due dates first, then the plan-only start
+dates and the parent whose dates follow its children.
+
+Each Jira write the resolvers report carries the old and new value of
+every field it sent. The old due date is the value Jira holds, read live
+and never stored. A due date that the issue screen refuses is reported
+as not written, separately from the fields that were written. A Changes
+panel lists each Jira write of the session with issue key, field, old
+value, new value and result.
+
+The parent roll-up is a plan-only change: moving a child writes nothing
+to the parent issue in Jira. Opening the planner, hovering, clicking a
+bar without moving it and scrolling send no write.
+
+Refs: B-23, INV-03, INV-11

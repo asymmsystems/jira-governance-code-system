@@ -1,0 +1,152 @@
+{
+  "label": "baseline",
+  "node": "v26.13.0",
+  "runs": 25,
+  "scenarios": {
+    "small": {
+      "issueJsonBytes": 765,
+      "seal": {
+        "medianMs": 0.139,
+        "p95Ms": 0.343
+      },
+      "activeCertBytes": 1614,
+      "propertyBytesOnSeal": 287,
+      "sealFitsKvs": true,
+      "verifyValid": {
+        "status": "SEAL_VALID",
+        "kvsWrites": 0,
+        "propertyWrites": 1,
+        "responseBytes": 1917,
+        "time": {
+          "medianMs": 0.088,
+          "p95Ms": 0.183
+        }
+      },
+      "validatorValid": {
+        "medianMs": 0.111,
+        "p95Ms": 0.301
+      },
+      "validatorValidResult": true,
+      "after500TamperedViews": {
+        "activeCertBytes": 154653,
+        "historyRows": 500,
+        "historyBytes": 130501,
+        "tamperIncidents": 500,
+        "kvsWrites": 1500,
+        "propertyWrites": 500,
+        "firstViewOver240KiB": null,
+        "verifyMedianMsFirst25": 0.239,
+        "verifyMedianMsLast25": 3.999
+      }
+    },
+    "desc400": {
+      "issueJsonBytes": 107190,
+      "seal": {
+        "medianMs": 3.011,
+        "p95Ms": 4.407
+      },
+      "activeCertBytes": 108039,
+      "propertyBytesOnSeal": 287,
+      "sealFitsKvs": true,
+      "verifyValid": {
+        "status": "SEAL_VALID",
+        "kvsWrites": 0,
+        "propertyWrites": 1,
+        "responseBytes": 108342,
+        "time": {
+          "medianMs": 2.535,
+          "p95Ms": 4.476
+        }
+      },
+      "validatorValid": {
+        "medianMs": 3.033,
+        "p95Ms": 4.195
+      },
+      "validatorValidResult": true,
+      "after500TamperedViews": {
+        "activeCertBytes": 261078,
+        "historyRows": 500,
+        "historyBytes": 130501,
+        "tamperIncidents": 500,
+        "kvsWrites": 1500,
+        "propertyWrites": 500,
+        "firstViewOver240KiB": 450,
+        "verifyMedianMsFirst25": 4.813,
+        "verifyMedianMsLast25": 7.651
+      }
+    },
+    "comments100": {
+      "issueJsonBytes": 40266,
+      "seal": {
+        "medianMs": 1.329,
+        "p95Ms": 2.199
+      },
+      "activeCertBytes": 43013,
+      "propertyBytesOnSeal": 287,
+      "sealFitsKvs": true,
+      "verifyValid": {
+        "status": "SEAL_VALID",
+        "kvsWrites": 0,
+        "propertyWrites": 1,
+        "responseBytes": 43316,
+        "time": {
+          "medianMs": 1.403,
+          "p95Ms": 2.132
+        }
+      },
+      "validatorValid": {
+        "medianMs": 1.529,
+        "p95Ms": 2.058
+      },
+      "validatorValidResult": true,
+      "after500TamperedViews": {
+        "activeCertBytes": 196052,
+        "historyRows": 500,
+        "historyBytes": 130501,
+        "tamperIncidents": 500,
+        "kvsWrites": 1500,
+        "propertyWrites": 500,
+        "firstViewOver240KiB": null,
+        "verifyMedianMsFirst25": 1.993,
+        "verifyMedianMsLast25": 5.309
+      }
+    },
+    "desc400_comments100": {
+      "issueJsonBytes": 146691,
+      "seal": {
+        "medianMs": 3.859,
+        "p95Ms": 5.98
+      },
+      "activeCertBytes": 149438,
+      "propertyBytesOnSeal": 287,
+      "sealFitsKvs": true,
+      "verifyValid": {
+        "status": "SEAL_VALID",
+        "kvsWrites": 0,
+        "propertyWrites": 1,
+        "responseBytes": 149741,
+        "time": {
+          "medianMs": 3.436,
+          "p95Ms": 4.245
+        }
+      },
+      "validatorValid": {
+        "medianMs": 4.233,
+        "p95Ms": 5.638
+      },
+      "validatorValidResult": true,
+      "after500TamperedViews": {
+        "activeCertBytes": 302477,
+        "historyRows": 500,
+        "historyBytes": 130501,
+        "tamperIncidents": 500,
+        "kvsWrites": 1500,
+        "propertyWrites": 500,
+        "firstViewOver240KiB": 315,
+        "verifyMedianMsFirst25": 5.904,
+        "verifyMedianMsLast25": 9.66
+      }
+    }
+  },
+  "viewsUntil240KiBSmall": 798
+}

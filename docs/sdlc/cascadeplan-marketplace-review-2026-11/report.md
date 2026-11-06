@@ -3,7 +3,7 @@
 - **Reviewer:** independent review session, 2026-11-05.
 - **Review commit:** `db080096007208d2cad97f79c620d49964aa05c9` (`master` HEAD at start).
 - **Scope:** `apps/cascadeplan`, its specification, research folder, listing, submission notes, public guide pages and standards.
-- **Evidence files** (all in `/home/fahimfarookme/.cache/gemini-earning-cascadeplan-marketplace-review/`):
+- **Evidence files** (all in `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cascadeplan-marketplace-review/`):
   - `test-log.md`: every command and its result.
   - `review-tests/review-findings.test.ts` and `review-findings.result.log`: 32 review tests (tests R-01 to R-31).
   - `harness/`: browser harness, `e2e_review.py`, screenshots in `harness/results-review/`.

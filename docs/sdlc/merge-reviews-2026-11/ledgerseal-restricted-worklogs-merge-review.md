@@ -5,8 +5,8 @@
 - Finding fixed: M-11 of `docs/sdlc/merge-reviews-2026-11/ledgerseal-finish-merge-review.md` (round 3). A restricted work log's comment text was exported to any viewer.
 - Decision: fail closed, the same rule as for comments. This was passed to me by the coordinating session as the suite owner's decision. It is recorded as such in spec v3 section 4.4 and in the fix log. I did not see it from the owner directly.
 - Read: the M-11 entry of `docs/sdlc/ledgerseal-marketplace-fixes-2026-11/progress-log.md`, the full diff (11 files), `checkSealedWorklogs` and `evidenceFlow` in `apps/ledgerseal/src/service/ledger.ts`, `restrictedItems`, `specialValue` and `displayValue` in `src/domain/canonicalizer.ts`, `pages` and `visibleIds` in `src/jira/jira-client.ts`, and the field diff in `src/domain/tamper-detector.ts`.
-- Probes and scripts (not committed), in `/home/fahimfarookme/.cache/jira-suite-merge-review/ledgerseal-restricted-worklogs/`: `probes/zz-probe-r3-worklog.test.ts` (P5, unchanged from the finish review), `scripts/mutate.py` with `mutation-results.txt` (10 mutations), `new-tests-at-master.txt`, `scripts/gate.sh` with `gate-branch-2579ec2.txt` and `gate-merge.txt`.
-- Clone: `/home/fahimfarookme/Documents/projects/gemini-earning-cp-fixes/.tmp/review-ls-finish`. Every mutation and probe was undone.
+- Probes and scripts (not committed), in `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/ledgerseal-restricted-worklogs/`: `probes/zz-probe-r3-worklog.test.ts` (P5, unchanged from the finish review), `scripts/mutate.py` with `mutation-results.txt` (10 mutations), `new-tests-at-master.txt`, `scripts/gate.sh` with `gate-branch-2579ec2.txt` and `gate-merge.txt`.
+- Clone: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/cp-fixes-scratch/review-ls-finish`. Every mutation and probe was undone.
 - No live check, no deploy, no change to any Jira site.
 
 ## 1. Verdict

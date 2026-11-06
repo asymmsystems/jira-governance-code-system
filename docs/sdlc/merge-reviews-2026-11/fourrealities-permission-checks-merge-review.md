@@ -8,7 +8,7 @@
   - the trend only for a viewer who can browse every issue it counts;
   - Confluence only as the viewer.
 - Read: the full source diff; `src/accessor/jira-search.ts` (`searchProjectIssues`, `visibleIssueIds`); `hasAnyPermission` (`src/accessor/default-forge-jira-issue-accessor.ts`); the dashboard resolvers and `compose` (`src/index.ts`); `test/manager/viewer-permissions.test.ts`; `docs/marketplace/submission/fourrealities-security-questionnaires.md`; and the new progress log section.
-- Gate output and mutation script (not committed): `/home/fahimfarookme/.cache/jira-suite-merge-review/fourrealities-permission-checks/`.
+- Gate output and mutation script (not committed): `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/fourrealities-permission-checks/`.
 - **No live smoke test.** The fixing session deployed 5.3.0 to development, but the saved Jira session had expired (`/rest/api/3/myself` answered 401), so the dashboard was not opened. I did not run one either. Owner action: open the PAY dashboard on the development app once.
 - Nothing deployed by this review.
 

@@ -1,0 +1,171 @@
+{
+  "label": "after",
+  "node": "v26.13.0",
+  "runs": 25,
+  "scenarios": {
+    "small": {
+      "issueJsonBytes": 785,
+      "seal": {
+        "medianMs": 0.393,
+        "p95Ms": 0.718
+      },
+      "sealOk": true,
+      "largestKvsValueAfterSeal": 1795,
+      "workEffortBytes": 993,
+      "snapshotParts": 1,
+      "sealTransactionOps": 3,
+      "propertyBytesOnSeal": 380,
+      "verifyValid": {
+        "status": "SEAL_VALID",
+        "kvsWrites": 0,
+        "propertyWrites": 0,
+        "responseBytes": 1192,
+        "time": {
+          "medianMs": 0.312,
+          "p95Ms": 0.401
+        }
+      },
+      "validatorValid": {
+        "medianMs": 0.321,
+        "p95Ms": 0.374
+      },
+      "validatorValidResult": true,
+      "after500TamperedViews": {
+        "workEffortBytes": 1055,
+        "workEffortGrowthBytes": 62,
+        "statusRows": 2,
+        "incidents": 1,
+        "kvsWrites": 2,
+        "propertyWrites": 1,
+        "largestKvsValue": 1795,
+        "firstViewOver240KiB": null,
+        "responseBytes": 1556,
+        "verifyMedianMsFirst25": 0.334,
+        "verifyMedianMsLast25": 0.268
+      }
+    },
+    "desc400": {
+      "issueJsonBytes": 107210,
+      "seal": {
+        "medianMs": 7.637,
+        "p95Ms": 10.558
+      },
+      "sealOk": true,
+      "largestKvsValueAfterSeal": 120000,
+      "workEffortBytes": 993,
+      "snapshotParts": 2,
+      "sealTransactionOps": 4,
+      "propertyBytesOnSeal": 380,
+      "verifyValid": {
+        "status": "SEAL_VALID",
+        "kvsWrites": 0,
+        "propertyWrites": 0,
+        "responseBytes": 1192,
+        "time": {
+          "medianMs": 6.11,
+          "p95Ms": 6.856
+        }
+      },
+      "validatorValid": {
+        "medianMs": 7.776,
+        "p95Ms": 8.36
+      },
+      "validatorValidResult": true,
+      "after500TamperedViews": {
+        "workEffortBytes": 1055,
+        "workEffortGrowthBytes": 62,
+        "statusRows": 2,
+        "incidents": 1,
+        "kvsWrites": 2,
+        "propertyWrites": 1,
+        "largestKvsValue": 120000,
+        "firstViewOver240KiB": null,
+        "responseBytes": 1556,
+        "verifyMedianMsFirst25": 6.133,
+        "verifyMedianMsLast25": 7.027
+      }
+    },
+    "comments100": {
+      "issueJsonBytes": 40286,
+      "seal": {
+        "medianMs": 4.07,
+        "p95Ms": 4.979
+      },
+      "sealOk": true,
+      "largestKvsValueAfterSeal": 43994,
+      "workEffortBytes": 993,
+      "snapshotParts": 1,
+      "sealTransactionOps": 3,
+      "propertyBytesOnSeal": 380,
+      "verifyValid": {
+        "status": "SEAL_VALID",
+        "kvsWrites": 0,
+        "propertyWrites": 0,
+        "responseBytes": 1192,
+        "time": {
+          "medianMs": 3.39,
+          "p95Ms": 3.92
+        }
+      },
+      "validatorValid": {
+        "medianMs": 4.401,
+        "p95Ms": 5
+      },
+      "validatorValidResult": true,
+      "after500TamperedViews": {
+        "workEffortBytes": 1055,
+        "workEffortGrowthBytes": 62,
+        "statusRows": 2,
+        "incidents": 1,
+        "kvsWrites": 2,
+        "propertyWrites": 1,
+        "largestKvsValue": 43994,
+        "firstViewOver240KiB": null,
+        "responseBytes": 1556,
+        "verifyMedianMsFirst25": 4.779,
+        "verifyMedianMsLast25": 4.774
+      }
+    },
+    "desc400_comments100": {
+      "issueJsonBytes": 146711,
+      "seal": {
+        "medianMs": 10.165,
+        "p95Ms": 16.696
+      },
+      "sealOk": true,
+      "largestKvsValueAfterSeal": 120000,
+      "workEffortBytes": 993,
+      "snapshotParts": 3,
+      "sealTransactionOps": 5,
+      "propertyBytesOnSeal": 380,
+      "verifyValid": {
+        "status": "SEAL_VALID",
+        "kvsWrites": 0,
+        "propertyWrites": 0,
+        "responseBytes": 1192,
+        "time": {
+          "medianMs": 9.372,
+          "p95Ms": 10.009
+        }
+      },
+      "validatorValid": {
+        "medianMs": 12.228,
+        "p95Ms": 13.232
+      },
+      "validatorValidResult": true,
+      "after500TamperedViews": {
+        "workEffortBytes": 1055,
+        "workEffortGrowthBytes": 62,
+        "statusRows": 2,
+        "incidents": 1,
+        "kvsWrites": 2,
+        "propertyWrites": 1,
+        "largestKvsValue": 120000,
+        "firstViewOver240KiB": null,
+        "responseBytes": 1556,
+        "verifyMedianMsFirst25": 10.466,
+        "verifyMedianMsLast25": 10.615
+      }
+    }
+  }
+}

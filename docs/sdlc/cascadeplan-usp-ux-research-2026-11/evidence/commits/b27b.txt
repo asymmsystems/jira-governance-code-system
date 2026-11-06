@@ -1,0 +1,8 @@
+feat(cascadeplan): start with compact columns when the timeline would be narrow
+
+At the first render the planner measures the width the data columns
+take. When fewer than six weeks of timeline would be visible, it shows
+only Key and Summary, unless the user has already chosen; turning the
+compact columns on or off is remembered and always wins.
+
+Refs: B-27

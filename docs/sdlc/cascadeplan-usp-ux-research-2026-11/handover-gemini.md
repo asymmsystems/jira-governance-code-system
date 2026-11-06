@@ -18,13 +18,13 @@ Work one backlog item at a time. Each item gets one commit and one round-log row
 
 | What | Where |
 |---|---|
-| Repository | `/home/fahimfarookme/Documents/projects/gemini-earning` |
+| Repository | `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system` |
 | Branch | `feature/cascadeplan-research-build` (no remote; do not push, merge, rebase, tag or force anything) |
 | App | `apps/planshift` (product name CascadePlan; Forge app, Custom UI) |
 | Spec | `docs/spec/cascadeplan-spec.md` (invariants INV-01 to INV-15, domain model, decisions D-01 to D-10) |
 | Research and backlog | `docs/sdlc/cascadeplan-usp-ux-research-2026-11/` (`research-brief.md`, `ux-spec.md`, `backlog.md`, `round-log.md`, `silverston-conformance.md`, this file) |
 | Original loop instructions | `loop-engine/agents/cascadeplan_usp_ux_research.md` (read-only; it is not yours, do not edit or commit it) |
-| Harness and scratch output | `~/.cache/gemini-earning-cascadeplan-research/` (`harness/`, `commits/`, `logrow.py`, `run_graders.sh`) |
+| Harness and scratch output | `~/Documents/projects/jira-governance/.tmp/cache/cascadeplan-research/` (`harness/`, `commits/`, `logrow.py`, `run_graders.sh`) |
 | Last commit when this was written | `d1e0c95 feat(cascadeplan): standup flow with multi-select and batch edits` |
 
 The working tree is clean for CascadePlan files. Other folders in the repo show as untracked (for example `docs/sdlc/definitionguard-usp-ux-research-2026-11/`, `docs/sdlc/ledgerseal-usp-ux-research-2026-11/`, `loop-engine/agents/*.md`). They belong to other work. Never stage them. Never use `git add -A`, `git add .` or `git add docs`. Always stage explicit file paths.
@@ -60,8 +60,8 @@ Process rules:
   ```
 - Plain English everywhere, no marketing words, and never an em dash (the long dash character) in any file, commit or message.
 - Commit with a message file: `git -c user.email="fahim@fahimfarook.me" -c user.name="Fahim Farook" commit -F <file>`. Subject: `type(cascadeplan): summary`. Body: describes the final state (what the code does now), not what was wrong. End with a `Refs:` trailer (for example `Refs: B-26`). Never add a `Co-Authored-By` line for any AI.
-- Put commit message files in `~/.cache/gemini-earning-cascadeplan-research/commits/`.
-- Add one round-log row per item with `python3 ~/.cache/gemini-earning-cascadeplan-research/logrow.py '<row>'`. Follow the style of the existing rows: tests added, test count and coverage, each acceptance criterion with what was measured, fixes made on the way, deviations, known limits. Last column: `see git log`.
+- Put commit message files in `docs/sdlc/cascadeplan-usp-ux-research-2026-11/evidence/commits/`.
+- Add one round-log row per item with `python3 docs/sdlc/cascadeplan-usp-ux-research-2026-11/evidence/logrow.py '<row>'`. Follow the style of the existing rows: tests added, test count and coverage, each acceptance criterion with what was measured, fixes made on the way, deviations, known limits. Last column: `see git log`.
 - Ask the owner only when a decision is genuinely theirs. Ask one fully framed question at a time (options, trade-offs, your recommendation). Do all unblocked work first.
 
 ## 5. Remaining backlog, in order
@@ -87,7 +87,7 @@ Open items you must not lose (from the round log):
 ## 6. Loop 3 (after B-22)
 
 1. Rerun the UX benchmark and the performance measurement; add an "After" column to `ux-spec.md` next to the baseline numbers. The scripts are `harness/ux_bench.py` and `harness/measure_perf.py`. Both still use some pre-B-13 assumptions (`.gantt-bar`, the SVG layer, 2 calls per drag). Update them to the current UI first (`.bar-hit`, `wait_plan`, `wrapper.dataset.origin` and `dataset.dayPx`, frozen columns); `check_b13.py` shows the current way to drive and measure the timeline.
-2. `flatpak-spawn --host sh -c "cd /home/fahimfarookme/Documents/projects/gemini-earning/apps/planshift && forge lint"`. Record the full output.
+2. `flatpak-spawn --host sh -c "cd /home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system/apps/planshift && forge lint"`. Record the full output.
 3. `forge deploy -e development` only (same `flatpak-spawn --host` pattern). Never another environment. Record the full output.
 4. Live check on `https://asymmsystems.atlassian.net`, project DEMO:
    - write only to issues whose summary starts with `[CP-PROBE]` and that carry the label `cp-probe` (create them if needed);
@@ -111,13 +111,13 @@ Open items you must not lose (from the round log):
 All Node tools run on the host, because the shell runs in a Flatpak sandbox. Use absolute paths. Do not chain `cd ..` after a command that can fail.
 
 ```
-APP=/home/fahimfarookme/Documents/projects/gemini-earning/apps/planshift
+APP=/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system/apps/planshift
 flatpak-spawn --host sh -c "cd $APP && npm run build"            # tsc + esbuild bundle -> static/frontend/build/app.js
 flatpak-spawn --host sh -c "cd $APP && npx jest"                   # all unit tests (533 at handover)
 flatpak-spawn --host sh -c "cd $APP && npx jest --coverage"        # per-file coverage
 flatpak-spawn --host sh -c "cd $APP && npx jest test/ui/foo --coverage --collectCoverageFrom=src/ui/foo.ts"
-sh ~/.cache/gemini-earning-cascadeplan-research/run_graders.sh    # grade_tdd, grade_security, grade_ui
-sh ~/.cache/gemini-earning-cascadeplan-research/harness/regress.sh   # rebuilds the site copy, runs every browser check
+sh docs/sdlc/cascadeplan-usp-ux-research-2026-11/evidence/run_graders.sh    # grade_tdd, grade_security, grade_ui
+sh docs/sdlc/cascadeplan-usp-ux-research-2026-11/evidence/harness/regress.sh   # rebuilds the site copy, runs every browser check
 ```
 
 Facts that save time:

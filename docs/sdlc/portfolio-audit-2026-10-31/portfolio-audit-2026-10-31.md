@@ -3,7 +3,7 @@
 - **Date:** 2026-10-31
 - **Audience:** Product owner, lead architect, and enterprise buyers who decide on paid Atlassian Marketplace listings
 - **Apps:** CascadePlan (`apps/planshift`), FourRealities (`apps/fourrealities`), LedgerSeal (`apps/ledgerseal`), DefinitionGuard (`apps/definitionguard`)
-- **Source:** `gemini-earning/` at HEAD `5097bf5`. PlanShift also has uncommitted changes in 7 files. This audit reviews the working tree. `snapshot-md5.txt` in this folder pins every reviewed file.
+- **Source:** `jira-governance-code-system/` at HEAD `5097bf5`. PlanShift also has uncommitted changes in 7 files. This audit reviews the working tree. `snapshot-md5.txt` in this folder pins every reviewed file.
 - **Site in brief:** https://asymmsystems.atlassian.net, project DEMO
 
 ## How to read this report
@@ -636,7 +636,7 @@ The reviewer scored the app 25 on the assumption that CP-02 might stop it from l
 - `appendix-definitionguard.md`: DefinitionGuard, 16 findings, hash and race probes, and over-claims.
 - `snapshot-md5.txt`: MD5 of every reviewed source file.
 
-The probe scripts live outside the repo, under `~/.cache/gemini-earning-portfolio-audit/`. Those are `ledgerseal-scratch/`, `definitionguard-scratch/` and `planshift-scripts/`.
+The probe scripts live outside the repo, under `~/Documents/projects/jira-governance/.tmp/cache/portfolio-audit/`. Those are `ledgerseal-scratch/`, `definitionguard-scratch/` and `planshift-scripts/`.
 
 Some details in this report differ from the appendices. These items appear only in this report:
 - the lead's FR-26, PX-04, CP-29 and LS-22;

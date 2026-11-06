@@ -125,7 +125,7 @@ Gate for every fix: `npx tsc --noEmit` with no errors, `npm test` green with the
 
 ## Merge review fixes (2026-11-06)
 
-Review: `~/.cache/jira-suite-merge-review/fourrealities/fourrealities-merge-review.md` (verdict "Do not merge": H-1 High, M-1 Medium, L-1 to L-5 Low). `origin/master` (with CI `8666cad`, CascadePlan, DefinitionGuard and LedgerSeal) was merged into this branch first (`25b8730`, no conflict).
+Review: `~/Documents/projects/jira-governance/.tmp/cache/merge-review/fourrealities/fourrealities-merge-review.md` (verdict "Do not merge": H-1 High, M-1 Medium, L-1 to L-5 Low). `origin/master` (with CI `8666cad`, CascadePlan, DefinitionGuard and LedgerSeal) was merged into this branch first (`25b8730`, no conflict).
 
 ### H-1, M-1, L-1, L-2, L-3, L-5 (`b82e2f8`)
 

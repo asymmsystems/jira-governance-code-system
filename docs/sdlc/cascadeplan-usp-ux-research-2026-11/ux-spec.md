@@ -125,7 +125,7 @@ Canvas prototype (T-06, `harness/canvas-proto.js`, timeline only, no data column
 
 ## 5. Research round 3: UX (2026-11-01)
 
-Sources: UX-01 to UX-45 (competitor UX and reviews) and UP-01 to UP-70 (patterns, accessibility, canvas), listed in `research-brief.md` sections 8.5 and 8.6. Full notes: `~/.cache/gemini-earning-cascadeplan-research/sources/round3-competitor-ux.md` and `round3-ux-patterns.md`.
+Sources: UX-01 to UX-45 (competitor UX and reviews) and UP-01 to UP-70 (patterns, accessibility, canvas), listed in `research-brief.md` sections 8.5 and 8.6. Full notes: `~/Documents/projects/jira-governance/.tmp/cache/cascadeplan-research/sources/round3-competitor-ux.md` and `round3-ux-patterns.md`.
 
 ### 5.1 What users say
 

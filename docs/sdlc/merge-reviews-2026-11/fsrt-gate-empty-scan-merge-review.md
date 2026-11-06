@@ -5,7 +5,7 @@
   - `d32d8b8`: `tools/ci/fsrt_gate.py`, `.github/workflows/fsrt.yml`, and the new `tools/ci/fsrt-canary`;
   - `5238b46`: a paragraph and a run row in `docs/security/fsrt-scan-2026-11-07.md`.
 - Purpose: fix L-55 of `ci-fsrt-merge-review.md` (a scan that analysed nothing passed).
-- Tests used my own FSRT build of the pinned commit `6c821bd`. Cases and outputs, not committed: `/home/fahimfarookme/.cache/jira-suite-merge-review/fsrt-gate-empty-scan/`.
+- Tests used my own FSRT build of the pinned commit `6c821bd`. Cases and outputs, not committed: `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/fsrt-gate-empty-scan/`.
 
 ## 1. Verdict
 

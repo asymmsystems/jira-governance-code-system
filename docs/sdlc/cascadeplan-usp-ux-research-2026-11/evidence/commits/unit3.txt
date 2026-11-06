@@ -1,0 +1,6 @@
+feat(cascadeplan): in-progress bar styling and clickable dependency links
+
+- Render distinct diagonal hatch pattern on bars for tasks that are IN_PROGRESS with 0% explicit progress, making in-progress work immediately visually distinguishable before percent is logged.
+- Render interactive dependency link badges on arrow midpoints.
+- Add dependency edit popover to view predecessor/successor details, choose trigger percent with 0%, 30%, 50%, 100% preset buttons or numeric input, inspect live earliest start preview with violation warning, save updates with 10s undo, or remove the link cleanly.
+- Keep branch coverage at 93.72% with 100% coverage on new dependency-edit and canvas-palette modules.

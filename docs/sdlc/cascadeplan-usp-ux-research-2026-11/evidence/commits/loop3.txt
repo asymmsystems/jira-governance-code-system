@@ -1,0 +1,17 @@
+docs(cascadeplan): loop 3 ux benchmarks and marketplace listing
+
+Record Loop 3 benchmark measurements in ux-spec.md and author the
+marketplace listing for CascadePlan.
+
+Add measured After performance numbers and interaction observations for
+synthetic plans of 50, 300, and 1,000 tasks to ux-spec.md, showing that
+DOM node count, arrow hover redraw cost, drag frame rates, drop settles,
+and single-call updates satisfy all defined performance budgets.
+
+Create docs/marketplace/cascadeplan-listing.md presenting the three
+approved USPs (percent-trigger earliest start dependencies with named
+reasons, transparent Jira writes with 20-step undo, and native Jira
+sub-tasks for multi-person assignments) along with the HTML5 canvas
+timeline, full keyboard accessibility, and mixed estimation units.
+
+Refs: Loop-3

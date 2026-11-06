@@ -16,11 +16,11 @@ You are an independent reviewer for the Jira Governance Suite (Atlassian Forge a
 ## 1. Work on your own clone
 
 ```
-flatpak-spawn --host git clone https://github.com/asymmsystems/jira-governance-code-system.git /home/fahimfarookme/.cache/jira-suite-merge-review/<app>/checkout
+flatpak-spawn --host git clone https://github.com/asymmsystems/jira-governance-code-system.git /home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/<app>/checkout
 ```
 
 - The shell is a VS Code Flatpak sandbox: run git, gh, node, npm, npx and forge through `flatpak-spawn --host bash -lc '<cmd>'`. The host `/tmp` is not the sandbox `/tmp`.
-- Never work in, change, or clean any other folder: not `/home/fahimfarookme/Documents/projects/gemini-earning*`, not `~/.cache/jira-suite-fixes/*`. Other sessions use them.
+- Never work in, change, or clean any other folder: not `/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system`, not `~/Documents/projects/jira-governance/.tmp/cache/suite-fixes/*`. Other sessions use them.
 - Never use bare `git stash`. Never force-push. Never rewrite history.
 
 ## 2. Read first
@@ -50,7 +50,7 @@ Also: Apps CI on the branch head is green (`gh run list -R asymmsystems/jira-gov
 
 Review the code for: correctness, permission checks on every resolver, personal data (stored ids reported weekly and erased on closure), licensing behaviour, listing and docs claims that the code does not support (a false public claim is a blocker), copyright header (`Copyright (c) 2026 Asymm Systems. All rights reserved.` and `@author Fahim Farook`; the public verifier files use Apache-2.0), and no em or en dashes.
 
-Live checks: optional, on the development environment only, projects PAY or DEMO only, with the cookie file named by `CASCADEPLAN_LIVE_COOKIES=/home/fahimfarookme/Documents/projects/gemini-earning-cp-fixes/docs/design/in-jira-automated-testing-guide.md` (read at run time, never copy its values). Never deploy to staging or production. List every live change.
+Live checks: optional, on the development environment only, projects PAY or DEMO only, with the cookie file named by `CASCADEPLAN_LIVE_COOKIES=/home/fahimfarookme/Documents/projects/jira-governance/repository/code/jira-governance-code-system/docs/design/in-jira-automated-testing-guide.md` (read at run time, never copy its values). Never deploy to staging or production. List every live change.
 
 ## 4. Report
 
@@ -68,9 +68,9 @@ git commit -F <message file>
 git push origin master
 ```
 
-- Commit as `git -c user.name="Fahim Farook" -c user.email=fahim@fahimfarook.me commit -F <file>`; message files in `/home/fahimfarookme/.cache/jira-suite-merge-review/`. No Co-Authored-By line.
+- Commit as `git -c user.name="Fahim Farook" -c user.email=fahim@fahimfarook.me commit -F <file>`; message files in `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/`. No Co-Authored-By line.
 - If `master` has moved and the merge conflicts, stop: do not resolve conflicts in app code yourself; report them.
-- With any Critical or High finding: do not merge. Commit nothing to `master`; leave the report in `/home/fahimfarookme/.cache/jira-suite-merge-review/<app>/` and say so in your final message. The fixing session addresses the findings and asks you again.
+- With any Critical or High finding: do not merge. Commit nothing to `master`; leave the report in `/home/fahimfarookme/Documents/projects/jira-governance/.tmp/cache/merge-review/<app>/` and say so in your final message. The fixing session addresses the findings and asks you again.
 
 Do not deploy, submit, or change the Marketplace listing. Never send the owner's email or any credential to an external service.
 
