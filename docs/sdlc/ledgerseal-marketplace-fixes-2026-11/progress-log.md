@@ -526,3 +526,31 @@ Branch `feature/ledgerseal-restricted-worklogs`, cut from `origin/master` `b8770
 - `forge deploy -e development`: 5.4.0 (code of `756279e`). Production not touched.
 - PAY-10: the property is schema 3, SEAL_VALID, signed with `ls-dev-2026-11`, no account id; the evidence exports from the panel and `tools/verifier` passes 5 of 5 checks. A restricted work log needs a second user outside a role, so M-11 is proven by the tests. No live write.
 - Gate (`756279e`): `npx tsc --noEmit` 0 errors; `npm test` 50 suites, 547 tests passed; coverage statements 98.09%, branches 94.19%, functions 97.12%, lines 98.73%; `npm run build`, `npm audit --omit=dev --audit-level=high` and `forge lint` clean.
+
+
+## Security questionnaire questions 3 and 8
+
+Branch `feature/ledgerseal-permission-checks`, cut from `origin/master` `6c19fa4`.
+
+### Q3. A Browse check as the user before any app read
+
+- **What changed:** `browseDenied` (`src/service/ledger.ts`) is the first Jira call of `verify-issue-api` (also used by the issue context entry), `seal-issue-api`, `revoke-seal-api`, `seal-history-api` and `seal-evidence-api`. It calls `GET /rest/api/3/mypermissions?issueId=<id>&permissions=BROWSE_PROJECTS` as the user (`canBrowseIssue`, `src/jira/jira-client.ts`). Without the permission, or on 403 or 404, the answer is `NO_BROWSE_PERMISSION` ("You do not have permission to browse this issue in Jira, so LedgerSeal shows nothing about it.", shown in the panel, `src/frontend/view-model.ts`); on any other failure it is `JIRA_UNREACHABLE`. Seal and revoke run it before the approver check, so an approver by group who cannot see the issue cannot seal or revoke it.
+- **Every resolver checked:** the five above read the issue as the app (verify, seal, revoke, evidence) or return its stored record (history), and all now check first. The three admin resolvers (`approver-policy-get-api`, `approver-policy-set-api`, `approver-group-search-api`) check global Administer Jira as the user before anything and read no issue; their group reads run as the user. The workflow validator and the triggers have no calling user.
+- **Proof:** `test/permission-checks.test.ts` (17 tests). For each resolver: refused with no app read (`getIssue`, `getComments`, `getWorklogs`, `getFields`, `getChangelog`, `getUserName`, `accountState`, `putSealProperty`) and no storage write; fail closed on a failed check; unchanged with the permission. Removing the check from any one resolver makes that resolver's three tests fail (five mutations).
+- **Commit:** `cfe2cba`.
+
+### Q8. Failure log lines without the error object
+
+- **What changed:** the seven calls that logged a whole error object (`onIssueDeleted`, `personalDataReport`, the replaced snapshot delete in `sealIssueFlow`, the two in `verifyIssueFlow`, `issueChangedFlow`, `convertAll`) call `logFailure` (`src/service/log.ts`): `LedgerSeal: <what>: <name> code=<code> status=<status>`, the name and code only when they are plain identifiers.
+- **Proof:** `test/log-safety.test.ts` (8 tests): each place fails with an error whose message holds a secret; every log argument must be text without it. Reverting any one place makes exactly its test fail (seven mutations). `test/personal-data.test.ts` now expects the new line.
+- **Commit:** `90522f7`.
+
+### Questionnaire
+
+- `docs/marketplace/submission/ledgerseal-security-questionnaires.md` was not in any commit: it was untracked in the questionnaire session's checkout (`.tmp/security-questionnaires`, branch `feature/security-questionnaires` at `2b5907c`, which holds only the CascadePlan file). It is committed here unchanged (`8e44b40`), then questions 3, 8 and 19, Open issues 1 and 2, and sections 2.1 and 2.2 describe the fixed code. The file says these answers hold only after this branch reaches production.
+
+### Deploy, live check and gate
+
+- `forge deploy -e development`: 5.5.0 (code of `cfe2cba`). Production not touched.
+- Live check: not done. Two runs of `evidence_check.py PAY-10` stopped before the panel; a screenshot shows the Atlassian login page, so the saved session in the cookie file has expired. Owner action: refresh the cookie file, then run `evidence_check.py PAY-10` (the owner can browse PAY-10, so the panel and the evidence must work as before).
+- Gate (`cfe2cba`): `npx tsc --noEmit` 0 errors; `npm test` 52 suites, 575 tests passed; coverage statements 98.22%, branches 94.33%, functions 97.15%, lines 98.86%; `npm run build`, `npm audit --omit=dev --audit-level=high` and `forge lint` clean.
