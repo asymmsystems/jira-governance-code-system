@@ -5,7 +5,7 @@
  * @author Fahim Farook
  */
 import { IssueChecklistState, ChecklistAuditEvent } from '../domain/models';
-import { LICENCE_GATE_OFF } from '../security/licence';
+import { LICENCE_GATE_OFF } from '../domain/licence-text';
 
 /** Who completed an item, for rendering: a Jira user from the accountId, or v1 text. */
 export type Attribution = { kind: 'user'; accountId: string } | { kind: 'text'; text: string };

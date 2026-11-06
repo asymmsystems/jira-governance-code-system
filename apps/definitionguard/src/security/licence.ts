@@ -17,10 +17,7 @@ import { getAppContext } from '@forge/api';
 
 export const LICENCE_INACTIVE = 'Your DefinitionGuard licence is not active. Ask your Jira admin.';
 
-/** Shown in the panel and on the settings page while the licence is inactive. */
-export const LICENCE_GATE_OFF =
-  'DefinitionGuard is not licensed on this site, so the Definition of Done gate is off: moves to Done are not blocked ' +
-  'and checklist changes cannot be saved. Ask your Jira admin to renew the licence.';
+export { LICENCE_GATE_OFF } from '../domain/licence-text';
 
 type LicenceLike = { isActive?: boolean; active?: boolean } | undefined;
 

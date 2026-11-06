@@ -45,6 +45,24 @@ describe('B-19 hygiene', () => {
     expect(admin).toContain('saveOutcome(');
   });
 
+  it('the UI files import no server module: nothing they import, directly or through other src files, imports @forge/api, @forge/kvs or @forge/resolver', () => {
+    const seen = new Set<string>();
+    const offending: string[] = [];
+    const visit = (file: string) => {
+      if (seen.has(file)) return;
+      seen.add(file);
+      const src = fs.readFileSync(file, 'utf8');
+      if (/from '@forge\/(api|kvs|resolver)'/.test(src)) offending.push(path.relative(APP, file));
+      for (const m of src.matchAll(/from '(\.{1,2}\/[^']+)'/g)) {
+        const base = path.resolve(path.dirname(file), m[1]);
+        const target = ['.ts', '.tsx'].map(ext => base + ext).find(f => fs.existsSync(f));
+        if (target) visit(target);
+      }
+    };
+    for (const ui of ['index.tsx', 'settings.tsx', 'admin.tsx']) visit(path.join(APP, 'src/frontend', ui));
+    expect(offending).toEqual([]);
+  });
+
   it('does not depend on the unused @forge/storage package', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(APP, 'package.json'), 'utf8'));
     expect(pkg.dependencies['@forge/storage']).toBeUndefined();

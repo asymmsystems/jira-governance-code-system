@@ -104,6 +104,12 @@ Baseline at `7f87747` (clean install of `packages/asymm-jira-ui`, then the app):
 - **What changed:** `docs/marketplace/submission/definitionguard-submission-notes.md` rewritten: section 1 adds `report:personal-data` and the changelog read; section 2 lists every field of the property (schema 3, no account id), the personal data handling and the licence behaviour; section 3 is a setup on the reviewer's own site (install, a company-managed project, add the validator to the transition into Done, a Task assigned to yourself, a second user); section 4 has 8 test steps: panel (and where to find it), evidence, not-the-assignee (including unassign-then-tick), waiver (including the refused waiver by the assignee), the gate, settings and coverage, history and export with the signature line, and the approvers admin page. No step names our site, project or issue.
 - **Proof:** read against the code: each message quoted in the notes is a constant in `src/` ("The assignee cannot complete this item. Ask a reviewer.", "Authorized approvers (waive and reset): ...", "Property not signed", "Licence not active"). The menu paths are checked live (see "Live checks").
 
+### Bundling fix found by the first deploy
+
+- **What happened:** the first `forge deploy -e development` after BL-4 stopped: "Bundling failed: Module not found: Error: Can't resolve 'fs' ... 'path' ... 'async_hooks' in .../@forge/api/out/api". The UI bundle took in `@forge/api`, because `src/ui/panel-view-model.ts` imported the notice text from `src/security/licence.ts`, which imports `getAppContext` from `@forge/api` (H-3).
+- **What changed:** the text moved to the new pure module `src/domain/licence-text.ts`; `licence.ts` re-exports it. New guard in `test/hygiene.test.ts`: "the UI files import no server module: nothing they import, directly or through other src files, imports @forge/api, @forge/kvs or @forge/resolver" (it walks the imports of `index.tsx`, `settings.tsx` and `admin.tsx`).
+- **Proof:** full suite 417 passed; the next deploy bundled and deployed (version 6.0.0, below).
+
 ## Site changes needed
 
 (The main session applies these to the asymm.systems site repository, `asymm-corporate/repository/code/asymm-corporate-code-pfw/src/main/jbake/`, read at `6d838f9`. Each: page, old text, new text.)
