@@ -1,5 +1,5 @@
 """Live checks of the DefinitionGuard gate and the not-the-assignee rule on two probe Tasks in PAY.
-Usage: python3 probes.py create | check
+Usage: python3 probes.py create | check | passing | delete
   create  creates DG probe A (unassigned) and DG probe B (assigned to the signed-in user)
   check   runs the checks; needs the validator on PAY's Done transition (pay_validator.py add)
 Results: DG_LIVE_OUT/probes.json. Writes in PAY only (the two probe issues and their checklists).
@@ -139,10 +139,39 @@ def check(pg):
     save('probes.json', results)
 
 
+def passing(pg):
+    """Probe C, never assigned: complete every mandatory item, then the gate lets Done through (204)."""
+    st, res = rest(pg, 'POST', '/rest/api/3/issue', {'fields': {'project': {'key': 'PAY'}, 'issuetype': {'name': 'Task'}, 'summary': 'DG probe C: DefinitionGuard live check, delete after test'}})
+    C = res['key']
+    keys = json.loads(STATE.read_text()); keys['C'] = C; STATE.write_text(json.dumps(keys))
+    open_issue(pg, C)
+    ensure_panel(pg)
+    st, res = transition_done(pg, C)
+    record('C: gate blocks while items are open', st == 400, st)
+    evidence_tick(pg, TESTS, 'https://ci.example.com/payments/build/4190')
+    item_checkbox(pg, REVIEW).click(); wait_quiet(pg)
+    waive(pg, PCI, 'No card data flows change in this task.')
+    evidence_tick(pg, LOAD, 'https://perf.example.com/reports/checkout-3x')
+    st, res = transition_done(pg, C)
+    record('C: gate lets a complete checklist through to Done', st == 204, f'{st} {json.dumps(res)[:200]}')
+    st, iss = rest(pg, 'GET', f'/rest/api/3/issue/{C}?fields=status')
+    record('C: status is Done', iss['fields']['status']['statusCategory']['key'] == 'done', iss['fields']['status']['name'])
+    st, prop = rest(pg, 'GET', f'/rest/api/3/issue/{C}/properties/definitionguard-dod')
+    save('probe-c-property.json', prop.get('value', {}))
+    save('probes-c.json', results)
+
+
+def delete(pg):
+    keys = json.loads(STATE.read_text())
+    for k in keys.values():
+        st, res = rest(pg, 'DELETE', f'/rest/api/3/issue/{k}')
+        print('deleted', k, st)
+
+
 if __name__ == '__main__':
     with sync_playwright() as p:
         b, ctx = open_browser(p, 1600, 1100)
         pg = ctx.new_page()
         pg.goto(SITE + '/rest/api/3/myself', wait_until='domcontentloaded')
-        {'create': create, 'check': check}[sys.argv[1]](pg)
+        {'create': create, 'check': check, 'passing': passing, 'delete': delete}[sys.argv[1]](pg)
         b.close()

@@ -124,6 +124,53 @@ Baseline at `7f87747` (clean install of `packages/asymm-jira-ui`, then the app):
 - **What changed:** `src/domain/event-log.ts` (no `openedAt` from the template link date), `src/index.ts` (no `breakdownFromDate` fallback in the tick, waive and validator checks).
 - **Proof:** `test/resolvers/roles-waivers.test.ts` "(live 2026-11-06) refuses the former assignee when nothing was stored before the unassign": fails on `754ceb6` ("1 failed, 18 passed") and passes with the fix ("19 passed"); "lets someone tick who was the assignee only before the item was reopened" replaces the test that assumed the old window. Full suite 420 passed.
 
+### BL-3. Screenshots: real captures of the shipped app, 1840 x 900
+
+- **Decision:** [ADOPTED: owner instruction 'do NOW', 2026-11-06] the review's BL-3 fix, captured on the development site in project PAY ("Payments Platform"), issue PAY-15 "Load test checkout at 3x peak traffic", with the PAY Task template "Payments task DoD" (5 items).
+- **What changed:** `docs/marketplace/assets/definitionguard/01-checklist-open.png`, `02-evidence-link.png`, `03-transition-blocked.png`, `04-project-settings.png`, `05-audit-export.png` replaced (same names). Each is a region of the app itself (the panel card, or the settings content column) captured with Playwright at device pixel ratio 2 and resized to exactly 1840 x 900; no Jira navigation, no DEV badge. 03 is Jira's own "Transition failed" flag raised by the validator, over the panel. Method: `apps/definitionguard/test/live/marketplace_shots.py`. The listing's manifest describes each image; the captions say 05 shows the development key id.
+- **Proof:** `test/listing.test.ts` "(BL-3) lists five real screenshots, each 1840 x 900, and none is marked for recapture" (reads the PNG headers). Each image was viewed after capture.
+- **Limit:** the person shown is the owner's account (the only signed-in account available to this session); no account id is visible. The review asked for a demo user; recapture with one if wanted (the script takes the session from `CASCADEPLAN_LIVE_COOKIES`).
+
+### Live checks (development site asymmsystems.atlassian.net, versions 6.0.0 to 6.4.0)
+
+Deploys to development: 6.0.0 (major: scope `report:personal-data`; installation upgraded, "Upgrade complete!", `forge install list` version 6 Up-to-date), 6.1.0 (Jira admin fix), 6.2.0 (H-2 fix), 6.3.0 (a temporary diagnostic log line, see below), 6.4.0 (the source of `dca26d0`; the diagnostic line is in no commit). Final development version: **6.4.0**, from commit `dca26d0` source. `forge lint`: "No issues found." (6.0.0 lint: 0 errors, 0 warnings, 1 approval MAJOR_VERSION_RULE, acknowledged with `--approve MAJOR_VERSION_RULE`).
+
+Scripts: `apps/definitionguard/test/live/` (`probes.py`, `pay_validator.py`, `pay_template.py`, `marketplace_shots.py`, `licence_check.py`, `cleanup.py`, `verify_property.py`, `discover.py`). Results and raw captures: `/home/fahimfarookme/.cache/jira-suite-fixes/scratch-definitionguard/live/` (outside the repository).
+
+| Check | Result |
+|---|---|
+| Panel on a new PAY Task: project template items, approver line names the configured group ("... and members of studio-users-studio"), no "Open Four Realities panel" button, no licence notice (M-1, M-2) | Pass |
+| Panel added from the issue's "View app actions" button (hexagon icon); the menu item is "Definition of Done" (M-5 wording) | Pass |
+| Assignee ticks a not-the-assignee item: "The assignee cannot complete this item. Ask a reviewer." | Pass (PAY-25) |
+| H-1: the assignee (a Jira admin, so an approver) waives that item: "The assignee cannot waive this item, ..." | Pass (PAY-25) |
+| H-2: unassign (REST 204), then tick: "... you were the assignee of this issue after the item was opened ..." | Pass on 6.2.0 (PAY-25). Failed on 6.1.0 (PAY-23), fixed: see "Live finding. H-2 missed ..." |
+| Gate: POST transition 31 (to Done) with open items returns 400 "Definition of Done is not complete. Open mandatory items: ... Open the Definition of Done panel on this issue (from the View app actions button if it is not shown) to finish them."; status stays To Do (M-5) | Pass (PAY-25, PAY-26) |
+| Gate in the UI (PAY-15 status menu > Done): Jira flag "Transition failed" with the same message naming the 2 open items | Pass (screenshot 03) |
+| Gate passes a complete checklist: 204, status Done | Pass (PAY-26) |
+| H-2 in the validator: reviewer later assigned, then unassigned: 400 naming the review item both times | Pass (PAY-24) |
+| Property (BL-1, BL-2): `schemaVersion` 3, no `lastModifiedByAccountId`, no account id anywhere, `keyId` `dg-dev-2026-11`, `sig` set | Pass (PAY-24, PAY-26) |
+| Signature verified outside the app (`verify_property.py`, Python `cryptography`, `docs/marketplace/definitionguard-public-key.pem`): "signature valid, keyId dg-dev-2026-11"; a copy with `isFullySatisfied` flipped: invalid | Pass (PAY-26) |
+| History: "History checked: 5 events, chain intact."; "Property signed" with the key note (BL-2) | Pass (PAY-24) |
+| Export: every `actorPartyId` is `dgp-...` or `system`; `parties` maps the pseudonym to the account (BL-1) | Pass (PAY-24, 5 events) |
+| Settings page as a Jira admin who is not a PAY project admin | Failed on 6.0.0 ("Only a project admin ..."); fixed in 6.1.0 and passed (template saved) |
+| Gate coverage with the validator on: "All 1 completion transitions are gated." | Pass |
+| M-4: deleting the probes; `forge logs`: "DefinitionGuard issue deleted: 6 record(s) removed." (and 3, 6, 6, 0 for the others; 0 for the probe with nothing stored) | Pass |
+| Licence inactive (BL-4, H-3) | **Not run.** `forge install --upgrade -e development ... --license inactive` answered "Site is already at the latest version" and the licence did not change (panel had no notice, changes saved, the gate blocked). Applying it needs an uninstall and reinstall of the development app on the shared site, which drops the development app storage there. Steps for the owner: "Owner commands" item 4. Unit tests cover both licence paths. |
+| Weekly personal data report | **Not run.** The trigger runs on Forge's weekly schedule. Forcing it now would run the one-time pass, which rewrites DefinitionGuard records and the issue property on DEMO-3, 9, 10, 12, 15, 16, 17, 18, 22, 26, 35 and TEST-1 (found by `discover.py`); TEST is outside the projects this session may write to. The scheduled run will do this on its own within a week of the 6.0.0 deploy (see "Live changes"). Check with `forge logs -e development` for "DefinitionGuard personal data report: N account(s) reported, ...". |
+
+A temporary diagnostic: to explain a UI-path result, 6.3.0 logged the issue id and the payload field names when the validator found no stored checklist. It showed issue 10103 (PAY-16): the script had clicked the linked item PAY-16's status menu, not PAY-15's. Not an app defect; PAY-16 had no checklist, the validator blocked its move correctly and nothing changed. The line was removed and 6.4.0 deployed without it.
+
+### Live changes (all on asymmsystems.atlassian.net)
+
+1. Development installation of DefinitionGuard upgraded from version 5 to 6 (new scope `report:personal-data`), then 6.1.0 to 6.4.0 deployed to the development environment. Not restored (this is the delivered version).
+2. Project PAY, DefinitionGuard template for issue type Task (`dg:tmpl:10036:10001`): "Payments task DoD", version 1 then version 2 (categories). Kept: the screenshots use it. There is no delete action for a template; to remove its effect, replace it in Project settings > DefinitionGuard.
+3. PAY-15: "Definition of Done" panel added from View app actions (Jira writes the issue properties `ari:cloud:ecosystem::extension/.../definitionguard-issue-panel` and `issue.content.panel.customised.flag`); checklist created with "Unit and integration tests pass in CI" ticked with evidence and "PCI DSS scope impact assessed" waived; the `definitionguard-dod` property written. Two attempts to move PAY-15 to Done were refused by the validator (status unchanged, To Do). Kept for the screenshots.
+4. PAY-16: one attempt to move it to Done (the script's mis-click) was refused by the validator; status unchanged, To Do. Nothing stored.
+5. Workflow "Software Simplified Workflow for Project PAY" (only PAY uses it, scheme 10037): validator "DefinitionGuard DoD Enforcement" added to transition 31 "Done" (version 0 to 1), removed (version 2), added again for the licence check (version 3), removed (version 4). Now: no validator on Done, as before. The original is saved in the scratch folder (`pay-workflow-original.json`).
+6. Probe issues PAY-22, PAY-23, PAY-24, PAY-25, PAY-26 (Done), PAY-27 created and deleted. For the deletion the owner's account was added to PAY's Administrators role and removed again in the same run each time (role actors before and after: none).
+7. Assignee changes on the probes only (now deleted).
+8. Pending, automatic: the weekly scheduled trigger of the development install will run the one-time personal data pass within a week of 2026-11-06. It appends a Redact event to each existing DefinitionGuard history, rewrites those events with pseudonyms, deletes the v1 records, and writes the `definitionguard-dod` property again (schema 3, no account id) on DEMO-3, 9, 10, 12, 15, 16, 17, 18, 22, 26, 35 and TEST-1. It also sends the first report of the stored account ids to Atlassian. This is the shipped behaviour; to stop it on development, deploy a build without the `scheduledTrigger`.
+
 ## Site changes needed
 
 (The main session applies these to the asymm.systems site repository, `asymm-corporate/repository/code/asymm-corporate-code-pfw/src/main/jbake/`, read at `6d838f9`. Each: page, old text, new text.)
@@ -131,9 +178,6 @@ Baseline at `7f87747` (clean install of `packages/asymm-jira-ui`, then the app):
 1. **Price, suite product page** `content/product/jira-governance.html`, pricing table (lines 158 to 186). It gives one price for every app: "$1.50", "$1.20", "$0.90". New: keep the table for the apps whose price it is, and add under it: "DefinitionGuard has its own price: free for 1 to 10 users, $0.95 per user per month for 11 to 100 users, $0.75 for 101 to 250, $0.24 for 251 to 1,000, and a custom price above 1,000 users. Annual billing: pay for 10 months, get 12."
 2. **Price, FAQ** `content/product/jira-governance/faq.html`, "How is billing calculated for larger instances?" (lines 29 to 31: "$1.50 per user per month.", "$1.20 ...", "$0.90 ..."). New: after the list, add "<p>DefinitionGuard costs less: $0.95 per user per month for 11 to 100 users, $0.75 for 101 to 250 and $0.24 for 251 to 1,000.</p>".
 
-## Owner commands
-
-(Commands only the owner runs. Nothing here has been run by this session.)
 
 3. **Privacy page** `content/privacy.html` (on site `origin/develop` `e7579fb`, line 113), DefinitionGuard. Old: "<li><strong>Personal data:</strong> the Atlassian account id of the person who completed each checklist item, and of the person behind each recorded event.</li>". New: "<li><strong>Personal data:</strong> who completed, waived, reopened or reset each checklist item, and who saved a template, the exempt statuses or the approver groups. DefinitionGuard stores each person as a random pseudonym; the Atlassian account id is kept only in one link per person. The app reports these account ids to Atlassian every week and deletes the link of every account Atlassian reports as closed; the history then shows "A deleted user". Evidence links, evidence notes and waiver reasons are free text that you write and may name people. The issue property <code>definitionguard-dod</code> holds no personal data.</li>"
 4. **User guide** `content/product/jira-governance/user-guide/definitionguard.html` (site `origin/develop` `e7579fb`), section "3. Not-the-Assignee Rule", lines 49 and 50. Old: "<li>When <strong>Not the assignee</strong> is set on an item (e.g. <em>Peer code review approved</em>), the current assignee cannot tick it. The panel shows: <em>The assignee cannot complete this item. Ask a reviewer.</em></li>" and "<li>The workflow validator checks the rule again against the assignee at the moment of the move into Done.</li>". New: "<li>When <strong>Not the assignee</strong> is set on an item (e.g. <em>Peer code review approved</em>), neither the current assignee nor anyone who was the assignee of the issue after the item was opened can tick it or waive it. DefinitionGuard reads this from the issue's change history. The panel shows: <em>The assignee cannot complete this item. Ask a reviewer.</em></li>" and "<li>The workflow validator checks the rule again at the moment of the move into Done, for ticked and for waived items.</li>". Same page, line 91 (template options). Old: "<li><strong>Not the assignee:</strong> the current assignee cannot tick this item.</li>". New: "<li><strong>Not the assignee:</strong> the current assignee, and anyone who was the assignee after the item was opened, cannot tick or waive this item.</li>".
@@ -142,3 +186,35 @@ Baseline at `7f87747` (clean install of `packages/asymm-jira-ui`, then the app):
 7. **Compliance page** `content/product/jira-governance/compliance.html` (site `origin/develop` `e7579fb`) line 50, "Separation of Duties", DefinitionGuard part. Old: "DefinitionGuard lets admins mark DoD items that the assignee may not tick." New: "DefinitionGuard lets admins mark DoD items that the assignee may not tick or waive; anyone who was the assignee after the item was opened counts as the assignee."
 8. **Compliance page** line 161 and **FAQ** `content/product/jira-governance/faq.html` lines 60 to 62, personal data. Old (FAQ): "DefinitionGuard of who ticked, waived or configured a Definition of Done item,". New: "DefinitionGuard of who ticked, waived or configured a Definition of Done item (as pseudonyms, reported each week to Atlassian, with the link to a closed account deleted),". Compliance line 161: after "LedgerSeal, DefinitionGuard and FourRealities store Atlassian account ids to record who did each action" add "; DefinitionGuard stores them as pseudonyms, reports them each week and deletes the link of a closed account".
 9. **User guide** `content/product/jira-governance/user-guide/definitionguard.html`: add a short section "Licence" after the validator section: "If the DefinitionGuard licence on your site is not active, the gate is off: the validator lets every move through, the panel and the settings page show "Licence not active", and checklist changes are not saved. Reading checklists and their history still works." And in the history section: "The history section also says whether the definitionguard-dod issue property is signed on your site, and with which key (see Signing keys)."
+
+## Owner commands
+
+Nothing below has been run by this session. Run in `apps/definitionguard` of this branch after review and merge.
+
+1. **Production signing key** (BL-2). Key id `dg-prod-2026-11`. Make the key in a private folder and keep the private key out of every repository:
+   ```bash
+   umask 077 && mkdir -p ~/.keys/definitionguard && cd ~/.keys/definitionguard
+   openssl genpkey -algorithm ed25519 -out dg-prod-2026-11.key
+   openssl pkey -in dg-prod-2026-11.key -pubout -out dg-prod-2026-11.pem
+   openssl pkey -pubin -in dg-prod-2026-11.pem -outform DER | sha256sum   # fingerprint for the key page
+   ```
+2. **Production variables** (encrypted key; the value is base64 of the PEM, as the app reads it):
+   ```bash
+   cd <repo>/apps/definitionguard
+   forge variables set -e production --encrypt DG_SIGNING_KEY "$(base64 -w0 ~/.keys/definitionguard/dg-prod-2026-11.key)"
+   forge variables set -e production DG_SIGNING_KEY_ID dg-prod-2026-11
+   forge variables list -e production    # DG_SIGNING_KEY (encrypted) and DG_SIGNING_KEY_ID dg-prod-2026-11
+   ```
+   Give `dg-prod-2026-11.pem` (public) to the main session for the asymm.systems key page (site change 6) and `asymmsystems/ledgerseal-verifier`. Store `dg-prod-2026-11.key` offline (a backup decides whether old signatures can be renewed); it must not be lost or published.
+3. **Production deploy** (major version: new scope):
+   ```bash
+   forge deploy -e production --approve MAJOR_VERSION_RULE
+   ```
+   Then, on a test site with a production install after approval: tick an item, `GET /rest/api/3/issue/<id>/properties/definitionguard-dod`, and check `keyId` is `dg-prod-2026-11` and the signature verifies: `python3 apps/definitionguard/test/live/verify_property.py <saved property.json> dg-prod-2026-11.pem`.
+4. **Licence check** (BL-4, H-3), on a test site that holds no data you need (an uninstall drops the app storage of that install):
+   ```bash
+   forge uninstall -e development --site <test-site>.atlassian.net --product jira
+   forge install -e development --site <test-site>.atlassian.net --product jira --license inactive
+   ```
+   Add the validator to a Done transition, open an issue: the panel shows "Licence not active"; a tick is refused ("Your DefinitionGuard licence is not active. Ask your Jira admin."); a move to Done with open items goes through. Repeat with `--license active` (the move is blocked) and `--license trial`.
+5. **CI** (`.github/workflows/apps-ci.yml`, main session): run "Dependency audit (production, high and critical)" for every app (drop `if: matrix.app == 'cascadeplan'`, `working-directory: apps/${{ matrix.app }}`). DefinitionGuard passes it (exit 0).

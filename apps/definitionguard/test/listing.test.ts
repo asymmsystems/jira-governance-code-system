@@ -107,4 +107,16 @@ describe('B-08 listing v2', () => {
     expect(text).toContain('A Jira admin adds the DefinitionGuard validator to each transition');
     expect(text).toContain('DefinitionGuard does not certify your team against any standard.');
   });
+
+  it('(BL-3) lists five real screenshots, each 1840 x 900, and none is marked for recapture', () => {
+    const text = read();
+    expect(text).not.toContain('RECAPTURE REQUIRED');
+    const section = text.slice(text.indexOf('## Retina Screenshot Gallery Manifest'));
+    const files = [...section.matchAll(/^\d\. `(\d\d-[a-z-]+\.png)`/gm)].map(m => m[1]);
+    expect(files).toHaveLength(5);
+    for (const f of files) {
+      const png = fs.readFileSync(path.join(APP, '../../docs/marketplace/assets/definitionguard', f));
+      expect({ f, width: png.readUInt32BE(16), height: png.readUInt32BE(20) }).toEqual({ f, width: 1840, height: 900 });
+    }
+  });
 });

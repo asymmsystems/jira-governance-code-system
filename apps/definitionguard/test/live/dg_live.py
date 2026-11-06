@@ -67,6 +67,10 @@ def open_issue(pg, key, wait_ms=8000):
 
 def ensure_panel(pg):
     """Opens the Definition of Done panel, adding it from View app actions when it is not shown."""
+    try:
+        pg.get_by_text('Definition of Done items').first.wait_for(timeout=30000)
+    except Exception:
+        pass
     if pg.get_by_text('Definition of Done items').count() == 0:
         if pg.get_by_role('button', name='Refresh').count() == 0:
             pg.get_by_role('button', name='View app actions').first.click()

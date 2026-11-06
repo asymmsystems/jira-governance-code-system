@@ -123,11 +123,13 @@ DefinitionGuard provides records that support internal and external audits:
 
 ## Retina Screenshot Gallery Manifest
 
-1. `01-checklist-open.png` - **DoD Checklist Panel:** The Definition of Done panel with the Incomplete lozenge, the open mandatory items, Mandatory, Optional, and Waived lozenges, Tick with evidence and Waive buttons, and who completed or waived each item (3 of 6 done).
-2. `02-evidence-link.png` - **RECAPTURE REQUIRED:** The current file shows Jira's own "Linked work items" picker on DEMO-35 and the top of the DefinitionGuard panel. It shows no DefinitionGuard evidence form. Capture instead: the evidence form open on an item in the panel ("This item needs evidence. Add a link, a note, or both.", the link and note fields, and Save and tick).
-3. `03-transition-blocked.png` - **RECAPTURE REQUIRED:** The current file is a mock-up modal ("Workflow Transition Blocked" with a status table and an Acknowledge button) that does not exist in Jira or in DefinitionGuard. Capture instead: the real Jira transition error that shows the DefinitionGuard DoD Enforcement message listing the open mandatory items.
-4. `04-project-settings.png` - **RECAPTURE REQUIRED:** The current file shows Jira's "App management has moved to Administration" page, not DefinitionGuard. Capture instead: Project Settings > DefinitionGuard with the Definition of Done templates editor (issue type, items with Mandatory, Evidence required, and Not the assignee) and the Gate coverage list.
-5. `05-audit-export.png` - **JSON History Export:** The checklist history export shown in the issue panel as JSON text to copy, with the chain check result and the events with who acted and when.
+Real captures of DefinitionGuard 6.x on a Jira Cloud site, project "Payments Platform", issue "Load test checkout at 3x peak traffic", cropped to the app, 1840 x 900 px (`docs/marketplace/assets/definitionguard/`, made by `apps/definitionguard/test/live/marketplace_shots.py`).
+
+1. `01-checklist-open.png` - **Definition of Done items:** a project template with Mandatory and Optional items; one item ticked with evidence ("Evidence attached"), one waived, one that needs evidence, and who completed or waived each item and when (2 of 5 done).
+2. `02-evidence-link.png` - **Evidence on an item:** the evidence form of an item marked "Evidence required", with a link to the load test report and a note, before "Save and tick".
+3. `03-transition-blocked.png` - **The gate:** Jira's own "Transition failed" message from the DefinitionGuard DoD Enforcement validator after a move to Done, naming the open mandatory items, over the panel that names the same items.
+4. `04-project-settings.png` - **Project settings:** the Definition of Done template for the Task issue type, with Mandatory, Evidence required and Not the assignee on each item, an extra permission and a category.
+5. `05-audit-export.png` - **History check:** the checklist audit history with "Chain intact", the stated limit of the check, the signature line of the issue property (this capture is from the development install, key `dg-dev-2026-11`), and one row per change.
 
 ---
 
