@@ -1,0 +1,101 @@
+#+TITLE: ADR-010: FourRealities Reads and Verifies the Records of DefinitionGuard and LedgerSeal
+#+DATE: 2026-11-06
+#+STATUS: Adopted
+
+* Status
+[ADOPTED: owner instruction 'do NOW', 2026-11-06]. The owner asked for every recommendation of the
+readiness review (=docs/sdlc/suite-readiness-review-2026-11/fourrealities-readiness.md=, BL-1, F-H1,
+F-M3, backlog B-26) to be adopted without further questions. This ADR records the choices made.
+
+* Context
+FourRealities reads two issue properties that other apps of the suite write:
+- =definitionguard-dod=, written by DefinitionGuard. Schema v2
+  (=apps/definitionguard/src/integrity/attestation.ts=) holds =schemaVersion=, =issueId=,
+  =mandatoryTotal=, =mandatoryCompleted=, =isFullySatisfied=, =headHash=, =issuedAt=, =keyId=, =sig=
+  and other fields. The first FourRealities rule accepted only an older shape (=completedCount=,
+  =totalCount=, =checklistHash=), so a genuine record showed "Evidence missing" (BL-1).
+- =ledgerseal-cert=, written by LedgerSeal. Schema v2 (=apps/ledgerseal/src/domain/attestation.ts=)
+  holds =status=, =certificateId=, =snapshotHash=, =sealedAt=, =issuedAt=, =keyId=, =sig= and more.
+
+Any user with Edit issues can write any issue property. Before this ADR a well-formed record from any
+writer raised the Reality Alignment Index (RAI) like verified evidence (F-H1). Both producers now sign
+v2 records with Ed25519 over the canonical JSON of every field except =sig=. Development keys exist
+(=dg-dev-2026-11=, =ls-dev-2026-11=); production keys do not exist yet.
+
+The sessions that fix DefinitionGuard and LedgerSeal remove account id fields from these records at
+the same time. The names of the count and status fields stay.
+
+FourRealities also compared each record's =issuedAt= with the issue's =updated= time. Its own
+actions (a comment, a remote link) move =updated=, so its own actions turned a sealed issue into
+"Needs re-check" (F-M3).
+
+* Decision
+1. *Accepted shapes.* DefinitionGuard: schema v2 (=mandatoryCompleted= and =mandatoryTotal= as
+   counts, =headHash= as the reference) and the older shape (=completedCount=, =totalCount=,
+   =checklistHash=). Counts are non-negative integers, completed is at most total, and the hash is
+   64 hexadecimal characters. LedgerSeal: =status= string, =certificateId= in UUID form,
+   =snapshotHash= 64 hexadecimal characters, =sealedAt= an ISO date. Extra fields, and missing
+   account id fields, are allowed. Any other value is "a record shape the producer does not write"
+   and counts as evidence missing.
+2. *Signature check.* FourRealities verifies =sig= with Ed25519 over the canonical JSON (keys sorted
+   at every level, no white space, =undefined= left out) of every field except =sig=, with the
+   public key named by =keyId=. The result is one of: verified, unsigned, unknown key, signed for
+   another issue (=issueId= differs from the issue read), bad signature.
+3. *Trusted keys.* The public keys are part of the app (=src/accessor/attestation-keys.ts=), each
+   with its producer and the Forge environments it is trusted in. The development keys are trusted
+   in the development and staging environments only. Production trusts only production keys, and
+   none exist yet, so in production every sibling record is "not verified" until the producers
+   publish production keys and this file lists them (owner command in the progress log). The
+   environment comes from the Forge app context; an unknown environment is treated as production.
+4. *What counts.*
+   - Verified record: FOUND (verification VERIFIED) when it says complete or sealed; MISSING when it
+     says open items, a broken or compromised seal, or (on a Done issue) any other seal status.
+   - Not verified (unsigned, or signed with a key FourRealities does not trust): a new gate state,
+     REPORTED. The panel shows what the record says, with "not verified", and the gate is not
+     scored either way: it neither raises nor lowers the RAI.
+   - Bad signature, or signed for another issue: MISSING, with the reason in words.
+   - The Checklists for Jira (HeroCoders) =checklist= property cannot be signed, so it is always
+     REPORTED when present.
+5. *Freshness.* FourRealities no longer compares =issuedAt= with the issue's =updated= time. The
+   producer's own status decides: LedgerSeal writes =SEAL_BROKEN= itself when sealed content
+   changes, and DefinitionGuard rewrites its record on every change. The reason code
+   =CHANGED_SINCE_ATTESTATION= stays only so that rows stored before this change still render.
+6. *Where.* The check needs Node =crypto=, so it lives in the Accessor layer (it reads the key
+   store and the property); the gate engine receives the result as a fact. The layering test allows
+   =crypto= in Accessors only.
+
+* Alternatives Considered
+** Count unverified records at half weight
+- For: a team with the sibling apps in production gets some credit before production keys exist.
+- Against: the weight is arbitrary and hard to explain; a forged record still raises the score.
+- Verdict: rejected.
+** Score an unverified "complete" record as not scored, but an unverified "open" record as missing
+- For: a forged record can only lower the score.
+- Against: a team that uses the sibling app could only lose points by using it.
+- Verdict: rejected; REPORTED is not scored in either direction.
+** Trust the development keys in production
+- For: records signed on the owner's development site would verify everywhere.
+- Against: the development private key is held in a less protected environment.
+- Verdict: rejected.
+
+* Consequences
+** Positive
+- A genuine DefinitionGuard record is read again (BL-1).
+- A hand-written property no longer raises the RAI (F-H1).
+- FourRealities' own comments and links no longer change a seal's state (F-M3).
+** Negative
+- Until production keys exist, Process and Audit are REPORTED (not scored) in production when
+  records exist, and MISSING only when no record exists. The guide and listing say so.
+- A key rotation needs a FourRealities release that adds the new public key.
+
+* Implementation Notes
+- =src/accessor/attestation-verifier.ts= (canonical JSON and Ed25519 check),
+  =src/accessor/attestation-keys.ts= (trusted keys), =src/accessor/issue-facts.ts= (calls the
+  verifier), =src/engine/default-gate-engine.ts= (shapes and states), =src/ui/gate-text.ts= (text).
+- Contract test: =test/contract/sibling-attestations.test.ts= builds records with the real writers
+  (=buildAttestation= of both sibling apps) and a generated key pair, and feeds them to the gate
+  engine.
+
+* References
+- Readiness review BL-1, F-H1, F-M3, section 4.4 (B-26).
+- DefinitionGuard spec v2, section on the =definitionguard-dod= property; LedgerSeal spec v2 section 8.
