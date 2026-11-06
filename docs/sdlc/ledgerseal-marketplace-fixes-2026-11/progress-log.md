@@ -362,3 +362,32 @@ The review is `docs/sdlc/merge-reviews-2026-11/ledgerseal-followups-2-merge-revi
 ### Final gate (third follow-ups)
 
 `npx tsc --noEmit` 0 errors; `npm test`: 47 suites, 506 tests passed; coverage statements 97.88%, branches 94.23%, functions 96.79%, lines 98.67%; `npm run build` exit 0; `npm audit --omit=dev --audit-level=high` exit 0; `forge lint` "No issues found". Development version 4.5.0.
+
+
+## Fourth follow-ups (branch `feature/ledgerseal-review-followups-4`, from `origin/master` `c8be4c9`)
+
+The review is `docs/sdlc/merge-reviews-2026-11/ledgerseal-followups-3-merge-review.md` (probes R1 to R3 in `/home/fahimfarookme/.cache/jira-suite-merge-review/ledgerseal-followups-3/probes/`). Production (2.0.0) was deployed by the main session from master `c8be4c9`; this branch deploys to development only.
+
+### M-9. A run that read the record before its lease never writes an old record back
+
+- **What changed (`src/service/conversion.ts`):** after claiming the lease, `convertRecord` reads the record and the journal again; if either changed, it releases the lease and starts over (at most three attempts, then BUSY). The invalid-record branch checks, before its writes, that the run still holds the lease and that the record is the one it read; otherwise BUSY and no write. `stillCurrent` now reads the record and the next row first and the lease last, just before the writes it guards.
+- **Proof:** `test/review-followups.test.ts`, describe "M-9" (4): R1 (paused at its lease claim while a revoke converts and revokes: the late run gives ALREADY, the record stays SEAL_REVOKED with SEAL, REDACT, REVOKE, a later seal works), R2 (a revoke and a reseal while the late run waits are both kept), three restarts give BUSY, and the invalid branch writes nothing when the record changed. All four fail with master's `conversion.ts`.
+
+### L-14. Each guard has a test that fails without it
+
+| Guard removed | Test that fails (by its assertion, not a timeout) |
+|---|---|
+| re-read after the lease claim (M-9) | R1 |
+| check before the invalid-branch writes (M-9) | "the invalid-record branch writes nothing ..." |
+| lease holder check in `stillCurrent` | "at the re-check before the history rows: a lost lease means BUSY and no history write" |
+| re-check before the history rows | the same test (the stalled run writes history rows after a takeover) |
+| re-check before the final save | "at the re-check before the final save: a later revoke is never rolled back" (the record would go back to head 2, LS_SEALED) |
+| re-check before the assignments (M-7) | Q1 (earlier round) |
+
+- Residual, as before: each re-check and the write group after it are separate KVS calls. The final-save test shows the one write in flight when a lease is lost (an assignment) can still land; the record and the history keep the revoke.
+
+### L-15
+
+- `docs/launch/approved-ticket-problem.md`: check 4 says the verifier skips redaction entries; "(see the § 11.10e row)" matches the row label.
+- `site/apps/ledgerseal/open-verifier.md`: exit code 0 says what a PASS means and what it does not, as the public verifier README says.
+- **Site change needed (item 20):** `product/jira-governance/user-guide/open-verifier.html`, the exit-code text. Old: "All four verification stages passed. The evidence is authentic and untampered." (or the current five-stage text with the same sentence). New: "All five checks passed. The evidence file has not been changed since it was exported and signed, and it was signed with the private key that belongs to the public key you used. This does not show that nobody could have written a different, consistent record: Asymm Systems holds the signing key, and anyone who can rewrite the app's stored data, including the vendor, could write a new consistent chain."

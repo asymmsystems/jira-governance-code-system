@@ -59,7 +59,7 @@ PASS signature (ls-dev-2026-11)
 > This worked example uses the development key `ls-dev-2026-11`. Evidence exported from the Marketplace app names the production key `ls-prod-2026-11` in `attestation.keyId`: run `node verify-evidence.mjs <evidence.json> keys/ls-prod-2026-11.pub.pem`, and the signature line reads `PASS signature (ls-prod-2026-11)`.
 
 ### Exit Codes
-- `0`: All five verification stages passed. The evidence is authentic and untampered.
+- `0`: All five checks passed. The evidence file has not been changed since it was exported and signed, and it was signed with the private key that belongs to the public key you used. This does not show that nobody could have written a different, consistent record: Asymm Systems holds the signing key, and anyone who can rewrite the app's stored data, including the vendor, could write a new consistent chain.
 - `1`: One or more verification checks failed. The evidence has been tampered with or signature is invalid.
 - `2`: Command line usage error, missing argument, or file not found.
 
