@@ -12,14 +12,13 @@ import { queryAll } from './kvs-v2-exception';
 
 const PREFIX = 'fr:att:';
 
-/** The newer of two versions: the higher stateVersion, else the later issuedAt. */
+/** The newer of two versions: the later issuedAt when both have one (ADR-012 decision 7), else the higher stateVersion. */
 function newer(a: AttestationVersion | undefined, b: AttestationVersion | undefined): AttestationVersion | undefined {
   if (!a) return b;
   if (!b) return a;
-  if (typeof a.stateVersion === 'number' && typeof b.stateVersion === 'number' && a.stateVersion !== b.stateVersion) {
-    return a.stateVersion > b.stateVersion ? a : b;
-  }
-  return (b.issuedAt || '') > (a.issuedAt || '') ? b : a;
+  if (a.issuedAt && b.issuedAt) return b.issuedAt > a.issuedAt ? b : a;
+  if (typeof a.stateVersion === 'number' && typeof b.stateVersion === 'number') return b.stateVersion > a.stateVersion ? b : a;
+  return b.issuedAt ? b : a;
 }
 
 export class DefaultKvsAttestationHistoryAccessor implements AttestationHistoryAccessor {

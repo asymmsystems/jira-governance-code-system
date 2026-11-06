@@ -106,19 +106,27 @@ describe('M-1: an older signed record is a rollback', () => {
     expect(evaluateGates({ ...facts({ 'ledgerseal-cert': validEarlier }), attestationHistory: {} }, DEFAULT_CATALOG, sources).audit.state).toBe('FOUND');
   });
 
-  it('treats an old DefinitionGuard "complete" over a newer "open" as missing, by stateVersion', () => {
+  it('treats an old DefinitionGuard "complete" put back over a newer "open" as missing', () => {
     const history = { dod: { stateVersion: 5, issuedAt: '2026-11-06T09:30:00.000Z' } };
-    const old = { ...facts({ 'definitionguard-dod': sign(DG({ stateVersion: 3, issuedAt: '2026-11-06T09:59:00.000Z' }), 'dg-t') }), attestationHistory: history };
+    const old = { ...facts({ 'definitionguard-dod': sign(DG({ stateVersion: 3, issuedAt: '2026-11-06T09:00:00.000Z' }), 'dg-t') }), attestationHistory: history };
     expect(evaluateGates(old, DEFAULT_CATALOG, sources).process.reason).toBe('DOD_SIGNATURE_INVALID');
-    const same = { ...facts({ 'definitionguard-dod': sign(DG({ stateVersion: 5 }), 'dg-t') }), attestationHistory: history };
+    const same = { ...facts({ 'definitionguard-dod': sign(DG({ stateVersion: 5, issuedAt: '2026-11-06T09:30:00.000Z' }), 'dg-t') }), attestationHistory: history };
     expect(evaluateGates(same, DEFAULT_CATALOG, sources).process.state).toBe('FOUND');
-    expect(new DefaultGateEngine().verifiedVersions(same)).toEqual({ dod: { stateVersion: 5, issuedAt: '2026-11-06T09:00:00.000Z' } });
+    expect(new DefaultGateEngine().verifiedVersions(same)).toEqual({ dod: { stateVersion: 5, issuedAt: '2026-11-06T09:30:00.000Z' } });
   });
 
-  it('compares versions by stateVersion first, then issuedAt', () => {
+  it('N-2: accepts a genuine new record after DefinitionGuard starts counting again (lower stateVersion, later issuedAt)', () => {
+    const history = { dod: { stateVersion: 7, issuedAt: '2026-11-06T09:00:00.000Z' } };
+    const restarted = { ...facts({ 'definitionguard-dod': sign(DG({ stateVersion: 1, issuedAt: '2026-11-07T09:00:00.000Z' }), 'dg-t') }), attestationHistory: history };
+    expect(evaluateGates(restarted, DEFAULT_CATALOG, sources).process).toMatchObject({ state: 'FOUND', verification: 'VERIFIED' });
+    expect(verifiedVersions(restarted)).toEqual({ dod: { stateVersion: 1, issuedAt: '2026-11-07T09:00:00.000Z' } });
+  });
+
+  it('compares by issuedAt when both records carry it, else by stateVersion', () => {
     expect(isOlder({ stateVersion: 2 }, { stateVersion: 3 })).toBe(true);
-    expect(isOlder({ stateVersion: 4, issuedAt: 'a' }, { stateVersion: 3, issuedAt: 'b' })).toBe(false);
-    expect(isOlder({ stateVersion: 3, issuedAt: 'a' }, { stateVersion: 3, issuedAt: 'b' })).toBe(false);
+    expect(isOlder({ stateVersion: 3 }, { stateVersion: 3 })).toBe(false);
+    expect(isOlder({ stateVersion: 1, issuedAt: '2026-11-07' }, { stateVersion: 7, issuedAt: '2026-11-06' })).toBe(false);
+    expect(isOlder({ stateVersion: 9, issuedAt: '2026-11-05' }, { stateVersion: 7, issuedAt: '2026-11-06' })).toBe(true);
     expect(isOlder({ issuedAt: '2026-01-01' }, { issuedAt: '2026-01-02' })).toBe(true);
     expect(isOlder({ issuedAt: '2026-01-02' }, { issuedAt: '2026-01-02' })).toBe(false);
     expect(isOlder({}, { issuedAt: 'x' })).toBe(false);
@@ -133,11 +141,15 @@ describe('M-1: an older signed record is a rollback', () => {
     expect(await h.raise('1', { ledgerseal: { issuedAt: 'b' }, dod: { stateVersion: 2 } }, {})).toBe(true);
     expect(await h.raise('1', { ledgerseal: { issuedAt: 'a' }, dod: { stateVersion: 1 } }, await h.get('1'))).toBe(false);
     expect(await h.raise('1', { dod: { stateVersion: 4, issuedAt: 'z' } }, await h.get('1'))).toBe(true);
+    // N-2: a later issuedAt with a lower stateVersion (DefinitionGuard reinstalled) replaces the history.
+    expect(await h.raise('7', { dod: { stateVersion: 1, issuedAt: '2026-11-07' } }, { dod: { stateVersion: 7, issuedAt: '2026-11-06' } })).toBe(true);
+    expect(await h.get('7')).toEqual({ dod: { stateVersion: 1, issuedAt: '2026-11-07' } });
+    expect(await h.raise('8', { dod: { stateVersion: 2 } }, { dod: { stateVersion: 1 } })).toBe(true);
     expect(await h.get('1')).toEqual({ ledgerseal: { issuedAt: 'b' }, dod: { stateVersion: 4, issuedAt: 'z' } });
     await h.raise('2', { ledgerseal: { issuedAt: 'd' } }, {});
     expect(await h.raise('2', { ledgerseal: { issuedAt: 'c' } }, await h.get('2'))).toBe(false);
     expect((await h.listAll()).get('2')).toEqual({ ledgerseal: { issuedAt: 'd' } });
-    expect(Array.from((await h.listAll()).keys()).sort()).toEqual(['1', '2']);
+    expect(Array.from((await h.listAll()).keys()).sort()).toEqual(['1', '2', '7', '8']);
     expect(await h.raise('4', { dod: { stateVersion: 2 } }, { dod: { stateVersion: 2, issuedAt: 'x' } })).toBe(false);
     expect(await h.raise('5', { ledgerseal: {} }, { ledgerseal: {} })).toBe(false);
     expect(await h.raise('6', { ledgerseal: { issuedAt: 'b' } }, { ledgerseal: {} })).toBe(true);

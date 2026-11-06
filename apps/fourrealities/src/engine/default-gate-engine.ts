@@ -162,11 +162,14 @@ function stated(trust: Trust, positive: boolean, done: boolean, result: Omit<Gat
 /** True when a record is older than the newest verified record already seen on the issue (a rollback). */
 export function isOlder(record: AttestationVersion, seen: AttestationVersion | undefined): boolean {
   if (!seen) return false;
-  // DefinitionGuard numbers its states: the same number is the same record.
+  // A put-back record was always issued earlier. A lower DefinitionGuard stateVersion with a later
+  // issuedAt is a genuine new record after DefinitionGuard started counting again, for example
+  // after a reinstall (merge review N-2), so issuedAt decides when both records carry it.
+  if (record.issuedAt && seen.issuedAt) return record.issuedAt < seen.issuedAt;
   if (typeof record.stateVersion === 'number' && typeof seen.stateVersion === 'number') {
     return record.stateVersion < seen.stateVersion;
   }
-  return Boolean(record.issuedAt && seen.issuedAt && record.issuedAt < seen.issuedAt);
+  return false;
 }
 
 /** The version fields of a record, read defensively. */

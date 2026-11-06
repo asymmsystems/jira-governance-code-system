@@ -5,7 +5,7 @@
  * daily scheduled run (spec v2, Snapshot schedule). Orchestration only.
  */
 
-import { CallerContext, CHUNK_SIZE_HINT, IssueRow, ProjectDashboardView, ProjectSummary, ResolverResult, ScheduledRunResult, SiteConfig, SnapshotMeta, StoredSnapshot } from '../contract/data/models';
+import { IssueFacts, AttestationHistory, CallerContext, CHUNK_SIZE_HINT, IssueRow, ProjectDashboardView, ProjectSummary, ResolverResult, ScheduledRunResult, SiteConfig, SnapshotMeta, StoredSnapshot } from '../contract/data/models';
 import { AttestationHistoryAccessor, ConfluencePageCheckAccessor, ExceptionEventAccessor, JiraDirectoryAccessor, ReworkNoteAccessor, JiraIssueAccessor, SettingsAccessor, SiteConfigAccessor, SnapshotAccessor } from '../contract/accessors';
 import { ExceptionPolicyEngine, GateEngine, MetricsEngine, SnapshotEngine, SourcePolicyEngine } from '../contract/engines';
 import { DashboardManager, SnapshotManager } from '../contract/managers';
@@ -39,6 +39,10 @@ export interface SnapshotManagerDeps {
   now?: () => Date;
 }
 
+/** History writes run in parallel batches of this size (merge review N-1). */
+export const HISTORY_BATCH = 25;
+/** History writes may run this long past the build deadline, inside VIEW_RESERVE_MS. */
+export const HISTORY_GRACE_MS = 3_000;
 /** Time a page view keeps after building the snapshot: the KVS writes, the viewer check and the names (F-H2). */
 export const VIEW_RESERVE_MS = 7_000;
 /** Time the viewer check leaves before the end of the invocation. */
@@ -98,11 +102,6 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
       return this.d.snapshot.storedRow(this.d.metrics.buildRow(facts, gates));
     });
 
-    for (const f of search.facts) {
-      const seen = this.d.gates.verifiedVersions({ ...f, attestationHistory: history.get(f.issueId) || {} });
-      if (seen.dod || seen.ledgerseal) await this.d.history.raise(f.issueId, seen, history.get(f.issueId) || {});
-    }
-
     const summary = this.d.metrics.summarize(rows);
     const generatedAt = now().toISOString();
     const meta: SnapshotMeta = {
@@ -121,7 +120,22 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
     await this.d.snapshots.saveSnapshot(meta, rows, summary);
     await this.d.snapshots.recordTrendPoint(projectKey, this.d.snapshot.trendPoint(summary, generatedAt));
     await this.d.snapshots.deleteV1ProjectKeys(projectKey);
+    await this.raiseHistory(search.facts, history, deadline + HISTORY_GRACE_MS);
     return { ok: true, meta, rows, summary };
+  }
+
+  /**
+   * Stores the newest verified sibling record per issue (ADR-012 decision 7), after the snapshot is
+   * saved, in parallel batches, and only until the given time (merge review N-1). An issue not
+   * reached keeps its stored history; the next build or the daily run writes it.
+   */
+  private async raiseHistory(facts: IssueFacts[], history: Map<string, AttestationHistory>, until: number): Promise<void> {
+    const pending = facts
+      .map(f => ({ id: f.issueId, current: history.get(f.issueId) || {}, seen: this.d.gates.verifiedVersions({ ...f, attestationHistory: history.get(f.issueId) || {} }) }))
+      .filter(p => p.seen.dod || p.seen.ledgerseal);
+    for (let i = 0; i < pending.length && Date.now() < until; i += HISTORY_BATCH) {
+      await Promise.all(pending.slice(i, i + HISTORY_BATCH).map(p => this.d.history.raise(p.id, p.seen, p.current)));
+    }
   }
 
   /**

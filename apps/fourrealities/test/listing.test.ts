@@ -56,6 +56,8 @@ describe('FourRealities listing (BL-4)', () => {
     // Merge review H-1: an unverified record counts like no record; the listing must not say it is only left out.
     expect(listing).not.toMatch(/Reported, not verified|reported and not scored/);
     expect(listing).toContain('counts exactly like no record');
+    // Round 2 N-4: a changed, copied or older record is missing even before Done.
+    expect(listing).toContain('counts as evidence missing, also before Done');
     expect(fs.existsSync(path.join(ROOT, 'docs/marketplace/fourrealities-listing-v2.md'))).toBe(false);
     expect(manifest).toContain('title: FourRealities gate authority');
     expect(listing).toContain('FourRealities gate authority');
