@@ -73,13 +73,13 @@ CascadePlan is a planning tool. It can support compliance with change-management
 | **11 to 100 Users** | $1.50 per user / month | $15.00 per user / year |
 | **101 to 250 Users** | $1.20 per user / month | $12.00 per user / year |
 | **251 to 1,000 Users** | $0.90 per user / month | $9.00 per user / year |
-| **1,001+ Users** | Custom | Custom |
+| **1,001+ Users** | $0.90 per user / month | $9.00 per user / year |
 
 *All billing is handled natively through Atlassian.*
 
 ---
 
-## Highlights (images 580 x 330: `docs/marketplace/assets/cascadeplan/highlight-1.png` to `highlight-3.png`)
+## Highlights (images 1840 x 900: the Marketplace form needs at least 920 x 450, so the matching screenshots are used; `highlight-1.png` to `highlight-3.png` in `docs/marketplace/assets/cascadeplan/` are too small)
 
 1. **Start at 30%, not 100%.** A successor can start when its predecessor reaches a percent of its work. "Why this date?" names the link that sets the earliest start.
 2. **Move a story with its sub-tasks.** Work not started moves, work in progress keeps its start, finished work stays. Before you drop, CascadePlan lists every Jira change the drop will make.

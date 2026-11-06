@@ -115,13 +115,13 @@ DefinitionGuard provides records that support internal and external audits:
 | **11 to 100 Users** | $0.95 per user / month | $9.50 per user / year |
 | **101 to 250 Users** | $0.75 per user / month | $7.50 per user / year |
 | **251 to 1,000 Users** | $0.24 per user / month | $2.40 per user / year |
-| **More than 1,000 Users** | Custom price | Custom price |
+| **More than 1,000 Users** | $0.24 per user / month | $2.40 per user / year |
 
 *All billing is integrated directly into your Atlassian subscription.*
 
 ---
 
-## Highlights (images 580 x 330: `docs/marketplace/assets/definitionguard/highlight-1.png` to `highlight-3.png`)
+## Highlights (images 1840 x 900: the Marketplace form needs at least 920 x 450, so the matching screenshots are used; `highlight-1.png` to `highlight-3.png` in `docs/marketplace/assets/definitionguard/` are too small)
 
 1. **Evidence on the items that need it.** An item marked "Evidence required" is ticked only with a link (http or https), a note, or both. The app checks the link format, not what it points to.
 2. **The move to Done waits.** The DefinitionGuard DoD Enforcement validator blocks a move into a Done status while a mandatory item is open and not waived. A Jira admin adds it to each transition.
