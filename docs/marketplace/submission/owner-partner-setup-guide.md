@@ -24,6 +24,7 @@ Can it be a shared address such as sudo@asymm.systems? Not for these steps:
    | Website | https://asymm.systems |
    | Contact email | fahim@asymm.systems |
    | Support email or page | support@asymm.systems, https://asymm.systems/support |
+   | SLA statement URL | https://asymm.systems/support (it states the response times; after the next site release the Jira section is also at https://asymm.systems/support#jira-apps) |
    | Address | the company's registered address |
    | "Describe your organization in 750 characters or less" (shown on your partner page) | the text below (620 characters) |
 
