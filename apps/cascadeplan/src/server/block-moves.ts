@@ -19,7 +19,7 @@ import { SyncLog, conflictResult, getDefaultWeeks, gridFor, isIsoDate, openStore
 import { loadLive } from './jira-read';
 import { applyAcceptedDueDate, syncTaskToJira } from './jira-write';
 import { getProjectPlan, planFilterOf } from './plan-read';
-import { ancestorKeys, cascadeAndApply, followParentDueDates, withRollUps, writtenIssueIds } from './tasks';
+import { ancestorKeys, cascadeAndApply, followParentDueDates, refuseDependencyConflict, withRollUps, writtenIssueIds } from './tasks';
 
 /** Sub-tasks whose Jira dates one call writes; a larger block continues in continueBlockMove calls. */
 export const BLOCK_MOVE_LIMIT = 25;
@@ -34,10 +34,11 @@ export const BLOCK_MOVE_HARD_LIMIT = 500;
  * due date follows the new roll-up end (DEC-6), and successors outside the block are cascaded.
  */
 export async function moveTaskGroup(
-  payload: { projectKey: string; projectId?: string; planId?: string; taskId: string; days: number; expectedVersions?: Record<string, number>; reconcileIds?: string[] },
+  payload: { projectKey: string; projectId?: string; planId?: string; taskId: string; days: number; expectedVersions?: Record<string, number>; reconcileIds?: string[]; enforceDependencies?: boolean },
   storageProvider?: StorageProvider
 ): Promise<any> {
   const { projectKey, projectId, taskId, days } = payload;
+  if (payload.enforceDependencies !== undefined && typeof payload.enforceDependencies !== 'boolean') throw new ValidationError('enforceDependencies', 'enforceDependencies must be true or false');
   assertIssueKey(taskId, 'taskId');
   if (!Number.isInteger(days) || days === 0 || Math.abs(days) > 3660) throw new ValidationError('days', 'days must be a whole number of days, not 0, at most 3660 either way');
   const expected = payload.expectedVersions;
@@ -58,6 +59,11 @@ export async function moveTaskGroup(
   const members = all.filter(t => t.parentKey === parent.key);
   if (!parent.datesFromChildren || members.length === 0) throw new ValidationError('taskId', `${parent.key} has no dated sub-tasks. Move it directly.`);
   const { changes, fixed } = planBlockMove(members, days, todayIso());
+  // With "Enforce dependencies" on, each moving sub-task that has not started must meet its own links
+  // and its parents' links (N-06 rule 5, merge review L5), as the planner checks; else nothing moves.
+  if (payload.enforceDependencies === true) {
+    for (const c of changes) if (c.state === 'not-started') refuseDependencyConflict(c.key, c.toStart, plan.tasks, 'Nothing moved: ');
+  }
   const block = { moved: changes, fixed };
   if (changes.length === 0) {
     return Object.assign(plan, { ok: true, jiraSync: log.report(), block, message: `Nothing in ${parent.key} can move: ${fixed.map(f => `${f.key} ${f.reason}`).join('; ')}.` });

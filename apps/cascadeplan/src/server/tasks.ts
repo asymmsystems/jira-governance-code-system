@@ -15,6 +15,7 @@ import { PlannerEngine } from '../domain/planner-engine';
 import { describeJiraChanges } from '../domain/jira-change';
 import { applyLinkUpdate, contributorsFromNames } from '../domain/work-effort-links';
 import { formatSubtaskSummary } from '../ui/second-person';
+import { checkDependencyConflict } from '../ui/dependency-edit';
 import { evaluateEffort, cascade, addDays } from '../domain/schedule-engine';
 import { StorageProvider } from '../storage/plan-repository';
 import { PlanStore, StoredEntry, sequenceBetween } from '../storage/plan-store';
@@ -106,7 +107,7 @@ export async function scheduleBacklogTask(
  * Updates a task schedule, dates, effort, progress, or resource.
  */
 export async function updateWbsTask(
-  payload: { projectKey: string; projectId?: string; planId?: string; taskId: string; updates: Partial<WbsTask>; expectedVersion?: number; reconcileIds?: string[]; restore?: boolean; expectedDueDate?: string | null },
+  payload: { projectKey: string; projectId?: string; planId?: string; taskId: string; updates: Partial<WbsTask>; expectedVersion?: number; reconcileIds?: string[]; restore?: boolean; expectedDueDate?: string | null; enforceDependencies?: boolean },
   storageProvider?: StorageProvider,
   preloaded?: LiveData,
   options?: { skipResponse?: boolean }
@@ -117,6 +118,7 @@ export async function updateWbsTask(
   // new cascade runs; a cascade would move again a successor whose old dates broke a link (B-14).
   if (payload.restore !== undefined && typeof payload.restore !== 'boolean') throw new ValidationError('restore', 'restore must be true or false');
   const restoring = payload.restore === true;
+  if (payload.enforceDependencies !== undefined && typeof payload.enforceDependencies !== 'boolean') throw new ValidationError('enforceDependencies', 'enforceDependencies must be true or false');
   if (expectedVersion !== undefined && (!Number.isInteger(expectedVersion) || expectedVersion < 0)) {
     throw new ValidationError('expectedVersion', 'expectedVersion must be a whole number of at least 0');
   }
@@ -378,6 +380,13 @@ export async function updateWbsTask(
     }
   }
 
+  // N-06 rule 5 on the server (merge review L5): with "Enforce dependencies" on, a new start must meet
+  // the task's own links and the links into each of its ancestors (a parent's links bind its
+  // sub-tasks), as the planner checks before it sends the move. Refused before any write.
+  if (!restoring && payload.enforceDependencies === true && isIsoDate(sanitized.startDate) && sanitized.startDate !== targetTask.startDate) {
+    refuseDependencyConflict(targetTask.key, sanitized.startDate as string, plan.tasks);
+  }
+
   // Recalculate targetProgress if auto-target is active and dates were modified
   if (!targetTask.manualTargetProgress && sanitized.manualTargetProgress !== true && sanitized.targetProgress === undefined && (sanitized.startDate !== undefined || sanitized.endDate !== undefined)) {
     const s = sanitized.startDate || targetTask.startDate;
@@ -595,6 +604,18 @@ export function writtenIssueIds(log: { report: () => JiraSyncReport }, tasks: Ar
   const idByKey = new Map(tasks.map(t => [t.key, t.id]));
   const ids = log.report().writes.filter(w => w.ok).map(w => idByKey.get(w.key)).filter((id): id is string => !!id && /^\d+$/.test(id));
   return [...new Set(ids)].slice(0, 50);
+}
+
+/**
+ * Throws a validation error, before any write, when a start breaks a link that binds the task: its own
+ * incoming links or those of any ancestor (N-06 rule 5; a link from the task itself or below it does
+ * not bind it, rule 6). The same check the planner makes (src/ui/dependency-edit.ts).
+ */
+export function refuseDependencyConflict(key: string, startDate: string, tasks: WbsTask[], prefix = ''): void {
+  const c = checkDependencyConflict({ key, startDate }, tasks, todayIso());
+  if (!c.hasConflict) return;
+  const via = c.viaParent ? `its parent ${c.viaParent} depends on ${c.predKey}` : `it depends on ${c.predKey}`;
+  throw new ValidationError('startDate', `${prefix}${key} cannot start before ${c.earliestDate}: ${via} (${c.triggerPercent}%). Turn off "Enforce dependencies" to move it anyway.`);
 }
 
 /** Tasks in a dependency cycle are not moved by a cascade; each is reported (F-15). */

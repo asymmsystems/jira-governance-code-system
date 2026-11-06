@@ -8925,7 +8925,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     const expectedVersions = {};
     for (const c of plan.changes) expectedVersions[c.key] = findAnyTask(c.key) && findAnyTask(c.key).version || 0;
-    let res = await callResolver2("moveTaskGroup", { taskId: key, days, expectedVersions });
+    let res = await callResolver2("moveTaskGroup", { taskId: key, days, expectedVersions, enforceDependencies: enforce });
     const rest = res && Array.isArray(res.blockRemaining) ? res.blockRemaining : [];
     for (let i = 0; i < rest.length; i += 25) {
       const items = rest.slice(i, i + 25);
@@ -12931,7 +12931,8 @@ Click to manage or assign.`;
           taskId: key,
           updates,
           expectedVersion: task.version || 0,
-          expectedDueDate: task.jiraDueDate ? String(task.jiraDueDate).slice(0, 10) : null
+          expectedDueDate: task.jiraDueDate ? String(task.jiraDueDate).slice(0, 10) : null,
+          enforceDependencies: enforceDeps
         }, { before: undoBefore });
         if (res && Array.isArray(res.tasks)) {
           applyPlanInPlace(res);
@@ -13244,13 +13245,14 @@ Click to manage or assign.`;
     if (strip) strip.hidden = true;
     drawTimeline();
   }
-  async function commitDates(key, start, end) {
+  async function commitDates(key, start, end, opts = {}) {
     const task = findTask(key);
     const res = await callResolver2("updateWbsTask", {
       taskId: key,
       updates: { startDate: start, endDate: end },
       expectedVersion: task && task.version || 0,
-      expectedDueDate: task && task.jiraDueDate ? String(task.jiraDueDate).slice(0, 10) : null
+      expectedDueDate: task && task.jiraDueDate ? String(task.jiraDueDate).slice(0, 10) : null,
+      ...opts.enforce ? { enforceDependencies: true } : {}
     });
     timeline.drag = null;
     if (res && Array.isArray(res.tasks)) applyPlanInPlace(res);
@@ -13312,7 +13314,7 @@ Click to manage or assign.`;
           focusGridCell();
           return;
         }
-        await commitDates(key, finalStart, finalEnd);
+        await commitDates(key, finalStart, finalEnd, { enforce: true });
         announce(`Enforce dependencies: snapped ${key} start to ${conflict.earliestDate} to satisfy dependency on ${conflict.predKey}.`);
         focusGridCell();
         return;
@@ -13332,7 +13334,7 @@ Click to manage or assign.`;
         return;
       }
     }
-    await commitDates(key, finalStart, finalEnd);
+    await commitDates(key, finalStart, finalEnd, { enforce: isEnforceDepsEnabled() });
     announce(`Saved. ${key}: ${finalStart} to ${finalEnd}.`);
     focusGridCell();
   }

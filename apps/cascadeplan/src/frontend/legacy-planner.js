@@ -374,7 +374,7 @@ async function moveBlock(key, days) {
   }
   const expectedVersions = {};
   for (const c of plan.changes) expectedVersions[c.key] = (findAnyTask(c.key) && findAnyTask(c.key).version) || 0;
-  let res = await callResolver('moveTaskGroup', { taskId: key, days, expectedVersions });
+  let res = await callResolver('moveTaskGroup', { taskId: key, days, expectedVersions, enforceDependencies: enforce });
   // A block of more than 25 sub-tasks continues in batches of 25; the last batch runs the cascade.
   const rest = (res && Array.isArray(res.blockRemaining)) ? res.blockRemaining : [];
   for (let i = 0; i < rest.length; i += 25) {
@@ -4970,8 +4970,9 @@ function startBarPointerEdit(e, key, mode, hit) {
 
     try {
       // C3: the Jira due date this user saw; the server refuses the move when Jira changed it since.
+      // With "Enforce dependencies" on, the server checks the same links again before any write (L5).
       const res = await callResolver('updateWbsTask', { taskId: key, updates, expectedVersion: task.version || 0,
-        expectedDueDate: task.jiraDueDate ? String(task.jiraDueDate).slice(0, 10) : null }, { before: undoBefore });
+        expectedDueDate: task.jiraDueDate ? String(task.jiraDueDate).slice(0, 10) : null, enforceDependencies: enforceDeps }, { before: undoBefore });
       if (res && Array.isArray(res.tasks)) {
         applyPlanInPlace(res);
       } else {
@@ -5322,11 +5323,13 @@ function clearShiftPreview() {
 }
 
 /** One updateWbsTask call with exact dates and the version; the returned plan is used (B-13, B-14). */
-async function commitDates(key, start, end) {
+async function commitDates(key, start, end, opts = {}) {
   const task = findTask(key);
   // C3: the Jira due date this user saw; the server refuses the move when Jira changed it since.
+  // A move with "Enforce dependencies" on asks the server to check the links again (L5).
   const res = await callResolver('updateWbsTask', { taskId: key, updates: { startDate: start, endDate: end }, expectedVersion: (task && task.version) || 0,
-    expectedDueDate: (task && task.jiraDueDate) ? String(task.jiraDueDate).slice(0, 10) : null });
+    expectedDueDate: (task && task.jiraDueDate) ? String(task.jiraDueDate).slice(0, 10) : null,
+    ...(opts.enforce ? { enforceDependencies: true } : {}) });
   timeline.drag = null;
   if (res && Array.isArray(res.tasks)) applyPlanInPlace(res);
   else await loadProjectPlan();
@@ -5392,7 +5395,7 @@ async function onMoveKey(e) {
         focusGridCell();
         return;
       }
-      await commitDates(key, finalStart, finalEnd);
+      await commitDates(key, finalStart, finalEnd, { enforce: true });
       announce(`Enforce dependencies: snapped ${key} start to ${conflict.earliestDate} to satisfy dependency on ${conflict.predKey}.`);
       focusGridCell();
       return;
@@ -5413,7 +5416,7 @@ async function onMoveKey(e) {
     }
   }
 
-  await commitDates(key, finalStart, finalEnd);
+  await commitDates(key, finalStart, finalEnd, { enforce: isEnforceDepsEnabled() });
   announce(`Saved. ${key}: ${finalStart} to ${finalEnd}.`);
   focusGridCell();
 }
