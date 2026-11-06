@@ -296,6 +296,8 @@ export interface SnapshotMeta {
   shownCount: number;
   totalKnown: number | null;
   capped: boolean;
+  /** The build stopped at the time budget of a page view; the daily run reads the rest (F-H2). */
+  timedOut?: boolean;
   remoteLinksRead: number;
 }
 
@@ -307,7 +309,7 @@ export interface ProjectDashboardView {
   rows: IssueRow[];
   trend: TrendPoint[];
   /** How many issues were read, and how many the project has. */
-  coverage: { shown: number; totalKnown: number | null; capped: boolean };
+  coverage: { shown: number; totalKnown: number | null; capped: boolean; timedOut?: boolean };
   meta?: SnapshotMeta;
   warning?: string;
   /** The checks in use on this site (ADR-011). */
@@ -425,6 +427,8 @@ export interface ApprovalView {
 export interface ProjectSearchResult {
   facts: IssueFacts[];
   capped: boolean;
+  /** The read stopped at the time budget before the cap (F-H2). */
+  timedOut?: boolean;
   /** Exact count when not capped; approximate count when capped; null when unknown. */
   totalKnown: number | null;
   status?: number;

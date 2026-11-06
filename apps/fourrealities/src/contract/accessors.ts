@@ -37,7 +37,8 @@ export interface StorageProvider {
 /** Jira issue reads and user writes, bound to one principal (the user or the app). */
 export interface JiraIssueAccessor extends Accessor {
   searchProject(projectKey: string, config: SiteConfig, deadline: number): Promise<ProjectSearchResult>;
-  visibleIssueIds(projectKey: string, deadline: number): Promise<VisibleIds>;
+  /** Ids the caller can browse; stops early once every `wanted` id is seen (F-H2). */
+  visibleIssueIds(projectKey: string, deadline: number, wanted?: ReadonlySet<string>): Promise<VisibleIds>;
   readIssue(issueId: string, config: SiteConfig): Promise<{ status: number; facts?: IssueFacts }>;
   /** Remote links per issue id; an id is absent when its read failed or the deadline passed. */
   remoteLinks(issueIds: string[], deadline: number): Promise<Map<string, RemoteLink[]>>;

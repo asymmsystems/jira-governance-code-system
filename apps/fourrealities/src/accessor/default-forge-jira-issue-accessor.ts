@@ -41,14 +41,15 @@ export class DefaultForgeJiraIssueAccessor implements JiraIssueAccessor {
     return {
       facts: res.issues.map(iss => factsFromIssue(iss, options)),
       capped: res.capped,
+      ...(res.timedOut ? { timedOut: true } : {}),
       totalKnown: res.totalKnown,
       ...(res.status !== undefined ? { status: res.status } : {}),
       ...(res.error !== undefined ? { error: res.error } : {})
     };
   }
 
-  visibleIssueIds(projectKey: string, deadline: number): Promise<VisibleIds> {
-    return visibleIssueIds(projectKey, this.request, deadline);
+  visibleIssueIds(projectKey: string, deadline: number, wanted?: ReadonlySet<string>): Promise<VisibleIds> {
+    return visibleIssueIds(projectKey, this.request, deadline, wanted);
   }
 
   /** Reads the issue and its remote links. A remote-link read that fails gives no links. */

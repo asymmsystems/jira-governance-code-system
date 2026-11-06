@@ -35,8 +35,11 @@ import { DefaultKvsPersonalDataAccessor } from './accessor/default-kvs-personal-
 import { DefaultForgePrivacyAccessor } from './accessor/default-forge-privacy-accessor';
 import { DefaultExceptionManager } from './manager/default-exception-manager';
 
-/** Time a resolver may spend on Jira reads, inside the 25 s Forge limit. */
-export const RESOLVER_LINK_BUDGET_MS = 18_000;
+/**
+ * Time one resolver invocation may spend, from its start, inside the 25 s Forge limit. Every Jira
+ * read and the page view's own steps share this one deadline (F-H2).
+ */
+export const RESOLVER_LINK_BUDGET_MS = 20_000;
 /** Time the daily snapshot run may spend across all projects, inside its 600 s timeout. */
 export const SCHEDULED_BUDGET_MS = 540_000;
 
@@ -90,6 +93,7 @@ export function compose(storageProvider: StorageProvider | undefined, budgetMs: 
       jira: appJira,
       viewerJira: userJira,
       budgetMs,
+      deadline,
       siteConfig,
       snapshots: new DefaultKvsSnapshotAccessor(storage),
       notes,

@@ -394,3 +394,14 @@ describe('ADR-011, ADR-010: checks in use and reported records on the dashboard'
     expect(() => findButton(r.root, 'Show 1 missing Audit')).toThrow('No button');
   });
 });
+
+describe('F-H2: a page view that ran out of time says so', () => {
+  it('names the time limit and the daily snapshot instead of the cap', async () => {
+    const rows = [row('DEMO-1', { intent: F, process: NA, code: NA, audit: NA })];
+    let r: any;
+    await act(async () => { r = TestRenderer.create(<ProjectDashboard view={dashboard(rows, { coverage: { shown: 1, totalKnown: 3000, capped: true, timedOut: true } })} onRefresh={jest.fn()} />); });
+    expect(textOf(r.toJSON())).toContain('Showing 1 of about 3000 issues: the newest issues FourRealities could read in the time one page view has. The daily snapshot reads up to 2,000 issues; Refresh tries again now.');
+    await act(async () => { r = TestRenderer.create(<ProjectDashboard view={dashboard(rows, { coverage: { shown: 1, totalKnown: null, capped: true, timedOut: true } })} onRefresh={jest.fn()} />); });
+    expect(textOf(r.toJSON())).toContain('Showing 1 of an unknown number of issues: the newest');
+  });
+});

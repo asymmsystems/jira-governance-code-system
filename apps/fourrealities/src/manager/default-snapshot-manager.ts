@@ -16,7 +16,10 @@ export interface SnapshotManagerDeps {
   jira: JiraIssueAccessor;
   /** Jira as the viewer: used only to check which issues the viewer can browse. */
   viewerJira: JiraIssueAccessor;
+  /** Time of the whole invocation, from its start (F-H2). */
   budgetMs: number;
+  /** End of the whole invocation; the default is now plus budgetMs when the manager is built. */
+  deadline?: number;
   siteConfig: SiteConfigAccessor;
   snapshots: SnapshotAccessor;
   notes: ReworkNoteAccessor;
@@ -32,10 +35,18 @@ export interface SnapshotManagerDeps {
   now?: () => Date;
 }
 
+/** Time a page view keeps after building the snapshot: the KVS writes, the viewer check and the names (F-H2). */
+export const VIEW_RESERVE_MS = 7_000;
+/** Time the viewer check leaves before the end of the invocation. */
+export const VISIBLE_RESERVE_MS = 1_000;
+
 export class DefaultSnapshotManager implements SnapshotManager, DashboardManager {
   readonly serviceType = 'manager' as const;
+  private readonly deadline: number;
 
-  constructor(private readonly d: SnapshotManagerDeps) {}
+  constructor(private readonly d: SnapshotManagerDeps) {
+    this.deadline = d.deadline ?? Date.now() + d.budgetMs;
+  }
 
   /**
    * Reads the project from Jira, evaluates every issue, and stores the snapshot, the project
@@ -93,6 +104,7 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
       shownCount: rows.length,
       totalKnown: search.totalKnown,
       capped: search.capped,
+      ...(search.timedOut ? { timedOut: true } : {}),
       remoteLinksRead: links.size
     };
     await this.d.snapshots.saveSnapshot(meta, rows, summary);
@@ -113,8 +125,13 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
         result.skipped.push(projectKey);
         continue;
       }
-      const built = await this.build(projectKey, 'scheduled', deadline);
-      (built.ok ? result.built : result.failed).push(projectKey);
+      // One project's failure (for example a storage error) never stops the others (F-L1).
+      try {
+        const built = await this.build(projectKey, 'scheduled', deadline);
+        (built.ok ? result.built : result.failed).push(projectKey);
+      } catch {
+        result.failed.push(projectKey);
+      }
     }
     if (Date.now() < deadline) {
       result.signalsDeleted = await this.d.snapshots.deleteV1Signals();
@@ -142,15 +159,16 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
       stored = undefined;
     }
     if (!stored) {
-      // No account id in the snapshot (ADR-012).
-      const built = await this.build(projectKey, 'user', Date.now() + this.d.budgetMs);
+      // No account id in the snapshot (ADR-012). One deadline for the whole invocation; the build
+      // stops early enough to leave time for the writes and the viewer check (F-H2).
+      const built = await this.build(projectKey, 'user', this.deadline - VIEW_RESERVE_MS);
       if (!built.ok) {
         return built;
       }
       stored = { meta: built.meta, rows: built.rows };
     }
 
-    const visible = await this.d.viewerJira.visibleIssueIds(projectKey, Date.now() + this.d.budgetMs);
+    const visible = await this.d.viewerJira.visibleIssueIds(projectKey, this.deadline - VISIBLE_RESERVE_MS, new Set(stored.rows.map(r => r.issueId)));
     if (visible.status !== undefined) {
       return jiraError(visible.status, `FourRealities could not check which issues you can see (HTTP ${visible.status}).`);
     }
@@ -161,7 +179,7 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
       summary: this.d.metrics.summarize(rows),
       rows,
       trend: await this.d.snapshots.getTrend(projectKey),
-      coverage: { shown: stored.meta.shownCount, totalKnown: stored.meta.totalKnown, capped: stored.meta.capped },
+      coverage: { shown: stored.meta.shownCount, totalKnown: stored.meta.totalKnown, capped: stored.meta.capped, ...(stored.meta.timedOut ? { timedOut: true } : {}) },
       meta: stored.meta
     };
     // Names of the assignees, read as the viewer now and never stored (ADR-012).
