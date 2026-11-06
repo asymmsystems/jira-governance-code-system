@@ -108,7 +108,7 @@ with sync_playwright() as p:
 ok = (
     out['q1'] == f"{todo} is To Do in Jira. Also move it to In Progress?" and out['status_1'] == out['status_0']
     and (out['chip_1'] or '').startswith('30%')
-    and out['q2'] == out['q1'] and out['status_2'].endswith('/ indeterminate') and (out['chip_2'] or '').startswith('40%')
+    and out['q2'] == out['q1'] and out['status_2'].endswith('/ indeterminate') and (out['chip_2'] or '').startswith('40% | In progress')
     and out['status_3b'] == out['status_0'] and out['chip_3'] == out['chip_0']
     and out['done_status'].endswith('/ done') and (out['done_chip_before'] or '').startswith('100% | Done')
     and out['done_chip_after_digit'] == out['done_chip_before']

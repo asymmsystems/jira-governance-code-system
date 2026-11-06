@@ -148,6 +148,21 @@ describe('KVS holds app-owned data only (B-04)', () => {
     expect(res.tasks.find((t: any) => t.key === 'TEST-1').progress).toBe(100);
   });
 
+  it('the response shows a status Jira applied, although the search still returns the old one (INV-17)', async () => {
+    await storage.set('scheduleMap:TEST', { 'TEST-3': { startWeek: weeks[5].weekKey, spanWeeks: 1 } });
+    const base = mockRequestJira.getMockImplementation()!;
+    mockRequestJira.mockImplementation(async (routeStr: any, options?: any) => {
+      const url = String(routeStr);
+      if (url.endsWith('/transitions') && !options?.method) {
+        return { status: 200, json: async () => ({ transitions: [{ id: '21', name: 'Start', to: { statusCategory: { key: 'indeterminate' } } }] }) };
+      }
+      return base(routeStr, options);
+    });
+    const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-3', updates: { progress: 30, status: 'IN_PROGRESS' } });
+    expect(res.tasks.find((t: any) => t.key === 'TEST-3').status).toBe('IN_PROGRESS');
+    expect(res.jiraSync.writes.find((w: any) => w.key === 'TEST-3').fields).toContain('status');
+  });
+
   it('a progress edit that reopens a Done item in the same action is kept', async () => {
     await storage.set('scheduleMap:TEST', { 'TEST-1': { startWeek: weeks[5].weekKey, spanWeeks: 1 } });
     await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { progress: 40, status: 'IN_PROGRESS' } });
