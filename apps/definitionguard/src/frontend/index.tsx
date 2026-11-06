@@ -121,6 +121,12 @@ export const DefinitionGuardPanel: React.FC = () => {
 
   return (
     <AppSurface>
+      {vm?.licenceNotice && (
+        <SectionMessage appearance="warning" title="Licence not active">
+          <Text as="span">{vm.licenceNotice}</Text>
+        </SectionMessage>
+      )}
+
       {errorMessage && (
         <SectionMessage appearance="error" title="Not saved">
           <Text as="span">{errorMessage}</Text>

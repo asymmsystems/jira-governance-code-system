@@ -5,6 +5,7 @@
  * @author Fahim Farook
  */
 import { IssueChecklistState, ChecklistAuditEvent } from '../domain/models';
+import { LICENCE_GATE_OFF } from '../security/licence';
 
 /** Who completed an item, for rendering: a Jira user from the accountId, or v1 text. */
 export type Attribution = { kind: 'user'; accountId: string } | { kind: 'text'; text: string };
@@ -81,6 +82,8 @@ export interface PanelViewModel {
   progress: Lozenge;
   items: PanelItemView[];
   approverLine: string;
+  /** Set while the licence is inactive: the gate is off and changes are not saved (BL-4). */
+  licenceNotice?: string;
 }
 
 /** Formats the authorized approvers audit line. */
@@ -139,7 +142,8 @@ export function buildPanelViewModel(response: IssueChecklistState | null, format
     },
     progress: { text: `${done} of ${response.items.length} done`, appearance: done > 0 && done === response.items.length ? 'success' : 'default' },
     items,
-    approverLine: formatApproverLine(response.approverGroups)
+    approverLine: formatApproverLine(response.approverGroups),
+    ...(response.licenceInactive ? { licenceNotice: LICENCE_GATE_OFF } : {})
   };
 }
 

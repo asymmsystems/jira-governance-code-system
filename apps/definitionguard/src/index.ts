@@ -37,7 +37,7 @@ import {
   setApproverPolicyFlow
 } from './security/policy-admin';
 import { resolveTemplate } from './settings/template-store';
-import { assertLicensed, isLicenceInactive, VALIDATOR_LICENCE_INACTIVE } from './security/licence';
+import { assertLicensed, isLicenceInactive } from './security/licence';
 import { validateEvidence, EVIDENCE_REQUIRED } from './domain/evidence';
 import { publishAttestation } from './integrity/attestation';
 import { withRetry } from './jira/jira-client';
@@ -117,8 +117,10 @@ export async function validateTransition(payload: any, context?: any, storagePro
 }
 
 async function evaluateTransition(payload: any, context?: any, storageProvider?: StorageProvider) {
+  // BL-4: an inactive licence turns the gate off. The move goes through; the panel says why.
   if (isLicenceInactive(context)) {
-    return { result: false, errorMessage: VALIDATOR_LICENCE_INACTIVE };
+    console.log('DefinitionGuard: the licence is not active, so the gate let this move through.');
+    return { result: true };
   }
 
   const issueKey = payload?.issue?.key || payload?.issueKey;
@@ -293,7 +295,12 @@ export async function getIssueChecklist(_payload: any, context?: any, storagePro
     state = applyEntry(base, createEntry(base, await templateFor(storage, c), c.actorAccountId, new Date().toISOString()));
     state = { ...state, seq: 0 };
   }
-  return toPanelResponse(state);
+  return withLicenceNotice(toPanelResponse(state), context);
+}
+
+/** Adds the licence notice to a panel response when the licence is inactive (BL-4). */
+function withLicenceNotice(res: IssueChecklistState, context: any): IssueChecklistState {
+  return isLicenceInactive(context) ? { ...res, licenceInactive: true } : res;
 }
 
 /**

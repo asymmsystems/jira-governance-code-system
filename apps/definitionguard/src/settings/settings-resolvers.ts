@@ -12,7 +12,7 @@ import Resolver from '@forge/resolver';
 import { StorageProvider } from '../storage/checklist-repository';
 import { resolveStorage } from '../storage/forge-storage';
 import { checkProjectPermissions } from '../security/permissions';
-import { assertLicensed } from '../security/licence';
+import { assertLicensed, isLicenceInactive, LICENCE_GATE_OFF } from '../security/licence';
 import { TemplateStore } from './template-store';
 import { toTemplateView } from '../domain/dod-template';
 import { ChecklistTemplate } from '../domain/models';
@@ -76,7 +76,10 @@ export async function getSettings(_payload: any, context?: any, storageProvider?
   }
   const doneStatuses = await projectDoneStatuses(c.projectId);
   const config = await new ProjectConfigStore(storage).get(c.projectId);
-  return { projectId: c.projectId, projectKey: c.projectKey, issueTypes, templates, doneStatuses, exemptStatusIds: config?.exemptStatusIds || [] };
+  return {
+    projectId: c.projectId, projectKey: c.projectKey, issueTypes, templates, doneStatuses, exemptStatusIds: config?.exemptStatusIds || [],
+    ...(isLicenceInactive(context) ? { licenceNotice: LICENCE_GATE_OFF } : {})
+  };
 }
 
 export const EXEMPT_INVALID = 'Only Done-category statuses of this project can be exempt.';

@@ -85,6 +85,7 @@ export interface IssueChecklistState {
   openMandatoryTitles?: string[];  // v2 panel response: from the shared gate rule
   approverGroups?: string[];
   canApprove?: boolean;
+  licenceInactive?: boolean;       // panel response: the licence is not active, so the gate is off (BL-4)
 }
 
 export interface ProjectDoDConfig {
