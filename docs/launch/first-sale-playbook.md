@@ -1,3 +1,4 @@
+Superseded by docs/launch/go-to-market-plan.md on 2026-11-07; kept as a dated record.
 # First-Sale Playbook: Closing the First Paying Commercial Customer
 
 *Asymm Systems Commercial Operations Guide - Phase 5*

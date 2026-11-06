@@ -29,7 +29,7 @@ For every new mail:
    (cd apps/<app> && forge logs -e production --since 1d)
    ```
 
-6. **Record** the case in the pipeline table of `docs/launch/first-sale-playbook.md`, section 6, only with what the customer wrote to us.
+6. **Record** the case in the table of `docs/launch/go-to-market-plan.md`, section 4.3, only with what the customer wrote to us.
 
 ## 3. Severity
 
@@ -172,7 +172,7 @@ Source: CascadePlan guide sections 4 and 6; listing row "Percent-Trigger Depende
 
 ### R13. Refunds
 
-> Atlassian sells the app and handles refunds. Atlassian's policy: refunds for monthly cloud subscriptions are only available within the first paid month after the trial period; new annual cloud subscriptions can only be refunded within 30 days of the first purchase; renewals and upgrades cannot be refunded; Marketplace apps follow the same conditions. Please ask Atlassian through https://support.atlassian.com/contact/ (billing and licensing). For a request outside 30 days, Atlassian asks the vendor for approval; tell us your site and the app, and we will answer Atlassian.
+> Atlassian sells the app and handles refunds. Atlassian's policy: refunds for monthly cloud subscriptions are only available within the first paid month after the trial period; new annual cloud subscriptions can only be refunded within 30 days of the first purchase; renewals and upgrades cannot be refunded; Marketplace apps follow the same conditions. Please ask Atlassian through https://support.atlassian.com/contact/ (billing and licensing). For an exception outside 30 days, Atlassian asks you to reach out to the vendor for approval: write to us with your site and the app, and we will answer you.
 
 Source: Atlassian Purchasing & Licensing, "Can I get a refund?" (fetched 2026-11-07); Marketplace Partner Agreement section 8.3 (Atlassian handles refund requests for Paid-via-Atlassian apps) and section 4.5. A refund outside Atlassian's window is the owner's decision.
 

@@ -1,3 +1,4 @@
+Superseded by docs/launch/go-to-market-plan.md on 2026-11-07; kept as a dated record.
 # Asymm Systems Jira Governance Suite: End-to-End Launch & First Sale Playbook
 
 > **Target Goal:** Take the entire Asymm Systems Jira Suite (**LedgerSeal**, **DefinitionGuard**, **FourRealities**, **PlanShift**) from post-build to official Atlassian Marketplace publication, comprehensive hosted documentation, active community marketing, and securing the **first commercial paying sale**.

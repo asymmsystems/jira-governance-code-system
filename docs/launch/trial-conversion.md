@@ -37,7 +37,7 @@ Our privacy policy cites the same agreement (section 8.4(e)) on `https://asymm.s
 
 ### 1.3 Parts of `first-sale-playbook.md` that need consent first
 
-`docs/launch/first-sale-playbook.md` was written before this check. These parts are allowed **only** when the evaluator wrote to us first or consented; they must never be triggered by an install or evaluation seen in Marketplace reports:
+`docs/launch/first-sale-playbook.md` was written before this check. It is superseded by `docs/launch/go-to-market-plan.md` (2026-11-07), which is the current guidance; if any of its templates is reused, these parts are allowed **only** when the evaluator wrote to us first or consented; they must never be triggered by an install or evaluation seen in Marketplace reports:
 
 - Section 3, Step 1 "Detect Qualified Install" and Step 2 "Day 2 Concierge Welcome": the welcome opens with "I saw you recently installed LedgerSeal". Do not send it to an evaluator who has not written to us.
 - Section 4, the Day 7, 14, 21 and 28 nurture mails: only on an open thread with an evaluator who asked for help, and only with their consent to follow-ups.
@@ -67,7 +67,7 @@ Conversion has to come from the product, the listing, the documents and fast sup
 
 ## 3. Weekly metrics checklist
 
-Every Monday, about 30 minutes. Marketplace reports: log in to the Marketplace, profile menu, **Manage partner account**, **Reports** (https://developer.atlassian.com/platform/marketplace/reports/). The reports are Sales, Evaluations, Feedback, Cloud conversions, Cloud renewals, Cloud churn, and the data tables Licenses, Transactions and Feedback details. Atlassian's definitions (glossary, https://developer.atlassian.com/platform/marketplace/glossary-reports/, fetched 2026-11-07): conversion rate = "(Number of conversions to paid subscriptions) / (Number of evaluations due to expire) in the specified date range"; churn rate = "The number of subscriptions that were not renewed". Reports are not real time: read this week's numbers on Monday for the week before.
+Every Monday, about 30 minutes. Marketplace reports: log in to the Marketplace, profile menu, **Manage partner account**, **Reports** (https://developer.atlassian.com/platform/marketplace/reports/). The reports are Sales, Evaluations, Feedback, Cloud conversions, Cloud renewals, Cloud churn, and the data tables Licenses, Transactions and Feedback details. Atlassian's definitions (glossary, https://developer.atlassian.com/platform/marketplace/glossary-reports/, fetched 2026-11-07): conversion rate = "(Number of conversions to paid subscriptions) / (Number of evaluations due to expire) in the specified date range"; churn rate = "The number of subscriptions that were not renewed", calculated as "(Number of subscriptions not renewed)/ (Number of subscriptions due to be renewed)". Reports are not real time: read this week's numbers on Monday for the week before.
 
 Copy the numbers into the table below, one row per app per week.
 

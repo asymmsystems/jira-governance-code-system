@@ -1,3 +1,4 @@
+Superseded by docs/launch/go-to-market-plan.md on 2026-11-07; kept as a dated record.
 # LEVEL 99 MASTER OPERATIONAL PROMPT: ASYMM SYSTEMS JIRA GOVERNANCE SUITE END-TO-END LAUNCH & FIRST PAID SALE
 
 > **Mission Objective:** Take the entire Asymm Systems Jira Governance Suite (**LedgerSeal**, **DefinitionGuard**, **FourRealities**, **PlanShift**) from post-build and live in-Jira verification through to official Atlassian Marketplace publication, comprehensive hosted documentation authoring and publishing (`docs.asymm.systems`), active technical inbound marketing, and securing the **first commercial paying sale**.
