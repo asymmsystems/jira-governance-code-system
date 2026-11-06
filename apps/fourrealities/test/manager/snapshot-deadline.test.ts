@@ -23,7 +23,8 @@ function manager(o: { deadline: number; storage?: MemoryStorage; searchProject?:
     serviceType: 'accessor',
     searchProject: o.searchProject || jest.fn().mockResolvedValue({ facts: [makeFacts({ issueId: '1', issueKey: 'PAY-1' })], capped: true, timedOut: true, totalKnown: 3000 }),
     remoteLinks: jest.fn().mockResolvedValue(new Map()),
-    visibleIssueIds: jest.fn().mockResolvedValue({ ids: new Set(['1']), complete: true })
+    visibleIssueIds: jest.fn().mockResolvedValue({ ids: new Set(['1']), complete: true }),
+    hasAnyPermission: jest.fn().mockResolvedValue({ status: 200, granted: true })
   };
   const storage = o.storage || new MemoryStorage();
   const m = new DefaultSnapshotManager({
@@ -52,7 +53,8 @@ describe('F-H2: one deadline for the whole page view', () => {
     expect(jira.remoteLinks.mock.calls[0][1]).toBe(deadline - VIEW_RESERVE_MS);
     expect(jira.visibleIssueIds.mock.calls[0][1]).toBe(deadline - VISIBLE_RESERVE_MS);
     expect(Array.from(jira.visibleIssueIds.mock.calls[0][2])).toEqual(['1']);
-    expect(res.coverage).toEqual({ shown: 1, totalKnown: 3000, capped: true, timedOut: true });
+    // MK-02 Q3: the project's own approximate count (3000) includes issues this viewer may not see.
+    expect(res.coverage).toEqual({ shown: 1, totalKnown: null, capped: true, timedOut: true });
   });
 
   it('uses now plus the budget when no deadline is given', async () => {

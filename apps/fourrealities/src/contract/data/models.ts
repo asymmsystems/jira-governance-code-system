@@ -106,6 +106,11 @@ export interface GateResult {
   method?: string;
   /** What was seen: a link, an issue key, a certificate id, a hash or a count. */
   evidenceRef?: string;
+  /**
+   * The Confluence page id of an Intent link that FourRealities has not checked. The dashboard
+   * checks it as the viewer when the page is shown (MK-02 Q3); the snapshot never checks it as the app.
+   */
+  pageId?: string;
 }
 
 export type IssueGates = Record<GateName, GateResult>;
@@ -322,10 +327,12 @@ export interface ProjectDashboardView {
   generatedAt: string;
   summary: ProjectSummary;
   rows: IssueRow[];
+  /** Empty, with trendWithheld set, when the trend counts an issue the viewer cannot browse (MK-02 Q3). */
   trend: TrendPoint[];
-  /** How many issues were read, and how many the project has. */
+  /** Why the trend is not shown to this viewer. */
+  trendWithheld?: string;
+  /** How many issues this viewer is shown, and how many of the project's issues this viewer can see. */
   coverage: { shown: number; totalKnown: number | null; capped: boolean; timedOut?: boolean };
-  meta?: SnapshotMeta;
   warning?: string;
   /** The checks in use on this site (ADR-013). */
   sources?: SourcesInUse;

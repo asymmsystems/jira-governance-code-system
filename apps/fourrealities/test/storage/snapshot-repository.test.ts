@@ -66,17 +66,32 @@ describe('SnapshotRepository snapshots', () => {
 describe('SnapshotRepository trend, registry and migration', () => {
   it('keeps one trend point per week, sorted, at most 52', async () => {
     const repo = new SnapshotRepository(new MemoryStorage());
-    await repo.recordTrendPoint('DEMO', point('2026-10-26', 40));
-    await repo.recordTrendPoint('DEMO', point('2026-10-19', 30));
-    await repo.recordTrendPoint('DEMO', point('2026-10-26', 45));
+    await repo.recordTrendPoint('DEMO', point('2026-10-26', 40), ['1'], false);
+    await repo.recordTrendPoint('DEMO', point('2026-10-19', 30), ['1'], false);
+    await repo.recordTrendPoint('DEMO', point('2026-10-26', 45), ['1'], false);
     expect((await repo.getTrend('DEMO')).map(p => [p.weekStart, p.averageRAI])).toEqual([['2026-10-19', 30], ['2026-10-26', 45]]);
     for (let i = 0; i < 60; i++) {
       const d = new Date(Date.UTC(2025, 0, 6 + i * 7)).toISOString().slice(0, 10);
-      await repo.recordTrendPoint('DEMO', point(d, i));
+      await repo.recordTrendPoint('DEMO', point(d, i), ['1'], false);
     }
     const trend = await repo.getTrend('DEMO');
     expect(trend).toHaveLength(MAX_TREND_POINTS);
     expect(trend[trend.length - 1].weekStart > trend[0].weekStart).toBe(true);
+  });
+
+  it('MK-02 Q3: stores the ids the newest point counts, and a restart drops the earlier points', async () => {
+    const storage = new MemoryStorage();
+    const repo = new SnapshotRepository(storage);
+    expect(await repo.getTrendIssueIds('DEMO')).toBeUndefined();
+    await repo.recordTrendPoint('DEMO', point('2026-10-19', 30), ['1', '2'], false);
+    await repo.recordTrendPoint('DEMO', point('2026-10-26', 40), ['1', '2', '3'], false);
+    expect(await repo.getTrendIssueIds('DEMO')).toEqual(['1', '2', '3']);
+    expect((await repo.getTrend('DEMO')).map(p => p.weekStart)).toEqual(['2026-10-19', '2026-10-26']);
+    await repo.recordTrendPoint('DEMO', point('2026-11-02', 50), ['1', '3'], true);
+    expect((await repo.getTrend('DEMO')).map(p => p.weekStart)).toEqual(['2026-11-02']);
+    expect(await repo.getTrendIssueIds('DEMO')).toEqual(['1', '3']);
+    await storage.set('fr:p:DEMO:trend-ids', 'not a list');
+    expect(await repo.getTrendIssueIds('DEMO')).toBeUndefined();
   });
 
   it('computes the Monday (UTC) that starts the ISO week', () => {

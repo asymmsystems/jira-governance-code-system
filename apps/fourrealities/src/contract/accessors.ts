@@ -60,8 +60,11 @@ export interface SiteConfigAccessor extends Accessor {
 export interface SnapshotAccessor extends Accessor {
   saveSnapshot(meta: SnapshotMeta, rows: IssueRow[], summary: ProjectSummary): Promise<void>;
   loadSnapshot(projectKey: string): Promise<StoredSnapshot | undefined>;
-  recordTrendPoint(projectKey: string, point: TrendPoint): Promise<void>;
+  /** Adds the point (one per ISO week) and stores the ids of the issues it counts; restart drops the earlier points. */
+  recordTrendPoint(projectKey: string, point: TrendPoint, issueIds: string[], restart: boolean): Promise<void>;
   getTrend(projectKey: string): Promise<TrendPoint[]>;
+  /** The ids of the issues the newest trend point counts; undefined for a trend stored before 2.1. */
+  getTrendIssueIds(projectKey: string): Promise<string[] | undefined>;
   registerProject(projectKey: string): Promise<void>;
   listProjects(): Promise<string[]>;
   deleteV1ProjectKeys(projectKey: string): Promise<void>;

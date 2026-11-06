@@ -14,7 +14,7 @@ import { jiraError, messageOf } from '../contract/data/errors';
 export interface SnapshotManagerDeps {
   /** Jira as the app: builds the shared snapshot. */
   jira: JiraIssueAccessor;
-  /** Jira as the viewer: used only to check which issues the viewer can browse. */
+  /** Jira as the viewer: the viewer's Browse projects permission and the issues the viewer can browse. */
   viewerJira: JiraIssueAccessor;
   /** Time of the whole invocation, from its start (F-H2). */
   budgetMs: number;
@@ -30,7 +30,7 @@ export interface SnapshotManagerDeps {
   snapshot: SnapshotEngine;
   settings: SettingsAccessor;
   sources: SourcePolicyEngine;
-  /** Confluence as the app: checks that linked pages exist (F-H4). */
+  /** Confluence as the viewer: checks that the linked pages shown exist (F-H4, MK-02 Q3). Never as the app. */
   confluence: ConfluencePageCheckAccessor;
   /** The newest verified sibling records seen per issue (ADR-012, rollback). */
   history: AttestationHistoryAccessor;
@@ -48,6 +48,10 @@ export const VIEW_RESERVE_MS = 7_000;
 /** Time the viewer check leaves before the end of the invocation. */
 export const VISIBLE_RESERVE_MS = 1_000;
 
+export const BROWSE_DENIED = 'FourRealities: you need the Browse projects Jira permission on this project to see its dashboard.';
+export const BROWSE_CHECK_FAILED = 'FourRealities could not check your Jira permissions for this project, so nothing is shown. Refresh to try again.';
+export const TREND_WITHHELD = 'The trend counts issues of this project that you cannot see, so it is not shown to you.';
+
 export class DefaultSnapshotManager implements SnapshotManager, DashboardManager {
   readonly serviceType = 'manager' as const;
   private readonly deadline: number;
@@ -60,6 +64,9 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
    * Reads the project from Jira, evaluates every issue, and stores the snapshot, the project
    * summary and this week's trend point. Started issues get their remote links read inside the
    * deadline; an issue not reached keeps its previous Intent result, else it needs a re-check.
+   * Linked Confluence pages are not checked here: the view checks them as the viewer (MK-02 Q3).
+   * A trend point is recorded only for a complete read (not capped, not timed out), with the ids of
+   * the issues it counts; when an issue the trend counts has left the project, the trend restarts.
    */
   async build(projectKey: string, generatedBy: string, deadline: number): Promise<ResolverResult<{ meta: SnapshotMeta; rows: IssueRow[]; summary: ProjectSummary }>> {
     const now = this.d.now || (() => new Date());
@@ -86,7 +93,7 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
     const events = await this.d.events.listAll();
     const previous = new Map((await this.d.snapshots.loadSnapshot(projectKey))?.rows.map(r => [r.issueId, r]) || []);
     const started = search.facts.filter(f => f.started).map(f => f.issueId);
-    const links = await this.d.confluence.checkPages(await this.d.jira.remoteLinks(started, deadline), deadline);
+    const links = await this.d.jira.remoteLinks(started, deadline);
 
     const rows = search.facts.map(base => {
       const id = base.issueId;
@@ -118,7 +125,12 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
       remoteLinksRead: links.size
     };
     await this.d.snapshots.saveSnapshot(meta, rows, summary);
-    await this.d.snapshots.recordTrendPoint(projectKey, this.d.snapshot.trendPoint(summary, generatedAt));
+    if (!search.capped) {
+      const ids = rows.map(r => r.issueId);
+      const stored = await this.d.snapshots.getTrend(projectKey);
+      const restart = !this.d.snapshot.continuesTrend(await this.d.snapshots.getTrendIssueIds(projectKey), stored.length, ids);
+      await this.d.snapshots.recordTrendPoint(projectKey, this.d.snapshot.trendPoint(summary, generatedAt), ids, restart);
+    }
     await this.d.snapshots.deleteV1ProjectKeys(projectKey);
     await this.raiseHistory(search.facts, history, deadline + HISTORY_GRACE_MS);
     return { ok: true, meta, rows, summary };
@@ -168,12 +180,29 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
 
   /**
    * Reads the stored snapshot and builds one only when none exists (or on refresh); a page
-   * view never writes trend history. Each viewer sees only the issues they can browse (FR-18).
+   * view never writes trend history. Every number shown covers only issues the viewer can browse
+   * (FR-18, MK-02 Q3): first the viewer's Browse projects permission on the project is checked as
+   * the viewer with the permissions REST API (fail closed), before anything is read or built as the
+   * app; then the rows, the summary and the coverage come from the issues the viewer's own search
+   * returns; the trend is shown only when the viewer can browse every issue it counts; and linked
+   * Confluence pages are checked as the viewer.
    */
   async view(caller: CallerContext, rebuild: boolean): Promise<ResolverResult<ProjectDashboardView>> {
     const projectKey = caller.projectKey;
     if (!projectKey) {
       return { ok: false, error: { code: 'INVALID_INPUT', message: 'FourRealities: open this page from a Jira project.' } };
+    }
+    let browse: { status: number; granted: boolean };
+    try {
+      browse = await this.d.viewerJira.hasAnyPermission(projectKey, ['BROWSE_PROJECTS']);
+    } catch {
+      browse = { status: 0, granted: false };
+    }
+    if (browse.status !== 200) {
+      return jiraError(browse.status || undefined, BROWSE_CHECK_FAILED);
+    }
+    if (!browse.granted) {
+      return { ok: false, error: { code: 'FORBIDDEN', message: BROWSE_DENIED } };
     }
     await this.d.snapshots.registerProject(projectKey);
 
@@ -193,19 +222,31 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
       stored = { meta: built.meta, rows: built.rows };
     }
 
-    const visible = await this.d.viewerJira.visibleIssueIds(projectKey, this.deadline - VISIBLE_RESERVE_MS, new Set(stored.rows.map(r => r.issueId)));
+    const trendIds = await this.d.snapshots.getTrendIssueIds(projectKey);
+    const wanted = new Set([...stored.rows.map(r => r.issueId), ...(trendIds || [])]);
+    const visible = await this.d.viewerJira.visibleIssueIds(projectKey, this.deadline - VISIBLE_RESERVE_MS, wanted);
     if (visible.status !== undefined) {
       return jiraError(visible.status, `FourRealities could not check which issues you can see (HTTP ${visible.status}).`);
     }
-    const rows = this.d.snapshot.visibleRows(stored.rows, visible.ids);
+    const shownRows = this.d.snapshot.visibleRows(stored.rows, visible.ids);
+    const rows = this.d.snapshot.withCheckedPages(shownRows, await this.checkPages(shownRows));
+    const seesTrend = Boolean(trendIds) && trendIds!.every(id => visible.ids.has(id));
+    const { capped, timedOut } = stored.meta;
     const view: ProjectDashboardView = {
       projectKey,
       generatedAt: stored.meta.generatedAt,
       summary: this.d.metrics.summarize(rows),
       rows,
-      trend: await this.d.snapshots.getTrend(projectKey),
-      coverage: { shown: stored.meta.shownCount, totalKnown: stored.meta.totalKnown, capped: stored.meta.capped, ...(stored.meta.timedOut ? { timedOut: true } : {}) },
-      meta: stored.meta
+      trend: seesTrend ? await this.d.snapshots.getTrend(projectKey) : [],
+      ...(seesTrend || !trendIds ? {} : { trendWithheld: TREND_WITHHELD }),
+      coverage: {
+        shown: rows.length,
+        // Counted from the issues this viewer is shown. A capped read does not hold every issue, and
+        // the project's own count includes issues the viewer may not see, so the total is unknown.
+        totalKnown: capped ? null : rows.length,
+        capped,
+        ...(timedOut ? { timedOut: true } : {})
+      }
     };
     // Names of the assignees, read as the viewer now and never stored (ADR-014).
     const assignees = Array.from(new Set(rows.map(r => r.assigneeAccountId).filter((id): id is string => Boolean(id))));
@@ -226,5 +267,16 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
       view.warning = 'FourRealities could not finish checking which issues you can see. Only the issues it checked are shown.';
     }
     return { ok: true, ...view };
+  }
+
+  /** The page ids found by the viewer's Confluence search, or null when it could not be asked. */
+  private async checkPages(rows: IssueRow[]): Promise<Set<string> | null> {
+    const ids = this.d.snapshot.pagesToCheck(rows);
+    if (ids.length === 0) return new Set();
+    try {
+      return await this.d.confluence.existingPages(ids, this.deadline - VISIBLE_RESERVE_MS);
+    } catch {
+      return null;
+    }
   }
 }

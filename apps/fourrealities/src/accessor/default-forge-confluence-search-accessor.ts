@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
- * FourRealities: Confluence search accessor using Forge requestConfluence.
+ * FourRealities: Confluence search accessor using Forge requestConfluence, as the user.
  */
 
 import api, { route, Route } from '@forge/api';
@@ -42,11 +42,14 @@ export class DefaultForgeConfluenceSearchAccessor implements ConfluencePageSearc
 
   private readonly requester: ConfluenceRequester;
 
-  /** 'user' (the search and the panel check) or 'app' (the snapshot check), or a requester for tests. */
-  constructor(principal: ConfluenceRequester | 'user' | 'app' = 'user') {
+  /**
+   * Always as the user: the search, the panel check and the dashboard check (MK-02 Q3). Confluence
+   * is never read as the app. A requester replaces it in tests.
+   */
+  constructor(principal: ConfluenceRequester | 'user' = 'user') {
     this.requester = typeof principal === 'function'
       ? principal
-      : (r: Route) => (principal === 'app' ? api.asApp() : api.asUser()).requestConfluence(r);
+      : (r: Route) => api.asUser().requestConfluence(r);
   }
 
   async searchPages(query: string): Promise<{ readonly ok: boolean; readonly pages: ConfluencePage[]; readonly error?: string }> {

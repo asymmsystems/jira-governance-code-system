@@ -52,9 +52,22 @@ const mockDefaultApp = async (...args: any[]) => {
   }
   return res;
 };
-const mockDefaultUser = (...args: any[]) => (String(args[0]).includes('fields=id')
-  ? Promise.resolve({ status: 200, json: async () => ({ issues: mockSeen.ids.map(id => ({ id })), isLast: true }) })
-  : mockRequestJira(...args));
+// The dashboard's Browse projects check (MK-02 Q3) is answered by mockBrowse: granted by default,
+// denied, or an HTTP status. It never takes a queued mockRequestJira response.
+const mockBrowse: { answer: boolean | number } = { answer: true };
+const mockDefaultUser = (...args: any[]) => {
+  const path = String(args[0]);
+  if (path.startsWith('/rest/api/3/mypermissions?projectKey=') && path.endsWith('&permissions=BROWSE_PROJECTS')) {
+    return Promise.resolve(typeof mockBrowse.answer === 'number'
+      ? { status: mockBrowse.answer, json: async () => ({}) }
+      : { status: 200, json: async () => ({ permissions: { BROWSE_PROJECTS: { havePermission: mockBrowse.answer } } }) });
+  }
+  return path.includes('fields=id')
+    ? Promise.resolve({ status: 200, json: async () => ({ issues: mockSeen.ids.map(id => ({ id })), isLast: true }) })
+    : mockRequestJira(...args);
+};
+/** A user requester that still answers the Browse projects check, for tests that replace the rest. */
+const withBrowse = (fn: (...args: any[]) => any) => (...args: any[]) => (String(args[0]).startsWith('/rest/api/3/mypermissions?projectKey=') ? mockDefaultUser(...args) : fn(...args));
 const mockAppRequestJira = jest.fn(mockDefaultApp);
 const mockUserRequestJira = jest.fn(mockDefaultUser);
 const mockAppRequestConfluence = jest.fn().mockResolvedValue({ status: 403, json: async () => ({}) });
@@ -1013,8 +1026,8 @@ describe('B-15: Intent from link structure on both views', () => {
     const remoteCalls = mockAppRequestJira.mock.calls.map(c => String(c[0])).filter(p => p.endsWith('/remotelink'));
     expect(remoteCalls).toEqual(['/rest/api/3/issue/50001/remotelink']);
     const byKey = Object.fromEntries(dash.rows.map((r: any) => [r.issueKey, r.gates.intent]));
-    // F-H4: the link carries no page id, so the page is not checked: "link only".
-    expect(judged(byKey['DEMO-50'])).toEqual({ state: 'FOUND', verification: 'LINK_ONLY', reason: 'INTENT_CONFLUENCE_LINK', args: { title: 'ADR-7 Settlement' } });
+    // F-H4: the viewer's Confluence search does not return page 1, so the link is "link only".
+    expect(judged(byKey['DEMO-50'])).toEqual({ state: 'FOUND', verification: 'LINK_ONLY', reason: 'INTENT_CONFLUENCE_LINK', args: { title: 'ADR-7 Settlement' }, pageId: '1' });
     expect(byKey['DEMO-51']).toEqual({ state: 'NOT_APPLICABLE', reason: 'NOT_STARTED' });
 
     const panel: any = await getIssueAlignment({}, { extension: { issue: { id: '50001', key: 'DEMO-50' } } }, new MockStorage());
@@ -1030,11 +1043,13 @@ describe('B-15: Intent from link structure on both views', () => {
       return { status: 404, json: async () => ({}) };
     });
     const found = { status: 200, json: async () => ({ results: [{ id: '777', title: 'ADR-9' }] }) };
-    mockAppRequestConfluence.mockResolvedValueOnce(found);
+    mockUserRequestConfluence.mockResolvedValueOnce(found);
     mockUserRequestConfluence.mockResolvedValueOnce(found);
     const dash: any = await getProjectDashboard({}, { extension: { project: { key: 'DEMO' } } }, new MockStorage());
     expect(dash.rows[0].gates.intent).toMatchObject({ state: 'FOUND', verification: 'VERIFIED' });
-    expect(decodeURIComponent(String(mockAppRequestConfluence.mock.calls[mockAppRequestConfluence.mock.calls.length - 1][0]))).toContain('cql=id in (777)');
+    // MK-02 Q3: the page is checked as the viewer, never as the app.
+    expect(mockAppRequestConfluence).not.toHaveBeenCalled();
+    expect(decodeURIComponent(String(mockUserRequestConfluence.mock.calls[mockUserRequestConfluence.mock.calls.length - 1][0]))).toContain('cql=id in (777)');
     const panel: any = await getIssueAlignment({}, { extension: { issue: { id: '50001', key: 'DEMO-50' } } }, new MockStorage());
     expect(panel.row.gates.intent).toMatchObject({ state: 'FOUND', verification: 'VERIFIED' });
     mockUserRequestConfluence.mockResolvedValueOnce({ status: 200, json: async () => ({ results: [] }) });
@@ -1084,7 +1099,8 @@ describe('B-09: the dashboard reads every issue once, up to the cap', () => {
   it('reports the cap and the approximate total above 2,000 issues', async () => {
     pagedJira(2050);
     const res: any = await getProjectDashboard({}, { extension: { project: { key: 'DEMO' } } }, new MockStorage());
-    expect(res.coverage).toEqual({ shown: 2000, totalKnown: 2050, capped: true });
+    // MK-02 Q3: the project's approximate count (2050) includes issues the viewer may not see.
+    expect(res.coverage).toEqual({ shown: 2000, totalKnown: null, capped: true });
   });
 
   it('retries a 429 from the search and then succeeds', async () => {
@@ -1119,15 +1135,16 @@ describe('B-08: bounded storage and a scheduled snapshot', () => {
     const first: any = await getProjectDashboard({}, ctx, storage);
     expect(first.ok).toBe(true);
     // ADR-014: no account id in the snapshot.
-    expect(first.meta.generatedBy).toBe('user');
+    expect((await storage.get('fr:p:DEMO:meta')).generatedBy).toBe('user');
     expect(await storage.get('fr:projects')).toEqual(['DEMO']);
     const jiraCalls = mockAppRequestJira.mock.calls.length;
     storage.ops = [];
     const second: any = await getProjectDashboard({}, ctx, storage);
     expect(second.rows).toHaveLength(250);
     expect(mockAppRequestJira.mock.calls.length).toBe(jiraCalls);
-    // Meta, chunks, trend, projects, plus the settings, the detection and the site configuration (ADR-013).
-    expect(storage.count('get')).toBeLessThanOrEqual(6 + Math.ceil(250 / 100));
+    // Meta, chunks, trend, the trend's issue ids (MK-02 Q3), projects, plus the settings, the detection
+    // and the site configuration (ADR-013).
+    expect(storage.count('get')).toBeLessThanOrEqual(7 + Math.ceil(250 / 100));
     expect(storage.count('set')).toBe(0);
     expect(second.generatedAt).toBe(first.generatedAt);
     expect(second.coverage).toEqual({ shown: 250, totalKnown: 250, capped: false });
@@ -1264,11 +1281,12 @@ describe('B-13: dashboard rows respect the viewer', () => {
     mockAppRequestJira.mockImplementation(async (path: string) => (path.startsWith('/rest/api/3/search/jql')
       ? { status: 200, json: async () => ({ issues: all, isLast: true }) }
       : { status: 404, json: async () => ({}) }));
-    mockUserRequestJira.mockImplementation(async () => ({ status: 200, json: async () => ({ issues: [{ id: '90001' }, { id: '90003' }], isLast: true }) }));
+    mockUserRequestJira.mockImplementation(withBrowse(async () => ({ status: 200, json: async () => ({ issues: [{ id: '90001' }, { id: '90003' }], isLast: true }) })));
     const res: any = await getProjectDashboard({}, ctx, seeded());
     expect(res.rows.map((r: any) => r.issueKey)).toEqual(['DEMO-1', 'DEMO-3']);
     expect(res.summary.totalIssues).toBe(2);
-    expect(String(mockUserRequestJira.mock.calls[0][0])).toContain('fields=id');
+    expect(String(mockUserRequestJira.mock.calls[0][0])).toBe('/rest/api/3/mypermissions?projectKey=DEMO&permissions=BROWSE_PROJECTS');
+    expect(String(mockUserRequestJira.mock.calls[1][0])).toContain('fields=id');
     mockAppRequestJira.mockReset();
     mockAppRequestJira.mockImplementation(mockDefaultApp);
     mockUserRequestJira.mockReset();
@@ -1279,7 +1297,7 @@ describe('B-13: dashboard rows respect the viewer', () => {
     mockAppRequestJira.mockImplementation(async (path: string) => (path.startsWith('/rest/api/3/search/jql')
       ? { status: 200, json: async () => ({ issues: all, isLast: true }) }
       : { status: 404, json: async () => ({}) }));
-    mockUserRequestJira.mockImplementation(async () => ({ status: 403, json: async () => ({}) }));
+    mockUserRequestJira.mockImplementation(withBrowse(async () => ({ status: 403, json: async () => ({}) })));
     const res: any = await getProjectDashboard({}, ctx, seeded());
     expect(res).toEqual({ ok: false, error: { code: 'FORBIDDEN', message: 'FourRealities could not check which issues you can see (HTTP 403).', status: 403 } });
     mockAppRequestJira.mockReset();
@@ -1292,7 +1310,7 @@ describe('B-13: dashboard rows respect the viewer', () => {
     mockAppRequestJira.mockImplementation(async (path: string) => (path.startsWith('/rest/api/3/search/jql')
       ? { status: 200, json: async () => ({ issues: all, isLast: true }) }
       : { status: 404, json: async () => ({}) }));
-    mockUserRequestJira.mockImplementation(async () => { throw new Error('socket'); });
+    mockUserRequestJira.mockImplementation(withBrowse(async () => { throw new Error('socket'); }));
     const res: any = await getProjectDashboard({}, ctx, seeded());
     expect(res.ok).toBe(true);
     expect(res.rows).toEqual([]);
