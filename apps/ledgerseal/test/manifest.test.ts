@@ -42,8 +42,8 @@ describe('approver policy admin page', () => {
     expect(manifest).toMatch(/  - key: admin\n    path: src\/frontend\/admin\.tsx/);
   });
 
-  it('declares the four work scopes and the personal data report scope, nothing else (ADR-011)', () => {
-    expect(manifest).toMatch(/scopes:\n    - read:jira-work\n    - write:jira-work\n    - read:jira-user\n    - storage:app\n    - report:personal-data\n?$/);
+  it('declares the work scopes, the issue property write scope (F-20) and the personal data report scope, nothing else', () => {
+    expect(manifest).toMatch(/scopes:\n    - read:jira-work\n    - write:issue\.property:jira\n    - read:jira-user\n    - storage:app\n    - report:personal-data\n?$/);
   });
 });
 

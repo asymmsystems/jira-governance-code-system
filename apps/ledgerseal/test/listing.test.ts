@@ -93,7 +93,7 @@ describe('reviewer notes', () => {
 
   it('justifies every manifest scope, and only those', () => {
     const scopes = [...manifest.matchAll(/^    - ([a-z:-]+)$/gm)].map(m => m[1]).filter(s => s.includes(':'));
-    expect(scopes).toEqual(['read:jira-work', 'write:jira-work', 'read:jira-user', 'storage:app', 'report:personal-data']);
+    expect(scopes).toEqual(['read:jira-work', 'write:issue.property:jira', 'read:jira-user', 'storage:app', 'report:personal-data']);
     for (const scope of scopes) expect(notes).toContain(`| \`${scope}\` |`);
     expect(notes.match(/^\| `[a-z:-]+` \|/gm)).toHaveLength(scopes.length);
   });
