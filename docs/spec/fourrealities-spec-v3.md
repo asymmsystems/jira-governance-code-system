@@ -177,7 +177,7 @@ The Process source is a setting (ADR-013): DefinitionGuard, Checklists for Jira,
 | Verified record, `isFullySatisfied === true` | FOUND | VERIFIED | `DOD_COMPLETE_DG` (args: completed, total) |
 | Verified record, `isFullySatisfied === false` | MISSING (Done) or NOT_APPLICABLE | | `DOD_OPEN_DG` |
 | Unsigned record, or signed with a key not trusted in this environment: scored like no record | MISSING (Done, verification NOT_VERIFIED) or NOT_APPLICABLE (`NOT_DONE`) | NOT_VERIFIED | `DOD_COMPLETE_DG` or `DOD_OPEN_DG` (args: why) |
-| A verified record older than the newest verified record already seen on the issue (`fr:att:{issueId}`, by `stateVersion`, else `issuedAt`): a rollback | MISSING | | `DOD_SIGNATURE_INVALID` (why: older than a record already seen) |
+| A verified record older than the newest verified record already seen on the issue (`fr:att:{issueId}`, by `issuedAt` when both carry one, else `stateVersion`): a rollback | MISSING | | `DOD_SIGNATURE_INVALID` (why: older than a record already seen) |
 | HeroCoders `checklist` with a numeric `uncheckedMandatoryItems` (cannot be signed): scored like no record | MISSING (Done) or NOT_APPLICABLE | NOT_VERIFIED | `DOD_COMPLETE_HC` or `DOD_OPEN_HC` |
 | No record, Done | MISSING | | `DOD_NONE` (DefinitionGuard) or `CHECKLIST_NONE` (Checklists for Jira) |
 | No complete record, not Done | NOT_APPLICABLE | | `NOT_DONE` |

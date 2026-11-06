@@ -73,6 +73,13 @@ actions (a comment, a remote link) move =updated=, so its own actions turned a s
    than that one (for example an earlier =SEAL_VALID= put back over a newer =SEAL_BROKEN=) is MISSING,
    "older than a record already seen". A rollback before FourRealities first read the newer record
    cannot be detected.
+   "Older" means an earlier =issuedAt= when both records carry one; =stateVersion= decides only
+   when one of them has no =issuedAt=. A put-back record was always issued earlier, while
+   DefinitionGuard starts its =stateVersion= at 1 again after a reinstall, so a genuine new record
+   can have a lower =stateVersion= with a later =issuedAt= (merge review round 2, N-2).
+   The snapshot writes the history after the snapshot itself, in parallel batches of 25, and only
+   up to 3 s after its build deadline (inside the page view's reserve); issues not reached are
+   written by the next build or the daily run (N-1).
 6. *Where.* The check needs Node =crypto=, so it lives in the Accessor layer (it reads the key
    store and the property); the gate engine receives the result as a fact. The layering test allows
    =crypto= in Accessors only.
