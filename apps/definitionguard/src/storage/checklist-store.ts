@@ -100,6 +100,18 @@ export class ChecklistStore {
     return events.sort((a, b) => a.seq - b.seq);
   }
 
+  /**
+   * The state folded from every event, ignoring the cache. Used after events were rewritten to hold
+   * pseudonyms (ADR-010), so the cache holds no account id. Undefined when nothing is stored. Never writes.
+   */
+  public async rebuild(issueId: string): Promise<DodState | undefined> {
+    const events = await this.allEvents(issueId, await this.load(issueId));
+    if (events.length === 0) return undefined;
+    let state = emptyState(issueId, '', '');
+    for (const e of events) state = applyEntry(state, e);
+    return state;
+  }
+
   /** Verifies the whole chain against the stored head. */
   public async verify(issueId: string): Promise<ChainCheck> {
     const state = await this.load(issueId);

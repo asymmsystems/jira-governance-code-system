@@ -82,12 +82,12 @@ export class CountingStorage implements StorageProvider {
     return true;
   }
 
-  async listByPrefix(prefix: string, cursor?: string, limit = 100): Promise<{ values: any[]; nextCursor?: string }> {
+  async listByPrefix(prefix: string, cursor?: string, limit = 100): Promise<{ values: any[]; keys: string[]; nextCursor?: string }> {
     const keys = [...this.store.keys()].filter(k => k.startsWith(prefix)).sort();
     const start = cursor ? Number(cursor) : 0;
     const page = keys.slice(start, start + limit);
     const next = start + limit < keys.length ? String(start + limit) : undefined;
-    return { values: page.map(k => JSON.parse(this.store.get(k)!)), nextCursor: next };
+    return { values: page.map(k => JSON.parse(this.store.get(k)!)), keys: page, nextCursor: next };
   }
 
   put(key: string, value: any): void {
@@ -98,4 +98,16 @@ export class CountingStorage implements StorageProvider {
     const s = this.store.get(key);
     return s === undefined ? undefined : JSON.parse(s);
   }
+}
+
+/** The pseudonym stored for an account (ADR-010), read from the map key. */
+export function pseudonymOf(storage: CountingStorage, accountId: string): string {
+  const rec = storage.read(`dg:pty:${accountId}`);
+  if (!rec?.pseudonym) throw new Error(`no pseudonym stored for ${accountId}`);
+  return rec.pseudonym;
+}
+
+/** True when no stored value except the two map keys holds the text (an account id must not). */
+export function storedOutsideMap(storage: CountingStorage, text: string): string[] {
+  return [...storage.store.entries()].filter(([k, v]) => !k.startsWith('dg:pty:') && !k.startsWith('dg:pid:') && v.includes(text)).map(([k]) => k);
 }

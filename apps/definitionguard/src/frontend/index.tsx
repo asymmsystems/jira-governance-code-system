@@ -19,7 +19,7 @@ import ForgeReconciler, {
   Textfield,
   CodeBlock
 } from '@forge/react';
-import { invoke, router } from '@forge/bridge';
+import { invoke } from '@forge/bridge';
 import { IssueChecklistState, ChecklistAuditEvent } from '../domain/models';
 import { buildPanelViewModel, historyRows, panelErrorText, Attribution } from '../ui/panel-view-model';
 import {
@@ -37,7 +37,11 @@ import {
 } from '@asymm/jira-ui';
 
 type Evidence = { url?: string; note?: string };
-type HistoryPage = { auditTrail?: ChecklistAuditEvent[]; chain?: { ok: boolean; message: string; limit: string } };
+type HistoryPage = {
+  auditTrail?: ChecklistAuditEvent[];
+  chain?: { ok: boolean; message: string; limit: string };
+  signature?: { signed: boolean; keyId: string | null; note: string };
+};
 
 const Who: React.FC<{ who?: Attribution }> = ({ who }) =>
   who ? (who.kind === 'user' ? <User accountId={who.accountId} /> : <Text as="span">{who.text}</Text>) : null;
@@ -121,6 +125,12 @@ export const DefinitionGuardPanel: React.FC = () => {
 
   return (
     <AppSurface>
+      {vm?.licenceNotice && (
+        <SectionMessage appearance="warning" title="Licence not active">
+          <Text as="span">{vm.licenceNotice}</Text>
+        </SectionMessage>
+      )}
+
       {errorMessage && (
         <SectionMessage appearance="error" title="Not saved">
           <Text as="span">{errorMessage}</Text>
@@ -200,14 +210,6 @@ export const DefinitionGuardPanel: React.FC = () => {
                 Complete DoD
               </Button>
             ) : null}
-            <Button
-              appearance="subtle"
-              spacing="compact"
-              iconAfter="shortcut"
-              onClick={() => router.open(`/browse/${checklist?.issueKey || ''}`)}
-            >
-              Open Four Realities panel
-            </Button>
           </ActionRow>
         </SummaryBlock>
       )}
@@ -474,6 +476,16 @@ export const DefinitionGuardPanel: React.FC = () => {
                 <Text as="span" size="small" color={TEXT_ROLE.muted}>
                   {history.chain.limit}
                 </Text>
+                {history.signature ? (
+                  <Inline space={SPACE.item} alignBlock="center" shouldWrap>
+                    <Lozenge appearance={history.signature.signed ? 'success' : 'moved'}>
+                      {history.signature.signed ? 'Property signed' : 'Property not signed'}
+                    </Lozenge>
+                    <Text as="span" size="small" color={TEXT_ROLE.secondary}>
+                      {history.signature.note}
+                    </Text>
+                  </Inline>
+                ) : null}
               </Stack>
             </NoteBox>
           )}
@@ -484,7 +496,7 @@ export const DefinitionGuardPanel: React.FC = () => {
                 <ListRow key={row.key} divided={idx < arr.length - 1}>
                   <Stack space={SPACE.sub}>
                     <Inline space={SPACE.item} alignBlock="center">
-                      <User accountId={row.accountId} />
+                      {row.accountId ? <User accountId={row.accountId} /> : <Text as="span" weight="medium">{row.actorText}</Text>}
                       <Text as="span" size="small" color={TEXT_ROLE.secondary}>• {row.when}</Text>
                     </Inline>
                     <SubSection>

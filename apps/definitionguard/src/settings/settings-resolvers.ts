@@ -11,9 +11,9 @@ import api, { route } from '@forge/api';
 import Resolver from '@forge/resolver';
 import { StorageProvider } from '../storage/checklist-repository';
 import { resolveStorage } from '../storage/forge-storage';
-import { checkProjectPermissions } from '../security/permissions';
-import { assertLicensed } from '../security/licence';
-import { TemplateStore } from './template-store';
+import { checkAnyProjectPermission, ADMIN_KEYS } from '../security/permissions';
+import { assertLicensed, isLicenceInactive, LICENCE_GATE_OFF } from '../security/licence';
+import { TemplateStore, validateTemplate } from './template-store';
 import { toTemplateView } from '../domain/dod-template';
 import { ChecklistTemplate } from '../domain/models';
 import { ChecklistStore } from '../storage/checklist-store';
@@ -21,8 +21,9 @@ import { resyncEntry } from '../domain/event-log';
 import { publishAttestation } from '../integrity/attestation';
 import { ProjectConfigStore } from './project-config';
 import { withRetry } from '../jira/jira-client';
+import { PartyStore } from '../storage/party-store';
 
-export const TEMPLATE_DENIED = 'Only a project admin can change DefinitionGuard templates.';
+export const TEMPLATE_DENIED = 'Only a project admin or a Jira admin can change DefinitionGuard templates.';
 
 export function settingsContext(context: any) {
   const project = context?.extension?.project;
@@ -34,7 +35,7 @@ export function settingsContext(context: any) {
 
 export async function requireProjectAdmin(context: any) {
   const c = settingsContext(context);
-  await checkProjectPermissions(c.projectKey, ['ADMINISTER_PROJECTS'], TEMPLATE_DENIED);
+  await checkAnyProjectPermission(c.projectKey, ADMIN_KEYS, TEMPLATE_DENIED);
   return c;
 }
 
@@ -76,7 +77,10 @@ export async function getSettings(_payload: any, context?: any, storageProvider?
   }
   const doneStatuses = await projectDoneStatuses(c.projectId);
   const config = await new ProjectConfigStore(storage).get(c.projectId);
-  return { projectId: c.projectId, projectKey: c.projectKey, issueTypes, templates, doneStatuses, exemptStatusIds: config?.exemptStatusIds || [] };
+  return {
+    projectId: c.projectId, projectKey: c.projectKey, issueTypes, templates, doneStatuses, exemptStatusIds: config?.exemptStatusIds || [],
+    ...(isLicenceInactive(context) ? { licenceNotice: LICENCE_GATE_OFF } : {})
+  };
 }
 
 export const EXEMPT_INVALID = 'Only Done-category statuses of this project can be exempt.';
@@ -90,7 +94,9 @@ export async function saveExemptions(payload: any, context?: any, storageProvide
   if (!Array.isArray(ids) || ids.length > 50 || !ids.every((id: any) => typeof id === 'string' && done.has(id))) {
     throw new Error(EXEMPT_INVALID);
   }
-  return await new ProjectConfigStore(resolveStorage(storageProvider)).saveExemptions(c.projectId, ids, c.actorAccountId);
+  const storage = resolveStorage(storageProvider);
+  const actor = await new PartyStore(storage).pseudonymFor(c.actorAccountId);
+  return await new ProjectConfigStore(storage).saveExemptions(c.projectId, ids, actor);
 }
 
 export async function saveTemplate(payload: any, context?: any, storageProvider?: StorageProvider) {
@@ -101,17 +107,23 @@ export async function saveTemplate(payload: any, context?: any, storageProvider?
   if (!issueTypes.some(t => t.id === issueTypeId)) {
     throw new Error('This issue type is not in the project.');
   }
-  const store = new TemplateStore(resolveStorage(storageProvider));
-  const template = await store.save(c.projectId, issueTypeId, payload?.template, c.actorAccountId);
+  const storage = resolveStorage(storageProvider);
+  const store = new TemplateStore(storage);
+  const errors = validateTemplate(payload?.template);
+  if (errors.length > 0) throw new Error(errors.join(' '));
+  const actor = await new PartyStore(storage).pseudonymFor(c.actorAccountId);
+  const template = await store.save(c.projectId, issueTypeId, payload?.template, actor);
   return { template: toTemplateView(template) };
 }
 
-export const RESYNC_PAGE = 25;
+// M-8: each issue costs several KVS reads, two writes and a property PUT with up to 3 tries, so a
+// page of 10 stays well inside the 25 s invocation limit even under Jira rate limiting.
+export const RESYNC_PAGE = 10;
 export const NO_TEMPLATE_TO_RESYNC = 'This issue type has no project template to re-sync to.';
 
 /**
  * Re-syncs open issues of one issue type to the current project template revision (B-16),
- * one page of at most 25 issues per call. Issues on another template or already current are
+ * one page of at most RESYNC_PAGE (10) issues per call. Issues on another template or already current are
  * skipped. Each update is one Resync entry; ticks on unchanged ids are kept.
  */
 export async function resyncIssues(payload: any, context?: any, storageProvider?: StorageProvider) {
@@ -138,6 +150,7 @@ export async function resyncIssues(payload: any, context?: any, storageProvider?
     st.template.workEffortId === template.workEffortId && st.template.revisionNumber < template.revisionNumber;
   let updated = 0;
   let skipped = 0;
+  let actor: string | undefined;
   for (const issue of body.issues || []) {
     const issueId = String(issue.id);
     const current = await store.load(issueId);
@@ -145,10 +158,11 @@ export async function resyncIssues(payload: any, context?: any, storageProvider?
       skipped++;
       continue;
     }
+    actor = actor || await new PartyStore(storage).pseudonymFor(c.actorAccountId);
     const state = await store.mutate(
       issueId,
       async () => { throw new Error('DefinitionGuard: the record disappeared during re-sync'); },
-      st => (outdated(st) ? [resyncEntry(st, template, c.actorAccountId, at)] : [])
+      st => (outdated(st) ? [resyncEntry(st, template, actor!, at)] : [])
     );
     await publishAttestation(state, at);
     updated++;

@@ -12,8 +12,8 @@ const APP = path.join(__dirname, '..');
 const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap(f => (f.isDirectory() ? walk(path.join(d, f.name)) : [path.join(d, f.name)]));
 
 describe('B-19 hygiene', () => {
-  it('every source file carries the Asymm Systems copyright header and @author Fahim Farook', () => {
-    const missing = walk(path.join(APP, 'src'))
+  it('every source and test file carries the Asymm Systems copyright header and @author Fahim Farook', () => {
+    const missing = [...walk(path.join(APP, 'src')), ...walk(path.join(APP, 'test'))]
       .filter(f => /\.tsx?$/.test(f))
       .filter(f => {
         const head = fs.readFileSync(f, 'utf8').slice(0, 600);
@@ -31,9 +31,49 @@ describe('B-19 hygiene', () => {
     expect(fs.readFileSync(path.join(APP, 'src/storage/checklist-repository.ts'), 'utf8')).not.toContain('class ChecklistRepository');
   });
 
+  it('(M-2) the panel has no "Open Four Realities panel" button, which only reopened the same issue', () => {
+    const panel = fs.readFileSync(path.join(APP, 'src/frontend/index.tsx'), 'utf8');
+    expect(panel).not.toContain('Four Realities');
+    expect(panel).not.toContain('router.open');
+  });
+
+  it('(M-3) the admin page describes only what approvers can do, with the shared wording', () => {
+    const admin = fs.readFileSync(path.join(APP, 'src/frontend/admin.tsx'), 'utf8');
+    expect(admin).not.toMatch(/baseline criteria|sign off Definition of Done|authorize deviations/);
+    expect(admin).toContain('roleDescription={APPROVER_ROLE_DESCRIPTION}');
+    expect(admin).toContain('loadPolicy(');
+    expect(admin).toContain('saveOutcome(');
+  });
+
+  it('the UI files import no server module: nothing they import, directly or through other src files, imports @forge/api, @forge/kvs or @forge/resolver', () => {
+    const seen = new Set<string>();
+    const offending: string[] = [];
+    const visit = (file: string) => {
+      if (seen.has(file)) return;
+      seen.add(file);
+      const src = fs.readFileSync(file, 'utf8');
+      if (/from '@forge\/(api|kvs|resolver)'/.test(src)) offending.push(path.relative(APP, file));
+      for (const m of src.matchAll(/from '(\.{1,2}\/[^']+)'/g)) {
+        const base = path.resolve(path.dirname(file), m[1]);
+        const target = ['.ts', '.tsx'].map(ext => base + ext).find(f => fs.existsSync(f));
+        if (target) visit(target);
+      }
+    };
+    for (const ui of ['index.tsx', 'settings.tsx', 'admin.tsx']) visit(path.join(APP, 'src/frontend', ui));
+    expect(offending).toEqual([]);
+  });
+
   it('does not depend on the unused @forge/storage package', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(APP, 'package.json'), 'utf8'));
     expect(pkg.dependencies['@forge/storage']).toBeUndefined();
+  });
+
+  it('(BL-5) pins prosemirror-view to a fixed release, as CascadePlan does, and the lock file uses it', () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(APP, 'package.json'), 'utf8'));
+    expect(pkg.overrides).toEqual({ 'prosemirror-view': '^1.42.3' });
+    const lock = JSON.parse(fs.readFileSync(path.join(APP, 'package-lock.json'), 'utf8'));
+    const [major, minor] = String(lock.packages['node_modules/prosemirror-view'].version).split('.').map(Number);
+    expect(major === 1 && minor >= 42).toBe(true);
   });
 
   it('bundles the panel icon as a resource, with no remote icon URL', () => {

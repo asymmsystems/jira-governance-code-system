@@ -5,6 +5,7 @@
  * @author Fahim Farook
  */
 import { IssueChecklistState, ChecklistAuditEvent } from '../domain/models';
+import { LICENCE_GATE_OFF } from '../domain/licence-text';
 
 /** Who completed an item, for rendering: a Jira user from the accountId, or v1 text. */
 export type Attribution = { kind: 'user'; accountId: string } | { kind: 'text'; text: string };
@@ -81,14 +82,22 @@ export interface PanelViewModel {
   progress: Lozenge;
   items: PanelItemView[];
   approverLine: string;
+  /** Set while the licence is inactive: the gate is off and changes are not saved (BL-4). */
+  licenceNotice?: string;
 }
 
-/** Formats the authorized approvers audit line. */
-export function formatApproverLine(groups?: string[]): string {
-  if (!groups || groups.length === 0) {
-    return 'Authorized approvers: project administrators and Jira administrators.';
-  }
-  return `Authorized approvers: ${groups.join(', ')}, and project administrators.`;
+/**
+ * Who can waive and reset on this issue (M-1): project and Jira administrators, the approver groups
+ * a Jira admin chose, and, for waivers, users with the template's waiver permission.
+ */
+export function formatApproverLine(groups?: string[], waiverPermissionLabel?: string): string {
+  const who = groups && groups.length > 0
+    ? `project administrators, Jira administrators and members of ${groups.join(', ')}`
+    : 'project administrators and Jira administrators';
+  const extra = waiverPermissionLabel && waiverPermissionLabel !== 'Administer projects'
+    ? ` Users with the ${waiverPermissionLabel} Jira permission can also waive.`
+    : '';
+  return `Authorized approvers (waive and reset): ${who}.${extra}`;
 }
 
 /** Local date and time, for example "1 Nov 2026, 09:30". Unparseable text is shown as is. */
@@ -139,7 +148,8 @@ export function buildPanelViewModel(response: IssueChecklistState | null, format
     },
     progress: { text: `${done} of ${response.items.length} done`, appearance: done > 0 && done === response.items.length ? 'success' : 'default' },
     items,
-    approverLine: formatApproverLine(response.approverGroups)
+    approverLine: formatApproverLine(response.approverGroups, response.waiverPermissionLabel),
+    ...(response.licenceInactive ? { licenceNotice: LICENCE_GATE_OFF } : {})
   };
 }
 
@@ -152,6 +162,7 @@ const OWN_MESSAGES = [
   'Someone else changed this checklist',
   'Add a link or a note.',
   'The assignee cannot complete this item',
+  'The assignee cannot waive this item',
   'Your DefinitionGuard licence is not active',
   'Give a reason of 10 to 500 characters',
   'The evidence link ',
@@ -183,6 +194,8 @@ export interface HistoryRow {
   key: string;
   when: string;
   accountId: string;
+  /** Shown instead of a user when accountId is empty: "A deleted user" or "DefinitionGuard". */
+  actorText?: string;
   text: string;
   actionText: string;
   eventType?: ChecklistAuditEvent['eventType'];
@@ -197,7 +210,8 @@ const ACTION_TEXT: Record<ChecklistAuditEvent['eventType'], string> = {
   CHECK: 'Completed',
   UNCHECK: 'Reopened',
   WAIVE: 'Waived',
-  RESET: 'Checklist reset'
+  RESET: 'Checklist reset',
+  REDACT: 'Account ids replaced with pseudonyms'
 };
 
 /** One row per event, oldest first: the action in words, the item title, and any waiver reason. */
@@ -211,6 +225,7 @@ export function historyRows(trail: ChecklistAuditEvent[] | undefined, format: (i
       key: ev.id,
       when: format(ev.timestamp),
       accountId: ev.actorAccountId,
+      ...(ev.actorAccountId ? {} : { actorText: ev.actorName || 'An unknown user' }),
       text,
       actionText,
       eventType: ev.eventType,

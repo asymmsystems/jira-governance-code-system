@@ -14,6 +14,7 @@ import { withRetry } from '../jira/jira-client';
 import { StorageProvider } from '../storage/checklist-repository';
 import { PolicyRepository } from '../storage/policy-repository';
 import { isJiraAdmin } from './approver';
+import { PartyStore } from '../storage/party-store';
 
 export const MAX_APPROVER_GROUPS = 20;
 export const MAX_QUERY_CHARS = 100;
@@ -97,7 +98,7 @@ export async function setApproverPolicyFlow(
     return { ok: false, message: `Choose at most ${MAX_APPROVER_GROUPS} groups.` };
   }
 
-  const callerAccountId = String(context?.accountId || 'unknown');
+  const callerPartyId = await new PartyStore(storage).pseudonymFor(String(context?.accountId || 'unknown'));
   const parties: Array<{ partyId: string; partyTypeId: 'GROUP'; name: string }> = [];
 
   for (const groupId of groupIds) {
@@ -120,7 +121,7 @@ export async function setApproverPolicyFlow(
     roleTypeId: 'DG_APPROVER',
     parties,
     fromDate: new Date().toISOString(),
-    setByPartyId: callerAccountId
+    setByPartyId: callerPartyId
   };
 
   await new PolicyRepository(storage).saveApproverPolicy(policy);

@@ -99,7 +99,7 @@ describe('B-16 resyncIssues', () => {
     }
     const search = jira.callsTo('/rest/api/3/search/jql', 'app')[0];
     expect(decodeURIComponent(search.path)).toContain('project = 10000 AND issuetype = 10004 AND statusCategory != Done');
-    expect(decodeURIComponent(search.path)).toContain('maxResults=25');
+    expect(decodeURIComponent(search.path)).toContain('maxResults=10');
   });
 
   it('skips issues already on the current version, so a second run changes nothing', async () => {
