@@ -39,6 +39,8 @@ export interface ChangeRowView {
   changedBy: string[];
   /** People who changed the item and whose accounts are closed, shown as "a deleted user" (the account was closed). */
   changedByClosed: number;
+  /** People LedgerSeal cannot name (no map entry), shown as "an unknown user" (L-8). */
+  changedByUnknown: number;
   changedAt: string;
 }
 
@@ -60,6 +62,8 @@ export interface PanelView {
     /** Empty when the signer's account was closed (ADR-011); then `signerClosed` is true. */
     signerAccountId: string;
     signerClosed: boolean;
+    /** The signer cannot be named (L-8): "an unknown user". */
+    signerUnknown: boolean;
     sealedAt: string;
     meaningLabel: string;
     reason: string | null;
@@ -71,6 +75,7 @@ export interface PanelView {
   };
   revokedByAccountId?: string;
   revokedByClosed?: boolean;
+  revokedByUnknown?: boolean;
   /** B5: shown when this installation writes unsigned attestations. */
   signingNote?: string;
 }
@@ -241,6 +246,7 @@ function changeRows(diffs: FieldDiff[], input: PanelInput): ChangeRowView[] {
       ...(diff.detail ? { detail: diff.detail } : {}),
       changedBy: diff.changedBy ?? [],
       changedByClosed: diff.changedByClosed ?? 0,
+      changedByUnknown: diff.changedByUnknown ?? 0,
       changedAt: formatTime(diff.changedAt, input.locale, input.timeZone)
     };
   });
@@ -353,7 +359,8 @@ export function buildPanelView(input: PanelInput): PanelView {
     view.seal = {
       certificateId: seal.certificateId,
       signerAccountId: seal.sealedByAccountId,
-      signerClosed: Boolean(seal.sealedByClosed) || !seal.sealedByAccountId,
+      signerClosed: Boolean(seal.sealedByClosed),
+      signerUnknown: !seal.sealedByAccountId && !seal.sealedByClosed,
       sealedAt: formatTime(seal.sealedAt, input.locale, input.timeZone),
       meaningLabel: MEANINGS.find(m => m.value === seal.meaning)?.label ?? seal.meaning,
       reason: seal.reason,
@@ -365,7 +372,8 @@ export function buildPanelView(input: PanelInput): PanelView {
     };
     if (r?.signing && r.signing.signed === false) view.signingNote = UNSIGNED_NOTE;
     if (seal.revocation?.revokedByAccountId) view.revokedByAccountId = seal.revocation.revokedByAccountId;
-    else if (seal.revocation) view.revokedByClosed = true;
+    else if (seal.revocation?.revokedByClosed) view.revokedByClosed = true;
+    else if (seal.revocation) view.revokedByUnknown = true;
   }
   return view;
 }

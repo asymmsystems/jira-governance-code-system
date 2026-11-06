@@ -73,13 +73,15 @@ export class FakeJira implements JiraClient {
     return this.users[accountId] ?? null;
   }
 
-  /** Accounts Jira reports closed or deactivated; `unknownUsers` cannot be read. */
+  /** Accounts Jira reports deactivated (`inactive`), gone (404) or cannot read (`unknownUsers`). */
   inactive = new Set<string>();
+  gone = new Set<string>();
   unknownUsers = new Set<string>();
 
-  async isActiveUser(accountId: string): Promise<boolean | null> {
+  async accountState(accountId: string): Promise<'active' | 'inactive' | 'gone' | null> {
     if (this.unknownUsers.has(accountId)) return null;
-    return !this.inactive.has(accountId);
+    if (this.gone.has(accountId)) return 'gone';
+    return this.inactive.has(accountId) ? 'inactive' : 'active';
   }
 
   async hasApproverPermission(issueId: string): Promise<JiraResult<boolean>> {
