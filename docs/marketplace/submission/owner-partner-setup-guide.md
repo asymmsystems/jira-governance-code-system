@@ -9,10 +9,10 @@ Account for every step: fahim@asymm.systems.
 | 1 | Partner profile | Done. Vendor ID 334643263 |
 | 2 | Team roles | Done. You are Admin and Primary |
 | 3 | Partner verification (ticket ECOHELP-182280) | Identity form submitted. Waiting for the security questionnaire, then the Stripe ID check. Deadline 6 Dec 2026 |
-| 4 | Payment tab | Done. Check two things with Amana Bank (below) |
-| 5 | Tax form question | Next |
-| 6 | Developer space check | To do |
-| 7 | Forge billing card | To do |
+| 4 | Payment tab | Done |
+| 5 | Tax form question | Asked; waiting for support |
+| 6 | Developer space | Next: finish setting up the "Asymm Systems" space; later, move the four apps into it |
+| 7 | Forge billing card | In the "Asymm Systems" space, during step 6 |
 | 8 | Two-step verification, end old sessions | Later, when I say |
 
 ## 3. Partner verification
@@ -22,24 +22,24 @@ Account for every step: fahim@asymm.systems.
 - Then do the Stripe ID check (passport, selfie, phone).
 - Do not submit "Re-Assign This Ticket": it restarts everything.
 
-## 4. Payment tab: ask Amana Bank
-
-- The exact account name. It must match the account holder name in the Payment tab and the business name on the verification form.
-- Whether incoming USD SWIFT payments need an intermediary bank. If yes, put its name and SWIFT code in **Intermediary Bank ID / Name**.
-
 ## 5. Tax form question
 
 Portal: https://ecosystem.atlassian.net/servicedesk/customer/portal/34, then **App listing**, then **Questions about Marketplace**. Paste:
 
 > We are [registered company name], Sri Lanka, Vendor ID 334643263. Where do we submit Form W-8BEN-E so that no US tax is withheld from our payouts? The Payment tab asks only for a tax ID.
 
-## 6. Developer space check
+## 6. Developer space
 
-https://developer.atlassian.com/console: are all four apps in one developer space owned by Asymm Systems? Tell me. Do not publish the space.
+The apps are in the space "asymm-dev". The Marketplace vendor became its own space, "Asymm Systems". Atlassian requires each app to be in the space of the vendor that lists it, so the apps move to "Asymm Systems".
+
+1. Now: switch to the "Asymm Systems" space, click **Continue** on "Add the admin and billing admin" and choose yourself.
+2. Step 7 (the card) is part of that set-up.
+3. Later, when I say (after the agents finish their deploys): in "asymm-dev", on each app's **...** menu, choose **Transfer app**, destination "Asymm Systems". Not on the 1st or 2nd day of a month.
+4. Do not publish any space.
 
 ## 7. Forge billing card
 
-In the same developer space: billing settings, add a card.
+In the "Asymm Systems" space: add the payment method when the set-up asks for it, or later under **Settings**.
 
 ## 8. Later, when I say
 
