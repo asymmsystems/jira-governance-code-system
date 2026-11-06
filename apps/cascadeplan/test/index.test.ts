@@ -1521,19 +1521,12 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(res.error).toBe('Jira status 502');
     });
 
-    it('getJiraCaller falls back to asApp when asUser is not available', () => {
-      const orig = (api as any).asUser;
-      delete (api as any).asUser;
-      const caller = getJiraCaller();
-      expect(typeof caller.requestJira).toBe('function');
-      (api as any).asUser = orig;
-    });
-
-    it('fails if a read uses asApp (B-22 criterion 3)', async () => {
+    it('getJiraCaller fails clearly, and never uses asApp, when asUser is not available (B-22 criterion 3)', () => {
       const origAsUser = (api as any).asUser;
       try {
         delete (api as any).asUser;
-        await expect(getJiraCaller().requestJira('/rest/api/3/issue/TEST-1')).rejects.toThrow('asApp must not be used');
+        expect(() => getJiraCaller()).toThrow('CascadePlan calls Jira only as the user');
+        expect(mockAsAppRequest).not.toHaveBeenCalled();
       } finally {
         (api as any).asUser = origAsUser;
       }

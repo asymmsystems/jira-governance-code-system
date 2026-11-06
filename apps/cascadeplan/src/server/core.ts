@@ -141,11 +141,17 @@ export function withRetry(caller: { requestJira: (...args: any[]) => Promise<any
   };
 }
 
+/**
+ * The only way CascadePlan calls Jira: as the user who invoked the resolver, so Jira applies that
+ * user's permissions and issue security. CascadePlan never calls Jira as the app. Where there is no
+ * user (the issue-deleted trigger and the personal data report), the code makes no Jira call; a call
+ * without a user context fails here instead of falling back to the app.
+ */
 export function getJiraCaller() {
-  if (api.asUser && typeof api.asUser === 'function') {
-    return withRetry(api.asUser());
+  if (typeof api.asUser !== 'function') {
+    throw new Error('CascadePlan calls Jira only as the user, and no user context is available');
   }
-  return withRetry(api.asApp());
+  return withRetry(api.asUser());
 }
 
 /**
