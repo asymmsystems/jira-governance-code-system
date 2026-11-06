@@ -444,7 +444,8 @@ describe('Security and permissions (D11)', () => {
     expect(Object.keys(items[0]).sort()).toEqual(expect.arrayContaining(['id', 'key']));
     for (const i of items) { expect(i.summary).toBeUndefined(); expect(i.resource).toBeUndefined(); }
     expect(storage.store.get(keys.find(k => k.startsWith('cp:TEST:bl:default:h:'))!).frozenBy).toBe('acc-1');
-    expect(storage.store.get('cp:pd:accounts')['acc-1'].keys).toEqual([expect.stringMatching(/^cp:TEST:bl:default:h:/)]);
+    // The index keeps only when the id was last written; the report finds the records by reading them (M2).
+    expect(storage.store.get('cp:pd:accounts')['acc-1']).toEqual({ updatedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) });
   });
 
   it('R-20: deleting a plan also deletes its baselines, active-baseline pointer and scope-shift requests (F-22)', async () => {

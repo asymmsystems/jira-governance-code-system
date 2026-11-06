@@ -83,6 +83,13 @@ export class ForgeKvsProvider implements StorageProvider {
     return out;
   }
 
+  async queryPage<T>(prefix: string, limit: number, cursor?: string): Promise<{ results: Array<{ key: string; value: T }>; nextCursor?: string }> {
+    let q = kvs.query().where('key', WhereConditions.beginsWith(prefix)).limit(limit);
+    if (cursor) q = q.cursor(cursor);
+    const page = await withKvsRetry(() => q.getMany<T>());
+    return { results: page.results.map(r => ({ key: r.key, value: r.value })), nextCursor: page.nextCursor || undefined };
+  }
+
   async swap<T>(key: string, value: T): Promise<T | undefined> {
     const res = await withKvsRetry(() => kvs.set<T, T>(key, value, { keyPolicy: 'OVERRIDE', returnValue: 'PREVIOUS' }));
     return res ? res.value : undefined;

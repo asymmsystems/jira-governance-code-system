@@ -567,6 +567,7 @@ export interface ApproverPolicy {
   roleTypeId: 'CP_APPROVER' | 'PS_APPROVER';
   parties: Array<{ partyId: string; partyTypeId: 'GROUP'; name: string }>;
   fromDate: string;
-  setByPartyId: string;
+  /** Account id of the Jira administrator who saved the policy; in the personal data report (H1). */
+  setByPartyId?: string;
 }
 

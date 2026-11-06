@@ -14,8 +14,8 @@ import { ProjectPlanState } from '../domain/models';
 import { StorageProvider } from '../storage/plan-repository';
 import { logFailure } from '../logger';
 import { ValidationError, validatePlanId } from '../validation';
-import { BaselineStore, ShiftRequest, ACCOUNTS_KEY, eraseClosedAccounts } from '../storage/baseline-store';
-import { contributorAccounts, eraseContributor } from '../storage/personal-data';
+import { BaselineStore, ShiftRequest } from '../storage/baseline-store';
+import { runPersonalDataJob, PdOptions, PdRunResult, ReportFn } from '../storage/personal-data';
 import { baselineItems, compareItems, baselineCsv } from '../domain/baseline';
 import { resolveStorage, writablePlanId } from './core';
 import { loadLive } from './jira-read';
@@ -208,37 +208,21 @@ export async function reviewScopeShift(
 }
 
 /**
- * Weekly scheduled trigger (ADR-009 decision 7, DEC-2, BL-5): reports every account id the app stores
- * with Forge's personal data reporting API, and makes the records of closed accounts name no one.
- * The account ids are the audit subjects of baselines and scope changes (their index) and the
- * contributors of the plan records (found by reading the records).
+ * The personal data report (ADR-009 decision 7, DEC-2, BL-5, merge review H1 and M2): one step of the
+ * job in src/storage/personal-data.ts, which finds every account id the app stores, reports each with
+ * Forge's personal data reporting API at most once in 7 days, and makes the records of closed accounts
+ * name no one. The step stops inside its time budget and saves its progress; the next run continues.
  */
-export async function reportPersonalData(storageProvider?: StorageProvider, report?: (a: Array<{ accountId: string; updatedAt: string }>) => Promise<Array<{ accountId: string; status: string }>>): Promise<{ reported: number; closed: string[] }> {
-  const storage = resolveStorage(storageProvider);
-  const idx = (await storage.get<Record<string, { keys: string[]; updatedAt: string }>>(ACCOUNTS_KEY)) || {};
-  const contributors = (await contributorAccounts(storage)).accounts;
-  const updatedAt = new Map<string, string>(Object.entries(idx).map(([accountId, v]) => [accountId, v.updatedAt]));
-  for (const [accountId, c] of contributors) {
-    if (!updatedAt.has(accountId)) updatedAt.set(accountId, c.since ? `${c.since}T00:00:00.000Z` : new Date().toISOString());
-  }
-  const accounts = [...updatedAt].map(([accountId, at]) => ({ accountId, updatedAt: at }));
-  if (accounts.length === 0) return { reported: 0, closed: [] };
-  const updates = await (report || privacy.reportPersonalData)(accounts);
-  const closedIds = updates.filter(u => u.status === 'closed').map(u => u.accountId);
-  const closed = new Set(await eraseClosedAccounts(storage, closedIds));
-  for (const accountId of closedIds) {
-    const c = contributors.get(accountId);
-    if (!c) continue;
-    await eraseContributor(storage, accountId, c.keys);
-    closed.add(accountId);
-  }
-  return { reported: accounts.length, closed: closedIds.filter(id => closed.has(id)) };
+export async function reportPersonalData(storageProvider?: StorageProvider, report?: ReportFn, options?: PdOptions): Promise<PdRunResult> {
+  return runPersonalDataJob(resolveStorage(storageProvider), report || privacy.reportPersonalData, options);
 }
 
+/** Hourly scheduled trigger (manifest `personal-data-report`, function timeout 900 s). */
 export const personalDataTrigger = async (): Promise<void> => {
   try {
     const r = await reportPersonalData();
+    if (r.status === 'waiting') return;
     // eslint-disable-next-line no-console
-    console.log(`personal data report: ${r.reported} account(s) reported, ${r.closed.length} closed and erased`);
+    console.log(`personal data report: ${r.status} (${r.phase}), ${r.reported} account(s) reported, ${r.closed.length} closed, ${r.pages} page(s)`);
   } catch (err) { logFailure('reportPersonalData', err); }
 };

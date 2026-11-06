@@ -185,7 +185,7 @@ export async function setApproverPolicyFlow(
     return { ok: false, message: `Choose at most ${MAX_APPROVER_GROUPS} groups.` };
   }
 
-  const callerAccountId = String(context?.accountId || 'unknown');
+  const callerAccountId = typeof context?.accountId === 'string' && context.accountId ? context.accountId : undefined;
   const parties: Array<{ partyId: string; partyTypeId: 'GROUP'; name: string }> = [];
 
   for (const groupId of groupIds) {
@@ -207,7 +207,8 @@ export async function setApproverPolicyFlow(
     roleTypeId: 'CP_APPROVER',
     parties,
     fromDate: new Date().toISOString(),
-    setByPartyId: callerAccountId
+    // The saving administrator's account id; reported and erased like every other stored id (H1).
+    ...(callerAccountId ? { setByPartyId: callerAccountId } : {})
   };
 
   await new PolicyRepository(storage).saveApproverPolicy(policy);

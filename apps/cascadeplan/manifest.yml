@@ -31,10 +31,12 @@ modules:
       events:
         - avi:jira:deleted:issue
   scheduledTrigger:
-    # ADR-009 decision 7: the weekly personal data report of the baseline audit records.
+    # ADR-009 decision 7: the personal data report. Each hourly run does one step of the job
+    # (src/storage/personal-data.ts) within its time budget; an account id is reported at most once
+    # in 7 days, and a run with nothing due ends after one storage read.
     - key: personal-data-report
       function: personal-data-fn
-      interval: week
+      interval: hour
   function:
     - key: resolver
       handler: index.handler
@@ -44,6 +46,9 @@ modules:
       handler: index.issueDeletedTrigger
     - key: personal-data-fn
       handler: index.personalDataTrigger
+      # Forge allows up to 900 s for a scheduled trigger's function (default 55 s); the job stops
+      # starting new pages after 600 s and saves its progress.
+      timeoutSeconds: 900
 
 resources:
   - key: main
