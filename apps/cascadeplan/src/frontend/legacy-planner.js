@@ -54,6 +54,7 @@ import { shouldAutoCompact, ZOOMS, zoomById, zoomStep, mondayOf, initialRange, r
 import { buildTableViewRows, toggleTableView } from '../ui/table-view';
 import { findMatchingTasks, findNextMatch, formatMatchCount, isSearchShortcut } from '../ui/in-app-search';
 import { formatRemovalPrompt } from '../ui/second-person';
+import { statusOffers, offerPrompt, progressLockReason, progressText, isDone } from '../ui/progress-status';
 import {
   categorizePlan,
   suggestCloneName,
@@ -887,11 +888,11 @@ function setupEventListeners() {
       e.stopPropagation();
       const pct = parseInt(btn.dataset.pct, 10);
       if (progPopover) progPopover.style.display = 'none';
-      if (!activeProgressTaskKey) return;
-      await callResolver('updateWbsTask', {
-        taskId: activeProgressTaskKey,
-        updates: { progress: pct, manualProgress: true }
-      });
+      const key = activeProgressTaskKey;
+      if (!key) return;
+      const updates = { progress: pct, manualProgress: true };
+      if (!(await withStatusChoice([{ key, progress: pct, updates }]))) return;
+      await callResolver('updateWbsTask', { taskId: key, updates });
       await loadProjectPlan();
     });
   });
@@ -918,11 +919,12 @@ function setupEventListeners() {
       e.stopPropagation();
       const val = parseInt(progNumInput?.value || progSlider?.value || '0', 10);
       if (progPopover) progPopover.style.display = 'none';
-      if (!activeProgressTaskKey) return;
-      await callResolver('updateWbsTask', {
-        taskId: activeProgressTaskKey,
-        updates: { progress: Math.max(0, Math.min(100, val)), manualProgress: true }
-      });
+      const key = activeProgressTaskKey;
+      if (!key) return;
+      const pct = Math.max(0, Math.min(100, val));
+      const updates = { progress: pct, manualProgress: true };
+      if (!(await withStatusChoice([{ key, progress: pct, updates }]))) return;
+      await callResolver('updateWbsTask', { taskId: key, updates });
       await loadProjectPlan();
     });
   }
@@ -1058,6 +1060,11 @@ function setupEventListeners() {
       if (editTargetValLabel) editTargetValLabel.textContent = `${pct}%`;
     });
   });
+
+  // Changing a Done item's status in the dialog unlocks its progress (2026-11-06).
+  document.getElementById('editStatusSelect')?.addEventListener('change', (e) => setDialogProgressLock(activeTaskId, e.target.value));
+  document.getElementById('btnStatusOfferMove')?.addEventListener('click', () => { if (statusOfferResolve) statusOfferResolve('move'); });
+  document.getElementById('btnStatusOfferKeep')?.addEventListener('click', () => { if (statusOfferResolve) statusOfferResolve('keep'); });
 
   const btnModalRollup = document.getElementById('btnModalUseRollup');
   if (btnModalRollup) {
@@ -2989,6 +2996,12 @@ function openProgressPicker(targetEl, taskKey) {
   activeProgressTaskKey = taskKey;
   const task = (currentPlan?.tasks || []).find(t => t.key === taskKey);
   if (!task) return;
+  const locked = progressLockReason(task);
+  if (locked) {
+    showFlag({ text: locked });
+    announce(locked);
+    return;
+  }
 
   const popover = document.getElementById('progressPickerPopover');
   const titleEl = document.getElementById('progressPickerTitle');
@@ -3837,12 +3850,13 @@ function buildTaskRow(task, rowIdx) {
   }
   if (visibleKeys.includes('progress')) {
     const isProgRollup = isEpic || (task.childrenCount && task.childrenCount > 0);
-    const progTitle = isProgRollup
-      ? `Actual progress: ${task.progress}% (Rollup from children: click to edit or override)`
-      : `Click to set actual progress (${task.progress}%)`;
+    const lockText = progressLockReason(task);
+    const progTitle = lockText || (isProgRollup
+      ? `Actual progress: ${progressText(task)} (Rollup from children: click to edit or override)`
+      : `Click to set actual progress (${progressText(task)})`);
     rowColsHtml = html`${rowColsHtml}
       <td class="td-data td-progress-cell jx-center-pointer" data-css-w="${columnWidths.progress}px" title="${progTitle}">
-        <div class="progress-chip-cell ${task.progress === 100 ? 'is-complete' : (task.progress > 0 ? 'is-active' : 'is-zero')}">
+        <div class="progress-chip-cell ${isDone(task.status) ? 'is-complete' : (task.progress > 0 ? 'is-active' : 'is-zero')}">
           <span class="progress-chip-fill" data-css-w="${task.progress}%"></span>
           <span class="progress-chip-text">${task.progress}% ▾</span>
         </div>
@@ -6186,9 +6200,15 @@ function versionOf(key) {
 }
 
 function initSelectionBar() {
-  document.getElementById('btnSelProgress')?.addEventListener('click', () => {
+  document.getElementById('btnSelProgress')?.addEventListener('click', async () => {
     const p = Math.max(0, Math.min(100, parseInt(document.getElementById('selProgress').value, 10) || 0));
-    runBatch([...selectedKeys].map(k => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) })), 'progress');
+    // A Done item keeps 100%; the others may offer a status change (2026-11-06).
+    const done = [...selectedKeys].filter(k => isDone(findTask(k)?.status));
+    if (done.length) showFlag({ text: `Not changed: ${done.join(', ')} ${done.length === 1 ? 'is' : 'are'} Done in Jira, so the progress stays 100%.` });
+    const items = [...selectedKeys].filter(k => !done.includes(k)).map(k => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) }));
+    if (!items.length) return;
+    if (!(await withStatusChoice(items.map(i => ({ key: i.taskId, progress: p, updates: i.updates }))))) return;
+    runBatch(items, 'progress');
   });
   document.getElementById('btnSelMove')?.addEventListener('click', async () => {
     const days = parseInt(document.getElementById('selDays').value, 10) || 0;
@@ -6219,6 +6239,11 @@ function fillAssigneeOptions() {
 
 /** Digits set a pending progress on the focused row; Enter saves every pending value in one call. */
 function setPendingProgress(key, pct) {
+  const locked = progressLockReason(findTask(key) || { key });
+  if (locked) {
+    announce(locked);
+    return;
+  }
   pendingProgress.set(key, pct);
   const chip = rowCache.get(key)?.querySelector('.progress-chip-text');
   if (chip) chip.textContent = `${pct}% (not saved)`;
@@ -6227,6 +6252,12 @@ function setPendingProgress(key, pct) {
 
 async function commitPendingProgress() {
   const items = [...pendingProgress].map(([k, p]) => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) }));
+  // One question for the whole batch when progress and Jira status disagree (2026-11-06).
+  if (!(await withStatusChoice(items.map(i => ({ key: i.taskId, progress: i.updates.progress, updates: i.updates }))))) {
+    announce(`Progress not saved yet. Enter saves the ${pendingProgress.size} changes, Escape drops them.`);
+    focusGridCell();
+    return;
+  }
   pendingProgress.clear();
   await runBatch(items, 'progress');
   announce(`Saved progress on ${items.length} issue${items.length === 1 ? '' : 's'}.`);
@@ -6314,6 +6345,7 @@ function openTaskDetailModal(taskKey) {
   }
   if (progSlider) progSlider.value = curProg;
   if (progValLabel) progValLabel.textContent = `${curProg}%`;
+  setDialogProgressLock(task.key, task.status);
   if (progNote) {
     progNote.style.display = isProgRollup ? 'block' : 'none';
     if (rollupPctText) {
@@ -6692,6 +6724,8 @@ async function saveTaskModalChanges() {
     closeModal('taskDetailModal');
     return;
   }
+  // A progress that disagrees with the Jira status offers the status change; the user chooses (INV-03).
+  if (updates.progress !== undefined && !(await withStatusChoice([{ key: activeTaskId, progress: updates.progress, updates }]))) return;
 
   const btn = document.getElementById('btnSaveTaskModal');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
@@ -6948,6 +6982,76 @@ function hideModal(modal) {
   modal.dataset.dirty = '';
   const prompt = modal.querySelector('.discard-prompt');
   if (prompt) prompt.remove();
+  // Escape or a backdrop click on the status question cancels the whole action.
+  if (modal.id === 'statusOfferModal' && statusOfferResolve) statusOfferResolve('cancel');
+}
+
+// Progress and Jira status (owner decision 2026-11-06, INV-03): the planner never changes a status by
+// itself. When a new progress disagrees with the status, it asks once, and the user chooses.
+let statusOfferResolve = null;
+
+/** Shows the status question. Resolves 'move', 'keep' or 'cancel'. */
+function askStatusOffers(offers) {
+  const prompt = offerPrompt(offers);
+  const modal = document.getElementById('statusOfferModal');
+  if (!prompt || !modal) return Promise.resolve('keep');
+  document.getElementById('statusOfferQuestion').textContent = prompt.question;
+  const list = document.getElementById('statusOfferList');
+  list.replaceChildren(...prompt.lines.map(line => {
+    const li = document.createElement('li');
+    li.textContent = line;
+    return li;
+  }));
+  list.hidden = prompt.lines.length === 0;
+  const move = document.getElementById('btnStatusOfferMove');
+  const keep = document.getElementById('btnStatusOfferKeep');
+  move.textContent = prompt.move;
+  keep.textContent = prompt.keep;
+  const opener = document.activeElement;
+  modal.style.display = 'flex';
+  move.focus();
+  announce(prompt.question);
+  return new Promise(resolve => {
+    statusOfferResolve = (choice) => {
+      statusOfferResolve = null;
+      hideModal(modal);
+      if (opener && typeof opener.focus === 'function') opener.focus();
+      resolve(choice);
+    };
+  });
+}
+
+/**
+ * Adds the status the user chooses to progress edits ({key, progress, updates}); false when the user
+ * cancelled, so nothing is written.
+ */
+async function withStatusChoice(edits) {
+  const offers = statusOffers(edits.map(e => ({ key: e.key, status: findTask(e.key)?.status, progress: e.progress, chosenStatus: e.updates.status })));
+  if (!offers.length) return true;
+  const choice = await askStatusOffers(offers);
+  if (choice === 'cancel') return false;
+  if (choice === 'move') {
+    for (const o of offers) {
+      const edit = edits.find(e => e.key === o.key);
+      if (edit) edit.updates.status = o.to;
+    }
+  }
+  return true;
+}
+
+/** A Done item's progress is 100% and locked in the dialog; choosing another status there unlocks it. */
+function setDialogProgressLock(key, status) {
+  const reason = progressLockReason({ key, status });
+  for (const id of ['editProgressInput', 'editProgressSlider', 'btnModalUseRollup']) {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !!reason;
+  }
+  document.querySelectorAll('.modal-prog-preset').forEach(b => { b.disabled = !!reason; });
+  const note = document.getElementById('editProgressLockNote');
+  if (note) {
+    note.textContent = reason || '';
+    note.hidden = !reason;
+  }
 }
 
 function openModal() {

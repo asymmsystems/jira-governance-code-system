@@ -132,10 +132,27 @@ describe('KVS holds app-owned data only (B-04)', () => {
   });
 
   it('setting progress by hand marks it manual; other edits do not', async () => {
-    await storage.set('scheduleMap:TEST', { 'TEST-1': { startWeek: weeks[5].weekKey, spanWeeks: 1 } });
-    await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { progress: 30 } });
-    const stored = (await entryOf(storage, 'TEST-1'));
+    await storage.set('scheduleMap:TEST', { 'TEST-3': { startWeek: weeks[5].weekKey, spanWeeks: 1 } });
+    await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-3', updates: { progress: 30 } });
+    const stored = (await entryOf(storage, 'TEST-3'));
     expect(stored.progress).toBe(30);
+    expect(stored.manualProgress).toBe(true);
+  });
+
+  it('a progress edit on a Done item is ignored, and Done shows 100% (2026-11-06)', async () => {
+    await storage.set('scheduleMap:TEST', { 'TEST-1': { startWeek: weeks[5].weekKey, spanWeeks: 1 } });
+    const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { progress: 30 } });
+    const stored = (await entryOf(storage, 'TEST-1'));
+    expect(stored?.progress).toBeUndefined();
+    expect(stored?.manualProgress).toBeUndefined();
+    expect(res.tasks.find((t: any) => t.key === 'TEST-1').progress).toBe(100);
+  });
+
+  it('a progress edit that reopens a Done item in the same action is kept', async () => {
+    await storage.set('scheduleMap:TEST', { 'TEST-1': { startWeek: weeks[5].weekKey, spanWeeks: 1 } });
+    await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { progress: 40, status: 'IN_PROGRESS' } });
+    const stored = (await entryOf(storage, 'TEST-1'));
+    expect(stored.progress).toBe(40);
     expect(stored.manualProgress).toBe(true);
   });
 

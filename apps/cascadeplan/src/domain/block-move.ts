@@ -53,7 +53,8 @@ function addDays(iso: string, days: number): string {
 export function blockState(m: BlockMember): BlockState {
   if (!m.startDate || !ISO.test(m.startDate)) return 'undated';
   if (m.status === 'COMPLETED') return 'done';
-  if (m.status === 'IN_PROGRESS' || (m.progress || 0) > 0) return 'in-progress';
+  // The state comes from the Jira status category only; progress never decides it (INV-03, 2026-11-06).
+  if (m.status === 'IN_PROGRESS') return 'in-progress';
   return 'not-started';
 }
 

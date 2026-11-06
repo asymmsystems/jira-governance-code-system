@@ -426,6 +426,25 @@
   <div class="tooltip-popup" id="globalTooltip"></div>
 
   <!-- Task Detail & Estimation / Subtasks Modal -->
+  <!-- Progress and Jira status: the planner asks before it changes a status (owner decision 2026-11-06, INV-03).
+       It sits before the other dialogs so Escape reaches it first; style.css draws it above them. -->
+  <div class="modal-backdrop status-offer-backdrop" id="statusOfferModal">
+    <div class="modal-card status-offer-card" role="dialog" aria-modal="true" aria-labelledby="statusOfferTitle" aria-describedby="statusOfferQuestion">
+      <div class="modal-header">
+        <div class="modal-title" id="statusOfferTitle">Jira status</div>
+      </div>
+      <div class="modal-body">
+        <p id="statusOfferQuestion" class="status-offer-question"></p>
+        <ul id="statusOfferList" class="status-offer-list" hidden></ul>
+        <p class="status-offer-note">Jira's workflow decides whether the move is allowed. If Jira refuses it, the progress is still saved and the Changes panel shows why.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" id="btnStatusOfferKeep">Keep the status</button>
+        <button type="button" class="btn btn-primary" id="btnStatusOfferMove">Change the status</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-backdrop" id="taskDetailModal">
     <div class="modal-card">
       <div class="modal-header">
@@ -476,6 +495,7 @@
                 <button type="button" class="btn btn-sm btn-subtle modal-prog-preset" data-pct="75">75%</button>
                 <button type="button" class="btn btn-sm btn-subtle modal-prog-preset" data-pct="100">100%</button>
               </div>
+              <div id="editProgressLockNote" class="progress-lock-note" role="note" hidden></div>
               <div id="editProgressRollupNote">
                 <span>Child Rollup: <strong id="modalRollupPctText">0%</strong></span>
                 <button type="button" id="btnModalUseRollup" class="btn btn-sm btn-subtle">Use Rollup</button>

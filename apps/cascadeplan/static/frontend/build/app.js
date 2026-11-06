@@ -6968,7 +6968,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function earliestStart(pred, triggerPercent, today) {
     const p = pred.percentComplete || 0;
     const x = triggerPercent;
-    if (p >= x && (x > 0 || p > 0 || pred.started === true)) {
+    if (p >= x && (x > 0 || pred.started === true)) {
       return { basis: "satisfied", date: null, triggerDate: null, reason: `${pred.workEffortId} is at ${p}%, past the ${x}% trigger` };
     }
     const s = dayNumber(pred.estimatedStartDate);
@@ -7014,7 +7014,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const e = best.res.date;
     const reason = `Starts ${e} because ${best.res.reason}.`;
     const detail = { triggerDate: best.res.triggerDate, triggerPercent: best.link.triggerPercent, basis: best.res.basis };
-    const started = own.started === true || (own.percentComplete || 0) > 0;
+    const started = own.started === true;
     if (started) {
       return {
         earliestStartDate: e,
@@ -7956,6 +7956,53 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return { visibleKeys, widths, offsets, totalWidth: x, lastKey };
   }
 
+  // src/ui/progress-status.ts
+  var LABEL = { NOT_STARTED: "To Do", IN_PROGRESS: "In Progress", COMPLETED: "Done" };
+  function planStatus(status) {
+    return status === "COMPLETED" || status === "IN_PROGRESS" ? status : "NOT_STARTED";
+  }
+  function isDone(status) {
+    return status === "COMPLETED";
+  }
+  function statusOffers(edits) {
+    const out = [];
+    for (const e of edits) {
+      if (e.chosenStatus !== void 0) continue;
+      const from = planStatus(e.status);
+      if (from === "COMPLETED") continue;
+      const p = Number(e.progress);
+      if (!Number.isFinite(p) || p <= 0) continue;
+      if (p >= 100) out.push({ key: e.key, from, to: "COMPLETED" });
+      else if (from === "NOT_STARTED") out.push({ key: e.key, from, to: "IN_PROGRESS" });
+    }
+    return out;
+  }
+  function offerPrompt(offers) {
+    if (!offers.length) return null;
+    if (offers.length === 1) {
+      const o = offers[0];
+      return {
+        question: `${o.key} is ${LABEL[o.from]} in Jira. Also move it to ${LABEL[o.to]}?`,
+        lines: [],
+        move: `Move to ${LABEL[o.to]}`,
+        keep: `Keep ${LABEL[o.from]}`
+      };
+    }
+    return {
+      question: `The new progress does not match the Jira status of ${offers.length} work items. Also change their status in Jira?`,
+      lines: offers.map((o) => `${o.key}: ${LABEL[o.from]} to ${LABEL[o.to]}`),
+      move: "Change the statuses",
+      keep: "Keep the statuses"
+    };
+  }
+  function progressLockReason(t) {
+    return isDone(t.status) ? `${t.key} is Done in Jira, so its progress is 100%. Change its status to reopen it.` : null;
+  }
+  function progressText(t) {
+    const p = Math.max(0, Math.min(100, Math.round(Number(t.progress) || 0)));
+    return p === 100 && !isDone(t.status) ? "100%, not Done in Jira" : `${p}%`;
+  }
+
   // src/ui/keyboard-grid.ts
   var GRID_COLUMNS = ["Key", "Summary", "Start", "Due", "Progress", "Status", "Dependencies"];
   var clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -7994,7 +8041,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       t.summary || "No summary",
       t.startDate || "Not scheduled",
       t.endDate || "Not scheduled",
-      `${t.progress || 0}%`,
+      progressText(t),
       STATUS[t.status] || t.status,
       dependencyText(t.dependency)
     ];
@@ -8129,7 +8176,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function blockState(m) {
     if (!m.startDate || !ISO.test(m.startDate)) return "undated";
     if (m.status === "COMPLETED") return "done";
-    if (m.status === "IN_PROGRESS" || (m.progress || 0) > 0) return "in-progress";
+    if (m.status === "IN_PROGRESS") return "in-progress";
     return "not-started";
   }
   function planBlockMove(members, days, today) {
@@ -9192,11 +9239,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
         e.stopPropagation();
         const pct = parseInt(btn.dataset.pct, 10);
         if (progPopover) progPopover.style.display = "none";
-        if (!activeProgressTaskKey) return;
-        await callResolver2("updateWbsTask", {
-          taskId: activeProgressTaskKey,
-          updates: { progress: pct, manualProgress: true }
-        });
+        const key = activeProgressTaskKey;
+        if (!key) return;
+        const updates = { progress: pct, manualProgress: true };
+        if (!await withStatusChoice([{ key, progress: pct, updates }])) return;
+        await callResolver2("updateWbsTask", { taskId: key, updates });
         await loadProjectPlan();
       });
     });
@@ -9221,11 +9268,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
         e.stopPropagation();
         const val = parseInt(progNumInput?.value || progSlider?.value || "0", 10);
         if (progPopover) progPopover.style.display = "none";
-        if (!activeProgressTaskKey) return;
-        await callResolver2("updateWbsTask", {
-          taskId: activeProgressTaskKey,
-          updates: { progress: Math.max(0, Math.min(100, val)), manualProgress: true }
-        });
+        const key = activeProgressTaskKey;
+        if (!key) return;
+        const pct = Math.max(0, Math.min(100, val));
+        const updates = { progress: pct, manualProgress: true };
+        if (!await withStatusChoice([{ key, progress: pct, updates }])) return;
+        await callResolver2("updateWbsTask", { taskId: key, updates });
         await loadProjectPlan();
       });
     }
@@ -9347,6 +9395,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
         if (editTargetSlider) editTargetSlider.value = pct;
         if (editTargetValLabel) editTargetValLabel.textContent = `${pct}%`;
       });
+    });
+    document.getElementById("editStatusSelect")?.addEventListener("change", (e) => setDialogProgressLock(activeTaskId, e.target.value));
+    document.getElementById("btnStatusOfferMove")?.addEventListener("click", () => {
+      if (statusOfferResolve) statusOfferResolve("move");
+    });
+    document.getElementById("btnStatusOfferKeep")?.addEventListener("click", () => {
+      if (statusOfferResolve) statusOfferResolve("keep");
     });
     const btnModalRollup = document.getElementById("btnModalUseRollup");
     if (btnModalRollup) {
@@ -10995,6 +11050,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
     activeProgressTaskKey = taskKey;
     const task = (currentPlan?.tasks || []).find((t) => t.key === taskKey);
     if (!task) return;
+    const locked = progressLockReason(task);
+    if (locked) {
+      showFlag({ text: locked });
+      announce(locked);
+      return;
+    }
     const popover = document.getElementById("progressPickerPopover");
     const titleEl = document.getElementById("progressPickerTitle");
     const valLabel = document.getElementById("progressPickerValLabel");
@@ -11703,10 +11764,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     if (visibleKeys.includes("progress")) {
       const isProgRollup = isEpic || task.childrenCount && task.childrenCount > 0;
-      const progTitle = isProgRollup ? `Actual progress: ${task.progress}% (Rollup from children: click to edit or override)` : `Click to set actual progress (${task.progress}%)`;
+      const lockText = progressLockReason(task);
+      const progTitle = lockText || (isProgRollup ? `Actual progress: ${progressText(task)} (Rollup from children: click to edit or override)` : `Click to set actual progress (${progressText(task)})`);
       rowColsHtml = html`${rowColsHtml}
       <td class="td-data td-progress-cell jx-center-pointer" data-css-w="${columnWidths.progress}px" title="${progTitle}">
-        <div class="progress-chip-cell ${task.progress === 100 ? "is-complete" : task.progress > 0 ? "is-active" : "is-zero"}">
+        <div class="progress-chip-cell ${isDone(task.status) ? "is-complete" : task.progress > 0 ? "is-active" : "is-zero"}">
           <span class="progress-chip-fill" data-css-w="${task.progress}%"></span>
           <span class="progress-chip-text">${task.progress}% ▾</span>
         </div>
@@ -13839,9 +13901,14 @@ Click to manage or assign.`;
     return findTask(key)?.version || 0;
   }
   function initSelectionBar() {
-    document.getElementById("btnSelProgress")?.addEventListener("click", () => {
+    document.getElementById("btnSelProgress")?.addEventListener("click", async () => {
       const p = Math.max(0, Math.min(100, parseInt(document.getElementById("selProgress").value, 10) || 0));
-      runBatch([...selectedKeys].map((k) => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) })), "progress");
+      const done = [...selectedKeys].filter((k) => isDone(findTask(k)?.status));
+      if (done.length) showFlag({ text: `Not changed: ${done.join(", ")} ${done.length === 1 ? "is" : "are"} Done in Jira, so the progress stays 100%.` });
+      const items = [...selectedKeys].filter((k) => !done.includes(k)).map((k) => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) }));
+      if (!items.length) return;
+      if (!await withStatusChoice(items.map((i) => ({ key: i.taskId, progress: p, updates: i.updates })))) return;
+      runBatch(items, "progress");
     });
     document.getElementById("btnSelMove")?.addEventListener("click", async () => {
       const days = parseInt(document.getElementById("selDays").value, 10) || 0;
@@ -13867,6 +13934,11 @@ Click to manage or assign.`;
     }));
   }
   function setPendingProgress(key, pct) {
+    const locked = progressLockReason(findTask(key) || { key });
+    if (locked) {
+      announce(locked);
+      return;
+    }
     pendingProgress.set(key, pct);
     const chip = rowCache.get(key)?.querySelector(".progress-chip-text");
     if (chip) chip.textContent = `${pct}% (not saved)`;
@@ -13874,6 +13946,11 @@ Click to manage or assign.`;
   }
   async function commitPendingProgress() {
     const items = [...pendingProgress].map(([k, p]) => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) }));
+    if (!await withStatusChoice(items.map((i) => ({ key: i.taskId, progress: i.updates.progress, updates: i.updates })))) {
+      announce(`Progress not saved yet. Enter saves the ${pendingProgress.size} changes, Escape drops them.`);
+      focusGridCell();
+      return;
+    }
     pendingProgress.clear();
     await runBatch(items, "progress");
     announce(`Saved progress on ${items.length} issue${items.length === 1 ? "" : "s"}.`);
@@ -13943,6 +14020,7 @@ Click to manage or assign.`;
     }
     if (progSlider) progSlider.value = curProg;
     if (progValLabel) progValLabel.textContent = `${curProg}%`;
+    setDialogProgressLock(task.key, task.status);
     if (progNote) {
       progNote.style.display = isProgRollup ? "block" : "none";
       if (rollupPctText) {
@@ -14287,6 +14365,7 @@ Click to manage or assign.`;
       closeModal("taskDetailModal");
       return;
     }
+    if (updates.progress !== void 0 && !await withStatusChoice([{ key: activeTaskId, progress: updates.progress, updates }])) return;
     const btn = document.getElementById("btnSaveTaskModal");
     if (btn) {
       btn.disabled = true;
@@ -14529,6 +14608,65 @@ Click to manage or assign.`;
     modal.dataset.dirty = "";
     const prompt = modal.querySelector(".discard-prompt");
     if (prompt) prompt.remove();
+    if (modal.id === "statusOfferModal" && statusOfferResolve) statusOfferResolve("cancel");
+  }
+  var statusOfferResolve = null;
+  function askStatusOffers(offers) {
+    const prompt = offerPrompt(offers);
+    const modal = document.getElementById("statusOfferModal");
+    if (!prompt || !modal) return Promise.resolve("keep");
+    document.getElementById("statusOfferQuestion").textContent = prompt.question;
+    const list = document.getElementById("statusOfferList");
+    list.replaceChildren(...prompt.lines.map((line) => {
+      const li = document.createElement("li");
+      li.textContent = line;
+      return li;
+    }));
+    list.hidden = prompt.lines.length === 0;
+    const move = document.getElementById("btnStatusOfferMove");
+    const keep = document.getElementById("btnStatusOfferKeep");
+    move.textContent = prompt.move;
+    keep.textContent = prompt.keep;
+    const opener = document.activeElement;
+    modal.style.display = "flex";
+    move.focus();
+    announce(prompt.question);
+    return new Promise((resolve) => {
+      statusOfferResolve = (choice) => {
+        statusOfferResolve = null;
+        hideModal(modal);
+        if (opener && typeof opener.focus === "function") opener.focus();
+        resolve(choice);
+      };
+    });
+  }
+  async function withStatusChoice(edits) {
+    const offers = statusOffers(edits.map((e) => ({ key: e.key, status: findTask(e.key)?.status, progress: e.progress, chosenStatus: e.updates.status })));
+    if (!offers.length) return true;
+    const choice = await askStatusOffers(offers);
+    if (choice === "cancel") return false;
+    if (choice === "move") {
+      for (const o of offers) {
+        const edit = edits.find((e) => e.key === o.key);
+        if (edit) edit.updates.status = o.to;
+      }
+    }
+    return true;
+  }
+  function setDialogProgressLock(key, status) {
+    const reason = progressLockReason({ key, status });
+    for (const id of ["editProgressInput", "editProgressSlider", "btnModalUseRollup"]) {
+      const el3 = document.getElementById(id);
+      if (el3) el3.disabled = !!reason;
+    }
+    document.querySelectorAll(".modal-prog-preset").forEach((b) => {
+      b.disabled = !!reason;
+    });
+    const note = document.getElementById("editProgressLockNote");
+    if (note) {
+      note.textContent = reason || "";
+      note.hidden = !reason;
+    }
   }
   function openModal() {
     return [...document.querySelectorAll(".modal-backdrop")].find((m) => m.style.display === "flex" || m.style.display === "block") || null;

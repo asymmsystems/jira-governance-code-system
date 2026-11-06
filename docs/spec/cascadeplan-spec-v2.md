@@ -40,6 +40,7 @@ CascadePlan is a Jira Cloud project page (Forge Custom UI) that plans issues on 
 | INV-16 | Every write is checked against the user's Jira permissions before any KVS or Jira write. A failed check, or an error in the check, refuses the call. | BL-2 |
 | INV-17 | The response to a write shows the values Jira holds after the write. | F-03 |
 | INV-18 | Every relationship the planner shows exists in Jira: parents through Jira's `parent` field, dependencies as Jira "Blocks" links, the trigger percent as a Jira issue property. | ADR-004, ADR-006 |
+| INV-19 | The state of a work item (not started, in progress, done) comes only from its Jira status category. Progress measures how far an item has got; it never decides the state. A Done item shows 100% and its progress cannot be edited (the stored manual value stays for when it is reopened). When a progress edit disagrees with the status, the planner asks in the same action: above 0% on a To Do item offers "In Progress", 100% on an item that is not Done offers "Done"; 0% offers nothing. A batch gets one question. Only the user's choice is sent, through the workflow transition, so INV-03 holds; a refused transition is reported and the progress is still saved. | Owner decision 2026-11-06 |
 
 ## 3. Domain model
 
@@ -70,8 +71,8 @@ Rules:
 
 Unchanged from v1 section 3.3, items 1 to 10, with these changes:
 - **Today** is the user's local date, sent by the client and checked to be within one day of the server's UTC date (F-29).
-- **Progress source (item 9).** Done status category gives 100. A leaf uses `timespent / timeoriginalestimate`; a parent uses `aggregatetimespent / aggregatetimeoriginalestimate` (F-25).
-- **11. Started.** A work effort is started when its Jira status category is "In Progress" or "Done", or when its progress is above 0% (`src/domain/schedule-engine.ts:132`). A cascade never moves the start of a started work effort; it reports the conflict.
+- **Progress source (item 9).** Done status category gives 100, also over a manual value (INV-19). Otherwise a manual value set by hand, else a leaf uses `timespent / timeoriginalestimate`; a parent uses `aggregatetimespent / aggregatetimeoriginalestimate` (F-25).
+- **11. Started.** A work effort is started when its Jira status category is "In Progress" or "Done" (INV-19; progress alone never starts it, `src/domain/schedule-engine.ts:132`). A 0% link ("start together") is satisfied only once the predecessor has started. A cascade never moves the start of a started work effort; it reports the conflict.
 - **12. Inherited links.** When the engine evaluates a sub-task, it also applies the incoming links of each of its ancestors (N-06 rule 5).
 - **13. Roll-up in the cascade.** Before a cascade, the roll-ups of every changed parent are recomputed, and the cascade also starts from every ancestor whose roll-up changed (N-06 rule 1). A cascade that reaches a parent moves its block (section 3.4).
 - **14. Hierarchy links.** A dependency between an issue and its own ancestor or descendant is refused. Such links imported from Jira are shown, marked "ignored by the schedule", and left out of the engine (N-06 rule 6).

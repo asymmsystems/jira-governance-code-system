@@ -51,7 +51,7 @@ describe('planBlockMove (ADR-003 rules)', () => {
 
   it('an in-progress end never moves before today or its start; a not-started bar may move into the past', () => {
     const r = planBlockMove([
-      { key: 'A-1', startDate: '2026-11-01', endDate: '2026-11-08', progress: 20 },
+      { key: 'A-1', startDate: '2026-11-01', endDate: '2026-11-08', progress: 20, status: 'IN_PROGRESS' },
       { key: 'A-2', startDate: '2026-11-06', endDate: '2026-11-07' }
     ], -14, '2026-11-05');
     expect(r.changes).toEqual([
@@ -60,6 +60,12 @@ describe('planBlockMove (ADR-003 rules)', () => {
     ]);
     expect(planBlockMove([{ key: 'A-3', startDate: '2026-11-01', endDate: '2026-11-05', status: 'IN_PROGRESS' }], -3, '2026-11-05').fixed[0].state).toBe('in-progress');
     expect(blockState({ key: 'x', startDate: '2026-11-01', progress: 0 })).toBe('not-started');
+  });
+
+  it('the state comes from the Jira status only: progress alone never starts or finishes an item (2026-11-06)', () => {
+    expect(blockState({ key: 'x', startDate: '2026-11-01', progress: 40, status: 'NOT_STARTED' })).toBe('not-started');
+    expect(blockState({ key: 'x', startDate: '2026-11-01', progress: 100, status: 'IN_PROGRESS' })).toBe('in-progress');
+    expect(blockState({ key: 'x', startDate: '2026-11-01', progress: 0, status: 'COMPLETED' })).toBe('done');
   });
 });
 

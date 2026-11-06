@@ -82,10 +82,19 @@ describe('evaluateEffort (several predecessors, violation, reason, suggestion)',
   });
 
   it('a successor that has started is a violation even when its dates fit', () => {
-    const started = new Map(efforts); started.set('S', eff('S', '2026-11-20', '2026-11-30', 10));
+    const started = new Map(efforts); started.set('S', { ...eff('S', '2026-11-20', '2026-11-30', 10), started: true });
     const r = evaluateEffort('S', started, [link('B', 'S', 90)], TODAY);
     expect(r.violated).toBe(true);
     expect(r.suggestion).toBe('S has started, but B is at 0% of the 90% trigger.');
+  });
+
+  it('progress alone does not start a work effort; the Jira status does (2026-11-06)', () => {
+    const toDo = new Map(efforts); toDo.set('S', eff('S', '2026-11-20', '2026-11-30', 10));
+    expect(evaluateEffort('S', toDo, [link('B', 'S', 90)], TODAY).suggestion).not.toContain('has started');
+    // A 0% link ("start together") waits for the predecessor to start in Jira, whatever its progress.
+    const pred = eff('P', '2026-11-10', '2026-11-20', 5);
+    expect(earliestStart(pred, 0, TODAY).basis).not.toBe('satisfied');
+    expect(earliestStart({ ...pred, started: true }, 0, TODAY).basis).toBe('satisfied');
   });
 
   it('no trigger suggestion when even 0% is too late; satisfied links give no constraint', () => {

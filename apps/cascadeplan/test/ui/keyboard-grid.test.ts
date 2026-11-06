@@ -50,6 +50,10 @@ describe('row cells and levels (B-15 criteria 1 and 2)', () => {
     expect(rowCells(tasks[3])).toEqual(['S-4', 'No summary', '2026-11-04', 'Not scheduled', '0%', 'OTHER', 'None']);
     expect(dependencyText(null)).toBe('None');
   });
+
+  it('says when 100% is not Done in Jira (2026-11-06)', () => {
+    expect(rowCells({ key: 'A-1', progress: 100, status: 'IN_PROGRESS' })[4]).toBe('100%, not Done in Jira');
+  });
   it('levels: epic 1, story under a shown epic 2, sub-task one below its parent', () => {
     expect(tasks.map(t => rowLevel(t, keys))).toEqual([1, 2, 3, 1]);
     expect(rowLevel({ key: 'T-9', isSubtask: true, parentKey: 'Z-1' }, keys)).toBe(2);

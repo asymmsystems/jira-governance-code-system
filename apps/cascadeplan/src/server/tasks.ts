@@ -185,7 +185,15 @@ export async function updateWbsTask(
     }
   }
 
-  // Progress and Target Progress handling & Status auto-transition
+  // A Done item always shows 100% and its progress is not edited, unless the same action reopens it
+  // (owner decision 2026-11-06). The stored manual value stays for when it is reopened.
+  const reopens = sanitized.status !== undefined && sanitized.status !== 'COMPLETED';
+  if (sanitized.progress !== undefined && targetTask.status === 'COMPLETED' && !reopens) {
+    delete sanitized.progress;
+    delete sanitized.manualProgress;
+  }
+
+  // Progress and Target Progress handling
   if (sanitized.progress !== undefined) {
     const rawP = Number(sanitized.progress);
     sanitized.progress = isNaN(rawP) ? 0 : Math.max(0, Math.min(100, Math.round(rawP)));
