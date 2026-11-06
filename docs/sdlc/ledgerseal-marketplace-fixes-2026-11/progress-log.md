@@ -495,3 +495,9 @@ Production runs 2.0.0 (deployed by the main session); this branch deploys to dev
 ### L-22
 
 - The listing, reviewer notes, README and site item 25 now say: "its evidence is not exported to anyone; approving the changes makes a new seal whose evidence can be exported", not "seal the issue again to export its evidence".
+
+### Deploy, live check and gate (round 2 fixes)
+
+- `forge deploy -e development`: 5.3.0 (code of `9aeb3ef`). Production not touched.
+- PAY-10 (no comments): the panel shows SEALED; the evidence exports from the panel and passes 5 of 5 checks (two earlier attempts timed out on the page's buttons, the third succeeded; the script now names the button it could not click). H-2 needs a comment restricted to a role the app user is not in and a second viewer, so it is proven by the tests. No live write.
+- Gate: `npx tsc --noEmit` 0 errors; `npm test` 49 suites, 537 tests passed; coverage statements 98.06%, branches 94.13%, functions 97.01%, lines 98.71%; build, `npm audit --omit=dev --audit-level=high` and `forge lint` clean.
