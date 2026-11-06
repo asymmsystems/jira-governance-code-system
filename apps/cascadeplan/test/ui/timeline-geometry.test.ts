@@ -4,9 +4,7 @@
  * @author Fahim Farook
  */
 
-import {
-  daysBetween, xForDate, barRect, visibleRange, handleOffsets, snapDays, previewMoves, frozenColumnsWidth, HANDLE_PX
-} from '../../src/ui/timeline-geometry';
+import { daysBetween, xForDate, barRect, visibleRange, handleOffsets, snapDays, previewMoves, frozenColumnsWidth, HANDLE_PX, portOffsets, PORT_PX, bezierPoints, distanceToPath, nearestArrow, Point } from '../../src/ui/timeline-geometry';
 
 const ORIGIN = '2026-10-07';
 const DAY = 85 / 7;
@@ -78,5 +76,36 @@ describe('timeline geometry (B-13)', () => {
     const keys = ['epic', 'story', 'task', 'resource', 'effort', 'progress', 'target', 'status'];
     expect(frozenColumnsWidth(keys, widths)).toBe(990);
     expect(frozenColumnsWidth(['task'], widths)).toBe(260);
+  });
+});
+
+describe('link ports and arrow hit tests (owner report 2026-11-05)', () => {
+  it('ports sit just outside the resize handles, touching them, on wide and narrow bars', () => {
+    for (const w of [200, 30]) {
+      const h = handleOffsets(w);
+      const p = portOffsets(w);
+      expect(p.right).toBe(h.right + HANDLE_PX); // starts where the right handle ends
+      expect(p.left + PORT_PX).toBe(h.left);      // ends where the left handle starts
+      expect(p.right).toBeGreaterThanOrEqual(w);  // never over the bar body
+      expect(p.left + PORT_PX).toBeLessThanOrEqual(0);
+    }
+  });
+
+  it('bezierPoints runs from the first to the last control point', () => {
+    const pts = bezierPoints([0, 0], [10, 0], [20, 10], [30, 10], 4);
+    expect(pts).toHaveLength(5);
+    expect(pts[0]).toEqual([0, 0]);
+    expect(pts[4]).toEqual([30, 10]);
+  });
+
+  it('distanceToPath and nearestArrow find the line under the pointer, within the tolerance', () => {
+    const a = { id: 'a', path: [[0, 0], [100, 0]] as Point[] };
+    const b = { id: 'b', path: [[0, 20], [100, 20]] as Point[] };
+    expect(distanceToPath(a.path, 50, 3)).toBeCloseTo(3);
+    expect(distanceToPath([[5, 5]], 8, 9)).toBeCloseTo(5);
+    expect(nearestArrow([a, b], 50, 4)?.id).toBe('a');
+    expect(nearestArrow([a, b], 50, 15)?.id).toBe('b');
+    expect(nearestArrow([a, b], 50, 10)).toBeNull();
+    expect(nearestArrow([{ id: 'c' } as { id: string; path?: Point[] }], 0, 0)).toBeNull();
   });
 });

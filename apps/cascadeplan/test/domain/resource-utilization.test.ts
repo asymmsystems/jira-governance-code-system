@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 import { ResourceUtilizationEngine } from '../../src/domain/resource-utilization';
 import { WbsTask, WeeklySprintColumn } from '../../src/domain/models';
 

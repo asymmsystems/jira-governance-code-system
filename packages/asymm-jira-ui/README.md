@@ -1,24 +1,34 @@
 # @asymm/jira-ui: Shared In-Jira UI Kit Brand and Layout Package
 
-This package (`packages/asymm-jira-ui`) contains the canonical brand definitions, design tokens, and Forge UI Kit layout primitives for all Asymm Systems Jira apps (**FourRealities**, **LedgerSeal**, **DefinitionGuard**, and **PlanShift**).
+This package (`packages/asymm-jira-ui`) contains the canonical brand definitions, design tokens, and Forge UI Kit layout primitives for all Asymm Systems Jira apps (**FourRealities**, **LedgerSeal**, **DefinitionGuard**, and **CascadePlan**).
 
-It is a zero-dependency monorepo package (`react` and `@forge/react` peer dependencies only) designed for uniform adoption across apps without code duplication.
+It is a monorepo package with `react` and `@forge/react` as peer dependencies, designed for uniform adoption across apps without code duplication. The build follows `architecture/decision/adr-00007-shared-ui-package-build.org`.
 
 ## Monorepo Setup
 
-In each app's `tsconfig.json`:
+The package compiles itself to `dist/` (JavaScript and type files) through its `prepare` script. `dist/` is not committed.
 
-```json
-{
-  "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@asymm/jira-ui": ["../../packages/asymm-jira-ui/src"],
-      "@asymm/jira-ui/*": ["../../packages/asymm-jira-ui/src/*"]
-    }
-  }
-}
-```
+1. Install the package first. This builds `dist/`:
+
+   ```
+   cd packages/asymm-jira-ui && npm ci
+   ```
+
+2. In each app, `package.json` depends on the package, and `.npmrc` makes npm copy it instead of linking it, so `react` and `@forge/react` resolve from the app's own `node_modules`:
+
+   ```json
+   "dependencies": {
+     "@asymm/jira-ui": "file:../../packages/asymm-jira-ui"
+   }
+   ```
+
+   ```
+   install-links=true
+   ```
+
+3. Then install the app (`npm ci`). The app's tests, type check and the Forge bundler all use the built package in `node_modules/@asymm/jira-ui`. No `tsconfig.json` `paths` or jest `moduleNameMapper` entry is needed.
+
+After a change to `packages/asymm-jira-ui/src`, run `npm ci` again in the package and then in each app: the app's copy does not follow the source on its own.
 
 Components across all apps import directly from `@asymm/jira-ui`:
 

@@ -9,6 +9,8 @@
  * levels for each row, arrow-key navigation, and the keyboard move mode with its announcements.
  */
 
+import { progressText } from './progress-status';
+
 export const GRID_COLUMNS = ['Key', 'Summary', 'Start', 'Due', 'Progress', 'Status', 'Dependencies'];
 
 export interface GridPos { row: number; col: number }
@@ -42,7 +44,7 @@ export function dependencyText(dep: { predecessorKey?: string; triggerPercent?: 
 
 /** Text of the seven cells of a row, in GRID_COLUMNS order. */
 export function rowCells(t: any): string[] {
-  return [t.key, t.summary || 'No summary', t.startDate || 'Not scheduled', t.endDate || 'Not scheduled', `${t.progress || 0}%`,
+  return [t.key, t.summary || 'No summary', t.startDate || 'Not scheduled', t.endDate || 'Not scheduled', progressText(t),
     STATUS[t.status] || t.status, dependencyText(t.dependency)];
 }
 

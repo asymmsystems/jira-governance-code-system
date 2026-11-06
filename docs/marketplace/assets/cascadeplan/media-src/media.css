@@ -1,0 +1,46 @@
+/*
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ *
+ * CascadePlan Marketplace media (BL-7), in the Asymm standard colours. Rendered to PNG at exact sizes
+ * by render.py with headless Chromium.
+ */
+:root {
+  --teal: #5295A3; --teal-light: #9CC8D1;
+  --rose: #BA6E8F; --rose-light: #C985A3;
+  --sage: #8FA96D; --sage-light: #AFC29C;
+  --sand: #F8DBA9; --sand-light: #FDF5E5;
+  --off-white: #F9F7F6; --white: #FFFFFF;
+  --ink: #1A1C1E; --ink-soft: #333333;
+  --teal-ink: #2E6470; /* teal darkened for small text on light backgrounds (AA) */
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; }
+body {
+  font-family: "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  color: var(--ink); background: var(--off-white); overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Product mark: the planner icon in teal. */
+.mark { display: inline-flex; align-items: center; justify-content: center; border-radius: 22%; background: var(--white);
+  box-shadow: 0 6px 18px rgba(26, 28, 30, 0.10); }
+
+/* Timeline pieces shared by the banner and the highlights. */
+.track { position: relative; background: var(--white); border-radius: 14px; box-shadow: 0 10px 30px rgba(26, 28, 30, 0.10); overflow: hidden; }
+.grid { position: absolute; inset: 0; background-image: linear-gradient(to right, rgba(26, 28, 30, 0.06) 1px, transparent 1px); }
+.bar { position: absolute; height: 26px; border-radius: 7px; display: flex; align-items: center; padding: 0 10px;
+  font-size: 12px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; }
+.bar .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 7px 0 0 7px; }
+.bar span { position: relative; }
+.bar.teal { background: var(--teal-light); } .bar.teal .fill { background: var(--teal); }
+.bar.sage { background: var(--sage-light); } .bar.sage .fill { background: var(--sage); }
+.bar.rose { background: var(--rose-light); } .bar.rose .fill { background: var(--rose); }
+.bar.sand { background: var(--sand); }
+.bar.ghost { background: transparent; border: 2px dashed var(--teal); color: var(--teal-ink); }
+.chip { position: absolute; transform: translate(-50%, -50%); background: var(--white); border: 1.5px solid var(--teal);
+  color: var(--teal-ink); font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
+svg.links { position: absolute; inset: 0; overflow: visible; }
+.today { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--rose); }
+.today::after { content: "Today"; position: absolute; top: 8px; left: 6px; font-size: 11px; font-weight: 800; color: var(--rose); }

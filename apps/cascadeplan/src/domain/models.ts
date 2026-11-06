@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 /**
  * CascadePlan: Domain Data Models
  * Supports flexible estimation (Hours, Story Points, T-Shirts), subtask rollups with buffers,
@@ -62,7 +68,12 @@ export interface TaskDependency {
   earliestStartDate?: string;
   earliestStartReason?: string;
   notes?: string;
-  jiraLinkId?: string; // id of the "Blocks" link that CascadePlan created for this dependency
+  jiraLinkId?: string; // id of the Jira "Blocks" link of this dependency
+  /**
+   * A link stored only in this plan's record, with no Jira link (before ADR-006). It stays shown and
+   * scheduled until the user creates it in Jira or drops it (ADR-006 migration, N-11 L5).
+   */
+  planOnly?: boolean;
   since?: string;        // fromDate of the stored association (B-28)
   driverKey?: string;    // the predecessor that sets the earliest start (B-11)
   fixSuggestion?: string; // what the user can change to resolve a violation (B-11, B-12)
@@ -73,6 +84,8 @@ export interface TaskDependency {
 export interface WbsTask {
   id: string;
   key: string;
+  /** Sub-tasks an earlier build stored only in the plan record (before ADR-004), waiting for the user's choice (F-23). */
+  localSubtasks?: SubtaskItem[];
   /** Due date as Jira holds it, read live and never stored (B-23). */
   jiraDueDate?: string;
   summary: string;
@@ -181,6 +194,14 @@ export interface PlanMetadata {
   name: string;
   createdAt: string;
   isDefault?: boolean;
+  /**
+   * Absent when the plan is ready. 'copying': a clone whose records are still being copied, page by
+   * page; 'deleting': a delete whose records are still being removed (N-02). Such a plan is not
+   * opened, and every write to it is refused.
+   */
+  state?: 'copying' | 'deleting';
+  /** The plan a 'copying' plan is cloned from. */
+  copyFrom?: string;
 }
 
 export interface ProjectPlanState {
@@ -200,9 +221,11 @@ export interface ProjectPlanState {
   hasEpic?: boolean;                // Whether the project supports Epic issue type
   lastUpdated: string;
   isLiveSynced?: boolean;
+  jiraStatus?: number; // Jira's HTTP status when the issue search failed (0 for no answer), F-21
   siteUrl?: string;
   hiddenColumns?: string[];
   truncated?: { shown: number; total: number }; // more issues exist than were read (B-10)
+  jqlFilter?: string; // the plan's JQL filter, when it has one (F-27)
   ok?: boolean;                     // set by write resolvers (B-07)
   jiraSync?: JiraSyncReport;        // set by write resolvers (B-07)
   staleEntries?: string[];          // stored entries Jira did not return (complete reads only, B-18)
@@ -247,6 +270,7 @@ export interface ResourceUtilizationProfile {
 
 
 export interface InlineTaskCreateRequest {
+  createId?: string; // C7: the same id on a repeated create finds the issue the first call created
   projectKey: string;
   projectId?: string; // from the Forge context; keys records by project id (B-09)
   parentKey?: string;
@@ -277,6 +301,7 @@ export interface ScheduleBacklogRequest {
   taskId: string;
   startWeek: string;
   startDate?: string; // an exact start day; the timeline is not limited to the server week list (B-27)
+  endDate?: string;   // an end the user chose; only then is a Jira due date written (F-06, INV-03)
   spanWeeks?: number;
   effortHours?: number;
   resource?: string;
@@ -292,6 +317,7 @@ export interface UnscheduleTaskRequest {
 }
 
 export interface CreateSubtaskForResourceRequest {
+  createId?: string; // C7: the same id on a repeated create finds the issue the first call created
   projectKey: string;
   projectId?: string; // from the Forge context; keys records by project id (B-09)
   parentKey?: string;
@@ -304,6 +330,7 @@ export interface CreateSubtaskForResourceRequest {
   effortHours?: number;
   startWeek?: string;
   spanWeeks?: number;
+  endDate?: string;   // an end the user chose; only then is a Jira due date written (F-06)
   planId?: string;
 }
 
@@ -540,6 +567,7 @@ export interface ApproverPolicy {
   roleTypeId: 'CP_APPROVER' | 'PS_APPROVER';
   parties: Array<{ partyId: string; partyTypeId: 'GROUP'; name: string }>;
   fromDate: string;
-  setByPartyId: string;
+  /** Account id of the Jira administrator who saved the policy; in the personal data report (H1). */
+  setByPartyId?: string;
 }
 

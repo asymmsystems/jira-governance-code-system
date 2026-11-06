@@ -5,10 +5,23 @@
   "author": "Fahim Farook",
   "license": "UNLICENSED",
   "private": true,
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p .",
+    "prepare": "tsc -p ."
+  },
   "peerDependencies": {
     "@forge/react": ">=10.0.0",
     "react": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@forge/react": "^12.4.0",
+    "@types/react": "^18.3.31",
+    "react": "^18.3.1",
+    "typescript": "^5.7.2"
   }
 }

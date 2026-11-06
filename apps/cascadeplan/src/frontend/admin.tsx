@@ -50,7 +50,7 @@ export const CascadePlanAdmin: React.FC = () => {
     chosen,
     results,
     appName: 'CascadePlan',
-    roleDescription: 'freeze delivery baseline, approve milestone variance, and manage plans'
+    roleDescription: 'create, rename and delete plans, freeze baselines, and accept or reject scope changes'
   });
 
   const search = async () => {
@@ -91,7 +91,7 @@ export const CascadePlanAdmin: React.FC = () => {
     <AdminPolicyPanel
       appName="CascadePlan"
       roleTitle="CascadePlan approvers"
-      roleDescription="freeze delivery baseline, approve milestone variance, and manage plans"
+      roleDescription="create, rename and delete plans, freeze baselines, and accept or reject scope changes"
       view={view}
       saving={saving}
       notice={notice}

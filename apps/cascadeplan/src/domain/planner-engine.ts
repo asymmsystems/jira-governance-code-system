@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 /**
  * CascadePlan: Pure Deterministic Planning & Calculation Engine
  * Implements multi-unit estimation reconciliation, subtask summation with buffers,
@@ -117,7 +123,8 @@ export class PlannerEngine {
 
     // Past or Current week evaluation
     if (weekIndex <= currentWeekIndex) {
-      if (task.status === 'COMPLETED' || task.progress >= 100) {
+      // Done comes from the Jira status only: 100% without Done is still open work (2026-11-06).
+      if (task.status === 'COMPLETED') {
         return 'COMPLETED';
       }
       if (task.progress < task.targetProgress || task.progress === 0) {
@@ -140,7 +147,7 @@ export class PlannerEngine {
     successorKey: string,
     predecessorKey: string,
     triggerPercent: number,
-    existingTasks: { key: string; dependency?: TaskDependency | null }[] = []
+    existingTasks: { key: string; dependency?: TaskDependency | null; dependencies?: TaskDependency[]; parentKey?: string }[] = []
   ): { valid: boolean; error?: string } {
     if (typeof triggerPercent !== 'number' || isNaN(triggerPercent) || triggerPercent < 0 || triggerPercent > 100) {
       return {
@@ -156,28 +163,39 @@ export class PlannerEngine {
       };
     }
 
-    // Graph cycle detection: follow predecessor links starting at predecessorKey
+    // Hierarchy: a link between an issue and its own ancestor or descendant is a cycle through the
+    // parent roll-up, because a parent's end includes its children's ends (N-06 rule 6).
+    const byKey = new Map(existingTasks.map(t => [t.key, t]));
+    const ancestors = (key: string): Set<string> => {
+      const out = new Set<string>();
+      let cur = byKey.get(key)?.parentKey;
+      while (cur && !out.has(cur)) { out.add(cur); cur = byKey.get(cur)?.parentKey; }
+      return out;
+    };
+    if (ancestors(successorKey).has(predecessorKey) || ancestors(predecessorKey).has(successorKey)) {
+      return {
+        valid: false,
+        error: `Invalid dependency: ${successorKey} and ${predecessorKey} are parent and child; a parent's dates come from its children.`
+      };
+    }
+
+    // Graph cycle detection over every active link (stored and imported from Jira), starting at the
+    // predecessor and following predecessors (F-15).
+    const linksOf = (key: string): string[] => {
+      const t = byKey.get(key);
+      const deps = (t?.dependencies && t.dependencies.length ? t.dependencies : (t?.dependency ? [t.dependency] : []));
+      return deps.map(d => d.predecessorKey).filter((k): k is string => !!k);
+    };
     const visited = new Set<string>();
-    const chain: string[] = [successorKey, predecessorKey];
-    let currentKey: string | undefined = predecessorKey;
-
-    while (currentKey) {
-      if (currentKey === successorKey) {
-        return {
-          valid: false,
-          error: `Cyclic dependency detected: ${chain.join(' -> ')}`
-        };
+    const queue: Array<{ key: string; path: string[] }> = [{ key: predecessorKey, path: [successorKey, predecessorKey] }];
+    while (queue.length) {
+      const { key, path } = queue.shift() as { key: string; path: string[] };
+      if (key === successorKey) {
+        return { valid: false, error: `Cyclic dependency detected: ${path.join(' -> ')}` };
       }
-      if (visited.has(currentKey)) {
-        break;
-      }
-      visited.add(currentKey);
-
-      const target = existingTasks.find(t => t.key === currentKey);
-      currentKey = target?.dependency?.predecessorKey;
-      if (currentKey) {
-        chain.push(currentKey);
-      }
+      if (visited.has(key)) continue;
+      visited.add(key);
+      for (const pred of linksOf(key)) queue.push({ key: pred, path: [...path, pred] });
     }
 
     return { valid: true };
@@ -191,25 +209,20 @@ export class PlannerEngine {
     pastWeeksCount: number = 6,
     futureWeeksCount: number = 8
   ): { weeks: WeeklySprintColumn[]; currentWeekIndex: number } {
-    const ref = new Date(referenceDate);
-    const day = ref.getDay();
-    const diffToWed = (day >= 3 ? day - 3 : day + 4);
-    const currentWeekStart = new Date(ref);
-    currentWeekStart.setDate(ref.getDate() - diffToWed);
-    currentWeekStart.setHours(0, 0, 0, 0);
+    // F-29: weeks start on Monday, like the timeline header, and are computed in UTC, like the dates.
+    const ref = new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), referenceDate.getUTCDate()));
+    const diffToMon = (ref.getUTCDay() + 6) % 7;
+    const currentWeekStart = new Date(ref.getTime() - diffToMon * 86400000);
 
     const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const weeks: WeeklySprintColumn[] = [];
 
     for (let i = -pastWeeksCount; i <= futureWeeksCount; i++) {
-      const wkStart = new Date(currentWeekStart);
-      wkStart.setDate(currentWeekStart.getDate() + i * 7);
+      const wkStart = new Date(currentWeekStart.getTime() + i * 7 * 86400000);
+      const wkEnd = new Date(wkStart.getTime() + 6 * 86400000);
 
-      const wkEnd = new Date(wkStart);
-      wkEnd.setDate(wkStart.getDate() + 6);
-
-      const startDay = String(wkStart.getDate()).padStart(2, '0');
-      const startMon = MONTHS[wkStart.getMonth()];
+      const startDay = String(wkStart.getUTCDate()).padStart(2, '0');
+      const startMon = MONTHS[wkStart.getUTCMonth()];
       const weekKey = `${startDay}-${startMon}`;
 
       const sprintNum = Math.floor((i + pastWeeksCount) / 2);

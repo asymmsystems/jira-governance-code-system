@@ -5,12 +5,8 @@
     "lib": ["ES2022", "DOM"],
     "jsx": "react",
     "declaration": true,
-    "baseUrl": ".",
-    "paths": {
-      "react": ["../../apps/fourrealities/node_modules/@types/react", "../../apps/fourrealities/node_modules/react"],
-      "@forge/react": ["../../apps/fourrealities/node_modules/@forge/react"]
-    },
-    "typeRoots": ["../../apps/fourrealities/node_modules/@types"],
+    "rootDir": "src",
+    "outDir": "dist",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
+import { FakeJiraLinks } from './helpers/fake-jira-links';
 import {
   getProjectPlan,
   fetchLiveJiraIssues,
@@ -8,6 +15,7 @@ import {
   createJiraEpic,
   updateWbsTask,
   addSubtaskToTask,
+  resolveLocalSubtasks,
   saveTaskDependency,
   saveColumnWidths,
   saveHiddenColumns,
@@ -20,6 +28,7 @@ import {
   DEFAULT_MILESTONES,
   mapJiraStatus,
   extractProjectKey,
+  adminHandler,
   extractSiteUrl,
   syncTaskToJira,
   mirrorDependencyToJira,
@@ -84,6 +93,7 @@ const DEFAULT_WEEKS = getDefaultWeeks();
 
 describe('CascadePlan Index & Resolver Tests', () => {
   let mockStorage: MockStorage;
+  let jiraLinks: FakeJiraLinks;
 
   beforeEach(async () => {
     mockStorage = new MockStorage();
@@ -217,6 +227,20 @@ describe('CascadePlan Index & Resolver Tests', () => {
         weeklyAllocations: { '29-Jul': 25, '05-Aug': 25, '12-Aug': 25, '19-Aug': 25 }
       }
     });
+    // Links and issue properties the planner writes are read back by the next search (ADR-006, ADR-008).
+    jiraLinks = new FakeJiraLinks(key => String(10000 + Number(key.split('-')[1])));
+    const base = mockRequestJira.getMockImplementation()!;
+    mockRequestJira.mockImplementation(async (routeStr: any, options?: any) => {
+      const url = String(routeStr);
+      const handled = jiraLinks.handle(url, options);
+      if (handled) return handled;
+      const res: any = await base(routeStr, options);
+      if (url.includes('/search/jql') && res && res.status === 200) {
+        const body = await res.json();
+        return { ...res, json: async () => ({ ...body, issues: (body.issues || []).map((i: any) => jiraLinks.decorate(i)) }) };
+      }
+      return res;
+    });
   });
 
   describe('resolveStorage', () => {
@@ -335,7 +359,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
         {
           projectKey: 'TEST',
           taskId: 'TEST-3',
-          startWeek: '05-Aug',
+          startWeek: DEFAULT_WEEKS[3].weekKey,
           spanWeeks: 3,
           effortHours: 16,
           resource: 'Fahim Farook'
@@ -346,7 +370,9 @@ describe('CascadePlan Index & Resolver Tests', () => {
       expect(updatedPlan.tasks.some(t => t.key === 'TEST-3')).toBe(true);
       expect(updatedPlan.backlogTasks!.some(t => t.key === 'TEST-3')).toBe(false);
       const scheduled = updatedPlan.tasks.find(t => t.key === 'TEST-3');
-      expect(scheduled?.startWeek).toBe('05-Aug');
+      // The week grid follows the shared start date (ADR-008).
+      expect(scheduled?.startWeek).toBe(DEFAULT_WEEKS[3].weekKey);
+      expect(scheduled?.startDate).toBe(DEFAULT_WEEKS[3].startDate);
       expect(scheduled?.spanWeeks).toBe(3);
     });
   });
@@ -416,9 +442,15 @@ describe('CascadePlan Index & Resolver Tests', () => {
         json: async () => ({ errorMessages: ['Summary is required and must not be blank'] })
       });
 
-      const res = await createInlineTask({ projectKey: 'TEST', summary: '' }, mockStorage);
+      const res = await createInlineTask({ projectKey: 'TEST', summary: 'New task' }, mockStorage);
       expect(res.success).toBe(false);
       expect(res.error).toBe('Summary is required and must not be blank');
+    });
+
+    it('refuses an empty summary before it calls Jira (F-18)', async () => {
+      mockRequestJira.mockClear();
+      await expect(createInlineTask({ projectKey: 'TEST', summary: '  ' }, mockStorage)).rejects.toThrow('summary must not be empty');
+      expect(mockRequestJira.mock.calls.filter(([, o]) => o?.method === 'POST')).toEqual([]);
     });
 
     it('handles Jira HTTP 400 with errors object in createInlineTask', async () => {
@@ -900,84 +932,75 @@ describe('CascadePlan Index & Resolver Tests', () => {
     });
   });
 
-  describe('addSubtaskToTask', () => {
-    it('adds a subtask and recalculates parent effort with PERCENTAGE buffer', async () => {
-      const updatedPlan = await addSubtaskToTask(
-        {
-          projectKey: 'TEST',
-          parentTaskId: 'TEST-1',
-          subtask: {
-            summary: 'Implement schema migration',
-            estimateValue: 2, // 2 story points = 16h
-            estimateUnit: 'STORY_POINTS'
-          },
-          bufferType: 'PERCENTAGE',
-          bufferValue: 25 // +25% buffer
-        },
-        mockStorage
-      );
+  describe('addSubtaskToTask (F-23: a real Jira sub-task, ADR-004)', () => {
+    const createdBodies = (): any[] => mockRequestJira.mock.calls
+      .filter(c => c[1]?.method === 'POST' && String(c[0]) === '/rest/api/3/issue').map(c => JSON.parse(c[1].body).fields);
+    const acceptCreate = () => {
+      const base = mockRequestJira.getMockImplementation()!;
+      mockRequestJira.mockImplementation(async (r: any, o?: any) => (String(r) === '/rest/api/3/issue' && o?.method === 'POST'
+        ? { status: 201, json: async () => ({ id: '10050', key: 'TEST-50' }) } : base(r, o)));
+    };
 
-      const parent = updatedPlan.tasks.find(t => t.key === 'TEST-1');
-      expect(parent?.effortConfig?.subtasks?.length).toBeGreaterThanOrEqual(1);
-      expect(parent?.effortConfig?.bufferHours).toBeGreaterThan(0);
+    it('creates a Jira sub-task under the parent with the estimate the user entered, and stores nothing in the plan', async () => {
+      acceptCreate();
+      await getProjectPlan('TEST', mockStorage);
+      const before = await entryOf(mockStorage, 'TEST-1');
+      const res: any = await addSubtaskToTask({ projectKey: 'TEST', parentTaskId: 'TEST-1',
+        subtask: { summary: 'Implement schema migration', estimateValue: 2, estimateUnit: 'STORY_POINTS' } }, mockStorage);
+      expect(res.ok).toBe(true);
+      expect(res.createdKey).toBe('TEST-50');
+      expect(createdBodies()).toEqual([{ project: { key: 'TEST' }, parent: { key: 'TEST-1' }, summary: 'Implement schema migration',
+        issuetype: { name: 'Sub-task' }, timetracking: { originalEstimate: '16h' } }]);
+      expect(await entryOf(mockStorage, 'TEST-1')).toEqual(before);
     });
 
-    it('adds subtask with default buffer arguments when omitted', async () => {
-      const updatedPlan = await addSubtaskToTask(
-        {
-          projectKey: 'TEST',
-          parentTaskId: 'TEST-1',
-          subtask: {
-            summary: 'Default buffer subtask',
-            estimateValue: 8,
-            estimateUnit: 'HOURS'
-          }
-        },
-        mockStorage
-      );
-
-      const parent = updatedPlan.tasks.find(t => t.key === 'TEST-1');
-      expect(parent?.effortConfig?.bufferType).toBe('NONE');
-      expect(parent?.effortConfig?.bufferHours).toBe(0);
+    it('an empty estimate sends no estimate to Jira (no default, BL-3)', async () => {
+      acceptCreate();
+      await addSubtaskToTask({ projectKey: 'TEST', parentTaskId: 'TEST-3', subtask: { summary: 'No estimate' } }, mockStorage);
+      expect(createdBodies()[0].timetracking).toBeUndefined();
     });
 
-    it('adds subtask with FIXED_HOURS buffer', async () => {
-      const updatedPlan = await addSubtaskToTask(
-        {
-          projectKey: 'TEST',
-          parentTaskId: 'TEST-1',
-          subtask: {
-            summary: 'Fixed hours subtask',
-            estimateValue: 16,
-            estimateUnit: 'HOURS'
-          },
-          bufferType: 'FIXED_HOURS',
-          bufferValue: 8
-        },
-        mockStorage
-      );
-
-      const parent = updatedPlan.tasks.find(t => t.key === 'TEST-1');
-      expect(parent?.effortConfig?.bufferType).toBe('FIXED_HOURS');
-      expect(parent?.effortConfig?.bufferHours).toBe(8);
+    it('a sub-task Jira refuses is reported, and nothing is stored', async () => {
+      const base = mockRequestJira.getMockImplementation()!;
+      mockRequestJira.mockImplementation(async (r: any, o?: any) => (String(r) === '/rest/api/3/issue' && o?.method === 'POST'
+        ? { status: 400, json: async () => ({ errorMessages: ['Issue type not found'] }) } : base(r, o)));
+      const res: any = await addSubtaskToTask({ projectKey: 'TEST', parentTaskId: 'TEST-1', subtask: { summary: 'X', estimateValue: 1, estimateUnit: 'HOURS' } }, mockStorage);
+      expect(res.ok).toBe(false);
+      expect(res.message).toContain('Issue type not found');
+      expect(res.jiraSync.ok).toBe(false);
     });
 
-    it('adds subtask to a task that has no prior scheduleMap entry', async () => {
-      const updatedPlan = await addSubtaskToTask(
-        {
-          projectKey: 'TEST',
-          parentTaskId: 'TEST-3',
-          subtask: {
-            summary: 'Brand new subtask on unscheduled item',
-            estimateValue: 4,
-            estimateUnit: 'HOURS'
-          }
-        },
-        mockStorage
-      );
+    it('refuses an empty summary or a bad estimate', async () => {
+      await expect(addSubtaskToTask({ projectKey: 'TEST', parentTaskId: 'TEST-1', subtask: { summary: ' ' } }, mockStorage)).rejects.toThrow('summary');
+      await expect(addSubtaskToTask({ projectKey: 'TEST', parentTaskId: 'TEST-1', subtask: { summary: 'A', estimateValue: -1, estimateUnit: 'HOURS' } }, mockStorage)).rejects.toThrow('estimate');
+    });
 
-      const item = updatedPlan.backlogTasks!.find(t => t.key === 'TEST-3');
-      expect(item?.effortConfig?.subtasks?.length).toBeGreaterThan(0);
+    it('sub-tasks stored only in a plan record are listed, never hide Jira\'s, and are created in Jira only on request', async () => {
+      acceptCreate();
+      await getProjectPlan('TEST', mockStorage);
+      const store = new PlanStore(mockStorage, 'TEST', 'TEST');
+      const cur = (await store.loadEntries()).get('TEST-1')!;
+      await store.putEntry('TEST-1', '10001', { ...cur, subtasks: [{ id: 'sub-1', summary: 'Local only', estimateValue: 3, estimateUnit: 'HOURS', normalizedHours: 3, status: 'NOT_STARTED' }] } as any, cur.version);
+      const plan = await getProjectPlan('TEST', mockStorage);
+      const t1 = plan.tasks.find(t => t.key === 'TEST-1')!;
+      expect(t1.subtasks!.map(s => s.key)).toEqual(['TEST-11']);
+      expect(t1.localSubtasks!.map(s => s.summary)).toEqual(['Local only']);
+      expect(createdBodies()).toEqual([]);
+      const res: any = await resolveLocalSubtasks({ projectKey: 'TEST', parentTaskId: 'TEST-1', action: 'create' }, mockStorage);
+      expect(res.ok).toBe(true);
+      expect(createdBodies()).toEqual([expect.objectContaining({ summary: 'Local only', timetracking: { originalEstimate: '3h' } })]);
+      expect((await entryOf(mockStorage, 'TEST-1')).subtasks || []).toEqual([]);
+    });
+
+    it('drop removes local sub-tasks with no Jira write', async () => {
+      await getProjectPlan('TEST', mockStorage);
+      const store = new PlanStore(mockStorage, 'TEST', 'TEST');
+      const cur = (await store.loadEntries()).get('TEST-1')!;
+      await store.putEntry('TEST-1', '10001', { ...cur, subtasks: [{ id: 'sub-1', summary: 'Local only', estimateValue: 3, estimateUnit: 'HOURS', normalizedHours: 3, status: 'NOT_STARTED' }] } as any, cur.version);
+      await resolveLocalSubtasks({ projectKey: 'TEST', parentTaskId: 'TEST-1', action: 'drop' }, mockStorage);
+      expect(createdBodies()).toEqual([]);
+      expect((await getProjectPlan('TEST', mockStorage)).tasks.find(t => t.key === 'TEST-1')!.localSubtasks).toBeUndefined();
+      await expect(resolveLocalSubtasks({ projectKey: 'TEST', parentTaskId: 'TEST-1', action: 'x' as any }, mockStorage)).rejects.toThrow('action');
     });
   });
 
@@ -1190,17 +1213,14 @@ describe('CascadePlan Index & Resolver Tests', () => {
 
 
   describe('extractProjectKey', () => {
-    it('extracts projectKey from payload first', () => {
-      expect(extractProjectKey({ payload: { projectKey: 'PROJ-PAYLOAD' } })).toBe('PROJ-PAYLOAD');
+    it('takes the project only from the Forge context, never from the payload (N-01)', () => {
+      expect(extractProjectKey({ payload: { projectKey: 'OTHER' }, context: { extension: { project: { key: 'PROJ-CTX' } } } })).toBe('PROJ-CTX');
     });
 
-    it('falls back to context extension project key', () => {
-      expect(extractProjectKey({ context: { extension: { project: { key: 'PROJ-CTX' } } } })).toBe('PROJ-CTX');
-    });
-
-    it('falls back to DEMO when neither payload nor context exists', () => {
-      expect(extractProjectKey({})).toBe('DEMO');
-      expect(extractProjectKey(undefined)).toBe('DEMO');
+    it('refuses a call without a project in the context (N-01)', () => {
+      expect(() => extractProjectKey({ payload: { projectKey: 'PROJ-PAYLOAD' } })).toThrow(/project page/);
+      expect(() => extractProjectKey({})).toThrow(/project page/);
+      expect(() => extractProjectKey(undefined)).toThrow(/project page/);
     });
   });
 
@@ -1222,16 +1242,17 @@ describe('CascadePlan Index & Resolver Tests', () => {
     it('handles bridge invocations for getProjectPlan with context fallback', async () => {
       const resContext: any = await handler({
         call: { functionKey: 'getProjectPlan' },
-        context: { extension: { project: { key: 'TEST' } }, siteUrl: 'https://asymmsystems.atlassian.net' }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } }, siteUrl: 'https://asymmsystems.atlassian.net' }
       } as any);
       expect(resContext.projectKey).toBe('TEST');
       expect(resContext.siteUrl).toBe('https://asymmsystems.atlassian.net');
 
+      // A call with no project in the context is refused; there is no default project (N-01).
       const resDefault: any = await handler({
         call: { functionKey: 'getProjectPlan' },
         context: {}
       } as any);
-      expect(resDefault.projectKey).toBe('DEMO');
+      expect(resDefault).toMatchObject({ ok: false, error: 'validation' });
     });
 
     it('prioritizes trusted context projectKey over payload projectKey to prevent cross-project manipulation (F3)', async () => {
@@ -1240,7 +1261,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
           functionKey: 'getProjectPlan',
           payload: { projectKey: 'ATTACK_PROJECT' }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(res.projectKey).toBe('TEST');
     });
@@ -1251,7 +1272,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
           functionKey: 'scheduleBacklogTask',
           payload: { taskId: 'TEST-3', startWeek: '12-Aug', spanWeeks: 2 }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(res.tasks.some((t: any) => t.key === 'TEST-3')).toBe(true);
     });
@@ -1262,7 +1283,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
           functionKey: 'createInlineTask',
           payload: { summary: 'Context Task', startWeek: '05-Aug', spanWeeks: 2 }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(res.success).toBe(true);
     });
@@ -1273,7 +1294,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
           functionKey: 'createJiraEpic',
           payload: { summary: 'New Microservice Epic' }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(res.success).toBe(true);
     });
@@ -1284,7 +1305,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
           functionKey: 'updateWbsTask',
           payload: { taskId: 'TEST-1', updates: { progress: 92 } }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(res.tasks.find((t: any) => t.key === 'TEST-1')?.progress).toBe(92);
     });
@@ -1300,28 +1321,14 @@ describe('CascadePlan Index & Resolver Tests', () => {
             bufferValue: 4
           }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(res.tasks.find((t: any) => t.key === 'TEST-1')?.effortHours).toBeGreaterThan(0);
     });
 
-    it('handles bridge invocations for saveTaskDependency with context fallback', async () => {
-      const res: any = await handler({
-        call: {
-          functionKey: 'saveTaskDependency',
-          payload: {
-            taskId: 'TEST-2',
-            dependency: {
-              predecessorId: '10001',
-              predecessorKey: 'TEST-1',
-              triggerPercent: 10,
-              isTriggerSatisfied: false
-            }
-          }
-        },
-        context: { extension: { project: { key: 'TEST' } } }
-      } as any);
-      expect(res.tasks.find((t: any) => t.key === 'TEST-2')?.dependency?.predecessorKey).toBe('TEST-1');
+    it('saveTaskDependency has no caller and is not registered; updateWbsTask sets dependencies (BL-2 rule table)', async () => {
+      await expect(handler({ call: { functionKey: 'saveTaskDependency', payload: { taskId: 'TEST-2' } },
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } } } as any)).rejects.toThrow(/no definition/i);
     });
 
     it('handles bridge invocations for saveColumnWidths and saveProjectMilestone', async () => {
@@ -1330,7 +1337,7 @@ describe('CascadePlan Index & Resolver Tests', () => {
           functionKey: 'saveColumnWidths',
           payload: { columnWidths: DEFAULT_COLUMN_WIDTHS }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(resCol.success).toBe(true);
 
@@ -1339,28 +1346,14 @@ describe('CascadePlan Index & Resolver Tests', () => {
           functionKey: 'saveHiddenColumns',
           payload: { hiddenColumns: ['story', 'status'] }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(resHidden.success).toBe(true);
       expect(resHidden.hiddenColumns).toEqual(['story', 'status']);
 
-      const resMilestone: any = await handler({
-        call: {
-          functionKey: 'saveProjectMilestone',
-          payload: {
-            milestone: {
-              id: 'm-1',
-              title: 'Sprint 1 Target',
-              date: '2026-11-01',
-              weekKey: '01-Nov',
-              type: 'TARGET' as const,
-              isPassed: false
-            }
-          }
-        },
-        context: { extension: { project: { key: 'TEST' } } }
-      } as any);
-      expect(resMilestone.success).toBe(true);
+      // saveProjectMilestone has no caller in the planner, so it is not registered (BL-2 rule table).
+      await expect(handler({ call: { functionKey: 'saveProjectMilestone', payload: {} },
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } } } as any)).rejects.toThrow(/no definition/i);
     });
 
     it('returns error object when updateWbsTask fails in resolver', async () => {
@@ -1369,66 +1362,54 @@ describe('CascadePlan Index & Resolver Tests', () => {
           functionKey: 'updateWbsTask',
           payload: { taskId: 'NON_EXISTENT', updates: { summary: 'New' } }
         },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(res.success).toBe(false);
       expect(res.error).toBe("Task 'NON_EXISTENT' not found in project plan");
     });
 
-    it('invokes checkPlanApprover and authority-check resolvers via handler', async () => {
+    it('checkPlanApprover asks Jira about the context project id, and authority-check no longer exists (N-01, F-24)', async () => {
       mockRequestJira.mockResolvedValueOnce({
         status: 200,
         json: async () => ({ permissions: { ADMINISTER: { havePermission: true } } })
       });
-
       const resCheck: any = await handler({
-        call: {
-          functionKey: 'checkPlanApprover',
-          payload: { projectKey: 'TEST' }
-        },
-        context: { extension: { project: { key: 'TEST' } } }
+        call: { functionKey: 'checkPlanApprover', payload: { projectKey: 'OTHER' } },
+        context: { extension: { project: { key: 'TEST', id: '10001' } } }
       } as any);
-
       expect(resCheck.ok).toBe(true);
       expect(resCheck.isApprover).toBe(true);
       expect(resCheck.guidance).toBeNull();
+      expect(String(mockRequestJira.mock.calls[mockRequestJira.mock.calls.length - 1][0])).toContain('projectId=10001');
 
       mockRequestJira.mockResolvedValueOnce({
         status: 200,
         json: async () => ({ permissions: { ADMINISTER: { havePermission: false }, ADMINISTER_PROJECTS: { havePermission: false } } })
       });
-
-      const resAuth: any = await handler({
-        call: {
-          functionKey: 'authority-check',
-          payload: { projectKey: 'TEST' }
-        },
-        context: { extension: { project: { key: 'TEST' } } }
+      const resNo: any = await handler({
+        call: { functionKey: 'checkPlanApprover', payload: {} },
+        context: { extension: { project: { key: 'TEST', id: '10001' } } }
       } as any);
+      expect(resNo.isApprover).toBe(false);
+      expect(resNo.guidance).toContain('Requires Project Admin, Jira Admin, or membership in an authorized group.');
 
-      expect(resAuth.ok).toBe(true);
-      expect(resAuth.isApprover).toBe(false);
-      expect(resAuth.guidance).toContain('Requires Project Admin, Jira Admin, or membership in an authorized group.');
+      await expect(handler({ call: { functionKey: 'authority-check', payload: {} },
+        context: { extension: { project: { key: 'TEST', id: '10001' } } } } as any)).rejects.toThrow(/no definition/i);
+      // BL-1 step 5: a resolver with no caller in the UI is not defined.
+      await expect(handler({ call: { functionKey: 'getResourceUtilizationGrid', payload: {} },
+        context: { extension: { project: { key: 'TEST', id: '10001' } } } } as any)).rejects.toThrow(/no definition/i);
     });
 
-    it('invokes approver-policy-get-api via handler', async () => {
+    it('the admin page function serves the approver policy, and the planner function does not (N-01)', async () => {
       mockRequestJira.mockResolvedValueOnce({
         status: 200,
         json: async () => ({ permissions: { ADMINISTER: { havePermission: true } } })
       });
-
-      const resPolicy: any = await handler({
-        call: {
-          functionKey: 'approver-policy-get-api',
-          payload: {}
-        },
-        context: { accountId: 'admin-user' }
-      } as any);
-
+      const resPolicy: any = await adminHandler({ call: { functionKey: 'approver-policy-get-api', payload: {} }, context: { accountId: 'admin-user' } } as any);
       expect(resPolicy.ok).toBe(true);
+      await expect(handler({ call: { functionKey: 'approver-policy-get-api', payload: {} }, context: {} } as any)).rejects.toThrow(/no definition/i);
+      await expect(adminHandler({ call: { functionKey: 'getProjectPlan', payload: {} }, context: {} } as any)).rejects.toThrow(/no definition/i);
     });
-
-
   });
 
   describe('Two-Way Sync and Jira Issue Links', () => {
@@ -1675,14 +1656,15 @@ describe('CascadePlan Index & Resolver Tests', () => {
 
       // Test with empty scheduleMap
       await clearRecords(mockStorage);
-      const addSubRes = await addSubtaskToTask({
+      const addSubRes: any = await addSubtaskToTask({
         projectKey: 'TEST',
         parentTaskId: 'TEST-1',
         subtask: { summary: 'New Sub', estimateValue: 4, estimateUnit: 'HOURS' }
       }, mockStorage);
       expect(addSubRes.projectKey).toBe('TEST');
-
-      expect((await entryOf(mockStorage, 'TEST-1')).subtasks[0].summary).toBe('New Sub');
+      // A real Jira sub-task (F-23); nothing is stored in the plan.
+      expect(addSubRes.createdKey).toBe('TEST-99');
+      expect((await entryOf(mockStorage, 'TEST-1'))?.subtasks).toBeUndefined();
     });
 
     it('createSubtaskForResource retries with Subtask if Sub-task type fails', async () => {
@@ -1817,13 +1799,13 @@ describe('CascadePlan Index & Resolver Tests', () => {
     it('handler invokes unscheduleTask, reorderWbsTasks, and createSubtaskForResource resolvers', async () => {
       const resUnsched: any = await handler({
         call: { functionKey: 'unscheduleTask', payload: { taskId: 'TEST-1' } },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(resUnsched.projectKey).toBe('TEST');
 
       const resReorder: any = await handler({
         call: { functionKey: 'reorderWbsTasks', payload: { taskId: 'TEST-2', targetIndex: 0 } },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(resReorder.projectKey).toBe('TEST');
 
@@ -1849,20 +1831,20 @@ describe('CascadePlan Index & Resolver Tests', () => {
       });
       const resSubtask: any = await handler({
         call: { functionKey: 'createSubtaskForResource', payload: { parentTaskId: 'TEST-1', effortHours: 8 } },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(resSubtask.success).toBe(true);
 
       const resUpdateErr: any = await handler({
         call: { functionKey: 'updateWbsTask', payload: { taskId: 'NONEXISTENT' } },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(resUpdateErr.success).toBe(false);
 
       jest.spyOn(mockStorage, 'get').mockRejectedValueOnce('string error without message');
       const resErrNoMsg: any = await handler({
         call: { functionKey: 'updateWbsTask', payload: { taskId: 'TEST-1', updates: {} } },
-        context: { extension: { project: { key: 'TEST' } } }
+        context: { extension: { project: { key: 'TEST', id: 'TEST' } } }
       } as any);
       expect(resErrNoMsg.success).toBe(false);
       expect(resErrNoMsg.error).toBe('Failed to update task');

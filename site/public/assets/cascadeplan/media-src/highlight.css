@@ -1,0 +1,27 @@
+/*
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ *
+ * Highlight layout: 580 x 330 px.
+ */
+body { width: 580px; height: 330px; position: relative; background: linear-gradient(135deg, var(--off-white) 0%, var(--sand-light) 100%); }
+.board { position: absolute; left: 24px; top: 24px; width: 532px; height: 282px; }
+.board .grid { background-size: 66px 100%; }
+.row-label { position: absolute; left: 14px; font-size: 12px; font-weight: 700; color: var(--ink-soft); }
+.pop { position: absolute; background: var(--white); border-radius: 10px; box-shadow: 0 8px 24px rgba(26, 28, 30, 0.16);
+  padding: 12px 14px; font-size: 12.5px; line-height: 1.45; color: var(--ink); border-top: 4px solid var(--teal); }
+.pop h4 { font-size: 13px; margin-bottom: 4px; }
+.pop .muted { color: var(--ink-soft); }
+.strip { position: absolute; left: 24px; right: 24px; bottom: 18px; background: var(--ink); color: var(--white); border-radius: 8px;
+  padding: 8px 12px; font-size: 12px; font-weight: 600; }
+.strip b { color: var(--sand); }
+.status { position: absolute; border: 2px solid var(--rose); color: var(--ink); background: var(--white); border-radius: 8px; padding: 6px 12px;
+  font-size: 13px; font-weight: 800; }
+.btn { display: inline-block; border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 700; }
+.btn.primary { background: var(--teal-ink); color: var(--white); }
+.btn.plain { border: 1.5px solid var(--teal); color: var(--teal-ink); background: var(--white); }
+table.items { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 8px; }
+table.items td { padding: 7px 6px; border-top: 1px solid rgba(26, 28, 30, 0.08); }
+.tag { font-size: 10.5px; font-weight: 800; padding: 1px 6px; border-radius: 5px; }
+.tag.add { background: var(--sage-light); } .tag.later { background: var(--sand); } .tag.more { background: var(--rose-light); color: var(--ink); }

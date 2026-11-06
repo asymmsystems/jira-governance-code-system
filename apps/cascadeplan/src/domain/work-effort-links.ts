@@ -61,12 +61,30 @@ export function applyLinkUpdate(current: TaskDependency[], endedLinks: EndedLink
   return { dependencies, endedLinks: [...byKey.values()], removed };
 }
 
-/** Stored links plus a 100% link (finish-to-start) for each Jira "Blocks" predecessor not stored or ended. */
-export function importJiraLinks(stored: TaskDependency[], endedLinks: EndedLink[], blockedBy: Array<{ key: string; id: string }>): TaskDependency[] {
-  const known = new Set([...stored.map(d => d.predecessorKey), ...endedLinks.map(e => e.predecessorKey)]);
-  const imported = blockedBy.filter(b => !known.has(b.key))
-    .map(b => ({ predecessorId: b.id, predecessorKey: b.key, triggerPercent: 100, isTriggerSatisfied: false }));
-  return [...stored, ...imported];
+/**
+ * The dependencies of a task (ADR-006, N-11): one per Jira "Blocks" link, the same in every plan. The
+ * trigger percent is the successor's issue property `cascadeplan.links` (predecessor id to percent);
+ * without it, the percent of a link stored in this plan before ADR-006, else 100 (finish to start).
+ * A link stored in this plan with no Jira link is kept, marked planOnly, until the user creates it in
+ * Jira or drops it. Ended links are history only: they never hide a Jira link (N-11 L3).
+ */
+export function dependenciesFromJira(
+  blockedBy: Array<{ key: string; id: string; linkId?: string }>, percents: Record<string, unknown>, stored: TaskDependency[]
+): TaskDependency[] {
+  const pct = (v: unknown): number | undefined => (typeof v === 'number' && v >= 0 && v <= 100 ? Math.round(v) : undefined);
+  const out: TaskDependency[] = blockedBy.map(b => {
+    const s = stored.find(d => d && d.predecessorKey === b.key);
+    const d: TaskDependency = { predecessorId: b.id, predecessorKey: b.key,
+      triggerPercent: pct(percents[b.id]) ?? pct(s && s.triggerPercent) ?? 100, isTriggerSatisfied: false };
+    if (b.linkId) d.jiraLinkId = b.linkId;
+    if (s && s.since) d.since = s.since;
+    return d;
+  });
+  const linked = new Set(blockedBy.map(b => b.key));
+  for (const s of stored) {
+    if (s && s.predecessorKey && !linked.has(s.predecessorKey)) out.push({ ...s, planOnly: true });
+  }
+  return out;
 }
 
 /**

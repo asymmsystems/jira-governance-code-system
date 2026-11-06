@@ -8,7 +8,7 @@
  * CascadePlan: undo entries from plan snapshots, including the cascade (B-14 criterion 1).
  */
 
-import { snapshotPlan, buildUndoEntry, actionLabel, UndoOp } from '../../src/ui/undo-plan';
+import { snapshotPlan, buildUndoEntry, actionLabel, UndoOp, withWrittenStatuses } from '../../src/ui/undo-plan';
 import { UndoStack } from '../../src/ui/undo-stack';
 import { addDays } from '../../src/domain/schedule-engine';
 
@@ -38,9 +38,21 @@ describe('buildUndoEntry', () => {
     const e = buildUndoEntry(snapshotPlan(before), snapshotPlan(after), 'A')!;
     expect(e.restore).toEqual([
       { kind: 'update', key: 'A', updates: { progress: 40, status: 'NOT_STARTED', summary: 'A', effortHours: 8, epicKey: 'E-1', resourceAccountId: 'acc-1' } },
-      { kind: 'update', key: 'B', updates: { dependency: { predecessorKey: 'A', triggerPercent: 30 } } }
+      { kind: 'update', key: 'B', updates: { dependency: { predecessorKey: 'A', predecessorId: 'A', triggerPercent: 30, isTriggerSatisfied: false } } }
     ]);
-    expect(e.reapply[1]).toEqual({ kind: 'update', key: 'B', updates: { dependency: null } });
+    // Redo removes exactly that link, never every link of B (ADR-006).
+    expect(e.reapply[1]).toEqual({ kind: 'update', key: 'B', updates: { removeDependency: { predecessorKey: 'A' } } });
+  });
+
+  it('several links: only the link that changed is restored; the others are not touched', () => {
+    const l = (k: string, p: number) => ({ predecessorKey: k, triggerPercent: p });
+    const before = plan([task('B', '2026-11-04', '2026-11-13', { dependencies: [l('X', 100), l('Y', 30)] })]);
+    const after = plan([task('B', '2026-11-04', '2026-11-13', { dependencies: [l('X', 100), l('Y', 50), l('Z', 100)] })]);
+    const e = buildUndoEntry(snapshotPlan(before), snapshotPlan(after), 'B')!;
+    expect(e.restore).toEqual([
+      { kind: 'update', key: 'B', updates: { dependency: { predecessorKey: 'Y', predecessorId: 'Y', triggerPercent: 30, isTriggerSatisfied: false } } },
+      { kind: 'update', key: 'B', updates: { removeDependency: { predecessorKey: 'Z' } } }
+    ]);
   });
 
   it('a computed progress is restored by going back to the roll-up, and an empty assignee to unassigned', () => {
@@ -57,7 +69,7 @@ describe('buildUndoEntry', () => {
     const un = buildUndoEntry(snapshotPlan(on), snapshotPlan(off), 'A')!;
     expect(un.restore).toEqual([{ kind: 'schedule', key: 'A', updates: { startWeek: '03-Nov', spanWeeks: 2, startDate: '2026-11-04', endDate: '2026-11-13' } }]);
     expect(un.reapply).toEqual([{ kind: 'unschedule', key: 'A' }]);
-    expect(actionLabel('unscheduleTask', { taskId: 'A' }, un)).toBe('Moved A to the backlog');
+    expect(actionLabel('unscheduleTask', { taskId: 'A' }, un)).toBe('Moved A to the backlog. Its Jira due date is kept');
     const sch = buildUndoEntry(snapshotPlan(off), snapshotPlan(on), 'A')!;
     expect(sch.restore).toEqual([{ kind: 'unschedule', key: 'A' }]);
     expect(actionLabel('scheduleBacklogTask', { taskId: 'A' }, sch)).toBe('Scheduled A');
@@ -78,10 +90,25 @@ describe('buildUndoEntry', () => {
     const e = { keys: ['A', 'B', 'C'], restore: [], reapply: [] };
     expect(actionLabel('updateWbsTask', { taskId: 'A', updates: { startDate: 'x' } }, e)).toBe('Moved A and 2 dependents');
     expect(actionLabel('updateWbsTask', { taskId: 'A', updates: { dependency: { predecessorKey: 'B', triggerPercent: 30 } } }, e)).toBe('Linked A to B at 30%');
-    expect(actionLabel('updateWbsTask', { taskId: 'A', updates: { dependency: null } }, e)).toBe('Removed the link of A');
+    expect(actionLabel('updateWbsTask', { taskId: 'A', updates: { dependency: null } }, e)).toBe('Removed the links of A');
+    expect(actionLabel('updateWbsTask', { taskId: 'A', updates: { removeDependency: { predecessorKey: 'B' } } }, e)).toBe('Removed the link from B to A');
     expect(actionLabel('updateWbsTask', { taskId: 'A', updates: { progress: 60 } }, e)).toBe('Set A to 60%');
     expect(actionLabel('updateWbsTask', { taskId: 'A', updates: { summary: 'x' } }, e)).toBe('Changed A');
     expect(actionLabel('reorderWbsTasks', { taskId: 'A' }, e)).toBe('Changed A');
+    expect(actionLabel('moveTaskGroup', { taskId: 'A' }, e)).toBe('Moved A with its sub-tasks (2 issues changed)');
+    expect(actionLabel('unscheduleTask', { taskId: 'A' }, e)).toBe('Moved A to the backlog. Its Jira due date is kept');
+  });
+
+  it('a block move undoes as the sub-tasks\' dates; the roll-up parent gets no date write (ADR-003)', () => {
+    const before = plan([{ ...task('P', '2026-11-03', '2026-11-14'), datesFromChildren: true },
+      { ...task('S1', '2026-11-03', '2026-11-07'), parentKey: 'P' }, { ...task('S2', '2026-11-10', '2026-11-14'), parentKey: 'P' }]);
+    const after = plan([{ ...task('P', '2026-11-10', '2026-11-21'), datesFromChildren: true },
+      { ...task('S1', '2026-11-10', '2026-11-14'), parentKey: 'P' }, { ...task('S2', '2026-11-17', '2026-11-21'), parentKey: 'P' }]);
+    const entry = buildUndoEntry(snapshotPlan(before), snapshotPlan(after), 'P')!;
+    expect(entry.restore).toEqual([
+      { kind: 'update', key: 'S1', updates: { startDate: '2026-11-03', endDate: '2026-11-07' } },
+      { kind: 'update', key: 'S2', updates: { startDate: '2026-11-10', endDate: '2026-11-14' } }
+    ]);
   });
 });
 
@@ -122,5 +149,28 @@ describe('20 edits then 20 undos restore every date exactly (B-14 criterion 1)',
     const redo = stack.redo()!;
     for (const op of redo.reapply) tasks = tasks.map(t => (t.key === op.key ? { ...t, ...op.updates } : t));
     expect(tasks.map(t => [t.key, t.startDate, t.endDate])).toEqual(history[1].map(t => [t.key, t.startDate, t.endDate]));
+  });
+});
+
+describe('withWrittenStatuses (live PAY-10, 2026-11-06)', () => {
+  const plan = { tasks: [{ key: 'P-1', startDate: '2026-11-02', endDate: '2026-11-06', status: 'NOT_STARTED', progress: 40, manualProgress: true }] };
+  const before = snapshotPlan({ tasks: [{ ...plan.tasks[0], progress: 0, manualProgress: false }] });
+
+  it('puts the applied status on the after-snapshot, so Undo moves the status back', () => {
+    const after = withWrittenStatuses(snapshotPlan(plan), { taskId: 'P-1', updates: { progress: 40, status: 'IN_PROGRESS' } },
+      { writes: [{ key: 'P-1', fields: ['status'] }] });
+    expect(after.get('P-1')!.status).toBe('IN_PROGRESS');
+    const entry = buildUndoEntry(before, after, 'P-1')!;
+    const op = entry.restore.find((o: UndoOp) => o.key === 'P-1')!;
+    expect(op.updates).toMatchObject({ status: 'NOT_STARTED', manualProgress: false });
+    expect(entry.reapply.find((o: UndoOp) => o.key === 'P-1')!.updates).toMatchObject({ status: 'IN_PROGRESS', progress: 40 });
+  });
+
+  it('leaves the snapshot alone when Jira refused the status or none was sent', () => {
+    const snap = snapshotPlan(plan);
+    expect(withWrittenStatuses(snap, { taskId: 'P-1', updates: { status: 'IN_PROGRESS' } }, { writes: [{ key: 'P-1', fields: [] }] }).get('P-1')!.status).toBe('NOT_STARTED');
+    expect(withWrittenStatuses(snap, { taskId: 'P-1', updates: { progress: 10 } }, { writes: [] })).toBe(snap);
+    expect(withWrittenStatuses(snap, { items: [{ taskId: 'P-1', updates: { status: 'COMPLETED' } }] }, { writes: [{ key: 'P-1', fields: ['status'] }] }).get('P-1')!.status).toBe('COMPLETED');
+    expect(withWrittenStatuses(snap, null, null)).toBe(snap);
   });
 });

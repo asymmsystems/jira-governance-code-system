@@ -1,57 +1,42 @@
 # CascadePlan Admin Guide
 
-This guide describes how Jira administrators and project leads configure baseline governance policies, define shift approval authorities, and set resource utilization thresholds in CascadePlan.
-
-![CascadePlan Baseline Settings](/assets/cascadeplan/04-baseline-settings.png)
+This guide is for Jira administrators and project leads: who can do what in CascadePlan, how to name plan approvers, and what data the app keeps.
 
 ---
 
-## 1. Configuring Baseline Shift Authorities
+## 1. Who can do what
 
-CascadePlan adheres to the [Uniform Permission Management Standard](/permissions-standard) to ensure role-based separation of duties:
+CascadePlan uses the user's own Jira permissions. It checks them before every write, and Jira checks them again.
 
-| Role | Permitted Actions | Configuration Location |
-| :--- | :--- | :--- |
-| **Viewer** | View WBS hierarchy, inspect frozen baselines, check resource grid. | Jira **Browse Projects** permission. |
-| **Contributor** | Reorder WBS tasks during draft planning, submit Scope Shift requests. | Jira **Edit Issues** or **Schedule Issues** permission. |
-| **Baseline Authority** | Freeze initial sprint baselines, approve or reject Scope Shift requests. | Configured in **Project Settings > CascadePlan Baseline Settings**. |
-| **Project Admin** | Configure baseline policies, change capacity hours, manage authorities. | Jira **Administer Projects** permission. |
+| Action | Needs |
+| :--- | :--- |
+| Open the planner and read plans and baselines | Jira **Browse projects** |
+| Change a field, the dates, a due date | **Edit issues**; **Schedule issues** for dates |
+| Add or remove a dependency | **Link issues** |
+| Create a sub-task | **Create issues** and **Edit issues** on the parent |
+| Change a parent | **Edit issues** on the moved issue |
+| Change a task into a sub-task, or back | **Edit issues**, **Move issues**, **Create issues**, and the global **Make bulk changes** |
+| Request approval of a scope change | Any user of the project |
+| Create, rename, delete plans; freeze a baseline; make a version active; accept or reject a scope change | A **plan approver** (below) |
 
-### Assigning Baseline Authorities
-1. Navigate to **Project Settings > CascadePlan > Baseline Settings**.
-2. Under **Baseline Shift Approvers**, designate authorized Atlassian groups or project roles (for example: `Engineering Leads`, `Release Managers`, or `Scrum Masters`).
-3. Only members of designated groups can freeze baselines or review submitted shift requests.
-
----
-
-## 2. Baseline Freeze Policies
-
-CascadePlan supports two operational governance models:
-
-### 1. Alert-Only Governance (Recommended for Agile Teams)
-- Team members can add tasks or adjust estimates mid-sprint.
-- Any change relative to the frozen baseline triggers visible scope creep warnings and delta metrics on the planner and sprint reports.
-- Ideal for teams transitioning from unmanaged Jira backlogs to disciplined sprint baselines.
-
-### 2. Strict Shift-Approval Governance (Recommended for Regulated & Agency Teams)
-- When a baseline is frozen, mid-sprint scope changes require a submitted and approved **Scope Shift Request**.
-- The CascadePlan workflow validator can be placed on sprint transition workflows to block sprint completion until all unapproved scope variances are resolved.
+A plan approver is a project administrator, a Jira administrator, or a member of a group named on the CascadePlan admin page.
 
 ---
 
-## 3. Resource Allocation Grid Configuration
+## 2. Name plan approver groups
 
-Under **Project Settings > CascadePlan > Resource Settings**, administrators can customize capacity modeling:
+1. In Jira, go to **Settings > Apps**, and open **CascadePlan approvers**.
+2. Search for a group and add it. Save.
 
-- **Standard Weekly Capacity:** Default is `40 hours` per contributor per week.
-- **Over-Allocation Threshold:** Percentage threshold at which the utilization grid flags overallocation (default: `100%` / 40 hours).
-- **Working Days:** Select active working days for scheduling calculations (Monday through Friday by default).
-- **Default Issue Estimation:** Choose whether to base capacity metrics on Jira's **Original Estimate** field (hours) or converted **Story Points**.
+Members of these groups are plan approvers in every project. A scope-change request is never reviewed by the person who made it.
 
 ---
 
-## 4. Storage and Data Retention
+## 3. Data, retention and uninstall
 
-All baselines, frozen snapshots, and shift request audit records are stored in Atlassian Forge Key-Value Storage (KVS) within your Jira Cloud site:
-- Baselines are retained permanently for project retrospectives and compliance audits.
-- Baseline records can be exported as structured JSON at any time from the administration console.
+- **Forge storage of your site:** each plan's row order, columns and milestones; the dates of work items not moved since the shared start date was introduced; the plan list; baselines (issue id and key, Jira estimate, start, end, done) and scope-change requests.
+- **Jira issue properties:** `cascadeplan.dates` (the shared start and the planner's end) and `cascadeplan.links` (trigger percents). They belong to the issues.
+- **Personal data:** the Atlassian account id of who froze a baseline, of who requested or reviewed a scope change, of each person who works on a task through a Jira sub-task, and of the Jira administrator who last saved the approver groups. Every hour CascadePlan reads its stored records in steps, and it reports each of these ids to Atlassian's personal data reporting service once every 7 days. It changes the records of a closed account to name no one. A contributor name that matches no account (for example a placeholder role) is kept as typed; no summaries or other Jira text are stored.
+- **Deleting a plan** deletes its records, settings, baselines and requests.
+- **Uninstall:** Atlassian keeps Forge hosted storage for 28 days after an uninstall ("Forge hosted storage retains data for 28 days after uninstallation", Forge storage documentation). CascadePlan does not remove its issue properties when it is uninstalled; they stay with the issues.
+- CascadePlan makes no calls outside your Atlassian site.

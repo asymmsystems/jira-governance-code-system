@@ -160,14 +160,13 @@ describe('conflict paths of each write resolver (B-09, INV-08)', () => {
     await getProjectPlan('TEST', storage);
   });
 
-  it('scheduleBacklogTask, unscheduleTask, addSubtaskToTask and saveTaskDependency return conflict', async () => {
-    const { unscheduleTask, addSubtaskToTask, saveTaskDependency } = require('../src/index');
+  // addSubtaskToTask writes no plan record since F-23 (a real Jira sub-task), so it cannot conflict.
+  it('scheduleBacklogTask, unscheduleTask and saveTaskDependency return conflict', async () => {
+    const { unscheduleTask, saveTaskDependency } = require('../src/index');
     raceOnSwap(1);
     expect(await scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-3', startWeek: weeks[5].weekKey })).toMatchObject({ ok: false, error: 'conflict' });
     raceOnSwap(1);
     expect(await unscheduleTask({ projectKey: 'TEST', taskId: 'TEST-1' })).toMatchObject({ ok: false, error: 'conflict' });
-    raceOnSwap(1);
-    expect(await addSubtaskToTask({ projectKey: 'TEST', parentTaskId: 'TEST-1', subtask: { summary: 's', estimateValue: 1, estimateUnit: 'HOURS' } })).toMatchObject({ ok: false, error: 'conflict' });
     raceOnSwap(1);
     expect(await saveTaskDependency({ projectKey: 'TEST', taskId: 'TEST-3', dependency: { predecessorId: 'TEST-1', predecessorKey: 'TEST-1', triggerPercent: 30, isTriggerSatisfied: false } })).toMatchObject({ ok: false, error: 'conflict' });
   });
@@ -182,16 +181,40 @@ describe('conflict paths of each write resolver (B-09, INV-08)', () => {
     raceOnSwap(2);
     const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { startWeek: weeks[6].weekKey } });
     expect(res.ok).toBe(true);
-    expect(res.jiraSync.writes).toContainEqual({ key: 'TEST-2', fields: ['plan'], ok: false, error: 'changed by someone else; not moved' });
+    expect(res.jiraSync.writes).toContainEqual({ key: 'TEST-2', fields: ['plan'], ok: false, error: 'not moved: someone else changed it; move the task again' });
     expect((await recordOf(storage, 'TEST-2')).note).toBe('other writer');
   });
 
-  it('reorder gives rows without a sequence number one, then places the moved row between neighbours', async () => {
+  it('reorder numbers the rows above the new position only; the rows below keep Jira\'s order', async () => {
     const { reorderWbsTasks } = require('../src/index');
     await scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-3', startWeek: weeks[5].weekKey });
-    const plan = await reorderWbsTasks({ projectKey: 'TEST', taskId: 'TEST-3', targetIndex: 0 });
+    let plan = await reorderWbsTasks({ projectKey: 'TEST', taskId: 'TEST-3', targetIndex: 0 });
     expect(plan.tasks.map((t: any) => t.key)).toEqual(['TEST-3', 'TEST-1', 'TEST-2']);
-    expect((await recordOf(storage, 'TEST-1')).sequenceNum).toBe(1000);
-    expect((await recordOf(storage, 'TEST-3')).sequenceNum).toBeLessThan(1000);
+    expect((await recordOf(storage, 'TEST-3')).sequenceNum).toBe(1000);
+    expect((await recordOf(storage, 'TEST-1')).sequenceNum).toBeUndefined();
+    // Moving TEST-2 to the second row numbers TEST-3 (already numbered) and places TEST-2 after it.
+    plan = await reorderWbsTasks({ projectKey: 'TEST', taskId: 'TEST-2', targetIndex: 1 });
+    expect(plan.tasks.map((t: any) => t.key)).toEqual(['TEST-3', 'TEST-2', 'TEST-1']);
+    // Moving TEST-3 to the end numbers the rows above it first.
+    plan = await reorderWbsTasks({ projectKey: 'TEST', taskId: 'TEST-3', targetIndex: 3 });
+    expect(plan.tasks.map((t: any) => t.key)).toEqual(['TEST-2', 'TEST-1', 'TEST-3']);
+    expect(typeof (await recordOf(storage, 'TEST-1')).sequenceNum).toBe('number');
+  });
+
+  it('reorder moves a row that has no record (its dates are the issue property, ADR-008), and keeps its dates', async () => {
+    const { reorderWbsTasks } = require('../src/index');
+    const base = mockRequestJira.getMockImplementation()!;
+    const t4 = { id: '10004', key: 'TEST-4', fields: { summary: 'Task 4', issuetype: { name: 'Task', hierarchyLevel: 0 }, status: { statusCategory: { key: 'new' } }, duedate: weeks[6].endDate },
+      properties: { 'cascadeplan.dates': { startDate: weeks[6].startDate, endDate: weeks[6].endDate, v: 1 } } };
+    mockRequestJira.mockImplementation(async (r: any, o?: any) => (String(r).includes('/search/jql') && !String(r).includes('Epic')
+      ? { status: 200, json: async () => ({ issues: [t4, ...ISSUES.slice(0, 3)] }) } : base(r, o)));
+    let plan = await getProjectPlan('TEST', storage);
+    expect(plan.tasks.map((t: any) => t.key)).toEqual(['TEST-4', 'TEST-1', 'TEST-2']);
+    expect(await recordOf(storage, 'TEST-4')).toBeUndefined();
+    plan = await reorderWbsTasks({ projectKey: 'TEST', taskId: 'TEST-4', targetIndex: 3 });
+    expect(plan.tasks.map((t: any) => t.key)).toEqual(['TEST-1', 'TEST-2', 'TEST-4']);
+    expect((await recordOf(storage, 'TEST-4')).sequenceNum).toEqual(expect.any(Number));
+    const moved: any = plan.tasks.find((t: any) => t.key === 'TEST-4');
+    expect([moved.startDate, moved.endDate]).toEqual([weeks[6].startDate, weeks[6].endDate]);
   });
 });

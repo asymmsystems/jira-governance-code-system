@@ -10,7 +10,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { getProjectPlan, pruneStaleEntries, scheduleBacklogTask, fetchProjectUsers, getTimelineWeeks, setGlobalStorageProvider } from '../src/index';
+import { getProjectPlan, issueDeleted, scheduleBacklogTask, fetchProjectUsers, getTimelineWeeks, setGlobalStorageProvider } from '../src/index';
 import { MemStorage } from './helpers/mem-storage';
 
 const mockRequestJira = jest.fn();
@@ -44,11 +44,12 @@ describe('no synthetic data or dead UI (B-18 criteria 1, 4 and 5; D-10)', () => 
     for (const src of [html, ui, api, read('src/domain/planner-engine.ts'), read('src/domain/models.ts')]) expect(src).not.toMatch(/[Hh]eatmap/);
   });
 
-  it('the unused React entry is deleted, and the local checklist is not called sub-tasks', () => {
+  it('the unused React entry is deleted, and the sub-task section says it creates Jira sub-tasks (F-23)', () => {
     expect(fs.existsSync(path.join(ROOT, 'src/frontend/index.tsx'))).toBe(false);
     expect(html).not.toContain('Subtasks &amp; Risk Buffer');
     expect(html).not.toContain('Subtasks & Risk Buffer');
-    expect(html).toContain('Checklist and risk buffer (CascadePlan only, not Jira sub-tasks)');
+    expect(html).toContain('Jira sub-tasks and risk buffer');
+    expect(html).toContain('Create sub-task in Jira');
   });
 });
 
@@ -83,12 +84,15 @@ describe('ghost rows and pruning (B-18 criterion 2)', () => {
     expect(plan.staleEntries).toEqual(['TEST-8', 'TEST-9']);
   });
 
-  it('pruning deletes only entries Jira confirms are gone (404); an issue that still exists is kept', async () => {
+  it('loading deletes nothing; only the issue-deleted event removes the record of that issue (BL-9)', async () => {
     await getProjectPlan('TEST', storage);
-    const res: any = await pruneStaleEntries({ projectKey: 'TEST', keys: ['TEST-8', 'TEST-9', 'TEST-1'] });
-    expect(res).toMatchObject({ ok: true, pruned: ['TEST-9'] });
-    const keys = (await storage.query<any>('cp:TEST:we:')).map(r => r.value.issueKey).sort();
-    expect(keys).toEqual(['TEST-1', 'TEST-8']);
+    await getProjectPlan('TEST', storage);
+    expect((await storage.query<any>('cp:TEST:we:')).map(r => r.value.issueKey).sort()).toEqual(['TEST-1', 'TEST-8', 'TEST-9']);
+    const res = await issueDeleted({ issue: { id: '9', key: 'TEST-9', fields: { project: { id: 'TEST', key: 'TEST' } } } }, storage);
+    expect(res.deleted.length).toBe(1);
+    expect((await storage.query<any>('cp:TEST:we:')).map(r => r.value.issueKey).sort()).toEqual(['TEST-1', 'TEST-8']);
+    // The same event again changes nothing.
+    expect((await issueDeleted({ issue: { id: '9', key: 'TEST-9', fields: { project: { id: 'TEST', key: 'TEST' } } } }, storage)).deleted).toEqual([]);
   });
 
   it('a truncated Jira read lists nothing as stale', async () => {

@@ -1,89 +1,73 @@
 # CascadePlan User Guide
 
-This guide explains how engineering leads, scrum masters, and developers use CascadePlan for hierarchical project scheduling, sprint baseline freezing, scope change approvals, and capacity management.
+This guide shows how to plan work in CascadePlan: the timeline, dependencies, moves, the hierarchy, plans and baselines.
 
 ---
 
-## 1. Accessing the Project Planner
+## 1. Open the planner
 
-In Jira's left-hand project navigation menu, select **CascadePlan Planner**.
+In the project's left navigation, select **CascadePlan Planner**. The planner shows the project's work items in a grid on the left and a timeline on the right. Work items without dates are in the **Backlog** tray; drag one onto the timeline to schedule it.
 
-![CascadePlan WBS Tree and Hierarchy](/assets/cascadeplan/01-wbs-tree.png)
-
-The planner interface displays:
-- **Hierarchical WBS View:** Interactive breakdown of Epics, Stories, and Subtasks.
-- **Schedule Timeline:** Gantt-style timeline showing task start and end dates.
-- **Baseline Status Bar:** Displays whether the current sprint baseline is **DRAFT**, **FROZEN**, or **SHIFT_REQUESTED**.
-- **Scope Delta Metric:** Live counter showing net scope change since baseline freeze.
+Every change you make is a Jira write made as you. If your Jira role does not allow a change (for example, you lack "Edit issues" or "Schedule issues"), CascadePlan refuses it and names the missing permission.
 
 ---
 
-## 2. Freezing a Sprint Baseline
+## 2. Move and resize bars
 
-Once sprint planning or milestone scoping is finalized:
+- **Drag** a bar to move it, or drag an end to change its start or end. The bar snaps to days or weeks, depending on the zoom.
+- Before you drop, a line just above the row you move lists every Jira change the drop will make: each due date and start date, the work that moves with it (dependent work, the sub-tasks of a parent the move reaches) and each parent whose Jira due date follows its sub-tasks.
+- **Keyboard:** select a row, put the focus on its Start or Due cell, press **Space**, use the arrow keys, then **Enter** to save or **Escape** to cancel.
+- **Undo and Redo:** each change offers **Undo** in a message that stays until you close it; **Ctrl+Z** and **Ctrl+Shift+Z** also work, for the last 20 changes.
+- The **Changes** button lists every Jira write of this session, with the old and new value, and whether Jira accepted it.
 
-1. Click the **Freeze Baseline** button in the planner toolbar.
-2. In the confirmation dialog, review:
-   - Total committed issues count.
-   - Total committed hours or story points.
-   - Baseline name (e.g., `Sprint 24 - Initial Commitment`).
-3. Click **Confirm & Freeze**.
-
-![Baseline Settings and Freeze Confirmation](/assets/cascadeplan/04-baseline-settings.png)
-
-CascadePlan takes an immutable snapshot of all ticket estimates, assignees, and dependencies at this exact moment.
+A bar's end is the issue's Jira due date. Its start is stored on the issue as the property `cascadeplan.dates`, so every plan shows the same dates.
 
 ---
 
-## 3. Detecting Scope Creep & Viewing Alerts
+## 3. Dependencies
 
-Once a baseline is frozen, CascadePlan monitors all changes in the active sprint:
+1. Hover a bar: link arrows appear at its ends. Drag from one bar to another to link them, or use **Add dependency** on the bar's toolbar.
+2. Choose when the successor may start: when the predecessor reaches 0%, 30%, 50%, 100% or any percent of its work.
 
-![Scope Creep Alert and Commitment Delta](/assets/cascadeplan/03-scope-creep-alert.png)
+The link is a Jira "Blocks" link; the percent is stored on the successor as the issue property `cascadeplan.links`. When a move would start a successor too early, CascadePlan moves it (the cascade). With **Enforce dependencies** on, a bar cannot be dropped before the earliest day its links allow; otherwise a dialog offers the fixes. **Why this date?** on a row explains what sets its earliest start.
 
-- **Added Task Warning:** Any ticket added to the sprint after freeze displays an **[ADDED]** tag with the injected hours.
-- **Estimate Increase Alert:** Tickets where original estimates increased display a **[RE-ESTIMATED]** badge showing the delta (e.g., `+12h`).
-- **Commitment Delta Summary:** The header prominently displays total variance:
-  ```
-  Baseline: 160h  |  Current: 188h  |  Scope Creep: +28h (+17.5%)
-  ```
+A parent's links also apply to its sub-tasks: with **Enforce dependencies** on, a sub-task cannot be moved to start before its parent's predecessor allows (CascadePlan checks this again before it writes), and a move that pushes the parent later moves its sub-tasks as a block. A link between an issue and its own parent or sub-task is refused, because the parent's dates come from its sub-tasks.
+
+Every link of a task has its own arrow and percent label. Click an arrow or its label to change the percent or to remove the link: **Remove Link** deletes exactly that Jira link. To resize a bar, drag its edge; the link arrows that appear on hover sit just outside the edges.
 
 ---
 
-## 4. Submitting a Scope Shift Request
+## 4. Parents, sub-tasks and moving a block
 
-When critical new requirements or architectural discoveries require adding scope mid-sprint:
-
-1. Click **Request Scope Shift** in the planner header.
-2. The modal pre-populates all detected delta items (added issues, increased estimates).
-3. Select which issues are included in the request.
-4. Provide a formal **Business Justification** explaining why this scope addition is necessary and how schedule trade-offs will be handled.
-5. Click **Submit Request**.
-
-The sprint enters a **SHIFT_REQUESTED** state, notifying designated baseline authorities.
+- A task or story with sub-tasks shows the span of its sub-tasks. Dragging it moves the whole block: sub-tasks not started move by the same days; a sub-task in progress keeps its start and moves its end (never before today); a finished sub-task stays. The parent's Jira due date follows its new end.
+- **Create sub-task in Jira** in the task dialog creates a real Jira sub-task, with an estimate only if you type one.
+- **Move under another work item:** drag a row onto the middle of another row (the target is outlined, and a label says what will happen), or use **Parent in Jira** in the task dialog. CascadePlan asks first, then changes the parent in Jira. Changing a task into a sub-task, or a sub-task into a task, uses a Jira bulk move job; the planner shows its progress. Jira's rules apply: for example, a task with sub-tasks cannot become a sub-task, and a sub-task cannot have children. Undo makes the reverse change.
 
 ---
 
-## 5. Reviewing & Approving Scope Shifts
+## 5. Plans
 
-Designated Baseline Authorities review submitted shift requests:
+The **plan selector** in the toolbar lists the Main Plan and your scenario plans. A plan approver can create a plan (empty or as a copy of the open plan), rename it and delete it. Each plan keeps its own row order, columns and milestones. Dates, links and the hierarchy are Jira's, so a change in any plan shows in every plan.
 
-![Scope Shift Approval Modal](/assets/cascadeplan/05-shift-approval.png)
-
-1. Open the pending Scope Shift notification in the planner.
-2. Inspect the proposed delta hours, impacted assignees, and justification notes.
-3. Choose an action:
-   - **Approve Shift:** CascadePlan generates a new baseline version (`v1.1`), incorporating the approved tasks into the authorized commitment and resetting the scope creep delta.
-   - **Reject Shift:** The shift is denied. Team members must remove the unauthorized tasks from the active sprint to clear the alert.
+**Work items in this plan (JQL filter).** A plan reads at most the newest 1,000 work items of the project. For a larger project, a plan approver can narrow the open plan with a JQL filter in the plan list, for example `fixVersion = "2.0"` or `component = "Payments"`, then choose **Save filter**. Jira checks the filter first and CascadePlan says how many work items match. The plan then shows only those work items. Work outside the filter is not shown, and a move or a cascade does not move it. To read the whole project again, clear the field and save.
 
 ---
 
-## 6. Resource Allocation Utilization Grid *(New)*
+## 6. Baselines and scope changes
 
-Click the **Resource Grid** toggle on the planner toolbar to inspect team workload:
+1. A plan approver opens **Baseline** in the toolbar, enters a name, for example "Sprint 7 commitment", and chooses **Freeze the plan as a baseline**. The baseline records, for each work item on the timeline, its Jira estimate, start and end.
+2. The **Baseline** button then shows the change since the freeze, for example `Baseline: Sprint 7 · +12 h (+25%), 1 added, 2 later`. It is marked when the scope grew.
+3. The panel lists each work item added, removed or changed (estimate, start, end).
+4. Anyone in the project can write a reason and choose **Request approval of this scope**. A plan approver other than the requester chooses **Accept** or **Reject**. Accepting freezes a new baseline version from the current plan, which becomes the active one.
+5. Under **Baseline versions**: **Compare with now**, **Compare with active**, **Export CSV** and, for plan approvers, **Make active**.
 
-![Resource Allocation Grid](/assets/cascadeplan/02-resource-heatmap.png)
+Each read of a baseline checks its SHA-256 digest. If a stored baseline no longer matches what was frozen, the panel says so.
 
-- **Weekly Columns:** Work is distributed across calendar weeks based on issue start dates, due dates, and remaining estimates.
-- **Over-Capacity Highlighting:** Cells exceeding 40 hours per week turn amber or red, highlighting overallocation before burnout occurs.
-- **Under-Allocated Capacity:** Identify team members with available bandwidth to balance sprint workloads effectively.
+---
+
+## 7. Views
+
+- **Table view** shows the tasks and dates as a table.
+- **Utilization view** shows the work of each person per week, from the dates and the Jira estimates.
+- **Ctrl+F** searches the tasks by key or summary.
+- **Estimation unit:** in the task dialog, each task can use Hours, Story Points (1 point = 8 hours) or a T-Shirt Size; CascadePlan converts it to hours for scheduling.

@@ -30,6 +30,7 @@
     "typescript": "^5.7.2"
   },
   "dependencies": {
+    "@asymm/jira-ui": "file:../../packages/asymm-jira-ui",
     "@forge/api": "^8.4.0",
     "@forge/bridge": "^7.2.1",
     "@forge/kvs": "^2.1.1",
@@ -37,5 +38,8 @@
     "@forge/resolver": "^2.0.2",
     "@forge/storage": "^2.0.3",
     "react": "^18.3.1"
+  },
+  "overrides": {
+    "prosemirror-view": "^1.42.3"
   }
 }

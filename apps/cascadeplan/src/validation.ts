@@ -106,8 +106,11 @@ export function validateTaskUpdates(updates: Record<string, unknown>): void {
   if (u.manualProgress !== undefined && typeof u.manualProgress !== 'boolean') fail('manualProgress', 'manualProgress must be true or false');
   if (u.manualTargetProgress !== undefined && typeof u.manualTargetProgress !== 'boolean') fail('manualTargetProgress', 'manualTargetProgress must be true or false');
   if (u.status !== undefined && !STATUSES.includes(u.status as string)) fail('status', 'status is not a known status');
-  if (u.startDate !== undefined) isoDate('startDate', u.startDate);
-  if (u.endDate !== undefined) isoDate('endDate', u.endDate);
+  if (u.startDate !== undefined) { isoDate('startDate', u.startDate); dateInWindow('startDate', u.startDate as string); }
+  if (u.endDate !== undefined) { isoDate('endDate', u.endDate); dateInWindow('endDate', u.endDate as string); }
+  if (typeof u.startDate === 'string' && typeof u.endDate === 'string' && u.endDate < u.startDate) {
+    fail('endDate', 'The end must be on or after the start.');
+  }
   for (const f of ['startWeek', 'endWeek']) if (u[f] !== undefined) text(f, u[f], 10);
   if (u.spanWeeks !== undefined && (!Number.isInteger(u.spanWeeks) || (u.spanWeeks as number) < 1 || (u.spanWeeks as number) > 104)) {
     fail('spanWeeks', 'spanWeeks must be a whole number from 1 to 104');
@@ -134,7 +137,56 @@ export function validateTaskUpdates(updates: Record<string, unknown>): void {
       numberIn('dependency.triggerPercent', u.dependency.triggerPercent, 0, 100);
     }
   }
+  if (u.removeDependency !== undefined) {
+    // Removes exactly one link, by its predecessor (N-11 L3).
+    if (!isObject(u.removeDependency)) fail('removeDependency', 'removeDependency must be an object');
+    assertIssueKey(u.removeDependency.predecessorKey, 'removeDependency.predecessorKey');
+  }
   if (u.effortConfig !== undefined && !isObject(u.effortConfig)) fail('effortConfig', 'effortConfig must be an object');
+}
+
+/**
+ * Dates are within five years back and ten years ahead of today (spec v2 section 6, F-18), so a typing
+ * error such as 9999 never reaches Jira.
+ */
+export function dateInWindow(field: string, iso: string, today: Date = new Date()): void {
+  const y = today.getUTCFullYear();
+  const md = today.toISOString().slice(4, 10);
+  const min = `${y - 5}${md}`;
+  const max = `${y + 10}${md}`;
+  if (iso < min || iso > max) fail(field, `${field} must be between ${min} and ${max}.`);
+}
+
+/** The payload of a schedule or create call (F-18): every number and text is checked before any write. */
+export function validateSchedulePayload(p: Record<string, unknown>, opts: { summaryRequired?: boolean } = {}): void {
+  if (!isObject(p)) fail('payload', 'payload must be an object');
+  if (p.spanWeeks !== undefined && (!Number.isInteger(p.spanWeeks) || (p.spanWeeks as number) < 1 || (p.spanWeeks as number) > 104)) {
+    fail('spanWeeks', 'spanWeeks must be a whole number from 1 to 104');
+  }
+  if (p.startWeek !== undefined && p.startWeek !== '') text('startWeek', p.startWeek, 10);
+  if (p.effortHours !== undefined) numberIn('effortHours', p.effortHours, 0, 10000);
+  if (p.targetIndex !== undefined && (!Number.isInteger(p.targetIndex) || (p.targetIndex as number) < 0)) {
+    fail('targetIndex', 'targetIndex must be a whole number of at least 0');
+  }
+  if (opts.summaryRequired || p.summary !== undefined) {
+    if (typeof p.summary !== 'string' || p.summary.trim().length === 0) fail('summary', 'summary must not be empty');
+    text('summary', (p.summary as string).trim(), 255);
+  }
+  for (const f of ['startDate', 'endDate']) {
+    if (p[f] !== undefined) { isoDate(f, p[f]); dateInWindow(f, p[f] as string); }
+  }
+  if (typeof p.startDate === 'string' && typeof p.endDate === 'string' && p.endDate < p.startDate) {
+    fail('endDate', 'The end must be on or after the start.');
+  }
+}
+
+/** Issue ids written a moment ago, for read-after-write searches: at most 50 numeric ids (F-03). */
+export function reconcileIdsOf(value: unknown): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > 50 || !value.every(id => typeof id === 'string' && /^\d{1,18}$/.test(id))) {
+    fail('reconcileIds', 'reconcileIds must be a list of at most 50 issue ids');
+  }
+  return value as string[];
 }
 
 export function validateColumnWidths(widths: Record<string, unknown>): void {

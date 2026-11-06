@@ -76,27 +76,39 @@ describe('Plan Manager Pure Logic (UX-05)', () => {
   });
 
   describe('buildPlanListViewModel', () => {
+    it('N-02: hides a plan being deleted and marks a clone whose copy is not finished', () => {
+      const models = buildPlanListViewModel([
+        { id: 'default', name: 'Main Plan', createdAt: 'x', isDefault: true },
+        { id: 'plan-a', name: 'A', createdAt: 'x', state: 'copying', copyFrom: 'default' },
+        { id: 'plan-b', name: 'B', createdAt: 'x', state: 'deleting' }
+      ], 'default');
+      expect(models.map(m => m.id)).toEqual(['default', 'plan-a']);
+      expect(models.find(m => m.id === 'plan-a')!.copying).toBe(true);
+      expect(models.find(m => m.id === 'default')!.copying).toBeUndefined();
+    });
+
     it('constructs view models with active and delete permissions', () => {
       const models = buildPlanListViewModel(samplePlans, 'plan-scenario-a');
       expect(models).toEqual([
-        { id: 'default', name: 'Main Plan', isDefault: true, isActive: false, canDelete: false, category: 'baseline' },
+        { id: 'default', name: 'Main Plan', isDefault: true, isActive: false, canDelete: false, category: 'main' },
         { id: 'plan-scenario-a', name: 'Scenario A', isDefault: false, isActive: true, canDelete: true, category: 'scenario' },
-        { id: 'plan-scenario-b', name: 'Optimistic Baseline', isDefault: false, isActive: false, canDelete: true, category: 'baseline' }
+        { id: 'plan-scenario-b', name: 'Optimistic Baseline', isDefault: false, isActive: false, canDelete: true, category: 'scenario' }
       ]);
     });
 
     it('handles empty plans list with default fallback', () => {
       const models = buildPlanListViewModel([], 'default');
       expect(models).toHaveLength(1);
-      expect(models[0]).toMatchObject({ id: 'default', name: 'Main Plan', isActive: true, canDelete: false, category: 'baseline' });
+      expect(models[0]).toMatchObject({ id: 'default', name: 'Main Plan', isActive: true, canDelete: false, category: 'main' });
     });
   });
 
   describe('categorizePlan', () => {
-    it('categorizes default or baseline names as baseline', () => {
-      expect(categorizePlan({ isDefault: true, name: 'Custom' })).toBe('baseline');
-      expect(categorizePlan({ name: 'Q4 Baseline' })).toBe('baseline');
-      expect(categorizePlan({ name: 'Actual Plan' })).toBe('baseline');
+    it('the Main Plan is "main"; a name never makes a plan a baseline (BL-1 step 6)', () => {
+      expect(categorizePlan({ isDefault: true, name: 'Custom' })).toBe('main');
+      expect(categorizePlan({ id: 'default', name: 'Main Plan' })).toBe('main');
+      expect(categorizePlan({ name: 'Q4 Baseline' })).toBe('scenario');
+      expect(categorizePlan({ name: 'Actual Plan' })).toBe('scenario');
     });
 
     it('categorizes other plans as scenario', () => {
@@ -125,15 +137,13 @@ describe('Plan Manager Pure Logic (UX-05)', () => {
       expect(matches[0].id).toBe('plan-scenario-a');
     });
 
-    it('filters by category tab', () => {
-      const baselines = filterPlans(models, '', 'baselines');
-      expect(baselines).toHaveLength(2); // Main Plan and Optimistic Baseline
-      const scenarios = filterPlans(models, '', 'scenarios');
-      expect(scenarios).toHaveLength(1); // Scenario A
+    it('filters by the Scenarios tab', () => {
+      expect(filterPlans(models, '', 'scenarios').map(m => m.id)).toEqual(['plan-scenario-a', 'plan-scenario-b']);
+      expect(filterPlans(models, '', 'all')).toHaveLength(3);
     });
 
     it('filters by both category and search query', () => {
-      const matches = filterPlans(models, 'Optimistic', 'baselines');
+      const matches = filterPlans(models, 'Optimistic', 'scenarios');
       expect(matches).toHaveLength(1);
       expect(matches[0].name).toBe('Optimistic Baseline');
     });

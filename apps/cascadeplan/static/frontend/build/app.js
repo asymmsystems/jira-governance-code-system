@@ -36,7 +36,7 @@
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
   var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
-  // ../ledgerseal/node_modules/tslib/tslib.es6.mjs
+  // node_modules/tslib/tslib.es6.mjs
   var tslib_es6_exports = {};
   __export(tslib_es6_exports, {
     __addDisposableResource: () => __addDisposableResource,
@@ -465,8 +465,17 @@
     }
     return next();
   }
-  function __rewriteRelativeImportExtension(path, preserveJsx) {
+  function __rewriteRelativeImportExtension(path, preserveJsx, extraExtensions, ignoreCase) {
     if (typeof path === "string" && /^\.\.?\//.test(path)) {
+      if (extraExtensions) {
+        for (var extension in extraExtensions) {
+          var suffix = path.slice(-extension.length);
+          if (suffix === extension || ignoreCase && suffix.toLowerCase() === extension.toLowerCase()) {
+            var output = extraExtensions[extension];
+            return output === extension ? path : path.slice(0, -extension.length) + output;
+          }
+        }
+      }
       return path.replace(/\.(tsx)$|((?:\.d)?)((?:\.[^./]+?)?)\.([cm]?)ts$/i, function(m, tsx, d, ext, cm) {
         return tsx ? preserveJsx ? ".jsx" : ".js" : d && (!ext || !cm) ? m : d + ext + "." + cm.toLowerCase() + "js";
       });
@@ -475,7 +484,7 @@
   }
   var extendStatics, __assign, __createBinding, __setModuleDefault, ownKeys, _SuppressedError, tslib_es6_default;
   var init_tslib_es6 = __esm({
-    "../ledgerseal/node_modules/tslib/tslib.es6.mjs"() {
+    "node_modules/tslib/tslib.es6.mjs"() {
       extendStatics = function(d, b) {
         extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d2, b2) {
           d2.__proto__ = b2;
@@ -561,9 +570,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/router/targets.js
+  // node_modules/@forge/bridge/out/router/targets.js
   var require_targets = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/router/targets.js"(exports) {
+    "node_modules/@forge/bridge/out/router/targets.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.NavigationTarget = void 0;
@@ -608,9 +617,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/errors.js
+  // node_modules/@forge/bridge/out/errors.js
   var require_errors = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/errors.js"(exports) {
+    "node_modules/@forge/bridge/out/errors.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.BridgeAPIError = void 0;
@@ -620,9 +629,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/bridge.js
+  // node_modules/@forge/bridge/out/bridge.js
   var require_bridge = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/bridge.js"(exports) {
+    "node_modules/@forge/bridge/out/bridge.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getCallBridge = void 0;
@@ -643,9 +652,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/utils/index.js
+  // node_modules/@forge/bridge/out/utils/index.js
   var require_utils = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/utils/index.js"(exports) {
+    "node_modules/@forge/bridge/out/utils/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.withRateLimiter = void 0;
@@ -671,9 +680,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/invoke/invoke.js
+  // node_modules/@forge/bridge/out/invoke/invoke.js
   var require_invoke = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/invoke/invoke.js"(exports) {
+    "node_modules/@forge/bridge/out/invoke/invoke.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.invoke = invoke2;
@@ -706,9 +715,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/invoke/index.js
+  // node_modules/@forge/bridge/out/invoke/index.js
   var require_invoke2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/invoke/index.js"(exports) {
+    "node_modules/@forge/bridge/out/invoke/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -716,9 +725,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-endpoint.js
+  // node_modules/@forge/bridge/out/invoke-endpoint/invoke-endpoint.js
   var require_invoke_endpoint = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-endpoint.js"(exports) {
+    "node_modules/@forge/bridge/out/invoke-endpoint/invoke-endpoint.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.InvokeType = void 0;
@@ -767,9 +776,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-remote.js
+  // node_modules/@forge/bridge/out/invoke-endpoint/invoke-remote.js
   var require_invoke_remote = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-remote.js"(exports) {
+    "node_modules/@forge/bridge/out/invoke-endpoint/invoke-remote.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.invokeRemote = void 0;
@@ -782,9 +791,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-service.js
+  // node_modules/@forge/bridge/out/invoke-endpoint/invoke-service.js
   var require_invoke_service = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/invoke-service.js"(exports) {
+    "node_modules/@forge/bridge/out/invoke-endpoint/invoke-service.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.invokeService = void 0;
@@ -797,9 +806,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/index.js
+  // node_modules/@forge/bridge/out/invoke-endpoint/index.js
   var require_invoke_endpoint2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/invoke-endpoint/index.js"(exports) {
+    "node_modules/@forge/bridge/out/invoke-endpoint/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -808,9 +817,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/submit.js
+  // node_modules/@forge/bridge/out/view/submit.js
   var require_submit = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/submit.js"(exports) {
+    "node_modules/@forge/bridge/out/view/submit.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.submit = void 0;
@@ -827,9 +836,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/close.js
+  // node_modules/@forge/bridge/out/view/close.js
   var require_close = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/close.js"(exports) {
+    "node_modules/@forge/bridge/out/view/close.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.close = void 0;
@@ -850,9 +859,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/open.js
+  // node_modules/@forge/bridge/out/view/open.js
   var require_open = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/open.js"(exports) {
+    "node_modules/@forge/bridge/out/view/open.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.open = void 0;
@@ -873,9 +882,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/refresh.js
+  // node_modules/@forge/bridge/out/view/refresh.js
   var require_refresh = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/refresh.js"(exports) {
+    "node_modules/@forge/bridge/out/view/refresh.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.refresh = void 0;
@@ -892,9 +901,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/createHistory.js
+  // node_modules/@forge/bridge/out/view/createHistory.js
   var require_createHistory = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/createHistory.js"(exports) {
+    "node_modules/@forge/bridge/out/view/createHistory.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.createHistory = void 0;
@@ -911,9 +920,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/constants.js
+  // node_modules/@forge/i18n/out/constants.js
   var require_constants = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/constants.js"(exports) {
+    "node_modules/@forge/i18n/out/constants.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.FORGE_SUPPORTED_LOCALE_CODES = exports.I18N_BUNDLE_FOLDER_NAME = exports.I18N_INFO_FILE_NAME = void 0;
@@ -950,9 +959,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/translationsGetter.js
+  // node_modules/@forge/i18n/out/translationsGetter.js
   var require_translationsGetter = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/translationsGetter.js"(exports) {
+    "node_modules/@forge/i18n/out/translationsGetter.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.TranslationsGetter = exports.TranslationGetterError = void 0;
@@ -1060,25 +1069,25 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/isArray.js
+  // node_modules/lodash/isArray.js
   var require_isArray = __commonJS({
-    "../ledgerseal/node_modules/lodash/isArray.js"(exports, module) {
+    "node_modules/lodash/isArray.js"(exports, module) {
       var isArray = Array.isArray;
       module.exports = isArray;
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_freeGlobal.js
+  // node_modules/lodash/_freeGlobal.js
   var require_freeGlobal = __commonJS({
-    "../ledgerseal/node_modules/lodash/_freeGlobal.js"(exports, module) {
+    "node_modules/lodash/_freeGlobal.js"(exports, module) {
       var freeGlobal = typeof global == "object" && global && global.Object === Object && global;
       module.exports = freeGlobal;
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_root.js
+  // node_modules/lodash/_root.js
   var require_root = __commonJS({
-    "../ledgerseal/node_modules/lodash/_root.js"(exports, module) {
+    "node_modules/lodash/_root.js"(exports, module) {
       var freeGlobal = require_freeGlobal();
       var freeSelf = typeof self == "object" && self && self.Object === Object && self;
       var root = freeGlobal || freeSelf || Function("return this")();
@@ -1086,18 +1095,18 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_Symbol.js
+  // node_modules/lodash/_Symbol.js
   var require_Symbol = __commonJS({
-    "../ledgerseal/node_modules/lodash/_Symbol.js"(exports, module) {
+    "node_modules/lodash/_Symbol.js"(exports, module) {
       var root = require_root();
       var Symbol2 = root.Symbol;
       module.exports = Symbol2;
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_getRawTag.js
+  // node_modules/lodash/_getRawTag.js
   var require_getRawTag = __commonJS({
-    "../ledgerseal/node_modules/lodash/_getRawTag.js"(exports, module) {
+    "node_modules/lodash/_getRawTag.js"(exports, module) {
       var Symbol2 = require_Symbol();
       var objectProto = Object.prototype;
       var hasOwnProperty = objectProto.hasOwnProperty;
@@ -1124,9 +1133,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_objectToString.js
+  // node_modules/lodash/_objectToString.js
   var require_objectToString = __commonJS({
-    "../ledgerseal/node_modules/lodash/_objectToString.js"(exports, module) {
+    "node_modules/lodash/_objectToString.js"(exports, module) {
       var objectProto = Object.prototype;
       var nativeObjectToString = objectProto.toString;
       function objectToString(value) {
@@ -1136,9 +1145,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_baseGetTag.js
+  // node_modules/lodash/_baseGetTag.js
   var require_baseGetTag = __commonJS({
-    "../ledgerseal/node_modules/lodash/_baseGetTag.js"(exports, module) {
+    "node_modules/lodash/_baseGetTag.js"(exports, module) {
       var Symbol2 = require_Symbol();
       var getRawTag = require_getRawTag();
       var objectToString = require_objectToString();
@@ -1155,9 +1164,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/isObjectLike.js
+  // node_modules/lodash/isObjectLike.js
   var require_isObjectLike = __commonJS({
-    "../ledgerseal/node_modules/lodash/isObjectLike.js"(exports, module) {
+    "node_modules/lodash/isObjectLike.js"(exports, module) {
       function isObjectLike(value) {
         return value != null && typeof value == "object";
       }
@@ -1165,9 +1174,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/isSymbol.js
+  // node_modules/lodash/isSymbol.js
   var require_isSymbol = __commonJS({
-    "../ledgerseal/node_modules/lodash/isSymbol.js"(exports, module) {
+    "node_modules/lodash/isSymbol.js"(exports, module) {
       var baseGetTag = require_baseGetTag();
       var isObjectLike = require_isObjectLike();
       var symbolTag = "[object Symbol]";
@@ -1178,9 +1187,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_isKey.js
+  // node_modules/lodash/_isKey.js
   var require_isKey = __commonJS({
-    "../ledgerseal/node_modules/lodash/_isKey.js"(exports, module) {
+    "node_modules/lodash/_isKey.js"(exports, module) {
       var isArray = require_isArray();
       var isSymbol = require_isSymbol();
       var reIsDeepProp = /\.|\[(?:[^[\]]*|(["'])(?:(?!\1)[^\\]|\\.)*?\1)\]/;
@@ -1199,9 +1208,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/isObject.js
+  // node_modules/lodash/isObject.js
   var require_isObject = __commonJS({
-    "../ledgerseal/node_modules/lodash/isObject.js"(exports, module) {
+    "node_modules/lodash/isObject.js"(exports, module) {
       function isObject(value) {
         var type = typeof value;
         return value != null && (type == "object" || type == "function");
@@ -1210,9 +1219,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/isFunction.js
+  // node_modules/lodash/isFunction.js
   var require_isFunction = __commonJS({
-    "../ledgerseal/node_modules/lodash/isFunction.js"(exports, module) {
+    "node_modules/lodash/isFunction.js"(exports, module) {
       var baseGetTag = require_baseGetTag();
       var isObject = require_isObject();
       var asyncTag = "[object AsyncFunction]";
@@ -1230,18 +1239,18 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_coreJsData.js
+  // node_modules/lodash/_coreJsData.js
   var require_coreJsData = __commonJS({
-    "../ledgerseal/node_modules/lodash/_coreJsData.js"(exports, module) {
+    "node_modules/lodash/_coreJsData.js"(exports, module) {
       var root = require_root();
       var coreJsData = root["__core-js_shared__"];
       module.exports = coreJsData;
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_isMasked.js
+  // node_modules/lodash/_isMasked.js
   var require_isMasked = __commonJS({
-    "../ledgerseal/node_modules/lodash/_isMasked.js"(exports, module) {
+    "node_modules/lodash/_isMasked.js"(exports, module) {
       var coreJsData = require_coreJsData();
       var maskSrcKey = (function() {
         var uid = /[^.]+$/.exec(coreJsData && coreJsData.keys && coreJsData.keys.IE_PROTO || "");
@@ -1254,9 +1263,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_toSource.js
+  // node_modules/lodash/_toSource.js
   var require_toSource = __commonJS({
-    "../ledgerseal/node_modules/lodash/_toSource.js"(exports, module) {
+    "node_modules/lodash/_toSource.js"(exports, module) {
       var funcProto = Function.prototype;
       var funcToString = funcProto.toString;
       function toSource(func) {
@@ -1276,9 +1285,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_baseIsNative.js
+  // node_modules/lodash/_baseIsNative.js
   var require_baseIsNative = __commonJS({
-    "../ledgerseal/node_modules/lodash/_baseIsNative.js"(exports, module) {
+    "node_modules/lodash/_baseIsNative.js"(exports, module) {
       var isFunction = require_isFunction();
       var isMasked = require_isMasked();
       var isObject = require_isObject();
@@ -1303,9 +1312,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_getValue.js
+  // node_modules/lodash/_getValue.js
   var require_getValue = __commonJS({
-    "../ledgerseal/node_modules/lodash/_getValue.js"(exports, module) {
+    "node_modules/lodash/_getValue.js"(exports, module) {
       function getValue(object, key) {
         return object == null ? void 0 : object[key];
       }
@@ -1313,9 +1322,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_getNative.js
+  // node_modules/lodash/_getNative.js
   var require_getNative = __commonJS({
-    "../ledgerseal/node_modules/lodash/_getNative.js"(exports, module) {
+    "node_modules/lodash/_getNative.js"(exports, module) {
       var baseIsNative = require_baseIsNative();
       var getValue = require_getValue();
       function getNative(object, key) {
@@ -1326,18 +1335,18 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_nativeCreate.js
+  // node_modules/lodash/_nativeCreate.js
   var require_nativeCreate = __commonJS({
-    "../ledgerseal/node_modules/lodash/_nativeCreate.js"(exports, module) {
+    "node_modules/lodash/_nativeCreate.js"(exports, module) {
       var getNative = require_getNative();
       var nativeCreate = getNative(Object, "create");
       module.exports = nativeCreate;
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_hashClear.js
+  // node_modules/lodash/_hashClear.js
   var require_hashClear = __commonJS({
-    "../ledgerseal/node_modules/lodash/_hashClear.js"(exports, module) {
+    "node_modules/lodash/_hashClear.js"(exports, module) {
       var nativeCreate = require_nativeCreate();
       function hashClear() {
         this.__data__ = nativeCreate ? nativeCreate(null) : {};
@@ -1347,9 +1356,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_hashDelete.js
+  // node_modules/lodash/_hashDelete.js
   var require_hashDelete = __commonJS({
-    "../ledgerseal/node_modules/lodash/_hashDelete.js"(exports, module) {
+    "node_modules/lodash/_hashDelete.js"(exports, module) {
       function hashDelete(key) {
         var result = this.has(key) && delete this.__data__[key];
         this.size -= result ? 1 : 0;
@@ -1359,9 +1368,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_hashGet.js
+  // node_modules/lodash/_hashGet.js
   var require_hashGet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_hashGet.js"(exports, module) {
+    "node_modules/lodash/_hashGet.js"(exports, module) {
       var nativeCreate = require_nativeCreate();
       var HASH_UNDEFINED = "__lodash_hash_undefined__";
       var objectProto = Object.prototype;
@@ -1378,9 +1387,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_hashHas.js
+  // node_modules/lodash/_hashHas.js
   var require_hashHas = __commonJS({
-    "../ledgerseal/node_modules/lodash/_hashHas.js"(exports, module) {
+    "node_modules/lodash/_hashHas.js"(exports, module) {
       var nativeCreate = require_nativeCreate();
       var objectProto = Object.prototype;
       var hasOwnProperty = objectProto.hasOwnProperty;
@@ -1392,9 +1401,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_hashSet.js
+  // node_modules/lodash/_hashSet.js
   var require_hashSet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_hashSet.js"(exports, module) {
+    "node_modules/lodash/_hashSet.js"(exports, module) {
       var nativeCreate = require_nativeCreate();
       var HASH_UNDEFINED = "__lodash_hash_undefined__";
       function hashSet(key, value) {
@@ -1407,9 +1416,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_Hash.js
+  // node_modules/lodash/_Hash.js
   var require_Hash = __commonJS({
-    "../ledgerseal/node_modules/lodash/_Hash.js"(exports, module) {
+    "node_modules/lodash/_Hash.js"(exports, module) {
       var hashClear = require_hashClear();
       var hashDelete = require_hashDelete();
       var hashGet = require_hashGet();
@@ -1432,9 +1441,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_listCacheClear.js
+  // node_modules/lodash/_listCacheClear.js
   var require_listCacheClear = __commonJS({
-    "../ledgerseal/node_modules/lodash/_listCacheClear.js"(exports, module) {
+    "node_modules/lodash/_listCacheClear.js"(exports, module) {
       function listCacheClear() {
         this.__data__ = [];
         this.size = 0;
@@ -1443,9 +1452,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/eq.js
+  // node_modules/lodash/eq.js
   var require_eq = __commonJS({
-    "../ledgerseal/node_modules/lodash/eq.js"(exports, module) {
+    "node_modules/lodash/eq.js"(exports, module) {
       function eq(value, other) {
         return value === other || value !== value && other !== other;
       }
@@ -1453,9 +1462,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_assocIndexOf.js
+  // node_modules/lodash/_assocIndexOf.js
   var require_assocIndexOf = __commonJS({
-    "../ledgerseal/node_modules/lodash/_assocIndexOf.js"(exports, module) {
+    "node_modules/lodash/_assocIndexOf.js"(exports, module) {
       var eq = require_eq();
       function assocIndexOf(array, key) {
         var length = array.length;
@@ -1470,9 +1479,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_listCacheDelete.js
+  // node_modules/lodash/_listCacheDelete.js
   var require_listCacheDelete = __commonJS({
-    "../ledgerseal/node_modules/lodash/_listCacheDelete.js"(exports, module) {
+    "node_modules/lodash/_listCacheDelete.js"(exports, module) {
       var assocIndexOf = require_assocIndexOf();
       var arrayProto = Array.prototype;
       var splice = arrayProto.splice;
@@ -1494,9 +1503,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_listCacheGet.js
+  // node_modules/lodash/_listCacheGet.js
   var require_listCacheGet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_listCacheGet.js"(exports, module) {
+    "node_modules/lodash/_listCacheGet.js"(exports, module) {
       var assocIndexOf = require_assocIndexOf();
       function listCacheGet(key) {
         var data = this.__data__, index = assocIndexOf(data, key);
@@ -1506,9 +1515,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_listCacheHas.js
+  // node_modules/lodash/_listCacheHas.js
   var require_listCacheHas = __commonJS({
-    "../ledgerseal/node_modules/lodash/_listCacheHas.js"(exports, module) {
+    "node_modules/lodash/_listCacheHas.js"(exports, module) {
       var assocIndexOf = require_assocIndexOf();
       function listCacheHas(key) {
         return assocIndexOf(this.__data__, key) > -1;
@@ -1517,9 +1526,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_listCacheSet.js
+  // node_modules/lodash/_listCacheSet.js
   var require_listCacheSet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_listCacheSet.js"(exports, module) {
+    "node_modules/lodash/_listCacheSet.js"(exports, module) {
       var assocIndexOf = require_assocIndexOf();
       function listCacheSet(key, value) {
         var data = this.__data__, index = assocIndexOf(data, key);
@@ -1535,9 +1544,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_ListCache.js
+  // node_modules/lodash/_ListCache.js
   var require_ListCache = __commonJS({
-    "../ledgerseal/node_modules/lodash/_ListCache.js"(exports, module) {
+    "node_modules/lodash/_ListCache.js"(exports, module) {
       var listCacheClear = require_listCacheClear();
       var listCacheDelete = require_listCacheDelete();
       var listCacheGet = require_listCacheGet();
@@ -1560,9 +1569,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_Map.js
+  // node_modules/lodash/_Map.js
   var require_Map = __commonJS({
-    "../ledgerseal/node_modules/lodash/_Map.js"(exports, module) {
+    "node_modules/lodash/_Map.js"(exports, module) {
       var getNative = require_getNative();
       var root = require_root();
       var Map2 = getNative(root, "Map");
@@ -1570,9 +1579,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_mapCacheClear.js
+  // node_modules/lodash/_mapCacheClear.js
   var require_mapCacheClear = __commonJS({
-    "../ledgerseal/node_modules/lodash/_mapCacheClear.js"(exports, module) {
+    "node_modules/lodash/_mapCacheClear.js"(exports, module) {
       var Hash = require_Hash();
       var ListCache = require_ListCache();
       var Map2 = require_Map();
@@ -1588,9 +1597,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_isKeyable.js
+  // node_modules/lodash/_isKeyable.js
   var require_isKeyable = __commonJS({
-    "../ledgerseal/node_modules/lodash/_isKeyable.js"(exports, module) {
+    "node_modules/lodash/_isKeyable.js"(exports, module) {
       function isKeyable(value) {
         var type = typeof value;
         return type == "string" || type == "number" || type == "symbol" || type == "boolean" ? value !== "__proto__" : value === null;
@@ -1599,9 +1608,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_getMapData.js
+  // node_modules/lodash/_getMapData.js
   var require_getMapData = __commonJS({
-    "../ledgerseal/node_modules/lodash/_getMapData.js"(exports, module) {
+    "node_modules/lodash/_getMapData.js"(exports, module) {
       var isKeyable = require_isKeyable();
       function getMapData(map, key) {
         var data = map.__data__;
@@ -1611,9 +1620,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_mapCacheDelete.js
+  // node_modules/lodash/_mapCacheDelete.js
   var require_mapCacheDelete = __commonJS({
-    "../ledgerseal/node_modules/lodash/_mapCacheDelete.js"(exports, module) {
+    "node_modules/lodash/_mapCacheDelete.js"(exports, module) {
       var getMapData = require_getMapData();
       function mapCacheDelete(key) {
         var result = getMapData(this, key)["delete"](key);
@@ -1624,9 +1633,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_mapCacheGet.js
+  // node_modules/lodash/_mapCacheGet.js
   var require_mapCacheGet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_mapCacheGet.js"(exports, module) {
+    "node_modules/lodash/_mapCacheGet.js"(exports, module) {
       var getMapData = require_getMapData();
       function mapCacheGet(key) {
         return getMapData(this, key).get(key);
@@ -1635,9 +1644,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_mapCacheHas.js
+  // node_modules/lodash/_mapCacheHas.js
   var require_mapCacheHas = __commonJS({
-    "../ledgerseal/node_modules/lodash/_mapCacheHas.js"(exports, module) {
+    "node_modules/lodash/_mapCacheHas.js"(exports, module) {
       var getMapData = require_getMapData();
       function mapCacheHas(key) {
         return getMapData(this, key).has(key);
@@ -1646,9 +1655,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_mapCacheSet.js
+  // node_modules/lodash/_mapCacheSet.js
   var require_mapCacheSet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_mapCacheSet.js"(exports, module) {
+    "node_modules/lodash/_mapCacheSet.js"(exports, module) {
       var getMapData = require_getMapData();
       function mapCacheSet(key, value) {
         var data = getMapData(this, key), size = data.size;
@@ -1660,9 +1669,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_MapCache.js
+  // node_modules/lodash/_MapCache.js
   var require_MapCache = __commonJS({
-    "../ledgerseal/node_modules/lodash/_MapCache.js"(exports, module) {
+    "node_modules/lodash/_MapCache.js"(exports, module) {
       var mapCacheClear = require_mapCacheClear();
       var mapCacheDelete = require_mapCacheDelete();
       var mapCacheGet = require_mapCacheGet();
@@ -1685,9 +1694,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/memoize.js
+  // node_modules/lodash/memoize.js
   var require_memoize = __commonJS({
-    "../ledgerseal/node_modules/lodash/memoize.js"(exports, module) {
+    "node_modules/lodash/memoize.js"(exports, module) {
       var MapCache = require_MapCache();
       var FUNC_ERROR_TEXT = "Expected a function";
       function memoize(func, resolver) {
@@ -1711,9 +1720,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_memoizeCapped.js
+  // node_modules/lodash/_memoizeCapped.js
   var require_memoizeCapped = __commonJS({
-    "../ledgerseal/node_modules/lodash/_memoizeCapped.js"(exports, module) {
+    "node_modules/lodash/_memoizeCapped.js"(exports, module) {
       var memoize = require_memoize();
       var MAX_MEMOIZE_SIZE = 500;
       function memoizeCapped(func) {
@@ -1730,9 +1739,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_stringToPath.js
+  // node_modules/lodash/_stringToPath.js
   var require_stringToPath = __commonJS({
-    "../ledgerseal/node_modules/lodash/_stringToPath.js"(exports, module) {
+    "node_modules/lodash/_stringToPath.js"(exports, module) {
       var memoizeCapped = require_memoizeCapped();
       var rePropName = /[^.[\]]+|\[(?:(-?\d+(?:\.\d+)?)|(["'])((?:(?!\2)[^\\]|\\.)*?)\2)\]|(?=(?:\.|\[\])(?:\.|\[\]|$))/g;
       var reEscapeChar = /\\(\\)?/g;
@@ -1750,9 +1759,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_arrayMap.js
+  // node_modules/lodash/_arrayMap.js
   var require_arrayMap = __commonJS({
-    "../ledgerseal/node_modules/lodash/_arrayMap.js"(exports, module) {
+    "node_modules/lodash/_arrayMap.js"(exports, module) {
       function arrayMap(array, iteratee) {
         var index = -1, length = array == null ? 0 : array.length, result = Array(length);
         while (++index < length) {
@@ -1764,9 +1773,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_baseToString.js
+  // node_modules/lodash/_baseToString.js
   var require_baseToString = __commonJS({
-    "../ledgerseal/node_modules/lodash/_baseToString.js"(exports, module) {
+    "node_modules/lodash/_baseToString.js"(exports, module) {
       var Symbol2 = require_Symbol();
       var arrayMap = require_arrayMap();
       var isArray = require_isArray();
@@ -1791,9 +1800,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/toString.js
+  // node_modules/lodash/toString.js
   var require_toString = __commonJS({
-    "../ledgerseal/node_modules/lodash/toString.js"(exports, module) {
+    "node_modules/lodash/toString.js"(exports, module) {
       var baseToString = require_baseToString();
       function toString(value) {
         return value == null ? "" : baseToString(value);
@@ -1802,9 +1811,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_castPath.js
+  // node_modules/lodash/_castPath.js
   var require_castPath = __commonJS({
-    "../ledgerseal/node_modules/lodash/_castPath.js"(exports, module) {
+    "node_modules/lodash/_castPath.js"(exports, module) {
       var isArray = require_isArray();
       var isKey = require_isKey();
       var stringToPath = require_stringToPath();
@@ -1819,9 +1828,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_toKey.js
+  // node_modules/lodash/_toKey.js
   var require_toKey = __commonJS({
-    "../ledgerseal/node_modules/lodash/_toKey.js"(exports, module) {
+    "node_modules/lodash/_toKey.js"(exports, module) {
       var isSymbol = require_isSymbol();
       var INFINITY = 1 / 0;
       function toKey(value) {
@@ -1835,9 +1844,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/_baseGet.js
+  // node_modules/lodash/_baseGet.js
   var require_baseGet = __commonJS({
-    "../ledgerseal/node_modules/lodash/_baseGet.js"(exports, module) {
+    "node_modules/lodash/_baseGet.js"(exports, module) {
       var castPath = require_castPath();
       var toKey = require_toKey();
       function baseGet(object, path) {
@@ -1852,9 +1861,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/lodash/get.js
+  // node_modules/lodash/get.js
   var require_get = __commonJS({
-    "../ledgerseal/node_modules/lodash/get.js"(exports, module) {
+    "node_modules/lodash/get.js"(exports, module) {
       var baseGet = require_baseGet();
       function get(object, path, defaultValue) {
         var result = object == null ? void 0 : baseGet(object, path);
@@ -1864,9 +1873,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/translationValueGetter.js
+  // node_modules/@forge/i18n/out/translationValueGetter.js
   var require_translationValueGetter = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/translationValueGetter.js"(exports) {
+    "node_modules/@forge/i18n/out/translationValueGetter.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getTranslationValueFromContent = exports.getTranslationValue = void 0;
@@ -1894,9 +1903,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/translator.js
+  // node_modules/@forge/i18n/out/translator.js
   var require_translator = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/translator.js"(exports) {
+    "node_modules/@forge/i18n/out/translator.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.Translator = void 0;
@@ -1936,9 +1945,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/ensureLocale.js
+  // node_modules/@forge/i18n/out/ensureLocale.js
   var require_ensureLocale = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/ensureLocale.js"(exports) {
+    "node_modules/@forge/i18n/out/ensureLocale.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.ensureLocale = void 0;
@@ -1969,9 +1978,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/moduleI18nHelper.js
+  // node_modules/@forge/i18n/out/moduleI18nHelper.js
   var require_moduleI18nHelper = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/moduleI18nHelper.js"(exports) {
+    "node_modules/@forge/i18n/out/moduleI18nHelper.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.extractI18nPropertiesFromModules = exports.extractI18nKeysFromModules = exports.getI18nSupportedModuleEntries = void 0;
@@ -2036,17 +2045,17 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/types.js
+  // node_modules/@forge/i18n/out/types.js
   var require_types = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/types.js"(exports) {
+    "node_modules/@forge/i18n/out/types.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/i18n/out/index.js
+  // node_modules/@forge/i18n/out/index.js
   var require_out = __commonJS({
-    "../ledgerseal/node_modules/@forge/i18n/out/index.js"(exports) {
+    "node_modules/@forge/i18n/out/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getI18nSupportedModuleEntries = exports.extractI18nPropertiesFromModules = exports.extractI18nKeysFromModules = exports.getTranslationValue = void 0;
@@ -2073,9 +2082,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/getContext.js
+  // node_modules/@forge/bridge/out/view/getContext.js
   var require_getContext = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/getContext.js"(exports) {
+    "node_modules/@forge/bridge/out/view/getContext.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getContext = void 0;
@@ -2095,9 +2104,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/changeWindowTitle.js
+  // node_modules/@forge/bridge/out/view/changeWindowTitle.js
   var require_changeWindowTitle = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/changeWindowTitle.js"(exports) {
+    "node_modules/@forge/bridge/out/view/changeWindowTitle.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.changeWindowTitle = void 0;
@@ -2115,9 +2124,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/theme.js
+  // node_modules/@forge/bridge/out/view/theme.js
   var require_theme = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/theme.js"(exports) {
+    "node_modules/@forge/bridge/out/view/theme.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.theme = void 0;
@@ -2129,9 +2138,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/utils/blobParser.js
+  // node_modules/@forge/bridge/out/utils/blobParser.js
   var require_blobParser = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/utils/blobParser.js"(exports) {
+    "node_modules/@forge/bridge/out/utils/blobParser.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.blobToBase64 = exports.base64ToBlob = void 0;
@@ -2163,9 +2172,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/events/serialiseBlob.js
+  // node_modules/@forge/bridge/out/events/serialiseBlob.js
   var require_serialiseBlob = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/events/serialiseBlob.js"(exports) {
+    "node_modules/@forge/bridge/out/events/serialiseBlob.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.containsSerialisedBlobs = exports.containsBlobs = exports.deserialiseBlobsInPayload = exports.serialiseBlobsInPayload = void 0;
@@ -2260,9 +2269,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/events/events.js
+  // node_modules/@forge/bridge/out/events/events.js
   var require_events = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/events/events.js"(exports) {
+    "node_modules/@forge/bridge/out/events/events.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.events = void 0;
@@ -2307,9 +2316,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/emitReadyEvent.js
+  // node_modules/@forge/bridge/out/view/emitReadyEvent.js
   var require_emitReadyEvent = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/emitReadyEvent.js"(exports) {
+    "node_modules/@forge/bridge/out/view/emitReadyEvent.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.emitReadyEvent = void 0;
@@ -2332,9 +2341,9 @@
     }
   });
 
-  // ../ledgerseal/node_modules/iframe-resizer/js/iframeResizer.js
+  // node_modules/iframe-resizer/js/iframeResizer.js
   var require_iframeResizer = __commonJS({
-    "../ledgerseal/node_modules/iframe-resizer/js/iframeResizer.js"(exports, module) {
+    "node_modules/iframe-resizer/js/iframeResizer.js"(exports, module) {
       console.info(`
 IFRAME-RESIZER
 
@@ -2405,11 +2414,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
         function getMutationObserver() {
           return window.MutationObserver || window.WebKitMutationObserver || window.MozMutationObserver;
         }
-        function addEventListener(el2, evt, func) {
-          el2.addEventListener(evt, func, false);
+        function addEventListener(el3, evt, func) {
+          el3.addEventListener(evt, func, false);
         }
-        function removeEventListener(el2, evt, func) {
-          el2.removeEventListener(evt, func, false);
+        function removeEventListener(el3, evt, func) {
+          el3.removeEventListener(evt, func, false);
         }
         function setupRequestAnimationFrame() {
           var vendors = ["moz", "webkit", "o", "ms"];
@@ -3240,8 +3249,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
               function chkDimension(dimension) {
                 return "0px" === (settings[settingId] && settings[settingId].iframe.style[dimension]);
               }
-              function isVisible(el2) {
-                return null !== el2.offsetParent;
+              function isVisible(el3) {
+                return null !== el3.offsetParent;
               }
               if (settings[settingId] && isVisible(settings[settingId].iframe) && (chkDimension("height") || chkDimension("width"))) {
                 trigger(
@@ -3388,9 +3397,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/iframe-resizer/js/iframeResizer.contentWindow.js
+  // node_modules/iframe-resizer/js/iframeResizer.contentWindow.js
   var require_iframeResizer_contentWindow = __commonJS({
-    "../ledgerseal/node_modules/iframe-resizer/js/iframeResizer.contentWindow.js"(exports, module) {
+    "node_modules/iframe-resizer/js/iframeResizer.contentWindow.js"(exports, module) {
       (function(undefined2) {
         if (typeof window === "undefined") return;
         var autoResize = true, base = 10, bodyBackground = "", bodyMargin = 0, bodyMarginStr = "", bodyObserver = null, bodyPadding = "", calculateWidth = false, doubleEventList = { resize: 1, click: 1 }, eventCancelTimer = 128, firstRun = true, height = 1, heightCalcModeDefault = "bodyOffset", heightCalcMode = heightCalcModeDefault, initLock = true, initMsg = "", inPageLinks = {}, interval = 32, intervalTimer = null, logging = false, mouseEvents = false, msgID = "[iFrameSizer]", msgIdLen = msgID.length, myID = "", resetRequiredMethods = {
@@ -3430,11 +3439,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
           window.removeEventListener("test", noop, options);
         } catch (error) {
         }
-        function addEventListener(el2, evt, func, options2) {
-          el2.addEventListener(evt, func, passiveSupported ? options2 || {} : false);
+        function addEventListener(el3, evt, func, options2) {
+          el3.addEventListener(evt, func, passiveSupported ? options2 || {} : false);
         }
-        function removeEventListener(el2, evt, func) {
-          el2.removeEventListener(evt, func, false);
+        function removeEventListener(el3, evt, func) {
+          el3.removeEventListener(evt, func, false);
         }
         function capitalizeFirstLetter(string) {
           return string.charAt(0).toUpperCase() + string.slice(1);
@@ -3772,8 +3781,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
               y: window.pageYOffset === undefined2 ? document.documentElement.scrollTop : window.pageYOffset
             };
           }
-          function getElementPosition(el2) {
-            var elPosition = el2.getBoundingClientRect(), pagePosition = getPagePosition();
+          function getElementPosition(el3) {
+            var elPosition = el3.getBoundingClientRect(), pagePosition = getPagePosition();
             return {
               x: parseInt(elPosition.left, 10) + parseInt(pagePosition.x, 10),
               y: parseInt(elPosition.top, 10) + parseInt(pagePosition.y, 10)
@@ -3805,13 +3814,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
             }
           }
           function bindAnchors() {
-            function setupLink(el2) {
+            function setupLink(el3) {
               function linkClicked(e) {
                 e.preventDefault();
                 findTarget(this.getAttribute("href"));
               }
-              if ("#" !== el2.getAttribute("href")) {
-                addEventListener(el2, "click", linkClicked);
+              if ("#" !== el3.getAttribute("href")) {
+                addEventListener(el3, "click", linkClicked);
               }
             }
             Array.prototype.forEach.call(
@@ -4017,10 +4026,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
             initInterval();
           }
         }
-        function getComputedStyle2(prop, el2) {
+        function getComputedStyle2(prop, el3) {
           var retVal = 0;
-          el2 = el2 || document.body;
-          retVal = document.defaultView.getComputedStyle(el2, null);
+          el3 = el3 || document.body;
+          retVal = document.defaultView.getComputedStyle(el3, null);
           retVal = null === retVal ? 0 : retVal[prop];
           return parseInt(retVal, base);
         }
@@ -4338,9 +4347,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/iframe-resizer/index.js
+  // node_modules/iframe-resizer/index.js
   var require_iframe_resizer = __commonJS({
-    "../ledgerseal/node_modules/iframe-resizer/index.js"(exports, module) {
+    "node_modules/iframe-resizer/index.js"(exports, module) {
       var iframeResize = require_iframeResizer();
       module.exports = {
         iframeResize,
@@ -4351,9 +4360,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/adf-renderer.js
+  // node_modules/@forge/bridge/out/view/adf-renderer.js
   var require_adf_renderer = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/adf-renderer.js"(exports) {
+    "node_modules/@forge/bridge/out/view/adf-renderer.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.createAdfRendererIframeProps = exports.sendMessageWhenReady = void 0;
@@ -4420,9 +4429,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/onClose.js
+  // node_modules/@forge/bridge/out/view/onClose.js
   var require_onClose = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/onClose.js"(exports) {
+    "node_modules/@forge/bridge/out/view/onClose.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.onClose = void 0;
@@ -4443,9 +4452,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/getFrameDispatch.js
+  // node_modules/@forge/bridge/out/view/getFrameDispatch.js
   var require_getFrameDispatch = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/getFrameDispatch.js"(exports) {
+    "node_modules/@forge/bridge/out/view/getFrameDispatch.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getFrameDispatch = void 0;
@@ -4458,9 +4467,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/view.js
+  // node_modules/@forge/bridge/out/view/view.js
   var require_view = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/view.js"(exports) {
+    "node_modules/@forge/bridge/out/view/view.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.view = void 0;
@@ -4493,9 +4502,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/view/index.js
+  // node_modules/@forge/bridge/out/view/index.js
   var require_view2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/view/index.js"(exports) {
+    "node_modules/@forge/bridge/out/view/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -4503,9 +4512,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/router/router.js
+  // node_modules/@forge/bridge/out/router/router.js
   var require_router = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/router/router.js"(exports) {
+    "node_modules/@forge/bridge/out/router/router.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.router = void 0;
@@ -4555,9 +4564,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/router/index.js
+  // node_modules/@forge/bridge/out/router/index.js
   var require_router2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/router/index.js"(exports) {
+    "node_modules/@forge/bridge/out/router/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -4565,9 +4574,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/modal/modal.js
+  // node_modules/@forge/bridge/out/modal/modal.js
   var require_modal = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/modal/modal.js"(exports) {
+    "node_modules/@forge/bridge/out/modal/modal.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.Modal = void 0;
@@ -4628,9 +4637,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/modal/index.js
+  // node_modules/@forge/bridge/out/modal/index.js
   var require_modal2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/modal/index.js"(exports) {
+    "node_modules/@forge/bridge/out/modal/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -4638,9 +4647,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/fetch/fetch.js
+  // node_modules/@forge/bridge/out/fetch/fetch.js
   var require_fetch = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/fetch/fetch.js"(exports) {
+    "node_modules/@forge/bridge/out/fetch/fetch.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.productFetchApi = exports.remoteFetchApi = void 0;
@@ -4693,9 +4702,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
             fetchRequestInit: { ...validatedInit, body: requestBody, headers: [...requestHeaders.entries()] },
             isMultipartFormData
           };
-          const { body, headers, statusText, status, isAttachment } = await callBridge("fetchRemote", fetchPayload);
+          const { body, headers, statusText: statusText2, status, isAttachment } = await callBridge("fetchRemote", fetchPayload);
           const responseBody = isAttachment ? (0, blobParser_1.base64ToBlob)(body, headers["content-type"]) : body;
-          return new Response(responseBody || null, { headers, status, statusText });
+          return new Response(responseBody || null, { headers, status, statusText: statusText2 });
         };
         return {
           requestRemote: (remoteKey, fetchOptions) => fetch2(remoteKey, fetchOptions)
@@ -4719,9 +4728,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
             },
             isMultipartFormData
           };
-          const { body, headers, statusText, status, isAttachment } = await callBridge("fetchProduct", fetchPayload);
+          const { body, headers, statusText: statusText2, status, isAttachment } = await callBridge("fetchProduct", fetchPayload);
           const responseBody = isAttachment ? (0, blobParser_1.base64ToBlob)(body, headers["content-type"]) : body;
-          return new Response(responseBody || null, { headers, status, statusText });
+          return new Response(responseBody || null, { headers, status, statusText: statusText2 });
         };
         return {
           requestConfluence: (restPath, fetchOptions) => fetch2("confluence", restPath, fetchOptions),
@@ -4733,9 +4742,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/fetch/index.js
+  // node_modules/@forge/bridge/out/fetch/index.js
   var require_fetch2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/fetch/index.js"(exports) {
+    "node_modules/@forge/bridge/out/fetch/index.js"(exports) {
       "use strict";
       var _a;
       Object.defineProperty(exports, "__esModule", { value: true });
@@ -4752,9 +4761,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/requestTeamworkGraph/index.js
+  // node_modules/@forge/bridge/out/requestTeamworkGraph/index.js
   var require_requestTeamworkGraph = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/requestTeamworkGraph/index.js"(exports) {
+    "node_modules/@forge/bridge/out/requestTeamworkGraph/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.requestTeamworkGraph = void 0;
@@ -4768,9 +4777,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/flag/flag.js
+  // node_modules/@forge/bridge/out/flag/flag.js
   var require_flag = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/flag/flag.js"(exports) {
+    "node_modules/@forge/bridge/out/flag/flag.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.showFlag = void 0;
@@ -4797,9 +4806,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/flag/index.js
+  // node_modules/@forge/bridge/out/flag/index.js
   var require_flag2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/flag/index.js"(exports) {
+    "node_modules/@forge/bridge/out/flag/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.showFlag = void 0;
@@ -4810,9 +4819,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/events/index.js
+  // node_modules/@forge/bridge/out/events/index.js
   var require_events2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/events/index.js"(exports) {
+    "node_modules/@forge/bridge/out/events/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -4820,9 +4829,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/realtime/realtime.js
+  // node_modules/@forge/bridge/out/realtime/realtime.js
   var require_realtime = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/realtime/realtime.js"(exports) {
+    "node_modules/@forge/bridge/out/realtime/realtime.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.realtime = void 0;
@@ -4858,9 +4867,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/realtime/productContext.js
+  // node_modules/@forge/bridge/out/realtime/productContext.js
   var require_productContext = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/realtime/productContext.js"(exports) {
+    "node_modules/@forge/bridge/out/realtime/productContext.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.Bitbucket = exports.Confluence = exports.Jira = void 0;
@@ -4883,9 +4892,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/realtime/index.js
+  // node_modules/@forge/bridge/out/realtime/index.js
   var require_realtime2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/realtime/index.js"(exports) {
+    "node_modules/@forge/bridge/out/realtime/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.Bitbucket = exports.Confluence = exports.Jira = exports.realtime = void 0;
@@ -4906,9 +4915,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/rovo/open.js
+  // node_modules/@forge/bridge/out/rovo/open.js
   var require_open2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/rovo/open.js"(exports) {
+    "node_modules/@forge/bridge/out/rovo/open.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.open = exports.OPEN_ROVO_BRIDGE_ERROR_MESSAGE = void 0;
@@ -4953,9 +4962,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/rovo/isEnabled.js
+  // node_modules/@forge/bridge/out/rovo/isEnabled.js
   var require_isEnabled = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/rovo/isEnabled.js"(exports) {
+    "node_modules/@forge/bridge/out/rovo/isEnabled.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.isEnabled = void 0;
@@ -4968,9 +4977,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/rovo/rovo.js
+  // node_modules/@forge/bridge/out/rovo/rovo.js
   var require_rovo = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/rovo/rovo.js"(exports) {
+    "node_modules/@forge/bridge/out/rovo/rovo.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.rovo = void 0;
@@ -4983,9 +4992,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/rovo/index.js
+  // node_modules/@forge/bridge/out/rovo/index.js
   var require_rovo2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/rovo/index.js"(exports) {
+    "node_modules/@forge/bridge/out/rovo/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -4993,9 +5002,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/cookieConsent/getCookieConsentPreferences.js
+  // node_modules/@forge/bridge/out/cookieConsent/getCookieConsentPreferences.js
   var require_getCookieConsentPreferences = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/cookieConsent/getCookieConsentPreferences.js"(exports) {
+    "node_modules/@forge/bridge/out/cookieConsent/getCookieConsentPreferences.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getCookieConsentPreferences = void 0;
@@ -5013,9 +5022,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/cookieConsent/index.js
+  // node_modules/@forge/bridge/out/cookieConsent/index.js
   var require_cookieConsent = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/cookieConsent/index.js"(exports) {
+    "node_modules/@forge/bridge/out/cookieConsent/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -5023,9 +5032,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/i18n/index.js
+  // node_modules/@forge/bridge/out/i18n/index.js
   var require_i18n = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/i18n/index.js"(exports) {
+    "node_modules/@forge/bridge/out/i18n/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.createTranslationFunction = exports.getTranslations = exports.resetTranslationsCache = void 0;
@@ -5081,9 +5090,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/permissions/permissions.js
+  // node_modules/@forge/bridge/out/permissions/permissions.js
   var require_permissions = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/permissions/permissions.js"(exports) {
+    "node_modules/@forge/bridge/out/permissions/permissions.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.permissions = void 0;
@@ -5122,9 +5131,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/egress/out/egress/url-parser.js
+  // node_modules/@forge/egress/out/egress/url-parser.js
   var require_url_parser = __commonJS({
-    "../ledgerseal/node_modules/@forge/egress/out/egress/url-parser.js"(exports) {
+    "node_modules/@forge/egress/out/egress/url-parser.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.parseUrl = parseUrl;
@@ -5139,9 +5148,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/egress/out/egress/utils.js
+  // node_modules/@forge/egress/out/egress/utils.js
   var require_utils2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/egress/out/egress/utils.js"(exports) {
+    "node_modules/@forge/egress/out/egress/utils.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getEgressesBasedOnToggles = exports.sortAndGroupEgressPermissionsByDomain = exports.EgressCategory = exports.EgressType = void 0;
@@ -5221,9 +5230,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/egress/out/egress/egress-filtering-service.js
+  // node_modules/@forge/egress/out/egress/egress-filtering-service.js
   var require_egress_filtering_service = __commonJS({
-    "../ledgerseal/node_modules/@forge/egress/out/egress/egress-filtering-service.js"(exports) {
+    "node_modules/@forge/egress/out/egress/egress-filtering-service.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.EgressFilteringService = void 0;
@@ -5296,9 +5305,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/egress/out/egress/index.js
+  // node_modules/@forge/egress/out/egress/index.js
   var require_egress = __commonJS({
-    "../ledgerseal/node_modules/@forge/egress/out/egress/index.js"(exports) {
+    "node_modules/@forge/egress/out/egress/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -5308,9 +5317,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/egress/out/index.js
+  // node_modules/@forge/egress/out/index.js
   var require_out2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/egress/out/index.js"(exports) {
+    "node_modules/@forge/egress/out/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -5318,9 +5327,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/permissions/permissionsUtil.js
+  // node_modules/@forge/bridge/out/permissions/permissionsUtil.js
   var require_permissionsUtil = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/permissions/permissionsUtil.js"(exports) {
+    "node_modules/@forge/bridge/out/permissions/permissionsUtil.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.createPermissionUtils = createPermissionUtils;
@@ -5495,9 +5504,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/permissions/index.js
+  // node_modules/@forge/bridge/out/permissions/index.js
   var require_permissions2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/permissions/index.js"(exports) {
+    "node_modules/@forge/bridge/out/permissions/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -5506,9 +5515,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/upload.js
+  // node_modules/@forge/bridge/out/object-store/upload.js
   var require_upload = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/upload.js"(exports) {
+    "node_modules/@forge/bridge/out/object-store/upload.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.upload = exports.createUploadPromises = void 0;
@@ -5637,9 +5646,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/deleteObjects.js
+  // node_modules/@forge/bridge/out/object-store/deleteObjects.js
   var require_deleteObjects = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/deleteObjects.js"(exports) {
+    "node_modules/@forge/bridge/out/object-store/deleteObjects.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.deleteObjects = void 0;
@@ -5663,9 +5672,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/download.js
+  // node_modules/@forge/bridge/out/object-store/download.js
   var require_download = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/download.js"(exports) {
+    "node_modules/@forge/bridge/out/object-store/download.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.download = void 0;
@@ -5673,7 +5682,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       var errors_1 = require_errors();
       var bridge_1 = require_bridge();
       var callBridge = (0, bridge_1.getCallBridge)();
-      var download = async ({ functionKey, keys }) => {
+      var download2 = async ({ functionKey, keys }) => {
         void callBridge("trackObjectStoreAction", { action: "download" });
         if (!functionKey || functionKey.length === 0) {
           throw new errors_1.BridgeAPIError("functionKey is required to filter and generate download URLs");
@@ -5719,13 +5728,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
         const results = await Promise.all(downloadPromises);
         return results;
       };
-      exports.download = download;
+      exports.download = download2;
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/getMetadata.js
+  // node_modules/@forge/bridge/out/object-store/getMetadata.js
   var require_getMetadata = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/getMetadata.js"(exports) {
+    "node_modules/@forge/bridge/out/object-store/getMetadata.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.getMetadata = void 0;
@@ -5757,9 +5766,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/objectStore.js
+  // node_modules/@forge/bridge/out/object-store/objectStore.js
   var require_objectStore = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/objectStore.js"(exports) {
+    "node_modules/@forge/bridge/out/object-store/objectStore.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.createUploadPromises = exports.objectStore = void 0;
@@ -5779,17 +5788,17 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/types.js
+  // node_modules/@forge/bridge/out/object-store/types.js
   var require_types2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/types.js"(exports) {
+    "node_modules/@forge/bridge/out/object-store/types.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/object-store/index.js
+  // node_modules/@forge/bridge/out/object-store/index.js
   var require_object_store = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/object-store/index.js"(exports) {
+    "node_modules/@forge/bridge/out/object-store/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -5798,9 +5807,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/featureFlags/evaluator.js
+  // node_modules/@forge/bridge/out/featureFlags/evaluator.js
   var require_evaluator = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/featureFlags/evaluator.js"(exports) {
+    "node_modules/@forge/bridge/out/featureFlags/evaluator.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.Evaluator = void 0;
@@ -5857,9 +5866,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/featureFlags/initFeatureFlags.js
+  // node_modules/@forge/bridge/out/featureFlags/initFeatureFlags.js
   var require_initFeatureFlags = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/featureFlags/initFeatureFlags.js"(exports) {
+    "node_modules/@forge/bridge/out/featureFlags/initFeatureFlags.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.initFeatureFlags = void 0;
@@ -5888,9 +5897,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/featureFlags/featureFlags.js
+  // node_modules/@forge/bridge/out/featureFlags/featureFlags.js
   var require_featureFlags = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/featureFlags/featureFlags.js"(exports) {
+    "node_modules/@forge/bridge/out/featureFlags/featureFlags.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.FeatureFlags = void 0;
@@ -5941,9 +5950,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/featureFlags/index.js
+  // node_modules/@forge/bridge/out/featureFlags/index.js
   var require_featureFlags2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/featureFlags/index.js"(exports) {
+    "node_modules/@forge/bridge/out/featureFlags/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.FeatureFlags = void 0;
@@ -5954,9 +5963,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/frontendCustomMetrics/frontendCustomMetrics.js
+  // node_modules/@forge/bridge/out/frontendCustomMetrics/frontendCustomMetrics.js
   var require_frontendCustomMetrics = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/frontendCustomMetrics/frontendCustomMetrics.js"(exports) {
+    "node_modules/@forge/bridge/out/frontendCustomMetrics/frontendCustomMetrics.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.frontendCustomMetrics = void 0;
@@ -6001,9 +6010,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/frontendCustomMetrics/index.js
+  // node_modules/@forge/bridge/out/frontendCustomMetrics/index.js
   var require_frontendCustomMetrics2 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/frontendCustomMetrics/index.js"(exports) {
+    "node_modules/@forge/bridge/out/frontendCustomMetrics/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       var tslib_1 = (init_tslib_es6(), __toCommonJS(tslib_es6_exports));
@@ -6011,9 +6020,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
   });
 
-  // ../ledgerseal/node_modules/@forge/bridge/out/index.js
+  // node_modules/@forge/bridge/out/index.js
   var require_out3 = __commonJS({
-    "../ledgerseal/node_modules/@forge/bridge/out/index.js"(exports) {
+    "node_modules/@forge/bridge/out/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.i18n = exports.NavigationTarget = void 0;
@@ -6064,7 +6073,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
 
   // src/frontend/banner.ts
-  function showErrorBanner2(message) {
+  function showErrorBanner(message) {
     const banner = document.getElementById("syncBanner");
     const text = document.getElementById("syncBannerText");
     if (!banner || !text) return;
@@ -6090,20 +6099,25 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     return out;
   }
-  function describePendingWrites(tasks, moves, key) {
+  function describePendingWrites(tasks, moves, key, extra = {}) {
+    void key;
     const byKey = new Map(tasks.map((t) => [t.key, t]));
     const jira = [];
-    const planOnly = [];
+    const starts = [];
+    const dueOf = (t) => t.jiraDueDate ? String(t.jiraDueDate).slice(0, 10) : null;
     for (const [k, m] of moves) {
       const t = byKey.get(k);
       if (!t) continue;
-      if (m.end !== t.endDate) jira.push(`${k} due ${m.end}`);
-      if (m.start !== t.startDate) planOnly.push(`${k} start ${m.start}`);
+      if (m.end !== dueOf(t)) jira.push(`${k} due ${m.end}`);
+      if (m.start !== t.startDate) starts.push(`${k} ${m.start}`);
     }
-    const parent = byKey.get(key)?.parentKey;
-    if (parent && byKey.has(parent)) planOnly.push(`${parent} dates follow its children`);
-    const text = `Jira: ${jira.length ? jira.join(", ") : "no change"}.` + (planOnly.length ? ` Plan only: ${planOnly.join(", ")}.` : "");
-    return { jira, planOnly, text };
+    for (const [k, end] of extra.parentDue || []) {
+      const t = byKey.get(k);
+      if (t && end !== dueOf(t) && !moves.has(k)) jira.push(`${k} due ${end}`);
+    }
+    const epics = extra.epics || [];
+    const text = `Jira: ${jira.length ? jira.join(", ") : "no due date change"}.` + (starts.length ? ` Start dates (every plan): ${starts.join(", ")}.` : "") + (epics.length ? ` Not moved: ${epics.join(", ")} (epic; move its work items).` : "");
+    return { jira, starts, text };
   }
 
   // src/frontend/changes-panel.ts
@@ -6167,24 +6181,76 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
 
   // src/frontend/bridge.ts
-  async function callResolver(fnName, payload = {}) {
+  var recentWrites = /* @__PURE__ */ new Map();
+  var RECENT_MS = 6e4;
+  function recentWriteIds(now = Date.now()) {
+    for (const [id, at] of recentWrites) if (now - at > RECENT_MS) recentWrites.delete(id);
+    return [...recentWrites.keys()].slice(-50);
+  }
+  function rememberWrites(res, now = Date.now()) {
+    for (const id of res && Array.isArray(res.writtenIssueIds) ? res.writtenIssueIds : []) recentWrites.set(String(id), now);
+  }
+  var CREATE_RESOLVERS = /* @__PURE__ */ new Set(["createInlineTask", "createJiraEpic", "createSubtaskForResource", "addSubtaskToTask", "resolveLocalSubtasks", "updateWbsTask"]);
+  var unansweredCreates = /* @__PURE__ */ new Map();
+  function newCreateId() {
+    const c = globalThis.crypto;
+    if (c && typeof c.randomUUID === "function") return c.randomUUID();
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  }
+  function withCreateId(fnName, payload) {
+    if (!CREATE_RESOLVERS.has(fnName)) return { payload };
+    const signature = `${fnName}:${JSON.stringify(payload)}`;
+    return { payload: { ...payload, createId: unansweredCreates.get(signature) || newCreateId() }, signature };
+  }
+  function noteCreateOutcome(signature, createId, answered) {
+    if (!signature) return;
+    if (answered) unansweredCreates.delete(signature);
+    else unansweredCreates.set(signature, String(createId));
+  }
+  async function callOnce(fnName, rawPayload) {
     let res;
+    const { payload, signature } = withCreateId(fnName, rawPayload);
+    const ids = recentWriteIds();
     try {
-      res = await (0, import_bridge.invoke)(fnName, payload);
+      const d = /* @__PURE__ */ new Date();
+      const clientToday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      res = await (0, import_bridge.invoke)(fnName, { ...ids.length ? { ...payload, reconcileIds: ids } : payload, clientToday });
+      rememberWrites(res);
+      noteCreateOutcome(signature, payload.createId, true);
     } catch (err) {
       console.error("Forge resolver error:", fnName, err);
-      res = { ok: false, error: err?.message || "The planner could not reach Jira." };
+      noteCreateOutcome(signature, payload.createId, false);
+      const message = fnName.startsWith("get") || fnName.startsWith("check") ? err?.message || "The planner could not reach Jira." : signature ? "The result is unknown. Check the plan, or make the same request again: CascadePlan will not create the work item twice." : "The result is unknown. Check the plan before you try again.";
+      res = { ok: false, success: false, error: fnName.startsWith("get") || fnName.startsWith("check") ? "unavailable" : "unknown", message };
     }
     if (!fnName.startsWith("get")) {
       const verdict = classifyResult(res);
-      if (verdict.failed && verdict.message) showErrorBanner2(verdict.message);
+      if (verdict.failed && verdict.message) showErrorBanner(verdict.message);
       recordChanges(res);
     }
+    return res;
+  }
+  async function callResolver(fnName, payload = {}) {
+    let res = await callOnce(fnName, payload);
+    const pending = (r) => !!r && Array.isArray(r.cascadeRemaining) && r.cascadeRemaining.length > 0;
+    const roots = Array.isArray(res?.cascadeRoots) && res.cascadeRoots.length ? res.cascadeRoots.map(String) : pending(res) && payload.taskId ? [String(payload.taskId)] : [];
     let rounds = 0;
-    while (res && Array.isArray(res.cascadeRemaining) && res.cascadeRemaining.length > 0 && rounds < MAX_CASCADE_ROUNDS) {
-      rounds++;
-      res = await callResolver("continueCascade", { taskId: payload.taskId, planId: payload.planId });
+    let unfinished = false;
+    for (const root of roots) {
+      let more = true;
+      while (more) {
+        if (rounds >= MAX_CASCADE_ROUNDS) {
+          unfinished = true;
+          break;
+        }
+        rounds++;
+        const next = await callOnce("continueCascade", { taskId: root, planId: payload.planId });
+        if (next && Array.isArray(next.tasks)) res = next;
+        more = pending(next) && next.ok !== false;
+      }
+      if (unfinished) break;
     }
+    if (unfinished) showErrorBanner("The cascade did not finish. Move the task again to continue.");
     return res;
   }
   var MAX_CASCADE_ROUNDS = 40;
@@ -6266,9 +6332,29 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
 
   // src/frontend/flag.ts
+  var import_bridge2 = __toESM(require_out3());
   var FLAG_MS = 1e4;
+  var hostFlagSeq = 0;
   var MAX_FLAGS = 3;
   function showFlag(opts) {
+    if (typeof import_bridge2.showFlag === "function") {
+      try {
+        let handle;
+        handle = (0, import_bridge2.showFlag)({
+          id: `cascadeplan-${Date.now()}-${hostFlagSeq++}`,
+          title: opts.error ? "CascadePlan: not saved" : "CascadePlan",
+          description: opts.text,
+          type: opts.error ? "error" : "info",
+          isAutoDismiss: !opts.error && !opts.action,
+          ...opts.action ? { actions: [{ text: opts.action.label, onClick: () => {
+            if (handle) handle.close();
+            opts.action.run();
+          } }] } : {}
+        });
+        return null;
+      } catch {
+      }
+    }
     const group = document.getElementById("flagGroup");
     if (!group) return null;
     const flag = document.createElement("div");
@@ -6366,7 +6452,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
   // src/ui/undo-plan.ts
   var PLAIN = ["targetProgress", "status", "summary", "effortHours", "epicKey"];
   function snap(t, scheduled) {
-    const dep = t.dependency && t.dependency.predecessorKey ? { predecessorKey: t.dependency.predecessorKey, triggerPercent: t.dependency.triggerPercent } : null;
+    const all = t.dependencies || (t.dependency ? [t.dependency] : []);
+    const links = all.filter((d) => d && d.predecessorKey).map((d) => ({ predecessorKey: d.predecessorKey, triggerPercent: d.triggerPercent })).sort((a, b) => a.predecessorKey < b.predecessorKey ? -1 : a.predecessorKey > b.predecessorKey ? 1 : 0);
     return {
       key: t.key,
       scheduled,
@@ -6377,7 +6464,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       progress: t.progress,
       manualProgress: t.manualProgress,
       targetProgress: t.targetProgress,
-      dependency: dep,
+      links,
       summary: t.summary,
       effortHours: t.effortHours,
       status: t.status,
@@ -6404,11 +6491,35 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     for (const f of PLAIN) if (from[f] !== to[f]) u[f] = to[f];
     if (from.resourceAccountId !== to.resourceAccountId) u.resourceAccountId = to.resourceAccountId || "unassigned";
-    if (JSON.stringify(from.dependency) !== JSON.stringify(to.dependency)) u.dependency = to.dependency;
     return u;
+  }
+  function linkOps(key, from, to) {
+    const ops = [];
+    const target = new Map(to.links.map((l) => [l.predecessorKey, l.triggerPercent]));
+    const source = new Map(from.links.map((l) => [l.predecessorKey, l.triggerPercent]));
+    for (const [pred, pct] of target) {
+      if (source.get(pred) !== pct) ops.push({ kind: "update", key, updates: { dependency: { predecessorKey: pred, predecessorId: pred, triggerPercent: pct, isTriggerSatisfied: false } } });
+    }
+    for (const pred of source.keys()) {
+      if (!target.has(pred)) ops.push({ kind: "update", key, updates: { removeDependency: { predecessorKey: pred } } });
+    }
+    return ops;
   }
   function scheduleOp(s) {
     return { kind: "schedule", key: s.key, updates: { startWeek: s.startWeek, spanWeeks: s.spanWeeks, startDate: s.startDate, endDate: s.endDate } };
+  }
+  function withWrittenStatuses(after, payload, jiraSync) {
+    const sent = /* @__PURE__ */ new Map();
+    if (payload && payload.taskId && payload.updates && payload.updates.status) sent.set(payload.taskId, payload.updates.status);
+    for (const i of payload && payload.items || []) if (i && i.taskId && i.updates && i.updates.status) sent.set(i.taskId, i.updates.status);
+    if (!sent.size) return after;
+    const applied = new Set((jiraSync && jiraSync.writes || []).filter((w) => (w.fields || []).includes("status")).map((w) => w.key));
+    const out = new Map(after);
+    for (const [key, status] of sent) {
+      const snapNow = out.get(key);
+      if (snapNow && applied.has(key)) out.set(key, { ...snapNow, status });
+    }
+    return out;
   }
   function buildUndoEntry(before, after, targetKey) {
     const changed = [...after.keys()].filter((k) => before.has(k) && JSON.stringify(before.get(k)) !== JSON.stringify(after.get(k)));
@@ -6428,10 +6539,14 @@ Please see https://iframe-resizer.com/upgrade for more details.
       }
       const rollUpOnly = parents.has(k);
       const back = updatesTo(a, b, rollUpOnly);
-      if (Object.keys(back).length === 0) continue;
+      const backLinks = linkOps(k, a, b);
+      if (Object.keys(back).length === 0 && backLinks.length === 0) continue;
       keys.push(k);
-      restore.push({ kind: "update", key: k, updates: back });
-      reapply.push({ kind: "update", key: k, updates: updatesTo(b, a, rollUpOnly) });
+      if (Object.keys(back).length) restore.push({ kind: "update", key: k, updates: back });
+      restore.push(...backLinks);
+      const fwd = updatesTo(b, a, rollUpOnly);
+      if (Object.keys(fwd).length) reapply.push({ kind: "update", key: k, updates: fwd });
+      reapply.push(...linkOps(k, b, a));
     }
     return keys.length ? { keys, restore, reapply } : null;
   }
@@ -6451,20 +6566,22 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const u = payload.updates || {};
     const others = entry.keys.filter((k) => k !== key).length;
     const dependents = others ? ` and ${others} dependent${others > 1 ? "s" : ""}` : "";
-    if (fn === "unscheduleTask") return `Moved ${key} to the backlog`;
+    if (fn === "unscheduleTask") return `Moved ${key} to the backlog. Its Jira due date is kept`;
     if (fn === "scheduleBacklogTask") return `Scheduled ${key}`;
+    if (fn === "moveTaskGroup") return `Moved ${key} with its sub-tasks` + (others ? ` (${others} issue${others > 1 ? "s" : ""} changed)` : "");
     if (fn !== "updateWbsTask") return `Changed ${key}`;
-    if ("dependency" in u) return u.dependency ? `Linked ${key} to ${u.dependency.predecessorKey} at ${u.dependency.triggerPercent}%` : `Removed the link of ${key}`;
+    if ("dependency" in u) return u.dependency ? `Linked ${key} to ${u.dependency.predecessorKey} at ${u.dependency.triggerPercent}%` : `Removed the links of ${key}`;
+    if (u.removeDependency) return `Removed the link from ${u.removeDependency.predecessorKey} to ${key}`;
     if (u.startDate || u.endDate || u.startWeek) return `Moved ${key}${dependents}`;
     if (u.progress !== void 0) return `Set ${key} to ${u.progress}%`;
     return `Changed ${key}`;
   }
 
   // src/frontend/theme.ts
-  var import_bridge2 = __toESM(require_out3());
+  var import_bridge3 = __toESM(require_out3());
   async function enableTheme() {
     try {
-      await import_bridge2.view.theme.enable();
+      await import_bridge3.view.theme.enable();
     } catch (err) {
       console.warn("Theming not available; using light fallbacks", err);
     }
@@ -6597,6 +6714,233 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (close) close.addEventListener("click", closeWhyPopup);
   }
 
+  // src/frontend/baseline-panel.ts
+  var deps;
+  function el2(tag, text, cls) {
+    const e = document.createElement(tag);
+    if (text !== void 0) e.textContent = text;
+    if (cls) e.className = cls;
+    return e;
+  }
+  function button(text, onClick, primary = false) {
+    const b = el2("button", text, `btn ${primary ? "btn-primary" : "btn-outline"} btn-xs`);
+    b.type = "button";
+    b.addEventListener("click", onClick);
+    return b;
+  }
+  var signed = (n) => n > 0 ? `+${n}` : String(n);
+  var day = (iso2) => (iso2 || "").slice(0, 10);
+  function statusText(report) {
+    if (!report || report.ok === false) return "Baseline: none";
+    const c = report.comparison;
+    const parts2 = [`${signed(c.deltaHours)} h (${signed(c.deltaPercent)}%)`];
+    if (c.added.length) parts2.push(`${c.added.length} added`);
+    if (c.removed.length) parts2.push(`${c.removed.length} removed`);
+    if (c.slipped) parts2.push(`${c.slipped} later`);
+    return `Baseline: ${report.baseline.name}${report.intact ? "" : " (changed since frozen!)"} \xB7 ${c.grew || c.removed.length || c.changed.length ? parts2.join(", ") : "on scope"}`;
+  }
+  function comparisonTable(c, summaries) {
+    const wrap = el2("div");
+    wrap.appendChild(el2("p", `Hours ${c.fromHours} -> ${c.toHours} (${signed(c.deltaHours)} h, ${signed(c.deltaPercent)}%). Items ${c.fromCount} -> ${c.toCount}.`));
+    const table = el2("table", void 0, "changes-table");
+    const head = el2("tr");
+    for (const h of ["Change", "Issue", "Summary (now)", "Estimate", "Start", "End"]) head.appendChild(el2("th", h));
+    table.appendChild(el2("thead")).appendChild(head);
+    const body = table.appendChild(el2("tbody"));
+    const row = (kind, key, est, start, end) => {
+      const tr = el2("tr");
+      for (const v of [kind, key, summaries[key] || "", est, start, end]) tr.appendChild(el2("td", v));
+      body.appendChild(tr);
+    };
+    for (const i of c.added) row("added", i.key, i.hours !== void 0 ? `${i.hours} h` : "none", day(i.start), day(i.end));
+    for (const i of c.removed) row("removed", i.key, i.hours !== void 0 ? `${i.hours} h` : "none", day(i.start), day(i.end));
+    for (const x of c.changed) {
+      const pair = (a, b, unit = "") => a === void 0 && b === void 0 ? "" : `${a ?? "none"}${unit} -> ${b ?? "none"}${unit}`;
+      row(
+        "changed",
+        x.key,
+        "fromHours" in x || "toHours" in x ? pair(x.fromHours, x.toHours, " h") : "",
+        "fromStart" in x ? pair(x.fromStart, x.toStart) : "",
+        "fromEnd" in x ? pair(x.fromEnd, x.toEnd) : ""
+      );
+    }
+    if (!c.added.length && !c.removed.length && !c.changed.length) wrap.appendChild(el2("p", "No change."));
+    else wrap.appendChild(table);
+    return wrap;
+  }
+  function download(name, text, type) {
+    try {
+      const url = URL.createObjectURL(new Blob([text], { type }));
+      const a = el2("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2e3);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  async function refreshStatus() {
+    const btn = document.getElementById("btnBaseline");
+    const report = await deps.call("getScopeCreepReport", {});
+    if (btn) {
+      btn.textContent = statusText(report);
+      btn.classList.toggle("is-warning", !!(report && report.ok !== false && (report.comparison.grew || !report.intact)));
+    }
+    return report;
+  }
+  async function render2() {
+    const body = document.getElementById("baselineBody");
+    if (!body) return;
+    body.replaceChildren(el2("p", "Loading..."));
+    const [list, report] = await Promise.all([deps.call("getPlanBaselines", {}), refreshStatus()]);
+    body.replaceChildren();
+    const approver = deps.isApprover() === true;
+    const freeze = el2("div", void 0, "baseline-freeze");
+    const name = el2("input");
+    name.type = "text";
+    name.className = "form-input";
+    name.placeholder = "Baseline name, for example Sprint 7 commitment";
+    name.setAttribute("aria-label", "Baseline name");
+    name.maxLength = 80;
+    const freezeBtn = button("Freeze the plan as a baseline", async () => {
+      const res = await deps.call("freezePlanBaseline", { name: name.value });
+      if (res && res.ok) {
+        deps.flag({ text: `Froze "${res.baseline.name}": ${res.baseline.itemCount} items, ${res.baseline.totalHours} h.` });
+        await deps.reloadPlan();
+        await render2();
+      } else deps.flag({ text: res && (res.message || res.error) || "The baseline was not frozen.", error: true });
+    }, true);
+    name.disabled = freezeBtn.disabled = !approver;
+    if (!approver) freezeBtn.title = "Only plan approvers freeze baselines.";
+    freeze.append(name, freezeBtn);
+    body.appendChild(freeze);
+    const delta = el2("section");
+    delta.appendChild(el2("h3", "Scope since the active baseline"));
+    if (report && report.ok !== false) {
+      if (!report.intact) delta.appendChild(el2("p", "Warning: this baseline no longer matches what was frozen (its SHA-256 digest differs).", "baseline-warning"));
+      delta.appendChild(comparisonTable(report.comparison, report.summaries || {}));
+      const reason = el2("textarea");
+      reason.className = "form-input";
+      reason.placeholder = "Why the scope changed (sent to plan approvers)";
+      reason.setAttribute("aria-label", "Reason for the scope change");
+      reason.maxLength = 1e3;
+      delta.append(reason, button("Request approval of this scope", async () => {
+        const res = await deps.call("requestScopeShift", { reason: reason.value });
+        if (res && res.ok) {
+          deps.flag({ text: "Scope change requested. A plan approver can accept or reject it." });
+          await render2();
+        } else deps.flag({ text: res && (res.message || res.error) || "The request was not saved.", error: true });
+      }));
+    } else {
+      delta.appendChild(el2("p", report && report.message || "No baseline yet."));
+    }
+    body.appendChild(delta);
+    const shifts = list && list.shifts || [];
+    if (shifts.length) {
+      const sec = el2("section");
+      sec.appendChild(el2("h3", "Scope-change requests"));
+      for (const s of shifts) {
+        const line = el2("div", void 0, "baseline-shift");
+        const sum = s.summary || {};
+        line.appendChild(el2("span", `${day(s.requestedAt)} ${s.requestedByName}: "${s.reason}" (${sum.added} added, ${sum.removed} removed, ${sum.changed} changed, ${signed(sum.deltaHours)} h). ${s.status === "PENDING" ? "Waiting." : `${s.status === "APPROVED" ? "Accepted" : "Rejected"} by ${s.reviewedByName}${s.comment ? `: ${s.comment}` : ""}.`}`));
+        if (s.status === "PENDING" && approver) {
+          for (const [status, label2] of [["APPROVED", "Accept"], ["REJECTED", "Reject"]]) {
+            line.appendChild(button(label2, async () => {
+              const res = await deps.call("reviewScopeShift", { shiftId: s.id, status });
+              if (res && res.ok) {
+                deps.flag({ text: status === "APPROVED" ? "Accepted: a new baseline version is active." : "Rejected: the baseline stays." });
+                await deps.reloadPlan();
+                await render2();
+              } else deps.flag({ text: res && (res.message || res.error) || "The review was not saved.", error: true });
+            }, status === "APPROVED"));
+          }
+        }
+        sec.appendChild(line);
+      }
+      body.appendChild(sec);
+    }
+    const versions = list && list.baselines || [];
+    if (versions.length) {
+      const sec = el2("section");
+      sec.appendChild(el2("h3", "Baseline versions"));
+      const out = el2("div");
+      for (const b of versions) {
+        const line = el2("div", void 0, "baseline-version");
+        const active = b.id === list.active;
+        line.appendChild(el2("span", `${active ? "\u25CF " : ""}${b.name}, ${day(b.frozenAt)} by ${b.frozenByName}: ${b.itemCount} items, ${b.totalHours} h${b.unestimated ? `, ${b.unestimated} unestimated` : ""}.`));
+        line.appendChild(button("Compare with now", async () => {
+          const r = await deps.call("getScopeCreepReport", { baselineId: b.id });
+          out.replaceChildren(el2("h4", `${b.name} against the current plan`), r && r.ok ? comparisonTable(r.comparison, r.summaries || {}) : el2("p", r && r.message || "Not available."));
+        }));
+        if (!active && list.active) {
+          line.appendChild(button("Compare with active", async () => {
+            const r = await deps.call("compareBaselines", { fromId: b.id, toId: list.active });
+            out.replaceChildren(el2("h4", `${b.name} against the active version`), r && r.ok ? comparisonTable(r.comparison, r.summaries || {}) : el2("p", r && r.message || "Not available."));
+          }));
+        }
+        line.appendChild(button("Export CSV", async () => {
+          const r = await deps.call("exportBaseline", { baselineId: b.id });
+          if (!r || !r.ok) {
+            deps.flag({ text: r && r.message || "Export failed.", error: true });
+            return;
+          }
+          if (!download(`${b.name.replace(/[^\w.-]+/g, "_")}.csv`, r.csv, "text/csv")) {
+            const ta = el2("textarea");
+            ta.className = "form-input";
+            ta.value = r.csv;
+            ta.readOnly = true;
+            out.replaceChildren(el2("p", "Copy the CSV below:"), ta);
+          }
+          if (!r.intact) deps.flag({ text: `"${b.name}" no longer matches what was frozen (SHA-256 differs).`, error: true });
+        }));
+        if (!active && approver) {
+          line.appendChild(button("Make active", async () => {
+            const res = await deps.call("setActiveBaseline", { baselineId: b.id });
+            if (res && res.ok) {
+              await deps.reloadPlan();
+              await render2();
+            } else deps.flag({ text: res && res.message || "Not changed.", error: true });
+          }));
+        }
+        sec.appendChild(line);
+      }
+      sec.appendChild(out);
+      body.appendChild(sec);
+    }
+  }
+  function closeBaselinePanel() {
+    const panel = document.getElementById("baselinePanel");
+    if (panel) panel.hidden = true;
+    document.getElementById("btnBaseline")?.setAttribute("aria-expanded", "false");
+  }
+  function isBaselinePanelOpen() {
+    const panel = document.getElementById("baselinePanel");
+    return !!panel && !panel.hidden;
+  }
+  function initBaselinePanel(d) {
+    deps = d;
+    const btn = document.getElementById("btnBaseline");
+    const panel = document.getElementById("baselinePanel");
+    const close = document.getElementById("btnCloseBaseline");
+    if (!btn || !panel) return;
+    btn.addEventListener("click", async () => {
+      panel.hidden = !panel.hidden;
+      btn.setAttribute("aria-expanded", String(!panel.hidden));
+      if (!panel.hidden) {
+        await render2();
+        close?.focus();
+      }
+    });
+    close?.addEventListener("click", () => {
+      closeBaselinePanel();
+      btn.focus();
+    });
+  }
+
   // src/ui/safe-html.ts
   var SafeHtml = class {
     constructor(markup) {
@@ -6610,15 +6954,15 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (value === null || value === void 0) return "";
     return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
-  function render2(value) {
+  function render3(value) {
     if (value instanceof SafeHtml) return value.toString();
-    if (Array.isArray(value)) return value.map(render2).join("");
+    if (Array.isArray(value)) return value.map(render3).join("");
     return escapeHtml(value);
   }
   function html(strings, ...values) {
     let out = strings[0];
     for (let i = 0; i < values.length; i++) {
-      out += render2(values[i]) + strings[i + 1];
+      out += render3(values[i]) + strings[i + 1];
     }
     return new SafeHtml(out);
   }
@@ -6628,10 +6972,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function dayNumber(iso2) {
     return Math.round(Date.parse(`${iso2}T00:00:00Z`) / DAY_MS);
   }
-  function isoOf(day) {
-    return new Date(day * DAY_MS).toISOString().slice(0, 10);
+  function isoOf(day2) {
+    return new Date(day2 * DAY_MS).toISOString().slice(0, 10);
   }
-  function addDays2(iso2, days) {
+  function addDays(iso2, days) {
     return isoOf(dayNumber(iso2) + days);
   }
   function durationDays(e) {
@@ -6642,7 +6986,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function earliestStart(pred, triggerPercent, today) {
     const p = pred.percentComplete || 0;
     const x = triggerPercent;
-    if (p >= x && (x > 0 || p > 0 || pred.started === true)) {
+    if (p >= x && (x > 0 || pred.started === true)) {
       return { basis: "satisfied", date: null, triggerDate: null, reason: `${pred.workEffortId} is at ${p}%, past the ${x}% trigger` };
     }
     const s = dayNumber(pred.estimatedStartDate);
@@ -6688,7 +7032,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const e = best.res.date;
     const reason = `Starts ${e} because ${best.res.reason}.`;
     const detail = { triggerDate: best.res.triggerDate, triggerPercent: best.link.triggerPercent, basis: best.res.basis };
-    const started = own.started === true || (own.percentComplete || 0) > 0;
+    const started = own.started === true;
     if (started) {
       return {
         earliestStartDate: e,
@@ -6702,7 +7046,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const ownStart = own.estimatedStartDate;
     if (ownStart >= e) return { earliestStartDate: e, driver: best.pred.workEffortId, violated: false, reason, ...detail };
     let suggestion = `Move ${key} to ${e}`;
-    const fixes = [{ kind: "move", startDate: e, endDate: addDays2(e, durationDays(own) - 1) }];
+    const fixes = [{ kind: "move", startDate: e, endDate: addDays(e, durationDays(own) - 1) }];
     if (best.res.basis === "planned") {
       const lower = Math.floor((dayNumber(ownStart) - dayNumber(best.pred.estimatedStartDate)) / durationDays(best.pred) * 100);
       if (lower >= 0) {
@@ -6725,7 +7069,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         stack.push(s);
       }
     }
-    if (reach.has(changedKey)) throw new Error(`Dependency cycle through ${changedKey}`);
+    if (reach.has(changedKey)) return { changes: [], efforts: work, cycle: [changedKey] };
     const nodes = /* @__PURE__ */ new Set([changedKey, ...reach]);
     const indeg = new Map([...nodes].map((n) => [n, 0]));
     for (const l of links) if (nodes.has(l.workEffortIdFrom) && nodes.has(l.workEffortIdTo)) indeg.set(l.workEffortIdTo, indeg.get(l.workEffortIdTo) + 1);
@@ -6740,7 +7084,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         if (indeg.get(s) === 0) queue.push(s);
       }
     }
-    if (order.length !== nodes.size) throw new Error("Dependency cycle in the plan");
+    const cycle = [...nodes].filter((n) => !order.includes(n));
     const changes = [];
     for (const key of order) {
       if (key === changedKey) continue;
@@ -6750,7 +7094,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       if (!ev.earliestStartDate || cur.estimatedStartDate >= ev.earliestStartDate) continue;
       const dur = durationDays(cur);
       const toStart = ev.earliestStartDate;
-      const toEnd = addDays2(toStart, dur - 1);
+      const toEnd = addDays(toStart, dur - 1);
       changes.push({
         key,
         fromStart: cur.estimatedStartDate,
@@ -6762,7 +7106,220 @@ Please see https://iframe-resizer.com/upgrade for more details.
       cur.estimatedStartDate = toStart;
       cur.estimatedCompletionDate = toEnd;
     }
-    return { changes, efforts: work };
+    return cycle.length ? { changes, efforts: work, cycle } : { changes, efforts: work };
+  }
+
+  // src/domain/block-move.ts
+  var ISO = /^\d{4}-\d{2}-\d{2}$/;
+  function addDays2(iso2, days) {
+    return new Date(Date.parse(`${iso2}T00:00:00Z`) + days * 864e5).toISOString().slice(0, 10);
+  }
+  function blockState(m) {
+    if (!m.startDate || !ISO.test(m.startDate)) return "undated";
+    if (m.status === "COMPLETED") return "done";
+    if (m.status === "IN_PROGRESS") return "in-progress";
+    return "not-started";
+  }
+  function planBlockMove(members, days, today) {
+    const changes = [];
+    const fixed = [];
+    for (const m of members) {
+      const state = blockState(m);
+      if (state === "undated") {
+        fixed.push({ key: m.key, state, reason: "undated: stays in the backlog" });
+        continue;
+      }
+      if (state === "done") {
+        fixed.push({ key: m.key, state, reason: "done: its dates record finished work" });
+        continue;
+      }
+      const fromStart = m.startDate;
+      const fromEnd = m.endDate && ISO.test(m.endDate) ? m.endDate : fromStart;
+      if (state === "not-started") {
+        changes.push({ key: m.key, state, fromStart, fromEnd, toStart: addDays2(fromStart, days), toEnd: addDays2(fromEnd, days) });
+        continue;
+      }
+      let toEnd = addDays2(fromEnd, days);
+      if (toEnd < today) toEnd = today;
+      if (toEnd < fromStart) toEnd = fromStart;
+      if (toEnd === fromEnd) fixed.push({ key: m.key, state, reason: "in progress: start kept, end not before today" });
+      else changes.push({ key: m.key, state, fromStart, fromEnd, toStart: fromStart, toEnd });
+    }
+    return { changes, fixed };
+  }
+
+  // src/domain/work-effort-links.ts
+  function rollUpParentDates(tasks) {
+    const out = /* @__PURE__ */ new Map();
+    for (const t of tasks) {
+      if (!t.parentKey || !t.startDate) continue;
+      const end = t.endDate && t.endDate >= t.startDate ? t.endDate : t.startDate;
+      const cur = out.get(t.parentKey);
+      out.set(t.parentKey, cur ? { startDate: t.startDate < cur.startDate ? t.startDate : cur.startDate, endDate: end > cur.endDate ? end : cur.endDate } : { startDate: t.startDate, endDate: end });
+    }
+    return out;
+  }
+
+  // src/domain/drop-plan.ts
+  var ISO2 = /^\d{4}-\d{2}-\d{2}$/;
+  var isIso = (v) => typeof v === "string" && ISO2.test(v);
+  var dayDiff = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 864e5);
+  function engineInputs(tasks) {
+    const efforts = /* @__PURE__ */ new Map();
+    const links = [];
+    for (const t of tasks) {
+      if (!t.key || !isIso(t.startDate)) continue;
+      efforts.set(t.key, {
+        workEffortId: t.key,
+        estimatedStartDate: t.startDate,
+        estimatedCompletionDate: isIso(t.endDate) ? t.endDate : t.startDate,
+        percentComplete: t.progress || 0,
+        started: t.status === "IN_PROGRESS" || t.status === "COMPLETED"
+      });
+      for (const d of t.dependencies || (t.dependency ? [t.dependency] : [])) {
+        if (d.predecessorKey && typeof d.triggerPercent === "number") {
+          links.push({ workEffortIdFrom: d.predecessorKey, workEffortIdTo: t.key, workEffortAssocTypeId: "WORK_EFF_PRECEDENCY", triggerPercent: d.triggerPercent });
+        }
+      }
+    }
+    return { efforts, links };
+  }
+  function ancestorKeys(key, tasks) {
+    const byKey = new Map(tasks.map((t) => [t.key, t]));
+    const out = [];
+    let cur = byKey.get(key)?.parentKey;
+    while (cur && !out.includes(cur)) {
+      out.push(cur);
+      cur = byKey.get(cur)?.parentKey;
+    }
+    return out;
+  }
+  function withRollUps(tasks) {
+    let out = tasks.map((t) => ({ ...t }));
+    for (let pass = 0; pass < 4; pass++) {
+      const spans = rollUpParentDates(out);
+      let changed = false;
+      out = out.map((t) => {
+        const span = spans.get(t.key);
+        if (!span || t.startDate === span.startDate && t.endDate === span.endDate) return t;
+        changed = true;
+        return { ...t, ...span, datesFromChildren: true };
+      });
+      if (!changed) break;
+    }
+    return out;
+  }
+  function expandParentCascades(changes, tasks, today, exclude = /* @__PURE__ */ new Set()) {
+    const out = [];
+    const epics = [];
+    const seen = new Set(exclude);
+    for (const c of changes) {
+      const t = tasks.find((x) => x.key === c.key);
+      if (!t || !t.datesFromChildren) {
+        if (!seen.has(c.key)) {
+          out.push(c);
+          seen.add(c.key);
+        }
+        continue;
+      }
+      if (t.isEpic || (t.hierarchyLevel ?? 0) >= 1) {
+        epics.push(c.key);
+        continue;
+      }
+      if (!isIso(t.startDate)) continue;
+      const days = dayDiff(t.startDate, c.toStart);
+      if (days === 0) continue;
+      for (const b of planBlockMove(tasks.filter((x) => x.parentKey === t.key), days, today).changes) {
+        if (!seen.has(b.key)) {
+          out.push({ key: b.key, toStart: b.toStart, toEnd: b.toEnd });
+          seen.add(b.key);
+        }
+      }
+    }
+    return { changes: out, epics };
+  }
+  function singleMoveCascade(timeline2, all, key, patch, today) {
+    const candidate = withRollUps(timeline2.map((t) => t.key === key ? { ...t, ...patch } : t));
+    const inputs = engineInputs(candidate);
+    const first = cascade(inputs.efforts, inputs.links, key, today);
+    const cycles = [...first.cycle || []];
+    const changes = first.changes.map((c) => ({ key: c.key, toStart: c.toStart, toEnd: c.toEnd }));
+    let efforts = first.efforts;
+    for (const anc of ancestorKeys(key, timeline2)) {
+      const was = timeline2.find((t) => t.key === anc);
+      const now = candidate.find((t) => t.key === anc);
+      if (!was || !now || !now.datesFromChildren || was.startDate === now.startDate && was.endDate === now.endDate) continue;
+      const more = cascade(efforts, inputs.links, anc, today);
+      cycles.push(...more.cycle || []);
+      for (const c of more.changes) if (!changes.some((x) => x.key === c.key)) changes.push({ key: c.key, toStart: c.toStart, toEnd: c.toEnd });
+      efforts = more.efforts;
+    }
+    const expanded = expandParentCascades(changes, all, today, /* @__PURE__ */ new Set([key]));
+    return { changes: expanded.changes, epics: expanded.epics, cycles };
+  }
+  function cascadeFromRoots(candidate, all, roots, exclude, today) {
+    const inputs = engineInputs(candidate);
+    let efforts = inputs.efforts;
+    const out = [];
+    const epics = [];
+    const cycles = [];
+    for (const root of roots) {
+      const r = cascade(efforts, inputs.links, root, today);
+      cycles.push(...r.cycle || []);
+      efforts = r.efforts;
+      const expanded = expandParentCascades(r.changes, all, today, exclude);
+      epics.push(...expanded.epics);
+      for (const c of expanded.changes) if (!out.some((x) => x.key === c.key)) out.push(c);
+    }
+    return { changes: out, epics, cycles };
+  }
+  function parentDueDateTargets(before, moved, reparent) {
+    const shifted = before.map((t) => {
+      let n = moved.has(t.key) ? { ...t, ...moved.get(t.key) } : t;
+      if (reparent && t.key === reparent.key) n = { ...n, parentKey: reparent.parentKey };
+      return n;
+    });
+    const after = withRollUps(shifted);
+    const parents = /* @__PURE__ */ new Set();
+    for (const key of moved.keys()) for (const a of ancestorKeys(key, before)) if (!moved.has(a)) parents.add(a);
+    if (reparent) for (const list of [before, shifted]) for (const a of ancestorKeys(reparent.key, list)) parents.add(a);
+    const out = [];
+    for (const key of parents) {
+      const was = before.find((t) => t.key === key);
+      const now = after.find((t) => t.key === key);
+      if (!was || !now || !now.datesFromChildren || !isIso(now.endDate) || was.endDate === now.endDate) continue;
+      if (String(was.jiraDueDate || "").slice(0, 10) === now.endDate) continue;
+      out.push({ key, id: was.id, endDate: now.endDate, was });
+    }
+    return out;
+  }
+  function finish(all, moves, epics) {
+    const moved = new Map([...moves].map(([k, m]) => [k, { startDate: m.start, endDate: m.end }]));
+    const parentDue = new Map(parentDueDateTargets(all, moved).map((t) => [t.key, t.endDate]));
+    return { moves, parentDue, epics: [...new Set(epics)] };
+  }
+  function previewSingleMove(plan, key, start, end, today) {
+    const all = [...plan.tasks, ...plan.backlogTasks || []];
+    const moves = /* @__PURE__ */ new Map();
+    if (!all.some((t) => t.key === key)) return { moves, parentDue: /* @__PURE__ */ new Map(), epics: [] };
+    moves.set(key, { start, end });
+    const r = singleMoveCascade(plan.tasks, all, key, { startDate: start, endDate: end }, today);
+    for (const c of r.changes) moves.set(c.key, { start: c.toStart, end: c.toEnd });
+    return finish(all, moves, r.epics);
+  }
+  function previewBlockMove(plan, parentKey, days, today) {
+    const all = [...plan.tasks, ...plan.backlogTasks || []];
+    const members = all.filter((t) => t.parentKey === parentKey);
+    const moves = /* @__PURE__ */ new Map();
+    const block = planBlockMove(members, days, today).changes;
+    if (block.length === 0) return { moves, parentDue: /* @__PURE__ */ new Map(), epics: [] };
+    for (const c of block) moves.set(c.key, { start: c.toStart, end: c.toEnd });
+    const moved = new Map(block.map((c) => [c.key, { startDate: c.toStart, endDate: c.toEnd }]));
+    const candidate = withRollUps(all.map((t) => moved.has(t.key) ? { ...t, ...moved.get(t.key) } : t));
+    const roots = [parentKey, ...block.map((c) => c.key), ...ancestorKeys(parentKey, all)];
+    const r = cascadeFromRoots(candidate, all, roots, /* @__PURE__ */ new Set([parentKey, ...members.map((m) => m.key)]), today);
+    for (const c of r.changes) moves.set(c.key, { start: c.toStart, end: c.toEnd });
+    return finish(all, moves, r.epics);
   }
 
   // src/ui/timeline-geometry.ts
@@ -6791,41 +7348,56 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (barW >= HANDLE_PX * 2) return { left: -HANDLE_PX / 2, right: barW - HANDLE_PX / 2 };
     return { left: -HANDLE_PX, right: barW };
   }
+  var PORT_PX = 20;
+  function portOffsets(barW) {
+    const h = handleOffsets(barW);
+    return { left: h.left - PORT_PX, right: h.right + HANDLE_PX };
+  }
+  function bezierPoints(p0, p1, p2, p3, n = 16) {
+    const out = [];
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const u = 1 - t;
+      const a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+      out.push([a * p0[0] + b * p1[0] + c * p2[0] + d * p3[0], a * p0[1] + b * p1[1] + c * p2[1] + d * p3[1]]);
+    }
+    return out;
+  }
+  function distanceToPath(path, x, y) {
+    let best = Infinity;
+    for (let i = 0; i < path.length; i++) {
+      const [ax, ay] = path[i];
+      const [bx, by] = path[Math.min(i + 1, path.length - 1)];
+      const dx = bx - ax, dy = by - ay;
+      const len2 = dx * dx + dy * dy;
+      const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len2));
+      best = Math.min(best, Math.hypot(x - (ax + t * dx), y - (ay + t * dy)));
+    }
+    return best;
+  }
+  function nearestArrow(links, x, y, tolerance = 6) {
+    let best = null;
+    let bestD = tolerance;
+    for (const link of links) {
+      if (!link.path || link.path.length === 0) continue;
+      const d = distanceToPath(link.path, x, y);
+      if (d <= bestD) {
+        best = link;
+        bestD = d;
+      }
+    }
+    return best;
+  }
   function snapDays(deltaPx, dayPx2, mode) {
     const days = mode === "week" ? Math.round(deltaPx / (dayPx2 * 7)) * 7 : Math.round(deltaPx / dayPx2);
     return days === 0 ? 0 : days;
   }
-  function previewMoves(tasks, key, startShift, endShift, today) {
-    const out = /* @__PURE__ */ new Map();
-    const target = tasks.find((t) => t.key === key);
-    if (!target || !target.startDate) return out;
-    const start = addDays2(target.startDate, startShift);
-    let end = addDays2(target.endDate || target.startDate, endShift);
+  function shiftDates(task, startShift, endShift) {
+    if (!task.startDate) return null;
+    const start = addDays(task.startDate, startShift);
+    let end = addDays(task.endDate || task.startDate, endShift);
     if (end < start) end = start;
-    out.set(key, { start, end });
-    const efforts = /* @__PURE__ */ new Map();
-    const links = [];
-    for (const t of tasks) {
-      if (!t.startDate) continue;
-      const moved = t.key === key;
-      efforts.set(t.key, {
-        workEffortId: t.key,
-        estimatedStartDate: moved ? start : t.startDate,
-        estimatedCompletionDate: moved ? end : t.endDate || t.startDate,
-        percentComplete: t.progress || 0,
-        started: t.status === "IN_PROGRESS" || t.status === "COMPLETED"
-      });
-      for (const d of t.dependencies || (t.dependency ? [t.dependency] : [])) {
-        if (d.predecessorKey && typeof d.triggerPercent === "number") {
-          links.push({ workEffortIdFrom: d.predecessorKey, workEffortIdTo: t.key, workEffortAssocTypeId: "WORK_EFF_PRECEDENCY", triggerPercent: d.triggerPercent });
-        }
-      }
-    }
-    try {
-      for (const c of cascade(efforts, links, key, today).changes) out.set(c.key, { start: c.toStart, end: c.toEnd });
-    } catch {
-    }
-    return out;
+    return { start, end };
   }
 
   // src/ui/canvas-palette.ts
@@ -6937,6 +7509,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
       __publicField(this, "activeLinking", null);
       /** Focused element of the treegrid in the canvas fallback content, for drawFocusIfNeeded (B-15). */
       __publicField(this, "focusElement", null);
+      /** The last input type: the system focus ring is drawn only after keyboard input (N-09). */
+      __publicField(this, "lastInput", "pointer");
       __publicField(this, "forced", false);
       __publicField(this, "arrowLinks", []);
       __publicField(this, "onDraw");
@@ -6946,6 +7520,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
       if (getComputedStyle(host).position === "static") host.style.position = "relative";
       host.appendChild(this.canvas);
       this.ctx = this.canvas.getContext("2d");
+      document.addEventListener("pointerdown", () => {
+        this.lastInput = "pointer";
+      }, true);
+      document.addEventListener("keydown", () => {
+        this.lastInput = "keyboard";
+      }, true);
       const mq = window.matchMedia ? window.matchMedia("(forced-colors: active)") : null;
       const apply = () => {
         this.forced = !!(mq && mq.matches);
@@ -7042,7 +7622,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
       if (todayX !== null) this.drawTodayFlag(m, todayX, top);
       ctx.restore();
       this.onDraw?.(this.arrowLinks);
-      if (perf) performance.measure("cp:draw", "cp:draw:start");
+      if (perf) {
+        performance.measure("cp:draw", "cp:draw:start");
+        globalThis.__cpArrows = this.arrowLinks;
+      }
     }
     drawHoveredRow(m, left, cssW) {
       const hoverKey = this.hoveredRowKey || this.activeKey;
@@ -7190,7 +7773,17 @@ Please see https://iframe-resizer.com/upgrade for more details.
       ctx.setLineDash(isConflict ? [4, 3] : isDriver ? [5, 3] : []);
       ctx.stroke();
       ctx.setLineDash([]);
-      if (isFocused && this.focusElement) {
+      if (isFocused && !isConflict) {
+        ctx.save();
+        ctx.strokeStyle = focus;
+        ctx.lineWidth = 2;
+        ctx.shadowColor = focus;
+        ctx.shadowBlur = this.forced ? 0 : 6;
+        this.path({ x: r.x - 2, y: r.y - 2, w: r.w + 4, h: r.h + 4 }, RADIUS + 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      if (isFocused && this.focusElement && (this.lastInput === "keyboard" || this.forced)) {
         this.path(r);
         ctx.drawFocusIfNeeded(this.focusElement);
       }
@@ -7211,74 +7804,91 @@ Please see https://iframe-resizer.com/upgrade for more details.
       ctx.textBaseline = "middle";
       for (const { i } of rects.values()) {
         const task = m.tasks[i];
-        const dep = task.dependency;
-        if (!dep || !dep.predecessorKey) continue;
-        const pred = rects.get(dep.predecessorKey);
-        const succ = rects.get(task.key);
-        if (!pred || !succ) continue;
-        const y1 = pred.r.y + pred.r.h / 2;
-        const y2 = succ.r.y + succ.r.h / 2;
-        if (Math.max(y1, y2) < top - ROW_H || Math.min(y1, y2) > top + h + ROW_H) continue;
-        const trigger = (typeof dep.triggerPercent === "number" ? dep.triggerPercent : 100) / 100;
-        const x1 = pred.r.x + pred.r.w * trigger;
-        const x2 = succ.r.x;
-        const connected = active === task.key || active === dep.predecessorKey;
-        const violated = Boolean(dep.isViolated);
-        const colour = this.c(violated ? CANVAS_TOKENS.arrowViolated : connected ? CANVAS_TOKENS.arrowActive : CANVAS_TOKENS.arrowOk);
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        if (x2 >= x1 + 16) {
-          const dx = Math.max(24, (x2 - x1) * 0.45);
-          ctx.bezierCurveTo(x1 + dx, y1, x2 - dx, y2, x2 - 6, y2);
-        } else {
-          const loopOutX = x1 + 16;
-          const loopInX = x2 - 16;
-          const midY = y1 < y2 ? y1 + ROW_H * 0.5 : y1 - ROW_H * 0.5;
-          ctx.bezierCurveTo(loopOutX, y1, loopOutX, midY, (loopOutX + loopInX) / 2, midY);
-          ctx.bezierCurveTo(loopInX, midY, loopInX, y2, x2 - 6, y2);
-        }
-        ctx.strokeStyle = colour;
-        ctx.lineWidth = active && !connected ? 1 : connected ? 2.5 : 1.75;
-        ctx.setLineDash(violated ? [4, 3] : []);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.beginPath();
-        ctx.moveTo(x2, y2);
-        ctx.lineTo(x2 - 8, y2 - 4.5);
-        ctx.lineTo(x2 - 8, y2 + 4.5);
-        ctx.closePath();
-        ctx.fillStyle = colour;
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(x1, y1, connected ? 4.5 : 3.5, 0, Math.PI * 2);
-        ctx.fill();
-        if (!active || connected) {
-          const when = dep.triggerDate ? `, ${dep.triggerDate}` : "";
-          const text = violated ? `${dep.triggerPercent}%${when}: starts too early` : `${dep.triggerPercent}%${when}`;
-          const tw = ctx.measureText(text).width + 10;
-          const badgeX = (x1 + x2) / 2;
-          const badgeY = (y1 + y2) / 2;
-          this.arrowLinks.push({
-            predecessorKey: dep.predecessorKey,
-            successorKey: task.key,
-            triggerPercent: typeof dep.triggerPercent === "number" ? dep.triggerPercent : 100,
-            triggerDate: dep.triggerDate,
-            isViolated: violated,
-            x: badgeX,
-            y: badgeY,
-            width: tw,
-            height: CHIP_H,
-            text
-          });
-          this.chip(
-            text,
-            badgeX - tw / 2,
-            badgeY,
-            this.c(violated ? CANVAS_TOKENS.badgeViolatedText : CANVAS_TOKENS.badgeOkText),
-            colour
-          );
+        const deps2 = Array.isArray(task.dependencies) && task.dependencies.length ? task.dependencies : task.dependency ? [task.dependency] : [];
+        for (const dep of deps2) {
+          if (dep && dep.predecessorKey) this.drawArrow(task, dep, rects, top, h, active);
         }
       }
+    }
+    drawArrow(task, dep, rects, top, h, active) {
+      const ctx = this.ctx;
+      const pred = rects.get(dep.predecessorKey);
+      const succ = rects.get(task.key);
+      if (!pred || !succ) return;
+      const y1 = pred.r.y + pred.r.h / 2;
+      const y2 = succ.r.y + succ.r.h / 2;
+      if (Math.max(y1, y2) < top - ROW_H || Math.min(y1, y2) > top + h + ROW_H) return;
+      const trigger = (typeof dep.triggerPercent === "number" ? dep.triggerPercent : 100) / 100;
+      const x1 = pred.r.x + pred.r.w * trigger;
+      const x2 = succ.r.x;
+      const connected = active === task.key || active === dep.predecessorKey;
+      const violated = Boolean(dep.isViolated);
+      const colour = this.c(violated ? CANVAS_TOKENS.arrowViolated : connected ? CANVAS_TOKENS.arrowActive : CANVAS_TOKENS.arrowOk);
+      let path;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      if (x2 >= x1 + 16) {
+        const dx = Math.max(24, (x2 - x1) * 0.45);
+        ctx.bezierCurveTo(x1 + dx, y1, x2 - dx, y2, x2 - 6, y2);
+        path = bezierPoints([x1, y1], [x1 + dx, y1], [x2 - dx, y2], [x2 - 6, y2]);
+      } else {
+        const loopOutX = x1 + 16;
+        const loopInX = x2 - 16;
+        const midY = y1 < y2 ? y1 + ROW_H * 0.5 : y1 - ROW_H * 0.5;
+        const midX = (loopOutX + loopInX) / 2;
+        ctx.bezierCurveTo(loopOutX, y1, loopOutX, midY, midX, midY);
+        ctx.bezierCurveTo(loopInX, midY, loopInX, y2, x2 - 6, y2);
+        path = [
+          ...bezierPoints([x1, y1], [loopOutX, y1], [loopOutX, midY], [midX, midY]),
+          ...bezierPoints([midX, midY], [loopInX, midY], [loopInX, y2], [x2 - 6, y2]).slice(1)
+        ];
+      }
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = active && !connected ? 1 : connected ? 2.5 : 1.75;
+      ctx.setLineDash(violated ? [4, 3] : []);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - 8, y2 - 4.5);
+      ctx.lineTo(x2 - 8, y2 + 4.5);
+      ctx.closePath();
+      ctx.fillStyle = colour;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x1, y1, connected ? 4.5 : 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      const when = dep.triggerDate ? `, ${dep.triggerDate}` : "";
+      const planOnlyNote = dep.planOnly ? " (not in Jira)" : "";
+      const text = (violated ? `${dep.triggerPercent}%${when}: starts too early` : `${dep.triggerPercent}%${when}`) + planOnlyNote;
+      const tw = ctx.measureText(text).width + 10;
+      const mid = path[Math.floor(path.length / 2)];
+      const badgeX = mid[0];
+      const badgeY = mid[1];
+      this.arrowLinks.push({
+        predecessorKey: dep.predecessorKey,
+        successorKey: task.key,
+        triggerPercent: typeof dep.triggerPercent === "number" ? dep.triggerPercent : 100,
+        triggerDate: dep.triggerDate,
+        isViolated: violated,
+        ...dep.planOnly ? { planOnly: true } : {},
+        x: badgeX,
+        y: badgeY,
+        width: tw,
+        height: CHIP_H,
+        text,
+        path
+      });
+      const dim = Boolean(active) && !connected;
+      if (dim) ctx.globalAlpha = 0.45;
+      this.chip(
+        text,
+        badgeX - tw / 2,
+        badgeY,
+        this.c(violated ? CANVAS_TOKENS.badgeViolatedText : CANVAS_TOKENS.badgeOkText),
+        colour
+      );
+      if (dim) ctx.globalAlpha = 1;
     }
     drawTodayLine(m, top, h) {
       const x = Math.round(m.trackLeft + xForDate(m.todayIso, m.originIso, m.dayPx) + m.dayPx / 2);
@@ -7423,27 +8033,42 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   function checkDependencyConflict(task, tasks, today) {
     if (!task.startDate) return { hasConflict: false };
-    const target = tasks.find((t) => t.key === task.key);
+    const byKey = new Map(tasks.map((t) => [t.key, t]));
+    const target = byKey.get(task.key);
     if (!target) return { hasConflict: false };
-    const deps = target.dependencies || (target.dependency ? [target.dependency] : []);
-    for (const dep of deps) {
-      if (!dep || !dep.predecessorKey) continue;
-      const pred = tasks.find((t) => t.key === dep.predecessorKey);
-      if (!pred || !pred.startDate) continue;
-      const triggerPercent = typeof dep.triggerPercent === "number" ? dep.triggerPercent : 100;
-      const preview = computeDependencyPreview(pred, triggerPercent, today);
-      if (preview.earliestStartDate && task.startDate < preview.earliestStartDate) {
-        return {
-          hasConflict: true,
-          predKey: pred.key,
-          triggerPercent,
-          earliestDate: preview.earliestStartDate,
-          triggerDate: preview.triggerDate,
-          reason: preview.summary
-        };
+    const chain = [];
+    for (let cur = target; cur && !chain.includes(cur); cur = cur.parentKey ? byKey.get(cur.parentKey) : void 0) chain.push(cur);
+    const isSelfOrBelow = (key) => {
+      const seen = /* @__PURE__ */ new Set();
+      for (let cur = byKey.get(key); cur && !seen.has(cur.key); cur = cur.parentKey ? byKey.get(cur.parentKey) : void 0) {
+        if (cur.key === task.key) return true;
+        seen.add(cur.key);
+      }
+      return false;
+    };
+    let worst = { hasConflict: false };
+    for (const holder of chain) {
+      const deps2 = holder.dependencies || (holder.dependency ? [holder.dependency] : []);
+      for (const dep of deps2) {
+        if (!dep || !dep.predecessorKey || isSelfOrBelow(dep.predecessorKey)) continue;
+        const pred = byKey.get(dep.predecessorKey);
+        if (!pred || !pred.startDate) continue;
+        const triggerPercent = typeof dep.triggerPercent === "number" ? dep.triggerPercent : 100;
+        const preview = computeDependencyPreview(pred, triggerPercent, today);
+        if (preview.earliestStartDate && task.startDate < preview.earliestStartDate && (!worst.hasConflict || preview.earliestStartDate > worst.earliestDate)) {
+          worst = {
+            hasConflict: true,
+            predKey: pred.key,
+            triggerPercent,
+            earliestDate: preview.earliestStartDate,
+            triggerDate: preview.triggerDate,
+            reason: preview.summary,
+            ...holder.key !== task.key ? { viaParent: holder.key } : {}
+          };
+        }
       }
     }
-    return { hasConflict: false };
+    return worst;
   }
   function clampToEarliestStart(candidateStart, candidateEnd, earliestDate) {
     if (!earliestDate || candidateStart >= earliestDate) {
@@ -7452,7 +8077,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const diffDays = daysBetween(candidateStart, earliestDate);
     return {
       startDate: earliestDate,
-      endDate: addDays2(candidateEnd, diffDays)
+      endDate: addDays(candidateEnd, diffDays)
     };
   }
   function suggestTriggerToFit(pred, succStartDate) {
@@ -7537,6 +8162,53 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return { visibleKeys, widths, offsets, totalWidth: x, lastKey };
   }
 
+  // src/ui/progress-status.ts
+  var LABEL = { NOT_STARTED: "To Do", IN_PROGRESS: "In Progress", COMPLETED: "Done" };
+  function planStatus(status) {
+    return status === "COMPLETED" || status === "IN_PROGRESS" ? status : "NOT_STARTED";
+  }
+  function isDone(status) {
+    return status === "COMPLETED";
+  }
+  function statusOffers(edits) {
+    const out = [];
+    for (const e of edits) {
+      if (e.chosenStatus !== void 0) continue;
+      const from = planStatus(e.status);
+      if (from === "COMPLETED") continue;
+      const p = Number(e.progress);
+      if (!Number.isFinite(p) || p <= 0) continue;
+      if (p >= 100) out.push({ key: e.key, from, to: "COMPLETED" });
+      else if (from === "NOT_STARTED") out.push({ key: e.key, from, to: "IN_PROGRESS" });
+    }
+    return out;
+  }
+  function offerPrompt(offers) {
+    if (!offers.length) return null;
+    if (offers.length === 1) {
+      const o = offers[0];
+      return {
+        question: `${o.key} is ${LABEL[o.from]} in Jira. Also move it to ${LABEL[o.to]}?`,
+        lines: [],
+        move: `Move to ${LABEL[o.to]}`,
+        keep: `Keep ${LABEL[o.from]}`
+      };
+    }
+    return {
+      question: `The new progress does not match the Jira status of ${offers.length} work items. Also change their status in Jira?`,
+      lines: offers.map((o) => `${o.key}: ${LABEL[o.from]} to ${LABEL[o.to]}`),
+      move: "Change the statuses",
+      keep: "Keep the statuses"
+    };
+  }
+  function progressLockReason(t) {
+    return isDone(t.status) ? `${t.key} is Done in Jira, so its progress is 100%. Change its status to reopen it.` : null;
+  }
+  function progressText(t) {
+    const p = Math.max(0, Math.min(100, Math.round(Number(t.progress) || 0)));
+    return p === 100 && !isDone(t.status) ? "100%, not Done in Jira" : `${p}%`;
+  }
+
   // src/ui/keyboard-grid.ts
   var GRID_COLUMNS = ["Key", "Summary", "Start", "Due", "Progress", "Status", "Dependencies"];
   var clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -7575,7 +8247,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       t.summary || "No summary",
       t.startDate || "Not scheduled",
       t.endDate || "Not scheduled",
-      `${t.progress || 0}%`,
+      progressText(t),
       STATUS[t.status] || t.status,
       dependencyText(t.dependency)
     ];
@@ -7638,12 +8310,34 @@ Please see https://iframe-resizer.com/upgrade for more details.
         action: { id: "schedule", label: "Schedule your first issues" }
       };
     }
+    if (plan.jqlFilter) {
+      return { title: "No work items match this plan's filter", text: `The filter is: ${plan.jqlFilter}. A plan approver can change or clear it in the plan list.`, action: { id: "create", label: "Create an issue" } };
+    }
     return { title: "This project has no issues yet", text: "Create an issue to start the plan. It is created in Jira.", action: { id: "create", label: "Create an issue" } };
   }
   function showLinkHint(plan, stored) {
     if (!plan || stored === "done") return false;
     const scheduled = (plan.tasks || []).filter((t) => t.startDate);
     return scheduled.length >= 2 && !scheduled.some((t) => t.dependency && t.dependency.predecessorKey);
+  }
+
+  // src/frontend/dynamic-style.ts
+  var PROPERTIES = [
+    ["data-css-w", "width"],
+    ["data-css-left", "left"],
+    ["data-css-pl", "paddingLeft"]
+  ];
+  var SELECTOR = PROPERTIES.map(([a]) => `[${a}]`).join(",");
+  var LENGTH = /^-?\d+(\.\d+)?(px|%)$/;
+  function applyDynamicStyles(root) {
+    const below = Array.from(root.querySelectorAll(SELECTOR));
+    const elements = root.matches(SELECTOR) ? [root, ...below] : below;
+    for (const el3 of elements) {
+      for (const [attribute, property] of PROPERTIES) {
+        const value = el3.getAttribute(attribute);
+        if (value !== null && LENGTH.test(value)) el3.style[property] = value;
+      }
+    }
   }
 
   // src/ui/selection.ts
@@ -7659,12 +8353,89 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (a < 0 || b < 0) return [key];
     return order.slice(Math.min(a, b), Math.max(a, b) + 1);
   }
+  function selectedBlockParents(tasks, selected) {
+    return tasks.filter((t) => selected.has(t.key) && t.datesFromChildren && !t.isEpic && (t.hierarchyLevel ?? 0) === 0).map((t) => t.key);
+  }
   function moveSelectionBy(tasks, selected, days) {
     if (!days) return [];
-    return tasks.filter((t) => selected.has(t.key) && t.startDate && !t.isEpic && t.hierarchyLevel !== 1 && !t.datesFromChildren).sort((a, b) => a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0).map((t) => ({ taskId: t.key, updates: { startDate: addDays2(t.startDate, days), endDate: addDays2(t.endDate || t.startDate, days) }, expectedVersion: t.version || 0 }));
+    const blocks = new Set(selectedBlockParents(tasks, selected));
+    const byKey = new Map(tasks.map((t) => [t.key, t]));
+    const inSelectedBlock = (t) => {
+      const seen = /* @__PURE__ */ new Set();
+      for (let k = t.parentKey; k && !seen.has(k); k = byKey.get(k)?.parentKey) {
+        if (blocks.has(k)) return true;
+        seen.add(k);
+      }
+      return false;
+    };
+    return tasks.filter((t) => selected.has(t.key) && t.startDate && !t.isEpic && t.hierarchyLevel !== 1 && !t.datesFromChildren && !inSelectedBlock(t)).sort((a, b) => a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0).map((t) => ({ taskId: t.key, updates: { startDate: addDays(t.startDate, days), endDate: addDays(t.endDate || t.startDate, days) }, expectedVersion: t.version || 0 }));
   }
   function progressFromDigit(key) {
     return /^[0-9]$/.test(key) ? Number(key) * 10 : null;
+  }
+
+  // src/domain/baseline.ts
+  var round1 = (n) => Math.round(n * 10) / 10;
+  function baselineItems(tasks) {
+    return tasks.filter((t) => t && t.id && t.key && !t.isEpic && (t.hierarchyLevel ?? 0) < 1 && !t.datesFromChildren && !!t.startDate).map((t) => {
+      const item = { id: String(t.id), key: t.key };
+      if (typeof t.effortHours === "number" && t.effortHours > 0) item.hours = round1(t.effortHours);
+      if (t.startDate) item.start = t.startDate.slice(0, 10);
+      if (t.endDate) item.end = t.endDate.slice(0, 10);
+      if (t.status === "COMPLETED") item.done = true;
+      return item;
+    }).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  }
+  function totals(items) {
+    return {
+      itemCount: items.length,
+      totalHours: round1(items.reduce((s, i) => s + (i.hours || 0), 0)),
+      unestimated: items.filter((i) => i.hours === void 0).length
+    };
+  }
+  function compareItems(from, to) {
+    const a = new Map(from.map((i) => [i.id, i]));
+    const b = new Map(to.map((i) => [i.id, i]));
+    const added = to.filter((i) => !a.has(i.id));
+    const removed = from.filter((i) => !b.has(i.id));
+    const changed = [];
+    for (const x of from) {
+      const y = b.get(x.id);
+      if (!y) continue;
+      if (x.hours === y.hours && x.start === y.start && x.end === y.end) continue;
+      const c = { id: x.id, key: y.key };
+      if (x.hours !== y.hours) {
+        c.fromHours = x.hours;
+        c.toHours = y.hours;
+      }
+      if (x.start !== y.start) {
+        c.fromStart = x.start;
+        c.toStart = y.start;
+      }
+      if (x.end !== y.end) {
+        c.fromEnd = x.end;
+        c.toEnd = y.end;
+      }
+      changed.push(c);
+    }
+    const fromHours = totals(from).totalHours;
+    const toHours = totals(to).totalHours;
+    const deltaHours = round1(toHours - fromHours);
+    const slipped = changed.filter((c) => c.fromEnd && c.toEnd && c.toEnd > c.fromEnd).length;
+    const grew = added.length > 0 || deltaHours > 0 || slipped > 0 || changed.some((c) => (c.toHours || 0) > (c.fromHours || 0));
+    return {
+      added,
+      removed,
+      changed,
+      fromHours,
+      toHours,
+      deltaHours,
+      deltaPercent: fromHours > 0 ? round1(deltaHours / fromHours * 100) : 0,
+      fromCount: from.length,
+      toCount: to.length,
+      slipped,
+      grew
+    };
   }
 
   // src/ui/time-scale.ts
@@ -7684,13 +8455,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   function mondayOf(iso2) {
     const dow = (/* @__PURE__ */ new Date(`${iso2}T00:00:00Z`)).getUTCDay();
-    return addDays2(iso2, -((dow + 6) % 7));
+    return addDays(iso2, -((dow + 6) % 7));
   }
   function rangeDays(r) {
     return daysBetween(r.start, r.end) + 1;
   }
   function extendRange(r, side, weeks) {
-    return side === "before" ? { start: addDays2(r.start, -weeks * 7), end: r.end } : { start: r.start, end: addDays2(r.end, weeks * 7) };
+    return side === "before" ? { start: addDays(r.start, -weeks * 7), end: r.end } : { start: r.start, end: addDays(r.end, weeks * 7) };
   }
   var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -7699,13 +8470,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return { y: dt.getUTCFullYear(), m: dt.getUTCMonth(), d: dt.getUTCDate(), dow: dt.getUTCDay() };
   }
   var iso = (y, m, d) => new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10);
-  function unitBounds(day, zoom) {
-    const p = parts(day);
+  function unitBounds(day2, zoom) {
+    const p = parts(day2);
     switch (zoom.id) {
       case "day":
-        return [day, addDays2(day, 1)];
+        return [day2, addDays(day2, 1)];
       case "week":
-        return [mondayOf(day), addDays2(mondayOf(day), 7)];
+        return [mondayOf(day2), addDays(mondayOf(day2), 7)];
       case "month":
         return [iso(p.y, p.m, 1), iso(p.y, p.m + 1, 1)];
       case "quarter":
@@ -7732,16 +8503,16 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function headerCells(r, zoom, today, fromX = -Infinity, toX = Infinity) {
     const out = [];
     const total = rangeDays(r);
-    let day = r.start;
-    while (daysBetween(r.start, day) < total) {
-      const [, next] = unitBounds(day, zoom);
-      const x = daysBetween(r.start, day) * zoom.dayPx;
-      const w = Math.min(daysBetween(day, next), total - daysBetween(r.start, day)) * zoom.dayPx;
+    let day2 = r.start;
+    while (daysBetween(r.start, day2) < total) {
+      const [, next] = unitBounds(day2, zoom);
+      const x = daysBetween(r.start, day2) * zoom.dayPx;
+      const w = Math.min(daysBetween(day2, next), total - daysBetween(r.start, day2)) * zoom.dayPx;
       if (x + w > fromX && x < toX) {
-        const [uStart] = unitBounds(day, zoom);
+        const [uStart] = unitBounds(day2, zoom);
         out.push({ key: uStart, label: label(uStart, zoom), x, w, current: today >= uStart && today < next });
       }
-      day = next;
+      day2 = next;
     }
     return out;
   }
@@ -7752,7 +8523,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return daysBetween(originIso2, anchorIso) * dayPx2 - viewportX;
   }
   function dateAt(x, originIso2, dayPx2) {
-    return addDays2(originIso2, Math.floor(x / dayPx2));
+    return addDays(originIso2, Math.floor(x / dayPx2));
   }
 
   // src/ui/table-view.ts
@@ -7836,12 +8607,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
 
   // src/ui/plan-manager.ts
   function categorizePlan(plan) {
-    if (plan.isDefault) return "baseline";
-    const lower = (plan.name || "").toLowerCase();
-    if (lower.includes("baseline") || lower.includes("main") || lower.includes("actual")) {
-      return "baseline";
-    }
-    return "scenario";
+    return plan.isDefault || plan.id === "default" ? "main" : "scenario";
   }
   function validateNewPlanName(name) {
     if (typeof name !== "string") {
@@ -7869,9 +8635,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   function buildPlanListViewModel(plans, activePlanId2) {
     if (!plans || plans.length === 0) {
-      return [{ id: "default", name: "Main Plan", isDefault: true, isActive: true, canDelete: false, category: "baseline" }];
+      return [{ id: "default", name: "Main Plan", isDefault: true, isActive: true, canDelete: false, category: "main" }];
     }
-    return plans.map((p) => {
+    return plans.filter((p) => p.state !== "deleting").map((p) => {
       const isDefault = p.id === "default" || p.isDefault === true;
       return {
         id: p.id,
@@ -7879,14 +8645,14 @@ Please see https://iframe-resizer.com/upgrade for more details.
         isDefault,
         isActive: p.id === activePlanId2,
         canDelete: !isDefault,
-        category: categorizePlan(p)
+        category: categorizePlan(p),
+        ...p.state === "copying" ? { copying: true } : {}
       };
     });
   }
   function filterPlans(plans, query = "", category = "all") {
     const q = (query || "").trim().toLowerCase();
     return plans.filter((p) => {
-      if (category === "baselines" && p.category !== "baseline") return false;
       if (category === "scenarios" && p.category !== "scenario") return false;
       if (q.length > 0 && !p.name.toLowerCase().includes(q)) return false;
       return true;
@@ -7950,7 +8716,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       window.open(fullUrl, "_blank", "noopener,noreferrer");
     }
   }
-  var UNDOABLE = /* @__PURE__ */ new Set(["updateWbsTask", "unscheduleTask", "scheduleBacklogTask", "batchUpdateTasks"]);
+  var UNDOABLE = /* @__PURE__ */ new Set(["updateWbsTask", "unscheduleTask", "scheduleBacklogTask", "batchUpdateTasks", "moveTaskGroup"]);
   var undoStack = new UndoStack(20);
   var pendingUndo = null;
   var replayingUndo = false;
@@ -7972,10 +8738,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
     activePlanId = next;
     setSavedPlanId(browserStore(), planScope, activePlanId);
   }
-  async function callResolver2(fn, payload = {}) {
+  async function callResolver2(fn, payload = {}, opts = {}) {
     const mergedPayload = { planId: activePlanId, ...payload };
     if (!UNDOABLE.has(fn) || replayingUndo) return callResolver(fn, mergedPayload);
-    if (!pendingUndo) pendingUndo = { before: snapshotPlan(currentPlan), fn, payload: mergedPayload };
+    if (!pendingUndo) pendingUndo = { before: opts.before || snapshotPlan(currentPlan), fn, payload: mergedPayload };
     const res = await callResolver(fn, mergedPayload);
     const verdict = classifyResult(res);
     if (verdict.failed) {
@@ -7983,6 +8749,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       showFlag({ text: verdict.message || "The change was not saved.", error: true });
     } else {
       pendingUndo.done = true;
+      pendingUndo.jiraSync = res && res.jiraSync;
     }
     return res;
   }
@@ -7990,7 +8757,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const p = pendingUndo;
     if (!p || !p.done || !currentPlan) return;
     pendingUndo = null;
-    const entry = buildUndoEntry(p.before, snapshotPlan(currentPlan), p.payload.taskId || p.payload.items && p.payload.items[0] && p.payload.items[0].taskId);
+    const after = withWrittenStatuses(snapshotPlan(currentPlan), p.payload, p.jiraSync);
+    const entry = buildUndoEntry(p.before, after, p.payload.taskId || p.payload.items && p.payload.items[0] && p.payload.items[0].taskId);
     if (!entry) return;
     entry.label = actionLabel(p.fn, p.payload, entry);
     undoStack.push(entry);
@@ -7998,6 +8766,185 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   function findAnyTask(key) {
     return findTask(key) || (currentPlan?.backlogTasks || []).find((t) => t.key === key);
+  }
+  var planOnlyNoted = /* @__PURE__ */ new Set();
+  function notePlanOnlyLinks(plan) {
+    const all = (plan.tasks || []).concat(plan.backlogTasks || []);
+    const found = [];
+    for (const t of all) for (const d of t.dependencies || []) if (d && d.planOnly) found.push(`${d.predecessorKey} \u2794 ${t.key}`);
+    const scope = `${activePlanId}:${found.join(",")}`;
+    if (!found.length || planOnlyNoted.has(scope)) return;
+    planOnlyNoted.add(scope);
+    showFlag({ text: `${found.length} link${found.length === 1 ? "" : "s"} exist only in this plan, not in Jira (${found.slice(0, 5).join(", ")}${found.length > 5 ? ", ..." : ""}). They still schedule. Open a link marked "not in Jira" to create it in Jira or remove it.` });
+  }
+  function levelOf(t) {
+    return t.isEpic ? 1 : t.isSubtask ? -1 : t.hierarchyLevel ?? 0;
+  }
+  function hierarchyActionFor(dragged, target) {
+    if (!dragged || !target || dragged.key === target.key) return null;
+    const all = (currentPlan.tasks || []).concat(currentPlan.backlogTasks || []);
+    const byKey = new Map(all.map((t) => [t.key, t]));
+    for (let k = target.parentKey; k; k = byKey.get(k)?.parentKey) if (k === dragged.key) return { refuse: `${target.key} is below ${dragged.key}.` };
+    const dl = levelOf(dragged), tl = levelOf(target);
+    if (dl >= 1) return { refuse: `${dragged.key} is an epic. An epic cannot move under another work item.` };
+    if (tl === -1) return { refuse: `${target.key} is a sub-task. A sub-task cannot have children in Jira.` };
+    if (dragged.parentKey === target.key) return { refuse: `${dragged.key} is already under ${target.key}.` };
+    if (dl === -1 && tl === 0) return { kind: "parent", parentKey: target.key, label: `Move under ${target.key}` };
+    if (dl === -1) return { refuse: `${dragged.key} is a sub-task: its parent must be a task or story.` };
+    if (tl >= 1) return { kind: "parent", parentKey: target.key, label: `Move under epic ${target.key}` };
+    if (all.some((t) => t.parentKey === dragged.key)) return { refuse: `${dragged.key} has sub-tasks, so Jira cannot make it a sub-task.` };
+    return { kind: "subtask", parentKey: target.key, label: `Make ${dragged.key} a sub-task of ${target.key}` };
+  }
+  function requestHierarchyChange(key, action, undoOf) {
+    if (!action || action.refuse) {
+      if (action) showFlag({ text: action.refuse, error: true });
+      return;
+    }
+    const question = action.kind === "parent" ? `Move ${key} under ${action.parentKey || "no parent"}? This changes the parent in Jira, so every plan shows it.` : action.kind === "subtask" ? `Make ${key} a sub-task of ${action.parentKey}? Jira changes its work type. If the types use different workflows, Jira may change its status.` : `Make ${key} a task? Jira changes its work type. If the types use different workflows, Jira may change its status.`;
+    const run = async () => {
+      const before = findAnyTask(key);
+      const oldParent = before ? before.parentKey || null : null;
+      const wasSub = before ? levelOf(before) === -1 : false;
+      let res;
+      if (action.kind === "parent") {
+        res = await callResolver2("changeParent", { taskId: key, newParentKey: action.parentKey || null });
+      } else {
+        const started = await callResolver2("convertIssueType", action.kind === "subtask" ? { taskId: key, toSubtaskOf: action.parentKey } : { taskId: key, toTypeName: "Task" });
+        if (!started || started.ok !== true || !started.jobId) return;
+        res = null;
+        for (let i = 0; i < 60; i++) {
+          await new Promise((r) => setTimeout(r, i === 0 ? 800 : 1500));
+          const c = await callResolver2("checkConversion", { jobId: started.jobId, taskId: key, oldParentKey: started.oldParentKey, newParentKey: started.newParentKey });
+          if (!c || c.done || c.ok === false) {
+            res = c;
+            break;
+          }
+          showFlag({ text: `Jira is converting ${key}: ${c.progress || 0}%.` });
+        }
+        if (!res) {
+          showFlag({ text: `Jira has not finished converting ${key}. Reload in a minute to see it.`, error: true });
+          return;
+        }
+      }
+      if (res && Array.isArray(res.tasks)) applyPlanInPlace(res);
+      else await loadProjectPlan();
+      if (res && res.ok !== false && !undoOf) {
+        const back = action.kind === "parent" ? { kind: "parent", parentKey: oldParent } : action.kind === "subtask" ? { kind: "task" } : wasSub && oldParent ? { kind: "subtask", parentKey: oldParent } : null;
+        showFlag({ text: `${action.label || "Changed"}: done in Jira.`, ...back ? { action: { label: "Undo", run: () => requestHierarchyChange(key, back, true) } } : {} });
+      }
+    };
+    if (undoOf) {
+      run();
+      return;
+    }
+    showFlag({ text: question, action: { label: action.kind === "parent" ? "Move" : "Convert", run } });
+  }
+  function renderParentControl(task) {
+    const sel = document.getElementById("parentSelect");
+    const btn = document.getElementById("btnApplyParent");
+    if (!sel || !btn) return;
+    const all = (currentPlan.tasks || []).concat(currentPlan.backlogTasks || []);
+    const lvl = levelOf(task);
+    const opts = [];
+    if (lvl === -1) {
+      opts.push({ value: "task:", text: "No parent: make it a task" });
+      for (const t of all) if (levelOf(t) === 0 && t.key !== task.parentKey) opts.push({ value: `parent:${t.key}`, text: `Under ${t.key}: ${t.summary}` });
+    } else if (lvl === 0) {
+      if (task.parentKey) opts.push({ value: "parent:", text: "No epic" });
+      for (const t of all) {
+        if (t.key === task.key || t.key === task.parentKey) continue;
+        const a = hierarchyActionFor(task, t);
+        if (a && !a.refuse) opts.push({ value: `${a.kind}:${t.key}`, text: a.kind === "parent" ? `Under epic ${t.key}: ${t.summary}` : `Sub-task of ${t.key}: ${t.summary}` });
+      }
+    }
+    sel.replaceChildren(...[{ value: "", text: task.parentKey ? `Now: under ${task.parentKey}` : "Now: no parent" }, ...opts].map((o) => {
+      const el3 = document.createElement("option");
+      el3.value = o.value;
+      el3.textContent = o.text;
+      return el3;
+    }));
+    sel.disabled = btn.disabled = lvl >= 1 || opts.length === 0;
+    btn.onclick = () => {
+      const [kind, parentKey] = String(sel.value).split(":");
+      if (!kind) return;
+      const label2 = kind === "task" ? `Make ${task.key} a task` : kind === "subtask" ? `Make ${task.key} a sub-task of ${parentKey}` : `Move under ${parentKey || "no parent"}`;
+      requestHierarchyChange(task.key, { kind, parentKey: parentKey || null, label: label2 });
+    };
+  }
+  function isBlockParent(task) {
+    return !!task && task.datesFromChildren === true && !task.isEpic && (task.hierarchyLevel ?? 0) === 0;
+  }
+  function blockPlan(key, days) {
+    const members = (currentPlan.tasks || []).concat(currentPlan.backlogTasks || []).filter((t) => t.parentKey === key);
+    return planBlockMove(members, days, todayIso());
+  }
+  function blockConflict(plan) {
+    const all = (currentPlan.tasks || []).concat(currentPlan.backlogTasks || []);
+    let worst = null;
+    for (const c of plan.changes) {
+      if (c.state !== "not-started") continue;
+      const r = checkDependencyConflict({ key: c.key, startDate: c.toStart }, all, todayIso());
+      if (!r.hasConflict) continue;
+      const need = daysBetween(c.toStart, r.earliestDate);
+      if (!worst || need > worst.need) worst = { ...r, need, key: c.key };
+    }
+    return worst;
+  }
+  function effectiveBlockDays(key, days) {
+    if (!days || !isEnforceDepsEnabled()) return days;
+    const conflict = blockConflict(blockPlan(key, days));
+    return conflict ? days + conflict.need : days;
+  }
+  function dropPreview(key, start, end, blockDays) {
+    const plan = { tasks: currentPlan.tasks || [], backlogTasks: currentPlan.backlogTasks || [] };
+    const all = plan.tasks.concat(plan.backlogTasks);
+    const p = blockDays !== void 0 ? previewBlockMove(plan, key, blockDays, todayIso()) : previewSingleMove(plan, key, start, end, todayIso());
+    const text = describePendingWrites(all, p.moves, key, { parentDue: p.parentDue, epics: p.epics }).text;
+    const moves = new Map(p.moves);
+    moves.set(key, { start, end });
+    return { moves, text };
+  }
+  async function moveBlock(key, days) {
+    if (!days) return;
+    let plan = blockPlan(key, days);
+    const conflict = blockConflict(plan);
+    const enforce = isEnforceDepsEnabled();
+    if (conflict && enforce) {
+      days += conflict.need;
+      if (!days) {
+        announce(`Enforce dependencies: ${key} cannot move earlier; ${conflict.key} cannot start before ${conflict.earliestDate} (dependency on ${conflict.predKey}).`);
+        drawTimeline(true);
+        return;
+      }
+      plan = blockPlan(key, days);
+    }
+    if (plan.changes.length === 0) {
+      showFlag({ text: `Nothing in ${key} can move: ${plan.fixed.map((f) => `${f.key} ${f.reason}`).join("; ")}.` });
+      drawTimeline(true);
+      return;
+    }
+    const expectedVersions = {};
+    for (const c of plan.changes) expectedVersions[c.key] = findAnyTask(c.key) && findAnyTask(c.key).version || 0;
+    let res = await callResolver2("moveTaskGroup", { taskId: key, days, expectedVersions, enforceDependencies: enforce });
+    const rest = res && Array.isArray(res.blockRemaining) ? res.blockRemaining : [];
+    for (let i = 0; i < rest.length; i += 25) {
+      const items = rest.slice(i, i + 25);
+      const last = i + 25 >= rest.length;
+      showFlag({ text: `Moving the sub-tasks of ${key}: ${Math.min(i + 25, rest.length) + 25} of ${rest.length + 25}.` });
+      const next = await callResolver("continueBlockMove", { planId: activePlanId, taskId: key, items, last });
+      if (next && Array.isArray(next.tasks)) res = next;
+      if (!next || next.ok === false) break;
+    }
+    if (res && Array.isArray(res.tasks)) applyPlanInPlace(res);
+    else await loadProjectPlan();
+    if (res && res.ok && plan.fixed.length) {
+      announce(`Moved ${key} by ${days} days. Kept: ${plan.fixed.map((f) => `${f.key} (${f.reason})`).join(", ")}.`);
+    }
+    if (res && res.ok && conflict) {
+      const via = conflict.viaParent ? ` (a link of ${conflict.viaParent})` : "";
+      if (enforce) announce(`Enforce dependencies: moved ${key} so ${conflict.key} starts on ${conflict.earliestDate}, after ${conflict.predKey}${via}.`);
+      else showFlag({ text: `${conflict.key} now starts before ${conflict.earliestDate}, the earliest day its dependency on ${conflict.predKey}${via} allows.` });
+    }
   }
   async function replayUndo(ops) {
     replayingUndo = true;
@@ -8015,7 +8962,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
           }
         } else {
           const t = findAnyTask(op.key);
-          res = await callResolver("updateWbsTask", { planId, taskId: op.key, updates: op.updates, expectedVersion: t && t.version || 0 });
+          res = await callResolver("updateWbsTask", { planId, taskId: op.key, updates: op.updates, expectedVersion: t && t.version || 0, restore: true });
         }
         const verdict = classifyResult(res);
         if (verdict.failed) {
@@ -8046,12 +8993,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return hours > 0 ? `${hours}h` : "Unestimated";
   }
   function syncPinnedBarHit() {
-    document.querySelectorAll(".bar-hit.is-pinned").forEach((el2) => {
-      if (el2.dataset.taskId !== pinnedDependencyTaskId) el2.classList.remove("is-pinned");
+    document.querySelectorAll(".bar-hit.is-pinned").forEach((el3) => {
+      if (el3.dataset.taskId !== pinnedDependencyTaskId) el3.classList.remove("is-pinned");
     });
     if (pinnedDependencyTaskId) {
-      const el2 = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(pinnedDependencyTaskId)}"]`);
-      if (el2) el2.classList.add("is-pinned");
+      const el3 = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(pinnedDependencyTaskId)}"]`);
+      if (el3) el3.classList.add("is-pinned");
     }
   }
   function showWhy(taskKey, anchorRect) {
@@ -8153,6 +9100,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
     initErrorBanner();
     initWhyPopup();
     initChangesPanel();
+    initBaselinePanel({
+      call: (fn, payload = {}) => callResolver(fn, { planId: activePlanId, ...payload }),
+      flag: showFlag,
+      isApprover: () => planApprover,
+      reloadPlan: () => loadProjectPlan()
+    });
     await enableTheme();
     onThemeChange(() => {
       if (timeline) timeline.invalidateColours();
@@ -8162,6 +9115,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (wrapper) {
       timeline = new CanvasTimeline(wrapper);
       timeline.onDraw = (links) => renderDependencyBadges(links);
+      initArrowLineClicks(wrapper);
       wrapper.addEventListener("scroll", scheduleVirtualRows, { passive: true });
     }
     const tbody = document.getElementById("ganttBody");
@@ -8371,6 +9325,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
         closeChangesPanel();
         return;
       }
+      if (e.key === "Escape" && isBaselinePanelOpen()) {
+        closeBaselinePanel();
+        return;
+      }
       if (e.key === "Escape") {
         const modal = openModal();
         if (modal) {
@@ -8464,11 +9422,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
         e.stopPropagation();
         const pct = parseInt(btn.dataset.pct, 10);
         if (progPopover) progPopover.style.display = "none";
-        if (!activeProgressTaskKey) return;
-        await callResolver2("updateWbsTask", {
-          taskId: activeProgressTaskKey,
-          updates: { progress: pct, manualProgress: true }
-        });
+        const key = activeProgressTaskKey;
+        if (!key) return;
+        const updates = { progress: pct, manualProgress: true };
+        if (!await withStatusChoice([{ key, progress: pct, updates }])) return;
+        await callResolver2("updateWbsTask", { taskId: key, updates });
         await loadProjectPlan();
       });
     });
@@ -8493,11 +9451,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
         e.stopPropagation();
         const val = parseInt(progNumInput?.value || progSlider?.value || "0", 10);
         if (progPopover) progPopover.style.display = "none";
-        if (!activeProgressTaskKey) return;
-        await callResolver2("updateWbsTask", {
-          taskId: activeProgressTaskKey,
-          updates: { progress: Math.max(0, Math.min(100, val)), manualProgress: true }
-        });
+        const key = activeProgressTaskKey;
+        if (!key) return;
+        const pct = Math.max(0, Math.min(100, val));
+        const updates = { progress: pct, manualProgress: true };
+        if (!await withStatusChoice([{ key, progress: pct, updates }])) return;
+        await callResolver2("updateWbsTask", { taskId: key, updates });
         await loadProjectPlan();
       });
     }
@@ -8619,6 +9578,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
         if (editTargetSlider) editTargetSlider.value = pct;
         if (editTargetValLabel) editTargetValLabel.textContent = `${pct}%`;
       });
+    });
+    document.getElementById("editStatusSelect")?.addEventListener("change", (e) => setDialogProgressLock(activeTaskId, e.target.value));
+    document.getElementById("btnStatusOfferMove")?.addEventListener("click", () => {
+      if (statusOfferResolve) statusOfferResolve("move");
+    });
+    document.getElementById("btnStatusOfferKeep")?.addEventListener("click", () => {
+      if (statusOfferResolve) statusOfferResolve("keep");
     });
     const btnModalRollup = document.getElementById("btnModalUseRollup");
     if (btnModalRollup) {
@@ -8992,7 +9958,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const alertBar = document.getElementById("hiddenColsAlertBar");
     const alertText = document.getElementById("hiddenColsText");
     if (alertBar && alertText) {
-      if (hiddenColumns.size > 0) {
+      if (hiddenColumns.size > 0 && !isCompactMode()) {
         alertBar.style.display = "flex";
         const hiddenNames = ALL_COLUMNS.filter((c) => hiddenColumns.has(c.key)).map((c) => c.label).join(", ");
         alertText.textContent = `${hiddenColumns.size} column${hiddenColumns.size > 1 ? "s" : ""} hidden (${hiddenNames}). Click Unhide All to restore them.`;
@@ -9009,10 +9975,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
         const isChecked = !hiddenColumns.has(col.key);
         row.innerHTML = html`
         <input type="checkbox" id="col_chk_${col.key}" ${isChecked ? "checked" : ""} ${col.locked ? "disabled" : ""} />
-        <label for="col_chk_${col.key}" class="col-option-label" style="cursor:${col.locked ? "default" : "pointer"};">
+        <label for="col_chk_${col.key}" class="col-option-label ${col.locked ? "is-locked" : ""}">
           <span>${col.icon}</span>
           <span>${col.label}</span>
-          ${col.locked ? html`<span class="badge badge-neutral" style="font-size:9px; padding:1px 4px;">Required</span>` : ""}
+          ${col.locked ? html`<span class="badge badge-neutral jx-badge-tiny">Required</span>` : ""}
         </label>
       `;
         if (!col.locked) {
@@ -9043,11 +10009,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
     menu.style.top = e.clientY + 12 + "px";
     menu.style.zIndex = "1200";
     menu.innerHTML = html`
-    <div style="font-weight:700; font-size:11px; color: var(--cp-text-subtle); margin-bottom:4px;">Column: ${colLabel}</div>
-    <button class="btn btn-outline btn-sm" id="btnHideThisCol" style="text-align:left; justify-content:flex-start; width:100%; font-size:12px; margin-bottom:4px;">
+    <div class="jx-menu-caption">Column: ${colLabel}</div>
+    <button class="btn btn-outline btn-sm jx-menu-btn-mb4" id="btnHideThisCol">
       🚫 Hide "${colLabel}"
     </button>
-    <button class="btn btn-subtle btn-sm" id="btnManageAllFromHeader" style="text-align:left; justify-content:flex-start; width:100%; font-size:12px;">
+    <button class="btn btn-subtle btn-sm jx-menu-btn" id="btnManageAllFromHeader">
       ⚙ Manage All Columns...
     </button>
   `;
@@ -9078,11 +10044,31 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     setTimeout(() => document.addEventListener("click", onDocClick), 10);
   }
+  async function finishPlanWork(resolverName, planId, label2) {
+    let res = null;
+    for (let i = 0; i < 200; i++) {
+      res = await callResolver2(resolverName, { planId });
+      if (!res || res.ok !== true || res.done === true) break;
+      showFlag({ text: `${label2}: ${res.remaining} records left.` });
+    }
+    return res;
+  }
+  var finishingDeletes = /* @__PURE__ */ new Set();
+  function finishStoppedDeletes(plans) {
+    if (planApprover !== true || !Array.isArray(plans)) return;
+    for (const p of plans) {
+      if (p.state !== "deleting" || finishingDeletes.has(p.id)) continue;
+      finishingDeletes.add(p.id);
+      finishPlanWork("continuePlanDelete", p.id, `Deleting plan ${p.name}`).finally(() => finishingDeletes.delete(p.id));
+    }
+  }
   var currentPlanCategoryFilter = "all";
   var currentPlanSearchQuery = "";
   function updatePlansUI(availablePlans = [], currentId = "default") {
     const switcher = document.getElementById("planSwitcher");
-    const plans = Array.isArray(availablePlans) && availablePlans.length > 0 ? availablePlans : [{ id: "default", name: "Main Plan", isDefault: true }];
+    const listed = Array.isArray(availablePlans) ? availablePlans.filter((p) => p.state !== "deleting") : [];
+    const plans = listed.length > 0 ? listed : [{ id: "default", name: "Main Plan", isDefault: true }];
+    finishStoppedDeletes(availablePlans);
     if (switcher) {
       switcher.innerHTML = "";
       for (const p of plans) {
@@ -9099,15 +10085,57 @@ Please see https://iframe-resizer.com/upgrade for more details.
       labelEl.textContent = activePlan ? activePlan.name : "Main Plan";
     }
     const allCount = plans.length;
-    const baselineCount = plans.filter((p) => categorizePlan(p) === "baseline").length;
     const scenarioCount = plans.filter((p) => categorizePlan(p) === "scenario").length;
     const countAllEl = document.getElementById("planTabCountAll");
     if (countAllEl) countAllEl.textContent = String(allCount);
-    const countBaselinesEl = document.getElementById("planTabCountBaselines");
-    if (countBaselinesEl) countBaselinesEl.textContent = String(baselineCount);
     const countScenariosEl = document.getElementById("planTabCountScenarios");
     if (countScenariosEl) countScenariosEl.textContent = String(scenarioCount);
     renderFilteredPlansList(plans, currentId);
+  }
+  var planApprover = null;
+  async function loadPlanApprover() {
+    if (planApprover !== null) return planApprover;
+    const res = await callResolver("checkPlanApprover", { planId: activePlanId });
+    planApprover = !!(res && res.ok === true && res.isApprover === true);
+    applyPlanApproverToCreateForm();
+    if (currentPlan && Array.isArray(currentPlan.availablePlans)) renderFilteredPlansList(currentPlan.availablePlans, activePlanId);
+    return planApprover;
+  }
+  function applyPlanApproverToCreateForm() {
+    const nameInp = document.getElementById("newPlanNameInput");
+    const btn = document.getElementById("btnCreatePlan");
+    const allowed = planApprover === true;
+    for (const el3 of [nameInp, btn]) {
+      if (!el3) continue;
+      el3.disabled = !allowed;
+      el3.title = allowed ? "" : "Only plan approvers (project or Jira administrators, or an approver group) create plans.";
+    }
+    renderPlanFilter();
+  }
+  function renderPlanFilter() {
+    const inp = document.getElementById("planJqlInput");
+    const btn = document.getElementById("btnSavePlanJql");
+    if (!inp || !btn) return;
+    if (document.activeElement !== inp) inp.value = currentPlan && currentPlan.jqlFilter || "";
+    const allowed = planApprover === true;
+    inp.readOnly = !allowed;
+    btn.hidden = !allowed;
+    inp.title = allowed ? "" : "Only plan approvers change the filter of a plan.";
+  }
+  async function savePlanFilter() {
+    const inp = document.getElementById("planJqlInput");
+    const btn = document.getElementById("btnSavePlanJql");
+    if (!inp || !btn || planApprover !== true) return;
+    btn.disabled = true;
+    const res = await callResolver2("setPlanFilter", { filter: inp.value });
+    btn.disabled = false;
+    if (res && res.ok) {
+      const text = res.filter ? `Filter saved. About ${res.count ?? "an unknown number of"} work items match it.` : "Filter removed. The plan reads the whole project.";
+      showFlag({ text });
+      await loadProjectPlan();
+    } else {
+      showFlag({ text: res?.message || "The filter was not saved.", error: true });
+    }
   }
   function renderFilteredPlansList(plans, currentId) {
     const container = document.getElementById("plansListContainer");
@@ -9135,13 +10163,19 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const mainDiv = document.createElement("div");
       mainDiv.className = "plan-item-main";
       const catBadge = document.createElement("span");
-      catBadge.className = "plan-category-badge " + (p.category === "baseline" ? "is-baseline" : "is-scenario");
-      catBadge.textContent = p.category === "baseline" ? "Baseline" : "Scenario";
+      catBadge.className = "plan-category-badge " + (p.category === "main" ? "is-baseline" : "is-scenario");
+      catBadge.textContent = p.category === "main" ? "Main" : "Scenario";
       mainDiv.appendChild(catBadge);
       const nameSpan = document.createElement("span");
       nameSpan.className = "plan-item-name";
       nameSpan.textContent = p.name;
       mainDiv.appendChild(nameSpan);
+      if (p.copying) {
+        const note = document.createElement("span");
+        note.className = "plan-item-note";
+        note.textContent = "copy not finished";
+        mainDiv.appendChild(note);
+      }
       if (p.isActive) {
         const activeCheck = document.createElement("span");
         activeCheck.style.fontSize = "12px";
@@ -9165,7 +10199,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
           name: cloneName,
           cloneFromPlanId: p.id
         });
-        if (res && res.ok && res.plan) {
+        const copied = res && res.ok && res.plan && res.done === false ? await finishPlanWork("continuePlanCopy", res.plan.id, `Copying to ${res.plan.name}`) : res;
+        if (res && res.ok && res.plan && !(copied && copied.ok && copied.done !== false)) {
+          showFlag({ text: `The copy to ${res.plan.name} stopped. Pick it in the plan list to finish it.`, error: true });
+          btnClone.disabled = false;
+          await loadProjectPlan();
+        } else if (res && res.ok && res.plan) {
           setActivePlan(res.plan.id);
           showFlag({ text: `Cloned plan to ${res.plan.name}.` });
           closePlansPopover();
@@ -9175,8 +10214,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
           btnClone.disabled = false;
         }
       });
-      actions.appendChild(btnClone);
-      if (p.canDelete) {
+      if (planApprover === true) actions.appendChild(btnClone);
+      if (p.canDelete && planApprover === true) {
         const btnRename = document.createElement("button");
         btnRename.className = "btn btn-subtle btn-xs";
         btnRename.textContent = "\u270F\uFE0F";
@@ -9195,7 +10234,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
           nameSpan.replaceWith(renameInp);
           renameInp.focus();
           renameInp.select();
-          const finish = async (save) => {
+          const finish2 = async (save) => {
             const newName = renameInp.value.trim();
             if (save && newName && newName !== origName) {
               const res = await callResolver2("renameProjectPlan", { planId: p.id, name: newName });
@@ -9211,10 +10250,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
             }
           };
           renameInp.addEventListener("keydown", (ke) => {
-            if (ke.key === "Enter") finish(true);
-            if (ke.key === "Escape") finish(false);
+            if (ke.key === "Enter") finish2(true);
+            if (ke.key === "Escape") finish2(false);
           });
-          renameInp.addEventListener("blur", () => finish(true));
+          renameInp.addEventListener("blur", () => finish2(true));
         });
         actions.appendChild(btnRename);
         const btnDel = document.createElement("button");
@@ -9225,7 +10264,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
         btnDel.addEventListener("click", async (e) => {
           e.stopPropagation();
           if (btnDel.dataset.confirming === "true") {
-            const res = await callResolver2("deleteProjectPlan", { planId: p.id });
+            const first = await callResolver2("deleteProjectPlan", { planId: p.id });
+            const res = first && first.ok && first.done === false ? await finishPlanWork("continuePlanDelete", p.id, `Deleting plan ${p.name}`) : first;
             if (res && res.ok) {
               showFlag({ text: `Deleted plan ${p.name}.` });
               if (activePlanId === p.id) {
@@ -9251,6 +10291,17 @@ Please see https://iframe-resizer.com/upgrade for more details.
       row.appendChild(actions);
       row.addEventListener("click", async (e) => {
         if (e.target.closest("button") || e.target.closest("input")) return;
+        if (p.copying) {
+          if (planApprover !== true) {
+            showFlag({ text: `${p.name} is still being copied. A plan approver can finish the copy.` });
+            return;
+          }
+          const done = await finishPlanWork("continuePlanCopy", p.id, `Copying to ${p.name}`);
+          if (!(done && done.ok && done.done !== false)) {
+            showFlag({ text: done?.message || `The copy to ${p.name} stopped. Try again.`, error: true });
+            return;
+          }
+        }
         if (p.id !== currentId) {
           setActivePlan(p.id);
           closePlansPopover();
@@ -9258,15 +10309,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
           showFlag({ text: `Switched to plan ${p.name}.` });
         }
       });
-      row.addEventListener("keydown", async (ke) => {
+      row.addEventListener("keydown", (ke) => {
+        if (ke.target !== row) return;
         if (ke.key === "Enter" || ke.key === " ") {
           ke.preventDefault();
-          if (p.id !== currentId) {
-            setActivePlan(p.id);
-            closePlansPopover();
-            await loadProjectPlan();
-            showFlag({ text: `Switched to plan ${p.name}.` });
-          }
+          row.click();
         }
       });
       container.appendChild(row);
@@ -9285,6 +10332,14 @@ Please see https://iframe-resizer.com/upgrade for more details.
     if (errBanner) errBanner.style.display = "none";
     const plan = await callResolver2("getProjectPlan", { planId: activePlanId });
     if (loader) loader.style.display = "none";
+    if (plan && Array.isArray(plan.tasks) && plan.isLiveSynced === false) {
+      if (errBanner) {
+        errBanner.style.display = "flex";
+        const msg = document.getElementById("plannerErrorMsg");
+        if (msg) msg.textContent = plan.jiraStatus === 401 || plan.jiraStatus === 403 ? "You cannot browse this project in Jira, so CascadePlan cannot show its plan." : "Jira is not reachable right now, so the plan cannot be shown. Click Retry in a moment.";
+      }
+      return;
+    }
     if (plan && Array.isArray(plan.tasks)) {
       if (!planScope && plan.projectKey) {
         planScope = String(plan.projectKey);
@@ -9303,6 +10358,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
       currentPlan = plan;
       setActivePlan(served);
       updatePlansUI(plan.availablePlans, activePlanId);
+      notePlanOnlyLinks(plan);
+      if (plan.baselineStatus !== void 0) baselineState = plan.baselineStatus;
+      updateBaselineButton();
       columnWidths = sanitizeLoadedColumnWidths(plan.columnWidths);
       if (Array.isArray(plan.hiddenColumns)) {
         hiddenColumns = new Set(plan.hiddenColumns);
@@ -9316,14 +10374,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
       updateColumnManagerUI();
       renderPlan();
       settleUndo();
-      if (Array.isArray(plan.staleEntries) && plan.staleEntries.length) {
-        callResolver("pruneStaleEntries", { planId: activePlanId, keys: plan.staleEntries.slice(0, 200) });
-      }
+      void loadPlanApprover();
     } else {
       if (errBanner) {
         errBanner.style.display = "flex";
         const msg = document.getElementById("plannerErrorMsg");
-        if (msg) msg.textContent = "Unable to synchronize with Jira. Please verify your connection or click Retry.";
+        if (msg) msg.textContent = plan && plan.error === "license_required" ? "A CascadePlan licence is required on this site. Ask your Jira administrator." : plan && plan.message || "Unable to synchronize with Jira. Please verify your connection or click Retry.";
       }
     }
   }
@@ -9394,22 +10450,23 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const truncatedNote = document.getElementById("truncatedNote");
     if (truncatedNote) {
       truncatedNote.hidden = !currentPlan.truncated;
-      truncatedNote.textContent = currentPlan.truncated ? `Showing the newest ${currentPlan.truncated.shown} of about ${currentPlan.truncated.total} issues` : "";
+      truncatedNote.textContent = currentPlan.truncated ? `Showing the newest ${currentPlan.truncated.shown} of about ${currentPlan.truncated.total} issues${currentPlan.jqlFilter ? " that match this plan's filter" : ". A plan approver can narrow the plan with a JQL filter in the plan list"}` : "";
     }
+    renderPlanFilter();
     const curWk = (currentPlan.weeks || []).find((w) => w.isCurrentWeek);
     if (curWk) {
-      const el2 = document.getElementById("legendCurrentWeek");
-      if (el2) el2.textContent = `Current Week (${curWk.weekKey})`;
+      const el3 = document.getElementById("legendCurrentWeek");
+      if (el3) el3.textContent = `Current Week (${curWk.weekKey})`;
     }
   }
   function renderMilestones() {
     const strip = document.getElementById("milestonesStrip");
     strip.innerHTML = "";
     (currentPlan.milestones || []).forEach((m) => {
-      const el2 = document.createElement("div");
-      el2.className = "milestone-pill";
-      el2.innerHTML = html`<span class="milestone-icon">🔷</span><span>${m.title}</span><span style="color: var(--cp-text-subtle);">(${m.weekKey})</span>`;
-      strip.appendChild(el2);
+      const el3 = document.createElement("div");
+      el3.className = "milestone-pill";
+      el3.innerHTML = html`<span class="milestone-icon">🔷</span><span>${m.title}</span><span class="jx-subtle">(${m.weekKey})</span>`;
+      strip.appendChild(el3);
     });
   }
   function renderBacklogTray() {
@@ -9417,7 +10474,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     container.innerHTML = "";
     const backlog = currentPlan.backlogTasks || [];
     if (backlog.length === 0) {
-      container.innerHTML = '<div style="color: var(--cp-text-subtle); font-size:12px; text-align:center; padding:20px;">No unmapped backlog issues. Drag from timeline to unmap.</div>';
+      container.innerHTML = '<div class="jx-empty-tray">No unmapped backlog issues. Drag from timeline to unmap.</div>';
       return;
     }
     backlog.forEach((item) => {
@@ -9439,7 +10496,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       <div class="backlog-footer">
         <span>⏱️ ${effortDisplay}</span>
         <span>👤 ${item.resource || "Unassigned"}</span>
-        <button type="button" class="btn btn-outline btn-sm btn-schedule-backlog" title="Schedule onto timeline" style="margin-left: auto; padding: 2px 8px; font-size: 11px;">+ Schedule</button>
+        <button type="button" class="btn btn-outline btn-sm btn-schedule-backlog jx-schedule-btn" title="Schedule onto timeline">+ Schedule</button>
       </div>
     `;
       const bKeyLink = card.querySelector(".backlog-key-link");
@@ -9467,7 +10524,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
             } else {
               await loadProjectPlan();
             }
-            showFlag({ text: "Scheduled " + item.key + " to timeline." });
+            if (res && res.ok === true) showFlag({ text: "Scheduled " + item.key + " to timeline." });
           } catch (err) {
             showFlag({ text: "Failed to schedule " + item.key, error: true });
           }
@@ -9534,13 +10591,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const strip = document.querySelector("#ganttHeaderRow .time-strip");
     if (!strip || !timeRange) return;
     const cells = headerCells(timeRange, zoomById(zoomId), todayIso()).map((c) => {
-      const el2 = document.createElement("div");
-      el2.className = "time-cell" + (c.current ? " current" : "");
-      el2.style.left = c.x + "px";
-      el2.style.width = c.w + "px";
-      el2.textContent = c.label;
-      el2.title = c.key;
-      return el2;
+      const el3 = document.createElement("div");
+      el3.className = "time-cell" + (c.current ? " current" : "");
+      el3.style.left = c.x + "px";
+      el3.style.width = c.w + "px";
+      el3.textContent = c.label;
+      el3.title = c.key;
+      return el3;
     });
     strip.replaceChildren(...cells);
   }
@@ -9554,8 +10611,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
     dates.push(today);
     const minDate = dates.reduce((m, d) => d < m ? d : m);
     const maxDate = dates.reduce((m, d) => d > m ? d : m);
-    const start = mondayOf(addDays2(minDate, -28));
-    let end = addDays2(mondayOf(addDays2(maxDate, 28)), 6);
+    const start = mondayOf(addDays(minDate, -28));
+    let end = addDays(mondayOf(addDays(maxDate, 28)), 6);
     const wrapper = document.getElementById("ganttWrapper");
     const trackLeft = layout && layout.trackLeft || 300;
     const viewportTrackWidth = wrapper && wrapper.clientWidth ? Math.max(400, wrapper.clientWidth - trackLeft) : 800;
@@ -9564,7 +10621,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const missingPx = viewportTrackWidth - currentPx;
       const missingDays = Math.ceil(missingPx / dayPx());
       const missingWeeks = Math.ceil(missingDays / 7);
-      end = addDays2(end, missingWeeks * 7);
+      end = addDays(end, missingWeeks * 7);
     }
     return { start, end };
   }
@@ -9820,15 +10877,15 @@ Please see https://iframe-resizer.com/upgrade for more details.
         return;
       }
       currentContainer.style.display = "flex";
-      currentContainer.innerHTML = '<div style="width:100%; font-size:10px; font-weight:700; color: var(--cp-text-subtle); text-transform:uppercase; margin-bottom:2px;">Assigned Team:</div>';
+      currentContainer.innerHTML = '<div class="jx-picker-caption">Assigned Team:</div>';
       assignedResources.forEach((res) => {
         const chip = document.createElement("div");
         chip.className = "resource-current-chip" + (res.isParent ? " is-lead" : "");
         const initials = getInitials(res.name);
         chip.innerHTML = html`
-        <span class="resource-option-avatar" style="width:16px; height:16px; font-size:9px;">${initials}</span>
+        <span class="resource-option-avatar jx-avatar-small">${initials}</span>
         <span>${res.name}</span>
-        <span style="font-size:9px; opacity:0.8;">${res.isParent ? "(Lead)" : ""}</span>
+        <span class="jx-lead-note">${res.isParent ? "(Lead)" : ""}</span>
         ${!res.isParent ? html`<button class="resource-btn-make-lead" title="Make primary Jira assignee">★ Lead</button>` : ""}
         <span class="resource-current-chip-remove" title="Remove ${res.name}">✕</span>
       `;
@@ -9882,11 +10939,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
       promptContainer.className = "resource-removal-prompt";
       promptContainer.style.cssText = "width: 100%; padding: 8px; border: 1px solid var(--cp-border); border-radius: 4px; background: var(--cp-surface); margin-top: 4px; box-sizing: border-box;";
       promptContainer.innerHTML = html`
-      <div style="font-size: 11px; margin-bottom: 6px; color: var(--cp-text);">${formatRemovalPrompt(removing.name, subtaskKey)}</div>
-      <div style="display: flex; gap: 6px;">
-        <button type="button" class="btn btn-danger btn-sm btn-delete-subtask" style="padding: 2px 6px; font-size: 10px;">Delete sub-task</button>
-        <button type="button" class="btn btn-secondary btn-sm btn-unassign-subtask" style="padding: 2px 6px; font-size: 10px;">Unassign sub-task</button>
-        <button type="button" class="btn btn-subtle btn-sm btn-cancel-remove" style="padding: 2px 6px; font-size: 10px;">Cancel</button>
+      <div class="jx-remove-prompt">${formatRemovalPrompt(removing.name, subtaskKey)}</div>
+      <div class="jx-row-6">
+        <button type="button" class="btn btn-danger btn-sm btn-delete-subtask jx-btn-tiny">Delete sub-task</button>
+        <button type="button" class="btn btn-secondary btn-sm btn-unassign-subtask jx-btn-tiny">Unassign sub-task</button>
+        <button type="button" class="btn btn-subtle btn-sm btn-cancel-remove jx-btn-tiny">Cancel</button>
       </div>
     `;
       promptContainer.querySelector(".btn-delete-subtask").addEventListener("click", async (e) => {
@@ -10021,7 +11078,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         opt.innerHTML = html`
         <input type="checkbox" class="resource-option-checkbox" ${isUnassignedSelected ? "checked" : ""} />
         <span class="resource-option-avatar">U</span>
-        <span style="flex:1;">Unassigned</span>
+        <span class="jx-fill">Unassigned</span>
       `;
         opt.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -10030,10 +11087,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
         listEl.appendChild(opt);
       }
       const users = (currentPlan?.availableUsers || []).filter(
-        (u) => u.displayName && u.displayName.toLowerCase().includes(q)
+        (u) => u.accountId !== "unassigned" && u.displayName && u.displayName.toLowerCase().includes(q)
       );
       if (users.length === 0 && q && !"unassigned".includes(q)) {
-        listEl.innerHTML = '<div style="padding:10px; font-size:11px; color: var(--cp-text-subtle); text-align:center;">No matching team members</div>';
+        listEl.innerHTML = '<div class="jx-empty-list">No matching team members</div>';
         return;
       }
       users.forEach((u) => {
@@ -10043,7 +11100,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         const opt = document.createElement("div");
         opt.className = "resource-option" + (isAssigned ? " is-selected" : "");
         const initials = getInitials(u.displayName);
-        const isPlaceholder = u.isPlaceholder ? html` <span style="font-size:10px; color: var(--cp-text-subtlest);">(Placeholder)</span>` : "";
+        const isPlaceholder = u.isPlaceholder ? html` <span class="jx-placeholder-note">(Placeholder)</span>` : "";
         let badgeHtml = html``;
         if (isAssigned) {
           badgeHtml = isLead ? html`<span class="resource-badge-lead">Lead</span>` : html`<span class="resource-badge-contrib">Contributor</span>`;
@@ -10051,7 +11108,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         opt.innerHTML = html`
         <input type="checkbox" class="resource-option-checkbox" ${isAssigned ? "checked" : ""} />
         <span class="resource-option-avatar">${initials}</span>
-        <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${u.displayName}${isPlaceholder}</span>
+        <span class="jx-ellipsis-fill">${u.displayName}${isPlaceholder}</span>
         ${badgeHtml}
       `;
         opt.addEventListener("click", (e) => {
@@ -10114,7 +11171,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       if (!q || "none standalone".includes(q)) {
         const opt = document.createElement("div");
         opt.className = "resource-option";
-        opt.innerHTML = html`<span style="color: var(--cp-text-subtle); font-size:11px;">✕ (None / Standalone Task)</span>`;
+        opt.innerHTML = html`<span class="jx-subtle-11">✕ (None / Standalone Task)</span>`;
         opt.addEventListener("click", async () => {
           popover.style.display = "none";
           if (activePickerTaskKey === "NEW_INLINE_TASK") {
@@ -10135,7 +11192,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
         (e) => e.summary && e.summary.toLowerCase().includes(q) || e.key && e.key.toLowerCase().includes(q)
       );
       if (epics.length === 0 && q) {
-        listEl.innerHTML = '<div style="padding:10px; font-size:11px; color: var(--cp-text-subtle); text-align:center;">No matching epics</div>';
+        listEl.innerHTML = '<div class="jx-empty-list">No matching epics</div>';
         return;
       }
       epics.forEach((ep) => {
@@ -10176,6 +11233,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
     activeProgressTaskKey = taskKey;
     const task = (currentPlan?.tasks || []).find((t) => t.key === taskKey);
     if (!task) return;
+    const locked = progressLockReason(task);
+    if (locked) {
+      showFlag({ text: locked });
+      announce(locked);
+      return;
+    }
     const popover = document.getElementById("progressPickerPopover");
     const titleEl = document.getElementById("progressPickerTitle");
     const valLabel = document.getElementById("progressPickerValLabel");
@@ -10250,17 +11313,17 @@ Please see https://iframe-resizer.com/upgrade for more details.
     let cellsHtml = html``;
     if (visibleKeys.includes("epic")) {
       cellsHtml = html`${cellsHtml}
-      <td class="td-data td-epic-cell" style="width:${columnWidths.epic}px;">
+      <td class="td-data td-epic-cell" data-css-w="${columnWidths.epic}px">
         <span class="epic-link-chip new-task-epic-chip ${inheritedEpic ? "has-epic" : "no-epic"}" title="Choose Epic">${epicDisplay} ▾</span>
       </td>
     `;
     }
     if (visibleKeys.includes("story")) {
-      cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.story}px; color: var(--cp-text-brand); font-weight:700;">🔷 Task</td>`;
+      cellsHtml = html`${cellsHtml}<td class="td-data jx-brand-bold" data-css-w="${columnWidths.story}px">🔷 Task</td>`;
     }
     cellsHtml = html`${cellsHtml}
-    <td class="td-data td-task-summary" style="width:${colWidth("task")}px;">
-      <div style="display:flex; align-items:center; gap:6px; padding-left:14px;">
+    <td class="td-data td-task-summary" data-css-w="${colWidth("task")}px">
+      <div class="jx-create-row">
         <input type="text" class="inline-create-input" placeholder="Type new task summary & press Enter to save..." autocomplete="off" />
         <button class="btn-inline-save">Add</button>
         <button class="btn-inline-cancel" title="Cancel (Esc)">✕</button>
@@ -10269,34 +11332,34 @@ Please see https://iframe-resizer.com/upgrade for more details.
   `;
     if (visibleKeys.includes("resource")) {
       cellsHtml = html`${cellsHtml}
-      <td class="td-data td-resource-cell" style="width:${columnWidths.resource}px;">
+      <td class="td-data td-resource-cell" data-css-w="${columnWidths.resource}px">
         <div class="resource-chip-btn new-task-resource-btn" title="Assign team member">
           <span class="resource-option-avatar">U</span>
-          <span class="new-task-resource-name" style="flex:1; overflow:hidden; text-overflow:ellipsis;">Unassigned</span>
-          <span style="font-size:10px; color: var(--cp-text-subtle);">▾</span>
+          <span class="new-task-resource-name jx-ellipsis">Unassigned</span>
+          <span class="jx-caret">▾</span>
         </div>
       </td>
     `;
     }
     if (visibleKeys.includes("effort")) {
       cellsHtml = html`${cellsHtml}
-      <td class="td-data td-effort-cell" style="width:${columnWidths.effort}px; text-align:center;">
-        <input type="number" class="inline-edit-input new-task-hours" style="width:50px; text-align:center;" placeholder="h" min="0" />
+      <td class="td-data td-effort-cell jx-center" data-css-w="${columnWidths.effort}px">
+        <input type="number" class="inline-edit-input new-task-hours jx-hours-input" placeholder="h" min="0" />
       </td>
     `;
     }
     if (visibleKeys.includes("progress")) {
-      cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.progress}px; text-align:center; color: var(--cp-text-subtle); font-weight:600;">0%</td>`;
+      cellsHtml = html`${cellsHtml}<td class="td-data jx-center-subtle" data-css-w="${columnWidths.progress}px">0%</td>`;
     }
     if (visibleKeys.includes("target")) {
-      cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.target}px; text-align:center; color: var(--cp-text-subtle); font-weight:600;">0%</td>`;
+      cellsHtml = html`${cellsHtml}<td class="td-data jx-center-subtle" data-css-w="${columnWidths.target}px">0%</td>`;
     }
     if (visibleKeys.includes("status")) {
-      cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.status}px; text-align:center;"><span class="badge badge-neutral">NOT_STARTED</span></td>`;
+      cellsHtml = html`${cellsHtml}<td class="td-data jx-center" data-css-w="${columnWidths.status}px"><span class="badge badge-neutral">NOT_STARTED</span></td>`;
     }
     cellsHtml = html`${cellsHtml}
     <td class="timeline-track-cell">
-      <div class="ghost-timeline-bar" style="left:${barLeft}px; width:${barWidth}px;">
+      <div class="ghost-timeline-bar" data-css-left="${barLeft}px" data-css-w="${barWidth}px">
         <span>➕ New Task Preview (3 wks)</span>
       </div>
     </td>
@@ -10376,8 +11439,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
           spanWeeks: 3,
           targetIndex: insertIndex
         });
-        if (res && res.success === false) {
-          showFlag({ text: res.error || "Failed to create task in Jira.", error: true });
+        if (!res || res.ok !== true) {
+          showFlag({ text: res && (res.message || res.error) || "Failed to create task in Jira.", error: true });
           input.disabled = false;
           saveBtn.disabled = false;
           saveBtn.textContent = "Add";
@@ -10531,7 +11594,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       <div class="empty-state" id="emptyStateDropZone" role="region" aria-labelledby="emptyStateTitle">
         <h2 id="emptyStateTitle">${es.title}</h2>
         <p>${es.text}</p>
-        <div class="empty-state-drop-hint" style="margin: 12px 0 16px 0; padding: 12px 18px; border: 2px dashed var(--cp-border-brand); border-radius: 6px; background: var(--cp-bg-brand-subtle); color: var(--cp-text-brand); font-weight: 600; font-size: 13px;">
+        <div class="empty-state-drop-hint jx-drop-hint">
           📥 Drop backlog issues here to schedule, or click below
         </div>
         <div class="empty-state-actions">
@@ -10583,7 +11646,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
               } else {
                 await loadProjectPlan();
               }
-              showFlag({ text: "Scheduled " + data.taskId + " to timeline." });
+              if (res && res.ok === true) showFlag({ text: "Scheduled " + data.taskId + " to timeline." });
             }
           } catch (err) {
             console.error("Error handling empty state drop:", err);
@@ -10671,9 +11734,18 @@ Please see https://iframe-resizer.com/upgrade for more details.
     updateVirtualRows();
     return rowCache.get(key) || null;
   }
+  var baselineState = null;
+  function updateBaselineButton() {
+    const btn = document.getElementById("btnBaseline");
+    if (!btn || !baselineState || !currentPlan) return;
+    const report = baselineState.ok ? { ok: true, baseline: baselineState.baseline, intact: baselineState.intact, comparison: compareItems(baselineState.items || [], baselineItems(currentPlan.tasks || [])) } : { ok: false };
+    btn.textContent = statusText(report);
+    btn.classList.toggle("is-warning", !!(report.ok && (report.comparison.grew || !report.intact)));
+  }
   function applyPlanInPlace(plan) {
     const before = rowTaskList.map((t) => t.key).join("\n");
     currentPlan = plan;
+    updateBaselineButton();
     const computed = computeRowTasks();
     if (computed.rows.map((r) => r.task.key).join("\n") !== before) {
       renderPlan();
@@ -10696,6 +11768,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     settleUndo();
   }
   function applyFrozen(tr) {
+    applyDynamicStyles(tr);
     const frozen = getFrozenLayout();
     const keys = frozen.visibleKeys;
     const cells = [...tr.children].filter((td) => !td.classList.contains("timeline-track-cell"));
@@ -10720,7 +11793,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       document.body.appendChild(menu);
     }
     menu.innerHTML = html`
-    <div class="menu-item-header" style="padding: 6px 10px; font-weight: 700; font-size: 11px; color: var(--cp-text-subtle); border-bottom: 1px solid var(--cp-border);">
+    <div class="menu-item-header jx-menu-header">
       ${task.key}: ${task.summary}
     </div>
     <button class="quick-menu-item" data-action="insert"><span>➕</span><span>Insert task below</span></button>
@@ -10730,7 +11803,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     <button class="quick-menu-item" data-action="team"><span>👥</span><span>Assign team member</span></button>
     <button class="quick-menu-item" data-action="edit"><span>✏️</span><span>Edit task details</span></button>
     <button class="quick-menu-item" data-action="jira"><span>↗</span><span>Open in native Jira</span></button>
-    <div style="border-top: 1px solid var(--cp-border); margin: 2px 0;"></div>
+    <div class="jx-menu-divider"></div>
     <button class="quick-menu-item item-danger" data-action="backlog"><span>📤</span><span>Move to backlog</span></button>
   `;
     const rect = anchorBtn.getBoundingClientRect();
@@ -10815,7 +11888,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     const siteUrl = getJiraBaseUrl();
     const summaryHtml = html`
-    <div style="display:flex; align-items:center; width:100%; padding-left:${indentPx}px;">
+    <div class="jx-summary-row" data-css-pl="${indentPx}px">
       <div class="row-insert-affordance" title="Insert task below (Row ${rowIdx + 2})">
         <button class="row-insert-plus-btn" title="Insert new task below">＋</button>
       </div>
@@ -10823,7 +11896,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       ${expandToggleHtml}
       ${badgeHtml}
       <a href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer" class="task-key-link" title="Open ${task.key} in native Jira (new tab)">${task.key} ↗</a>
-      <span class="task-summary-text" style="cursor:pointer; margin-left:6px; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="Click to edit summary, or press and hold row to reorder">
+      <span class="task-summary-text jx-summary-text" title="Click to edit summary, or press and hold row to reorder">
         : ${task.summary}
       </span>
       <div class="row-action-toolbar" role="toolbar" aria-label="Row actions for ${task.key}">
@@ -10843,7 +11916,9 @@ Please see https://iframe-resizer.com/upgrade for more details.
         const epObj = (currentPlan.availableEpics || []).find((e) => e.key === task.epicKey);
         epicLabel = epObj ? epObj.summary : task.epicKey;
       }
-      if (epicLabel) {
+      if (task.isSubtask || task.hierarchyLevel === -1) {
+        epicHtml = epicLabel ? html`<span class="epic-inherited" title="Epic of the parent work item">🟪 ${epicLabel}</span>` : html``;
+      } else if (epicLabel) {
         epicHtml = html`<span class="epic-link-chip has-epic" title="Click to change epic">🟪 ${epicLabel} ▾</span>`;
       } else {
         epicHtml = html`<span class="epic-link-chip no-epic" title="Click to link epic">+ Link Epic</span>`;
@@ -10852,31 +11927,32 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const visibleKeys = getVisibleColKeys();
     let rowColsHtml = html``;
     if (visibleKeys.includes("epic")) {
-      rowColsHtml = html`${rowColsHtml}<td class="td-data td-epic-cell" style="width:${columnWidths.epic}px;">${epicHtml}</td>`;
+      rowColsHtml = html`${rowColsHtml}<td class="td-data td-epic-cell" data-css-w="${columnWidths.epic}px">${epicHtml}</td>`;
     }
     if (visibleKeys.includes("story")) {
-      rowColsHtml = html`${rowColsHtml}<td class="td-data td-story-cell" style="width:${columnWidths.story}px;" title="${task.story || ""}">${task.story || (isEpic ? "Epic" : isSub ? "Subtask" : "Task")}</td>`;
+      rowColsHtml = html`${rowColsHtml}<td class="td-data td-story-cell" data-css-w="${columnWidths.story}px" title="${task.story || ""}">${task.story || (isEpic ? "Epic" : isSub ? "Subtask" : "Task")}</td>`;
     }
     if (visibleKeys.includes("task")) {
-      rowColsHtml = html`${rowColsHtml}<td class="td-data td-task-summary" style="width:${colWidth("task")}px;">${summaryHtml}</td>`;
+      rowColsHtml = html`${rowColsHtml}<td class="td-data td-task-summary" data-css-w="${colWidth("task")}px">${summaryHtml}</td>`;
     }
     if (visibleKeys.includes("resource")) {
-      rowColsHtml = html`${rowColsHtml}<td class="td-data td-resource-cell" style="width:${columnWidths.resource}px;"></td>`;
+      rowColsHtml = html`${rowColsHtml}<td class="td-data td-resource-cell" data-css-w="${columnWidths.resource}px"></td>`;
     }
     if (visibleKeys.includes("effort")) {
       rowColsHtml = html`${rowColsHtml}
-      <td class="td-data td-effort-cell" style="width:${columnWidths.effort}px; text-align:center; cursor:pointer;" title="Click to edit effort hours">
-        <span class="effort-text" style="font-weight:700;">${formatEffort(task.effortHours)}</span>
+      <td class="td-data td-effort-cell jx-center-pointer" data-css-w="${columnWidths.effort}px" title="Click to edit effort hours">
+        <span class="effort-text jx-bold">${formatEffort(task.effortHours)}</span>
       </td>
     `;
     }
     if (visibleKeys.includes("progress")) {
       const isProgRollup = isEpic || task.childrenCount && task.childrenCount > 0;
-      const progTitle = isProgRollup ? `Actual progress: ${task.progress}% (Rollup from children: click to edit or override)` : `Click to set actual progress (${task.progress}%)`;
+      const lockText = progressLockReason(task);
+      const progTitle = lockText || (isProgRollup ? `Actual progress: ${progressText(task)} (Rollup from children: click to edit or override)` : `Click to set actual progress (${progressText(task)})`);
       rowColsHtml = html`${rowColsHtml}
-      <td class="td-data td-progress-cell" style="width:${columnWidths.progress}px; text-align:center; cursor:pointer;" title="${progTitle}">
-        <div class="progress-chip-cell ${task.progress === 100 ? "is-complete" : task.progress > 0 ? "is-active" : "is-zero"}">
-          <span class="progress-chip-fill" style="width:${task.progress}%;"></span>
+      <td class="td-data td-progress-cell jx-center-pointer" data-css-w="${columnWidths.progress}px" title="${progTitle}">
+        <div class="progress-chip-cell ${isDone(task.status) ? "is-complete" : task.progress > 0 ? "is-active" : "is-zero"}">
+          <span class="progress-chip-fill" data-css-w="${task.progress}%"></span>
           <span class="progress-chip-text">${task.progress}% ▾</span>
         </div>
       </td>
@@ -10884,7 +11960,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     if (visibleKeys.includes("target")) {
       rowColsHtml = html`${rowColsHtml}
-      <td class="td-data td-target-cell" style="width:${columnWidths.target}px; text-align:center; cursor:pointer;" title="Click to set target progress (${task.targetProgress}%)">
+      <td class="td-data td-target-cell jx-center-pointer" data-css-w="${columnWidths.target}px" title="Click to set target progress (${task.targetProgress}%)">
         <div class="target-chip-cell">
           <span class="target-chip-text">🎯 ${task.targetProgress}% ▾</span>
         </div>
@@ -10893,7 +11969,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     if (visibleKeys.includes("status")) {
       rowColsHtml = html`${rowColsHtml}
-      <td class="td-data td-status-cell" style="width:${columnWidths.status}px; text-align:center;">
+      <td class="td-data td-status-cell jx-center" data-css-w="${columnWidths.status}px">
         <span class="badge editable-badge-chip ${task.status === "COMPLETED" ? "badge-success" : task.status === "IN_PROGRESS" ? "badge-primary" : "badge-neutral"}" title="Click to change status">
           ${task.status} ▾
         </span>
@@ -10940,7 +12016,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
             const initials = getInitials(res.name);
             const bg = aIdx === 0 ? "var(--cp-bg-neutral)" : aIdx === 1 ? "var(--cp-bg-selected)" : "var(--cp-bg-discovery)";
             const color = aIdx === 0 ? "var(--cp-text)" : aIdx === 1 ? "var(--cp-text-brand)" : "var(--cp-text-discovery)";
-            avatarHtml = html`${avatarHtml}<span class="resource-option-avatar" style="background:${bg}; color:${color}; z-index:${10 - aIdx};" title="${res.name}">${initials}</span>`;
+            avatarHtml = html`${avatarHtml}<span class="resource-option-avatar jx-avatar-${aIdx + 1}" title="${res.name}">${initials}</span>`;
           });
           avatarHtml = html`${avatarHtml}</div>`;
           const names = contributing.map((c) => c.name);
@@ -10965,9 +12041,9 @@ Click to manage or assign.`;
         resourceTd.innerHTML = html`
         <div class="resource-chip-btn ${isMultiple ? "has-multiple-resources" : ""}" title="${titleText}">
           ${avatarHtml}
-          <span class="resource-names-wrap" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${labelText}</span>
+          <span class="resource-names-wrap jx-ellipsis-fill">${labelText}</span>
           ${isMultiple ? html`<span class="res-count-badge">${contributing.length}</span>` : ""}
-          <span style="font-size:10px; color: var(--cp-text-subtle);">▾</span>
+          <span class="jx-caret">▾</span>
         </div>
       `;
         const resChip = resourceTd.querySelector(".resource-chip-btn");
@@ -11050,7 +12126,7 @@ Click to manage or assign.`;
             });
             await loadProjectPlan();
           } else {
-            effortTd.innerHTML = html`<span class="effort-text" style="font-weight:700;">${formatEffort(origHours)}</span>`;
+            effortTd.innerHTML = html`<span class="effort-text jx-bold">${formatEffort(origHours)}</span>`;
           }
         }
         input.addEventListener("keydown", (ke) => {
@@ -11059,7 +12135,7 @@ Click to manage or assign.`;
             saveInlineEffort();
           } else if (ke.key === "Escape") {
             saved = true;
-            effortTd.innerHTML = html`<span class="effort-text" style="font-weight:700;">${formatEffort(origHours)}</span>`;
+            effortTd.innerHTML = html`<span class="effort-text jx-bold">${formatEffort(origHours)}</span>`;
           }
         });
         input.addEventListener("blur", saveInlineEffort);
@@ -11274,9 +12350,10 @@ Click to manage or assign.`;
       let grabOffsetY = ROW_H / 2;
       let hoveredTr = null;
       let dropTargetIndex = null;
+      let hierarchyDrop = null;
       function clearHoveredIndicator() {
         if (hoveredTr) {
-          hoveredTr.classList.remove("drop-insert-top", "drop-insert-bottom");
+          hoveredTr.classList.remove("drop-insert-top", "drop-insert-bottom", "drop-into", "drop-into-refused");
           hoveredTr = null;
         }
       }
@@ -11339,7 +12416,18 @@ Click to manage or assign.`;
         const overTr = under ? under.closest("tr.task-row") : null;
         if (overTr && overTr !== tr) {
           const r = overTr.getBoundingClientRect();
-          const isTop = curY - r.top < r.height / 2;
+          const rel = (curY - r.top) / r.height;
+          if (rel > 1 / 3 && rel < 2 / 3) {
+            hierarchyDrop = { target: overTr.dataset.taskId, action: hierarchyActionFor(task, findAnyTask(overTr.dataset.taskId)) };
+            overTr.classList.add("drop-into");
+            overTr.classList.toggle("drop-into-refused", !!(hierarchyDrop.action && hierarchyDrop.action.refuse));
+            if (ghost) ghost.dataset.hint = hierarchyDrop.action ? hierarchyDrop.action.refuse || hierarchyDrop.action.label : "";
+            hoveredTr = overTr;
+            return;
+          }
+          hierarchyDrop = null;
+          if (ghost) ghost.dataset.hint = "";
+          const isTop = rel < 0.5;
           overTr.classList.toggle("drop-insert-top", isTop);
           overTr.classList.toggle("drop-insert-bottom", !isTop);
           hoveredTr = overTr;
@@ -11390,8 +12478,13 @@ Click to manage or assign.`;
       async function onUp() {
         const wasActive = active;
         const targetIdx = dropTargetIndex;
+        const into = hierarchyDrop;
         cleanup();
         if (!wasActive) return;
+        if (into) {
+          requestHierarchyChange(task.key, into.action);
+          return;
+        }
         const suppressClick = (ce) => {
           ce.stopPropagation();
           ce.preventDefault();
@@ -11500,6 +12593,11 @@ Click to manage or assign.`;
     const right = hit.querySelector(".bar-handle-right");
     if (left) left.style.left = h.left + "px";
     if (right) right.style.left = h.right + "px";
+    const p = portOffsets(r.w);
+    const portL = hit.querySelector(".bar-link-port-left");
+    const portR = hit.querySelector(".bar-link-port-right");
+    if (portL) portL.style.left = p.left + "px";
+    if (portR) portR.style.left = p.right + "px";
     hit.setAttribute("aria-label", `${task.key}: ${task.summary || ""}, ${task.startDate} to ${task.endDate || task.startDate}, ${task.progress || 0}% done`);
   }
   function createBarHit(task, isEpic) {
@@ -11524,6 +12622,12 @@ Click to manage or assign.`;
       }
       hit.addEventListener("mousedown", (e) => {
         if (e.button !== 0 || e.target.classList.contains("bar-handle") || e.target.closest(".bar-link-port")) return;
+        e.preventDefault();
+        startBarPointerEdit(e, key, "move", hit);
+      });
+    } else if (!isEpic && isBlockParent(task)) {
+      hit.addEventListener("mousedown", (e) => {
+        if (e.button !== 0 || e.target.closest(".bar-link-port")) return;
         e.preventDefault();
         startBarPointerEdit(e, key, "move", hit);
       });
@@ -11601,11 +12705,11 @@ Click to manage or assign.`;
       const wRect = wrapper.getBoundingClientRect();
       const curX = ev.clientX - wRect.left + wrapper.scrollLeft;
       const curY = ev.clientY - wRect.top + wrapper.scrollTop;
-      const el2 = document.elementFromPoint(ev.clientX, ev.clientY);
-      let targetHit = el2 ? el2.closest(".bar-hit") : null;
+      const el3 = document.elementFromPoint(ev.clientX, ev.clientY);
+      let targetHit = el3 ? el3.closest(".bar-hit") : null;
       let targetKey = targetHit && targetHit.dataset.taskId !== sourceKey ? targetHit.dataset.taskId : null;
-      if (!targetKey && el2) {
-        const row = el2.closest("tr[data-task-id]");
+      if (!targetKey && el3) {
+        const row = el3.closest("tr[data-task-id]");
         if (row && row.getAttribute("data-task-id") !== sourceKey) {
           targetKey = row.getAttribute("data-task-id");
           targetHit = document.querySelector(`.bar-hit[data-task-id="${CSS.escape(targetKey)}"]`);
@@ -11668,8 +12772,9 @@ Click to manage or assign.`;
       const s = snapDays(dx, dayPx(), ev.altKey ? "day" : zoomById(zoomId).snap);
       if (s === shift && timeline.drag) return;
       shift = s;
-      const moves = previewMoves(currentPlan.tasks, key, mode === "right" ? 0 : s, mode === "left" ? 0 : s, today);
-      const mine = moves.get(key);
+      const mine = shiftDates(task, mode === "right" ? 0 : s, mode === "left" ? 0 : s);
+      if (!mine) return;
+      const moves = /* @__PURE__ */ new Map([[key, mine]]);
       const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
       const isConflict = conflict.hasConflict;
       const enforceDeps = isEnforceDepsEnabled();
@@ -11686,10 +12791,18 @@ Click to manage or assign.`;
           label2 += ` \xB7 \u26A0\uFE0F Conflict: ${conflict.predKey} (${conflict.triggerPercent}%)`;
         }
       }
-      const currentMine = moves.get(key) || mine;
+      let currentMine = moves.get(key) || mine;
+      let preview;
+      if (isBlockParent(task)) {
+        const days = s !== 0 ? effectiveBlockDays(key, s) : 0;
+        currentMine = { start: addDays(task.startDate, days), end: addDays(task.endDate || task.startDate, days) };
+        preview = dropPreview(key, currentMine.start, currentMine.end, days);
+      } else {
+        preview = dropPreview(key, currentMine.start, currentMine.end);
+      }
       timeline.drag = {
         key,
-        moves,
+        moves: preview.moves,
         label: label2,
         isConflict: enforceDeps ? false : isConflict,
         wasSnapped,
@@ -11697,20 +12810,20 @@ Click to manage or assign.`;
         predKey: conflict.predKey
       };
       positionBarHit(hit, { ...task, startDate: currentMine.start, endDate: currentMine.end });
-      wrapper.dataset.preview = JSON.stringify(Object.fromEntries(moves));
+      wrapper.dataset.preview = JSON.stringify(Object.fromEntries(preview.moves));
       if (timeRange && mine) {
         if (mine.start < timeRange.start) {
           const diffDays = daysBetween(mine.start, timeRange.start);
           const addWeeks = Math.max(2, Math.ceil(diffDays / 7) + 2);
           const oldStart = timeRange.start;
-          timeRange = { start: addDays2(timeRange.start, -addWeeks * 7), end: timeRange.end };
+          timeRange = { start: addDays(timeRange.start, -addWeeks * 7), end: timeRange.end };
           const shiftPx = daysBetween(timeRange.start, oldStart) * dayPx();
           applyTimeAxis();
           wrapper.scrollLeft += shiftPx;
         } else if (mine.end > timeRange.end) {
           const diffDays = daysBetween(timeRange.end, mine.end);
           const addWeeks = Math.max(2, Math.ceil(diffDays / 7) + 2);
-          timeRange = { start: timeRange.start, end: addDays2(timeRange.end, addWeeks * 7) };
+          timeRange = { start: timeRange.start, end: addDays(timeRange.end, addWeeks * 7) };
           applyTimeAxis();
         }
         const wrapRect = wrapper.getBoundingClientRect();
@@ -11724,7 +12837,7 @@ Click to manage or assign.`;
       }
       const strip = document.getElementById("writePreview");
       if (strip) {
-        let desc = describePendingWrites(currentPlan.tasks, moves, key).text;
+        let desc = preview.text;
         if (isConflict) {
           if (enforceDeps) {
             desc = `\u{1F512} Enforce dependencies: will snap ${key} to ${conflict.earliestDate} to satisfy dependency on ${conflict.predKey}. ${desc}`;
@@ -11734,6 +12847,7 @@ Click to manage or assign.`;
         }
         strip.textContent = desc;
         strip.hidden = false;
+        placeStripNear(strip, key);
       }
       timeline.requestDraw();
     }
@@ -11771,6 +12885,11 @@ Click to manage or assign.`;
         drawTimeline();
         return;
       }
+      if (isBlockParent(task)) {
+        timeline.drag = null;
+        await moveBlock(key, shift);
+        return;
+      }
       const enforceDeps = isEnforceDepsEnabled();
       let finalStart = mine.start;
       let finalEnd = mine.end;
@@ -11799,6 +12918,7 @@ Click to manage or assign.`;
         const newDays = daysBetween(finalStart, finalEnd) + 1;
         updates.effortHours = Math.max(1, Math.round(task.effortHours * newDays / oldDays));
       }
+      const undoBefore = snapshotPlan(currentPlan);
       const prevStart = task.startDate;
       const prevEnd = task.endDate;
       task.startDate = finalStart;
@@ -11807,7 +12927,13 @@ Click to manage or assign.`;
       positionBarHit(hit, task);
       drawTimeline(true);
       try {
-        const res = await callResolver2("updateWbsTask", { taskId: key, updates, expectedVersion: task.version || 0 });
+        const res = await callResolver2("updateWbsTask", {
+          taskId: key,
+          updates,
+          expectedVersion: task.version || 0,
+          expectedDueDate: task.jiraDueDate ? String(task.jiraDueDate).slice(0, 10) : null,
+          enforceDependencies: enforceDeps
+        }, { before: undoBefore });
         if (res && Array.isArray(res.tasks)) {
           applyPlanInPlace(res);
         } else {
@@ -11828,6 +12954,8 @@ Click to manage or assign.`;
           candidateEnd: finalEnd,
           conflict,
           task,
+          prevStart,
+          prevEnd,
           hit: updatedHit,
           mode
         });
@@ -11902,12 +13030,14 @@ Click to manage or assign.`;
   }
   async function applyConflictCancel() {
     if (!conflictState) return;
-    const { key, task } = conflictState;
+    const { key, prevStart, prevEnd } = conflictState;
     closeDependencyConflictDialog();
-    if (task && task.startDate) {
-      await commitDates(key, task.startDate, task.endDate || task.startDate);
+    if (!prevStart) {
+      announce(`${key} had no dates before the move, so there is nothing to revert to.`);
+      return;
     }
-    announce(`Reverted ${key} to original schedule.`);
+    const res = await commitDates(key, prevStart, prevEnd || prevStart);
+    announce(classifyResult(res).failed ? `${key} could not be reverted.` : `Reverted ${key} to ${prevStart}.`);
   }
   var gridRoot = null;
   var lastGridKey = null;
@@ -12071,7 +13201,7 @@ Click to manage or assign.`;
       return;
     }
     if (e.key === " " && task.startDate && !(task.isEpic || task.hierarchyLevel === 1)) {
-      if (task.datesFromChildren) {
+      if (task.datesFromChildren && !isBlockParent(task)) {
         e.preventDefault();
         announce(`${task.key} follows the dates of its children. Move a child instead.`);
         return;
@@ -12083,14 +13213,28 @@ Click to manage or assign.`;
       openTaskDetailModal(task.key);
     }
   }
+  function placeStripNear(strip, key) {
+    const row = document.querySelector(`#ganttBody tr.task-row[data-task-id="${CSS.escape(key)}"]`);
+    if (!row) return;
+    const r = row.getBoundingClientRect();
+    const h = strip.offsetHeight || 32;
+    strip.style.top = `${Math.max(8, r.top - h - 6)}px`;
+    strip.style.bottom = "auto";
+  }
   function showShiftPreview(key, startShift, endShift, label2) {
-    const moves = previewMoves(currentPlan.tasks, key, startShift, endShift, todayIso());
-    const mine = moves.get(key);
-    timeline.drag = { key, moves, label: label2(mine) };
+    const task = findTask(key);
+    const block = isBlockParent(task) && startShift === endShift && startShift !== 0;
+    const days = block ? effectiveBlockDays(key, startShift) : void 0;
+    const shifted = task && shiftDates(task, block ? days : startShift, block ? days : endShift);
+    if (!shifted) return void 0;
+    const preview = dropPreview(key, shifted.start, shifted.end, days);
+    const mine = preview.moves.get(key);
+    timeline.drag = { key, moves: preview.moves, label: label2(mine) };
     const strip = document.getElementById("writePreview");
     if (strip) {
-      strip.textContent = describePendingWrites(currentPlan.tasks, moves, key).text;
+      strip.textContent = preview.text;
       strip.hidden = false;
+      placeStripNear(strip, key);
     }
     timeline.requestDraw();
     return mine;
@@ -12101,9 +13245,15 @@ Click to manage or assign.`;
     if (strip) strip.hidden = true;
     drawTimeline();
   }
-  async function commitDates(key, start, end) {
+  async function commitDates(key, start, end, opts = {}) {
     const task = findTask(key);
-    const res = await callResolver2("updateWbsTask", { taskId: key, updates: { startDate: start, endDate: end }, expectedVersion: task && task.version || 0 });
+    const res = await callResolver2("updateWbsTask", {
+      taskId: key,
+      updates: { startDate: start, endDate: end },
+      expectedVersion: task && task.version || 0,
+      expectedDueDate: task && task.jiraDueDate ? String(task.jiraDueDate).slice(0, 10) : null,
+      ...opts.enforce ? { enforceDependencies: true } : {}
+    });
     timeline.drag = null;
     if (res && Array.isArray(res.tasks)) applyPlanInPlace(res);
     else await loadProjectPlan();
@@ -12142,6 +13292,13 @@ Click to manage or assign.`;
     const strip = document.getElementById("writePreview");
     if (strip) strip.hidden = true;
     const task = findTask(key);
+    if (isBlockParent(task)) {
+      clearShiftPreview();
+      if (state.start !== state.end) announce(`${key} takes its dates from its sub-tasks, so it cannot be resized. Move it instead.`);
+      else await moveBlock(key, state.start);
+      focusGridCell();
+      return;
+    }
     const enforceDeps = isEnforceDepsEnabled();
     let finalStart = mine.start;
     let finalEnd = mine.end;
@@ -12157,7 +13314,7 @@ Click to manage or assign.`;
           focusGridCell();
           return;
         }
-        await commitDates(key, finalStart, finalEnd);
+        await commitDates(key, finalStart, finalEnd, { enforce: true });
         announce(`Enforce dependencies: snapped ${key} start to ${conflict.earliestDate} to satisfy dependency on ${conflict.predKey}.`);
         focusGridCell();
         return;
@@ -12177,7 +13334,7 @@ Click to manage or assign.`;
         return;
       }
     }
-    await commitDates(key, finalStart, finalEnd);
+    await commitDates(key, finalStart, finalEnd, { enforce: isEnforceDepsEnabled() });
     announce(`Saved. ${key}: ${finalStart} to ${finalEnd}.`);
     focusGridCell();
   }
@@ -12263,6 +13420,10 @@ Click to manage or assign.`;
     const anchorRect = (barHit || btn).getBoundingClientRect();
     const barAnchor = { getBoundingClientRect: () => anchorRect };
     closeBarToolbar();
+    if ((action === "earlier" || action === "later") && isBlockParent(task)) {
+      await moveBlock(key, action === "later" ? 7 : -7);
+      return;
+    }
     if ((action === "earlier" || action === "later") && task.datesFromChildren) {
       showFlag({ text: `${key} follows the dates of its children. Move a child instead.` });
       return;
@@ -12359,11 +13520,7 @@ Click to manage or assign.`;
     const viewRight = wrapper.scrollLeft + wrapper.clientWidth;
     const viewTop = wrapper.scrollTop + (layout.headerH || 0);
     const viewBottom = wrapper.scrollTop + wrapper.clientHeight;
-    const visibleLinks = (links || []).filter((link) => {
-      const hw = Math.max(12, (link.width || 28) / 2);
-      const hh = Math.max(10, (link.height || 18) / 2);
-      return link.x - hw >= viewLeft && link.x + hw <= viewRight && link.y - hh >= viewTop && link.y + hh <= viewBottom;
-    });
+    const visibleLinks = (links || []).filter((link) => link.x >= viewLeft && link.x <= viewRight && link.y >= viewTop && link.y <= viewBottom);
     const sig = visibleLinks.map((l) => `${l.predecessorKey}>${l.successorKey}@${Math.round(l.x)},${Math.round(l.y)}:${l.triggerPercent}:${l.isViolated ? 1 : 0}`).join("|");
     if (sig === lastDepBadgeSignature) return;
     lastDepBadgeSignature = sig;
@@ -12371,6 +13528,8 @@ Click to manage or assign.`;
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "dep-link-badge" + (link.isViolated ? " is-violated" : "");
+      btn.dataset.pred = link.predecessorKey;
+      btn.dataset.succ = link.successorKey;
       btn.style.left = `${link.x}px`;
       btn.style.top = `${link.y}px`;
       btn.style.width = `${Math.max(26, Math.round((link.width || 28) + 6))}px`;
@@ -12384,6 +13543,36 @@ Click to manage or assign.`;
       });
       return btn;
     }));
+  }
+  function arrowAt(wrapper, e) {
+    if (!timeline) return null;
+    if (e.target.closest(".bar-hit, .dep-link-badge, .btn, button, input, select, a, .resizer, .row-drag-handle, .th-col-menu-btn")) return null;
+    const rect = wrapper.getBoundingClientRect();
+    const vx = e.clientX - rect.left;
+    if (vx < (layout.trackLeft || 0)) return null;
+    const x = vx + wrapper.scrollLeft;
+    const y = e.clientY - rect.top + wrapper.scrollTop;
+    return nearestArrow(timeline.getArrowLinks(), x, y, 6);
+  }
+  function initArrowLineClicks(wrapper) {
+    let raf = 0;
+    wrapper.addEventListener("mousemove", (e) => {
+      if (raf || isDraggingBar) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        wrapper.classList.toggle("is-over-arrow", Boolean(arrowAt(wrapper, e)));
+      });
+    });
+    wrapper.addEventListener("mouseleave", () => wrapper.classList.remove("is-over-arrow"));
+    wrapper.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      const link = arrowAt(wrapper, e);
+      if (!link) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const badge = [...document.querySelectorAll("#depLinksLayer .dep-link-badge")].find((b) => b.dataset.pred === link.predecessorKey && b.dataset.succ === link.successorKey);
+      openDependencyEditPopover(link, badge || wrapper);
+    }, true);
   }
   function refreshDepEditPopoverFields() {
     if (!depEditState) return;
@@ -12423,6 +13612,8 @@ Click to manage or assign.`;
     if (triggerInput) {
       triggerInput.value = String(link.triggerPercent);
     }
+    const planOnlyNote = document.getElementById("depEditPlanOnly");
+    if (planOnlyNote) planOnlyNote.hidden = !link.planOnly;
     refreshDepEditPopoverFields();
     pop.hidden = false;
     const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { bottom: 120, left: 120 };
@@ -12498,7 +13689,7 @@ Click to manage or assign.`;
     closeDependencyEditPopover();
     await callResolver2("updateWbsTask", {
       taskId: succKey,
-      updates: { dependency: null },
+      updates: { removeDependency: { predecessorKey: predKey } },
       expectedVersion: succTask && succTask.version || 0
     });
     await loadProjectPlan();
@@ -12676,7 +13867,7 @@ Click to manage or assign.`;
     if (trigger && pop) {
       trigger.addEventListener("click", (e) => {
         e.stopPropagation();
-        const isClosed = pop.style.display === "none";
+        const isClosed = getComputedStyle(pop).display === "none";
         pop.style.display = isClosed ? "flex" : "none";
         trigger.setAttribute("aria-expanded", isClosed ? "true" : "false");
         if (isClosed) {
@@ -12691,7 +13882,7 @@ Click to manage or assign.`;
     document.getElementById("btnManagePlans")?.addEventListener("click", (e) => {
       e.stopPropagation();
       if (pop) {
-        pop.style.display = pop.style.display === "none" ? "flex" : "none";
+        pop.style.display = getComputedStyle(pop).display === "none" ? "flex" : "none";
       }
     });
     document.getElementById("btnClosePlansPopover")?.addEventListener("click", () => {
@@ -12736,7 +13927,11 @@ Click to manage or assign.`;
         name,
         cloneFromPlanId: clone ? activePlanId : void 0
       });
-      if (res && res.ok && res.plan) {
+      const copied = res && res.ok && res.plan && res.done === false ? await finishPlanWork("continuePlanCopy", res.plan.id, `Copying to ${res.plan.name}`) : res;
+      if (res && res.ok && res.plan && !(copied && copied.ok && copied.done !== false)) {
+        showFlag({ text: `The copy to ${res.plan.name} stopped. Pick it in the plan list to finish it.`, error: true });
+        await loadProjectPlan();
+      } else if (res && res.ok && res.plan) {
         if (nameInp) nameInp.value = "";
         closePlansPopover();
         setActivePlan(res.plan.id);
@@ -12747,6 +13942,13 @@ Click to manage or assign.`;
       }
     };
     document.getElementById("btnCreatePlan")?.addEventListener("click", submitCreatePlan);
+    document.getElementById("btnSavePlanJql")?.addEventListener("click", savePlanFilter);
+    document.getElementById("planJqlInput")?.addEventListener("keydown", (ke) => {
+      if (ke.key === "Enter") {
+        ke.preventDefault();
+        savePlanFilter();
+      }
+    });
     document.getElementById("newPlanNameInput")?.addEventListener("keydown", (ke) => {
       if (ke.key === "Enter") {
         ke.preventDefault();
@@ -12787,7 +13989,7 @@ Click to manage or assign.`;
             } else {
               await loadProjectPlan();
             }
-            showFlag({ text: "Scheduled " + data.taskId + " to timeline." });
+            if (res && res.ok === true) showFlag({ text: "Scheduled " + data.taskId + " to timeline." });
           }
         } catch (err) {
           console.error("Error on wrapper drop:", err);
@@ -12807,7 +14009,7 @@ Click to manage or assign.`;
       const conflictBanner = document.getElementById("depConflictBanner");
       if (!recentlyOpened && conflictBanner && !conflictBanner.hidden && !conflictBanner.contains(e.target)) closeDependencyConflictDialog();
       const plansPop = document.getElementById("plansManagerPopover");
-      if (plansPop && plansPop.style.display !== "none" && !plansPop.contains(e.target) && !e.target.closest("#planSelectorBtn") && !e.target.closest("#btnManagePlans")) {
+      if (plansPop && getComputedStyle(plansPop).display !== "none" && !plansPop.contains(e.target) && !e.target.closest("#planSelectorBtn") && !e.target.closest("#btnManagePlans")) {
         closePlansPopover();
       }
     });
@@ -12873,6 +14075,10 @@ Click to manage or assign.`;
   async function runBatch(items, kind) {
     if (!items.length) return;
     const res = await callResolver2("batchUpdateTasks", { items });
+    const skipped = res && Array.isArray(res.results) ? res.results.filter((r) => r && r.ok === false).map((r) => r.taskId) : [];
+    if (skipped.length) {
+      showFlag({ text: `Not saved, because someone else changed ${skipped.length === 1 ? "it" : "them"} a moment ago: ${skipped.join(", ")}. The other ${items.length - skipped.length} saved. Reload and try those again.`, error: true });
+    }
     if (res && Array.isArray(res.tasks)) {
       if (kind === "move") applyPlanInPlace(res);
       else {
@@ -12888,13 +14094,20 @@ Click to manage or assign.`;
     return findTask(key)?.version || 0;
   }
   function initSelectionBar() {
-    document.getElementById("btnSelProgress")?.addEventListener("click", () => {
+    document.getElementById("btnSelProgress")?.addEventListener("click", async () => {
       const p = Math.max(0, Math.min(100, parseInt(document.getElementById("selProgress").value, 10) || 0));
-      runBatch([...selectedKeys].map((k) => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) })), "progress");
+      const done = [...selectedKeys].filter((k) => isDone(findTask(k)?.status));
+      if (done.length) showFlag({ text: `Not changed: ${done.join(", ")} ${done.length === 1 ? "is" : "are"} Done in Jira, so the progress stays 100%.` });
+      const items = [...selectedKeys].filter((k) => !done.includes(k)).map((k) => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) }));
+      if (!items.length) return;
+      if (!await withStatusChoice(items.map((i) => ({ key: i.taskId, progress: p, updates: i.updates })))) return;
+      runBatch(items, "progress");
     });
-    document.getElementById("btnSelMove")?.addEventListener("click", () => {
+    document.getElementById("btnSelMove")?.addEventListener("click", async () => {
       const days = parseInt(document.getElementById("selDays").value, 10) || 0;
-      runBatch(moveSelectionBy(currentPlan.tasks, selectedKeys, days), "move");
+      const blocks = selectedBlockParents(currentPlan.tasks, selectedKeys);
+      await runBatch(moveSelectionBy(currentPlan.tasks, selectedKeys, days), "move");
+      for (const key of blocks) await moveBlock(key, days);
     });
     document.getElementById("btnSelAssign")?.addEventListener("click", () => {
       const sel = document.getElementById("selAssignee");
@@ -12914,6 +14127,11 @@ Click to manage or assign.`;
     }));
   }
   function setPendingProgress(key, pct) {
+    const locked = progressLockReason(findTask(key) || { key });
+    if (locked) {
+      announce(locked);
+      return;
+    }
     pendingProgress.set(key, pct);
     const chip = rowCache.get(key)?.querySelector(".progress-chip-text");
     if (chip) chip.textContent = `${pct}% (not saved)`;
@@ -12921,6 +14139,11 @@ Click to manage or assign.`;
   }
   async function commitPendingProgress() {
     const items = [...pendingProgress].map(([k, p]) => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) }));
+    if (!await withStatusChoice(items.map((i) => ({ key: i.taskId, progress: i.updates.progress, updates: i.updates })))) {
+      announce(`Progress not saved yet. Enter saves the ${pendingProgress.size} changes, Escape drops them.`);
+      focusGridCell();
+      return;
+    }
     pendingProgress.clear();
     await runBatch(items, "progress");
     announce(`Saved progress on ${items.length} issue${items.length === 1 ? "" : "s"}.`);
@@ -12932,8 +14155,8 @@ Click to manage or assign.`;
     const isSub = task.isSubtask || task.hierarchyLevel === -1;
     const levelTitle = isEpic ? "\u{1F7EA} Epic Roadmap Level" : isSub ? "\u21B3 Subtask Execution Level" : "\u{1F537} Story / Task Plan Level";
     const dep = task.dependency;
-    const depInfo = dep && dep.predecessorKey ? html`<div style="margin-top:4px;">🔗 ${dep.earliestStartReason || `Waits for ${dep.predecessorKey} at ${dep.triggerPercent}%`}</div>${dep.isViolated ? html`<div style="font-weight:700;">⚠ ${dep.fixSuggestion || dep.violationReason || "Starts too early"}</div>` : ""}` : "";
-    const rollupInfo = isEpic && task.rollupStats ? html`<div style="font-weight:600;">Rollup: ${task.childrenCount || 0} child items | Total ${task.effortHours}h</div>` : "";
+    const depInfo = dep && dep.predecessorKey ? html`<div class="jx-mt-4">🔗 ${dep.earliestStartReason || `Waits for ${dep.predecessorKey} at ${dep.triggerPercent}%`}</div>${dep.isViolated ? html`<div class="jx-bold">⚠ ${dep.fixSuggestion || dep.violationReason || "Starts too early"}</div>` : ""}` : "";
+    const rollupInfo = isEpic && task.rollupStats ? html`<div class="jx-semibold">Rollup: ${task.childrenCount || 0} child items | Total ${task.effortHours}h</div>` : "";
     const subInfo = !isEpic && task.subtasks && task.subtasks.length > 0 ? html`<div>Subtasks: ${task.subtasks.length} items (${task.effortHours}h total)</div>` : "";
     const contributing = getTaskContributingResources(task);
     let assigneeHtml = html`<div>${isEpic ? "Epic Lead" : "Assignee"}: ${task.resource || "Unassigned"}</div>`;
@@ -12944,8 +14167,8 @@ Click to manage or assign.`;
     }
     const siteUrl = getJiraBaseUrl();
     tip.innerHTML = html`
-    <div style="font-size:10px; font-weight:700; margin-bottom:2px;">${levelTitle}</div>
-    <div><strong><a href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer" style="color: var(--cp-text-inverse); text-decoration:underline;">${task.key} ↗</a>: ${task.summary}</strong></div>
+    <div class="jx-tip-level">${levelTitle}</div>
+    <div><strong><a class="jx-tip-link" href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer">${task.key} ↗</a>: ${task.summary}</strong></div>
     ${assigneeHtml}
     <div>Effort: ${formatEffort(task.effortHours)} | Progress: ${task.progress}% (Target: ${task.targetProgress}%)</div>
     <div>Dates: ${task.startDate} to ${task.endDate}</div>
@@ -12990,6 +14213,7 @@ Click to manage or assign.`;
     }
     if (progSlider) progSlider.value = curProg;
     if (progValLabel) progValLabel.textContent = `${curProg}%`;
+    setDialogProgressLock(task.key, task.status);
     if (progNote) {
       progNote.style.display = isProgRollup ? "block" : "none";
       if (rollupPctText) {
@@ -13016,9 +14240,23 @@ Click to manage or assign.`;
       opt.value = u.displayName;
       opt.dataset.accountId = u.accountId || "";
       opt.textContent = u.displayName + (u.isPlaceholder ? " [Placeholder]" : "");
-      if (u.displayName === task.resource) opt.selected = true;
       assSelect.appendChild(opt);
     });
+    const curAccountId = task.resourceAccountId && task.resourceAccountId !== "unassigned" ? task.resourceAccountId : "";
+    let curOption = [...assSelect.options].find((o) => curAccountId ? o.dataset.accountId === curAccountId : o.value === (task.resource || "Unassigned"));
+    if (!curOption && curAccountId) {
+      curOption = document.createElement("option");
+      curOption.value = task.resource || curAccountId;
+      curOption.dataset.accountId = curAccountId;
+      curOption.textContent = task.resource || curAccountId;
+      assSelect.insertBefore(curOption, assSelect.firstChild);
+    }
+    if (curOption) curOption.selected = true;
+    assSelect.dataset.touched = "";
+    assSelect.dataset.originalAccountId = curAccountId || "unassigned";
+    assSelect.onchange = () => {
+      assSelect.dataset.touched = "1";
+    };
     const startInput = document.getElementById("editStartDateInput");
     const endInput = document.getElementById("editEndDateInput");
     if (startInput) {
@@ -13075,6 +14313,7 @@ Click to manage or assign.`;
     }
     handleEstimateUnitChange();
     renderModalSubtasks(task);
+    renderParentControl(task);
     document.getElementById("taskDetailModal").style.display = "flex";
   }
   function renderModalSubtasks(task) {
@@ -13082,28 +14321,51 @@ Click to manage or assign.`;
     list.innerHTML = "";
     const subs = task.subtasks || [];
     if (subs.length === 0) {
-      list.innerHTML = '<div style="font-size:11px; color: var(--cp-text-subtle);">No subtasks added yet.</div>';
+      list.innerHTML = '<div class="jx-subtle-11">No sub-tasks in Jira yet.</div>';
     } else {
-      subs.forEach((s, idx) => {
+      subs.forEach((s) => {
         const item = document.createElement("div");
         item.style.display = "flex";
         item.style.justifyContent = "space-between";
         item.style.fontSize = "12px";
-        item.innerHTML = html`<span>• ${s.summary}</span><span style="font-weight:700;">${s.normalizedHours}h</span>`;
+        item.innerHTML = html`<span>• ${s.key ? s.key + ": " : ""}${s.summary}</span><span class="jx-bold">${s.normalizedHours ? s.normalizedHours + "h" : ""}</span>`;
         list.appendChild(item);
       });
+    }
+    const local = task.localSubtasks || [];
+    if (local.length) {
+      const box = document.createElement("div");
+      box.className = "local-subtasks";
+      const note = document.createElement("p");
+      note.textContent = `${local.length} sub-task${local.length === 1 ? "" : "s"} exist only in the planner, not in Jira: ${local.map((s) => s.summary).join(", ")}.`;
+      box.appendChild(note);
+      for (const [action, label2] of [["create", "Create in Jira"], ["drop", "Remove"]]) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = action === "create" ? "btn btn-primary btn-xs" : "btn btn-outline btn-xs";
+        b.textContent = label2;
+        b.addEventListener("click", async () => {
+          b.disabled = true;
+          const res = await callResolver2("resolveLocalSubtasks", { parentTaskId: task.key, action });
+          if (res && res.ok !== false) showFlag({ text: action === "create" ? `Created the sub-tasks of ${task.key} in Jira.` : `Removed the planner-only sub-tasks of ${task.key}.` });
+          await loadProjectPlan();
+          const updated = findAnyTask(task.key);
+          if (updated) renderModalSubtasks(updated);
+        });
+        box.appendChild(b);
+      }
+      list.appendChild(box);
     }
   }
   async function handleAddSubtask() {
     const summary = document.getElementById("newSubtaskSummary").value.trim();
-    const hours = parseInt(document.getElementById("newSubtaskHours").value, 10) || 8;
+    const hours = parseFloat(document.getElementById("newSubtaskHours").value);
     if (!summary || !activeTaskId) return;
-    await callResolver2("addSubtaskToTask", {
+    const res = await callResolver2("addSubtaskToTask", {
       parentTaskId: activeTaskId,
-      subtask: { summary, estimateValue: hours, estimateUnit: "HOURS" },
-      bufferType: document.getElementById("editBufferTypeSelect").value,
-      bufferValue: parseFloat(document.getElementById("editBufferValueInput").value) || 0
+      subtask: { summary, ...hours > 0 ? { estimateValue: hours, estimateUnit: "HOURS" } : {} }
     });
+    if (res && res.ok && res.createdKey) showFlag({ text: `Created sub-task ${res.createdKey} in Jira.` });
     document.getElementById("newSubtaskSummary").value = "";
     await loadProjectPlan();
     const updated = currentPlan.tasks.find((t) => t.key === activeTaskId);
@@ -13115,7 +14377,8 @@ Click to manage or assign.`;
     const selected = resSelect.options[resSelect.selectedIndex];
     const assigneeName = selected ? selected.value : "Unassigned";
     const assigneeAccountId = selected?.dataset?.accountId || void 0;
-    const hours = parseInt(document.getElementById("multiResourceHours").value, 10) || 20;
+    const enteredHours = parseInt(document.getElementById("multiResourceHours").value, 10);
+    const hours = Number.isFinite(enteredHours) && enteredHours > 0 ? enteredHours : void 0;
     const statusEl = document.getElementById("multiResourceStatus");
     const addBtn = document.getElementById("btnAddResourceSubtaskBtn");
     if (addBtn) {
@@ -13127,9 +14390,9 @@ Click to manage or assign.`;
         parentTaskId: activeTaskId,
         assigneeAccountId,
         assigneeName,
-        effortHours: hours
+        ...hours !== void 0 ? { effortHours: hours } : {}
       });
-      if (!res || res.success !== true) {
+      if (!res || res.ok !== true) {
         if (statusEl) {
           statusEl.textContent = res && (res.message || res.error) || "Jira did not create the subtask.";
           statusEl.style.color = "var(--cp-text-danger)";
@@ -13244,7 +14507,7 @@ Click to manage or assign.`;
     const curTask = (currentPlan?.tasks || []).find((t) => t.key === activeTaskId) || {};
     const updates = {};
     if (summary && summary !== curTask.summary) updates.summary = summary;
-    if (resource !== (curTask.resource || "Unassigned")) {
+    if (assSelect.dataset.touched === "1" && (resourceAccountId || "unassigned") !== assSelect.dataset.originalAccountId) {
       updates.resource = resource;
       if (resourceAccountId) updates.resourceAccountId = resourceAccountId;
     }
@@ -13271,12 +14534,6 @@ Click to manage or assign.`;
       if (!isNaN(prog) && (prog !== (curTask.progress || 0) || modalUseRollupProgressFlag)) {
         updates.progress = prog;
         updates.manualProgress = !modalUseRollupProgressFlag;
-        const effectiveStatus = updates.status || curTask.status;
-        if (prog === 100 && effectiveStatus !== "COMPLETED") {
-          updates.status = "COMPLETED";
-        } else if (prog > 0 && effectiveStatus === "NOT_STARTED") {
-          updates.status = "IN_PROGRESS";
-        }
       }
     }
     const targetInput = document.getElementById("editTargetProgressInput");
@@ -13301,6 +14558,7 @@ Click to manage or assign.`;
       closeModal("taskDetailModal");
       return;
     }
+    if (updates.progress !== void 0 && !await withStatusChoice([{ key: activeTaskId, progress: updates.progress, updates }])) return;
     const btn = document.getElementById("btnSaveTaskModal");
     if (btn) {
       btn.disabled = true;
@@ -13416,9 +14674,9 @@ Click to manage or assign.`;
         startWeek,
         spanWeeks: 3
       });
-      if (res && res.success === false) {
+      if (!res || res.ok !== true) {
         if (errEl) {
-          errEl.textContent = res.error || "Failed to create task in Jira.";
+          errEl.textContent = res && (res.message || res.error) || "Failed to create task in Jira.";
           errEl.style.display = "block";
         }
         return;
@@ -13506,9 +14764,9 @@ Click to manage or assign.`;
     }
     try {
       const res = await callResolver2("createJiraEpic", { summary });
-      if (res && res.success === false) {
+      if (!res || res.ok !== true) {
         if (errEl) {
-          errEl.textContent = res.error || "Failed to create epic in Jira.";
+          errEl.textContent = res && (res.message || res.error) || "Failed to create epic in Jira.";
           errEl.style.display = "block";
         }
         return;
@@ -13520,7 +14778,6 @@ Click to manage or assign.`;
         if (!currentPlan.availableEpics.some((e) => e.key === res.epic.key)) {
           currentPlan.availableEpics.push(res.epic);
         }
-        populateEpicDropdowns();
       }
       showFlag({ text: "Epic " + (res?.epic?.key || "") + " created." });
     } catch (err) {
@@ -13544,6 +14801,65 @@ Click to manage or assign.`;
     modal.dataset.dirty = "";
     const prompt = modal.querySelector(".discard-prompt");
     if (prompt) prompt.remove();
+    if (modal.id === "statusOfferModal" && statusOfferResolve) statusOfferResolve("cancel");
+  }
+  var statusOfferResolve = null;
+  function askStatusOffers(offers) {
+    const prompt = offerPrompt(offers);
+    const modal = document.getElementById("statusOfferModal");
+    if (!prompt || !modal) return Promise.resolve("keep");
+    document.getElementById("statusOfferQuestion").textContent = prompt.question;
+    const list = document.getElementById("statusOfferList");
+    list.replaceChildren(...prompt.lines.map((line) => {
+      const li = document.createElement("li");
+      li.textContent = line;
+      return li;
+    }));
+    list.hidden = prompt.lines.length === 0;
+    const move = document.getElementById("btnStatusOfferMove");
+    const keep = document.getElementById("btnStatusOfferKeep");
+    move.textContent = prompt.move;
+    keep.textContent = prompt.keep;
+    const opener = document.activeElement;
+    modal.style.display = "flex";
+    move.focus();
+    announce(prompt.question);
+    return new Promise((resolve) => {
+      statusOfferResolve = (choice) => {
+        statusOfferResolve = null;
+        hideModal(modal);
+        if (opener && typeof opener.focus === "function") opener.focus();
+        resolve(choice);
+      };
+    });
+  }
+  async function withStatusChoice(edits) {
+    const offers = statusOffers(edits.map((e) => ({ key: e.key, status: findTask(e.key)?.status, progress: e.progress, chosenStatus: e.updates.status })));
+    if (!offers.length) return true;
+    const choice = await askStatusOffers(offers);
+    if (choice === "cancel") return false;
+    if (choice === "move") {
+      for (const o of offers) {
+        const edit = edits.find((e) => e.key === o.key);
+        if (edit) edit.updates.status = o.to;
+      }
+    }
+    return true;
+  }
+  function setDialogProgressLock(key, status) {
+    const reason = progressLockReason({ key, status });
+    for (const id of ["editProgressInput", "editProgressSlider", "btnModalUseRollup"]) {
+      const el3 = document.getElementById(id);
+      if (el3) el3.disabled = !!reason;
+    }
+    document.querySelectorAll(".modal-prog-preset").forEach((b) => {
+      b.disabled = !!reason;
+    });
+    const note = document.getElementById("editProgressLockNote");
+    if (note) {
+      note.textContent = reason || "";
+      note.hidden = !reason;
+    }
   }
   function openModal() {
     return [...document.querySelectorAll(".modal-backdrop")].find((m) => m.style.display === "flex" || m.style.display === "block") || null;
@@ -13579,7 +14895,7 @@ Click to manage or assign.`;
   }
   function renderUtilizationView() {
     const cont = document.getElementById("utilizationProfilesContent");
-    const weekStarts = Array.from({ length: 8 }, (_, i) => addDays2(mondayOf(todayIso()), i * 7));
+    const weekStarts = Array.from({ length: 8 }, (_, i) => addDays(mondayOf(todayIso()), i * 7));
     const rows = weeklyHours(currentPlan?.tasks || [], weekStarts);
     if (rows.length === 0) {
       cont.innerHTML = "<div>No assigned, estimated tasks with dates on the plan.</div>";

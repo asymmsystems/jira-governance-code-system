@@ -10,7 +10,10 @@
  * until the user closes it (UP-69). Text goes in through textContent (INV-01).
  */
 
+import { showFlag as hostShowFlag } from '@forge/bridge';
+
 export const FLAG_MS = 10000;
+let hostFlagSeq = 0;
 const MAX_FLAGS = 3;
 
 export interface FlagOptions {
@@ -19,7 +22,29 @@ export interface FlagOptions {
   error?: boolean;
 }
 
+/**
+ * Inside Jira, a Flag is Jira's own flag, shown in the visible part of the Jira page: the planner's
+ * frame grows with its content, so a flag drawn at the bottom of the frame can be below the window
+ * (owner report). A flag with an action, and an error, stay until closed (UP-46, UP-69); others close
+ * by themselves. Where the host has no flags (the test harness), the flag is drawn in the frame.
+ */
 export function showFlag(opts: FlagOptions): HTMLElement | null {
+  if (typeof hostShowFlag === 'function') {
+    try {
+      let handle: { close: () => Promise<boolean | void> } | undefined;
+      handle = hostShowFlag({
+        id: `cascadeplan-${Date.now()}-${hostFlagSeq++}`,
+        title: opts.error ? 'CascadePlan: not saved' : 'CascadePlan',
+        description: opts.text,
+        type: opts.error ? 'error' : 'info',
+        isAutoDismiss: !opts.error && !opts.action,
+        ...(opts.action ? { actions: [{ text: opts.action.label, onClick: () => { if (handle) handle.close(); opts.action!.run(); } }] } : {})
+      });
+      return null;
+    } catch {
+      // The host refused the flag: draw it in the frame instead.
+    }
+  }
   const group = document.getElementById('flagGroup');
   if (!group) return null;
   const flag = document.createElement('div');

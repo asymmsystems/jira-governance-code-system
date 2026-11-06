@@ -8,7 +8,7 @@
  * CascadePlan: multi-select, batch edits and their undo label (B-16).
  */
 
-import { toggleKey, rangeKeys, moveSelectionBy, progressFromDigit } from '../../src/ui/selection';
+import { toggleKey, rangeKeys, moveSelectionBy, selectedBlockParents, progressFromDigit } from '../../src/ui/selection';
 import { actionLabel } from '../../src/ui/undo-plan';
 
 describe('selection (B-16 criterion 1)', () => {
@@ -56,5 +56,23 @@ describe('batch edits (B-16 criteria 2 and 3)', () => {
     expect(actionLabel('batchUpdateTasks', { items: [{ taskId: 'A-1', updates: { resourceAccountId: 'acc' } }, { taskId: 'A-2', updates: { resourceAccountId: 'acc' } }] } as any, e))
       .toBe('Assigned 2 issues');
     expect(actionLabel('batchUpdateTasks', { items: [] } as any, { keys: [], restore: [], reapply: [] })).toBe('Changed 0 issues');
+  });
+});
+
+describe('multi-select with a parent and its sub-tasks (ADR-003 section 7)', () => {
+  const tasks: any[] = [
+    { key: 'P', startDate: '2026-11-02', endDate: '2026-11-13', datesFromChildren: true, hierarchyLevel: 0 },
+    { key: 'S1', parentKey: 'P', startDate: '2026-11-02', endDate: '2026-11-06' },
+    { key: 'S2', parentKey: 'P', startDate: '2026-11-09', endDate: '2026-11-13' },
+    { key: 'E', startDate: '2026-11-02', endDate: '2026-11-20', datesFromChildren: true, isEpic: true, hierarchyLevel: 1 },
+    { key: 'L', startDate: '2026-11-03', endDate: '2026-11-04' }
+  ];
+  it('a selected parent moves as a block; its selected sub-task is not moved a second time', () => {
+    const sel = new Set(['P', 'S1', 'L', 'E']);
+    expect(selectedBlockParents(tasks, sel)).toEqual(['P']);
+    expect(moveSelectionBy(tasks, sel, 7).map(i => i.taskId)).toEqual(['L']);
+  });
+  it('without its parent selected, a sub-task moves on its own', () => {
+    expect(moveSelectionBy(tasks, new Set(['S2']), 7).map(i => i.taskId)).toEqual(['S2']);
   });
 });

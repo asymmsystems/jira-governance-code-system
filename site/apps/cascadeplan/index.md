@@ -1,62 +1,43 @@
 # CascadePlan
 
-**CascadePlan** provides visual sprint baseline control, scope creep detection, and Work Breakdown Structure (WBS) planning for Jira Cloud. It enables engineering leaders and release managers to freeze sprint commitments, detect scope drift in real time, and enforce a formal approval workflow for scope additions.
-
-![CascadePlan WBS Tree and Hierarchy](/assets/cascadeplan/01-wbs-tree.png)
+**CascadePlan** is a timeline planner inside Jira Cloud. It schedules work items with dependencies that can start at a percent of their predecessor, moves the dependent work for you, and keeps every date, link and parent change in Jira itself. Plan approvers can freeze a plan as a baseline and see how the scope changed since then.
 
 ---
 
-## 1. The Core Problem: Silent Scope Creep in Jira
+## 1. What CascadePlan does
 
-Jira allows anyone with edit permissions to add issues to an active sprint, modify story point estimates mid-sprint, or quietly remove delayed tasks without formal change control:
+### Timeline and dependencies
+- A timeline of the project's epics, stories, tasks and sub-tasks, with zoom from Day to Year.
+- Dependencies are Jira "Blocks" links. A link can start its successor when the predecessor reaches a percent of its work, for example 30%, not only at 100%.
+- When you move a work item, CascadePlan moves the work that depends on it (the cascade), and shows each Jira change before you drop the bar.
+- "Why this date?" names the link that sets a work item's earliest start and offers fixes.
+- A task or story moves together with its sub-tasks: work not started moves, work in progress keeps its start, finished work stays.
+- You can move a work item under another one, or change a task into a sub-task and back. CascadePlan makes the change in Jira after you confirm it.
 
-- **Invisible Commitment Inflation:** A sprint committed at 40 story points quietly expands to 65 points over two weeks, leading to missed deadlines and burnout.
-- **Lost Baseline History:** Once estimates are edited or tasks inserted, native Jira loses the original committed baseline. Sprint reports show velocity without explaining why commitments were breached.
-- **No Governance Over In-Flight Changes:** Stakeholders add "urgent requests" directly to active sprints without engineering lead approval, bypassing sprint planning discipline.
+### Jira stays the record
+- Every date, link, parent and sub-task you see exists in Jira. CascadePlan writes only values you chose in the action you took, as you, with your Jira permissions.
+- The Changes panel lists every Jira write of your session, with the old and the new value. Undo and Redo cover the last 20 changes.
 
----
+### Plans and baselines
+- Scenario plans next to the Main Plan: each plan has its own row order, columns and milestones; dates, links and the hierarchy are the same in every plan, because they are Jira's.
+- Baselines: a plan approver freezes the plan. The toolbar then shows the scope change since that moment: hours, items added, removed or ending later. Anyone in the project can ask a plan approver to accept the new scope; accepting freezes a new baseline version. Versions can be compared and exported as CSV.
 
-## 2. Key Capabilities
-
-### 1. Visual Work Breakdown Structure (WBS)
-CascadePlan organizes complex deliverables into a visual hierarchical tree: Initiatives, Epics, Stories, Tasks, and Subtasks. Drag-and-drop planning lets leads sequence work, set dependencies, and inspect schedule horizons without switching between disconnected Jira boards.
-
-### 2. Sprint & Plan Baseline Freezing
-At the conclusion of sprint planning, administrators or release managers freeze the plan baseline with a single click. CascadePlan captures a cryptographic snapshot of all committed issues, original estimates, assigned personnel, and target milestones.
-
-### 3. Real-Time Scope Creep Detection
-Any divergence from the frozen baseline is detected automatically:
-- **Added Scope:** New issues injected into the active sprint.
-- **Estimate Expansion:** Existing tasks where estimates or story points increased after baseline freeze.
-- **Removed Scope:** Unfinished issues removed from the sprint without formal review.
-- **Commitment Variance (%):** Instant visibility into net delta hours and scope expansion percentage.
-
-![Scope Creep Alert and Commitment Delta](/assets/cascadeplan/03-scope-creep-alert.png)
-
-### 4. Controlled Scope Shift Approval Workflow
-When unexpected work arises, team members submit a **Scope Shift Request** detailing added tasks, hours, and business justification. Designated baseline authorities approve or reject the shift, maintaining an immutable record of authorized scope modifications.
-
-![Scope Shift Approval Modal](/assets/cascadeplan/05-shift-approval.png)
-
-### 5. Resource Allocation Utilization Grid *(New in this release)*
-A multi-week capacity grid visualizes team workload across the project timeline:
-- **Weekly Capacity Balancing:** Flags weeks where team members exceed standard 40-hour capacity.
-- **Bottleneck Detection:** Identifies overallocation spikes across dependencies before sprint execution begins.
-
-![Resource Allocation Grid](/assets/cascadeplan/02-resource-heatmap.png)
+### Keyboard and views
+- Arrow keys move around the grid; Space starts a keyboard move of a bar; Ctrl+F searches tasks.
+- A Table view and a Utilization view (work per person and week).
 
 ---
 
-## 3. Data Privacy and Zero-Egress Architecture
+## 2. Data and privacy
 
-- **100% Atlassian Forge Native:** All computation executes inside Atlassian's secure execution environment.
-- **Zero External Network Calls:** CascadePlan makes no outbound HTTP requests to external servers.
-- **Tenant Data Residency:** Baselines, shift requests, and utilization metrics reside in customer Forge Key-Value Storage (KVS) within your Atlassian site.
+- CascadePlan runs entirely on Atlassian Forge. It has no external servers and makes no calls outside your Atlassian site.
+- Planning data (row order, columns, milestones, plans and baselines) is stored in Forge storage of your site. The shared start date and the trigger percents are Jira issue properties of the issues they belong to.
+- The personal data CascadePlan stores is the Atlassian account id of who froze a baseline, of who requested or reviewed a scope change, of each person who works on a task through a Jira sub-task, and of the Jira administrator who last saved the approver groups. Each id is reported to Atlassian's personal data reporting service once every 7 days, and the records of a closed account are changed to name no one. A contributor name that matches no account (for example a placeholder role) is kept as typed.
 
 ---
 
-## 4. Next Steps
+## 3. Next steps
 
-- [Admin Guide](/apps/cascadeplan/admin-guide): Configure baseline authorities and permission schemes.
-- [User Guide](/apps/cascadeplan/user-guide): Freeze baselines, detect scope creep, and request shifts.
-- [Scope Creep Auditing](/apps/cascadeplan/scope-creep-audit): Export sprint commitment variance reports for retrospectives.
+- [User Guide](/apps/cascadeplan/user-guide): plan, link, move and baseline your work.
+- [Admin Guide](/apps/cascadeplan/admin-guide): permissions, plan approvers, data and uninstall.
+- [Baselines and Scope Reviews](/apps/cascadeplan/scope-creep-audit): use baselines in reviews and retrospectives.
