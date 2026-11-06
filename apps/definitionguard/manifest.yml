@@ -28,6 +28,12 @@ modules:
       description: Blocks workflow transitions when mandatory Definition of Done checklist items remain incomplete
       function: validateTransition
       projectTypes: ['company-managed', 'team-managed']
+  trigger:
+    # M-4: a deleted issue's checklist, history and evidence are deleted with it.
+    - key: issue-deleted
+      function: issue-deleted-fn
+      events:
+        - avi:jira:deleted:issue
   scheduledTrigger:
     # ADR-010: the weekly personal data report, erasure of closed accounts, and the one-time
     # pseudonym pass over records written before 6.0.0.
@@ -45,6 +51,8 @@ modules:
       handler: index.adminHandler
     - key: personal-data-fn
       handler: index.personalDataTrigger
+    - key: issue-deleted-fn
+      handler: index.issueDeletedTrigger
 
 resources:
   - key: main

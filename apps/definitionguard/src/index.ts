@@ -46,6 +46,7 @@ import { PartyStore, ShownParty } from './storage/party-store';
 
 export { settingsHandler } from './settings/settings-resolvers';
 export { personalDataTrigger } from './privacy/personal-data';
+export { issueDeletedTrigger } from './privacy/issue-deleted';
 
 export { setGlobalStorageProvider, resolveStorage } from './storage/forge-storage';
 

@@ -116,12 +116,14 @@ export async function saveTemplate(payload: any, context?: any, storageProvider?
   return { template: toTemplateView(template) };
 }
 
-export const RESYNC_PAGE = 25;
+// M-8: each issue costs several KVS reads, two writes and a property PUT with up to 3 tries, so a
+// page of 10 stays well inside the 25 s invocation limit even under Jira rate limiting.
+export const RESYNC_PAGE = 10;
 export const NO_TEMPLATE_TO_RESYNC = 'This issue type has no project template to re-sync to.';
 
 /**
  * Re-syncs open issues of one issue type to the current project template revision (B-16),
- * one page of at most 25 issues per call. Issues on another template or already current are
+ * one page of at most RESYNC_PAGE (10) issues per call. Issues on another template or already current are
  * skipped. Each update is one Resync entry; ticks on unchanged ids are kept.
  */
 export async function resyncIssues(payload: any, context?: any, storageProvider?: StorageProvider) {

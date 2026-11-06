@@ -76,6 +76,14 @@ Baseline at `7f87747` (clean install of `packages/asymm-jira-ui`, then the app):
   - M-7: the admin page catches a failed load (shows the error state instead of a spinner), a failed or refused save and a failed group search, and shows them in a "Not saved" error message.
 - **Proof:** `test/ui/panel-view-model.test.ts` "formats the approver audit line ..." (rewritten) and "(M-1) names the template waiver permission when it is not the default"; `test/resolvers/panel-resolvers.test.ts` "(M-1) returns the approver groups a Jira admin chose ..."; `test/hygiene.test.ts` "(M-2) the panel has no 'Open Four Realities panel' button" and "(M-3) the admin page describes only what approvers can do"; new `test/ui/admin-view.test.ts` (3 tests, M-3 and M-7); `test/validator/gate-rule.test.ts` block message. `test/storage/size-budget.test.ts`: a panel load now reads one more key, the approver policy (exact list asserted). Full suite 403 passed.
 
+### M-4 and M-8. A deleted issue's records go with it; re-sync in pages of 10
+
+- **Decision:** [ADOPTED: owner instruction 'do NOW', 2026-11-06] the review's fixes (CascadePlan's `issue-deleted` pattern; page size 10).
+- **What changed:**
+  - M-4: new `src/privacy/issue-deleted.ts` (`deleteIssueRecords`, `issueDeletedTrigger`): deletes `dg:state:<id>`, every `dg:evt:<id>:*` (pages of 100, at most 200 pages) and `dg:checklist:<id>`; logs a count only. `manifest.yml`: trigger `issue-deleted` on `avi:jira:deleted:issue`, function `issue-deleted-fn` (`index.issueDeletedTrigger`). The person links (`dg:pty:`, `dg:pid:`) stay, because the person may appear on other issues; the weekly report covers them.
+  - M-8: `RESYNC_PAGE` 25 to 10 (`src/settings/settings-resolvers.ts`); the settings page already loops over `nextCursor`.
+- **Proof:** new `test/privacy/issue-deleted.test.ts` (6 tests): "deletes the state, every event in pages and the v1 record of that issue only" (250 events; a neighbour issue 700011 is kept), "ignores an event without a numeric issue id", "treats a provider page without keys as empty", "stops after MAX_DELETE_PAGES pages", "the trigger logs a count and never throws", "is declared in the manifest". `test/settings/resync.test.ts` asserts `maxResults=10`. Full suite 33 suites, 409 tests passed; `issue-deleted.ts` 100% branches.
+
 ## Site changes needed
 
 (The main session applies these to the asymm.systems site repository, `asymm-corporate/repository/code/asymm-corporate-code-pfw/src/main/jbake/`, read at `6d838f9`. Each: page, old text, new text.)
