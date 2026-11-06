@@ -25,6 +25,7 @@ import { newSiteKey, PartyRepository, PartyResolver } from '../storage/party-rep
 import { approverGroupNames, isApprover } from './approver';
 import { convertRecord, hasConversionJournal } from './conversion';
 import { HISTORY_PAGE_SIZE, MAX_CONTENT_PARTS, MAX_PART_BYTES, SealRepository, splitUtf8, StorageProvider } from '../storage/seal-repository';
+import { logFailure } from './log';
 
 export interface LedgerSealDeps {
   jira: JiraClient;
@@ -555,7 +556,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
     try {
       await repo.deleteContent(previousWorkEffort.currentContentId);
     } catch (err) {
-      console.error(`LedgerSeal: could not delete the replaced snapshot of issue ${issue.id}`, err);
+      logFailure(`could not delete the replaced snapshot of issue ${issue.id}`, err);
     }
   }
 
@@ -600,7 +601,7 @@ export async function verifyIssueFlow(payload: any, context: any, deps: LedgerSe
   try {
     party = await new PartyRepository(deps.storage).partyForRead();
   } catch (err) {
-    console.error('LedgerSeal: verify failed', err);
+    logFailure('verify failed', err);
     return errorResult('STORAGE', now);
   }
   const live = await readLiveSnapshot(deps.jira, issue.id, now, { party });
@@ -610,7 +611,7 @@ export async function verifyIssueFlow(payload: any, context: any, deps: LedgerSe
   try {
     result = await verifyAgainstSeal(deps, issue.id, live, now);
   } catch (err) {
-    console.error('LedgerSeal: verify failed', err);
+    logFailure('verify failed', err);
     return errorResult('STORAGE', now);
   }
   return {
@@ -873,7 +874,7 @@ export async function issueChangedFlow(event: any, deps: LedgerSealDeps): Promis
     const { recorded } = await recordIncidentIfNew(deps, repo, evaluation, now);
     return { recorded };
   } catch (err) {
-    console.error('LedgerSeal: issue event handling failed', err);
+    logFailure('issue event handling failed', err);
     return { recorded: false };
   }
 }

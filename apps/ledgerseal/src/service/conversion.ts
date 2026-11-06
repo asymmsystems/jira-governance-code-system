@@ -22,6 +22,7 @@ import { assignmentHash, isConsistent, withRecordHash } from '../domain/seal-rec
 import { JiraClient } from '../jira/jira-client';
 import { PartyRepository } from '../storage/party-repository';
 import { MAX_CONTENT_PARTS, MAX_PART_BYTES, SealRepository, splitUtf8, StorageProvider } from '../storage/seal-repository';
+import { logFailure } from './log';
 
 export type ConversionResult = 'NO_RECORD' | 'ALREADY' | 'CONVERTED' | 'REDACTED_INVALID' | 'BUSY' | 'JIRA_UNREACHABLE' | 'TOO_LARGE';
 
@@ -432,7 +433,7 @@ export async function convertAll(
       counts[result]++;
       if (result === 'CONVERTED') await onConverted(issueId);
     } catch (err) {
-      console.error(`LedgerSeal: could not convert the record of issue ${issueId}`, err);
+      logFailure(`could not convert the record of issue ${issueId}`, err);
     }
   }
   return counts;
