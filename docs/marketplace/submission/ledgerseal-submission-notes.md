@@ -16,7 +16,7 @@ Every scope declared in `manifest.yml` is listed below with how the code uses it
 | Scope | User-Facing Capability | How the code uses it |
 |---|---|---|
 | `read:jira-work` | Snapshot hashing, change detection, separation of duties, approver permission checks | Reads the issue fields, the field list, comments, work logs, and the change log to compute the SHA-256 snapshot, detect changes after approval, and name who changed each item. The change log is also used to stop the author of a change from approving it. Reads the user's project and Jira permissions (`mypermissions`) to decide who may seal. |
-| `write:jira-work` | Searchable seal property (`ledgerseal-cert`) | Writes the seal attestation into the `ledgerseal-cert` issue property on seal, approval of changes, revocation, and each new detected change. The manifest indexes `status`, `everCompromised`, and `incidentCount` so users can search them with JQL. |
+| `write:issue.property:jira` | Searchable seal property (`ledgerseal-cert`) | The narrow (granular) scope for issue properties, used instead of `write:jira-work`: the app writes nothing else in Jira. Writes the seal attestation into the `ledgerseal-cert` issue property on seal, approval of changes, revocation, and each new detected change. The manifest indexes `status`, `everCompromised`, and `incidentCount` so users can search them with JQL. |
 | `read:jira-user` | Names in the change list and approver groups | Reads a user's display name to show who changed an item (names are never stored), the current user's groups to check approver-group membership, and group names for the group search and group list on the LedgerSeal approvers admin page. |
 | `storage:app` | Seal records, history, and approver groups | Keeps the seal records, the sealed snapshots, the hash-chained history, the approver group list, and the token-to-account map in Forge key-value storage. |
 | `report:personal-data` | Personal data reporting | A weekly scheduled trigger reports every account id the app holds to the personal data reporting API. For a closed account it replaces the account's token-to-account entry with a closed mark that holds no account id, so the pseudonymous token in the seal records names no one, and removes the account id from the approver policy. |
@@ -29,6 +29,7 @@ Every scope declared in `manifest.yml` is listed below with how the code uses it
 - **Forge Storage:** Seal records, history, and approver groups are kept in Atlassian Forge key-value storage (`storage:app`). No third-party databases are used.
 - **Data Residency:** Data residency follows Atlassian's rules for Forge app storage.
 - **Signing:** Every seal attestation and evidence export is signed with Ed25519 by the Asymm Systems key of the production environment (`ls-prod-2026-11`). The private key is a Forge encrypted variable; the public key is in https://github.com/asymmsystems/ledgerseal-verifier.
+- **Restricted comments:** Comments restricted to a project role or group are covered only when Jira lets the LedgerSeal app read them, that is when the app's user is in that role or group; otherwise a change to such a comment is not detected. A covered comment that is restricted, at the seal or now, is shown in the panel only to a user who can see it in Jira; others see that a comment changed, without its text, author or time. The evidence is exported only to a user who can see every such comment. If LedgerSeal can no longer read a covered comment (it was deleted, or restricted since to a role or group the app's user is not in), the panel shows that comment's sealed text to no one, and for that seal: its evidence is not exported to anyone; approving the changes makes a new seal whose evidence can be exported.
 - **Personal data:** Hashed seal records name people by a pseudonymous party token (HMAC-SHA-256 of the account id under a per-site key in app storage), never by account id or name. The `ledgerseal-cert` issue property holds no account id. Account ids are reported weekly; a closed account's token-to-account entry keeps only a closed mark, with no account id. A deleted issue's records are deleted by a trigger on `avi:jira:deleted:issue`.
 
 ---
@@ -42,7 +43,7 @@ Install LedgerSeal on your own test site; nothing depends on the Asymm Systems s
 ## 4. Reviewer Test Plan Steps
 
 ### Test Step 1: Seal an issue
-1. Open any issue, open the **Approval Seal** panel from the issue's app button (**View app actions**, then **Approval Seal**).
+1. Open any issue. The **Approval seal** entry in the details column shows the seal state; expand it to see it. Open the **Approval Seal** panel from the issue's app button (**View app actions**, then **Approval Seal**).
 2. Click **Seal this issue**, choose the sign-off role, tick the declaration, click **Sign and seal**.
 3. Observe the green `SEALED` lozenge and "Approval seal: Sealed. No change detected since approval."
 4. Click **Show details** to see the signer, sign-off role, hash and covered fields; **Show history** lists the seal with who acted.

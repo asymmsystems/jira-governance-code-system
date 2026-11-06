@@ -227,7 +227,8 @@ export async function convertRecord(
   // record (and a seal or revoke followed) in between, so both are read again; if either changed, start over.
   const weNow = await repo.getWorkEffort(issueId);
   const journalNow: Journal | null = (await storage.get(journalKey)) || null;
-  if (!weNow || weNow.recordHash !== we.recordHash || canonicalJson(journalNow) !== canonicalJson(journal)) {
+  // M-10: the whole record is compared; the invalid-record branch writes a new record with the same hash
+  if (!weNow || canonicalJson(weNow) !== canonicalJson(we) || canonicalJson(journalNow) !== canonicalJson(journal)) {
     await releaseLease(storage, issueId, holder);
     return attempt < 3 ? convertRecord(deps, issueId, now, attempt + 1) : 'BUSY';
   }
@@ -270,9 +271,12 @@ async function convertHeld(
   const newContent = content ? redactSnapshot(content, r) : null;
   const currentParty = r.id(we.currentAssignment.partyId, true) as string;
 
-  // M-9: before writing, this run must still hold the lease and the record must be the one it read
+  // M-9, M-10: before writing, this run must still hold the lease, the record must be the one it read (all of it),
+  // and no row may follow its head (a seal or revoke that claimed its row and has not saved the record yet)
   const heldAndUnchanged = async () =>
-    (await holdsLease(storage, issueId, holder)) && (await repo.getWorkEffort(issueId))?.recordHash === we.recordHash;
+    (await holdsLease(storage, issueId, holder)) &&
+    canonicalJson(await repo.getWorkEffort(issueId)) === canonicalJson(we) &&
+    !(await repo.getStatusRow(issueId, we.statusHead.seq + 1));
 
   if (!valid) {
     // Replace the ids where they are, without new hashes: the record stays invalid, and no id remains
@@ -287,6 +291,8 @@ async function convertHeld(
         for (let i = 0; i < parts.length; i++) await storage.set(`ls3:content:${we.currentContentId}:${i}`, parts[i]);
       }
     }
+    // The record is written last, and only while nothing moved on during the writes above
+    if (!(await heldAndUnchanged())) return 'BUSY';
     await storage.set(`ls3:we:${issueId}`, { ...we, currentAssignment: { ...we.currentAssignment, partyId: currentParty } });
     return 'REDACTED_INVALID';
   }

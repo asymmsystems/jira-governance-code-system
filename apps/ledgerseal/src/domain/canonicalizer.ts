@@ -394,6 +394,13 @@ export function canonicalizeIssueState(
     }))
     .sort((a, b) => codeUnitCompare(a.id, b.id));
 
+  // F-06: which comments Jira restricts to a role or group. Kept next to the snapshot, outside the hashed form, so
+  // the panel and the evidence export show such a comment only to a viewer who can see it in Jira.
+  const restrictedComments = rawComments
+    .filter(c => c?.visibility && typeof c.visibility === 'object' && (c.visibility.value || c.visibility.identifier))
+    .map(c => ({ id: String(c.id ?? ''), type: String(c.visibility.type ?? ''), value: String(c.visibility.value ?? c.visibility.identifier ?? '') }))
+    .sort((a, b) => codeUnitCompare(a.id, b.id));
+
   return {
     canonicalizerVersion: version,
     issueId,
@@ -407,6 +414,7 @@ export function canonicalizeIssueState(
     attachments: canonicalAttachments,
     comments: canonicalComments,
     excluded,
+    restrictedComments,
     capturedAt
   };
 }

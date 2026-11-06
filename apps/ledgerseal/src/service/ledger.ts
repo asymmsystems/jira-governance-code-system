@@ -47,7 +47,8 @@ export type SealErrorCode =
   | 'SNAPSHOT_TOO_LARGE'
   | 'LICENSE_INACTIVE'
   | 'NOT_ADMIN'
-  | 'ISSUE_CHANGED';
+  | 'ISSUE_CHANGED'
+  | 'RESTRICTED_EVIDENCE';
 
 export interface SealFailure {
   ok: false;
@@ -69,8 +70,15 @@ const MESSAGES: Record<SealErrorCode, string> = {
   SNAPSHOT_TOO_LARGE: 'This issue is too large to seal (over about 2.6 MB of content). Nothing was saved.',
   LICENSE_INACTIVE: 'The LedgerSeal licence is not active. Ask your Jira admin to renew it.',
   NOT_ADMIN: 'Only a Jira admin can change who can seal.',
-  ISSUE_CHANGED: 'The issue changed since you opened it. Nothing was saved. Refresh, review the issue, and seal again.'
+  ISSUE_CHANGED: 'The issue changed since you opened it. Nothing was saved. Refresh, review the issue, and seal again.',
+  RESTRICTED_EVIDENCE:
+    'This seal covers comments that are restricted to a role or group you are not in, or that LedgerSeal can no longer read (deleted or restricted since), so LedgerSeal does not export its evidence. If a covered comment was deleted, approving the changes makes a new seal whose evidence can be exported.'
 };
+
+const isEmptySide = (value: unknown) => value === null || value === undefined || value === '(empty)';
+
+/** F-06: shown in place of a changed comment that the viewer cannot see in Jira. */
+export const RESTRICTED_COMMENT_TEXT = 'A restricted comment that you cannot see in Jira';
 
 /**
  * The hash of the issue as the viewer saw it (F-05): the current canonical form of the live issue as Jira returned
@@ -707,6 +715,27 @@ async function verifyAgainstSeal(
     })
   );
   analysis.seal = await resolveSummary(analysis.seal, resolver);
+  // F-06: a changed comment restricted to a role or group shows its text only to a viewer who can see it in Jira
+  const commentIds = analysis.tamperedFields.filter(d => d.fieldId.startsWith('comment:')).map(d => d.fieldId.slice('comment:'.length));
+  const hidden = await hiddenComments(deps, issueId, sealed, live.raw, commentIds);
+  analysis.tamperedFields = analysis.tamperedFields.map(diff => {
+    if (!hidden.has(diff.fieldId.slice('comment:'.length)) || !diff.fieldId.startsWith('comment:')) return diff;
+    // L-18: Jira hides a restricted comment entirely from such a viewer, its author and time included, so the row
+    // says only that a comment changed
+    const { detail: _detail, changedByClosed: _closed, changedByUnknown: _unknown, ...rest } = diff;
+    return {
+      ...rest,
+      changedBy: [],
+      changedAt: null,
+      // An empty side (no comment before, or none now) stays empty
+      sealedValue: isEmptySide(diff.sealedValue) ? diff.sealedValue : RESTRICTED_COMMENT_TEXT,
+      liveValue: isEmptySide(diff.liveValue) ? diff.liveValue : RESTRICTED_COMMENT_TEXT,
+      sealedTruncated: false,
+      liveTruncated: false,
+      sealedLong: false,
+      liveLong: false
+    };
+  });
   return {
     ...analysis,
     coveredFields: sealed.fields.map(f => ({ id: f.id, name: f.name })),
@@ -719,6 +748,26 @@ async function verifyAgainstSeal(
  * sealed, changed or revoked (only those are in the map), or a closed account (ADR-011).
  */
 export const UNNAMED_PERSON = 'a user no longer on this issue';
+/**
+ * F-06, H-2: of these comment ids, the ones this viewer must not see: every comment the app can no longer read
+ * (deleted, or restricted to a role or group the app user is not in), and a readable comment restricted at the seal or
+ * now that is not in the viewer's own comment list (read as the user). A failed read hides every restricted one.
+ */
+async function hiddenComments(deps: LedgerSealDeps, issueId: string, sealed: CanonicalIssueSnapshot, liveRaw: any, commentIds: string[]): Promise<Set<string>> {
+  if (commentIds.length === 0) return new Set();
+  const live = rawComments(liveRaw);
+  const liveIds = new Set(live.map(c => String(c?.id)));
+  // H-2 (owner decision 2026-11-06, fail closed): a comment the app can no longer read may have been deleted, or
+  // restricted to a role or group the app user is not in. Its sealed text is hidden from everyone.
+  const gone = commentIds.filter(id => !liveIds.has(id));
+  const restricted = new Set([...(sealed.restrictedComments ?? []).map(c => c.id), ...live.filter(c => c?.visibility).map(c => String(c.id))]);
+  const candidates = commentIds.filter(id => liveIds.has(id) && restricted.has(id));
+  if (candidates.length === 0) return new Set(gone);
+  const visible = await deps.jira.getVisibleCommentIds(issueId);
+  const seen = new Set(visible.ok ? visible.value : []);
+  return new Set([...gone, ...candidates.filter(id => !seen.has(id))]);
+}
+
 /** Shown for a person whose account was closed (the 11.50 wording, owner decision 2026-11-06). */
 export const DELETED_USER = 'a deleted user';
 
@@ -874,6 +923,27 @@ export async function evidenceFlow(payload: any, context: any, deps: LedgerSealD
   if (seal === 'missing' || !isConsistent(seal)) return fail('INVALID_REQUEST', 'The seal record failed its integrity check, so no evidence can be exported.');
   const snapshot = await repo.getContent(seal.workEffort);
   if (!snapshot) return fail('INVALID_REQUEST', 'The sealed snapshot could not be read.');
+  // F-06, H-1: the snapshot holds the text of every comment it covers, and that text is hashed, so it cannot be cut
+  // out. The evidence goes only to a viewer who can see every sealed comment that is restricted, by the same rule as
+  // the panel: restricted at the seal, or restricted now, or (a seal made before F-06) removed since.
+  const live = await deps.jira.getComments(issue.id);
+  if (!live.ok) return fail('JIRA_UNREACHABLE');
+  const sealedIds = (snapshot.comments ?? []).map(c => c.id);
+  const liveIds = new Set(live.value.map(c => String(c?.id)));
+  const restrictedNow = new Set(live.value.filter(c => c?.visibility).map(c => String(c.id)));
+  // H-2 (owner decision 2026-11-06, fail closed): a sealed comment the app can no longer read may be deleted or
+  // restricted to a role or group the app user is not in; no one's list can prove the viewer may see it
+  if (sealedIds.some(id => !liveIds.has(id))) return fail('RESTRICTED_EVIDENCE');
+  const restricted = new Set([
+    ...(snapshot.restrictedComments ?? []).map(c => c.id).filter(id => liveIds.has(id)),
+    ...sealedIds.filter(id => restrictedNow.has(id))
+  ]);
+  if (restricted.size > 0) {
+    const visible = await deps.jira.getVisibleCommentIds(issue.id);
+    if (!visible.ok) return fail('JIRA_UNREACHABLE');
+    const seen = new Set(visible.value);
+    if ([...restricted].some(id => !seen.has(id))) return fail('RESTRICTED_EVIDENCE');
+  }
   const history: WorkEffortStatus[] = [];
   for (let from = 1; from <= seal.workEffort.statusHead.seq; from += HISTORY_PAGE_SIZE) {
     history.push(...(await repo.getStatusRows(issue.id, from, seal.workEffort.statusHead.seq)));

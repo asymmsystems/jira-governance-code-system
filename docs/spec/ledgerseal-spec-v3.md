@@ -231,6 +231,8 @@ Every other field with a value is covered, including reporter, issue type, proje
 ### 4.4 Comments
 All comments come from `/rest/api/3/issue/{id}/comment`, paged by 100 (LS-15). Each is `{ id, authorAccountId, created (UTC), body (ADF, section 4.3) }`, sorted by id. An edit changes `body` and so breaks the seal.
 
+Restricted comments (F-06): the comments come from the app's own read, so a comment restricted to a project role or group the app user is not in is not returned by Jira and is not covered (seen live on LSP-5, 2026-11-06, with a comment restricted to the Administrators role). The snapshot records the restricted comments it covers in `restrictedComments` (`{ id, type, value }`, outside the hashed form). The panel shows a changed restricted comment's text only to a viewer whose own comment list (read as the user) contains it, otherwise "A restricted comment that you cannot see in Jira", with no author and no time (L-18); a removed restricted comment is never shown. `seal-evidence-api` reads the live comments as the app and answers `RESTRICTED_EVIDENCE` to a viewer who cannot see every sealed comment that is restricted at the seal or now (H-1). Decision (suite owner, 2026-11-06, H-2, fail closed): a sealed comment the app can no longer read (deleted, or restricted since to a role or group the app user is not in, which Jira does not return to the app) counts as possibly restricted for every seal: the panel shows its sealed text, author and time to no one, and the seal's evidence is refused to everyone. Cost: after a covered comment is deleted, that seal's evidence cannot be exported; approving the changes makes a new seal whose evidence can be exported (its history keeps the earlier rows).
+
 ### 4.5 Attachments
 Each is `{ id, filename, size, mimeType, created (UTC), authorAccountId }`, sorted by id. Content is not hashed. Jira gives a replaced file a new id.
 
@@ -243,6 +245,7 @@ Each is `{ id, filename, size, mimeType, created (UTC), authorAccountId }`, sort
 
 ```yaml
 modules:
+  jira:issueContext:    ledgerseal-context (UI Kit, native, resource context; the seal state in the issue details column, F-12)
   jira:issuePanel:      ledgerseal-panel (UI Kit, native, resource main, icon resource:icons;icon.svg)
   jira:workflowValidator: ledgerseal-validator, function validate-transition
   jira:entityProperty:  ledgerseal-cert-index on issue property ledgerseal-cert
@@ -260,18 +263,18 @@ app:
   runtime: nodejs22.x
   licensing: { enabled: true }
 permissions:
-  scopes: read:jira-work, write:jira-work, read:jira-user, storage:app, report:personal-data
+  scopes: read:jira-work, write:issue.property:jira, read:jira-user, storage:app, report:personal-data
 ```
 
 | Scope | Why |
 |---|---|
 | `read:jira-work` | Read the issue, comments, change log, field list and the user's own permissions |
-| `write:jira-work` | Write the app's own `ledgerseal-cert` issue property. The app never edits issue fields |
+| `write:issue.property:jira` | Write the app's own `ledgerseal-cert` issue property; the granular scope replaces `write:jira-work` (F-20). The app never edits issue fields |
 | `read:jira-user` | Read display names to show who changed an item (never stored), the caller's groups, groups for the admin page |
 | `storage:app` | Keep seal records, history and the token-to-account map in KVS |
 | `report:personal-data` | Weekly personal data report and erasure of closed accounts (ADR-011) |
 
-**Grader conflict (recorded, not changed).** `loop-engine/graders/grade_security.py` passes with these scopes, and v1 claimed "only `read:jira-work` and `storage:app`". The app cannot publish its property without `write:jira-work` (FG-27). LedgerSeal keeps the scope and states it.
+**Grader conflict (recorded, not changed).** `loop-engine/graders/grade_security.py` passes with these scopes, and v1 claimed "only `read:jira-work` and `storage:app`". The app needs a write scope to publish its property (FG-27); since F-20 it uses the granular `write:issue.property:jira`, not `write:jira-work`, and states it.
 
 Trigger events can arrive up to 3 minutes late (Forge trigger module page). The validator therefore checks the live issue itself at every transition and never relies on the trigger alone.
 

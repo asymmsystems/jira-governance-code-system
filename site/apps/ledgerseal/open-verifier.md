@@ -60,7 +60,7 @@ PASS signature (ls-dev-2026-11)
 
 ### Exit Codes
 - `0`: All five checks passed. The evidence file has not been changed since it was exported and signed, and it was signed with the private key that belongs to the public key you used. This does not show that nobody could have written a different, consistent record: Asymm Systems holds the signing key, and anyone who can rewrite the app's stored data, including the vendor, could write a new consistent chain.
-- `1`: One or more verification checks failed. The evidence has been tampered with or signature is invalid.
+- `1`: At least one check failed, and the FAIL lines name which. The evidence may have been changed after it was exported, or the public key file you gave is not the key that signed it, or a part of the evidence is missing.
 - `2`: Command line usage error, missing argument, or file not found.
 
 ---

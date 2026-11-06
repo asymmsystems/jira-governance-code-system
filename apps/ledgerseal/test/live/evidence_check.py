@@ -19,8 +19,13 @@ with sync_playwright() as p:
     dump(f'property-{key}.json', value)
     print('property', prop['status'], 'schema', value.get('schemaVersion'), 'status', value.get('status'), 'keyId', value.get('keyId'),
           'has sealedByAccountId', 'sealedByAccountId' in value, 'signed', 'sig' in value)
-    click_text(pg, 'Show details')
-    click_text(pg, 'Show evidence (JSON)')
+    for label in ('Show details', 'Show evidence (JSON)'):
+        try:
+            click_text(pg, label)
+        except Exception:
+            pg.screenshot(path=str(OUT / f'evidence-fail-{key}.png'))
+            print('could not click', label)
+            raise
     pg.wait_for_timeout(6000)
     text = pg.locator('pre, code').first.inner_text()
     evidence = json.loads(text)

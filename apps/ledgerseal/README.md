@@ -18,6 +18,7 @@ Built on Atlassian Forge. The app backend makes no outbound network calls, and t
 
 - **Separation of duties:** a user who changed covered content after the last seal (a covered field in Jira's change log, a comment or work log they added or edited, an attachment they added) cannot approve the changes, revoke the seal, or seal again after another approver revokes it. Status, Rank and Sprint changes do not count. Jira does not record who deleted a comment or a work log, so a deletion cannot be attributed.
 - **What was seen is what is sealed:** the panel sends the hash of the issue as it showed it; a seal is refused if the issue changed since.
+- **Restricted comments (F-06):** Comments restricted to a project role or group are covered only when Jira lets the LedgerSeal app read them, that is when the app's user is in that role or group; otherwise a change to such a comment is not detected. A covered comment that is restricted, at the seal or now, is shown in the panel only to a user who can see it in Jira; others see that a comment changed, without its text, author or time. The evidence is exported only to a user who can see every such comment. If LedgerSeal can no longer read a covered comment (it was deleted, or restricted since to a role or group the app's user is not in), the panel shows that comment's sealed text to no one, and for that seal: its evidence is not exported to anyone; approving the changes makes a new seal whose evidence can be exported.
 - **Covered fields** are chosen by field type from the site field list (`/rest/api/3/field`). Rank, Sprint, SLA timers, satisfaction, request participants, approvals, development summary, Sentiment, forms counts, Agent Sessions, status, resolution and Jira's own timestamps are left out, and the panel lists each with the reason. Every other field with a value is covered.
 - **Trust:** the panel and the validator decide only from app storage, which only the app can read and write. The `ledgerseal-cert` property is an output for other tools. Any user who can edit an issue can change its properties, so a reader must check the signature.
 - **Integrity check:** every read recomputes the hash of the stored seal record and the stored snapshot. A mismatch shows "the seal record failed its integrity check".
@@ -28,6 +29,7 @@ Built on Atlassian Forge. The app backend makes no outbound network calls, and t
 | Module | Purpose |
 |---|---|
 | `jira:issuePanel` `ledgerseal-panel` | UI Kit panel: seal, approve changes, history |
+| `jira:issueContext` `ledgerseal-context` | "Approval seal" entry in the issue details column: the seal state without opening the panel (F-12) |
 | `jira:workflowValidator` `ledgerseal-validator` | Blocks a transition unless the issue is sealed and unchanged |
 | `jira:adminPage` `ledgerseal-admin` | Jira admins choose the approver groups |
 | `trigger` `ledgerseal-issue-changed`, `ledgerseal-issue-deleted` | Record a change when Jira reports it; delete a deleted issue's records |
@@ -36,7 +38,7 @@ Built on Atlassian Forge. The app backend makes no outbound network calls, and t
 | Scope | Why |
 |---|---|
 | `read:jira-work` | Read the issue, comments, change log, field list and the user's own permissions |
-| `write:jira-work` | Write the app's own `ledgerseal-cert` issue property. The app never edits issue fields |
+| `write:issue.property:jira` | Write the app's own `ledgerseal-cert` issue property (the granular scope for issue properties). The app never edits issue fields |
 | `read:jira-user` | Read display names to show who changed an item (never stored), the caller's own groups, and groups for the admin page |
 | `storage:app` | Keep seal records, history and the token-to-account map |
 | `report:personal-data` | Report the account ids the app holds every week, and erase closed accounts (ADR-011) |

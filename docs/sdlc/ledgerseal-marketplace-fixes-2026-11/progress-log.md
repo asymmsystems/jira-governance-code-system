@@ -397,3 +397,107 @@ The review is `docs/sdlc/merge-reviews-2026-11/ledgerseal-followups-3-merge-revi
 - `forge deploy -e development`: 4.6.0 (code of `4b833ab`). Production not touched.
 - PAY-10 evidence exported from the panel: 5 of 5 PASS with `tools/verifier` and the development key; property schema 3, signed, no account id. M-9 not run live (it needs a stalled conversion and another run in between); proven by the tests above. No live write.
 - Gate: `npx tsc --noEmit` 0 errors; `npm test` 47 suites, 512 tests passed; coverage statements 97.99%, branches 94.42%, functions 96.8%, lines 98.68%; build, `npm audit --omit=dev --audit-level=high` and `forge lint` clean.
+
+## Finish (branch `feature/ledgerseal-finish`, from `origin/master` `3c76131`, master `a1ab087` merged in)
+
+Production runs 2.0.0 (deployed by the main session); this branch deploys to development only.
+
+### M-10, L-16 (fourth follow-ups review, `docs/sdlc/merge-reviews-2026-11/ledgerseal-followups-4-merge-review.md`)
+
+- **Commit:** `eba2778`.
+- **M-10:** the re-read after the lease claim compares the whole record (`canonicalJson`), not only its hash: the invalid-record branch writes a new record with the same hash. The invalid branch checks before its writes, and again just before it writes the record, that it holds the lease, that the record is unchanged in full and that no row follows its head.
+- **Proof (each fails when its guard is removed):** probe P1 as a test (a reseal that converts and claims its row while the late run waits is kept; later seals work); a row after the head stops the invalid branch; the journal compare (a journal written after the first read makes the run restart and resume it); the next-row check in `stillCurrent` (simulated directly: no app path writes that row while the lease is held); the attempt limit (three lease claims, two restarts; the old test title said "three restarts").
+
+### L-17
+
+- **Commit:** `ace581b`. `site/apps/ledgerseal/open-verifier.md`: exit code 1 means at least one check failed, the FAIL lines name which, and the reasons include a changed export, the wrong public key file, or a missing part.
+
+### F-06. Restricted comments
+
+- **Commit:** `9e00bd7`.
+- **What changed:** the snapshot records the restricted comments it covers (`restrictedComments`, outside the hashed form). The panel shows a changed restricted comment's text only to a viewer whose own comment list (`GET /rest/api/3/issue/{id}/comment` as the user) contains it; otherwise "A restricted comment that you cannot see in Jira". A removed restricted comment is never shown; a removed comment of an older snapshot is hidden. The evidence export answers `RESTRICTED_EVIDENCE` to a viewer who cannot see every restricted comment of the seal.
+- **Proof:** `test/restricted-comments.test.ts` (9). Without the panel masking 4 fail; without the export check 2 fail.
+- **Live (development 5.1.0, LSP-5):** group-level comment visibility is turned off on the site, so the check used a role: the signed-in user was added to the LSP role Administrators, a comment restricted to that role was posted (id 10042), and the panel was read. Jira did not give the app the comment: no "Comment added" row. So a comment restricted to a role or group the app user is not in is not covered by the seal (a change to it is not detected) and is never shown or exported. The listing, notes, README and spec v3 say so. The comment was deleted and the user removed from the role again (checked: not a member after).
+
+### F-20. Narrow issue-property scope
+
+- **Commit:** `5a3afa2`. The manifest declares `write:issue.property:jira` instead of `write:jira-work`; the only Jira write is the `ledgerseal-cert` property. Reviewer notes, README and spec v3 updated; manifest and listing tests check the scope list.
+- **Proof:** `forge lint` does not check scope coverage (with the write scope removed it still reports no error), so the proof is live: development 5.1.0 deployed with `--approve MAJOR_VERSION_RULE`, the install upgraded (`forge install --upgrade ... --confirm-scopes`, "Upgrade complete", version 5, Up-to-date). PAY-10 was revoked and sealed again: the property was rewritten (certificate `c02fb948...` to `4b877003...`, `issuedAt` 2026-11-06T13:56:15.931Z, signed), no "could not write" in the logs, and the evidence passes 5 of 5 checks.
+- **Owner note:** the scope change is a major version: the next production deploy asks for `--approve MAJOR_VERSION_RULE`, and each site admin consents on upgrade.
+
+### F-12. Always-visible seal state
+
+- **Commit:** `e445058`. A `jira:issueContext` module "Approval seal" (`ledgerseal-context`, resource `src/frontend/context.tsx`): it shows the state lozenge and the status sentence, and says to open the Approval Seal panel for actions. It has no button. (Corrected after the finish review, L-20: like a panel load, its verify call records a new change it finds, as a history row and the property; it is not read-only.) `jira:issueGlance` is the older module that `jira:issueContext` replaces; neither supports a dynamic status in the collapsed row, so the state shows when the entry is expanded.
+- **Proof:** `test/context-entry.test.ts` (3).
+- **Live:** the entry "LedgerSeal, Approval seal" is in the details column of PAY-10 and LSP-5 (screenshots in the ignored `test/live/shots/`). Expanding it in the headless browser did not open its content, so the expanded view is proven by the tests only. The Marketplace screenshots show the panel, not the details column, so they are unchanged.
+
+### Live changes (this round)
+
+| When (UTC) | Where | Change | State now |
+|---|---|---|---|
+| 2026-11-06 | Forge development | deploys 5.0.0 and 5.1.0, install upgrade (scope change) | 5.1.0 |
+| 13:55 | PAY-10 | revoked ("LedgerSeal live check: revoke and seal again (ADR-011 conversion)") and sealed again | sealed, as before |
+| 14:0x | LSP | the signed-in user added to the project role Administrators, then removed | not a member, as before |
+| 14:0x | LSP-5 | comment 10042 restricted to Administrators, then deleted | deleted |
+
+### Site changes needed (add to the list above)
+
+21. `product/jira-governance/user-guide/open-verifier.html`, exit code 1. New: "At least one check failed, and the FAIL lines name which. The evidence may have been changed after it was exported, or the public key file you gave is not the key that signed it, or a part of the evidence is missing."
+22. `product/jira-governance/user-guide/ledgerseal.html`, covered content: add "Comments restricted to a project role or group are covered only when Jira lets the LedgerSeal app read them, that is when the app's user is in that role or group; otherwise a change to such a comment is not detected. A covered restricted comment's text is shown in the panel, and the evidence is exported, only to a user who can see the comment in Jira."
+23. Same page, "Find the panel": add "Every issue shows an Approval seal entry in its details column with the seal state; expand it, or open the Approval Seal panel from the issue's app button to seal, approve or see details."
+24. `privacy.html` LedgerSeal section: the app's Jira write scope is now the issue-property scope (`write:issue.property:jira`) if the page lists scopes.
+
+### Final gate (finish)
+
+`npx tsc --noEmit` 0 errors; `npm test`: 49 suites, 531 tests passed; coverage statements 98.06%, branches 94.15%, functions 96.97%, lines 98.71%; `npm run build` exit 0; `npm audit --omit=dev --audit-level=high` exit 0; `forge lint` "No issues found" (the scope change was approved at the development deploy). Development version 5.1.0.
+
+
+## Finish review fixes (same branch; review `/home/fahimfarookme/.cache/jira-suite-merge-review/ledgerseal-finish/ledgerseal-finish-merge-review.md`)
+
+### H-1. The evidence export follows the panel's rule
+
+- **What changed (`evidenceFlow`):** the export always reads the live comments as the app. A sealed comment counts as restricted when it was restricted at the seal, or is restricted now, or (a snapshot made before F-06) has been removed since. The export goes only to a viewer whose own comment list contains every such comment; otherwise `RESTRICTED_EVIDENCE`. A failed read fails closed (`JIRA_UNREACHABLE`).
+- **Consequence:** evidence of a seal made before F-06 that covers a since-deleted comment is not exported to anyone, because its visibility is unknown; sealing the issue again makes a snapshot that records it. Production 2.0.0 holds such seals.
+- **Proof:** `test/restricted-comments.test.ts`: P3 (open at the seal, restricted later: refused to an outsider, exported to an insider) and P2 (a seal before F-06, its restricted comment deleted: refused, the text in neither panel nor export) both fail with `ledger.ts` of `a15694d`, as does the fail-closed test; a removed comment that was open at a seal after F-06 does not stop the export.
+
+### L-18. A hidden comment row names no author and no time
+
+- Decided: hide them. Jira hides a restricted comment entirely from a user outside its role or group, its author included, so the row says only "Comment added" (or edited, removed) with "A restricted comment that you cannot see in Jira", no "Changed by" and no time. Separation of duties is unchanged: it reads the author from Jira, not from the row. Test: "shows that a comment changed, but not who changed it or when" (fails with `a15694d`). Listing, notes, README and spec v3 say so.
+
+### L-19, L-20
+
+- Spec v3: the grader note names the granular scope. The context entry is described as having no button; its verify call records a new change like a panel load (code comment, test name, this log).
+
+### L-21. Defensive guards (recorded, no new test)
+
+- `conversion.ts` `heldAndUnchanged`: the first call before the invalid branch's writes, and the whole-record compare inside it (the lease and next-row parts and the second call have failing tests). Both are defensive only: without the first call the rows, assignments and content are rewritten with the same tokens and the run still ends BUSY before the record write; inside the lease no writer can change the record and keep its hash. Kept because they cost one read each and stop work early.
+
+### Site changes needed (finish review)
+
+25. `product/jira-governance/user-guide/ledgerseal.html` (replaces the text of item 22): "Comments restricted to a project role or group are covered only when Jira lets the LedgerSeal app read them, that is when the app's user is in that role or group; otherwise a change to such a comment is not detected. A covered comment that is restricted, at the seal or now, is shown in the panel only to a user who can see it in Jira; others see that a comment changed, without its text, author or time. The evidence is exported only to a user who can see every such comment. If LedgerSeal can no longer read a covered comment (it was deleted, or restricted since to a role or group the app's user is not in), the panel shows that comment's sealed text to no one, and for that seal: its evidence is not exported to anyone; approving the changes makes a new seal whose evidence can be exported."
+
+### Deploy, live check and gate (finish review fixes)
+
+- `forge deploy -e development`: 5.2.0 (code of `22cc3e1`). Production not touched.
+- PAY-10 (no restricted comment): the evidence still exports from the panel and passes 5 of 5 checks; property schema 3, signed, no account id. H-1 itself needs a second user outside a role, so it is proven by the tests. No live write.
+- Gate: `npx tsc --noEmit` 0 errors; `npm test` 49 suites, 536 tests passed; coverage statements 98.06%, branches 94.15%, functions 96.99%, lines 98.71%; build, `npm audit --omit=dev --audit-level=high` and `forge lint` clean.
+
+
+## Finish review round 2 (H-2, L-22)
+
+### H-2. A comment the app can no longer read is treated as restricted, for every seal
+
+- **Decision (suite owner, 2026-11-06, option 1 of the round 2 report, fail closed):** a sealed comment missing from the app's own read may have been deleted, or restricted since to a role or group the app user is not in (Jira then does not return it to the app; seen live on LSP-5). LedgerSeal cannot tell which, so for every seal, new or made before F-06: the panel shows that comment's sealed text, author and time to no one, and the seal's evidence is refused to everyone (`RESTRICTED_EVIDENCE`). A readable restricted comment keeps the per-viewer rule.
+- **Cost:** after a covered comment is deleted, the evidence of that seal cannot be exported any more, by anyone. Approving the changes makes a new seal whose evidence can be exported; its history keeps the earlier rows, but the old seal's snapshot is not exported again. The panel still shows that a comment was removed. Recorded in spec v3 section 4.4.
+- **What changed:** `hiddenComments` hides every comment the app can no longer read; `evidenceFlow` refuses when any sealed comment is missing from the app's live read; the `RESTRICTED_EVIDENCE` message says so and how to get exportable evidence.
+- **Proof:** probe P4 as a test (open at the seal, then restricted to a role the app is not in: no sealed text in the panel and no export, for an outsider and an insider) and "a sealed comment the app can no longer read stops the export for everyone" (then an approval of the changes exports again); both fail with `ledger.ts` of `0ec66bc`. Two older tests changed to the decision: the change list shows a removed comment without its sealed text, and a removed open comment now stops the export.
+
+### L-22
+
+- The listing, reviewer notes, README and site item 25 now say: "its evidence is not exported to anyone; approving the changes makes a new seal whose evidence can be exported", not "seal the issue again to export its evidence".
+
+### Deploy, live check and gate (round 2 fixes)
+
+- `forge deploy -e development`: 5.3.0 (code of `9aeb3ef`). Production not touched.
+- PAY-10 (no comments): the panel shows SEALED; the evidence exports from the panel and passes 5 of 5 checks (two earlier attempts timed out on the page's buttons, the third succeeded; the script now names the button it could not click). H-2 needs a comment restricted to a role the app user is not in and a second viewer, so it is proven by the tests. No live write.
+- Gate: `npx tsc --noEmit` 0 errors; `npm test` 49 suites, 537 tests passed; coverage statements 98.06%, branches 94.13%, functions 97.01%, lines 98.71%; build, `npm audit --omit=dev --audit-level=high` and `forge lint` clean.
