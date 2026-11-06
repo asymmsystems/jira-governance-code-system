@@ -58,7 +58,38 @@ describe('B-08 listing v2', () => {
     const text = read();
     expect(text).toContain('does not protect against the vendor');
     expect(text).toContain('It does not stop someone who can rewrite');
-    expect(text).toContain('definitionguard-public-key.pem');
+  });
+
+  it('(BL-2) says what is signed, with which key id, where the public key is, and what happens without a key', () => {
+    const text = read();
+    for (const field of ['schemaVersion', 'issueId', 'templateId', 'templateVersion', 'stateVersion', 'mandatoryTotal', 'mandatoryCompleted',
+      'openMandatoryItemIds', 'isFullySatisfied', 'headHash', 'issuedAt', 'keyId', 'sig']) {
+      expect({ field, listed: text.includes(`\`${field}\``) }).toEqual({ field, listed: true });
+    }
+    expect(text).toContain('`dg-prod-2026-11`');
+    expect(text).toContain('https://asymm.systems/product/jira-governance/signing-keys.html');
+    expect(text).toContain('"Property not signed"');
+    // No public file may point into the private app repository.
+    expect(text).not.toContain('definitionguard-public-key.pem');
+    expect(text).not.toContain('jira-governance-code-system');
+  });
+
+  it('(BL-6) makes no compliance overclaim: no CC7.2, and a tick is not an electronic signature', () => {
+    const text = read();
+    expect(text).not.toContain('CC7.2');
+    expect(text).not.toMatch(/sign-offs?\b/i);
+    expect(text).toContain('it is not an electronic signature');
+  });
+
+  it('(BL-1, BL-4) states the personal data handling and the licence behaviour', () => {
+    const text = read();
+    expect(text).toContain('Once a week the app reports these account ids to Atlassian');
+    expect(text).toContain('holds no personal data');
+    expect(text).toContain('the gate is off: the validator lets every move through');
+  });
+
+  it('(BL-6) the superseded listing is gone', () => {
+    expect(fs.existsSync(path.join(APP, '../../docs/marketplace/definitionguard-listing.md'))).toBe(false);
   });
 
   it('states the owner prices of 2026-11-06: free to 10 users, then $0.95, $0.75 and $0.24, annual 10 times monthly', () => {

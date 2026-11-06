@@ -8,8 +8,11 @@
  * an issue property. A valid Ed25519 signature shows that this app wrote the value. The vendor
  * holds the private key, so a signature does not protect against the vendor.
  *
- * Key: DG_SIGNING_KEY (base64 of a PKCS#8 PEM Ed25519 private key) and DG_SIGNING_KEY_ID,
- * set as encrypted Forge variables. Without them the property is written with sig null.
+ * Key: DG_SIGNING_KEY (base64 of a PKCS#8 PEM Ed25519 private key, an encrypted Forge variable)
+ * and DG_SIGNING_KEY_ID (its public name, for example dg-prod-2026-11). Without both, or with an
+ * unusable key, the property is written with keyId null and sig null, a warning is logged, and the
+ * panel's history section says the property is not signed (BL-2). Nothing is signed silently with
+ * an unnamed key.
  */
 import * as crypto from 'crypto';
 import api, { route } from '@forge/api';
@@ -79,16 +82,48 @@ export function verifyAttestation(signed: SignedAttestation, publicKeyPem: strin
   }
 }
 
+/** Where the public keys are published (asymm.systems; the private app repository is never linked). */
+export const PUBLIC_KEYS_URL = 'https://asymm.systems/product/jira-governance/signing-keys.html';
+
+export const UNSIGNED_NOTE =
+  "The definitionguard-dod issue property on this site is not signed, because the app's signing key is not set. " +
+  'The checklist, the gate and the history check work as before. Please tell support@asymm.systems.';
+
+export const signedNote = (keyId: string) =>
+  `The definitionguard-dod issue property is signed with the Ed25519 key ${keyId}. The public keys are published at ${PUBLIC_KEYS_URL}.`;
+
+export interface SignatureStatus {
+  signed: boolean;
+  keyId: string | null;
+  note: string;
+}
+
+/** Why the property cannot be signed, or undefined when both variables are set. */
+function missingKeyReason(): string | undefined {
+  if (!process.env.DG_SIGNING_KEY) return 'DG_SIGNING_KEY is not set';
+  if (!process.env.DG_SIGNING_KEY_ID) return 'DG_SIGNING_KEY_ID is not set';
+  return undefined;
+}
+
+/** Whether this installation signs the property, and the note the panel shows (BL-2). */
+export function signatureStatus(): SignatureStatus {
+  if (missingKeyReason()) return { signed: false, keyId: null, note: UNSIGNED_NOTE };
+  const keyId = process.env.DG_SIGNING_KEY_ID as string;
+  return { signed: true, keyId, note: signedNote(keyId) };
+}
+
 function signIfConfigured(att: Attestation): SignedAttestation {
-  const encoded = process.env.DG_SIGNING_KEY;
-  if (encoded) {
-    try {
-      return signAttestation(att, Buffer.from(encoded, 'base64').toString('utf8'), process.env.DG_SIGNING_KEY_ID || 'dg-default');
-    } catch {
-      console.warn('DefinitionGuard: DG_SIGNING_KEY is not a usable Ed25519 key; writing an unsigned property.');
-    }
+  const missing = missingKeyReason();
+  if (missing) {
+    console.warn(`DefinitionGuard: ${missing}, so the definitionguard-dod property is written without a signature (sig null).`);
+    return { ...att, keyId: null, sig: null };
   }
-  return { ...att, keyId: null, sig: null };
+  try {
+    return signAttestation(att, Buffer.from(process.env.DG_SIGNING_KEY as string, 'base64').toString('utf8'), process.env.DG_SIGNING_KEY_ID as string);
+  } catch {
+    console.warn('DefinitionGuard: DG_SIGNING_KEY is not a usable Ed25519 key, so the definitionguard-dod property is written without a signature (sig null).');
+    return { ...att, keyId: null, sig: null };
+  }
 }
 
 export { retryPolicy } from '../jira/jira-client';

@@ -16,7 +16,7 @@ Enforce your Definition of Done at workflow transitions. DefinitionGuard can req
 
 In modern engineering teams, "Definition of Done" (DoD) is usually documented in a wiki page or listed as an unchecked text field in a Jira ticket description. Because native Jira cannot gate workflow transitions based on structured DoD evidence, teams face common release breakdowns:
 
-1. **Unverified Checklists:** Developers tick manual checkboxes without linking test results, design sign-offs, or documentation PRs.
+1. **Unverified Checklists:** Developers tick manual checkboxes without linking test results, design approvals, or documentation PRs.
 2. **Self-Review Loopholes:** The ticket assignee can tick "Peer Review Complete" on their own work.
 3. **Silent Waivers:** Quality gates are bypassed informally in Slack or standups without a recorded reason.
 4. **Ungated Done Transitions:** Tickets move cleanly to Done even when mandatory steps remain incomplete.
@@ -52,13 +52,13 @@ Each row names the backlog item in `docs/sdlc/definitionguard-usp-ux-research-20
 | Bounded storage, history in pages | B-04 | `test/storage/size-budget.test.ts` |
 | History check with its stated limit | B-05 | `test/domain/chain-verify.test.ts` |
 | Project templates for admins | B-06 | `test/settings/project-templates.test.ts` |
-| People shown from their Jira account, never stored by name | B-07 | `test/ui/attribution.test.ts` |
+| People shown from their Jira account, never stored by name | B-07 | `test/ui/attribution.test.ts`, `test/privacy/personal-data.test.ts` |
 | Marketplace licensing | B-09 | `test/security/licence.test.ts` |
 | One rule for Done-category moves, exempt statuses | B-10 | `test/validator/gate-rule.test.ts` |
 | Evidence and evidence-required items | B-11 | `test/resolvers/evidence.test.ts` |
 | Required permission, not the assignee, waivers | B-12 | `test/resolvers/roles-waivers.test.ts` |
 | Clear panel text, accessible names, no raw errors | B-13 | `test/ui/panel-view-model.test.ts` |
-| Signed issue property on every change | B-14 | `test/integrity/attestation.test.ts` |
+| Signed issue property on every change, with no personal data in it | B-14 | `test/integrity/attestation.test.ts` |
 | History export | B-15 | `test/resolvers/export.test.ts` |
 | Template versions and re-sync | B-16 | `test/settings/resync.test.ts` |
 | Coverage check | B-17 | `test/settings/coverage.test.ts` |
@@ -71,9 +71,9 @@ Each row names the backlog item in `docs/sdlc/definitionguard-usp-ux-research-20
 
 DefinitionGuard provides records that support internal and external audits:
 
-- **SOC 2 Type II (CC8.1 & CC7.2):** Supports compliance by recording that the testing, security review, and documentation items you define were completed or waived before an issue moved to Done.
+- **SOC 2 (CC8.1, change management):** Supports compliance by recording that the testing, security review, and documentation items you define were completed or waived before an issue moved to Done.
 - **ISO/IEC 27001:2022 (Control A.8.29 & A.8.32):** Supports compliance by recording that documented security and testing requirements were met before release.
-- **GxP / MedTech Quality Systems:** Supports compliance by keeping a hash-chained record of verification and review sign-offs and of waivers with reasons. The history check shows edits, removals, and reordering of the stored history. It does not stop someone who can rewrite all of the app's stored data, and that includes the app vendor.
+- **GxP / MedTech Quality Systems:** Keeps a hash-chained record of who ticked or waived each item, when, and why. A tick or a waiver is a record of a Jira user's action; it is not an electronic signature (there is no re-authentication and no signature meaning), so it does not meet 21 CFR Part 11 signature requirements on its own. The history check shows edits, removals, and reordering of the stored history. It does not stop someone who can rewrite all of the app's stored data, and that includes the app vendor.
 
 *Honest Compliance Boundary:* DefinitionGuard enforces the criteria you define. DefinitionGuard does not certify your team against any standard. It does not certify your processes. Your auditor decides whether your quality management procedures meet these frameworks.
 
@@ -84,6 +84,7 @@ DefinitionGuard provides records that support internal and external audits:
 - **Forge Native Execution:** Runs on Atlassian Forge.
 - **No External Egress:** The app manifest declares no external fetch permissions. The app calls only the Jira REST API of your site.
 - **Forge Storage:** Checklist state and history are kept in Atlassian Forge key-value storage for your site.
+- **Personal Data:** The app stores each person who ticks, waives, reopens or resets an item, or saves a setting, as a random pseudonym. The Atlassian account id is kept only in one link per person. Once a week the app reports these account ids to Atlassian and deletes the link of every account Atlassian reports as closed; the history then shows "A deleted user" and still passes its check. The `definitionguard-dod` issue property holds no personal data. When an issue is deleted, its checklist and history are deleted too.
 - **Data Residency:** Data residency follows Atlassian's rules for Forge app storage.
 
 ---
@@ -99,8 +100,9 @@ DefinitionGuard provides records that support internal and external audits:
 - `report:personal-data`: report the stored people to Atlassian once a week, so the app can erase the link to each closed account.
 - **Who can change what.** Ticking needs Edit issues on the issue. An item can also need a chosen Jira permission, or be closed to the current assignee. Exporting and the project settings need Administer projects. Waiving and resetting need an approver: a project admin, a Jira admin, or a member of a group that a Jira admin chooses on the **DefinitionGuard approvers** page. A user with the waiver permission of the template can also waive. Each check runs as the user.
 - **Where data lives.** Checklists, history, templates and approver groups are stored in Forge storage for your site.
-- **The signature.** On every change the app writes a summary of the checklist to the `definitionguard-dod` issue property and signs it with Ed25519. The signature shows that DefinitionGuard wrote the issue property. The app vendor holds the signing key, so the signature does not protect against the vendor. The public key to check it is published in `docs/marketplace/definitionguard-public-key.pem`. If the signing key is not set, the property is written without a signature. Other apps and users can still write the issue property; the gate never reads it.
+- **The signature.** On every change the app writes a summary of the checklist to the `definitionguard-dod` issue property: `schemaVersion` (3), `issueId`, `templateId`, `templateVersion`, `stateVersion`, `mandatoryTotal`, `mandatoryCompleted`, `openMandatoryItemIds`, `isFullySatisfied`, `headHash` (the hash of the newest history event), `issuedAt`, `keyId` and `sig`. `sig` is an Ed25519 signature over the canonical JSON (sorted keys, no spaces) of every other field, `keyId` included. The production key id is `dg-prod-2026-11`; its public key is published at https://asymm.systems/product/jira-governance/signing-keys.html. The signature shows that DefinitionGuard wrote the issue property. The app vendor holds the signing key, so the signature does not protect against the vendor. If the signing key is not set, the property is written with `keyId` and `sig` set to null, the app logs a warning, and the panel's history section says "Property not signed"; it never signs with an unnamed key. Other apps and users can still write the issue property; the gate never reads it.
 - **The history check.** It shows edits, removals and reordering of the stored history. It does not stop someone who can rewrite all of the app's stored data and the history check with it, and that includes the app vendor.
+- **Licence.** If the DefinitionGuard licence on your site is not active, the gate is off: the validator lets every move through, so nobody is kept from closing work. The panel and the settings page then say "Licence not active", and checklist changes are not saved. Reading checklists and their history still works.
 - **Tests.** The code has automated tests with at least 90% branch coverage for each source file. The UI files are rendered from tested view models; the UI files themselves are not measured.
 
 ---

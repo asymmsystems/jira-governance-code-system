@@ -15,7 +15,7 @@ jest.mock('@forge/api', () => {
 });
 jest.mock('@forge/kvs', () => ({ kvs: {}, WhereConditions: { beginsWith: (v: string) => v } }));
 
-import { buildAttestation, signAttestation, verifyAttestation, publishAttestation, retryPolicy, PROPERTY_KEY } from '../../src/integrity/attestation';
+import { buildAttestation, signAttestation, verifyAttestation, publishAttestation, retryPolicy, PROPERTY_KEY, signatureStatus, PUBLIC_KEYS_URL, UNSIGNED_NOTE } from '../../src/integrity/attestation';
 import { toggleChecklistItem, waiveChecklistItem, resetChecklist, validateTransition } from '../../src/index';
 import { createEntry, emptyState, applyEntry, makeEntry, statusEntry } from '../../src/domain/event-log';
 import { toDodTemplate } from '../../src/domain/dod-template';
@@ -119,11 +119,53 @@ describe('B-14 attestation', () => {
       expect((await publishAttestation(sampleState(), T)).ok).toBe(false);
     });
 
-    it('falls back to an unsigned property when the key is unusable', async () => {
-      jira.handler = () => ({ status: 204 });
-      process.env.DG_SIGNING_KEY = Buffer.from('not a key').toString('base64');
-      await publishAttestation(sampleState(), T);
-      expect(jira.calls[0].body).toMatchObject({ sig: null, keyId: null });
+    it('falls back to an unsigned property when the key is unusable, and says so in the log', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        jira.handler = () => ({ status: 204 });
+        process.env.DG_SIGNING_KEY = Buffer.from('not a key').toString('base64');
+        process.env.DG_SIGNING_KEY_ID = 'dg-dev-2026-11';
+        await publishAttestation(sampleState(), T);
+        expect(jira.calls[0].body).toMatchObject({ sig: null, keyId: null });
+        expect(warn.mock.calls[0][0]).toBe('DefinitionGuard: DG_SIGNING_KEY is not a usable Ed25519 key, so the definitionguard-dod property is written without a signature (sig null).');
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('(BL-2) never writes an unsigned property silently: a missing key or key id is logged by name', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        jira.handler = () => ({ status: 204 });
+        await publishAttestation(sampleState(), T);
+        expect(warn.mock.calls[0][0]).toBe('DefinitionGuard: DG_SIGNING_KEY is not set, so the definitionguard-dod property is written without a signature (sig null).');
+        // A key without its public name is not used: the reader could not tell which key signed.
+        process.env.DG_SIGNING_KEY = Buffer.from(PRIVATE_PEM).toString('base64');
+        await publishAttestation(sampleState(), T);
+        expect(jira.calls[1].body).toMatchObject({ sig: null, keyId: null });
+        expect(warn.mock.calls[1][0]).toBe('DefinitionGuard: DG_SIGNING_KEY_ID is not set, so the definitionguard-dod property is written without a signature (sig null).');
+      } finally {
+        warn.mockRestore();
+      }
+    });
+  });
+
+  describe('(BL-2) signature status shown in the panel', () => {
+    it('says which key signs, and where the public keys are, when both variables are set', () => {
+      process.env.DG_SIGNING_KEY = Buffer.from(PRIVATE_PEM).toString('base64');
+      process.env.DG_SIGNING_KEY_ID = 'dg-prod-2026-11';
+      expect(signatureStatus()).toEqual({
+        signed: true,
+        keyId: 'dg-prod-2026-11',
+        note: 'The definitionguard-dod issue property is signed with the Ed25519 key dg-prod-2026-11. The public keys are published at https://asymm.systems/product/jira-governance/signing-keys.html.'
+      });
+      expect(PUBLIC_KEYS_URL).not.toContain('jira-governance-code-system');
+    });
+
+    it('says the property is not signed when a variable is missing', () => {
+      expect(signatureStatus()).toEqual({ signed: false, keyId: null, note: UNSIGNED_NOTE });
+      process.env.DG_SIGNING_KEY = 'x';
+      expect(signatureStatus().signed).toBe(false);
     });
   });
 });

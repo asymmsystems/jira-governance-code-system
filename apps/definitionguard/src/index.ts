@@ -40,7 +40,7 @@ import {
 import { resolveTemplate } from './settings/template-store';
 import { assertLicensed, isLicenceInactive } from './security/licence';
 import { validateEvidence, EVIDENCE_REQUIRED } from './domain/evidence';
-import { publishAttestation } from './integrity/attestation';
+import { publishAttestation, signatureStatus } from './integrity/attestation';
 import { withRetry } from './jira/jira-client';
 import { PartyStore, ShownParty } from './storage/party-store';
 
@@ -369,6 +369,7 @@ export async function getChecklistHistory(payload: any, context?: any, storagePr
   return {
     events: page.events,
     chain: { ...check, message: chainMessage(check), limit: CHAIN_LIMIT_NOTE },
+    signature: signatureStatus(),
     auditTrail: (await panelResponse(storage, state || emptyState(c.issueId, c.issueKey, c.projectId), page.events)).auditTrail,
     nextCursor: page.nextCursor,
     eventCount: state?.seq || 0
@@ -512,6 +513,7 @@ export async function exportChecklistHistory(_payload: any, context?: any, stora
       : null,
     chain: { ...check, message: chainMessage(check) },
     limit: CHAIN_LIMIT_NOTE,
+    signature: signatureStatus(),
     events
   };
   return { fileName: `${c.issueKey}-definitionguard-history.json`, text: JSON.stringify(doc, null, 2) };

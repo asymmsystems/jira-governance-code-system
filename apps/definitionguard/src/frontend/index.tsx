@@ -37,7 +37,11 @@ import {
 } from '@asymm/jira-ui';
 
 type Evidence = { url?: string; note?: string };
-type HistoryPage = { auditTrail?: ChecklistAuditEvent[]; chain?: { ok: boolean; message: string; limit: string } };
+type HistoryPage = {
+  auditTrail?: ChecklistAuditEvent[];
+  chain?: { ok: boolean; message: string; limit: string };
+  signature?: { signed: boolean; keyId: string | null; note: string };
+};
 
 const Who: React.FC<{ who?: Attribution }> = ({ who }) =>
   who ? (who.kind === 'user' ? <User accountId={who.accountId} /> : <Text as="span">{who.text}</Text>) : null;
@@ -472,6 +476,16 @@ export const DefinitionGuardPanel: React.FC = () => {
                 <Text as="span" size="small" color={TEXT_ROLE.muted}>
                   {history.chain.limit}
                 </Text>
+                {history.signature ? (
+                  <Inline space={SPACE.item} alignBlock="center" shouldWrap>
+                    <Lozenge appearance={history.signature.signed ? 'success' : 'moved'}>
+                      {history.signature.signed ? 'Property signed' : 'Property not signed'}
+                    </Lozenge>
+                    <Text as="span" size="small" color={TEXT_ROLE.secondary}>
+                      {history.signature.note}
+                    </Text>
+                  </Inline>
+                ) : null}
               </Stack>
             </NoteBox>
           )}

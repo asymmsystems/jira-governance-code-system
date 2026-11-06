@@ -14,7 +14,7 @@ jest.mock('@forge/api', () => {
 });
 jest.mock('@forge/kvs', () => ({ kvs: {}, WhereConditions: { beginsWith: (v: string) => v } }));
 
-import { exportChecklistHistory, toggleChecklistItem, waiveChecklistItem, handler, setGlobalStorageProvider } from '../../src/index';
+import { exportChecklistHistory, toggleChecklistItem, waiveChecklistItem, handler, setGlobalStorageProvider, getChecklistHistory } from '../../src/index';
 import { historyRows, formatLocal } from '../../src/ui/panel-view-model';
 import { CHAIN_LIMIT_NOTE, createEntry, emptyState, applyEntry, makeEntry, statusEntry } from '../../src/domain/event-log';
 import { toDodTemplate } from '../../src/domain/dod-template';
@@ -69,6 +69,10 @@ describe('B-15 export', () => {
     // ADR-010: events hold pseudonyms; the export maps each one to the account while it exists.
     expect(doc.parties).toEqual({ [lead]: '712020:lead', [pseudonymOf(storage, '712020:dev')]: '712020:dev' });
     expect(JSON.stringify(doc.events)).not.toContain('712020:');
+    // BL-2: the export and the history view say whether the property is signed, and with which key.
+    expect(doc.signature).toMatchObject({ signed: false, keyId: null });
+    const h: any = await getChecklistHistory({}, as('712020:lead'), storage);
+    expect(h.signature).toEqual(doc.signature);
     expect(res.fileName).toBe('DEMO-96001-definitionguard-history.json');
   });
 
