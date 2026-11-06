@@ -19,7 +19,7 @@ Every scope declared in `manifest.yml` and its real use in the code:
 | `write:jira-work` | Edits the user makes in the planner | Writes only values the user chose: due dates, estimates, assignees, summaries, status transitions the user picks; creates issues, epics and sub-tasks (**+ Task**, **+ Epic**, **+ Allocate Resource**, **Create sub-task in Jira**); deletes or unassigns a contributor's sub-task when the user chooses so; creates and deletes Jira "Blocks" links (dependencies); sets the issue properties `cascadeplan.dates` (shared start date), `cascadeplan.links` (trigger percents) and `cascadeplan.create` (the id of the call that created an issue, so a repeated create returns the first issue); changes parents and converts work types through Jira's bulk move. Every write is listed in the **Changes** panel. |
 | `read:jira-user` | Assignee picker, approvers admin page, names of baseline authors | Searches assignable users for the project (`/rest/api/3/user/assignable/search`); on the admin page, searches Jira groups and reads the current user's groups (`/rest/api/3/myself?expand=groups`); shows the names of who froze a baseline or reviewed a scope change, read live. |
 | `storage:app` | Plans, settings, baselines | Stores plans, row order, columns, milestones, a plan's optional JQL filter, baselines (with SHA-256 digests), scope-change requests and the approver groups in Forge storage. |
-| `report:personal-data` | Personal data reporting | A weekly scheduled trigger reports the account ids the app stores (baseline and scope-change authors, contributors of a task) and removes the ids of closed accounts. |
+| `report:personal-data` | Personal data reporting | An hourly scheduled trigger (function timeout 900 s) reads the stored records in steps, reports each account id the app stores (baseline and scope-change authors, contributors of a task, the administrator who last saved the approver groups) once every 7 days, and removes the ids of closed accounts from every record. |
 
 ---
 
@@ -29,7 +29,7 @@ Every scope declared in `manifest.yml` and its real use in the code:
 - **Reads and writes as the user:** Jira calls run as the signed-in user (`asUser`), and every write is checked against the user's Jira permissions first. Plan management and baselines need a plan approver (Jira administrator, project administrator, or a member of an approver group), checked on the server.
 - **Storage:** Forge storage of the site (data residency enabled), and three issue properties on the customer's issues (`cascadeplan.dates`, `cascadeplan.links`, `cascadeplan.create`; the last is indexed for JQL by a `jira:entityProperty` module).
 - **Content Security Policy:** no `content` permissions: no inline scripts and no inline styles.
-- **Personal data:** Atlassian account ids, as authors of baseline and scope-change records and as contributors of a task (a person working on it through a Jira sub-task); reported weekly, and removed for a closed account. A contributor name that matches no account (for example a placeholder role) is kept as typed.
+- **Personal data:** Atlassian account ids, as authors of baseline and scope-change records, as contributors of a task (a person working on it through a Jira sub-task), and of the Jira administrator who last saved the approver groups; each reported once every 7 days, and removed from every record for a closed account. A contributor name that matches no account (for example a placeholder role) is kept as typed.
 
 ---
 
@@ -51,7 +51,7 @@ Every scope declared in `manifest.yml` and its real use in the code:
 
 ### Step 2: Write preview, undo and the Changes panel
 1. Drag PAY-7 ("Saved cards and digital wallets") one week later and hold: the line above lists every due date and start date the drop will change, including its sub-tasks and the work that depends on it.
-2. Release. A Jira message with **Undo** appears for 10 seconds. Press Ctrl+Z to undo and Ctrl+Shift+Z to redo.
+2. Release. A Jira message with **Undo** appears and stays until you close it. Press Ctrl+Z to undo and Ctrl+Shift+Z to redo.
 3. Click **Changes**: "Jira writes in this session" lists each write with old value, new value and result.
 
 ### Step 3: Hierarchy

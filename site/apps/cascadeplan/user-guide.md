@@ -15,9 +15,9 @@ Every change you make is a Jira write made as you. If your Jira role does not al
 ## 2. Move and resize bars
 
 - **Drag** a bar to move it, or drag an end to change its start or end. The bar snaps to days or weeks, depending on the zoom.
-- Before you drop, a line at the bottom of the screen lists every Jira change the drop will make, including the work that moves with it.
+- Before you drop, a line just above the row you move lists every Jira change the drop will make: each due date and start date, the work that moves with it (dependent work, the sub-tasks of a parent the move reaches) and each parent whose Jira due date follows its sub-tasks.
 - **Keyboard:** select a row, put the focus on its Start or Due cell, press **Space**, use the arrow keys, then **Enter** to save or **Escape** to cancel.
-- **Undo and Redo:** each change offers **Undo** in a message for 10 seconds; **Ctrl+Z** and **Ctrl+Shift+Z** also work, for the last 20 changes.
+- **Undo and Redo:** each change offers **Undo** in a message that stays until you close it; **Ctrl+Z** and **Ctrl+Shift+Z** also work, for the last 20 changes.
 - The **Changes** button lists every Jira write of this session, with the old and new value, and whether Jira accepted it.
 
 A bar's end is the issue's Jira due date. Its start is stored on the issue as the property `cascadeplan.dates`, so every plan shows the same dates.
@@ -31,7 +31,7 @@ A bar's end is the issue's Jira due date. Its start is stored on the issue as th
 
 The link is a Jira "Blocks" link; the percent is stored on the successor as the issue property `cascadeplan.links`. When a move would start a successor too early, CascadePlan moves it (the cascade). With **Enforce dependencies** on, a bar cannot be dropped before the earliest day its links allow; otherwise a dialog offers the fixes. **Why this date?** on a row explains what sets its earliest start.
 
-A parent's links also apply to its sub-tasks. A link between an issue and its own parent or sub-task is refused, because the parent's dates come from its sub-tasks.
+A parent's links also apply to its sub-tasks: with **Enforce dependencies** on, a sub-task cannot be moved to start before its parent's predecessor allows (CascadePlan checks this again before it writes), and a move that pushes the parent later moves its sub-tasks as a block. A link between an issue and its own parent or sub-task is refused, because the parent's dates come from its sub-tasks.
 
 Every link of a task has its own arrow and percent label. Click an arrow or its label to change the percent or to remove the link: **Remove Link** deletes exactly that Jira link. To resize a bar, drag its edge; the link arrows that appear on hover sit just outside the edges.
 
