@@ -56,4 +56,4 @@ None.
 
 ## 4. After the merge
 
-The FSRT workflow run on master is recorded in the merge report for this change and in the coordinator report.
+FSRT on master after both merges: run 42272599802 on `d1958c8` (push), <https://github.com/asymmsystems/jira-governance-code-system/actions/runs/42272599802>, **success**. It built FSRT at the pinned commit (cache miss on master, so the cache entry now exists for every branch). `FSRT cascadeplan`, `FSRT definitionguard`, `FSRT fourrealities` and `FSRT ledgerseal` all passed.
