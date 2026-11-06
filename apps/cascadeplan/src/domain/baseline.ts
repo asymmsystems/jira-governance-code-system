@@ -12,6 +12,8 @@
  * are read live when shown.
  */
 
+import { csvRow } from './csv';
+
 export interface BaselineItem {
   id: string;
   key: string;
@@ -143,16 +145,16 @@ export function compareItems(from: BaselineItem[], to: BaselineItem[]): Comparis
   };
 }
 
-/** CSV of a baseline: one row per item, with the digest in a comment line (RFC 4180 quoting). */
+/**
+ * CSV of a baseline: one row per item, with the digest in a comment line. Every cell goes through
+ * `csvCell` (formula neutralising and RFC 4180 quoting, ASYMM-SEC-04). The comment line is three
+ * cells, so a name with a comma, a quote or a line break stays inside its own quoted first cell.
+ */
 export function baselineCsv(b: Baseline): string {
-  const q = (v: unknown) => {
-    const s = v === undefined || v === null ? '' : String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
   const lines = [
-    `# ${q(b.header.name)}, frozen ${b.header.frozenAt}, SHA-256 ${b.header.digest}`,
+    csvRow([`# ${b.header.name}`, `frozen ${b.header.frozenAt}`, `SHA-256 ${b.header.digest}`], ', '),
     'issue_id,issue_key,estimate_hours,start,end,done',
-    ...b.items.map(i => [i.id, i.key, i.hours, i.start, i.end, i.done ? 'yes' : 'no'].map(q).join(','))
+    ...b.items.map(i => csvRow([i.id, i.key, i.hours, i.start, i.end, i.done ? 'yes' : 'no']))
   ];
   return lines.join('\n') + '\n';
 }
