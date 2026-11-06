@@ -56,7 +56,7 @@ async function stoppedBeforeCommit() {
 }
 
 /** Pauses the first call of a storage method that matches, until released. */
-function pauseOn(storage: any, method: 'set' | 'commit', match: (args: any[]) => boolean) {
+function pauseOn(storage: any, method: 'set' | 'commit' | 'get' | 'createIfAbsent', match: (args: any[]) => boolean) {
   let release!: () => void;
   let reached!: () => void;
   const gate = new Promise<void>(r => (release = r));
@@ -301,5 +301,140 @@ describe('M-5 two conversions of one record never overlap (probe P1)', () => {
     const realSet = storage.set.bind(storage);
     storage.set = async (key: string, value: any) => realSet(key, key.startsWith(LEASE_PREFIX) ? { holder: 'other', takenAt: value.takenAt } : value);
     expect(await takeLease(storage, '1', '2026-11-06T00:00:00.000Z')).toBeNull();
+  });
+});
+
+/** Counts calls that match and returns true on the nth one (for pauseOn). */
+function nth(n: number, match: (args: any[]) => boolean) {
+  let seen = 0;
+  return (args: any[]) => match(args) && ++seen === n;
+}
+
+describe('M-9 a run that read the record before its lease never writes an old record back (probes R1, R2)', () => {
+  it('R1: paused at its lease claim while a revoke converts and revokes, the late run writes nothing; later seals work', async () => {
+    const { storage, as } = setup();
+    await writeOldRecord(storage, sampleIssue());
+    const p = pauseOn(storage, 'createIfAbsent', args => args[0] === LEASE_PREFIX + '10001');
+    const late = convertRecord(as(null), '10001');
+    await p.at;
+    await expect(revokeSeal({ reason: 'probe revoke' }, panelContext('bob'), as('bob'))).resolves.toMatchObject({ ok: true });
+    p.release();
+    expect(await late).toBe('ALREADY');
+    const view: any = await verifyIssue({}, panelContext('bob'), as('bob'));
+    expect(view.status).toBe('SEAL_REVOKED');
+    const evidence: any = await getSealEvidence({}, panelContext('bob'), as('bob'));
+    expect(evidence.history.map((r: any) => r.transitionName)).toEqual(['SEAL', 'REDACT', 'REVOKE']);
+    await expect(sealIssue({ signature: validSignature({ reason: 'x' }) }, panelContext('carol'), as('carol'))).resolves.toMatchObject({ ok: true });
+  });
+
+  it('R2: a revoke and a reseal while the late run waits are both kept', async () => {
+    const { storage, as } = setup();
+    await writeOldRecord(storage, sampleIssue());
+    const p = pauseOn(storage, 'createIfAbsent', args => args[0] === LEASE_PREFIX + '10001');
+    const late = convertRecord(as(null), '10001');
+    await p.at;
+    await revokeSeal({ reason: 'probe revoke' }, panelContext('bob'), as('bob'));
+    await expect(sealIssue({ signature: validSignature({ reason: 'again' }) }, panelContext('carol'), as('carol'))).resolves.toMatchObject({ ok: true });
+    p.release();
+    await late;
+    const view: any = await verifyIssue({}, panelContext('bob'), as('bob'));
+    expect(view.status).toBe('SEAL_VALID');
+    const evidence: any = await getSealEvidence({}, panelContext('bob'), as('bob'));
+    expect(evidence.history.map((r: any) => r.transitionName)).toEqual(['SEAL', 'REDACT', 'REVOKE', 'RESEAL']);
+  });
+
+  it('gives up with BUSY after three restarts when the record keeps changing', async () => {
+    const { storage, as } = setup();
+    const { we } = await writeOldRecord(storage, sampleIssue());
+    let n = 0;
+    const realGet = storage.get.bind(storage);
+    storage.get = async (key: string) => (key === 'ls3:we:10001' ? { ...we, recordHash: String(++n).padStart(64, '0') } : realGet(key));
+    expect(await convertRecord(as(null), '10001')).toBe('BUSY');
+    expect(storage.map.has(LEASE_PREFIX + '10001')).toBe(false);
+  });
+
+  it('the invalid-record branch writes nothing when the record changed after it was read', async () => {
+    const { storage, as } = setup();
+    const { we } = await writeOldRecord(storage, sampleIssue());
+    storage.map.set('ls3:we:10001', { ...we, incidentCount: 9, recordHash: 'f'.repeat(64) });
+    const p = pauseOn(storage, 'get', nth(1, args => args[0] === LEASE_PREFIX + '10001'));
+    const run = convertRecord(as(null), '10001');
+    await p.at;
+    const moved = { ...we, incidentCount: 8, recordHash: 'e'.repeat(64) };
+    storage.map.set('ls3:we:10001', moved);
+    p.release();
+    expect(await run).toBe('BUSY');
+    expect(storage.map.get('ls3:we:10001')).toEqual(moved);
+  });
+});
+
+describe('L-14 each re-check of a stalled run matters', () => {
+  it('at the re-check before the history rows: a lost lease means BUSY and no history write (holder check, first re-check)', async () => {
+    const { storage, as } = setup();
+    await writeOldRecord(storage, sampleIssue());
+    // The stalled run pauses just after it claimed its redaction row, before its first re-check
+    const realCreate = storage.createIfAbsent.bind(storage);
+    let releaseA!: () => void;
+    let reachedA!: () => void;
+    const gateA = new Promise<void>(r => (releaseA = r));
+    const atA = new Promise<void>(r => (reachedA = r));
+    let pausedA = false;
+    storage.createIfAbsent = async (key: string, value: any) => {
+      const created = await realCreate(key, value);
+      if (!pausedA && key === 'ls3:wes:10001:000002') {
+        pausedA = true;
+        reachedA();
+        await gateA;
+      }
+      return created;
+    };
+    const a = { run: convertRecord(as(null), '10001', '2000-01-01T00:00:00.000Z'), release: releaseA };
+    await atA;
+    // Another run takes over the expired lease and pauses before its history rows
+    const realSet = storage.set.bind(storage);
+    let release!: () => void;
+    let reached!: () => void;
+    const gate = new Promise<void>(r => (release = r));
+    const atB = new Promise<void>(r => (reached = r));
+    let pausedB = false;
+    storage.set = async (key: string, value: any) => {
+      if (!pausedB && key === 'ls3:wes:10001:000001') {
+        pausedB = true;
+        reached();
+        await gate;
+      }
+      return realSet(key, value);
+    };
+    const b = convertRecord(as(null), '10001');
+    await atB;
+    const writes: string[] = [];
+    storage.set = async (key: string, value: any) => {
+      writes.push(key);
+      return realSet(key, value);
+    };
+    a.release();
+    expect(await a.run).toBe('BUSY');
+    expect(writes.filter(k => k.startsWith('ls3:wes:') || k.startsWith('ls3:wepa:'))).toEqual([]);
+    release();
+    expect(await b).toBe('CONVERTED');
+  });
+
+  it('at the re-check before the final save: a later revoke is never rolled back (last re-check)', async () => {
+    const { storage, as } = setup();
+    await writeOldRecord(storage, sampleIssue());
+    // The stalled run pauses at its assignment write, after its second re-check and before its last one
+    const p = pauseOn(storage, 'set', args => String(args[0]).startsWith('ls3:wepa:10001:'));
+    const a = { run: convertRecord(as(null), '10001', '2000-01-01T00:00:00.000Z'), ...p };
+    await a.at;
+    // Another run takes over the expired lease and converts; then Bob revokes
+    expect(await convertRecord(as(null), '10001')).toBe('CONVERTED');
+    await expect(revokeSeal({ reason: 'probe revoke' }, panelContext('bob'), as('bob'))).resolves.toMatchObject({ ok: true });
+    a.release();
+    expect(await a.run).toBe('BUSY');
+    // The record keeps the revoke. (The one assignment write in flight when the lease was lost is the two-call
+    // residual of the fix log: plain KVS keys have no conditional write.)
+    const we: any = await model.workEffort(storage);
+    expect(we).toMatchObject({ currentStatusId: 'LS_REVOKED', statusHead: { seq: 3 } });
+    expect(model.statusRows(storage).map(r => r.transitionName)).toEqual(['SEAL', 'REDACT', 'REVOKE']);
   });
 });
