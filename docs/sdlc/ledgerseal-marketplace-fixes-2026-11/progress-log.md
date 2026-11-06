@@ -218,3 +218,64 @@ Run in `apps/ledgerseal`, on the owner's own machine. Never paste the private ke
 ## Final gate (branch head)
 
 `npx tsc --noEmit` 0 errors; `npm test`: 46 suites, 484 tests passed; coverage statements 97.88%, branches 94.26%, functions 96.61%, lines 98.67% (thresholds 90%); `npm run build` exit 0; `npm audit --omit=dev --audit-level=high` exit 0; `forge lint` "No issues found". Development version 4.2.0.
+
+## Merge review follow-ups (branch `feature/ledgerseal-review-followups`, from `origin/master` `42e79fa`)
+
+The review is `docs/sdlc/merge-reviews-2026-11/ledgerseal-merge-review.md` (probes in `/home/fahimfarookme/.cache/jira-suite-merge-review/ledgerseal/probes/`).
+
+### M-1, M-2, L-2
+
+- **Commit:** `f24ab2d`.
+- **M-1:** a conversion journal means "not finished" for a seal or revoke as for the weekly job (`convertIfNeeded` checks `hasConversionJournal`). A record already committed (`parties: TOKEN`) with a journal is never written again from it: the conversion only deletes superseded snapshots and the journal (`finishCleanup`), so a revoke or seal made after the stop stays.
+- **M-2:** `PartyRepository.register` adds an account not yet in the map only when Jira reports it active (`JiraClient.isActiveUser`: `GET /rest/api/3/user`, `active`; 404 counts as not active; unknown is not added now). Used for change authors in incidents and for actors found by a conversion. Seal and revoke callers are signed in.
+- **L-2:** `deleteIssueRecords` deletes `ls3:convert:{issueId}`.
+- **Proof:** `test/review-followups.test.ts` (7), built from probes R1 and R2 without master's code (`test/support/old-record.ts`). With the M-1 change reverted the two M-1 tests fail; with the M-2 filter removed the two M-2 incident tests fail; with both in place all pass.
+
+### L-1, L-7. Open verifier 1.2.0
+
+- **Commits:** public repository `67776e4` (pull request 2, CI green on Node 18.x, 20.x, 22.x, run 42196616081; `main` fast-forwarded); monorepo `6ac7045`.
+- **What changed:** a fifth check: the attestation's status is the state of the newest entry that is not `LS_REDACTED`. Apache-2.0 header on `.github/workflows/test.yml`. Version 1.2.0; 12 tests. `tools/verifier` identical to the repository (`diff -r` empty). The app's evidence steps name the check; `test/evidence.test.ts` checks a changed and a revoked seal pass it.
+- **Release:** https://github.com/asymmsystems/ledgerseal-verifier/releases/tag/v1.2.0, `SHA256SUMS`:
+  - `e3d4d9c006b488d281caf92484172ed0c14746ffd190aae78bea4ad4ee574154  verify-evidence.mjs`
+  - `5cc3656b4e87443b9850f49bc864650b99ce7af3fd2f6f2896dd70c793865457  vectors.json`
+  - `272774088714fd2e158415976b849668772530986fcfc2aa2668c6e19c9cd271  LICENSE`
+  - `c7618b74ecca80992ec2c7f1e6a37980cc4fb07da417ab36dfad6ee3ba72ab34  ls-dev-2026-11.pub.pem`
+
+### M-4 (owner decision, option A), L-3, L-5
+
+- **Commit:** `7cbda07`.
+- **M-4:** listing, reviewer notes and `site/apps/ledgerseal/compliance-mapping.md` say 21 CFR 11.50 is partly met: "Each seal records the date, time and meaning of the signature. The signer's name is shown from their Atlassian account while it exists; after the account is closed, it is shown as a deleted user, so a printed name is not kept in the record." The panel's label for a closed account is now "a deleted user", as the wording says. `test/listing.test.ts` fails if 11.50 is claimed without "partly met".
+- **L-3:** reviewer notes section 5 numbered 1, 2, 3 (tested).
+- **L-5:** `site/apps/ledgerseal/admin-guide.md` says a comment typed on the screen of a gated transition blocks it as "Comment added".
+
+### L-4. Screenshot 03
+
+- 03 retaken on LSP-5 (my probe issue): its only change after the seal is a description, so the panel shows no test title. Script `apps/ledgerseal/test/live/shot_blocked.py LSP-5`.
+
+### Deploy and live checks (development 4.3.0)
+
+| Check | Result |
+|---|---|
+| Evidence of PAY-10 (sealed), PAY-13 (changed), LSP-3 (converted, resealed) with verifier 1.2.0 | 5 of 5 PASS each; status check SEAL_VALID, SEAL_BROKEN, SEAL_VALID; properties schema 3, signed, no account id |
+| Gate on LSP-5 after its description change | "Transition failed: LedgerSeal: 1 field changed after approval (Description)..."; status stays Backlog; screenshot 03 retaken (1840 x 900) |
+| M-1 and M-2 live | not run live: M-1 needs an invocation stopped between two writes, M-2 a closed Atlassian account; both are proven by the tests above |
+
+### Live changes (follow-ups)
+
+| When (UTC) | Where | Change | State now |
+|---|---|---|---|
+| 2026-11-06 | Forge development | deploy 4.3.0 | 4.3.0 |
+| 2026-11-06 | LSP-5 (my probe issue) | description set to "Rotate the payment gateway API keys on Friday, then disable the old keys." (was empty); gated move to Done tried (blocked) | changed after its seal; still to be deleted by the owner (403 for this account) |
+
+### Site changes needed (follow-ups; add to the list above)
+
+16. `product/jira-governance/compliance.html`, Part 11 table, 11.50 row, third cell.
+    - Old: "Every seal records and displays the approver, the time, and the meaning chosen by the approver (Approved, Reviewed or Verified)."
+    - New: "Partly met. Each seal records the date, time and meaning of the signature. The signer's name is shown from their Atlassian account while it exists; after the account is closed, it is shown as a deleted user, so a printed name is not kept in the record."
+17. `product/jira-governance/user-guide/ledgerseal.html`, workflow validator section, after "If LedgerSeal cannot check the issue, the validator blocks the transition (it fails closed).": add "If the gated transition has a screen with a comment box, a comment typed there is new content on a sealed issue, so the validator blocks the transition with \"Comment added\". Add the comment after the transition, or ask another approver to approve it first." (L-5)
+18. `privacy.html`, the LedgerSeal section of item 15 (L-6): replace "seal records, which name people by a pseudonymous token (a keyed hash of the Atlassian account id under a key only the app can read)" with "seal records, which name every person they mention (signers, people who changed the issue, and people named in the sealed content such as the assignee, comment authors and mentions) by a pseudonymous token: a keyed hash of the Atlassian account id under a key only the app can read. A pseudonymous token is still personal data: the app can link it to the account id that Jira shows on the issue." and replace "the records name no one" with "the app no longer holds the account id, and the panel shows a deleted user".
+19. `product/jira-governance/user-guide/open-verifier.html`: the verifier makes five checks (adds "attestation status matches the history"); link release v1.2.0 instead of v1.1.0.
+
+### Final gate (follow-up branch head)
+
+`npx tsc --noEmit` 0 errors; `npm test`: 47 suites, 497 tests passed; coverage statements 97.86%, branches 94.33%, functions 96.69%, lines 98.63%; `npm run build` exit 0; `npm audit --omit=dev --audit-level=high` exit 0; `forge lint` "No issues found"; `tools/verifier` 12 of 12. Development version 4.3.0.
