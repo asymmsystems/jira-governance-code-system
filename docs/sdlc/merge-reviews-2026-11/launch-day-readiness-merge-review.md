@@ -20,9 +20,9 @@
 - Each live variant changes only the Marketplace lines.
 - The Partner Agreement quotes are verbatim.
 - The saved replies match the code, the listings and the site, with one wording error on refunds (L-57).
-- One sentence in `trial-conversion.md` is cut off (L-58).
+- L-58 was withdrawn on 2026-11-07: it was a reviewer error (see section 5).
 
-Neither finding blocks the merge.
+The finding does not block the merge.
 
 ## 2. Distribution kit
 
@@ -94,7 +94,7 @@ None.
   - R13 says: "For a request outside 30 days, Atlassian asks the vendor for approval; tell us your site and the app, and we will answer Atlassian."
   - So the customer contacts us; Atlassian does not ask us.
   - Suggested text: "For a refund outside these windows, Atlassian asks you to contact us, the vendor, for approval. Tell us your site and the app; a refund outside Atlassian's window is the owner's decision."
-- **L-58. A sentence is cut off in `trial-conversion.md`, section 3.** It ends: `churn rate = "The number of subscriptions that were not renewed". Report` (line 70). The last word starts a sentence that is not there.
+- **L-58. Withdrawn (reviewer error, 2026-11-07).** This said a sentence in `trial-conversion.md` line 70 was cut off after the word "Report". It was not. The full line, 770 characters, ends: `... not renewed". Reports are not real time: read this week's numbers on Monday for the week before.` The reviewer read the file with each line cut at 700 characters (`cut -c1-700`) and took the cut for the end of the sentence. The fix in `34f15e7` (adding the glossary's churn formula) is verbatim from Atlassian's glossary and is harmless. See `go-to-market-plan-merge-review.md`.
 
 ### Considered, no finding
 
