@@ -187,6 +187,8 @@ export interface HistoryRow {
   key: string;
   when: string;
   accountId: string;
+  /** Shown instead of a user when accountId is empty: "A deleted user" or "DefinitionGuard". */
+  actorText?: string;
   text: string;
   actionText: string;
   eventType?: ChecklistAuditEvent['eventType'];
@@ -201,7 +203,8 @@ const ACTION_TEXT: Record<ChecklistAuditEvent['eventType'], string> = {
   CHECK: 'Completed',
   UNCHECK: 'Reopened',
   WAIVE: 'Waived',
-  RESET: 'Checklist reset'
+  RESET: 'Checklist reset',
+  REDACT: 'Account ids replaced with pseudonyms'
 };
 
 /** One row per event, oldest first: the action in words, the item title, and any waiver reason. */
@@ -215,6 +218,7 @@ export function historyRows(trail: ChecklistAuditEvent[] | undefined, format: (i
       key: ev.id,
       when: format(ev.timestamp),
       accountId: ev.actorAccountId,
+      ...(ev.actorAccountId ? {} : { actorText: ev.actorName || 'An unknown user' }),
       text,
       actionText,
       eventType: ev.eventType,

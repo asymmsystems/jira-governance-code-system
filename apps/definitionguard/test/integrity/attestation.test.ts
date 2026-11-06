@@ -40,12 +40,13 @@ describe('B-14 attestation', () => {
     delete process.env.DG_SIGNING_KEY_ID;
   });
 
-  it('builds schema v2 with counts, open item ids, head hash and issue binding', () => {
+  it('builds schema v3 with counts, open item ids, head hash and issue binding, and no account id (ADR-010)', () => {
     const st = sampleState();
     const att = buildAttestation(st, T);
     const mandatory = DEFAULT_DEFINITION_OF_DONE.items.filter(i => i.isMandatory);
+    expect(JSON.stringify(att)).not.toContain('712020:dev');
     expect(att).toEqual({
-      schemaVersion: 2,
+      schemaVersion: 3,
       issueId: '95001',
       templateId: DEFAULT_DEFINITION_OF_DONE.id,
       templateVersion: 1,
@@ -54,7 +55,6 @@ describe('B-14 attestation', () => {
       mandatoryCompleted: 1,
       openMandatoryItemIds: mandatory.slice(1).map(i => i.id),
       isFullySatisfied: false,
-      lastModifiedByAccountId: '712020:dev',
       headHash: st.headHash,
       issuedAt: T
     });
@@ -93,7 +93,7 @@ describe('B-14 attestation', () => {
       jira.handler = () => ({ status: 204 });
       await publishAttestation(sampleState(), T);
       expect(jira.calls[0]).toMatchObject({ who: 'app', method: 'PUT', path: `/rest/api/3/issue/95001/properties/${PROPERTY_KEY}` });
-      expect(jira.calls[0].body).toMatchObject({ schemaVersion: 2, sig: null, keyId: null });
+      expect(jira.calls[0].body).toMatchObject({ schemaVersion: 3, sig: null, keyId: null });
 
       process.env.DG_SIGNING_KEY = Buffer.from(PRIVATE_PEM).toString('base64');
       process.env.DG_SIGNING_KEY_ID = 'dg-2026-11';
@@ -139,14 +139,15 @@ describe('B-14 every change writes the property, and the validator never reads i
       : c.path.startsWith('/rest/api/3/status/') ? { status: 200, body: { statusCategory: { key: 'done' } } } : { status: 204 });
   });
 
-  it('toggle, waive and reset each PUT schema v2 with the new state version', async () => {
+  it('toggle, waive and reset each PUT schema v3 with the new state version, holding no account id', async () => {
     const storage = new CountingStorage();
     await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx, storage);
     await waiveChecklistItem({ itemId: 'item-peer-review', reason: 'Pair-programmed, reviewed live.' }, ctx, storage);
     await resetChecklist({}, ctx, storage);
     const puts = jira.callsTo(`/properties/${PROPERTY_KEY}`, 'app').filter(c => c.method === 'PUT');
     expect(puts.map(p => p.body.stateVersion)).toEqual([2, 3, 4]);
-    expect(puts.every(p => p.body.schemaVersion === 2 && p.body.issueId === '95002')).toBe(true);
+    expect(puts.every(p => p.body.schemaVersion === 3 && p.body.issueId === '95002')).toBe(true);
+    expect(JSON.stringify(puts.map(p => p.body))).not.toContain('712020:admin');
   });
 
   it('(V-a, V-b) the validator ignores a forged property and still blocks and names items', async () => {

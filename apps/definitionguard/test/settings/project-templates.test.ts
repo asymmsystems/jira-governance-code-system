@@ -4,7 +4,7 @@
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
  */
-import { jira, CountingStorage, JiraCall } from '../helpers/forge-mocks';
+import { jira, CountingStorage, JiraCall, pseudonymOf, storedOutsideMap } from '../helpers/forge-mocks';
 
 jest.mock('@forge/api', () => {
   const m = require('../helpers/forge-mocks');
@@ -122,7 +122,8 @@ describe('B-06 settings resolvers', () => {
     const stored = storage.read(templateKey('10000', '10004'));
     expect(first.template.version).toBe(1);
     expect(second.template.version).toBe(2);
-    expect(stored).toMatchObject({ workEffortTypeId: 'DOD_TEMPLATE', revisionNumber: 2, lastModifiedByPartyId: '712020:admin-2', projectId: '10000', issueTypeId: '10004' });
+    expect(stored).toMatchObject({ workEffortTypeId: 'DOD_TEMPLATE', revisionNumber: 2, lastModifiedByPartyId: pseudonymOf(storage, '712020:admin-2'), projectId: '10000', issueTypeId: '10004' });
+    expect(storedOutsideMap(storage, '712020:admin-2')).toEqual([]);
     expect(typeof stored.lastModifiedDate).toBe('string');
     expect(stored.workEffortId).toBe('project-10000-10004');
     expect(stored.criteria.map((c: any) => c.templateItemId)).toEqual(['security-signoff', 'docs']);

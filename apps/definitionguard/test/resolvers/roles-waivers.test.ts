@@ -4,7 +4,7 @@
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
  */
-import { jira, CountingStorage, JiraCall } from '../helpers/forge-mocks';
+import { jira, CountingStorage, JiraCall, pseudonymOf, storedOutsideMap } from '../helpers/forge-mocks';
 
 jest.mock('@forge/api', () => {
   const m = require('../helpers/forge-mocks');
@@ -116,8 +116,9 @@ describe('B-12 roles and waivers', () => {
     const res = await call('admin', () => waiveChecklistItem({ itemId: 'docs', reason: '  No user-facing change in this fix.  ' }, as('admin'), storage));
     expect(res.items.find(i => i.id === 'docs')).toMatchObject({ isCompleted: true, waived: true });
     const evt = storage.read(eventKey('94001', 2));
-    expect(evt).toMatchObject({ transitionName: 'Waive', actorPartyId: 'admin' });
-    expect(evt.rows[0]).toMatchObject({ entity: 'WorkEffortStatus', workEffortId: 'crit:94001:docs', statusId: 'DOD_WAIVED', reason: 'No user-facing change in this fix.', setByPartyId: 'admin' });
+    const admin = pseudonymOf(storage, 'admin');
+    expect(evt).toMatchObject({ transitionName: 'Waive', actorPartyId: admin });
+    expect(evt.rows[0]).toMatchObject({ entity: 'WorkEffortStatus', workEffortId: 'crit:94001:docs', statusId: 'DOD_WAIVED', reason: 'No user-facing change in this fix.', setByPartyId: admin });
     const h: any = await getChecklistHistory({}, as('admin'), storage);
     expect(h.auditTrail[1]).toMatchObject({ eventType: 'WAIVE', details: 'No user-facing change in this fix.' });
   });

@@ -13,7 +13,7 @@ import { StorageProvider } from '../storage/checklist-repository';
 import { resolveStorage } from '../storage/forge-storage';
 import { checkProjectPermissions } from '../security/permissions';
 import { assertLicensed, isLicenceInactive, LICENCE_GATE_OFF } from '../security/licence';
-import { TemplateStore } from './template-store';
+import { TemplateStore, validateTemplate } from './template-store';
 import { toTemplateView } from '../domain/dod-template';
 import { ChecklistTemplate } from '../domain/models';
 import { ChecklistStore } from '../storage/checklist-store';
@@ -21,6 +21,7 @@ import { resyncEntry } from '../domain/event-log';
 import { publishAttestation } from '../integrity/attestation';
 import { ProjectConfigStore } from './project-config';
 import { withRetry } from '../jira/jira-client';
+import { PartyStore } from '../storage/party-store';
 
 export const TEMPLATE_DENIED = 'Only a project admin can change DefinitionGuard templates.';
 
@@ -93,7 +94,9 @@ export async function saveExemptions(payload: any, context?: any, storageProvide
   if (!Array.isArray(ids) || ids.length > 50 || !ids.every((id: any) => typeof id === 'string' && done.has(id))) {
     throw new Error(EXEMPT_INVALID);
   }
-  return await new ProjectConfigStore(resolveStorage(storageProvider)).saveExemptions(c.projectId, ids, c.actorAccountId);
+  const storage = resolveStorage(storageProvider);
+  const actor = await new PartyStore(storage).pseudonymFor(c.actorAccountId);
+  return await new ProjectConfigStore(storage).saveExemptions(c.projectId, ids, actor);
 }
 
 export async function saveTemplate(payload: any, context?: any, storageProvider?: StorageProvider) {
@@ -104,8 +107,12 @@ export async function saveTemplate(payload: any, context?: any, storageProvider?
   if (!issueTypes.some(t => t.id === issueTypeId)) {
     throw new Error('This issue type is not in the project.');
   }
-  const store = new TemplateStore(resolveStorage(storageProvider));
-  const template = await store.save(c.projectId, issueTypeId, payload?.template, c.actorAccountId);
+  const storage = resolveStorage(storageProvider);
+  const store = new TemplateStore(storage);
+  const errors = validateTemplate(payload?.template);
+  if (errors.length > 0) throw new Error(errors.join(' '));
+  const actor = await new PartyStore(storage).pseudonymFor(c.actorAccountId);
+  const template = await store.save(c.projectId, issueTypeId, payload?.template, actor);
   return { template: toTemplateView(template) };
 }
 
@@ -141,6 +148,7 @@ export async function resyncIssues(payload: any, context?: any, storageProvider?
     st.template.workEffortId === template.workEffortId && st.template.revisionNumber < template.revisionNumber;
   let updated = 0;
   let skipped = 0;
+  let actor: string | undefined;
   for (const issue of body.issues || []) {
     const issueId = String(issue.id);
     const current = await store.load(issueId);
@@ -148,10 +156,11 @@ export async function resyncIssues(payload: any, context?: any, storageProvider?
       skipped++;
       continue;
     }
+    actor = actor || await new PartyStore(storage).pseudonymFor(c.actorAccountId);
     const state = await store.mutate(
       issueId,
       async () => { throw new Error('DefinitionGuard: the record disappeared during re-sync'); },
-      st => (outdated(st) ? [resyncEntry(st, template, c.actorAccountId, at)] : [])
+      st => (outdated(st) ? [resyncEntry(st, template, actor!, at)] : [])
     );
     await publishAttestation(state, at);
     updated++;

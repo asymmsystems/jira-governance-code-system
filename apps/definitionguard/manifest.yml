@@ -28,6 +28,12 @@ modules:
       description: Blocks workflow transitions when mandatory Definition of Done checklist items remain incomplete
       function: validateTransition
       projectTypes: ['company-managed', 'team-managed']
+  scheduledTrigger:
+    # ADR-010: the weekly personal data report, erasure of closed accounts, and the one-time
+    # pseudonym pass over records written before 6.0.0.
+    - key: personal-data-report
+      function: personal-data-fn
+      interval: week
   function:
     - key: resolver
       handler: index.handler
@@ -37,6 +43,8 @@ modules:
       handler: index.settingsHandler
     - key: admin-resolver
       handler: index.adminHandler
+    - key: personal-data-fn
+      handler: index.personalDataTrigger
 
 resources:
   - key: main
@@ -62,3 +70,4 @@ permissions:
     - read:jira-user
     - storage:app
     - read:workflow:jira
+    - report:personal-data

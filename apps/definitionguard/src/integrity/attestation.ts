@@ -1,5 +1,5 @@
 /**
- * The definitionguard-dod issue property, schema v2: a signed summary for other tools.
+ * The definitionguard-dod issue property, schema v3: a signed summary for other tools.
  *
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
@@ -20,8 +20,13 @@ import { DodState } from '../domain/models';
 export const PROPERTY_KEY = 'definitionguard-dod';
 export const MAX_TRIES = 3;
 
+/**
+ * Schema 3 (ADR-010) holds no personal data: schema 2 also had lastModifiedByAccountId. Every
+ * other field keeps its name; FourRealities reads mandatoryTotal, mandatoryCompleted,
+ * isFullySatisfied and headHash.
+ */
 export interface Attestation {
-  schemaVersion: 2;
+  schemaVersion: 3;
   issueId: string;
   templateId: string;
   templateVersion: number;
@@ -30,7 +35,6 @@ export interface Attestation {
   mandatoryCompleted: number;
   openMandatoryItemIds: string[];
   isFullySatisfied: boolean;
-  lastModifiedByAccountId: string;
   headHash: string;
   issuedAt: string;
 }
@@ -44,7 +48,7 @@ export function buildAttestation(state: DodState, issuedAt: string): Attestation
   const gate = evaluateGate(state);
   const mandatory = state.criteria.filter(c => c.isMandatory);
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     issueId: state.issue.sourceReferenceId,
     templateId: state.template.workEffortId,
     templateVersion: state.template.revisionNumber,
@@ -53,7 +57,6 @@ export function buildAttestation(state: DodState, issuedAt: string): Attestation
     mandatoryCompleted: mandatory.length - gate.openMandatory.length,
     openMandatoryItemIds: gate.openMandatory.map(c => c.templateItemId),
     isFullySatisfied: gate.satisfied,
-    lastModifiedByAccountId: state.lastModifiedByPartyId || '',
     headHash: state.headHash,
     issuedAt
   };

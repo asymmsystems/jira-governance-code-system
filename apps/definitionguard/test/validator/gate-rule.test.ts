@@ -4,7 +4,7 @@
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
  */
-import { jira, CountingStorage, JiraCall } from '../helpers/forge-mocks';
+import { jira, CountingStorage, JiraCall, pseudonymOf, storedOutsideMap } from '../helpers/forge-mocks';
 
 jest.mock('@forge/api', () => {
   const m = require('../helpers/forge-mocks');
@@ -188,7 +188,8 @@ describe('B-10 exemptions on the settings page', () => {
 
   it('saves exemptions with who and when, and rejects anything that is not a DONE-category status of the project', async () => {
     const saved: any = await saveExemptions({ exemptStatusIds: ['10006'] }, settingsCtx, storage);
-    expect(saved).toMatchObject({ exemptStatusIds: ['10006'], updatedByAccountId: '712020:admin' });
+    expect(saved).toMatchObject({ exemptStatusIds: ['10006'], updatedByPartyId: pseudonymOf(storage, '712020:admin') });
+    expect(storedOutsideMap(storage, '712020:admin')).toEqual([]);
     await expect(saveExemptions({ exemptStatusIds: ['3'] }, settingsCtx, storage)).rejects.toThrow('Only Done-category statuses of this project can be exempt.');
     await expect(saveExemptions({ exemptStatusIds: 'x' }, settingsCtx, storage)).rejects.toThrow('Only Done-category statuses of this project can be exempt.');
     expect(storage.read(projectConfigKey('10000')).exemptStatusIds).toEqual(['10006']);

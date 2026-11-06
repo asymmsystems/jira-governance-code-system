@@ -4,7 +4,7 @@
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
  */
-import { jira, CountingStorage, JiraCall } from '../helpers/forge-mocks';
+import { jira, CountingStorage, JiraCall, pseudonymOf, storedOutsideMap } from '../helpers/forge-mocks';
 
 jest.mock('@forge/api', () => {
   const m = require('../helpers/forge-mocks');
@@ -53,7 +53,7 @@ describe('B-15 export', () => {
     const doc = JSON.parse(res.text);
     expect(doc).toMatchObject({
       format: 'definitionguard-history-export',
-      formatVersion: 1,
+      formatVersion: 2,
       issueId: '96001',
       issueKey: 'DEMO-96001',
       exportedByAccountId: '712020:lead',
@@ -64,7 +64,11 @@ describe('B-15 export', () => {
     expect(doc.events.map((e: any) => e.transitionName)).toEqual(['Create', 'Complete', 'Waive']);
     expect(doc.events[1].rows).toContainEqual(expect.objectContaining({ entity: 'Content', contentTypeId: 'DOD_EVIDENCE', objectInfo: 'https://ci.example/1' }));
     expect(doc.events[1].rows).toContainEqual(expect.objectContaining({ entity: 'WorkEffortContent', workEffortContentTypeId: 'DOD_EVIDENCE' }));
-    expect(doc.events[2].rows[0]).toMatchObject({ entity: 'WorkEffortStatus', statusId: 'DOD_WAIVED', reason: 'Pair-programmed and reviewed live.', setByPartyId: '712020:lead' });
+    const lead = pseudonymOf(storage, '712020:lead');
+    expect(doc.events[2].rows[0]).toMatchObject({ entity: 'WorkEffortStatus', statusId: 'DOD_WAIVED', reason: 'Pair-programmed and reviewed live.', setByPartyId: lead });
+    // ADR-010: events hold pseudonyms; the export maps each one to the account while it exists.
+    expect(doc.parties).toEqual({ [lead]: '712020:lead', [pseudonymOf(storage, '712020:dev')]: '712020:dev' });
+    expect(JSON.stringify(doc.events)).not.toContain('712020:');
     expect(res.fileName).toBe('DEMO-96001-definitionguard-history.json');
   });
 

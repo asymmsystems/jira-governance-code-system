@@ -490,7 +490,7 @@ export const DefinitionGuardPanel: React.FC = () => {
                 <ListRow key={row.key} divided={idx < arr.length - 1}>
                   <Stack space={SPACE.sub}>
                     <Inline space={SPACE.item} alignBlock="center">
-                      <User accountId={row.accountId} />
+                      {row.accountId ? <User accountId={row.accountId} /> : <Text as="span" weight="medium">{row.actorText}</Text>}
                       <Text as="span" size="small" color={TEXT_ROLE.secondary}>• {row.when}</Text>
                     </Inline>
                     <SubSection>
