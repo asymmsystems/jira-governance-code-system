@@ -40,7 +40,7 @@ Each invariant names the tests that prove it.
 9. **What is signed is what was shown.** The stored declaration text and version equal the text shown on the seal form.
 10. **Deterministic canonical form.** Equal content gives an equal hash on any Node runtime. Section 4 defines the form. Its test vectors live in `tools/verifier/vectors.json` (2.0.0, checked by `test/canonical-v2.test.ts`) and `apps/ledgerseal/test/fixtures/vectors-2.2.0.json` (checked by `test/canonical-v22.test.ts`).
 11. **Least privilege, stated honestly.** The app uses the scopes in section 5 and says why it needs each one.
-12. **No personal data in hashed records or in the property (ADR-011).** Hashed records hold party tokens, never account ids or names. The token-to-account map is one key per account; a closed account's key is deleted. The `ledgerseal-cert` property holds no account id.
+12. **No personal data in hashed records or in the property (ADR-011).** Hashed records hold party tokens, never account ids or names. The token-to-account map is one key per account; on closure the key keeps only a closed mark `{ closed, closedAt }` with no account id, and that token is never mapped again. The `ledgerseal-cert` property holds no account id.
 13. **What was seen is what is sealed (F-05).** The panel sends the hash of the issue it showed (`viewHash`); a seal is refused with `ISSUE_CHANGED` when the issue changed since.
 
 Removed from v1: the v1 "if and only if" hash invariant (false, T-03), "never modified in place" (false in v1, LS-06), "only `read:jira-work` and `storage:app`" (false, the app needs to write its property), and the "32 KB per entry" storage rule (the KVS limit is 240 KiB, FG-07).
@@ -151,7 +151,7 @@ type PanelState = 'NOT_SEALED' | 'SEALED' | 'CHANGED' | 'CHANGED_BACK' | 'REVOKE
 interface PanelData {
   state: PanelState;
   errorReason?: 'JIRA_UNREACHABLE' | 'STORAGE' | 'UNKNOWN';
-  seal?: { certificateId; sealedAt; sealedByAccountId; sealedByClosed?; meaning; reason; declarationVersion; snapshotHash; canonicalizerVersion; everCompromised; incidentCount; revocation };   // sealedByAccountId resolved from the party token; empty for a closed account
+  seal?: { certificateId; sealedAt; sealedByAccountId; sealedByClosed?; sealedByUnknown?; meaning; reason; declarationVersion; snapshotHash; canonicalizerVersion; everCompromised; incidentCount; revocation };   // sealedByAccountId resolved from the party token; empty for a closed account
   viewHash: string;                   // F-05
   signing: { signed: boolean; keyId: string | null };   // B5
   coveredFields: { id: string; name: string }[];
@@ -414,7 +414,7 @@ The seal form shows this exact text with "(Declaration v1)". The record stores t
 
 ## 11. Evidence export and open verifier
 
-- `seal-evidence-api` returns `{ format: "ledgerseal-evidence/1", attestation, publicKeyId, snapshot (canonical form), history, parties, verification, warning? }`. `parties` maps each party token of the history to its account id, or null for a closed account; it is not signed. The size limit is 5 MB (FG-04).
+- `seal-evidence-api` returns `{ format: "ledgerseal-evidence/1", attestation, publicKeyId, snapshot (canonical form), history, parties, verification, warning? }`. `parties` maps each party token of the history to its account id, or null for a closed account (closed mark); a token with no map entry is left out. It is not signed. The size limit is 5 MB (FG-04).
 - `verify-evidence.mjs <file> [publicKey.pem]` (https://github.com/asymmsystems/ledgerseal-verifier, Apache-2.0, release v1.2.0; identical copy in `tools/verifier`) uses the Node standard library only. It checks five things:
   1. the snapshot hash against the attestation;
   2. the history chain;

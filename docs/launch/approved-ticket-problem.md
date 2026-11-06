@@ -149,13 +149,14 @@ LedgerSeal resolves this through an **open-source, zero-dependency offline verif
 node verify-evidence.mjs --evidence evidence.json --public-key ls-prod-2026-11.pub.pem
 ```
 
-The script executes four independent mathematical checks:
+The script executes five independent checks:
 1. **Snapshot Hash Verification:** Recalculates the SHA-256 digest of the canonical snapshot payload and matches it against the hash in the attestation.
 2. **Chain Continuity Verification:** Validates that every entry in the ticket's history points to its predecessor's hash, starting from the all-zero genesis value, with no gaps in the sequence.
 3. **Newest Seal:** Confirms that the attestation names the certificate of the newest seal in the history.
-4. **Digital Signature Verification:** Validates the Ed25519 signature over the attestation using the vendor public key.
+4. **Status:** Confirms that the attestation's status (sealed, changed or revoked) is the state of the newest history entry.
+5. **Digital Signature Verification:** Validates the Ed25519 signature over the attestation using the vendor public key.
 
-If all four checks succeed, the script prints four `PASS` lines and exits with code `0`. If any check fails, it prints `FAIL` for that check and exits with code `1`.
+If all five checks succeed, the script prints five `PASS` lines and exits with code `0`. If any check fails, it prints `FAIL` for that check and exits with code `1`.
 
 ---
 
@@ -178,10 +179,11 @@ Jira is an exceptional tracking platform, but tracking is not governance. As sof
 
 The Approved Ticket Problem is not solved by adding more administrative meetings, writing longer policy documents, or locking down developer permissions until engineering velocity grinds to a halt.
 
-It is solved by **cryptographic immutability at the workflow transition gate**:
+It is solved by **tamper evidence at the workflow transition gate**:
 - Developers retain the freedom to collaborate, comment, and adjust non-critical metadata.
 - Critical specifications, configurations, and test evidence are cryptographically sealed upon approval.
 - The deployment gate permits only verified, untampered tickets to enter production.
+- The seal makes a change after approval visible; it does not stop someone who can rewrite the app's stored data, including the vendor, from writing a new consistent record (see the 11.10(e) row).
 
 Change control should be mathematical, verifiable, and transparent.
 

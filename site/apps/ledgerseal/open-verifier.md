@@ -14,14 +14,15 @@ The LedgerSeal offline verifier allows compliance officers, security auditors, a
 
 ---
 
-## 2. Four Verification Checks
+## 2. Five Verification Checks
 
-When executed against an evidence export, the script performs four sequential checks:
+When executed against an evidence export, the script performs five sequential checks:
 
 1. **Snapshot Hash:** Recomputes the SHA-256 digest over the Canonical JSON representation of `evidence.snapshot` and compares it to `attestation.snapshotHash`.
 2. **History Hash Chain:** Traverses every sequential entry in `evidence.history`, checking genesis (`0000...0000`), `prevEntryHash`, and hash chaining continuity.
 3. **Certificate Match:** Verifies that the attestation points to the newest valid seal certificate in the audit history.
-4. **Ed25519 Digital Signature:** Cryptographically verifies the digital signature over canonical attestation fields using the published vendor public key.
+4. **Status:** Verifies that `attestation.status` is the state of the newest history entry that is not a redaction (`SEAL_VALID` for a seal, `SEAL_BROKEN` for a change, `SEAL_REVOKED` for a revoke).
+5. **Ed25519 Digital Signature:** Cryptographically verifies the digital signature over canonical attestation fields using the published vendor public key.
 
 ---
 
@@ -51,11 +52,14 @@ Expected output:
 PASS snapshot hash
 PASS history chain (3 entries)
 PASS attestation names the newest seal
+PASS attestation status matches the history (SEAL_VALID)
 PASS signature (ls-dev-2026-11)
 ```
 
+> This worked example uses the development key `ls-dev-2026-11`. Evidence exported from the Marketplace app names the production key `ls-prod-2026-11` in `attestation.keyId`: run `node verify-evidence.mjs <evidence.json> keys/ls-prod-2026-11.pub.pem`, and the signature line reads `PASS signature (ls-prod-2026-11)`.
+
 ### Exit Codes
-- `0`: All four verification stages passed. The evidence is authentic and untampered.
+- `0`: All five verification stages passed. The evidence is authentic and untampered.
 - `1`: One or more verification checks failed. The evidence has been tampered with or signature is invalid.
 - `2`: Command line usage error, missing argument, or file not found.
 
