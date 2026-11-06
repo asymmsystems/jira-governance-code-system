@@ -59,7 +59,7 @@ Each fact has a source in `marketplace-commercial-rules.md` or `pricing-research
 
 ## 4. Price
 
-**Decided by the owner, 2026-11-06** (per user per month; free for 1 to 10 users). Above 1,000 users, the owner chose option A on 2026-11-07: each app keeps its 251 to 1,000 price for every larger tier, up to 100,000 users, instead of a custom price.
+**Decided by the owner, 2026-11-06** (per user per month; free for 1 to 10 users). Above 1,000 users, the owner chose option A on 2026-11-06: each app keeps its 251 to 1,000 price for every larger tier, up to 100,000 users (the last tier, 90,001 to 100,000, of the Marketplace pricing form, seen in the console on 2026-11-06), instead of a custom price.
 
 | App | 11 to 100 | 101 to 250 | 251 to 1,000 | Rule |
 |---|---|---|---|---|

@@ -13,9 +13,7 @@ On the Atlassian Marketplace, app licensing follows the **Jira Cloud site user t
 - **1 to 10 Users:** Free tier. Small teams and evaluation sandboxes install and use the app with full features at zero cost.
 - **11+ Users:** Commercial tier. When an organization with an 11+ user Jira site installs the app, Atlassian automatically initiates a **30-day free commercial trial**.
 - **Post-Trial Conversion:** At day 31, Atlassian automatically bills the customer's payment method on file according to our configured pricing schedule:
-  - 11-100 users: $1.50 per user per month.
-  - 101-250 users: $1.20 per user per month.
-  - 251-1000 users: $0.90 per user per month.
+  - Each app has its own price per user per month (11 to 100, 101 to 250, 251 and more): CascadePlan $1.50, $1.20, $0.90; FourRealities $1.40, $1.10, $0.80; DefinitionGuard and LedgerSeal $0.95, $0.75, $0.24.
   - Annual plans: Billed at a 16.6% discount (equivalent to 10 months paid, 2 months free).
 
 ### 2. Marketplace Revenue Collection & Settlement

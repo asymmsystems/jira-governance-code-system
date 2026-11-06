@@ -51,7 +51,7 @@ Configure native Atlassian billing under **Pricing**:
 - **Pricing Model:** Per-User Tiered Pricing (Monthly & Annual).
 - **Free Evaluation Tier:**
   - `1 to 10 Users`: **$0.00 / month (Free)**
-- **Commercial Tiers** (per user per month; annual is 10 times monthly; the 251 to 1,000 price applies to every larger tier, up to 100,000 users):
+- **Commercial Tiers** (per user per month; annual is 10 times monthly; the 251 to 1,000 price applies to every larger tier, up to the form's last tier, 90,001 to 100,000 users):
   - CascadePlan: $1.50 (11 to 100), $1.20 (101 to 250), $0.90 (251 and more)
   - FourRealities: $1.40, $1.10, $0.80
   - DefinitionGuard: $0.95, $0.75, $0.24

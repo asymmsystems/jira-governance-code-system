@@ -29,9 +29,7 @@ This checklist consolidates all operational actions that require direct human ex
   - Select **Paid via Atlassian**.
   - Configure user tiers:
     - 1 to 10 users: **Free ($0.00)**.
-    - 11 to 100 users: **$1.50 per user per month**.
-    - 101 to 250 users: **$1.20 per user per month**.
-    - 251 to 1000 users: **$0.90 per user per month**.
+    - Each app has its own price per user per month for 11 to 100, 101 to 250, and 251 users and more (the 251 to 1,000 price is repeated in every larger tier): CascadePlan $1.50, $1.20, $0.90; FourRealities $1.40, $1.10, $0.80; DefinitionGuard and LedgerSeal $0.95, $0.75, $0.24.
     - Annual subscription: Enable with standard 2-months-free discount (10x monthly).
 - [ ] **Security Self-Assessment:**
   - Fill out the Atlassian Marketplace Security Self-Assessment using the pre-compiled responses in `docs/marketplace/submission/developer-console-checklist.md`.
