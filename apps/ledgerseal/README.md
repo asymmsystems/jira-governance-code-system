@@ -36,7 +36,7 @@ Built on Atlassian Forge. The app backend makes no outbound network calls, and t
 | Scope | Why |
 |---|---|
 | `read:jira-work` | Read the issue, comments, change log, field list and the user's own permissions |
-| `write:jira-work` | Write the app's own `ledgerseal-cert` issue property. The app never edits issue fields |
+| `write:issue.property:jira` | Write the app's own `ledgerseal-cert` issue property (the granular scope for issue properties). The app never edits issue fields |
 | `read:jira-user` | Read display names to show who changed an item (never stored), the caller's own groups, and groups for the admin page |
 | `storage:app` | Keep seal records, history and the token-to-account map |
 | `report:personal-data` | Report the account ids the app holds every week, and erase closed accounts (ADR-011) |

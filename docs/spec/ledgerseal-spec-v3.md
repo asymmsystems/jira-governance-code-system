@@ -260,13 +260,13 @@ app:
   runtime: nodejs22.x
   licensing: { enabled: true }
 permissions:
-  scopes: read:jira-work, write:jira-work, read:jira-user, storage:app, report:personal-data
+  scopes: read:jira-work, write:issue.property:jira, read:jira-user, storage:app, report:personal-data
 ```
 
 | Scope | Why |
 |---|---|
 | `read:jira-work` | Read the issue, comments, change log, field list and the user's own permissions |
-| `write:jira-work` | Write the app's own `ledgerseal-cert` issue property. The app never edits issue fields |
+| `write:issue.property:jira` | Write the app's own `ledgerseal-cert` issue property; the granular scope replaces `write:jira-work` (F-20). The app never edits issue fields |
 | `read:jira-user` | Read display names to show who changed an item (never stored), the caller's groups, groups for the admin page |
 | `storage:app` | Keep seal records, history and the token-to-account map in KVS |
 | `report:personal-data` | Weekly personal data report and erasure of closed accounts (ADR-011) |

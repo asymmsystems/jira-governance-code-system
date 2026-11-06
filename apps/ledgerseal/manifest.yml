@@ -97,7 +97,7 @@ app:
 permissions:
   scopes:
     - read:jira-work
-    - write:jira-work
+    - write:issue.property:jira
     - read:jira-user
     - storage:app
     - report:personal-data
