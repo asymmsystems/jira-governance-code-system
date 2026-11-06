@@ -7,6 +7,7 @@
  * @author Fahim Farook
  */
 
+import { RESTRICTED_COMMENT_TEXT } from '../src/service/ledger';
 import { canonicalizeIssueState } from '../src/domain/canonicalizer';
 import { generateSealCertificate } from '../src/domain/crypto';
 import { analyzeTamperState } from '../src/domain/tamper-detector';
@@ -90,12 +91,12 @@ describe('B-12 change list with who and when', () => {
     ]);
   });
 
-  it('lists a removed comment', async () => {
+  it('lists a removed comment, without its sealed text (H-2: it may be restricted, not deleted)', async () => {
     const original = [{ id: '7', author: { accountId: 'ann' }, body: doc('Approved by CAB'), created: '2026-10-01T00:00:00.000Z' }];
     const { jira, deps } = await sealed(issue => (issue.fields.comment = { comments: original, total: 1 }));
     jira.comments = [];
     const rows = (await view(deps)).tamperedFields;
-    expect(rows.map((r: any) => [r.fieldId, r.fieldName, r.sealedValue, r.liveValue])).toEqual([['comment:7', 'Comment removed', 'Approved by CAB', '(empty)']]);
+    expect(rows.map((r: any) => [r.fieldId, r.fieldName, r.sealedValue, r.liveValue])).toEqual([['comment:7', 'Comment removed', RESTRICTED_COMMENT_TEXT, '(empty)']]);
   });
 
   it('adversarial (T-03 C05, NF-01): names an issue type change and a move to another project', () => {

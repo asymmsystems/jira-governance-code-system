@@ -186,11 +186,31 @@ describe('H-1 the export follows the same rule as the panel (probes P2, P3)', ()
     expect(JSON.stringify(evidence)).not.toContain('SECRET-P2');
   });
 
-  it('a removed comment that was open at a seal made after F-06 does not stop the export', async () => {
+  it('H-2 (owner decision, fail closed): a sealed comment the app can no longer read stops the export for everyone', async () => {
     const { jira, as } = setup([comment('1', 'Open note')]);
     await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
     jira.issue.fields.comment.comments = [];
+    await expect(getSealEvidence({}, panelContext('viewer'), as('viewer'))).resolves.toMatchObject({ ok: false, code: 'RESTRICTED_EVIDENCE' });
+    // Approving the changes makes a new seal whose evidence can be exported
+    jira.approvers.add('bob');
+    await expect(sealIssue({ signature: validSignature({ reason: 'Comment deleted on purpose' }) }, panelContext('bob'), as('bob'))).resolves.toMatchObject({ ok: true });
     await expect(getSealEvidence({}, panelContext('viewer'), as('viewer'))).resolves.toMatchObject({ format: 'ledgerseal-evidence/1' });
+  });
+
+  it('P4: a comment open at the seal and restricted later to a role the app is not in shows no sealed text and is not exported, to anyone', async () => {
+    const { jira, as } = setup([comment('1', 'SECRET-P4')]);
+    await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
+    // Jira leaves the comment out of the app's read; people in the role still see it, others do not
+    jira.issue.fields.comment.comments = [];
+    jira.getVisibleCommentIds = async () => ({ ok: true, value: jira.currentUser === 'insider' ? ['1'] : [] });
+    for (const viewer of ['outsider', 'insider']) {
+      const panel: any = await verifyIssue({}, panelContext(viewer), as(viewer));
+      expect(rowOf(panel, '1')).toMatchObject({ fieldName: 'Comment removed', sealedValue: RESTRICTED_COMMENT_TEXT, changedBy: [], changedAt: null });
+      expect(JSON.stringify(panel)).not.toContain('SECRET-P4');
+      const evidence: any = await getSealEvidence({}, panelContext(viewer), as(viewer));
+      expect(evidence).toMatchObject({ ok: false, code: 'RESTRICTED_EVIDENCE' });
+      expect(JSON.stringify(evidence)).not.toContain('SECRET-P4');
+    }
   });
 
   it('the export fails closed when the live comments cannot be read', async () => {
