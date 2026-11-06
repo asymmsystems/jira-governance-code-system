@@ -24,6 +24,8 @@ export function issueFields(devFieldId: string | null): string {
 export interface SearchResult {
   issues: JiraIssueJson[];
   capped: boolean;
+  /** The read stopped at the deadline before the cap (F-H2); the result is partial. */
+  timedOut?: boolean;
   /** Exact count when not capped; approximate count when capped; null when unknown. */
   totalKnown: number | null;
   status?: number;
@@ -60,7 +62,8 @@ export async function searchProjectIssues(projectKey: string, devFieldId: string
 
   const issues = Array.from(seen.values());
   const capped = Boolean(token);
-  return { issues, capped, totalKnown: capped ? await approximateCount(jql, request) : issues.length };
+  const timedOut = capped && seen.size < ISSUE_CAP;
+  return { issues, capped, ...(timedOut ? { timedOut } : {}), totalKnown: capped ? await approximateCount(jql, request) : issues.length };
 }
 
 async function approximateCount(jql: string, request: JiraRequest): Promise<number | null> {
@@ -76,11 +79,17 @@ async function approximateCount(jql: string, request: JiraRequest): Promise<numb
   }
 }
 
+/** Ids read past the snapshot cap, for issues created after the snapshot was built (F-H2). */
+export const VISIBLE_ID_MARGIN = 500;
+
 /**
- * Ids of the project's issues that the caller can browse: an id-only search, paged with
- * nextPageToken. "complete" is false when the read stopped early (error or deadline).
+ * Ids of the project's issues that the caller can browse: an id-only search, newest first, paged
+ * with nextPageToken. With `wanted` (the snapshot's ids) it stops once every wanted id is seen, or
+ * after ISSUE_CAP plus a margin of ids: the snapshot holds only the newest ISSUE_CAP issues, so an
+ * id it holds that is not seen by then is not visible to the caller (F-H2). "complete" is false
+ * when the read stopped early (error or deadline).
  */
-export async function visibleIssueIds(projectKey: string, request: JiraRequest, deadline: number): Promise<{ ids: Set<string>; complete: boolean; status?: number }> {
+export async function visibleIssueIds(projectKey: string, request: JiraRequest, deadline: number, wanted?: ReadonlySet<string>): Promise<{ ids: Set<string>; complete: boolean; status?: number }> {
   const jql = `project = "${projectKey}" ORDER BY created DESC`;
   const ids = new Set<string>();
   let token: string | undefined;
@@ -95,6 +104,9 @@ export async function visibleIssueIds(projectKey: string, request: JiraRequest, 
       const data = ((await res.json()) || {}) as JiraSearchPageJson;
       for (const iss of data.issues || []) ids.add(String(iss.id));
       token = data.isLast ? undefined : data.nextPageToken;
+      if (token && wanted && (ids.size >= ISSUE_CAP + VISIBLE_ID_MARGIN || Array.from(wanted).every(id => ids.has(id)))) {
+        return { ids, complete: true };
+      }
     } while (token && Date.now() < deadline);
   } catch {
     return { ids, complete: false };

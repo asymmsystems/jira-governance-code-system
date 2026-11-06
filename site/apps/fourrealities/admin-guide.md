@@ -1,64 +1,34 @@
 # FourRealities Admin Guide
 
-This guide walks Jira administrators through configuring FourRealities, connecting data sources, tuning the Reality Alignment Index (RAI), and establishing drift detection thresholds.
+![FourRealities gate authority](/assets/fourrealities/05-admin.png)
 
-![FourRealities Project Settings](/assets/fourrealities/04-settings.png)
+## 1. Install
 
----
+Install FourRealities and accept its scopes: `read:jira-work`, `write:jira-work`, `storage:app`, `search:confluence`, `read:confluence-content.summary`, `read:jira-user`, `report:personal-data`. FourRealities needs no other app.
 
-## 1. Connecting Data Sources
+## 2. Evidence sources
 
-To preserve data privacy and maintain zero-egress security, FourRealities does not connect to external version control systems or documentation tools directly. Instead, it leverages Jira's existing, authenticated platform integrations.
+Go to **Jira settings > Apps > FourRealities gate authority** (Jira administrators only). For each check choose:
 
-### Step 1: Connect Version Control via Jira Development Integration
-FourRealities reads code events (branches, commits, pull requests, review states) via Jira's native development status endpoint. Ensure your repositories are linked to Jira using an official Atlassian integration:
-- **GitHub:** Install the official [GitHub for Jira](https://marketplace.atlassian.com/apps/1219592) app or configure GitHub Enterprise Server under **Jira Settings > Products > Integrations > GitHub**.
-- **Bitbucket:** Native integration is enabled automatically when Bitbucket Cloud is linked to your Atlassian site.
-- **GitLab:** Install the official [GitLab for Jira Cloud](https://marketplace.atlassian.com/apps/1220973) integration.
+- **Intent:** In use (default) or Not in use.
+- **Process:** Detect (default), DefinitionGuard, Checklists for Jira (HeroCoders), or Not in use. Detect uses DefinitionGuard once a DefinitionGuard record with a verified signature has been read on the site.
+- **Code:** Detect (default), In use, or Not in use. Detect uses Code once pull request data exists on the site (your GitHub, GitLab or Bitbucket integration for Jira fills the Development field).
+- **Audit:** Detect (default), LedgerSeal, or Not in use. Detect uses LedgerSeal once a LedgerSeal record with a verified signature has been read.
 
-> [!NOTE]
-> Because FourRealities reads development status data through Jira's internal APIs, you do not need to configure third-party API keys, OAuth tokens, or webhooks inside FourRealities.
+The page shows what FourRealities has seen of each source. A check that is not in use is not scored. Records that FourRealities cannot verify (unsigned, signed with a key it does not trust, or older than one already seen) count like no record: evidence missing on a Done issue. Until DefinitionGuard and LedgerSeal have production signing keys, that is every record in production, so leave Process and Audit on Detect until then. A Checklists for Jira checklist cannot be verified, so with that source Process never counts a checklist as evidence.
 
-### Step 2: Connect Documentation (Confluence & ADRs)
-To verify the **Intent** reality:
-- Link your Confluence Cloud workspaces to your Jira site under **Jira Settings > Products > Integrations > Confluence**.
-- When team members link Confluence specification pages or Architectural Decision Records (ADRs) to Jira issues via **Link issue > Web link** or **Confluence page**, FourRealities automatically inspects the linked intent.
+**Decision issue types** are the issue type names that count as a decision record for Intent (default: adr, architecture decision, decision, decision record, spec, specification, requirement).
 
----
+After a change, each dashboard builds its snapshot again on its next view.
 
-## 2. Configuring Project Settings
+## 3. Approver groups
 
-Navigate to your Jira project and select **Project Settings > FourRealities**.
+Code exceptions are approved, rejected or revoked by project administrators, Jira administrators, and members of the approver groups you add on the same page (at most 20). The requester and the issue's assignee can never decide.
 
-### Configuring Reality Weights
-By default, each reality contributes equally (25%) to the overall Reality Alignment Index (RAI). You can adjust weightings based on your organization's delivery priorities:
+## 4. Projects and snapshots
 
-- **Intent Weight (0 to 100%):** Importance of linked design specifications and ADRs.
-- **Process Weight (0 to 100%):** Importance of accurate ticket estimates, state transitions, and milestone scheduling.
-- **Code Weight (0 to 100%):** Importance of pull request linking, commit associations, and peer code reviews.
-- **Audit Weight (0 to 100%):** Importance of test pass rates, compliance validation, and rework penalty mitigation.
+A project's dashboard is built the first time someone opens **Four Realities** in the project, and again every day and on **Refresh**. FourRealities reads at most 2,000 issues per project, newest first.
 
-*(The sum of all four reality weights must equal 100%.)*
+## 5. Data
 
-### Rework Loop Sensitivity Threshold
-A "rework loop" occurs when a ticket repeatedly bounces between an active development status and a review or testing status (for example: *In Review -> In Progress -> In Review*).
-- **Default Bounce Threshold:** 2 bounces trigger a warning; 3 or more bounces trigger a critical rework alert.
-- **Adjustment:** For complex investigative research spikes, administrators can relax the threshold. For strict production releases, set the threshold to 1.
-
-### Branch and PR Naming Conventions
-You can define regular expressions to validate that Git branches and commit messages adhere to team naming standards (for example: `feature/PROJ-[0-9]+-.*`). When code commits deviate from the pattern, Code Reality health is discounted.
-
----
-
-## 3. Permissions Management
-
-FourRealities respects the [Uniform Permission Management Standard](/permissions-standard):
-- **Viewing Dashboard & Metrics:** Available to any user with the **Browse Projects** permission in the project.
-- **Configuring Project Settings:** Restricted to users with the **Administer Projects** permission.
-- **Global Settings:** Accessible to users with the **Jira System Administrator** global permission.
-
----
-
-## 4. Periodic Metric Recalculation
-
-FourRealities recalculates alignment metrics in real time whenever an issue panel is viewed or when the project dashboard is refreshed. To minimize load on Jira APIs, aggregated project statistics are cached within Forge KVS and updated incrementally.
+App data stays in Forge storage. FourRealities stores account ids only where a rule needs them and no names; it reports them to Atlassian every week and erases the ids of closed accounts. When you uninstall the app, Forge removes its storage; the `fourrealities-exception` issue property, remote links and comments that users added stay in Jira.

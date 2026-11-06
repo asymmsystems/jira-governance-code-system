@@ -5,15 +5,15 @@
  * rework note (ADR-001 Patterns 3, 5, Option C). Orchestration only; rules live in the Engines.
  */
 
-import { CallerContext, DecideExceptionPayload, ExceptionDecision, RecordExceptionPayload, ExceptionProperty, GateExceptionEvent, GateExceptionState, ReworkNote } from '../contract/data/models';
-import { ExceptionEventAccessor, ReworkNoteAccessor, JiraIssueAccessor, SiteConfigAccessor } from '../contract/accessors';
+import { ApprovalView, CallerContext, DecideExceptionPayload, ExceptionDecision, IssueRow, RecordExceptionPayload, ExceptionProperty, GateExceptionEvent, GateExceptionState, ReworkNote } from '../contract/data/models';
+import { ExceptionEventAccessor, JiraDirectoryAccessor, ReworkNoteAccessor, JiraIssueAccessor, SettingsAccessor, SiteConfigAccessor } from '../contract/accessors';
 import { ExceptionPolicyEngine, PolicyEngine } from '../contract/engines';
 import { ExceptionManager } from '../contract/managers';
 import { messageOf } from '../contract/data/errors';
 
 const DECISIONS: ExceptionDecision[] = ['APPROVE', 'REJECT', 'REVOKE', 'WITHDRAW'];
 
-/** Jira permissions that make the caller an approver (ADR-001 Option C, widened by owner decision 1B). */
+/** Tier 1: Jira permissions that make the caller an approver (ADR-001 Option C, widened by owner decision 1B). */
 const APPROVER_PERMISSIONS = ['ADMINISTER_PROJECTS', 'ADMINISTER'];
 
 /** Stored when a decision comes without a comment. Reject and revoke always need a reason. */
@@ -24,6 +24,12 @@ const NO_COMMENT: Partial<Record<ExceptionDecision, string>> = {
 
 export interface ExceptionManagerDeps {
   userJira: JiraIssueAccessor;
+  /** Jira as the app: writes the projection property after an approver's decision (ADR-013, F-M1). */
+  appJira: JiraIssueAccessor;
+  /** The caller's groups, as the user (Tier 2). */
+  directory: JiraDirectoryAccessor;
+  /** The approver groups. */
+  settings: SettingsAccessor;
   siteConfig: SiteConfigAccessor;
   notes: ReworkNoteAccessor;
   events: ExceptionEventAccessor;
@@ -121,7 +127,7 @@ export class DefaultExceptionManager implements ExceptionManager {
     }
     const reason = String(payload?.reason || '').trim();
 
-    let isProjectAdmin = false;
+    let isApprover = false;
     let issueKey: string;
     let assigneeAccountId: string | undefined;
     try {
@@ -136,12 +142,11 @@ export class DefaultExceptionManager implements ExceptionManager {
       issueKey = String(project.issueKey || issueId);
       assigneeAccountId = project.assigneeAccountId;
       if (decision !== 'WITHDRAW') {
-        // A project administrator, or a Jira administrator (owner decision 1B, 2026-11-01).
-        const permission = await this.d.userJira.hasAnyPermission(String(project.projectKey), APPROVER_PERMISSIONS);
-        if (permission.status !== 200) {
-          return { success: false, error: `Jira returned HTTP ${permission.status} checking your permissions.` };
+        const approver = await this.isApprover(String(project.projectKey));
+        if (approver.error) {
+          return { success: false, error: approver.error };
         }
-        isProjectAdmin = permission.granted;
+        isApprover = approver.granted;
       }
     } catch (err) {
       return { success: false, error: messageOf(err, 'Failed to check the issue.') };
@@ -149,7 +154,7 @@ export class DefaultExceptionManager implements ExceptionManager {
 
     const events = await this.d.events.list(String(issueId));
     const current = this.d.lifecycle.currentState(events);
-    const decisionError = this.d.lifecycle.decisionError(current, decision, { accountId: caller.accountId, isProjectAdmin }, assigneeAccountId, reason);
+    const decisionError = this.d.lifecycle.decisionError(current, decision, { accountId: caller.accountId, isApprover }, assigneeAccountId, reason);
     if (decisionError) {
       return { success: false, error: decisionError };
     }
@@ -158,14 +163,60 @@ export class DefaultExceptionManager implements ExceptionManager {
       at: this.now(), byAccountId: caller.accountId, asRole: decision === 'WITHDRAW' ? 'REQUESTER' : 'APPROVER',
       reason: reason || NO_COMMENT[decision] || ''
     };
-    return this.commit(event, events, await this.d.notes.list(String(issueId)));
+    // The approver check passed: the projection is written as the app, so an approver without Edit
+    // issues can decide (ADR-013, F-M1). A withdrawal is the requester's own edit and stays the user's.
+    return this.commit(event, events, await this.d.notes.list(String(issueId)), decision === 'WITHDRAW' ? this.d.userJira : this.d.appJira);
   }
 
-  /** Writes the property projection as the user, then appends the event (never before Jira accepts). */
-  private async commit(event: GateExceptionEvent, previous: GateExceptionEvent[], notes: ReworkNote[]): Promise<Result> {
+  /**
+   * What the issue panel may offer the viewer for the current exception (ADR-013 decision 5).
+   * Undefined when there is nothing to decide. Fails closed: a failed check means "may not decide".
+   */
+  async approval(caller: CallerContext, row: IssueRow): Promise<ApprovalView | undefined> {
+    const current = row.codeException;
+    if (!current || (current.status !== 'REQUESTED' && current.status !== 'APPROVED') || !caller.accountId) {
+      return undefined;
+    }
+    let isApprover = false;
+    let assignee: string | undefined = row.assigneeAccountId;
+    try {
+      const project = await this.d.userJira.issueProject(row.issueId);
+      if (project.status === 200) {
+        assignee = project.assigneeAccountId;
+        isApprover = (await this.isApprover(String(project.projectKey))).granted;
+      }
+    } catch {
+      isApprover = false;
+    }
+    return this.d.lifecycle.approvalView(current, { accountId: caller.accountId, isApprover }, assignee);
+  }
+
+  /**
+   * Tier 1: ADMINISTER_PROJECTS on the project or global ADMINISTER, as the user. Tier 2: a member of
+   * a configured approver group (GET /rest/api/3/myself?expand=groups as the user). A failed group
+   * read denies; a failed permission read is reported (Uniform Permission Management Standard).
+   */
+  private async isApprover(projectKey: string): Promise<{ granted: boolean; error?: string }> {
+    const permission = await this.d.userJira.hasAnyPermission(projectKey, APPROVER_PERMISSIONS);
+    if (permission.status !== 200) {
+      return { granted: false, error: `Jira returned HTTP ${permission.status} checking your permissions.` };
+    }
+    if (permission.granted) return { granted: true };
+    const policy = await this.d.settings.getApproverPolicy();
+    const parties = policy?.parties || [];
+    if (parties.length === 0) return { granted: false };
+    const mine = await this.d.directory.myGroups();
+    if (mine.status !== 200) return { granted: false };
+    // By group id only: a new group with a deleted group's name grants nothing (merge review L-1).
+    const ids = new Set(parties.map(p => p.partyId));
+    return { granted: mine.groups.some(g => ids.has(g.groupId)) };
+  }
+
+  /** Writes the property projection (as the given principal), then appends the event (never before Jira accepts). */
+  private async commit(event: GateExceptionEvent, previous: GateExceptionEvent[], notes: ReworkNote[], jira: JiraIssueAccessor = this.d.userJira): Promise<Result> {
     const state: GateExceptionState | undefined = this.d.lifecycle.currentState([...previous, event]);
     const property: ExceptionProperty = { schemaVersion: 3, issueId: event.issueId, issueKey: event.issueKey, code: state, ...this.reworkProjection(notes) };
-    const written = await this.writeProperty(event.issueId, property);
+    const written = await this.writeProperty(event.issueId, property, jira);
     if (written) return written;
     await this.d.events.append(event);
     return { success: true, record: property };
@@ -179,9 +230,9 @@ export class DefaultExceptionManager implements ExceptionManager {
   }
 
   /** Undefined on success; else the error result. A 403 stays the user's: no retry as the app (FR-05). */
-  private async writeProperty(issueId: string, property: ExceptionProperty): Promise<Result | undefined> {
+  private async writeProperty(issueId: string, property: ExceptionProperty, jira: JiraIssueAccessor = this.d.userJira): Promise<Result | undefined> {
     try {
-      const status = await this.d.userJira.putExceptionProperty(issueId, property);
+      const status = await jira.putExceptionProperty(issueId, property);
       if (status === 403) {
         return { success: false, error: `You need the Edit issues permission on ${property.issueKey} to record an exception.` };
       }

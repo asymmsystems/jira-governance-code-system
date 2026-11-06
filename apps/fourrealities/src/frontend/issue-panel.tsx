@@ -2,12 +2,12 @@
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
  * FourRealities: issue panel. Shows the four gates with sources; remediation links or records, never writes evidence.
+ * The decision buttons follow what the server says the viewer may do (ADR-013 decision 5).
  */
 
 import React, { useState } from 'react';
 import { Button, Inline, Lozenge, SectionMessage, Stack, Text } from '@forge/react';
-import { router } from '@forge/bridge';
-import { ExceptionDecision, ExceptionNote, GATE_NAMES, GateExceptionState, GateName, IssueRow } from '../contract/data/models';
+import { ApprovalView, ERASED_ACCOUNT, ExceptionDecision, ExceptionNote, GATE_NAMES, GateExceptionState, GateName, IssueRow } from '../contract/data/models';
 import { PanelAction, afterActionText, raiPartsText, raiText, recoveryText, riskAppearance } from '../ui/gate-text';
 import { GatePipeline, GateRow } from './gate-row';
 import { alignmentText, driftText, issueReadiness, nextActionText, scoreParts } from '../ui/pipeline';
@@ -15,28 +15,15 @@ import { SPACE, TEXT_ROLE } from '../brand/brand';
 import { ActionRow, AppSurface, AttributionLine, ListRow, NoteBox, PanelHeader, Section, SubSection, SummaryBlock } from '../brand/layout';
 import { DecisionModal, ExceptionModal, LinkDecisionModal, ReviewModal } from './modals';
 
-/**
- * Opens the issue so the user can act in the producer app's own panel.
- * FourRealities never writes seal or Definition of Done evidence itself.
- */
-export const openProducerPanel = (issueKey: string): Promise<void> => router.open(`/browse/${issueKey}`);
-
-export const ProducerLinks: React.FC<{ issueKey: string }> = ({ issueKey }) => (
-  <>
-    <Button appearance="subtle" spacing="compact" iconAfter="shortcut" onClick={() => openProducerPanel(issueKey)}>
-      Open {issueKey}: LedgerSeal Audit Gate panel
-    </Button>
-    <Button appearance="subtle" spacing="compact" iconAfter="shortcut" onClick={() => openProducerPanel(issueKey)}>
-      Open {issueKey}: DefinitionGuard Checklist panel
-    </Button>
-  </>
-);
+/** The text for an account that was closed and erased (ADR-014); undefined for a live account. */
+const formerUser = (accountId?: string): string | undefined => (accountId === ERASED_ACCOUNT ? 'a former user' : undefined);
 
 /** Who and why for an exception or a rework reason. The name comes from the UI Kit User component. */
 export const NoteLine: React.FC<{ label: string; note: ExceptionNote }> = ({ label, note }) => (
   <AttributionLine
     prefix={`${label} by`}
     accountId={note.recordedBy}
+    name={formerUser(note.recordedBy)}
     suffix={`on ${note.recordedAt.slice(0, 10)}: ${note.reason}`}
   />
 );
@@ -49,6 +36,7 @@ export const ExceptionStateLine: React.FC<{ state: GateExceptionState }> = ({ st
     <AttributionLine
       prefix="Requested by"
       accountId={state.requestedBy}
+      name={formerUser(state.requestedBy)}
       suffix={`on ${state.requestedAt.slice(0, 10)}: ${state.reason}`}
     />
   );
@@ -66,6 +54,7 @@ export const ExceptionStateLine: React.FC<{ state: GateExceptionState }> = ({ st
     <AttributionLine
       prefix={state.status === 'APPROVED' ? 'Approved by' : `${ENDED[state.status]} by`}
       accountId={state.decidedBy}
+      name={formerUser(state.decidedBy)}
       suffix={`on ${String(state.decidedAt).slice(0, 10)}${state.status === 'APPROVED' ? '' : `: ${state.decisionReason}`}`}
     />
   ) : null;
@@ -82,21 +71,29 @@ export const ExceptionStateLine: React.FC<{ state: GateExceptionState }> = ({ st
   );
 };
 
-function gateNote(gate: GateName, row: IssueRow, onOpen: (m: OpenModal) => void): React.ReactNode {
+function gateNote(gate: GateName, row: IssueRow, onOpen: (m: OpenModal) => void, approval?: ApprovalView): React.ReactNode {
   if (gate === 'code' && row.codeException) {
+    const cannot = !approval?.canDecide;
+    const status = row.codeException.status;
+    const deciding = status === 'REQUESTED' || status === 'APPROVED';
     return (
       <NoteBox>
         <ExceptionStateLine state={row.codeException} />
-        {row.codeException.status === 'REQUESTED' ? (
+        {status === 'REQUESTED' ? (
           <ActionRow>
-            <Button appearance="default" spacing="compact" onClick={() => onOpen('APPROVE')}>Approve exception</Button>
-            <Button appearance="default" spacing="compact" onClick={() => onOpen('REJECT')}>Reject exception</Button>
-            <Button appearance="subtle" spacing="compact" onClick={() => onOpen('WITHDRAW')}>Withdraw request</Button>
+            <Button appearance="default" spacing="compact" isDisabled={cannot} onClick={() => onOpen('APPROVE')}>Approve exception</Button>
+            <Button appearance="default" spacing="compact" isDisabled={cannot} onClick={() => onOpen('REJECT')}>Reject exception</Button>
+            {approval?.isRequester ? (
+              <Button appearance="subtle" spacing="compact" onClick={() => onOpen('WITHDRAW')}>Withdraw request</Button>
+            ) : null}
           </ActionRow>
-        ) : row.codeException.status === 'APPROVED' ? (
+        ) : status === 'APPROVED' ? (
           <ActionRow>
-            <Button appearance="default" spacing="compact" onClick={() => onOpen('REVOKE')}>Revoke exception</Button>
+            <Button appearance="default" spacing="compact" isDisabled={cannot} onClick={() => onOpen('REVOKE')}>Revoke exception</Button>
           </ActionRow>
+        ) : null}
+        {deciding && cannot ? (
+          <Text as="span" size="small" color={TEXT_ROLE.muted}>{approval?.note || 'FourRealities could not check whether you may decide. Use Refresh.'}</Text>
         ) : null}
       </NoteBox>
     );
@@ -124,8 +121,10 @@ type OpenModal = 'none' | 'link' | 'code' | 'rework' | 'review' | ExceptionDecis
 
 export interface IssuePanelProps {
   readonly row: IssueRow;
+  /** What the viewer may do with the Code exception, from the server. */
+  readonly approval?: ApprovalView;
   readonly onReload: () => void;
-  readonly onRow: (row: IssueRow) => void;
+  readonly onRow: (row: IssueRow, approval?: ApprovalView) => void;
   readonly compact?: boolean;
   readonly defaultCollapsed?: boolean;
 }
@@ -136,6 +135,7 @@ export interface IssuePanelProps {
  */
 export const IssuePanel: React.FC<IssuePanelProps> = ({
   row,
+  approval,
   onReload,
   onRow,
   compact = false,
@@ -146,17 +146,16 @@ export const IssuePanel: React.FC<IssuePanelProps> = ({
   const [why, setWhy] = useState<boolean>(false);
   const [expanded, setExpanded] = useState<boolean>(!compact);
 
-  const done = (action: PanelAction) => (after?: IssueRow) => {
+  const done = (action: PanelAction) => (after?: IssueRow, afterApproval?: ApprovalView) => {
     setOpen('none');
     setMessage(afterActionText(action, after));
-    if (after) onRow(after);
+    if (after) onRow(after, afterApproval);
   };
 
-  const needsProducer = row.gates.audit.state === 'MISSING' || row.gates.process.state === 'MISSING';
   const readiness = issueReadiness(row);
   const canLinkIntent = row.gates.intent.state === 'MISSING';
   const canRequestCodeException = row.gates.code.state === 'MISSING' && row.gates.code.reason === 'PR_NONE' && row.codeException?.status !== 'REQUESTED';
-  const hasSummaryActions = canLinkIntent || canRequestCodeException || needsProducer;
+  const hasSummaryActions = canLinkIntent || canRequestCodeException;
 
   const hasDetailActions =
     (canLinkIntent && canRequestCodeException) ||
@@ -227,7 +226,6 @@ export const IssuePanel: React.FC<IssuePanelProps> = ({
             ) : canRequestCodeException ? (
               <Button appearance="primary" onClick={() => setOpen('code')}>Request Code exception</Button>
             ) : null}
-            {needsProducer ? <ProducerLinks issueKey={row.issueKey} /> : null}
           </ActionRow>
         ) : null}
       </SummaryBlock>
@@ -236,7 +234,7 @@ export const IssuePanel: React.FC<IssuePanelProps> = ({
         <Stack space={SPACE.none}>
           {GATE_NAMES.map((g, idx) => (
             <ListRow key={g} divided={idx < GATE_NAMES.length - 1}>
-              <GateRow gate={g} result={row.gates[g]} note={gateNote(g, row, setOpen)} />
+              <GateRow gate={g} result={row.gates[g]} note={gateNote(g, row, setOpen, approval)} />
             </ListRow>
           ))}
         </Stack>

@@ -5,6 +5,7 @@
  */
 
 import {
+  ApprovalView,
   ExceptionActor,
   ExceptionDecision,
   ExceptionStatus,
@@ -12,6 +13,10 @@ import {
   GateExceptionState
 } from '../contract/data/models';
 import { ExceptionPolicyEngine } from '../contract/engines';
+
+/** The note of the Uniform Permission Management Standard (section 2.3), for FourRealities. */
+export const APPROVER_REQUIRED_MESSAGE =
+  'Requires Project Admin, Jira Admin, or membership in an authorized group. Configured by your Jira administrator in Jira Settings > Apps > FourRealities gate authority.';
 
 /** Valid transitions (Knowledge Level): the decision, the status it needs, the status it gives. */
 const TRANSITIONS: Record<ExceptionDecision, { from: ExceptionStatus; to: ExceptionStatus; stateError: string }> = {
@@ -55,8 +60,22 @@ export class DefaultExceptionPolicyEngine implements ExceptionPolicyEngine {
   }
 
   /**
-   * Withdraw: only the requester, while waiting. Approve, reject, revoke: a project administrator
-   * who is neither the requester nor the issue's assignee (separation of duties).
+   * What the panel offers the viewer for the current exception (ADR-013 decision 5): the same
+   * rules as decisionError, before any click, so a button the server would refuse is disabled.
+   */
+  approvalView(current: GateExceptionState | undefined, actor: ExceptionActor, assigneeAccountId: string | undefined): ApprovalView {
+    const isRequester = Boolean(current && actor.accountId && actor.accountId === current.requestedBy);
+    let note: string | undefined;
+    if (!actor.isApprover) note = APPROVER_REQUIRED_MESSAGE;
+    else if (isRequester) note = 'You requested this exception, so another approver must decide.';
+    else if (assigneeAccountId && actor.accountId === assigneeAccountId) note = 'You are the assignee of this issue, so another approver must decide.';
+    return { canDecide: note === undefined, isRequester, ...(note ? { note } : {}) };
+  }
+
+  /**
+   * Withdraw: only the requester, while waiting. Approve, reject, revoke: an approver (project or
+   * Jira administrator, or a member of an approver group) who is neither the requester nor the
+   * issue's assignee (separation of duties).
    */
   decisionError(current: GateExceptionState | undefined, decision: ExceptionDecision, actor: ExceptionActor, assigneeAccountId: string | undefined, reason: string): string | undefined {
     if (!current) {
@@ -69,8 +88,8 @@ export class DefaultExceptionPolicyEngine implements ExceptionPolicyEngine {
     if (decision === 'WITHDRAW') {
       return actor.accountId === current.requestedBy ? undefined : 'Only the person who requested the exception can withdraw it.';
     }
-    if (!actor.isProjectAdmin) {
-      return 'Only a project administrator or a Jira administrator can approve, reject or revoke an exception.';
+    if (!actor.isApprover) {
+      return APPROVER_REQUIRED_MESSAGE;
     }
     if (actor.accountId === current.requestedBy) {
       return 'The person who requested the exception cannot approve, reject or revoke it.';

@@ -19,7 +19,7 @@ import {
   Textfield
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
-import { DecideExceptionPayload, ExceptionDecision, IssueRow, LinkDecisionPayload, RecordExceptionPayload, RequestReviewPayload, WriteResult } from '../contract/data/models';
+import { ApprovalView, DecideExceptionPayload, ExceptionDecision, IssueRow, LinkDecisionPayload, RecordExceptionPayload, RequestReviewPayload, WriteResult } from '../contract/data/models';
 import { ConfluencePage } from '../contract/accessors';
 import { messageOf } from '../contract/data/errors';
 import { SPACE, TEXT_ROLE } from '../brand/brand';
@@ -33,7 +33,7 @@ interface ModalProps {
   issueKey: string;
   onClose: () => void;
   /** Called with the re-evaluated row when the resolver returns one. */
-  onDone: (row?: IssueRow) => void;
+  onDone: (row?: IssueRow, approval?: ApprovalView) => void;
 }
 
 export const LinkDecisionModal: React.FC<ModalProps> = ({ issueId, issueKey, onClose, onDone }) => {
@@ -89,7 +89,7 @@ export const LinkDecisionModal: React.FC<ModalProps> = ({ issueId, issueKey, onC
     try {
       const res = (await invoke<LinkDecisionPayload, WriteResult>('linkDecision', { issueId, issueKey, url, title })) as WriteResult | undefined;
       if (res?.success) {
-        onDone(res.row);
+        onDone(res.row, res.approval);
       } else {
         setError(res?.error || 'The link was not added.');
       }
@@ -209,7 +209,7 @@ export const ExceptionModal: React.FC<ModalProps & { type: 'CODE' | 'REWORK' }> 
     try {
       const res = (await invoke<RecordExceptionPayload, WriteResult>('recordException', { issueId, issueKey, type, reason, notes })) as WriteResult | undefined;
       if (res?.success) {
-        onDone(res.row);
+        onDone(res.row, res.approval);
       } else {
         setError(res?.error || 'The exception was not recorded.');
       }
@@ -294,7 +294,7 @@ export const DecisionModal: React.FC<ModalProps & { decision: ExceptionDecision 
     try {
       const res = (await invoke<DecideExceptionPayload, WriteResult>('decideException', { issueId, issueKey, decision, reason })) as WriteResult | undefined;
       if (res?.success) {
-        onDone(res.row);
+        onDone(res.row, res.approval);
       } else {
         setError(res?.error || 'The decision was not recorded.');
       }
@@ -343,7 +343,7 @@ export const ReviewModal: React.FC<ModalProps> = ({ issueId, issueKey, onClose, 
     try {
       const res = (await invoke<RequestReviewPayload, WriteResult>('requestReview', { issueId, issueKey, comment })) as WriteResult | undefined;
       if (res?.success) {
-        onDone(res.row);
+        onDone(res.row, res.approval);
       } else {
         setError(res?.error || 'The review request was not added.');
       }

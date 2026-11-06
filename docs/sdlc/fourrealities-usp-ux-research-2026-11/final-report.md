@@ -8,7 +8,7 @@ Date: 2026-11-01. Branch `feature/fourrealities-research-build` in the worktree 
 - **Domain review (owner request, "Option A"):** ADR-001 (evidence data model) and ADR-002 (volatility layering), approved with Option C. Backlog items B-29 to B-32 added.
 - **Part B (build):** B-01 to B-25 and B-29 to B-32 built test-first, one item per commit, each row in `round-log.md` with tests, results, coverage, graders and commit. B-26 to B-28 stay BLOCKED (they need signed sibling properties). B-23 was built after the owner chose "B".
 - **Spec:** `docs/spec/fourrealities-spec-v2.md` (v1 frozen).
-- **Loop 3:** `forge lint` clean; deployed to the development environment only (versions 3.2.0, 3.3.0, 3.4.0); read-only live check on DEMO; live write check on AUDT-1 (owner chose "Option B"); listing draft `docs/marketplace/fourrealities-listing-v2.md` (v1 file and live listing unchanged).
+- **Loop 3:** `forge lint` clean; deployed to the development environment only (versions 3.2.0, 3.3.0, 3.4.0); read-only live check on DEMO; live write check on AUDT-1 (owner chose "Option B"); listing draft `docs/marketplace/fourrealities-listing-v2.md` (v1 file and live listing unchanged; the draft was deleted on 2026-11-06, the listing is `docs/marketplace/fourrealities-listing.md`).
 
 ## 2. Final state
 

@@ -1,0 +1,68 @@
+#+TITLE: ADR-014: FourRealities Personal Data: Fewer Ids, a Weekly Report, Erasure
+#+DATE: 2026-11-06
+#+STATUS: Adopted
+
+* Status
+[ADOPTED: owner instruction 'do NOW', 2026-11-06]. Follows the readiness review
+(=docs/sdlc/suite-readiness-review-2026-11/fourrealities-readiness.md=, BL-3, F-M2, section 5) and the
+CascadePlan pattern (ADR-009 decision 7).
+
+* Context
+An app that stores Atlassian account ids must report them to the Forge personal data reporting API
+and erase the data of closed accounts. FourRealities stored account ids and display names
+(readiness review section 5) and sent no report. Each snapshot row also carried the assignee's
+display name, the Code exception and the latest rework note with their free text, so a chunk of 100
+rows could pass the 240 KiB KVS value limit (F-M2).
+
+* Decision
+1. *Store less.*
+   - Snapshot rows keep the assignee's account id (for the "My issues" and Assignee filters) and no
+     name. The dashboard asks Jira for the names as the viewer on each view and never stores them.
+   - Snapshot rows keep no Code exception and no rework note: the gate state is in the row, and the
+     issue panel reads the exception and the notes live.
+   - =generatedBy= of a snapshot is "user" or "scheduled", never an account id.
+   - The admin settings and the approver policy hold no account id.
+   - Free text in a row is cut (Intent title 120 characters, at most 5 sprint names of 60
+     characters), and the rows are split so that no chunk passes 200,000 bytes.
+2. *Keep only what a rule needs.* The Code exception events keep the actor's account id (=byAccountId=):
+   the requester may not approve. Rework notes keep =recordedBy=: the panel names who gave the reason.
+   The v2 records read for migration keep theirs until the scheduled run converts them.
+3. *Index.* Each snapshot writes =fr:p:{projectKey}:accounts=, the distinct assignee account ids of its
+   rows, so the weekly report reads one key per project instead of every chunk.
+4. *Weekly report.* A =scheduledTrigger= with =interval: week= calls =reportPersonalData=. It collects
+   every account id from the events, the notes, the v2 records and the project indexes, each with
+   the date of its latest record, and sends them with =privacy.reportPersonalData= (scope
+   =report:personal-data=). It runs whether or not the licence is active.
+5. *Erasure.* For each account Atlassian reports as closed: the account id in events and notes (and v2
+   records) is replaced by the fixed text =erased-account=, which the UI shows as "a former user";
+   the free text of that person's events and notes is kept, because it describes the work, not the
+   person. The id is removed from the snapshot rows and the index of each project that lists it. The
+   =fourrealities-exception= property of each affected issue is written again as the app from the
+   erased records.
+
+* Alternatives Considered
+** Keep names in rows
+- For: no Jira call for names on a page view.
+- Against: names are personal data copied into storage, and they go stale.
+- Verdict: rejected.
+** Delete the events of a closed account
+- For: simplest erasure.
+- Against: the exception history of the issue would lose its steps.
+- Verdict: rejected; the id is replaced, the step stays.
+
+* Consequences
+** Positive
+- The app can pass the personal data requirement of the Marketplace.
+- Chunks stay well under the KVS limit.
+** Negative
+- Adding =report:personal-data= asks the site administrator to accept the scopes again on upgrade.
+- The dashboard makes one more Jira call (user names) per view.
+
+* Implementation Notes
+- =src/accessor/default-kvs-personal-data-accessor.ts= (collect and erase),
+  =src/manager/default-personal-data-manager.ts=, =index.personalData=, manifest
+  =fourrealities-personal-data=.
+
+* References
+- Readiness review BL-3, F-M2, section 5.
+- ADR-009 decision 7 (CascadePlan), =apps/cascadeplan/src/server/baselines.ts= =reportPersonalData=.

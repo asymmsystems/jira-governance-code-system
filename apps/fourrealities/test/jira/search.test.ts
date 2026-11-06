@@ -165,3 +165,37 @@ describe('B-25: the checklist property comes in the same search call', () => {
     expect(props?.split(',')).toEqual(['ledgerseal-cert', 'definitionguard-dod', 'checklist']);
   });
 });
+
+describe('F-H2: reads stop in time on large projects', () => {
+  const { visibleIssueIds, VISIBLE_ID_MARGIN, ISSUE_CAP } = require('../../src/accessor/jira-search');
+  let n = 0;
+  const pages = () => jest.fn(async () => {
+    const issues = Array.from({ length: 100 }, () => ({ id: String(++n) }));
+    return { status: 200, json: async () => ({ issues, nextPageToken: `p${n}` }) };
+  });
+
+  it('marks a project read that stopped at the deadline before the cap as timed out', async () => {
+    n = 0;
+    const res = await searchProjectIssues('DEMO', null, pages(), Date.now() - 1);
+    expect(res.capped).toBe(true);
+    expect(res.timedOut).toBe(true);
+    expect(res.issues.length).toBeLessThan(2000);
+  });
+
+  it('stops the viewer check once every snapshot id is seen', async () => {
+    n = 0;
+    const request = pages();
+    const res = await visibleIssueIds('DEMO', request, Date.now() + 60_000, new Set(['5', '150']));
+    expect(res.complete).toBe(true);
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops after the cap plus a margin when a snapshot id is not visible, and counts it complete', async () => {
+    n = 0;
+    const request = pages();
+    const res = await visibleIssueIds('DEMO', request, Date.now() + 60_000, new Set(['hidden']));
+    expect(res.complete).toBe(true);
+    expect(res.ids.size).toBe(ISSUE_CAP + VISIBLE_ID_MARGIN);
+    expect(res.ids.has('hidden')).toBe(false);
+  });
+});

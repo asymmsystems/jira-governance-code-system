@@ -45,13 +45,31 @@ async function readStatusCategories(request: JiraRequest): Promise<Record<string
 }
 
 /**
+ * Whether any issue the reader can see has pull request data (ADR-013, F-H5). Jira Software sites
+ * have a Development field even without a Git integration, so the field alone does not show that
+ * Code evidence can exist. null when the probe fails.
+ */
+async function readPullRequestsSeen(request: JiraRequest): Promise<boolean | null> {
+  try {
+    const jql = 'development[pullrequests].all > 0';
+    const res = await request(route`/rest/api/3/search/jql?jql=${jql}&maxResults=1&fields=created`);
+    if (res.status !== 200) return null;
+    const body = (await res.json()) as { issues?: unknown[] } | null;
+    return Array.isArray(body?.issues) && body.issues.length > 0;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Returns the cached site configuration, or reads the field list, the status categories and the
- * site host and caches them. A cache written before status categories existed is read again.
+ * site host and caches them. A cache written before status categories or the pull request probe
+ * existed is read again.
  * The Development field is found by its custom type or by its name, never by a fixed id.
  */
 export async function getSiteConfig(storage: StorageProvider, request: JiraRequest, now: number = Date.now()): Promise<SiteConfig> {
   const cached = await storage.get<SiteConfig>(SITE_CONFIG_KEY);
-  if (cached && cached.statusCategories && now - Date.parse(cached.readAt) < SITE_CONFIG_TTL_MS) {
+  if (cached && cached.statusCategories && cached.pullRequestsSeen !== undefined && now - Date.parse(cached.readAt) < SITE_CONFIG_TTL_MS) {
     return cached;
   }
   const res = await request(route`/rest/api/3/field`);
@@ -62,7 +80,9 @@ export async function getSiteConfig(storage: StorageProvider, request: JiraReque
   const list: JiraFieldJson[] = Array.isArray(fields) ? fields : [];
   const dev = list.find(f => f?.schema?.custom === DEV_FIELD_TYPE) || list.find(f => f?.name === 'Development');
   const statusCategories = await readStatusCategories(request);
-  const config: SiteConfig = { devFieldId: dev?.id ? String(dev.id) : null, siteHost: await readSiteHost(request), statusCategories, readAt: new Date(now).toISOString() };
+  const devFieldId = dev?.id ? String(dev.id) : null;
+  const pullRequestsSeen = devFieldId ? await readPullRequestsSeen(request) : false;
+  const config: SiteConfig = { devFieldId, siteHost: await readSiteHost(request), statusCategories, pullRequestsSeen, readAt: new Date(now).toISOString() };
   await storage.set(SITE_CONFIG_KEY, config);
   return config;
 }

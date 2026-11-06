@@ -20,4 +20,14 @@ export class DefaultForgeAppContextAccessor implements AppContextAccessor {
       return undefined;
     }
   }
+
+  /** DEVELOPMENT, STAGING or PRODUCTION; undefined outside the Forge runtime (ADR-012 treats that as production). */
+  environmentType(): string | undefined {
+    try {
+      const env = getAppContext()?.environmentType;
+      return typeof env === 'string' ? env : undefined;
+    } catch {
+      return undefined;
+    }
+  }
 }

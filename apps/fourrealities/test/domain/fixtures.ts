@@ -13,7 +13,7 @@ export function makeFacts(overrides: Partial<IssueFacts> = {}): IssueFacts {
     summary: 'Deliver the settlement flow',
     statusName: 'Done',
     statusCategory: 'done',
-    assigneeName: 'Ana Silva',
+    assigneeAccountId: 'acc-ana',
     sprintNames: [],
     started: true,
     statusChanges: 2,

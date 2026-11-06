@@ -60,7 +60,7 @@ Open any test ticket in your active sprint board:
 
 - **Testing LedgerSeal:** Open the **LedgerSeal Audit Gate** issue panel. Click **Seal Issue**. Edit the ticket description and verify that the panel turns amber `[CHANGED]` and the transition into Done is blocked.
 - **Testing DefinitionGuard:** Open the **Definition of Done** issue panel. Add a mandatory item requiring an evidence URL. Attempt moving the ticket to Done and verify that the validator blocks the move until evidence is attached.
-- **Testing FourRealities:** Open the **Delivery Integrity** issue glance on any ticket. Verify that Intent, Process, Code, and Audit scores render.
+- **Testing FourRealities:** Open **Four Realities** from an issue's app actions, or in the issue context on the right. Intent, Process, Code and Audit show their states; checks your site does not use show "Not used on this site". Jira administrators set the evidence sources in **Jira settings > Apps > FourRealities gate authority**.
 - **Testing CascadePlan:** Open the **CascadePlan Planner** project page in the left sidebar. Click **Freeze Baseline** to record your sprint commitment snapshot.
 
 ---

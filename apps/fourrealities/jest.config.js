@@ -1,5 +1,11 @@
 module.exports = {
   preset: 'ts-jest',
+  // The contract test (test/contract) compiles the sibling apps' real writers. Their own imports
+  // (@forge/api) resolve at run time from this app's node_modules, but not for type checking, so
+  // type diagnostics are skipped for those files only (ADR-012).
+  transform: {
+    '^.+\\.tsx?$': ['ts-jest', { diagnostics: { exclude: ['**/apps/definitionguard/**', '**/apps/ledgerseal/**'] } }]
+  },
   testEnvironment: 'node',
   roots: ['<rootDir>/test'],
   testMatch: ['**/*.test.ts', '**/*.test.tsx'],

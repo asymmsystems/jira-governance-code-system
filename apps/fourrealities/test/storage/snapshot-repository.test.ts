@@ -32,7 +32,7 @@ describe('SnapshotRepository snapshots', () => {
     const data = rows(250);
     await repo.saveSnapshot(meta('s1', 250), data, MetricsEngine.summarize(data));
     const sets = storage.ops.filter(o => o.op === 'set').map(o => o.key);
-    expect(sets).toEqual(['fr:p:DEMO:chunk:0', 'fr:p:DEMO:chunk:1', 'fr:p:DEMO:chunk:2', 'fr:p:DEMO:summary', 'fr:p:DEMO:meta']);
+    expect(sets).toEqual(['fr:p:DEMO:chunk:0', 'fr:p:DEMO:chunk:1', 'fr:p:DEMO:chunk:2', 'fr:p:DEMO:accounts', 'fr:p:DEMO:summary', 'fr:p:DEMO:meta']);
     expect((await storage.get<any>('fr:p:DEMO:chunk:2')).rows).toHaveLength(50);
     const loaded = await repo.loadSnapshot('DEMO');
     expect(loaded?.meta.snapshotId).toBe('s1');

@@ -40,7 +40,7 @@ All apps are built on **Atlassian Forge**, inheriting Atlassian's high-availabil
 To access app administration pages, your account must belong to the `jira-administrators` or `site-admins` group.
 
 ### Does FourRealities connect to my external GitHub or Bitbucket account?
-No direct external connection is needed. FourRealities reads pull request information through Jira's native development status integration (`/rest/dev-status`). If your Jira Cloud instance is already connected to GitHub, GitLab, or Bitbucket, FourRealities automatically inspects PR review states.
+No. FourRealities reads the pull request count and state from the Jira Development field, which your GitHub, GitLab or Bitbucket integration for Jira fills. It cannot read review approvals. Without pull request data on your site, the Code check is "Not used on this site".
 
 ---
 
