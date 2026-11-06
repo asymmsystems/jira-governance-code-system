@@ -13,7 +13,8 @@ export const projectConfigKey = (projectId: string) => `dg:proj:${projectId}`;
 export interface ProjectConfig {
   exemptStatusIds: string[];
   updatedAt: string;
-  updatedByAccountId: string;
+  updatedByPartyId: string;               // pseudonym of the project admin (ADR-010)
+  updatedByAccountId?: string;            // written before ADR-010; replaced by the personal data pass
 }
 
 export class ProjectConfigStore {
@@ -24,8 +25,8 @@ export class ProjectConfigStore {
     return await this.storage.get<ProjectConfig>(projectConfigKey(projectId));
   }
 
-  public async saveExemptions(projectId: string, exemptStatusIds: string[], actorAccountId: string): Promise<ProjectConfig> {
-    const config: ProjectConfig = { exemptStatusIds: [...new Set(exemptStatusIds)], updatedAt: new Date().toISOString(), updatedByAccountId: actorAccountId };
+  public async saveExemptions(projectId: string, exemptStatusIds: string[], actorPartyId: string): Promise<ProjectConfig> {
+    const config: ProjectConfig = { exemptStatusIds: [...new Set(exemptStatusIds)], updatedAt: new Date().toISOString(), updatedByPartyId: actorPartyId };
     await this.storage.set(projectConfigKey(projectId), config);
     return config;
   }

@@ -93,10 +93,17 @@ describe('B-13 buildPanelViewModel', () => {
 
   it('formats the approver audit line for empty and populated groups', () => {
     const vmDefault = vmOf(response());
-    expect(vmDefault.approverLine).toBe('Authorized approvers: project administrators and Jira administrators.');
+    expect(vmDefault.approverLine).toBe('Authorized approvers (waive and reset): project administrators and Jira administrators.');
 
     const vmCustom = vmOf(response({ approverGroups: ['lead-architects', 'product-owners'] }));
-    expect(vmCustom.approverLine).toBe('Authorized approvers: lead-architects, product-owners, and project administrators.');
+    expect(vmCustom.approverLine).toBe('Authorized approvers (waive and reset): project administrators, Jira administrators and members of lead-architects, product-owners.');
+  });
+
+  it('(M-1) names the template waiver permission when it is not the default', () => {
+    expect(vmOf(response({ waiverPermissionLabel: 'Administer projects' })).approverLine)
+      .toBe('Authorized approvers (waive and reset): project administrators and Jira administrators.');
+    expect(vmOf(response({ approverGroups: ['qa-leads'], waiverPermissionLabel: 'Resolve issues' })).approverLine)
+      .toBe('Authorized approvers (waive and reset): project administrators, Jira administrators and members of qa-leads. Users with the Resolve issues Jira permission can also waive.');
   });
 });
 

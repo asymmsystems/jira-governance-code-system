@@ -1,0 +1,119 @@
+#+TITLE: ADR-010: DefinitionGuard Personal Data: Pseudonyms in the Hashed History
+#+DATE: 2026-11-06
+#+STATUS: Approved
+
+* Status
+[ADOPTED: owner instruction 'do NOW', 2026-11-06]. The owner asked for the readiness review's
+recommendations to be built without further questions. This record follows the review
+(=docs/sdlc/suite-readiness-review-2026-11/definitionguard-readiness.md=, BL-1 and section 4) and the
+suite plan (=docs/sdlc/suite-readiness-review-2026-11/README.md=, section 2 item 1). It is open to
+the owner's review.
+
+* Context
+DefinitionGuard stores Atlassian account ids: the person who ticked, waived, reopened or reset
+an item, the person who saved a template, an exempt-status list or the approver groups. Atlassian
+requires an app that stores account ids to report them to the personal data reporting API at
+least every 15 days and to erase the data of an account that Atlassian reports as closed.
+
+At commit =7f87747= the app had no report and no erasure, and the ids sat in four kinds of place:
+- inside the hash-chained history (=dg:evt:<issueId>:<seq>=: =actorPartyId= and
+  =rows[].setByPartyId=, and =setByLegacyName= with a v1 display name on migrated records);
+- in caches and settings that are not hashed (=dg:state:*=, =dg:tmpl:*=, =dg:proj:*=,
+  =dg:cfg:approver_policy=, and the v1 records =dg:checklist:*= on the development site);
+- in the signed issue property =definitionguard-dod= (=lastModifiedByAccountId=), which stays on
+  the issue after the app is uninstalled.
+
+The history is a hash chain: each event stores the SHA-256 of its own content and the hash of
+the event before it. Changing an account id inside an event changes its hash, so the history
+check would report "content changed" for every event of a closed account. Erasure in place and
+an intact history check are in conflict.
+
+* Decision
+1. *A pseudonym per person and site.* The first time a person changes anything, the app makes a
+   random pseudonym for them: =dgp-= followed by 32 hexadecimal characters (128 random bits). It is
+   random, not computed from the account id, so nobody can recompute it from an account id.
+2. *Only pseudonyms in stored records.* Every new event, the state cache, templates, exempt-status
+   settings and the approver policy store the pseudonym, never the account id. The values
+=system= (the app itself) and =unknown= stay as they are; they name no one.
+3. *The map is kept apart from the history.* Two small keys per person hold the link, and nothing
+   else holds it:
+   - =dg:pty:<accountId>= = ={ accountId, pseudonym, firstSeen, updatedAt }= (also the list of
+     accounts for the report);
+   - =dg:pid:<pseudonym>= = ={ accountId }= (to show the person in the panel).
+   The panel, the history and the export turn a pseudonym back into the account id through
+=dg:pid:= and show the person with the UI Kit =User= component, as before.
+4. *Erasure deletes the map.* When Atlassian reports an account as closed, the app deletes its two
+   map keys. The pseudonym stays in the history, which still verifies, because nothing hashed
+   changed. The panel then shows "A deleted user" for that person.
+5. *Weekly report.* A scheduled trigger (=interval: week=) reports every account in =dg:pty:= with
+   its =updatedAt=, using =privacy.reportPersonalData= from =@forge/api= (scope
+=report:personal-data=), and erases each account reported as closed. =updatedAt= is refreshed at
+   most once a day per person, when they change something.
+6. *Records written before this change get a redaction event.* The same weekly trigger first runs
+   a one-time pass over existing records, in pages, under a time limit, and keeps its place in
+=dg:pd:migration=:
+   - v1 records (=dg:checklist:*=): migrated into the history if not yet migrated, then deleted;
+   - each issue's history: every event that holds an account id or a v1 display name is rewritten
+     with the person's pseudonym (and without the display name). The app first appends one
+     =Redact= event to the chain. Its rows list, for each rewritten event, the sequence number, the
+     original hash and the hash of the rewritten content. The history check accepts a rewritten
+     event only when a later =Redact= event in the same chain names exactly both hashes. The
+     state cache is then rebuilt from the events and the issue property is written again;
+   - templates, exempt-status settings and the approver policy: the account id is replaced by the
+     pseudonym.
+   When the pass is finished it is not run again.
+7. *No account id in the issue property.* The =definitionguard-dod= property becomes schema 3
+   without =lastModifiedByAccountId=. Every other field keeps its name, including the ones
+   FourRealities reads (=mandatoryTotal=, =mandatoryCompleted=, =isFullySatisfied=, =headHash=).
+8. *Gate rules use the same comparison.* The not-the-assignee rule compares the stored pseudonym
+   with the pseudonym of each person who was the assignee (looked up in =dg:pty:=, read only) and,
+   for records not yet rewritten, with the account id itself.
+
+* Alternatives Considered
+** Rewrite the ids in place and re-hash the whole chain
+- For: no pseudonyms and no map.
+- Against: every hash after the first rewritten event changes. The history check could no longer
+  show that older events were not changed, because the app would have rewritten all of them.
+- Verdict: rejected.
+
+** A pseudonym computed from the account id (HMAC with a per-site secret)
+- For: no forward lookup; the pseudonym of any account can be computed.
+- Against: whoever holds the secret (the app, so also the vendor) can recompute the link from a
+  closed account's id at any time, so deleting the map would not break the link.
+- Verdict: rejected for a random pseudonym.
+
+** Store no person at all
+- For: nothing to report or erase.
+- Against: the not-the-assignee rule and an audit history need to know who acted.
+- Verdict: rejected.
+
+** Keep the account id in the issue property and re-sign it on erasure
+- For: other tools could read who changed the checklist last.
+- Against: the property stays on the issue after uninstall, out of the app's reach, and no known
+  reader uses the field (FourRealities does not).
+- Verdict: rejected; the field is dropped.
+
+* Consequences
+- Positive: one rule for erasure (delete two keys); the history check keeps working after
+  erasure; the issue property holds no personal data; the report covers every stored person.
+- Negative: each first action of a person costs two extra KVS writes, and showing the panel costs
+  one read per distinct person on the issue.
+- Residual risk, records written before this change: their original hashes were computed over
+  the account id. Someone who holds the stored records and a list of candidate account ids can
+  test which candidate was the actor of a rewritten event by hashing. This applies only to records
+  written by app versions before 6.0.0 (the development site; production holds no customer data).
+- Residual risk, a =Redact= event: someone who can write all of the app's storage could change an
+  event and add a matching =Redact= event. The history check already states that it does not stop
+  someone who can rewrite all of the app's stored data; every =Redact= event is shown in the
+  history.
+- The weekly trigger needs the scope =report:personal-data=, so the next upgrade asks the site
+  admin to accept it (a major version).
+- The privacy page must say that account ids are kept as pseudonyms, reported weekly and erased
+  for closed accounts, and that the issue property holds no personal data.
+
+* References
+- =docs/sdlc/suite-readiness-review-2026-11/definitionguard-readiness.md= (BL-1, section 4)
+- =docs/sdlc/suite-readiness-review-2026-11/README.md= (section 2 item 1)
+- =architecture/decision/adr-00009-cascadeplan-baselines.org= (decision 7, the CascadePlan report)
+- =docs/spec/definitionguard-spec-v3.md= (record shapes; this record adds the =Redact= event)
+- Atlassian: "Personal data reporting API" and Forge =privacy.reportPersonalData= (=@forge/api= 8)

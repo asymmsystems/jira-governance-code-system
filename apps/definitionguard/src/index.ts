@@ -10,7 +10,8 @@ import {
   getTemplateForCategory,
   getAvailableTemplates
 } from './domain/checklist-engine';
-import { evaluateGate, blockMessage } from './domain/gate-rule';
+import { evaluateGate, blockMessage, needsAssigneeCheck } from './domain/gate-rule';
+import { assigneeChanges, assigneesSince } from './jira/assignee-history';
 import { ProjectConfigStore } from './settings/project-config';
 import { StorageProvider } from './storage/checklist-repository';
 import { resolveStorage } from './storage/forge-storage';
@@ -20,6 +21,8 @@ import { ChangeEntry, DodState, DodTemplate, IssueChecklistState, ChecklistAudit
 import { permissionKeyOf } from './domain/roles';
 import {
   checkIssuePermissions,
+  checkAnyIssuePermission,
+  ADMIN_KEYS,
   getIssuePermissions,
   permissionLabel,
   PermissionDeniedError,
@@ -37,12 +40,15 @@ import {
   setApproverPolicyFlow
 } from './security/policy-admin';
 import { resolveTemplate } from './settings/template-store';
-import { assertLicensed, isLicenceInactive, VALIDATOR_LICENCE_INACTIVE } from './security/licence';
+import { assertLicensed, isLicenceInactive } from './security/licence';
 import { validateEvidence, EVIDENCE_REQUIRED } from './domain/evidence';
-import { publishAttestation } from './integrity/attestation';
+import { publishAttestation, signatureStatus } from './integrity/attestation';
 import { withRetry } from './jira/jira-client';
+import { PartyStore, ShownParty } from './storage/party-store';
 
 export { settingsHandler } from './settings/settings-resolvers';
+export { personalDataTrigger } from './privacy/personal-data';
+export { issueDeletedTrigger } from './privacy/issue-deleted';
 
 export { setGlobalStorageProvider, resolveStorage } from './storage/forge-storage';
 
@@ -81,20 +87,32 @@ function stateFromTemplate(issueId: string, issueKey: string, projectId: string,
   return applyEntry(base, createEntry(base, template, 'system', new Date().toISOString()));
 }
 
-/** The panel's item shape (frozen contract), from the criteria. */
-function toLegacyItems(state: DodState) {
+/** How each stored party id is shown: an account id for the User component, or a text. */
+type Shown = Map<string, ShownParty>;
+const shownAccount = (shown: Shown, id?: string) => {
+  const p = id ? shown.get(id) : undefined;
+  return p && 'accountId' in p ? p.accountId : undefined;
+};
+const shownText = (shown: Shown, id?: string) => {
+  const p = id ? shown.get(id) : undefined;
+  return p && 'text' in p ? p.text : undefined;
+};
+
+/** The panel's item shape (frozen contract), from the criteria. People come as account ids, resolved from pseudonyms. */
+function toLegacyItems(state: DodState, shown: Shown) {
   return state.criteria.map(c => {
     const closed = c.currentStatusId !== 'DOD_OPEN';
+    const accountId = closed ? shownAccount(shown, c.lastStatusByPartyId) : undefined;
     return {
       id: c.templateItemId,
       title: c.workEffortName,
       isMandatory: c.isMandatory,
       category: c.purposeTypeId,
       isCompleted: closed,
-      completedBy: closed ? c.lastStatusByPartyId : undefined,
-      completedByAccountId: closed ? c.lastStatusByPartyId : undefined,
+      completedBy: accountId,
+      completedByAccountId: accountId,
       completedAt: closed ? c.lastStatusUpdate : undefined,
-      completedByLegacyName: closed ? c.legacyName : undefined,
+      completedByLegacyName: closed ? c.legacyName || shownText(shown, c.lastStatusByPartyId) : undefined,
       waived: c.currentStatusId === 'DOD_WAIVED',
       evidenceRequired: c.evidenceRequired,
       hasEvidence: Boolean(c.evidenceContentId)
@@ -117,8 +135,10 @@ export async function validateTransition(payload: any, context?: any, storagePro
 }
 
 async function evaluateTransition(payload: any, context?: any, storageProvider?: StorageProvider) {
+  // BL-4: an inactive licence turns the gate off. The move goes through; the panel says why.
   if (isLicenceInactive(context)) {
-    return { result: false, errorMessage: VALIDATOR_LICENCE_INACTIVE };
+    console.log('DefinitionGuard: the licence is not active, so the gate let this move through.');
+    return { result: true };
   }
 
   const issueKey = payload?.issue?.key || payload?.issueKey;
@@ -162,13 +182,24 @@ async function evaluateTransition(payload: any, context?: any, storageProvider?:
 
   // Separation of duties holds at the moment of Done: re-check not-the-assignee items
   // against the current assignee, read from the Jira issue (never from an issue property).
-  let assigneeAccountId: string | undefined;
-  if (state.criteria.some(c => c.excludedRoleTypeId === 'ASSIGNEE' && c.currentStatusId === 'DOD_DONE')) {
+  // Separation of duties (H-1, H-2): a not-the-assignee item that was completed or waived by anyone
+  // who was the assignee after the item was opened counts as open. Read from Jira (current assignee
+  // and changelog), never from an issue property. Stored records hold pseudonyms (ADR-010), so each
+  // assignee is looked up, read only.
+  const excludedIds = new Set<string>();
+  const checked = state.criteria.filter(needsAssigneeCheck);
+  if (checked.length > 0) {
     live = live?.fields && 'assignee' in live.fields ? live : await fetchIssueForValidator(issueId);
-    assigneeAccountId = live?.fields?.assignee?.accountId;
+    const current = live?.fields?.assignee?.accountId;
+    const changes = await assigneeChanges(issueId, 'app');
+    const parties = new PartyStore(resolveStorage(storageProvider));
+    for (const c of checked) {
+      const ids = await parties.idsOf(assigneesSince(changes, current, c.openedAt));
+      if (c.lastStatusByPartyId && ids.has(c.lastStatusByPartyId)) excludedIds.add(c.workEffortId);
+    }
   }
 
-  const gate = evaluateGate(state, assigneeAccountId);
+  const gate = evaluateGate(state, c => excludedIds.has(c.workEffortId));
   if (gate.satisfied) {
     return { result: true };
   }
@@ -223,17 +254,19 @@ const AUDIT_TYPE: Record<ChangeEntry['transitionName'], ChecklistAuditEvent['eve
   Complete: 'CHECK',
   Waive: 'WAIVE',
   Reopen: 'UNCHECK',
-  Reset: 'RESET'
+  Reset: 'RESET',
+  Redact: 'REDACT'
 };
 
 /** One history row per change-log entry, in the panel's audit shape (frozen contract). */
-function auditRow(state: DodState, e: ChangeEntry): ChecklistAuditEvent {
+function auditRow(state: DodState, e: ChangeEntry, shown: Shown): ChecklistAuditEvent {
+  const accountId = shownAccount(shown, e.actorPartyId) || '';
   const row: ChecklistAuditEvent = {
     id: `evt-${e.seq}`,
     timestamp: e.at,
     eventType: AUDIT_TYPE[e.transitionName],
-    actorName: e.actorPartyId,
-    actorAccountId: e.actorPartyId
+    actorName: accountId || shownText(shown, e.actorPartyId) || '',
+    actorAccountId: accountId
   };
   if (e.transitionName === 'Complete' || e.transitionName === 'Reopen' || e.transitionName === 'Waive') {
     const status = e.rows.find(r => r.entity === 'WorkEffortStatus') as Extract<ChangeEntry['rows'][number], { entity: 'WorkEffortStatus' }>;
@@ -247,9 +280,13 @@ function auditRow(state: DodState, e: ChangeEntry): ChecklistAuditEvent {
   return row;
 }
 
-/** The panel response (frozen contract). Names are accountIds; the panel renders them. */
-export function toPanelResponse(state: DodState, entries: ChangeEntry[] = []): IssueChecklistState {
-  const items = toLegacyItems(state);
+/**
+ * The panel response (frozen contract). People are account ids, resolved from the stored
+ * pseudonyms (ADR-010); the panel renders them. A person whose account was closed and erased, or
+ * the app itself, comes as text in completedByLegacyName or actorName.
+ */
+export function toPanelResponse(state: DodState, entries: ChangeEntry[] = [], shown: Shown = new Map()): IssueChecklistState {
+  const items = toLegacyItems(state, shown);
   const gate = evaluateGate(state);
   return {
     issueId: state.issue.sourceReferenceId,
@@ -257,12 +294,31 @@ export function toPanelResponse(state: DodState, entries: ChangeEntry[] = []): I
     templateId: state.template.workEffortId,
     items,
     lastModifiedAt: state.lastModifiedAt || '',
-    lastModifiedBy: state.lastModifiedByPartyId || '',
+    lastModifiedBy: shownAccount(shown, state.lastModifiedByPartyId) || '',
     isFullySatisfied: gate.satisfied,
     openMandatoryTitles: gate.openMandatory.map(c => c.workEffortName),
     checklistHash: state.headHash,
     stateVersion: state.seq,
-    auditTrail: entries.map(e => auditRow(state, e))
+    auditTrail: entries.map(e => auditRow(state, e, shown))
+  };
+}
+
+/** Every party id the panel response shows. */
+function partiesIn(state: DodState, entries: ChangeEntry[]): string[] {
+  return [
+    ...state.criteria.map(c => c.lastStatusByPartyId || ''),
+    state.lastModifiedByPartyId || '',
+    ...entries.map(e => e.actorPartyId)
+  ];
+}
+
+/** The panel response with every stored pseudonym resolved to the person, read only. */
+export async function panelResponse(storage: StorageProvider, state: DodState, entries: ChangeEntry[] = []): Promise<IssueChecklistState> {
+  return {
+    ...toPanelResponse(state, entries, await new PartyStore(storage).show(partiesIn(state, entries))),
+    // M-1: the approver line names the configured groups and the template's waiver permission.
+    approverGroups: await approverGroupNames(storage),
+    waiverPermissionLabel: permissionLabel(permissionKeyOf(state.template.waiverRoleTypeId))
   };
 }
 
@@ -290,10 +346,15 @@ export async function getIssueChecklist(_payload: any, context?: any, storagePro
   let state = await store.loadOrLegacy(c.issueId, c.projectId);
   if (!state) {
     const base = emptyState(c.issueId, c.issueKey, c.projectId);
-    state = applyEntry(base, createEntry(base, await templateFor(storage, c), c.actorAccountId, new Date().toISOString()));
+    state = applyEntry(base, createEntry(base, await templateFor(storage, c), 'system', new Date().toISOString()));
     state = { ...state, seq: 0 };
   }
-  return toPanelResponse(state);
+  return withLicenceNotice(await panelResponse(storage, state), context);
+}
+
+/** Adds the licence notice to a panel response when the licence is inactive (BL-4). */
+function withLicenceNotice(res: IssueChecklistState, context: any): IssueChecklistState {
+  return isLicenceInactive(context) ? { ...res, licenceInactive: true } : res;
 }
 
 /**
@@ -301,7 +362,8 @@ export async function getIssueChecklist(_payload: any, context?: any, storagePro
  */
 export async function getChecklistHistory(payload: any, context?: any, storageProvider?: StorageProvider) {
   const c = panelContext(context);
-  const store = new ChecklistStore(resolveStorage(storageProvider));
+  const storage = resolveStorage(storageProvider);
+  const store = new ChecklistStore(storage);
   const cursor = typeof payload?.cursor === 'string' ? payload.cursor : undefined;
   const page = await store.history(c.issueId, cursor);
   const state = await store.load(c.issueId);
@@ -309,13 +371,29 @@ export async function getChecklistHistory(payload: any, context?: any, storagePr
   return {
     events: page.events,
     chain: { ...check, message: chainMessage(check), limit: CHAIN_LIMIT_NOTE },
-    auditTrail: toPanelResponse(state || emptyState(c.issueId, c.issueKey, c.projectId), page.events).auditTrail,
+    signature: signatureStatus(),
+    auditTrail: (await panelResponse(storage, state || emptyState(c.issueId, c.issueKey, c.projectId), page.events)).auditTrail,
     nextCursor: page.nextCursor,
     eventCount: state?.seq || 0
   };
 }
 
 export const ASSIGNEE_DENIED = 'The assignee cannot complete this item. Ask a reviewer.';
+export const FORMER_ASSIGNEE_DENIED =
+  'The assignee cannot complete this item, and you were the assignee of this issue after the item was opened. Ask a reviewer.';
+export const ASSIGNEE_WAIVE_DENIED =
+  'The assignee cannot waive this item, and you are or were the assignee of this issue after the item was opened. Ask another approver.';
+
+/**
+ * True when the actor is the current assignee, or was the assignee at any moment after the item
+ * was last opened (H-2). Read as the user; fails closed when Jira cannot be read.
+ */
+async function actorWasAssignee(issueKey: string, actorAccountId: string, criterion: { openedAt?: string }): Promise<'current' | 'former' | false> {
+  const current = await currentAssignee(issueKey);
+  if (current === actorAccountId) return 'current';
+  const changes = await assigneeChanges(issueKey, 'user');
+  return assigneesSince(changes, current, criterion.openedAt).has(actorAccountId) ? 'former' : false;
+}
 export const WAIVER_REASON_INVALID = 'Give a reason of 10 to 500 characters for the waiver.';
 
 /** The stored checklist, or the one a first change would create, built in memory. */
@@ -367,16 +445,22 @@ export async function waiveChecklistItem(payload: any, context?: any, storagePro
     await checkIssuePermissions(c.issueKey, [waiverPermission],
       `Only users with the ${permissionLabel(waiverPermission)} Jira permission can waive this item.`);
   }
+  // H-1: an approver who is or was the assignee cannot waive a not-the-assignee item.
+  const target = current.criteria.find(x => x.templateItemId === itemId)!;
+  if (target.excludedRoleTypeId === 'ASSIGNEE' && (await actorWasAssignee(c.issueKey, c.actorAccountId, target))) {
+    throw new PermissionDeniedError(ASSIGNEE_WAIVE_DENIED);
+  }
 
+  const actor = await new PartyStore(storage).pseudonymFor(c.actorAccountId);
   const state = await store.mutate(
     c.issueId,
-    base => store.initFromLegacyOr(base, () => templateFor(storage, c), c.actorAccountId, at),
-    st => [statusEntry(st, { templateItemId: itemId, statusIdTo: 'DOD_WAIVED', transitionName: 'Waive', actorPartyId: c.actorAccountId, at, reason })],
+    base => store.initFromLegacyOr(base, () => templateFor(storage, c), actor, at),
+    st => [statusEntry(st, { templateItemId: itemId, statusIdTo: 'DOD_WAIVED', transitionName: 'Waive', actorPartyId: actor, at, reason })],
     { issueKey: c.issueKey, projectId: c.projectId }
   );
 
   await publishAttestation(state, new Date().toISOString());
-  return toPanelResponse(state);
+  return panelResponse(storage, state);
 }
 
 /**
@@ -401,7 +485,7 @@ export async function getItemEvidence(payload: any, context?: any, storageProvid
   return { itemId, evidence: { ...(content.objectInfo ? { url: content.objectInfo } : {}), ...(content.textData ? { note: content.textData } : {}) } };
 }
 
-export const EXPORT_DENIED = 'Only a project admin can export this history.';
+export const EXPORT_DENIED = 'Only a project admin or a Jira admin can export this history.';
 
 /**
  * The whole history of the issue as JSON text, with the chain check and its limit, for an
@@ -409,14 +493,19 @@ export const EXPORT_DENIED = 'Only a project admin can export this history.';
  */
 export async function exportChecklistHistory(_payload: any, context?: any, storageProvider?: StorageProvider) {
   const c = panelContext(context);
-  await checkIssuePermissions(c.issueKey, ['ADMINISTER_PROJECTS'], EXPORT_DENIED);
-  const store = new ChecklistStore(resolveStorage(storageProvider));
+  await checkAnyIssuePermission(c.issueKey, ADMIN_KEYS, EXPORT_DENIED);
+  const storage = resolveStorage(storageProvider);
+  const store = new ChecklistStore(storage);
   const state = await store.load(c.issueId);
   const events = await store.allEvents(c.issueId, state);
   const check = verifyChain(c.issueId, events, state);
   const doc = {
     format: 'definitionguard-history-export',
-    formatVersion: 1,
+    formatVersion: 2,
+    // ADR-010: events name people by pseudonym. This maps each pseudonym to the person's account
+    // id while the account exists; a closed account is erased from the map, not from the events.
+    parties: await new PartyStore(storage).accountsOf(events.map(e => e.actorPartyId)
+      .concat(events.flatMap(e => e.rows.map(r => (r.entity === 'WorkEffortStatus' ? r.setByPartyId : ''))))),
     issueId: c.issueId,
     issueKey: c.issueKey,
     exportedAt: new Date().toISOString(),
@@ -426,6 +515,7 @@ export async function exportChecklistHistory(_payload: any, context?: any, stora
       : null,
     chain: { ...check, message: chainMessage(check) },
     limit: CHAIN_LIMIT_NOTE,
+    signature: signatureStatus(),
     events
   };
   return { fileName: `${c.issueKey}-definitionguard-history.json`, text: JSON.stringify(doc, null, 2) };
@@ -459,11 +549,12 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
   if (!target) {
     throw new Error(`Checklist item with id '${itemId}' not found on issue ${current.issue.workEffortName}`);
   }
+  let actor = c.actorAccountId;
   const change = (st: DodState) => statusEntry(st, {
     templateItemId: itemId,
     statusIdTo: isCompleted ? 'DOD_DONE' : 'DOD_OPEN',
     transitionName: isCompleted ? 'Complete' : 'Reopen',
-    actorPartyId: c.actorAccountId,
+    actorPartyId: actor,
     at,
     evidence
   });
@@ -489,13 +580,15 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
       throw new PermissionDeniedError(`Only users with the ${permissionLabel(waiverPermission)} Jira permission can reopen a waived item.`);
     }
   }
-  if (isCompleted && target.excludedRoleTypeId === 'ASSIGNEE' && (await currentAssignee(c.issueKey)) === c.actorAccountId) {
-    throw new PermissionDeniedError(ASSIGNEE_DENIED);
+  if (isCompleted && target.excludedRoleTypeId === 'ASSIGNEE') {
+    const was = await actorWasAssignee(c.issueKey, c.actorAccountId, target);
+    if (was) throw new PermissionDeniedError(was === 'current' ? ASSIGNEE_DENIED : FORMER_ASSIGNEE_DENIED);
   }
 
+  actor = await new PartyStore(storage).pseudonymFor(c.actorAccountId);
   const state = await store.mutate(
     c.issueId,
-    base => store.initFromLegacyOr(base, () => templateFor(storage, c), c.actorAccountId, at),
+    base => store.initFromLegacyOr(base, () => templateFor(storage, c), actor, at),
     st => {
       const item = st.criteria.find(x => x.templateItemId === itemId);
       if (isCompleted && item?.evidenceRequired && !evidence) {
@@ -507,7 +600,7 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
   );
 
   await publishAttestation(state, new Date().toISOString());
-  return toPanelResponse(state);
+  return panelResponse(storage, state);
 }
 
 /**
@@ -526,15 +619,16 @@ export async function resetChecklist(_payload: any, context?: any, storageProvid
   const store = new ChecklistStore(storage);
   const at = new Date().toISOString();
 
+  const actor = await new PartyStore(storage).pseudonymFor(c.actorAccountId);
   const state = await store.mutate(
     c.issueId,
-    base => store.initFromLegacyOr(base, () => templateFor(storage, c), c.actorAccountId, at),
-    st => [resetEntry(st, c.actorAccountId, at)],
+    base => store.initFromLegacyOr(base, () => templateFor(storage, c), actor, at),
+    st => [resetEntry(st, actor, at)],
     { issueKey: c.issueKey, projectId: c.projectId }
   );
 
   await publishAttestation(state, new Date().toISOString());
-  return toPanelResponse(state);
+  return panelResponse(storage, state);
 }
 
 // Register Forge Resolver for UI Kit 2 bridge invocations
