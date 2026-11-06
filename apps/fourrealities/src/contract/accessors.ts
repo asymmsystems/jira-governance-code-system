@@ -136,3 +136,25 @@ export interface JiraDirectoryAccessor extends Accessor {
   /** Display names by account id, read now and never stored (ADR-012); unreadable ids are left out. */
   userNames(accountIds: string[]): Promise<Record<string, string>>;
 }
+
+/** One stored account id, the date of its latest record, and the issues whose records name it. */
+export interface StoredAccount {
+  accountId: string;
+  updatedAt: string;
+  issueIds: string[];
+}
+
+/** Finds and erases the account ids FourRealities stores (ADR-012). */
+export interface PersonalDataAccessor extends Accessor {
+  /** Every stored account id, with the date of its latest record. */
+  accounts(now: string): Promise<StoredAccount[]>;
+  /** Replaces closed accounts with ERASED_ACCOUNT in events and notes, and removes them from snapshots. */
+  erase(closedAccountIds: string[]): Promise<void>;
+  /** Rewrites snapshot metas that still name a viewer to "user"; returns how many changed. */
+  minimiseMeta(): Promise<number>;
+}
+
+/** The Forge personal data reporting API (scope report:personal-data). */
+export interface PrivacyReportAccessor extends Accessor {
+  report(accounts: Array<{ accountId: string; updatedAt: string }>): Promise<Array<{ accountId: string; status: string }>>;
+}

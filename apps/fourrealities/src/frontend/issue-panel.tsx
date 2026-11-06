@@ -7,7 +7,7 @@
 
 import React, { useState } from 'react';
 import { Button, Inline, Lozenge, SectionMessage, Stack, Text } from '@forge/react';
-import { ApprovalView, ExceptionDecision, ExceptionNote, GATE_NAMES, GateExceptionState, GateName, IssueRow } from '../contract/data/models';
+import { ApprovalView, ERASED_ACCOUNT, ExceptionDecision, ExceptionNote, GATE_NAMES, GateExceptionState, GateName, IssueRow } from '../contract/data/models';
 import { PanelAction, afterActionText, raiPartsText, raiText, recoveryText, riskAppearance } from '../ui/gate-text';
 import { GatePipeline, GateRow } from './gate-row';
 import { alignmentText, driftText, issueReadiness, nextActionText, scoreParts } from '../ui/pipeline';
@@ -15,11 +15,15 @@ import { SPACE, TEXT_ROLE } from '../brand/brand';
 import { ActionRow, AppSurface, AttributionLine, ListRow, NoteBox, PanelHeader, Section, SubSection, SummaryBlock } from '../brand/layout';
 import { DecisionModal, ExceptionModal, LinkDecisionModal, ReviewModal } from './modals';
 
+/** The text for an account that was closed and erased (ADR-012); undefined for a live account. */
+const formerUser = (accountId?: string): string | undefined => (accountId === ERASED_ACCOUNT ? 'a former user' : undefined);
+
 /** Who and why for an exception or a rework reason. The name comes from the UI Kit User component. */
 export const NoteLine: React.FC<{ label: string; note: ExceptionNote }> = ({ label, note }) => (
   <AttributionLine
     prefix={`${label} by`}
     accountId={note.recordedBy}
+    name={formerUser(note.recordedBy)}
     suffix={`on ${note.recordedAt.slice(0, 10)}: ${note.reason}`}
   />
 );
@@ -32,6 +36,7 @@ export const ExceptionStateLine: React.FC<{ state: GateExceptionState }> = ({ st
     <AttributionLine
       prefix="Requested by"
       accountId={state.requestedBy}
+      name={formerUser(state.requestedBy)}
       suffix={`on ${state.requestedAt.slice(0, 10)}: ${state.reason}`}
     />
   );
@@ -49,6 +54,7 @@ export const ExceptionStateLine: React.FC<{ state: GateExceptionState }> = ({ st
     <AttributionLine
       prefix={state.status === 'APPROVED' ? 'Approved by' : `${ENDED[state.status]} by`}
       accountId={state.decidedBy}
+      name={formerUser(state.decidedBy)}
       suffix={`on ${String(state.decidedAt).slice(0, 10)}${state.status === 'APPROVED' ? '' : `: ${state.decisionReason}`}`}
     />
   ) : null;

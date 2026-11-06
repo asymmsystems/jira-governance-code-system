@@ -41,6 +41,7 @@ import {
   filterOptions,
   isPresetActive,
   missingGateLabel,
+  personName,
   togglePreset,
   toggleRisk
 } from '../ui/filters';
@@ -200,11 +201,12 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [wideColumns, setWideColumns] = useState<boolean>(false);
 
-  const options = useMemo(() => filterOptions(view.rows), [view.rows]);
+  const people = view.people || {};
+  const options = useMemo(() => filterOptions(view.rows, view.people), [view.rows, view.people]);
   const visible = useMemo(() => applyFilters(triageOrder(view.rows), filters), [view.rows, filters]);
   const set = (patch: Partial<DashboardFilters>) => setFilters(f => ({ ...f, ...patch }));
   const remove = (field: FilterField) => set(field === 'risks' ? { risks: [] } : { [field]: null });
-  const active = activeFilters(filters);
+  const active = activeFilters(filters, people);
   const position = visible.findIndex(r => r.issueId === selectedId);
   const selected = position >= 0 ? visible[position] : view.rows.find(r => r.issueId === selectedId) || null;
 
@@ -271,8 +273,8 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
         )
       },
       {
-        key: r.assigneeName || 'Unassigned',
-        content: <Text as="span" size="small" color={r.assigneeName ? TEXT_ROLE.primary : TEXT_ROLE.muted}>{r.assigneeName || 'Unassigned'}</Text>
+        key: personName(people, r.assigneeAccountId),
+        content: <Text as="span" size="small" color={r.assigneeAccountId ? TEXT_ROLE.primary : TEXT_ROLE.muted}>{personName(people, r.assigneeAccountId)}</Text>
       },
       {
         key: 'action',
@@ -292,8 +294,8 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
             id="fr-filter-assignee"
             isClearable
             placeholder="Any assignee"
-            options={options.assignees.map(a => ({ label: a, value: a }))}
-            value={asOption(filters.assignee)}
+            options={options.assignees}
+            value={options.assignees.find(a => a.value === filters.assignee) || null}
             onChange={(o: Option | null) => set({ assignee: o?.value ?? null })}
           />
         </FormField>

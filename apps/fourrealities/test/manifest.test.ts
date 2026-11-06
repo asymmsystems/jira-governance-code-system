@@ -27,7 +27,8 @@ describe('manifest.yml', () => {
       'storage:app',
       'search:confluence',
       'read:confluence-content.summary',
-      'read:jira-user'
+      'read:jira-user',
+      'report:personal-data'
     ]);
     expect(manifest).not.toMatch(/external:/);
   });
@@ -42,5 +43,10 @@ describe('manifest.yml', () => {
     expect(manifest).toMatch(/jira:adminPage:\s*\n(?:\s*#.*\n)?\s*- key: fourrealities-admin\s*\n\s*title: FourRealities gate authority\s*\n\s*render: native\s*\n\s*resource: admin\s*\n\s*resolver:\s*\n\s*function: admin-resolver/);
     expect(manifest).toMatch(/- key: admin-resolver\s*\n\s*handler: index\.adminHandler/);
     expect(manifest).toMatch(/- key: admin\s*\n\s*path: src\/frontend\/admin\.tsx/);
+  });
+
+  it('ADR-012: runs the personal data report every week', () => {
+    expect(manifest).toMatch(/- key: fourrealities-personal-data\s*\n\s*function: personal-data\s*\n\s*interval: week/);
+    expect(manifest).toMatch(/- key: personal-data\s*\n\s*handler: index\.personalData\s*\n\s*timeoutSeconds: 600/);
   });
 });

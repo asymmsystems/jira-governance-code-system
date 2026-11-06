@@ -309,6 +309,12 @@ describe('IssuePanel', () => {
       expect(textOf(approved.toJSON())).toContain('You are the assignee of this issue, so another approver must decide.');
     });
 
+    it('ADR-012: shows "a former user" for an erased account', async () => {
+      const r = await mount(row('DEMO-24', { intent: F, process: NA, code: { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' }, audit: NA }, { codeException: { ...base, requestedBy: 'erased-account', status: 'APPROVED', decidedBy: 'erased-account', decidedAt: '2026-11-02T00:00:00Z' } }));
+      expect(textOf(r.toJSON())).toContain('a former user');
+      expect(findAll(r.root, 'User', p => p.accountId === 'erased-account')).toHaveLength(0);
+    });
+
     it('offers Revoke on an approved exception, and shows a migrated approval', async () => {
       const state = { ...base, status: 'APPROVED' as const, decidedBy: 'dev-1', decidedAt: '2026-10-01T00:00:00Z', migrated: true };
       const r = await mount(row('DEMO-21', { intent: F, process: NA, code: { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' }, audit: NA }, { codeException: state }));

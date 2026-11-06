@@ -26,6 +26,8 @@ import {
   saveAdminSources,
   searchAdminGroups,
   saveAdminApprovers,
+  reportPersonalData,
+  personalData,
   LICENCE_INACTIVE_MESSAGE
 } from '../src/index';
 import * as nodeCrypto from 'crypto';
@@ -74,7 +76,8 @@ jest.mock('@forge/api', () => ({
     })
   },
   route: (strings: any, ...values: any[]) =>
-    strings.reduce((acc: string, part: string, i: number) => acc + part + (i < values.length ? String(values[i]) : ''), '')
+    strings.reduce((acc: string, part: string, i: number) => acc + part + (i < values.length ? String(values[i]) : ''), ''),
+  assumeTrustedRoute: (path: string) => path
 }));
 
 jest.mock('@forge/kvs', () => ({
@@ -289,6 +292,54 @@ describe('FourRealities Index / Forge Handlers', () => {
       expect(second.rows[0].gates.audit.reason).toBe('SOURCE_NOT_IN_USE');
       expect(second.sources.audit).toBe(false);
       expect(second.generatedAt > first.generatedAt).toBe(true);
+    });
+  });
+
+  describe('ADR-012: the weekly personal data run and names on the dashboard', () => {
+    it('reports the stored ids and erases a closed account, whatever the licence', async () => {
+      await mockStorage.set('fr:note:7:t:a', { schemaVersion: 1, issueId: '7', issueKey: 'DEMO-7', reason: 'Requirement changed', recordedBy: 'gone-1', recordedAt: '2026-11-01T00:00:00.000Z' });
+      mockRequestJira.mockResolvedValue({ status: 200 });
+      const privacy = { serviceType: 'accessor' as const, report: jest.fn().mockResolvedValue([{ accountId: 'gone-1', status: 'closed' }]) };
+      expect(await reportPersonalData(mockStorage, privacy)).toEqual({ reported: 1, closed: 1, propertiesRewritten: 1 });
+      expect((await mockStorage.get<any>('fr:note:7:t:a')).recordedBy).toBe('erased-account');
+      expect(mockAppRequestJira.mock.calls.map(c => String(c[0]))).toEqual(['/rest/api/3/issue/7/properties/fourrealities-exception']);
+    });
+
+    it('logs the result of the trigger, and logs a failure without throwing', async () => {
+      setGlobalStorageProvider(new MockStorage());
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+      const err = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      try {
+        await personalData();
+        expect(log).toHaveBeenLastCalledWith('FourRealities: personal data report', JSON.stringify({ reported: 0, closed: 0, propertiesRewritten: 0 }));
+        const broken: any = { get: async () => { throw new Error('kvs down'); }, set: async () => undefined, delete: async () => undefined, queryPrefix: async () => { throw new Error('kvs down'); } };
+        setGlobalStorageProvider(broken);
+        await personalData();
+        expect(err).toHaveBeenLastCalledWith('FourRealities: personal data report failed', 'kvs down');
+        broken.queryPrefix = async () => { throw 'plain'; };
+        broken.get = async () => { throw 'plain'; };
+        await personalData();
+        expect(err).toHaveBeenLastCalledWith('FourRealities: personal data report failed', 'plain');
+      } finally {
+        log.mockRestore();
+        err.mockRestore();
+        setGlobalStorageProvider(null);
+      }
+    });
+
+    it('reads the assignee names as the viewer for the view and stores none', async () => {
+      mockRequestJira.mockImplementation(async (path: string) => {
+        if (path.startsWith('/rest/api/3/search/jql')) return { status: 200, json: async () => ({ issues: [{ ...doneIssue('2201', 'DEMO-22'), fields: { ...doneIssue('2201', 'DEMO-22').fields, assignee: { accountId: 'acc-ana', displayName: 'Ana Silva' } } }], isLast: true }) };
+        if (path.startsWith('/rest/api/3/user/bulk')) return { status: 200, json: async () => ({ values: [{ accountId: 'acc-ana', displayName: 'Ana Silva' }] }) };
+        return { status: 200, json: async () => [] };
+      });
+      const res: any = await getProjectDashboard({}, { extension: { project: { key: 'DEMO' } } }, mockStorage);
+      expect(res.people).toEqual({ 'acc-ana': 'Ana Silva' });
+      expect(res.rows[0].assigneeAccountId).toBe('acc-ana');
+      const stored = JSON.stringify(await mockStorage.get('fr:p:DEMO:chunk:0'));
+      expect(stored).not.toContain('Ana Silva');
+      expect(await mockStorage.get('fr:p:DEMO:accounts')).toEqual(expect.objectContaining({ accountIds: ['acc-ana'] }));
+      expect(mockUserRequestJira.mock.calls.some(c => String(c[0]).startsWith('/rest/api/3/user/bulk'))).toBe(true);
     });
   });
 
@@ -1043,7 +1094,8 @@ describe('B-08: bounded storage and a scheduled snapshot', () => {
     const storage = seeded();
     const first: any = await getProjectDashboard({}, ctx, storage);
     expect(first.ok).toBe(true);
-    expect(first.meta.generatedBy).toBe('acc-1');
+    // ADR-012: no account id in the snapshot.
+    expect(first.meta.generatedBy).toBe('user');
     expect(await storage.get('fr:projects')).toEqual(['DEMO']);
     const jiraCalls = mockAppRequestJira.mock.calls.length;
     storage.ops = [];

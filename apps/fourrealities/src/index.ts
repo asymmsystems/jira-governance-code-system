@@ -6,8 +6,8 @@
  */
 
 import Resolver from '@forge/resolver';
-import { AdminResult, AdminView, ApprovalView, CallerContext, DecideExceptionPayload, ForgeContext, IssueRow, LinkDecisionPayload, ProjectDashboardView, RecordExceptionPayload, RequestReviewPayload, ResolverResult, ScheduledRunResult, WriteResult } from './contract/data/models';
-import { ConfluencePage, ConfluencePageSearchAccessor, StorageProvider } from './contract/accessors';
+import { AdminResult, AdminView, ApprovalView, PersonalDataRunResult, CallerContext, DecideExceptionPayload, ForgeContext, IssueRow, LinkDecisionPayload, ProjectDashboardView, RecordExceptionPayload, RequestReviewPayload, ResolverResult, ScheduledRunResult, WriteResult } from './contract/data/models';
+import { ConfluencePage, ConfluencePageSearchAccessor, PrivacyReportAccessor, StorageProvider } from './contract/accessors';
 import { DefaultForgeKvsStore } from './accessor/default-forge-kvs-store';
 import { DefaultForgeConfluenceSearchAccessor } from './accessor/default-forge-confluence-search-accessor';
 import { DefaultForgeJiraIssueAccessor, Principal } from './accessor/default-forge-jira-issue-accessor';
@@ -30,6 +30,9 @@ import { DefaultKvsSettingsAccessor } from './accessor/default-kvs-settings-acce
 import { DefaultForgeJiraDirectoryAccessor } from './accessor/default-forge-jira-directory-accessor';
 import { DefaultSourcePolicyEngine } from './engine/default-source-policy-engine';
 import { DefaultAdminManager } from './manager/default-admin-manager';
+import { DefaultPersonalDataManager } from './manager/default-personal-data-manager';
+import { DefaultKvsPersonalDataAccessor } from './accessor/default-kvs-personal-data-accessor';
+import { DefaultForgePrivacyAccessor } from './accessor/default-forge-privacy-accessor';
 import { DefaultExceptionManager } from './manager/default-exception-manager';
 
 /** Time a resolver may spend on Jira reads, inside the 25 s Forge limit. */
@@ -96,11 +99,13 @@ export function compose(storageProvider: StorageProvider | undefined, budgetMs: 
       metrics,
       snapshot: new DefaultSnapshotEngine(),
       settings,
-      sources
+      sources,
+      directory
     }),
     issues: new DefaultIssueEvidenceManager({ userJira, siteConfig, notes, events, lifecycle, gates, metrics, policy, settings, sources }),
     exceptions: new DefaultExceptionManager({ userJira, appJira, directory, settings, siteConfig, notes, events, policy, lifecycle }),
-    admin: new DefaultAdminManager({ directory, settings, siteConfig, sources })
+    admin: new DefaultAdminManager({ directory, settings, siteConfig, sources }),
+    personalData: (privacy: PrivacyReportAccessor) => new DefaultPersonalDataManager({ data: new DefaultKvsPersonalDataAccessor(storage), privacy, events, notes, lifecycle, appJira })
   };
 }
 
@@ -153,6 +158,24 @@ export const snapshot = async (): Promise<void> => {
   }
   const result = await runScheduledSnapshot();
   console.log('FourRealities: scheduled snapshot', JSON.stringify(result));
+};
+
+/**
+ * Weekly personal data run (ADR-012): reports every stored account id, erases closed accounts.
+ * It runs whatever the licence state: the duty to report and erase does not end with a licence.
+ */
+export async function reportPersonalData(storageProvider?: StorageProvider, privacy: PrivacyReportAccessor = new DefaultForgePrivacyAccessor()): Promise<PersonalDataRunResult> {
+  return compose(storageProvider, SCHEDULED_BUDGET_MS, 'app').personalData(privacy).run();
+}
+
+/** Forge scheduledTrigger handler (manifest function "personal-data"). */
+export const personalData = async (): Promise<void> => {
+  try {
+    const result = await reportPersonalData();
+    console.log('FourRealities: personal data report', JSON.stringify(result));
+  } catch (err) {
+    console.error('FourRealities: personal data report failed', err instanceof Error ? err.message : String(err));
+  }
 };
 
 /** Evaluates one Jira issue. The issue comes from the Forge context only. */

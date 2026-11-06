@@ -6,7 +6,7 @@
  */
 
 import { CallerContext, CHUNK_SIZE_HINT, IssueRow, ProjectDashboardView, ProjectSummary, ResolverResult, ScheduledRunResult, SiteConfig, SnapshotMeta, StoredSnapshot } from '../contract/data/models';
-import { ExceptionEventAccessor, ReworkNoteAccessor, JiraIssueAccessor, SettingsAccessor, SiteConfigAccessor, SnapshotAccessor } from '../contract/accessors';
+import { ExceptionEventAccessor, JiraDirectoryAccessor, ReworkNoteAccessor, JiraIssueAccessor, SettingsAccessor, SiteConfigAccessor, SnapshotAccessor } from '../contract/accessors';
 import { ExceptionPolicyEngine, GateEngine, MetricsEngine, SnapshotEngine, SourcePolicyEngine } from '../contract/engines';
 import { DashboardManager, SnapshotManager } from '../contract/managers';
 import { jiraError, messageOf } from '../contract/data/errors';
@@ -27,6 +27,8 @@ export interface SnapshotManagerDeps {
   snapshot: SnapshotEngine;
   settings: SettingsAccessor;
   sources: SourcePolicyEngine;
+  /** Jira users as the viewer: assignee names for the view. */
+  directory: JiraDirectoryAccessor;
   now?: () => Date;
 }
 
@@ -76,7 +78,7 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
         remoteLinks: links.get(id) ?? (base.started ? undefined : [])
       };
       const gates = this.d.snapshot.keepPreviousIntent(this.d.gates.evaluate(facts, sources), read, previous.get(id));
-      return this.d.metrics.buildRow(facts, gates);
+      return this.d.snapshot.storedRow(this.d.metrics.buildRow(facts, gates));
     });
 
     const summary = this.d.metrics.summarize(rows);
@@ -140,7 +142,8 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
       stored = undefined;
     }
     if (!stored) {
-      const built = await this.build(projectKey, caller.accountId || 'unknown-user', Date.now() + this.d.budgetMs);
+      // No account id in the snapshot (ADR-012).
+      const built = await this.build(projectKey, 'user', Date.now() + this.d.budgetMs);
       if (!built.ok) {
         return built;
       }
@@ -161,6 +164,9 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
       coverage: { shown: stored.meta.shownCount, totalKnown: stored.meta.totalKnown, capped: stored.meta.capped },
       meta: stored.meta
     };
+    // Names of the assignees, read as the viewer now and never stored (ADR-012).
+    const assignees = Array.from(new Set(rows.map(r => r.assigneeAccountId).filter((id): id is string => Boolean(id))));
+    if (assignees.length > 0) view.people = await this.d.directory.userNames(assignees);
     try {
       const detected = await this.d.settings.getDetected();
       const sources = this.d.sources.resolve(settings, detected, await this.d.siteConfig.get());

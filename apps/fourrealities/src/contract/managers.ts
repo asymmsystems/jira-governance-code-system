@@ -5,7 +5,7 @@
  */
 
 import { Manager } from './service-types';
-import { AdminResult, AdminView, ApprovalView, CallerContext, DecideExceptionPayload, IssueRow, LinkDecisionPayload, ProjectDashboardView, ProjectSummary, RecordExceptionPayload, RequestReviewPayload, ResolverResult, ScheduledRunResult, SnapshotMeta, WriteResult } from './data/models';
+import { PersonalDataRunResult, AdminResult, AdminView, ApprovalView, CallerContext, DecideExceptionPayload, IssueRow, LinkDecisionPayload, ProjectDashboardView, ProjectSummary, RecordExceptionPayload, RequestReviewPayload, ResolverResult, ScheduledRunResult, SnapshotMeta, WriteResult } from './data/models';
 
 export interface DashboardManager extends Manager {
   /** Stored snapshot (built once when absent), filtered to what the viewer can browse. */
@@ -38,4 +38,9 @@ export interface AdminManager extends Manager {
   saveSources(payload: unknown): Promise<AdminResult<AdminView>>;
   searchGroups(payload: unknown): Promise<AdminResult<{ groups: Array<{ groupId: string; name: string }> }>>;
   saveApprovers(payload: unknown): Promise<AdminResult<AdminView>>;
+}
+
+/** The weekly personal data report and the erasure of closed accounts (ADR-012). */
+export interface PersonalDataManager extends Manager {
+  run(): Promise<PersonalDataRunResult>;
 }

@@ -639,15 +639,23 @@ export interface AttributionLineProps {
   readonly prefix: string;
   readonly accountId: string;
   readonly suffix: string;
+  /** Text shown instead of the user, for example for an account that no longer exists. */
+  readonly name?: string;
 }
 
-export function AttributionLine({ prefix, accountId, suffix }: AttributionLineProps): React.JSX.Element {
+export function AttributionLine({ prefix, accountId, suffix, name }: AttributionLineProps): React.JSX.Element {
   return (
     <Inline space={SPACE.sub} rowSpace={SPACE.tight} alignBlock="center" shouldWrap>
       <Text as="span" size="small" weight="medium">
         {prefix}
       </Text>
-      <User accountId={accountId} />
+      {name ? (
+        <Text as="span" size="small" weight="medium">
+          {name}
+        </Text>
+      ) : (
+        <User accountId={accountId} />
+      )}
       <Text as="span" size="small" color={TEXT_ROLE.secondary}>
         {suffix}
       </Text>

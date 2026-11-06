@@ -19,7 +19,7 @@ import { triageOrder } from '../../src/ui/triage';
 
 const rows = [
   row('DEMO-1', { intent: F, process: F, code: NA, audit: F }),
-  row('DEMO-2', { intent: M_INTENT, process: M_DOD, code: M_CODE, audit: M_SEAL }, { assigneeName: undefined }),
+  row('DEMO-2', { intent: M_INTENT, process: M_DOD, code: M_CODE, audit: M_SEAL }, { assigneeAccountId: undefined }),
   row('DEMO-3', { intent: M_INTENT, process: F, code: NA, audit: NA }),
   row('DEMO-4', { intent: NA, process: NA, code: NA, audit: NA }, { statusCategory: 'new', statusChanges: 0 })
 ];
@@ -91,8 +91,8 @@ describe('ProjectDashboard', () => {
   it('B-18: filters by assignee, sprint and gate with labelled selects, and removes each filter on its own', async () => {
     const sprintRows = [
       row('DEMO-1', { intent: F, process: F, code: NA, audit: F }, { sprintNames: ['Sprint 1'] }),
-      row('DEMO-2', { intent: M_INTENT, process: M_DOD, code: M_CODE, audit: M_SEAL }, { assigneeName: undefined, sprintNames: ['Sprint 2'] }),
-      row('DEMO-3', { intent: M_INTENT, process: F, code: NA, audit: NA }, { assigneeName: 'Bo Chen', sprintNames: ['Sprint 2'] })
+      row('DEMO-2', { intent: M_INTENT, process: M_DOD, code: M_CODE, audit: M_SEAL }, { assigneeAccountId: undefined, sprintNames: ['Sprint 2'] }),
+      row('DEMO-3', { intent: M_INTENT, process: F, code: NA, audit: NA }, { assigneeAccountId: 'acc-bo', sprintNames: ['Sprint 2'] })
     ];
     const r = await mount(dashboard(sprintRows));
     expect(findAll(r.root, 'Label').map((l: any) => l.props.labelFor)).toEqual(['fr-search', 'fr-filter-assignee', 'fr-filter-sprint', 'fr-filter-gate']);

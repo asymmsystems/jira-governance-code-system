@@ -60,6 +60,8 @@ export interface SnapshotEngine extends Engine {
   weekStartOf(iso: string): string;
   trendPoint(summary: ProjectSummary, generatedAt: string): TrendPoint;
   keepPreviousIntent(gates: IssueGates, remoteLinksRead: boolean, previous?: IssueRow): IssueGates;
+  /** The row as a snapshot stores it: no exception, no note, text cut (ADR-012, F-M2). */
+  storedRow(row: IssueRow): IssueRow;
   visibleRows(rows: IssueRow[], ids: Set<string>): IssueRow[];
   staleWarning(meta: SnapshotMeta, now: number): string | undefined;
 }

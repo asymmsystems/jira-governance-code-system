@@ -32,7 +32,7 @@ class MapStorage {
   }
 }
 
-const issue = { id: '60001', key: 'DEMO-60', fields: { summary: 'S', status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } } }, properties: {} };
+const issue = { id: '60001', key: 'DEMO-60', fields: { summary: 'S', status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } }, assignee: { accountId: '5b10:ab-cd' } }, properties: {} };
 
 function respond(path: string): any {
   if (path === '/rest/api/3/field') return { status: 200, json: async () => [{ id: 'customfield_10000', name: 'Development' }] };
@@ -62,5 +62,8 @@ describe('resolvers build valid Forge routes', () => {
     expect(res.ok).toBe(true);
     expect(res.rows[0].gates.intent.state).toBe('MISSING');
     expect(mockRequests.map(r => r.path)).toContain('/rest/api/3/issue/60001/remotelink');
+    // ADR-011 and ADR-012: the pull request probe and the names read as the viewer pass Forge's route checks.
+    expect(mockRequests.map(r => r.path)).toContain('/rest/api/3/search/jql?jql=development%5Bpullrequests%5D.all%20%3E%200&maxResults=1&fields=created');
+    expect(mockRequests.find(r => r.path.startsWith('/rest/api/3/user/bulk'))).toEqual(expect.objectContaining({ principal: 'user', path: '/rest/api/3/user/bulk?maxResults=50&accountId=5b10%3Aab-cd' }));
   });
 });

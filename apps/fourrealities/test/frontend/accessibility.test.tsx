@@ -98,7 +98,7 @@ function checkTree(renderer: any, where: string) {
 
 const rows = [
   row('DEMO-1', { intent: F, process: F, code: NA, audit: F }, { sprintNames: ['Sprint 1'] }),
-  row('DEMO-2', { intent: M_INTENT, process: M_DOD, code: M_CODE, audit: M_SEAL }, { assigneeName: undefined, reworkLoops: 1 }),
+  row('DEMO-2', { intent: M_INTENT, process: M_DOD, code: M_CODE, audit: M_SEAL }, { assigneeAccountId: undefined, reworkLoops: 1 }),
   row('DEMO-3', { intent: M_INTENT, process: F, code: { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' }, audit: NA })
 ];
 

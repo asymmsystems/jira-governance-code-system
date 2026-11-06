@@ -37,6 +37,7 @@ function buildSnapshot(o: { projectKey: string; storage: any; request: any; dead
     snapshot: new DefaultSnapshotEngine(),
     settings: new DefaultKvsSettingsAccessor(o.storage),
     sources: new DefaultSourcePolicyEngine(),
+    directory: { serviceType: 'accessor', userNames: async () => ({}) } as any,
     now: o.now
   });
   return manager.build(o.projectKey, o.generatedBy, o.deadline);

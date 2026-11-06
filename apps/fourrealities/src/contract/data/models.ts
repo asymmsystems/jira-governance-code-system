@@ -200,7 +200,7 @@ export interface IssueFacts {
   summary: string;
   statusName: string;
   statusCategory: StatusCategory;
-  assigneeName?: string;
+  /** The assignee's account id. FourRealities stores no names (ADR-012). */
   assigneeAccountId?: string;
   sprintNames: string[];
   updated?: string;
@@ -231,7 +231,7 @@ export interface IssueRow {
   summary: string;
   statusName: string;
   statusCategory: StatusCategory;
-  assigneeName?: string;
+  /** The assignee's account id, for the Assignee and My issues filters; no name is stored (ADR-012). */
   assigneeAccountId?: string;
   sprintNames: string[];
   updated?: string;
@@ -242,9 +242,9 @@ export interface IssueRow {
   risk: RiskLevel;
   applicableGates: number;
   recoverablePoints: number;
-  /** Current Code exception, whatever its status (shown in the panel). */
+  /** Current Code exception, whatever its status (shown in the panel; never stored in a snapshot, ADR-012). */
   codeException?: GateExceptionState;
-  /** The latest rework note, and how many exist when there is at least one. */
+  /** The latest rework note, and how many exist (panel only; never stored in a snapshot). */
   reworkNote?: ExceptionNote;
   reworkNoteCount?: number;
 }
@@ -290,6 +290,7 @@ export interface SnapshotMeta {
   projectKey: string;
   snapshotId: string;
   generatedAt: string;
+  /** "user" (a page view or Refresh) or "scheduled"; never an account id (ADR-012). */
   generatedBy: string;
   chunkCount: number;
   shownCount: number;
@@ -313,6 +314,18 @@ export interface ProjectDashboardView {
   sources?: SourcesInUse;
   /** Notes about sources found on the site but not in use (ADR-011). */
   sourceNotes?: string[];
+  /** Display names of the assignees, read as the viewer for this view and never stored (ADR-012). */
+  people?: Record<string, string>;
+}
+
+/** Stands for the account id of a closed account in FourRealities' records (ADR-012). */
+export const ERASED_ACCOUNT = 'erased-account';
+
+/** What the weekly personal data run did (ADR-012). */
+export interface PersonalDataRunResult {
+  reported: number;
+  closed: number;
+  propertiesRewritten: number;
 }
 
 export type ResolverError = {

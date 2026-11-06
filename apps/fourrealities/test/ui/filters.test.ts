@@ -5,25 +5,31 @@
  */
 
 import { GateResult, IssueRow } from '../../src/contract/data/models';
-import { NO_FILTERS, PRESETS, activeFilters, applyFilters, filterOptions, isPresetActive, presetFilters, togglePreset, toggleRisk, UNASSIGNED } from '../../src/ui/filters';
+import { NO_FILTERS, PRESETS, activeFilters, personName, applyFilters, filterOptions, isPresetActive, presetFilters, togglePreset, toggleRisk, UNASSIGNED } from '../../src/ui/filters';
 
 const F: GateResult = { state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK' };
 const M: GateResult = { state: 'MISSING', reason: 'INTENT_NONE' };
-const r = (key: string, assigneeName: string | undefined, sprintNames: string[], intent = F): IssueRow => ({
-  issueId: key, issueKey: key, summary: `Work ${key}`, statusName: 'Done', statusCategory: 'done', assigneeName, sprintNames,
+const r = (key: string, assigneeAccountId: string | undefined, sprintNames: string[], intent = F): IssueRow => ({
+  issueId: key, issueKey: key, summary: `Work ${key}`, statusName: 'Done', statusCategory: 'done', ...(assigneeAccountId ? { assigneeAccountId } : {}), sprintNames,
   started: true, gates: { intent, process: F, code: F, audit: F }, reworkLoops: 0, rai: 100, risk: 'LOW', applicableGates: 4, recoverablePoints: 0
 } as IssueRow);
 
-const rows = [r('A-1', 'Ana Silva', ['Sprint 2']), r('A-2', undefined, ['Sprint 1', 'Sprint 2'], M), r('A-3', 'Bo Chen', [], M)];
+const rows = [r('A-1', 'acc-ana', ['Sprint 2']), r('A-2', undefined, ['Sprint 1', 'Sprint 2'], M), r('A-3', 'acc-bo', [], M)];
+/** Names as the dashboard reads them for one view; they are never stored (ADR-012). */
+const PEOPLE = { 'acc-bo': 'Bo Chen', 'acc-ana': 'Ana Silva' };
 
 describe('filterOptions', () => {
-  it('lists assignees by name with Unassigned last, and sprints in name order', () => {
-    expect(filterOptions(rows)).toEqual({ assignees: ['Ana Silva', 'Bo Chen', UNASSIGNED], sprints: ['Sprint 1', 'Sprint 2'] });
+  it('lists assignees by name, with the account id as the value and Unassigned last, and sprints in name order', () => {
+    expect(filterOptions(rows, PEOPLE)).toEqual({
+      assignees: [{ label: 'Ana Silva', value: 'acc-ana' }, { label: 'Bo Chen', value: 'acc-bo' }, { label: UNASSIGNED, value: UNASSIGNED }],
+      sprints: ['Sprint 1', 'Sprint 2']
+    });
   });
 
-  it('has no sprints for a project without sprints, so the Sprint filter is hidden', () => {
-    expect(filterOptions([r('S-1', 'Ana Silva', [])]).sprints).toEqual([]);
-    expect(filterOptions([r('S-1', 'Ana Silva', [])]).assignees).toEqual(['Ana Silva']);
+  it('has no sprints for a project without sprints, and says when a name could not be read', () => {
+    expect(filterOptions([r('S-1', 'acc-ana', [])], PEOPLE).sprints).toEqual([]);
+    expect(filterOptions([r('S-1', 'acc-zed', [])]).assignees).toEqual([{ label: 'Name not available', value: 'acc-zed' }]);
+    expect(personName(PEOPLE, undefined)).toBe(UNASSIGNED);
   });
 });
 
@@ -33,7 +39,7 @@ describe('applyFilters', () => {
   });
 
   it('filters by assignee, by Unassigned, by sprint and by missing gate, and combines them', () => {
-    expect(applyFilters(rows, { ...NO_FILTERS, assignee: 'Ana Silva' }).map(x => x.issueKey)).toEqual(['A-1']);
+    expect(applyFilters(rows, { ...NO_FILTERS, assignee: 'acc-ana' }).map(x => x.issueKey)).toEqual(['A-1']);
     expect(applyFilters(rows, { ...NO_FILTERS, assignee: UNASSIGNED }).map(x => x.issueKey)).toEqual(['A-2']);
     expect(applyFilters(rows, { ...NO_FILTERS, sprint: 'Sprint 2' }).map(x => x.issueKey)).toEqual(['A-1', 'A-2']);
     expect(applyFilters(rows, { ...NO_FILTERS, missingGate: 'intent' }).map(x => x.issueKey)).toEqual(['A-2', 'A-3']);
@@ -48,7 +54,8 @@ describe('applyFilters', () => {
 describe('activeFilters', () => {
   it('names each active filter so it can be removed on its own', () => {
     expect(activeFilters(NO_FILTERS)).toEqual([]);
-    expect(activeFilters({ ...NO_FILTERS, assignee: 'Ana Silva', sprint: 'Sprint 2', missingGate: 'code', search: 'x' })).toEqual([
+    expect(activeFilters({ ...NO_FILTERS, assignee: UNASSIGNED }, PEOPLE)).toEqual([{ field: 'assignee', label: 'Assignee: Unassigned' }]);
+    expect(activeFilters({ ...NO_FILTERS, assignee: 'acc-ana', sprint: 'Sprint 2', missingGate: 'code', search: 'x' }, PEOPLE)).toEqual([
       { field: 'assignee', label: 'Assignee: Ana Silva' },
       { field: 'sprint', label: 'Sprint: Sprint 2' },
       { field: 'missingGate', label: 'Code missing' }
