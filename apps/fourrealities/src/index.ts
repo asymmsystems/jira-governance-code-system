@@ -85,6 +85,8 @@ export function compose(storageProvider: StorageProvider | undefined, budgetMs: 
   const settings = new DefaultKvsSettingsAccessor(storage);
   const sources = new DefaultSourcePolicyEngine();
   const directory = new DefaultForgeJiraDirectoryAccessor(requestAs('user', () => deadline));
+  const appConfluence = new DefaultForgeConfluenceSearchAccessor('app');
+  const userConfluence = new DefaultForgeConfluenceSearchAccessor();
   return {
     settings,
     sources,
@@ -104,9 +106,10 @@ export function compose(storageProvider: StorageProvider | undefined, budgetMs: 
       snapshot: new DefaultSnapshotEngine(),
       settings,
       sources,
-      directory
+      directory,
+      confluence: appConfluence
     }),
-    issues: new DefaultIssueEvidenceManager({ userJira, siteConfig, notes, events, lifecycle, gates, metrics, policy, settings, sources }),
+    issues: new DefaultIssueEvidenceManager({ userJira, siteConfig, notes, events, lifecycle, gates, metrics, policy, settings, sources, confluence: userConfluence }),
     exceptions: new DefaultExceptionManager({ userJira, appJira, directory, settings, siteConfig, notes, events, policy, lifecycle }),
     admin: new DefaultAdminManager({ directory, settings, siteConfig, sources }),
     personalData: (privacy: PrivacyReportAccessor) => new DefaultPersonalDataManager({ data: new DefaultKvsPersonalDataAccessor(storage), privacy, events, notes, lifecycle, appJira })

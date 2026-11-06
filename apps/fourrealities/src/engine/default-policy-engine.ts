@@ -34,7 +34,8 @@ export class DefaultPolicyEngine implements PolicyEngine {
     } catch {
       return 'Invalid specification URL provided.';
     }
-    return title ? undefined : 'Document title or ADR identifier required.';
+    if (!title) return 'Document title or ADR identifier required.';
+    return title.length < 3 || title.length > 255 ? 'Give a title of 3 to 255 characters.' : undefined;
   }
 
   exceptionInputError(reason: string, notes?: string): string | undefined {

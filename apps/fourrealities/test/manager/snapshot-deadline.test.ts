@@ -35,7 +35,8 @@ function manager(o: { deadline: number; storage?: MemoryStorage; searchProject?:
     lifecycle: new DefaultExceptionPolicyEngine(), gates: new DefaultGateEngine(), metrics: new DefaultMetricsEngine(), snapshot: new DefaultSnapshotEngine(),
     settings: { serviceType: 'accessor', getSettings: async () => DEFAULT_SOURCE_SETTINGS, getDetected: async () => ({}), saveDetected: async () => undefined } as any,
     sources: new DefaultSourcePolicyEngine(),
-    directory: { serviceType: 'accessor', userNames: async () => ({}) } as any
+    directory: { serviceType: 'accessor', userNames: async () => ({}) } as any,
+    confluence: { serviceType: 'accessor', existingPages: async () => null, checkPages: async (m: any) => m } as any
   });
   return { m, jira, storage };
 }

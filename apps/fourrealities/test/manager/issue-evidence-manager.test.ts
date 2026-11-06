@@ -40,7 +40,8 @@ function manager(jira: JiraIssueAccessor, events: any[] = []) {
     metrics: new DefaultMetricsEngine(),
     policy: new DefaultPolicyEngine(),
     settings: { serviceType: 'accessor', getSettings: jest.fn().mockResolvedValue({ ...DEFAULT_SOURCE_SETTINGS, code: 'on' }), getDetected: jest.fn().mockResolvedValue({}), saveDetected: jest.fn(), saveSettings: jest.fn(), getApproverPolicy: jest.fn(), saveApproverPolicy: jest.fn() },
-    sources: new DefaultSourcePolicyEngine()
+    sources: new DefaultSourcePolicyEngine(),
+    confluence: { serviceType: 'accessor', existingPages: async () => null, checkPages: async (m: any) => m } as any
   });
 }
 
@@ -106,5 +107,19 @@ describe('DefaultIssueEvidenceManager', () => {
     const networkError = await (manager(fakeJira({ addComment: jest.fn().mockRejectedValue(new Error('timeout')) } as any)) as any)
       .requestReview({ issueId: '1' }, { issueId: '1', issueKey: 'DEMO-1', comment: 'Please review this pull request.' });
     expect(networkError.error).toBe('timeout');
+  });
+});
+
+describe('DefaultIssueEvidenceManager: unread links and scope', () => {
+  it('evaluates an issue whose remote links were not read, with no page check', async () => {
+    const jira = fakeJira({ readIssue: jest.fn().mockResolvedValue({ status: 200, facts: makeFacts({ issueId: '1', issueKey: 'DEMO-1', remoteLinks: undefined }) }) });
+    const res: any = await manager(jira).evaluate({ issueId: '1', issueKey: 'DEMO-1' });
+    expect(res.row.gates.intent.state).toBe('NEEDS_RECHECK');
+  });
+
+  it('refuses a review request for an issue outside the page project', async () => {
+    const jira = fakeJira({ issueProject: jest.fn().mockResolvedValue({ status: 200, issueKey: 'TEST-1', projectKey: 'TEST' }) });
+    const res = await manager(jira).requestReview({ projectKey: 'DEMO' }, { issueId: '1', comment: 'Please review this change again.' });
+    expect(res.error).toBe('Forbidden: issue TEST-1 is not in project DEMO.');
   });
 });

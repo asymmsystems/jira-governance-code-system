@@ -107,6 +107,14 @@ export interface ConfluencePageSearchAccessor extends Accessor {
   searchPages(query: string): Promise<{ readonly ok: boolean; readonly pages: ConfluencePage[]; readonly error?: string }>;
 }
 
+/** Checks that Confluence pages exist, by id (F-H4). */
+export interface ConfluencePageCheckAccessor extends Accessor {
+  /** The ids Confluence returned, or null when Confluence could not be asked (no access, an error, the deadline). */
+  existingPages(pageIds: string[], deadline: number): Promise<Set<string> | null>;
+  /** The links with pageExists set where Confluence could be asked; unchanged otherwise. */
+  checkPages(linksByIssue: Map<string, RemoteLink[]>, deadline: number): Promise<Map<string, RemoteLink[]>>;
+}
+
 
 /** Site settings of the admin page and what FourRealities has seen on the site (ADR-011). */
 export interface SettingsAccessor extends Accessor {

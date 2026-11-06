@@ -20,6 +20,7 @@ export function stateLabel(result: GateResult): string {
     case 'FOUND':
       if (result.verification === 'NOT_VERIFIED') return 'Evidence found (not verified)';
       if (result.verification === 'HEURISTIC') return 'Evidence found (heuristic)';
+      if (result.verification === 'LINK_ONLY') return 'Evidence found (link only)';
       return 'Evidence found';
     case 'MISSING': return 'Evidence missing';
     case 'REPORTED': return 'Reported, not verified';
@@ -59,6 +60,7 @@ function shortState(result: GateResult): string {
     case 'FOUND':
       if (result.verification === 'NOT_VERIFIED') return 'found, not verified';
       if (result.verification === 'HEURISTIC') return 'found, heuristic';
+      if (result.verification === 'LINK_ONLY') return 'found, link only';
       return 'found';
     case 'MISSING': return 'missing';
     case 'REPORTED': return 'reported, not verified';
@@ -107,7 +109,8 @@ const SOURCE: Record<GateReason, string> = {
 const VERIFICATION_TEXT: Record<Verification, string> = {
   VERIFIED: 'verified by FourRealities',
   NOT_VERIFIED: 'not verified by FourRealities',
-  HEURISTIC: 'heuristic'
+  HEURISTIC: 'heuristic',
+  LINK_ONLY: 'page not checked by FourRealities'
 };
 
 /** "Source: <source>", plus how FourRealities knows it when evidence was found. */
@@ -137,7 +140,9 @@ function statement(result: GateResult): string {
   switch (result.reason) {
     case 'NOT_STARTED': return 'Work has not started. This gate applies once it does.';
     case 'NOT_DONE': return 'This gate applies when the issue is done.';
-    case 'INTENT_CONFLUENCE_LINK': return `Confluence page linked: ${arg(result, 'title')}. FourRealities does not read the page content.`;
+    case 'INTENT_CONFLUENCE_LINK': return result.verification === 'LINK_ONLY'
+      ? `Confluence link found: ${arg(result, 'title')}. FourRealities could not check that the page exists.`
+      : `Confluence page linked: ${arg(result, 'title')}. FourRealities found the page and does not read its content.`;
     case 'INTENT_DECISION_ISSUE': return `Decision issue linked: ${arg(result, 'key')} (${arg(result, 'type')}).`;
     case 'INTENT_LINKS_NOT_READ': return 'Remote links were not read in this snapshot. Refresh to read them.';
     case 'INTENT_NONE': return 'No Confluence page or decision issue is linked.';

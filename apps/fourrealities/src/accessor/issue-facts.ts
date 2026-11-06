@@ -68,13 +68,29 @@ export function normalizeException(value: unknown): ExceptionRecord | undefined 
   };
 }
 
+/**
+ * The Confluence page id of a remote link: from a Confluence application link's global id
+ * (appId=...&pageId=123), or from the URL (/pages/123/... or ?pageId=123). Tiny links have none.
+ */
+export function confluencePageId(globalId: string | undefined, url: string | undefined): string | undefined {
+  const fromGlobal = /(?:^|&)pageId=(\d+)/.exec(String(globalId || ''));
+  if (fromGlobal) return fromGlobal[1];
+  const fromUrl = /\/pages\/(\d+)(?:[/?#]|$)/.exec(String(url || '')) || /[?&]pageId=(\d+)/.exec(String(url || ''));
+  return fromUrl ? fromUrl[1] : undefined;
+}
+
 /** Jira remote link objects to contract RemoteLinks. */
 export function normalizeRemoteLinks(raw: JiraRemoteLinkJson[]): RemoteLink[] {
-  return raw.map(rl => ({
-    url: rl?.object?.url ?? rl?.url,
-    title: rl?.object?.title ?? rl?.title,
-    applicationType: rl?.application?.type
-  }));
+  return raw.map(rl => {
+    const url = rl?.object?.url ?? rl?.url;
+    const pageId = confluencePageId(rl?.globalId, url);
+    return {
+      url,
+      title: rl?.object?.title ?? rl?.title,
+      applicationType: rl?.application?.type,
+      ...(pageId ? { pageId } : {})
+    };
+  });
 }
 
 export interface FactOptions {

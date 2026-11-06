@@ -49,9 +49,10 @@ export type AttestationCheck = 'VERIFIED' | 'UNSIGNED' | 'UNKNOWN_KEY' | 'WRONG_
 
 /**
  * How FourRealities knows a FOUND fact: it read the fact itself (VERIFIED), another app
- * reports it and nothing verifies it (NOT_VERIFIED), or it is inferred (HEURISTIC).
+ * reports it and nothing verifies it (NOT_VERIFIED), it is inferred (HEURISTIC), or a link to a
+ * Confluence page was read but the page could not be checked (LINK_ONLY, F-H4).
  */
-export type Verification = 'VERIFIED' | 'NOT_VERIFIED' | 'HEURISTIC';
+export type Verification = 'VERIFIED' | 'NOT_VERIFIED' | 'HEURISTIC' | 'LINK_ONLY';
 
 /** Reason codes. The UI turns each code into a source line and plain text. */
 export type GateReason =
@@ -210,7 +211,7 @@ export interface IssueFacts {
   reworkLoops: number;
   issueLinks: Array<{ key?: string; summary?: string; typeName?: string; linkInward?: string; linkOutward?: string }>;
   /** undefined means the remote links were not read. */
-  remoteLinks?: Array<{ url?: string; title?: string; applicationType?: string }>;
+  remoteLinks?: RemoteLink[];
   siteHost?: string;
   /** present: the site has a Development field. summary: parsed pull request counts. */
   devField: { present: boolean; summary: DevFieldSummary };
@@ -338,7 +339,11 @@ export type ResolverError = {
 
 export type ResolverResult<T> = ({ ok: true } & T) | { ok: false; error: ResolverError };
 
-export type RemoteLink = { url?: string; title?: string; applicationType?: string };
+/**
+ * A Jira remote link. pageId: the Confluence page id in its global id or URL. pageExists: true when
+ * Confluence returned the page for that id, false when it did not, absent when not checked (F-H4).
+ */
+export type RemoteLink = { url?: string; title?: string; applicationType?: string; pageId?: string; pageExists?: boolean };
 
 /** Per-site configuration read from Jira (spec v2, Storage Schema). */
 export interface SiteConfig {

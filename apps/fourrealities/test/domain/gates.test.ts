@@ -34,9 +34,15 @@ describe('B-15: Intent from link structure, never title keywords', () => {
   const SITE = 'asymmsystems.atlassian.net';
   const intent = (o: any) => evaluateIntent(makeFacts({ siteHost: SITE, ...o }));
 
-  it('finds a Confluence app link, verified by FourRealities, with its title', () => {
-    expect(judged(intent({ remoteLinks: [{ url: 'https://other.example/x', title: 'Payment flow', applicationType: 'com.atlassian.confluence' }] })))
+  it('finds a Confluence app link, verified only when Confluence returned the page (F-H4), with its title', () => {
+    expect(judged(intent({ remoteLinks: [{ url: 'https://other.example/x', title: 'Payment flow', applicationType: 'com.atlassian.confluence', pageId: '1', pageExists: true }] })))
       .toEqual({ state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK', args: { title: 'Payment flow' } });
+    for (const pageExists of [false, undefined]) {
+      expect(judged(intent({ remoteLinks: [{ url: 'https://other.example/x', title: 'Payment flow', applicationType: 'com.atlassian.confluence', pageExists }] })))
+        .toEqual({ state: 'FOUND', verification: 'LINK_ONLY', reason: 'INTENT_CONFLUENCE_LINK', args: { title: 'Payment flow' } });
+    }
+    const two = intent({ remoteLinks: [{ url: `https://${SITE}/wiki/x`, title: 'Fake', pageExists: false }, { url: `https://${SITE}/wiki/spaces/A/pages/5`, title: 'Real', pageId: '5', pageExists: true }] });
+    expect([two.verification, two.args?.title]).toEqual(['VERIFIED', 'Real']);
   });
 
   it('finds a web link to a Confluence page on this site', () => {

@@ -57,6 +57,7 @@ const mockDefaultUser = (...args: any[]) => (String(args[0]).includes('fields=id
   : mockRequestJira(...args));
 const mockAppRequestJira = jest.fn(mockDefaultApp);
 const mockUserRequestJira = jest.fn(mockDefaultUser);
+const mockAppRequestConfluence = jest.fn().mockResolvedValue({ status: 403, json: async () => ({}) });
 const mockUserRequestConfluence = jest.fn().mockResolvedValue({
   status: 200,
   json: async () => ({ results: [{ title: 'ADR-001', _links: { webui: '/wiki/adr-1' } }] })
@@ -68,7 +69,8 @@ jest.mock('@forge/api', () => ({
   getAppContext: () => mockAppContext.get(),
   default: {
     asApp: () => ({
-      requestJira: mockAppRequestJira
+      requestJira: mockAppRequestJira,
+      requestConfluence: mockAppRequestConfluence
     }),
     asUser: () => ({
       requestJira: mockUserRequestJira,
@@ -1011,11 +1013,33 @@ describe('B-15: Intent from link structure on both views', () => {
     const remoteCalls = mockAppRequestJira.mock.calls.map(c => String(c[0])).filter(p => p.endsWith('/remotelink'));
     expect(remoteCalls).toEqual(['/rest/api/3/issue/50001/remotelink']);
     const byKey = Object.fromEntries(dash.rows.map((r: any) => [r.issueKey, r.gates.intent]));
-    expect(judged(byKey['DEMO-50'])).toEqual({ state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK', args: { title: 'ADR-7 Settlement' } });
+    // F-H4: the link carries no page id, so the page is not checked: "link only".
+    expect(judged(byKey['DEMO-50'])).toEqual({ state: 'FOUND', verification: 'LINK_ONLY', reason: 'INTENT_CONFLUENCE_LINK', args: { title: 'ADR-7 Settlement' } });
     expect(byKey['DEMO-51']).toEqual({ state: 'NOT_APPLICABLE', reason: 'NOT_STARTED' });
 
     const panel: any = await getIssueAlignment({}, { extension: { issue: { id: '50001', key: 'DEMO-50' } } }, new MockStorage());
     expect(panel.row.gates.intent).toEqual(byKey['DEMO-50']);
+  });
+
+  it('F-H4: marks a Confluence link verified on both views only when Confluence returns the page', async () => {
+    const linked = [{ globalId: 'appId=abc&pageId=777', application: { type: 'com.atlassian.confluence' }, object: { url: 'https://asymmsystems.atlassian.net/wiki/x/AbC', title: 'ADR-9' } }];
+    mockRequestJira.mockImplementation(async (path: string) => {
+      if (path.startsWith('/rest/api/3/search/jql')) return { status: 200, json: async () => ({ issues: [started] }) };
+      if (path === '/rest/api/3/issue/50001/remotelink') return { status: 200, json: async () => linked };
+      if (path.startsWith('/rest/api/3/issue/50001?')) return { status: 200, json: async () => started };
+      return { status: 404, json: async () => ({}) };
+    });
+    const found = { status: 200, json: async () => ({ results: [{ id: '777', title: 'ADR-9' }] }) };
+    mockAppRequestConfluence.mockResolvedValueOnce(found);
+    mockUserRequestConfluence.mockResolvedValueOnce(found);
+    const dash: any = await getProjectDashboard({}, { extension: { project: { key: 'DEMO' } } }, new MockStorage());
+    expect(dash.rows[0].gates.intent).toMatchObject({ state: 'FOUND', verification: 'VERIFIED' });
+    expect(decodeURIComponent(String(mockAppRequestConfluence.mock.calls[mockAppRequestConfluence.mock.calls.length - 1][0]))).toContain('cql=id in (777)');
+    const panel: any = await getIssueAlignment({}, { extension: { issue: { id: '50001', key: 'DEMO-50' } } }, new MockStorage());
+    expect(panel.row.gates.intent).toMatchObject({ state: 'FOUND', verification: 'VERIFIED' });
+    mockUserRequestConfluence.mockResolvedValueOnce({ status: 200, json: async () => ({ results: [] }) });
+    const gone: any = await getIssueAlignment({}, { extension: { issue: { id: '50001', key: 'DEMO-50' } } }, new MockStorage());
+    expect(gone.row.gates.intent).toMatchObject({ state: 'FOUND', verification: 'LINK_ONLY' });
   });
 
   it('shows Needs re-check on the dashboard when a remote link read fails', async () => {

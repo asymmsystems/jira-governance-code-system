@@ -38,6 +38,7 @@ function buildSnapshot(o: { projectKey: string; storage: any; request: any; dead
     settings: new DefaultKvsSettingsAccessor(o.storage),
     sources: new DefaultSourcePolicyEngine(),
     directory: { serviceType: 'accessor', userNames: async () => ({}) } as any,
+    confluence: { serviceType: 'accessor', existingPages: async () => null, checkPages: async (m: any) => m } as any,
     now: o.now
   });
   return manager.build(o.projectKey, o.generatedBy, o.deadline);

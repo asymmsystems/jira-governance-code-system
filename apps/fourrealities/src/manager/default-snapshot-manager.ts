@@ -6,7 +6,7 @@
  */
 
 import { CallerContext, CHUNK_SIZE_HINT, IssueRow, ProjectDashboardView, ProjectSummary, ResolverResult, ScheduledRunResult, SiteConfig, SnapshotMeta, StoredSnapshot } from '../contract/data/models';
-import { ExceptionEventAccessor, JiraDirectoryAccessor, ReworkNoteAccessor, JiraIssueAccessor, SettingsAccessor, SiteConfigAccessor, SnapshotAccessor } from '../contract/accessors';
+import { ConfluencePageCheckAccessor, ExceptionEventAccessor, JiraDirectoryAccessor, ReworkNoteAccessor, JiraIssueAccessor, SettingsAccessor, SiteConfigAccessor, SnapshotAccessor } from '../contract/accessors';
 import { ExceptionPolicyEngine, GateEngine, MetricsEngine, SnapshotEngine, SourcePolicyEngine } from '../contract/engines';
 import { DashboardManager, SnapshotManager } from '../contract/managers';
 import { jiraError, messageOf } from '../contract/data/errors';
@@ -30,6 +30,8 @@ export interface SnapshotManagerDeps {
   snapshot: SnapshotEngine;
   settings: SettingsAccessor;
   sources: SourcePolicyEngine;
+  /** Confluence as the app: checks that linked pages exist (F-H4). */
+  confluence: ConfluencePageCheckAccessor;
   /** Jira users as the viewer: assignee names for the view. */
   directory: JiraDirectoryAccessor;
   now?: () => Date;
@@ -77,7 +79,7 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
     const events = await this.d.events.listAll();
     const previous = new Map((await this.d.snapshots.loadSnapshot(projectKey))?.rows.map(r => [r.issueId, r]) || []);
     const started = search.facts.filter(f => f.started).map(f => f.issueId);
-    const links = await this.d.jira.remoteLinks(started, deadline);
+    const links = await this.d.confluence.checkPages(await this.d.jira.remoteLinks(started, deadline), deadline);
 
     const rows = search.facts.map(base => {
       const id = base.issueId;

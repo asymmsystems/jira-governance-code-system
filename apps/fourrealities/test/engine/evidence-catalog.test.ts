@@ -15,7 +15,7 @@ const HASH = 'a'.repeat(64);
 const CERT = '123e4567-e89b-42d3-a456-426614174000';
 const DOD = { isFullySatisfied: true, completedCount: 3, totalCount: 3, checklistHash: HASH };
 const SEAL = { status: 'SEAL_VALID', certificateId: CERT, snapshotHash: HASH, sealedAt: '2026-10-01T10:00:00Z' };
-const PAGE = { url: 'https://demo.atlassian.net/wiki/spaces/A/pages/1', title: 'ADR 7', applicationType: 'com.atlassian.confluence' };
+const PAGE = { url: 'https://demo.atlassian.net/wiki/spaces/A/pages/1', title: 'ADR 7', applicationType: 'com.atlassian.confluence', pageId: '1', pageExists: true };
 
 const allResults = (g: IssueGates): GateResult[] => Object.values(g);
 

@@ -50,10 +50,17 @@ const NOT_IN_USE: GateResult = { state: 'NOT_APPLICABLE', reason: 'SOURCE_NOT_IN
 export function evaluateIntent(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG, sources?: SourcesInUse): GateResult {
   if (sources && !sources.intent) return NOT_IN_USE;
   const rule = sources ? { ...c.intent, issueTypes: sources.decisionIssueTypes.map(t => t.trim().toLowerCase()) } : c.intent;
-  const page = (f.remoteLinks || []).find(rl =>
+  const pages = (f.remoteLinks || []).filter(rl =>
     rule.contentApplicationTypes.includes(String(rl.applicationType || '')) || isSameSiteContentPage(rl.url, f.siteHost, rule.sameSiteContentPath));
+  const page = pages[0];
   if (page) {
-    return observed(c, 'CONFLUENCE_PAGE_LINK', { state: 'FOUND', reason: 'INTENT_CONFLUENCE_LINK', args: { title: String(page.title || page.url || '') } }, page.url || page.title);
+    // VERIFIED only when Confluence returned the page by its id; else the link alone (F-H4).
+    const checked = pages.find(p => p.pageExists === true);
+    const shown = checked || page;
+    return observed(c, 'CONFLUENCE_PAGE_LINK', {
+      state: 'FOUND', reason: 'INTENT_CONFLUENCE_LINK', args: { title: String(shown.title || shown.url || '') },
+      ...(checked ? {} : { verification: 'LINK_ONLY' as const })
+    }, shown.url || shown.title);
   }
   const decision = f.issueLinks.find(l => rule.issueTypes.includes(String(l.typeName || '').trim().toLowerCase()));
   if (decision) {
