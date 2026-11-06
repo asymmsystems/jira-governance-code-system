@@ -110,6 +110,8 @@ export interface FieldDiff {
   changedBy?: string[];
   /** How many of the people who changed the item have closed accounts (ADR-011). */
   changedByClosed?: number;
+  /** How many of them LedgerSeal cannot name (L-8). */
+  changedByUnknown?: number;
   changedAt?: string | null;
 }
 
@@ -148,6 +150,8 @@ export interface SealSummary {
   /** The signer's account id; empty when the account was closed (then `sealedByClosed`). */
   sealedByAccountId: string;
   sealedByClosed?: boolean;
+  /** No map entry for the signer's token (L-8): shown neutrally, not as a deleted user. */
+  sealedByUnknown?: boolean;
   meaning: string;
   reason: string | null;
   declarationVersion: string;
@@ -155,7 +159,7 @@ export interface SealSummary {
   canonicalizerVersion: string;
   everCompromised: boolean;
   incidentCount: number;
-  revocation: { revokedAt: string; revokedByAccountId: string; revokedByClosed?: boolean; reason: string } | null;
+  revocation: { revokedAt: string; revokedByAccountId: string; revokedByClosed?: boolean; revokedByUnknown?: boolean; reason: string } | null;
   historyLength: number;
 }
 

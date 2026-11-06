@@ -3,7 +3,8 @@
  *
  * LedgerSeal: the weekly personal data report and the deletion of an issue's records (ADR-011 decisions 5 and 9).
  * The report sends every account id the app holds: the token-to-account map and the admin who last saved the
- * approver policy. For a closed account it deletes the map key, so its tokens name no one, and removes the admin id.
+ * approver policy. For a closed account it replaces the map entry with a closed mark (no account id) and removes the
+ * admin id.
  *
  * @author Fahim Farook
  */
@@ -57,7 +58,7 @@ export async function reportPersonalData(storage: StorageProvider, report: Repor
   const closed = [...new Set(updates.filter(u => u.status === 'closed').map(u => u.accountId))];
   const closedSet = new Set(closed);
   for (const m of map) {
-    if (closedSet.has(m.entry.accountId)) await parties.forget(m.token);
+    if (closedSet.has(m.entry.accountId)) await parties.markClosed(m.token);
   }
   if (policy?.setByPartyId && closedSet.has(policy.setByPartyId)) {
     const kept: ApproverPolicy = { ...policy, setByPartyId: null };

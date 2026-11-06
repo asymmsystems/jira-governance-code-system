@@ -107,7 +107,7 @@ describe('the token-to-account map (ADR-011 decision 4)', () => {
     expect(await resolver.resolve(p('ann'))).toBe('ann');
     expect(await resolver.resolve('557058:old-record')).toBe('557058:old-record');
     expect(await resolver.resolve(null)).toBeNull();
-    await repo.forget(p('ann'));
+    await repo.markClosed(p('ann'));
     expect(await new PartyResolver(repo).resolve(p('ann'))).toBeNull();
   });
 });
@@ -152,7 +152,7 @@ describe('records hold no account id and no name (B1)', () => {
   it('after the signer account is closed the seal stays valid, the panel says "a closed account", and no record changes', async () => {
     const { storage, as } = setup(namedIssue());
     await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
-    await new PartyRepository(storage).forget(await model.token(storage, 'ann'));
+    await new PartyRepository(storage).markClosed(await model.token(storage, 'ann'));
     const before = recordsText(storage);
     const view: any = await verifyIssue({}, panelContext('viewer'), as('viewer'));
     expect(view.status).toBe('SEAL_VALID');
@@ -180,7 +180,7 @@ describe('records hold no account id and no name (B1)', () => {
     // A person the map knows is named through Jira; once the map key is gone the change shows a closed account
     const bob = await model.token(storage, 'bob');
     expect(storage.map.get(PARTY_PREFIX + bob)).toMatchObject({ accountId: 'bob' });
-    await new PartyRepository(storage).forget(bob);
+    await new PartyRepository(storage).markClosed(bob);
     view = await verifyIssue({}, panelContext('viewer'), as('viewer'));
     row = view.tamperedFields.find((f: any) => f.fieldId === 'summary');
     expect(row).toMatchObject({ changedBy: [], changedByClosed: 1 });
@@ -206,7 +206,7 @@ describe('records hold no account id and no name (B1)', () => {
     const bob = await model.token(storage, 'bob');
     let evidence: any = await getSealEvidence({}, panelContext('viewer'), as('viewer'));
     expect(evidence.parties).toEqual({ [ann]: 'ann', [bob]: 'bob' });
-    await new PartyRepository(storage).forget(bob);
+    await new PartyRepository(storage).markClosed(bob);
     evidence = await getSealEvidence({}, panelContext('viewer'), as('viewer'));
     expect(evidence.parties[bob]).toBeNull();
     expect(JSON.stringify(evidence.attestation)).not.toContain('ann');

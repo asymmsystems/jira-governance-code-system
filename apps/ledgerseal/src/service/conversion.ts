@@ -26,6 +26,12 @@ export type ConversionResult = 'NO_RECORD' | 'ALREADY' | 'CONVERTED' | 'REDACTED
 
 export const JOURNAL_PREFIX = 'ls3:convert:';
 
+/**
+ * How long a conversion journal means "running": the weekly function's limit (300 s, manifest) plus a margin.
+ * A seal or revoke that meets a running conversion answers CONFLICT, and the user tries again.
+ */
+export const CONVERSION_LEASE_MS = 10 * 60 * 1000;
+
 /** True while a conversion of this issue's record has not finished (its journal key exists). */
 export async function hasConversionJournal(storage: StorageProvider, issueId: string): Promise<boolean> {
   return Boolean(await storage.get(JOURNAL_PREFIX + issueId));
@@ -179,6 +185,9 @@ export async function convertRecord(deps: ConversionDeps, issueId: string, now: 
     await finishCleanup(storage, repo, we, journalKey);
     return 'ALREADY';
   }
+  // M-5: a journal younger than the lease belongs to a conversion that may still be running; only an older one is
+  // a stopped run to finish. Two conversions of one record never run at the same time.
+  if (journal && Date.parse(now) - Date.parse(journal.startedAt) < CONVERSION_LEASE_MS) return 'BUSY';
 
   const parties = new PartyRepository(storage);
   const party = await parties.partyForWrite();
@@ -202,7 +211,7 @@ export async function convertRecord(deps: ConversionDeps, issueId: string, now: 
   if (!valid) {
     // Replace the ids where they are, without new hashes: the record stays invalid, and no id remains
     if (r.count === 0) return 'ALREADY';
-    await parties.register([...r.actors], party, now, id => deps.jira.isActiveUser(id));
+    await parties.register([...r.actors], party, now, id => deps.jira.accountState(id));
     for (const row of newRows) await storage.set(`ls3:wes:${issueId}:${String(row.seq).padStart(6, '0')}`, row);
     for (const a of newAssignments) await storage.set(a.key, a.value);
     if (newContent) {
@@ -261,7 +270,7 @@ export async function convertRecord(deps: ConversionDeps, issueId: string, now: 
 
   // Rows and seals are rewritten one by one; a retry rewrites them the same way. The snapshot, the redaction
   // row and the sealed issue follow in one transaction, so the snapshot is never half old and half new.
-  await parties.register([...r.actors], party, now, id => deps.jira.isActiveUser(id));
+  await parties.register([...r.actors], party, now, id => deps.jira.accountState(id));
   for (const row of history) await storage.set(`ls3:wes:${issueId}:${String(row.seq).padStart(6, '0')}`, row);
   for (const a of newAssignments) await storage.set(a.key, a.value);
 
@@ -280,6 +289,10 @@ export async function convertRecord(deps: ConversionDeps, issueId: string, now: 
     attributes: { ...we.attributes, snapshotHash: computeSnapshotHash(newContent as CanonicalIssueSnapshot), snapshotParts: contentParts.length, parties: 'TOKEN' },
     lastIncidentHash: journal.lastIncidentHash
   });
+  // M-5: another writer (a seal or revoke converts first, then adds its row) may have moved the record on since it
+  // was read. Then this run writes nothing more and stops; the next run finds the record converted.
+  const latest = await repo.getWorkEffort(issueId);
+  if (!latest || latest.recordHash !== we.recordHash || (await repo.getStatusRow(issueId, redaction.seq + 1))) return 'BUSY';
   await storage.commit([
     ...contentParts.map((value, i) => ({ key: `ls3:content:${we.currentContentId}:${i}`, value })),
     { key: `ls3:wes:${issueId}:${String(redaction.seq).padStart(6, '0')}`, value: redaction },

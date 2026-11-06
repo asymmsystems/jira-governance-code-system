@@ -37,8 +37,8 @@ export interface JiraClient {
   getFields(): Promise<JiraResult<any[]>>;
   getChangelog(issueId: string): Promise<JiraResult<ChangelogEntry[]>>;
   getUserName(accountId: string): Promise<string | null>;
-  /** True when Jira reports the account active, false when it is closed or deactivated, null when Jira cannot tell. */
-  isActiveUser(accountId: string): Promise<boolean | null>;
+  /** Jira's answer about an account: active, inactive (deactivated or closed), gone (404), or null when Jira cannot answer. */
+  accountState(accountId: string): Promise<'active' | 'inactive' | 'gone' | null>;
   /** True when the calling user may seal, reseal or revoke on this issue (spec v2 section 7.1). */
   hasApproverPermission(issueId: string): Promise<JiraResult<boolean>>;
   /** Group ids of the calling user, for the approver group policy. */
@@ -209,11 +209,11 @@ export function createJiraClient(asApp: JiraRequester, asUser: JiraRequester | n
       return res.ok && typeof res.value?.displayName === 'string' ? res.value.displayName : null;
     },
 
-    async isActiveUser(accountId) {
+    async accountState(accountId) {
       const res = await getJson<any>(asApp, route`/rest/api/3/user?accountId=${accountId}`);
-      if (res.ok) return typeof res.value?.active === 'boolean' ? res.value.active : null;
+      if (res.ok) return typeof res.value?.active === 'boolean' ? (res.value.active ? 'active' : 'inactive') : null;
       // Jira answers 404 for an account that no longer exists
-      return res.error === 'NOT_FOUND' ? false : null;
+      return res.error === 'NOT_FOUND' ? 'gone' : null;
     },
 
     async hasApproverPermission(issueId) {

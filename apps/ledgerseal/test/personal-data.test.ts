@@ -71,7 +71,7 @@ describe('ADR-011 weekly personal data report', () => {
     ]);
   });
 
-  it('erases a closed account: its map key goes, the seal stays valid, and the records do not change', async () => {
+  it('erases a closed account: its map key keeps only a closed mark, the seal stays valid, and the records do not change', async () => {
     const { jira, storage, as } = setup();
     await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
     await setApproverPolicy({ groupIds: ['g1'] }, panelContext('admin'), as('admin'));
@@ -79,7 +79,7 @@ describe('ADR-011 weekly personal data report', () => {
     const records = JSON.stringify([...storage.map.entries()].filter(([k]) => k.startsWith('ls3:w') || k.startsWith('ls3:content')));
     const { report } = reporter(['ann', 'admin']);
     await expect(personalDataReport({}, {}, { jira: new FakeJira(sampleIssue()), storage }, report)).resolves.toMatchObject({ reported: 2, closed: ['admin', 'ann'] });
-    expect(storage.map.has(PARTY_PREFIX + ann)).toBe(false);
+    expect(storage.map.get(PARTY_PREFIX + ann)).toEqual({ closed: true, closedAt: expect.any(String) });
     expect((await storage.get('ls3:partyrole:LS_APPROVER')).setByPartyId).toBeNull();
     expect(JSON.stringify([...storage.map.values()])).not.toMatch(/"ann"|"admin"/);
     expect(JSON.stringify([...storage.map.entries()].filter(([k]) => k.startsWith('ls3:w') || k.startsWith('ls3:content')))).toBe(records);

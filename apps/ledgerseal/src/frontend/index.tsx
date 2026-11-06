@@ -199,6 +199,9 @@ export const LedgerSealPanel: React.FC = () => {
         {view.revokedByClosed && (
           <Text as="span" size="small" color={TEXT_ROLE.secondary}>Revoked by a deleted user.</Text>
         )}
+        {view.revokedByUnknown && (
+          <Text as="span" size="small" color={TEXT_ROLE.secondary}>Revoked by an unknown user.</Text>
+        )}
 
         {view.askText && (
           <NoteBox>
@@ -232,7 +235,12 @@ export const LedgerSealPanel: React.FC = () => {
                         {row.changedByClosed === 1 ? 'a deleted user' : `${row.changedByClosed} deleted users`}
                       </Text>
                     )}
-                    {row.changedBy.length === 0 && row.changedByClosed === 0 && (
+                    {row.changedByUnknown > 0 && (
+                      <Text as="span" size="small" color={TEXT_ROLE.muted}>
+                        {row.changedByUnknown === 1 ? 'an unknown user' : `${row.changedByUnknown} unknown users`}
+                      </Text>
+                    )}
+                    {row.changedBy.length === 0 && row.changedByClosed === 0 && row.changedByUnknown === 0 && (
                       <Text as="span" size="small" color={TEXT_ROLE.muted}>unknown</Text>
                     )}
                     <Text as="span" size="small" color={TEXT_ROLE.muted}>on {row.changedAt}</Text>
@@ -282,8 +290,8 @@ export const LedgerSealPanel: React.FC = () => {
         <Section title="Certificate & attestation details" count={3} defaultCollapsed={true}>
           <Inline space={SPACE.sub} alignBlock="center" shouldWrap>
             <Text as="span" size="small" weight="medium">Signed by:</Text>
-            {view.seal.signerClosed ? (
-              <Text as="span" size="small">a deleted user</Text>
+            {view.seal.signerClosed || view.seal.signerUnknown ? (
+              <Text as="span" size="small">{view.seal.signerClosed ? 'a deleted user' : 'an unknown user'}</Text>
             ) : (
               <User accountId={view.seal.signerAccountId} />
             )}
@@ -355,7 +363,7 @@ export const LedgerSealPanel: React.FC = () => {
                         <User accountId={row.actorAccountId} />
                       </Inline>
                     ) : (
-                      <Text as="span" size="small" color={TEXT_ROLE.secondary}>{row.actorClosed ? 'by a deleted user' : 'by LedgerSeal'}</Text>
+                      <Text as="span" size="small" color={TEXT_ROLE.secondary}>{row.actorClosed ? 'by a deleted user' : row.actorUnknown ? 'by an unknown user' : 'by LedgerSeal'}</Text>
                     )}
                     {row.reason && <Text as="span" size="small" color={TEXT_ROLE.secondary}>Reason: {row.reason}</Text>}
                   </Inline>
