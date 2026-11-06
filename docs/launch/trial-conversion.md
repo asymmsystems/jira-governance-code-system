@@ -32,7 +32,7 @@ Our privacy policy cites the same agreement (section 8.4(e)) on `https://asymm.s
 | A new install or evaluation appears in Marketplace reports, with a contact name or domain | **No contact.** Use it only to count and to understand the market. | 8.4(b) and 8.4(c): not required by law, not consented, not requested |
 | A notice the law requires, for example a personal data breach notice | Yes; for a notice that refers to Atlassian, get Atlassian's approval first (8.4, security incidents) | Required by law |
 | A marketing or upsell message inside the app's UI in Jira | **No**, without Atlassian's express written consent | 8.4(c), last sentence |
-| A review request to a customer | Only to a customer who wrote to us and is in a conversation with us; never offer a reward | 8.4(c); `docs/sdlc/suite-readiness-review-2026-11/README.md`, Phase 3 |
+| A review request to a customer | Only to a customer who wrote to us and is in a conversation with us; never offer a reward (our own rule) | 8.4(c); `docs/sdlc/suite-readiness-review-2026-11/README.md`, Phase 3 |
 | Public posts, Community answers, outreach to people we find outside Marketplace data | Yes, as for any company (see `docs/launch/launch-day-runbook.md`, step 5). Marketplace data must not be the source of the contact. | Not End User Data |
 
 ### 1.3 Parts of `first-sale-playbook.md` that need consent first
@@ -102,7 +102,7 @@ Find the reason in data we are allowed to use, then change one thing at a time a
 | Few evaluations for the listing views and posts | The listing does not say what the buyer searches for | Title, tagline, first highlight and first screenshot (owner approves the wording). Answer more Community questions where the app fits. |
 | Evaluations, then uninstall in the first days | The first value was not reached | The quick start and the in-product first run of that app: empty states, the next step in the panel, the admin hint for the validator. Check `forge logs` for errors on new sites. |
 | Feedback reason "app functionality" | A missing or broken feature | Read the free text in Feedback details. A defect goes to the backlog with a test; a missing feature goes to the owner as one decision. |
-| Feedback reason "price" | Price above what the site expects | No change before 30 to 50 paying sites (readiness review, section 4). Then the price shape is an owner decision; a price change follows the Partner Agreement, section 4.1. |
+| Feedback reason "price" | Price above what the site expects | No change before 30 to 50 paying sites (our working rule, from the price research note in the readiness review, section 4). Then the price shape is an owner decision; a price change follows the Partner Agreement, section 4.1. |
 | Feedback reason "customer support" | A slow or unclear answer | Check the response times; turn the question into a FAQ entry or a saved reply. |
 | The same question in several support mails | Documentation gap | Add it to the guide or FAQ and to `docs/launch/support-playbook.md`. |
 | A trial ends with no paid licence and no feedback | Unknown | Nothing about that evaluator. Count it, and look for the pattern across trials. |
