@@ -1,3 +1,9 @@
+/**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 import { SealRepository } from '../src/storage/seal-repository';
 import { buildStatusRow } from '../src/domain/history';
 import { assignmentHash, hasValidRecordHash, isConsistent, withRecordHash } from '../src/domain/seal-record';

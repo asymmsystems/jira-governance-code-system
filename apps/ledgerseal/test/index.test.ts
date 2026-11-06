@@ -1,3 +1,9 @@
+/**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 import { validateTransition, sealIssue, verifyIssue, handler } from '../src/index';
 import { FakeJira, MemoryStore, panelContext, validSignature, model } from './support/fakes';
 

@@ -1,6 +1,10 @@
 /**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
  * LedgerSeal: Jira Workflow Transition Validator Gate
  * Blocks issue transitions if issue is unsealed, certificate is revoked, or seal is broken.
+ *
+ * @author Fahim Farook
  */
 
 import { CanonicalIssueSnapshot, WorkflowTransitionValidationResult } from '../domain/models';

@@ -1,6 +1,10 @@
 /**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
  * LedgerSeal: Canonicalization Engine
  * Produces byte-for-byte deterministic normalized representations of Jira issue states.
+ *
+ * @author Fahim Farook
  */
 
 import { CanonicalAttachment, CanonicalComment, CanonicalField, CanonicalIssueSnapshot } from './models';

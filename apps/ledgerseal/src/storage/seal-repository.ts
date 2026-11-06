@@ -1,7 +1,11 @@
 /**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
  * LedgerSeal: Forge Storage Repository Abstraction
  * Stores seals on the Silverston WorkEffort, Party and Status patterns (spec v2 sections 3.2 and 6, ADR-01).
  * Status rows are created once and never rewritten. v1 certificates are read as legacy only.
+ *
+ * @author Fahim Farook
  */
 
 import { CanonicalIssueSnapshot, SealCertificate, SealedWorkEffort, WorkEffortPartyAssignment, WorkEffortStatus } from '../domain/models';

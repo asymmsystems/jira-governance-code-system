@@ -1,5 +1,9 @@
 /**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
  * LedgerSeal: Domain Data Models and Contracts
+ *
+ * @author Fahim Farook
  */
 
 import { LedgerSealRoleTypeId, LedgerSealStatusId, TransitionName } from './status';

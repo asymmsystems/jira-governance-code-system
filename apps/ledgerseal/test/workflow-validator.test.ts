@@ -1,3 +1,9 @@
+/**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 import { validateTransitionGate } from '../src/validator/workflow-validator';
 import { generateSealCertificate } from '../src/domain/crypto';
 import { fromCertificate } from '../src/domain/tamper-detector';

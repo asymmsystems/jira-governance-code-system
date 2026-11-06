@@ -1,3 +1,9 @@
+/**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 import api from '@forge/api';
 import Resolver from '@forge/resolver';
 import { kvs } from '@forge/kvs';

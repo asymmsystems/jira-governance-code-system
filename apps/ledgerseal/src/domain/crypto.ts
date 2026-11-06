@@ -1,6 +1,10 @@
 /**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
  * LedgerSeal: v1 seal hashing and verification (SHA-256), kept to read v1 records and hash snapshots
  * Uses standard Node.js crypto (SHA-256) inside Atlassian Forge Node runtime.
+ *
+ * @author Fahim Farook
  */
 
 import * as crypto from 'crypto';
