@@ -42,9 +42,10 @@ describe('B-21 Silverston WorkEffort model', () => {
       incidentCount: 0
     });
     const [assignment] = model.assignments(storage);
+    const ann = await model.token(storage, 'ann');
     expect(assignment).toEqual({
       workEffortId: '10001',
-      partyId: 'ann',
+      partyId: ann,
       roleTypeId: 'LS_APPROVER',
       fromDate: we.currentAssignment.fromDate,
       thruDate: null,
@@ -53,8 +54,8 @@ describe('B-21 Silverston WorkEffort model', () => {
       declaration: { version: DECLARATION.version, text: DECLARATION.text }
     });
     const [row] = model.statusRows(storage);
-    expect(row).toMatchObject({ workEffortId: '10001', statusId: 'LS_SEALED', transitionName: 'SEAL', setByPartyId: 'ann', reason: null, seq: 1 });
-    expect(row.data.signerName).toBe('Ann Approver');
+    expect(row).toMatchObject({ workEffortId: '10001', statusId: 'LS_SEALED', transitionName: 'SEAL', setByPartyId: ann, reason: null, seq: 1 });
+    expect(row.data).not.toHaveProperty('signerName');
     expect([...storage.map.keys()].filter(k => k.startsWith('ls2:'))).toEqual([]);
     expect(storage.map.has(model.contentKey(we))).toBe(true);
   });
@@ -76,16 +77,18 @@ describe('B-21 Silverston WorkEffort model', () => {
     expect((await model.workEffort(storage)).currentStatusId).toBe('LS_CHANGED');
     await sealIssue({ signature: validSignature({ reason: 'Scope agreed' }) }, panelContext('bob'), as('bob'));
     const rows = model.statusRows(storage);
+    const ann = await model.token(storage, 'ann');
+    const bob = await model.token(storage, 'bob');
     expect(rows.map(r => [r.statusId, r.transitionName, r.setByPartyId])).toEqual([
-      ['LS_SEALED', 'SEAL', 'ann'],
+      ['LS_SEALED', 'SEAL', ann],
       ['LS_CHANGED', 'CHANGE', null],
-      ['LS_SEALED', 'RESEAL', 'bob']
+      ['LS_SEALED', 'RESEAL', bob]
     ]);
     expect(rows[2].reason).toBe('Scope agreed');
     const [first, second] = model.assignments(storage);
-    expect(first.partyId).toBe('ann');
+    expect(first.partyId).toBe(ann);
     expect(first.thruDate).toBe(rows[2].statusDatetime);
-    expect(second).toMatchObject({ partyId: 'bob', thruDate: null, comments: 'Scope agreed' });
+    expect(second).toMatchObject({ partyId: bob, thruDate: null, comments: 'Scope agreed' });
     expect(await model.workEffort(storage)).toMatchObject({ currentStatusId: 'LS_SEALED', everCompromised: true, incidentCount: 1, revisionNumber: 3 });
   });
 

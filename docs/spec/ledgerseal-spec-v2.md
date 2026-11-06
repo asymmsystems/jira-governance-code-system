@@ -1,5 +1,7 @@
 # LedgerSeal: Technical Specification v2
 
+> Frozen on 2026-11-06 (md5 7d52d65f1da9adc3dff9e33077f3d31a before this line). Superseded by `ledgerseal-spec-v3.md`.
+
 - **Product:** LedgerSeal, a tamper-evident approval seal and transition gate for Jira Cloud
 - **Platform:** Atlassian Forge, UI Kit issue panel, `jira:workflowValidator`, product event trigger
 - **Version:** 2.0.0

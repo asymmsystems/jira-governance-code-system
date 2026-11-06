@@ -1,7 +1,11 @@
 /**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
  * LedgerSeal: Forge Storage Repository Abstraction
  * Stores seals on the Silverston WorkEffort, Party and Status patterns (spec v2 sections 3.2 and 6, ADR-01).
  * Status rows are created once and never rewritten. v1 certificates are read as legacy only.
+ *
+ * @author Fahim Farook
  */
 
 import { CanonicalIssueSnapshot, SealCertificate, SealedWorkEffort, WorkEffortPartyAssignment, WorkEffortStatus } from '../domain/models';
@@ -15,6 +19,8 @@ export interface StorageProvider {
   createIfAbsent(key: string, value: any): Promise<boolean>;
   /** Writes all items together, or none of them (one KVS transaction). */
   commit(items: { key: string; value: any }[]): Promise<void>;
+  /** Every key that starts with `prefix`, with its value, read page by page. */
+  query(prefix: string): Promise<{ key: string; value: any }[]>;
 }
 
 export const HISTORY_PAGE_SIZE = 50;
@@ -97,9 +103,21 @@ export class SealRepository {
     if (!assignment || !sealingRow) return 'missing';
     const seal: LoadedSeal = { workEffort, assignment, sealingRow };
     if (workEffort.currentStatusId === 'LS_REVOKED') {
-      seal.headRow = (await this.getStatusRow(workEffortId, workEffort.statusHead.seq)) || undefined;
+      seal.headRow = (await this.getCurrentStatusRow(workEffort)) || undefined;
     }
     return seal;
+  }
+
+  /**
+   * The newest row that set the current status. A redaction row (ADR-011 decision 7) is not a status change,
+   * so it is skipped.
+   */
+  async getCurrentStatusRow(workEffort: SealedWorkEffort): Promise<WorkEffortStatus | null> {
+    for (let seq = workEffort.statusHead.seq; seq >= 1; seq--) {
+      const row = await this.getStatusRow(workEffort.workEffortId, seq);
+      if (!row || row.statusId !== 'LS_REDACTED') return row;
+    }
+    return null;
   }
 
   async getAssignment(workEffortId: string, fromDate: string): Promise<WorkEffortPartyAssignment | null> {
@@ -178,6 +196,11 @@ export class SealRepository {
       { key: this.getAssignmentKey(endedAssignment.workEffortId, endedAssignment.fromDate), value: endedAssignment },
       { key: this.getWorkEffortKey(workEffort.workEffortId), value: workEffort }
     ]);
+  }
+
+  /** Deletes every part of one sealed snapshot (a superseded seal's snapshot, which nothing reads). */
+  async deleteContent(contentId: string): Promise<void> {
+    for (const row of await this.storage.query(`ls3:content:${contentId}:`)) await this.storage.delete(row.key);
   }
 
   /** Saves the work effort alone (a change incident updates only its current values). */

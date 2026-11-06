@@ -1,3 +1,9 @@
+/**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 import { validateTransitionGate } from '../src/validator/workflow-validator';
 import { generateSealCertificate } from '../src/domain/crypto';
 import { fromCertificate } from '../src/domain/tamper-detector';
@@ -32,7 +38,6 @@ describe('Workflow Validator', () => {
   const info = (c: any) => ({
     certificateId: c.certificateId,
     sealedAt: c.sealedAt,
-    signerName: c.sealedBy.signerDisplayName,
     revocationReason: c.revocation?.revocationReason
   });
 
@@ -114,7 +119,8 @@ describe('Workflow Validator', () => {
     const result = validateTransitionGate(fromCertificate(cert), validSnapshot, info(cert));
     expect(result.isValid).toBe(true);
     expect(result.details?.certificateId).toBe(cert.certificateId);
-    expect(result.details?.signerName).toBe(cert.sealedBy.signerDisplayName);
+    // The validator result names no person (ADR-011)
+    expect(JSON.stringify(result)).not.toContain(cert.sealedBy.signerDisplayName);
   });
 });
 

@@ -10,7 +10,7 @@
 
 import { route } from '@forge/api';
 
-export type JiraError = 'UNREACHABLE' | 'NOT_FOUND' | 'FORBIDDEN';
+export type JiraError = 'UNREACHABLE' | 'NOT_FOUND' | 'FORBIDDEN' | 'TOO_LARGE';
 export type JiraResult<T> = { ok: true; value: T } | { ok: false; error: JiraError; status?: number };
 
 export interface ChangelogItem {
@@ -128,7 +128,10 @@ export function createJiraClient(asApp: JiraRequester, asUser: JiraRequester | n
     return { ok: true, value: (await res.json()) as T };
   }
 
-  /** Reads a startAt/total paged list until every item is read. */
+  /**
+   * Reads a startAt/total paged list until every item is read. A list longer than MAX_PAGES pages fails closed
+   * with TOO_LARGE, so a seal or a check never works from a part of the list (F-10).
+   */
   async function pages(path: (startAt: number) => any, listKey: string): Promise<JiraResult<any[]>> {
     const items: any[] = [];
     for (let page = 0; page < MAX_PAGES; page++) {
@@ -136,9 +139,27 @@ export function createJiraClient(asApp: JiraRequester, asUser: JiraRequester | n
       if (!res.ok) return res;
       const values: any[] = Array.isArray(res.value?.[listKey]) ? res.value[listKey] : [];
       items.push(...values);
-      if (values.length === 0 || items.length >= Number(res.value?.total ?? 0)) break;
+      if (values.length === 0 || items.length >= Number(res.value?.total ?? 0)) return { ok: true, value: items };
     }
-    return { ok: true, value: items };
+    console.error(`LedgerSeal: more than ${MAX_PAGES * PAGE_SIZE} ${listKey}; the issue is too large to check`);
+    return { ok: false, error: 'TOO_LARGE' };
+  }
+
+  const changelogs = new Map<string, Promise<JiraResult<ChangelogEntry[]>>>();
+
+  /** The full change log, oldest first; TOO_LARGE past MAX_PAGES pages (F-10). */
+  async function readChangelog(issueId: string): Promise<JiraResult<ChangelogEntry[]>> {
+    const entries: ChangelogEntry[] = [];
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const startAt = page * PAGE_SIZE;
+      const res = await getJson<any>(asApp, route`/rest/api/3/issue/${issueId}/changelog?startAt=${startAt}&maxResults=${PAGE_SIZE}`);
+      if (!res.ok) return res;
+      const values: ChangelogEntry[] = Array.isArray(res.value?.values) ? res.value.values : [];
+      entries.push(...values);
+      if (res.value?.isLast !== false || values.length === 0) return { ok: true, value: entries };
+    }
+    console.error(`LedgerSeal: more than ${MAX_PAGES * PAGE_SIZE} change log entries on issue ${issueId}; the issue is too large to check`);
+    return { ok: false, error: 'TOO_LARGE' };
   }
 
   let fields: Promise<JiraResult<any[]>> | null = null;
@@ -168,17 +189,17 @@ export function createJiraClient(asApp: JiraRequester, asUser: JiraRequester | n
       return fields;
     },
 
-    async getChangelog(issueId) {
-      const entries: ChangelogEntry[] = [];
-      for (let page = 0; page < MAX_PAGES; page++) {
-        const startAt = page * PAGE_SIZE;
-        const res = await getJson<any>(asApp, route`/rest/api/3/issue/${issueId}/changelog?startAt=${startAt}&maxResults=${PAGE_SIZE}`);
-        if (!res.ok) return res;
-        const values: ChangelogEntry[] = Array.isArray(res.value?.values) ? res.value.values : [];
-        entries.push(...values);
-        if (res.value?.isLast !== false || values.length === 0) break;
+    getChangelog(issueId) {
+      // One read per issue per invocation (F-10); a failed read is not kept, so a retry can succeed
+      let read = changelogs.get(issueId);
+      if (!read) {
+        read = readChangelog(issueId).then(res => {
+          if (!res.ok) changelogs.delete(issueId);
+          return res;
+        });
+        changelogs.set(issueId, read);
       }
-      return { ok: true, value: entries };
+      return read;
     },
 
     async getUserName(accountId) {

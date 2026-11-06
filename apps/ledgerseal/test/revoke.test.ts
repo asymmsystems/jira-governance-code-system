@@ -30,7 +30,7 @@ describe('B-16 revoke', () => {
     const we = await model.workEffort(storage);
     expect(we).toMatchObject({ currentStatusId: 'LS_REVOKED', revisionNumber: 2 });
     const row = model.statusRows(storage)[1];
-    expect(row).toMatchObject({ statusId: 'LS_REVOKED', transitionName: 'REVOKE', setByPartyId: 'bob', reason: 'Scope withdrawn' });
+    expect(row).toMatchObject({ statusId: 'LS_REVOKED', transitionName: 'REVOKE', setByPartyId: await model.token(storage, 'bob'), reason: 'Scope withdrawn' });
     expect(model.assignments(storage)[0].thruDate).toBe(row.statusDatetime);
     expect(jira.propertyWrites[jira.propertyWrites.length - 1].body.status).toBe('SEAL_REVOKED');
     const view: any = await verifyIssue({}, panelContext('viewer'), deps);
@@ -91,7 +91,7 @@ describe('B-16 revoke', () => {
     await expect(sealIssue({ signature: validSignature() }, panelContext('bob'), deps)).resolves.toMatchObject({ ok: true });
     const [first, second] = model.assignments(storage);
     expect(first.thruDate).toBe(revokedAt);
-    expect(second).toMatchObject({ partyId: 'bob', thruDate: null });
+    expect(second).toMatchObject({ partyId: await model.token(storage, 'bob'), thruDate: null });
     expect(model.statusRows(storage).map(r => r.transitionName)).toEqual(['SEAL', 'REVOKE', 'RESEAL']);
   });
 

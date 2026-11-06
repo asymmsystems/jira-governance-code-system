@@ -1,3 +1,9 @@
+/**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 import { SealRepository } from '../src/storage/seal-repository';
 import { buildStatusRow } from '../src/domain/history';
 import { assignmentHash, hasValidRecordHash, isConsistent, withRecordHash } from '../src/domain/seal-record';
@@ -146,10 +152,9 @@ describe('Seal summary and consistency', () => {
     expect(isConsistent({ ...seal(), workEffort: { ...workEffort(), incidentCount: 5 } })).toBe(false);
   });
 
-  it('summarises an active seal, falling back to the account id for the name', () => {
-    expect(summarise(seal())).toMatchObject({ state: 'ACTIVE', sealedByName: 'Lead Auditor', meaning: 'APPROVAL', revocation: null, historyLength: 1 });
-    const unnamed = { ...seal(), sealingRow: { ...sealingRow, data: {} } };
-    expect(summarise(unnamed).sealedByName).toBe('acc-1');
+  it('summarises an active seal with the stored party id and no name', () => {
+    expect(summarise(seal())).toMatchObject({ state: 'ACTIVE', sealedByAccountId: 'acc-1', meaning: 'APPROVAL', revocation: null, historyLength: 1 });
+    expect(summarise(seal())).not.toHaveProperty('sealedByName');
   });
 
   it('summarises a revoked seal from its newest status row', () => {

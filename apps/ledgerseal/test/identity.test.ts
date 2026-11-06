@@ -41,16 +41,19 @@ describe('B-04 identity from context only', () => {
     expect(stored).not.toContain('CFO');
     expect(stored).not.toContain('cfo-account');
     const [assignment] = model.assignments(storage);
-    expect(assignment.partyId).toBe('mallory');
-    expect(model.statusRows(storage)[0].data.signerName).toBe('Mallory');
+    expect(assignment.partyId).toBe(await model.token(storage, 'mallory'));
+    expect(model.statusRows(storage)[0].setByPartyId).toBe(await model.token(storage, 'mallory'));
+    expect(stored).not.toContain('Mallory');
     expect(Object.keys(assignment).sort()).toEqual(['comments', 'contentId', 'declaration', 'fromDate', 'partyId', 'roleTypeId', 'thruDate', 'workEffortId']);
   });
 
-  it('gives the panel the signer account id and name, and no email', async () => {
+  it('gives the panel the signer account id (resolved from the party token), no stored name and no email', async () => {
     const { storage, as } = setup();
     await sealIssue({ signature: validSignature() }, panelContext('mallory'), as('mallory'));
     const view: any = await verifyIssue({}, panelContext('viewer'), as('viewer'));
-    expect(view.seal).toMatchObject({ sealedByAccountId: 'mallory', sealedByName: 'Mallory' });
+    expect(view.seal).toMatchObject({ sealedByAccountId: 'mallory' });
+    expect(view.seal).not.toHaveProperty('sealedByName');
+    expect(view.seal).not.toHaveProperty('sealedByClosed');
     const history: any = await getSealHistory({}, panelContext('viewer'), as('viewer'));
     expect(JSON.stringify([view, history, ...storage.map.values()])).not.toMatch(/email/i);
   });

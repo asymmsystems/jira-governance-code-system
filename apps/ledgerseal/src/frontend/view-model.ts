@@ -37,6 +37,8 @@ export interface ChangeRowView {
   showFullToggle: boolean;
   detail?: string;
   changedBy: string[];
+  /** People who changed the item and whose accounts are closed, shown as "a closed account". */
+  changedByClosed: number;
   changedAt: string;
 }
 
@@ -55,8 +57,9 @@ export interface PanelView {
   excluded: { name: string; reason: string }[];
   seal?: {
     certificateId: string;
+    /** Empty when the signer's account was closed (ADR-011); then `signerClosed` is true. */
     signerAccountId: string;
-    signerName: string;
+    signerClosed: boolean;
     sealedAt: string;
     meaningLabel: string;
     reason: string | null;
@@ -67,6 +70,9 @@ export interface PanelView {
     historyLength: number;
   };
   revokedByAccountId?: string;
+  revokedByClosed?: boolean;
+  /** B5: shown when this installation writes unsigned attestations. */
+  signingNote?: string;
 }
 
 export interface PanelInput {
@@ -84,6 +90,9 @@ export function policyText(groupNames: string[] = []): string {
   if (groupNames.length === 0) return 'Who can seal: project admins and Jira admins.';
   return `Who can seal: project admins, Jira admins and members of ${groupNames.join(', ')}.`;
 }
+
+export const UNSIGNED_NOTE =
+  'This installation has no LedgerSeal signing key, so the attestation and the evidence are unsigned, and the offline verifier fails its signature check. Contact support@asymm.systems.';
 
 const ASK_APPROVER = 'Requires Project Admin, Jira Admin, or membership in an authorized group. Configured by your Jira administrator in Jira Settings > Apps > LedgerSeal.';
 const ASK_OTHER_APPROVER = 'You changed this issue, so another approver must approve it.';
@@ -103,6 +112,19 @@ export function formatTime(iso: string | null | undefined, locale?: string, time
     hourCycle: 'h23',
     timeZoneName: 'short'
   }).format(instant);
+}
+
+const HISTORY_LABELS: Record<string, string> = {
+  SEAL: 'Sealed',
+  RESEAL: 'Sealed again',
+  CHANGE: 'Change found',
+  REVOKE: 'Revoked',
+  REDACT: 'Account ids replaced by party tokens'
+};
+
+/** Plain words for a history entry's transition (F-15). */
+export function historyLabel(transitionName: string): string {
+  return HISTORY_LABELS[transitionName] ?? transitionName;
 }
 
 function shortHash(hash: string): string {
@@ -218,6 +240,7 @@ function changeRows(diffs: FieldDiff[], input: PanelInput): ChangeRowView[] {
       showFullToggle: Boolean(diff.sealedLong || diff.liveLong),
       ...(diff.detail ? { detail: diff.detail } : {}),
       changedBy: diff.changedBy ?? [],
+      changedByClosed: diff.changedByClosed ?? 0,
       changedAt: formatTime(diff.changedAt, input.locale, input.timeZone)
     };
   });
@@ -330,7 +353,7 @@ export function buildPanelView(input: PanelInput): PanelView {
     view.seal = {
       certificateId: seal.certificateId,
       signerAccountId: seal.sealedByAccountId,
-      signerName: seal.sealedByName,
+      signerClosed: Boolean(seal.sealedByClosed) || !seal.sealedByAccountId,
       sealedAt: formatTime(seal.sealedAt, input.locale, input.timeZone),
       meaningLabel: MEANINGS.find(m => m.value === seal.meaning)?.label ?? seal.meaning,
       reason: seal.reason,
@@ -340,7 +363,9 @@ export function buildPanelView(input: PanelInput): PanelView {
       declarationVersion: seal.declarationVersion,
       historyLength: seal.historyLength
     };
-    if (seal.revocation) view.revokedByAccountId = seal.revocation.revokedByAccountId;
+    if (r?.signing && r.signing.signed === false) view.signingNote = UNSIGNED_NOTE;
+    if (seal.revocation?.revokedByAccountId) view.revokedByAccountId = seal.revocation.revokedByAccountId;
+    else if (seal.revocation) view.revokedByClosed = true;
   }
   return view;
 }

@@ -9,7 +9,7 @@
 
 import { sealIssue, verifyIssue, revokeSeal, getApproverPolicy, setApproverPolicy, searchApproverGroups } from '../src/index';
 import { createJiraClient } from '../src/jira/jira-client';
-import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
+import { FakeJira, MemoryStore, model, panelContext, sampleIssue, validSignature } from './support/fakes';
 
 jest.mock('@forge/api', () => ({
   __esModule: true,
@@ -49,7 +49,7 @@ describe('approver policy by group', () => {
 
     await expect(sealIssue({ signature: validSignature() }, panelContext('qa1'), as('qa1'))).resolves.toMatchObject({ ok: true });
     const assignment = [...storage.map.entries()].find(([k]) => k.startsWith('ls3:wepa:'))![1];
-    expect(assignment.partyId).toBe('qa1');
+    expect(assignment.partyId).toBe(await model.token(storage, 'qa1'));
     await expect(revokeSeal({ reason: 'Wrong release' }, panelContext('qa1'), as('qa1'))).resolves.toMatchObject({ ok: true });
   });
 

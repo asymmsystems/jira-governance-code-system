@@ -1,6 +1,6 @@
 {
   "name": "@asymm/ledgerseal-verifier",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Standalone offline verifier for LedgerSeal Jira cryptographic approval evidence",
   "main": "verify-evidence.mjs",
   "type": "module",
@@ -17,17 +17,17 @@
     "compliance",
     "ed25519",
     "audit-trail",
-    "soc2",
-    "tamper-evident"
+    "soc2"
   ],
   "author": "Asymm Systems <security@asymm.systems>",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/asymmsystems/jira-governance-code-system.git",
-    "directory": "tools/verifier"
+    "url": "git+https://github.com/asymmsystems/ledgerseal-verifier.git"
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "private": true,
+  "homepage": "https://asymm.systems/product/jira-governance/user-guide/open-verifier"
 }

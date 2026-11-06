@@ -47,7 +47,7 @@ describe('B-11 issue-changed trigger', () => {
     await onIssueChanged(updated(), {}, deps);
     expect(incidents(storage)).toHaveLength(1);
     expect(incidents(storage)[0].data.changes).toEqual([
-      { fieldId: 'summary', fieldName: 'Summary', changedBy: ['mallory'], changedAt: '2099-01-01T00:00:00.000Z' }
+      { fieldId: 'summary', fieldName: 'Summary', changedBy: [await model.token(storage, 'mallory')], changedAt: '2099-01-01T00:00:00.000Z' }
     ]);
     expect(jira.propertyWrites.length - writes).toBe(1);
     expect(jira.propertyWrites[jira.propertyWrites.length - 1].body).toMatchObject({ status: 'SEAL_BROKEN', incidentCount: 1 });

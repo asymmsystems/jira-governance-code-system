@@ -1,6 +1,10 @@
 /**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
  * LedgerSeal: Canonicalization Engine
  * Produces byte-for-byte deterministic normalized representations of Jira issue states.
+ *
+ * @author Fahim Farook
  */
 
 import { CanonicalAttachment, CanonicalComment, CanonicalField, CanonicalIssueSnapshot } from './models';
@@ -72,6 +76,8 @@ const BASE_CUSTOM_EXCLUDED: Record<string, string> = {
 interface ExclusionRules {
   system: Record<string, string>;
   custom: Record<string, string>;
+  /** 2.2.0 and later: `{ id }` only for reference fields; every other object is hashed in full (F-07). */
+  idOnlyInReferenceFields?: boolean;
 }
 
 /**
@@ -99,11 +105,38 @@ const RULES: Record<string, ExclusionRules> = {
   }
 };
 
+/**
+ * 2.2.0 (ADR-011, readiness finding F-07): the exclusions of 2.1.0. People are party tokens (the caller
+ * pseudonymises the issue first), and an object with an `id` is reduced to `{ id }` only in a reference field.
+ */
+RULES['2.2.0'] = { ...RULES['2.1.0'], idOnlyInReferenceFields: true };
+
+/** Versions whose sealed snapshots hold party tokens, never account ids. */
+export const PSEUDONYMOUS_VERSIONS = new Set(['2.2.0']);
+
+/** System fields whose values point at another Jira item, so the item is identified by its id. */
+const REFERENCE_SYSTEM_FIELDS = new Set([
+  'priority', 'issuetype', 'project', 'resolution', 'security', 'components', 'fixVersions', 'versions', 'parent', 'subtasks', 'status', 'statusCategory'
+]);
+/** Field schema types (or array item types) that point at another Jira item. */
+const REFERENCE_TYPES = new Set([
+  'option', 'option-with-child', 'priority', 'version', 'component', 'project', 'issuetype', 'resolution', 'securitylevel',
+  'issuelink', 'issuelinks', 'status', 'statuscategory', 'team', 'sd-customerorganization'
+]);
+
+/** True when a field's object values are references, identified by their id alone (2.2.0 and later). */
+export function isReferenceField(key: string, schema: FieldSchema | undefined): boolean {
+  if (REFERENCE_SYSTEM_FIELDS.has(key)) return true;
+  const type = schema?.schema?.type;
+  if (type && REFERENCE_TYPES.has(type)) return true;
+  return type === 'array' && REFERENCE_TYPES.has(String(schema?.schema?.items));
+}
+
 /** Hashed outside `fields` (top-level ids, attachments and comments), so never listed as excluded. */
 const COVERED_ELSEWHERE = new Set(['project', 'issuetype', 'attachment', 'comment']);
 
 /** The canonical form new seals use. Read through the module export, so a test can stand in for an older app. */
-export const CANONICALIZER_VERSION: string = '2.1.0';
+export const CANONICALIZER_VERSION: string = '2.2.0';
 
 export function isKnownCanonicalizerVersion(version: unknown): boolean {
   return typeof version === 'string' && Object.prototype.hasOwnProperty.call(RULES, version);
@@ -120,6 +153,15 @@ function exclusionReason(rules: ExclusionRules, key: string, schema: FieldSchema
   if (system && rules.system[system]) return rules.system[system];
   const custom = schema?.schema?.custom;
   return custom && rules.custom[custom] ? rules.custom[custom] : null;
+}
+
+/**
+ * True when a field is outside the seal under a canonical form's rules (F-13): a change to it, such as a status
+ * move or a Rank change, is not a change of covered content. An unknown version uses the newest rules.
+ */
+export function isExcludedField(version: string, fieldId: string, fieldSchemas: FieldSchema[] = []): boolean {
+  const rules = RULES[version] ?? RULES[CANONICALIZER_VERSION];
+  return exclusionReason(rules, fieldId, fieldSchemas.find(f => f.id === fieldId)) !== null;
 }
 
 function isSetField(key: string, schema: FieldSchema | undefined): boolean {
@@ -156,16 +198,17 @@ function isAdfNode(val: any): boolean {
  *   option keeps its child), so a rename keeps the seal and a different item breaks it;
  * - date-times become UTC; text keeps its spaces and gets \n line endings;
  * - rich text keeps its order, and its volatile `localId` attributes are removed;
- * - an array is sorted only when `asSet` is true; empty values become null.
+ * - an array is sorted only when `asSet` is true; empty values become null;
+ * - `byId` false (2.2.0, a field that is not a reference field) hashes objects with an `id` in full (F-07).
  */
-export function canonicalizeValue(val: any, asSet: boolean = false, inRichText: boolean = false): any {
+export function canonicalizeValue(val: any, asSet: boolean = false, inRichText: boolean = false, byId: boolean = true): any {
   if (val === undefined || val === null) return null;
   if (typeof val === 'string') return inRichText ? normalizeText(val) : normalizeString(val);
   if (typeof val === 'number') return Number.isFinite(val) ? val : null;
   if (typeof val === 'boolean') return val;
 
   if (Array.isArray(val)) {
-    const items = val.map(item => canonicalizeValue(item, false, inRichText)).filter(item => item !== null);
+    const items = val.map(item => canonicalizeValue(item, false, inRichText, byId)).filter(item => item !== null);
     if (items.length === 0) return null;
     return asSet ? items.sort((a, b) => codeUnitCompare(JSON.stringify(a), JSON.stringify(b))) : items;
   }
@@ -181,14 +224,14 @@ export function canonicalizeValue(val: any, asSet: boolean = false, inRichText: 
       return Object.keys(node).length > 0 ? node : null;
     }
     if (typeof val.accountId === 'string' && val.accountId.length > 0) return { accountId: val.accountId };
-    if (val.id !== undefined && val.id !== null && String(val.id).length > 0) {
+    if (byId && val.id !== undefined && val.id !== null && String(val.id).length > 0) {
       const child = val.child ? canonicalizeValue(val.child) : null;
       return child ? { id: String(val.id), child } : { id: String(val.id) };
     }
     const obj: Record<string, any> = {};
     for (const key of Object.keys(val).sort(codeUnitCompare)) {
       if (key === 'self' || key === 'avatarUrls' || key === 'iconUrl') continue;
-      const child = canonicalizeValue(val[key]);
+      const child = canonicalizeValue(val[key], false, false, byId);
       if (child !== null) obj[key] = child;
     }
     return Object.keys(obj).length > 0 ? obj : null;
@@ -309,7 +352,8 @@ export function canonicalizeIssueState(
     }
 
     const special = specialValue(key, rawValue);
-    const value = special !== undefined ? special : canonicalizeValue(rawValue, isSetField(key, schema));
+    const byId = !rules.idOnlyInReferenceFields || isReferenceField(key, schema);
+    const value = special !== undefined ? special : canonicalizeValue(rawValue, isSetField(key, schema), false, byId);
     if (value === null) continue;
 
     // A set field's display text is sorted too, so the snapshot does not depend on the order Jira returns

@@ -10,7 +10,7 @@
 import { Meaning } from './declaration';
 
 export type LedgerSealStatusId = 'LS_SEALED' | 'LS_CHANGED' | 'LS_REVOKED';
-export type TransitionName = 'SEAL' | 'RESEAL' | 'CHANGE' | 'REVOKE';
+export type TransitionName = 'SEAL' | 'RESEAL' | 'CHANGE' | 'REVOKE' | 'REDACT';
 export type LedgerSealRoleTypeId = 'LS_APPROVER' | 'LS_REVIEWER' | 'LS_VERIFIER';
 
 export interface StatusValidChange {
