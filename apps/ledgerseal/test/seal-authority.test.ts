@@ -53,8 +53,9 @@ describe('B-01 approver policy and separation of duties', () => {
     const { storage, deps } = setup();
     const result = await sealIssue({ signature: sig }, panelContext('ann'), deps('ann'));
     expect(result).toMatchObject({ ok: true });
-    expect(model.assignments(storage)[0].partyId).toBe('ann');
-    expect(model.statusRows(storage)[0]).toMatchObject({ setByPartyId: 'ann', data: { signerName: 'Ann Approver' } });
+    const ann = await model.token(storage, 'ann');
+    expect(model.assignments(storage)[0].partyId).toBe(ann);
+    expect(model.statusRows(storage)[0]).toMatchObject({ setByPartyId: ann });
   });
 
   it('refuses a seal from a user outside the policy and writes nothing', async () => {
@@ -163,7 +164,7 @@ describe('B-01 failure paths', () => {
 
     expect(sealed).toMatchObject({ ok: true });
     const rows = model.statusRows(storage);
-    expect(rows[rows.length - 1]).toMatchObject({ statusId: 'LS_SEALED', setByPartyId: 'bob', reason: 'Reviewed the new scope' });
+    expect(rows[rows.length - 1]).toMatchObject({ statusId: 'LS_SEALED', setByPartyId: await model.token(storage, 'bob'), reason: 'Reviewed the new scope' });
   });
 
   it('a seal after a revoke with no change since the last seal needs no reason, even from the revoker', async () => {

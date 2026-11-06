@@ -14,7 +14,6 @@ import { compareToSeal, SealedState } from '../domain/tamper-detector';
 export interface SealInfo {
   certificateId?: string;
   sealedAt?: string;
-  signerName?: string;
   revocationReason?: string;
   revokedAt?: string;
 }
@@ -65,7 +64,6 @@ export function validateTransitionGate(
       details: {
         certificateId: info.certificateId,
         sealedAt: info.sealedAt,
-        signerName: info.signerName,
         tamperCount: totalTampered
       }
     };
@@ -79,7 +77,6 @@ export function validateTransitionGate(
       details: {
         certificateId: info.certificateId,
         sealedAt: info.sealedAt,
-        signerName: info.signerName,
         tamperCount: 1
       }
     };
@@ -90,7 +87,6 @@ export function validateTransitionGate(
     details: {
       certificateId: info.certificateId,
       sealedAt: info.sealedAt,
-      signerName: info.signerName,
       tamperCount: 0
     }
   };

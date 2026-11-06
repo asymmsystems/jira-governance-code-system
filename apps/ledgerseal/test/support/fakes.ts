@@ -9,6 +9,7 @@
 import { ChangelogEntry, JiraClient, JiraResult } from '../../src/jira/jira-client';
 import { StorageProvider } from '../../src/storage/seal-repository';
 import { DECLARATION } from '../../src/domain/declaration';
+import { partyFunction } from '../../src/domain/party';
 
 /** A seal payload signature that the resolver accepts. */
 export function validSignature(extra: Record<string, unknown> = {}) {
@@ -155,6 +156,13 @@ export class MemoryStore implements StorageProvider {
     for (const item of items) await this.set(item.key, item.value);
   }
 
+  async query(prefix: string) {
+    return [...this.map.keys()]
+      .filter(k => k.startsWith(prefix))
+      .sort()
+      .map(key => ({ key, value: JSON.parse(JSON.stringify(this.map.get(key))) }));
+  }
+
   bytes(key: string) {
     return this.map.has(key) ? Buffer.byteLength(JSON.stringify(this.map.get(key)), 'utf8') : 0;
   }
@@ -205,6 +213,12 @@ export const model = {
   },
   workEffortKey(issueId = '10001') {
     return `ls3:we:${issueId}`;
+  },
+  /** The party token of an account on this site (ADR-010): records hold it in place of the account id. */
+  async token(storage: MemoryStore, accountId: string): Promise<string> {
+    const site = await storage.get('ls3:partykey');
+    if (!site) throw new Error('No site key: nothing was sealed yet');
+    return partyFunction(Buffer.from(site.key, 'base64'))(accountId);
   },
   statusKey(seq: number, issueId = '10001') {
     return `ls3:wes:${issueId}:${String(seq).padStart(6, '0')}`;

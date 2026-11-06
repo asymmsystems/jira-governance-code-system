@@ -37,6 +37,8 @@ export interface ChangeRowView {
   showFullToggle: boolean;
   detail?: string;
   changedBy: string[];
+  /** People who changed the item and whose accounts are closed, shown as "a closed account". */
+  changedByClosed: number;
   changedAt: string;
 }
 
@@ -55,8 +57,9 @@ export interface PanelView {
   excluded: { name: string; reason: string }[];
   seal?: {
     certificateId: string;
+    /** Empty when the signer's account was closed (ADR-010); then `signerClosed` is true. */
     signerAccountId: string;
-    signerName: string;
+    signerClosed: boolean;
     sealedAt: string;
     meaningLabel: string;
     reason: string | null;
@@ -67,6 +70,7 @@ export interface PanelView {
     historyLength: number;
   };
   revokedByAccountId?: string;
+  revokedByClosed?: boolean;
 }
 
 export interface PanelInput {
@@ -218,6 +222,7 @@ function changeRows(diffs: FieldDiff[], input: PanelInput): ChangeRowView[] {
       showFullToggle: Boolean(diff.sealedLong || diff.liveLong),
       ...(diff.detail ? { detail: diff.detail } : {}),
       changedBy: diff.changedBy ?? [],
+      changedByClosed: diff.changedByClosed ?? 0,
       changedAt: formatTime(diff.changedAt, input.locale, input.timeZone)
     };
   });
@@ -330,7 +335,7 @@ export function buildPanelView(input: PanelInput): PanelView {
     view.seal = {
       certificateId: seal.certificateId,
       signerAccountId: seal.sealedByAccountId,
-      signerName: seal.sealedByName,
+      signerClosed: Boolean(seal.sealedByClosed) || !seal.sealedByAccountId,
       sealedAt: formatTime(seal.sealedAt, input.locale, input.timeZone),
       meaningLabel: MEANINGS.find(m => m.value === seal.meaning)?.label ?? seal.meaning,
       reason: seal.reason,
@@ -340,7 +345,8 @@ export function buildPanelView(input: PanelInput): PanelView {
       declarationVersion: seal.declarationVersion,
       historyLength: seal.historyLength
     };
-    if (seal.revocation) view.revokedByAccountId = seal.revocation.revokedByAccountId;
+    if (seal.revocation?.revokedByAccountId) view.revokedByAccountId = seal.revocation.revokedByAccountId;
+    else if (seal.revocation) view.revokedByClosed = true;
   }
   return view;
 }

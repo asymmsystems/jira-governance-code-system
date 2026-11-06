@@ -19,6 +19,8 @@ export interface StorageProvider {
   createIfAbsent(key: string, value: any): Promise<boolean>;
   /** Writes all items together, or none of them (one KVS transaction). */
   commit(items: { key: string; value: any }[]): Promise<void>;
+  /** Every key that starts with `prefix`, with its value, read page by page. */
+  query(prefix: string): Promise<{ key: string; value: any }[]>;
 }
 
 export const HISTORY_PAGE_SIZE = 50;

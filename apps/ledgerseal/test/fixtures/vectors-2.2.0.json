@@ -1,0 +1,41 @@
+{
+  "format": "ledgerseal-canonical-vectors/1",
+  "canonicalizerVersion": "2.2.0",
+  "note": "Written by hand from spec v2 section 4 and ADR-010. Each vector names its party table (account id to token) and its field schemas. The canonical text is the expected hash input.",
+  "parties": { "acct-a": "pty_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "acct-b": "pty_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+  "vectors": [
+    {
+      "name": "W1 a user is its party token, with no name",
+      "schemas": [],
+      "issue": { "id": "1", "key": "X-1", "fields": { "summary": "R", "assignee": { "accountId": "acct-a", "displayName": "Alice", "emailAddress": "a@example.com" } } },
+      "canonical": "{\"attachments\":[],\"canonicalizerVersion\":\"2.2.0\",\"comments\":[],\"fields\":[{\"id\":\"assignee\",\"value\":{\"accountId\":\"pty_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}},{\"id\":\"summary\",\"value\":\"R\"}],\"issueId\":\"1\",\"issueKey\":\"X-1\",\"issueTypeId\":\"\",\"projectId\":\"\"}"
+    },
+    {
+      "name": "W2 an object with an id in a field that is not a reference is hashed in full (F-07)",
+      "schemas": [{ "id": "customfield_1", "name": "Budget", "schema": { "type": "any", "custom": "x:forge-object" } }],
+      "issue": { "id": "1", "key": "X-1", "fields": { "customfield_1": { "id": "5", "amount": 10, "self": "https://x" } } },
+      "canonical": "{\"attachments\":[],\"canonicalizerVersion\":\"2.2.0\",\"comments\":[],\"fields\":[{\"id\":\"customfield_1\",\"value\":{\"amount\":10,\"id\":\"5\"}}],\"issueId\":\"1\",\"issueKey\":\"X-1\",\"issueTypeId\":\"\",\"projectId\":\"\"}"
+    },
+    {
+      "name": "W3 an option field is a reference, identified by its id",
+      "schemas": [{ "id": "customfield_2", "name": "Tier", "schema": { "type": "option", "custom": "x:select" } }],
+      "issue": { "id": "1", "key": "X-1", "fields": { "customfield_2": { "id": "7", "value": "Gold", "self": "https://x" } } },
+      "canonical": "{\"attachments\":[],\"canonicalizerVersion\":\"2.2.0\",\"comments\":[],\"fields\":[{\"id\":\"customfield_2\",\"value\":{\"id\":\"7\"}}],\"issueId\":\"1\",\"issueKey\":\"X-1\",\"issueTypeId\":\"\",\"projectId\":\"\"}"
+    },
+    {
+      "name": "W4 a mention keeps the token as its id and its text; localId is removed",
+      "schemas": [],
+      "issue": { "id": "1", "key": "X-1", "fields": { "description": { "type": "doc", "version": 1, "content": [{ "type": "paragraph", "content": [{ "type": "mention", "attrs": { "id": "acct-b", "text": "@Bob", "localId": "m1" } }] }] } } },
+      "canonical": "{\"attachments\":[],\"canonicalizerVersion\":\"2.2.0\",\"comments\":[],\"fields\":[{\"id\":\"description\",\"value\":{\"content\":[{\"content\":[{\"attrs\":{\"id\":\"pty_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"text\":\"pty_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"},\"type\":\"mention\"}],\"type\":\"paragraph\"}],\"type\":\"doc\",\"version\":1}}],\"issueId\":\"1\",\"issueKey\":\"X-1\",\"issueTypeId\":\"\",\"projectId\":\"\"}"
+    },
+    {
+      "name": "W5 comment and attachment authors are tokens; times are UTC",
+      "schemas": [],
+      "issue": { "id": "1", "key": "X-1", "fields": {
+        "comment": { "comments": [{ "id": "9", "author": { "accountId": "acct-a", "displayName": "Alice" }, "created": "2026-11-01T10:00:00.000+0530", "body": "ok" }] },
+        "attachment": [{ "id": "3", "filename": "a.txt", "size": 4, "mimeType": "text/plain", "created": "2026-11-01T00:00:00.000Z", "author": { "accountId": "acct-b" } }]
+      } },
+      "canonical": "{\"attachments\":[{\"authorAccountId\":\"pty_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"created\":\"2026-11-01T00:00:00.000Z\",\"filename\":\"a.txt\",\"id\":\"3\",\"mimeType\":\"text/plain\",\"size\":4}],\"canonicalizerVersion\":\"2.2.0\",\"comments\":[{\"authorAccountId\":\"pty_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"body\":\"ok\",\"created\":\"2026-11-01T04:30:00.000Z\",\"id\":\"9\"}],\"fields\":[],\"issueId\":\"1\",\"issueKey\":\"X-1\",\"issueTypeId\":\"\",\"projectId\":\"\"}"
+    }
+  ]
+}

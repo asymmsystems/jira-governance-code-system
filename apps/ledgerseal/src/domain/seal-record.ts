@@ -52,14 +52,13 @@ export function isConsistent(seal: LoadedSeal): boolean {
 
 /** The seal facts the panel may show. It holds no snapshot and no email. */
 export function summarise(seal: LoadedSeal): SealSummary {
-  const { workEffort: we, assignment, sealingRow, headRow } = seal;
+  const { workEffort: we, assignment, headRow } = seal;
   const revoked = we.currentStatusId === 'LS_REVOKED' && headRow;
   return {
     certificateId: we.currentContentId,
     state: we.currentStatusId === 'LS_REVOKED' ? 'REVOKED' : 'ACTIVE',
     sealedAt: assignment.fromDate,
     sealedByAccountId: assignment.partyId,
-    sealedByName: String(sealingRow.data.signerName ?? assignment.partyId),
     meaning: meaningForRole(assignment.roleTypeId),
     reason: assignment.comments,
     declarationVersion: assignment.declaration.version,

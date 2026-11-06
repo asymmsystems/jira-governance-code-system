@@ -50,8 +50,9 @@ describe('Forge Function Entry Points (index.ts)', () => {
 
       const stored = await model.workEffort(storage);
       expect(stored.attributes.snapshotHash).toBe(result.snapshotHash);
-      expect(model.assignments(storage)[0].partyId).toBe('lead');
-      expect(model.statusRows(storage)[0].data.signerName).toBe('Lead Engineer');
+      // The seal names the signer by party token, and stores no account id and no name (ADR-010)
+      expect(model.assignments(storage)[0].partyId).toBe(await model.token(storage, 'lead'));
+      expect(JSON.stringify([...storage.map.entries()].filter(([k]) => !k.startsWith('ls3:party:')))).not.toMatch(/"lead"|Lead Engineer/);
       expect(jira.propertyWrites[0].body).toMatchObject({ status: 'SEAL_VALID', snapshotHash: result.snapshotHash });
     });
 
@@ -76,10 +77,10 @@ describe('Forge Function Entry Points (index.ts)', () => {
       expect(storage.sets).toEqual([]);
     });
 
-    it('falls back to the account id when Jira hides the display name', async () => {
-      jira.users = {};
+    it('stores no signer name, and maps the token to the account in one key outside the records', async () => {
       await sealIssue({ signature: sampleSig }, ctx, deps());
-      expect(model.statusRows(storage)[0].data.signerName).toBe('lead');
+      expect(model.statusRows(storage)[0].data).not.toHaveProperty('signerName');
+      expect(storage.map.get(`ls3:party:${await model.token(storage, 'lead')}`)).toMatchObject({ accountId: 'lead' });
     });
   });
 

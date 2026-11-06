@@ -172,6 +172,9 @@ export const LedgerSealPanel: React.FC = () => {
         {view.revokedByAccountId && (
           <AttributionLine prefix="Revoked by" accountId={view.revokedByAccountId} suffix="" />
         )}
+        {view.revokedByClosed && (
+          <Text as="span" size="small" color={TEXT_ROLE.secondary}>Revoked by a closed account.</Text>
+        )}
 
         {view.askText && (
           <NoteBox>
@@ -199,9 +202,13 @@ export const LedgerSealPanel: React.FC = () => {
                   </Inline>
                   <Inline space={SPACE.sub} alignBlock="center" shouldWrap>
                     <Text as="span" size="small" color={TEXT_ROLE.muted}>Changed by:</Text>
-                    {row.changedBy.length > 0 ? (
-                      row.changedBy.map(id => <User key={id} accountId={id} />)
-                    ) : (
+                    {row.changedBy.map(id => <User key={id} accountId={id} />)}
+                    {row.changedByClosed > 0 && (
+                      <Text as="span" size="small" color={TEXT_ROLE.muted}>
+                        {row.changedByClosed === 1 ? 'a closed account' : `${row.changedByClosed} closed accounts`}
+                      </Text>
+                    )}
+                    {row.changedBy.length === 0 && row.changedByClosed === 0 && (
                       <Text as="span" size="small" color={TEXT_ROLE.muted}>unknown</Text>
                     )}
                     <Text as="span" size="small" color={TEXT_ROLE.muted}>on {row.changedAt}</Text>
@@ -262,7 +269,11 @@ export const LedgerSealPanel: React.FC = () => {
         <Section title="Certificate & attestation details" count={3} defaultCollapsed={true}>
           <Inline space={SPACE.sub} alignBlock="center" shouldWrap>
             <Text as="span" size="small" weight="medium">Signed by:</Text>
-            <User accountId={view.seal.signerAccountId} />
+            {view.seal.signerClosed ? (
+              <Text as="span" size="small">a closed account</Text>
+            ) : (
+              <User accountId={view.seal.signerAccountId} />
+            )}
             <Text as="span" size="small" color={TEXT_ROLE.secondary}>on {view.seal.sealedAt}</Text>
           </Inline>
           <KeyValueInline label="Sign-off role:" value={view.seal.meaningLabel} />

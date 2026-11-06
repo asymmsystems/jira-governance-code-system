@@ -85,23 +85,24 @@ describe('B-13 canonical form v2 rules', () => {
     expect(snap.fields.find(f => f.id === 'priority')).toMatchObject({ value: { id: '2' }, display: 'High' });
   });
 
-  it('records the current canonical form, 2.1.0, in every new seal and attestation', async () => {
+  it('records the current canonical form, 2.2.0, in every new seal and attestation', async () => {
     const jira = new FakeJira(sampleIssue());
     jira.approvers = new Set(['ann']);
     jira.currentUser = 'ann';
     const storage = new MemoryStore();
     await sealIssue({ signature: validSignature() }, panelContext('ann'), { jira, storage });
-    expect((await model.workEffort(storage)).attributes.canonicalizerVersion).toBe('2.1.0');
-    expect((await model.sealedSnapshot(storage)).canonicalizerVersion).toBe('2.1.0');
-    expect(jira.propertyWrites[0].body.canonicalizerVersion).toBe('2.1.0');
+    expect((await model.workEffort(storage)).attributes.canonicalizerVersion).toBe('2.2.0');
+    expect((await model.sealedSnapshot(storage)).canonicalizerVersion).toBe('2.2.0');
+    expect(jira.propertyWrites[0].body.canonicalizerVersion).toBe('2.2.0');
   });
 });
 
 describe('B-13 canonical form v2 edge rules', () => {
-  const fieldOf = (id: string, value: any) => canonicalizeIssueState(withField(id, value), T).fields.find(f => f.id === id);
+  const fieldOf = (id: string, value: any, schemas: any[] = []) => canonicalizeIssueState(withField(id, value), T, schemas).fields.find(f => f.id === id);
+  const cascading = [{ id: 'customfield_7', name: 'Region', schema: { type: 'option-with-child', custom: 'x:cascadingselect' } }];
 
   it('keeps the child of a cascading option and drops URLs from objects without an id', () => {
-    expect(fieldOf('customfield_7', { id: '1', value: 'EMEA', child: { id: '11', value: 'UK' } })?.value).toEqual({ id: '1', child: { id: '11' } });
+    expect(fieldOf('customfield_7', { id: '1', value: 'EMEA', child: { id: '11', value: 'UK' } }, cascading)?.value).toEqual({ id: '1', child: { id: '11' } });
     expect(fieldOf('customfield_8', { label: 'x', self: 'https://a', avatarUrls: { a: 1 }, iconUrl: 'https://i' })?.value).toEqual({ label: 'x' });
   });
 

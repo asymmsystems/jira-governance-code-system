@@ -8,10 +8,10 @@
  */
 
 import * as crypto from 'crypto';
-import { CANONICALIZER_VERSION, canonicalizeIssueState, FieldSchema } from '../domain/canonicalizer';
+import { CANONICALIZER_VERSION, canonicalizeIssueState, FieldSchema, PSEUDONYMOUS_VERSIONS } from '../domain/canonicalizer';
 import { canonicalForm, computeSnapshotHash } from '../domain/crypto';
 import { buildStatusRow, verifyChain } from '../domain/history';
-import { CanonicalIssueSnapshot, FieldDiff, SealedWorkEffort, WorkEffortPartyAssignment, WorkEffortStatus, TamperAnalysis } from '../domain/models';
+import { CanonicalIssueSnapshot, FieldDiff, SealedWorkEffort, SealSummary, WorkEffortPartyAssignment, WorkEffortStatus, TamperAnalysis } from '../domain/models';
 import { authorsSince } from '../domain/policy';
 import { assignmentHash, isConsistent, LoadedSeal, summarise, withRecordHash } from '../domain/seal-record';
 import { canChange, LedgerSealStatusId, roleForMeaning } from '../domain/status';
@@ -20,6 +20,8 @@ import { capped, LONG_VALUE_CHARS, richTextSummary } from '../domain/display';
 import { AttestationSource, AttestationStatus, buildAttestation, Signer } from '../domain/attestation';
 import { DECLARATION, isMeaning, matchesDeclaration, validReason } from '../domain/declaration';
 import { ChangelogEntry, JiraClient } from '../jira/jira-client';
+import { isPartyToken, partyFunction, PartyFn, PartySeen, pseudonymise, TOKEN_IN_TEXT } from '../domain/party';
+import { newSiteKey, PartyRepository, PartyResolver } from '../storage/party-repository';
 import { approverGroupNames, isApprover } from './approver';
 import { HISTORY_PAGE_SIZE, MAX_CONTENT_PARTS, MAX_PART_BYTES, SealRepository, splitUtf8, StorageProvider } from '../storage/seal-repository';
 
@@ -95,22 +97,33 @@ export function rawComments(raw: any): any[] {
   return Array.isArray(raw?.fields?.comment?.comments) ? raw.fields.comment.comments : [];
 }
 
-/** One read of the live issue: the raw issue, the field list, and its snapshot in the current canonical form. */
+/**
+ * One read of the live issue: the issue as Jira returned it, the same issue with every person replaced by a
+ * party token (ADR-010), the field list, and its snapshot in the current canonical form.
+ */
 export interface LiveRead {
   raw: any;
+  /** The issue with party tokens; equal to `raw` when the site has no key yet (no record holds a token then). */
+  tokenisedRaw: any;
+  tokenised: boolean;
+  /** The people the issue names, by token, with the name Jira gave (for display only). */
+  seen: Map<string, PartySeen>;
   fields: FieldSchema[];
   snapshot: CanonicalIssueSnapshot;
+}
+
+export interface LiveReadOptions {
+  /** The site's party function; null when the site has no key yet. */
+  party?: PartyFn | null;
+  /** Applies transition-screen values to the issue before it is canonicalised (the validator). */
+  apply?: (raw: any) => any;
 }
 
 /**
  * Reads the live issue and the field list, then canonicalises. Returns null when either read fails.
  */
-export async function readLiveSnapshot(
-  jira: JiraClient,
-  issueIdOrKey: string,
-  at: string,
-  apply: (raw: any) => any = raw => raw
-): Promise<LiveRead | null> {
+export async function readLiveSnapshot(jira: JiraClient, issueIdOrKey: string, at: string, options: LiveReadOptions = {}): Promise<LiveRead | null> {
+  const apply = options.apply ?? ((raw: any) => raw);
   const live = await jira.getIssue(issueIdOrKey);
   if (!live.ok) return null;
   const fields = await jira.getFields();
@@ -128,7 +141,40 @@ export async function readLiveSnapshot(
   }
   const raw = apply({ ...live.value, fields: issueFields });
   const schemas = fields.value as FieldSchema[];
-  return { raw, fields: schemas, snapshot: canonicalizeIssueState(raw, at, schemas, CANONICALIZER_VERSION) };
+  const tokens = options.party ? pseudonymise(raw, options.party) : { value: raw, seen: new Map<string, PartySeen>() };
+  return {
+    raw,
+    tokenisedRaw: tokens.value,
+    tokenised: Boolean(options.party),
+    seen: tokens.seen,
+    fields: schemas,
+    snapshot: canonicalizeIssueState(tokens.value, at, schemas, CANONICALIZER_VERSION)
+  };
+}
+
+/** The same live read with every person replaced by a token of this party function. */
+export function withParty(live: LiveRead, party: PartyFn, at: string): LiveRead {
+  const tokens = pseudonymise(live.raw, party);
+  return {
+    ...live,
+    tokenisedRaw: tokens.value,
+    tokenised: true,
+    seen: tokens.seen,
+    snapshot: canonicalizeIssueState(tokens.value, at, live.fields, CANONICALIZER_VERSION)
+  };
+}
+
+/** True when a sealed issue's records name people by party token (ADR-010 decisions 6 and 7). */
+export function recordUsesTokens(we: SealedWorkEffort): boolean {
+  return PSEUDONYMOUS_VERSIONS.has(we.attributes.canonicalizerVersion) || we.attributes.parties === 'TOKEN';
+}
+
+/** The live issue in the canonical form, and the party form, a seal was made with. */
+function liveSnapshotFor(live: LiveRead, we: SealedWorkEffort, at: string): CanonicalIssueSnapshot {
+  const version = we.attributes.canonicalizerVersion;
+  const tokens = recordUsesTokens(we) && live.tokenised;
+  if (version === live.snapshot.canonicalizerVersion && tokens === live.tokenised) return live.snapshot;
+  return canonicalizeIssueState(tokens ? live.tokenisedRaw : live.raw, at, live.fields, version);
 }
 
 /**
@@ -162,7 +208,6 @@ function attestationSource(seal: LoadedSeal): AttestationSource {
     snapshotHash: we.attributes.snapshotHash,
     canonicalizerVersion: we.attributes.canonicalizerVersion,
     sealedAt: seal.assignment.fromDate,
-    sealedByAccountId: seal.assignment.partyId,
     everCompromised: we.everCompromised,
     incidentCount: we.incidentCount
   };
@@ -222,16 +267,13 @@ export async function evaluate(repo: SealRepository, issueId: string, live: Live
   if (!isConsistent(seal)) return { kind: 'RECORD_INVALID', workEffort: we };
   const sealedSnapshot = await repo.getContent(we);
   if (!sealedSnapshot || computeSnapshotHash(sealedSnapshot) !== we.attributes.snapshotHash) return { kind: 'RECORD_INVALID', workEffort: we };
-  // Compare under the canonical form the seal was made with (spec v2 section 4.1)
-  const version = we.attributes.canonicalizerVersion;
-  let liveSnapshot = live.snapshot;
-  if (version !== liveSnapshot.canonicalizerVersion) {
-    try {
-      liveSnapshot = canonicalizeIssueState(live.raw, at, live.fields, version);
-    } catch {
-      // Rules this app does not have cannot check the seal, so it is not shown as valid
-      return { kind: 'RECORD_INVALID', workEffort: we };
-    }
+  // Compare under the canonical form, and the party form, the seal was made with (spec v2 section 4.1, ADR-010)
+  let liveSnapshot: CanonicalIssueSnapshot;
+  try {
+    liveSnapshot = liveSnapshotFor(live, we, at);
+  } catch {
+    // Rules this app does not have cannot check the seal, so it is not shown as valid
+    return { kind: 'RECORD_INVALID', workEffort: we };
   }
   const sealed: SealedState = {
     snapshotHash: we.attributes.snapshotHash,
@@ -270,7 +312,8 @@ export async function recordIncidentIfNew(
   deps: LedgerSealDeps,
   repo: SealRepository,
   evaluation: SealEvaluation,
-  at: string
+  at: string,
+  knownParty?: PartyFn
 ): Promise<{ seal: LoadedSeal; recorded: boolean }> {
   const { seal, analysis } = evaluation;
   const we = seal.workEffort;
@@ -280,7 +323,12 @@ export async function recordIncidentIfNew(
     return { seal, recorded: false };
   }
   const changelog = await deps.jira.getChangelog(we.workEffortId);
-  const changes = attribute(analysis.tamperedFields, changelog.ok ? changelog.value : [], seal.assignment.fromDate, evaluation.liveComments);
+  const attributed = attribute(analysis.tamperedFields, changelog.ok ? changelog.value : [], seal.assignment.fromDate, evaluation.liveComments);
+  // History rows name people by party token, never by account id (ADR-010 decision 1)
+  const parties = new PartyRepository(deps.storage);
+  const party = knownParty ?? (await parties.partyForWrite());
+  await parties.register(attributed.flatMap(c => c.changedBy), party, at);
+  const changes = attributed.map(c => ({ ...c, changedBy: c.changedBy.map(party) }));
   const row = buildStatusRow(we.statusHead, {
     workEffortId: we.workEffortId,
     statusId: 'LS_CHANGED',
@@ -332,8 +380,20 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
 
   // Fetch real live Jira issue. Never fall back to client-supplied payload.
   const now = new Date().toISOString();
-  const live = await readLiveSnapshot(deps.jira, issue.id, now);
-  if (!live) return fail('JIRA_UNREACHABLE');
+  const parties = new PartyRepository(deps.storage);
+  const known = await parties.partyForRead();
+  const read = await readLiveSnapshot(deps.jira, issue.id, now, { party: known });
+  if (!read) return fail('JIRA_UNREACHABLE');
+  // The first seal of a site makes the site key. It is held in memory and stored just before the first write,
+  // so a refused seal writes nothing (invariant 8)
+  const candidate = known ? null : newSiteKey();
+  const party = known ?? partyFunction(candidate as Buffer);
+  const live = known ? read : withParty(read, party, now);
+  let keyStored = !candidate;
+  const storeKey = async () => {
+    if (!keyStored) keyStored = await parties.storeKey(candidate as Buffer);
+    return keyStored;
+  };
 
   const repo = new SealRepository(deps.storage);
   const snapshot = live.snapshot;
@@ -354,7 +414,8 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
       if (authorsSince(changelog.value, previous.assignment.fromDate).has(accountId)) return fail('SELF_APPROVAL');
       if (!validReason(signature.reason)) return fail('REASON_REQUIRED');
       // Record the change before the reseal, so the history shows it even if no one viewed the issue
-      previous = (await recordIncidentIfNew(deps, repo, evaluation, now)).seal;
+      if (!(await storeKey())) return fail('CONFLICT');
+      previous = (await recordIncidentIfNew(deps, repo, evaluation, now, party)).seal;
       previousWorkEffort = previous.workEffort;
     }
     if (status === 'SEAL_REVOKED') {
@@ -377,7 +438,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   const transitionName = canChange(fromStatus, 'LS_SEALED');
   if (!transitionName) return fail('INVALID_REQUEST');
 
-  const signerDisplayName = (await deps.jira.getUserName(accountId)) || accountId;
+  const signer = party(accountId);
   const reason = previousState ? validReason(signature.reason) : null;
   const certificateId = crypto.randomUUID();
   const snapshotHash = computeSnapshotHash(snapshot);
@@ -385,11 +446,12 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   const contentParts = splitUtf8(JSON.stringify(snapshot), MAX_PART_BYTES);
   if (contentParts.length > MAX_CONTENT_PARTS) return fail('SNAPSHOT_TOO_LARGE');
 
+  if (!(await storeKey())) return fail('CONFLICT');
   const row = buildStatusRow(previousWorkEffort ? previousWorkEffort.statusHead : null, {
     workEffortId: issue.id,
     statusId: 'LS_SEALED',
     statusDatetime: now,
-    setByPartyId: accountId,
+    setByPartyId: signer,
     reason,
     transitionName,
     data: {
@@ -397,16 +459,16 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
       snapshotHash,
       meaning,
       declarationVersion: DECLARATION.version,
-      signerName: signerDisplayName,
       previousCertificateId: previousWorkEffort ? previousWorkEffort.currentContentId : null,
       previousState
     }
   });
   if (!(await repo.appendStatus(row))) return fail('CONFLICT');
+  await parties.register([accountId], party, now);
 
   const assignment: WorkEffortPartyAssignment = {
     workEffortId: issue.id,
-    partyId: accountId,
+    partyId: signer,
     roleTypeId: roleForMeaning(meaning),
     fromDate: now,
     thruDate: null,
@@ -424,7 +486,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
     revisionNumber: row.seq,
     statusHead: { seq: row.seq, entryHash: row.entryHash },
     currentAssignment: {
-      partyId: accountId,
+      partyId: signer,
       roleTypeId: assignment.roleTypeId,
       fromDate: now,
       assignmentHash: assignmentHash(assignment),
@@ -448,7 +510,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   const ended = previous && previous.assignment.thruDate === null ? { ...previous.assignment, thruDate: now } : null;
   await commitAfterClaim(repo, row, () => repo.saveSeal(workEffort, assignment, contentParts, ended));
 
-  // Publish public audit property to Jira issue without PII
+  // The ledgerseal-cert property names no person (ADR-010 decision 8)
   await writeAttestation(deps, { workEffort, assignment, sealingRow: row }, 'SEAL_VALID', now);
 
   return { ok: true as const, certificateId, snapshotHash, sealedAt: now };
@@ -465,7 +527,14 @@ export async function verifyIssueFlow(payload: any, context: any, deps: LedgerSe
   if (!issue) return fail('MISSING_ISSUE');
 
   const now = new Date().toISOString();
-  const live = await readLiveSnapshot(deps.jira, issue.id, now);
+  let party: PartyFn | null;
+  try {
+    party = await new PartyRepository(deps.storage).partyForRead();
+  } catch (err) {
+    console.error('LedgerSeal: verify failed', err);
+    return errorResult('STORAGE', now);
+  }
+  const live = await readLiveSnapshot(deps.jira, issue.id, now, { party });
   // A read failure is reported as an error, never as "not sealed" (invariant 8)
   if (!live) return errorResult('JIRA_UNREACHABLE', now);
   let result: TamperAnalysis;
@@ -529,15 +598,67 @@ async function verifyAgainstSeal(
   const we = seal.workEffort;
   const incident = we.currentStatusId === 'LS_CHANGED' ? await repo.getStatusRow(we.workEffortId, we.statusHead.seq) : null;
   const recorded = new Map(((incident?.data?.changes as any[]) || []).map(c => [c.fieldId, c]));
-  analysis.tamperedFields = analysis.tamperedFields.map(diff => ({
-    ...diff,
-    changedBy: recorded.get(diff.fieldId)?.changedBy ?? [],
-    changedAt: recorded.get(diff.fieldId)?.changedAt ?? null
-  }));
+  // Party tokens become account ids, and names in the change text, only for display (ADR-010 decision 4)
+  const resolver = new PartyResolver(new PartyRepository(deps.storage));
+  const names = await tokenNames(analysis.tamperedFields.flatMap(d => [String(d.sealedValue ?? ''), String(d.liveValue ?? '')]), live, resolver, deps.jira);
+  const named = (text: any) => (typeof text === 'string' ? text.replace(TOKEN_IN_TEXT, token => names.get(token) ?? UNNAMED_PERSON) : text);
+  analysis.tamperedFields = await Promise.all(
+    analysis.tamperedFields.map(async diff => {
+      const ids = await Promise.all(((recorded.get(diff.fieldId)?.changedBy as string[]) ?? []).map(id => resolver.resolve(id)));
+      const closed = ids.filter(id => !id).length;
+      return {
+        ...diff,
+        sealedValue: named(diff.sealedValue),
+        liveValue: named(diff.liveValue),
+        changedBy: ids.filter((id): id is string => Boolean(id)),
+        ...(closed > 0 ? { changedByClosed: closed } : {}),
+        changedAt: recorded.get(diff.fieldId)?.changedAt ?? null
+      };
+    })
+  );
+  analysis.seal = await resolveSummary(analysis.seal, resolver);
   return {
     ...analysis,
     coveredFields: sealed.fields.map(f => ({ id: f.id, name: f.name })),
     excludedFields: sealed.excluded || []
+  };
+}
+
+/**
+ * Shown in a changed value for a person LedgerSeal cannot name: no longer on the issue and not someone who
+ * sealed, changed or revoked (only those are in the map), or a closed account (ADR-010).
+ */
+export const UNNAMED_PERSON = 'a user no longer on this issue';
+
+/** The display name of each party token found in the texts: from the live issue, else from the map and Jira. */
+async function tokenNames(texts: string[], live: LiveRead, resolver: PartyResolver, jira: JiraClient): Promise<Map<string, string>> {
+  const names = new Map<string, string>();
+  const tokens = new Set(texts.flatMap(text => text.match(TOKEN_IN_TEXT) ?? []));
+  for (const token of tokens) {
+    const seen = live.seen.get(token)?.displayName;
+    if (seen) {
+      names.set(token, seen);
+      continue;
+    }
+    const accountId = await resolver.resolve(token);
+    const name = accountId ? await jira.getUserName(accountId) : null;
+    if (name) names.set(token, name);
+  }
+  return names;
+}
+
+/** The seal summary with account ids in place of party tokens; a closed account gives an empty id and a flag. */
+async function resolveSummary(summary: SealSummary | undefined, resolver: PartyResolver): Promise<SealSummary | undefined> {
+  if (!summary) return summary;
+  const sealedBy = await resolver.resolve(summary.sealedByAccountId);
+  const revokedBy = summary.revocation ? await resolver.resolve(summary.revocation.revokedByAccountId) : null;
+  return {
+    ...summary,
+    sealedByAccountId: sealedBy ?? '',
+    ...(sealedBy ? {} : { sealedByClosed: true }),
+    revocation: summary.revocation
+      ? { ...summary.revocation, revokedByAccountId: revokedBy ?? '', ...(revokedBy ? {} : { revokedByClosed: true }) }
+      : null
   };
 }
 
@@ -587,7 +708,8 @@ export async function issueChangedFlow(event: any, deps: LedgerSealDeps): Promis
     const repo = new SealRepository(deps.storage);
     const now = new Date().toISOString();
     if (!(await repo.getWorkEffort(issueId))) return { recorded: false };
-    const live = await readLiveSnapshot(deps.jira, issueId, now);
+    const party = await new PartyRepository(deps.storage).partyForRead();
+    const live = await readLiveSnapshot(deps.jira, issueId, now, { party });
     if (!live) return { recorded: false };
     const evaluation = await evaluate(repo, issueId, live, now);
     if (evaluation.kind !== 'SEAL') return { recorded: false };
@@ -612,8 +734,18 @@ const VERIFICATION_STEPS = [
   'Check the history: each entry\'s entryHash is the SHA-256 of the canonical JSON of the entry without entryHash, and each prevEntryHash equals the entryHash before it (64 zeros for the first).',
   'Check that the newest LS_SEALED entry names attestation.certificateId.',
   'Check the Ed25519 signature attestation.sig over the canonical JSON of the attestation without sig, with the public key named by attestation.keyId.',
-  'Run: node verify-evidence.mjs <this file> <public key file>. It performs every step and exits 0 only when all pass.'
+  'Run: node verify-evidence.mjs <this file> <public key file>. It performs every step and exits 0 only when all pass.',
+  'Records name people by party token (pty_...). "parties" maps each token in the history to its account id, or null when the account was closed. It is not signed and is not part of any hash.'
 ];
+
+/** Every party token named in the history, for the unsigned parties map of the evidence (ADR-010 decision 10). */
+function historyTokens(history: WorkEffortStatus[]): string[] {
+  const ids = history.flatMap(row => [
+    row.setByPartyId,
+    ...(((row.data?.changes as any[]) ?? []).flatMap(c => (Array.isArray(c?.changedBy) ? c.changedBy : [])) as string[])
+  ]);
+  return [...new Set(ids.filter(isPartyToken))].sort();
+}
 
 /**
  * Evidence for an auditor (spec v2 section 11): a signed attestation of the stored state, the canonical
@@ -635,6 +767,9 @@ export async function evidenceFlow(payload: any, context: any, deps: LedgerSealD
     history.push(...(await repo.getStatusRows(issue.id, from, seal.workEffort.statusHead.seq)));
   }
   const now = new Date().toISOString();
+  const resolver = new PartyResolver(new PartyRepository(deps.storage));
+  const parties: Record<string, string | null> = {};
+  for (const token of historyTokens(history)) parties[token] = await resolver.resolve(token);
   return {
     format: 'ledgerseal-evidence/1',
     exportedAt: now,
@@ -642,6 +777,7 @@ export async function evidenceFlow(payload: any, context: any, deps: LedgerSealD
     attestation: buildAttestation(attestationSource(seal), STORED_STATUS[seal.workEffort.currentStatusId], now, deps.signer ?? null),
     snapshot: canonicalForm(snapshot),
     history,
+    parties,
     verification: VERIFICATION_STEPS
   };
 }
@@ -671,16 +807,19 @@ export async function revokeFlow(payload: any, context: any, deps: LedgerSealDep
   if (!transitionName) return fail('INVALID_REQUEST', 'This seal is already revoked.');
 
   const now = new Date().toISOString();
+  const parties = new PartyRepository(deps.storage);
+  const party = await parties.partyForWrite();
   const row = buildStatusRow(we.statusHead, {
     workEffortId: we.workEffortId,
     statusId: 'LS_REVOKED',
     statusDatetime: now,
-    setByPartyId: accountId,
+    setByPartyId: party(accountId),
     reason,
     transitionName,
     data: { certificateId: we.currentContentId }
   });
   if (!(await repo.appendStatus(row))) return fail('CONFLICT');
+  await parties.register([accountId], party, now);
 
   const ended = { ...seal.assignment, thruDate: now };
   const updated: LoadedSeal = {

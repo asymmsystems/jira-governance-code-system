@@ -22,7 +22,6 @@ const seal = {
   state: 'ACTIVE' as const,
   sealedAt: '2026-11-01T08:35:00.000Z',
   sealedByAccountId: 'ann',
-  sealedByName: 'Ann Approver',
   meaning: 'APPROVAL',
   reason: null,
   declarationVersion: '1',
@@ -284,5 +283,23 @@ describe('B-15 structure', () => {
     expect(nextStepText('LICENSE_INACTIVE', false, false)).toContain('Ask your Jira administrator to renew');
     expect(nextStepText('ERROR', false, false)).toContain('Retry or refresh');
     expect(nextStepText('LOADING', false, false)).toContain('Waiting for seal verification');
+  });
+});
+
+describe('ADR-010 closed accounts in the panel', () => {
+  it('shows "a closed account" for a closed signer, revoker and changer', () => {
+    const closedSeal = { ...seal, sealedByAccountId: '', sealedByClosed: true, revocation: { revokedAt: '2026-11-02T00:00:00.000Z', revokedByAccountId: '', revokedByClosed: true, reason: 'x' } };
+    const revoked = view(result('SEAL_REVOKED', { seal: closedSeal }));
+    expect(revoked.seal).toMatchObject({ signerAccountId: '', signerClosed: true });
+    expect(revoked.revokedByClosed).toBe(true);
+    expect(revoked.revokedByAccountId).toBeUndefined();
+    const changed = view(result('SEAL_BROKEN', { tamperedFields: [{ fieldId: 'summary', fieldName: 'Summary', sealedValue: 'a', liveValue: 'b', changedBy: [], changedByClosed: 2 }] }));
+    expect(changed.changes[0]).toMatchObject({ changedBy: [], changedByClosed: 2 });
+  });
+
+  it('shows the signer by account id when the account is open', () => {
+    const v = view(result('SEAL_VALID'));
+    expect(v.seal).toMatchObject({ signerAccountId: 'ann', signerClosed: false });
+    expect(view(result('SEAL_BROKEN', { tamperedFields: [{ fieldId: 'summary', fieldName: 'Summary', sealedValue: 'a', liveValue: 'b' }] })).changes[0].changedByClosed).toBe(0);
   });
 });

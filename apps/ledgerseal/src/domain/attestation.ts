@@ -1,7 +1,8 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  *
- * LedgerSeal: the signed ledgerseal-cert attestation, schema v2 (spec v2 section 8).
+ * LedgerSeal: the signed ledgerseal-cert attestation, schema 3 (spec v2 section 8, ADR-010 decision 8).
+ * It names no person: any user who can browse the issue can read the property.
  * The app signs with an Ed25519 private key held in a Forge encrypted variable. Anyone verifies with the public key.
  * The vendor holds the private key, so a valid signature shows that LedgerSeal wrote the record, not that the vendor could not.
  *
@@ -18,7 +19,6 @@ export interface AttestationSource {
   snapshotHash: string;
   canonicalizerVersion: string;
   sealedAt: string;
-  sealedByAccountId: string;
   everCompromised: boolean;
   incidentCount: number;
 }
@@ -26,14 +26,13 @@ export interface AttestationSource {
 export type AttestationStatus = 'SEAL_VALID' | 'SEAL_BROKEN' | 'SEAL_COMPROMISED' | 'SEAL_REVOKED';
 
 export interface Attestation {
-  schemaVersion: 2;
+  schemaVersion: 3;
   issueId: string;
   status: AttestationStatus;
   certificateId: string;
   snapshotHash: string;
   canonicalizerVersion: string;
   sealedAt: string;
-  sealedByAccountId: string;
   /** A string, because entity property indexes have no boolean type. */
   everCompromised: 'true' | 'false';
   incidentCount: number;
@@ -75,14 +74,13 @@ export function signerFromEnvironment(env: Record<string, string | undefined>): 
 
 export function buildAttestation(source: AttestationSource, status: AttestationStatus, issuedAt: string, signer: Signer | null): Attestation {
   const body: Attestation = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     issueId: source.issueId,
     status,
     certificateId: source.certificateId,
     snapshotHash: source.snapshotHash,
     canonicalizerVersion: source.canonicalizerVersion,
     sealedAt: source.sealedAt,
-    sealedByAccountId: source.sealedByAccountId,
     everCompromised: source.everCompromised ? 'true' : 'false',
     incidentCount: source.incidentCount,
     issuedAt

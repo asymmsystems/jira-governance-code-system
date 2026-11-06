@@ -6,9 +6,10 @@
 
 import api from '@forge/api';
 import Resolver from '@forge/resolver';
-import { kvs } from '@forge/kvs';
+import { kvs, WhereConditions } from '@forge/kvs';
 import { validateTransitionGate } from './validator/workflow-validator';
 import { SealRepository, StorageProvider } from './storage/seal-repository';
+import { PartyRepository } from './storage/party-repository';
 import { createJiraClient } from './jira/jira-client';
 import { signerFromEnvironment } from './domain/attestation';
 import {
@@ -59,6 +60,19 @@ class ForgeKvsProvider implements StorageProvider {
     }
     await tx.execute();
   }
+
+  async query(prefix: string): Promise<{ key: string; value: any }[]> {
+    const out: { key: string; value: any }[] = [];
+    let cursor: string | undefined;
+    do {
+      let q = kvs.query().where('key', WhereConditions.beginsWith(prefix)).limit(100);
+      if (cursor) q = q.cursor(cursor);
+      const page = await q.getMany<any>();
+      for (const r of page.results) out.push({ key: r.key, value: r.value });
+      cursor = page.nextCursor;
+    } while (cursor);
+    return out;
+  }
 }
 
 export function forgeDeps(asUser: boolean): LedgerSealDeps {
@@ -94,9 +108,12 @@ export async function validateTransition(payload: any, context?: any, deps: Ledg
 
   // Read the live issue and apply transition-screen modifiedFields if present
   const modifiedFields = payload?.transition?.modifiedFields;
-  const live = await readLiveSnapshot(deps.jira, issueId || issueKey, now, raw =>
-    modifiedFields && typeof modifiedFields === 'object' && raw?.fields ? { ...raw, fields: { ...raw.fields, ...modifiedFields } } : raw
-  );
+  const party = await new PartyRepository(deps.storage).partyForRead();
+  const live = await readLiveSnapshot(deps.jira, issueId || issueKey, now, {
+    party,
+    apply: raw =>
+      modifiedFields && typeof modifiedFields === 'object' && raw?.fields ? { ...raw, fields: { ...raw.fields, ...modifiedFields } } : raw
+  });
   // Fail closed, name the real cause, and write nothing (LS-08, LS-19)
   if (!live) {
     return { result: false, errorMessage: JIRA_UNREACHABLE_MESSAGE };
@@ -135,7 +152,6 @@ export async function validateTransition(payload: any, context?: any, deps: Ledg
     {
       certificateId: we.currentContentId,
       sealedAt: summary?.sealedAt,
-      signerName: summary?.sealedByName,
       revocationReason: summary?.revocation?.reason,
       revokedAt: summary?.revocation?.revokedAt
     }

@@ -108,6 +108,8 @@ export interface FieldDiff {
   detail?: string;
   /** Set on panel responses: who changed the item after the seal, and when (from the change log or the comment). */
   changedBy?: string[];
+  /** How many of the people who changed the item have closed accounts (ADR-010). */
+  changedByClosed?: number;
   changedAt?: string | null;
 }
 
@@ -142,8 +144,9 @@ export interface SealSummary {
   certificateId: string;
   state: 'ACTIVE' | 'REVOKED';
   sealedAt: string;
+  /** The signer's account id; empty when the account was closed (then `sealedByClosed`). */
   sealedByAccountId: string;
-  sealedByName: string;
+  sealedByClosed?: boolean;
   meaning: string;
   reason: string | null;
   declarationVersion: string;
@@ -151,7 +154,7 @@ export interface SealSummary {
   canonicalizerVersion: string;
   everCompromised: boolean;
   incidentCount: number;
-  revocation: { revokedAt: string; revokedByAccountId: string; reason: string } | null;
+  revocation: { revokedAt: string; revokedByAccountId: string; revokedByClosed?: boolean; reason: string } | null;
   historyLength: number;
 }
 
@@ -204,6 +207,8 @@ export interface SealedWorkEffort {
     declarationVersion: string;
     statusAtSeal: string;
     snapshotParts: number;
+    /** Set by the redaction event of ADR-010 decision 7: an older-version record whose people are party tokens. */
+    parties?: 'TOKEN';
   };
   everCompromised: boolean;
   incidentCount: number;
@@ -243,7 +248,6 @@ export interface WorkflowTransitionValidationResult {
   details?: {
     certificateId?: string;
     sealedAt?: string;
-    signerName?: string;
     tamperCount?: number;
   };
 }
