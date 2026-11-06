@@ -111,6 +111,8 @@ export function statusToAppearance(state: string, verification?: string): Lozeng
       return verification === 'NOT_VERIFIED' ? 'inprogress' : 'success';
     case 'MISSING':
       return 'removed';
+    case 'REPORTED':
+      return 'inprogress';
     case 'EXCEPTED':
       return 'moved';
     case 'NEEDS_RECHECK':

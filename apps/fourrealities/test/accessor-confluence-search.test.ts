@@ -95,7 +95,7 @@ describe('DefaultForgeConfluenceSearchAccessor', () => {
 
     const res403 = await accessor403.searchPages('ADR');
     expect(res403.ok).toBe(false);
-    expect(res403.error).toContain('permission');
+    expect(res403.error).toBe('Confluence refused the search (HTTP 403). Either you cannot search Confluence, or FourRealities has no access to Confluence on this site. You can still enter the page address and title by hand.');
 
     const accessor401 = new DefaultForgeConfluenceSearchAccessor(async () => ({
       status: 401,
@@ -104,7 +104,7 @@ describe('DefaultForgeConfluenceSearchAccessor', () => {
 
     const res401 = await accessor401.searchPages('ADR');
     expect(res401.ok).toBe(false);
-    expect(res401.error).toContain('permission');
+    expect(res401.error).toContain('HTTP 401');
   });
 
   it('reports Confluence status error on 500', async () => {
@@ -131,5 +131,48 @@ describe('DefaultForgeConfluenceSearchAccessor', () => {
   it('instantiates with default requester without errors', () => {
     const accessor = new DefaultForgeConfluenceSearchAccessor();
     expect(accessor.serviceType).toBe('accessor');
+  });
+});
+
+describe('F-H4: Confluence pages are checked by id', () => {
+  const { confluencePageId } = require('../src/accessor/issue-facts');
+  const pathOf = (r: any): string => (typeof r === 'string' ? r : r.value);
+
+  it('reads the page id from a global id or a page URL, and none from a tiny link', () => {
+    expect(confluencePageId('appId=abc&pageId=123', undefined)).toBe('123');
+    expect(confluencePageId(undefined, 'https://s.atlassian.net/wiki/spaces/A/pages/456/ADR')).toBe('456');
+    expect(confluencePageId(undefined, 'https://s.atlassian.net/wiki/spaces/A/pages/789')).toBe('789');
+    expect(confluencePageId(undefined, 'https://s.atlassian.net/wiki/pages/viewpage.action?pageId=321')).toBe('321');
+    expect(confluencePageId(undefined, 'https://s.atlassian.net/wiki/x/AbCd')).toBeUndefined();
+    expect(confluencePageId(undefined, undefined)).toBeUndefined();
+    // L-2: a global id and an address that name different pages give no id to check.
+    expect(confluencePageId('appId=abc&pageId=123', 'https://s.atlassian.net/wiki/spaces/A/pages/999/Other')).toBeUndefined();
+    expect(confluencePageId('appId=abc&pageId=123', 'https://s.atlassian.net/wiki/spaces/A/pages/123/Same')).toBe('123');
+  });
+
+  it('asks Confluence for the ids in batches of 50 and marks each link', async () => {
+    const requester = jest.fn(async (r: any) => {
+      const cql = decodeURIComponent(pathOf(r));
+      return { status: 200, json: async () => ({ results: cql.includes('(1,') ? [{ id: '1' }, { id: 7 }] : [{ title: 'no id' }] }) };
+    });
+    const a = new DefaultForgeConfluenceSearchAccessor(requester);
+    const ids = Array.from({ length: 60 }, (_, i) => String(i + 1));
+    expect(await a.existingPages([...ids, 'x', '1'], Date.now() + 10_000)).toEqual(new Set(['1', '7']));
+    expect(requester).toHaveBeenCalledTimes(2);
+    expect(decodeURIComponent(pathOf(requester.mock.calls[0][0]))).toMatch(/^\/wiki\/rest\/api\/content\/search\?cql=id in \(1,2,.*,50\)&limit=50$/);
+    const marked = await a.checkPages(new Map([['10', [{ url: 'u', pageId: '1' }, { url: 'v', pageId: '2' }, { url: 'w' }]]]), Date.now() + 10_000);
+    expect(marked.get('10')).toEqual([{ url: 'u', pageId: '1', pageExists: true }, { url: 'v', pageId: '2', pageExists: false }, { url: 'w' }]);
+  });
+
+  it('leaves links unchecked when there is no id, Confluence refuses or throws, or the deadline passed', async () => {
+    const links = new Map([['10', [{ url: 'u', pageId: '1' }]]]);
+    const none = new Map([['10', [{ url: 'u' }]]]);
+    const never = jest.fn();
+    expect(await new DefaultForgeConfluenceSearchAccessor(never).checkPages(none, Date.now() + 10_000)).toBe(none);
+    expect(never).not.toHaveBeenCalled();
+    expect(await new DefaultForgeConfluenceSearchAccessor(async () => ({ status: 403, json: async () => ({}) })).checkPages(links, Date.now() + 10_000)).toBe(links);
+    expect(await new DefaultForgeConfluenceSearchAccessor(async () => { throw new Error('no app access'); }).existingPages(['1'], Date.now() + 10_000)).toBeNull();
+    expect(await new DefaultForgeConfluenceSearchAccessor(async () => ({ status: 200, json: async () => null })).existingPages(['1'], Date.now() + 10_000)).toEqual(new Set());
+    expect(await new DefaultForgeConfluenceSearchAccessor(never).existingPages(['1'], Date.now() - 1)).toBeNull();
   });
 });

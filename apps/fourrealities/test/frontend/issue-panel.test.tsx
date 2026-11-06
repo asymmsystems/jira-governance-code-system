@@ -17,9 +17,12 @@ jest.mock('@forge/bridge', () => require('./forge-mocks').bridgeMock());
 
 import { IssuePanel } from '../../src/frontend/issue-panel';
 
-async function mount(r: any, onReload = jest.fn(), onRow = jest.fn(), defaultCollapsed = false) {
+/** The requester's view by default: may withdraw, may decide (the server still checks). */
+const REQUESTER_APPROVER = { canDecide: true, isRequester: true };
+
+async function mount(r: any, onReload = jest.fn(), onRow = jest.fn(), defaultCollapsed = false, approval: any = REQUESTER_APPROVER) {
   let renderer: any;
-  await act(async () => { renderer = TestRenderer.create(<IssuePanel row={r} onReload={onReload} onRow={onRow} defaultCollapsed={defaultCollapsed} />); });
+  await act(async () => { renderer = TestRenderer.create(<IssuePanel row={r} approval={approval} onReload={onReload} onRow={onRow} defaultCollapsed={defaultCollapsed} />); });
   return renderer;
 }
 
@@ -60,7 +63,8 @@ describe('IssuePanel', () => {
     await act(async () => { findButton(r.root, 'Why 67%?').props.onClick(); });
     const text = textOf(r.toJSON());
     expect(text).toContain('Intent: 0 (evidence missing)');
-    expect(text).toContain('Process: +33 (evidence found)');
+    expect(text).toContain('Process: +34 (evidence found)');
+    expect(text).toContain('Audit: +33 (evidence found)');
     expect(text).toContain('Fix Intent to reach 100%.');
     await act(async () => { findButton(r.root, 'Hide the score parts').props.onClick(); });
     expect(textOf(r.toJSON())).not.toContain('Intent: 0 (evidence missing)');
@@ -117,7 +121,7 @@ describe('IssuePanel', () => {
     await settle(act);
 
     expect(bridgeState.invoke).toHaveBeenCalledWith('linkDecision', { issueId: '7', issueKey: 'DEMO-7', url: 'https://s.atlassian.net/wiki/x', title: 'ADR-7' });
-    expect(onRow).toHaveBeenCalledWith(after);
+    expect(onRow).toHaveBeenCalledWith(after, undefined);
     expect(onReload).not.toHaveBeenCalled();
     expect(textOf(r.toJSON())).toContain('Link added. Intent: Evidence found.');
     expect(findAll(r.root, 'Modal')).toHaveLength(0);
@@ -289,6 +293,28 @@ describe('IssuePanel', () => {
       expect(bridgeState.invoke).toHaveBeenLastCalledWith('decideException', expect.objectContaining({ decision: 'WITHDRAW', reason: '' }));
     });
 
+    it('ADR-013: disables the decisions with the standard note when the viewer may not decide, and offers Withdraw only to the requester', async () => {
+      const waiting = row('DEMO-22', missingCode, { codeException: { ...base, status: 'REQUESTED' } });
+      const note = 'Requires Project Admin, Jira Admin, or membership in an authorized group. Configured by your Jira administrator in Jira Settings > Apps > FourRealities gate authority.';
+      const r = await mount(waiting, jest.fn(), jest.fn(), false, { canDecide: false, isRequester: false, note });
+      expect(findButton(r.root, 'Approve exception').props.isDisabled).toBe(true);
+      expect(findButton(r.root, 'Reject exception').props.isDisabled).toBe(true);
+      expect(() => findButton(r.root, 'Withdraw request')).toThrow('No button');
+      expect(textOf(r.toJSON())).toContain(note);
+      const unknown = await mount(waiting, jest.fn(), jest.fn(), false, null);
+      expect(findButton(unknown.root, 'Approve exception').props.isDisabled).toBe(true);
+      expect(textOf(unknown.toJSON())).toContain('FourRealities could not check whether you may decide. Use Refresh.');
+      const approved = await mount(row('DEMO-23', { intent: F, process: NA, code: { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' }, audit: NA }, { codeException: { ...base, status: 'APPROVED', decidedBy: 'a', decidedAt: '2026-11-02T00:00:00Z' } }), jest.fn(), jest.fn(), false, { canDecide: false, isRequester: false, note: 'You are the assignee of this issue, so another approver must decide.' });
+      expect(findButton(approved.root, 'Revoke exception').props.isDisabled).toBe(true);
+      expect(textOf(approved.toJSON())).toContain('You are the assignee of this issue, so another approver must decide.');
+    });
+
+    it('ADR-014: shows "a former user" for an erased account', async () => {
+      const r = await mount(row('DEMO-24', { intent: F, process: NA, code: { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' }, audit: NA }, { codeException: { ...base, requestedBy: 'erased-account', status: 'APPROVED', decidedBy: 'erased-account', decidedAt: '2026-11-02T00:00:00Z' } }));
+      expect(textOf(r.toJSON())).toContain('a former user');
+      expect(findAll(r.root, 'User', p => p.accountId === 'erased-account')).toHaveLength(0);
+    });
+
     it('offers Revoke on an approved exception, and shows a migrated approval', async () => {
       const state = { ...base, status: 'APPROVED' as const, decidedBy: 'dev-1', decidedAt: '2026-10-01T00:00:00Z', migrated: true };
       const r = await mount(row('DEMO-21', { intent: F, process: NA, code: { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' }, audit: NA }, { codeException: state }));
@@ -342,7 +368,7 @@ describe('IssuePanel', () => {
       bridgeState.invoke.mockResolvedValueOnce({ success: true, row: after });
       await act(async () => { findButton(r.root, 'Request review').props.onClick(); });
       expect(bridgeState.invoke).toHaveBeenLastCalledWith('requestReview', { issueId: '30', issueKey: 'DEMO-30', comment: 'Please conduct a retrospective code review for this change.' });
-      expect(onRow).toHaveBeenCalledWith(after);
+      expect(onRow).toHaveBeenCalledWith(after, undefined);
       expect(textOf(r.toJSON())).toContain('Review requested. It does not change any gate.');
     });
 

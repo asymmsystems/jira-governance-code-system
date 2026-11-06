@@ -1,71 +1,32 @@
 # FourRealities User Guide
 
-This guide explains how engineering managers, tech leads, and developers can use FourRealities to monitor delivery health, identify alignment drift, and inspect rework bottlenecks.
+![Four Realities issue panel](/assets/fourrealities/02-issue-panel.png)
 
----
+## The issue panel
 
-## 1. Navigating the Project Dashboard
+Open **Four Realities** from an issue's app actions, or in the issue context on the right. The panel shows the four checks as a chain, one sentence about the first gap, the next step, and **Gate findings** with each check's state and source.
 
-To view the suite-wide delivery integrity overview for your project:
-1. In Jira's project sidebar, select **FourRealities Dashboard**.
-2. Select your active sprint or release version from the filter selector.
+| State | Meaning | Scored |
+|---|---|---|
+| Evidence found | FourRealities read the evidence (a link, a page Confluence returned, or a record whose signature it verified) | Yes, 100 |
+| Evidence found (heuristic) | A merged or open pull request in the Development field | Yes, 100 |
+| Evidence found (link only) | A Confluence link whose page could not be checked | Yes, 100 |
+| Evidence missing | The check applies and there is no evidence, or the record could not be verified (unsigned, unknown key, changed, copied, or older than one already seen); the text says which | Yes, 0 |
+| Not used on this site | The administrator does not use this check | No |
+| Not applicable | The check does not apply yet (for example, work not started or not done) | No |
+| Excepted | An approved Code exception | No |
 
-![FourRealities Project Dashboard](/assets/fourrealities/01-dashboard.png)
+**Why N%?** lists what each check adds to the Reality Alignment Index (RAI).
 
-The dashboard presents:
-- **Project RAI Score:** Overall delivery alignment composite score (0 to 100).
-- **Reality Breakdown Grid:** Visual score cards for **Intent**, **Process**, **Code**, and **Audit**.
-- **Drift Hotspots:** List of tickets displaying the highest divergence across the four realities.
-- **Rework Loop Watchlist:** Issues with repetitive status bounce-backs.
+## Actions
 
----
+- **Link decision record:** search Confluence by title, or enter a page address on this site, and add a Jira remote link as you.
+- **Request Code exception:** for finished work with no pull request. An approver who is not you and not the assignee decides.
+- **Add rework reason:** when the issue went back from done, or from in progress to to do. Reasons never change a check.
+- **Request retrospective review:** posts a comment as you when a pull request was merged. It does not claim a review happened.
 
-## 2. The Issue Glance & Panel
+## The project dashboard
 
-When viewing an individual Jira issue, FourRealities provides two interface entry points:
+![Four Realities dashboard](/assets/fourrealities/01-dashboard.png)
 
-### The Issue Glance
-Located in the issue details sidebar, the glance shows the issue's individual alignment state at a glance:
-- **Green Badge (90-100):** Fully aligned.
-- **Yellow Badge (70-89):** Minor drift detected.
-- **Red Badge (<70):** Divergence detected.
-
-![FourRealities Issue Glance](/assets/fourrealities/02-rai-glance.png)
-
-### The Issue Panel
-Clicking the glance opens the expanded FourRealities panel, revealing detailed telemetry for each reality:
-
-![FourRealities Drift Breakdown](/assets/fourrealities/05-drift-breakdown.png)
-
-1. **Intent Reality:**
-   - Displays linked Confluence specification pages, Product Requirement Documents (PRDs), and Architectural Decision Records (ADRs).
-   - Alerts if a story has transitioned to "In Progress" without acceptance criteria or design links.
-2. **Process Reality:**
-   - Evaluates transition velocity, estimation accuracy, and workflow adherence.
-   - Highlights skipped workflow stages or missing assignees.
-3. **Code Reality:**
-   - Lists connected branches, commit counts, open pull requests, and merged pull requests.
-   - Shows code review approvals, rejected reviews, and unreviewed pull requests.
-4. **Audit Reality:**
-   - Summarizes automated testing passes, compliance gates, and transition count.
-
----
-
-## 3. Detecting and Understanding Rework Loops
-
-A primary cause of delivery schedule delays is hidden rework: tickets that bounce repeatedly between QA/Review and Development because requirements were incomplete or tests failed.
-
-![Rework Loop Alert](/assets/fourrealities/03-rework-alert.png)
-
-When an issue bounces between review and development more than the configured threshold:
-- A prominent **Rework Loop Warning** banner appears on the issue panel.
-- The banner displays the exact transition history, identifying which transitions caused the cycle.
-- The issue's Audit Reality score is penalized, immediately signaling risk on the main dashboard.
-
----
-
-## 4. Best Practices for Developers
-
-- **Include Ticket Keys in Branch Names:** Always name branches with the Jira key (e.g., `feature/PROJ-123-auth`) so Jira and FourRealities automatically associate commits.
-- **Link Design Docs Early:** Add Confluence or ADR links to the ticket before moving it from Backlog to In Progress.
-- **Require Peer Approval:** Ensure pull requests receive at least one approved code review before merging to maintain Code Reality health.
+Open **Four Realities** in the project navigation: audit readiness, one card per check (or "Not used"), the checks in use on this site, Priority actions, Coverage at a glance, the Issue triage table with filters (search, assignee, sprint, gate, risk and presets) and a four-week trend for the whole project. You see only the issues you can browse in Jira.

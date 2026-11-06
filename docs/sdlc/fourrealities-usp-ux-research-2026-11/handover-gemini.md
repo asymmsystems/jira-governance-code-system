@@ -12,7 +12,7 @@ You continue a build that a previous agent (Claude) ran on 2026-11-01. Read this
 | Research, backlog, round log, final report | `docs/sdlc/fourrealities-usp-ux-research-2026-11/` (`research-brief.md`, `ux-spec.md`, `backlog.md`, `round-log.md`, `final-report.md`, this file) |
 | Spec (working copy; v1 is frozen) | `docs/spec/fourrealities-spec-v2.md` |
 | ADRs and HLD | `architecture/decision/adr-00001-fourrealities-evidence-data-model.org`, `adr-00002-fourrealities-volatility-layering.org`, `architecture/model/fourrealities-domain-model.org` |
-| Listing draft (v1 and the live listing are unchanged) | `docs/marketplace/fourrealities-listing-v2.md` |
+| Listing (the 2026-11-01 draft `fourrealities-listing-v2.md` was deleted on 2026-11-06; its content is superseded) | `docs/marketplace/fourrealities-listing.md` |
 | Harness, graders, sources | `~/.cache/gemini-earning-fourrealities-research/` (`run.sh`, `graders.sh`, `harness/resolver-after.test.ts`, `sources/`) |
 | Jira site | `https://asymmsystems.atlassian.net` |
 | Dashboard on DEMO | `https://asymmsystems.atlassian.net/jira/servicedesk/projects/DEMO/apps/974e4981-7626-4b1c-a41f-7eaccb7f3605/c9d5ad8b-0b9e-41eb-9bca-a0384f708c20` |

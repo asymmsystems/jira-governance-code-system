@@ -36,7 +36,7 @@ export interface ApproverPolicy {
 - LedgerSeal: `ledgerseal:cfg:approver_policy`
 - DefinitionGuard: `definitionguard:cfg:approver_policy`
 - CascadePlan: `cascadeplan:cfg:approver_policy`
-- FourRealities: `fourrealities:cfg:approver_policy`
+- FourRealities: `fr:cfg:approver_policy`
 
 ---
 
@@ -47,7 +47,7 @@ Administrators configure authorized approver groups via dedicated settings pages
 - **LedgerSeal:** `LedgerSeal approvers`
 - **DefinitionGuard:** `DefinitionGuard approvers`
 - **CascadePlan:** `CascadePlan approvers`
-- **FourRealities:** `FourRealities approvers`
+- **FourRealities:** `FourRealities gate authority` (also holds the evidence sources and decision issue types)
 
 ### Configuration Workflow
 1. Navigate to the app admin page.
@@ -65,4 +65,4 @@ Administrators configure authorized approver groups via dedicated settings pages
 | **LedgerSeal** | Sealing, Resealing, or Revoking an Issue | User must belong to an authorized approver group. User must NOT be the author of the most recent ticket change. |
 | **DefinitionGuard** | Granting an Audited Waiver | User must have waiver authority. User must enter an obligatory justification comment. |
 | **CascadePlan** | Freezing a Baseline or Approving a Scope Shift | User must belong to the authorized baseline authority group. |
-| **FourRealities** | Overriding an Architectural Drift Alert | User must belong to the authorized architecture decision group. |
+| **FourRealities** | Approving, rejecting or revoking a Code exception | User must be a project or Jira administrator or belong to an approver group, and must not be the requester or the issue's assignee. |

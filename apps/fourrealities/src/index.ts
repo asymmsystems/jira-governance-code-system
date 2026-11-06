@@ -6,8 +6,8 @@
  */
 
 import Resolver from '@forge/resolver';
-import { CallerContext, DecideExceptionPayload, ForgeContext, IssueRow, LinkDecisionPayload, ProjectDashboardView, RecordExceptionPayload, RequestReviewPayload, ResolverResult, ScheduledRunResult, WriteResult } from './contract/data/models';
-import { ConfluencePage, ConfluencePageSearchAccessor, StorageProvider } from './contract/accessors';
+import { AdminResult, AdminView, ApprovalView, PersonalDataRunResult, CallerContext, DecideExceptionPayload, ForgeContext, IssueRow, LinkDecisionPayload, ProjectDashboardView, RecordExceptionPayload, RequestReviewPayload, ResolverResult, ScheduledRunResult, WriteResult } from './contract/data/models';
+import { ConfluencePage, ConfluencePageSearchAccessor, PrivacyReportAccessor, StorageProvider } from './contract/accessors';
 import { DefaultForgeKvsStore } from './accessor/default-forge-kvs-store';
 import { DefaultForgeConfluenceSearchAccessor } from './accessor/default-forge-confluence-search-accessor';
 import { DefaultForgeJiraIssueAccessor, Principal } from './accessor/default-forge-jira-issue-accessor';
@@ -17,6 +17,8 @@ import { DefaultKvsReworkNoteAccessor } from './accessor/default-kvs-rework-note
 import { DefaultForgeAppContextAccessor } from './accessor/default-forge-app-context-accessor';
 import { DefaultKvsExceptionEventAccessor } from './accessor/default-kvs-exception-event-accessor';
 import { requestAs } from './accessor/default-forge-jira-issue-accessor';
+import { attestationChecker, trustedKeysFor } from './accessor/attestation-verifier';
+import { TrustedKey } from './accessor/attestation-keys';
 import { DefaultGateEngine } from './engine/default-gate-engine';
 import { DefaultMetricsEngine } from './engine/default-metrics-engine';
 import { DefaultSnapshotEngine } from './engine/default-snapshot-engine';
@@ -24,14 +26,36 @@ import { DefaultPolicyEngine } from './engine/default-policy-engine';
 import { DefaultExceptionPolicyEngine } from './engine/default-exception-policy-engine';
 import { DefaultSnapshotManager } from './manager/default-snapshot-manager';
 import { DefaultIssueEvidenceManager } from './manager/default-issue-evidence-manager';
+import { DefaultKvsSettingsAccessor } from './accessor/default-kvs-settings-accessor';
+import { DefaultKvsAttestationHistoryAccessor } from './accessor/default-kvs-attestation-history-accessor';
+import { DefaultForgeJiraDirectoryAccessor } from './accessor/default-forge-jira-directory-accessor';
+import { DefaultSourcePolicyEngine } from './engine/default-source-policy-engine';
+import { DefaultAdminManager } from './manager/default-admin-manager';
+import { DefaultPersonalDataManager } from './manager/default-personal-data-manager';
+import { DefaultKvsPersonalDataAccessor } from './accessor/default-kvs-personal-data-accessor';
+import { DefaultForgePrivacyAccessor } from './accessor/default-forge-privacy-accessor';
 import { DefaultExceptionManager } from './manager/default-exception-manager';
 
-/** Time a resolver may spend on Jira reads, inside the 25 s Forge limit. */
-export const RESOLVER_LINK_BUDGET_MS = 18_000;
+/**
+ * Time one resolver invocation may spend, from its start, inside the 25 s Forge limit. Every Jira
+ * read and the page view's own steps share this one deadline (F-H2).
+ */
+export const RESOLVER_LINK_BUDGET_MS = 20_000;
 /** Time the daily snapshot run may spend across all projects, inside its 600 s timeout. */
 export const SCHEDULED_BUDGET_MS = 540_000;
 
 let globalStorageProvider: StorageProvider | null = null;
+let trustedKeysOverride: readonly TrustedKey[] | null = null;
+
+/** Replaces the trusted sibling keys for every later call (tests and tools); null restores the bundled keys. */
+export function setTrustedKeys(keys: readonly TrustedKey[] | null): void {
+  trustedKeysOverride = keys;
+}
+
+/** The keys trusted in this Forge environment (ADR-012). */
+function trustedKeys(): readonly TrustedKey[] {
+  return trustedKeysOverride || trustedKeysFor(new DefaultForgeAppContextAccessor().environmentType());
+}
 
 /** Replaces the storage for every later call (tests and tools). */
 export function setGlobalStorageProvider(provider: StorageProvider | null): void {
@@ -49,8 +73,9 @@ export function resolveStorage(customProvider?: StorageProvider): StorageProvide
 export function compose(storageProvider: StorageProvider | undefined, budgetMs: number, configPrincipal: Principal) {
   const storage = resolveStorage(storageProvider);
   const deadline = Date.now() + budgetMs;
-  const appJira = new DefaultForgeJiraIssueAccessor('app', () => deadline);
-  const userJira = new DefaultForgeJiraIssueAccessor('user', () => deadline);
+  const verify = attestationChecker(trustedKeys());
+  const appJira = new DefaultForgeJiraIssueAccessor('app', () => deadline, undefined, verify);
+  const userJira = new DefaultForgeJiraIssueAccessor('user', () => deadline, undefined, verify);
   const siteConfig = new DefaultKvsSiteConfigAccessor(storage, requestAs(configPrincipal, () => deadline));
   const notes = new DefaultKvsReworkNoteAccessor(storage);
   const events = new DefaultKvsExceptionEventAccessor(storage);
@@ -58,11 +83,21 @@ export function compose(storageProvider: StorageProvider | undefined, budgetMs: 
   const gates = new DefaultGateEngine();
   const metrics = new DefaultMetricsEngine();
   const policy = new DefaultPolicyEngine();
+  const settings = new DefaultKvsSettingsAccessor(storage);
+  const sources = new DefaultSourcePolicyEngine();
+  const history = new DefaultKvsAttestationHistoryAccessor(storage);
+  const directory = new DefaultForgeJiraDirectoryAccessor(requestAs('user', () => deadline));
+  const appConfluence = new DefaultForgeConfluenceSearchAccessor('app');
+  const userConfluence = new DefaultForgeConfluenceSearchAccessor();
   return {
+    settings,
+    sources,
+    directory,
     projects: new DefaultSnapshotManager({
       jira: appJira,
       viewerJira: userJira,
       budgetMs,
+      deadline,
       siteConfig,
       snapshots: new DefaultKvsSnapshotAccessor(storage),
       notes,
@@ -70,10 +105,17 @@ export function compose(storageProvider: StorageProvider | undefined, budgetMs: 
       lifecycle,
       gates,
       metrics,
-      snapshot: new DefaultSnapshotEngine()
+      snapshot: new DefaultSnapshotEngine(),
+      settings,
+      sources,
+      directory,
+      confluence: appConfluence,
+      history
     }),
-    issues: new DefaultIssueEvidenceManager({ userJira, siteConfig, notes, events, lifecycle, gates, metrics, policy }),
-    exceptions: new DefaultExceptionManager({ userJira, siteConfig, notes, events, policy, lifecycle })
+    issues: new DefaultIssueEvidenceManager({ userJira, siteConfig, notes, events, lifecycle, gates, metrics, policy, settings, sources, confluence: userConfluence, history }),
+    exceptions: new DefaultExceptionManager({ userJira, appJira, directory, settings, siteConfig, notes, events, policy, lifecycle }),
+    admin: new DefaultAdminManager({ directory, settings, siteConfig, sources }),
+    personalData: (privacy: PrivacyReportAccessor) => new DefaultPersonalDataManager({ data: new DefaultKvsPersonalDataAccessor(storage), privacy, events, notes, lifecycle, appJira })
   };
 }
 
@@ -128,10 +170,34 @@ export const snapshot = async (): Promise<void> => {
   console.log('FourRealities: scheduled snapshot', JSON.stringify(result));
 };
 
+/**
+ * Weekly personal data run (ADR-014): reports every stored account id, erases closed accounts.
+ * It runs whatever the licence state: the duty to report and erase does not end with a licence.
+ */
+export async function reportPersonalData(storageProvider?: StorageProvider, privacy: PrivacyReportAccessor = new DefaultForgePrivacyAccessor()): Promise<PersonalDataRunResult> {
+  return compose(storageProvider, SCHEDULED_BUDGET_MS, 'app').personalData(privacy).run();
+}
+
+/** Forge scheduledTrigger handler (manifest function "personal-data"). */
+export const personalData = async (): Promise<void> => {
+  try {
+    const result = await reportPersonalData();
+    console.log('FourRealities: personal data report', JSON.stringify(result));
+  } catch (err) {
+    console.error('FourRealities: personal data report failed', err instanceof Error ? err.message : String(err));
+  }
+};
+
 /** Evaluates one Jira issue. The issue comes from the Forge context only. */
-export async function getIssueAlignment(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<ResolverResult<{ row: IssueRow }>> {
+export async function getIssueAlignment(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<ResolverResult<{ row: IssueRow; approval?: ApprovalView }>> {
   if (licenceInactive(context)) return LICENCE_READ_ERROR;
-  return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user').issues.evaluate(callerOf(context));
+  const app = compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user');
+  const caller = callerOf(context);
+  const evaluated = await app.issues.evaluate(caller);
+  if (!evaluated.ok) return evaluated;
+  // The decision buttons the viewer may use, checked as the viewer (ADR-013 decision 5).
+  const approval = await app.exceptions.approval(caller, evaluated.row);
+  return approval ? { ...evaluated, approval } : evaluated;
 }
 
 /**
@@ -141,7 +207,9 @@ export async function getIssueAlignment(payload: unknown, context?: ForgeContext
 async function withRow(app: ReturnType<typeof compose>, caller: CallerContext, result: WriteResult): Promise<WriteResult> {
   if (!result.success || !caller.issueId) return result;
   const evaluated = await app.issues.evaluate(caller);
-  return evaluated.ok ? { ...result, row: evaluated.row } : result;
+  if (!evaluated.ok) return result;
+  const approval = await app.exceptions.approval(caller, evaluated.row);
+  return { ...result, row: evaluated.row, ...(approval ? { approval } : {}) };
 }
 
 /**
@@ -242,3 +310,38 @@ resolver.define('searchConfluencePages', async (req) => {
 });
 
 export const handler = resolver.getDefinitions();
+
+const ADMIN_LICENCE_ERROR = { ok: false as const, code: 'LICENSE_INACTIVE' as const, message: LICENCE_INACTIVE_MESSAGE };
+
+/** Admin page: the settings, the checks in use and the approver groups (ADR-013). Jira administrators only. */
+export async function getAdminSettings(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<AdminResult<AdminView>> {
+  if (licenceInactive(context)) return ADMIN_LICENCE_ERROR;
+  return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user').admin.view();
+}
+
+/** Admin page: saves the evidence sources and the decision issue types. */
+export async function saveAdminSources(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<AdminResult<AdminView>> {
+  if (licenceInactive(context)) return ADMIN_LICENCE_ERROR;
+  return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user').admin.saveSources(payload);
+}
+
+/** Admin page: searches Jira groups by name. */
+export async function searchAdminGroups(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<AdminResult<{ groups: Array<{ groupId: string; name: string }> }>> {
+  if (licenceInactive(context)) return ADMIN_LICENCE_ERROR;
+  return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user').admin.searchGroups(payload);
+}
+
+/** Admin page: saves the approver groups (Tier 2). */
+export async function saveAdminApprovers(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider): Promise<AdminResult<AdminView>> {
+  if (licenceInactive(context)) return ADMIN_LICENCE_ERROR;
+  return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user').admin.saveApprovers(payload);
+}
+
+const adminResolver = new Resolver();
+adminResolver.define('fr-admin-get', async req => getAdminSettings(req.payload, req.context));
+adminResolver.define('fr-admin-save-sources', async req => saveAdminSources(req.payload, req.context));
+adminResolver.define('fr-admin-search-groups', async req => searchAdminGroups(req.payload, req.context));
+adminResolver.define('fr-admin-save-approvers', async req => saveAdminApprovers(req.payload, req.context));
+
+/** Forge function of the admin page (manifest function admin-resolver). */
+export const adminHandler = adminResolver.getDefinitions();

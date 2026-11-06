@@ -9,7 +9,7 @@ import * as React from 'react';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const TestRenderer = require('react-test-renderer');
 const { act } = TestRenderer;
-import { bridgeState, textOf, findButton, settle } from './forge-mocks';
+import { bridgeState, textOf, findButton, findAll, flatText, settle } from './forge-mocks';
 import { dashboard, row, F, M_INTENT, M_SEAL, NA } from './rows';
 
 jest.mock('@forge/react', () => require('./forge-mocks').reactMock());
@@ -141,7 +141,7 @@ describe('FourRealitiesApp rendering', () => {
     expect(textOf(renderer.toJSON())).toContain('Four Realities DEMO');
   });
 
-  it('links to the producer panels and offers no seal or DoD action (B-02)', async () => {
+  it('offers no seal or DoD action and no button that only reopens the issue (B-02, BL-4)', async () => {
     bridgeState.context = { extension: { issue: { id: '10001', key: 'DEMO-1' } } };
     bridgeState.invoke.mockResolvedValue({ ok: true, row: row('DEMO-1', { intent: M_INTENT, process: F, code: NA, audit: M_SEAL }) });
 
@@ -153,10 +153,21 @@ describe('FourRealitiesApp rendering', () => {
     expect(text).not.toContain('Seal Issue');
     expect(text).not.toContain('Complete DoD');
 
-    await act(async () => { findButton(renderer.root, 'LedgerSeal Audit Gate').props.onClick(); });
-    expect(bridgeState.routerOpen).toHaveBeenLastCalledWith('/browse/DEMO-1');
-    await act(async () => { findButton(renderer.root, 'DefinitionGuard Checklist').props.onClick(); });
-    expect(bridgeState.routerOpen).toHaveBeenLastCalledWith('/browse/DEMO-1');
+    expect(() => findButton(renderer.root, 'LedgerSeal Audit Gate')).toThrow('No button');
+    expect(() => findButton(renderer.root, 'DefinitionGuard Checklist')).toThrow('No button');
+    expect(text).toContain('Next: link the decision record.');
+  });
+
+  it('passes the approval from the resolver to the panel (ADR-013)', async () => {
+    bridgeState.context = { extension: { issue: { id: '10001', key: 'DEMO-1' } } };
+    const state = { status: 'REQUESTED', issueKey: 'DEMO-1', requestedBy: 'dev-1', requestedAt: '2026-11-01T00:00:00Z', reason: 'Configuration change only' };
+    bridgeState.invoke.mockResolvedValue({ ok: true, row: row('DEMO-1', { intent: F, process: NA, code: { state: 'MISSING', reason: 'PR_NONE' }, audit: NA }, { codeException: state }), approval: { canDecide: false, isRequester: true, note: 'You requested this exception, so another approver must decide.' } });
+    let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<FourRealitiesApp />); });
+    await settle(act);
+    await act(async () => { findAll(renderer.root, 'Button', p => flatText(p.children) === 'Show details')[0]?.props.onClick(); });
+    expect(textOf(renderer.toJSON())).toContain('You requested this exception, so another approver must decide.');
+    findButton(renderer.root, 'Withdraw request');
   });
 
   it('falls back to a generic error text', () => {

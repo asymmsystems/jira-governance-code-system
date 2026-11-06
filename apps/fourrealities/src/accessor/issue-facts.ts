@@ -6,6 +6,7 @@
 
 import { ExceptionRecord, IssueExceptionRecord, IssueFacts, RemoteLink, StatusCategory } from '../contract/data/models';
 import { parseDevField } from './dev-field';
+import { AttestationCheckFn } from './attestation-verifier';
 import { JiraChangelogJson, JiraIssueJson, JiraIssueLinkJson, JiraRemoteLinkJson, JiraStatusJson } from './jira-types';
 
 /** Issue properties read in one search or issue call. Only the producers' own keys. */
@@ -67,13 +68,30 @@ export function normalizeException(value: unknown): ExceptionRecord | undefined 
   };
 }
 
+/**
+ * The Confluence page id of a remote link: from a Confluence application link's global id
+ * (appId=...&pageId=123), or from the URL (/pages/123/... or ?pageId=123). Tiny links have none.
+ */
+export function confluencePageId(globalId: string | undefined, url: string | undefined): string | undefined {
+  const fromGlobal = /(?:^|&)pageId=(\d+)/.exec(String(globalId || ''));
+  const fromUrl = /\/pages\/(\d+)(?:[/?#]|$)/.exec(String(url || '')) || /[?&]pageId=(\d+)/.exec(String(url || ''));
+  // A global id and an address that name different pages cannot be checked (merge review L-2).
+  if (fromGlobal && fromUrl && fromGlobal[1] !== fromUrl[1]) return undefined;
+  return fromGlobal ? fromGlobal[1] : fromUrl ? fromUrl[1] : undefined;
+}
+
 /** Jira remote link objects to contract RemoteLinks. */
 export function normalizeRemoteLinks(raw: JiraRemoteLinkJson[]): RemoteLink[] {
-  return raw.map(rl => ({
-    url: rl?.object?.url ?? rl?.url,
-    title: rl?.object?.title ?? rl?.title,
-    applicationType: rl?.application?.type
-  }));
+  return raw.map(rl => {
+    const url = rl?.object?.url ?? rl?.url;
+    const pageId = confluencePageId(rl?.globalId, url);
+    return {
+      url,
+      title: rl?.object?.title ?? rl?.title,
+      applicationType: rl?.application?.type,
+      ...(pageId ? { pageId } : {})
+    };
+  });
 }
 
 export interface FactOptions {
@@ -83,6 +101,8 @@ export interface FactOptions {
   devFieldId?: string | null;
   /** Status id to category key, from the site configuration. */
   statusCategories?: Readonly<Record<string, StatusCategory>>;
+  /** Signature check of sibling records (ADR-012); without it no record counts as verified. */
+  verify?: AttestationCheckFn;
 }
 
 export function factsFromIssue(iss: JiraIssueJson | undefined, options: FactOptions = {}): IssueFacts {
@@ -98,14 +118,23 @@ export function factsFromIssue(iss: JiraIssueJson | undefined, options: FactOpti
   const devPresent = devFieldId !== null;
   const devRaw = devPresent ? fields[devFieldId as string] : undefined;
   const statusCategory = statusCategoryOf(fields.status);
+  const issueId = String(iss?.id);
+  const ledgerseal = iss?.properties?.['ledgerseal-cert'];
+  const dod = iss?.properties?.['definitionguard-dod'];
+  const verify = options.verify;
+  const attestations = verify && (ledgerseal || dod)
+    ? {
+      ...(dod ? { dod: verify('definitionguard', dod, issueId) } : {}),
+      ...(ledgerseal ? { ledgerseal: verify('ledgerseal', ledgerseal, issueId) } : {})
+    }
+    : undefined;
 
   return {
-    issueId: String(iss?.id),
+    issueId,
     issueKey: String(iss?.key),
     summary: String(fields.summary || ''),
     statusName: String(fields.status?.name || ''),
     statusCategory,
-    assigneeName: fields.assignee?.displayName,
     assigneeAccountId: fields.assignee?.accountId,
     sprintNames: Array.from(new Set(sprintNames)),
     updated: fields.updated,
@@ -126,9 +155,10 @@ export function factsFromIssue(iss: JiraIssueJson | undefined, options: FactOpti
     siteHost: options.siteHost,
     devField: { present: devPresent, summary: parseDevField(typeof devRaw === 'string' ? devRaw : undefined) },
     properties: {
-      ledgerseal: iss?.properties?.['ledgerseal-cert'],
-      dod: iss?.properties?.['definitionguard-dod'],
+      ledgerseal,
+      dod,
       checklist: iss?.properties?.['checklist']
-    }
+    },
+    ...(attestations ? { attestations } : {})
   };
 }

@@ -51,6 +51,7 @@ export interface JiraIssueJson {
 export interface JiraRemoteLinkJson {
   url?: string;
   title?: string;
+  globalId?: string;
   object?: { url?: string; title?: string };
   application?: { type?: string };
 }

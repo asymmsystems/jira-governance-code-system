@@ -1,0 +1,113 @@
+#+TITLE: ADR-013: FourRealities Evidence Sources in Use, and Its Admin Page
+#+DATE: 2026-11-06
+#+STATUS: Adopted
+
+* Status
+[ADOPTED: owner instruction 'do NOW', 2026-11-06]. The owner asked for every recommendation of the
+readiness review (=docs/sdlc/suite-readiness-review-2026-11/fourrealities-readiness.md=, BL-2, F-H5,
+F-M1, F-M4, F-M5, F-M6) to be adopted without further questions, with this rule from the owner's
+brief: a check that is not in use is not scored and is shown as "not used on this site"; finishing an
+issue must never lower its score just because a sibling app is absent; no upsell text as a next step
+when the sibling app is not in use. This ADR replaces spec v2 decision D-9.
+
+* Context
+FourRealities rates four checks per issue: Intent, Process, Code and Audit. Process reads the record
+of DefinitionGuard or of Checklists for Jira (HeroCoders); Audit reads the record of LedgerSeal; Code
+reads the Jira Development field. Before this ADR every check was always in use. On a site with
+FourRealities alone, Process and Audit were "Evidence missing" on every Done issue, so the best score
+a perfect team could reach was 50%, the score fell when an issue was finished, and the next step
+named another paid app (BL-2). Jira Software sites have a Development field even without a Git
+integration, so Code was "No pull request is linked" on every Done issue there (F-H5; observed on the
+development site on 2026-11-06: the field =customfield_10000= exists and the JQL
+=development[pullrequests].all > 0= returns no issue).
+
+No supported call tells one Forge app that another app is installed (spec v2, D-9).
+
+The Uniform Permission Management Standard (=docs/design/uniform-permission-management-standard.md=)
+asks every app for a =jira:adminPage= (FourRealities: key =fourrealities-admin=, title
+"FourRealities gate authority") and for Tier 2 approver groups (F-M4).
+
+* Decision
+1. *One admin page.* =jira:adminPage= =fourrealities-admin=, titled "FourRealities gate authority",
+   for Jira administrators only (global =ADMINISTER=, checked as the user on every call; fail
+   closed). It holds:
+   - the evidence source of each check:
+     - Intent: "In use" (default) or "Not in use";
+     - Process: "Detect" (default), "DefinitionGuard", "Checklists for Jira (HeroCoders)" or
+       "Not in use";
+     - Code: "Detect" (default), "In use" or "Not in use";
+     - Audit: "Detect" (default), "LedgerSeal" or "Not in use";
+   - the decision issue types for Intent (F-M6), default =adr=, =architecture decision=,
+     =decision=, =decision record=, =spec=, =specification=, =requirement=; compared by exact name
+     without case; at most 20 names of at most 60 characters;
+   - the approver groups for Code exceptions (Tier 2 of the standard, at most 20 groups, by the
+     shared =AdminPolicyPanel=).
+   Settings are site-wide (=fr:cfg:sources=, =fr:cfg:approver_policy=). They hold no account id.
+2. *What "Detect" means.* A check is in use only when FourRealities has seen the source on this site:
+   - Process (DefinitionGuard) and Audit (LedgerSeal): a record whose signature FourRealities
+     verified (ADR-012) was read on any issue of the site. A record that cannot be verified does not
+     turn a check on; the admin page and the dashboard say that records were found, so an
+     administrator can turn the check on.
+   - Code: the site has a Development field and at least one issue has pull request data (a JQL
+     probe =development[pullrequests].all > 0=, cached with the site configuration for 24 hours, or a
+     pull request seen while reading issues).
+   - Checklists for Jira is never turned on by detection: its record cannot be verified.
+   Detection is stored in =fr:cfg:detected= (dates only) and shown on the admin page and in the
+   dashboard ("Process: DefinitionGuard, detected"), so nothing changes silently. Detection is per
+   site, never per issue: in a project where LedgerSeal is in use but nobody seals, Audit is still
+   "Evidence missing".
+3. *A check not in use* has the state "Not applicable" with the new reason =SOURCE_NOT_IN_USE=. It is
+   not scored, is shown as "Not used on this site", and gives no next step, no "Show missing" button
+   and no button to another app. So finishing an issue never lowers its score because a sibling app
+   is absent.
+4. *Wording* (F-M5). The text names the source in use: "Checklists for Jira" when HeroCoders is the
+   Process source, "DefinitionGuard" otherwise. The buttons that only reopened the same issue
+   ("LedgerSeal Audit Gate panel", "DefinitionGuard Checklist panel") are removed; the next step
+   names the sibling panel by its real title ("Definition of Done", "Approval Seal") and only when that
+   check is in use.
+5. *Approvers* (F-M4). An approver of a Code exception is a project administrator or Jira
+   administrator (Tier 1) or a member of a configured group (Tier 2, =GET /rest/api/3/myself?expand=groups=
+   as the user), and is never the requester or the assignee. Every check fails closed. The panel
+   asks the server whether the viewer may decide, and shows the Approve, Reject and Revoke buttons
+   disabled with the standard note when not; Withdraw shows only to the requester.
+6. *Approvers without Edit issues* (F-M1). After the approver check passes, FourRealities writes its
+   own projection property =fourrealities-exception= as the app. The event in app storage is the
+   record; the property is a copy for other tools. A request and a rework note are still written as
+   the user.
+
+* Alternatives Considered
+** Every check in use until an administrator turns it off
+- For: nothing to configure for a full-suite customer.
+- Against: a standalone buyer sees red checks and a lower score on finished work first (BL-2).
+- Verdict: rejected.
+** Turn a check on when any record (verified or not) is seen
+- For: works in production before the sibling apps have production keys.
+- Against: any user who can edit an issue could turn a site-wide check on by writing a property.
+- Verdict: rejected; the administrator turns it on by hand in that case.
+** Per-project settings
+- For: projects that use LedgerSeal and projects that do not, on one site.
+- Against: more screens; no customer has asked yet. The key layout leaves room for it.
+- Verdict: deferred.
+
+* Consequences
+** Positive
+- A standalone install shows only the checks it can make, with a fair score.
+- Process and Audit turn on by themselves in development and, once production keys exist, in
+  production, as soon as the sibling app writes its first signed record.
+** Negative
+- Until production keys exist, an administrator must turn Process and Audit on by hand in production.
+- One more admin page to document and test.
+
+* Implementation Notes
+- Contract: =EvidenceSourceSettings=, =SourcesInUse=, =DetectedSources=, reason =SOURCE_NOT_IN_USE=.
+- Engine: =DefaultSourcePolicyEngine= (resolve, sightings, suggestions); the gate engine takes the
+  sources in use and the decision issue types.
+- Accessors: =DefaultKvsSettingsAccessor= (settings, approver policy, detection), Jira calls for the
+  admin check, group search, group names and the caller's groups.
+- Manager: =DefaultAdminManager= (admin page), approver check in =DefaultExceptionManager=.
+- Manifest: =jira:adminPage= =fourrealities-admin=, resource =admin=, function =admin-resolver=.
+
+* References
+- Readiness review BL-2, F-H5, F-M1, F-M4, F-M5, F-M6, section 4.
+- Uniform Permission Management Standard, sections 2 to 6.
+- ADR-012 (verified records).

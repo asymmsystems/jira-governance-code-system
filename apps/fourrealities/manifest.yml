@@ -22,20 +22,39 @@ modules:
       resource: main
       resolver:
         function: resolver
+  jira:adminPage:
+    # ADR-013: evidence sources, decision issue types and approver groups (permission standard).
+    - key: fourrealities-admin
+      title: FourRealities gate authority
+      render: native
+      resource: admin
+      resolver:
+        function: admin-resolver
   scheduledTrigger:
     - key: fourrealities-daily-snapshot
       function: snapshot
       interval: day
+    # ADR-014: the weekly personal data report and the erasure of closed accounts.
+    - key: fourrealities-personal-data
+      function: personal-data
+      interval: week
   function:
     - key: resolver
       handler: index.handler
     - key: snapshot
       handler: index.snapshot
       timeoutSeconds: 600
+    - key: admin-resolver
+      handler: index.adminHandler
+    - key: personal-data
+      handler: index.personalData
+      timeoutSeconds: 600
 
 resources:
   - key: main
     path: src/frontend/index.tsx
+  - key: admin
+    path: src/frontend/admin.tsx
   - key: icons
     path: static/icons
 
@@ -54,3 +73,4 @@ permissions:
     - search:confluence
     - read:confluence-content.summary
     - read:jira-user
+    - report:personal-data

@@ -66,7 +66,9 @@ describe('DefaultPolicyEngine', () => {
     expect(policy.linkInputError('ftp://x', 't')).toBe('Invalid URL protocol. HTTP or HTTPS required.');
     expect(policy.linkInputError('nope', 't')).toBe('Invalid specification URL provided.');
     expect(policy.linkInputError('https://x', '')).toBe('Document title or ADR identifier required.');
-    expect(policy.linkInputError('https://x', 't')).toBeUndefined();
+    expect(policy.linkInputError('https://x', 't')).toBe('Give a title of 3 to 255 characters.');
+    expect(policy.linkInputError('https://x', 'x'.repeat(256))).toBe('Give a title of 3 to 255 characters.');
+    expect(policy.linkInputError('https://x', 'ADR')).toBeUndefined();
     expect(policy.exceptionInputError('')).toBe('Exception reason required.');
     expect(policy.exceptionInputError('too short')).toBe('Give a reason of 15 to 500 characters.');
     expect(policy.exceptionInputError('Configuration change only', 'n'.repeat(1001))).toBe('Notes can be at most 1,000 characters.');
