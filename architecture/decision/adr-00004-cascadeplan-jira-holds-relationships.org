@@ -1,0 +1,67 @@
+#+TITLE: ADR-004: CascadePlan Keeps Every Relationship in Jira
+#+DATE: 2026-11-05
+#+STATUS: Approved
+
+* Status
+Approved - 2026-11-05 by the owner, in chat ("You must do the full linking in JIRA task level as
+well"), during the Marketplace review of CascadePlan at commit =db08009= (fix plan item N-11).
+
+Not implemented.
+
+* Context
+CascadePlan already treats Jira as the source of truth for an issue's fields (spec decision D2,
+=docs/spec/cascadeplan-spec.md=). For relationships it does not:
+
+| # | Today                                                                                                   | Where                                   |
+|---+---------------------------------------------------------------------------------------------------------+-----------------------------------------|
+| 1 | "Add sub-task" can store a sub-task only in the planner (KVS). Jira has no such issue.                  | =addSubtaskToTask=, =apps/cascadeplan/src/index.ts:2163-2210= |
+| 2 | When Jira refuses to create the "Blocks" link, the planner keeps the dependency anyway.                 | =apps/cascadeplan/src/index.ts:1612-1618= |
+| 3 | Removing a link that came from Jira only hides it in one plan. The Jira link stays.                     | =apps/cascadeplan/src/index.ts:1622-1626= |
+| 4 | The trigger percent of a dependency exists only in the planner. Jira shows a plain "Blocks".            | KVS record, =WorkEffortAssoc.attrs=     |
+| 5 | Each plan can hold links of its own.                                                                    | per-plan KVS records                    |
+
+So the planner can show a structure that people who read only Jira never see.
+
+* Decision
+Every relationship that the planner shows exists in Jira itself:
+- **Parent and child:** Jira's =parent= field. The planner never stores a parent or a child of its
+  own. Every change of parent or type is a Jira write (ADR-005).
+- **Dependencies:** Jira "Blocks" issue links. The planner never keeps a dependency that Jira
+  refused, and removing a dependency deletes the Jira link (ADR-006).
+- **Dependency attributes:** the trigger percent is stored on the successor issue as a Jira issue
+  property, so it travels with the issue (ADR-006).
+- **No silent writes:** any relationship that exists only in the planner today is listed once to
+  the user, who chooses to create it in Jira or drop it. Nothing is created in Jira without that
+  choice.
+
+The planner's own storage (Forge KVS) keeps only planning data that has no place in Jira: the
+start date, plans, row order, columns and milestones.
+
+* Alternatives Considered
+
+** Alternative A: Keep planner-only relationships, marked as such
+- For: scenario plans can try structures that Jira does not have.
+- Against: two truths for the same issue. People who read Jira, Jira Plans or another app see a
+  different structure. It conflicts with D2.
+- Verdict: Rejected by the owner.
+
+* Consequences
+
+** Positive
+- Jira, Jira Plans, JQL and every other app see the same structure as the planner.
+- Uninstalling CascadePlan loses no relationship.
+
+** Negative
+- Scenario plans cannot hold their own links (ADR-006).
+- Every relationship change needs the matching Jira permission (=LINK_ISSUES=, =EDIT_ISSUES=, and
+  for type changes the bulk move permissions, ADR-005).
+- Existing planner-only sub-tasks and links need a migration with the user's choice.
+
+* Implementation Notes
+Not implemented. Fix plan items: F-23, N-11 (L1 to L6), N-08, and BL-2 steps 2a and 2b.
+
+* References
+- [[file:../../docs/sdlc/cascadeplan-marketplace-review-2026-11/fix-plan-v4.md][CascadePlan fix plan v4]], items N-08 and N-11
+- [[file:adr-00005-cascadeplan-hierarchy-changes.org][ADR-005: CascadePlan hierarchy changes]]
+- [[file:adr-00006-cascadeplan-shared-dependencies.org][ADR-006: CascadePlan dependencies are shared by every plan]]
+- [[file:../../docs/spec/cascadeplan-spec-v2.md][CascadePlan specification v2]]

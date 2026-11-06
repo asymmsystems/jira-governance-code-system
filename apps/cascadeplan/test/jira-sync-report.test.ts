@@ -75,15 +75,17 @@ describe('Jira sync report (B-07)', () => {
     expect(res.tasks.length).toBe(2);
   });
 
-  it('a Jira rejection is reported with the Jira error text', async () => {
+  it('a Jira rejection of the due date is reported, and nothing moves (F-19)', async () => {
     failPutFor = 'TEST-1';
     const res: any = await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-1', updates: { endDate: weeks[6].endDate, startDate: weeks[4].startDate } });
-    expect(res.ok).toBe(true);
+    expect(res).toMatchObject({ ok: false, error: 'due_date_refused' });
+    expect(res.message).toContain('TEST-1 keeps its dates and nothing else moved');
     expect(res.jiraSync.ok).toBe(false);
     expect(res.jiraSync.error).toContain('Field duedate cannot be set');
-    // TEST-2 (a 100% successor) also moves; the report lists each write by key.
     expect(res.jiraSync.writes).toContainEqual({ key: 'TEST-1', fields: ['duedate'], ok: false, error: expect.stringContaining('duedate'),
       changes: [{ field: 'due date', from: null, to: weeks[6].endDate }] });
+    // The 100% successor TEST-2 is not moved, so nothing is written for it.
+    expect(res.jiraSync.writes.find((w: any) => w.key === 'TEST-2')).toBeUndefined();
   });
 
   it('a failed write to a cascaded successor is reported by key', async () => {
@@ -94,17 +96,26 @@ describe('Jira sync report (B-07)', () => {
     expect(res.jiraSync.writes.find((w: any) => w.key === 'TEST-1').ok).toBe(true);
   });
 
-  it('scheduling reports its due date write', async () => {
+  it('scheduling with the default span writes no due date; it reports the shared start it wrote (ADR-008)', async () => {
     const res: any = await scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-2', startWeek: weeks[5].weekKey });
     expect(res.ok).toBe(true);
-    expect(res.jiraSync).toEqual({ ok: true, writes: [{ key: 'TEST-2', fields: ['duedate'], ok: true,
-      changes: [{ field: 'due date', from: null, to: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }] }] });
+    expect(res.jiraSync).toEqual({ ok: true, writes: [{ key: 'TEST-2', fields: ['startdate'], ok: true,
+      changes: [{ field: 'start date', from: null, to: weeks[5].startDate }] }] });
   });
 
-  it('KVS-only writes report ok with no Jira writes', async () => {
+  it('scheduling with an end the user chose reports its due date write', async () => {
+    const res: any = await scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-2', startWeek: weeks[5].weekKey, endDate: weeks[6].endDate });
+    expect(res.ok).toBe(true);
+    expect(res.jiraSync).toEqual({ ok: true, writes: [{ key: 'TEST-2', fields: ['duedate', 'startdate'], ok: true,
+      changes: [{ field: 'due date', from: null, to: weeks[6].endDate }, { field: 'start date', from: null, to: weeks[5].startDate }] }] });
+  });
+
+  it('unscheduling reports the shared start it cleared; KVS-only writes report no Jira writes', async () => {
     const res: any = await unscheduleTask({ projectKey: 'TEST', taskId: 'TEST-2' });
     expect(res.ok).toBe(true);
-    expect(res.jiraSync).toEqual({ ok: true, writes: [] });
+    // ADR-008: the shared property keeps no start, so the task leaves every plan.
+    expect(res.jiraSync.ok).toBe(true);
+    expect(res.jiraSync.writes).toEqual([{ key: 'TEST-2', fields: ['startdate'], ok: true, changes: [expect.objectContaining({ field: 'start date', to: null })] }]);
     const widths: any = await saveColumnWidths({ projectKey: 'TEST', columnWidths: { epic: 100 } as any });
     expect(widths.ok).toBe(true);
     expect(widths.jiraSync).toEqual({ ok: true, writes: [] });

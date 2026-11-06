@@ -1,0 +1,17 @@
+{
+ "admin_url": "https://asymmsystems.atlassian.net/jira/settings/apps/cac8499e-e92e-4ba6-95cc-af398b1be791/5dfcdd60-51aa-4ea9-a5e2-c94d7e294677",
+ "admin_texts": [
+  ""
+ ],
+ "admin_sidebar_hits": [
+  "CascadePlan approvers",
+  "CascadePlan: only Jira administrators and project administrators can freeze delivery baseline, approve milestone variance, and manage plans."
+ ],
+ "upm_url": "https://asymmsystems.atlassian.net/plugins/servlet/upm",
+ "upm_hits": [
+  "CascadePlan approvers"
+ ],
+ "upm_frame_hits": [
+  "CascadePlan approvers"
+ ]
+}

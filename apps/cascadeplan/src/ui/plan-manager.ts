@@ -6,7 +6,7 @@
 
 import { PlanMetadata } from '../domain/models';
 
-export type PlanCategory = 'all' | 'baselines' | 'scenarios';
+export type PlanCategory = 'all' | 'scenarios';
 
 export interface PlanItemViewModel {
   id: string;
@@ -14,16 +14,15 @@ export interface PlanItemViewModel {
   isDefault: boolean;
   isActive: boolean;
   canDelete: boolean;
-  category: 'baseline' | 'scenario';
+  /** 'main' for the Main Plan, else 'scenario'. Real baselines are frozen in the Baseline panel (ADR-009). */
+  category: 'main' | 'scenario';
+  /** True for a clone whose records are not all copied yet (N-02): it opens only after the copy. */
+  copying?: boolean;
 }
 
-export function categorizePlan(plan: { name?: string; isDefault?: boolean }): 'baseline' | 'scenario' {
-  if (plan.isDefault) return 'baseline';
-  const lower = (plan.name || '').toLowerCase();
-  if (lower.includes('baseline') || lower.includes('main') || lower.includes('actual')) {
-    return 'baseline';
-  }
-  return 'scenario';
+/** The Main Plan, or a scenario. A plan's name never makes it a baseline (BL-1 step 6). */
+export function categorizePlan(plan: { id?: string; name?: string; isDefault?: boolean }): 'main' | 'scenario' {
+  return plan.isDefault || plan.id === 'default' ? 'main' : 'scenario';
 }
 
 export function validateNewPlanName(name: string): { valid: boolean; error?: string; cleanName: string } {
@@ -62,9 +61,10 @@ export function canDeletePlan(plan: PlanMetadata): boolean {
 
 export function buildPlanListViewModel(plans: PlanMetadata[], activePlanId: string): PlanItemViewModel[] {
   if (!plans || plans.length === 0) {
-    return [{ id: 'default', name: 'Main Plan', isDefault: true, isActive: true, canDelete: false, category: 'baseline' }];
+    return [{ id: 'default', name: 'Main Plan', isDefault: true, isActive: true, canDelete: false, category: 'main' }];
   }
-  return plans.map(p => {
+  // A plan being deleted is not offered (N-02); its delete is finished in the background.
+  return plans.filter(p => p.state !== 'deleting').map(p => {
     const isDefault = p.id === 'default' || p.isDefault === true;
     return {
       id: p.id,
@@ -72,7 +72,8 @@ export function buildPlanListViewModel(plans: PlanMetadata[], activePlanId: stri
       isDefault,
       isActive: p.id === activePlanId,
       canDelete: !isDefault,
-      category: categorizePlan(p)
+      category: categorizePlan(p),
+      ...(p.state === 'copying' ? { copying: true } : {})
     };
   });
 }
@@ -84,7 +85,6 @@ export function filterPlans(
 ): PlanItemViewModel[] {
   const q = (query || '').trim().toLowerCase();
   return plans.filter(p => {
-    if (category === 'baselines' && p.category !== 'baseline') return false;
     if (category === 'scenarios' && p.category !== 'scenario') return false;
     if (q.length > 0 && !p.name.toLowerCase().includes(q)) return false;
     return true;

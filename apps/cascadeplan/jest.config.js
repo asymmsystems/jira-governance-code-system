@@ -1,12 +1,15 @@
+/*
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/test'],
   testMatch: ['**/*.test.ts', '**/*.test.tsx'],
-  moduleNameMapper: {
-    '^@asymm/jira-ui$': '<rootDir>/../../packages/asymm-jira-ui/src/index.ts',
-    '^@asymm/jira-ui/(.*)$': '<rootDir>/../../packages/asymm-jira-ui/src/$1'
-  },
+  setupFilesAfterEnv: ['<rootDir>/test/setup-permissions.ts'],
   moduleDirectories: ['node_modules', '<rootDir>/node_modules'],
   collectCoverageFrom: [
     'src/**/*.ts',

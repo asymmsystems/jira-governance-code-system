@@ -41,7 +41,7 @@ import {
 
 describe('CascadePlan Admin UI View Model (@asymm/jira-ui)', () => {
   const appName = 'CascadePlan';
-  const roleDescription = 'freeze delivery baseline, approve milestone variance, and manage plans';
+  const roleDescription = 'create, rename and delete plans, freeze baselines, and accept or reject scope changes';
 
   it('builds LOADING state correctly', () => {
     const view = buildAdminPolicyView({

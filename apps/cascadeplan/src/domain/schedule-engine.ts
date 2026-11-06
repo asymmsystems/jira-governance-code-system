@@ -87,7 +87,8 @@ export function earliestStart(pred: ScheduleEffort, triggerPercent: number, toda
   const p = pred.percentComplete || 0;
   const x = triggerPercent;
   // A 0% trigger means "start together with": it is satisfied only once the predecessor has started.
-  if (p >= x && (x > 0 || p > 0 || pred.started === true)) {
+  // "Started" comes from the Jira status only (2026-11-06); progress is a measure, not a state.
+  if (p >= x && (x > 0 || pred.started === true)) {
     return { basis: 'satisfied', date: null, triggerDate: null, reason: `${pred.workEffortId} is at ${p}%, past the ${x}% trigger` };
   }
   const s = dayNumber(pred.estimatedStartDate as string);
@@ -129,7 +130,8 @@ export function evaluateEffort(key: string, efforts: Map<string, ScheduleEffort>
   const e = best.res.date as string;
   const reason = `Starts ${e} because ${best.res.reason}.`;
   const detail = { triggerDate: best.res.triggerDate, triggerPercent: best.link.triggerPercent as number, basis: best.res.basis };
-  const started = own.started === true || (own.percentComplete || 0) > 0;
+  // Started means In Progress or Done in Jira; progress alone never starts a work effort (2026-11-06).
+  const started = own.started === true;
   if (started) {
     return { earliestStartDate: e, driver: best.pred.workEffortId, violated: true, reason, ...detail,
       suggestion: `${key} has started, but ${best.pred.workEffortId} is at ${best.pred.percentComplete || 0}% of the ${best.link.triggerPercent}% trigger.` };
@@ -158,7 +160,7 @@ export function cascade(
   links: ScheduleLink[],
   changedKey: string,
   today: string
-): { changes: CascadeChange[]; efforts: Map<string, ScheduleEffort> } {
+): { changes: CascadeChange[]; efforts: Map<string, ScheduleEffort>; cycle?: string[] } {
   const work = new Map([...efforts].map(([k, v]) => [k, { ...v }]));
   const succ = new Map<string, string[]>();
   for (const l of links) succ.set(l.workEffortIdFrom, [...(succ.get(l.workEffortIdFrom) || []), l.workEffortIdTo]);
@@ -170,7 +172,9 @@ export function cascade(
     const k = stack.pop() as string;
     for (const s of succ.get(k) || []) if (!reach.has(s)) { reach.add(s); stack.push(s); }
   }
-  if (reach.has(changedKey)) throw new Error(`Dependency cycle through ${changedKey}`);
+  // A cycle that already exists (for example through links made in Jira) does not block the move:
+  // nothing in the cycle moves, and the cycle is reported (F-15).
+  if (reach.has(changedKey)) return { changes: [], efforts: work, cycle: [changedKey] };
 
   // Kahn order over the reachable sub-graph (plus the changed effort).
   const nodes = new Set([changedKey, ...reach]);
@@ -187,7 +191,7 @@ export function cascade(
       if (indeg.get(s) === 0) queue.push(s);
     }
   }
-  if (order.length !== nodes.size) throw new Error('Dependency cycle in the plan');
+  const cycle = [...nodes].filter(n => !order.includes(n));
 
   const changes: CascadeChange[] = [];
   for (const key of order) {
@@ -204,7 +208,7 @@ export function cascade(
     cur.estimatedStartDate = toStart;
     cur.estimatedCompletionDate = toEnd;
   }
-  return { changes, efforts: work };
+  return cycle.length ? { changes, efforts: work, cycle } : { changes, efforts: work };
 }
 
 /**

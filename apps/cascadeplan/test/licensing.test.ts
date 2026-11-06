@@ -43,7 +43,7 @@ describe('licensing check (B-21)', () => {
       },
       context: {
         license: { isActive: false },
-        extension: { project: { key: 'TEST' } }
+        extension: { project: { key: 'TEST', id: 'TEST' } }
       }
     };
 
@@ -66,7 +66,7 @@ describe('licensing check (B-21)', () => {
       },
       context: {
         license: { active: false },
-        extension: { project: { key: 'TEST' } }
+        extension: { project: { key: 'TEST', id: 'TEST' } }
       }
     };
 
@@ -85,7 +85,7 @@ describe('licensing check (B-21)', () => {
       },
       context: {
         license: { isActive: false },
-        extension: { project: { key: 'TEST' } }
+        extension: { project: { key: 'TEST', id: 'TEST' } }
       }
     };
 
@@ -109,7 +109,7 @@ describe('licensing check (B-21)', () => {
       },
       context: {
         license: { isActive: true, active: true },
-        extension: { project: { key: 'TEST' } }
+        extension: { project: { key: 'TEST', id: 'TEST' } }
       }
     };
 
@@ -130,7 +130,7 @@ describe('licensing check (B-21)', () => {
         payload: { projectKey: 'TEST' }
       },
       context: {
-        extension: { project: { key: 'TEST' } }
+        extension: { project: { key: 'TEST', id: 'TEST' } }
       }
     };
 
@@ -151,7 +151,7 @@ describe('licensing check (B-21)', () => {
       },
       context: {
         license: { isActive: false },
-        extension: { project: { key: 'TEST' } }
+        extension: { project: { key: 'TEST', id: 'TEST' } }
       }
     };
 
@@ -173,7 +173,7 @@ describe('licensing check (B-21)', () => {
       },
       context: {
         license: { active: false },
-        extension: { project: { key: 'TEST' } }
+        extension: { project: { key: 'TEST', id: 'TEST' } }
       }
     };
 
@@ -197,7 +197,7 @@ describe('licensing check (B-21)', () => {
       },
       context: {
         license: { isActive: false },
-        extension: { project: { key: 'TEST' } }
+        extension: { project: { key: 'TEST', id: 'TEST' } }
       }
     };
 
@@ -208,19 +208,19 @@ describe('licensing check (B-21)', () => {
     expect(mockRequestJira).not.toHaveBeenCalled();
   });
 
-  it('rejects saveTaskDependency and modifies nothing when unlicensed', async () => {
+  it('rejects a dependency change and modifies nothing when unlicensed', async () => {
     const req = {
       call: {
-        functionKey: 'saveTaskDependency',
+        functionKey: 'updateWbsTask',
         payload: {
           projectKey: 'TEST',
           taskId: 'TEST-2',
-          dependency: { predecessorKey: 'TEST-1', triggerPercent: 30 }
+          updates: { dependency: { predecessorKey: 'TEST-1', triggerPercent: 30 } }
         }
       },
       context: {
         license: { isActive: false },
-        extension: { project: { key: 'TEST' } }
+        extension: { project: { key: 'TEST', id: 'TEST' } }
       }
     };
 

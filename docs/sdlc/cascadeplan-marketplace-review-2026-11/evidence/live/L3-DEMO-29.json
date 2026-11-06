@@ -1,0 +1,73 @@
+{
+ "jira_before": {
+  "due": "2026-11-17",
+  "hist": [
+   {
+    "at": "2026-11-05T13:17:58.058+0530",
+    "by": "Fahim Farook",
+    "items": [
+     "duedate:2026-11-10 00:00:00.0->2026-11-17 00:00:00.0"
+    ]
+   },
+   {
+    "at": "2026-11-04T11:54:11.728+0530",
+    "by": "Fahim Farook",
+    "items": [
+     "Link:null->This work item is blocked by DEMO-30"
+    ]
+   },
+   {
+    "at": "2026-10-31T12:12:29.237+0530",
+    "by": "Fahim Farook",
+    "items": [
+     "duedate:null->2026-11-10 00:00:00.0",
+     "timeestimate:null->72000",
+     "timeoriginalestimate:null->72000"
+    ]
+   }
+  ]
+ },
+ "width_before": 170,
+ "track_width": 2295,
+ "aria_before": "DEMO-29: Subtask: Unassigned, 2026-11-04 to 2026-11-17, 0% done",
+ "width_optimistic": 170,
+ "aria_optimistic": "DEMO-29: Subtask: Unassigned, 2026-10-28 to 2026-11-10, 0% done",
+ "width_after_response": 255,
+ "aria_after_response": "DEMO-29: Subtask: Unassigned, 2026-10-28 to 2026-11-17, 0% done",
+ "flags": [
+  "Moved DEMO-29.Undo\u2715"
+ ],
+ "changes": [
+  "DEMO-29 | due date | 2026-11-17 | 2026-11-10 | Written"
+ ],
+ "jira_after": {
+  "due": "2026-11-10",
+  "hist": [
+   {
+    "at": "2026-11-05T13:17:58.058+0530",
+    "by": "Fahim Farook",
+    "items": [
+     "duedate:2026-11-10 00:00:00.0->2026-11-17 00:00:00.0"
+    ]
+   },
+   {
+    "at": "2026-11-04T11:54:11.728+0530",
+    "by": "Fahim Farook",
+    "items": [
+     "Link:null->This work item is blocked by DEMO-30"
+    ]
+   },
+   {
+    "at": "2026-10-31T12:12:29.237+0530",
+    "by": "Fahim Farook",
+    "items": [
+     "duedate:null->2026-11-10 00:00:00.0",
+     "timeestimate:null->72000",
+     "timeoriginalestimate:null->72000"
+    ]
+   }
+  ]
+ },
+ "width_after_reload": 170,
+ "aria_after_reload": "DEMO-29: Subtask: Unassigned, 2026-10-28 to 2026-11-10, 0% done"
+}

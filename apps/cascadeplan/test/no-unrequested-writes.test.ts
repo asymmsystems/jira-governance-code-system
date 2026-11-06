@@ -59,12 +59,9 @@ describe('no unrequested Jira writes (B-03)', () => {
     });
   });
 
-  it('scheduling an unestimated issue writes no estimate and no assignee, and stores neither', async () => {
+  it('scheduling an unestimated issue with the default span writes nothing to Jira, and stores no estimate or assignee', async () => {
     await scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-1', startWeek: weeks[5].weekKey, spanWeeks: 2 });
-    const [put] = puts();
-    expect(put.fields.timetracking).toBeUndefined();
-    expect(put.fields.assignee).toBeUndefined();
-    expect(put.fields.duedate).toBe(weeks[6].endDate);
+    expect(puts()).toEqual([]);
     const stored = (await entryOf(storage, 'TEST-1'));
     expect(stored.effortHours).toBeUndefined();
     expect(stored.resource).toBeUndefined();

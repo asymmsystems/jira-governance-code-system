@@ -25,7 +25,7 @@ jest.mock('@forge/kvs', () => ({ kvs: { get: jest.fn(), set: jest.fn(), delete: 
 const weeks = getTimelineWeeks().weeks;
 const status = { statusCategory: { key: 'new' } };
 const type = (name: string, hierarchyLevel: number) => ({ name, hierarchyLevel, subtask: hierarchyLevel === -1 });
-const blocks = (pred: string, id: string) => ({ type: { name: 'Blocks' }, inwardIssue: { key: pred, id } });
+const blocks = (pred: string, id: string) => ({ id: `10${id}`, type: { name: 'Blocks' }, inwardIssue: { key: pred, id } });
 const USERS = [{ accountId: 'acc-1', displayName: 'Ann Lee', accountType: 'atlassian' }, { accountId: 'acc-2', displayName: 'Bo Chen', accountType: 'atlassian' }];
 let ISSUES: any[];
 const today = new Date().toISOString().slice(0, 10);
@@ -63,6 +63,8 @@ describe('WorkEffort model in the resolvers (B-28)', () => {
       if (url.includes('/user/assignable/search')) return { status: 200, json: async () => USERS };
       if (url.includes('?fields=issuelinks')) return { status: 200, json: async () => ({ fields: { issuelinks: [] } }) };
       if (options?.method === 'POST' && url.endsWith('/issueLink')) return { status: 201, json: async () => ({}) };
+      // A sub-task create (a second person is a contributor through a real Jira sub-task, ADR-004).
+      if (options?.method === 'POST' && url.endsWith('/rest/api/3/issue')) return { status: 201, json: async () => ({ id: '90', key: 'TEST-90' }) };
       return { status: 204, json: async () => ({}) };
     });
   });
@@ -98,13 +100,17 @@ describe('WorkEffort model in the resolvers (B-28)', () => {
     expect(t4.jiraBlockedBy!.map(b => b.key)).toEqual(['TEST-5', 'TEST-6']);
   });
 
-  it('removing links ends them: no Jira link from those predecessors comes back (criterion 2)', async () => {
+  it('removing links deletes them in Jira (N-11 L3) and keeps them as ended history (criterion 2)', async () => {
     await seed({ 'TEST-4': { startWeek: weeks[2].weekKey, spanWeeks: 1 }, 'TEST-5': { startWeek: weeks[2].weekKey, spanWeeks: 1 }, 'TEST-6': { startWeek: weeks[2].weekKey, spanWeeks: 1 } });
     await plan();
     await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-4', updates: { dependency: null } });
+    const deleted = mockRequestJira.mock.calls.filter(c => c[1]?.method === 'DELETE').map(c => String(c[0])).sort();
+    expect(deleted).toEqual(['/rest/api/3/issueLink/105', '/rest/api/3/issueLink/106']);
     const rec = await recordOf(storage, 'TEST-4');
     expect(rec.assocs.map((a: any) => [a.workEffortIdFrom, a.workEffortAssocTypeId, a.thruDate])).toEqual([
       ['TEST-5', 'WORK_EFF_PRECEDENCY', today], ['TEST-6', 'WORK_EFF_PRECEDENCY', today]]);
+    // Jira no longer has the links, so the planner shows none.
+    ISSUES.find(i => i.key === 'TEST-4').fields.issuelinks = [];
     expect((await plan()).tasks.find(t => t.key === 'TEST-4')!.dependency).toBeUndefined();
   });
 
@@ -112,7 +118,7 @@ describe('WorkEffort model in the resolvers (B-28)', () => {
     await seed({ 'TEST-5': { startWeek: weeks[2].weekKey, spanWeeks: 1 } });
     await plan();
     await updateWbsTask({ projectKey: 'TEST', taskId: 'TEST-5', updates: { contributors: [{ accountId: 'acc-2' }] } as any });
-    expect((await recordOf(storage, 'TEST-5')).parties).toEqual([{ workEffortId: 'TEST-5', partyId: 'acc-2', roleTypeId: 'CONTRIBUTOR', fromDate: today }]);
+    expect((await recordOf(storage, 'TEST-5')).parties).toEqual([{ workEffortId: 'TEST-5', partyId: 'acc-2', roleTypeId: 'CONTRIBUTOR', fromDate: today, subtaskKey: 'TEST-90' }]);
     USERS[1].displayName = 'Bo Chen-Smith';
     expect((await plan()).tasks.find(t => t.key === 'TEST-5')!.contributingResources).toEqual(['Bo Chen-Smith']);
     USERS[1].displayName = 'Bo Chen';
@@ -162,7 +168,8 @@ describe('model 1 record migration (B-28 criterion 6)', () => {
     const r4 = await storage.get<any>('cp:TEST:we:4');
     expect(r4.assocs.map((a: any) => [a.workEffortIdFrom, a.thruDate])).toEqual([['TEST-5', today], ['TEST-6', today]]);
     expect(r4.precedenceRemoved).toBeUndefined();
-    expect(p.tasks.find(t => t.key === 'TEST-4')!.dependency).toBeUndefined();
+    // Ended links are history only (N-11 L3): the Jira links of TEST-4 still show.
+    expect(p.tasks.find(t => t.key === 'TEST-4')!.dependencies!.map(d => d.predecessorKey)).toEqual(['TEST-5', 'TEST-6']);
     expect(p.tasks.find(t => t.key === 'TEST-5')!.contributingResources).toEqual(['Ann Lee', 'Former Person']);
     expect((await storage.get<any>('cp:TEST:settings')).modelVersion).toBe(2);
   });
@@ -204,11 +211,12 @@ describe('scheduling at an exact date outside the server week list (B-27 criteri
     });
   });
 
-  it('a startDate places the task on that exact day for the given weeks and writes that due date', async () => {
+  it('a startDate places the task on that exact day for the given weeks, and writes no due date to Jira', async () => {
     const res: any = await scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-5', startWeek: '', startDate: '2028-03-06', spanWeeks: 2 } as any);
     const rec = await recordOf(storage, 'TEST-5');
     expect(rec.effort).toMatchObject({ estimatedStartDate: '2028-03-06', estimatedCompletionDate: '2028-03-19' });
-    expect(res.jiraSync.writes[0].changes).toEqual([{ field: 'due date', from: null, to: '2028-03-19' }]);
+    // No due date; only the shared start property (ADR-008).
+    expect(res.jiraSync.writes).toEqual([{ key: 'TEST-5', fields: ['startdate'], ok: true, changes: [{ field: 'start date', from: null, to: '2028-03-06' }] }]);
     await expect(scheduleBacklogTask({ projectKey: 'TEST', taskId: 'TEST-5', startWeek: '', startDate: '6 March' } as any)).rejects.toThrow(/startDate/);
   });
 });

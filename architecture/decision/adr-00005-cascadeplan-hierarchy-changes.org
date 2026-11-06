@@ -1,0 +1,109 @@
+#+TITLE: ADR-005: CascadePlan Hierarchy Changes Through Jira
+#+DATE: 2026-11-05
+#+STATUS: Approved
+
+* Status
+Approved - 2026-11-05 by the owner, in chat (decision DEC-7, Option A), during the Marketplace
+review of CascadePlan at commit =db08009= (fix plan item N-08).
+
+Not implemented. Two development-site trials come first (see Implementation Notes).
+
+* Context
+
+** Jira's rules
+Sources: =docs/sdlc/cascadeplan-marketplace-review-2026-11/reparent-research.md= (fetched
+2026-11-05), with quotes and URLs.
+- Default levels: Epic (1), standard work item (0), Sub-task (-1). Only Premium and Enterprise add
+  levels above Epic.
+- A sub-task cannot have children, and always has a parent in the same project.
+- A work item that has sub-tasks cannot become a sub-task.
+- Team-managed projects: a sub-task cannot sit directly under an epic. Company-managed projects:
+  Atlassian's guide says it can.
+
+** What Jira's REST API offers
+
+| Change                                          | Route                                             | Documented |
+|-------------------------------------------------+---------------------------------------------------+------------|
+| R1. Standard issue to another epic, or out      | =PUT /rest/api/3/issue/{id}=, =fields.parent=      | Yes        |
+| R2. Sub-task to another standard parent         | Edit endpoint, =fields.parent=                    | Unclear; the user guide contradicts itself |
+| R3. Standard issue becomes a sub-task           | Bulk move, =POST /rest/api/3/bulk/issues/move=     | Partly     |
+| R4. Sub-task becomes a standard issue           | Bulk move                                         | Partly     |
+
+Bulk move runs as a background job (a task id, then =GET /rest/api/3/bulk/queue/{taskId}=). It
+needs the global "Make bulk changes" permission plus Move issues and Create issues. At most 5 bulk
+jobs run at once for the whole site. Atlassian calls it "an early version of the API". Jira warns
+that data may be lost when the two work types use different workflows. No page states outright
+that a Forge app may call it as the user. Whether the key, the id, the due date, the links, the
+worklogs and the properties are kept on a change inside one project is not documented.
+
+** Today
+The planner changes only the epic of a standard issue (R1), through the epic picker
+(=apps/cascadeplan/src/index.ts:1335-1338=). It also offers that picker on sub-task rows, which can
+change a sub-task's parent by accident (fix plan item N-07).
+
+* Decision
+The planner makes every hierarchy change that Jira allows. Each change is a Jira write made as
+the user (ADR-004):
+1. R1 and R2 through the edit endpoint. R2 only after the development-site trial proves it. If the
+   trial fails, R2 also uses bulk move.
+2. R3 and R4 through the bulk move API. The planner starts the job, polls it through a resolver,
+   and shows its progress and result in the Changes panel.
+3. Every drop that Jira forbids is refused before any write, and the message names the Jira rule:
+   a work item with sub-tasks onto a task; any row onto a sub-task; an epic onto anything; a
+   sub-task onto an epic in a team-managed project; a row onto itself or one of its descendants.
+4. Before any write, a dialog confirms the change and says that every plan will show it. A type
+   conversion also warns that Jira may change the status when the workflows differ.
+5. The permissions are checked before the drop is accepted (fix plan item BL-2, step 2b).
+6. After the change, the planner recomputes the roll-up of the old and the new parent, cascades
+   their successors, refuses links that would form a cycle through the hierarchy, and updates the
+   contributor records (fix plan item N-08).
+7. Sub-task rows show their epic as read-only text. The epic picker is only for standard issues.
+
+* Alternatives Considered
+
+** Alternative B: Edit endpoint only; open Jira's convert screen for R3 and R4
+- For: no background job, no bulk permission, less code.
+- Against: the user leaves the planner for a type change.
+- Verdict: Rejected by the owner.
+
+** Alternative C: Epic changes only, as today
+- For: no new work.
+- Against: the planner cannot express a common planning step.
+- Verdict: Rejected.
+
+* Consequences
+
+** Positive
+- Users change the structure where they plan it, and Jira always holds the result.
+
+** Negative
+- A type conversion depends on a background job, a site-wide limit of 5 jobs, and a permission
+  that not every user holds.
+- The bulk move API is an early version. Its behaviour can change.
+
+** Mitigations
+- The development-site trials record the real behaviour before the build.
+- A job that fails, or a site limit that is reached, is shown with Jira's own reason.
+
+* Implementation Notes
+Trials, 2026-11-05 (=apps/cascadeplan/test/live/hierarchy_check.py=, throw-away issues DEMO-39 to
+DEMO-42, deleted after): run as the owner from a browser session on the development site, not yet
+from a Forge resolver; the resolver path is checked by the next live check of the planner.
+- R2: =PUT /rest/api/3/issue/{key}= with a new =parent=: 204. Key, id, due date and issue properties kept.
+- R3 and R4: =POST /rest/api/3/bulk/issues/move= with one mapping (=<project>,<type id>[,<parent>]=)
+  and the four =infer...Defaults= set to true: 201 with a task id; =GET /rest/api/3/bulk/queue/{id}=
+  reported =COMPLETE= with no failed issue. Key, id, due date, links and properties kept.
+So the planner's records, keyed by issue id, need no re-keying.
+
+Built on branch =feature/cascadeplan-marketplace-fixes=: resolvers =changeParent= (R1, R2),
+=convertIssueType= (R3, R4; returns Jira's job id) and =checkConversion= (follows the job; on
+=COMPLETE=, DEC-6 for the parents). A row dropped on the middle third of another row asks for the
+change Jira allows, with the rule as the reason when it does not; the task dialog offers the same
+choices ("Parent in Jira"). Every change is confirmed in a message first, and Undo makes the
+reverse change through the same route.
+
+* References
+- [[file:../../docs/sdlc/cascadeplan-marketplace-review-2026-11/fix-plan-v4.md][CascadePlan fix plan v4]], items N-07, N-08 and BL-2; decision DEC-7
+- [[file:../../docs/sdlc/cascadeplan-marketplace-review-2026-11/reparent-research.md][Jira re-parenting and hierarchy research, 2026-11-05]]
+- [[file:adr-00004-cascadeplan-jira-holds-relationships.org][ADR-004: CascadePlan keeps every relationship in Jira]]
+- [[file:adr-00003-cascadeplan-parent-block-move.org][ADR-003: CascadePlan block move of a parent and its sub-tasks]]

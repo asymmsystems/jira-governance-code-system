@@ -1,0 +1,7 @@
+{
+ "nav_err": "Timeout 30000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation until 'load'\n============================================================",
+ "admin_url": "https://asymmsystems.atlassian.net/plugins/servlet/upm",
+ "admin_hits": [],
+ "console_url": "https://id.atlassian.com/login?continue=https%3A%2F%2Fdeveloper.atlassian.com%2Fconsole%2Fmyapps%2Fcac8499e-e92e-4ba6-95cc-af398b1be791%2Foverview",
+ "console_hits": []
+}

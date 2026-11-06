@@ -1,0 +1,70 @@
+#+TITLE: ADR-007: Shared UI Package Built During Install
+#+DATE: 2026-11-05
+#+STATUS: Approved
+
+* Status
+Approved - 2026-11-05 by the owner, in chat (fix plan item BL-8, Option B, "Yes for all the
+apps"), during the Marketplace review of CascadePlan at commit =db08009=.
+
+Applies to all four apps: CascadePlan, DefinitionGuard, LedgerSeal and FourRealities.
+
+Not implemented.
+
+* Context
+- The shared UI Kit package =packages/asymm-jira-ui= (=@asymm/jira-ui=) has =main= and =types=
+  pointing at TypeScript source (=src/index.ts=).
+- Each app resolves it only through =paths= in its =tsconfig.json= and =moduleNameMapper= in its
+  =jest.config.js=. The Forge bundler does not use =paths=, so =forge deploy= from a clean clone
+  fails with "Can't resolve '@asymm/jira-ui'" (review test log #21 to #23).
+- The package's own =tsconfig.json= points =react=, =@forge/react= and =typeRoots= at
+  =../../apps/fourrealities/node_modules= (added in commit =990b8ea=). That setting applies only
+  when the package is type-checked on its own, but it makes the package depend on one app's
+  install.
+- The independent review tried the =file:= dependency with =install-links=true=. It works when
+  =dist/= exists, and npm runs the package's =prepare= script. The root =.gitignore= ignores
+  =dist=, so a clean clone has none
+  (=docs/sdlc/cascadeplan-marketplace-review-2026-11/independent-review/test-log.md=, rows 12 to
+  21).
+
+* Decision
+1. The package builds itself during install: =packages/asymm-jira-ui/package.json= gets
+   ="prepare": "tsc -p ."=, and =main= and =types= point at =dist/=. =dist/= stays ignored by git.
+2. The package has its own =devDependencies= (=typescript=, =@types/react=, =react=,
+   =@forge/react=, at the versions the apps use) and its own =package-lock.json=. =react= and
+   =@forge/react= stay in =peerDependencies=.
+3. The package's =tsconfig.json= has no =paths= or =typeRoots= that point outside the package.
+4. Each app depends on ="@asymm/jira-ui": "file:../../packages/asymm-jira-ui"= and has
+   =install-links=true= in its =.npmrc=, so npm copies the package into the app's =node_modules=,
+   and =react= resolves from the app.
+5. Each app's =jest.config.js= resolves =@asymm/jira-ui= to the installed package, not to =src=.
+6. Install order, locally and in CI: =npm ci= in =packages/asymm-jira-ui= first, then in each app.
+   After a change to the package source, run =npm ci= again in each app.
+
+* Alternatives Considered
+
+** Alternative A: Commit =dist/= with a CI freshness check
+- For: no build during install; the same files everywhere.
+- Against: every package change also needs a commit of built files.
+- Verdict: Rejected by the owner.
+
+* Consequences
+
+** Positive
+- A clean clone installs, tests, bundles and deploys with no manual step.
+- No app depends on another app's =node_modules=.
+
+** Negative
+- The package needs its own =node_modules= for the build, so there is one more install step.
+- The app's copy of the package does not follow source changes until the next =npm ci=.
+
+** Mitigations
+- The CI job runs on a real clean clone, in the install order above, for each of the four apps.
+
+* Implementation Notes
+Not implemented. Fix plan item BL-8. The clean-clone CI job must prove where npm runs =prepare=
+and whether it installs the package's =devDependencies= first; until then, step 6 assumes it does
+not.
+
+* References
+- [[file:../../docs/sdlc/cascadeplan-marketplace-review-2026-11/fix-plan-v4.md][CascadePlan fix plan v4]], item BL-8
+- [[file:../../docs/sdlc/cascadeplan-marketplace-review-2026-11/independent-review/fixplan-review.md][Independent review of the fix plan]], BL-8 row

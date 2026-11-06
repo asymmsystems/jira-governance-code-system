@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 import { PlannerEngine } from '../../src/domain/planner-engine';
 import {
   WbsTask,
@@ -53,10 +59,15 @@ describe('PlannerEngine Domain Tests', () => {
       expect(res).toBe('PLANNED_LEFT');
     });
 
-    it('returns COMPLETED in past week when task status is COMPLETED or progress is 100', () => {
+    it('returns COMPLETED in past week when task status is COMPLETED', () => {
       const completedTask: WbsTask = { ...sampleTask, status: 'COMPLETED', progress: 100 };
       const res = PlannerEngine.calculateCellVisualState(completedTask, sampleWeek, 0, 5);
       expect(res).toBe('COMPLETED');
+    });
+
+    it('does not return COMPLETED for 100% when Jira does not say Done (2026-11-06)', () => {
+      const openTask: WbsTask = { ...sampleTask, status: 'IN_PROGRESS', progress: 100, targetProgress: 100 };
+      expect(PlannerEngine.calculateCellVisualState(openTask, sampleWeek, 0, 5)).toBe('PLANNED_LEFT');
     });
 
     it('returns BEHIND_SCHEDULE in past week when progress < targetProgress', () => {
@@ -741,6 +752,21 @@ describe('PlannerEngine Domain Tests', () => {
       expect(resCycle.length).toBe(2);
     });
 
+  });
+});
+
+describe('validateDependency over every link and the hierarchy (F-15, N-06 rule 6)', () => {
+  const t = (key: string, extra: any = {}) => ({ key, ...extra });
+  const dep = (k: string) => ({ predecessorKey: k, predecessorId: k, triggerPercent: 100, isTriggerSatisfied: false });
+  it('finds a cycle through a second link', () => {
+    const tasks = [t('A', { dependencies: [dep('X'), dep('B')], dependency: dep('X') }), t('B'), t('X')];
+    expect(PlannerEngine.validateDependency('B', 'A', 100, tasks as any)).toEqual({ valid: false, error: 'Cyclic dependency detected: B -> A -> B' });
+  });
+  it('refuses a link between a parent and its own sub-task, either way', () => {
+    const tasks = [t('P'), t('S', { parentKey: 'P' }), t('G', { parentKey: 'S' })];
+    expect(PlannerEngine.validateDependency('S', 'P', 100, tasks as any).valid).toBe(false);
+    expect(PlannerEngine.validateDependency('P', 'G', 100, tasks as any).valid).toBe(false);
+    expect(PlannerEngine.validateDependency('S', 'X', 100, [...tasks, t('X')] as any).valid).toBe(true);
   });
 });
 

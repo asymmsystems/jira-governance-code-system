@@ -14,11 +14,12 @@ import { MAIN_PLAN_ID, getSavedPlanId, setSavedPlanId, chooseActivePlan, parentK
 import { showFlag } from './flag';
 import { classifyResult } from '../ui/result';
 import { UndoStack } from '../ui/undo-stack';
-import { snapshotPlan, buildUndoEntry, actionLabel } from '../ui/undo-plan';
-import { initErrorBanner } from './banner';
+import { snapshotPlan, buildUndoEntry, actionLabel, withWrittenStatuses } from '../ui/undo-plan';
+import { initErrorBanner, showErrorBanner } from './banner';
 import { enableTheme, onThemeChange } from './theme';
 import { openWhyPopup, closeWhyPopup, isWhyPopupOpen, initWhyPopup } from './why-popup';
 import { initChangesPanel, isChangesPanelOpen, closeChangesPanel } from './changes-panel';
+import { initBaselinePanel, closeBaselinePanel, isBaselinePanelOpen, statusText as baselineStatusText } from './baseline-panel';
 import { describePendingWrites } from '../ui/change-log';
 import { html } from '../ui/safe-html';
 import { CanvasTimeline, ROW_H, BAR_H } from './canvas-timeline';
@@ -40,16 +41,21 @@ import {
   clampColumnResize,
   computeFrozenLayout
 } from '../ui/column-layout';
-import { barRect, daysBetween, visibleRange, handleOffsets, snapDays, previewMoves, xForDate } from '../ui/timeline-geometry';
+import { barRect, daysBetween, visibleRange, handleOffsets, portOffsets, nearestArrow, snapDays, shiftDates, xForDate } from '../ui/timeline-geometry';
 import { GRID_COLUMNS, navigate, rowCells, rowLevel, moveKey, moveAnnouncement } from '../ui/keyboard-grid';
 import { weeklyHours } from '../ui/weekly-hours';
 import { emptyState, showLinkHint } from '../ui/first-run';
-import { toggleKey, rangeKeys, moveSelectionBy, progressFromDigit } from '../ui/selection';
+import { applyDynamicStyles } from './dynamic-style';
+import { toggleKey, rangeKeys, moveSelectionBy, selectedBlockParents, progressFromDigit } from '../ui/selection';
 import { addDays as addDaysIso } from '../domain/schedule-engine';
+import { planBlockMove } from '../domain/block-move';
+import { previewSingleMove, previewBlockMove } from '../domain/drop-plan';
+import { baselineItems, compareItems } from '../domain/baseline';
 import { shouldAutoCompact, ZOOMS, zoomById, zoomStep, mondayOf, initialRange, rangeDays, extendRange, edgeToExtend, headerCells, gridLines, anchorScroll, dateAt } from '../ui/time-scale';
 import { buildTableViewRows, toggleTableView } from '../ui/table-view';
 import { findMatchingTasks, findNextMatch, formatMatchCount, isSearchShortcut } from '../ui/in-app-search';
 import { formatRemovalPrompt } from '../ui/second-person';
+import { statusOffers, offerPrompt, progressLockReason, progressText, isDone } from '../ui/progress-status';
 import {
   categorizePlan,
   suggestCloneName,
@@ -121,7 +127,7 @@ function openJiraIssueInNewTab(issueKey, event) {
 }
 
 // Undo (B-14): every undoable write is recorded with its inverse when the next plan arrives.
-const UNDOABLE = new Set(['updateWbsTask', 'unscheduleTask', 'scheduleBacklogTask', 'batchUpdateTasks']);
+const UNDOABLE = new Set(['updateWbsTask', 'unscheduleTask', 'scheduleBacklogTask', 'batchUpdateTasks', 'moveTaskGroup']);
 const undoStack = new UndoStack(20);
 let pendingUndo = null;
 let replayingUndo = false;
@@ -148,10 +154,12 @@ function setActivePlan(planId) {
   setSavedPlanId(browserStore(), planScope, activePlanId);
 }
 
-async function callResolver(fn, payload = {}) {
+// opts.before: a snapshot taken before an optimistic change on screen, so Undo restores the dates the
+// user saw before the action, not the optimistic ones (F-04).
+async function callResolver(fn, payload = {}, opts = {}) {
   const mergedPayload = { planId: activePlanId, ...payload };
   if (!UNDOABLE.has(fn) || replayingUndo) return rawCallResolver(fn, mergedPayload);
-  if (!pendingUndo) pendingUndo = { before: snapshotPlan(currentPlan), fn, payload: mergedPayload };
+  if (!pendingUndo) pendingUndo = { before: opts.before || snapshotPlan(currentPlan), fn, payload: mergedPayload };
   const res = await rawCallResolver(fn, mergedPayload);
   const verdict = classifyResult(res);
   if (verdict.failed) {
@@ -160,6 +168,7 @@ async function callResolver(fn, payload = {}) {
     showFlag({ text: verdict.message || 'The change was not saved.', error: true });
   } else {
     pendingUndo.done = true;
+    pendingUndo.jiraSync = res && res.jiraSync;
   }
   return res;
 }
@@ -169,7 +178,8 @@ function settleUndo() {
   const p = pendingUndo;
   if (!p || !p.done || !currentPlan) return;
   pendingUndo = null;
-  const entry = buildUndoEntry(p.before, snapshotPlan(currentPlan), p.payload.taskId || (p.payload.items && p.payload.items[0] && p.payload.items[0].taskId));
+  const after = withWrittenStatuses(snapshotPlan(currentPlan), p.payload, p.jiraSync);
+  const entry = buildUndoEntry(p.before, after, p.payload.taskId || (p.payload.items && p.payload.items[0] && p.payload.items[0].taskId));
   if (!entry) return;
   entry.label = actionLabel(p.fn, p.payload, entry);
   undoStack.push(entry);
@@ -178,6 +188,213 @@ function settleUndo() {
 
 function findAnyTask(key) {
   return findTask(key) || (currentPlan?.backlogTasks || []).find(t => t.key === key);
+}
+
+// Links stored only in a plan record (before ADR-006) are listed once per plan and load.
+const planOnlyNoted = new Set();
+function notePlanOnlyLinks(plan) {
+  const all = (plan.tasks || []).concat(plan.backlogTasks || []);
+  const found = [];
+  for (const t of all) for (const d of (t.dependencies || [])) if (d && d.planOnly) found.push(`${d.predecessorKey} ➔ ${t.key}`);
+  const scope = `${activePlanId}:${found.join(',')}`;
+  if (!found.length || planOnlyNoted.has(scope)) return;
+  planOnlyNoted.add(scope);
+  showFlag({ text: `${found.length} link${found.length === 1 ? '' : 's'} exist only in this plan, not in Jira (${found.slice(0, 5).join(', ')}${found.length > 5 ? ', ...' : ''}). They still schedule. Open a link marked "not in Jira" to create it in Jira or remove it.` });
+}
+
+// ---- Hierarchy changes (N-08, ADR-005): every change is a Jira write, so every plan shows it. ----
+
+function levelOf(t) { return t.isEpic ? 1 : (t.isSubtask ? -1 : (t.hierarchyLevel ?? 0)); }
+
+/**
+ * What dropping `dragged` onto the middle of `target` means, by Jira's rules: a change, or a refusal
+ * with the rule as the reason (shown while dragging and on the drop).
+ */
+function hierarchyActionFor(dragged, target) {
+  if (!dragged || !target || dragged.key === target.key) return null;
+  const all = (currentPlan.tasks || []).concat(currentPlan.backlogTasks || []);
+  const byKey = new Map(all.map(t => [t.key, t]));
+  for (let k = target.parentKey; k; k = byKey.get(k)?.parentKey) if (k === dragged.key) return { refuse: `${target.key} is below ${dragged.key}.` };
+  const dl = levelOf(dragged), tl = levelOf(target);
+  if (dl >= 1) return { refuse: `${dragged.key} is an epic. An epic cannot move under another work item.` };
+  if (tl === -1) return { refuse: `${target.key} is a sub-task. A sub-task cannot have children in Jira.` };
+  if (dragged.parentKey === target.key) return { refuse: `${dragged.key} is already under ${target.key}.` };
+  if (dl === -1 && tl === 0) return { kind: 'parent', parentKey: target.key, label: `Move under ${target.key}` };
+  if (dl === -1) return { refuse: `${dragged.key} is a sub-task: its parent must be a task or story.` };
+  if (tl >= 1) return { kind: 'parent', parentKey: target.key, label: `Move under epic ${target.key}` };
+  if (all.some(t => t.parentKey === dragged.key)) return { refuse: `${dragged.key} has sub-tasks, so Jira cannot make it a sub-task.` };
+  return { kind: 'subtask', parentKey: target.key, label: `Make ${dragged.key} a sub-task of ${target.key}` };
+}
+
+/** Asks first, then makes the change in Jira; a type conversion follows Jira's job. Offers Undo. */
+function requestHierarchyChange(key, action, undoOf) {
+  if (!action || action.refuse) { if (action) showFlag({ text: action.refuse, error: true }); return; }
+  const question = action.kind === 'parent'
+    ? `Move ${key} under ${action.parentKey || 'no parent'}? This changes the parent in Jira, so every plan shows it.`
+    : action.kind === 'subtask'
+      ? `Make ${key} a sub-task of ${action.parentKey}? Jira changes its work type. If the types use different workflows, Jira may change its status.`
+      : `Make ${key} a task? Jira changes its work type. If the types use different workflows, Jira may change its status.`;
+  const run = async () => {
+    const before = findAnyTask(key);
+    const oldParent = before ? (before.parentKey || null) : null;
+    const wasSub = before ? levelOf(before) === -1 : false;
+    let res;
+    if (action.kind === 'parent') {
+      res = await callResolver('changeParent', { taskId: key, newParentKey: action.parentKey || null });
+    } else {
+      const started = await callResolver('convertIssueType', action.kind === 'subtask' ? { taskId: key, toSubtaskOf: action.parentKey } : { taskId: key, toTypeName: 'Task' });
+      if (!started || started.ok !== true || !started.jobId) return;
+      res = null;
+      for (let i = 0; i < 60; i++) {
+        await new Promise(r => setTimeout(r, i === 0 ? 800 : 1500));
+        const c = await callResolver('checkConversion', { jobId: started.jobId, taskId: key, oldParentKey: started.oldParentKey, newParentKey: started.newParentKey });
+        if (!c || c.done || c.ok === false) { res = c; break; }
+        showFlag({ text: `Jira is converting ${key}: ${c.progress || 0}%.` });
+      }
+      if (!res) { showFlag({ text: `Jira has not finished converting ${key}. Reload in a minute to see it.`, error: true }); return; }
+    }
+    if (res && Array.isArray(res.tasks)) applyPlanInPlace(res); else await loadProjectPlan();
+    if (res && res.ok !== false && !undoOf) {
+      // Undo makes the reverse change through the same route (N-08 interaction 5).
+      const back = action.kind === 'parent' ? { kind: 'parent', parentKey: oldParent }
+        : action.kind === 'subtask' ? { kind: 'task' }
+          : (wasSub && oldParent ? { kind: 'subtask', parentKey: oldParent } : null);
+      showFlag({ text: `${action.label || 'Changed'}: done in Jira.`, ...(back ? { action: { label: 'Undo', run: () => requestHierarchyChange(key, back, true) } } : {}) });
+    }
+  };
+  if (undoOf) { run(); return; }
+  showFlag({ text: question, action: { label: action.kind === 'parent' ? 'Move' : 'Convert', run } });
+}
+
+/** The keyboard route (N-08 interaction 4): the parent choices Jira allows for this row. */
+function renderParentControl(task) {
+  const sel = document.getElementById('parentSelect');
+  const btn = document.getElementById('btnApplyParent');
+  if (!sel || !btn) return;
+  const all = (currentPlan.tasks || []).concat(currentPlan.backlogTasks || []);
+  const lvl = levelOf(task);
+  const opts = [];
+  if (lvl === -1) {
+    opts.push({ value: 'task:', text: 'No parent: make it a task' });
+    for (const t of all) if (levelOf(t) === 0 && t.key !== task.parentKey) opts.push({ value: `parent:${t.key}`, text: `Under ${t.key}: ${t.summary}` });
+  } else if (lvl === 0) {
+    if (task.parentKey) opts.push({ value: 'parent:', text: 'No epic' });
+    for (const t of all) {
+      if (t.key === task.key || t.key === task.parentKey) continue;
+      const a = hierarchyActionFor(task, t);
+      if (a && !a.refuse) opts.push({ value: `${a.kind}:${t.key}`, text: a.kind === 'parent' ? `Under epic ${t.key}: ${t.summary}` : `Sub-task of ${t.key}: ${t.summary}` });
+    }
+  }
+  sel.replaceChildren(...[{ value: '', text: task.parentKey ? `Now: under ${task.parentKey}` : 'Now: no parent' }, ...opts].map(o => {
+    const el = document.createElement('option');
+    el.value = o.value; el.textContent = o.text;
+    return el;
+  }));
+  sel.disabled = btn.disabled = lvl >= 1 || opts.length === 0;
+  btn.onclick = () => {
+    const [kind, parentKey] = String(sel.value).split(':');
+    if (!kind) return;
+    const label = kind === 'task' ? `Make ${task.key} a task` : kind === 'subtask' ? `Make ${task.key} a sub-task of ${parentKey}` : `Move under ${parentKey || 'no parent'}`;
+    requestHierarchyChange(task.key, { kind, parentKey: parentKey || null, label });
+  };
+}
+
+/** A task or story whose bar is the roll-up of its sub-tasks: it moves as a block (ADR-003, N-05). */
+function isBlockParent(task) {
+  return !!task && task.datesFromChildren === true && !task.isEpic && (task.hierarchyLevel ?? 0) === 0;
+}
+
+/** The planned block move of a parent by `days`: each sub-task by its state (src/domain/block-move.ts). */
+function blockPlan(key, days) {
+  const members = (currentPlan.tasks || []).concat(currentPlan.backlogTasks || []).filter(t => t.parentKey === key);
+  return planBlockMove(members, days, todayIso());
+}
+
+/**
+ * The link that most limits a block move: each moving, not-started sub-task is bound by its own
+ * links and by its parent's (N-06 rule 5). Returns the extra days the block needs, or null.
+ */
+function blockConflict(plan) {
+  const all = (currentPlan.tasks || []).concat(currentPlan.backlogTasks || []);
+  let worst = null;
+  for (const c of plan.changes) {
+    if (c.state !== 'not-started') continue;
+    const r = checkDependencyConflict({ key: c.key, startDate: c.toStart }, all, todayIso());
+    if (!r.hasConflict) continue;
+    const need = daysBetween(c.toStart, r.earliestDate);
+    if (!worst || need > worst.need) worst = { ...r, need, key: c.key };
+  }
+  return worst;
+}
+
+/**
+ * The days a block move of `key` by `days` will use: with "Enforce dependencies" on, the whole block
+ * stops at the earliest day every link allows (ADR-003 section 6), as moveBlock does.
+ */
+function effectiveBlockDays(key, days) {
+  if (!days || !isEnforceDepsEnabled()) return days;
+  const conflict = blockConflict(blockPlan(key, days));
+  return conflict ? days + conflict.need : days;
+}
+
+/**
+ * Every Jira write of a drop, from the same computation the server applies (src/domain/drop-plan.ts,
+ * INV-03): `moves` for drawing (the moved bar included), `text` for the preview line.
+ */
+function dropPreview(key, start, end, blockDays) {
+  const plan = { tasks: currentPlan.tasks || [], backlogTasks: currentPlan.backlogTasks || [] };
+  const all = plan.tasks.concat(plan.backlogTasks);
+  const p = blockDays !== undefined ? previewBlockMove(plan, key, blockDays, todayIso()) : previewSingleMove(plan, key, start, end, todayIso());
+  const text = describePendingWrites(all, p.moves, key, { parentDue: p.parentDue, epics: p.epics }).text;
+  const moves = new Map(p.moves);
+  moves.set(key, { start, end });
+  return { moves, text };
+}
+
+/** Moves a parent and its sub-tasks as one block; one Undo restores them all. */
+async function moveBlock(key, days) {
+  if (!days) return;
+  let plan = blockPlan(key, days);
+  const conflict = blockConflict(plan);
+  const enforce = isEnforceDepsEnabled();
+  if (conflict && enforce) {
+    // Enforce dependencies: the whole block stops at the earliest day every link allows (ADR-003 section 6).
+    days += conflict.need;
+    if (!days) {
+      announce(`Enforce dependencies: ${key} cannot move earlier; ${conflict.key} cannot start before ${conflict.earliestDate} (dependency on ${conflict.predKey}).`);
+      drawTimeline(true);
+      return;
+    }
+    plan = blockPlan(key, days);
+  }
+  if (plan.changes.length === 0) {
+    showFlag({ text: `Nothing in ${key} can move: ${plan.fixed.map(f => `${f.key} ${f.reason}`).join('; ')}.` });
+    drawTimeline(true);
+    return;
+  }
+  const expectedVersions = {};
+  for (const c of plan.changes) expectedVersions[c.key] = (findAnyTask(c.key) && findAnyTask(c.key).version) || 0;
+  let res = await callResolver('moveTaskGroup', { taskId: key, days, expectedVersions, enforceDependencies: enforce });
+  // A block of more than 25 sub-tasks continues in batches of 25; the last batch runs the cascade.
+  const rest = (res && Array.isArray(res.blockRemaining)) ? res.blockRemaining : [];
+  for (let i = 0; i < rest.length; i += 25) {
+    const items = rest.slice(i, i + 25);
+    const last = i + 25 >= rest.length;
+    showFlag({ text: `Moving the sub-tasks of ${key}: ${Math.min(i + 25, rest.length) + 25} of ${rest.length + 25}.` });
+    const next = await rawCallResolver('continueBlockMove', { planId: activePlanId, taskId: key, items, last });
+    if (next && Array.isArray(next.tasks)) res = next;
+    if (!next || next.ok === false) break;
+  }
+  if (res && Array.isArray(res.tasks)) applyPlanInPlace(res);
+  else await loadProjectPlan();
+  if (res && res.ok && plan.fixed.length) {
+    announce(`Moved ${key} by ${days} days. Kept: ${plan.fixed.map(f => `${f.key} (${f.reason})`).join(', ')}.`);
+  }
+  if (res && res.ok && conflict) {
+    const via = conflict.viaParent ? ` (a link of ${conflict.viaParent})` : '';
+    if (enforce) announce(`Enforce dependencies: moved ${key} so ${conflict.key} starts on ${conflict.earliestDate}, after ${conflict.predKey}${via}.`);
+    else showFlag({ text: `${conflict.key} now starts before ${conflict.earliestDate}, the earliest day its dependency on ${conflict.predKey}${via} allows.` });
+  }
 }
 
 /** Applies undo or redo operations in order, with each task's current version. */
@@ -198,7 +415,8 @@ async function replayUndo(ops) {
         }
       } else {
         const t = findAnyTask(op.key);
-        res = await rawCallResolver('updateWbsTask', { planId, taskId: op.key, updates: op.updates, expectedVersion: (t && t.version) || 0 });
+        // restore: the exact dates of each changed task, with no new cascade (B-14).
+        res = await rawCallResolver('updateWbsTask', { planId, taskId: op.key, updates: op.updates, expectedVersion: (t && t.version) || 0, restore: true });
       }
       const verdict = classifyResult(res);
       if (verdict.failed) {
@@ -349,6 +567,12 @@ async function initApp() {
   initErrorBanner();
   initWhyPopup();
   initChangesPanel();
+  initBaselinePanel({
+    call: (fn, payload = {}) => rawCallResolver(fn, { planId: activePlanId, ...payload }),
+    flag: showFlag,
+    isApprover: () => planApprover,
+    reloadPlan: () => loadProjectPlan()
+  });
   // Theme first, so the first paint already uses the Jira theme (B-17).
   await enableTheme();
   // The canvas reads token colours at draw time; a theme change repaints it (B-17).
@@ -360,6 +584,7 @@ async function initApp() {
   if (wrapper) {
     timeline = new CanvasTimeline(wrapper);
     timeline.onDraw = (links) => renderDependencyBadges(links);
+    initArrowLineClicks(wrapper);
     wrapper.addEventListener('scroll', scheduleVirtualRows, { passive: true });
   }
   const tbody = document.getElementById('ganttBody');
@@ -584,6 +809,10 @@ function setupEventListeners() {
       closeChangesPanel();
       return;
     }
+    if (e.key === 'Escape' && isBaselinePanelOpen()) {
+      closeBaselinePanel();
+      return;
+    }
     if (e.key === 'Escape') {
       const modal = openModal();
       if (modal) {
@@ -686,11 +915,11 @@ function setupEventListeners() {
       e.stopPropagation();
       const pct = parseInt(btn.dataset.pct, 10);
       if (progPopover) progPopover.style.display = 'none';
-      if (!activeProgressTaskKey) return;
-      await callResolver('updateWbsTask', {
-        taskId: activeProgressTaskKey,
-        updates: { progress: pct, manualProgress: true }
-      });
+      const key = activeProgressTaskKey;
+      if (!key) return;
+      const updates = { progress: pct, manualProgress: true };
+      if (!(await withStatusChoice([{ key, progress: pct, updates }]))) return;
+      await callResolver('updateWbsTask', { taskId: key, updates });
       await loadProjectPlan();
     });
   });
@@ -717,11 +946,12 @@ function setupEventListeners() {
       e.stopPropagation();
       const val = parseInt(progNumInput?.value || progSlider?.value || '0', 10);
       if (progPopover) progPopover.style.display = 'none';
-      if (!activeProgressTaskKey) return;
-      await callResolver('updateWbsTask', {
-        taskId: activeProgressTaskKey,
-        updates: { progress: Math.max(0, Math.min(100, val)), manualProgress: true }
-      });
+      const key = activeProgressTaskKey;
+      if (!key) return;
+      const pct = Math.max(0, Math.min(100, val));
+      const updates = { progress: pct, manualProgress: true };
+      if (!(await withStatusChoice([{ key, progress: pct, updates }]))) return;
+      await callResolver('updateWbsTask', { taskId: key, updates });
       await loadProjectPlan();
     });
   }
@@ -857,6 +1087,11 @@ function setupEventListeners() {
       if (editTargetValLabel) editTargetValLabel.textContent = `${pct}%`;
     });
   });
+
+  // Changing a Done item's status in the dialog unlocks its progress (2026-11-06).
+  document.getElementById('editStatusSelect')?.addEventListener('change', (e) => setDialogProgressLock(activeTaskId, e.target.value));
+  document.getElementById('btnStatusOfferMove')?.addEventListener('click', () => { if (statusOfferResolve) statusOfferResolve('move'); });
+  document.getElementById('btnStatusOfferKeep')?.addEventListener('click', () => { if (statusOfferResolve) statusOfferResolve('keep'); });
 
   const btnModalRollup = document.getElementById('btnModalUseRollup');
   if (btnModalRollup) {
@@ -1297,7 +1532,8 @@ function updateColumnManagerUI() {
   const alertBar = document.getElementById('hiddenColsAlertBar');
   const alertText = document.getElementById('hiddenColsText');
   if (alertBar && alertText) {
-    if (hiddenColumns.size > 0) {
+    // Compact (Key and Summary only) is a view the user chose with its own toggle, so it needs no warning.
+    if (hiddenColumns.size > 0 && !isCompactMode()) {
       alertBar.style.display = 'flex';
       const hiddenNames = ALL_COLUMNS.filter(c => hiddenColumns.has(c.key)).map(c => c.label).join(', ');
       alertText.textContent = `${hiddenColumns.size} column${hiddenColumns.size > 1 ? 's' : ''} hidden (${hiddenNames}). Click Unhide All to restore them.`;
@@ -1317,10 +1553,10 @@ function updateColumnManagerUI() {
 
       row.innerHTML = html`
         <input type="checkbox" id="col_chk_${col.key}" ${isChecked ? 'checked' : ''} ${col.locked ? 'disabled' : ''} />
-        <label for="col_chk_${col.key}" class="col-option-label" style="cursor:${col.locked ? 'default' : 'pointer'};">
+        <label for="col_chk_${col.key}" class="col-option-label ${col.locked ? 'is-locked' : ''}">
           <span>${col.icon}</span>
           <span>${col.label}</span>
-          ${col.locked ? html`<span class="badge badge-neutral" style="font-size:9px; padding:1px 4px;">Required</span>` : ''}
+          ${col.locked ? html`<span class="badge badge-neutral jx-badge-tiny">Required</span>` : ''}
         </label>
       `;
 
@@ -1356,11 +1592,11 @@ function openColumnHeaderMenu(e, colKey, colLabel) {
   menu.style.zIndex = '1200';
 
   menu.innerHTML = html`
-    <div style="font-weight:700; font-size:11px; color: var(--cp-text-subtle); margin-bottom:4px;">Column: ${colLabel}</div>
-    <button class="btn btn-outline btn-sm" id="btnHideThisCol" style="text-align:left; justify-content:flex-start; width:100%; font-size:12px; margin-bottom:4px;">
+    <div class="jx-menu-caption">Column: ${colLabel}</div>
+    <button class="btn btn-outline btn-sm jx-menu-btn-mb4" id="btnHideThisCol">
       🚫 Hide "${colLabel}"
     </button>
-    <button class="btn btn-subtle btn-sm" id="btnManageAllFromHeader" style="text-align:left; justify-content:flex-start; width:100%; font-size:12px;">
+    <button class="btn btn-subtle btn-sm jx-menu-btn" id="btnManageAllFromHeader">
       ⚙ Manage All Columns...
     </button>
   `;
@@ -1395,14 +1631,39 @@ function openColumnHeaderMenu(e, colKey, colLabel) {
   setTimeout(() => document.addEventListener('click', onDocClick), 10);
 }
 
+/**
+ * Runs a paged plan copy or delete to the end (N-02): each call does one page on the server.
+ * Returns the last answer; `done` is true only when every page ran.
+ */
+async function finishPlanWork(resolverName, planId, label) {
+  let res = null;
+  for (let i = 0; i < 200; i++) {
+    res = await callResolver(resolverName, { planId });
+    if (!res || res.ok !== true || res.done === true) break;
+    showFlag({ text: `${label}: ${res.remaining} records left.` });
+  }
+  return res;
+}
+
+// Deletes stopped earlier (a closed tab, a timeout) are finished once per load, by a plan approver.
+const finishingDeletes = new Set();
+function finishStoppedDeletes(plans) {
+  if (planApprover !== true || !Array.isArray(plans)) return;
+  for (const p of plans) {
+    if (p.state !== 'deleting' || finishingDeletes.has(p.id)) continue;
+    finishingDeletes.add(p.id);
+    finishPlanWork('continuePlanDelete', p.id, `Deleting plan ${p.name}`).finally(() => finishingDeletes.delete(p.id));
+  }
+}
+
 let currentPlanCategoryFilter = 'all';
 let currentPlanSearchQuery = '';
 
 function updatePlansUI(availablePlans = [], currentId = 'default') {
   const switcher = document.getElementById('planSwitcher');
-  const plans = Array.isArray(availablePlans) && availablePlans.length > 0
-    ? availablePlans
-    : [{ id: 'default', name: 'Main Plan', isDefault: true }];
+  const listed = Array.isArray(availablePlans) ? availablePlans.filter(p => p.state !== 'deleting') : [];
+  const plans = listed.length > 0 ? listed : [{ id: 'default', name: 'Main Plan', isDefault: true }];
+  finishStoppedDeletes(availablePlans);
 
   if (switcher) {
     switcher.innerHTML = '';
@@ -1422,17 +1683,69 @@ function updatePlansUI(availablePlans = [], currentId = 'default') {
   }
 
   const allCount = plans.length;
-  const baselineCount = plans.filter(p => categorizePlan(p) === 'baseline').length;
   const scenarioCount = plans.filter(p => categorizePlan(p) === 'scenario').length;
 
   const countAllEl = document.getElementById('planTabCountAll');
   if (countAllEl) countAllEl.textContent = String(allCount);
-  const countBaselinesEl = document.getElementById('planTabCountBaselines');
-  if (countBaselinesEl) countBaselinesEl.textContent = String(baselineCount);
   const countScenariosEl = document.getElementById('planTabCountScenarios');
   if (countScenariosEl) countScenariosEl.textContent = String(scenarioCount);
 
   renderFilteredPlansList(plans, currentId);
+}
+
+// Plan approver rights decide whether plan management is offered (BL-2 step 8). The server checks
+// every plan write again; this only avoids offering actions that would be refused.
+let planApprover = null;
+async function loadPlanApprover() {
+  if (planApprover !== null) return planApprover;
+  const res = await rawCallResolver('checkPlanApprover', { planId: activePlanId });
+  planApprover = !!(res && res.ok === true && res.isApprover === true);
+  applyPlanApproverToCreateForm();
+  // The list may have been drawn before the answer arrived.
+  if (currentPlan && Array.isArray(currentPlan.availablePlans)) renderFilteredPlansList(currentPlan.availablePlans, activePlanId);
+  return planApprover;
+}
+
+function applyPlanApproverToCreateForm() {
+  const nameInp = document.getElementById('newPlanNameInput');
+  const btn = document.getElementById('btnCreatePlan');
+  const allowed = planApprover === true;
+  for (const el of [nameInp, btn]) {
+    if (!el) continue;
+    el.disabled = !allowed;
+    el.title = allowed ? '' : 'Only plan approvers (project or Jira administrators, or an approver group) create plans.';
+  }
+  renderPlanFilter();
+}
+
+// The JQL filter of the open plan (F-27): everyone sees it, plan approvers change it.
+function renderPlanFilter() {
+  const inp = document.getElementById('planJqlInput');
+  const btn = document.getElementById('btnSavePlanJql');
+  if (!inp || !btn) return;
+  if (document.activeElement !== inp) inp.value = (currentPlan && currentPlan.jqlFilter) || '';
+  const allowed = planApprover === true;
+  inp.readOnly = !allowed;
+  btn.hidden = !allowed;
+  inp.title = allowed ? '' : 'Only plan approvers change the filter of a plan.';
+}
+
+async function savePlanFilter() {
+  const inp = document.getElementById('planJqlInput');
+  const btn = document.getElementById('btnSavePlanJql');
+  if (!inp || !btn || planApprover !== true) return;
+  btn.disabled = true;
+  const res = await callResolver('setPlanFilter', { filter: inp.value });
+  btn.disabled = false;
+  if (res && res.ok) {
+    const text = res.filter
+      ? `Filter saved. About ${res.count ?? 'an unknown number of'} work items match it.`
+      : 'Filter removed. The plan reads the whole project.';
+    showFlag({ text });
+    await loadProjectPlan();
+  } else {
+    showFlag({ text: res?.message || 'The filter was not saved.', error: true });
+  }
 }
 
 function renderFilteredPlansList(plans, currentId) {
@@ -1469,14 +1782,20 @@ function renderFilteredPlansList(plans, currentId) {
     mainDiv.className = 'plan-item-main';
 
     const catBadge = document.createElement('span');
-    catBadge.className = 'plan-category-badge ' + (p.category === 'baseline' ? 'is-baseline' : 'is-scenario');
-    catBadge.textContent = p.category === 'baseline' ? 'Baseline' : 'Scenario';
+    catBadge.className = 'plan-category-badge ' + (p.category === 'main' ? 'is-baseline' : 'is-scenario');
+    catBadge.textContent = p.category === 'main' ? 'Main' : 'Scenario';
     mainDiv.appendChild(catBadge);
 
     const nameSpan = document.createElement('span');
     nameSpan.className = 'plan-item-name';
     nameSpan.textContent = p.name;
     mainDiv.appendChild(nameSpan);
+    if (p.copying) {
+      const note = document.createElement('span');
+      note.className = 'plan-item-note';
+      note.textContent = 'copy not finished';
+      mainDiv.appendChild(note);
+    }
 
     if (p.isActive) {
       const activeCheck = document.createElement('span');
@@ -1504,7 +1823,13 @@ function renderFilteredPlansList(plans, currentId) {
         name: cloneName,
         cloneFromPlanId: p.id
       });
-      if (res && res.ok && res.plan) {
+      const copied = res && res.ok && res.plan && res.done === false
+        ? await finishPlanWork('continuePlanCopy', res.plan.id, `Copying to ${res.plan.name}`) : res;
+      if (res && res.ok && res.plan && !(copied && copied.ok && copied.done !== false)) {
+        showFlag({ text: `The copy to ${res.plan.name} stopped. Pick it in the plan list to finish it.`, error: true });
+        btnClone.disabled = false;
+        await loadProjectPlan();
+      } else if (res && res.ok && res.plan) {
         setActivePlan(res.plan.id);
         showFlag({ text: `Cloned plan to ${res.plan.name}.` });
         closePlansPopover();
@@ -1514,9 +1839,10 @@ function renderFilteredPlansList(plans, currentId) {
         btnClone.disabled = false;
       }
     });
-    actions.appendChild(btnClone);
+    // Clone, rename and delete are plan management: only plan approvers see them (BL-2 step 8).
+    if (planApprover === true) actions.appendChild(btnClone);
 
-    if (p.canDelete) {
+    if (p.canDelete && planApprover === true) {
       const btnRename = document.createElement('button');
       btnRename.className = 'btn btn-subtle btn-xs';
       btnRename.textContent = '✏️';
@@ -1568,7 +1894,9 @@ function renderFilteredPlansList(plans, currentId) {
       btnDel.addEventListener('click', async (e) => {
         e.stopPropagation();
         if (btnDel.dataset.confirming === 'true') {
-          const res = await callResolver('deleteProjectPlan', { planId: p.id });
+          const first = await callResolver('deleteProjectPlan', { planId: p.id });
+          const res = first && first.ok && first.done === false
+            ? await finishPlanWork('continuePlanDelete', p.id, `Deleting plan ${p.name}`) : first;
           if (res && res.ok) {
             showFlag({ text: `Deleted plan ${p.name}.` });
             if (activePlanId === p.id) {
@@ -1596,6 +1924,11 @@ function renderFilteredPlansList(plans, currentId) {
 
     row.addEventListener('click', async (e) => {
       if (e.target.closest('button') || e.target.closest('input')) return;
+      if (p.copying) {
+        if (planApprover !== true) { showFlag({ text: `${p.name} is still being copied. A plan approver can finish the copy.` }); return; }
+        const done = await finishPlanWork('continuePlanCopy', p.id, `Copying to ${p.name}`);
+        if (!(done && done.ok && done.done !== false)) { showFlag({ text: done?.message || `The copy to ${p.name} stopped. Try again.`, error: true }); return; }
+      }
       if (p.id !== currentId) {
         setActivePlan(p.id);
         closePlansPopover();
@@ -1604,15 +1937,12 @@ function renderFilteredPlansList(plans, currentId) {
       }
     });
 
-    row.addEventListener('keydown', async (ke) => {
+    // The keyboard does what a click does, an unfinished copy included.
+    row.addEventListener('keydown', (ke) => {
+      if (ke.target !== row) return;
       if (ke.key === 'Enter' || ke.key === ' ') {
         ke.preventDefault();
-        if (p.id !== currentId) {
-          setActivePlan(p.id);
-          closePlansPopover();
-          await loadProjectPlan();
-          showFlag({ text: `Switched to plan ${p.name}.` });
-        }
+        row.click();
       }
     });
 
@@ -1636,6 +1966,18 @@ async function loadProjectPlan() {
   const plan = await callResolver('getProjectPlan', { planId: activePlanId });
   if (loader) loader.style.display = 'none';
 
+  // The Jira search failed: say why instead of showing an empty project (F-21).
+  if (plan && Array.isArray(plan.tasks) && plan.isLiveSynced === false) {
+    if (errBanner) {
+      errBanner.style.display = 'flex';
+      const msg = document.getElementById('plannerErrorMsg');
+      if (msg) msg.textContent = (plan.jiraStatus === 401 || plan.jiraStatus === 403)
+        ? 'You cannot browse this project in Jira, so CascadePlan cannot show its plan.'
+        : 'Jira is not reachable right now, so the plan cannot be shown. Click Retry in a moment.';
+    }
+    return;
+  }
+
   if (plan && Array.isArray(plan.tasks)) {
     // The Forge context could not be read at start-up: scope by project key and reopen the saved plan once.
     if (!planScope && plan.projectKey) {
@@ -1656,6 +1998,10 @@ async function loadProjectPlan() {
     currentPlan = plan;
     setActivePlan(served);
     updatePlansUI(plan.availablePlans, activePlanId);
+    notePlanOnlyLinks(plan);
+    // The active baseline comes with the plan load (ADR-009); the status follows every later change.
+    if (plan.baselineStatus !== undefined) baselineState = plan.baselineStatus;
+    updateBaselineButton();
     columnWidths = sanitizeLoadedColumnWidths(plan.columnWidths);
     if (Array.isArray(plan.hiddenColumns)) {
       hiddenColumns = new Set(plan.hiddenColumns);
@@ -1668,15 +2014,17 @@ async function loadProjectPlan() {
     updateColumnManagerUI();
     renderPlan();
     settleUndo();
-    // Entries Jira did not return: the resolver deletes those Jira confirms are gone (B-18).
-    if (Array.isArray(plan.staleEntries) && plan.staleEntries.length) {
-      rawCallResolver('pruneStaleEntries', { planId: activePlanId, keys: plan.staleEntries.slice(0, 200) });
-    }
+    // Opening the planner writes and deletes nothing. Records of deleted issues are removed by the
+    // issue-deleted trigger on the server (BL-9).
+    void loadPlanApprover();
   } else {
     if (errBanner) {
       errBanner.style.display = 'flex';
       const msg = document.getElementById('plannerErrorMsg');
-      if (msg) msg.textContent = 'Unable to synchronize with Jira. Please verify your connection or click Retry.';
+      // The real cause, not a generic connection message (F-21).
+      if (msg) msg.textContent = plan && plan.error === 'license_required'
+        ? 'A CascadePlan licence is required on this site. Ask your Jira administrator.'
+        : (plan && plan.message) || 'Unable to synchronize with Jira. Please verify your connection or click Retry.';
     }
   }
 }
@@ -1761,11 +2109,13 @@ function renderPlanSummary() {
   const truncatedNote = document.getElementById('truncatedNote');
   if (truncatedNote) {
     // More issues exist than one plan reads (B-10).
+    // With a plan filter, the count is of the work items that match it (F-27).
     truncatedNote.hidden = !currentPlan.truncated;
     truncatedNote.textContent = currentPlan.truncated
-      ? `Showing the newest ${currentPlan.truncated.shown} of about ${currentPlan.truncated.total} issues`
+      ? `Showing the newest ${currentPlan.truncated.shown} of about ${currentPlan.truncated.total} issues${currentPlan.jqlFilter ? ' that match this plan\'s filter' : '. A plan approver can narrow the plan with a JQL filter in the plan list'}`
       : '';
   }
+  renderPlanFilter();
 
   const curWk = (currentPlan.weeks || []).find(w => w.isCurrentWeek);
   if (curWk) {
@@ -1780,7 +2130,7 @@ function renderMilestones() {
   (currentPlan.milestones || []).forEach(m => {
     const el = document.createElement('div');
     el.className = 'milestone-pill';
-    el.innerHTML = html`<span class="milestone-icon">🔷</span><span>${m.title}</span><span style="color: var(--cp-text-subtle);">(${m.weekKey})</span>`;
+    el.innerHTML = html`<span class="milestone-icon">🔷</span><span>${m.title}</span><span class="jx-subtle">(${m.weekKey})</span>`;
     strip.appendChild(el);
   });
 }
@@ -1791,7 +2141,7 @@ function renderBacklogTray() {
 
   const backlog = currentPlan.backlogTasks || [];
   if (backlog.length === 0) {
-    container.innerHTML = '<div style="color: var(--cp-text-subtle); font-size:12px; text-align:center; padding:20px;">No unmapped backlog issues. Drag from timeline to unmap.</div>';
+    container.innerHTML = '<div class="jx-empty-tray">No unmapped backlog issues. Drag from timeline to unmap.</div>';
     return;
   }
 
@@ -1816,7 +2166,7 @@ function renderBacklogTray() {
       <div class="backlog-footer">
         <span>⏱️ ${effortDisplay}</span>
         <span>👤 ${item.resource || 'Unassigned'}</span>
-        <button type="button" class="btn btn-outline btn-sm btn-schedule-backlog" title="Schedule onto timeline" style="margin-left: auto; padding: 2px 8px; font-size: 11px;">+ Schedule</button>
+        <button type="button" class="btn btn-outline btn-sm btn-schedule-backlog jx-schedule-btn" title="Schedule onto timeline">+ Schedule</button>
       </div>
     `;
     const bKeyLink = card.querySelector('.backlog-key-link');
@@ -1844,7 +2194,7 @@ function renderBacklogTray() {
           } else {
             await loadProjectPlan();
           }
-          showFlag({ text: 'Scheduled ' + item.key + ' to timeline.' });
+          if (res && res.ok === true) showFlag({ text: 'Scheduled ' + item.key + ' to timeline.' });
         } catch (err) {
           showFlag({ text: 'Failed to schedule ' + item.key, error: true });
         }
@@ -2260,16 +2610,16 @@ function openResourcePicker(targetEl, taskKey) {
     }
 
     currentContainer.style.display = 'flex';
-    currentContainer.innerHTML = '<div style="width:100%; font-size:10px; font-weight:700; color: var(--cp-text-subtle); text-transform:uppercase; margin-bottom:2px;">Assigned Team:</div>';
+    currentContainer.innerHTML = '<div class="jx-picker-caption">Assigned Team:</div>';
 
     assignedResources.forEach(res => {
       const chip = document.createElement('div');
       chip.className = 'resource-current-chip' + (res.isParent ? ' is-lead' : '');
       const initials = getInitials(res.name);
       chip.innerHTML = html`
-        <span class="resource-option-avatar" style="width:16px; height:16px; font-size:9px;">${initials}</span>
+        <span class="resource-option-avatar jx-avatar-small">${initials}</span>
         <span>${res.name}</span>
-        <span style="font-size:9px; opacity:0.8;">${res.isParent ? '(Lead)' : ''}</span>
+        <span class="jx-lead-note">${res.isParent ? '(Lead)' : ''}</span>
         ${!res.isParent ? html`<button class="resource-btn-make-lead" title="Make primary Jira assignee">★ Lead</button>` : ''}
         <span class="resource-current-chip-remove" title="Remove ${res.name}">✕</span>
       `;
@@ -2334,11 +2684,11 @@ function openResourcePicker(targetEl, taskKey) {
     promptContainer.className = 'resource-removal-prompt';
     promptContainer.style.cssText = 'width: 100%; padding: 8px; border: 1px solid var(--cp-border); border-radius: 4px; background: var(--cp-surface); margin-top: 4px; box-sizing: border-box;';
     promptContainer.innerHTML = html`
-      <div style="font-size: 11px; margin-bottom: 6px; color: var(--cp-text);">${formatRemovalPrompt(removing.name, subtaskKey)}</div>
-      <div style="display: flex; gap: 6px;">
-        <button type="button" class="btn btn-danger btn-sm btn-delete-subtask" style="padding: 2px 6px; font-size: 10px;">Delete sub-task</button>
-        <button type="button" class="btn btn-secondary btn-sm btn-unassign-subtask" style="padding: 2px 6px; font-size: 10px;">Unassign sub-task</button>
-        <button type="button" class="btn btn-subtle btn-sm btn-cancel-remove" style="padding: 2px 6px; font-size: 10px;">Cancel</button>
+      <div class="jx-remove-prompt">${formatRemovalPrompt(removing.name, subtaskKey)}</div>
+      <div class="jx-row-6">
+        <button type="button" class="btn btn-danger btn-sm btn-delete-subtask jx-btn-tiny">Delete sub-task</button>
+        <button type="button" class="btn btn-secondary btn-sm btn-unassign-subtask jx-btn-tiny">Unassign sub-task</button>
+        <button type="button" class="btn btn-subtle btn-sm btn-cancel-remove jx-btn-tiny">Cancel</button>
       </div>
     `;
 
@@ -2492,7 +2842,7 @@ function openResourcePicker(targetEl, taskKey) {
       opt.innerHTML = html`
         <input type="checkbox" class="resource-option-checkbox" ${isUnassignedSelected ? 'checked' : ''} />
         <span class="resource-option-avatar">U</span>
-        <span style="flex:1;">Unassigned</span>
+        <span class="jx-fill">Unassigned</span>
       `;
       opt.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -2501,12 +2851,13 @@ function openResourcePicker(targetEl, taskKey) {
       listEl.appendChild(opt);
     }
 
+    // The Unassigned row above stands for the server's "unassigned" entry, so it is listed once.
     const users = (currentPlan?.availableUsers || []).filter(u =>
-      u.displayName && u.displayName.toLowerCase().includes(q)
+      u.accountId !== 'unassigned' && u.displayName && u.displayName.toLowerCase().includes(q)
     );
 
     if (users.length === 0 && q && !'unassigned'.includes(q)) {
-      listEl.innerHTML = '<div style="padding:10px; font-size:11px; color: var(--cp-text-subtle); text-align:center;">No matching team members</div>';
+      listEl.innerHTML = '<div class="jx-empty-list">No matching team members</div>';
       return;
     }
 
@@ -2518,7 +2869,7 @@ function openResourcePicker(targetEl, taskKey) {
       const opt = document.createElement('div');
       opt.className = 'resource-option' + (isAssigned ? ' is-selected' : '');
       const initials = getInitials(u.displayName);
-      const isPlaceholder = u.isPlaceholder ? html` <span style="font-size:10px; color: var(--cp-text-subtlest);">(Placeholder)</span>` : '';
+      const isPlaceholder = u.isPlaceholder ? html` <span class="jx-placeholder-note">(Placeholder)</span>` : '';
 
       let badgeHtml = html``;
       if (isAssigned) {
@@ -2530,7 +2881,7 @@ function openResourcePicker(targetEl, taskKey) {
       opt.innerHTML = html`
         <input type="checkbox" class="resource-option-checkbox" ${isAssigned ? 'checked' : ''} />
         <span class="resource-option-avatar">${initials}</span>
-        <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${u.displayName}${isPlaceholder}</span>
+        <span class="jx-ellipsis-fill">${u.displayName}${isPlaceholder}</span>
         ${badgeHtml}
       `;
 
@@ -2604,7 +2955,7 @@ function openEpicPicker(targetEl, taskKey) {
     if (!q || 'none standalone'.includes(q)) {
       const opt = document.createElement('div');
       opt.className = 'resource-option';
-      opt.innerHTML = html`<span style="color: var(--cp-text-subtle); font-size:11px;">✕ (None / Standalone Task)</span>`;
+      opt.innerHTML = html`<span class="jx-subtle-11">✕ (None / Standalone Task)</span>`;
       opt.addEventListener('click', async () => {
         popover.style.display = 'none';
         if (activePickerTaskKey === 'NEW_INLINE_TASK') {
@@ -2627,7 +2978,7 @@ function openEpicPicker(targetEl, taskKey) {
     );
 
     if (epics.length === 0 && q) {
-      listEl.innerHTML = '<div style="padding:10px; font-size:11px; color: var(--cp-text-subtle); text-align:center;">No matching epics</div>';
+      listEl.innerHTML = '<div class="jx-empty-list">No matching epics</div>';
       return;
     }
 
@@ -2672,6 +3023,12 @@ function openProgressPicker(targetEl, taskKey) {
   activeProgressTaskKey = taskKey;
   const task = (currentPlan?.tasks || []).find(t => t.key === taskKey);
   if (!task) return;
+  const locked = progressLockReason(task);
+  if (locked) {
+    showFlag({ text: locked });
+    announce(locked);
+    return;
+  }
 
   const popover = document.getElementById('progressPickerPopover');
   const titleEl = document.getElementById('progressPickerTitle');
@@ -2761,18 +3118,18 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
   let cellsHtml = html``;
   if (visibleKeys.includes('epic')) {
     cellsHtml = html`${cellsHtml}
-      <td class="td-data td-epic-cell" style="width:${columnWidths.epic}px;">
+      <td class="td-data td-epic-cell" data-css-w="${columnWidths.epic}px">
         <span class="epic-link-chip new-task-epic-chip ${inheritedEpic ? 'has-epic' : 'no-epic'}" title="Choose Epic">${epicDisplay} ▾</span>
       </td>
     `;
   }
   if (visibleKeys.includes('story')) {
-    cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.story}px; color: var(--cp-text-brand); font-weight:700;">🔷 Task</td>`;
+    cellsHtml = html`${cellsHtml}<td class="td-data jx-brand-bold" data-css-w="${columnWidths.story}px">🔷 Task</td>`;
   }
   // task is always visible (locked)
   cellsHtml = html`${cellsHtml}
-    <td class="td-data td-task-summary" style="width:${colWidth('task')}px;">
-      <div style="display:flex; align-items:center; gap:6px; padding-left:14px;">
+    <td class="td-data td-task-summary" data-css-w="${colWidth('task')}px">
+      <div class="jx-create-row">
         <input type="text" class="inline-create-input" placeholder="Type new task summary & press Enter to save..." autocomplete="off" />
         <button class="btn-inline-save">Add</button>
         <button class="btn-inline-cancel" title="Cancel (Esc)">✕</button>
@@ -2781,34 +3138,34 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
   `;
   if (visibleKeys.includes('resource')) {
     cellsHtml = html`${cellsHtml}
-      <td class="td-data td-resource-cell" style="width:${columnWidths.resource}px;">
+      <td class="td-data td-resource-cell" data-css-w="${columnWidths.resource}px">
         <div class="resource-chip-btn new-task-resource-btn" title="Assign team member">
           <span class="resource-option-avatar">U</span>
-          <span class="new-task-resource-name" style="flex:1; overflow:hidden; text-overflow:ellipsis;">Unassigned</span>
-          <span style="font-size:10px; color: var(--cp-text-subtle);">▾</span>
+          <span class="new-task-resource-name jx-ellipsis">Unassigned</span>
+          <span class="jx-caret">▾</span>
         </div>
       </td>
     `;
   }
   if (visibleKeys.includes('effort')) {
     cellsHtml = html`${cellsHtml}
-      <td class="td-data td-effort-cell" style="width:${columnWidths.effort}px; text-align:center;">
-        <input type="number" class="inline-edit-input new-task-hours" style="width:50px; text-align:center;" placeholder="h" min="0" />
+      <td class="td-data td-effort-cell jx-center" data-css-w="${columnWidths.effort}px">
+        <input type="number" class="inline-edit-input new-task-hours jx-hours-input" placeholder="h" min="0" />
       </td>
     `;
   }
   if (visibleKeys.includes('progress')) {
-    cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.progress}px; text-align:center; color: var(--cp-text-subtle); font-weight:600;">0%</td>`;
+    cellsHtml = html`${cellsHtml}<td class="td-data jx-center-subtle" data-css-w="${columnWidths.progress}px">0%</td>`;
   }
   if (visibleKeys.includes('target')) {
-    cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.target}px; text-align:center; color: var(--cp-text-subtle); font-weight:600;">0%</td>`;
+    cellsHtml = html`${cellsHtml}<td class="td-data jx-center-subtle" data-css-w="${columnWidths.target}px">0%</td>`;
   }
   if (visibleKeys.includes('status')) {
-    cellsHtml = html`${cellsHtml}<td class="td-data" style="width:${columnWidths.status}px; text-align:center;"><span class="badge badge-neutral">NOT_STARTED</span></td>`;
+    cellsHtml = html`${cellsHtml}<td class="td-data jx-center" data-css-w="${columnWidths.status}px"><span class="badge badge-neutral">NOT_STARTED</span></td>`;
   }
   cellsHtml = html`${cellsHtml}
     <td class="timeline-track-cell">
-      <div class="ghost-timeline-bar" style="left:${barLeft}px; width:${barWidth}px;">
+      <div class="ghost-timeline-bar" data-css-left="${barLeft}px" data-css-w="${barWidth}px">
         <span>➕ New Task Preview (3 wks)</span>
       </div>
     </td>
@@ -2900,8 +3257,9 @@ function openInlineCreationRow(rowElement, anchorTask, rowIdx) {
         targetIndex: insertIndex
       });
 
-      if (res && res.success === false) {
-        showFlag({ text: res.error || 'Failed to create task in Jira.', error: true });
+      // Only a result with ok: true is a success; a thrown call or a refused create is not (F-13).
+      if (!res || res.ok !== true) {
+        showFlag({ text: (res && (res.message || res.error)) || 'Failed to create task in Jira.', error: true });
         input.disabled = false;
         saveBtn.disabled = false;
         saveBtn.textContent = 'Add';
@@ -3123,7 +3481,7 @@ function renderTimelineRows() {
       <div class="empty-state" id="emptyStateDropZone" role="region" aria-labelledby="emptyStateTitle">
         <h2 id="emptyStateTitle">${es.title}</h2>
         <p>${es.text}</p>
-        <div class="empty-state-drop-hint" style="margin: 12px 0 16px 0; padding: 12px 18px; border: 2px dashed var(--cp-border-brand); border-radius: 6px; background: var(--cp-bg-brand-subtle); color: var(--cp-text-brand); font-weight: 600; font-size: 13px;">
+        <div class="empty-state-drop-hint jx-drop-hint">
           📥 Drop backlog issues here to schedule, or click below
         </div>
         <div class="empty-state-actions">
@@ -3176,7 +3534,7 @@ function renderTimelineRows() {
             } else {
               await loadProjectPlan();
             }
-            showFlag({ text: 'Scheduled ' + data.taskId + ' to timeline.' });
+            if (res && res.ok === true) showFlag({ text: 'Scheduled ' + data.taskId + ' to timeline.' });
           }
         } catch (err) {
           console.error('Error handling empty state drop:', err);
@@ -3277,9 +3635,22 @@ function scrollRowIntoView(key) {
 }
 
 /** Uses the plan a write returned: bars move, rows that are still shown are kept (B-13). */
+// The active baseline of the open plan, from the last plan load (ADR-009).
+let baselineState = null;
+function updateBaselineButton() {
+  const btn = document.getElementById('btnBaseline');
+  if (!btn || !baselineState || !currentPlan) return;
+  const report = baselineState.ok
+    ? { ok: true, baseline: baselineState.baseline, intact: baselineState.intact, comparison: compareItems(baselineState.items || [], baselineItems(currentPlan.tasks || [])) }
+    : { ok: false };
+  btn.textContent = baselineStatusText(report);
+  btn.classList.toggle('is-warning', !!(report.ok && (report.comparison.grew || !report.intact)));
+}
+
 function applyPlanInPlace(plan) {
   const before = rowTaskList.map(t => t.key).join('\n');
   currentPlan = plan;
+  updateBaselineButton();
   const computed = computeRowTasks();
   if (computed.rows.map(r => r.task.key).join('\n') !== before) {
     renderPlan();
@@ -3305,6 +3676,8 @@ function applyPlanInPlace(plan) {
 
 /** Data cells stay in place while the timeline scrolls (B-27 criterion 5). */
 function applyFrozen(tr) {
+  // Widths, positions and indents computed in the row template (MK-09: no inline style attributes).
+  applyDynamicStyles(tr);
   const frozen = getFrozenLayout();
   const keys = frozen.visibleKeys;
   const cells = [...tr.children].filter(td => !td.classList.contains('timeline-track-cell'));
@@ -3332,7 +3705,7 @@ function openRowMoreMenu(anchorBtn, task, rowIdx, tr) {
   }
 
   menu.innerHTML = html`
-    <div class="menu-item-header" style="padding: 6px 10px; font-weight: 700; font-size: 11px; color: var(--cp-text-subtle); border-bottom: 1px solid var(--cp-border);">
+    <div class="menu-item-header jx-menu-header">
       ${task.key}: ${task.summary}
     </div>
     <button class="quick-menu-item" data-action="insert"><span>➕</span><span>Insert task below</span></button>
@@ -3342,7 +3715,7 @@ function openRowMoreMenu(anchorBtn, task, rowIdx, tr) {
     <button class="quick-menu-item" data-action="team"><span>👥</span><span>Assign team member</span></button>
     <button class="quick-menu-item" data-action="edit"><span>✏️</span><span>Edit task details</span></button>
     <button class="quick-menu-item" data-action="jira"><span>↗</span><span>Open in native Jira</span></button>
-    <div style="border-top: 1px solid var(--cp-border); margin: 2px 0;"></div>
+    <div class="jx-menu-divider"></div>
     <button class="quick-menu-item item-danger" data-action="backlog"><span>📤</span><span>Move to backlog</span></button>
   `;
 
@@ -3437,7 +3810,7 @@ function buildTaskRow(task, rowIdx) {
   const siteUrl = getJiraBaseUrl();
   // Summary column content with clean hover action toolbar and in-place addition affordance
   const summaryHtml = html`
-    <div style="display:flex; align-items:center; width:100%; padding-left:${indentPx}px;">
+    <div class="jx-summary-row" data-css-pl="${indentPx}px">
       <div class="row-insert-affordance" title="Insert task below (Row ${rowIdx + 2})">
         <button class="row-insert-plus-btn" title="Insert new task below">＋</button>
       </div>
@@ -3445,7 +3818,7 @@ function buildTaskRow(task, rowIdx) {
       ${expandToggleHtml}
       ${badgeHtml}
       <a href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer" class="task-key-link" title="Open ${task.key} in native Jira (new tab)">${task.key} ↗</a>
-      <span class="task-summary-text" style="cursor:pointer; margin-left:6px; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="Click to edit summary, or press and hold row to reorder">
+      <span class="task-summary-text jx-summary-text" title="Click to edit summary, or press and hold row to reorder">
         : ${task.summary}
       </span>
       <div class="row-action-toolbar" role="toolbar" aria-label="Row actions for ${task.key}">
@@ -3467,7 +3840,13 @@ function buildTaskRow(task, rowIdx) {
       const epObj = (currentPlan.availableEpics || []).find(e => e.key === task.epicKey);
       epicLabel = epObj ? epObj.summary : task.epicKey;
     }
-    if (epicLabel) {
+    if (task.isSubtask || task.hierarchyLevel === -1) {
+      // A sub-task's epic comes from its parent: read-only, no picker (N-07). Moving it under another
+      // parent is a hierarchy change, not an epic change.
+      epicHtml = epicLabel
+        ? html`<span class="epic-inherited" title="Epic of the parent work item">🟪 ${epicLabel}</span>`
+        : html``;
+    } else if (epicLabel) {
       epicHtml = html`<span class="epic-link-chip has-epic" title="Click to change epic">🟪 ${epicLabel} ▾</span>`;
     } else {
       epicHtml = html`<span class="epic-link-chip no-epic" title="Click to link epic">+ Link Epic</span>`;
@@ -3478,33 +3857,34 @@ function buildTaskRow(task, rowIdx) {
   const visibleKeys = getVisibleColKeys();
   let rowColsHtml = html``;
   if (visibleKeys.includes('epic')) {
-    rowColsHtml = html`${rowColsHtml}<td class="td-data td-epic-cell" style="width:${columnWidths.epic}px;">${epicHtml}</td>`;
+    rowColsHtml = html`${rowColsHtml}<td class="td-data td-epic-cell" data-css-w="${columnWidths.epic}px">${epicHtml}</td>`;
   }
   if (visibleKeys.includes('story')) {
-    rowColsHtml = html`${rowColsHtml}<td class="td-data td-story-cell" style="width:${columnWidths.story}px;" title="${task.story || ''}">${task.story || (isEpic ? 'Epic' : (isSub ? 'Subtask' : 'Task'))}</td>`;
+    rowColsHtml = html`${rowColsHtml}<td class="td-data td-story-cell" data-css-w="${columnWidths.story}px" title="${task.story || ''}">${task.story || (isEpic ? 'Epic' : (isSub ? 'Subtask' : 'Task'))}</td>`;
   }
   if (visibleKeys.includes('task')) {
-    rowColsHtml = html`${rowColsHtml}<td class="td-data td-task-summary" style="width:${colWidth('task')}px;">${summaryHtml}</td>`;
+    rowColsHtml = html`${rowColsHtml}<td class="td-data td-task-summary" data-css-w="${colWidth('task')}px">${summaryHtml}</td>`;
   }
   if (visibleKeys.includes('resource')) {
-    rowColsHtml = html`${rowColsHtml}<td class="td-data td-resource-cell" style="width:${columnWidths.resource}px;"></td>`;
+    rowColsHtml = html`${rowColsHtml}<td class="td-data td-resource-cell" data-css-w="${columnWidths.resource}px"></td>`;
   }
   if (visibleKeys.includes('effort')) {
     rowColsHtml = html`${rowColsHtml}
-      <td class="td-data td-effort-cell" style="width:${columnWidths.effort}px; text-align:center; cursor:pointer;" title="Click to edit effort hours">
-        <span class="effort-text" style="font-weight:700;">${formatEffort(task.effortHours)}</span>
+      <td class="td-data td-effort-cell jx-center-pointer" data-css-w="${columnWidths.effort}px" title="Click to edit effort hours">
+        <span class="effort-text jx-bold">${formatEffort(task.effortHours)}</span>
       </td>
     `;
   }
   if (visibleKeys.includes('progress')) {
     const isProgRollup = isEpic || (task.childrenCount && task.childrenCount > 0);
-    const progTitle = isProgRollup
-      ? `Actual progress: ${task.progress}% (Rollup from children: click to edit or override)`
-      : `Click to set actual progress (${task.progress}%)`;
+    const lockText = progressLockReason(task);
+    const progTitle = lockText || (isProgRollup
+      ? `Actual progress: ${progressText(task)} (Rollup from children: click to edit or override)`
+      : `Click to set actual progress (${progressText(task)})`);
     rowColsHtml = html`${rowColsHtml}
-      <td class="td-data td-progress-cell" style="width:${columnWidths.progress}px; text-align:center; cursor:pointer;" title="${progTitle}">
-        <div class="progress-chip-cell ${task.progress === 100 ? 'is-complete' : (task.progress > 0 ? 'is-active' : 'is-zero')}">
-          <span class="progress-chip-fill" style="width:${task.progress}%;"></span>
+      <td class="td-data td-progress-cell jx-center-pointer" data-css-w="${columnWidths.progress}px" title="${progTitle}">
+        <div class="progress-chip-cell ${isDone(task.status) ? 'is-complete' : (task.progress > 0 ? 'is-active' : 'is-zero')}">
+          <span class="progress-chip-fill" data-css-w="${task.progress}%"></span>
           <span class="progress-chip-text">${task.progress}% ▾</span>
         </div>
       </td>
@@ -3512,7 +3892,7 @@ function buildTaskRow(task, rowIdx) {
   }
   if (visibleKeys.includes('target')) {
     rowColsHtml = html`${rowColsHtml}
-      <td class="td-data td-target-cell" style="width:${columnWidths.target}px; text-align:center; cursor:pointer;" title="Click to set target progress (${task.targetProgress}%)">
+      <td class="td-data td-target-cell jx-center-pointer" data-css-w="${columnWidths.target}px" title="Click to set target progress (${task.targetProgress}%)">
         <div class="target-chip-cell">
           <span class="target-chip-text">🎯 ${task.targetProgress}% ▾</span>
         </div>
@@ -3521,7 +3901,7 @@ function buildTaskRow(task, rowIdx) {
   }
   if (visibleKeys.includes('status')) {
     rowColsHtml = html`${rowColsHtml}
-      <td class="td-data td-status-cell" style="width:${columnWidths.status}px; text-align:center;">
+      <td class="td-data td-status-cell jx-center" data-css-w="${columnWidths.status}px">
         <span class="badge editable-badge-chip ${task.status === 'COMPLETED' ? 'badge-success' : task.status === 'IN_PROGRESS' ? 'badge-primary' : 'badge-neutral'}" title="Click to change status">
           ${task.status} ▾
         </span>
@@ -3573,7 +3953,7 @@ function buildTaskRow(task, rowIdx) {
           const initials = getInitials(res.name);
           const bg = aIdx === 0 ? 'var(--cp-bg-neutral)' : aIdx === 1 ? 'var(--cp-bg-selected)' : 'var(--cp-bg-discovery)';
           const color = aIdx === 0 ? 'var(--cp-text)' : aIdx === 1 ? 'var(--cp-text-brand)' : 'var(--cp-text-discovery)';
-          avatarHtml = html`${avatarHtml}<span class="resource-option-avatar" style="background:${bg}; color:${color}; z-index:${10 - aIdx};" title="${res.name}">${initials}</span>`;
+          avatarHtml = html`${avatarHtml}<span class="resource-option-avatar jx-avatar-${aIdx + 1}" title="${res.name}">${initials}</span>`;
         });
         avatarHtml = html`${avatarHtml}</div>`;
 
@@ -3599,9 +3979,9 @@ function buildTaskRow(task, rowIdx) {
       resourceTd.innerHTML = html`
         <div class="resource-chip-btn ${isMultiple ? 'has-multiple-resources' : ''}" title="${titleText}">
           ${avatarHtml}
-          <span class="resource-names-wrap" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${labelText}</span>
+          <span class="resource-names-wrap jx-ellipsis-fill">${labelText}</span>
           ${isMultiple ? html`<span class="res-count-badge">${contributing.length}</span>` : ''}
-          <span style="font-size:10px; color: var(--cp-text-subtle);">▾</span>
+          <span class="jx-caret">▾</span>
         </div>
       `;
       const resChip = resourceTd.querySelector('.resource-chip-btn');
@@ -3691,7 +4071,7 @@ function buildTaskRow(task, rowIdx) {
           });
           await loadProjectPlan();
         } else {
-          effortTd.innerHTML = html`<span class="effort-text" style="font-weight:700;">${formatEffort(origHours)}</span>`;
+          effortTd.innerHTML = html`<span class="effort-text jx-bold">${formatEffort(origHours)}</span>`;
         }
       }
 
@@ -3701,7 +4081,7 @@ function buildTaskRow(task, rowIdx) {
           saveInlineEffort();
         } else if (ke.key === 'Escape') {
           saved = true;
-          effortTd.innerHTML = html`<span class="effort-text" style="font-weight:700;">${formatEffort(origHours)}</span>`;
+          effortTd.innerHTML = html`<span class="effort-text jx-bold">${formatEffort(origHours)}</span>`;
         }
       });
       input.addEventListener('blur', saveInlineEffort);
@@ -3932,10 +4312,11 @@ function setupRowPointerReorder(tr, task) {
     let grabOffsetY = ROW_H / 2;
     let hoveredTr = null;
     let dropTargetIndex = null;
+    let hierarchyDrop = null;
 
     function clearHoveredIndicator() {
       if (hoveredTr) {
-        hoveredTr.classList.remove('drop-insert-top', 'drop-insert-bottom');
+        hoveredTr.classList.remove('drop-insert-top', 'drop-insert-bottom', 'drop-into', 'drop-into-refused');
         hoveredTr = null;
       }
     }
@@ -4003,7 +4384,19 @@ function setupRowPointerReorder(tr, task) {
       const overTr = under ? under.closest('tr.task-row') : null;
       if (overTr && overTr !== tr) {
         const r = overTr.getBoundingClientRect();
-        const isTop = (curY - r.top) < (r.height / 2);
+        const rel = (curY - r.top) / r.height;
+        // The middle third means "move under this row" (N-08); the outer thirds reorder.
+        if (rel > 1 / 3 && rel < 2 / 3) {
+          hierarchyDrop = { target: overTr.dataset.taskId, action: hierarchyActionFor(task, findAnyTask(overTr.dataset.taskId)) };
+          overTr.classList.add('drop-into');
+          overTr.classList.toggle('drop-into-refused', !!(hierarchyDrop.action && hierarchyDrop.action.refuse));
+          if (ghost) ghost.dataset.hint = hierarchyDrop.action ? (hierarchyDrop.action.refuse || hierarchyDrop.action.label) : '';
+          hoveredTr = overTr;
+          return;
+        }
+        hierarchyDrop = null;
+        if (ghost) ghost.dataset.hint = '';
+        const isTop = rel < 0.5;
         overTr.classList.toggle('drop-insert-top', isTop);
         overTr.classList.toggle('drop-insert-bottom', !isTop);
         hoveredTr = overTr;
@@ -4062,8 +4455,13 @@ function setupRowPointerReorder(tr, task) {
     async function onUp() {
       const wasActive = active;
       const targetIdx = dropTargetIndex;
+      const into = hierarchyDrop;
       cleanup();
       if (!wasActive) return;
+      if (into) {
+        requestHierarchyChange(task.key, into.action);
+        return;
+      }
 
       const suppressClick = (ce) => {
         ce.stopPropagation();
@@ -4183,6 +4581,12 @@ function positionBarHit(hit, task) {
   const right = hit.querySelector('.bar-handle-right');
   if (left) left.style.left = h.left + 'px';
   if (right) right.style.left = h.right + 'px';
+  // The link ports sit outside the resize handles, so the bar's edges stay free for resizing.
+  const p = portOffsets(r.w);
+  const portL = hit.querySelector('.bar-link-port-left');
+  const portR = hit.querySelector('.bar-link-port-right');
+  if (portL) portL.style.left = p.left + 'px';
+  if (portR) portR.style.left = p.right + 'px';
   hit.setAttribute('aria-label', `${task.key}: ${task.summary || ''}, ${task.startDate} to ${task.endDate || task.startDate}, ${task.progress || 0}% done`);
 }
 
@@ -4212,6 +4616,13 @@ function createBarHit(task, isEpic) {
     }
     hit.addEventListener('mousedown', (e) => {
       if (e.button !== 0 || e.target.classList.contains('bar-handle') || e.target.closest('.bar-link-port')) return;
+      e.preventDefault();
+      startBarPointerEdit(e, key, 'move', hit);
+    });
+  } else if (!isEpic && isBlockParent(task)) {
+    // A roll-up parent moves with its sub-tasks; it is never resized (ADR-003 section 7).
+    hit.addEventListener('mousedown', (e) => {
+      if (e.button !== 0 || e.target.closest('.bar-link-port')) return;
       e.preventDefault();
       startBarPointerEdit(e, key, 'move', hit);
     });
@@ -4384,8 +4795,9 @@ function startBarPointerEdit(e, key, mode, hit) {
     const s = snapDays(dx, dayPx(), ev.altKey ? 'day' : zoomById(zoomId).snap);
     if (s === shift && timeline.drag) return;
     shift = s;
-    const moves = previewMoves(currentPlan.tasks, key, mode === 'right' ? 0 : s, mode === 'left' ? 0 : s, today);
-    const mine = moves.get(key);
+    const mine = shiftDates(task, mode === 'right' ? 0 : s, mode === 'left' ? 0 : s);
+    if (!mine) return;
+    const moves = new Map([[key, mine]]);
 
     const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
     const isConflict = conflict.hasConflict;
@@ -4407,10 +4819,19 @@ function startBarPointerEdit(e, key, mode, hit) {
       }
     }
 
-    const currentMine = moves.get(key) || mine;
+    let currentMine = moves.get(key) || mine;
+    // The preview lists every Jira write of the drop, computed as the server will (INV-03, H2).
+    let preview;
+    if (isBlockParent(task)) {
+      const days = s !== 0 ? effectiveBlockDays(key, s) : 0;
+      currentMine = { start: addDaysIso(task.startDate, days), end: addDaysIso(task.endDate || task.startDate, days) };
+      preview = dropPreview(key, currentMine.start, currentMine.end, days);
+    } else {
+      preview = dropPreview(key, currentMine.start, currentMine.end);
+    }
     timeline.drag = {
       key,
-      moves,
+      moves: preview.moves,
       label,
       isConflict: enforceDeps ? false : isConflict,
       wasSnapped,
@@ -4418,7 +4839,7 @@ function startBarPointerEdit(e, key, mode, hit) {
       predKey: conflict.predKey
     };
     positionBarHit(hit, { ...task, startDate: currentMine.start, endDate: currentMine.end });
-    wrapper.dataset.preview = JSON.stringify(Object.fromEntries(moves));
+    wrapper.dataset.preview = JSON.stringify(Object.fromEntries(preview.moves));
 
     // Auto-expand time range dynamically when dragging/resizing beyond current boundaries
     if (timeRange && mine) {
@@ -4451,7 +4872,7 @@ function startBarPointerEdit(e, key, mode, hit) {
     // Name every issue and field the drop will change before the user lets go (B-23, INV-11).
     const strip = document.getElementById('writePreview');
     if (strip) {
-      let desc = describePendingWrites(currentPlan.tasks, moves, key).text;
+      let desc = preview.text;
       if (isConflict) {
         if (enforceDeps) {
           desc = `🔒 Enforce dependencies: will snap ${key} to ${conflict.earliestDate} to satisfy dependency on ${conflict.predKey}. ${desc}`;
@@ -4461,6 +4882,7 @@ function startBarPointerEdit(e, key, mode, hit) {
       }
       strip.textContent = desc;
       strip.hidden = false;
+      placeStripNear(strip, key);
     }
     timeline.requestDraw();
   }
@@ -4497,6 +4919,11 @@ function startBarPointerEdit(e, key, mode, hit) {
       drawTimeline();
       return;
     }
+    if (isBlockParent(task)) {
+      timeline.drag = null;
+      await moveBlock(key, shift);
+      return;
+    }
 
     const enforceDeps = isEnforceDepsEnabled();
     let finalStart = mine.start;
@@ -4530,6 +4957,8 @@ function startBarPointerEdit(e, key, mode, hit) {
       const newDays = daysBetween(finalStart, finalEnd) + 1;
       updates.effortHours = Math.max(1, Math.round((task.effortHours * newDays) / oldDays));
     }
+    // The Undo snapshot is taken before the optimistic change below (F-04).
+    const undoBefore = snapshotPlan(currentPlan);
     // Optimistically update in-memory task dates immediately so the bar does not flicker or snap back while the network request is in flight
     const prevStart = task.startDate;
     const prevEnd = task.endDate;
@@ -4540,7 +4969,10 @@ function startBarPointerEdit(e, key, mode, hit) {
     drawTimeline(true);
 
     try {
-      const res = await callResolver('updateWbsTask', { taskId: key, updates, expectedVersion: task.version || 0 });
+      // C3: the Jira due date this user saw; the server refuses the move when Jira changed it since.
+      // With "Enforce dependencies" on, the server checks the same links again before any write (L5).
+      const res = await callResolver('updateWbsTask', { taskId: key, updates, expectedVersion: task.version || 0,
+        expectedDueDate: task.jiraDueDate ? String(task.jiraDueDate).slice(0, 10) : null, enforceDependencies: enforceDeps }, { before: undoBefore });
       if (res && Array.isArray(res.tasks)) {
         applyPlanInPlace(res);
       } else {
@@ -4562,6 +4994,8 @@ function startBarPointerEdit(e, key, mode, hit) {
         candidateEnd: finalEnd,
         conflict,
         task,
+        prevStart,
+        prevEnd,
         hit: updatedHit,
         mode
       });
@@ -4646,12 +5080,15 @@ function applyConflictKeep() {
 
 async function applyConflictCancel() {
   if (!conflictState) return;
-  const { key, task } = conflictState;
+  // The dates before the drag: the task object already holds the new ones (F-04).
+  const { key, prevStart, prevEnd } = conflictState;
   closeDependencyConflictDialog();
-  if (task && task.startDate) {
-    await commitDates(key, task.startDate, task.endDate || task.startDate);
+  if (!prevStart) {
+    announce(`${key} had no dates before the move, so there is nothing to revert to.`);
+    return;
   }
-  announce(`Reverted ${key} to original schedule.`);
+  const res = await commitDates(key, prevStart, prevEnd || prevStart);
+  announce(classifyResult(res).failed ? `${key} could not be reverted.` : `Reverted ${key} to ${prevStart}.`);
 }
 
 
@@ -4829,7 +5266,7 @@ function onGridKey(e) {
     return;
   }
   if (e.key === ' ' && task.startDate && !(task.isEpic || task.hierarchyLevel === 1)) {
-    if (task.datesFromChildren) {
+    if (task.datesFromChildren && !isBlockParent(task)) {
       e.preventDefault();
       announce(`${task.key} follows the dates of its children. Move a child instead.`);
       return;
@@ -4842,15 +5279,37 @@ function onGridKey(e) {
   }
 }
 
+/**
+ * Puts the preview line just above the moved bar's row. The planner's frame grows with its content, so a
+ * line fixed to the bottom of the frame can be below the window (owner report); the bar being moved
+ * is always where the user is looking.
+ */
+function placeStripNear(strip, key) {
+  const row = document.querySelector(`#ganttBody tr.task-row[data-task-id="${CSS.escape(key)}"]`);
+  if (!row) return;
+  const r = row.getBoundingClientRect();
+  const h = strip.offsetHeight || 32;
+  strip.style.top = `${Math.max(8, r.top - h - 6)}px`;
+  strip.style.bottom = 'auto';
+}
+
 /** Shows the live preview for day shifts of a task, as a drag does (B-13, B-23). */
 function showShiftPreview(key, startShift, endShift, label) {
-  const moves = previewMoves(currentPlan.tasks, key, startShift, endShift, todayIso());
-  const mine = moves.get(key);
-  timeline.drag = { key, moves, label: label(mine) };
+  const task = findTask(key);
+  const block = isBlockParent(task) && startShift === endShift && startShift !== 0;
+  // A block parent's preview shows where each sub-task goes (ADR-003); either way the line lists every
+  // Jira write of the drop, computed as the server will (INV-03, H2).
+  const days = block ? effectiveBlockDays(key, startShift) : undefined;
+  const shifted = task && shiftDates(task, block ? days : startShift, block ? days : endShift);
+  if (!shifted) return undefined;
+  const preview = dropPreview(key, shifted.start, shifted.end, days);
+  const mine = preview.moves.get(key);
+  timeline.drag = { key, moves: preview.moves, label: label(mine) };
   const strip = document.getElementById('writePreview');
   if (strip) {
-    strip.textContent = describePendingWrites(currentPlan.tasks, moves, key).text;
+    strip.textContent = preview.text;
     strip.hidden = false;
+    placeStripNear(strip, key);
   }
   timeline.requestDraw();
   return mine;
@@ -4864,9 +5323,13 @@ function clearShiftPreview() {
 }
 
 /** One updateWbsTask call with exact dates and the version; the returned plan is used (B-13, B-14). */
-async function commitDates(key, start, end) {
+async function commitDates(key, start, end, opts = {}) {
   const task = findTask(key);
-  const res = await callResolver('updateWbsTask', { taskId: key, updates: { startDate: start, endDate: end }, expectedVersion: (task && task.version) || 0 });
+  // C3: the Jira due date this user saw; the server refuses the move when Jira changed it since.
+  // A move with "Enforce dependencies" on asks the server to check the links again (L5).
+  const res = await callResolver('updateWbsTask', { taskId: key, updates: { startDate: start, endDate: end }, expectedVersion: (task && task.version) || 0,
+    expectedDueDate: (task && task.jiraDueDate) ? String(task.jiraDueDate).slice(0, 10) : null,
+    ...(opts.enforce ? { enforceDependencies: true } : {}) });
   timeline.drag = null;
   if (res && Array.isArray(res.tasks)) applyPlanInPlace(res);
   else await loadProjectPlan();
@@ -4908,6 +5371,14 @@ async function onMoveKey(e) {
   if (strip) strip.hidden = true;
 
   const task = findTask(key);
+  if (isBlockParent(task)) {
+    // A roll-up parent moves as a block and is never resized (ADR-003 section 7).
+    clearShiftPreview();
+    if (state.start !== state.end) announce(`${key} takes its dates from its sub-tasks, so it cannot be resized. Move it instead.`);
+    else await moveBlock(key, state.start);
+    focusGridCell();
+    return;
+  }
   const enforceDeps = isEnforceDepsEnabled();
   let finalStart = mine.start;
   let finalEnd = mine.end;
@@ -4924,7 +5395,7 @@ async function onMoveKey(e) {
         focusGridCell();
         return;
       }
-      await commitDates(key, finalStart, finalEnd);
+      await commitDates(key, finalStart, finalEnd, { enforce: true });
       announce(`Enforce dependencies: snapped ${key} start to ${conflict.earliestDate} to satisfy dependency on ${conflict.predKey}.`);
       focusGridCell();
       return;
@@ -4945,7 +5416,7 @@ async function onMoveKey(e) {
     }
   }
 
-  await commitDates(key, finalStart, finalEnd);
+  await commitDates(key, finalStart, finalEnd, { enforce: isEnforceDepsEnabled() });
   announce(`Saved. ${key}: ${finalStart} to ${finalEnd}.`);
   focusGridCell();
 }
@@ -5043,6 +5514,10 @@ async function toolbarAction(action, key, btn) {
   const anchorRect = (barHit || btn).getBoundingClientRect();
   const barAnchor = { getBoundingClientRect: () => anchorRect };
   closeBarToolbar();
+  if ((action === 'earlier' || action === 'later') && isBlockParent(task)) {
+    await moveBlock(key, action === 'later' ? 7 : -7);
+    return;
+  }
   if ((action === 'earlier' || action === 'later') && task.datesFromChildren) {
     showFlag({ text: `${key} follows the dates of its children. Move a child instead.` });
     return;
@@ -5150,11 +5625,9 @@ function renderDependencyBadges(links) {
   const viewTop = wrapper.scrollTop + (layout.headerH || 0);
   const viewBottom = wrapper.scrollTop + wrapper.clientHeight;
 
-  const visibleLinks = (links || []).filter(link => {
-    const hw = Math.max(12, (link.width || 28) / 2);
-    const hh = Math.max(10, (link.height || 18) / 2);
-    return (link.x - hw) >= viewLeft && (link.x + hw) <= viewRight && (link.y - hh) >= viewTop && (link.y + hh) <= viewBottom;
-  });
+  // A label gets its button when its centre is in the visible timeline (a label cut by the edge too).
+  const visibleLinks = (links || []).filter(link =>
+    link.x >= viewLeft && link.x <= viewRight && link.y >= viewTop && link.y <= viewBottom);
 
   const sig = visibleLinks
     .map(l => `${l.predecessorKey}>${l.successorKey}@${Math.round(l.x)},${Math.round(l.y)}:${l.triggerPercent}:${l.isViolated ? 1 : 0}`)
@@ -5166,6 +5639,8 @@ function renderDependencyBadges(links) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'dep-link-badge' + (link.isViolated ? ' is-violated' : '');
+    btn.dataset.pred = link.predecessorKey;
+    btn.dataset.succ = link.successorKey;
     btn.style.left = `${link.x}px`;
     btn.style.top = `${link.y}px`;
     btn.style.width = `${Math.max(26, Math.round((link.width || 28) + 6))}px`;
@@ -5179,6 +5654,44 @@ function renderDependencyBadges(links) {
     });
     return btn;
   }));
+}
+
+/**
+ * A click on a dependency arrow's line opens the same editor as its label. The canvas keeps the points
+ * of each drawn line; a pointer within 6 px of one is on that arrow (the pointer shows it).
+ */
+function arrowAt(wrapper, e) {
+  if (!timeline) return null;
+  if (e.target.closest('.bar-hit, .dep-link-badge, .btn, button, input, select, a, .resizer, .row-drag-handle, .th-col-menu-btn')) return null;
+  const rect = wrapper.getBoundingClientRect();
+  const vx = e.clientX - rect.left;
+  if (vx < (layout.trackLeft || 0)) return null;
+  const x = vx + wrapper.scrollLeft;
+  const y = e.clientY - rect.top + wrapper.scrollTop;
+  return nearestArrow(timeline.getArrowLinks(), x, y, 6);
+}
+
+function initArrowLineClicks(wrapper) {
+  let raf = 0;
+  wrapper.addEventListener('mousemove', (e) => {
+    if (raf || isDraggingBar) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      wrapper.classList.toggle('is-over-arrow', Boolean(arrowAt(wrapper, e)));
+    });
+  });
+  wrapper.addEventListener('mouseleave', () => wrapper.classList.remove('is-over-arrow'));
+  // Capture phase, so the click on a line does not also start a pan or select a row.
+  wrapper.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    const link = arrowAt(wrapper, e);
+    if (!link) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const badge = [...document.querySelectorAll('#depLinksLayer .dep-link-badge')]
+      .find(b => b.dataset.pred === link.predecessorKey && b.dataset.succ === link.successorKey);
+    openDependencyEditPopover(link, badge || wrapper);
+  }, true);
 }
 
 function refreshDepEditPopoverFields() {
@@ -5226,6 +5739,9 @@ function openDependencyEditPopover(link, anchor) {
   if (triggerInput) {
     triggerInput.value = String(link.triggerPercent);
   }
+  // A link from before ADR-006, stored only in this plan: Save creates it in Jira, Remove drops it.
+  const planOnlyNote = document.getElementById('depEditPlanOnly');
+  if (planOnlyNote) planOnlyNote.hidden = !link.planOnly;
 
   refreshDepEditPopoverFields();
 
@@ -5310,9 +5826,10 @@ async function removeDependencyLink() {
   const succTask = findTask(succKey);
 
   closeDependencyEditPopover();
+  // Exactly this link is removed, in Jira too, whoever created it (ADR-006, N-11 L3).
   await callResolver('updateWbsTask', {
     taskId: succKey,
-    updates: { dependency: null },
+    updates: { removeDependency: { predecessorKey: predKey } },
     expectedVersion: (succTask && succTask.version) || 0
   });
   await loadProjectPlan();
@@ -5380,16 +5897,16 @@ function initKeyboard() {
     const sInp = document.getElementById('dateEditStart');
     const eInp = document.getElementById('dateEditEnd');
     if (!sInp || !eInp) return;
-    if (sInp.value) sInp.value = addDays(sInp.value, -7);
-    if (eInp.value) eInp.value = addDays(eInp.value, -7);
+    if (sInp.value) sInp.value = addDaysIso(sInp.value, -7);
+    if (eInp.value) eInp.value = addDaysIso(eInp.value, -7);
     sInp.dispatchEvent(new Event('input'));
   });
   document.getElementById('btnDateEditPlusWk')?.addEventListener('click', () => {
     const sInp = document.getElementById('dateEditStart');
     const eInp = document.getElementById('dateEditEnd');
     if (!sInp || !eInp) return;
-    if (sInp.value) sInp.value = addDays(sInp.value, 7);
-    if (eInp.value) eInp.value = addDays(eInp.value, 7);
+    if (sInp.value) sInp.value = addDaysIso(sInp.value, 7);
+    if (eInp.value) eInp.value = addDaysIso(eInp.value, 7);
     sInp.dispatchEvent(new Event('input'));
   });
   document.getElementById('btnOpenFullTaskDetail')?.addEventListener('click', () => {
@@ -5474,7 +5991,8 @@ function initKeyboard() {
   if (trigger && pop) {
     trigger.addEventListener('click', (e) => {
       e.stopPropagation();
-      const isClosed = pop.style.display === 'none';
+      // The stylesheet hides the list at first (MK-09), so the computed display is read.
+      const isClosed = getComputedStyle(pop).display === 'none';
       pop.style.display = isClosed ? 'flex' : 'none';
       trigger.setAttribute('aria-expanded', isClosed ? 'true' : 'false');
       if (isClosed) {
@@ -5490,7 +6008,7 @@ function initKeyboard() {
   document.getElementById('btnManagePlans')?.addEventListener('click', (e) => {
     e.stopPropagation();
     if (pop) {
-      pop.style.display = pop.style.display === 'none' ? 'flex' : 'none';
+      pop.style.display = getComputedStyle(pop).display === 'none' ? 'flex' : 'none';
     }
   });
 
@@ -5539,7 +6057,12 @@ function initKeyboard() {
       name,
       cloneFromPlanId: clone ? activePlanId : undefined
     });
-    if (res && res.ok && res.plan) {
+    const copied = res && res.ok && res.plan && res.done === false
+      ? await finishPlanWork('continuePlanCopy', res.plan.id, `Copying to ${res.plan.name}`) : res;
+    if (res && res.ok && res.plan && !(copied && copied.ok && copied.done !== false)) {
+      showFlag({ text: `The copy to ${res.plan.name} stopped. Pick it in the plan list to finish it.`, error: true });
+      await loadProjectPlan();
+    } else if (res && res.ok && res.plan) {
       if (nameInp) nameInp.value = '';
       closePlansPopover();
       setActivePlan(res.plan.id);
@@ -5551,6 +6074,13 @@ function initKeyboard() {
   };
 
   document.getElementById('btnCreatePlan')?.addEventListener('click', submitCreatePlan);
+  document.getElementById('btnSavePlanJql')?.addEventListener('click', savePlanFilter);
+  document.getElementById('planJqlInput')?.addEventListener('keydown', (ke) => {
+    if (ke.key === 'Enter') {
+      ke.preventDefault();
+      savePlanFilter();
+    }
+  });
   document.getElementById('newPlanNameInput')?.addEventListener('keydown', (ke) => {
     if (ke.key === 'Enter') {
       ke.preventDefault();
@@ -5592,7 +6122,7 @@ function initKeyboard() {
           } else {
             await loadProjectPlan();
           }
-          showFlag({ text: 'Scheduled ' + data.taskId + ' to timeline.' });
+          if (res && res.ok === true) showFlag({ text: 'Scheduled ' + data.taskId + ' to timeline.' });
         }
       } catch (err) {
         console.error('Error on wrapper drop:', err);
@@ -5613,7 +6143,7 @@ function initKeyboard() {
     const conflictBanner = document.getElementById('depConflictBanner');
     if (!recentlyOpened && conflictBanner && !conflictBanner.hidden && !conflictBanner.contains(e.target)) closeDependencyConflictDialog();
     const plansPop = document.getElementById('plansManagerPopover');
-    if (plansPop && plansPop.style.display !== 'none' && !plansPop.contains(e.target) && !e.target.closest('#planSelectorBtn') && !e.target.closest('#btnManagePlans')) {
+    if (plansPop && getComputedStyle(plansPop).display !== 'none' && !plansPop.contains(e.target) && !e.target.closest('#planSelectorBtn') && !e.target.closest('#btnManagePlans')) {
       closePlansPopover();
     }
   });
@@ -5688,6 +6218,11 @@ function clearSelection() {
 async function runBatch(items, kind) {
   if (!items.length) return;
   const res = await callResolver('batchUpdateTasks', { items });
+  // C9: the items another user changed first are named; the others are saved.
+  const skipped = res && Array.isArray(res.results) ? res.results.filter(r => r && r.ok === false).map(r => r.taskId) : [];
+  if (skipped.length) {
+    showFlag({ text: `Not saved, because someone else changed ${skipped.length === 1 ? 'it' : 'them'} a moment ago: ${skipped.join(', ')}. The other ${items.length - skipped.length} saved. Reload and try those again.`, error: true });
+  }
   if (res && Array.isArray(res.tasks)) {
     if (kind === 'move') applyPlanInPlace(res);
     else {
@@ -5705,13 +6240,23 @@ function versionOf(key) {
 }
 
 function initSelectionBar() {
-  document.getElementById('btnSelProgress')?.addEventListener('click', () => {
+  document.getElementById('btnSelProgress')?.addEventListener('click', async () => {
     const p = Math.max(0, Math.min(100, parseInt(document.getElementById('selProgress').value, 10) || 0));
-    runBatch([...selectedKeys].map(k => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) })), 'progress');
+    // A Done item keeps 100%; the others may offer a status change (2026-11-06).
+    const done = [...selectedKeys].filter(k => isDone(findTask(k)?.status));
+    if (done.length) showFlag({ text: `Not changed: ${done.join(', ')} ${done.length === 1 ? 'is' : 'are'} Done in Jira, so the progress stays 100%.` });
+    const items = [...selectedKeys].filter(k => !done.includes(k)).map(k => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) }));
+    if (!items.length) return;
+    if (!(await withStatusChoice(items.map(i => ({ key: i.taskId, progress: p, updates: i.updates }))))) return;
+    runBatch(items, 'progress');
   });
-  document.getElementById('btnSelMove')?.addEventListener('click', () => {
+  document.getElementById('btnSelMove')?.addEventListener('click', async () => {
     const days = parseInt(document.getElementById('selDays').value, 10) || 0;
-    runBatch(moveSelectionBy(currentPlan.tasks, selectedKeys, days), 'move');
+    // Leaves move in one batch; each selected task or story parent then moves as a block, and its
+    // selected sub-tasks move only with it (each issue once, ADR-003).
+    const blocks = selectedBlockParents(currentPlan.tasks, selectedKeys);
+    await runBatch(moveSelectionBy(currentPlan.tasks, selectedKeys, days), 'move');
+    for (const key of blocks) await moveBlock(key, days);
   });
   document.getElementById('btnSelAssign')?.addEventListener('click', () => {
     const sel = document.getElementById('selAssignee');
@@ -5734,6 +6279,11 @@ function fillAssigneeOptions() {
 
 /** Digits set a pending progress on the focused row; Enter saves every pending value in one call. */
 function setPendingProgress(key, pct) {
+  const locked = progressLockReason(findTask(key) || { key });
+  if (locked) {
+    announce(locked);
+    return;
+  }
   pendingProgress.set(key, pct);
   const chip = rowCache.get(key)?.querySelector('.progress-chip-text');
   if (chip) chip.textContent = `${pct}% (not saved)`;
@@ -5742,6 +6292,12 @@ function setPendingProgress(key, pct) {
 
 async function commitPendingProgress() {
   const items = [...pendingProgress].map(([k, p]) => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) }));
+  // One question for the whole batch when progress and Jira status disagree (2026-11-06).
+  if (!(await withStatusChoice(items.map(i => ({ key: i.taskId, progress: i.updates.progress, updates: i.updates }))))) {
+    announce(`Progress not saved yet. Enter saves the ${pendingProgress.size} changes, Escape drops them.`);
+    focusGridCell();
+    return;
+  }
   pendingProgress.clear();
   await runBatch(items, 'progress');
   announce(`Saved progress on ${items.length} issue${items.length === 1 ? '' : 's'}.`);
@@ -5758,10 +6314,10 @@ function showTaskTooltip(e, task) {
 
   const dep = task.dependency;
   const depInfo = dep && dep.predecessorKey
-    ? html`<div style="margin-top:4px;">🔗 ${dep.earliestStartReason || `Waits for ${dep.predecessorKey} at ${dep.triggerPercent}%`}</div>${dep.isViolated ? html`<div style="font-weight:700;">⚠ ${dep.fixSuggestion || dep.violationReason || 'Starts too early'}</div>` : ''}`
+    ? html`<div class="jx-mt-4">🔗 ${dep.earliestStartReason || `Waits for ${dep.predecessorKey} at ${dep.triggerPercent}%`}</div>${dep.isViolated ? html`<div class="jx-bold">⚠ ${dep.fixSuggestion || dep.violationReason || 'Starts too early'}</div>` : ''}`
     : '';
   const rollupInfo = (isEpic && task.rollupStats)
-    ? html`<div style="font-weight:600;">Rollup: ${task.childrenCount || 0} child items | Total ${task.effortHours}h</div>`
+    ? html`<div class="jx-semibold">Rollup: ${task.childrenCount || 0} child items | Total ${task.effortHours}h</div>`
     : '';
   const subInfo = (!isEpic && task.subtasks && task.subtasks.length > 0)
     ? html`<div>Subtasks: ${task.subtasks.length} items (${task.effortHours}h total)</div>`
@@ -5777,8 +6333,8 @@ function showTaskTooltip(e, task) {
 
   const siteUrl = getJiraBaseUrl();
   tip.innerHTML = html`
-    <div style="font-size:10px; font-weight:700; margin-bottom:2px;">${levelTitle}</div>
-    <div><strong><a href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer" style="color: var(--cp-text-inverse); text-decoration:underline;">${task.key} ↗</a>: ${task.summary}</strong></div>
+    <div class="jx-tip-level">${levelTitle}</div>
+    <div><strong><a class="jx-tip-link" href="${siteUrl}/browse/${task.key}" target="_blank" rel="noopener noreferrer">${task.key} ↗</a>: ${task.summary}</strong></div>
     ${assigneeHtml}
     <div>Effort: ${formatEffort(task.effortHours)} | Progress: ${task.progress}% (Target: ${task.targetProgress}%)</div>
     <div>Dates: ${task.startDate} to ${task.endDate}</div>
@@ -5829,6 +6385,7 @@ function openTaskDetailModal(taskKey) {
   }
   if (progSlider) progSlider.value = curProg;
   if (progValLabel) progValLabel.textContent = `${curProg}%`;
+  setDialogProgressLock(task.key, task.status);
   if (progNote) {
     progNote.style.display = isProgRollup ? 'block' : 'none';
     if (rollupPctText) {
@@ -5856,9 +6413,23 @@ function openTaskDetailModal(taskKey) {
     opt.value = u.displayName;
     opt.dataset.accountId = u.accountId || '';
     opt.textContent = u.displayName + (u.isPlaceholder ? ' [Placeholder]' : '');
-    if (u.displayName === task.resource) opt.selected = true;
     assSelect.appendChild(opt);
   });
+  // The current assignee is always offered and selected by account id, also when Jira did not list
+  // them among the first assignable users, so a save never unassigns by accident (F-11).
+  const curAccountId = task.resourceAccountId && task.resourceAccountId !== 'unassigned' ? task.resourceAccountId : '';
+  let curOption = [...assSelect.options].find(o => (curAccountId ? o.dataset.accountId === curAccountId : o.value === (task.resource || 'Unassigned')));
+  if (!curOption && curAccountId) {
+    curOption = document.createElement('option');
+    curOption.value = task.resource || curAccountId;
+    curOption.dataset.accountId = curAccountId;
+    curOption.textContent = task.resource || curAccountId;
+    assSelect.insertBefore(curOption, assSelect.firstChild);
+  }
+  if (curOption) curOption.selected = true;
+  assSelect.dataset.touched = '';
+  assSelect.dataset.originalAccountId = curAccountId || 'unassigned';
+  assSelect.onchange = () => { assSelect.dataset.touched = '1'; };
 
   // Start & End Date Inputs
   const startInput = document.getElementById('editStartDateInput');
@@ -5925,6 +6496,7 @@ function openTaskDetailModal(taskKey) {
 
   // Subtasks
   renderModalSubtasks(task);
+  renderParentControl(task);
 
   document.getElementById('taskDetailModal').style.display = 'flex';
 }
@@ -5932,32 +6504,58 @@ function openTaskDetailModal(taskKey) {
 function renderModalSubtasks(task) {
   const list = document.getElementById('subtasksList');
   list.innerHTML = '';
+  // The Jira sub-tasks of the issue (ADR-004); hours show only when Jira has an estimate.
   const subs = task.subtasks || [];
   if (subs.length === 0) {
-    list.innerHTML = '<div style="font-size:11px; color: var(--cp-text-subtle);">No subtasks added yet.</div>';
+    list.innerHTML = '<div class="jx-subtle-11">No sub-tasks in Jira yet.</div>';
   } else {
-    subs.forEach((s, idx) => {
+    subs.forEach((s) => {
       const item = document.createElement('div');
       item.style.display = 'flex';
       item.style.justifyContent = 'space-between';
       item.style.fontSize = '12px';
-      item.innerHTML = html`<span>• ${s.summary}</span><span style="font-weight:700;">${s.normalizedHours}h</span>`;
+      item.innerHTML = html`<span>• ${s.key ? s.key + ': ' : ''}${s.summary}</span><span class="jx-bold">${s.normalizedHours ? s.normalizedHours + 'h' : ''}</span>`;
       list.appendChild(item);
     });
+  }
+  // Sub-tasks an earlier build kept only in the planner: created in Jira or removed only on request (F-23).
+  const local = task.localSubtasks || [];
+  if (local.length) {
+    const box = document.createElement('div');
+    box.className = 'local-subtasks';
+    const note = document.createElement('p');
+    note.textContent = `${local.length} sub-task${local.length === 1 ? '' : 's'} exist only in the planner, not in Jira: ${local.map(s => s.summary).join(', ')}.`;
+    box.appendChild(note);
+    for (const [action, label] of [['create', 'Create in Jira'], ['drop', 'Remove']]) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = action === 'create' ? 'btn btn-primary btn-xs' : 'btn btn-outline btn-xs';
+      b.textContent = label;
+      b.addEventListener('click', async () => {
+        b.disabled = true;
+        const res = await callResolver('resolveLocalSubtasks', { parentTaskId: task.key, action });
+        if (res && res.ok !== false) showFlag({ text: action === 'create' ? `Created the sub-tasks of ${task.key} in Jira.` : `Removed the planner-only sub-tasks of ${task.key}.` });
+        await loadProjectPlan();
+        const updated = findAnyTask(task.key);
+        if (updated) renderModalSubtasks(updated);
+      });
+      box.appendChild(b);
+    }
+    list.appendChild(box);
   }
 }
 
 async function handleAddSubtask() {
   const summary = document.getElementById('newSubtaskSummary').value.trim();
-  const hours = parseInt(document.getElementById('newSubtaskHours').value, 10) || 8;
+  // Only an estimate the user typed goes to Jira; an empty field sends none (F-23, BL-3).
+  const hours = parseFloat(document.getElementById('newSubtaskHours').value);
   if (!summary || !activeTaskId) return;
 
-  await callResolver('addSubtaskToTask', {
+  const res = await callResolver('addSubtaskToTask', {
     parentTaskId: activeTaskId,
-    subtask: { summary, estimateValue: hours, estimateUnit: 'HOURS' },
-    bufferType: document.getElementById('editBufferTypeSelect').value,
-    bufferValue: parseFloat(document.getElementById('editBufferValueInput').value) || 0
+    subtask: { summary, ...(hours > 0 ? { estimateValue: hours, estimateUnit: 'HOURS' } : {}) }
   });
+  if (res && res.ok && res.createdKey) showFlag({ text: `Created sub-task ${res.createdKey} in Jira.` });
 
   document.getElementById('newSubtaskSummary').value = '';
   await loadProjectPlan();
@@ -5971,7 +6569,9 @@ async function handleAddResourceSubtask() {
   const selected = resSelect.options[resSelect.selectedIndex];
   const assigneeName = selected ? selected.value : 'Unassigned';
   const assigneeAccountId = selected?.dataset?.accountId || undefined;
-  const hours = parseInt(document.getElementById('multiResourceHours').value, 10) || 20;
+  // An empty hours field sends no estimate (F-06, INV-03).
+  const enteredHours = parseInt(document.getElementById('multiResourceHours').value, 10);
+  const hours = Number.isFinite(enteredHours) && enteredHours > 0 ? enteredHours : undefined;
 
   const statusEl = document.getElementById('multiResourceStatus');
   const addBtn = document.getElementById('btnAddResourceSubtaskBtn');
@@ -5982,9 +6582,9 @@ async function handleAddResourceSubtask() {
       parentTaskId: activeTaskId,
       assigneeAccountId,
       assigneeName,
-      effortHours: hours
+      ...(hours !== undefined ? { effortHours: hours } : {})
     });
-    if (!res || res.success !== true) {
+    if (!res || res.ok !== true) {
       // Only a confirmed create shows success; a null or failed result is an error (B-07).
       if (statusEl) {
         statusEl.textContent = (res && (res.message || res.error)) || 'Jira did not create the subtask.';
@@ -6097,7 +6697,8 @@ async function saveTaskModalChanges() {
   const curTask = (currentPlan?.tasks || []).find(t => t.key === activeTaskId) || {};
   const updates = {};
   if (summary && summary !== curTask.summary) updates.summary = summary;
-  if (resource !== (curTask.resource || 'Unassigned')) {
+  // The assignee goes to Jira only when the user changed the field to another person (F-11).
+  if (assSelect.dataset.touched === '1' && (resourceAccountId || 'unassigned') !== assSelect.dataset.originalAccountId) {
     updates.resource = resource;
     if (resourceAccountId) updates.resourceAccountId = resourceAccountId;
   }
@@ -6131,12 +6732,7 @@ async function saveTaskModalChanges() {
     if (!isNaN(prog) && (prog !== (curTask.progress || 0) || modalUseRollupProgressFlag)) {
       updates.progress = prog;
       updates.manualProgress = !modalUseRollupProgressFlag;
-      const effectiveStatus = updates.status || curTask.status;
-      if (prog === 100 && effectiveStatus !== 'COMPLETED') {
-        updates.status = 'COMPLETED';
-      } else if (prog > 0 && effectiveStatus === 'NOT_STARTED') {
-        updates.status = 'IN_PROGRESS';
-      }
+      // The status changes only through the status field (F-06, INV-03).
     }
   }
   const targetInput = document.getElementById('editTargetProgressInput');
@@ -6168,6 +6764,8 @@ async function saveTaskModalChanges() {
     closeModal('taskDetailModal');
     return;
   }
+  // A progress that disagrees with the Jira status offers the status change; the user chooses (INV-03).
+  if (updates.progress !== undefined && !(await withStatusChoice([{ key: activeTaskId, progress: updates.progress, updates }]))) return;
 
   const btn = document.getElementById('btnSaveTaskModal');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
@@ -6289,9 +6887,9 @@ async function executeCreateTask() {
       spanWeeks: 3
     });
 
-    if (res && res.success === false) {
+    if (!res || res.ok !== true) {
       if (errEl) {
-        errEl.textContent = res.error || 'Failed to create task in Jira.';
+        errEl.textContent = (res && (res.message || res.error)) || 'Failed to create task in Jira.';
         errEl.style.display = 'block';
       }
       return;
@@ -6383,9 +6981,9 @@ async function executeCreateEpic() {
 
   try {
     const res = await callResolver('createJiraEpic', { summary });
-    if (res && res.success === false) {
+    if (!res || res.ok !== true) {
       if (errEl) {
-        errEl.textContent = res.error || 'Failed to create epic in Jira.';
+        errEl.textContent = (res && (res.message || res.error)) || 'Failed to create epic in Jira.';
         errEl.style.display = 'block';
       }
       return;
@@ -6398,7 +6996,7 @@ async function executeCreateEpic() {
       if (!currentPlan.availableEpics.some(e => e.key === res.epic.key)) {
         currentPlan.availableEpics.push(res.epic);
       }
-      populateEpicDropdowns();
+      // The epic picker and the create form rebuild their lists from availableEpics when opened.
     }
     showFlag({ text: 'Epic ' + (res?.epic?.key || '') + ' created.' });
   } catch (err) {
@@ -6424,6 +7022,76 @@ function hideModal(modal) {
   modal.dataset.dirty = '';
   const prompt = modal.querySelector('.discard-prompt');
   if (prompt) prompt.remove();
+  // Escape or a backdrop click on the status question cancels the whole action.
+  if (modal.id === 'statusOfferModal' && statusOfferResolve) statusOfferResolve('cancel');
+}
+
+// Progress and Jira status (owner decision 2026-11-06, INV-03): the planner never changes a status by
+// itself. When a new progress disagrees with the status, it asks once, and the user chooses.
+let statusOfferResolve = null;
+
+/** Shows the status question. Resolves 'move', 'keep' or 'cancel'. */
+function askStatusOffers(offers) {
+  const prompt = offerPrompt(offers);
+  const modal = document.getElementById('statusOfferModal');
+  if (!prompt || !modal) return Promise.resolve('keep');
+  document.getElementById('statusOfferQuestion').textContent = prompt.question;
+  const list = document.getElementById('statusOfferList');
+  list.replaceChildren(...prompt.lines.map(line => {
+    const li = document.createElement('li');
+    li.textContent = line;
+    return li;
+  }));
+  list.hidden = prompt.lines.length === 0;
+  const move = document.getElementById('btnStatusOfferMove');
+  const keep = document.getElementById('btnStatusOfferKeep');
+  move.textContent = prompt.move;
+  keep.textContent = prompt.keep;
+  const opener = document.activeElement;
+  modal.style.display = 'flex';
+  move.focus();
+  announce(prompt.question);
+  return new Promise(resolve => {
+    statusOfferResolve = (choice) => {
+      statusOfferResolve = null;
+      hideModal(modal);
+      if (opener && typeof opener.focus === 'function') opener.focus();
+      resolve(choice);
+    };
+  });
+}
+
+/**
+ * Adds the status the user chooses to progress edits ({key, progress, updates}); false when the user
+ * cancelled, so nothing is written.
+ */
+async function withStatusChoice(edits) {
+  const offers = statusOffers(edits.map(e => ({ key: e.key, status: findTask(e.key)?.status, progress: e.progress, chosenStatus: e.updates.status })));
+  if (!offers.length) return true;
+  const choice = await askStatusOffers(offers);
+  if (choice === 'cancel') return false;
+  if (choice === 'move') {
+    for (const o of offers) {
+      const edit = edits.find(e => e.key === o.key);
+      if (edit) edit.updates.status = o.to;
+    }
+  }
+  return true;
+}
+
+/** A Done item's progress is 100% and locked in the dialog; choosing another status there unlocks it. */
+function setDialogProgressLock(key, status) {
+  const reason = progressLockReason({ key, status });
+  for (const id of ['editProgressInput', 'editProgressSlider', 'btnModalUseRollup']) {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !!reason;
+  }
+  document.querySelectorAll('.modal-prog-preset').forEach(b => { b.disabled = !!reason; });
+  const note = document.getElementById('editProgressLockNote');
+  if (note) {
+    note.textContent = reason || '';
+    note.hidden = !reason;
+  }
 }
 
 function openModal() {

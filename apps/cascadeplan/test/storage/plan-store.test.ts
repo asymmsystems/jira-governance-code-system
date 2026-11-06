@@ -180,6 +180,9 @@ describe('PlanStore (B-09)', () => {
       await store.saveSettings({ hiddenColumns: ['status'] });
 
       const clonedMeta = await store.createPlan('Cloned Plan', 'default');
+      expect(clonedMeta.state).toBe('copying');
+      expect(await store.copyPlanPage(clonedMeta.id)).toEqual({ ok: true, done: true, remaining: 0 });
+      expect((await store.listPlans()).find(p => p.id === clonedMeta.id)!.state).toBeUndefined();
       const clonedStore = new PlanStore(storage, '10000', 'TEST', clonedMeta.id);
 
       const clonedEntries = await clonedStore.loadEntries();
@@ -199,12 +202,77 @@ describe('PlanStore (B-09)', () => {
 
       const deleted = await store.deletePlan(planMeta.id);
       expect(deleted).toBe(true);
+      // Marked first; it leaves the list with its last record (N-02).
+      expect((await store.listPlans()).find(p => p.id === planMeta.id)!.state).toBe('deleting');
+      expect(await store.deletePlanPage(planMeta.id)).toEqual({ ok: true, done: true, remaining: 0 });
 
       const plans = await store.listPlans();
       expect(plans.map(p => p.id)).not.toContain(planMeta.id);
 
       const remainingEntries = await tempStore.loadEntries();
       expect(remainingEntries.size).toBe(0);
+    });
+
+    it('N-02: a 1,000-record plan is cloned and deleted in pages of at most 100 records', async () => {
+      for (let n = 1; n <= 1000; n++) await store.putEntry(`TEST-${n}`, String(n), { startWeek: 'w1' });
+      const ops = { set: 0, delete: 0 };
+      const st = storage.set.bind(storage), del = storage.delete.bind(storage);
+      storage.set = async (k: string, v: any) => { if (k.includes(':we:')) ops.set++; return st(k, v); };
+      storage.delete = async (k: string) => { if (k.includes(':we:')) ops.delete++; return del(k); };
+
+      const clone = await store.createPlan('Big copy', 'default');
+      const target = new PlanStore(storage, '10000', 'TEST', clone.id);
+      const copyPages: number[] = [];
+      for (let page = 0; page < 20; page++) {
+        const before = ops.set;
+        const r = await store.copyPlanPage(clone.id);
+        copyPages.push(ops.set - before);
+        if (page < 9) expect(r).toEqual({ ok: true, done: false, remaining: 900 - page * 100 });
+        if (r.done) break;
+      }
+      expect(copyPages).toEqual(Array(10).fill(100));
+      expect((await target.loadEntries()).size).toBe(1000);
+      expect((await store.listPlans()).find(p => p.id === clone.id)!.state).toBeUndefined();
+      // Running a page again after the copy changes nothing.
+      expect(await store.copyPlanPage(clone.id)).toEqual({ ok: true, done: true, remaining: 0 });
+
+      expect(await store.deletePlan(clone.id)).toBe(true);
+      const deletePages: number[] = [];
+      for (let page = 0; page < 20; page++) {
+        const before = ops.delete;
+        const r = await store.deletePlanPage(clone.id);
+        deletePages.push(ops.delete - before);
+        if (r.done) break;
+      }
+      expect(deletePages).toEqual(Array(10).fill(100));
+      expect((await target.loadEntries()).size).toBe(0);
+      expect((await store.listPlans()).map(p => p.id)).not.toContain(clone.id);
+      // The source plan is untouched.
+      expect((await store.loadEntries()).size).toBe(1000);
+    });
+
+    it('F-22: two creates that read the same plan list both survive (version check on the list)', async () => {
+      const realSwap = storage.swap.bind(storage);
+      let raced = false;
+      storage.swap = async (k: string, v: any) => {
+        // Another writer adds a plan between this writer's read and its write, once.
+        if (!raced && k === 'cp:10000:plans') {
+          raced = true;
+          await new PlanStore(storage, '10000', 'TEST').createPlan('Created elsewhere');
+        }
+        return realSwap(k, v);
+      };
+      await store.createPlan('Created here');
+      expect((await store.listPlans()).map(p => p.name).sort()).toEqual(['Created elsewhere', 'Created here', 'Main Plan']);
+      expect((await store.readPlanList()).v).toBe(2);
+    });
+
+    it('F-22: a plan list stored as a plain array (before the version) is read as version 0 and kept', async () => {
+      await storage.set('cp:10000:plans', [{ id: 'default', name: 'Main Plan', createdAt: '1970-01-01T00:00:00.000Z', isDefault: true }, { id: 'plan-old', name: 'Old', createdAt: '2026-01-01T00:00:00.000Z' }]);
+      expect(await store.readPlanList()).toMatchObject({ v: 0 });
+      await store.createPlan('New');
+      expect((await store.listPlans()).map(p => p.id)).toEqual(expect.arrayContaining(['default', 'plan-old']));
+      expect((await store.readPlanList()).v).toBe(1);
     });
 
     it('renames an existing plan', async () => {

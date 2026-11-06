@@ -12,7 +12,7 @@
  */
 
 import { cssToken } from './theme';
-import { barRect, xForDate, Rect } from '../ui/timeline-geometry';
+import { barRect, xForDate, Rect, bezierPoints, Point } from '../ui/timeline-geometry';
 import { CANVAS_TOKENS, FORCED_COLOURS, barStyle, labelPlacement, isInProgressZero } from '../ui/canvas-palette';
 
 export interface ArrowLink {
@@ -21,11 +21,15 @@ export interface ArrowLink {
   triggerPercent: number;
   triggerDate?: string;
   isViolated: boolean;
+  /** Stored only in this plan's record, not in Jira (ADR-006 migration). */
+  planOnly?: boolean;
   x: number;
   y: number;
   width: number;
   height: number;
   text: string;
+  /** Points along the drawn line, in content coordinates, for clicks on the line itself. */
+  path?: Point[];
 }
 
 export const ROW_H = 44;
@@ -86,6 +90,8 @@ export class CanvasTimeline {
   activeLinking: ActiveLinking | null = null;
   /** Focused element of the treegrid in the canvas fallback content, for drawFocusIfNeeded (B-15). */
   focusElement: Element | null = null;
+  /** The last input type: the system focus ring is drawn only after keyboard input (N-09). */
+  private lastInput: 'pointer' | 'keyboard' = 'pointer';
   private forced = false;
   private arrowLinks: ArrowLink[] = [];
   onDraw?: (links: ArrowLink[]) => void;
@@ -99,6 +105,8 @@ export class CanvasTimeline {
     if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
     host.appendChild(this.canvas);
     this.ctx = this.canvas.getContext('2d') as CanvasRenderingContext2D;
+    document.addEventListener('pointerdown', () => { this.lastInput = 'pointer'; }, true);
+    document.addEventListener('keydown', () => { this.lastInput = 'keyboard'; }, true);
     // Forced colours (Windows contrast themes) replace tokens with system colours (B-15).
     const mq = window.matchMedia ? window.matchMedia('(forced-colors: active)') : null;
     const apply = () => {
@@ -204,7 +212,10 @@ export class CanvasTimeline {
     if (todayX !== null) this.drawTodayFlag(m, todayX, top);
     ctx.restore();
     this.onDraw?.(this.arrowLinks);
-    if (perf) performance.measure('cp:draw', 'cp:draw:start');
+    if (perf) {
+      performance.measure('cp:draw', 'cp:draw:start');
+      (globalThis as any).__cpArrows = this.arrowLinks;
+    }
   }
 
   private drawHoveredRow(m: TimelineModel, left: number, cssW: number): void {
@@ -369,7 +380,19 @@ export class CanvasTimeline {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    if (isFocused && this.focusElement) {
+    if (isFocused && !isConflict) {
+      // A designed "selected" outline: 2 px in the focus colour, 2 px outside the bar, with a soft glow (N-09).
+      ctx.save();
+      ctx.strokeStyle = focus;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = focus;
+      ctx.shadowBlur = this.forced ? 0 : 6;
+      this.path({ x: r.x - 2, y: r.y - 2, w: r.w + 4, h: r.h + 4 }, RADIUS + 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    // The system focus ring is for keyboard users only; a mouse click shows the outline above (N-09).
+    if (isFocused && this.focusElement && (this.lastInput === 'keyboard' || this.forced)) {
       this.path(r);
       ctx.drawFocusIfNeeded(this.focusElement);
     }
@@ -392,75 +415,95 @@ export class CanvasTimeline {
     ctx.textBaseline = 'middle';
     for (const { i } of rects.values()) {
       const task = m.tasks[i];
-      const dep = task.dependency;
-      if (!dep || !dep.predecessorKey) continue;
-      const pred = rects.get(dep.predecessorKey);
-      const succ = rects.get(task.key);
-      if (!pred || !succ) continue;
-      const y1 = pred.r.y + pred.r.h / 2;
-      const y2 = succ.r.y + succ.r.h / 2;
-      if (Math.max(y1, y2) < top - ROW_H || Math.min(y1, y2) > top + h + ROW_H) continue;
-      const trigger = (typeof dep.triggerPercent === 'number' ? dep.triggerPercent : 100) / 100;
-      const x1 = pred.r.x + pred.r.w * trigger;
-      const x2 = succ.r.x;
-      const connected = active === task.key || active === dep.predecessorKey;
-      const violated = Boolean(dep.isViolated);
-      const colour = this.c(violated ? CANVAS_TOKENS.arrowViolated : connected ? CANVAS_TOKENS.arrowActive : CANVAS_TOKENS.arrowOk);
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      if (x2 >= x1 + 16) {
-        // Standard forward dependency: smooth curve from predecessor right to successor left
-        const dx = Math.max(24, (x2 - x1) * 0.45);
-        ctx.bezierCurveTo(x1 + dx, y1, x2 - dx, y2, x2 - 6, y2);
-      } else {
-        // Backward / conflicting link: route out from predecessor, loop around, and enter successor from the left
-        const loopOutX = x1 + 16;
-        const loopInX = x2 - 16;
-        const midY = y1 < y2 ? y1 + ROW_H * 0.5 : y1 - ROW_H * 0.5;
-        ctx.bezierCurveTo(loopOutX, y1, loopOutX, midY, (loopOutX + loopInX) / 2, midY);
-        ctx.bezierCurveTo(loopInX, midY, loopInX, y2, x2 - 6, y2);
-      }
-      ctx.strokeStyle = colour;
-      ctx.lineWidth = active && !connected ? 1 : connected ? 2.5 : 1.75;
-      ctx.setLineDash(violated ? [4, 3] : []);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Arrowhead always enters successor left edge pointing cleanly to the right
-      ctx.beginPath();
-      ctx.moveTo(x2, y2);
-      ctx.lineTo(x2 - 8, y2 - 4.5);
-      ctx.lineTo(x2 - 8, y2 + 4.5);
-      ctx.closePath();
-      ctx.fillStyle = colour;
-      ctx.fill();
-
-      // Predecessor origin anchor dot
-      ctx.beginPath();
-      ctx.arc(x1, y1, connected ? 4.5 : 3.5, 0, Math.PI * 2);
-      ctx.fill();
-      if (!active || connected) {
-        const when = dep.triggerDate ? `, ${dep.triggerDate}` : '';
-        const text = violated ? `${dep.triggerPercent}%${when}: starts too early` : `${dep.triggerPercent}%${when}`;
-        const tw = ctx.measureText(text).width + 10;
-        const badgeX = (x1 + x2) / 2;
-        const badgeY = (y1 + y2) / 2;
-        this.arrowLinks.push({
-          predecessorKey: dep.predecessorKey,
-          successorKey: task.key,
-          triggerPercent: typeof dep.triggerPercent === 'number' ? dep.triggerPercent : 100,
-          triggerDate: dep.triggerDate,
-          isViolated: violated,
-          x: badgeX,
-          y: badgeY,
-          width: tw,
-          height: CHIP_H,
-          text
-        });
-        this.chip(text, badgeX - tw / 2, badgeY,
-          this.c(violated ? CANVAS_TOKENS.badgeViolatedText : CANVAS_TOKENS.badgeOkText), colour);
+      // Every active link of the task, not only the first (B-28).
+      const deps = Array.isArray(task.dependencies) && task.dependencies.length ? task.dependencies : (task.dependency ? [task.dependency] : []);
+      for (const dep of deps) {
+        if (dep && dep.predecessorKey) this.drawArrow(task, dep, rects, top, h, active);
       }
     }
+  }
+
+  private drawArrow(task: any, dep: any, rects: Map<string, { i: number; r: Rect }>, top: number, h: number, active: string | null): void {
+    const ctx = this.ctx;
+    const pred = rects.get(dep.predecessorKey);
+    const succ = rects.get(task.key);
+    if (!pred || !succ) return;
+    const y1 = pred.r.y + pred.r.h / 2;
+    const y2 = succ.r.y + succ.r.h / 2;
+    if (Math.max(y1, y2) < top - ROW_H || Math.min(y1, y2) > top + h + ROW_H) return;
+    const trigger = (typeof dep.triggerPercent === 'number' ? dep.triggerPercent : 100) / 100;
+    const x1 = pred.r.x + pred.r.w * trigger;
+    const x2 = succ.r.x;
+    const connected = active === task.key || active === dep.predecessorKey;
+    const violated = Boolean(dep.isViolated);
+    const colour = this.c(violated ? CANVAS_TOKENS.arrowViolated : connected ? CANVAS_TOKENS.arrowActive : CANVAS_TOKENS.arrowOk);
+    let path: Point[];
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    if (x2 >= x1 + 16) {
+      // Standard forward dependency: smooth curve from predecessor right to successor left
+      const dx = Math.max(24, (x2 - x1) * 0.45);
+      ctx.bezierCurveTo(x1 + dx, y1, x2 - dx, y2, x2 - 6, y2);
+      path = bezierPoints([x1, y1], [x1 + dx, y1], [x2 - dx, y2], [x2 - 6, y2]);
+    } else {
+      // Backward / conflicting link: route out from predecessor, loop around, and enter successor from the left
+      const loopOutX = x1 + 16;
+      const loopInX = x2 - 16;
+      const midY = y1 < y2 ? y1 + ROW_H * 0.5 : y1 - ROW_H * 0.5;
+      const midX = (loopOutX + loopInX) / 2;
+      ctx.bezierCurveTo(loopOutX, y1, loopOutX, midY, midX, midY);
+      ctx.bezierCurveTo(loopInX, midY, loopInX, y2, x2 - 6, y2);
+      path = [...bezierPoints([x1, y1], [loopOutX, y1], [loopOutX, midY], [midX, midY]),
+        ...bezierPoints([midX, midY], [loopInX, midY], [loopInX, y2], [x2 - 6, y2]).slice(1)];
+    }
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = active && !connected ? 1 : connected ? 2.5 : 1.75;
+    ctx.setLineDash(violated ? [4, 3] : []);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Arrowhead always enters successor left edge pointing cleanly to the right
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - 8, y2 - 4.5);
+    ctx.lineTo(x2 - 8, y2 + 4.5);
+    ctx.closePath();
+    ctx.fillStyle = colour;
+    ctx.fill();
+
+    // Predecessor origin anchor dot
+    ctx.beginPath();
+    ctx.arc(x1, y1, connected ? 4.5 : 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Every arrow has its label, and the label and the line can be clicked to edit the link. While a
+    // bar is selected, the labels of the other links are dimmed, not hidden.
+    const when = dep.triggerDate ? `, ${dep.triggerDate}` : '';
+    const planOnlyNote = dep.planOnly ? ' (not in Jira)' : '';
+    const text = (violated ? `${dep.triggerPercent}%${when}: starts too early` : `${dep.triggerPercent}%${when}`) + planOnlyNote;
+    const tw = ctx.measureText(text).width + 10;
+    const mid = path[Math.floor(path.length / 2)];
+    const badgeX = mid[0];
+    const badgeY = mid[1];
+    this.arrowLinks.push({
+      predecessorKey: dep.predecessorKey,
+      successorKey: task.key,
+      triggerPercent: typeof dep.triggerPercent === 'number' ? dep.triggerPercent : 100,
+      triggerDate: dep.triggerDate,
+      isViolated: violated,
+      ...(dep.planOnly ? { planOnly: true } : {}),
+      x: badgeX,
+      y: badgeY,
+      width: tw,
+      height: CHIP_H,
+      text,
+      path
+    });
+    const dim = Boolean(active) && !connected;
+    if (dim) ctx.globalAlpha = 0.45;
+    this.chip(text, badgeX - tw / 2, badgeY,
+      this.c(violated ? CANVAS_TOKENS.badgeViolatedText : CANVAS_TOKENS.badgeOkText), colour);
+    if (dim) ctx.globalAlpha = 1;
   }
 
   private drawTodayLine(m: TimelineModel, top: number, h: number): number | null {

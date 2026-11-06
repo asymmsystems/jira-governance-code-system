@@ -1,0 +1,8 @@
+/* Copyright (c) 2026 Asymm Systems. All rights reserved. @author Fahim Farook */
+.r0 { top: 38px; } .r1 { top: 88px; } .r2 { top: 138px; } .r3 { top: 188px; }
+.g0 { left: 120px; top: 33px; width: 270px; } .m0 { left: 120px; top: 33px; width: 380px; }
+.d1 { left: 120px; top: 83px; width: 120px; } .full { width: 100%; }
+.m2 { left: 210px; top: 133px; width: 180px; } .half { width: 45%; }
+.g3 { left: 300px; top: 183px; width: 90px; } .m3 { left: 400px; top: 183px; width: 100px; }
+.g0, .g3 { opacity: 0.6; }
+.m0 { z-index: 1; } .g0 { z-index: 2; }
