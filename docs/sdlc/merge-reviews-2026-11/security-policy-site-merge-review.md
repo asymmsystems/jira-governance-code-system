@@ -1,5 +1,28 @@
 # Security policy site page merge review
 
+## Round 2 (2026-11-06): merged into `develop`
+
+- Branch `feature/security-policy` at `1b076f1`: round 1's `e4428f3` plus `1b076f1`, which changes two sentences.
+- **Verdict: merged.** Merge commit `784f151` on `develop` of `asymmsystems/asymm-corporate-code-pfw`, pushed. Not merged to `main`, no tag: the coordinator releases.
+
+| Round 1 finding | Round 2 |
+|---|---|
+| M-14 (five unconfirmed controls) | Closed as **owner-confirmed**: the owner confirmed all five controls on 2026-11-06 (relayed by the coordinator). They are quarterly access review, OWASP Top 10 review for all products, customer notice within 72 hours of a confirmed personal-data breach, review plus CI for all products, and a unique strong password per account. They are recorded in `asymm-engineering` `issue/issue-00001-company-security-controls.org` (main `8735fb5`, read 2026-11-06), controls 3, 7, 8, 9 and 16, each "Owner confirmed" with the evidence to keep. Evidence is still owed for 7, 8 (Eliya, Dial), 9 and 15, as that file's next steps say. The page text is unchanged. |
+| L-45 (GitHub 2FA not required) | Fixed: `gh api orgs/asymmsystems` gives `two_factor_requirement_enabled: true` |
+| L-46 (compliance page said 30 days) | Fixed: `product/jira-governance/compliance.html` now says "Fixes follow Atlassian's Marketplace security bug fix policy for cloud apps: critical within 10 days, high within 4 weeks", matching the policy page (updated Aug 24, 2026), and links `/security` |
+| L-47 (data sentence too wide) | Fixed: "the apps call only Atlassian's own APIs: your site's Jira and Confluence, and Atlassian's personal data reporting service". All four apps declare `report:personal-data`; FourRealities uses Confluence. |
+
+Re-check of the page:
+- The issue file lists controls that are "Not answered yet": logs (17), backups and continuity (18), SBOM (19), and disk encryption, a pentest and an incident-plan test, which are never claimed. The page states none of them.
+- The excluded claims are still absent.
+- Build `./mvnw -o clean process-resources` (Eliya 25.0.3): exit 0. The warnings are JVM and JBake runtime notices (`sun.misc.Unsafe`, script engine, OrientDB default password), not page problems. Log, not committed: `/home/fahimfarookme/.cache/jira-suite-merge-review/security-policy-site/build-round2.txt`.
+- 37 internal links on `security.html` and `compliance.html`: none missing.
+- No em or en dashes added.
+
+Open, outside this branch: the Jira questionnaires (question 16) quote the live compliance page's "critical remediation target within 30 days". They change when the owner releases `develop` to `main`.
+
+## Round 1
+
 - Date: 2026-11-06. Reviewer: independent merge review session.
 - Repository: `asymmsystems/asymm-corporate-code-pfw` (corporate website). Branch `feature/security-policy` at `e4428f3` (one commit), cut from `develop` `1b11dd5`.
 - Change:
