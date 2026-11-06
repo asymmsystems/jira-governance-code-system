@@ -43,7 +43,7 @@ export interface ChecklistItemAuditEntry {
 export interface ChecklistAuditEvent {
   id: string;
   timestamp: string;
-  eventType: 'CHECK' | 'UNCHECK' | 'RESET' | 'TEMPLATE_CONFIGURED' | 'WAIVE';
+  eventType: 'CHECK' | 'UNCHECK' | 'RESET' | 'TEMPLATE_CONFIGURED' | 'WAIVE' | 'REDACT';
   actorName: string;
   actorAccountId: string;
   itemId?: string;
@@ -84,7 +84,9 @@ export interface IssueChecklistState {
   auditTrail?: ChecklistAuditEvent[];
   openMandatoryTitles?: string[];  // v2 panel response: from the shared gate rule
   approverGroups?: string[];
+  waiverPermissionLabel?: string;  // panel response: the template's waiver permission in plain words (M-1)
   canApprove?: boolean;
+  licenceInactive?: boolean;       // panel response: the licence is not active, so the gate is off (BL-4)
 }
 
 export interface ProjectDoDConfig {
@@ -129,7 +131,7 @@ export interface TransitionValidationResult {
 export type DodStatusId = 'DOD_OPEN' | 'DOD_DONE' | 'DOD_WAIVED';
 
 /** StatusValidChange transition names, plus the change-log entries that are not status changes. */
-export type TransitionName = 'Create' | 'Migrate' | 'Complete' | 'Reopen' | 'Waive' | 'Reset' | 'Resync';
+export type TransitionName = 'Create' | 'Migrate' | 'Complete' | 'Reopen' | 'Waive' | 'Reset' | 'Resync' | 'Redact';
 
 /** RoleType ids. Parties hold them through Jira, read live (spec v3 section 6). */
 export type RoleTypeId = 'ASSIGNEE' | 'PROJECT_ADMIN' | `JIRA_PERM_${string}`;
@@ -177,6 +179,7 @@ export interface CriterionState extends TemplateCriterion {
   evidenceContentId?: string;              // WorkEffortContent DOD_EVIDENCE for the current DONE
   legacyName?: string;                     // v1 display name, only when v1 recorded no accountId
   breakdownFromDate?: string;              // fromDate of the WORK_EFF_BREAKDOWN link (part of its key)
+  openedAt?: string;                       // when a closed criterion was last opened again (H-2); none = since the issue exists
 }
 
 export interface LegacyRef {
@@ -206,7 +209,10 @@ export type DodRow =
   | { entity: 'WorkEffortStatus'; workEffortId: string; statusId: DodStatusId; statusDatetime: string; setByPartyId: string; reason?: string; setByLegacyName?: string }
   | { entity: 'Content'; contentId: string; contentTypeId: 'DOD_EVIDENCE'; objectInfo?: string; textData?: string }
   | { entity: 'WorkEffortContent'; workEffortId: string; contentId: string; workEffortContentTypeId: 'DOD_EVIDENCE'; fromDate: string }
-  | { entity: 'LegacyImport'; legacy: LegacyRef };
+  | { entity: 'LegacyImport'; legacy: LegacyRef }
+  // ADR-010: an earlier event of this chain was rewritten to hold pseudonyms instead of account ids.
+  // originalHash is its stored hash; redactedHash is the hash of the rewritten content.
+  | { entity: 'Redaction'; seq: number; originalHash: string; redactedHash: string };
 
 /** One transaction of entity rows, stored at dg:evt:<issueId>:<seq as 8 digits>. Never changed after it is written. */
 export interface ChangeEntry {
@@ -214,7 +220,7 @@ export interface ChangeEntry {
   issueId: string;
   transitionName: TransitionName;
   at: string;
-  actorPartyId: string;                    // the Jira accountId (PartyIdentification JIRA_ACCOUNT_ID)
+  actorPartyId: string;                    // the person's per-site pseudonym (ADR-010), or 'system'
   rows: DodRow[];
   prevHash: string;
   hash: string;
@@ -235,5 +241,5 @@ export interface ApproverPolicy {
   roleTypeId: 'DG_APPROVER';
   parties: ApproverParty[];
   fromDate: string;
-  setByPartyId: string;
+  setByPartyId: string;                    // pseudonym of the Jira admin who saved it (ADR-010)
 }

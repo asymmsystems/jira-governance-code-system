@@ -4,7 +4,7 @@
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
  */
-import { jira, CountingStorage, JiraCall } from '../helpers/forge-mocks';
+import { jira, CountingStorage, JiraCall, pseudonymOf, storedOutsideMap } from '../helpers/forge-mocks';
 
 jest.mock('@forge/api', () => {
   const m = require('../helpers/forge-mocks');
@@ -76,9 +76,21 @@ describe('B-10 evaluateGate (one rule)', () => {
     expect(evaluateGate(st).satisfied).toBe(true);
   });
 
+  it('(H-1) treats a notAssignee item waived by an excluded assignee as open, and any other waiver as done', () => {
+    const st = { criteria: [item({ currentStatusId: 'DOD_WAIVED', excludedRoleTypeId: 'ASSIGNEE', lastStatusByPartyId: 'dgp-dev' })] };
+    expect(evaluateGate(st, new Set(['712020:dev', 'dgp-dev'])).satisfied).toBe(false);
+    expect(evaluateGate(st, () => true).satisfied).toBe(false);
+    expect(evaluateGate(st, new Set(['dgp-other'])).satisfied).toBe(true);
+    expect(evaluateGate(st).satisfied).toBe(true);
+    const plain = { criteria: [item({ currentStatusId: 'DOD_WAIVED', lastStatusByPartyId: 'dgp-dev' })] };
+    expect(evaluateGate(plain, () => true).satisfied).toBe(true);
+    const unknown = { criteria: [item({ currentStatusId: 'DOD_DONE', excludedRoleTypeId: 'ASSIGNEE', lastStatusByPartyId: undefined })] };
+    expect(evaluateGate(unknown, () => true).satisfied).toBe(true);
+  });
+
   it('words the block message with every open item and a next step', () => {
     expect(blockMessage([item({ workEffortName: 'A' }), item({ workEffortName: 'B' })]))
-      .toBe('Definition of Done is not complete. Open mandatory items: A; B. Open the DefinitionGuard panel on this issue to finish them.');
+      .toBe('Definition of Done is not complete. Open mandatory items: A; B. Open the Definition of Done panel on this issue (from the View app actions button if it is not shown) to finish them.');
   });
 });
 
@@ -95,7 +107,7 @@ describe('B-10 validator: Done-category moves only', () => {
     const res = await validateTransition(move('10001'), {}, storage);
     expect(res.result).toBe(false);
     for (const i of DEFAULT_DEFINITION_OF_DONE.items.filter(x => x.isMandatory)) expect(res.errorMessage).toContain(i.title);
-    expect(res.errorMessage).toContain('Open the DefinitionGuard panel');
+    expect(res.errorMessage).toContain('Open the Definition of Done panel');
   });
 
   it('allows a move into a status that is not DONE category', async () => {
@@ -188,7 +200,8 @@ describe('B-10 exemptions on the settings page', () => {
 
   it('saves exemptions with who and when, and rejects anything that is not a DONE-category status of the project', async () => {
     const saved: any = await saveExemptions({ exemptStatusIds: ['10006'] }, settingsCtx, storage);
-    expect(saved).toMatchObject({ exemptStatusIds: ['10006'], updatedByAccountId: '712020:admin' });
+    expect(saved).toMatchObject({ exemptStatusIds: ['10006'], updatedByPartyId: pseudonymOf(storage, '712020:admin') });
+    expect(storedOutsideMap(storage, '712020:admin')).toEqual([]);
     await expect(saveExemptions({ exemptStatusIds: ['3'] }, settingsCtx, storage)).rejects.toThrow('Only Done-category statuses of this project can be exempt.');
     await expect(saveExemptions({ exemptStatusIds: 'x' }, settingsCtx, storage)).rejects.toThrow('Only Done-category statuses of this project can be exempt.');
     expect(storage.read(projectConfigKey('10000')).exemptStatusIds).toEqual(['10006']);

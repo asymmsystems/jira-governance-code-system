@@ -8,17 +8,25 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { jira, CountingStorage, JiraCall } from '../helpers/forge-mocks';
 
+// The runtime app context, as getAppContext() returns it inside Forge (H-3). A test sets it.
+let mockAppContext: (() => any) | undefined;
 jest.mock('@forge/api', () => {
   const m = require('../helpers/forge-mocks');
   const asApp = { requestJira: m.makeRequester('app') };
   const asUser = { requestJira: m.makeRequester('user') };
-  return { __esModule: true, default: { asApp: () => asApp, asUser: () => asUser }, route: m.routeImpl };
+  return {
+    __esModule: true,
+    default: { asApp: () => asApp, asUser: () => asUser },
+    route: m.routeImpl,
+    getAppContext: () => (mockAppContext ? mockAppContext() : undefined)
+  };
 });
 jest.mock('@forge/kvs', () => ({ kvs: {}, WhereConditions: { beginsWith: (v: string) => v } }));
 
 import { toggleChecklistItem, resetChecklist, getIssueChecklist, validateTransition } from '../../src/index';
-import { saveTemplate } from '../../src/settings/settings-resolvers';
-import { LICENCE_INACTIVE, VALIDATOR_LICENCE_INACTIVE, isLicenceInactive } from '../../src/security/licence';
+import { saveTemplate, getSettings } from '../../src/settings/settings-resolvers';
+import { LICENCE_INACTIVE, LICENCE_GATE_OFF, isLicenceInactive, licenceOf } from '../../src/security/licence';
+import { buildPanelViewModel } from '../../src/ui/panel-view-model';
 
 const issue = { id: '91001', key: 'DEMO-91001', type: 'Task', typeId: '10004' };
 const project = { id: '10000', key: 'DEMO' };
@@ -27,6 +35,7 @@ const inactive = { isActive: false };
 function grantAll() {
   jira.handler = (c: JiraCall) => {
     if (c.path.includes('/mypermissions')) return { status: 200, body: { permissions: { EDIT_ISSUES: { havePermission: true }, ADMINISTER_PROJECTS: { havePermission: true } } } };
+    if (c.path.endsWith('/statuses')) return { status: 200, body: [] };
     if (c.path.startsWith('/rest/api/3/project/')) return { status: 200, body: { issueTypes: [{ id: '10004', name: 'Task' }] } };
     return { status: 204 };
   };
@@ -39,6 +48,7 @@ describe('B-09 licensing', () => {
     jira.reset();
     grantAll();
     storage = new CountingStorage();
+    mockAppContext = undefined;
   });
 
   it('enables licensing in the manifest', () => {
@@ -73,11 +83,56 @@ describe('B-09 licensing', () => {
     expect(res.stateVersion).toBe(2);
   });
 
-  it('(V-a, V-b) the validator blocks with a licence message when the licence is inactive, and still names open items otherwise', async () => {
-    const blocked = await validateTransition({ issue: { id: '91001' } }, { license: inactive, extension: { issue, project } }, storage);
-    expect(blocked).toEqual({ result: false, errorMessage: VALIDATOR_LICENCE_INACTIVE });
-    const normal = await validateTransition({ issue: { id: '91001' } }, { extension: { issue, project } }, storage);
-    expect(normal.result).toBe(false);
-    expect(normal.errorMessage).toContain('Open mandatory items:');
+  it('(BL-4) the validator lets every move through when the licence is inactive, complete or not, and writes nothing', async () => {
+    const incomplete = await validateTransition({ issue: { id: '91001' }, transition: { to: { id: '10002' } } }, { license: inactive, extension: { issue, project } }, storage);
+    expect(incomplete).toEqual({ result: true });
+    expect(jira.calls).toEqual([]);
+    expect(storage.sets).toEqual([]);
+  });
+
+  it('(BL-4) still blocks an incomplete move when the licence is active or absent', async () => {
+    for (const ctx of [{ license: { isActive: true }, extension: { issue, project } }, { extension: { issue, project } }]) {
+      const res = await validateTransition({ issue: { id: '91001' } }, ctx, storage);
+      expect(res.result).toBe(false);
+      expect(res.errorMessage).toContain('Open mandatory items:');
+    }
+  });
+
+  it('(H-3) reads the licence from the Forge app context when the call context has none', async () => {
+    mockAppContext = () => ({ license: { isActive: false } });
+    expect(isLicenceInactive({})).toBe(true);
+    expect(await validateTransition({ issue: { id: '91001' } }, { extension: { issue, project } }, storage)).toEqual({ result: true });
+    await expect(toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, { accountId: 'a', extension: { issue, project } }, storage)).rejects.toThrow(LICENCE_INACTIVE);
+    mockAppContext = () => ({ license: { isActive: true } });
+    expect(isLicenceInactive({})).toBe(false);
+  });
+
+  it('(H-3) the call context wins over the app context, and the older "active" field is understood', () => {
+    mockAppContext = () => ({ license: { isActive: false } });
+    expect(isLicenceInactive({ license: { isActive: true } })).toBe(false);
+    mockAppContext = undefined;
+    expect(isLicenceInactive({ license: { active: false } })).toBe(true);
+    expect(isLicenceInactive({ license: { active: true } })).toBe(false);
+    expect(isLicenceInactive({ license: {} })).toBe(false);
+  });
+
+  it('(H-3) outside the Forge runtime (no app context) there is no licence and nothing changes', () => {
+    mockAppContext = () => { throw new Error('no runtime'); };
+    expect(licenceOf({})).toBeUndefined();
+    expect(isLicenceInactive({})).toBe(false);
+  });
+
+  it('(BL-4) the panel and the settings page say the gate is off while the licence is inactive', async () => {
+    const res = await getIssueChecklist({}, { accountId: 'a', license: inactive, extension: { issue, project } }, storage);
+    expect(res.licenceInactive).toBe(true);
+    expect(buildPanelViewModel(res)!.licenceNotice).toBe(LICENCE_GATE_OFF);
+    const active = await getIssueChecklist({}, { accountId: 'a', license: { isActive: true }, extension: { issue, project } }, storage);
+    expect(active.licenceInactive).toBeUndefined();
+    expect(buildPanelViewModel(active)!.licenceNotice).toBeUndefined();
+    const settings = await getSettings({}, { accountId: 'a', license: inactive, extension: { project } }, storage);
+    expect(settings.licenceNotice).toBe(LICENCE_GATE_OFF);
+    const licensed = await getSettings({}, { accountId: 'a', extension: { project } }, storage);
+    expect(licensed.licenceNotice).toBeUndefined();
+    expect(LICENCE_GATE_OFF).toContain('moves to Done are not blocked');
   });
 });

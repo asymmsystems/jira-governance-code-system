@@ -4,7 +4,7 @@
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
  */
-import { jira, CountingStorage, JiraCall } from '../helpers/forge-mocks';
+import { jira, CountingStorage, JiraCall, pseudonymOf, storedOutsideMap } from '../helpers/forge-mocks';
 
 jest.mock('@forge/api', () => {
   const m = require('../helpers/forge-mocks');
@@ -14,7 +14,7 @@ jest.mock('@forge/api', () => {
 });
 jest.mock('@forge/kvs', () => ({ kvs: {}, WhereConditions: { beginsWith: (v: string) => v } }));
 
-import { exportChecklistHistory, toggleChecklistItem, waiveChecklistItem, handler, setGlobalStorageProvider } from '../../src/index';
+import { exportChecklistHistory, toggleChecklistItem, waiveChecklistItem, handler, setGlobalStorageProvider, getChecklistHistory } from '../../src/index';
 import { historyRows, formatLocal } from '../../src/ui/panel-view-model';
 import { CHAIN_LIMIT_NOTE, createEntry, emptyState, applyEntry, makeEntry, statusEntry } from '../../src/domain/event-log';
 import { toDodTemplate } from '../../src/domain/dod-template';
@@ -26,6 +26,7 @@ const project = { id: '10000', key: 'DEMO' };
 const issue = { id: '96001', key: 'DEMO-96001', type: 'Task', typeId: '10004' };
 const as = (accountId: string) => ({ accountId, extension: { issue, project } });
 let admin = true;
+let jiraAdmin = false;
 
 describe('B-15 export', () => {
   let storage: CountingStorage;
@@ -33,17 +34,25 @@ describe('B-15 export', () => {
   beforeEach(() => {
     jira.reset();
     admin = true;
+    jiraAdmin = false;
     retryPolicy.sleep = async () => {};
     jira.handler = (c: JiraCall) => (c.path.includes('/mypermissions')
-      ? { status: 200, body: { permissions: { EDIT_ISSUES: { havePermission: true }, ADMINISTER_PROJECTS: { havePermission: admin } } } }
+      ? { status: 200, body: { permissions: { EDIT_ISSUES: { havePermission: true }, ADMINISTER_PROJECTS: { havePermission: admin }, ADMINISTER: { havePermission: jiraAdmin } } } }
       : { status: 204 });
     storage = new CountingStorage();
   });
 
   it('refuses a non-admin and reads nothing', async () => {
     admin = false;
-    await expect(exportChecklistHistory({}, as('dev'), storage)).rejects.toThrow('Only a project admin can export this history.');
+    await expect(exportChecklistHistory({}, as('dev'), storage)).rejects.toThrow('Only a project admin or a Jira admin can export this history.');
     expect(storage.gets).toEqual([]);
+  });
+
+  it('lets a Jira admin who is not a project admin export', async () => {
+    admin = false;
+    jiraAdmin = true;
+    const res: any = await exportChecklistHistory({}, as('site-admin'), storage);
+    expect(JSON.parse(res.text).format).toBe('definitionguard-history-export');
   });
 
   it('exports every event, the state summary, the chain result and its limit, as JSON text', async () => {
@@ -53,7 +62,7 @@ describe('B-15 export', () => {
     const doc = JSON.parse(res.text);
     expect(doc).toMatchObject({
       format: 'definitionguard-history-export',
-      formatVersion: 1,
+      formatVersion: 2,
       issueId: '96001',
       issueKey: 'DEMO-96001',
       exportedByAccountId: '712020:lead',
@@ -64,7 +73,15 @@ describe('B-15 export', () => {
     expect(doc.events.map((e: any) => e.transitionName)).toEqual(['Create', 'Complete', 'Waive']);
     expect(doc.events[1].rows).toContainEqual(expect.objectContaining({ entity: 'Content', contentTypeId: 'DOD_EVIDENCE', objectInfo: 'https://ci.example/1' }));
     expect(doc.events[1].rows).toContainEqual(expect.objectContaining({ entity: 'WorkEffortContent', workEffortContentTypeId: 'DOD_EVIDENCE' }));
-    expect(doc.events[2].rows[0]).toMatchObject({ entity: 'WorkEffortStatus', statusId: 'DOD_WAIVED', reason: 'Pair-programmed and reviewed live.', setByPartyId: '712020:lead' });
+    const lead = pseudonymOf(storage, '712020:lead');
+    expect(doc.events[2].rows[0]).toMatchObject({ entity: 'WorkEffortStatus', statusId: 'DOD_WAIVED', reason: 'Pair-programmed and reviewed live.', setByPartyId: lead });
+    // ADR-010: events hold pseudonyms; the export maps each one to the account while it exists.
+    expect(doc.parties).toEqual({ [lead]: '712020:lead', [pseudonymOf(storage, '712020:dev')]: '712020:dev' });
+    expect(JSON.stringify(doc.events)).not.toContain('712020:');
+    // BL-2: the export and the history view say whether the property is signed, and with which key.
+    expect(doc.signature).toMatchObject({ signed: false, keyId: null });
+    const h: any = await getChecklistHistory({}, as('712020:lead'), storage);
+    expect(h.signature).toEqual(doc.signature);
     expect(res.fileName).toBe('DEMO-96001-definitionguard-history.json');
   });
 

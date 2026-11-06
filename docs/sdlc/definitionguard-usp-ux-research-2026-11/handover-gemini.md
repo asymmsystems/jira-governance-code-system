@@ -32,12 +32,12 @@ Read this whole prompt before you act. When this prompt and a file disagree, the
 
 ## 3. What the code is now (version 4, deployed to the Forge development environment)
 
-- Domain model follows the Silverston patterns as Apache OFBiz implements them (owner decision): the Jira issue is a WorkEffort of type ISSUE (by reference); each checklist item is a child WorkEffort of type DOD_CRITERION linked by WorkEffortAssoc WORK_EFF_BREAKDOWN; the template is a DOD_TEMPLATE WorkEffort linked by WORK_EFF_TEMPLATE with revisionNumber; item states are StatusItems DOD_OPEN, DOD_DONE, DOD_WAIVED with an enforced StatusValidChange table (`src/domain/dod-status.ts`); history is WorkEffortStatus rows; evidence is Content linked by WorkEffortContent. People and roles are read live from Jira, never stored.
+- Domain model follows the Silverston patterns as Apache OFBiz implements them (owner decision): the Jira issue is a WorkEffort of type ISSUE (by reference); each checklist item is a child WorkEffort of type DOD_CRITERION linked by WorkEffortAssoc WORK_EFF_BREAKDOWN; the template is a DOD_TEMPLATE WorkEffort linked by WORK_EFF_TEMPLATE with revisionNumber; item states are StatusItems DOD_OPEN, DOD_DONE, DOD_WAIVED with an enforced StatusValidChange table (`src/domain/dod-status.ts`); history is WorkEffortStatus rows; evidence is Content linked by WorkEffortContent. Roles are read live from Jira. People who act are stored as pseudonyms (since 2026-11-06, ADR-010; see `docs/sdlc/definitionguard-marketplace-fixes-2026-11/progress-log.md`).
 - Storage: append-only change-log entries `dg:evt:<issueId>:<seq 8 digits>` written with KVS `keyPolicy: FAIL_IF_EXISTS` as the lock, plus a state cache `dg:state:<issueId>`. v1 records `dg:checklist:<issueId>` are read only and migrated on first change. A hash chain covers every entry.
 - Gate: `src/domain/gate-rule.ts` is the only rule; the validator and the panel both use it. The validator fails closed on any error, never writes, never reads the `definitionguard-dod` property, and names every open mandatory item. Only moves into Done-category statuses are gated; admins can exempt statuses.
-- The `definitionguard-dod` issue property is schema v2, signed with Ed25519. The private key is the encrypted Forge variable `DG_SIGNING_KEY` in the development environment only (keyId `dg-dev-2026-11`). The public key is `docs/marketplace/definitionguard-public-key.pem`.
+- The `definitionguard-dod` issue property is schema v2 (schema 3 since 2026-11-06, without the account id), signed with Ed25519. The private key is the encrypted Forge variable `DG_SIGNING_KEY` in the development environment only (keyId `dg-dev-2026-11`). The development public key is `docs/marketplace/definitionguard-public-key.pem`; it is not for customers (the production key `dg-prod-2026-11` is published on asymm.systems).
 - UI: `src/frontend/index.tsx` (issue panel) and `src/frontend/settings.tsx` (project settings) only render pure view models in `src/ui/`. All rules and wording live in `src/ui/panel-view-model.ts` and `src/ui/template-editor.ts`, which are unit-tested.
-- Scopes: `read:jira-work`, `write:jira-work`, `storage:app`, `read:workflow:jira`.
+- Scopes (at the time of this handover): `read:jira-work`, `write:jira-work`, `storage:app`, `read:workflow:jira`. Since then also `read:jira-user` and `report:personal-data` (see `manifest.yml`).
 - Tests: 300 pass; 90% branch per source file is enforced in `jest.config.js`.
 
 ## 4. How to check your work (run all of these for every change)
@@ -98,7 +98,7 @@ The scale harness is `~/.cache/gemini-earning-definitionguard-research/harness/`
    - A live test of the validator when it throws (DG-08): it would need a deliberately broken build. Unit tests already prove it blocks. Recommend leaving it.
    - Production: a separate signing key pair for production, its public key, and the production deploy are the owner's decisions.
    - FourRealities reads `definitionguard-dod`. It should verify the signature with the public key and treat an unsigned or failing value as unknown. That is FourRealities work for its own session; tell the owner, do not change it.
-   - The listing `docs/marketplace/definitionguard-listing-v2.md` and its price ($1.00 per user per month at 11 to 100 users) need the owner's review before any Marketplace use.
+   - The listing `docs/marketplace/definitionguard-listing-v2.md` needs the owner's review before any Marketplace use. Price (owner decision, 2026-11-06): free for 1 to 10 users, $0.95 per user per month for 11 to 100, $0.75 for 101 to 250, $0.24 for 251 to 1,000, custom above 1,000.
 3. **Final report** in the format of section 15 of the brief: each file you created or changed with its full path and commit SHA; test and coverage summary; `forge lint` and `forge deploy` output if you deployed; every live write.
 
 ## 9. If something goes wrong
