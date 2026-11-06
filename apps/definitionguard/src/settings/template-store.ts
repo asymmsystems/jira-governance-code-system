@@ -11,6 +11,7 @@ import { StorageProvider } from '../storage/checklist-repository';
 import { getTemplateForCategory } from '../domain/checklist-engine';
 import { toDodTemplate } from '../domain/dod-template';
 import { ChecklistCategory, ChecklistItemTemplate, DodTemplate } from '../domain/models';
+import { ITEM_ID_PATTERN } from '../domain/input-rules';
 
 export const MAX_TEMPLATE_BYTES = 32 * 1024;
 export const MAX_ITEMS = 50;
@@ -26,7 +27,7 @@ export interface StoredTemplate extends DodTemplate {
 
 const CATEGORIES: ChecklistCategory[] = ['CODE_QUALITY', 'SECURITY', 'TESTING', 'COMPLIANCE', 'DOCUMENTATION'];
 const ITEM_FIELDS = new Set(['id', 'title', 'description', 'isMandatory', 'category', 'evidenceRequired', 'requiredPermission', 'notAssignee']);
-const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+const ID_PATTERN = ITEM_ID_PATTERN;
 const PERMISSION_PATTERN = /^[A-Z_]{1,64}$/;
 
 /** Returns every problem with the template, each naming the field. An empty list means valid. */

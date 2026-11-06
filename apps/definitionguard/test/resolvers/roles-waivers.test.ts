@@ -4,7 +4,7 @@
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
  */
-import { jira, CountingStorage, JiraCall, pseudonymOf, storedOutsideMap } from '../helpers/forge-mocks';
+import { jira, BROWSE_CHECK, CountingStorage, JiraCall, pseudonymOf, storedOutsideMap } from '../helpers/forge-mocks';
 
 jest.mock('@forge/api', () => {
   const m = require('../helpers/forge-mocks');
@@ -86,15 +86,16 @@ describe('B-12 roles and waivers', () => {
     expect(permissionLabel('ADMINISTER_PROJECTS')).toBe('Administer projects');
   });
 
-  it('requires the item permission, checked as the user in one call with EDIT_ISSUES', async () => {
+  it('requires the item permission, checked as the user in one call with EDIT_ISSUES (after the Browse check)', async () => {
     await expect(call('dev', () => toggleChecklistItem({ itemId: 'release-signoff', isCompleted: true }, as('dev'), storage)))
       .rejects.toThrow('You need the Resolve issues Jira permission to complete this item.');
     jira.calls = [];
     const res = await call('lead', () => toggleChecklistItem({ itemId: 'release-signoff', isCompleted: true }, as('lead'), storage));
     expect(res.items.find(i => i.id === 'release-signoff')!.isCompleted).toBe(true);
     const perm = jira.callsTo('/mypermissions', 'user');
-    expect(perm).toHaveLength(1);
-    expect(decodeURIComponent(perm[0].path)).toContain('permissions=EDIT_ISSUES,RESOLVE_ISSUES');
+    expect(perm).toHaveLength(2);
+    expect(perm[0].path).toMatch(BROWSE_CHECK);
+    expect(decodeURIComponent(perm[1].path)).toContain('permissions=EDIT_ISSUES,RESOLVE_ISSUES');
   });
 
   it('refuses a tick by the current assignee on a not-the-assignee item, read as the user', async () => {

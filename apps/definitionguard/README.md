@@ -17,7 +17,7 @@ What the code does is described in `docs/spec/definitionguard-spec-v3.md` (domai
 | Scope | Why |
 |---|---|
 | `read:jira-work` | Read issues, their changelog, statuses and the user's Jira permissions |
-| `write:jira-work` | Write the `definitionguard-dod` issue property |
+| `write:issue.property:jira` | Write the app's own `definitionguard-dod` issue property (the granular scope for issue properties). The app never edits issue fields |
 | `read:jira-user` | Read the user's groups and search groups for approver authority |
 | `storage:app` | Keep checklists, history, templates and approver groups in Forge storage |
 | `read:workflow:jira` | Read workflows for the gate coverage check (read only) |

@@ -50,7 +50,7 @@ describe('B-08 listing v2', () => {
     const manifest = fs.readFileSync(path.join(APP, 'manifest.yml'), 'utf8');
     const scopes = manifest.slice(manifest.indexOf('scopes:')).split('\n').filter(l => /^\s+- /.test(l)).map(l => l.trim().slice(2));
     const section = read().slice(read().indexOf('## Security'));
-    const listed = [...section.matchAll(/^- `([a-z:-]+)`/gm)].map(m => m[1]);
+    const listed = [...section.matchAll(/^- `([a-z.:-]+)`/gm)].map(m => m[1]);
     expect(listed.sort()).toEqual(scopes.sort());
   });
 

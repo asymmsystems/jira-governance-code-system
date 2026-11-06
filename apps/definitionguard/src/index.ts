@@ -24,6 +24,7 @@ import {
   checkAnyIssuePermission,
   ADMIN_KEYS,
   getIssuePermissions,
+  requireBrowseIssue,
   permissionLabel,
   PermissionDeniedError,
   EDIT_DENIED,
@@ -44,6 +45,7 @@ import { assertLicensed, isLicenceInactive } from './security/licence';
 import { validateEvidence, EVIDENCE_REQUIRED } from './domain/evidence';
 import { publishAttestation, signatureStatus } from './integrity/attestation';
 import { withRetry } from './jira/jira-client';
+import { itemIdOf, cursorOf } from './domain/input-rules';
 import { PartyStore, ShownParty } from './storage/party-store';
 
 export { settingsHandler } from './settings/settings-resolvers';
@@ -53,7 +55,9 @@ export { issueDeletedTrigger } from './privacy/issue-deleted';
 export { setGlobalStorageProvider, resolveStorage } from './storage/forge-storage';
 
 /**
- * Fetches the authentic Jira issue representation to determine issue type.
+ * Reads the issue type and project of an issue as the app, to choose its checklist template.
+ * Called only through templateFor, after the panel resolver has checked that the user can
+ * browse the issue (issueContext).
  */
 export async function fetchLiveJiraIssue(issueIdOrKey: string): Promise<any | null> {
   try {
@@ -247,6 +251,17 @@ function panelContext(context: any) {
   };
 }
 
+/**
+ * The panel context, after the check that the calling user can browse the issue (Browse projects,
+ * as the user, with the permissions REST API). Every issue panel resolver starts here, so no app
+ * storage read and no asApp() read happens for an issue the user cannot see. Fails closed.
+ */
+async function issueContext(context: any) {
+  const c = panelContext(context);
+  await requireBrowseIssue(c.issueId);
+  return c;
+}
+
 const AUDIT_TYPE: Record<ChangeEntry['transitionName'], ChecklistAuditEvent['eventType']> = {
   Create: 'TEMPLATE_CONFIGURED',
   Migrate: 'TEMPLATE_CONFIGURED',
@@ -339,7 +354,7 @@ async function templateFor(storage: StorageProvider, c: ReturnType<typeof panelC
  * issue-type template in memory. Never writes.
  */
 export async function getIssueChecklist(_payload: any, context?: any, storageProvider?: StorageProvider): Promise<IssueChecklistState> {
-  const c = panelContext(context);
+  const c = await issueContext(context);
   const storage = resolveStorage(storageProvider);
   const store = new ChecklistStore(storage);
 
@@ -361,10 +376,10 @@ function withLicenceNotice(res: IssueChecklistState, context: any): IssueCheckli
  * One page of the issue's events (at most 100), oldest first, for the history view.
  */
 export async function getChecklistHistory(payload: any, context?: any, storageProvider?: StorageProvider) {
-  const c = panelContext(context);
+  const cursor = cursorOf(payload?.cursor);
+  const c = await issueContext(context);
   const storage = resolveStorage(storageProvider);
   const store = new ChecklistStore(storage);
-  const cursor = typeof payload?.cursor === 'string' ? payload.cursor : undefined;
   const page = await store.history(c.issueId, cursor);
   const state = await store.load(c.issueId);
   const check = await store.verify(c.issueId);
@@ -423,12 +438,13 @@ async function currentAssignee(issueKey: string): Promise<string | undefined> {
  */
 export async function waiveChecklistItem(payload: any, context?: any, storageProvider?: StorageProvider): Promise<IssueChecklistState> {
   const c = panelContext(context);
-  const itemId = String(payload?.itemId || '');
+  const itemId = itemIdOf(payload?.itemId);
   const reason = typeof payload?.reason === 'string' ? payload.reason.trim() : '';
   if (reason.length < 10 || reason.length > 500) {
     throw new Error(WAIVER_REASON_INVALID);
   }
   assertLicensed(context);
+  await requireBrowseIssue(c.issueId);
 
   const storage = resolveStorage(storageProvider);
   const store = new ChecklistStore(storage);
@@ -468,8 +484,8 @@ export async function waiveChecklistItem(payload: any, context?: any, storagePro
  * The state keeps only a flag, so the state value stays small (spec v2, D-13).
  */
 export async function getItemEvidence(payload: any, context?: any, storageProvider?: StorageProvider) {
-  const c = panelContext(context);
-  const itemId = String(payload?.itemId || '');
+  const itemId = itemIdOf(payload?.itemId);
+  const c = await issueContext(context);
   const storage = resolveStorage(storageProvider);
   const state = await new ChecklistStore(storage).load(c.issueId);
   if (!state) return { itemId, evidence: undefined };
@@ -492,7 +508,7 @@ export const EXPORT_DENIED = 'Only a project admin or a Jira admin can export th
  * auditor. Project admins only. The panel shows the text to copy (UI Kit has no file download).
  */
 export async function exportChecklistHistory(_payload: any, context?: any, storageProvider?: StorageProvider) {
-  const c = panelContext(context);
+  const c = await issueContext(context);
   await checkAnyIssuePermission(c.issueKey, ADMIN_KEYS, EXPORT_DENIED);
   const storage = resolveStorage(storageProvider);
   const store = new ChecklistStore(storage);
@@ -526,11 +542,8 @@ export async function exportChecklistHistory(_payload: any, context?: any, stora
  */
 export async function toggleChecklistItem(payload: any, context?: any, storageProvider?: StorageProvider): Promise<IssueChecklistState> {
   const c = panelContext(context);
-  const itemId = String(payload?.itemId || '');
+  const itemId = itemIdOf(payload?.itemId);
   const isCompleted = Boolean(payload?.isCompleted);
-  if (!itemId) {
-    throw new Error('DefinitionGuard: Missing itemId.');
-  }
   const checked = validateEvidence(payload?.evidence);
   if (!checked.ok) {
     throw new Error(checked.error);
@@ -538,6 +551,7 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
   const evidence = isCompleted ? checked.evidence : undefined;
 
   assertLicensed(context);
+  await requireBrowseIssue(c.issueId);
 
   const storage = resolveStorage(storageProvider);
   const store = new ChecklistStore(storage);
@@ -610,6 +624,7 @@ export async function resetChecklist(_payload: any, context?: any, storageProvid
   const c = panelContext(context);
 
   assertLicensed(context);
+  await requireBrowseIssue(c.issueId);
   const storage = resolveStorage(storageProvider);
   const isApprover = await hasApproverPermission(c.issueKey, storage);
   if (!isApprover) {

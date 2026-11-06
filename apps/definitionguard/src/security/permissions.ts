@@ -4,7 +4,7 @@
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
  *
- * Every check runs as the user, with the issue key, because a project-level answer can
+ * Every check runs as the user, with the issue key or id, because a project-level answer can
  * report EDIT_ISSUES for a user who lacks it on a given issue. Any failure denies (fail closed).
  */
 import api, { route } from '@forge/api';
@@ -101,7 +101,34 @@ export async function checkIssuePermissions(issueKey: string, keys: JiraPermissi
   }
 }
 
-export const EDIT_DENIED = 'You need Edit issues permission to change this checklist.';
+export const BROWSE_DENIED =
+  'You need the Browse projects Jira permission on this issue to see its Definition of Done.';
+export const BROWSE_CHECK_FAILED =
+  'DefinitionGuard could not check that you can see this issue in Jira, so it shows nothing. Try again.';
+
+/**
+ * Throws PermissionDeniedError unless the calling user can browse the issue (Browse projects,
+ * which Jira also applies with issue security). Every issue panel resolver calls this first,
+ * before it reads app storage or Jira as the app. Asked by issue id, which the Forge context
+ * always holds. Fails closed: an error from Jira or a missing id denies.
+ */
+export async function requireBrowseIssue(issueId: string): Promise<void> {
+  let granted: Record<string, boolean>;
+  try {
+    if (!issueId) throw new Error('no issue id');
+    granted = await fetchGranted(
+      () => withRetry(() => api.asUser().requestJira(route`/rest/api/3/mypermissions?issueId=${issueId}&permissions=BROWSE_PROJECTS`)),
+      ['BROWSE_PROJECTS']
+    );
+  } catch {
+    throw new PermissionDeniedError(BROWSE_CHECK_FAILED);
+  }
+  if (!granted.BROWSE_PROJECTS) {
+    throw new PermissionDeniedError(BROWSE_DENIED);
+  }
+}
+
+export const EDIT_DENIED ='You need Edit issues permission to change this checklist.';
 export const RESET_DENIED = 'Only a project admin can reset this checklist.';
 
 /** A Jira permission key in plain words, for messages: RESOLVE_ISSUES becomes "Resolve issues". */
