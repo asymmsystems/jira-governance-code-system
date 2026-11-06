@@ -377,3 +377,18 @@ export function buildPanelView(input: PanelInput): PanelView {
   }
   return view;
 }
+
+/** F-12: what the always-visible context entry shows: the lozenge, the status sentence and where to act. */
+export interface ContextView {
+  state: PanelState;
+  lozenge: { text: string; appearance: LozengeAppearance } | null;
+  sentence: string;
+  hint: string;
+}
+
+export const CONTEXT_HINT = 'Open the Approval Seal panel from the issue\'s app button to seal, approve changes or see the details.';
+
+export function buildContextView(input: PanelInput): ContextView {
+  const view = buildPanelView(input);
+  return { state: view.state, lozenge: view.lozenge, sentence: view.statusSentence, hint: CONTEXT_HINT };
+}

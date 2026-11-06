@@ -8,6 +8,16 @@ modules:
       resource: main
       resolver:
         function: resolver
+  jira:issueContext:
+    # F-12: always visible in the issue's details column; shows the seal state without opening the panel.
+    - key: ledgerseal-context
+      title: LedgerSeal
+      label: Approval seal
+      icon: resource:icons;icon.svg
+      render: native
+      resource: context
+      resolver:
+        function: resolver
   jira:adminPage:
     - key: ledgerseal-admin
       title: LedgerSeal approvers
@@ -72,6 +82,8 @@ resources:
     path: src/frontend/index.tsx
   - key: admin
     path: src/frontend/admin.tsx
+  - key: context
+    path: src/frontend/context.tsx
   - key: icons
     path: static/icons
 
