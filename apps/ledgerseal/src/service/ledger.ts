@@ -197,8 +197,13 @@ async function commitAfterClaim(repo: SealRepository, row: WorkEffortStatus, com
  * Writes the signed ledgerseal-cert attestation. Called on seal, reseal, revoke and each new incident only.
  * The property is an output for other tools; LedgerSeal itself never reads it.
  */
+export const UNSIGNED_LOG =
+  'LedgerSeal: LEDGERSEAL_SIGNING_KEY or LEDGERSEAL_KEY_ID is not set for this Forge environment, so this attestation is unsigned and the offline verifier will fail its signature check.';
+
 async function writeAttestation(deps: LedgerSealDeps, seal: LoadedSeal, status: AttestationStatus, at: string): Promise<void> {
   const issueId = seal.workEffort.workEffortId;
+  // B5: an unsigned attestation is never written silently
+  if (!deps.signer) console.error(`${UNSIGNED_LOG} Issue ${issueId}.`);
   const written = await deps.jira.putSealProperty(issueId, buildAttestation(attestationSource(seal), status, at, deps.signer ?? null));
   if (!written) console.error(`LedgerSeal: could not write the ledgerseal-cert property on issue ${issueId}`);
 }
@@ -589,7 +594,9 @@ export async function verifyIssueFlow(payload: any, context: any, deps: LedgerSe
     ...result,
     issueKey: issue.key,
     rights: await viewerRights(deps, issue.id, String(context.accountId), result, live),
-    approverGroups: await approverGroupNames(deps.storage)
+    approverGroups: await approverGroupNames(deps.storage),
+    // B5: the panel says so when this installation writes unsigned attestations
+    signing: { signed: Boolean(deps.signer), keyId: deps.signer?.keyId ?? null }
   };
 }
 
@@ -740,9 +747,12 @@ export async function historyFlow(payload: any, context: any, deps: LedgerSealDe
   const check = verifyChain(page, before ? before.entryHash : undefined, head);
   // A missing entry anywhere in the page, or a missing predecessor, breaks the chain.
   const complete = page.length === toSeq - fromSeq + 1 && (fromSeq === 1 || Boolean(before));
+  // Who acted, as an account id for the UI Kit User component; empty for the app itself or a closed account (F-15)
+  const resolver = new PartyResolver(new PartyRepository(deps.storage));
+  const actors = await Promise.all(page.map(row => resolver.resolve(row.setByPartyId)));
   return {
     ok: true as const,
-    entries: page,
+    entries: page.map((row, i) => ({ ...row, actorAccountId: actors[i] ?? '', actorClosed: Boolean(row.setByPartyId) && !actors[i] })),
     chainValid: check.valid && complete,
     nextFromSeq: toSeq < head.seq ? toSeq + 1 : null
   };
@@ -796,6 +806,9 @@ const VERIFICATION_STEPS = [
   'Records name people by party token (pty_...). "parties" maps each token in the history to its account id, or null when the account was closed. It is not signed and is not part of any hash.'
 ];
 
+export const UNSIGNED_EVIDENCE =
+  'This installation has no LedgerSeal signing key, so this evidence is unsigned and the offline verifier fails its signature check. Contact support@asymm.systems.';
+
 /** Every party token named in the history, for the unsigned parties map of the evidence (ADR-010 decision 10). */
 function historyTokens(history: WorkEffortStatus[]): string[] {
   const ids = history.flatMap(row => [
@@ -828,10 +841,12 @@ export async function evidenceFlow(payload: any, context: any, deps: LedgerSealD
   const resolver = new PartyResolver(new PartyRepository(deps.storage));
   const parties: Record<string, string | null> = {};
   for (const token of historyTokens(history)) parties[token] = await resolver.resolve(token);
+  if (!deps.signer) console.error(`${UNSIGNED_LOG} Evidence of issue ${issue.id}.`);
   return {
     format: 'ledgerseal-evidence/1',
     exportedAt: now,
     publicKeyId: deps.signer?.keyId ?? null,
+    ...(deps.signer ? {} : { warning: UNSIGNED_EVIDENCE }),
     attestation: buildAttestation(attestationSource(seal), STORED_STATUS[seal.workEffort.currentStatusId], now, deps.signer ?? null),
     snapshot: canonicalForm(snapshot),
     history,

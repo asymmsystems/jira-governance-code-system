@@ -15,6 +15,7 @@ import { signerFromEnvironment } from './domain/attestation';
 import {
   evaluate,
   evidenceFlow,
+  licenseInactive,
   historyFlow,
   issueChangedFlow,
   LedgerSealDeps,
@@ -130,6 +131,18 @@ export function applyTransitionScreen(raw: any, values: Record<string, any>, at:
   return { ...raw, fields };
 }
 
+export const LICENCE_INACTIVE_GATE_MESSAGE =
+  'LedgerSeal: the LedgerSeal licence is not active, so this issue cannot be sealed or approved. Ask your Jira admin to renew the licence or to remove the Require Valid LedgerSeal validator from this workflow.';
+
+/**
+ * F-08: a lapsed licence does not change what the gate decides (spec D-8), but sealing and approving need a licence,
+ * so a blocked transition says how to get out instead of pointing at a panel that cannot act.
+ */
+function withLicenceNote(result: { result: boolean; errorMessage?: string }, payload: any, context: any) {
+  if (result.result || !licenseInactive(context?.license ? context : payload?.context)) return result;
+  return { result: false, errorMessage: LICENCE_INACTIVE_GATE_MESSAGE };
+}
+
 export const JIRA_UNREACHABLE_MESSAGE =
   'LedgerSeal could not read the issue from Jira, so this transition is blocked. Try again in a minute.';
 
@@ -140,6 +153,10 @@ export const JIRA_UNREACHABLE_MESSAGE =
  * Applies the values typed on the transition screen (modifiedFields) before the check, so they cannot bypass it.
  */
 export async function validateTransition(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(false)) {
+  return withLicenceNote(await gate(payload, deps), payload, context);
+}
+
+async function gate(payload: any, deps: LedgerSealDeps): Promise<{ result: boolean; errorMessage?: string }> {
   const issueKey = payload?.issue?.key || payload?.issueKey;
   let issueId = String(payload?.issue?.id || payload?.issueId || '');
 

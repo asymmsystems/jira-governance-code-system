@@ -41,7 +41,7 @@ export function validateTransitionGate(
     return {
       isValid: false,
       errorMessage:
-        'LedgerSeal: this issue is not sealed. To proceed: open the LedgerSeal panel on this issue, select your sign-off role, agree to the declaration, and click "Seal issue".'
+        'LedgerSeal: this issue is not sealed. To proceed: open the LedgerSeal panel on this issue, select your sign-off role, agree to the declaration, and click "Seal this issue".'
     };
   }
 

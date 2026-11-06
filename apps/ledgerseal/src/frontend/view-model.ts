@@ -71,6 +71,8 @@ export interface PanelView {
   };
   revokedByAccountId?: string;
   revokedByClosed?: boolean;
+  /** B5: shown when this installation writes unsigned attestations. */
+  signingNote?: string;
 }
 
 export interface PanelInput {
@@ -88,6 +90,9 @@ export function policyText(groupNames: string[] = []): string {
   if (groupNames.length === 0) return 'Who can seal: project admins and Jira admins.';
   return `Who can seal: project admins, Jira admins and members of ${groupNames.join(', ')}.`;
 }
+
+export const UNSIGNED_NOTE =
+  'This installation has no LedgerSeal signing key, so the attestation and the evidence are unsigned, and the offline verifier fails its signature check. Contact support@asymm.systems.';
 
 const ASK_APPROVER = 'Requires Project Admin, Jira Admin, or membership in an authorized group. Configured by your Jira administrator in Jira Settings > Apps > LedgerSeal.';
 const ASK_OTHER_APPROVER = 'You changed this issue, so another approver must approve it.';
@@ -107,6 +112,19 @@ export function formatTime(iso: string | null | undefined, locale?: string, time
     hourCycle: 'h23',
     timeZoneName: 'short'
   }).format(instant);
+}
+
+const HISTORY_LABELS: Record<string, string> = {
+  SEAL: 'Sealed',
+  RESEAL: 'Sealed again',
+  CHANGE: 'Change found',
+  REVOKE: 'Revoked',
+  REDACT: 'Account ids replaced by party tokens'
+};
+
+/** Plain words for a history entry's transition (F-15). */
+export function historyLabel(transitionName: string): string {
+  return HISTORY_LABELS[transitionName] ?? transitionName;
 }
 
 function shortHash(hash: string): string {
@@ -345,6 +363,7 @@ export function buildPanelView(input: PanelInput): PanelView {
       declarationVersion: seal.declarationVersion,
       historyLength: seal.historyLength
     };
+    if (r?.signing && r.signing.signed === false) view.signingNote = UNSIGNED_NOTE;
     if (seal.revocation?.revokedByAccountId) view.revokedByAccountId = seal.revocation.revokedByAccountId;
     else if (seal.revocation) view.revokedByClosed = true;
   }

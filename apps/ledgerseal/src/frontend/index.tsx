@@ -20,9 +20,9 @@ import ForgeReconciler, {
   CodeBlock,
   Heading
 } from '@forge/react';
-import { invoke, router } from '@forge/bridge';
+import { invoke } from '@forge/bridge';
 import { DECLARATION, MEANINGS } from '../domain/declaration';
-import { buildPanelView, formatTime, PanelView } from './view-model';
+import { buildPanelView, formatTime, historyLabel, PanelView } from './view-model';
 import {
   ActionRow,
   AppSurface,
@@ -60,7 +60,10 @@ export const LedgerSealPanel: React.FC = () => {
   const [showCovered, setShowCovered] = useState<boolean>(false);
   const [fullValues, setFullValues] = useState<Record<string, boolean>>({});
   const [history, setHistory] = useState<any[] | null>(null);
+  const [historyNext, setHistoryNext] = useState<number | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [evidence, setEvidence] = useState<string | null>(null);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
 
   const loadState = async () => {
     setLoading(true);
@@ -124,13 +127,26 @@ export const LedgerSealPanel: React.FC = () => {
     }
   };
 
+  // F-15: history in pages of 50, with who acted; a failed call says so instead of failing silently
+  const loadHistoryPage = async (fromSeq: number, before: any[]) => {
+    setHistoryError(null);
+    try {
+      const page = (await invoke('seal-history-api', { fromSeq })) as { entries?: any[]; nextFromSeq?: number | null } | undefined;
+      setHistory([...before, ...(page?.entries ?? [])]);
+      setHistoryNext(page?.nextFromSeq ?? null);
+    } catch (err) {
+      console.error('LedgerSeal: history failed', err);
+      setHistoryError('LedgerSeal could not load the history. Try again.');
+    }
+  };
+
   const loadHistory = async () => {
     if (history) {
       setHistory(null);
+      setHistoryNext(null);
       return;
     }
-    const page = (await invoke('seal-history-api', { fromSeq: 1 })) as { entries?: any[] } | undefined;
-    setHistory(page?.entries ?? []);
+    await loadHistoryPage(1, []);
   };
 
   const loadEvidence = async () => {
@@ -138,7 +154,13 @@ export const LedgerSealPanel: React.FC = () => {
       setEvidence(null);
       return;
     }
-    setEvidence(JSON.stringify(await invoke('seal-evidence-api', {}), null, 2));
+    setEvidenceError(null);
+    try {
+      setEvidence(JSON.stringify(await invoke('seal-evidence-api', {}), null, 2));
+    } catch (err) {
+      console.error('LedgerSeal: evidence failed', err);
+      setEvidenceError('LedgerSeal could not load the evidence record. Try again.');
+    }
   };
 
   if (view.state === 'LOADING') {
@@ -251,17 +273,6 @@ export const LedgerSealPanel: React.FC = () => {
               {view.actions.revoke.label}
             </Button>
           )}
-          <Button
-            appearance="subtle"
-            spacing="compact"
-            iconAfter="shortcut"
-            onClick={() => {
-              const key = result?.issueKey || result?.key;
-              if (key) router.open(`/browse/${key}`);
-            }}
-          >
-            Open Four Realities panel
-          </Button>
         </ActionRow>
       </SummaryBlock>
 
@@ -328,14 +339,32 @@ export const LedgerSealPanel: React.FC = () => {
                 {history ? 'Hide history' : 'Show history'}
               </Button>
             </Inline>
+            {historyError && <Text as="span" size="small" color={TEXT_ROLE.danger}>{historyError}</Text>}
             {history && (
               <Stack space={SPACE.sub}>
                 {history.map(row => (
-                  <Text as="span" size="small" key={row.seq}>
-                    {row.seq}. {row.transitionName} on {formatTime(row.statusDatetime)}
-                    {row.reason ? `. Reason: ${row.reason}` : ''}
-                  </Text>
+                  <Inline key={row.seq} space={SPACE.sub} alignBlock="center" shouldWrap>
+                    <Text as="span" size="small">
+                      {row.seq}. {historyLabel(row.transitionName)} on {formatTime(row.statusDatetime)}
+                    </Text>
+                    {row.actorAccountId ? (
+                      <Inline space={SPACE.sub} alignBlock="center">
+                        <Text as="span" size="small" color={TEXT_ROLE.secondary}>by</Text>
+                        <User accountId={row.actorAccountId} />
+                      </Inline>
+                    ) : (
+                      <Text as="span" size="small" color={TEXT_ROLE.secondary}>{row.actorClosed ? 'by a closed account' : 'by LedgerSeal'}</Text>
+                    )}
+                    {row.reason && <Text as="span" size="small" color={TEXT_ROLE.secondary}>Reason: {row.reason}</Text>}
+                  </Inline>
                 ))}
+                {historyNext && (
+                  <Box>
+                    <Button appearance="subtle" spacing="compact" onClick={() => loadHistoryPage(historyNext, history)}>
+                      Show more history
+                    </Button>
+                  </Box>
+                )}
               </Stack>
             )}
           </SubSection>
@@ -347,8 +376,15 @@ export const LedgerSealPanel: React.FC = () => {
                 {evidence ? 'Hide evidence' : 'Show evidence (JSON)'}
               </Button>
             </Inline>
+            {evidenceError && <Text as="span" size="small" color={TEXT_ROLE.danger}>{evidenceError}</Text>}
             {evidence && <CodeBlock language="json" text={evidence} />}
           </SubSection>
+
+          {view.signingNote && (
+            <SectionMessage appearance="warning">
+              <Text as="span">{view.signingNote}</Text>
+            </SectionMessage>
+          )}
 
           <NoteBox>
             <Text as="span" size="small" color={TEXT_ROLE.muted}>{view.policyText}</Text>
