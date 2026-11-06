@@ -474,10 +474,24 @@ Production runs 2.0.0 (deployed by the main session); this branch deploys to dev
 
 ### Site changes needed (finish review)
 
-25. `product/jira-governance/user-guide/ledgerseal.html` (replaces the text of item 22): "Comments restricted to a project role or group are covered only when Jira lets the LedgerSeal app read them, that is when the app's user is in that role or group; otherwise a change to such a comment is not detected. A covered comment that is restricted, at the seal or now, is shown in the panel only to a user who can see it in Jira; others see that a comment changed, without its text, author or time. The evidence is exported only to a user who can see every such comment; for a seal made before LedgerSeal recorded restrictions, a covered comment deleted since counts as restricted, so seal the issue again to export its evidence."
+25. `product/jira-governance/user-guide/ledgerseal.html` (replaces the text of item 22): "Comments restricted to a project role or group are covered only when Jira lets the LedgerSeal app read them, that is when the app's user is in that role or group; otherwise a change to such a comment is not detected. A covered comment that is restricted, at the seal or now, is shown in the panel only to a user who can see it in Jira; others see that a comment changed, without its text, author or time. The evidence is exported only to a user who can see every such comment. If LedgerSeal can no longer read a covered comment (it was deleted, or restricted since to a role or group the app's user is not in), the panel shows that comment's sealed text to no one, and for that seal: its evidence is not exported to anyone; approving the changes makes a new seal whose evidence can be exported."
 
 ### Deploy, live check and gate (finish review fixes)
 
 - `forge deploy -e development`: 5.2.0 (code of `22cc3e1`). Production not touched.
 - PAY-10 (no restricted comment): the evidence still exports from the panel and passes 5 of 5 checks; property schema 3, signed, no account id. H-1 itself needs a second user outside a role, so it is proven by the tests. No live write.
 - Gate: `npx tsc --noEmit` 0 errors; `npm test` 49 suites, 536 tests passed; coverage statements 98.06%, branches 94.15%, functions 96.99%, lines 98.71%; build, `npm audit --omit=dev --audit-level=high` and `forge lint` clean.
+
+
+## Finish review round 2 (H-2, L-22)
+
+### H-2. A comment the app can no longer read is treated as restricted, for every seal
+
+- **Decision (suite owner, 2026-11-06, option 1 of the round 2 report, fail closed):** a sealed comment missing from the app's own read may have been deleted, or restricted since to a role or group the app user is not in (Jira then does not return it to the app; seen live on LSP-5). LedgerSeal cannot tell which, so for every seal, new or made before F-06: the panel shows that comment's sealed text, author and time to no one, and the seal's evidence is refused to everyone (`RESTRICTED_EVIDENCE`). A readable restricted comment keeps the per-viewer rule.
+- **Cost:** after a covered comment is deleted, the evidence of that seal cannot be exported any more, by anyone. Approving the changes makes a new seal whose evidence can be exported; its history keeps the earlier rows, but the old seal's snapshot is not exported again. The panel still shows that a comment was removed. Recorded in spec v3 section 4.4.
+- **What changed:** `hiddenComments` hides every comment the app can no longer read; `evidenceFlow` refuses when any sealed comment is missing from the app's live read; the `RESTRICTED_EVIDENCE` message says so and how to get exportable evidence.
+- **Proof:** probe P4 as a test (open at the seal, then restricted to a role the app is not in: no sealed text in the panel and no export, for an outsider and an insider) and "a sealed comment the app can no longer read stops the export for everyone" (then an approval of the changes exports again); both fail with `ledger.ts` of `0ec66bc`. Two older tests changed to the decision: the change list shows a removed comment without its sealed text, and a removed open comment now stops the export.
+
+### L-22
+
+- The listing, reviewer notes, README and site item 25 now say: "its evidence is not exported to anyone; approving the changes makes a new seal whose evidence can be exported", not "seal the issue again to export its evidence".
