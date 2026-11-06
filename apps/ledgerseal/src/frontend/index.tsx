@@ -197,7 +197,7 @@ export const LedgerSealPanel: React.FC = () => {
           <AttributionLine prefix="Revoked by" accountId={view.revokedByAccountId} suffix="" />
         )}
         {view.revokedByClosed && (
-          <Text as="span" size="small" color={TEXT_ROLE.secondary}>Revoked by a closed account.</Text>
+          <Text as="span" size="small" color={TEXT_ROLE.secondary}>Revoked by a deleted user.</Text>
         )}
 
         {view.askText && (
@@ -229,7 +229,7 @@ export const LedgerSealPanel: React.FC = () => {
                     {row.changedBy.map(id => <User key={id} accountId={id} />)}
                     {row.changedByClosed > 0 && (
                       <Text as="span" size="small" color={TEXT_ROLE.muted}>
-                        {row.changedByClosed === 1 ? 'a closed account' : `${row.changedByClosed} closed accounts`}
+                        {row.changedByClosed === 1 ? 'a deleted user' : `${row.changedByClosed} deleted users`}
                       </Text>
                     )}
                     {row.changedBy.length === 0 && row.changedByClosed === 0 && (
@@ -283,7 +283,7 @@ export const LedgerSealPanel: React.FC = () => {
           <Inline space={SPACE.sub} alignBlock="center" shouldWrap>
             <Text as="span" size="small" weight="medium">Signed by:</Text>
             {view.seal.signerClosed ? (
-              <Text as="span" size="small">a closed account</Text>
+              <Text as="span" size="small">a deleted user</Text>
             ) : (
               <User accountId={view.seal.signerAccountId} />
             )}
@@ -355,7 +355,7 @@ export const LedgerSealPanel: React.FC = () => {
                         <User accountId={row.actorAccountId} />
                       </Inline>
                     ) : (
-                      <Text as="span" size="small" color={TEXT_ROLE.secondary}>{row.actorClosed ? 'by a closed account' : 'by LedgerSeal'}</Text>
+                      <Text as="span" size="small" color={TEXT_ROLE.secondary}>{row.actorClosed ? 'by a deleted user' : 'by LedgerSeal'}</Text>
                     )}
                     {row.reason && <Text as="span" size="small" color={TEXT_ROLE.secondary}>Reason: {row.reason}</Text>}
                   </Inline>

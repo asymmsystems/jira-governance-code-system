@@ -415,11 +415,12 @@ The seal form shows this exact text with "(Declaration v1)". The record stores t
 ## 11. Evidence export and open verifier
 
 - `seal-evidence-api` returns `{ format: "ledgerseal-evidence/1", attestation, publicKeyId, snapshot (canonical form), history, parties, verification, warning? }`. `parties` maps each party token of the history to its account id, or null for a closed account; it is not signed. The size limit is 5 MB (FG-04).
-- `verify-evidence.mjs <file> [publicKey.pem]` (https://github.com/asymmsystems/ledgerseal-verifier, Apache-2.0, release v1.1.0; identical copy in `tools/verifier`) uses the Node standard library only. It checks four things:
+- `verify-evidence.mjs <file> [publicKey.pem]` (https://github.com/asymmsystems/ledgerseal-verifier, Apache-2.0, release v1.2.0; identical copy in `tools/verifier`) uses the Node standard library only. It checks five things:
   1. the snapshot hash against the attestation;
   2. the history chain;
   3. that the attestation's certificate id matches the head of the history;
-  4. the Ed25519 signature.
+  4. that the attestation's status is the state of the newest entry that is not `LS_REDACTED` (release v1.2.0);
+  5. the Ed25519 signature.
 
   It exits 0 when every check passes, 1 when one fails and 2 for a usage error or a missing file. It prints a NOTE for each `LS_REDACTED` entry and for the `parties` map.
 - PDF export is out of scope. It would need a new dependency.

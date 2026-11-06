@@ -13,19 +13,20 @@ Publisher: Asymm Systems, https://asymm.systems. Licence: Apache License 2.0 (se
 | 1 | Snapshot hash | The SHA-256 of the canonical JSON of `snapshot` equals `attestation.snapshotHash`. |
 | 2 | History chain | The history entries, sorted by `seq`, run 1, 2, 3 with no gap; each `prevEntryHash` equals the previous `entryHash` (the first equals 64 zeros); each `entryHash` is the SHA-256 of its entry without that field. |
 | 3 | Newest seal | The attestation's `certificateId` is the certificate of the newest seal entry in the history. |
-| 4 | Signature | The Ed25519 signature `attestation.sig` verifies over the canonical JSON of the attestation without `sig`, with the public key you give. |
+| 4 | Status | `attestation.status` is the state of the newest history entry that is not a redaction: `SEAL_VALID` for `LS_SEALED`, `SEAL_BROKEN` for `LS_CHANGED`, `SEAL_REVOKED` for `LS_REVOKED`. |
+| 5 | Signature | The Ed25519 signature `attestation.sig` verifies over the canonical JSON of the attestation without `sig`, with the public key you give. |
 
 Canonical JSON: object keys sorted by UTF-16 code unit at every level, no whitespace, undefined fields left out. `vectors.json` holds the test vectors; `--self-test` checks the code against them.
 
 ### Redaction entries and party tokens
 
-LedgerSeal names people by party token (`pty_` and 32 hex characters), not by Atlassian account id. Records made before LedgerSeal used tokens were converted once, and the history then holds a redaction entry (`statusId` `LS_REDACTED`). At that entry, account ids and names in the entries before it were replaced by tokens and the chain was computed again; the entry records the head hash before the conversion and the number of values replaced. A redaction entry is part of the chain, so checks 2 and 3 cover it. The verifier prints a `NOTE` line for each one, so you can see it.
+LedgerSeal names people by party token (`pty_` and 32 hex characters), not by Atlassian account id. Records made before LedgerSeal used tokens were converted once, and the history then holds a redaction entry (`statusId` `LS_REDACTED`). At that entry, account ids and names in the entries before it were replaced by tokens and the chain was computed again; the entry records the head hash before the conversion and the number of values replaced. A redaction entry is part of the chain, so checks 2, 3 and 4 cover it (check 4 looks past it). The verifier prints a `NOTE` line for each one, so you can see it.
 
 Evidence exported since then has a `parties` map from each token in the history to an account id, or `null` for a closed account. It is not signed, and no check uses it.
 
 ## What a PASS means, and what it does not
 
-A PASS on all four checks means:
+A PASS on all five checks means:
 - the evidence file has not been changed since it was exported and signed, and
 - it was signed with the private key that belongs to the public key you used.
 
@@ -43,12 +44,13 @@ node verify-evidence.mjs --self-test
 
 Without a key file, the verifier reads `keys/<keyId>.pub.pem` next to the script, using the `keyId` named in the evidence.
 
-Every run makes all four checks and prints one line per check, for example:
+Every run makes all five checks and prints one line per check, for example:
 
 ```text
 PASS snapshot hash
 PASS history chain (1 entries)
 PASS attestation names the newest seal
+PASS attestation status matches the history (SEAL_VALID)
 PASS signature (test-key)
 ```
 

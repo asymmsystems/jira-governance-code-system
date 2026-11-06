@@ -33,6 +33,8 @@ The LedgerSeal validator enforces that an issue cannot transition to **Done** or
 7. Click **Add**.
 8. Click **Publish Draft** to activate the validator.
 
+> **Comments on the transition screen.** If the gated transition has a screen with a comment box, a comment typed there is new content on a sealed issue. The validator then blocks the transition with "Comment added". Add the comment after the transition, or ask another approver to approve it first.
+
 ![Transition Blocked](/assets/ledgerseal/03-transition-blocked.png)
 
 *Figure: Transition blocked by the LedgerSeal validator when an issue is modified post-approval.*

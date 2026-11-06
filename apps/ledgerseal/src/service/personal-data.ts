@@ -102,6 +102,8 @@ export async function deleteIssueRecords(storage: StorageProvider, issueId: stri
   for (const id of certificates) keys.push(...(await storage.query(`ls3:content:${id}:`)).map(r => r.key));
   if (we) keys.push(`ls3:we:${issueId}`);
   if (await storage.get(`cert:active:${issueId}`)) keys.push(`cert:active:${issueId}`);
+  // L-2: a conversion journal of the issue goes with it
+  if (await storage.get(`ls3:convert:${issueId}`)) keys.push(`ls3:convert:${issueId}`);
   for (const key of keys) await storage.delete(key);
   return keys.length;
 }

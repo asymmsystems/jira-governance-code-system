@@ -54,10 +54,17 @@ export class PartyRepository {
     return this.storage.createIfAbsent(SITE_KEY, { key: candidate.toString('base64'), createdAt: new Date().toISOString() });
   }
 
-  /** Records that the app now holds data about these accounts (the map and the weekly report use it). */
-  async register(accounts: string[], party: PartyFn, at: string): Promise<void> {
+  /**
+   * Records that the app now holds data about these accounts (the map and the weekly report use it). An account
+   * already in the map gets a new update time. With `isActive`, an account not in the map is added only when Jira
+   * reports it active (M-2): a closed account was erased and is never stored again; when Jira cannot tell, it is not
+   * added now (a later write adds it).
+   */
+  async register(accounts: string[], party: PartyFn, at: string, isActive?: (accountId: string) => Promise<boolean | null>): Promise<void> {
     for (const accountId of [...new Set(accounts.filter(Boolean))]) {
-      await this.storage.set(PARTY_PREFIX + party(accountId), { accountId, updatedAt: at } as PartyEntry);
+      const key = PARTY_PREFIX + party(accountId);
+      if (isActive && !(await this.storage.get(key)) && (await isActive(accountId)) !== true) continue;
+      await this.storage.set(key, { accountId, updatedAt: at } as PartyEntry);
     }
   }
 

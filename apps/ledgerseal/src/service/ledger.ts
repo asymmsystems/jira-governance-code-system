@@ -23,7 +23,7 @@ import { ChangelogEntry, JiraClient } from '../jira/jira-client';
 import { isPartyToken, partyFunction, PartyFn, PartySeen, pseudonymise, TOKEN_IN_TEXT } from '../domain/party';
 import { newSiteKey, PartyRepository, PartyResolver } from '../storage/party-repository';
 import { approverGroupNames, isApprover } from './approver';
-import { convertRecord } from './conversion';
+import { convertRecord, hasConversionJournal } from './conversion';
 import { HISTORY_PAGE_SIZE, MAX_CONTENT_PARTS, MAX_PART_BYTES, SealRepository, splitUtf8, StorageProvider } from '../storage/seal-repository';
 
 export interface LedgerSealDeps {
@@ -352,7 +352,8 @@ export async function recordIncidentIfNew(
   // History rows name people by party token, never by account id (ADR-011 decision 1)
   const parties = new PartyRepository(deps.storage);
   const party = knownParty ?? (await parties.partyForWrite());
-  await parties.register(attributed.flatMap(c => c.changedBy), party, at);
+  // M-2: a person is added to the map only while Jira reports the account active, so an erased id is never stored again
+  await parties.register(attributed.flatMap(c => c.changedBy), party, at, id => deps.jira.isActiveUser(id));
   const changes = attributed.map(c => ({ ...c, changedBy: c.changedBy.map(party) }));
   const row = buildStatusRow(we.statusHead, {
     workEffortId: we.workEffortId,
@@ -559,7 +560,9 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
 /** Converts the issue's record when it was written before ADR-011 (decision 7). */
 async function convertIfNeeded(deps: LedgerSealDeps, repo: SealRepository, issueId: string) {
   const we = await repo.getWorkEffort(issueId);
-  if (!we || we.attributes.parties === 'TOKEN') return 'ALREADY' as const;
+  if (!we) return 'ALREADY' as const;
+  // M-1: a journal means a conversion that has not finished, as the weekly job also treats it
+  if (we.attributes.parties === 'TOKEN' && !(await hasConversionJournal(deps.storage, issueId))) return 'ALREADY' as const;
   return convertRecord({ storage: deps.storage, jira: deps.jira }, issueId);
 }
 
@@ -814,6 +817,7 @@ const VERIFICATION_STEPS = [
   'Check that the SHA-256 of that text, in lowercase hex, equals attestation.snapshotHash.',
   'Check the history: each entry\'s entryHash is the SHA-256 of the canonical JSON of the entry without entryHash, and each prevEntryHash equals the entryHash before it (64 zeros for the first).',
   'Check that the newest LS_SEALED entry names attestation.certificateId.',
+  'Check that attestation.status is the state of the newest entry that is not LS_REDACTED: SEAL_VALID for LS_SEALED, SEAL_BROKEN for LS_CHANGED, SEAL_REVOKED for LS_REVOKED.',
   'Check the Ed25519 signature attestation.sig over the canonical JSON of the attestation without sig, with the public key named by attestation.keyId.',
   'Run: node verify-evidence.mjs <this file> <public key file>. It performs every step and exits 0 only when all pass.',
   'Records name people by party token (pty_...). "parties" maps each token in the history to its account id, or null when the account was closed. It is not signed and is not part of any hash.'
