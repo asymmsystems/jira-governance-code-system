@@ -232,7 +232,8 @@ export interface WorkEffortPartyAssignment {
 /** One state change, created once (Silverston WorkEffortStatus with the LedgerSeal hash chain). */
 export interface WorkEffortStatus {
   workEffortId: string;
-  statusId: LedgerSealStatusId;
+  /** LS_REDACTED is not a seal state: it records the conversion of ADR-010 decision 7. */
+  statusId: LedgerSealStatusId | 'LS_REDACTED';
   statusDatetime: string;
   setByPartyId: string | null;
   reason: string | null;

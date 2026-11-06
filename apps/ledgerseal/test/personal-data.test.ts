@@ -40,7 +40,7 @@ function reporter(closed: string[] = []) {
 describe('ADR-010 weekly personal data report', () => {
   it('reports nothing and calls nothing when the app holds no account id', async () => {
     const { calls, report } = reporter();
-    await expect(personalDataReport({}, {}, new MemoryStore(), report)).resolves.toEqual({ reported: 0, closed: [] });
+    await expect(personalDataReport({}, {}, { jira: new FakeJira(sampleIssue()), storage: new MemoryStore() }, report)).resolves.toMatchObject({ reported: 0, closed: [] });
     expect(calls).toEqual([]);
   });
 
@@ -51,8 +51,8 @@ describe('ADR-010 weekly personal data report', () => {
     await verifyIssue({}, panelContext('viewer'), as('viewer'));
     await setApproverPolicy({ groupIds: ['g1'] }, panelContext('admin'), as('admin'));
     const { calls, report } = reporter();
-    const result = await personalDataReport({}, {}, storage, report);
-    expect(result).toEqual({ reported: 3, closed: [] });
+    const result = await personalDataReport({}, {}, { jira: new FakeJira(sampleIssue()), storage }, report);
+    expect(result).toMatchObject({ reported: 3, closed: [] });
     expect(calls[0].map(a => a.accountId)).toEqual(['admin', 'ann', 'bob']);
     for (const a of calls[0]) expect(Number.isNaN(Date.parse(a.updatedAt))).toBe(false);
   });
@@ -64,7 +64,7 @@ describe('ADR-010 weekly personal data report', () => {
     storage.map.set(`${PARTY_PREFIX}pty_${'3'.repeat(32)}`, { accountId: 'ann', updatedAt: '2026-03-01T00:00:00.000Z' });
     storage.map.set(`${PARTY_PREFIX}pty_${'4'.repeat(32)}`, { accountId: 'zed', updatedAt: '' });
     const { calls, report } = reporter();
-    await personalDataReport({}, {}, storage, report);
+    await personalDataReport({}, {}, { jira: new FakeJira(sampleIssue()), storage }, report);
     expect(calls[0]).toEqual([
       { accountId: 'ann', updatedAt: '2026-06-01T00:00:00.000Z' },
       { accountId: 'zed', updatedAt: new Date(0).toISOString() }
@@ -78,7 +78,7 @@ describe('ADR-010 weekly personal data report', () => {
     const ann = await model.token(storage, 'ann');
     const records = JSON.stringify([...storage.map.entries()].filter(([k]) => k.startsWith('ls3:w') || k.startsWith('ls3:content')));
     const { report } = reporter(['ann', 'admin']);
-    await expect(personalDataReport({}, {}, storage, report)).resolves.toEqual({ reported: 2, closed: ['admin', 'ann'] });
+    await expect(personalDataReport({}, {}, { jira: new FakeJira(sampleIssue()), storage }, report)).resolves.toMatchObject({ reported: 2, closed: ['admin', 'ann'] });
     expect(storage.map.has(PARTY_PREFIX + ann)).toBe(false);
     expect((await storage.get('ls3:partyrole:LS_APPROVER')).setByPartyId).toBeNull();
     expect(JSON.stringify([...storage.map.values()])).not.toMatch(/"ann"|"admin"/);
@@ -88,7 +88,7 @@ describe('ADR-010 weekly personal data report', () => {
     expect(view.seal.sealedByClosed).toBe(true);
     // A later run has nothing left to report about them
     const next = reporter();
-    await personalDataReport({}, {}, storage, next.report);
+    await personalDataReport({}, {}, { jira: new FakeJira(sampleIssue()), storage }, next.report);
     expect(next.calls).toEqual([]);
     expect(jira.propertyWrites.every(w => !JSON.stringify(w.body).includes('ann'))).toBe(true);
   });
@@ -98,7 +98,7 @@ describe('ADR-010 weekly personal data report', () => {
     await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
     await revokeSeal({ reason: 'Wrong release' }, panelContext('bob'), as('bob'));
     const { report } = reporter(['bob']);
-    await personalDataReport({}, {}, storage, report);
+    await personalDataReport({}, {}, { jira: new FakeJira(sampleIssue()), storage }, report);
     const view: any = await verifyIssue({}, panelContext('viewer'), as('viewer'));
     expect(view.status).toBe('SEAL_REVOKED');
     expect(view.seal.revocation).toMatchObject({ revokedByAccountId: '', revokedByClosed: true, reason: 'Wrong release' });
@@ -108,7 +108,7 @@ describe('ADR-010 weekly personal data report', () => {
     const { storage, as } = setup();
     await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
     const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    await expect(personalDataReport({}, {}, storage, async () => Promise.reject(new Error('429')))).resolves.toEqual({ reported: 0, closed: [] });
+    await expect(personalDataReport({}, {}, { jira: new FakeJira(sampleIssue()), storage }, async () => Promise.reject(new Error('429')))).resolves.toEqual({ reported: 0, closed: [] });
     expect(error).toHaveBeenCalledWith('LedgerSeal: the personal data report failed', expect.any(Error));
     error.mockRestore();
   });

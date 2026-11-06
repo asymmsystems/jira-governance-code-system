@@ -23,6 +23,7 @@ import { ChangelogEntry, JiraClient } from '../jira/jira-client';
 import { isPartyToken, partyFunction, PartyFn, PartySeen, pseudonymise, TOKEN_IN_TEXT } from '../domain/party';
 import { newSiteKey, PartyRepository, PartyResolver } from '../storage/party-repository';
 import { approverGroupNames, isApprover } from './approver';
+import { convertRecord } from './conversion';
 import { HISTORY_PAGE_SIZE, MAX_CONTENT_PARTS, MAX_PART_BYTES, SealRepository, splitUtf8, StorageProvider } from '../storage/seal-repository';
 
 export interface LedgerSealDeps {
@@ -381,21 +382,25 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   // Fetch real live Jira issue. Never fall back to client-supplied payload.
   const now = new Date().toISOString();
   const parties = new PartyRepository(deps.storage);
-  const known = await parties.partyForRead();
-  const read = await readLiveSnapshot(deps.jira, issue.id, now, { party: known });
+  const read = await readLiveSnapshot(deps.jira, issue.id, now, { party: await parties.partyForRead() });
   if (!read) return fail('JIRA_UNREACHABLE');
+  const repo = new SealRepository(deps.storage);
+  // A record written before ADR-010 is converted first, so the new seal continues a record with tokens only
+  const conversion = await convertIfNeeded(deps, repo, issue.id);
+  if (conversion === 'JIRA_UNREACHABLE') return fail('JIRA_UNREACHABLE');
+  if (conversion === 'BUSY') return fail('CONFLICT');
+  const known = await parties.partyForRead();
   // The first seal of a site makes the site key. It is held in memory and stored just before the first write,
   // so a refused seal writes nothing (invariant 8)
   const candidate = known ? null : newSiteKey();
   const party = known ?? partyFunction(candidate as Buffer);
-  const live = known ? read : withParty(read, party, now);
+  const live = withParty(read, party, now);
   let keyStored = !candidate;
   const storeKey = async () => {
     if (!keyStored) keyStored = await parties.storeKey(candidate as Buffer);
     return keyStored;
   };
 
-  const repo = new SealRepository(deps.storage);
   const snapshot = live.snapshot;
 
   let previous: LoadedSeal | null = null;
@@ -499,7 +504,8 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
       canonicalizerVersion: CANONICALIZER_VERSION,
       declarationVersion: DECLARATION.version,
       statusAtSeal: snapshot.status,
-      snapshotParts: contentParts.length
+      snapshotParts: contentParts.length,
+      ...(conversion === 'TOO_LARGE' ? {} : { parties: 'TOKEN' as const })
     },
     everCompromised: previousWorkEffort ? previousWorkEffort.everCompromised : false,
     incidentCount: previousWorkEffort ? previousWorkEffort.incidentCount : 0,
@@ -522,6 +528,24 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   await writeAttestation(deps, { workEffort, assignment, sealingRow: row }, 'SEAL_VALID', now);
 
   return { ok: true as const, certificateId, snapshotHash, sealedAt: now };
+}
+
+/** Converts the issue's record when it was written before ADR-010 (decision 7). */
+async function convertIfNeeded(deps: LedgerSealDeps, repo: SealRepository, issueId: string) {
+  const we = await repo.getWorkEffort(issueId);
+  if (!we || we.attributes.parties === 'TOKEN') return 'ALREADY' as const;
+  return convertRecord({ storage: deps.storage, jira: deps.jira }, issueId);
+}
+
+/**
+ * Writes the ledgerseal-cert property again from the stored record, without a live read (after a conversion, so
+ * the property of an old record no longer names the signer). Returns false when the record cannot be read.
+ */
+export async function republishAttestation(deps: LedgerSealDeps, issueId: string): Promise<boolean> {
+  const seal = await new SealRepository(deps.storage).getSeal(issueId);
+  if (!seal || seal === 'missing' || !isConsistent(seal)) return false;
+  await writeAttestation(deps, seal, STORED_STATUS[seal.workEffort.currentStatusId], new Date().toISOString());
+  return true;
 }
 
 function errorResult(errorReason: 'JIRA_UNREACHABLE' | 'STORAGE', at: string): TamperAnalysis {
@@ -604,7 +628,7 @@ async function verifyAgainstSeal(
   const analysis = compact({ ...evaluation.analysis, seal: summarise(seal) });
   // Who changed each item and when, from the recorded incident, so every later view shows the same names
   const we = seal.workEffort;
-  const incident = we.currentStatusId === 'LS_CHANGED' ? await repo.getStatusRow(we.workEffortId, we.statusHead.seq) : null;
+  const incident = we.currentStatusId === 'LS_CHANGED' ? await repo.getCurrentStatusRow(we) : null;
   const recorded = new Map(((incident?.data?.changes as any[]) || []).map(c => [c.fieldId, c]));
   // Party tokens become account ids, and names in the change text, only for display (ADR-010 decision 4)
   const resolver = new PartyResolver(new PartyRepository(deps.storage));
@@ -807,6 +831,9 @@ export async function revokeFlow(payload: any, context: any, deps: LedgerSealDep
   if (!permission.value) return fail('NOT_APPROVER');
 
   const repo = new SealRepository(deps.storage);
+  const conversion = await convertIfNeeded(deps, repo, issue.id);
+  if (conversion === 'JIRA_UNREACHABLE') return fail('JIRA_UNREACHABLE');
+  if (conversion === 'BUSY') return fail('CONFLICT');
   const seal = await repo.getSeal(issue.id);
   if (!seal) return fail('NOT_SEALED', 'This issue is not sealed, so there is nothing to revoke.');
   if (seal === 'missing' || !isConsistent(seal)) return fail('INVALID_REQUEST', 'The seal record failed its integrity check, so it cannot be revoked. Seal the issue again.');

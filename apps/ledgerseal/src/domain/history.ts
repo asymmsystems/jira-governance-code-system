@@ -23,7 +23,7 @@ export function buildStatusRow(
   prev: ChainHead | null,
   fields: {
     workEffortId: string;
-    statusId: LedgerSealStatusId;
+    statusId: LedgerSealStatusId | 'LS_REDACTED';
     statusDatetime: string;
     setByPartyId: string | null;
     reason: string | null;

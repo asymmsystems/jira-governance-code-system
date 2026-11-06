@@ -25,7 +25,7 @@ import {
   verifyIssueFlow
 } from './service/ledger';
 import { getPolicyFlow, searchGroupsFlow, setPolicyFlow } from './service/policy-admin';
-import { deleteIssueRecords, reportPersonalData, ReportFn } from './service/personal-data';
+import { deleteIssueRecords, ReportFn, weeklyPersonalDataJob } from './service/personal-data';
 import { privacy } from '@forge/api';
 
 export { LedgerSealDeps } from './service/ledger';
@@ -256,12 +256,16 @@ export async function onIssueDeleted(event: any, context?: any, storage: Storage
 export async function personalDataReport(
   event?: any,
   context?: any,
-  storage: StorageProvider = new ForgeKvsProvider(),
+  deps: LedgerSealDeps = forgeDeps(false),
   report: ReportFn = accounts => privacy.reportPersonalData(accounts)
 ) {
   try {
-    const result = await reportPersonalData(storage, report);
-    console.log(`LedgerSeal: personal data report: ${result.reported} account(s) reported, ${result.closed.length} closed and erased`);
+    // The function may run 300 s (manifest); conversions stop after 200 s and continue next week
+    const result = await weeklyPersonalDataJob(deps, report, 200000);
+    console.log(
+      `LedgerSeal: personal data report: ${result.reported} account(s) reported, ${result.closed.length} closed and erased; ` +
+        `${result.conversions.CONVERTED} record(s) converted, ${result.legacyStubbed} old-format record(s) cleared`
+    );
     return result;
   } catch (err) {
     console.error('LedgerSeal: the personal data report failed', err);

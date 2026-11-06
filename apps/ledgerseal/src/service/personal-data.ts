@@ -9,6 +9,8 @@
  */
 
 import { ApproverPolicy } from '../domain/models';
+import { convertAll, ConversionResult, stubLegacyRecords } from './conversion';
+import { LedgerSealDeps, republishAttestation } from './ledger';
 import { PartyRepository } from '../storage/party-repository';
 import { PolicyRepository } from '../storage/policy-repository';
 import { SealRepository, StorageProvider } from '../storage/seal-repository';
@@ -62,6 +64,21 @@ export async function reportPersonalData(storage: StorageProvider, report: Repor
     await policies.saveApproverPolicy(kept);
   }
   return { reported: accounts.length, closed };
+}
+
+export interface WeeklyResult extends ReportResult {
+  conversions: Record<ConversionResult, number>;
+  legacyStubbed: number;
+}
+
+/**
+ * The weekly job (ADR-010 decisions 5 and 7): first finish converting old records (each converted record's
+ * property is written again without the account id) and remove personal data from old-format records, then report.
+ */
+export async function weeklyPersonalDataJob(deps: LedgerSealDeps, report: ReportFn, budgetMs: number): Promise<WeeklyResult> {
+  const conversions = await convertAll(deps, budgetMs, Date.now, issueId => republishAttestation(deps, issueId));
+  const legacyStubbed = await stubLegacyRecords(deps.storage);
+  return { ...(await reportPersonalData(deps.storage, report)), conversions, legacyStubbed };
 }
 
 /**

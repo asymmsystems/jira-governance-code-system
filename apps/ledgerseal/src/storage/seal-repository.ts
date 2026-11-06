@@ -103,9 +103,21 @@ export class SealRepository {
     if (!assignment || !sealingRow) return 'missing';
     const seal: LoadedSeal = { workEffort, assignment, sealingRow };
     if (workEffort.currentStatusId === 'LS_REVOKED') {
-      seal.headRow = (await this.getStatusRow(workEffortId, workEffort.statusHead.seq)) || undefined;
+      seal.headRow = (await this.getCurrentStatusRow(workEffort)) || undefined;
     }
     return seal;
+  }
+
+  /**
+   * The newest row that set the current status. A redaction row (ADR-010 decision 7) is not a status change,
+   * so it is skipped.
+   */
+  async getCurrentStatusRow(workEffort: SealedWorkEffort): Promise<WorkEffortStatus | null> {
+    for (let seq = workEffort.statusHead.seq; seq >= 1; seq--) {
+      const row = await this.getStatusRow(workEffort.workEffortId, seq);
+      if (!row || row.statusId !== 'LS_REDACTED') return row;
+    }
+    return null;
   }
 
   async getAssignment(workEffortId: string, fromDate: string): Promise<WorkEffortPartyAssignment | null> {
