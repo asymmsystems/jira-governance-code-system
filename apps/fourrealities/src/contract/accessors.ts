@@ -67,6 +67,8 @@ export interface SnapshotAccessor extends Accessor {
 export interface AppContextAccessor extends Accessor {
   /** The licence state; undefined on development installs or outside the Forge runtime. */
   licenceActive(): boolean | undefined;
+  /** The Forge environment type; undefined outside the Forge runtime. */
+  environmentType(): string | undefined;
 }
 
 /** Append-only rework notes (ADR-001 Pattern 6). A note is never rewritten. */

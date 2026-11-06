@@ -20,8 +20,11 @@ import {
   refreshProjectSnapshot,
   runScheduledSnapshot,
   searchConfluencePages,
+  setTrustedKeys,
   LICENCE_INACTIVE_MESSAGE
 } from '../src/index';
+import * as nodeCrypto from 'crypto';
+import { canonicalJson } from '../src/accessor/attestation-verifier';
 import { StorageProvider } from '../src/contract/accessors';
 import { judged } from './domain/fixtures';
 import { DefaultForgeKvsStore } from '../src/accessor/default-forge-kvs-store';
@@ -192,6 +195,37 @@ describe('FourRealities Index / Forge Handlers', () => {
         .mockResolvedValue({ status: 404 });
       const res: any = await getIssueAlignment({}, ctx('rl-1', 'RL-1'), mockStorage);
       expect(res.row.gates.intent.state).toBe('MISSING');
+    });
+  });
+
+  describe('ADR-010: sibling signatures are checked with the keys of the Forge environment', () => {
+    const { publicKey, privateKey } = nodeCrypto.generateKeyPairSync('ed25519');
+    const pem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
+    const cert = (issueId: string) => {
+      const body = { schemaVersion: 2, issueId, status: 'SEAL_VALID', certificateId: '3f0c2a52-7d1b-4c47-9a51-0d6e3b8a9f10', snapshotHash: 'c'.repeat(64), sealedAt: '2026-11-06T09:00:00.000Z', issuedAt: '2026-11-06T09:00:00.000Z', keyId: 'ls-test' };
+      return { ...body, sig: nodeCrypto.sign(null, Buffer.from(canonicalJson(body)), privateKey).toString('base64') };
+    };
+    const read = async () => {
+      mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => doneIssue('sig-1', 'SIG-1', { properties: { 'ledgerseal-cert': cert('sig-1') } }) });
+      const res: any = await getIssueAlignment({}, { extension: { issue: { id: 'sig-1', key: 'SIG-1' } } }, mockStorage);
+      return res.row.gates.audit;
+    };
+
+    afterEach(() => {
+      setTrustedKeys(null);
+      mockAppContext.get = () => ({});
+    });
+
+    it('scores a record signed with a trusted key', async () => {
+      setTrustedKeys([{ producer: 'ledgerseal', keyId: 'ls-test', environments: ['PRODUCTION'], pem }]);
+      expect(await read()).toMatchObject({ state: 'FOUND', verification: 'VERIFIED' });
+    });
+
+    it('reports, and does not score, a record signed with a key the environment does not trust', async () => {
+      mockAppContext.get = () => ({ environmentType: 'DEVELOPMENT' });
+      expect(await read()).toMatchObject({ state: 'REPORTED', args: { why: 'unknown key' } });
+      mockAppContext.get = () => { throw new Error('outside the Forge runtime'); };
+      expect((await read()).state).toBe('REPORTED');
     });
   });
 

@@ -11,8 +11,11 @@ export const GATE_NAMES: GateName[] = ['intent', 'process', 'code', 'audit'];
 /** Rows per snapshot chunk in KVS (spec v2, Storage Schema). */
 export const CHUNK_SIZE_HINT = 100;
 
-/** Order in which a missing gate is offered as the next thing to fix. */
-export const RECOVERY_ORDER: GateName[] = ['intent', 'code', 'process', 'audit'];
+/**
+ * Order in which a missing gate is offered as the next thing to fix: the chain order, so the
+ * recovery text and the next step always name the same gate (F-L5).
+ */
+export const RECOVERY_ORDER: GateName[] = ['intent', 'process', 'code', 'audit'];
 
 export type PullRequestState = 'MERGED' | 'OPEN' | 'DECLINED';
 
@@ -29,9 +32,20 @@ export const NO_PULL_REQUEST: DevFieldSummary = { count: 0, state: null, openCou
 
 /**
  * Evidence state of one gate. FOUND and MISSING are scored; the other states are excluded
- * from every score and rate.
+ * from every score and rate. REPORTED: another app's record says something, and FourRealities
+ * could not verify it, so it is shown and not scored (ADR-010).
  */
-export type GateState = 'FOUND' | 'MISSING' | 'EXCEPTED' | 'NEEDS_RECHECK' | 'NOT_APPLICABLE';
+export type GateState = 'FOUND' | 'MISSING' | 'REPORTED' | 'EXCEPTED' | 'NEEDS_RECHECK' | 'NOT_APPLICABLE';
+
+/** The apps whose signed issue properties FourRealities reads (ADR-010). */
+export type SiblingProducer = 'definitionguard' | 'ledgerseal';
+
+/**
+ * Result of checking a sibling record's Ed25519 signature: verified with a trusted key, unsigned,
+ * signed with a key FourRealities does not trust, signed for another issue, or a signature that
+ * does not match the record (ADR-010).
+ */
+export type AttestationCheck = 'VERIFIED' | 'UNSIGNED' | 'UNKNOWN_KEY' | 'WRONG_ISSUE' | 'BAD_SIGNATURE';
 
 /**
  * How FourRealities knows a FOUND fact: it read the fact itself (VERIFIED), another app
@@ -53,6 +67,7 @@ export type GateReason =
   | 'DOD_COMPLETE_HC'
   | 'DOD_OPEN_HC'
   | 'DOD_NONE'
+  | 'DOD_SIGNATURE_INVALID'
   | 'CODE_EXCEPTED'
   | 'PR_MERGED'
   | 'PR_OPEN'
@@ -64,6 +79,7 @@ export type GateReason =
   | 'SEAL_OTHER_LS'
   | 'SEAL_SHAPE_UNKNOWN'
   | 'SEAL_NONE'
+  | 'SEAL_SIGNATURE_INVALID'
   | 'CHANGED_SINCE_ATTESTATION';
 
 export interface GateResult {
@@ -197,6 +213,8 @@ export interface IssueFacts {
   devField: { present: boolean; summary: DevFieldSummary };
   /** Sibling records as read; the gate engine checks each shape before use. */
   properties: { ledgerseal?: unknown; dod?: unknown; checklist?: unknown };
+  /** Signature check of each sibling record that is present (ADR-010); absent means not checked. */
+  attestations?: { dod?: AttestationCheck; ledgerseal?: AttestationCheck };
   /** Rework notes, oldest first (ADR-001 Pattern 6). */
   reworkNotes?: ExceptionNote[];
   /** Current Code exception state from the events (B-30); takes precedence over exception.code. */
@@ -231,6 +249,8 @@ export interface IssueRow {
 export interface GateCount {
   found: number;
   missing: number;
+  /** Records found and not verified (ADR-010); not scored. */
+  reported: number;
   excepted: number;
   recheck: number;
   notApplicable: number;
@@ -339,12 +359,16 @@ export interface ScheduledRunResult {
   reworkNotesMigrated: number;
 }
 
-/** The record DefinitionGuard writes at definitionguard-dod, after the gate engine checks its shape. */
+/**
+ * The record DefinitionGuard writes at definitionguard-dod, read from schema v2 (mandatoryCompleted,
+ * mandatoryTotal, headHash) or the older shape (completedCount, totalCount, checklistHash) (ADR-010).
+ */
 export interface DefinitionGuardRecord {
   isFullySatisfied: boolean;
-  completedCount: number;
-  totalCount: number;
-  checklistHash: string;
+  completed: number;
+  total: number;
+  /** headHash (v2) or checklistHash (older shape). */
+  reference: string;
   issuedAt?: string;
 }
 

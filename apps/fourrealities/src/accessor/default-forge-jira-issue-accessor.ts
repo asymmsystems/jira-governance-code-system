@@ -12,6 +12,7 @@ import { JiraRequest, withRetry } from './jira-request';
 import { issueFields, searchProjectIssues, visibleIssueIds } from './jira-search';
 import { readRemoteLinks } from './remote-links';
 import { factsFromIssue, normalizeRemoteLinks, PROPERTY_KEYS } from './issue-facts';
+import { AttestationCheckFn } from './attestation-verifier';
 import { parseDevField } from './dev-field';
 import { JiraIssueJson, JiraRemoteLinkJson, JiraRequestInit } from './jira-types';
 
@@ -29,13 +30,14 @@ export class DefaultForgeJiraIssueAccessor implements JiraIssueAccessor {
   readonly serviceType = 'accessor' as const;
   private readonly request: JiraRequest;
 
-  constructor(principal: Principal, deadline: () => number, request?: JiraRequest) {
+  /** verify checks sibling signatures (ADR-010); without it no sibling record counts as verified. */
+  constructor(principal: Principal, deadline: () => number, request?: JiraRequest, private readonly verify?: AttestationCheckFn) {
     this.request = request || requestAs(principal, deadline);
   }
 
   async searchProject(projectKey: string, config: SiteConfig, deadline: number): Promise<ProjectSearchResult> {
     const res = await searchProjectIssues(projectKey, config.devFieldId, this.request, deadline);
-    const options = { devFieldId: config.devFieldId, siteHost: config.siteHost || undefined, statusCategories: config.statusCategories };
+    const options = { devFieldId: config.devFieldId, siteHost: config.siteHost || undefined, statusCategories: config.statusCategories, verify: this.verify };
     return {
       facts: res.issues.map(iss => factsFromIssue(iss, options)),
       capped: res.capped,
@@ -66,7 +68,7 @@ export class DefaultForgeJiraIssueAccessor implements JiraIssueAccessor {
         remoteLinks = Array.isArray(body) ? body : [];
       } catch {}
     }
-    return { status: 200, facts: factsFromIssue(iss, { remoteLinks, devFieldId: config.devFieldId, siteHost: config.siteHost || undefined, statusCategories: config.statusCategories }) };
+    return { status: 200, facts: factsFromIssue(iss, { remoteLinks, devFieldId: config.devFieldId, siteHost: config.siteHost || undefined, statusCategories: config.statusCategories, verify: this.verify }) };
   }
 
   async remoteLinks(issueIds: string[], deadline: number): Promise<Map<string, RemoteLink[]>> {

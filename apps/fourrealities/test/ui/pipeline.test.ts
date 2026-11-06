@@ -27,6 +27,23 @@ describe('B-33: pipeline tips and questions', () => {
   });
 });
 
+describe('ADR-010: drift sentence with a reported record', () => {
+  const rep: GateResult = { state: 'REPORTED', verification: 'NOT_VERIFIED', reason: 'SEAL_VALID_LS' };
+  it('says the record is not verified, with or without other evidence', () => {
+    expect(driftText({ gates: gates({ intent: F, audit: rep }) })).toBe('Every rated gate has evidence. Audit has a record that is not verified, so it is not scored.');
+    expect(driftText({ gates: gates({ audit: rep }) })).toBe('Audit has a record that is not verified, so it is not scored.');
+  });
+});
+
+describe('F-L5: score parts add up to the shown score', () => {
+  it('gives the rounding remainder to the first found gates', () => {
+    const lines = scoreParts({ rai: 67, applicableGates: 3, recoverablePoints: 33, gates: gates({ intent: miss('INTENT_NONE'), process: F, audit: F }) });
+    expect(lines).toContain('Process: +34 (evidence found)');
+    expect(lines).toContain('Audit: +33 (evidence found)');
+    expect(scoreParts({ rai: 0, applicableGates: 1, recoverablePoints: 100, gates: gates({ intent: miss('INTENT_NONE') }) })).toContain('Intent: 0 (evidence missing)');
+  });
+});
+
 describe('B-36: drift sentence from the first missing gate', () => {
   it('names the break in the chain, using what later gates show', () => {
     expect(driftText({ gates: gates({ intent: miss('INTENT_NONE'), code: FH }) })).toBe('Code was merged, but it does not trace to a decision record.');
@@ -79,10 +96,10 @@ describe('B-37: alignment, score parts, weakest gate, hero delta', () => {
   const summary = (o: Partial<ProjectSummary>): ProjectSummary => ({
     totalIssues: 20, ratedIssues: 12, unratedIssues: 8, averageRAI: 60,
     gates: {
-      intent: { found: 2, missing: 8, excepted: 0, recheck: 0, notApplicable: 0 },
-      process: { found: 6, missing: 2, excepted: 0, recheck: 0, notApplicable: 0 },
-      code: { found: 0, missing: 0, excepted: 0, recheck: 0, notApplicable: 10 },
-      audit: { found: 4, missing: 4, excepted: 0, recheck: 0, notApplicable: 0 }
+      intent: { found: 2, missing: 8, reported: 0, excepted: 0, recheck: 0, notApplicable: 0 },
+      process: { found: 6, missing: 2, reported: 0, excepted: 0, recheck: 0, notApplicable: 0 },
+      code: { found: 0, missing: 0, reported: 0, excepted: 0, recheck: 0, notApplicable: 10 },
+      audit: { found: 4, missing: 4, reported: 0, excepted: 0, recheck: 0, notApplicable: 0 }
     },
     m11IntentRate: 20, m29PullRequestRate: null, m30ReworkRate: 0, dodRate: 75, sealRate: 50,
     startedIssues: 12, reworkIssues: 0, riskDistribution: { low: 1, medium: 2, high: 3, critical: 4, unrated: 8 }, ...o
@@ -90,7 +107,7 @@ describe('B-37: alignment, score parts, weakest gate, hero delta', () => {
 
   it('names the weakest rated gate, so an average cannot hide it', () => {
     expect(weakestGate(summary({}))).toBe('Weakest gate: Intent, 20% (2 of 10 rated issues).');
-    expect(weakestGate(summary({ gates: { intent: { found: 0, missing: 0, excepted: 0, recheck: 0, notApplicable: 1 }, process: { found: 0, missing: 0, excepted: 0, recheck: 0, notApplicable: 1 }, code: { found: 0, missing: 0, excepted: 0, recheck: 0, notApplicable: 1 }, audit: { found: 0, missing: 0, excepted: 0, recheck: 0, notApplicable: 1 } } }))).toBeUndefined();
+    expect(weakestGate(summary({ gates: { intent: { found: 0, missing: 0, reported: 0, excepted: 0, recheck: 0, notApplicable: 1 }, process: { found: 0, missing: 0, reported: 0, excepted: 0, recheck: 0, notApplicable: 1 }, code: { found: 0, missing: 0, reported: 0, excepted: 0, recheck: 0, notApplicable: 1 }, audit: { found: 0, missing: 0, reported: 0, excepted: 0, recheck: 0, notApplicable: 1 } } }))).toBeUndefined();
   });
 
   const pt = (weekStart: string, averageRAI: number | null, ratedIssues = 12): TrendPoint => ({
@@ -160,6 +177,16 @@ describe('B-44: audit readiness sentence and gaps text', () => {
       summary: 'Evidence found for all 4 applicable gates across 1 rated issue.',
       nextStep: 'All rated gates are evidenced.'
     });
+  });
+
+  it('ADR-010: leaves reported records out of readiness and names how many there are', () => {
+    const rep: GateResult = { state: 'REPORTED', verification: 'NOT_VERIFIED', reason: 'SEAL_VALID_LS' };
+    expect(auditReadiness([row('AUDT-4', 100, { intent: F, audit: rep })])).toMatchObject({
+      statusWord: 'Complete',
+      summary: 'Evidence found for all 1 applicable gates across 1 rated issue. 1 record is reported but not verified, so not scored.'
+    });
+    expect(auditReadiness([row('AUDT-4', 0, { intent: miss('INTENT_NONE'), audit: rep, process: rep })]).summary)
+      .toBe('Evidence found for 0 of 1 gates across 1 rated issue. 2 records are reported but not verified, so not scored.');
   });
 
   it('formats missing gates gaps text and evidenced ratio for triage rows', () => {

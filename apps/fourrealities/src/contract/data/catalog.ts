@@ -10,7 +10,10 @@ import { GateName, Verification } from './models';
 
 export interface EvidenceSource {
   gate: GateName;
-  /** How strongly FourRealities knows a fact from this source when it is found. */
+  /**
+   * How strongly FourRealities knows a fact from this source when it is found. A sibling record is
+   * FOUND only when its signature is verified; an unverified one is REPORTED (ADR-010).
+   */
   verification?: Verification;
 }
 
@@ -35,11 +38,11 @@ export const DEFAULT_CATALOG: EvidenceCatalog = {
   sources: {
     CONFLUENCE_PAGE_LINK: { gate: 'intent', verification: 'VERIFIED' },
     DECISION_ISSUE_LINK: { gate: 'intent', verification: 'VERIFIED' },
-    DEFINITIONGUARD_PROPERTY: { gate: 'process', verification: 'NOT_VERIFIED' },
+    DEFINITIONGUARD_PROPERTY: { gate: 'process', verification: 'VERIFIED' },
     HEROCODERS_CHECKLIST_PROPERTY: { gate: 'process', verification: 'NOT_VERIFIED' },
     DEVELOPMENT_FIELD: { gate: 'code', verification: 'HEURISTIC' },
     GATE_EXCEPTION: { gate: 'code' },
-    LEDGERSEAL_PROPERTY: { gate: 'audit', verification: 'NOT_VERIFIED' }
+    LEDGERSEAL_PROPERTY: { gate: 'audit', verification: 'VERIFIED' }
   },
   intent: {
     issueTypes: ['adr', 'architecture decision', 'decision', 'decision record', 'spec', 'specification', 'requirement'],

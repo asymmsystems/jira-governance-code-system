@@ -6,6 +6,7 @@
 
 import { ExceptionRecord, IssueExceptionRecord, IssueFacts, RemoteLink, StatusCategory } from '../contract/data/models';
 import { parseDevField } from './dev-field';
+import { AttestationCheckFn } from './attestation-verifier';
 import { JiraChangelogJson, JiraIssueJson, JiraIssueLinkJson, JiraRemoteLinkJson, JiraStatusJson } from './jira-types';
 
 /** Issue properties read in one search or issue call. Only the producers' own keys. */
@@ -83,6 +84,8 @@ export interface FactOptions {
   devFieldId?: string | null;
   /** Status id to category key, from the site configuration. */
   statusCategories?: Readonly<Record<string, StatusCategory>>;
+  /** Signature check of sibling records (ADR-010); without it no record counts as verified. */
+  verify?: AttestationCheckFn;
 }
 
 export function factsFromIssue(iss: JiraIssueJson | undefined, options: FactOptions = {}): IssueFacts {
@@ -98,9 +101,19 @@ export function factsFromIssue(iss: JiraIssueJson | undefined, options: FactOpti
   const devPresent = devFieldId !== null;
   const devRaw = devPresent ? fields[devFieldId as string] : undefined;
   const statusCategory = statusCategoryOf(fields.status);
+  const issueId = String(iss?.id);
+  const ledgerseal = iss?.properties?.['ledgerseal-cert'];
+  const dod = iss?.properties?.['definitionguard-dod'];
+  const verify = options.verify;
+  const attestations = verify && (ledgerseal || dod)
+    ? {
+      ...(dod ? { dod: verify('definitionguard', dod, issueId) } : {}),
+      ...(ledgerseal ? { ledgerseal: verify('ledgerseal', ledgerseal, issueId) } : {})
+    }
+    : undefined;
 
   return {
-    issueId: String(iss?.id),
+    issueId,
     issueKey: String(iss?.key),
     summary: String(fields.summary || ''),
     statusName: String(fields.status?.name || ''),
@@ -126,9 +139,10 @@ export function factsFromIssue(iss: JiraIssueJson | undefined, options: FactOpti
     siteHost: options.siteHost,
     devField: { present: devPresent, summary: parseDevField(typeof devRaw === 'string' ? devRaw : undefined) },
     properties: {
-      ledgerseal: iss?.properties?.['ledgerseal-cert'],
-      dod: iss?.properties?.['definitionguard-dod'],
+      ledgerseal,
+      dod,
       checklist: iss?.properties?.['checklist']
-    }
+    },
+    ...(attestations ? { attestations } : {})
   };
 }

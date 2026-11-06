@@ -60,7 +60,8 @@ describe('IssuePanel', () => {
     await act(async () => { findButton(r.root, 'Why 67%?').props.onClick(); });
     const text = textOf(r.toJSON());
     expect(text).toContain('Intent: 0 (evidence missing)');
-    expect(text).toContain('Process: +33 (evidence found)');
+    expect(text).toContain('Process: +34 (evidence found)');
+    expect(text).toContain('Audit: +33 (evidence found)');
     expect(text).toContain('Fix Intent to reach 100%.');
     await act(async () => { findButton(r.root, 'Hide the score parts').props.onClick(); });
     expect(textOf(r.toJSON())).not.toContain('Intent: 0 (evidence missing)');

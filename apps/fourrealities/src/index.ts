@@ -17,6 +17,8 @@ import { DefaultKvsReworkNoteAccessor } from './accessor/default-kvs-rework-note
 import { DefaultForgeAppContextAccessor } from './accessor/default-forge-app-context-accessor';
 import { DefaultKvsExceptionEventAccessor } from './accessor/default-kvs-exception-event-accessor';
 import { requestAs } from './accessor/default-forge-jira-issue-accessor';
+import { attestationChecker, trustedKeysFor } from './accessor/attestation-verifier';
+import { TrustedKey } from './accessor/attestation-keys';
 import { DefaultGateEngine } from './engine/default-gate-engine';
 import { DefaultMetricsEngine } from './engine/default-metrics-engine';
 import { DefaultSnapshotEngine } from './engine/default-snapshot-engine';
@@ -32,6 +34,17 @@ export const RESOLVER_LINK_BUDGET_MS = 18_000;
 export const SCHEDULED_BUDGET_MS = 540_000;
 
 let globalStorageProvider: StorageProvider | null = null;
+let trustedKeysOverride: readonly TrustedKey[] | null = null;
+
+/** Replaces the trusted sibling keys for every later call (tests and tools); null restores the bundled keys. */
+export function setTrustedKeys(keys: readonly TrustedKey[] | null): void {
+  trustedKeysOverride = keys;
+}
+
+/** The keys trusted in this Forge environment (ADR-010). */
+function trustedKeys(): readonly TrustedKey[] {
+  return trustedKeysOverride || trustedKeysFor(new DefaultForgeAppContextAccessor().environmentType());
+}
 
 /** Replaces the storage for every later call (tests and tools). */
 export function setGlobalStorageProvider(provider: StorageProvider | null): void {
@@ -49,8 +62,9 @@ export function resolveStorage(customProvider?: StorageProvider): StorageProvide
 export function compose(storageProvider: StorageProvider | undefined, budgetMs: number, configPrincipal: Principal) {
   const storage = resolveStorage(storageProvider);
   const deadline = Date.now() + budgetMs;
-  const appJira = new DefaultForgeJiraIssueAccessor('app', () => deadline);
-  const userJira = new DefaultForgeJiraIssueAccessor('user', () => deadline);
+  const verify = attestationChecker(trustedKeys());
+  const appJira = new DefaultForgeJiraIssueAccessor('app', () => deadline, undefined, verify);
+  const userJira = new DefaultForgeJiraIssueAccessor('user', () => deadline, undefined, verify);
   const siteConfig = new DefaultKvsSiteConfigAccessor(storage, requestAs(configPrincipal, () => deadline));
   const notes = new DefaultKvsReworkNoteAccessor(storage);
   const events = new DefaultKvsExceptionEventAccessor(storage);

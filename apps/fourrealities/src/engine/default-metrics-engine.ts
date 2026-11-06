@@ -24,7 +24,7 @@ export class DefaultMetricsEngine implements MetricsEngine {
 
   /**
    * RAI is the rounded mean of the scored gates: FOUND = 100, MISSING = 0.
-   * EXCEPTED, NEEDS_RECHECK and NOT_APPLICABLE are not scored. No scored gate gives null (UNRATED).
+   * REPORTED, EXCEPTED, NEEDS_RECHECK and NOT_APPLICABLE are not scored. No scored gate gives null (UNRATED).
    */
   public rai(gates: IssueGates): number | null {
     const scored = GATE_NAMES.map(g => gates[g].state).filter(s => s === 'FOUND' || s === 'MISSING');
@@ -44,7 +44,7 @@ export class DefaultMetricsEngine implements MetricsEngine {
   }
 
   /**
-   * Points gained by fixing the first missing gate (Intent, Code, Process, Audit):
+   * Points gained by fixing the first missing gate in chain order (Intent, Process, Code, Audit):
    * RAI recomputed with that gate found, minus the current RAI.
    */
   public recoverablePoints(gates: IssueGates): number {
@@ -90,7 +90,7 @@ export class DefaultMetricsEngine implements MetricsEngine {
   }
 
   private emptyCount(): GateCount {
-    return { found: 0, missing: 0, excepted: 0, recheck: 0, notApplicable: 0 };
+    return { found: 0, missing: 0, reported: 0, excepted: 0, recheck: 0, notApplicable: 0 };
   }
 
   /** found / (found + missing) as a rounded percentage, or null when nothing is scored. */
@@ -121,6 +121,7 @@ export class DefaultMetricsEngine implements MetricsEngine {
         const s = row.gates[g].state;
         if (s === 'FOUND') gates[g].found++;
         else if (s === 'MISSING') gates[g].missing++;
+        else if (s === 'REPORTED') gates[g].reported++;
         else if (s === 'EXCEPTED') gates[g].excepted++;
         else if (s === 'NEEDS_RECHECK') gates[g].recheck++;
         else gates[g].notApplicable++;
