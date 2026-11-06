@@ -30,9 +30,9 @@ LedgerSeal solves this mathematically:
 2. The snapshot hash is digitally signed with an Ed25519 key and appended to a cryptographic hash chain stored in Atlassian Forge KVS.
 3. A native Jira workflow transition validator (ledgerseal-validator) recalculates the snapshot hash when the ticket attempts to transition to Done or Released. If a single byte or attachment changed since approval, the deployment transition is hard-blocked and attributes the exact modified field.
 4. It is 100% Forge native: zero external network calls (no outbound fetch), zero external servers, runs entirely in the customer's Atlassian tenant.
-5. Compliance verification is completely offline: we open-sourced a zero-dependency CLI verifier using only Node.js node:crypto (https://asymm.systems/product/jira-governance/user-guide/open-verifier.html) so auditors can verify signatures and hash chains independently without trusting us or Jira.
+5. Compliance verification is completely offline: we open-sourced a zero-dependency CLI verifier using only Node.js node:crypto (https://asymm.systems/product/jira-governance/user-guide/open-verifier.html) so auditors can check the signatures and hash chains themselves, offline.
 
-Pricing: Free up to 10 users, then $1.50/user/month on the Marketplace.
+Pricing: free up to 10 users, then $0.95 per user per month (less for larger sites) on the Marketplace.
 
 Docs & Architecture: https://asymm.systems/product/jira-governance/user-guide/
 Offline Verifier: https://asymm.systems/product/jira-governance/user-guide/open-verifier.html
