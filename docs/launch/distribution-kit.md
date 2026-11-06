@@ -28,9 +28,9 @@ Jira's audit log records who made the edit, but an audit log is post-hoc forensi
 LedgerSeal solves this mathematically:
 1. When an authorized reviewer approves a ticket, LedgerSeal canonicalizes the issue specification (RFC 8785) and computes a deterministic SHA-256 snapshot hash across covered fields, attachments, and sign-offs.
 2. The snapshot hash is digitally signed with an Ed25519 key and appended to a cryptographic hash chain stored in Atlassian Forge KVS.
-3. A native Jira workflow transition validator (ledgerseal-validator) recalculates the snapshot hash when the ticket attempts to transition to Done or Released. If a single byte or attachment changed since approval, the deployment transition is hard-blocked and attributes the exact modified field.
-4. It is 100% Forge native: zero external network calls (no outbound fetch), zero external servers, runs entirely in the customer's Atlassian tenant.
-5. Compliance verification is completely offline: we open-sourced a zero-dependency CLI verifier using only Node.js node:crypto (https://asymm.systems/product/jira-governance/user-guide/open-verifier.html) so auditors can check the signatures and hash chains themselves, offline.
+3. A native Jira workflow transition validator (ledgerseal-validator) recalculates the snapshot hash when the ticket attempts to transition to Done or Released. If a covered field, comment or attachment changed after approval, the release transition is blocked until another approver approves the change, and the message names the changed fields.
+4. It is 100% Forge native: zero external network calls (no outbound fetch), zero external servers, runs entirely on Atlassian Forge, with no external servers.
+5. Evidence verification is completely offline: we open-sourced a zero-dependency CLI verifier using only the Node.js standard library (https://asymm.systems/product/jira-governance/user-guide/open-verifier.html) so auditors can check the signatures and hash chains themselves, offline.
 
 Pricing: free up to 10 users, then $0.95 per user per month (less for larger sites) on the Marketplace.
 
@@ -57,10 +57,10 @@ In standard Jira Cloud, approval fields are just metadata. If someone has Edit I
 Jira records the edit in the change history, but history is an audit trail, not a gate. You cannot prevent this with workflow properties like `jira.issue.editable = false` without completely freezing the ticket (blocking comments, retrospective notes, and build status webhooks).
 
 We built an open solution called LedgerSeal on Atlassian Forge:
-- When a ticket is signed off, it hashes the canonicalized JSON of the issue state (SHA-256) and stores a signed Ed25519 seal in Atlassian's tenant storage.
-- A workflow validator recalculates the hash on the transition to Done/Released. If anything changed post-approval, the transition is hard-blocked and shows the exact diff.
+- When a ticket is signed off, it hashes the canonicalized JSON of the issue state (SHA-256) and stores a signed Ed25519 seal in Atlassian Forge storage.
+- A workflow validator recalculates the hash on the transition to Done/Released. If a covered field, comment or attachment changed after approval, the transition is blocked and the panel shows what changed.
 - Runs with zero external egress (Forge isolated runtime, no third-party servers).
-- We also published an open-source offline verification script using standard node:crypto so auditors can verify evidence files independently.
+- We also published an open-source offline verification script using only the Node.js standard library, so auditors can check evidence files themselves, offline.
 
 Article with technical architecture: https://asymm.systems/product/jira-governance/user-guide/ledgerseal.html
 Verifier repo: https://asymm.systems/product/jira-governance/user-guide/open-verifier.html
@@ -117,9 +117,9 @@ Jira's default history log shows modifications, but it doesn't prove integrity a
 We developed an Atlassian Forge suite to automate this proof:
 1. LedgerSeal: Hashes the approved issue state (SHA-256) and Ed25519 signs it. Gated workflow transitions reject release if the hash diverges.
 2. DefinitionGuard: Enforces mandatory DoD checklists, lets admins mark items the assignee may not tick, and records waiver reasons in a hash-chained history.
-3. Standalone Verification: Outputs standalone evidence JSON that can be verified offline with an open-source Node script (https://asymm.systems/product/jira-governance/user-guide/open-verifier.html), meaning you don't have to rely on an app vendor during an audit.
+3. Standalone Verification: Outputs standalone evidence JSON that can be verified offline with an open-source Node script (https://asymm.systems/product/jira-governance/user-guide/open-verifier.html), so auditors can check evidence files themselves, offline.
 
-Architecture: 100% Forge native, zero external network egress, data resides in customer tenant storage.
+Architecture: 100% Forge native, zero external network egress, data stays in Atlassian Forge storage.
 
 Full compliance mapping table (SOC 2, ISO 27001, 21 CFR Part 11):
 https://asymm.systems/product/jira-governance/compliance.html
@@ -146,10 +146,10 @@ Jira's change log recorded the edit, but a change log is post-hoc forensics. It 
 We built LedgerSeal to solve this with mathematics:
 - On approval, it computes a deterministic SHA-256 snapshot hash of covered fields and attachments.
 - A workflow transition validator recalculates the hash before the ticket can reach Done.
-- If a single character changed since approval, the deployment transition is hard-blocked.
-- 100% Atlassian Forge native: zero external egress, customer tenant data residency.
+- If a covered field, comment or attachment changed after approval, the release transition is blocked until another approver approves the change.
+- 100% Atlassian Forge native: zero external egress, data in Atlassian Forge storage.
 
-We also open-sourced the offline verifier so compliance teams can audit evidence bundles independently:
+We also open-sourced the offline verifier so compliance teams can check evidence files themselves, offline:
 https://asymm.systems/product/jira-governance/user-guide/ledgerseal.html
 
 #DevOps #Jira #Cybersecurity #SOC2 #ISO27001 #Compliance #Atlassian
@@ -179,7 +179,7 @@ We designed LedgerSeal to solve this natively within Forge:
 - Approvers seal the ticket using their designated approver group permissions.
 - The app stores a SHA-256 cryptographic snapshot hash of the ticket state in Forge KVS.
 - You place the LedgerSeal Validator on your transition to Done or Released.
-- If the ticket has not been modified since approval, the transition proceeds. If anyone altered a covered field, the transition blocks and displays the exact difference.
+- If the ticket has not been modified since approval, the transition proceeds. If anyone altered a covered field, the transition is blocked and the panel shows what changed.
 
 You can evaluate it for free up to 10 users on the Atlassian Marketplace:
 https://marketplace.atlassian.com/apps/ledgerseal
@@ -202,7 +202,7 @@ How do you currently verify that a Jira ticket hasn't been edited between the ti
 
 In standard Jira, anyone with edit access can modify descriptions or test requirements post-approval without triggering a re-review. We built LedgerSeal (Atlassian Forge native) to solve this: it takes a SHA-256 snapshot on approval and hard-blocks the Done transition if any covered field was modified since sign-off.
 
-It runs 100% inside your Atlassian tenant with zero external egress.
+It runs entirely on Atlassian Forge with zero external egress.
 
 We put together an overview and compliance mapping here: https://asymm.systems/product/jira-governance/user-guide/ledgerseal.html
 
@@ -218,9 +218,9 @@ Reaching out because engineering teams preparing for SOC 2 CC8.1 or ISO 27001 of
 
 Jira's change log records the edit, but doesn't prevent deployment. Setting `jira.issue.editable = false` breaks comments and CI/CD webhooks.
 
-We built LedgerSeal on Atlassian Forge to gate transitions cryptographically: it signs the approved issue state snapshot and blocks the release transition if anything changed post-approval.
+We built LedgerSeal on Atlassian Forge to gate transitions cryptographically: it signs the approved issue state snapshot and blocks the release transition if a covered field, comment or attachment changed after approval.
 
-Zero external egress, tenant data residency, free for up to 10 users.
+Zero external egress, data in Atlassian Forge storage, free for up to 10 users.
 
 Technical write-up: https://asymm.systems/product/jira-governance/user-guide/ledgerseal.html
 
@@ -234,9 +234,9 @@ Hi [Name],
 
 Hope you're having a productive week. If [Company] uses Jira for validation or change authorizations, you might find our recent compliance work useful:
 
-We built LedgerSeal to provide tamper-evident approval seals and independent verification for Jira Cloud, addressing FDA 21 CFR Part 11 (§ 11.10e audit trails) and SOC 2 CC8.1 change control.
+We built LedgerSeal to provide tamper-evident approval seals and offline evidence checks for Jira Cloud, addressing FDA 21 CFR Part 11 (§ 11.10e audit trails) and SOC 2 CC8.1 change control.
 
-It generates an append-only cryptographic hash chain for every approval and includes an open-source, zero-dependency offline CLI verifier so your auditors can verify evidence files independently:
+It generates an append-only cryptographic hash chain for every approval and includes an open-source, zero-dependency offline CLI verifier so your auditors can check evidence files themselves, offline:
 https://asymm.systems/product/jira-governance/user-guide/open-verifier.html
 
 Full compliance mapping documentation is available at:
