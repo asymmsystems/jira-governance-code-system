@@ -54,6 +54,6 @@ This document provides standardized answers to common questions found in enterpr
 
 | Question | Answer |
 |---|---|
-| **Vulnerability Reporting Policy** | Dedicated security inbox (`security@asymm.systems`) with initial acknowledgement within 24 hours. |
+| **Vulnerability Reporting Policy** | Dedicated security inbox (`security@asymm.systems`) with initial acknowledgement within 72 hours. |
 | **Incident Response SLA** | Critical security incidents evaluated within 24 hours; patches deployed through Forge automated pipelines. |
 | **Offline Verifiability** | Cryptographic evidence can be verified offline using our open-source, zero-dependency Node.js verifier. |
