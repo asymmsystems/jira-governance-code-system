@@ -49,13 +49,18 @@ seal after the closure, or every such issue would show CHANGED.
    per-account pseudo-random token with this one difference.
 4. *The token-to-account map.* One key per account, =ls3:party:<token>= =
    ={ accountId, updatedAt }=, outside every hashed record. The panel uses it to show who sealed,
-   changed or revoked. The weekly report reads it. On closure this key is deleted. From then on the
-   token in the records names no one: the panel shows "a closed account", and no record holds the
-   id or a name.
+   changed or revoked. The weekly report reads it. On closure the key keeps only a closed mark,
+   ={ closed: true, closedAt }=, with no account id. From then on no record holds the id or a name:
+   the panel shows "a deleted user", and the closed mark is never given an account id again. A token
+   with no entry (a person LedgerSeal never mapped) shows as "an unknown user". (Amended 2026-11-06
+   after the merge reviews: closed mark instead of deletion; "a deleted user" is the owner's 11.50
+   wording.) An account not yet in the map is mapped only when Jira answers it active or cannot
+   answer; an account Jira answers inactive is not mapped, because Jira may answer a closed account
+   that way, and an account Jira answers gone (404) gets the closed mark.
 5. *Weekly report.* Scope =report:personal-data= and a weekly =scheduledTrigger=, as CascadePlan
    (ADR-009 decision 7). The report sends every account id in the map, plus the admin who last saved
-   the approver policy. For each closed account it deletes the map key and removes the admin id
-   from the policy. Each run first finishes the conversion of any old record (decision 7).
+   the approver policy. For each closed account it replaces the map entry with the closed mark and
+   removes the admin id from the policy. Each run first finishes the conversion of any old record (decision 7).
 6. *New canonical form 2.2.0* for new seals: decision 1 plus readiness finding F-07 (an object with
    an =id= is reduced to ={ id }= only when its field is a known reference type, such as an option,
    version, component, priority or issue; every other object is hashed in full). Versions 2.0.0 and
@@ -76,8 +81,8 @@ seal after the closure, or every such issue would show CHANGED.
 9. *Deleted issues.* A trigger on =avi:jira:deleted:issue= deletes every LedgerSeal key of that
    issue: the sealed issue, the seals, the history and the snapshots.
 10. *Evidence and the verifier.* The evidence export holds tokens. It adds an unsigned =parties=
-    map from each token to its account id, or null for a closed account, so an auditor can still
-    see who acted. The open verifier (public repository =asymmsystems/ledgerseal-verifier=) checks
+    map from each history token to its account id, or null for a closed account (closed mark), so an
+    auditor can still see who acted; a token with no entry is left out. The open verifier (public repository =asymmsystems/ledgerseal-verifier=) checks
     the chain across a redaction row and prints a note naming it. Evidence exported before this
     change still verifies.
 11. *Other personal data.* Free text that people type into the issue (descriptions, comments, the
@@ -105,7 +110,7 @@ seal after the closure, or every such issue would show CHANGED.
 
 * Consequences
 ** Positive
-- No hashed record holds an account id or a name. Closing an account needs one key deleted.
+- No hashed record holds an account id or a name. Closing an account needs one key rewritten (the closed mark).
 - The issue property can be read by anyone without exposing the signer.
 - Old and new evidence both verify with the open verifier.
 ** Negative

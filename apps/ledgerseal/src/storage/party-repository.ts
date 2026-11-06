@@ -66,18 +66,23 @@ export class PartyRepository {
   /**
    * Records that the app now holds data about these accounts (the map and the weekly report use it). An account
    * already in the map gets a new update time. A token marked closed is never given an account id again (M-2). With
-   * `accountState`, an account Jira reports gone is marked closed instead of stored; an active, deactivated or
-   * unreadable account is stored, so a person whose account exists keeps their name (L-8), and the weekly report
-   * erases it if Atlassian reports it closed.
+   * `accountState`, an account not yet in the map is handled by Jira's answer: gone (404) is marked closed; inactive
+   * gets no mapping and no mark, because Jira may answer a closed account as inactive, so its id is never stored
+   * again and it shows as an unknown user (L-13); active or unreadable is stored, so a person whose account exists
+   * keeps their name (L-8), and the weekly report erases it if Atlassian reports it closed.
    */
   async register(accounts: string[], party: PartyFn, at: string, accountState?: (accountId: string) => Promise<AccountState>): Promise<void> {
     for (const accountId of [...new Set(accounts.filter(Boolean))]) {
       const key = PARTY_PREFIX + party(accountId);
       const existing = await this.storage.get(key);
       if (existing?.closed === true) continue;
-      if (!existing && accountState && (await accountState(accountId)) === 'gone') {
-        await this.storage.set(key, { closed: true, closedAt: at } as ClosedEntry);
-        continue;
+      if (!existing && accountState) {
+        const state = await accountState(accountId);
+        if (state === 'gone') {
+          await this.storage.set(key, { closed: true, closedAt: at } as ClosedEntry);
+          continue;
+        }
+        if (state === 'inactive') continue;
       }
       await this.storage.set(key, { accountId, updatedAt: at } as PartyEntry);
     }

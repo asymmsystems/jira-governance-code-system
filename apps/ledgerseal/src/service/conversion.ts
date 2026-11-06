@@ -10,6 +10,7 @@
  * @author Fahim Farook
  */
 
+import * as crypto from 'crypto';
 import { canonicalJson, hashWithout } from '../domain/canonical-json';
 import { canonicalizeIssueState } from '../domain/canonicalizer';
 import { computeSnapshotHash } from '../domain/crypto';
@@ -27,10 +28,39 @@ export type ConversionResult = 'NO_RECORD' | 'ALREADY' | 'CONVERTED' | 'REDACTED
 export const JOURNAL_PREFIX = 'ls3:convert:';
 
 /**
- * How long a conversion journal means "running": the weekly function's limit (300 s, manifest) plus a margin.
- * A seal or revoke that meets a running conversion answers CONFLICT, and the user tries again.
+ * How long a conversion lease is held: the weekly function's limit (300 s, manifest) plus a margin. A seal or revoke
+ * that meets a held lease answers CONFLICT, and the user tries again. A lease older than this belongs to a run that
+ * stopped, and the next attempt takes it over.
  */
 export const CONVERSION_LEASE_MS = 10 * 60 * 1000;
+export const LEASE_PREFIX = 'ls3:convert-lease:';
+
+interface Lease {
+  holder: string;
+  takenAt: string;
+}
+
+/**
+ * Claims the record's lease (M-7): created with FAIL_IF_EXISTS, or taken over when the lease is older than
+ * CONVERSION_LEASE_MS and confirmed by reading it back. Returns the holder id, or null when another run holds it.
+ */
+export async function takeLease(storage: StorageProvider, issueId: string, now: string): Promise<string | null> {
+  const key = LEASE_PREFIX + issueId;
+  const lease: Lease = { holder: crypto.randomUUID(), takenAt: now };
+  if (await storage.createIfAbsent(key, lease)) return lease.holder;
+  const current: Lease | undefined = await storage.get(key);
+  if (current && Date.parse(now) - Date.parse(current.takenAt) < CONVERSION_LEASE_MS) return null;
+  await storage.set(key, lease);
+  return (await storage.get(key))?.holder === lease.holder ? lease.holder : null;
+}
+
+async function holdsLease(storage: StorageProvider, issueId: string, holder: string): Promise<boolean> {
+  return (await storage.get(LEASE_PREFIX + issueId))?.holder === holder;
+}
+
+async function releaseLease(storage: StorageProvider, issueId: string, holder: string): Promise<void> {
+  if (await holdsLease(storage, issueId, holder)) await storage.delete(LEASE_PREFIX + issueId);
+}
 
 /** True while a conversion of this issue's record has not finished (its journal key exists). */
 export async function hasConversionJournal(storage: StorageProvider, issueId: string): Promise<boolean> {
@@ -185,9 +215,28 @@ export async function convertRecord(deps: ConversionDeps, issueId: string, now: 
     await finishCleanup(storage, repo, we, journalKey);
     return 'ALREADY';
   }
-  // M-5: a journal younger than the lease belongs to a conversion that may still be running; only an older one is
-  // a stopped run to finish. Two conversions of one record never run at the same time.
-  if (journal && Date.parse(now) - Date.parse(journal.startedAt) < CONVERSION_LEASE_MS) return 'BUSY';
+  // M-7: every attempt, first or resumed, claims the record's lease; a run that cannot claim it stops
+  const holder = await takeLease(storage, issueId, now);
+  if (!holder) return 'BUSY';
+  const result = await convertHeld(deps, issueId, now, we, journal, holder);
+  // A run that threw keeps its lease until it expires, so a stopped run is resumed only after the lease
+  await releaseLease(storage, issueId, holder);
+  return result;
+}
+
+/** The part of a conversion that runs while it holds the record's lease. */
+async function convertHeld(
+  deps: ConversionDeps,
+  issueId: string,
+  now: string,
+  we: SealedWorkEffort,
+  startJournal: Journal | null,
+  holder: string
+): Promise<ConversionResult> {
+  const { storage } = deps;
+  const repo = new SealRepository(storage);
+  const journalKey = JOURNAL_PREFIX + issueId;
+  let journal = startJournal;
 
   const parties = new PartyRepository(storage);
   const party = await parties.partyForWrite();
@@ -268,10 +317,20 @@ export async function convertRecord(deps: ConversionDeps, issueId: string, now: 
     return 'BUSY';
   }
 
+  // M-5, M-7: before each group of writes, this run must still hold the lease and the record must not have moved on
+  // (another writer finished the conversion and added a row). Otherwise it writes nothing more.
+  const stillCurrent = async () => {
+    if (!(await holdsLease(storage, issueId, holder))) return false;
+    const latest = await repo.getWorkEffort(issueId);
+    return Boolean(latest) && latest!.recordHash === we.recordHash && !(await repo.getStatusRow(issueId, redaction.seq + 1));
+  };
+  if (!(await stillCurrent())) return 'BUSY';
+
   // Rows and seals are rewritten one by one; a retry rewrites them the same way. The snapshot, the redaction
   // row and the sealed issue follow in one transaction, so the snapshot is never half old and half new.
   await parties.register([...r.actors], party, now, id => deps.jira.accountState(id));
   for (const row of history) await storage.set(`ls3:wes:${issueId}:${String(row.seq).padStart(6, '0')}`, row);
+  if (!(await stillCurrent())) return 'BUSY';
   for (const a of newAssignments) await storage.set(a.key, a.value);
 
   const current = newAssignments.find(a => a.value.fromDate === we.currentAssignment.fromDate)?.value;
@@ -289,10 +348,7 @@ export async function convertRecord(deps: ConversionDeps, issueId: string, now: 
     attributes: { ...we.attributes, snapshotHash: computeSnapshotHash(newContent as CanonicalIssueSnapshot), snapshotParts: contentParts.length, parties: 'TOKEN' },
     lastIncidentHash: journal.lastIncidentHash
   });
-  // M-5: another writer (a seal or revoke converts first, then adds its row) may have moved the record on since it
-  // was read. Then this run writes nothing more and stops; the next run finds the record converted.
-  const latest = await repo.getWorkEffort(issueId);
-  if (!latest || latest.recordHash !== we.recordHash || (await repo.getStatusRow(issueId, redaction.seq + 1))) return 'BUSY';
+  if (!(await stillCurrent())) return 'BUSY';
   await storage.commit([
     ...contentParts.map((value, i) => ({ key: `ls3:content:${we.currentContentId}:${i}`, value })),
     { key: `ls3:wes:${issueId}:${String(redaction.seq).padStart(6, '0')}`, value: redaction },

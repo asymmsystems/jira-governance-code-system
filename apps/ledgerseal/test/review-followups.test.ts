@@ -8,7 +8,7 @@
  * @author Fahim Farook
  */
 
-import { convertRecord } from '../src/service/conversion';
+import { convertRecord, LEASE_PREFIX, takeLease } from '../src/service/conversion';
 import { getSealEvidence, getSealHistory, onIssueDeleted, personalDataReport, revokeSeal, sealIssue, verifyIssue } from '../src/index';
 import { buildPanelView } from '../src/frontend/view-model';
 import { createJiraClient } from '../src/jira/jira-client';
@@ -42,6 +42,36 @@ async function stoppedAfterCommit() {
   s.storage.delete = realDelete;
   expect(s.storage.map.has('ls3:convert:10001')).toBe(true);
   return s;
+}
+
+/** An old record whose conversion stopped just before its commit, in 2000, so its lease has expired. */
+async function stoppedBeforeCommit() {
+  const s = setup();
+  await writeOldRecord(s.storage, sampleIssue());
+  const realCommit = s.storage.commit.bind(s.storage);
+  s.storage.commit = async (items: any[]) => (items.some(i => i.key === 'ls3:we:10001') ? Promise.reject(new Error('timed out')) : realCommit(items));
+  await expect(convertRecord(s.as(null), '10001', '2000-01-01T00:00:00.000Z')).rejects.toThrow('timed out');
+  s.storage.commit = realCommit;
+  return s;
+}
+
+/** Pauses the first call of a storage method that matches, until released. */
+function pauseOn(storage: any, method: 'set' | 'commit', match: (args: any[]) => boolean) {
+  let release!: () => void;
+  let reached!: () => void;
+  const gate = new Promise<void>(r => (release = r));
+  const at = new Promise<void>(r => (reached = r));
+  const real = storage[method].bind(storage);
+  let first = true;
+  storage[method] = async (...args: any[]) => {
+    if (first && match(args)) {
+      first = false;
+      reached();
+      await gate;
+    }
+    return real(...args);
+  };
+  return { at, release };
 }
 
 describe('M-1 a stopped conversion is finished, never replayed (probe R1)', () => {
@@ -95,7 +125,7 @@ describe('M-2 an erased account is never stored again (probe R2)', () => {
     expect(view.tamperedFields[0].changedByClosed).toBe(1);
   });
 
-  it('L-8: an account Jira cannot read, or a deactivated one, keeps its name; a gone account is marked closed', async () => {
+  it('L-8, L-13: an unreadable account keeps its name; an inactive one is not mapped (unknown); a gone one is marked closed', async () => {
     const { jira, storage, as } = setup();
     await sealIssue({ signature: validSignature() }, panelContext('ann'), as('ann'));
     jira.unknownUsers.add('dora');
@@ -106,10 +136,11 @@ describe('M-2 an erased account is never stored again (probe R2)', () => {
     jira.edit('gus', '2099-03-01T00:02:00.000Z', 'summary', 'gus');
     const view: any = await verifyIssue({}, panelContext('ann'), as('ann'));
     expect(storage.map.get(PARTY_PREFIX + (await model.token(storage, 'dora')))).toMatchObject({ accountId: 'dora' });
-    expect(storage.map.get(PARTY_PREFIX + (await model.token(storage, 'dino')))).toMatchObject({ accountId: 'dino' });
+    // L-13: Jira may answer a closed account as inactive, so an inactive account not yet mapped gets no mapping
+    expect(storage.map.has(PARTY_PREFIX + (await model.token(storage, 'dino')))).toBe(false);
     expect(storage.map.get(PARTY_PREFIX + (await model.token(storage, 'gus')))).toEqual({ closed: true, closedAt: expect.any(String) });
     expect(JSON.stringify([...storage.map.entries()])).not.toContain('"gus"');
-    expect(view.tamperedFields[0]).toMatchObject({ changedBy: ['dora', 'dino'], changedByClosed: 1 });
+    expect(view.tamperedFields[0]).toMatchObject({ changedBy: ['dora'], changedByClosed: 1, changedByUnknown: 1 });
   });
 
   it('L-8: a token with no map entry is unknown, not deleted, in the panel, the history and the evidence', async () => {
@@ -205,32 +236,70 @@ describe('M-5 two conversions of one record never overlap (probe P1)', () => {
     await expect(sealIssue({ signature: validSignature({ reason: 'again' }) }, panelContext('carol'), as('carol'))).resolves.toMatchObject({ ok: true });
   });
 
-  it('a stalled run past its lease is taken over; when it wakes it finds the record moved on and stops (BUSY)', async () => {
+  it('a held lease makes a second conversion stop (Q4): the seal resuming a stopped run holds it, the weekly run gets BUSY', async () => {
+    const { storage, as } = await stoppedBeforeCommit();
+    const p = pauseOn(storage, 'set', args => args[0] === 'ls3:wes:10001:000001');
+    const first = convertRecord(as(null), '10001');
+    await p.at;
+    expect(await convertRecord(as(null), '10001')).toBe('BUSY');
+    p.release();
+    expect(await first).toBe('CONVERTED');
+    expect(storage.map.has(LEASE_PREFIX + '10001')).toBe(false);
+  });
+
+  it('M-7 (Q1): a stalled run whose lease was taken over never writes its old assignment back over a revoke', async () => {
     const { storage, as } = setup();
     await writeOldRecord(storage, sampleIssue());
-    let release!: () => void;
-    let reached!: () => void;
-    const gate = new Promise<void>(r => (release = r));
-    const atCheck = new Promise<void>(r => (reached = r));
-    const realGet = storage.get.bind(storage);
-    let paused = false;
-    // The stalled run pauses on its last check before the commit (the row after the redaction row)
-    storage.get = async (key: string) => {
-      if (!paused && key === 'ls3:wes:10001:000003') {
-        paused = true;
-        reached();
-        await gate;
-      }
-      return realGet(key);
-    };
+    const p = pauseOn(storage, 'set', args => args[0] === 'ls3:wes:10001:000001');
     const stalled = convertRecord(as(null), '10001', '2000-01-01T00:00:00.000Z');
-    await atCheck;
+    await p.at;
+    // Its lease (taken in 2000) has expired, so Bob's revoke takes it over, converts and revokes
     await expect(revokeSeal({ reason: 'probe revoke' }, panelContext('bob'), as('bob'))).resolves.toMatchObject({ ok: true });
-    release();
+    p.release();
     expect(await stalled).toBe('BUSY');
+    const assignment = [...storage.map.entries()].find(([k]) => k.startsWith('ls3:wepa:10001:'))![1];
+    expect(assignment.thruDate).not.toBeNull();
     const view: any = await verifyIssue({}, panelContext('bob'), as('bob'));
     expect(view.status).toBe('SEAL_REVOKED');
     expect(view.seal.revocation.reason).toBe('probe revoke');
-    await expect(sealIssue({ signature: validSignature({ reason: 'again' }) }, panelContext('carol'), as('carol'))).resolves.toMatchObject({ ok: true });
+    const evidence: any = await getSealEvidence({}, panelContext('bob'), as('bob'));
+    expect(evidence.history.map((r: any) => r.transitionName)).toEqual(['SEAL', 'REDACT', 'REVOKE']);
+  });
+
+  it('M-7 (Q3): two resumers after a stop never both convert; the seal answers CONFLICT, then goes in on retry', async () => {
+    const { storage, as } = await stoppedBeforeCommit();
+    const p = pauseOn(storage, 'commit', args => args[0].some((i: any) => i.key === 'ls3:we:10001'));
+    const weekly = convertRecord(as(null), '10001');
+    await p.at;
+    await expect(sealIssue({ signature: validSignature({ reason: 'x' }) }, panelContext('carol'), as('carol'))).resolves.toMatchObject({ ok: false, code: 'CONFLICT' });
+    p.release();
+    expect(await weekly).toBe('CONVERTED');
+    await expect(sealIssue({ signature: validSignature({ reason: 'x' }) }, panelContext('carol'), as('carol'))).resolves.toMatchObject({ ok: true });
+    const view: any = await verifyIssue({}, panelContext('bob'), as('bob'));
+    expect(view.status).toBe('SEAL_VALID');
+    const evidence: any = await getSealEvidence({}, panelContext('bob'), as('bob'));
+    expect(evidence.history.map((r: any) => r.transitionName)).toEqual(['SEAL', 'REDACT', 'RESEAL']);
+  });
+
+  it('Q2: within the lease of a stopped run a seal answers CONFLICT; after the lease it resumes and works', async () => {
+    const { storage, as } = setup();
+    await writeOldRecord(storage, sampleIssue());
+    const realCommit = storage.commit.bind(storage);
+    storage.commit = async (items: any[]) => (items.some(i => i.key === 'ls3:we:10001') ? Promise.reject(new Error('timed out')) : realCommit(items));
+    await expect(convertRecord(as(null), '10001')).rejects.toThrow('timed out');
+    storage.commit = realCommit;
+    await expect(sealIssue({ signature: validSignature({ reason: 'x' }) }, panelContext('carol'), as('carol'))).resolves.toMatchObject({ ok: false, code: 'CONFLICT' });
+    const lease = storage.map.get(LEASE_PREFIX + '10001');
+    storage.map.set(LEASE_PREFIX + '10001', { ...lease, takenAt: new Date(Date.now() - 11 * 60 * 1000).toISOString() });
+    await expect(sealIssue({ signature: validSignature({ reason: 'x' }) }, panelContext('carol'), as('carol'))).resolves.toMatchObject({ ok: true });
+    expect(storage.map.has('ls3:convert:10001')).toBe(false);
+  });
+
+  it('a lease taken over by someone else between the write and its read-back is not claimed', async () => {
+    const storage = new MemoryStore();
+    storage.map.set(LEASE_PREFIX + '1', { holder: 'old', takenAt: '2000-01-01T00:00:00.000Z' });
+    const realSet = storage.set.bind(storage);
+    storage.set = async (key: string, value: any) => realSet(key, key.startsWith(LEASE_PREFIX) ? { holder: 'other', takenAt: value.takenAt } : value);
+    expect(await takeLease(storage, '1', '2026-11-06T00:00:00.000Z')).toBeNull();
   });
 });

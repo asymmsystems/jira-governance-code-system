@@ -290,7 +290,7 @@ The review is `docs/sdlc/merge-reviews-2026-11/ledgerseal-followups-merge-review
 - **What changed (`src/service/conversion.ts`):**
   - Lease: a conversion journal younger than `CONVERSION_LEASE_MS` (10 minutes: the weekly function's 300 s limit plus a margin) belongs to a conversion that may still be running. Another conversion of the record returns BUSY instead of resuming it, so a seal or revoke at that moment answers CONFLICT and the user tries again. An older journal is a stopped run, resumed as before.
   - Re-check: just before its commit a conversion reads the record again and returns BUSY, writing nothing more, if the record changed or a row exists after the redaction row.
-  - Residual: Forge KVS has no conditional write for plain keys (transaction checks apply to custom entities only), so the re-check and the commit are two calls. The lease closes the window for two conversions; the re-check covers a run that stalls past its lease.
+  - Residual: Forge KVS has no conditional write for plain keys (transaction checks apply to custom entities only), so the re-check and the commit are two calls. Correction (third follow-ups review, M-7): this lease did not close the window after a stop, because a resumed run did not claim it again and the journal's start time stayed old; two resumers could both run once the journal was 10 minutes old. Replaced by the lease key of M-7 below.
 - **Proof:** `test/review-followups.test.ts`, describe "M-5" (2): P1 exactly (the weekly run paused inside its commit; the revoke answers CONFLICT, the weekly run commits, the retried revoke goes in, history SEAL, REDACT, REVOKE, a new seal works), and a stalled run past its lease that wakes after a revoke (BUSY, record revoked, a new seal works). Without the lease the P1 test fails; without the re-check the stalled-run test fails.
 
 ### L-8. An existing account is never shown as a deleted user
@@ -325,3 +325,40 @@ No live write in this round.
 ### Final gate (second follow-ups)
 
 `npx tsc --noEmit` 0 errors; `npm test`: 47 suites, 501 tests passed; coverage statements 97.89%, branches 94.19%, functions 96.74%, lines 98.65%; `npm run build` exit 0; `npm audit --omit=dev --audit-level=high` exit 0; `forge lint` "No issues found". Development version 4.4.0.
+
+
+## Third follow-ups (branch `feature/ledgerseal-review-followups-3`, from `origin/master` `a215c9b`)
+
+The review is `docs/sdlc/merge-reviews-2026-11/ledgerseal-followups-2-merge-review.md` (probes Q1 to Q4 in `/home/fahimfarookme/.cache/jira-suite-merge-review/ledgerseal-followups-2/probes/zz-probe-m5.test.ts`).
+
+### M-7, L-11. A lease claimed on every attempt; re-checks before each group of writes
+
+- **What changed (`src/service/conversion.ts`):**
+  - Lease key `ls3:convert-lease:{issueId}` = `{ holder, takenAt }`, claimed on every attempt, first or resumed (`takeLease`): created with FAIL_IF_EXISTS; an existing lease is taken over only when older than `CONVERSION_LEASE_MS` (10 minutes), and the taker reads it back to confirm it holds it. A run releases its lease when it ends; a run that throws keeps it until it expires, so a stopped run is resumed only after 10 minutes. A seal or revoke that meets a held lease answers CONFLICT.
+  - Before writing the history rows, before writing the assignments, and before the commit, the run checks that it still holds the lease, that the record is unchanged, and that no row follows the redaction row; otherwise it returns BUSY and writes nothing more.
+  - A deleted issue's lease key is deleted with it.
+  - Residual: a lease takeover is a write and a read-back, not an atomic compare; two takers at the same moment after an expiry are told apart by the read-back, and each group of writes re-checks the holder. Plain KVS keys have no conditional write.
+- **Proof:** `test/review-followups.test.ts`: Q1 (a stalled run whose lease was taken over never writes its old assignment back over a revoke; SEAL_REVOKED, history SEAL, REDACT, REVOKE), Q3 (two resumers after a stop: the seal answers CONFLICT while the weekly run commits, then goes in on retry), Q4 (the second resumer gets BUSY), Q2 (within the lease CONFLICT, after it the seal works), and the takeover read-back. With master's `conversion.ts` Q1, Q3 and Q4 fail; with only the re-check before the assignment writes removed, Q1 fails and shows the rollback itself (the ended assignment back to `thruDate: null`) (L-11).
+
+### L-13. An inactive account is not mapped
+
+- `PartyRepository.register`: an account not yet in the map that Jira answers inactive gets no mapping and no closed mark, because Jira may answer a closed account as inactive; it shows as "an unknown user". Active or unreadable accounts are mapped (L-8); gone (404) gets the closed mark. Not confirmed live what Jira answers for a closed account (no closed account on the development site). Tokens erased by 4.3.0 (key deleted before the closed mark existed) show "an unknown user"; development site only.
+
+### M-8. Documents describe the closed mark
+
+- ADR-011 decisions 4, 5 and 10 and its consequences (amended in place, dated): the closed mark, "a deleted user", "an unknown user", unknown tokens left out of `parties`, the inactive rule. Spec v3 item 12, the `PanelData` seal shape (`sealedByUnknown`) and the evidence API. Reviewer notes, the `report:personal-data` row and "Personal data". `test/listing.test.ts` fails if the notes say the key is deleted.
+
+### L-12
+
+- `docs/launch/approved-ticket-problem.md`: five checks and five `PASS` lines (adds the status check); "cryptographic immutability" replaced by "tamper evidence", with the 11.10(e) limit.
+- `site/apps/ledgerseal/open-verifier.md`: five checks, the status line in the expected output, and a note that a Marketplace export names `ls-prod-2026-11` while the worked example uses the development key.
+
+### Deploy and live check (development 4.5.0)
+
+- `forge deploy -e development`: 4.5.0 (code of `3dde4a6`).
+- PAY-10 evidence exported from the panel: 5 of 5 PASS with `tools/verifier` and the development key; property schema 3, signed, no account id.
+- M-7, L-13 live: not run live (M-7 needs a stopped conversion and two invocations on one old record; L-13 a closed or inactive account); proven by the tests above. No live write in this round.
+
+### Final gate (third follow-ups)
+
+`npx tsc --noEmit` 0 errors; `npm test`: 47 suites, 506 tests passed; coverage statements 97.88%, branches 94.23%, functions 96.79%, lines 98.67%; `npm run build` exit 0; `npm audit --omit=dev --audit-level=high` exit 0; `forge lint` "No issues found". Development version 4.5.0.
