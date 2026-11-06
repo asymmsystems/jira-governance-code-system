@@ -10,7 +10,8 @@ import {
   getTemplateForCategory,
   getAvailableTemplates
 } from './domain/checklist-engine';
-import { evaluateGate, blockMessage } from './domain/gate-rule';
+import { evaluateGate, blockMessage, needsAssigneeCheck } from './domain/gate-rule';
+import { assigneeChanges, assigneesSince } from './jira/assignee-history';
 import { ProjectConfigStore } from './settings/project-config';
 import { StorageProvider } from './storage/checklist-repository';
 import { resolveStorage } from './storage/forge-storage';
@@ -178,15 +179,24 @@ async function evaluateTransition(payload: any, context?: any, storageProvider?:
 
   // Separation of duties holds at the moment of Done: re-check not-the-assignee items
   // against the current assignee, read from the Jira issue (never from an issue property).
-  // Stored records name people by pseudonym (ADR-010), so the assignee is looked up, read only.
-  let excluded: Set<string> | undefined;
-  if (state.criteria.some(c => c.excludedRoleTypeId === 'ASSIGNEE' && c.currentStatusId === 'DOD_DONE')) {
+  // Separation of duties (H-1, H-2): a not-the-assignee item that was completed or waived by anyone
+  // who was the assignee after the item was opened counts as open. Read from Jira (current assignee
+  // and changelog), never from an issue property. Stored records hold pseudonyms (ADR-010), so each
+  // assignee is looked up, read only.
+  const excludedIds = new Set<string>();
+  const checked = state.criteria.filter(needsAssigneeCheck);
+  if (checked.length > 0) {
     live = live?.fields && 'assignee' in live.fields ? live : await fetchIssueForValidator(issueId);
-    const assigneeAccountId = live?.fields?.assignee?.accountId;
-    excluded = assigneeAccountId ? await new PartyStore(resolveStorage(storageProvider)).idsOf([assigneeAccountId]) : undefined;
+    const current = live?.fields?.assignee?.accountId;
+    const changes = await assigneeChanges(issueId, 'app');
+    const parties = new PartyStore(resolveStorage(storageProvider));
+    for (const c of checked) {
+      const ids = await parties.idsOf(assigneesSince(changes, current, c.openedAt || c.breakdownFromDate));
+      if (c.lastStatusByPartyId && ids.has(c.lastStatusByPartyId)) excludedIds.add(c.workEffortId);
+    }
   }
 
-  const gate = evaluateGate(state, excluded);
+  const gate = evaluateGate(state, c => excludedIds.has(c.workEffortId));
   if (gate.satisfied) {
     return { result: true };
   }
@@ -360,6 +370,21 @@ export async function getChecklistHistory(payload: any, context?: any, storagePr
 }
 
 export const ASSIGNEE_DENIED = 'The assignee cannot complete this item. Ask a reviewer.';
+export const FORMER_ASSIGNEE_DENIED =
+  'The assignee cannot complete this item, and you were the assignee of this issue after the item was opened. Ask a reviewer.';
+export const ASSIGNEE_WAIVE_DENIED =
+  'The assignee cannot waive this item, and you are or were the assignee of this issue after the item was opened. Ask another approver.';
+
+/**
+ * True when the actor is the current assignee, or was the assignee at any moment after the item
+ * was last opened (H-2). Read as the user; fails closed when Jira cannot be read.
+ */
+async function actorWasAssignee(issueKey: string, actorAccountId: string, criterion: { openedAt?: string; breakdownFromDate?: string }): Promise<'current' | 'former' | false> {
+  const current = await currentAssignee(issueKey);
+  if (current === actorAccountId) return 'current';
+  const changes = await assigneeChanges(issueKey, 'user');
+  return assigneesSince(changes, current, criterion.openedAt || criterion.breakdownFromDate).has(actorAccountId) ? 'former' : false;
+}
 export const WAIVER_REASON_INVALID = 'Give a reason of 10 to 500 characters for the waiver.';
 
 /** The stored checklist, or the one a first change would create, built in memory. */
@@ -410,6 +435,11 @@ export async function waiveChecklistItem(payload: any, context?: any, storagePro
     const waiverPermission = permissionKeyOf(current.template.waiverRoleTypeId);
     await checkIssuePermissions(c.issueKey, [waiverPermission],
       `Only users with the ${permissionLabel(waiverPermission)} Jira permission can waive this item.`);
+  }
+  // H-1: an approver who is or was the assignee cannot waive a not-the-assignee item.
+  const target = current.criteria.find(x => x.templateItemId === itemId)!;
+  if (target.excludedRoleTypeId === 'ASSIGNEE' && (await actorWasAssignee(c.issueKey, c.actorAccountId, target))) {
+    throw new PermissionDeniedError(ASSIGNEE_WAIVE_DENIED);
   }
 
   const actor = await new PartyStore(storage).pseudonymFor(c.actorAccountId);
@@ -540,8 +570,9 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
       throw new PermissionDeniedError(`Only users with the ${permissionLabel(waiverPermission)} Jira permission can reopen a waived item.`);
     }
   }
-  if (isCompleted && target.excludedRoleTypeId === 'ASSIGNEE' && (await currentAssignee(c.issueKey)) === c.actorAccountId) {
-    throw new PermissionDeniedError(ASSIGNEE_DENIED);
+  if (isCompleted && target.excludedRoleTypeId === 'ASSIGNEE') {
+    const was = await actorWasAssignee(c.issueKey, c.actorAccountId, target);
+    if (was) throw new PermissionDeniedError(was === 'current' ? ASSIGNEE_DENIED : FORMER_ASSIGNEE_DENIED);
   }
 
   actor = await new PartyStore(storage).pseudonymFor(c.actorAccountId);

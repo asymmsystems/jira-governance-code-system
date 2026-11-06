@@ -156,6 +156,7 @@ const OWN_MESSAGES = [
   'Someone else changed this checklist',
   'Add a link or a note.',
   'The assignee cannot complete this item',
+  'The assignee cannot waive this item',
   'Your DefinitionGuard licence is not active',
   'Give a reason of 10 to 500 characters',
   'The evidence link ',

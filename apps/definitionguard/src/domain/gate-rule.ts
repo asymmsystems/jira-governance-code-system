@@ -28,16 +28,20 @@ function isExcludedActor(c: CriterionState, excluded?: ExcludedParties): boolean
 
 /**
  * A mandatory criterion counts as done when it is DOD_WAIVED, or DOD_DONE with evidence when the
- * criterion requires evidence. A criterion that excludes the ASSIGNEE role and was completed by
- * an excluded assignee counts as open. Zero mandatory criteria means satisfied.
+ * criterion requires evidence. A criterion that excludes the ASSIGNEE role and was completed or
+ * waived by an excluded assignee counts as open (H-1: a waiver is no way around the rule).
+ * Zero mandatory criteria means satisfied.
  */
 export function criterionCountsAsDone(c: CriterionState, excluded?: ExcludedParties): boolean {
-  if (c.currentStatusId === 'DOD_WAIVED') return true;
-  if (c.currentStatusId !== 'DOD_DONE') return false;
-  if (c.evidenceRequired && !c.evidenceContentId) return false;
+  if (c.currentStatusId === 'DOD_OPEN') return false;
   if (c.excludedRoleTypeId === 'ASSIGNEE' && isExcludedActor(c, excluded)) return false;
-  return true;
+  if (c.currentStatusId === 'DOD_WAIVED') return true;
+  return !(c.evidenceRequired && !c.evidenceContentId);
 }
+
+/** True for a criterion whose last actor the not-the-assignee rule must check at the gate. */
+export const needsAssigneeCheck = (c: CriterionState): boolean =>
+  c.excludedRoleTypeId === 'ASSIGNEE' && (c.currentStatusId === 'DOD_DONE' || c.currentStatusId === 'DOD_WAIVED');
 
 export function evaluateGate(state: { criteria: CriterionState[] }, excluded?: ExcludedParties): GateResult {
   const openMandatory = state.criteria.filter(c => c.isMandatory && !criterionCountsAsDone(c, excluded));

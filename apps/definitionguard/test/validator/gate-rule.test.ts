@@ -76,6 +76,18 @@ describe('B-10 evaluateGate (one rule)', () => {
     expect(evaluateGate(st).satisfied).toBe(true);
   });
 
+  it('(H-1) treats a notAssignee item waived by an excluded assignee as open, and any other waiver as done', () => {
+    const st = { criteria: [item({ currentStatusId: 'DOD_WAIVED', excludedRoleTypeId: 'ASSIGNEE', lastStatusByPartyId: 'dgp-dev' })] };
+    expect(evaluateGate(st, new Set(['712020:dev', 'dgp-dev'])).satisfied).toBe(false);
+    expect(evaluateGate(st, () => true).satisfied).toBe(false);
+    expect(evaluateGate(st, new Set(['dgp-other'])).satisfied).toBe(true);
+    expect(evaluateGate(st).satisfied).toBe(true);
+    const plain = { criteria: [item({ currentStatusId: 'DOD_WAIVED', lastStatusByPartyId: 'dgp-dev' })] };
+    expect(evaluateGate(plain, () => true).satisfied).toBe(true);
+    const unknown = { criteria: [item({ currentStatusId: 'DOD_DONE', excludedRoleTypeId: 'ASSIGNEE', lastStatusByPartyId: undefined })] };
+    expect(evaluateGate(unknown, () => true).satisfied).toBe(true);
+  });
+
   it('words the block message with every open item and a next step', () => {
     expect(blockMessage([item({ workEffortName: 'A' }), item({ workEffortName: 'B' })]))
       .toBe('Definition of Done is not complete. Open mandatory items: A; B. Open the DefinitionGuard panel on this issue to finish them.');
