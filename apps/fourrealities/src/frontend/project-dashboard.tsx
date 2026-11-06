@@ -41,6 +41,7 @@ import {
   filterOptions,
   isPresetActive,
   missingGateLabel,
+  personName,
   togglePreset,
   toggleRisk
 } from '../ui/filters';
@@ -78,15 +79,16 @@ import {
   TwoColumnGrid
 } from '../brand/layout';
 import { TextChange } from './modals';
+import { gateInUse, sourcesLine } from '../ui/sources-text';
 
 type Option<T extends string = string> = { label: string; value: T };
 const asOption = (value: string | null): Option | null => (value === null ? null : { label: value, value });
 
 const METRIC: Record<GateName, string> = {
   intent: 'Metric M11: share of rated issues traced to a decision record.',
-  process: 'Metric DoD rate: share of rated done issues with a complete Definition of Done.',
+  process: 'Metric DoD rate: share of rated done issues with a complete, verified Definition of Done.',
   code: 'Metric M29: share of rated done issues with a merged pull request.',
-  audit: 'Metric seal rate: share of rated done issues with a LedgerSeal record.'
+  audit: 'Metric seal rate: share of rated done issues with a verified LedgerSeal seal.'
 };
 
 const RISK_BUTTONS: Array<[RiskLevel, 'critical' | 'high' | 'medium' | 'low']> = [
@@ -109,24 +111,45 @@ export const RealityCard: React.FC<{
   gate: GateName;
   count: GateCount;
   isSelected?: boolean;
+  /** False when the site does not use this check (ADR-013): no rate, no "Show missing". */
+  inUse?: boolean;
   onShowMissing: () => void;
-}> = ({ gate, count, isSelected = false, onShowMissing }) => {
+}> = ({ gate, count, isSelected = false, inUse = true, onShowMissing }) => {
   const of = count.found + count.missing;
   const rate = of === 0 ? null : Math.round((count.found * 100) / of);
   const counted = of === 0 ? 'No issue is rated for this gate yet.' : `${count.found} of ${of} rated issues have evidence`;
+  const heading = (
+    <Inline spread="space-between" space={SPACE.item} alignBlock="center" shouldWrap>
+      <Tooltip content={METRIC[gate]}>
+        <Heading size="small" as="h4">{GATE_LABEL[gate]}</Heading>
+      </Tooltip>
+      {inUse
+        ? <Lozenge maxWidth="100%" appearance={rateAppearance(rate)} isBold>{rateText(rate)}</Lozenge>
+        : <Lozenge maxWidth="100%" appearance="default">Not used</Lozenge>}
+    </Inline>
+  );
+  if (!inUse) {
+    return (
+      <GateCard gate={gate}>
+        <Stack space={SPACE.item}>
+          {heading}
+          <Text as="span" size="small" color={TEXT_ROLE.secondary}>{GATE_QUESTION[gate]}</Text>
+        </Stack>
+        <Text as="span" size="small" weight="medium">Not used on this site, so not scored.</Text>
+      </GateCard>
+    );
+  }
   return (
     <GateCard gate={gate}>
       <Stack space={SPACE.item}>
-        <Inline spread="space-between" space={SPACE.item} alignBlock="center" shouldWrap>
-          <Tooltip content={METRIC[gate]}>
-            <Heading size="small" as="h4">{GATE_LABEL[gate]}</Heading>
-          </Tooltip>
-          <Lozenge maxWidth="100%" appearance={rateAppearance(rate)} isBold>{rateText(rate)}</Lozenge>
-        </Inline>
+        {heading}
         <Text as="span" size="small" color={TEXT_ROLE.secondary}>{GATE_QUESTION[gate]}</Text>
       </Stack>
       {of > 0 ? <ProgressBar value={count.found / of} ariaLabel={`${GATE_LABEL[gate]}: ${counted}`} /> : null}
       <Text as="span" size="small" weight="medium">{counted}</Text>
+      {count.reported > 0 ? (
+        <Text as="span" size="small" color={TEXT_ROLE.secondary}>{`${count.reported} more reported, not verified (not scored)`}</Text>
+      ) : null}
       {count.missing > 0 ? (
         <ActionRow>
           <Button
@@ -178,11 +201,12 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [wideColumns, setWideColumns] = useState<boolean>(false);
 
-  const options = useMemo(() => filterOptions(view.rows), [view.rows]);
+  const people = view.people || {};
+  const options = useMemo(() => filterOptions(view.rows, view.people), [view.rows, view.people]);
   const visible = useMemo(() => applyFilters(triageOrder(view.rows), filters), [view.rows, filters]);
   const set = (patch: Partial<DashboardFilters>) => setFilters(f => ({ ...f, ...patch }));
   const remove = (field: FilterField) => set(field === 'risks' ? { risks: [] } : { [field]: null });
-  const active = activeFilters(filters);
+  const active = activeFilters(filters, people);
   const position = visible.findIndex(r => r.issueId === selectedId);
   const selected = position >= 0 ? visible[position] : view.rows.find(r => r.issueId === selectedId) || null;
 
@@ -249,8 +273,8 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
         )
       },
       {
-        key: r.assigneeName || 'Unassigned',
-        content: <Text as="span" size="small" color={r.assigneeName ? TEXT_ROLE.primary : TEXT_ROLE.muted}>{r.assigneeName || 'Unassigned'}</Text>
+        key: personName(people, r.assigneeAccountId),
+        content: <Text as="span" size="small" color={r.assigneeAccountId ? TEXT_ROLE.primary : TEXT_ROLE.muted}>{personName(people, r.assigneeAccountId)}</Text>
       },
       {
         key: 'action',
@@ -270,8 +294,8 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
             id="fr-filter-assignee"
             isClearable
             placeholder="Any assignee"
-            options={options.assignees.map(a => ({ label: a, value: a }))}
-            value={asOption(filters.assignee)}
+            options={options.assignees}
+            value={options.assignees.find(a => a.value === filters.assignee) || null}
             onChange={(o: Option | null) => set({ assignee: o?.value ?? null })}
           />
         </FormField>
@@ -336,7 +360,9 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
       {view.coverage?.capped ? (
         <SectionMessage appearance="information" title="Partial read">
           <Text as="span">
-            {`Showing ${view.coverage.shown} of ${view.coverage.totalKnown === null ? 'an unknown number of' : `about ${view.coverage.totalKnown}`} issues. FourRealities reads at most ${view.coverage.shown} issues per project, newest first.`}
+            {view.coverage.timedOut
+              ? `Showing ${view.coverage.shown} of ${view.coverage.totalKnown === null ? 'an unknown number of' : `about ${view.coverage.totalKnown}`} issues: the newest issues FourRealities could read in the time one page view has. The daily snapshot reads up to 2,000 issues; Refresh tries again now.`
+              : `Showing ${view.coverage.shown} of ${view.coverage.totalKnown === null ? 'an unknown number of' : `about ${view.coverage.totalKnown}`} issues. FourRealities reads at most ${view.coverage.shown} issues per project, newest first.`}
           </Text>
         </SectionMessage>
       ) : null}
@@ -374,10 +400,20 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
             gate={g}
             count={summary.gates[g]}
             isSelected={filters.missingGate === g}
+            inUse={gateInUse(view.sources, g)}
             onShowMissing={() => set({ missingGate: filters.missingGate === g ? null : g })}
           />
         ))}
       </FourColumnGrid>
+
+      {view.sources || view.sourceNotes ? (
+        <NoteBox>
+          {view.sources ? <Text as="span" size="small" color={TEXT_ROLE.secondary}>{sourcesLine(view.sources)}</Text> : null}
+          {(view.sourceNotes || []).map(n => (
+            <Text as="span" key={n} size="small" color={TEXT_ROLE.secondary}>{n}</Text>
+          ))}
+        </NoteBox>
+      ) : null}
 
       <TwoColumnGrid>
         <Card>

@@ -98,7 +98,7 @@ function checkTree(renderer: any, where: string) {
 
 const rows = [
   row('DEMO-1', { intent: F, process: F, code: NA, audit: F }, { sprintNames: ['Sprint 1'] }),
-  row('DEMO-2', { intent: M_INTENT, process: M_DOD, code: M_CODE, audit: M_SEAL }, { assigneeName: undefined, reworkLoops: 1 }),
+  row('DEMO-2', { intent: M_INTENT, process: M_DOD, code: M_CODE, audit: M_SEAL }, { assigneeAccountId: undefined, reworkLoops: 1 }),
   row('DEMO-3', { intent: M_INTENT, process: F, code: { state: 'EXCEPTED', reason: 'CODE_EXCEPTED' }, audit: NA })
 ];
 
@@ -132,7 +132,7 @@ describe('B-20: accessibility on every view', () => {
     expect(textOf(collapsedPanel.toJSON())).not.toContain('Source: Jira issue links and remote links.');
 
     let r: any;
-    await act(async () => { r = TestRenderer.create(<IssuePanel row={row('DEMO-2', { intent: M_INTENT, process: M_DOD, code: M_CODE, audit: M_SEAL }, { reworkLoops: 1, codeException: state })} onReload={jest.fn()} onRow={jest.fn()} defaultCollapsed={false} />); });
+    await act(async () => { r = TestRenderer.create(<IssuePanel row={row('DEMO-2', { intent: M_INTENT, process: M_DOD, code: M_CODE, audit: M_SEAL }, { reworkLoops: 1, codeException: state })} approval={{ canDecide: true, isRequester: true }} onReload={jest.fn()} onRow={jest.fn()} defaultCollapsed={false} />); });
     checkTree(r, 'issue panel');
     for (const open of ['Link decision record', 'Add rework reason', 'Approve exception', 'Reject exception', 'Withdraw request']) {
       await act(async () => { findButton(r.root, open).props.onClick(); });

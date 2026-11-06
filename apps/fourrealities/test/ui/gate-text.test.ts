@@ -11,13 +11,15 @@ const ALL_REASONS: GateReason[] = [
   'NOT_STARTED', 'NOT_DONE', 'INTENT_CONFLUENCE_LINK', 'INTENT_DECISION_ISSUE', 'INTENT_LINKS_NOT_READ',
   'INTENT_NONE', 'DOD_COMPLETE_DG', 'DOD_OPEN_DG', 'DOD_SHAPE_UNKNOWN', 'DOD_COMPLETE_HC', 'DOD_OPEN_HC', 'DOD_NONE',
   'CODE_EXCEPTED', 'PR_MERGED', 'PR_OPEN', 'PR_OPEN_AT_DONE', 'PR_NONE', 'NO_DEV_TOOL', 'SEAL_VALID_LS',
-  'SEAL_BROKEN_LS', 'SEAL_OTHER_LS', 'SEAL_SHAPE_UNKNOWN', 'SEAL_NONE', 'CHANGED_SINCE_ATTESTATION'
+  'SEAL_BROKEN_LS', 'SEAL_OTHER_LS', 'SEAL_SHAPE_UNKNOWN', 'SEAL_NONE', 'CHANGED_SINCE_ATTESTATION',
+  'DOD_SIGNATURE_INVALID', 'SEAL_SIGNATURE_INVALID'
 ];
 
 describe('state labels, appearance and glyphs', () => {
   const cases: Array<[GateResult, string, string, string]> = [
     [{ state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK' }, 'Evidence found', 'success', '●'],
     [{ state: 'FOUND', verification: 'NOT_VERIFIED', reason: 'SEAL_VALID_LS' }, 'Evidence found (not verified)', 'inprogress', '●'],
+    [{ state: 'REPORTED', verification: 'NOT_VERIFIED', reason: 'SEAL_VALID_LS' }, 'Reported, not verified', 'inprogress', '◑'],
     [{ state: 'FOUND', verification: 'HEURISTIC', reason: 'PR_MERGED' }, 'Evidence found (heuristic)', 'inprogress', '●'],
     [{ state: 'MISSING', reason: 'SEAL_NONE' }, 'Evidence missing', 'removed', '✕'],
     [{ state: 'EXCEPTED', reason: 'CODE_EXCEPTED' }, 'Excepted', 'moved', '◆'],
@@ -102,9 +104,9 @@ describe('rates and RAI text', () => {
 
 describe('recoveryText', () => {
   const NA: GateResult = { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
-  it('names the first missing gate in the order Intent, Code, Process, Audit', () => {
+  it('names the first missing gate in chain order Intent, Process, Code, Audit, like the next step (F-L5)', () => {
     const gates = { intent: NA, process: { state: 'MISSING', reason: 'DOD_NONE' } as GateResult, code: { state: 'MISSING', reason: 'PR_NONE' } as GateResult, audit: NA };
-    expect(recoveryText({ gates, recoverablePoints: 33 })).toBe("Adding Code evidence raises this issue's RAI by 33 points.");
+    expect(recoveryText({ gates, recoverablePoints: 33 })).toBe("Adding Process evidence raises this issue's RAI by 33 points.");
     expect(recoveryText({ gates, recoverablePoints: 0 })).toBeUndefined();
     expect(recoveryText({ gates: { intent: NA, process: NA, code: NA, audit: NA }, recoverablePoints: 10 })).toBeUndefined();
   });
@@ -130,5 +132,34 @@ describe('B-17: afterActionText (feedback from the re-evaluated state, FR-20)', 
     expect(afterActionText('decision')).toBe('Decision recorded. The gates could not be read again. Use Refresh.');
     expect(afterActionText('rework')).toBe('Rework reason recorded. It does not change any gate.');
     expect(afterActionText('review' as any)).toBe('Review requested. It does not change any gate.');
+  });
+});
+
+describe('ADR-012: text for reported and signature-failed records', () => {
+  const reported: GateResult = { state: 'REPORTED', verification: 'NOT_VERIFIED', reason: 'DOD_COMPLETE_DG', args: { completed: 2, total: 3, why: 'unknown key' } };
+
+  it('says what the record reports and why it is not scored', () => {
+    expect(detailText(reported)).toBe('DefinitionGuard reports the Definition of Done is complete (2 of 3 items). FourRealities could not verify this record (unknown key), so it is not scored.');
+    expect(detailText({ ...reported, args: { completed: 2, total: 3 } })).toContain('could not verify this record, so it is not scored.');
+    expect(chipText('process', reported)).toBe('Process: reported, not verified');
+    expect(sourceLine(reported)).toBe('Source: DefinitionGuard property definitionguard-dod, not verified by FourRealities.');
+  });
+
+  it('explains a failed signature check', () => {
+    expect(detailText({ state: 'MISSING', reason: 'DOD_SIGNATURE_INVALID', args: { why: 'signature does not match' } }))
+      .toBe('The Definition of Done record failed its signature check (signature does not match). It was changed after DefinitionGuard wrote it, or copied from another issue.');
+    expect(detailText({ state: 'MISSING', reason: 'SEAL_SIGNATURE_INVALID', args: { why: 'signed for another issue' } })).toContain('The LedgerSeal record failed its signature check (signed for another issue).');
+    expect(sourceLine({ state: 'FOUND', verification: 'VERIFIED', reason: 'SEAL_VALID_LS' })).toBe('Source: LedgerSeal property ledgerseal-cert, verified by FourRealities.');
+  });
+});
+
+describe('ADR-013: text for a check that is not in use and a missing checklist', () => {
+  const notUsed: GateResult = { state: 'NOT_APPLICABLE', reason: 'SOURCE_NOT_IN_USE' };
+  it('says the check is not used on this site and where to turn it on', () => {
+    expect(stateLabel(notUsed)).toBe('Not used on this site');
+    expect(chipText('audit', notUsed)).toBe('Audit: not used');
+    expect(detailText(notUsed)).toBe('This check is not used on this site, so it is not scored. A Jira administrator can turn it on in Jira settings > Apps > FourRealities gate authority.');
+    expect(sourceLine(notUsed)).toBe('Source: FourRealities gate authority settings.');
+    expect(detailText({ state: 'MISSING', reason: 'CHECKLIST_NONE' })).toBe('No Checklists for Jira checklist on this issue.');
   });
 });

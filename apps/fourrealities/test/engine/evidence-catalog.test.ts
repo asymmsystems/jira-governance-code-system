@@ -15,7 +15,7 @@ const HASH = 'a'.repeat(64);
 const CERT = '123e4567-e89b-42d3-a456-426614174000';
 const DOD = { isFullySatisfied: true, completedCount: 3, totalCount: 3, checklistHash: HASH };
 const SEAL = { status: 'SEAL_VALID', certificateId: CERT, snapshotHash: HASH, sealedAt: '2026-10-01T10:00:00Z' };
-const PAGE = { url: 'https://demo.atlassian.net/wiki/spaces/A/pages/1', title: 'ADR 7', applicationType: 'com.atlassian.confluence' };
+const PAGE = { url: 'https://demo.atlassian.net/wiki/spaces/A/pages/1', title: 'ADR 7', applicationType: 'com.atlassian.confluence', pageId: '1', pageExists: true };
 
 const allResults = (g: IssueGates): GateResult[] => Object.values(g);
 
@@ -37,7 +37,7 @@ describe('DEFAULT_CATALOG', () => {
 
 describe('observation method and evidence reference', () => {
   it('records the source and what was seen for each kind of found evidence', () => {
-    const g = evaluateGates(makeFacts({ remoteLinks: [PAGE], properties: { dod: DOD, ledgerseal: SEAL }, devField: { present: true, summary: { count: 2, openCount: 0, mergedCount: 2, state: 'MERGED', declinedCount: 0 } } }));
+    const g = evaluateGates(makeFacts({ remoteLinks: [PAGE], attestations: { dod: 'VERIFIED', ledgerseal: 'VERIFIED' }, properties: { dod: DOD, ledgerseal: SEAL }, devField: { present: true, summary: { count: 2, openCount: 0, mergedCount: 2, state: 'MERGED', declinedCount: 0 } } }));
     expect(g.intent).toMatchObject({ method: 'CONFLUENCE_PAGE_LINK', evidenceRef: PAGE.url });
     expect(g.process).toMatchObject({ method: 'DEFINITIONGUARD_PROPERTY', evidenceRef: HASH });
     expect(g.audit).toMatchObject({ method: 'LEDGERSEAL_PROPERTY', evidenceRef: CERT });
@@ -54,7 +54,7 @@ describe('observation method and evidence reference', () => {
   });
 
   it('records the source when a record was read but does not count', () => {
-    const g = evaluateGates(makeFacts({ properties: { dod: { ...DOD, isFullySatisfied: false, completedCount: 1 }, ledgerseal: { valid: true } } }));
+    const g = evaluateGates(makeFacts({ attestations: { dod: 'VERIFIED' }, properties: { dod: { ...DOD, isFullySatisfied: false, completedCount: 1 }, ledgerseal: { valid: true } } }));
     expect(g.process).toMatchObject({ state: 'MISSING', method: 'DEFINITIONGUARD_PROPERTY' });
     expect(g.audit).toMatchObject({ state: 'MISSING', reason: 'SEAL_SHAPE_UNKNOWN', method: 'LEDGERSEAL_PROPERTY' });
     expect(g.audit.evidenceRef).toBeUndefined();
@@ -66,7 +66,7 @@ describe('observation method and evidence reference', () => {
   });
 
   it('takes the verification class from the catalog source', () => {
-    const g = evaluateGates(makeFacts({ remoteLinks: [PAGE], properties: { dod: DOD, ledgerseal: SEAL }, devField: { present: true, summary: { count: 1, openCount: 0, mergedCount: 1, state: 'MERGED', declinedCount: 0 } } }));
+    const g = evaluateGates(makeFacts({ remoteLinks: [PAGE], attestations: { dod: 'VERIFIED', ledgerseal: 'VERIFIED' }, properties: { dod: DOD, ledgerseal: SEAL }, devField: { present: true, summary: { count: 1, openCount: 0, mergedCount: 1, state: 'MERGED', declinedCount: 0 } } }));
     for (const r of allResults(g).filter(x => x.state === 'FOUND')) {
       expect(r.verification).toBe(DEFAULT_CATALOG.sources[r.method as string].verification);
     }

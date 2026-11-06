@@ -20,8 +20,18 @@ import {
   refreshProjectSnapshot,
   runScheduledSnapshot,
   searchConfluencePages,
+  setTrustedKeys,
+  adminHandler,
+  getAdminSettings,
+  saveAdminSources,
+  searchAdminGroups,
+  saveAdminApprovers,
+  reportPersonalData,
+  personalData,
   LICENCE_INACTIVE_MESSAGE
 } from '../src/index';
+import * as nodeCrypto from 'crypto';
+import { canonicalJson } from '../src/accessor/attestation-verifier';
 import { StorageProvider } from '../src/contract/accessors';
 import { judged } from './domain/fixtures';
 import { DefaultForgeKvsStore } from '../src/accessor/default-forge-kvs-store';
@@ -47,6 +57,7 @@ const mockDefaultUser = (...args: any[]) => (String(args[0]).includes('fields=id
   : mockRequestJira(...args));
 const mockAppRequestJira = jest.fn(mockDefaultApp);
 const mockUserRequestJira = jest.fn(mockDefaultUser);
+const mockAppRequestConfluence = jest.fn().mockResolvedValue({ status: 403, json: async () => ({}) });
 const mockUserRequestConfluence = jest.fn().mockResolvedValue({
   status: 200,
   json: async () => ({ results: [{ title: 'ADR-001', _links: { webui: '/wiki/adr-1' } }] })
@@ -58,7 +69,8 @@ jest.mock('@forge/api', () => ({
   getAppContext: () => mockAppContext.get(),
   default: {
     asApp: () => ({
-      requestJira: mockAppRequestJira
+      requestJira: mockAppRequestJira,
+      requestConfluence: mockAppRequestConfluence
     }),
     asUser: () => ({
       requestJira: mockUserRequestJira,
@@ -66,7 +78,8 @@ jest.mock('@forge/api', () => ({
     })
   },
   route: (strings: any, ...values: any[]) =>
-    strings.reduce((acc: string, part: string, i: number) => acc + part + (i < values.length ? String(values[i]) : ''), '')
+    strings.reduce((acc: string, part: string, i: number) => acc + part + (i < values.length ? String(values[i]) : ''), ''),
+  assumeTrustedRoute: (path: string) => path
 }));
 
 jest.mock('@forge/kvs', () => ({
@@ -80,7 +93,7 @@ jest.mock('@forge/kvs', () => ({
 
 /** Starts with a cached site configuration, so tests do not need a field-list call. */
 class MockStorage implements StorageProvider {
-  private store: Map<string, any> = new Map([['fr:cfg:site', { devFieldId: 'customfield_10000', siteHost: 'asymmsystems.atlassian.net', statusCategories: {}, readAt: new Date().toISOString() }]]);
+  private store: Map<string, any> = new Map([['fr:cfg:site', { devFieldId: 'customfield_10000', siteHost: 'asymmsystems.atlassian.net', statusCategories: {}, pullRequestsSeen: true, readAt: new Date().toISOString() }]]);
 
   async get<T>(key: string): Promise<T | undefined> {
     return this.store.get(key);
@@ -192,6 +205,143 @@ describe('FourRealities Index / Forge Handlers', () => {
         .mockResolvedValue({ status: 404 });
       const res: any = await getIssueAlignment({}, ctx('rl-1', 'RL-1'), mockStorage);
       expect(res.row.gates.intent.state).toBe('MISSING');
+    });
+  });
+
+  describe('ADR-012: sibling signatures are checked with the keys of the Forge environment', () => {
+    const { publicKey, privateKey } = nodeCrypto.generateKeyPairSync('ed25519');
+    const pem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
+    const cert = (issueId: string) => {
+      const body = { schemaVersion: 2, issueId, status: 'SEAL_VALID', certificateId: '3f0c2a52-7d1b-4c47-9a51-0d6e3b8a9f10', snapshotHash: 'c'.repeat(64), sealedAt: '2026-11-06T09:00:00.000Z', issuedAt: '2026-11-06T09:00:00.000Z', keyId: 'ls-test' };
+      return { ...body, sig: nodeCrypto.sign(null, Buffer.from(canonicalJson(body)), privateKey).toString('base64') };
+    };
+    const read = async () => {
+      mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => doneIssue('sig-1', 'SIG-1', { properties: { 'ledgerseal-cert': cert('sig-1') } }) });
+      const res: any = await getIssueAlignment({}, { extension: { issue: { id: 'sig-1', key: 'SIG-1' } } }, mockStorage);
+      return res.row.gates.audit;
+    };
+
+    afterEach(() => {
+      setTrustedKeys(null);
+      mockAppContext.get = () => ({});
+    });
+
+    it('scores a record signed with a trusted key', async () => {
+      setTrustedKeys([{ producer: 'ledgerseal', keyId: 'ls-test', environments: ['PRODUCTION'], pem }]);
+      expect(await read()).toMatchObject({ state: 'FOUND', verification: 'VERIFIED' });
+    });
+
+    it('reports, and does not score, a record signed with a key the environment does not trust', async () => {
+      await mockStorage.set('fr:cfg:sources', { schemaVersion: 1, intent: 'on', process: 'auto', code: 'auto', audit: 'ledgerseal', decisionIssueTypes: ['adr'] });
+      mockAppContext.get = () => ({ environmentType: 'DEVELOPMENT' });
+      expect(await read()).toMatchObject({ state: 'REPORTED', args: { why: 'unknown key' } });
+      mockAppContext.get = () => { throw new Error('outside the Forge runtime'); };
+      expect((await read()).state).toBe('REPORTED');
+    });
+  });
+
+  describe('ADR-013: admin page resolvers', () => {
+    const admin = (granted: boolean) => mockRequestJira.mockImplementation(async (path: string) => {
+      if (path.startsWith('/rest/api/3/mypermissions?permissions=ADMINISTER')) return { status: 200, json: async () => ({ permissions: { ADMINISTER: { havePermission: granted } } }) };
+      if (path.startsWith('/rest/api/3/groups/picker')) return { status: 200, json: async () => ({ groups: [{ groupId: 'g1', name: 'release-managers' }] }) };
+      if (path.startsWith('/rest/api/3/group/bulk')) return { status: 200, json: async () => ({ values: [{ groupId: 'g1', name: 'release-managers' }] }) };
+      return { status: 404, json: async () => ({}) };
+    });
+
+    it('serves a Jira administrator, as the user, and refuses anyone else', async () => {
+      admin(true);
+      const view: any = await getAdminSettings({}, {}, mockStorage);
+      expect(view.ok).toBe(true);
+      expect(view.sources.intent).toBe(true);
+      const saved: any = await saveAdminSources({ intent: 'on', process: 'off', code: 'on', audit: 'ledgerseal', decisionIssueTypes: ['adr'] }, {}, mockStorage);
+      expect(saved.settings.audit).toBe('ledgerseal');
+      expect((await searchAdminGroups({ query: 'rel' }, {}, mockStorage) as any).groups).toEqual([{ groupId: 'g1', name: 'release-managers' }]);
+      expect((await saveAdminApprovers({ groupIds: ['g1'] }, {}, mockStorage) as any).policy.parties).toEqual([{ partyId: 'g1', name: 'release-managers' }]);
+      expect(mockAppRequestJira).not.toHaveBeenCalled();
+      admin(false);
+      expect((await getAdminSettings({}, {}, mockStorage) as any).code).toBe('NOT_ADMIN');
+    });
+
+    it('blocks every admin call while the licence is inactive', async () => {
+      const ctx = { license: { isActive: false } };
+      for (const call of [getAdminSettings, saveAdminSources, searchAdminGroups, saveAdminApprovers]) {
+        expect(await call({}, ctx, mockStorage)).toEqual({ ok: false, code: 'LICENSE_INACTIVE', message: LICENCE_INACTIVE_MESSAGE });
+      }
+      expect(mockRequestJira).not.toHaveBeenCalled();
+    });
+
+    it('dispatches the four admin functions', async () => {
+      admin(false);
+      for (const functionKey of ['fr-admin-get', 'fr-admin-save-sources', 'fr-admin-search-groups', 'fr-admin-save-approvers']) {
+        const res: any = await adminHandler({ call: { functionKey, payload: {} }, context: {} } as any);
+        expect(res.code).toBe('NOT_ADMIN');
+      }
+    });
+
+    it('turns Audit off on the dashboard once the admin says so, and rebuilds the snapshot', async () => {
+      admin(true);
+      mockRequestJira.mockImplementation(async (path: string) => {
+        if (path.startsWith('/rest/api/3/mypermissions?permissions=ADMINISTER')) return { status: 200, json: async () => ({ permissions: { ADMINISTER: { havePermission: true } } }) };
+        if (path.startsWith('/rest/api/3/search/jql')) return { status: 200, json: async () => ({ issues: [doneIssue('2101', 'DEMO-21')], isLast: true }) };
+        return { status: 200, json: async () => [] };
+      });
+      await saveAdminSources({ intent: 'on', process: 'off', code: 'off', audit: 'ledgerseal', decisionIssueTypes: ['adr'] }, {}, mockStorage);
+      const first: any = await getProjectDashboard({}, { extension: { project: { key: 'DEMO' } } }, mockStorage);
+      expect(first.rows[0].gates.audit.reason).toBe('SEAL_NONE');
+      await new Promise(resolve => setTimeout(resolve, 5));
+      await saveAdminSources({ intent: 'on', process: 'off', code: 'off', audit: 'off', decisionIssueTypes: ['adr'] }, {}, mockStorage);
+      const second: any = await getProjectDashboard({}, { extension: { project: { key: 'DEMO' } } }, mockStorage);
+      expect(second.rows[0].gates.audit.reason).toBe('SOURCE_NOT_IN_USE');
+      expect(second.sources.audit).toBe(false);
+      expect(second.generatedAt > first.generatedAt).toBe(true);
+    });
+  });
+
+  describe('ADR-014: the weekly personal data run and names on the dashboard', () => {
+    it('reports the stored ids and erases a closed account, whatever the licence', async () => {
+      await mockStorage.set('fr:note:7:t:a', { schemaVersion: 1, issueId: '7', issueKey: 'DEMO-7', reason: 'Requirement changed', recordedBy: 'gone-1', recordedAt: '2026-11-01T00:00:00.000Z' });
+      mockRequestJira.mockResolvedValue({ status: 200 });
+      const privacy = { serviceType: 'accessor' as const, report: jest.fn().mockResolvedValue([{ accountId: 'gone-1', status: 'closed' }]) };
+      expect(await reportPersonalData(mockStorage, privacy)).toEqual({ reported: 1, closed: 1, propertiesRewritten: 1 });
+      expect((await mockStorage.get<any>('fr:note:7:t:a')).recordedBy).toBe('erased-account');
+      expect(mockAppRequestJira.mock.calls.map(c => String(c[0]))).toEqual(['/rest/api/3/issue/7/properties/fourrealities-exception']);
+    });
+
+    it('logs the result of the trigger, and logs a failure without throwing', async () => {
+      setGlobalStorageProvider(new MockStorage());
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+      const err = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      try {
+        await personalData();
+        expect(log).toHaveBeenLastCalledWith('FourRealities: personal data report', JSON.stringify({ reported: 0, closed: 0, propertiesRewritten: 0 }));
+        const broken: any = { get: async () => { throw new Error('kvs down'); }, set: async () => undefined, delete: async () => undefined, queryPrefix: async () => { throw new Error('kvs down'); } };
+        setGlobalStorageProvider(broken);
+        await personalData();
+        expect(err).toHaveBeenLastCalledWith('FourRealities: personal data report failed', 'kvs down');
+        broken.queryPrefix = async () => { throw 'plain'; };
+        broken.get = async () => { throw 'plain'; };
+        await personalData();
+        expect(err).toHaveBeenLastCalledWith('FourRealities: personal data report failed', 'plain');
+      } finally {
+        log.mockRestore();
+        err.mockRestore();
+        setGlobalStorageProvider(null);
+      }
+    });
+
+    it('reads the assignee names as the viewer for the view and stores none', async () => {
+      mockRequestJira.mockImplementation(async (path: string) => {
+        if (path.startsWith('/rest/api/3/search/jql')) return { status: 200, json: async () => ({ issues: [{ ...doneIssue('2201', 'DEMO-22'), fields: { ...doneIssue('2201', 'DEMO-22').fields, assignee: { accountId: 'acc-ana', displayName: 'Ana Silva' } } }], isLast: true }) };
+        if (path.startsWith('/rest/api/3/user/bulk')) return { status: 200, json: async () => ({ values: [{ accountId: 'acc-ana', displayName: 'Ana Silva' }] }) };
+        return { status: 200, json: async () => [] };
+      });
+      const res: any = await getProjectDashboard({}, { extension: { project: { key: 'DEMO' } } }, mockStorage);
+      expect(res.people).toEqual({ 'acc-ana': 'Ana Silva' });
+      expect(res.rows[0].assigneeAccountId).toBe('acc-ana');
+      const stored = JSON.stringify(await mockStorage.get('fr:p:DEMO:chunk:0'));
+      expect(stored).not.toContain('Ana Silva');
+      expect(await mockStorage.get('fr:p:DEMO:accounts')).toEqual(expect.objectContaining({ accountIds: ['acc-ana'] }));
+      expect(mockUserRequestJira.mock.calls.some(c => String(c[0]).startsWith('/rest/api/3/user/bulk'))).toBe(true);
     });
   });
 
@@ -769,21 +919,24 @@ describe('B-10: one Code-gate path from the Development field', () => {
     mockRequestJira
       .mockResolvedValueOnce({ status: 200, json: async () => [{ id: 'customfield_10042', name: 'Development' }] })
       .mockResolvedValueOnce({ status: 200, json: async () => [{ id: '3', statusCategory: { key: 'indeterminate' } }] })
+      .mockResolvedValueOnce({ status: 200, json: async () => ({ issues: [{ id: '1' }] }) })
       .mockResolvedValueOnce({ status: 200, json: async () => ({ baseUrl: 'https://asymmsystems.atlassian.net' }) })
       .mockResolvedValueOnce({ status: 200, json: async () => ({ ...issue, fields: { ...issue.fields, customfield_10042: merged } }) })
       .mockResolvedValueOnce({ status: 200, json: async () => [] });
     const res: any = await getIssueAlignment({}, { extension: { issue: { id: '40001', key: 'DEMO-40' } } }, storage);
     expect(mockUserRequestJira.mock.calls[0][0]).toBe('/rest/api/3/field');
     expect(mockUserRequestJira.mock.calls[1][0]).toBe('/rest/api/3/status');
-    expect(mockUserRequestJira.mock.calls[2][0]).toBe('/rest/api/3/serverInfo');
-    expect(String(mockUserRequestJira.mock.calls[3][0])).toContain('customfield_10042');
+    expect(mockUserRequestJira.mock.calls[2][0]).toBe('/rest/api/3/search/jql?jql=development[pullrequests].all > 0&maxResults=1&fields=created');
+    expect(mockUserRequestJira.mock.calls[3][0]).toBe('/rest/api/3/serverInfo');
+    expect(String(mockUserRequestJira.mock.calls[4][0])).toContain('customfield_10042');
     expect((await storage.get<any>('fr:cfg:site')).statusCategories).toEqual({ '3': 'indeterminate' });
+    expect((await storage.get<any>('fr:cfg:site')).pullRequestsSeen).toBe(true);
     expect(res.row.gates.code.reason).toBe('PR_MERGED');
   });
 
   it('shows Not applicable when the site has no Development field', async () => {
     const storage = new MockStorage();
-    await storage.set('fr:cfg:site', { devFieldId: null, statusCategories: {}, readAt: new Date().toISOString() });
+    await storage.set('fr:cfg:site', { devFieldId: null, statusCategories: {}, pullRequestsSeen: true, readAt: new Date().toISOString() });
     mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => issue }).mockResolvedValueOnce({ status: 200, json: async () => [] });
     const res: any = await getIssueAlignment({}, { extension: { issue: { id: '40001', key: 'DEMO-40' } } }, storage);
     expect(res.row.gates.code).toEqual({ state: 'NOT_APPLICABLE', reason: 'NO_DEV_TOOL' });
@@ -810,7 +963,7 @@ describe('B-10: one Code-gate path from the Development field', () => {
 
   it('checks the discovered Development field before recording a Code exception', async () => {
     const storage = new MockStorage();
-    await storage.set('fr:cfg:site', { devFieldId: 'customfield_10042', statusCategories: {}, readAt: new Date().toISOString() });
+    await storage.set('fr:cfg:site', { devFieldId: 'customfield_10042', statusCategories: {}, pullRequestsSeen: true, readAt: new Date().toISOString() });
     mockRequestJira.mockResolvedValueOnce({ status: 200, json: async () => ({ key: 'DEMO-40', fields: { customfield_10042: merged } }) });
     const res = await recordException({ issueId: '40001', type: 'CODE', reason: 'Configuration change only' }, { extension: { issue: { id: '40001' } } }, storage);
     expect(mockUserRequestJira.mock.calls[0][0]).toBe('/rest/api/3/issue/40001?fields=customfield_10042');
@@ -819,7 +972,7 @@ describe('B-10: one Code-gate path from the Development field', () => {
 
   it('records a Code exception without a field read when the site has no Development field', async () => {
     const storage = new MockStorage();
-    await storage.set('fr:cfg:site', { devFieldId: null, statusCategories: {}, readAt: new Date().toISOString() });
+    await storage.set('fr:cfg:site', { devFieldId: null, statusCategories: {}, pullRequestsSeen: true, readAt: new Date().toISOString() });
     mockRequestJira.mockResolvedValueOnce({ status: 200 });
     const res = await recordException({ issueId: '40001', type: 'CODE', reason: 'Configuration change only' }, { extension: { issue: { id: '40001' } } }, storage);
     expect(res.success).toBe(true);
@@ -860,11 +1013,33 @@ describe('B-15: Intent from link structure on both views', () => {
     const remoteCalls = mockAppRequestJira.mock.calls.map(c => String(c[0])).filter(p => p.endsWith('/remotelink'));
     expect(remoteCalls).toEqual(['/rest/api/3/issue/50001/remotelink']);
     const byKey = Object.fromEntries(dash.rows.map((r: any) => [r.issueKey, r.gates.intent]));
-    expect(judged(byKey['DEMO-50'])).toEqual({ state: 'FOUND', verification: 'VERIFIED', reason: 'INTENT_CONFLUENCE_LINK', args: { title: 'ADR-7 Settlement' } });
+    // F-H4: the link carries no page id, so the page is not checked: "link only".
+    expect(judged(byKey['DEMO-50'])).toEqual({ state: 'FOUND', verification: 'LINK_ONLY', reason: 'INTENT_CONFLUENCE_LINK', args: { title: 'ADR-7 Settlement' } });
     expect(byKey['DEMO-51']).toEqual({ state: 'NOT_APPLICABLE', reason: 'NOT_STARTED' });
 
     const panel: any = await getIssueAlignment({}, { extension: { issue: { id: '50001', key: 'DEMO-50' } } }, new MockStorage());
     expect(panel.row.gates.intent).toEqual(byKey['DEMO-50']);
+  });
+
+  it('F-H4: marks a Confluence link verified on both views only when Confluence returns the page', async () => {
+    const linked = [{ globalId: 'appId=abc&pageId=777', application: { type: 'com.atlassian.confluence' }, object: { url: 'https://asymmsystems.atlassian.net/wiki/x/AbC', title: 'ADR-9' } }];
+    mockRequestJira.mockImplementation(async (path: string) => {
+      if (path.startsWith('/rest/api/3/search/jql')) return { status: 200, json: async () => ({ issues: [started] }) };
+      if (path === '/rest/api/3/issue/50001/remotelink') return { status: 200, json: async () => linked };
+      if (path.startsWith('/rest/api/3/issue/50001?')) return { status: 200, json: async () => started };
+      return { status: 404, json: async () => ({}) };
+    });
+    const found = { status: 200, json: async () => ({ results: [{ id: '777', title: 'ADR-9' }] }) };
+    mockAppRequestConfluence.mockResolvedValueOnce(found);
+    mockUserRequestConfluence.mockResolvedValueOnce(found);
+    const dash: any = await getProjectDashboard({}, { extension: { project: { key: 'DEMO' } } }, new MockStorage());
+    expect(dash.rows[0].gates.intent).toMatchObject({ state: 'FOUND', verification: 'VERIFIED' });
+    expect(decodeURIComponent(String(mockAppRequestConfluence.mock.calls[mockAppRequestConfluence.mock.calls.length - 1][0]))).toContain('cql=id in (777)');
+    const panel: any = await getIssueAlignment({}, { extension: { issue: { id: '50001', key: 'DEMO-50' } } }, new MockStorage());
+    expect(panel.row.gates.intent).toMatchObject({ state: 'FOUND', verification: 'VERIFIED' });
+    mockUserRequestConfluence.mockResolvedValueOnce({ status: 200, json: async () => ({ results: [] }) });
+    const gone: any = await getIssueAlignment({}, { extension: { issue: { id: '50001', key: 'DEMO-50' } } }, new MockStorage());
+    expect(gone.row.gates.intent).toMatchObject({ state: 'FOUND', verification: 'LINK_ONLY' });
   });
 
   it('shows Needs re-check on the dashboard when a remote link read fails', async () => {
@@ -928,7 +1103,7 @@ describe('B-08: bounded storage and a scheduled snapshot', () => {
   const issues = Array.from({ length: 250 }, (_, i) => ({ id: String(80000 + i), key: `DEMO-${i}`, fields: { summary: 'x', status: { name: 'To Do', statusCategory: { key: 'new' } } }, properties: {} }));
   const seeded = () => {
     const st = new MemoryStorage();
-    st.store.set('fr:cfg:site', { devFieldId: null, siteHost: 'asymmsystems.atlassian.net', statusCategories: {}, readAt: new Date().toISOString() });
+    st.store.set('fr:cfg:site', { devFieldId: null, siteHost: 'asymmsystems.atlassian.net', statusCategories: {}, pullRequestsSeen: true, readAt: new Date().toISOString() });
     return st;
   };
   beforeEach(() => {
@@ -943,14 +1118,16 @@ describe('B-08: bounded storage and a scheduled snapshot', () => {
     const storage = seeded();
     const first: any = await getProjectDashboard({}, ctx, storage);
     expect(first.ok).toBe(true);
-    expect(first.meta.generatedBy).toBe('acc-1');
+    // ADR-014: no account id in the snapshot.
+    expect(first.meta.generatedBy).toBe('user');
     expect(await storage.get('fr:projects')).toEqual(['DEMO']);
     const jiraCalls = mockAppRequestJira.mock.calls.length;
     storage.ops = [];
     const second: any = await getProjectDashboard({}, ctx, storage);
     expect(second.rows).toHaveLength(250);
     expect(mockAppRequestJira.mock.calls.length).toBe(jiraCalls);
-    expect(storage.count('get')).toBeLessThanOrEqual(3 + Math.ceil(250 / 100));
+    // Meta, chunks, trend, projects, plus the settings, the detection and the site configuration (ADR-013).
+    expect(storage.count('get')).toBeLessThanOrEqual(6 + Math.ceil(250 / 100));
     expect(storage.count('set')).toBe(0);
     expect(second.generatedAt).toBe(first.generatedAt);
     expect(second.coverage).toEqual({ shown: 250, totalKnown: 250, capped: false });
@@ -1074,7 +1251,7 @@ describe('B-13: dashboard rows respect the viewer', () => {
   const all = ['1', '2', '3'].map(id => ({ id: `9000${id}`, key: `DEMO-${id}`, fields: { summary: 'x', status: { name: 'Done', statusCategory: { key: 'done' } } }, properties: {} }));
   const seeded = () => {
     const st = new MemoryStorage();
-    st.store.set('fr:cfg:site', { devFieldId: null, siteHost: 'asymmsystems.atlassian.net', statusCategories: {}, readAt: new Date().toISOString() });
+    st.store.set('fr:cfg:site', { devFieldId: null, siteHost: 'asymmsystems.atlassian.net', statusCategories: {}, pullRequestsSeen: true, readAt: new Date().toISOString() });
     return st;
   };
   beforeEach(() => {
@@ -1161,7 +1338,8 @@ describe('B-30: exception request and administrator approval, end to end', () =>
     const after: any = await getIssueAlignment({}, { extension: { issue: { id: '31001', key: 'DEMO-31' } } }, storage);
     expect(after.row.gates.code.state).toBe('EXCEPTED');
     expect(after.row.codeException).toEqual(expect.objectContaining({ status: 'APPROVED', requestedBy: 'dev-1', decidedBy: 'admin-1' }));
-    expect(mockAppRequestJira).not.toHaveBeenCalled();
+    // F-M1: after the approver check, only the decision's projection property is written as the app.
+    expect(mockAppRequestJira.mock.calls.map(c => String(c[0]))).toEqual(['/rest/api/3/issue/31001/properties/fourrealities-exception']);
   });
 
   it('1B: lets a Jira administrator without project administration approve', async () => {

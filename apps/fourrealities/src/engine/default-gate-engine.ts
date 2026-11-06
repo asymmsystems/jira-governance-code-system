@@ -4,7 +4,7 @@
  * FourRealities: gate evaluation. Pure functions from issue facts to gate results (spec v2, Gates).
  */
 
-import { DefinitionGuardRecord, GateResult, HeroCodersChecklistRecord, IssueFacts, IssueGates, LedgerSealRecord } from '../contract/data/models';
+import { AttestationCheck, DefinitionGuardRecord, GateResult, HeroCodersChecklistRecord, IssueFacts, IssueGates, LedgerSealRecord, SourcesInUse } from '../contract/data/models';
 import { DEFAULT_CATALOG, EVIDENCE_REF_MAX, EvidenceCatalog } from '../contract/data/catalog';
 import { GateEngine } from '../contract/engines';
 
@@ -22,7 +22,7 @@ function observed(c: EvidenceCatalog, method: string, result: GateResult, ref?: 
   const verification = c.sources[method]?.verification;
   return {
     ...result,
-    ...(result.state === 'FOUND' && verification ? { verification } : {}),
+    ...(result.state === 'FOUND' && verification && !result.verification ? { verification } : {}),
     method,
     ...(ref === undefined || ref === null || ref === '' ? {} : { evidenceRef: String(ref).slice(0, EVIDENCE_REF_MAX) })
   };
@@ -38,17 +38,29 @@ function isSameSiteContentPage(url: string | undefined, siteHost: string | undef
   }
 }
 
+/** A check the site does not use: not scored, shown as "Not used on this site" (ADR-013). */
+const NOT_IN_USE: GateResult = { state: 'NOT_APPLICABLE', reason: 'SOURCE_NOT_IN_USE' };
+
 /**
  * Intent: a Confluence page on this site, or an issue of a decision or specification type,
  * is linked. FourRealities reads the link itself (VERIFIED) and does not read the page.
- * Title keywords never count (FR-13).
+ * Title keywords never count (FR-13). The decision issue types come from the settings (F-M6).
+ * Without `sources` every check is in use (the rules before ADR-013).
  */
-export function evaluateIntent(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG): GateResult {
-  const rule = c.intent;
-  const page = (f.remoteLinks || []).find(rl =>
+export function evaluateIntent(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG, sources?: SourcesInUse): GateResult {
+  if (sources && !sources.intent) return NOT_IN_USE;
+  const rule = sources ? { ...c.intent, issueTypes: sources.decisionIssueTypes.map(t => t.trim().toLowerCase()) } : c.intent;
+  const pages = (f.remoteLinks || []).filter(rl =>
     rule.contentApplicationTypes.includes(String(rl.applicationType || '')) || isSameSiteContentPage(rl.url, f.siteHost, rule.sameSiteContentPath));
+  const page = pages[0];
   if (page) {
-    return observed(c, 'CONFLUENCE_PAGE_LINK', { state: 'FOUND', reason: 'INTENT_CONFLUENCE_LINK', args: { title: String(page.title || page.url || '') } }, page.url || page.title);
+    // VERIFIED only when Confluence returned the page by its id; else the link alone (F-H4).
+    const checked = pages.find(p => p.pageExists === true);
+    const shown = checked || page;
+    return observed(c, 'CONFLUENCE_PAGE_LINK', {
+      state: 'FOUND', reason: 'INTENT_CONFLUENCE_LINK', args: { title: String(shown.title || shown.url || '') },
+      ...(checked ? {} : { verification: 'LINK_ONLY' as const })
+    }, shown.url || shown.title);
   }
   const decision = f.issueLinks.find(l => rule.issueTypes.includes(String(l.typeName || '').trim().toLowerCase()));
   if (decision) {
@@ -73,12 +85,26 @@ function isCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
-/** The shape DefinitionGuard writes: {isFullySatisfied, completedCount, totalCount, checklistHash}. */
-export function isDefinitionGuardShape(value: unknown): value is DefinitionGuardRecord {
-  const dod = (value || {}) as Partial<Record<keyof DefinitionGuardRecord, unknown>>;
-  return Boolean(value) && typeof dod.isFullySatisfied === 'boolean'
-    && isCount(dod.completedCount) && isCount(dod.totalCount) && (dod.completedCount as number) <= (dod.totalCount as number)
-    && typeof dod.checklistHash === 'string' && HEX64.test(dod.checklistHash);
+/**
+ * Reads a DefinitionGuard record: schema v2 (mandatoryCompleted, mandatoryTotal, headHash) or the
+ * older shape (completedCount, totalCount, checklistHash). Other fields, and missing account id
+ * fields, are allowed. Undefined when the value is neither shape (ADR-012).
+ */
+export function parseDefinitionGuardRecord(value: unknown): DefinitionGuardRecord | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const v = value as Record<string, unknown>;
+  if (typeof v.isFullySatisfied !== 'boolean') return undefined;
+  const v2 = v.mandatoryTotal !== undefined || v.mandatoryCompleted !== undefined || v.headHash !== undefined;
+  const completed = v2 ? v.mandatoryCompleted : v.completedCount;
+  const total = v2 ? v.mandatoryTotal : v.totalCount;
+  const reference = v2 ? v.headHash : v.checklistHash;
+  if (!isCount(completed) || !isCount(total) || completed > total || typeof reference !== 'string' || !HEX64.test(reference)) return undefined;
+  return { isFullySatisfied: v.isFullySatisfied, completed, total, reference, ...(isIsoDate(v.issuedAt) ? { issuedAt: v.issuedAt as string } : {}) };
+}
+
+/** True when the value is a record shape DefinitionGuard writes (either version). */
+export function isDefinitionGuardShape(value: unknown): boolean {
+  return parseDefinitionGuardRecord(value) !== undefined;
 }
 
 /** The HeroCoders checklist property with a usable count of open mandatory items. */
@@ -95,43 +121,70 @@ export function isLedgerSealShape(value: unknown): value is LedgerSealRecord {
     && isIsoDate(cert.sealedAt);
 }
 
+/** Plain words for why a record was not verified; the UI shows them. */
+const UNVERIFIED_WHY: Record<Exclude<AttestationCheck, 'VERIFIED'>, string> = {
+  UNSIGNED: 'unsigned',
+  UNKNOWN_KEY: 'unknown key',
+  WRONG_ISSUE: 'signed for another issue',
+  BAD_SIGNATURE: 'signature does not match'
+};
+
 /**
- * An attestation that carries issuedAt (sibling schema v2) is stale when the issue changed after it.
- * Records without issuedAt cannot be checked for freshness.
+ * What a sibling record's signature check means for its gate (ADR-012): verified records are
+ * scored; unsigned records and records signed with a key FourRealities does not trust are
+ * REPORTED (shown, not scored); a bad signature or a record signed for another issue is MISSING.
  */
-function isStale(record: { issuedAt?: string }, f: IssueFacts): boolean {
-  return isIsoDate(record.issuedAt) && isIsoDate(f.updated) && Date.parse(f.updated as string) > Date.parse(record.issuedAt as string);
+type Trust = { kind: 'verified' } | { kind: 'reported'; why: string } | { kind: 'invalid'; why: string };
+
+function trustOf(check: AttestationCheck | undefined): Trust {
+  const c = check || 'UNSIGNED';
+  if (c === 'VERIFIED') return { kind: 'verified' };
+  if (c === 'BAD_SIGNATURE' || c === 'WRONG_ISSUE') return { kind: 'invalid', why: UNVERIFIED_WHY[c] };
+  return { kind: 'reported', why: UNVERIFIED_WHY[c] };
+}
+
+/** A sibling record's statement as a gate result: FOUND or MISSING when verified, else REPORTED. */
+function stated(trust: Trust, positive: boolean, result: Omit<GateResult, 'state'>): GateResult {
+  if (trust.kind === 'verified') {
+    return { ...result, state: positive ? 'FOUND' : 'MISSING', ...(positive ? { verification: 'VERIFIED' as const } : {}) };
+  }
+  return { ...result, state: 'REPORTED', verification: 'NOT_VERIFIED', args: { ...(result.args || {}), why: trust.kind === 'reported' ? trust.why : '' } };
 }
 
 /**
  * Process: the Definition of Done record from DefinitionGuard, else the HeroCoders checklist
- * property, read as a hint only. FourRealities never verifies either, so neither shows as
- * verified (spec v2, Process; B-25).
+ * property. A verified DefinitionGuard record is scored; any record FourRealities cannot verify,
+ * including every HeroCoders record, is REPORTED and not scored (ADR-012, spec v3, Process).
  */
-export function evaluateProcess(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG): GateResult {
-  const dod = f.properties.dod;
+export function evaluateProcess(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG, sources?: SourcesInUse): GateResult {
+  if (sources && sources.process === null) return NOT_IN_USE;
+  const dod = sources?.process === 'herocoders' ? undefined : f.properties.dod;
   if (dod !== undefined && dod !== null) {
-    const seen = (result: GateResult, ref?: unknown) => observed(c, 'DEFINITIONGUARD_PROPERTY', result, ref);
-    if (!isDefinitionGuardShape(dod)) {
-      return seen({ state: 'MISSING', reason: 'DOD_SHAPE_UNKNOWN' });
+    const record = parseDefinitionGuardRecord(dod);
+    if (!record) {
+      return observed(c, 'DEFINITIONGUARD_PROPERTY', { state: 'MISSING', reason: 'DOD_SHAPE_UNKNOWN' });
     }
-    const args = { completed: dod.completedCount, total: dod.totalCount };
-    if (dod.isFullySatisfied) {
-      return isStale(dod, f)
-        ? seen({ state: 'NEEDS_RECHECK', reason: 'CHANGED_SINCE_ATTESTATION' }, dod.checklistHash)
-        : seen({ state: 'FOUND', reason: 'DOD_COMPLETE_DG', args }, dod.checklistHash);
+    const seen = (result: GateResult) => observed(c, 'DEFINITIONGUARD_PROPERTY', result, record.reference);
+    const trust = trustOf(f.attestations?.dod);
+    if (trust.kind === 'invalid') {
+      return seen({ state: 'MISSING', reason: 'DOD_SIGNATURE_INVALID', args: { why: trust.why } });
     }
-    return isDone(f) ? seen({ state: 'MISSING', reason: 'DOD_OPEN_DG', args }, dod.checklistHash) : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
+    const args = { completed: record.completed, total: record.total };
+    if (record.isFullySatisfied) {
+      return seen(stated(trust, true, { reason: 'DOD_COMPLETE_DG', args }));
+    }
+    return isDone(f) ? seen(stated(trust, false, { reason: 'DOD_OPEN_DG', args })) : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
   }
-  const checklist = f.properties.checklist;
+  const checklist = sources?.process === 'definitionguard' ? undefined : f.properties.checklist;
   if (isHeroCodersChecklistShape(checklist)) {
     const open = checklist.uncheckedMandatoryItems;
     const seen = (result: GateResult) => observed(c, 'HEROCODERS_CHECKLIST_PROPERTY', result, checklist.progressText);
-    if (open === 0) return seen({ state: 'FOUND', reason: 'DOD_COMPLETE_HC' });
-    return isDone(f) ? seen({ state: 'MISSING', reason: 'DOD_OPEN_HC', args: { open } }) : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
+    const unverifiable: Trust = { kind: 'reported', why: 'Checklists for Jira records are not signed' };
+    if (open === 0) return seen(stated(unverifiable, true, { reason: 'DOD_COMPLETE_HC' }));
+    return isDone(f) ? seen(stated(unverifiable, false, { reason: 'DOD_OPEN_HC', args: { open } })) : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
   }
   return isDone(f)
-    ? { state: 'MISSING', reason: 'DOD_NONE' }
+    ? { state: 'MISSING', reason: sources?.process === 'herocoders' ? 'CHECKLIST_NONE' : 'DOD_NONE' }
     : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
 }
 
@@ -140,10 +193,11 @@ export function evaluateProcess(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATA
  * read review approvals (research H11), so a merged pull request is never shown as approved.
  * A Code exception applies only to work with no pull request (FR-10).
  */
-export function evaluateCode(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG): GateResult {
+export function evaluateCode(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG, sources?: SourcesInUse): GateResult {
   if (!f.devField.present) {
     return { state: 'NOT_APPLICABLE', reason: 'NO_DEV_TOOL' };
   }
+  if (sources && !sources.code) return NOT_IN_USE;
   const pr = f.devField.summary;
   const merged = pr.mergedCount > 0 || (pr.state === 'MERGED' && pr.count > 0);
   const open = !merged && (pr.openCount > 0 || (pr.state === 'OPEN' && pr.count > 0));
@@ -166,26 +220,31 @@ export function evaluateCode(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG
 }
 
 /**
- * Audit: the LedgerSeal record, read as a hint only. Shapes that LedgerSeal does not write,
- * such as {valid: true}, are evidence missing (spec v2, Audit; FR-04).
+ * Audit: the LedgerSeal record. A verified record is scored; LedgerSeal's own status decides
+ * whether the seal still holds (it writes SEAL_BROKEN when sealed content changes), so the issue's
+ * update time is not compared (ADR-012, F-M3). Shapes LedgerSeal does not write, such as
+ * {valid: true}, are evidence missing.
  */
-export function evaluateAudit(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG): GateResult {
+export function evaluateAudit(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG, sources?: SourcesInUse): GateResult {
+  if (sources && !sources.audit) return NOT_IN_USE;
   const cert = f.properties.ledgerseal;
   if (cert !== undefined && cert !== null) {
-    const seen = (result: GateResult) => observed(c, 'LEDGERSEAL_PROPERTY', result, isLedgerSealShape(cert) ? cert.certificateId : undefined);
     if (!isLedgerSealShape(cert)) {
-      return seen({ state: 'MISSING', reason: 'SEAL_SHAPE_UNKNOWN' });
+      return observed(c, 'LEDGERSEAL_PROPERTY', { state: 'MISSING', reason: 'SEAL_SHAPE_UNKNOWN' });
+    }
+    const seen = (result: GateResult) => observed(c, 'LEDGERSEAL_PROPERTY', result, cert.certificateId);
+    const trust = trustOf(f.attestations?.ledgerseal);
+    if (trust.kind === 'invalid') {
+      return seen({ state: 'MISSING', reason: 'SEAL_SIGNATURE_INVALID', args: { why: trust.why } });
     }
     if (cert.status === 'SEAL_BROKEN' || cert.status === 'SEAL_COMPROMISED' || cert.isCompromised === true) {
-      return seen({ state: 'MISSING', reason: 'SEAL_BROKEN_LS' });
+      return seen(stated(trust, false, { reason: 'SEAL_BROKEN_LS' }));
     }
     if (cert.status === 'SEAL_VALID') {
-      return isStale(cert, f)
-        ? seen({ state: 'NEEDS_RECHECK', reason: 'CHANGED_SINCE_ATTESTATION' })
-        : seen({ state: 'FOUND', reason: 'SEAL_VALID_LS', args: { sealedAt: cert.sealedAt } });
+      return seen(stated(trust, true, { reason: 'SEAL_VALID_LS', args: { sealedAt: cert.sealedAt } }));
     }
     return isDone(f)
-      ? seen({ state: 'MISSING', reason: 'SEAL_OTHER_LS', args: { status: cert.status } })
+      ? seen(stated(trust, false, { reason: 'SEAL_OTHER_LS', args: { status: cert.status } }))
       : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
   }
   return isDone(f)
@@ -193,12 +252,12 @@ export function evaluateAudit(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALO
     : { state: 'NOT_APPLICABLE', reason: 'NOT_DONE' };
 }
 
-export function evaluateGates(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG): IssueGates {
+export function evaluateGates(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG, sources?: SourcesInUse): IssueGates {
   return {
-    intent: evaluateIntent(f, c),
-    process: evaluateProcess(f, c),
-    code: evaluateCode(f, c),
-    audit: evaluateAudit(f, c)
+    intent: evaluateIntent(f, c, sources),
+    process: evaluateProcess(f, c, sources),
+    code: evaluateCode(f, c, sources),
+    audit: evaluateAudit(f, c, sources)
   };
 }
 
@@ -207,7 +266,7 @@ export class DefaultGateEngine implements GateEngine {
 
   constructor(private readonly catalog: EvidenceCatalog = DEFAULT_CATALOG) {}
 
-  evaluate(facts: IssueFacts): IssueGates {
-    return evaluateGates(facts, this.catalog);
+  evaluate(facts: IssueFacts, sources?: SourcesInUse): IssueGates {
+    return evaluateGates(facts, this.catalog, sources);
   }
 }

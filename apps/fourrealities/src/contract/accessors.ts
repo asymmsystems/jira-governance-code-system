@@ -6,6 +6,9 @@
 
 import { Accessor } from './service-types';
 import {
+  ApproverPolicy,
+  DetectedSources,
+  EvidenceSourceSettings,
   ExceptionProperty,
   GateExceptionEvent,
   IssueFacts,
@@ -34,7 +37,8 @@ export interface StorageProvider {
 /** Jira issue reads and user writes, bound to one principal (the user or the app). */
 export interface JiraIssueAccessor extends Accessor {
   searchProject(projectKey: string, config: SiteConfig, deadline: number): Promise<ProjectSearchResult>;
-  visibleIssueIds(projectKey: string, deadline: number): Promise<VisibleIds>;
+  /** Ids the caller can browse; stops early once every `wanted` id is seen (F-H2). */
+  visibleIssueIds(projectKey: string, deadline: number, wanted?: ReadonlySet<string>): Promise<VisibleIds>;
   readIssue(issueId: string, config: SiteConfig): Promise<{ status: number; facts?: IssueFacts }>;
   /** Remote links per issue id; an id is absent when its read failed or the deadline passed. */
   remoteLinks(issueIds: string[], deadline: number): Promise<Map<string, RemoteLink[]>>;
@@ -67,6 +71,8 @@ export interface SnapshotAccessor extends Accessor {
 export interface AppContextAccessor extends Accessor {
   /** The licence state; undefined on development installs or outside the Forge runtime. */
   licenceActive(): boolean | undefined;
+  /** The Forge environment type; undefined outside the Forge runtime. */
+  environmentType(): string | undefined;
 }
 
 /** Append-only rework notes (ADR-001 Pattern 6). A note is never rewritten. */
@@ -101,3 +107,63 @@ export interface ConfluencePageSearchAccessor extends Accessor {
   searchPages(query: string): Promise<{ readonly ok: boolean; readonly pages: ConfluencePage[]; readonly error?: string }>;
 }
 
+/** Checks that Confluence pages exist, by id (F-H4). */
+export interface ConfluencePageCheckAccessor extends Accessor {
+  /** The ids Confluence returned, or null when Confluence could not be asked (no access, an error, the deadline). */
+  existingPages(pageIds: string[], deadline: number): Promise<Set<string> | null>;
+  /** The links with pageExists set where Confluence could be asked; unchanged otherwise. */
+  checkPages(linksByIssue: Map<string, RemoteLink[]>, deadline: number): Promise<Map<string, RemoteLink[]>>;
+}
+
+
+/** Site settings of the admin page and what FourRealities has seen on the site (ADR-013). */
+export interface SettingsAccessor extends Accessor {
+  /** The saved settings, or the defaults when none are saved. */
+  getSettings(): Promise<EvidenceSourceSettings>;
+  saveSettings(settings: EvidenceSourceSettings): Promise<void>;
+  getDetected(): Promise<DetectedSources>;
+  saveDetected(detected: DetectedSources): Promise<void>;
+  getApproverPolicy(): Promise<ApproverPolicy | undefined>;
+  saveApproverPolicy(policy: ApproverPolicy): Promise<void>;
+}
+
+export interface GroupRef {
+  readonly groupId: string;
+  readonly name: string;
+}
+
+/** Jira users and groups, as the user (Uniform Permission Management Standard). Every check fails closed. */
+export interface JiraDirectoryAccessor extends Accessor {
+  /** The caller holds the global ADMINISTER permission; false on any error. */
+  isJiraAdmin(): Promise<boolean>;
+  /** The caller's groups; status other than 200 on error. */
+  myGroups(): Promise<{ status: number; groups: GroupRef[] }>;
+  /** Groups whose name matches the query, at most 20. */
+  searchGroups(query: string): Promise<{ status: number; groups: GroupRef[] }>;
+  /** Names of groups by id; an id that cannot be read keeps the id as its name. */
+  groupNames(groupIds: string[]): Promise<GroupRef[]>;
+  /** Display names by account id, read now and never stored (ADR-014); unreadable ids are left out. */
+  userNames(accountIds: string[]): Promise<Record<string, string>>;
+}
+
+/** One stored account id, the date of its latest record, and the issues whose records name it. */
+export interface StoredAccount {
+  accountId: string;
+  updatedAt: string;
+  issueIds: string[];
+}
+
+/** Finds and erases the account ids FourRealities stores (ADR-014). */
+export interface PersonalDataAccessor extends Accessor {
+  /** Every stored account id, with the date of its latest record. */
+  accounts(now: string): Promise<StoredAccount[]>;
+  /** Replaces closed accounts with ERASED_ACCOUNT in events and notes, and removes them from snapshots. */
+  erase(closedAccountIds: string[]): Promise<void>;
+  /** Rewrites snapshot metas that still name a viewer to "user"; returns how many changed. */
+  minimiseMeta(): Promise<number>;
+}
+
+/** The Forge personal data reporting API (scope report:personal-data). */
+export interface PrivacyReportAccessor extends Accessor {
+  report(accounts: Array<{ accountId: string; updatedAt: string }>): Promise<Array<{ accountId: string; status: string }>>;
+}

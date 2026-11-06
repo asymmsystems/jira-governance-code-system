@@ -19,7 +19,7 @@ import { triageOrder } from '../../src/ui/triage';
 
 const rows = [
   row('DEMO-1', { intent: F, process: F, code: NA, audit: F }),
-  row('DEMO-2', { intent: M_INTENT, process: M_DOD, code: M_CODE, audit: M_SEAL }, { assigneeName: undefined }),
+  row('DEMO-2', { intent: M_INTENT, process: M_DOD, code: M_CODE, audit: M_SEAL }, { assigneeAccountId: undefined }),
   row('DEMO-3', { intent: M_INTENT, process: F, code: NA, audit: NA }),
   row('DEMO-4', { intent: NA, process: NA, code: NA, audit: NA }, { statusCategory: 'new', statusChanges: 0 })
 ];
@@ -91,8 +91,8 @@ describe('ProjectDashboard', () => {
   it('B-18: filters by assignee, sprint and gate with labelled selects, and removes each filter on its own', async () => {
     const sprintRows = [
       row('DEMO-1', { intent: F, process: F, code: NA, audit: F }, { sprintNames: ['Sprint 1'] }),
-      row('DEMO-2', { intent: M_INTENT, process: M_DOD, code: M_CODE, audit: M_SEAL }, { assigneeName: undefined, sprintNames: ['Sprint 2'] }),
-      row('DEMO-3', { intent: M_INTENT, process: F, code: NA, audit: NA }, { assigneeName: 'Bo Chen', sprintNames: ['Sprint 2'] })
+      row('DEMO-2', { intent: M_INTENT, process: M_DOD, code: M_CODE, audit: M_SEAL }, { assigneeAccountId: undefined, sprintNames: ['Sprint 2'] }),
+      row('DEMO-3', { intent: M_INTENT, process: F, code: NA, audit: NA }, { assigneeAccountId: 'acc-bo', sprintNames: ['Sprint 2'] })
     ];
     const r = await mount(dashboard(sprintRows));
     expect(findAll(r.root, 'Label').map((l: any) => l.props.labelFor)).toEqual(['fr-search', 'fr-filter-assignee', 'fr-filter-sprint', 'fr-filter-gate']);
@@ -183,7 +183,7 @@ describe('ProjectDashboard', () => {
     expect(findAll(cards[0], 'ProgressBar')[0].props).toEqual(expect.objectContaining({ value: 1 / 3, ariaLabel: 'Intent: 1 of 3 rated issues have evidence' }));
     expect(findAll(cards[0], 'Tooltip')[0].props.content).toBe('Metric M11: share of rated issues traced to a decision record.');
     const audit = textOf(TestRenderer.create(cards[3].props.children).toJSON());
-    expect(audit).toContain('Is completion sealed in LedgerSeal?');
+    expect(audit).toContain('Is the finished work sealed?');
     const intentButton = findButton(r.root, 'Show 2 missing Intent');
     expect(intentButton.props.appearance).toBe('subtle');
     expect(intentButton.props.iconAfter).toBe('arrow-down');
@@ -377,3 +377,31 @@ describe('ProjectDashboard', () => {
 });
 
 
+
+describe('ADR-013, ADR-012: checks in use and reported records on the dashboard', () => {
+  it('shows a check that is not in use as not used, with no rate and no missing button, and lists the checks in use', async () => {
+    const NOT_USED = { state: 'NOT_APPLICABLE', reason: 'SOURCE_NOT_IN_USE' } as const;
+    const REP = { state: 'REPORTED', verification: 'NOT_VERIFIED', reason: 'DOD_COMPLETE_DG' } as const;
+    const rows = [row('DEMO-1', { intent: F, process: REP, code: NOT_USED, audit: NOT_USED })];
+    const sources = { intent: true, process: 'definitionguard' as const, code: false, audit: false, decisionIssueTypes: ['adr'], detected: { process: true, code: false, audit: false } };
+    let r: any;
+    await act(async () => { r = TestRenderer.create(<ProjectDashboard view={dashboard(rows, { sources, sourceNotes: ['LedgerSeal records were found on this site.'] })} onRefresh={jest.fn()} />); });
+    const text = textOf(r.toJSON());
+    expect(text).toContain('Not used on this site, so not scored.');
+    expect(text).toContain('Checks in use on this site: Intent; Process (DefinitionGuard, detected). Not used on this site: Code, Audit.');
+    expect(text).toContain('LedgerSeal records were found on this site.');
+    expect(text).toContain('1 more reported, not verified (not scored)');
+    expect(() => findButton(r.root, 'Show 1 missing Audit')).toThrow('No button');
+  });
+});
+
+describe('F-H2: a page view that ran out of time says so', () => {
+  it('names the time limit and the daily snapshot instead of the cap', async () => {
+    const rows = [row('DEMO-1', { intent: F, process: NA, code: NA, audit: NA })];
+    let r: any;
+    await act(async () => { r = TestRenderer.create(<ProjectDashboard view={dashboard(rows, { coverage: { shown: 1, totalKnown: 3000, capped: true, timedOut: true } })} onRefresh={jest.fn()} />); });
+    expect(textOf(r.toJSON())).toContain('Showing 1 of about 3000 issues: the newest issues FourRealities could read in the time one page view has. The daily snapshot reads up to 2,000 issues; Refresh tries again now.');
+    await act(async () => { r = TestRenderer.create(<ProjectDashboard view={dashboard(rows, { coverage: { shown: 1, totalKnown: null, capped: true, timedOut: true } })} onRefresh={jest.fn()} />); });
+    expect(textOf(r.toJSON())).toContain('Showing 1 of an unknown number of issues: the newest');
+  });
+});

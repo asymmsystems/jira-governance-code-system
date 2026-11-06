@@ -16,6 +16,8 @@ import { DefaultGateEngine } from '../src/engine/default-gate-engine';
 import { DefaultMetricsEngine } from '../src/engine/default-metrics-engine';
 import { DefaultSnapshotEngine } from '../src/engine/default-snapshot-engine';
 import { MemoryStorage } from './storage/memory-storage';
+import { DefaultKvsSettingsAccessor } from '../src/accessor/default-kvs-settings-accessor';
+import { DefaultSourcePolicyEngine } from '../src/engine/default-source-policy-engine';
 
 const pathOf = (r: any): string => (typeof r === 'string' ? r : r.value);
 
@@ -33,6 +35,10 @@ function buildSnapshot(o: { projectKey: string; storage: any; request: any; dead
     gates: new DefaultGateEngine(),
     metrics: new DefaultMetricsEngine(),
     snapshot: new DefaultSnapshotEngine(),
+    settings: new DefaultKvsSettingsAccessor(o.storage),
+    sources: new DefaultSourcePolicyEngine(),
+    directory: { serviceType: 'accessor', userNames: async () => ({}) } as any,
+    confluence: { serviceType: 'accessor', existingPages: async () => null, checkPages: async (m: any) => m } as any,
     now: o.now
   });
   return manager.build(o.projectKey, o.generatedBy, o.deadline);

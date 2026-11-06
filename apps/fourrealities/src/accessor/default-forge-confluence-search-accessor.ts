@@ -5,7 +5,8 @@
  */
 
 import api, { route, Route } from '@forge/api';
-import { ConfluencePage, ConfluencePageSearchAccessor } from '../contract/accessors';
+import { ConfluencePage, ConfluencePageCheckAccessor, ConfluencePageSearchAccessor } from '../contract/accessors';
+import { RemoteLink } from '../contract/data/models';
 import { messageOf } from '../contract/data/errors';
 
 export type ConfluenceRequester = (path: Route) => Promise<{
@@ -25,12 +26,28 @@ interface ConfluenceSearchResponse {
   readonly _links?: { readonly base?: string };
 }
 
-export class DefaultForgeConfluenceSearchAccessor implements ConfluencePageSearchAccessor {
+/** Page ids per existence query; CQL "id in (...)" with this many ids stays well inside the URL limit. */
+export const PAGE_CHECK_BATCH = 50;
+
+/**
+ * The message for a refused search. A refusal can mean the user may not search Confluence, or that
+ * FourRealities has no access to Confluence on this site (for example, installed in Jira only), so
+ * both are named (F-H3).
+ */
+export const CONFLUENCE_REFUSED = (status: number) =>
+  `Confluence refused the search (HTTP ${status}). Either you cannot search Confluence, or FourRealities has no access to Confluence on this site. You can still enter the page address and title by hand.`;
+
+export class DefaultForgeConfluenceSearchAccessor implements ConfluencePageSearchAccessor, ConfluencePageCheckAccessor {
   readonly serviceType = 'accessor' as const;
 
-  constructor(
-    private readonly requester: ConfluenceRequester = (r: Route) => api.asUser().requestConfluence(r)
-  ) {}
+  private readonly requester: ConfluenceRequester;
+
+  /** 'user' (the search and the panel check) or 'app' (the snapshot check), or a requester for tests. */
+  constructor(principal: ConfluenceRequester | 'user' | 'app' = 'user') {
+    this.requester = typeof principal === 'function'
+      ? principal
+      : (r: Route) => (principal === 'app' ? api.asApp() : api.asUser()).requestConfluence(r);
+  }
 
   async searchPages(query: string): Promise<{ readonly ok: boolean; readonly pages: ConfluencePage[]; readonly error?: string }> {
     const trimmed = query.trim();
@@ -42,7 +59,7 @@ export class DefaultForgeConfluenceSearchAccessor implements ConfluencePageSearc
       const cql = `type=page AND title ~ "${sanitized}"`;
       const res = await this.requester(route`/wiki/rest/api/content/search?cql=${cql}&limit=10`);
       if (res.status === 401 || res.status === 403) {
-        return { ok: false, pages: [], error: 'You do not have permission to search Confluence.' };
+        return { ok: false, pages: [], error: CONFLUENCE_REFUSED(res.status) };
       }
       if (res.status !== 200) {
         return { ok: false, pages: [], error: `Confluence returned status ${res.status}.` };
@@ -64,6 +81,36 @@ export class DefaultForgeConfluenceSearchAccessor implements ConfluencePageSearc
       return { ok: true, pages };
     } catch (err) {
       return { ok: false, pages: [], error: messageOf(err, 'Failed to search Confluence.') };
+    }
+  }
+
+  async checkPages(linksByIssue: Map<string, RemoteLink[]>, deadline: number): Promise<Map<string, RemoteLink[]>> {
+    const ids = Array.from(linksByIssue.values()).flat().map(l => l.pageId).filter((id): id is string => Boolean(id));
+    if (ids.length === 0) return linksByIssue;
+    const found = await this.existingPages(ids, deadline);
+    if (!found) return linksByIssue;
+    return new Map(Array.from(linksByIssue.entries()).map(([issueId, links]) => [
+      issueId,
+      links.map(l => (l.pageId ? { ...l, pageExists: found.has(l.pageId) } : l))
+    ]));
+  }
+
+  async existingPages(pageIds: string[], deadline: number): Promise<Set<string> | null> {
+    const ids = Array.from(new Set(pageIds.filter(id => /^\d+$/.test(id))));
+    const found = new Set<string>();
+    try {
+      for (let i = 0; i < ids.length; i += PAGE_CHECK_BATCH) {
+        if (Date.now() >= deadline) return null;
+        const batch = ids.slice(i, i + PAGE_CHECK_BATCH);
+        const cql = `id in (${batch.join(',')})`;
+        const res = await this.requester(route`/wiki/rest/api/content/search?cql=${cql}&limit=${String(PAGE_CHECK_BATCH)}`);
+        if (res.status !== 200) return null;
+        const data = (await res.json()) as ConfluenceSearchResponse | null;
+        for (const item of data?.results || []) if (item?.id !== undefined) found.add(String(item.id));
+      }
+      return found;
+    } catch {
+      return null;
     }
   }
 }

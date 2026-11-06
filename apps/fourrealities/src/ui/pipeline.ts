@@ -15,7 +15,7 @@ export const GATE_QUESTION: Record<GateName, string> = {
   intent: 'Is the work traced to a decision record?',
   process: 'Is the Definition of Done complete?',
   code: 'Was the work merged through a pull request?',
-  audit: 'Is completion sealed in LedgerSeal?'
+  audit: 'Is the finished work sealed?'
 };
 
 /** Fewest rated issues in each of two weeks before a delta is shown. */
@@ -42,15 +42,24 @@ export function driftText(row: GatesOnly): string {
       return isFound(gates.code) ? 'Code was merged, but it does not trace to a decision record.' : 'No decision record is linked.';
     case 'process':
       if (gates.process.reason === 'DOD_SHAPE_UNKNOWN') return 'The Definition of Done record has a shape DefinitionGuard does not write.';
+      if (gates.process.reason === 'DOD_SIGNATURE_INVALID') return 'The Definition of Done record failed its signature check.';
+      if (gates.process.reason === 'CHECKLIST_NONE') return 'No Checklists for Jira checklist is on this issue.';
       return gates.process.reason === 'DOD_NONE' ? 'No Definition of Done record is on this issue.' : 'The Definition of Done is not complete.';
     case 'code':
       return gates.code.reason === 'PR_OPEN_AT_DONE' ? 'The issue is done, but its pull request is not merged.' : 'The issue is done, but no pull request is linked.';
     case 'audit':
+      if (gates.audit.reason === 'SEAL_SIGNATURE_INVALID') return 'The LedgerSeal record failed its signature check.';
       return gates.audit.reason === 'SEAL_SHAPE_UNKNOWN' ? 'The LedgerSeal record has a shape LedgerSeal does not write.' : 'The issue is not sealed in LedgerSeal.';
     default: {
       const recheck = GATE_NAMES.find(n => gates[n].state === 'NEEDS_RECHECK');
       if (recheck) return `${GATE_LABEL[recheck]} needs a re-check. Use Refresh.`;
-      return GATE_NAMES.some(n => isFound(gates[n]) || gates[n].state === 'EXCEPTED') ? 'Every rated gate has evidence.' : 'No gate applies yet.';
+      const reported = GATE_NAMES.find(n => gates[n].state === 'REPORTED');
+      const evidenced = GATE_NAMES.some(n => isFound(gates[n]) || gates[n].state === 'EXCEPTED');
+      if (reported) {
+        const note = `${GATE_LABEL[reported]} has a record that is not verified, so it is not scored.`;
+        return evidenced ? `Every rated gate has evidence. ${note}` : note;
+      }
+      return evidenced ? 'Every rated gate has evidence.' : 'No gate applies yet.';
     }
   }
 }
@@ -59,9 +68,11 @@ export function driftText(row: GatesOnly): string {
 export function nextActionText(row: GatesOnly): string | undefined {
   switch (firstMissing(row)) {
     case 'intent': return 'Next: link the decision record.';
-    case 'process': return 'Next: complete the Definition of Done in DefinitionGuard.';
+    case 'process': return row.gates.process.reason === 'CHECKLIST_NONE'
+      ? 'Next: add and complete the checklist in Checklists for Jira.'
+      : 'Next: complete the items in the Definition of Done panel on this issue (DefinitionGuard).';
     case 'code': return row.gates.code.reason === 'PR_OPEN_AT_DONE' ? 'Next: merge the pull request.' : 'Next: link a pull request, or request a Code exception.';
-    case 'audit': return 'Next: seal the issue in LedgerSeal.';
+    case 'audit': return 'Next: seal the issue in its Approval Seal panel (LedgerSeal).';
     default: return undefined;
   }
 }
@@ -73,10 +84,13 @@ export function alignmentText(row: Pick<IssueRow, 'rai' | 'risk'>): string {
 /** What each gate adds to the score, and what fixing the first missing gate recovers. */
 export function scoreParts(row: Pick<IssueRow, 'rai' | 'applicableGates' | 'recoverablePoints' | 'gates'>): string[] {
   if (row.rai === null || row.applicableGates === 0) return ['No gate applies yet, so there is no score.'];
-  const share = Math.round(100 / row.applicableGates);
+  // The parts add up to the shown score: the rounding remainder goes to the first found gates (F-L5).
+  const found = GATE_NAMES.filter(g => row.gates[g].state === 'FOUND');
+  const base = found.length === 0 ? 0 : Math.floor(row.rai / found.length);
+  const extra = row.rai - base * found.length;
   const lines = GATE_NAMES.map(g => {
     const r = row.gates[g];
-    if (r.state === 'FOUND') return `${GATE_LABEL[g]}: +${share} (evidence found)`;
+    if (r.state === 'FOUND') return `${GATE_LABEL[g]}: +${base + (found.indexOf(g) < extra ? 1 : 0)} (evidence found)`;
     if (r.state === 'MISSING') return `${GATE_LABEL[g]}: 0 (evidence missing)`;
     return `${GATE_LABEL[g]}: not rated (${stateLabel(r).toLowerCase()})`;
   });
@@ -144,12 +158,16 @@ export function auditReadiness(issues: IssueRow[]): AuditReadinessSummary {
 
   let applicableGates = 0;
   let evidencedGates = 0;
+  let reportedGates = 0;
   const missingByGate: Record<GateName, number> = { intent: 0, process: 0, code: 0, audit: 0 };
 
   for (const issue of rated) {
     for (const g of GATE_NAMES) {
       const state = issue.gates[g].state;
-      if (state !== 'NOT_APPLICABLE') {
+      if (state === 'REPORTED') {
+        // Not verified, so not scored: counted apart, never as evidence (ADR-012).
+        reportedGates++;
+      } else if (state !== 'NOT_APPLICABLE') {
         applicableGates++;
         if (state === 'FOUND' || state === 'EXCEPTED') {
           evidencedGates++;
@@ -160,12 +178,15 @@ export function auditReadiness(issues: IssueRow[]): AuditReadinessSummary {
     }
   }
 
+  const reportedNote = reportedGates > 0
+    ? ` ${reportedGates} record${reportedGates === 1 ? ' is' : 's are'} reported but not verified, so not scored.`
+    : '';
   if (evidencedGates === applicableGates && applicableGates > 0) {
     return {
       status: 'Audit readiness: Complete',
       statusWord: 'Complete',
       appearance: 'success',
-      summary: `Evidence found for all ${evidencedGates} applicable gates across ${rated.length} rated issue${rated.length === 1 ? '' : 's'}.`,
+      summary: `Evidence found for all ${evidencedGates} applicable gates across ${rated.length} rated issue${rated.length === 1 ? '' : 's'}.${reportedNote}`,
       nextStep: 'All rated gates are evidenced.'
     };
   }
@@ -184,7 +205,7 @@ export function auditReadiness(issues: IssueRow[]): AuditReadinessSummary {
         nextStep = `Next step: link decision records for ${count} ${issueWord}.`;
         break;
       case 'process':
-        nextStep = `Next step: complete Definition of Done for ${count} ${issueWord} in DefinitionGuard.`;
+        nextStep = `Next step: complete the Definition of Done for ${count} ${issueWord}.`;
         break;
       case 'code':
         nextStep = `Next step: link pull requests or request Code exceptions for ${count} ${issueWord}.`;
@@ -200,7 +221,7 @@ export function auditReadiness(issues: IssueRow[]): AuditReadinessSummary {
     status: 'Audit readiness: Incomplete',
     statusWord: 'Incomplete',
     appearance: 'removed',
-    summary: `Evidence found for ${evidencedGates} of ${applicableGates} gates across ${rated.length} rated issue${rated.length === 1 ? '' : 's'}${unratedNote}.`,
+    summary: `Evidence found for ${evidencedGates} of ${applicableGates} gates across ${rated.length} rated issue${rated.length === 1 ? '' : 's'}${unratedNote}.${reportedNote}`,
     nextStep
   };
 }

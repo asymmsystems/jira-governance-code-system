@@ -12,6 +12,7 @@ import { GATE_LABEL } from './gate-text';
 export const UNASSIGNED = 'Unassigned';
 
 export interface DashboardFilters {
+  /** Account id of the assignee, or UNASSIGNED. Names are only shown, never stored (ADR-014). */
   assignee: string | null;
   sprint: string | null;
   missingGate: GateName | null;
@@ -30,13 +31,25 @@ export const RISK_WORD: Record<RiskLevel, string> = { CRITICAL: 'Critical', HIGH
 
 const byName = (a: string, b: string) => a.localeCompare(b);
 
-/** The values each filter offers. A project without sprints has no sprint values. */
-export function filterOptions(rows: IssueRow[]): { assignees: string[]; sprints: string[] } {
-  const names = new Set(rows.map(r => r.assigneeName).filter((n): n is string => Boolean(n)));
-  const unassigned = rows.some(r => !r.assigneeName);
+/** The name shown for an assignee: from the names read for this view, else a neutral text. */
+export function personName(people: Readonly<Record<string, string>> | undefined, accountId: string | undefined): string {
+  if (!accountId) return UNASSIGNED;
+  return people?.[accountId] || 'Name not available';
+}
+
+/**
+ * The values each filter offers. Assignees are offered by name (read for this view) with their
+ * account id as the value; Unassigned last. A project without sprints has no sprint values.
+ */
+export function filterOptions(rows: IssueRow[], people: Readonly<Record<string, string>> = {}): { assignees: Array<{ label: string; value: string }>; sprints: string[] } {
+  const ids = Array.from(new Set(rows.map(r => r.assigneeAccountId).filter((id): id is string => Boolean(id))));
+  const unassigned = rows.some(r => !r.assigneeAccountId);
   const sprints = new Set(rows.flatMap(r => r.sprintNames || []));
   return {
-    assignees: [...Array.from(names).sort(byName), ...(unassigned ? [UNASSIGNED] : [])],
+    assignees: [
+      ...ids.map(id => ({ label: personName(people, id), value: id })).sort((a, b) => byName(a.label, b.label)),
+      ...(unassigned ? [{ label: UNASSIGNED, value: UNASSIGNED }] : [])
+    ],
     sprints: Array.from(sprints).sort(byName)
   };
 }
@@ -44,7 +57,7 @@ export function filterOptions(rows: IssueRow[]): { assignees: string[]; sprints:
 export function applyFilters(rows: IssueRow[], f: DashboardFilters): IssueRow[] {
   const q = f.search.trim().toLowerCase();
   return rows.filter(r =>
-    (f.assignee === null || (r.assigneeName || UNASSIGNED) === f.assignee) &&
+    (f.assignee === null || (r.assigneeAccountId || UNASSIGNED) === f.assignee) &&
     (f.sprint === null || (r.sprintNames || []).includes(f.sprint)) &&
     (f.missingGate === null || r.gates[f.missingGate].state === 'MISSING') &&
     (f.risks.length === 0 || f.risks.includes(r.risk)) &&
@@ -59,9 +72,9 @@ export function missingGateLabel(gate: GateName): string {
 export const GATE_FILTER_OPTIONS = GATE_NAMES.map(g => ({ label: missingGateLabel(g), value: g }));
 
 /** Active filters other than search, each with the text of its remove button. */
-export function activeFilters(f: DashboardFilters): Array<{ field: FilterField; label: string }> {
+export function activeFilters(f: DashboardFilters, people: Readonly<Record<string, string>> = {}): Array<{ field: FilterField; label: string }> {
   return [
-    ...(f.assignee !== null ? [{ field: 'assignee' as const, label: `Assignee: ${f.assignee}` }] : []),
+    ...(f.assignee !== null ? [{ field: 'assignee' as const, label: `Assignee: ${f.assignee === UNASSIGNED ? UNASSIGNED : personName(people, f.assignee)}` }] : []),
     ...(f.sprint !== null ? [{ field: 'sprint' as const, label: `Sprint: ${f.sprint}` }] : []),
     ...(f.missingGate !== null ? [{ field: 'missingGate' as const, label: missingGateLabel(f.missingGate) }] : []),
     ...(f.risks.length > 0 ? [{ field: 'risks' as const, label: `Risk: ${f.risks.map(r => RISK_WORD[r]).join(', ')}` }] : []),

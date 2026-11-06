@@ -9,6 +9,13 @@ import { SnapshotEngine } from '../contract/engines';
 
 const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** Text cuts for a stored row (F-M2): an Intent title, sprint names and how many sprints. */
+export const STORED_TEXT_MAX = 120;
+export const STORED_SPRINT_MAX = 60;
+export const STORED_SPRINTS = 5;
+
+const cut = (text: string, max: number) => (text.length > max ? text.slice(0, max - 3) + '...' : text);
+
 /** Monday (UTC) of the ISO week that holds the given time, as YYYY-MM-DD. */
 export function weekStartOf(iso: string): string {
   const d = new Date(iso);
@@ -48,6 +55,18 @@ export class DefaultSnapshotEngine implements SnapshotEngine {
       return { ...gates, intent: previous.gates.intent };
     }
     return gates;
+  }
+
+  /**
+   * The row as a snapshot stores it (ADR-014, F-M2): no Code exception, no rework note and no
+   * other person's id; the gate state already says what counts. Free text is cut.
+   */
+  storedRow(row: IssueRow): IssueRow {
+    const { codeException: _exception, reworkNote: _note, reworkNoteCount: _count, ...rest } = row;
+    const gates = Object.fromEntries(Object.entries(row.gates).map(([g, r]) => [g, r.args
+      ? { ...r, args: Object.fromEntries(Object.entries(r.args).map(([k, v]) => [k, typeof v === 'string' ? cut(v, STORED_TEXT_MAX) : v])) }
+      : r])) as IssueGates;
+    return { ...rest, gates, sprintNames: row.sprintNames.slice(0, STORED_SPRINTS).map(n => cut(n, STORED_SPRINT_MAX)) };
   }
 
   visibleRows(rows: IssueRow[], ids: Set<string>): IssueRow[] {

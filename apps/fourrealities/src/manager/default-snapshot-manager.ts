@@ -6,8 +6,8 @@
  */
 
 import { CallerContext, CHUNK_SIZE_HINT, IssueRow, ProjectDashboardView, ProjectSummary, ResolverResult, ScheduledRunResult, SiteConfig, SnapshotMeta, StoredSnapshot } from '../contract/data/models';
-import { ExceptionEventAccessor, ReworkNoteAccessor, JiraIssueAccessor, SiteConfigAccessor, SnapshotAccessor } from '../contract/accessors';
-import { ExceptionPolicyEngine, GateEngine, MetricsEngine, SnapshotEngine } from '../contract/engines';
+import { ConfluencePageCheckAccessor, ExceptionEventAccessor, JiraDirectoryAccessor, ReworkNoteAccessor, JiraIssueAccessor, SettingsAccessor, SiteConfigAccessor, SnapshotAccessor } from '../contract/accessors';
+import { ExceptionPolicyEngine, GateEngine, MetricsEngine, SnapshotEngine, SourcePolicyEngine } from '../contract/engines';
 import { DashboardManager, SnapshotManager } from '../contract/managers';
 import { jiraError, messageOf } from '../contract/data/errors';
 
@@ -16,7 +16,10 @@ export interface SnapshotManagerDeps {
   jira: JiraIssueAccessor;
   /** Jira as the viewer: used only to check which issues the viewer can browse. */
   viewerJira: JiraIssueAccessor;
+  /** Time of the whole invocation, from its start (F-H2). */
   budgetMs: number;
+  /** End of the whole invocation; the default is now plus budgetMs when the manager is built. */
+  deadline?: number;
   siteConfig: SiteConfigAccessor;
   snapshots: SnapshotAccessor;
   notes: ReworkNoteAccessor;
@@ -25,13 +28,27 @@ export interface SnapshotManagerDeps {
   gates: GateEngine;
   metrics: MetricsEngine;
   snapshot: SnapshotEngine;
+  settings: SettingsAccessor;
+  sources: SourcePolicyEngine;
+  /** Confluence as the app: checks that linked pages exist (F-H4). */
+  confluence: ConfluencePageCheckAccessor;
+  /** Jira users as the viewer: assignee names for the view. */
+  directory: JiraDirectoryAccessor;
   now?: () => Date;
 }
 
+/** Time a page view keeps after building the snapshot: the KVS writes, the viewer check and the names (F-H2). */
+export const VIEW_RESERVE_MS = 7_000;
+/** Time the viewer check leaves before the end of the invocation. */
+export const VISIBLE_RESERVE_MS = 1_000;
+
 export class DefaultSnapshotManager implements SnapshotManager, DashboardManager {
   readonly serviceType = 'manager' as const;
+  private readonly deadline: number;
 
-  constructor(private readonly d: SnapshotManagerDeps) {}
+  constructor(private readonly d: SnapshotManagerDeps) {
+    this.deadline = d.deadline ?? Date.now() + d.budgetMs;
+  }
 
   /**
    * Reads the project from Jira, evaluates every issue, and stores the snapshot, the project
@@ -52,12 +69,17 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
       return jiraError(search.status, `Live Jira sync failed (${search.error}).`);
     }
 
-    const ids = search.facts.map(f => f.issueId);
+    // Sources seen in this read are recorded first, so a first build already uses them (ADR-013).
+    const settings = await this.d.settings.getSettings();
+    const merged = this.d.sources.merge(await this.d.settings.getDetected(), this.d.sources.sightings(search.facts, now().toISOString()));
+    if (merged.changed) await this.d.settings.saveDetected(merged.detected);
+    const sources = this.d.sources.resolve(settings, merged.detected, config);
+
     const notes = await this.d.notes.listAll();
     const events = await this.d.events.listAll();
     const previous = new Map((await this.d.snapshots.loadSnapshot(projectKey))?.rows.map(r => [r.issueId, r]) || []);
     const started = search.facts.filter(f => f.started).map(f => f.issueId);
-    const links = await this.d.jira.remoteLinks(started, deadline);
+    const links = await this.d.confluence.checkPages(await this.d.jira.remoteLinks(started, deadline), deadline);
 
     const rows = search.facts.map(base => {
       const id = base.issueId;
@@ -68,8 +90,8 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
         codeException: this.d.lifecycle.currentState(events.get(id) || []),
         remoteLinks: links.get(id) ?? (base.started ? undefined : [])
       };
-      const gates = this.d.snapshot.keepPreviousIntent(this.d.gates.evaluate(facts), read, previous.get(id));
-      return this.d.metrics.buildRow(facts, gates);
+      const gates = this.d.snapshot.keepPreviousIntent(this.d.gates.evaluate(facts, sources), read, previous.get(id));
+      return this.d.snapshot.storedRow(this.d.metrics.buildRow(facts, gates));
     });
 
     const summary = this.d.metrics.summarize(rows);
@@ -84,6 +106,7 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
       shownCount: rows.length,
       totalKnown: search.totalKnown,
       capped: search.capped,
+      ...(search.timedOut ? { timedOut: true } : {}),
       remoteLinksRead: links.size
     };
     await this.d.snapshots.saveSnapshot(meta, rows, summary);
@@ -104,8 +127,13 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
         result.skipped.push(projectKey);
         continue;
       }
-      const built = await this.build(projectKey, 'scheduled', deadline);
-      (built.ok ? result.built : result.failed).push(projectKey);
+      // One project's failure (for example a storage error) never stops the others (F-L1).
+      try {
+        const built = await this.build(projectKey, 'scheduled', deadline);
+        (built.ok ? result.built : result.failed).push(projectKey);
+      } catch {
+        result.failed.push(projectKey);
+      }
     }
     if (Date.now() < deadline) {
       result.signalsDeleted = await this.d.snapshots.deleteV1Signals();
@@ -127,15 +155,22 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
     await this.d.snapshots.registerProject(projectKey);
 
     let stored: StoredSnapshot | undefined = rebuild ? undefined : await this.d.snapshots.loadSnapshot(projectKey);
+    const settings = await this.d.settings.getSettings();
+    // A snapshot built before the administrator changed the settings is built again (ADR-013).
+    if (stored && settings.updatedAt && settings.updatedAt > stored.meta.generatedAt) {
+      stored = undefined;
+    }
     if (!stored) {
-      const built = await this.build(projectKey, caller.accountId || 'unknown-user', Date.now() + this.d.budgetMs);
+      // No account id in the snapshot (ADR-014). One deadline for the whole invocation; the build
+      // stops early enough to leave time for the writes and the viewer check (F-H2).
+      const built = await this.build(projectKey, 'user', this.deadline - VIEW_RESERVE_MS);
       if (!built.ok) {
         return built;
       }
       stored = { meta: built.meta, rows: built.rows };
     }
 
-    const visible = await this.d.viewerJira.visibleIssueIds(projectKey, Date.now() + this.d.budgetMs);
+    const visible = await this.d.viewerJira.visibleIssueIds(projectKey, this.deadline - VISIBLE_RESERVE_MS, new Set(stored.rows.map(r => r.issueId)));
     if (visible.status !== undefined) {
       return jiraError(visible.status, `FourRealities could not check which issues you can see (HTTP ${visible.status}).`);
     }
@@ -146,9 +181,21 @@ export class DefaultSnapshotManager implements SnapshotManager, DashboardManager
       summary: this.d.metrics.summarize(rows),
       rows,
       trend: await this.d.snapshots.getTrend(projectKey),
-      coverage: { shown: stored.meta.shownCount, totalKnown: stored.meta.totalKnown, capped: stored.meta.capped },
+      coverage: { shown: stored.meta.shownCount, totalKnown: stored.meta.totalKnown, capped: stored.meta.capped, ...(stored.meta.timedOut ? { timedOut: true } : {}) },
       meta: stored.meta
     };
+    // Names of the assignees, read as the viewer now and never stored (ADR-014).
+    const assignees = Array.from(new Set(rows.map(r => r.assigneeAccountId).filter((id): id is string => Boolean(id))));
+    if (assignees.length > 0) view.people = await this.d.directory.userNames(assignees);
+    try {
+      const detected = await this.d.settings.getDetected();
+      const sources = this.d.sources.resolve(settings, detected, await this.d.siteConfig.get());
+      view.sources = sources;
+      const sourceNotes = this.d.sources.notes(settings, detected, sources);
+      if (sourceNotes.length > 0) view.sourceNotes = sourceNotes;
+    } catch {
+      // The view still shows the stored gates; only the list of checks in use is left out.
+    }
     const stale = this.d.snapshot.staleWarning(stored.meta, Date.now());
     if (stale) view.warning = stale;
     if (!visible.complete) {

@@ -40,7 +40,7 @@ Cryptographic approval seals and post-approval change control. Computes SHA-256 
 Workflow-enforced Definition of Done (DoD). Enforces per-issue-type DoD criteria, mandatory URL evidence links, non-assignee peer review sign-offs, and audited waiver reasons before issues can transition into Done.
 
 ### 3. FourRealities
-Cross-reality delivery integrity dashboard. Audits delivery alignment across four distinct perspectives: Intent (Confluence ADRs), Process (Jira Workflows), Code (Git PRs), and Audit (Logs), computing an objective Reality Alignment Index (RAI).
+Delivery evidence per Jira issue. Four checks, each with its source: Intent (a linked Confluence page or decision issue), Process (a DefinitionGuard or Checklists for Jira record), Code (pull request state from the Jira Development field, a heuristic) and Audit (a LedgerSeal seal). Signed sibling records are verified before they count; checks a site does not use are not scored. The Reality Alignment Index (RAI) is the share of scored checks with evidence found.
 
 ### 4. CascadePlan
 Visual sprint baseline control and scope governance. Freezes commitment snapshots at sprint planning, tracks commitment variance and scope creep (+%), and enforces formal shift approval authorities under the Uniform Permission Standard.

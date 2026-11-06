@@ -50,17 +50,18 @@ describe('ADR-002 volatility layering', () => {
     expect(violations(f => !inside(f, 'accessor'), s => !/^@forge\/(api|kvs)$/.test(s))).toEqual([]);
   });
 
-  it('Accessors import only contracts, other accessors and the platform', () => {
-    expect(violations(f => inside(f, 'accessor'), s => inside(s, 'contract') || inside(s, 'accessor') || /^@forge\/(api|kvs)$/.test(s))).toEqual([]);
+  it('Accessors import only contracts, other accessors and the platform (Node crypto for signatures, ADR-012)', () => {
+    expect(violations(f => inside(f, 'accessor'), s => inside(s, 'contract') || inside(s, 'accessor') || /^@forge\/(api|kvs)$/.test(s) || s === 'crypto')).toEqual([]);
   });
 
   it('only index.ts imports Default implementations', () => {
     expect(violations(f => f !== 'index.ts', s => !/\/default-[^/]+$/.test(s))).toEqual([]);
   });
 
-  it('the UI imports only contracts, UI code, brand primitives, React and the UI Kit bridge', () => {
+  it('the UI imports only contracts, UI code, brand primitives, React, the UI Kit bridge and the shared admin panel', () => {
     expect(violations(f => inside(f, 'frontend') || inside(f, 'ui'),
-      s => inside(s, 'contract') || inside(s, 'ui') || inside(s, 'frontend') || inside(s, 'brand') || ['react', '@forge/react', '@forge/bridge'].includes(s))).toEqual([]);
+      s => inside(s, 'contract') || inside(s, 'ui') || inside(s, 'frontend') || inside(s, 'brand') || ['react', '@forge/react', '@forge/bridge'].includes(s)
+        || (s === '@asymm/jira-ui' && inside(s, '@asymm/jira-ui')))).toEqual([]);
   });
 
   it('brand components import only React, @forge/react and brand code', () => {

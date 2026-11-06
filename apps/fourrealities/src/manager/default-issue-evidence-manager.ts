@@ -6,8 +6,8 @@
  */
 
 import { CallerContext, IssueRow, LinkDecisionPayload, RequestReviewPayload, ResolverResult, WriteResult } from '../contract/data/models';
-import { ExceptionEventAccessor, ReworkNoteAccessor, JiraIssueAccessor, SiteConfigAccessor } from '../contract/accessors';
-import { ExceptionPolicyEngine, GateEngine, MetricsEngine, PolicyEngine } from '../contract/engines';
+import { ConfluencePageCheckAccessor, ExceptionEventAccessor, ReworkNoteAccessor, JiraIssueAccessor, SettingsAccessor, SiteConfigAccessor } from '../contract/accessors';
+import { ExceptionPolicyEngine, GateEngine, MetricsEngine, PolicyEngine, SourcePolicyEngine } from '../contract/engines';
 import { IssueEvidenceManager } from '../contract/managers';
 import { jiraError, messageOf } from '../contract/data/errors';
 
@@ -20,7 +20,15 @@ export interface IssueEvidenceManagerDeps {
   gates: GateEngine;
   metrics: MetricsEngine;
   policy: PolicyEngine;
+  settings: SettingsAccessor;
+  sources: SourcePolicyEngine;
+  /** Confluence as the user: checks that linked pages exist (F-H4). */
+  confluence: ConfluencePageCheckAccessor;
+  now?: () => Date;
 }
+
+/** Time the panel gives the Confluence page check (F-H4). */
+export const PAGE_CHECK_MS = 4_000;
 
 export class DefaultIssueEvidenceManager implements IssueEvidenceManager {
   readonly serviceType = 'manager' as const;
@@ -42,8 +50,15 @@ export class DefaultIssueEvidenceManager implements IssueEvidenceManager {
       if (read.status !== 200 || !read.facts) {
         return jiraError(read.status, `FourRealities: Jira returned HTTP ${read.status} for issue '${issueKey}'.`);
       }
-      const facts = { ...read.facts, reworkNotes, codeException };
-      return { ok: true, row: this.d.metrics.buildRow(facts, this.d.gates.evaluate(facts)) };
+      const checked = await this.d.confluence.checkPages(new Map([[issueId, read.facts.remoteLinks || []]]), Date.now() + PAGE_CHECK_MS);
+      const facts = { ...read.facts, ...(read.facts.remoteLinks ? { remoteLinks: checked.get(issueId) } : {}), reworkNotes, codeException };
+      // The checks in use on this site (ADR-013); a source first seen on this issue is recorded.
+      const settings = await this.d.settings.getSettings();
+      const at = (this.d.now || (() => new Date()))().toISOString();
+      const merged = this.d.sources.merge(await this.d.settings.getDetected(), this.d.sources.sightings([facts], at));
+      if (merged.changed) await this.d.settings.saveDetected(merged.detected);
+      const sources = this.d.sources.resolve(settings, merged.detected, config);
+      return { ok: true, row: this.d.metrics.buildRow(facts, this.d.gates.evaluate(facts, sources)) };
     } catch (err) {
       return jiraError(undefined, `FourRealities: Failed to query Jira for issue '${issueKey}': ${messageOf(err, 'network error')}`);
     }

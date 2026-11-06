@@ -1,5 +1,7 @@
 # FourRealities: Specification v2
 
+- **Superseded by** `fourrealities-spec-v3.md` (2026-11-06). Frozen.
+
 - **Status:** working specification for Part B (backlog B-01 to B-25). `fourrealities-spec.md` (v1) is frozen.
 - **Date:** 2026-11-01
 - **Sources:** `docs/sdlc/fourrealities-usp-ux-research-2026-11/` (research brief, UX spec, backlog) and the portfolio audit of 2026-10-31, section 5.

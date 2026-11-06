@@ -12,7 +12,7 @@ const ev = (status: GateExceptionEvent['status'], at: string, by: string, extra:
   schemaVersion: 3, issueId: '1', issueKey: 'DEMO-1', gate: 'code', status, at, byAccountId: by,
   asRole: status === 'REQUESTED' || status === 'WITHDRAWN' ? 'REQUESTER' : 'APPROVER', reason: `${status} reason text`, ...extra
 });
-const admin = (accountId: string) => ({ accountId, isProjectAdmin: true });
+const admin = (accountId: string) => ({ accountId, isApprover: true });
 const REASON = 'Configuration change only, no code';
 
 describe('currentState', () => {
@@ -75,8 +75,8 @@ describe('decisionError (Option C)', () => {
   });
 
   it('refuses a non-administrator, the requester and the assignee', () => {
-    expect(policy.decisionError(waiting, 'APPROVE', { accountId: 'dev-2', isProjectAdmin: false }, undefined, ''))
-      .toBe('Only a project administrator or a Jira administrator can approve, reject or revoke an exception.');
+    expect(policy.decisionError(waiting, 'APPROVE', { accountId: 'dev-2', isApprover: false }, undefined, ''))
+      .toBe('Requires Project Admin, Jira Admin, or membership in an authorized group. Configured by your Jira administrator in Jira Settings > Apps > FourRealities gate authority.');
     expect(policy.decisionError(waiting, 'APPROVE', admin('dev-1'), undefined, ''))
       .toBe('The person who requested the exception cannot approve, reject or revoke it.');
     expect(policy.decisionError(waiting, 'APPROVE', admin('admin-1'), 'admin-1', ''))
@@ -87,11 +87,11 @@ describe('decisionError (Option C)', () => {
     expect(policy.decisionError(undefined, 'APPROVE', admin('a'), undefined, '')).toBe('There is no exception request on this issue.');
     expect(policy.decisionError(approved, 'APPROVE', admin('a'), undefined, '')).toBe('Only a waiting request can be approved or rejected.');
     expect(policy.decisionError(waiting, 'REVOKE', admin('a'), undefined, REASON)).toBe('Only an approved exception can be revoked.');
-    expect(policy.decisionError(approved, 'WITHDRAW', { accountId: 'dev-1', isProjectAdmin: false }, undefined, '')).toBe('Only a waiting request can be withdrawn.');
+    expect(policy.decisionError(approved, 'WITHDRAW', { accountId: 'dev-1', isApprover: false }, undefined, '')).toBe('Only a waiting request can be withdrawn.');
   });
 
   it('lets only the requester withdraw, with no administrator needed', () => {
-    expect(policy.decisionError(waiting, 'WITHDRAW', { accountId: 'dev-1', isProjectAdmin: false }, 'dev-1', '')).toBeUndefined();
+    expect(policy.decisionError(waiting, 'WITHDRAW', { accountId: 'dev-1', isApprover: false }, 'dev-1', '')).toBeUndefined();
     expect(policy.decisionError(waiting, 'WITHDRAW', admin('admin-1'), undefined, ''))
       .toBe('Only the person who requested the exception can withdraw it.');
   });

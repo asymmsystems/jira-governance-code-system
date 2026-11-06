@@ -164,7 +164,7 @@ Status: approved. Part B in progress on branch `feature/fourrealities-research-b
 ### B-12. Listing v2 from the code
 - **Closes:** PX-02.
 - **Acceptance criteria:**
-  1. `docs/marketplace/fourrealities-listing-v2.md` exists. The original is unchanged (git diff check).
+  1. `docs/marketplace/fourrealities-listing-v2.md` exists. The original is unchanged (git diff check). (The draft was deleted on 2026-11-06; `docs/marketplace/fourrealities-listing.md` is the listing.)
   2. The scopes are listed exactly as in `manifest.yml` (scripted comparison).
   3. No claim from research brief 4.3 appears. No compliance, certification or badge claim (scripted word list check).
   4. Every capability named is backed by a passing test name or a Part A source ID (review checklist in `round-log.md`).

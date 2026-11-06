@@ -20,11 +20,13 @@ export function stateLabel(result: GateResult): string {
     case 'FOUND':
       if (result.verification === 'NOT_VERIFIED') return 'Evidence found (not verified)';
       if (result.verification === 'HEURISTIC') return 'Evidence found (heuristic)';
+      if (result.verification === 'LINK_ONLY') return 'Evidence found (link only)';
       return 'Evidence found';
     case 'MISSING': return 'Evidence missing';
+    case 'REPORTED': return 'Reported, not verified';
     case 'EXCEPTED': return 'Excepted';
     case 'NEEDS_RECHECK': return 'Needs re-check';
-    default: return 'Not applicable';
+    default: return result.reason === 'SOURCE_NOT_IN_USE' ? 'Not used on this site' : 'Not applicable';
   }
 }
 
@@ -33,6 +35,7 @@ export function appearanceOf(result: GateResult): LozengeAppearance {
   switch (result.state) {
     case 'FOUND': return result.verification === 'VERIFIED' ? 'success' : 'inprogress';
     case 'MISSING': return 'removed';
+    case 'REPORTED': return 'inprogress';
     case 'EXCEPTED':
     case 'NEEDS_RECHECK': return 'moved';
     default: return 'default';
@@ -44,6 +47,7 @@ export function glyphOf(result: GateResult): string {
   switch (result.state) {
     case 'FOUND': return '●';
     case 'MISSING': return '✕';
+    case 'REPORTED': return '◑';
     case 'EXCEPTED': return '◆';
     case 'NEEDS_RECHECK': return '◐';
     default: return '○';
@@ -56,11 +60,13 @@ function shortState(result: GateResult): string {
     case 'FOUND':
       if (result.verification === 'NOT_VERIFIED') return 'found, not verified';
       if (result.verification === 'HEURISTIC') return 'found, heuristic';
+      if (result.verification === 'LINK_ONLY') return 'found, link only';
       return 'found';
     case 'MISSING': return 'missing';
+    case 'REPORTED': return 'reported, not verified';
     case 'EXCEPTED': return 'excepted';
     case 'NEEDS_RECHECK': return 're-check';
-    default: return 'n/a';
+    default: return result.reason === 'SOURCE_NOT_IN_USE' ? 'not used' : 'n/a';
   }
 }
 
@@ -82,6 +88,8 @@ const SOURCE: Record<GateReason, string> = {
   DOD_COMPLETE_HC: 'Checklists for Jira (HeroCoders) property checklist',
   DOD_OPEN_HC: 'Checklists for Jira (HeroCoders) property checklist',
   DOD_NONE: 'DefinitionGuard property definitionguard-dod',
+  DOD_SIGNATURE_INVALID: 'DefinitionGuard property definitionguard-dod',
+  CHECKLIST_NONE: 'Checklists for Jira (HeroCoders) property checklist',
   CODE_EXCEPTED: 'FourRealities exception record',
   PR_MERGED: 'Jira Development field',
   PR_OPEN: 'Jira Development field',
@@ -93,19 +101,22 @@ const SOURCE: Record<GateReason, string> = {
   SEAL_OTHER_LS: 'LedgerSeal property ledgerseal-cert',
   SEAL_SHAPE_UNKNOWN: 'property ledgerseal-cert',
   SEAL_NONE: 'LedgerSeal property ledgerseal-cert',
-  CHANGED_SINCE_ATTESTATION: 'Jira issue update time'
+  SEAL_SIGNATURE_INVALID: 'LedgerSeal property ledgerseal-cert',
+  CHANGED_SINCE_ATTESTATION: 'Jira issue update time',
+  SOURCE_NOT_IN_USE: 'FourRealities gate authority settings'
 };
 
 const VERIFICATION_TEXT: Record<Verification, string> = {
   VERIFIED: 'verified by FourRealities',
   NOT_VERIFIED: 'not verified by FourRealities',
-  HEURISTIC: 'heuristic'
+  HEURISTIC: 'heuristic',
+  LINK_ONLY: 'page not checked by FourRealities'
 };
 
 /** "Source: <source>", plus how FourRealities knows it when evidence was found. */
 export function sourceLine(result: GateResult): string {
   const base = `Source: ${SOURCE[result.reason]}`;
-  return result.state === 'FOUND' && result.verification ? `${base}, ${VERIFICATION_TEXT[result.verification]}.` : `${base}.`;
+  return (result.state === 'FOUND' || result.state === 'REPORTED') && result.verification ? `${base}, ${VERIFICATION_TEXT[result.verification]}.` : `${base}.`;
 }
 
 function arg(result: GateResult, name: string): string {
@@ -113,12 +124,25 @@ function arg(result: GateResult, name: string): string {
   return value === undefined ? '' : String(value);
 }
 
+/** Why an unverified record is not scored, in words (ADR-012). */
+function reportedSuffix(result: GateResult): string {
+  const why = arg(result, 'why');
+  return ` FourRealities could not verify this record${why ? ` (${why})` : ''}, so it is not scored.`;
+}
+
 /** One plain sentence that says what was found or what is missing. */
 export function detailText(result: GateResult): string {
+  const text = statement(result);
+  return result.state === 'REPORTED' ? text + reportedSuffix(result) : text;
+}
+
+function statement(result: GateResult): string {
   switch (result.reason) {
     case 'NOT_STARTED': return 'Work has not started. This gate applies once it does.';
     case 'NOT_DONE': return 'This gate applies when the issue is done.';
-    case 'INTENT_CONFLUENCE_LINK': return `Confluence page linked: ${arg(result, 'title')}. FourRealities does not read the page content.`;
+    case 'INTENT_CONFLUENCE_LINK': return result.verification === 'LINK_ONLY'
+      ? `Confluence link found: ${arg(result, 'title')}. FourRealities could not check that the page exists.`
+      : `Confluence page linked: ${arg(result, 'title')}. FourRealities found the page and does not read its content.`;
     case 'INTENT_DECISION_ISSUE': return `Decision issue linked: ${arg(result, 'key')} (${arg(result, 'type')}).`;
     case 'INTENT_LINKS_NOT_READ': return 'Remote links were not read in this snapshot. Refresh to read them.';
     case 'INTENT_NONE': return 'No Confluence page or decision issue is linked.';
@@ -128,6 +152,7 @@ export function detailText(result: GateResult): string {
     case 'DOD_COMPLETE_HC': return 'Checklists for Jira reports no open mandatory items.';
     case 'DOD_OPEN_HC': return `Checklists for Jira reports ${arg(result, 'open')} open mandatory items.`;
     case 'DOD_NONE': return 'No Definition of Done record on this issue.';
+    case 'DOD_SIGNATURE_INVALID': return `The Definition of Done record failed its signature check (${arg(result, 'why')}). It was changed after DefinitionGuard wrote it, or copied from another issue.`;
     case 'CODE_EXCEPTED': return 'An exception is recorded for this gate.';
     case 'PR_MERGED': return 'Pull request merged. Approval is not readable by apps.';
     case 'PR_OPEN': return 'Pull request open. Approval is not readable by apps.';
@@ -139,7 +164,10 @@ export function detailText(result: GateResult): string {
     case 'SEAL_OTHER_LS': return `LedgerSeal reports status ${arg(result, 'status')}.`;
     case 'SEAL_SHAPE_UNKNOWN': return 'Record shape not written by LedgerSeal.';
     case 'SEAL_NONE': return 'No LedgerSeal record on this issue.';
+    case 'SEAL_SIGNATURE_INVALID': return `The LedgerSeal record failed its signature check (${arg(result, 'why')}). It was changed after LedgerSeal wrote it, or copied from another issue.`;
     case 'CHANGED_SINCE_ATTESTATION': return 'The issue changed after the record was written.';
+    case 'CHECKLIST_NONE': return 'No Checklists for Jira checklist on this issue.';
+    case 'SOURCE_NOT_IN_USE': return 'This check is not used on this site, so it is not scored. A Jira administrator can turn it on in Jira settings > Apps > FourRealities gate authority.';
   }
 }
 

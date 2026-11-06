@@ -113,9 +113,9 @@ describe('MetricsEngine.summarize', () => {
       MetricsEngine.buildRow(makeFacts({ issueKey: 'A-3', statusCategory: 'new', statusChanges: 0 }), gates(NA, NA, NA, NA))
     ];
     const s = MetricsEngine.summarize(rows);
-    expect(s.gates.intent).toEqual({ found: 1, missing: 1, excepted: 0, recheck: 0, notApplicable: 1 });
-    expect(s.gates.code).toEqual({ found: 1, missing: 0, excepted: 1, recheck: 0, notApplicable: 1 });
-    expect(s.gates.audit).toEqual({ found: 0, missing: 1, excepted: 0, recheck: 1, notApplicable: 1 });
+    expect(s.gates.intent).toEqual({ found: 1, missing: 1, reported: 0, excepted: 0, recheck: 0, notApplicable: 1 });
+    expect(s.gates.code).toEqual({ found: 1, missing: 0, reported: 0, excepted: 1, recheck: 0, notApplicable: 1 });
+    expect(s.gates.audit).toEqual({ found: 0, missing: 1, reported: 0, excepted: 0, recheck: 1, notApplicable: 1 });
     expect(s.m11IntentRate).toBe(50);
     expect(s.m29PullRequestRate).toBe(100);
     expect(s.sealRate).toBe(0);
@@ -126,6 +126,18 @@ describe('MetricsEngine.summarize', () => {
     expect(s.reworkIssues).toBe(1);
     expect(s.m30ReworkRate).toBe(50);
     expect(s.riskDistribution.unrated).toBe(1);
+  });
+});
+
+describe('ADR-012: a reported (unverified) record is counted apart and never scored', () => {
+  it('leaves REPORTED out of RAI and the gate rate, and counts it as reported', () => {
+    const reported = { state: 'REPORTED', verification: 'NOT_VERIFIED', reason: 'SEAL_VALID_LS' } as const;
+    const row = MetricsEngine.buildRow(makeFacts(), gates(FOUND_V, MISSING, NA, reported));
+    expect(row.rai).toBe(50);
+    expect(row.applicableGates).toBe(2);
+    const s = MetricsEngine.summarize([row]);
+    expect(s.gates.audit).toEqual({ found: 0, missing: 0, reported: 1, excepted: 0, recheck: 0, notApplicable: 0 });
+    expect(s.sealRate).toBeNull();
   });
 });
 

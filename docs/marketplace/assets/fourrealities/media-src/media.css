@@ -1,0 +1,40 @@
+/*
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ *
+ * FourRealities Marketplace media (BL-4), in the Asymm standard colours: banner 1120 x 548 px,
+ * highlights 580 x 330 px. Rendered to PNG by render.py with headless Chromium. The words on the
+ * chips and cards are the app's own words.
+ */
+:root {
+  --teal: #5295A3; --teal-light: #9CC8D1; --rose: #BA6E8F; --rose-light: #E9C9D7;
+  --sage: #8FA96D; --sage-light: #DCE6CF; --sand: #F8DBA9; --sand-light: #FDF5E5;
+  --off-white: #F9F7F6; --white: #FFFFFF; --ink: #1A1C1E; --ink-soft: #333333; --grey: #E4E4E4;
+  --teal-ink: #2E6470;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: var(--ink); background: var(--off-white);
+  overflow: hidden; position: relative; -webkit-font-smoothing: antialiased; }
+.card { position: absolute; background: var(--white); border-radius: 14px; box-shadow: 0 10px 30px rgba(26, 28, 30, 0.10); padding: 18px 20px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { font-size: 13px; font-weight: 700; padding: 4px 9px; border-radius: 6px; white-space: nowrap; }
+.found { background: var(--sage-light); } .missing { background: var(--rose-light); } .na { background: var(--grey); } .reported { background: var(--sand); }
+.line { margin-top: 10px; font-size: 13.5px; line-height: 1.45; color: var(--ink-soft); }
+.line b { color: var(--ink); }
+.src { margin-top: 4px; font-size: 12px; color: #5E6C84; }
+h4 { font-size: 15px; margin-bottom: 8px; }
+.next { margin-top: 10px; font-size: 13.5px; font-weight: 700; color: var(--teal-ink); }
+/* Banner */
+body.banner { width: 1120px; height: 548px; }
+.band { position: absolute; right: 0; top: 0; bottom: 0; width: 560px; background: linear-gradient(135deg, var(--sand-light) 0%, var(--sand) 100%); }
+.copy { position: absolute; left: 64px; top: 70px; width: 470px; }
+h1 { font-size: 50px; font-weight: 800; letter-spacing: -1px; }
+.tagline { margin-top: 24px; font-size: 21px; line-height: 1.45; color: var(--ink-soft); }
+.points { list-style: none; margin-top: 28px; display: grid; gap: 14px; }
+.points li { display: flex; align-items: center; gap: 12px; font-size: 18px; font-weight: 700; }
+.dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+.dot.teal { background: var(--teal); } .dot.sage { background: var(--sage); } .dot.rose { background: var(--rose); }
+.foot { position: absolute; left: 64px; top: 440px; font-size: 14px; font-weight: 700; color: var(--teal-ink); }
+/* Highlights */
+body.highlight { width: 580px; height: 330px; background: linear-gradient(135deg, var(--off-white) 0%, var(--sand-light) 100%); }
