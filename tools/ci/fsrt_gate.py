@@ -31,6 +31,7 @@ that analysed nothing, a missing canary finding, or an unreadable report or log;
 bad allowlist entry.
 """
 import json
+import re
 import sys
 
 APP_KEY_PREFIX = "systems.asymm."
@@ -38,6 +39,9 @@ FILE_MARKER = "parsing, file="
 FUNCTION_MARKER = "run_checker def="
 CANARY_CHECK_PREFIX = "Custom-Check-Authorization-"
 CANARY_PATH = "handler.readIssue"
+# Exact match on "through handler.readIssue in ", so a resolver such as handler.readIssueAll
+# cannot satisfy the canary.
+CANARY_RE = re.compile(r"through " + re.escape(CANARY_PATH) + r" in ")
 
 
 def read_allowlist(path, app):
@@ -130,7 +134,7 @@ def canary(app, report_path, log_path):
         return 1
     for v in report.get("vulns", []):
         if (v.get("check_name", "").startswith(CANARY_CHECK_PREFIX)
-                and CANARY_PATH in (v.get("description") or "")):
+                and CANARY_RE.search(v.get("description") or "")):
             print(f"CANARY {app}: FSRT reported {v.get('check_name')} through {CANARY_PATH}")
             return 0
     print(f"CANARY {app}: FSRT did not report the unchecked asApp() call through {CANARY_PATH}. "
