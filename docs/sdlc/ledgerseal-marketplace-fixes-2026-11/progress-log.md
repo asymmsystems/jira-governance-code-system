@@ -427,7 +427,7 @@ Production runs 2.0.0 (deployed by the main session); this branch deploys to dev
 
 ### F-12. Always-visible seal state
 
-- **Commit:** `e445058`. A `jira:issueContext` module "Approval seal" (`ledgerseal-context`, resource `src/frontend/context.tsx`): it shows the state lozenge and the status sentence, and says to open the Approval Seal panel for actions. It reads only. `jira:issueGlance` is the older module that `jira:issueContext` replaces; neither supports a dynamic status in the collapsed row, so the state shows when the entry is expanded.
+- **Commit:** `e445058`. A `jira:issueContext` module "Approval seal" (`ledgerseal-context`, resource `src/frontend/context.tsx`): it shows the state lozenge and the status sentence, and says to open the Approval Seal panel for actions. It has no button. (Corrected after the finish review, L-20: like a panel load, its verify call records a new change it finds, as a history row and the property; it is not read-only.) `jira:issueGlance` is the older module that `jira:issueContext` replaces; neither supports a dynamic status in the collapsed row, so the state shows when the entry is expanded.
 - **Proof:** `test/context-entry.test.ts` (3).
 - **Live:** the entry "LedgerSeal, Approval seal" is in the details column of PAY-10 and LSP-5 (screenshots in the ignored `test/live/shots/`). Expanding it in the headless browser did not open its content, so the expanded view is proven by the tests only. The Marketplace screenshots show the panel, not the details column, so they are unchanged.
 
@@ -450,3 +450,28 @@ Production runs 2.0.0 (deployed by the main session); this branch deploys to dev
 ### Final gate (finish)
 
 `npx tsc --noEmit` 0 errors; `npm test`: 49 suites, 531 tests passed; coverage statements 98.06%, branches 94.15%, functions 96.97%, lines 98.71%; `npm run build` exit 0; `npm audit --omit=dev --audit-level=high` exit 0; `forge lint` "No issues found" (the scope change was approved at the development deploy). Development version 5.1.0.
+
+
+## Finish review fixes (same branch; review `/home/fahimfarookme/.cache/jira-suite-merge-review/ledgerseal-finish/ledgerseal-finish-merge-review.md`)
+
+### H-1. The evidence export follows the panel's rule
+
+- **What changed (`evidenceFlow`):** the export always reads the live comments as the app. A sealed comment counts as restricted when it was restricted at the seal, or is restricted now, or (a snapshot made before F-06) has been removed since. The export goes only to a viewer whose own comment list contains every such comment; otherwise `RESTRICTED_EVIDENCE`. A failed read fails closed (`JIRA_UNREACHABLE`).
+- **Consequence:** evidence of a seal made before F-06 that covers a since-deleted comment is not exported to anyone, because its visibility is unknown; sealing the issue again makes a snapshot that records it. Production 2.0.0 holds such seals.
+- **Proof:** `test/restricted-comments.test.ts`: P3 (open at the seal, restricted later: refused to an outsider, exported to an insider) and P2 (a seal before F-06, its restricted comment deleted: refused, the text in neither panel nor export) both fail with `ledger.ts` of `a15694d`, as does the fail-closed test; a removed comment that was open at a seal after F-06 does not stop the export.
+
+### L-18. A hidden comment row names no author and no time
+
+- Decided: hide them. Jira hides a restricted comment entirely from a user outside its role or group, its author included, so the row says only "Comment added" (or edited, removed) with "A restricted comment that you cannot see in Jira", no "Changed by" and no time. Separation of duties is unchanged: it reads the author from Jira, not from the row. Test: "shows that a comment changed, but not who changed it or when" (fails with `a15694d`). Listing, notes, README and spec v3 say so.
+
+### L-19, L-20
+
+- Spec v3: the grader note names the granular scope. The context entry is described as having no button; its verify call records a new change like a panel load (code comment, test name, this log).
+
+### L-21. Defensive guards (recorded, no new test)
+
+- `conversion.ts` `heldAndUnchanged`: the first call before the invalid branch's writes, and the whole-record compare inside it (the lease and next-row parts and the second call have failing tests). Both are defensive only: without the first call the rows, assignments and content are rewritten with the same tokens and the run still ends BUSY before the record write; inside the lease no writer can change the record and keep its hash. Kept because they cost one read each and stop work early.
+
+### Site changes needed (finish review)
+
+25. `product/jira-governance/user-guide/ledgerseal.html` (replaces the text of item 22): "Comments restricted to a project role or group are covered only when Jira lets the LedgerSeal app read them, that is when the app's user is in that role or group; otherwise a change to such a comment is not detected. A covered comment that is restricted, at the seal or now, is shown in the panel only to a user who can see it in Jira; others see that a comment changed, without its text, author or time. The evidence is exported only to a user who can see every such comment; for a seal made before LedgerSeal recorded restrictions, a covered comment deleted since counts as restricted, so seal the issue again to export its evidence."

@@ -2,7 +2,8 @@
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  *
  * LedgerSeal: the always-visible "Approval seal" entry in the issue's details column (readiness finding F-12).
- * It shows the seal state without opening the panel, and points to the panel for every action. Reads only.
+ * It shows the seal state without opening the panel, and points to the panel for every action. It has no button; like
+ * a panel load, its verify call records a new change it finds (a history row and the ledgerseal-cert property).
  *
  * @author Fahim Farook
  */
