@@ -4,7 +4,7 @@
  * FourRealities: snapshot rules (spec v2, Snapshot schedule). Pure, no I/O.
  */
 
-import { IssueGates, IssueRow, ProjectSummary, SnapshotMeta, TrendPoint } from '../contract/data/models';
+import { GateResult, IssueGates, IssueRow, ProjectSummary, SnapshotMeta, TrendPoint } from '../contract/data/models';
 import { SnapshotEngine } from '../contract/engines';
 
 const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
@@ -13,6 +13,9 @@ const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 export const STORED_TEXT_MAX = 120;
 export const STORED_SPRINT_MAX = 60;
 export const STORED_SPRINTS = 5;
+
+/** A found Intent that rests on a Confluence page link (the only result whose check needs Confluence). */
+const isPageLink = (g: GateResult) => g.state === 'FOUND' && g.method === 'CONFLUENCE_PAGE_LINK';
 
 const cut = (text: string, max: number) => (text.length > max ? text.slice(0, max - 3) + '...' : text);
 
@@ -71,6 +74,26 @@ export class DefaultSnapshotEngine implements SnapshotEngine {
 
   visibleRows(rows: IssueRow[], ids: Set<string>): IssueRow[] {
     return rows.filter(r => ids.has(r.issueId));
+  }
+
+  continuesTrend(storedIds: string[] | undefined, storedPoints: number, ids: string[]): boolean {
+    if (storedPoints === 0) return true;
+    if (!storedIds) return false;
+    const now = new Set(ids);
+    return storedIds.every(id => now.has(id));
+  }
+
+  pagesToCheck(rows: IssueRow[]): string[] {
+    return Array.from(new Set(rows.map(r => r.gates.intent).filter(isPageLink).map(g => g.pageId).filter((id): id is string => Boolean(id))));
+  }
+
+  withCheckedPages(rows: IssueRow[], found: Set<string> | null): IssueRow[] {
+    return rows.map(r => {
+      const intent = r.gates.intent;
+      if (!isPageLink(intent)) return r;
+      const verification = found && intent.pageId && found.has(intent.pageId) ? 'VERIFIED' : 'LINK_ONLY';
+      return intent.verification === verification ? r : { ...r, gates: { ...r.gates, intent: { ...intent, verification } } };
+    });
   }
 
   staleWarning(meta: SnapshotMeta, now: number): string | undefined {

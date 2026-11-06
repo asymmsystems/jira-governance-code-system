@@ -68,7 +68,8 @@ export function resolveStorage(customProvider?: StorageProvider): StorageProvide
 
 /**
  * Builds the object graph for one invocation. Site configuration is read as the given
- * principal; the snapshot is built as the app; viewer checks and user actions run as the user.
+ * principal; the snapshot is built as the app; viewer checks (Browse projects, the issues the
+ * viewer can browse, linked Confluence pages) and user actions run as the user.
  */
 export function compose(storageProvider: StorageProvider | undefined, budgetMs: number, configPrincipal: Principal) {
   const storage = resolveStorage(storageProvider);
@@ -87,7 +88,6 @@ export function compose(storageProvider: StorageProvider | undefined, budgetMs: 
   const sources = new DefaultSourcePolicyEngine();
   const history = new DefaultKvsAttestationHistoryAccessor(storage);
   const directory = new DefaultForgeJiraDirectoryAccessor(requestAs('user', () => deadline));
-  const appConfluence = new DefaultForgeConfluenceSearchAccessor('app');
   const userConfluence = new DefaultForgeConfluenceSearchAccessor();
   return {
     settings,
@@ -109,7 +109,7 @@ export function compose(storageProvider: StorageProvider | undefined, budgetMs: 
       settings,
       sources,
       directory,
-      confluence: appConfluence,
+      confluence: userConfluence,
       history
     }),
     issues: new DefaultIssueEvidenceManager({ userJira, siteConfig, notes, events, lifecycle, gates, metrics, policy, settings, sources, confluence: userConfluence, history }),

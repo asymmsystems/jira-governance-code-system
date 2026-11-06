@@ -173,7 +173,7 @@ export const RealityCard: React.FC<{
  */
 export const TrendPanel: React.FC<{ view: ProjectDashboardView }> = ({ view }) => {
   const points = recentWeeks(view.trend);
-  const notice = trendNotice(points, view.generatedAt);
+  const notice = view.trendWithheld || trendNotice(points, view.generatedAt);
   return (
     <Card>
       <CardHeader
@@ -362,7 +362,7 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
           <Text as="span">
             {view.coverage.timedOut
               ? `Showing ${view.coverage.shown} of ${view.coverage.totalKnown === null ? 'an unknown number of' : `about ${view.coverage.totalKnown}`} issues: the newest issues FourRealities could read in the time one page view has. The daily snapshot reads up to 2,000 issues; Refresh tries again now.`
-              : `Showing ${view.coverage.shown} of ${view.coverage.totalKnown === null ? 'an unknown number of' : `about ${view.coverage.totalKnown}`} issues. FourRealities reads at most ${view.coverage.shown} issues per project, newest first.`}
+              : `Showing ${view.coverage.shown} of ${view.coverage.totalKnown === null ? 'an unknown number of' : `about ${view.coverage.totalKnown}`} issues. FourRealities reads at most 2,000 issues per project, newest first.`}
           </Text>
         </SectionMessage>
       ) : null}

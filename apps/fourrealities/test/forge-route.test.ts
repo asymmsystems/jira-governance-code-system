@@ -40,6 +40,7 @@ if (path === '/rest/api/3/status') return { status: 200, json: async () => [{ id
   if (path === '/rest/api/3/serverInfo') return { status: 200, json: async () => ({ baseUrl: 'https://asymmsystems.atlassian.net' }) };
   if (path.startsWith('/rest/api/3/search/jql')) return { status: 200, json: async () => ({ issues: [issue] }) };
   if (path.endsWith('/remotelink')) return { status: 200, json: async () => [] };
+  if (path === '/rest/api/3/mypermissions?projectKey=DEMO&permissions=BROWSE_PROJECTS') return { status: 200, json: async () => ({ permissions: { BROWSE_PROJECTS: { havePermission: true } } }) };
   if (path.startsWith('/rest/api/3/issue/60001?')) return { status: 200, json: async () => issue };
   return { status: 404, json: async () => ({}) };
 }
@@ -64,6 +65,8 @@ describe('resolvers build valid Forge routes', () => {
     expect(mockRequests.map(r => r.path)).toContain('/rest/api/3/issue/60001/remotelink');
     // ADR-013 and ADR-014: the pull request probe and the names read as the viewer pass Forge's route checks.
     expect(mockRequests.map(r => r.path)).toContain('/rest/api/3/search/jql?jql=development%5Bpullrequests%5D.all%20%3E%200&maxResults=1&fields=created');
+    // MK-02 Q3: the viewer's Browse projects check is the first call, as the user.
+    expect(mockRequests[0]).toEqual(expect.objectContaining({ principal: 'user', path: '/rest/api/3/mypermissions?projectKey=DEMO&permissions=BROWSE_PROJECTS' }));
     expect(mockRequests.find(r => r.path.startsWith('/rest/api/3/user/bulk'))).toEqual(expect.objectContaining({ principal: 'user', path: '/rest/api/3/user/bulk?maxResults=50&accountId=5b10%3Aab-cd' }));
   });
 });

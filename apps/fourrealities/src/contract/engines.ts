@@ -66,6 +66,16 @@ export interface SnapshotEngine extends Engine {
   /** The row as a snapshot stores it: no exception, no note, text cut (ADR-014, F-M2). */
   storedRow(row: IssueRow): IssueRow;
   visibleRows(rows: IssueRow[], ids: Set<string>): IssueRow[];
+  /**
+   * True when a new trend point can join the stored trend: every issue the stored trend counts is
+   * still in the new read. Otherwise the trend restarts, so every stored point counts only issues of
+   * the newest point (MK-02 Q3). A trend stored without its issue ids (before 2.1) restarts.
+   */
+  continuesTrend(storedIds: string[] | undefined, storedPoints: number, ids: string[]): boolean;
+  /** The Confluence page ids of the rows' Intent links that are to be checked as the viewer. */
+  pagesToCheck(rows: IssueRow[]): string[];
+  /** The rows with each Confluence Intent link verified only when the viewer's check found its page. */
+  withCheckedPages(rows: IssueRow[], found: Set<string> | null): IssueRow[];
   staleWarning(meta: SnapshotMeta, now: number): string | undefined;
 }
 

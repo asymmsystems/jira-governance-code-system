@@ -327,7 +327,7 @@ describe('ProjectDashboard', () => {
 
   it('says when the read stopped at the cap (B-09)', async () => {
     const capped = await mount(dashboard(rows, { coverage: { shown: 2000, totalKnown: 2310, capped: true } }));
-    expect(textOf(capped.toJSON())).toContain('Showing 2000 of about 2310 issues. FourRealities reads at most 2000 issues per project, newest first.');
+    expect(textOf(capped.toJSON())).toContain('Showing 2000 of about 2310 issues. FourRealities reads at most 2,000 issues per project, newest first.');
     const unknown = await mount(dashboard(rows, { coverage: { shown: 2000, totalKnown: null, capped: true } }));
     expect(textOf(unknown.toJSON())).toContain('Showing 2000 of an unknown number of issues.');
     const full = await mount(dashboard(rows));

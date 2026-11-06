@@ -60,9 +60,10 @@ export function evaluateIntent(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATAL
     // The page Confluence returned, and the link's address on this site (merge review L-2).
     const checked = pages.find(p => p.pageExists === true && (!p.url || isSameSiteContentPage(p.url, f.siteHost, rule.sameSiteContentPath)));
     const shown = checked || page;
+    // Not checked: the page id goes with the result, so the dashboard can check it as the viewer.
     return observed(c, 'CONFLUENCE_PAGE_LINK', {
       state: 'FOUND', reason: 'INTENT_CONFLUENCE_LINK', args: { title: String(shown.title || shown.url || '') },
-      ...(checked ? {} : { verification: 'LINK_ONLY' as const })
+      ...(checked ? {} : { verification: 'LINK_ONLY' as const, ...(shown.pageId ? { pageId: shown.pageId } : {}) })
     }, shown.url || shown.title);
   }
   const decision = f.issueLinks.find(l => rule.issueTypes.includes(String(l.typeName || '').trim().toLowerCase()));

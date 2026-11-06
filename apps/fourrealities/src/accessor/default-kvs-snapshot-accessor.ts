@@ -83,12 +83,22 @@ export class SnapshotRepository {
     return { meta, rows };
   }
 
-  /** Records the point for its ISO week; a later point in the same week replaces it. */
-  public async recordTrendPoint(projectKey: string, point: TrendPoint): Promise<void> {
-    const trend = (await this.getTrend(projectKey)).filter(p => p.weekStart !== point.weekStart);
+  /**
+   * Records the point for its ISO week; a later point in the same week replaces it. With restart,
+   * the earlier points are dropped. The ids of the issues the point counts are stored next to the
+   * trend (at most ISSUE_CAP ids), so a page view can check that the viewer can browse each one.
+   */
+  public async recordTrendPoint(projectKey: string, point: TrendPoint, issueIds: string[], restart: boolean): Promise<void> {
+    const trend = restart ? [] : (await this.getTrend(projectKey)).filter(p => p.weekStart !== point.weekStart);
     trend.push(point);
     trend.sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+    await this.storage.set(this.key(projectKey, 'trend-ids'), issueIds);
     await this.storage.set(this.key(projectKey, 'trend'), trend.slice(-MAX_TREND_POINTS));
+  }
+
+  public async getTrendIssueIds(projectKey: string): Promise<string[] | undefined> {
+    const ids = await this.storage.get<string[]>(this.key(projectKey, 'trend-ids'));
+    return Array.isArray(ids) ? ids : undefined;
   }
 
   public async getTrend(projectKey: string): Promise<TrendPoint[]> {
