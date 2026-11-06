@@ -155,6 +155,15 @@ function exclusionReason(rules: ExclusionRules, key: string, schema: FieldSchema
   return custom && rules.custom[custom] ? rules.custom[custom] : null;
 }
 
+/**
+ * True when a field is outside the seal under a canonical form's rules (F-13): a change to it, such as a status
+ * move or a Rank change, is not a change of covered content. An unknown version uses the newest rules.
+ */
+export function isExcludedField(version: string, fieldId: string, fieldSchemas: FieldSchema[] = []): boolean {
+  const rules = RULES[version] ?? RULES[CANONICALIZER_VERSION];
+  return exclusionReason(rules, fieldId, fieldSchemas.find(f => f.id === fieldId)) !== null;
+}
+
 function isSetField(key: string, schema: FieldSchema | undefined): boolean {
   if (SET_FIELDS.has(key)) return true;
   return schema?.schema?.type === 'array' && SET_ITEM_TYPES.has(String(schema.schema.items));

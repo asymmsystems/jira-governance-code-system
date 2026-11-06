@@ -222,7 +222,8 @@ describe('B-15 resolver rights', () => {
     expect(((await verifyIssue({}, panelContext('mallory'), deps)) as any).rights).toEqual({
       canSeal: false,
       canApproveChanges: false,
-      canRevoke: true,
+      // B2: the author of a change may not revoke the seal either
+      canRevoke: false,
       blockedBySelfChange: true
     });
     jira.permissionError = 'UNREACHABLE';

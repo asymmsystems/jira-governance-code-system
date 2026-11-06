@@ -8,11 +8,11 @@
  */
 
 import * as crypto from 'crypto';
-import { CANONICALIZER_VERSION, canonicalizeIssueState, FieldSchema, PSEUDONYMOUS_VERSIONS } from '../domain/canonicalizer';
+import { CANONICALIZER_VERSION, canonicalizeIssueState, FieldSchema, isExcludedField, PSEUDONYMOUS_VERSIONS } from '../domain/canonicalizer';
 import { canonicalForm, computeSnapshotHash } from '../domain/crypto';
 import { buildStatusRow, verifyChain } from '../domain/history';
 import { CanonicalIssueSnapshot, FieldDiff, SealedWorkEffort, SealSummary, WorkEffortPartyAssignment, WorkEffortStatus, TamperAnalysis } from '../domain/models';
-import { authorsSince } from '../domain/policy';
+import { changeAuthorsSince, itemAuthorsSince } from '../domain/policy';
 import { assignmentHash, isConsistent, LoadedSeal, summarise, withRecordHash } from '../domain/seal-record';
 import { canChange, LedgerSealStatusId, roleForMeaning } from '../domain/status';
 import { compareToSeal, SealedState } from '../domain/tamper-detector';
@@ -69,6 +69,8 @@ const MESSAGES: Record<SealErrorCode, string> = {
   LICENSE_INACTIVE: 'The LedgerSeal licence is not active. Ask your Jira admin to renew it.',
   NOT_ADMIN: 'Only a Jira admin can change who can seal.'
 };
+
+export const SELF_REVOKE_MESSAGE = 'You changed this issue after it was sealed, so another approver must revoke the seal.';
 
 export function fail(code: SealErrorCode, message: string = MESSAGES[code]): SealFailure {
   return { ok: false, code, message };
@@ -245,6 +247,8 @@ export interface SealEvaluation {
   liveSnapshot: CanonicalIssueSnapshot;
   /** The live comments as Jira returned them, to name who added or edited each comment. */
   liveComments: any[];
+  /** The live issue as Jira returned it, to name who added or edited a work log. */
+  liveRaw?: any;
 }
 
 /** RECORD_INVALID carries the work effort when it could be read, so a reseal can continue its chain. */
@@ -283,11 +287,11 @@ export async function evaluate(repo: SealRepository, issueId: string, live: Live
     compromised: we.currentStatusId === 'LS_CHANGED'
   };
   const analysis = { ...compareToSeal(sealed, liveSnapshot, at), seal: summarise(seal) };
-  return { kind: 'SEAL', seal, sealedSnapshot, analysis, liveSnapshot, liveComments: rawComments(live.raw) };
+  return { kind: 'SEAL', seal, sealedSnapshot, analysis, liveSnapshot, liveComments: rawComments(live.raw), liveRaw: live.raw };
 }
 
 /** Who changed each item after the seal: comments from the comment itself, fields from the change log. */
-function attribute(diffs: FieldDiff[], changelog: ChangelogEntry[], sinceIso: string, liveComments: any[] = []) {
+function attribute(diffs: FieldDiff[], changelog: ChangelogEntry[], sinceIso: string, liveComments: any[] = [], liveRaw: any = null) {
   const since = Date.parse(sinceIso);
   const comments = new Map(liveComments.map(c => [`comment:${c.id}`, c]));
   return diffs.slice(0, MAX_INCIDENT_CHANGES).map(diff => {
@@ -295,6 +299,11 @@ function attribute(diffs: FieldDiff[], changelog: ChangelogEntry[], sinceIso: st
     if (comment) {
       const by = comment.updated ? comment.updateAuthor?.accountId : comment.author?.accountId;
       return { fieldId: diff.fieldId, fieldName: diff.fieldName, changedBy: by ? [String(by)] : [], changedAt: comment.updated ?? comment.created ?? null };
+    }
+    if (diff.fieldId === 'worklog') {
+      // Jira's change log does not name work log authors, so they come from the work logs (F-01)
+      const worklogs = { fields: { worklog: liveRaw?.fields?.worklog } };
+      return { fieldId: diff.fieldId, fieldName: diff.fieldName, changedBy: [...itemAuthorsSince(worklogs, sinceIso)], changedAt: null };
     }
     const entries = changelog.filter(
       e => !(Date.parse(e.created) <= since) && e.items.some(item => item.fieldId === diff.fieldId || item.field === diff.fieldId)
@@ -324,7 +333,7 @@ export async function recordIncidentIfNew(
     return { seal, recorded: false };
   }
   const changelog = await deps.jira.getChangelog(we.workEffortId);
-  const attributed = attribute(analysis.tamperedFields, changelog.ok ? changelog.value : [], seal.assignment.fromDate, evaluation.liveComments);
+  const attributed = attribute(analysis.tamperedFields, changelog.ok ? changelog.value : [], seal.assignment.fromDate, evaluation.liveComments, evaluation.liveRaw);
   // History rows name people by party token, never by account id (ADR-010 decision 1)
   const parties = new PartyRepository(deps.storage);
   const party = knownParty ?? (await parties.partyForWrite());
@@ -414,9 +423,9 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
     const status = evaluation.analysis.status;
     if (status === 'SEAL_BROKEN' || status === 'SEAL_COMPROMISED') {
       // Separation of duties: the author of a change since the last seal cannot approve it
-      const changelog = await deps.jira.getChangelog(issue.id);
-      if (!changelog.ok) return fail('JIRA_UNREACHABLE');
-      if (authorsSince(changelog.value, previous.assignment.fromDate).has(accountId)) return fail('SELF_APPROVAL');
+      const self = await changedSince(deps, issue.id, live, previous, accountId);
+      if (self === null) return fail('JIRA_UNREACHABLE');
+      if (self) return fail('SELF_APPROVAL');
       if (!validReason(signature.reason)) return fail('REASON_REQUIRED');
       // Record the change before the reseal, so the history shows it even if no one viewed the issue
       if (!(await storeKey())) return fail('CONFLICT');
@@ -425,9 +434,9 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
     }
     if (status === 'SEAL_REVOKED') {
       // A revoke must not open a way around separation of duties (live, DEMO-34)
-      const changelog = await deps.jira.getChangelog(issue.id);
-      if (!changelog.ok) return fail('JIRA_UNREACHABLE');
-      if (authorsSince(changelog.value, previous.assignment.fromDate).has(accountId)) return fail('SELF_APPROVAL');
+      const self = await changedSince(deps, issue.id, live, previous, accountId);
+      if (self === null) return fail('JIRA_UNREACHABLE');
+      if (self) return fail('SELF_APPROVAL');
       const changed = computeSnapshotHash(evaluation.liveSnapshot) !== previousWorkEffort.attributes.snapshotHash;
       if (changed && !validReason(signature.reason)) return fail('REASON_REQUIRED');
     }
@@ -579,7 +588,7 @@ export async function verifyIssueFlow(payload: any, context: any, deps: LedgerSe
   return {
     ...result,
     issueKey: issue.key,
-    rights: await viewerRights(deps, issue.id, String(context.accountId), result),
+    rights: await viewerRights(deps, issue.id, String(context.accountId), result, live),
     approverGroups: await approverGroupNames(deps.storage)
   };
 }
@@ -591,21 +600,38 @@ const SEALED_STATES = new Set(['SEAL_VALID', 'SEAL_BROKEN', 'SEAL_COMPROMISED'])
  * What the viewer may do, so the panel shows only those actions (G-10). Reads only.
  * A failed permission check gives no rights; a failed change log read blocks approving changes.
  */
-async function viewerRights(deps: LedgerSealDeps, issueId: string, accountId: string, result: TamperAnalysis) {
+async function viewerRights(deps: LedgerSealDeps, issueId: string, accountId: string, result: TamperAnalysis, live: LiveRead) {
   const permission = await isApprover(deps.jira, deps.storage, issueId);
   const permitted = permission.ok && permission.value;
   const changed = CHANGED_STATES.has(result.status);
   let blockedBySelfChange = false;
-  if (permitted && changed && result.seal) {
-    const changelog = await deps.jira.getChangelog(issueId);
-    blockedBySelfChange = !changelog.ok || authorsSince(changelog.value, result.seal.sealedAt).has(accountId);
+  // Anyone who changed covered content since the seal may not approve, revoke or seal again (B2); a failed read blocks
+  if (permitted && result.seal) {
+    const self = await authorOfChange(deps, issueId, live, result.seal.sealedAt, result.seal.canonicalizerVersion, accountId);
+    blockedBySelfChange = self !== false;
   }
   return {
-    canSeal: permitted && !changed,
+    canSeal: permitted && !changed && !(result.status === 'SEAL_REVOKED' && blockedBySelfChange),
     canApproveChanges: permitted && !blockedBySelfChange,
-    canRevoke: permitted && SEALED_STATES.has(result.status),
+    canRevoke: permitted && SEALED_STATES.has(result.status) && !blockedBySelfChange,
     blockedBySelfChange
   };
+}
+
+/**
+ * True when the account changed covered content of the issue after `sinceIso` (B2, F-01, F-13): a change log item
+ * of a field the seal covers, or a comment, work log or attachment it added or edited. Null when the change log
+ * cannot be read.
+ */
+async function authorOfChange(deps: LedgerSealDeps, issueId: string, live: LiveRead, sinceIso: string, version: string, accountId: string): Promise<boolean | null> {
+  const changelog = await deps.jira.getChangelog(issueId);
+  if (!changelog.ok) return null;
+  const counts = (fieldId: string) => !isExcludedField(version, fieldId, live.fields);
+  return changeAuthorsSince(changelog.value, live.raw, sinceIso, counts).has(accountId);
+}
+
+function changedSince(deps: LedgerSealDeps, issueId: string, live: LiveRead, seal: LoadedSeal, accountId: string) {
+  return authorOfChange(deps, issueId, live, seal.assignment.fromDate, seal.workEffort.attributes.canonicalizerVersion, accountId);
 }
 
 async function verifyAgainstSeal(
@@ -840,6 +866,13 @@ export async function revokeFlow(payload: any, context: any, deps: LedgerSealDep
   const we = seal.workEffort;
   const transitionName = canChange(we.currentStatusId, 'LS_REVOKED');
   if (!transitionName) return fail('INVALID_REQUEST', 'This seal is already revoked.');
+
+  // Separation of duties (B2): a user who changed the issue after the seal cannot revoke it
+  const live = await readLiveSnapshot(deps.jira, issue.id, new Date().toISOString(), { party: await new PartyRepository(deps.storage).partyForRead() });
+  if (!live) return fail('JIRA_UNREACHABLE');
+  const self = await changedSince(deps, issue.id, live, seal, accountId);
+  if (self === null) return fail('JIRA_UNREACHABLE');
+  if (self) return fail('SELF_APPROVAL', SELF_REVOKE_MESSAGE);
 
   const now = new Date().toISOString();
   const parties = new PartyRepository(deps.storage);
