@@ -14,7 +14,7 @@ import { MAIN_PLAN_ID, getSavedPlanId, setSavedPlanId, chooseActivePlan, parentK
 import { showFlag } from './flag';
 import { classifyResult } from '../ui/result';
 import { UndoStack } from '../ui/undo-stack';
-import { snapshotPlan, buildUndoEntry, actionLabel } from '../ui/undo-plan';
+import { snapshotPlan, buildUndoEntry, actionLabel, withWrittenStatuses } from '../ui/undo-plan';
 import { initErrorBanner, showErrorBanner } from './banner';
 import { enableTheme, onThemeChange } from './theme';
 import { openWhyPopup, closeWhyPopup, isWhyPopupOpen, initWhyPopup } from './why-popup';
@@ -167,6 +167,7 @@ async function callResolver(fn, payload = {}, opts = {}) {
     showFlag({ text: verdict.message || 'The change was not saved.', error: true });
   } else {
     pendingUndo.done = true;
+    pendingUndo.jiraSync = res && res.jiraSync;
   }
   return res;
 }
@@ -176,7 +177,8 @@ function settleUndo() {
   const p = pendingUndo;
   if (!p || !p.done || !currentPlan) return;
   pendingUndo = null;
-  const entry = buildUndoEntry(p.before, snapshotPlan(currentPlan), p.payload.taskId || (p.payload.items && p.payload.items[0] && p.payload.items[0].taskId));
+  const after = withWrittenStatuses(snapshotPlan(currentPlan), p.payload, p.jiraSync);
+  const entry = buildUndoEntry(p.before, after, p.payload.taskId || (p.payload.items && p.payload.items[0] && p.payload.items[0].taskId));
   if (!entry) return;
   entry.label = actionLabel(p.fn, p.payload, entry);
   undoStack.push(entry);

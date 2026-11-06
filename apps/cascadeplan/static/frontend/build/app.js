@@ -6503,6 +6503,19 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function scheduleOp(s) {
     return { kind: "schedule", key: s.key, updates: { startWeek: s.startWeek, spanWeeks: s.spanWeeks, startDate: s.startDate, endDate: s.endDate } };
   }
+  function withWrittenStatuses(after, payload, jiraSync) {
+    const sent = /* @__PURE__ */ new Map();
+    if (payload && payload.taskId && payload.updates && payload.updates.status) sent.set(payload.taskId, payload.updates.status);
+    for (const i of payload && payload.items || []) if (i && i.taskId && i.updates && i.updates.status) sent.set(i.taskId, i.updates.status);
+    if (!sent.size) return after;
+    const applied = new Set((jiraSync && jiraSync.writes || []).filter((w) => (w.fields || []).includes("status")).map((w) => w.key));
+    const out = new Map(after);
+    for (const [key, status] of sent) {
+      const snapNow = out.get(key);
+      if (snapNow && applied.has(key)) out.set(key, { ...snapNow, status });
+    }
+    return out;
+  }
   function buildUndoEntry(before, after, targetKey) {
     const changed = [...after.keys()].filter((k) => before.has(k) && JSON.stringify(before.get(k)) !== JSON.stringify(after.get(k)));
     const parents = new Set(changed.map((k) => after.get(k).parentKey).filter(Boolean));
@@ -8582,6 +8595,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       showFlag({ text: verdict.message || "The change was not saved.", error: true });
     } else {
       pendingUndo.done = true;
+      pendingUndo.jiraSync = res && res.jiraSync;
     }
     return res;
   }
@@ -8589,7 +8603,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const p = pendingUndo;
     if (!p || !p.done || !currentPlan) return;
     pendingUndo = null;
-    const entry = buildUndoEntry(p.before, snapshotPlan(currentPlan), p.payload.taskId || p.payload.items && p.payload.items[0] && p.payload.items[0].taskId);
+    const after = withWrittenStatuses(snapshotPlan(currentPlan), p.payload, p.jiraSync);
+    const entry = buildUndoEntry(p.before, after, p.payload.taskId || p.payload.items && p.payload.items[0] && p.payload.items[0].taskId);
     if (!entry) return;
     entry.label = actionLabel(p.fn, p.payload, entry);
     undoStack.push(entry);
