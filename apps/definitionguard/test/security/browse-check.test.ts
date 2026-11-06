@@ -123,10 +123,10 @@ describe('MK-02 Q3: Browse projects before any read', () => {
     expect(jira.callsTo('/rest/api/3/issue/', 'app')).toEqual([]);
   });
 
-  it('reads the issue as the app for the template only after Browse is granted', async () => {
+  it('reads the issue for the template only after Browse is granted, and as the user (AMS-76722)', async () => {
     await getIssueChecklist({}, bareCtx, storage);
     const order = jira.calls.map(c => `${c.who} ${c.path.split('?')[0]}`);
-    expect(order).toEqual(['user /rest/api/3/mypermissions', 'app /rest/api/3/issue/61002']);
+    expect(order).toEqual(['user /rest/api/3/mypermissions', 'user /rest/api/3/issue/61002']);
   });
 
   it('the bridge resolvers go through the same check', async () => {

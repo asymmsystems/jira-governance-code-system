@@ -57,9 +57,13 @@ describe('B-18 withRetry', () => {
       const src = fs.readFileSync(f, 'utf8');
       const raw = (src.match(/\.requestJira\(/g) || []).length;
       const wrapped = (src.match(/withRetry\(\(\) => api\.as(App|User)\(\)\.requestJira\(/g) || []).length;
+      // AMS-76722: the permission checks call Jira inline in a loop that ends with retryAfter.
+      const lines = src.split('\n');
+      const inline = lines.filter((l, i) => /await api\.asUser\(\)\.requestJira\(route`/.test(l) && !l.includes('withRetry(')
+        && lines.slice(i + 1, i + 4).some(n => n.includes('if (!(await retryAfter(res, attempt))) break;'))).length;
       // The property write keeps its own 429/5xx retry (B-14).
       const ownRetry = f.endsWith('attestation.ts') ? 1 : 0;
-      expect({ file: path.basename(f), unwrapped: raw - wrapped - ownRetry }).toEqual({ file: path.basename(f), unwrapped: 0 });
+      expect({ file: path.basename(f), unwrapped: raw - wrapped - inline - ownRetry }).toEqual({ file: path.basename(f), unwrapped: 0 });
     }
   });
 });
