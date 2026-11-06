@@ -41,7 +41,7 @@ import {
   clampColumnResize,
   computeFrozenLayout
 } from '../ui/column-layout';
-import { barRect, daysBetween, visibleRange, handleOffsets, portOffsets, nearestArrow, snapDays, previewMoves, xForDate } from '../ui/timeline-geometry';
+import { barRect, daysBetween, visibleRange, handleOffsets, portOffsets, nearestArrow, snapDays, shiftDates, xForDate } from '../ui/timeline-geometry';
 import { GRID_COLUMNS, navigate, rowCells, rowLevel, moveKey, moveAnnouncement } from '../ui/keyboard-grid';
 import { weeklyHours } from '../ui/weekly-hours';
 import { emptyState, showLinkHint } from '../ui/first-run';
@@ -49,6 +49,7 @@ import { applyDynamicStyles } from './dynamic-style';
 import { toggleKey, rangeKeys, moveSelectionBy, selectedBlockParents, progressFromDigit } from '../ui/selection';
 import { addDays as addDaysIso } from '../domain/schedule-engine';
 import { planBlockMove } from '../domain/block-move';
+import { previewSingleMove, previewBlockMove } from '../domain/drop-plan';
 import { baselineItems, compareItems } from '../domain/baseline';
 import { shouldAutoCompact, ZOOMS, zoomById, zoomStep, mondayOf, initialRange, rangeDays, extendRange, edgeToExtend, headerCells, gridLines, anchorScroll, dateAt } from '../ui/time-scale';
 import { buildTableViewRows, toggleTableView } from '../ui/table-view';
@@ -324,6 +325,30 @@ function blockConflict(plan) {
     if (!worst || need > worst.need) worst = { ...r, need, key: c.key };
   }
   return worst;
+}
+
+/**
+ * The days a block move of `key` by `days` will use: with "Enforce dependencies" on, the whole block
+ * stops at the earliest day every link allows (ADR-003 section 6), as moveBlock does.
+ */
+function effectiveBlockDays(key, days) {
+  if (!days || !isEnforceDepsEnabled()) return days;
+  const conflict = blockConflict(blockPlan(key, days));
+  return conflict ? days + conflict.need : days;
+}
+
+/**
+ * Every Jira write of a drop, from the same computation the server applies (src/domain/drop-plan.ts,
+ * INV-03): `moves` for drawing (the moved bar included), `text` for the preview line.
+ */
+function dropPreview(key, start, end, blockDays) {
+  const plan = { tasks: currentPlan.tasks || [], backlogTasks: currentPlan.backlogTasks || [] };
+  const all = plan.tasks.concat(plan.backlogTasks);
+  const p = blockDays !== undefined ? previewBlockMove(plan, key, blockDays, todayIso()) : previewSingleMove(plan, key, start, end, todayIso());
+  const text = describePendingWrites(all, p.moves, key, { parentDue: p.parentDue, epics: p.epics }).text;
+  const moves = new Map(p.moves);
+  moves.set(key, { start, end });
+  return { moves, text };
 }
 
 /** Moves a parent and its sub-tasks as one block; one Undo restores them all. */
@@ -4770,11 +4795,9 @@ function startBarPointerEdit(e, key, mode, hit) {
     const s = snapDays(dx, dayPx(), ev.altKey ? 'day' : zoomById(zoomId).snap);
     if (s === shift && timeline.drag) return;
     shift = s;
-    const moves = previewMoves(currentPlan.tasks, key, mode === 'right' ? 0 : s, mode === 'left' ? 0 : s, today);
-    if (isBlockParent(task) && s !== 0) {
-      for (const c of blockPlan(key, s).changes) moves.set(c.key, { start: c.toStart, end: c.toEnd });
-    }
-    const mine = moves.get(key);
+    const mine = shiftDates(task, mode === 'right' ? 0 : s, mode === 'left' ? 0 : s);
+    if (!mine) return;
+    const moves = new Map([[key, mine]]);
 
     const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
     const isConflict = conflict.hasConflict;
@@ -4796,10 +4819,19 @@ function startBarPointerEdit(e, key, mode, hit) {
       }
     }
 
-    const currentMine = moves.get(key) || mine;
+    let currentMine = moves.get(key) || mine;
+    // The preview lists every Jira write of the drop, computed as the server will (INV-03, H2).
+    let preview;
+    if (isBlockParent(task)) {
+      const days = s !== 0 ? effectiveBlockDays(key, s) : 0;
+      currentMine = { start: addDaysIso(task.startDate, days), end: addDaysIso(task.endDate || task.startDate, days) };
+      preview = dropPreview(key, currentMine.start, currentMine.end, days);
+    } else {
+      preview = dropPreview(key, currentMine.start, currentMine.end);
+    }
     timeline.drag = {
       key,
-      moves,
+      moves: preview.moves,
       label,
       isConflict: enforceDeps ? false : isConflict,
       wasSnapped,
@@ -4807,7 +4839,7 @@ function startBarPointerEdit(e, key, mode, hit) {
       predKey: conflict.predKey
     };
     positionBarHit(hit, { ...task, startDate: currentMine.start, endDate: currentMine.end });
-    wrapper.dataset.preview = JSON.stringify(Object.fromEntries(moves));
+    wrapper.dataset.preview = JSON.stringify(Object.fromEntries(preview.moves));
 
     // Auto-expand time range dynamically when dragging/resizing beyond current boundaries
     if (timeRange && mine) {
@@ -4840,7 +4872,7 @@ function startBarPointerEdit(e, key, mode, hit) {
     // Name every issue and field the drop will change before the user lets go (B-23, INV-11).
     const strip = document.getElementById('writePreview');
     if (strip) {
-      let desc = describePendingWrites(currentPlan.tasks, moves, key).text;
+      let desc = preview.text;
       if (isConflict) {
         if (enforceDeps) {
           desc = `🔒 Enforce dependencies: will snap ${key} to ${conflict.earliestDate} to satisfy dependency on ${conflict.predKey}. ${desc}`;
@@ -5262,16 +5294,19 @@ function placeStripNear(strip, key) {
 
 /** Shows the live preview for day shifts of a task, as a drag does (B-13, B-23). */
 function showShiftPreview(key, startShift, endShift, label) {
-  const moves = previewMoves(currentPlan.tasks, key, startShift, endShift, todayIso());
-  // A block parent's preview also shows where each sub-task goes (ADR-003).
-  if (isBlockParent(findTask(key)) && startShift === endShift && startShift !== 0) {
-    for (const c of blockPlan(key, startShift).changes) moves.set(c.key, { start: c.toStart, end: c.toEnd });
-  }
-  const mine = moves.get(key);
-  timeline.drag = { key, moves, label: label(mine) };
+  const task = findTask(key);
+  const block = isBlockParent(task) && startShift === endShift && startShift !== 0;
+  // A block parent's preview shows where each sub-task goes (ADR-003); either way the line lists every
+  // Jira write of the drop, computed as the server will (INV-03, H2).
+  const days = block ? effectiveBlockDays(key, startShift) : undefined;
+  const shifted = task && shiftDates(task, block ? days : startShift, block ? days : endShift);
+  if (!shifted) return undefined;
+  const preview = dropPreview(key, shifted.start, shifted.end, days);
+  const mine = preview.moves.get(key);
+  timeline.drag = { key, moves: preview.moves, label: label(mine) };
   const strip = document.getElementById('writePreview');
   if (strip) {
-    strip.textContent = describePendingWrites(currentPlan.tasks, moves, key).text;
+    strip.textContent = preview.text;
     strip.hidden = false;
     placeStripNear(strip, key);
   }

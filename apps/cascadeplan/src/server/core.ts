@@ -15,7 +15,6 @@ import { kvs, WhereConditions } from '@forge/kvs';
 import { WbsTask, WeeklySprintColumn, ProjectMilestone, ColumnWidthConfig, JiraSyncReport, JiraWriteRecord } from '../domain/models';
 import { PlannerEngine } from '../domain/planner-engine';
 import { JiraFieldChange } from '../domain/jira-change';
-import { ScheduleEffort, ScheduleLink } from '../domain/schedule-engine';
 import { StorageProvider } from '../storage/plan-repository';
 import { PlanStore, StoredEntry, sequenceBetween } from '../storage/plan-store';
 import { logFailure } from '../logger';
@@ -281,30 +280,7 @@ export function todayIso(d?: Date): string {
   return requestScope.getStore()?.today || new Date().toISOString().slice(0, 10);
 }
 
-/**
- * Schedule engine input built from the plan: WorkEffort-shaped efforts for every task with dates,
- * and WORK_EFF_PRECEDENCY links from every active dependency (B-11, B-24, B-28).
- */
-export function engineInputs(tasks: Array<Partial<WbsTask>>): { efforts: Map<string, ScheduleEffort>; links: ScheduleLink[] } {
-  const efforts = new Map<string, ScheduleEffort>();
-  const links: ScheduleLink[] = [];
-  for (const t of tasks) {
-    if (!t.key || !isIsoDate(t.startDate)) continue;
-    efforts.set(t.key, {
-      workEffortId: t.key,
-      estimatedStartDate: t.startDate,
-      estimatedCompletionDate: isIsoDate(t.endDate) ? t.endDate : t.startDate,
-      percentComplete: t.progress || 0,
-      started: t.status === 'IN_PROGRESS' || t.status === 'COMPLETED'
-    });
-    for (const d of t.dependencies || (t.dependency ? [t.dependency] : [])) {
-      if (d.predecessorKey && typeof d.triggerPercent === 'number') {
-        links.push({ workEffortIdFrom: d.predecessorKey, workEffortIdTo: t.key, workEffortAssocTypeId: 'WORK_EFF_PRECEDENCY', triggerPercent: d.triggerPercent });
-      }
-    }
-  }
-  return { efforts, links };
-}
+export { engineInputs } from '../domain/drop-plan';
 
 /** Week index for a date, clamped to the visible window (display only; dates stay exact). */
 export function clampedWeekIndex(weeks: WeeklySprintColumn[], iso: string): number {

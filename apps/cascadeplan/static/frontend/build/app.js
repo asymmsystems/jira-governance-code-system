@@ -6099,19 +6099,24 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     return out;
   }
-  function describePendingWrites(tasks, moves, key) {
+  function describePendingWrites(tasks, moves, key, extra = {}) {
+    void key;
     const byKey = new Map(tasks.map((t) => [t.key, t]));
     const jira = [];
     const starts = [];
+    const dueOf = (t) => t.jiraDueDate ? String(t.jiraDueDate).slice(0, 10) : null;
     for (const [k, m] of moves) {
       const t = byKey.get(k);
       if (!t) continue;
-      if (m.end !== t.endDate) jira.push(`${k} due ${m.end}`);
+      if (m.end !== dueOf(t)) jira.push(`${k} due ${m.end}`);
       if (m.start !== t.startDate) starts.push(`${k} ${m.start}`);
     }
-    const parent = byKey.get(key)?.parentKey;
-    const rollUp = parent && byKey.has(parent) ? ` ${parent} dates follow its children.` : "";
-    const text = `Jira: ${jira.length ? jira.join(", ") : "no due date change"}.` + (starts.length ? ` Start dates (every plan): ${starts.join(", ")}.` : "") + rollUp;
+    for (const [k, end] of extra.parentDue || []) {
+      const t = byKey.get(k);
+      if (t && end !== dueOf(t) && !moves.has(k)) jira.push(`${k} due ${end}`);
+    }
+    const epics = extra.epics || [];
+    const text = `Jira: ${jira.length ? jira.join(", ") : "no due date change"}.` + (starts.length ? ` Start dates (every plan): ${starts.join(", ")}.` : "") + (epics.length ? ` Not moved: ${epics.join(", ")} (epic; move its work items).` : "");
     return { jira, starts, text };
   }
 
@@ -7104,6 +7109,219 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return cycle.length ? { changes, efforts: work, cycle } : { changes, efforts: work };
   }
 
+  // src/domain/block-move.ts
+  var ISO = /^\d{4}-\d{2}-\d{2}$/;
+  function addDays2(iso2, days) {
+    return new Date(Date.parse(`${iso2}T00:00:00Z`) + days * 864e5).toISOString().slice(0, 10);
+  }
+  function blockState(m) {
+    if (!m.startDate || !ISO.test(m.startDate)) return "undated";
+    if (m.status === "COMPLETED") return "done";
+    if (m.status === "IN_PROGRESS") return "in-progress";
+    return "not-started";
+  }
+  function planBlockMove(members, days, today) {
+    const changes = [];
+    const fixed = [];
+    for (const m of members) {
+      const state = blockState(m);
+      if (state === "undated") {
+        fixed.push({ key: m.key, state, reason: "undated: stays in the backlog" });
+        continue;
+      }
+      if (state === "done") {
+        fixed.push({ key: m.key, state, reason: "done: its dates record finished work" });
+        continue;
+      }
+      const fromStart = m.startDate;
+      const fromEnd = m.endDate && ISO.test(m.endDate) ? m.endDate : fromStart;
+      if (state === "not-started") {
+        changes.push({ key: m.key, state, fromStart, fromEnd, toStart: addDays2(fromStart, days), toEnd: addDays2(fromEnd, days) });
+        continue;
+      }
+      let toEnd = addDays2(fromEnd, days);
+      if (toEnd < today) toEnd = today;
+      if (toEnd < fromStart) toEnd = fromStart;
+      if (toEnd === fromEnd) fixed.push({ key: m.key, state, reason: "in progress: start kept, end not before today" });
+      else changes.push({ key: m.key, state, fromStart, fromEnd, toStart: fromStart, toEnd });
+    }
+    return { changes, fixed };
+  }
+
+  // src/domain/work-effort-links.ts
+  function rollUpParentDates(tasks) {
+    const out = /* @__PURE__ */ new Map();
+    for (const t of tasks) {
+      if (!t.parentKey || !t.startDate) continue;
+      const end = t.endDate && t.endDate >= t.startDate ? t.endDate : t.startDate;
+      const cur = out.get(t.parentKey);
+      out.set(t.parentKey, cur ? { startDate: t.startDate < cur.startDate ? t.startDate : cur.startDate, endDate: end > cur.endDate ? end : cur.endDate } : { startDate: t.startDate, endDate: end });
+    }
+    return out;
+  }
+
+  // src/domain/drop-plan.ts
+  var ISO2 = /^\d{4}-\d{2}-\d{2}$/;
+  var isIso = (v) => typeof v === "string" && ISO2.test(v);
+  var dayDiff = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 864e5);
+  function engineInputs(tasks) {
+    const efforts = /* @__PURE__ */ new Map();
+    const links = [];
+    for (const t of tasks) {
+      if (!t.key || !isIso(t.startDate)) continue;
+      efforts.set(t.key, {
+        workEffortId: t.key,
+        estimatedStartDate: t.startDate,
+        estimatedCompletionDate: isIso(t.endDate) ? t.endDate : t.startDate,
+        percentComplete: t.progress || 0,
+        started: t.status === "IN_PROGRESS" || t.status === "COMPLETED"
+      });
+      for (const d of t.dependencies || (t.dependency ? [t.dependency] : [])) {
+        if (d.predecessorKey && typeof d.triggerPercent === "number") {
+          links.push({ workEffortIdFrom: d.predecessorKey, workEffortIdTo: t.key, workEffortAssocTypeId: "WORK_EFF_PRECEDENCY", triggerPercent: d.triggerPercent });
+        }
+      }
+    }
+    return { efforts, links };
+  }
+  function ancestorKeys(key, tasks) {
+    const byKey = new Map(tasks.map((t) => [t.key, t]));
+    const out = [];
+    let cur = byKey.get(key)?.parentKey;
+    while (cur && !out.includes(cur)) {
+      out.push(cur);
+      cur = byKey.get(cur)?.parentKey;
+    }
+    return out;
+  }
+  function withRollUps(tasks) {
+    let out = tasks.map((t) => ({ ...t }));
+    for (let pass = 0; pass < 4; pass++) {
+      const spans = rollUpParentDates(out);
+      let changed = false;
+      out = out.map((t) => {
+        const span = spans.get(t.key);
+        if (!span || t.startDate === span.startDate && t.endDate === span.endDate) return t;
+        changed = true;
+        return { ...t, ...span, datesFromChildren: true };
+      });
+      if (!changed) break;
+    }
+    return out;
+  }
+  function expandParentCascades(changes, tasks, today, exclude = /* @__PURE__ */ new Set()) {
+    const out = [];
+    const epics = [];
+    const seen = new Set(exclude);
+    for (const c of changes) {
+      const t = tasks.find((x) => x.key === c.key);
+      if (!t || !t.datesFromChildren) {
+        if (!seen.has(c.key)) {
+          out.push(c);
+          seen.add(c.key);
+        }
+        continue;
+      }
+      if (t.isEpic || (t.hierarchyLevel ?? 0) >= 1) {
+        epics.push(c.key);
+        continue;
+      }
+      if (!isIso(t.startDate)) continue;
+      const days = dayDiff(t.startDate, c.toStart);
+      if (days === 0) continue;
+      for (const b of planBlockMove(tasks.filter((x) => x.parentKey === t.key), days, today).changes) {
+        if (!seen.has(b.key)) {
+          out.push({ key: b.key, toStart: b.toStart, toEnd: b.toEnd });
+          seen.add(b.key);
+        }
+      }
+    }
+    return { changes: out, epics };
+  }
+  function singleMoveCascade(timeline2, all, key, patch, today) {
+    const candidate = withRollUps(timeline2.map((t) => t.key === key ? { ...t, ...patch } : t));
+    const inputs = engineInputs(candidate);
+    const first = cascade(inputs.efforts, inputs.links, key, today);
+    const cycles = [...first.cycle || []];
+    const changes = first.changes.map((c) => ({ key: c.key, toStart: c.toStart, toEnd: c.toEnd }));
+    let efforts = first.efforts;
+    for (const anc of ancestorKeys(key, timeline2)) {
+      const was = timeline2.find((t) => t.key === anc);
+      const now = candidate.find((t) => t.key === anc);
+      if (!was || !now || !now.datesFromChildren || was.startDate === now.startDate && was.endDate === now.endDate) continue;
+      const more = cascade(efforts, inputs.links, anc, today);
+      cycles.push(...more.cycle || []);
+      for (const c of more.changes) if (!changes.some((x) => x.key === c.key)) changes.push({ key: c.key, toStart: c.toStart, toEnd: c.toEnd });
+      efforts = more.efforts;
+    }
+    const expanded = expandParentCascades(changes, all, today, /* @__PURE__ */ new Set([key]));
+    return { changes: expanded.changes, epics: expanded.epics, cycles };
+  }
+  function cascadeFromRoots(candidate, all, roots, exclude, today) {
+    const inputs = engineInputs(candidate);
+    let efforts = inputs.efforts;
+    const out = [];
+    const epics = [];
+    const cycles = [];
+    for (const root of roots) {
+      const r = cascade(efforts, inputs.links, root, today);
+      cycles.push(...r.cycle || []);
+      efforts = r.efforts;
+      const expanded = expandParentCascades(r.changes, all, today, exclude);
+      epics.push(...expanded.epics);
+      for (const c of expanded.changes) if (!out.some((x) => x.key === c.key)) out.push(c);
+    }
+    return { changes: out, epics, cycles };
+  }
+  function parentDueDateTargets(before, moved, reparent) {
+    const shifted = before.map((t) => {
+      let n = moved.has(t.key) ? { ...t, ...moved.get(t.key) } : t;
+      if (reparent && t.key === reparent.key) n = { ...n, parentKey: reparent.parentKey };
+      return n;
+    });
+    const after = withRollUps(shifted);
+    const parents = /* @__PURE__ */ new Set();
+    for (const key of moved.keys()) for (const a of ancestorKeys(key, before)) if (!moved.has(a)) parents.add(a);
+    if (reparent) for (const list of [before, shifted]) for (const a of ancestorKeys(reparent.key, list)) parents.add(a);
+    const out = [];
+    for (const key of parents) {
+      const was = before.find((t) => t.key === key);
+      const now = after.find((t) => t.key === key);
+      if (!was || !now || !now.datesFromChildren || !isIso(now.endDate) || was.endDate === now.endDate) continue;
+      if (String(was.jiraDueDate || "").slice(0, 10) === now.endDate) continue;
+      out.push({ key, id: was.id, endDate: now.endDate, was });
+    }
+    return out;
+  }
+  function finish(all, moves, epics) {
+    const moved = new Map([...moves].map(([k, m]) => [k, { startDate: m.start, endDate: m.end }]));
+    const parentDue = new Map(parentDueDateTargets(all, moved).map((t) => [t.key, t.endDate]));
+    return { moves, parentDue, epics: [...new Set(epics)] };
+  }
+  function previewSingleMove(plan, key, start, end, today) {
+    const all = [...plan.tasks, ...plan.backlogTasks || []];
+    const moves = /* @__PURE__ */ new Map();
+    if (!all.some((t) => t.key === key)) return { moves, parentDue: /* @__PURE__ */ new Map(), epics: [] };
+    moves.set(key, { start, end });
+    const r = singleMoveCascade(plan.tasks, all, key, { startDate: start, endDate: end }, today);
+    for (const c of r.changes) moves.set(c.key, { start: c.toStart, end: c.toEnd });
+    return finish(all, moves, r.epics);
+  }
+  function previewBlockMove(plan, parentKey, days, today) {
+    const all = [...plan.tasks, ...plan.backlogTasks || []];
+    const members = all.filter((t) => t.parentKey === parentKey);
+    const moves = /* @__PURE__ */ new Map();
+    const block = planBlockMove(members, days, today).changes;
+    if (block.length === 0) return { moves, parentDue: /* @__PURE__ */ new Map(), epics: [] };
+    for (const c of block) moves.set(c.key, { start: c.toStart, end: c.toEnd });
+    const moved = new Map(block.map((c) => [c.key, { startDate: c.toStart, endDate: c.toEnd }]));
+    const candidate = withRollUps(all.map((t) => moved.has(t.key) ? { ...t, ...moved.get(t.key) } : t));
+    const roots = [parentKey, ...block.map((c) => c.key), ...ancestorKeys(parentKey, all)];
+    const r = cascadeFromRoots(candidate, all, roots, /* @__PURE__ */ new Set([parentKey, ...members.map((m) => m.key)]), today);
+    for (const c of r.changes) moves.set(c.key, { start: c.toStart, end: c.toEnd });
+    return finish(all, moves, r.epics);
+  }
+
   // src/ui/timeline-geometry.ts
   var HANDLE_PX = 24;
   var DAY_MS2 = 864e5;
@@ -7174,37 +7392,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const days = mode === "week" ? Math.round(deltaPx / (dayPx2 * 7)) * 7 : Math.round(deltaPx / dayPx2);
     return days === 0 ? 0 : days;
   }
-  function previewMoves(tasks, key, startShift, endShift, today) {
-    const out = /* @__PURE__ */ new Map();
-    const target = tasks.find((t) => t.key === key);
-    if (!target || !target.startDate) return out;
-    const start = addDays(target.startDate, startShift);
-    let end = addDays(target.endDate || target.startDate, endShift);
+  function shiftDates(task, startShift, endShift) {
+    if (!task.startDate) return null;
+    const start = addDays(task.startDate, startShift);
+    let end = addDays(task.endDate || task.startDate, endShift);
     if (end < start) end = start;
-    out.set(key, { start, end });
-    const efforts = /* @__PURE__ */ new Map();
-    const links = [];
-    for (const t of tasks) {
-      if (!t.startDate) continue;
-      const moved = t.key === key;
-      efforts.set(t.key, {
-        workEffortId: t.key,
-        estimatedStartDate: moved ? start : t.startDate,
-        estimatedCompletionDate: moved ? end : t.endDate || t.startDate,
-        percentComplete: t.progress || 0,
-        started: t.status === "IN_PROGRESS" || t.status === "COMPLETED"
-      });
-      for (const d of t.dependencies || (t.dependency ? [t.dependency] : [])) {
-        if (d.predecessorKey && typeof d.triggerPercent === "number") {
-          links.push({ workEffortIdFrom: d.predecessorKey, workEffortIdTo: t.key, workEffortAssocTypeId: "WORK_EFF_PRECEDENCY", triggerPercent: d.triggerPercent });
-        }
-      }
-    }
-    try {
-      for (const c of cascade(efforts, links, key, today).changes) out.set(c.key, { start: c.toStart, end: c.toEnd });
-    } catch {
-    }
-    return out;
+    return { start, end };
   }
 
   // src/ui/canvas-palette.ts
@@ -8181,45 +8374,6 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return /^[0-9]$/.test(key) ? Number(key) * 10 : null;
   }
 
-  // src/domain/block-move.ts
-  var ISO = /^\d{4}-\d{2}-\d{2}$/;
-  function addDays2(iso2, days) {
-    return new Date(Date.parse(`${iso2}T00:00:00Z`) + days * 864e5).toISOString().slice(0, 10);
-  }
-  function blockState(m) {
-    if (!m.startDate || !ISO.test(m.startDate)) return "undated";
-    if (m.status === "COMPLETED") return "done";
-    if (m.status === "IN_PROGRESS") return "in-progress";
-    return "not-started";
-  }
-  function planBlockMove(members, days, today) {
-    const changes = [];
-    const fixed = [];
-    for (const m of members) {
-      const state = blockState(m);
-      if (state === "undated") {
-        fixed.push({ key: m.key, state, reason: "undated: stays in the backlog" });
-        continue;
-      }
-      if (state === "done") {
-        fixed.push({ key: m.key, state, reason: "done: its dates record finished work" });
-        continue;
-      }
-      const fromStart = m.startDate;
-      const fromEnd = m.endDate && ISO.test(m.endDate) ? m.endDate : fromStart;
-      if (state === "not-started") {
-        changes.push({ key: m.key, state, fromStart, fromEnd, toStart: addDays2(fromStart, days), toEnd: addDays2(fromEnd, days) });
-        continue;
-      }
-      let toEnd = addDays2(fromEnd, days);
-      if (toEnd < today) toEnd = today;
-      if (toEnd < fromStart) toEnd = fromStart;
-      if (toEnd === fromEnd) fixed.push({ key: m.key, state, reason: "in progress: start kept, end not before today" });
-      else changes.push({ key: m.key, state, fromStart, fromEnd, toStart: fromStart, toEnd });
-    }
-    return { changes, fixed };
-  }
-
   // src/domain/baseline.ts
   var round1 = (n) => Math.round(n * 10) / 10;
   function baselineItems(tasks) {
@@ -8735,6 +8889,20 @@ Please see https://iframe-resizer.com/upgrade for more details.
       if (!worst || need > worst.need) worst = { ...r, need, key: c.key };
     }
     return worst;
+  }
+  function effectiveBlockDays(key, days) {
+    if (!days || !isEnforceDepsEnabled()) return days;
+    const conflict = blockConflict(blockPlan(key, days));
+    return conflict ? days + conflict.need : days;
+  }
+  function dropPreview(key, start, end, blockDays) {
+    const plan = { tasks: currentPlan.tasks || [], backlogTasks: currentPlan.backlogTasks || [] };
+    const all = plan.tasks.concat(plan.backlogTasks);
+    const p = blockDays !== void 0 ? previewBlockMove(plan, key, blockDays, todayIso()) : previewSingleMove(plan, key, start, end, todayIso());
+    const text = describePendingWrites(all, p.moves, key, { parentDue: p.parentDue, epics: p.epics }).text;
+    const moves = new Map(p.moves);
+    moves.set(key, { start, end });
+    return { moves, text };
   }
   async function moveBlock(key, days) {
     if (!days) return;
@@ -10066,7 +10234,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
           nameSpan.replaceWith(renameInp);
           renameInp.focus();
           renameInp.select();
-          const finish = async (save) => {
+          const finish2 = async (save) => {
             const newName = renameInp.value.trim();
             if (save && newName && newName !== origName) {
               const res = await callResolver2("renameProjectPlan", { planId: p.id, name: newName });
@@ -10082,10 +10250,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
             }
           };
           renameInp.addEventListener("keydown", (ke) => {
-            if (ke.key === "Enter") finish(true);
-            if (ke.key === "Escape") finish(false);
+            if (ke.key === "Enter") finish2(true);
+            if (ke.key === "Escape") finish2(false);
           });
-          renameInp.addEventListener("blur", () => finish(true));
+          renameInp.addEventListener("blur", () => finish2(true));
         });
         actions.appendChild(btnRename);
         const btnDel = document.createElement("button");
@@ -12604,11 +12772,9 @@ Click to manage or assign.`;
       const s = snapDays(dx, dayPx(), ev.altKey ? "day" : zoomById(zoomId).snap);
       if (s === shift && timeline.drag) return;
       shift = s;
-      const moves = previewMoves(currentPlan.tasks, key, mode === "right" ? 0 : s, mode === "left" ? 0 : s, today);
-      if (isBlockParent(task) && s !== 0) {
-        for (const c of blockPlan(key, s).changes) moves.set(c.key, { start: c.toStart, end: c.toEnd });
-      }
-      const mine = moves.get(key);
+      const mine = shiftDates(task, mode === "right" ? 0 : s, mode === "left" ? 0 : s);
+      if (!mine) return;
+      const moves = /* @__PURE__ */ new Map([[key, mine]]);
       const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
       const isConflict = conflict.hasConflict;
       const enforceDeps = isEnforceDepsEnabled();
@@ -12625,10 +12791,18 @@ Click to manage or assign.`;
           label2 += ` \xB7 \u26A0\uFE0F Conflict: ${conflict.predKey} (${conflict.triggerPercent}%)`;
         }
       }
-      const currentMine = moves.get(key) || mine;
+      let currentMine = moves.get(key) || mine;
+      let preview;
+      if (isBlockParent(task)) {
+        const days = s !== 0 ? effectiveBlockDays(key, s) : 0;
+        currentMine = { start: addDays(task.startDate, days), end: addDays(task.endDate || task.startDate, days) };
+        preview = dropPreview(key, currentMine.start, currentMine.end, days);
+      } else {
+        preview = dropPreview(key, currentMine.start, currentMine.end);
+      }
       timeline.drag = {
         key,
-        moves,
+        moves: preview.moves,
         label: label2,
         isConflict: enforceDeps ? false : isConflict,
         wasSnapped,
@@ -12636,7 +12810,7 @@ Click to manage or assign.`;
         predKey: conflict.predKey
       };
       positionBarHit(hit, { ...task, startDate: currentMine.start, endDate: currentMine.end });
-      wrapper.dataset.preview = JSON.stringify(Object.fromEntries(moves));
+      wrapper.dataset.preview = JSON.stringify(Object.fromEntries(preview.moves));
       if (timeRange && mine) {
         if (mine.start < timeRange.start) {
           const diffDays = daysBetween(mine.start, timeRange.start);
@@ -12663,7 +12837,7 @@ Click to manage or assign.`;
       }
       const strip = document.getElementById("writePreview");
       if (strip) {
-        let desc = describePendingWrites(currentPlan.tasks, moves, key).text;
+        let desc = preview.text;
         if (isConflict) {
           if (enforceDeps) {
             desc = `\u{1F512} Enforce dependencies: will snap ${key} to ${conflict.earliestDate} to satisfy dependency on ${conflict.predKey}. ${desc}`;
@@ -13047,15 +13221,17 @@ Click to manage or assign.`;
     strip.style.bottom = "auto";
   }
   function showShiftPreview(key, startShift, endShift, label2) {
-    const moves = previewMoves(currentPlan.tasks, key, startShift, endShift, todayIso());
-    if (isBlockParent(findTask(key)) && startShift === endShift && startShift !== 0) {
-      for (const c of blockPlan(key, startShift).changes) moves.set(c.key, { start: c.toStart, end: c.toEnd });
-    }
-    const mine = moves.get(key);
-    timeline.drag = { key, moves, label: label2(mine) };
+    const task = findTask(key);
+    const block = isBlockParent(task) && startShift === endShift && startShift !== 0;
+    const days = block ? effectiveBlockDays(key, startShift) : void 0;
+    const shifted = task && shiftDates(task, block ? days : startShift, block ? days : endShift);
+    if (!shifted) return void 0;
+    const preview = dropPreview(key, shifted.start, shifted.end, days);
+    const mine = preview.moves.get(key);
+    timeline.drag = { key, moves: preview.moves, label: label2(mine) };
     const strip = document.getElementById("writePreview");
     if (strip) {
-      strip.textContent = describePendingWrites(currentPlan.tasks, moves, key).text;
+      strip.textContent = preview.text;
       strip.hidden = false;
       placeStripNear(strip, key);
     }
