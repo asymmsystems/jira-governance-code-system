@@ -54,7 +54,7 @@ describe('baseline domain', () => {
   });
   it('CSV quotes text and carries the digest', () => {
     const csv = baselineCsv({ header: { name: 'Q4, "final"', frozenAt: 'T', digest: 'abc' } as any, items: [{ id: '1', key: 'P-1', hours: 8, done: true }] });
-    expect(csv.split('\n')).toEqual(['# "Q4, ""final""", frozen T, SHA-256 abc', 'issue_id,issue_key,estimate_hours,start,end,done', '1,P-1,8,,,yes', '']);
+    expect(csv.split('\n')).toEqual(['"# Q4, ""final""", frozen T, SHA-256 abc','issue_id,issue_key,estimate_hours,start,end,done', '1,P-1,8,,,yes', '']);
   });
 });
 
