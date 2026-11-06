@@ -83,13 +83,13 @@ FourRealities collects delivery evidence in one place. It can support compliance
 | **11 to 100 Users** | $1.40 per user / month | $14.00 per user / year |
 | **101 to 250 Users** | $1.10 per user / month | $11.00 per user / year |
 | **251 to 1,000 Users** | $0.80 per user / month | $8.00 per user / year |
-| **Above 1,000 Users** | Custom | Custom |
+| **Above 1,000 Users** | $0.80 per user / month | $8.00 per user / year |
 
 *All billing is handled natively through Atlassian.*
 
 ---
 
-## Highlights (images 580 x 330: `docs/marketplace/assets/fourrealities/highlight-1.png` to `highlight-3.png`)
+## Highlights (images 1840 x 900: the Marketplace form needs at least 920 x 450, so the matching screenshots are used; `highlight-1.png` to `highlight-3.png` in `docs/marketplace/assets/fourrealities/` are too small)
 
 1. **Four checks per issue, each with its source.** Intent, Process, Code and Audit, each with a state, a plain sentence and where the evidence comes from.
 2. **Signed records are checked, not trusted.** A DefinitionGuard or LedgerSeal record counts only when its signature is verified and it is not older than one already seen; a hand-written record counts like no record.
