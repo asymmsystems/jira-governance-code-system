@@ -49,7 +49,7 @@ These steps work on any Jira Cloud site; nothing depends on our site. You need a
 ## 4. Reviewer Test Plan Steps
 
 ### Test Step 1: The Definition of Done checklist
-1. Open the issue. If the **Definition of Done** panel is not shown, add it from the issue's **Apps** button.
+1. Open the issue. If the **Definition of Done** panel is not shown, add it from the issue's **View app actions** button (the hexagon icon under the issue title).
 2. Observe the built-in Task template: each item has a Mandatory or Optional lozenge, and the summary names the open mandatory items, says "Incomplete", and shows the approver line ("Authorized approvers (waive and reset): ...").
 
 ### Test Step 2: An item with required evidence

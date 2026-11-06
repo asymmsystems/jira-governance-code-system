@@ -90,7 +90,7 @@ describe('B-10 evaluateGate (one rule)', () => {
 
   it('words the block message with every open item and a next step', () => {
     expect(blockMessage([item({ workEffortName: 'A' }), item({ workEffortName: 'B' })]))
-      .toBe('Definition of Done is not complete. Open mandatory items: A; B. Open the Definition of Done panel on this issue (from the Apps button if it is not shown) to finish them.');
+      .toBe('Definition of Done is not complete. Open mandatory items: A; B. Open the Definition of Done panel on this issue (from the View app actions button if it is not shown) to finish them.');
   });
 });
 

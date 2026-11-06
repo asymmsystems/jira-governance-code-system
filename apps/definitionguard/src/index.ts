@@ -21,6 +21,8 @@ import { ChangeEntry, DodState, DodTemplate, IssueChecklistState, ChecklistAudit
 import { permissionKeyOf } from './domain/roles';
 import {
   checkIssuePermissions,
+  checkAnyIssuePermission,
+  ADMIN_KEYS,
   getIssuePermissions,
   permissionLabel,
   PermissionDeniedError,
@@ -483,7 +485,7 @@ export async function getItemEvidence(payload: any, context?: any, storageProvid
   return { itemId, evidence: { ...(content.objectInfo ? { url: content.objectInfo } : {}), ...(content.textData ? { note: content.textData } : {}) } };
 }
 
-export const EXPORT_DENIED = 'Only a project admin can export this history.';
+export const EXPORT_DENIED = 'Only a project admin or a Jira admin can export this history.';
 
 /**
  * The whole history of the issue as JSON text, with the chain check and its limit, for an
@@ -491,7 +493,7 @@ export const EXPORT_DENIED = 'Only a project admin can export this history.';
  */
 export async function exportChecklistHistory(_payload: any, context?: any, storageProvider?: StorageProvider) {
   const c = panelContext(context);
-  await checkIssuePermissions(c.issueKey, ['ADMINISTER_PROJECTS'], EXPORT_DENIED);
+  await checkAnyIssuePermission(c.issueKey, ADMIN_KEYS, EXPORT_DENIED);
   const storage = resolveStorage(storageProvider);
   const store = new ChecklistStore(storage);
   const state = await store.load(c.issueId);

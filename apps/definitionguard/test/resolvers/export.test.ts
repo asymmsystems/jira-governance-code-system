@@ -26,6 +26,7 @@ const project = { id: '10000', key: 'DEMO' };
 const issue = { id: '96001', key: 'DEMO-96001', type: 'Task', typeId: '10004' };
 const as = (accountId: string) => ({ accountId, extension: { issue, project } });
 let admin = true;
+let jiraAdmin = false;
 
 describe('B-15 export', () => {
   let storage: CountingStorage;
@@ -33,17 +34,25 @@ describe('B-15 export', () => {
   beforeEach(() => {
     jira.reset();
     admin = true;
+    jiraAdmin = false;
     retryPolicy.sleep = async () => {};
     jira.handler = (c: JiraCall) => (c.path.includes('/mypermissions')
-      ? { status: 200, body: { permissions: { EDIT_ISSUES: { havePermission: true }, ADMINISTER_PROJECTS: { havePermission: admin } } } }
+      ? { status: 200, body: { permissions: { EDIT_ISSUES: { havePermission: true }, ADMINISTER_PROJECTS: { havePermission: admin }, ADMINISTER: { havePermission: jiraAdmin } } } }
       : { status: 204 });
     storage = new CountingStorage();
   });
 
   it('refuses a non-admin and reads nothing', async () => {
     admin = false;
-    await expect(exportChecklistHistory({}, as('dev'), storage)).rejects.toThrow('Only a project admin can export this history.');
+    await expect(exportChecklistHistory({}, as('dev'), storage)).rejects.toThrow('Only a project admin or a Jira admin can export this history.');
     expect(storage.gets).toEqual([]);
+  });
+
+  it('lets a Jira admin who is not a project admin export', async () => {
+    admin = false;
+    jiraAdmin = true;
+    const res: any = await exportChecklistHistory({}, as('site-admin'), storage);
+    expect(JSON.parse(res.text).format).toBe('definitionguard-history-export');
   });
 
   it('exports every event, the state summary, the chain result and its limit, as JSON text', async () => {

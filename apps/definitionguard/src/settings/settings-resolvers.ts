@@ -11,7 +11,7 @@ import api, { route } from '@forge/api';
 import Resolver from '@forge/resolver';
 import { StorageProvider } from '../storage/checklist-repository';
 import { resolveStorage } from '../storage/forge-storage';
-import { checkProjectPermissions } from '../security/permissions';
+import { checkAnyProjectPermission, ADMIN_KEYS } from '../security/permissions';
 import { assertLicensed, isLicenceInactive, LICENCE_GATE_OFF } from '../security/licence';
 import { TemplateStore, validateTemplate } from './template-store';
 import { toTemplateView } from '../domain/dod-template';
@@ -23,7 +23,7 @@ import { ProjectConfigStore } from './project-config';
 import { withRetry } from '../jira/jira-client';
 import { PartyStore } from '../storage/party-store';
 
-export const TEMPLATE_DENIED = 'Only a project admin can change DefinitionGuard templates.';
+export const TEMPLATE_DENIED = 'Only a project admin or a Jira admin can change DefinitionGuard templates.';
 
 export function settingsContext(context: any) {
   const project = context?.extension?.project;
@@ -35,7 +35,7 @@ export function settingsContext(context: any) {
 
 export async function requireProjectAdmin(context: any) {
   const c = settingsContext(context);
-  await checkProjectPermissions(c.projectKey, ['ADMINISTER_PROJECTS'], TEMPLATE_DENIED);
+  await checkAnyProjectPermission(c.projectKey, ADMIN_KEYS, TEMPLATE_DENIED);
   return c;
 }
 
