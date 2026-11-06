@@ -68,6 +68,24 @@ jobs:
         working-directory: apps/${{ matrix.app }}
         run: npm audit --omit=dev --audit-level=high
 
+      # Software bill of materials (CycloneDX) of the production dependencies, kept for every build
+      # (asymm-engineering issue-00003; security questionnaire, Partner-Extended Q12).
+      - name: Software bill of materials (CycloneDX)
+        working-directory: apps/${{ matrix.app }}
+        # cyclonedx-npm, because `npm sbom` stops on the peer-dependency ranges of Atlassian's own
+        # UI packages (react ^16 wanted, react 18 installed); --ignore-npm-errors lists them anyway.
+        run: |
+          npx --yes @cyclonedx/cyclonedx-npm@4.0.0 --ignore-npm-errors --omit dev \
+            --output-format JSON --output-file sbom-${{ matrix.app }}.cdx.json
+          node -e "const b=require('./sbom-${{ matrix.app }}.cdx.json'); if (b.bomFormat !== 'CycloneDX' || !(b.components || []).length) process.exit(1)"
+
+      - name: Keep the bill of materials
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.app }}-${{ github.sha }}
+          path: apps/${{ matrix.app }}/sbom-${{ matrix.app }}.cdx.json
+          retention-days: 90
+
       - name: Type check
         working-directory: apps/${{ matrix.app }}
         run: npx --no-install tsc --noEmit
