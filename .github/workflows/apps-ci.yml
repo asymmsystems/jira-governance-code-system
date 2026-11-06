@@ -64,7 +64,7 @@ jobs:
       # production dependencies (MK-02, security questionnaire Q10).
       - name: Dependency audit (production, high and critical)
         # Each app joins this list when its dependency fixes are on master.
-        if: contains(fromJSON('["cascadeplan", "definitionguard", "ledgerseal"]'), matrix.app)
+        if: contains(fromJSON('["cascadeplan", "definitionguard", "ledgerseal", "fourrealities"]'), matrix.app)
         working-directory: apps/${{ matrix.app }}
         run: npm audit --omit=dev --audit-level=high
 
