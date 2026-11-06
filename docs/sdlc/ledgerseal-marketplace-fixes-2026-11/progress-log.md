@@ -352,3 +352,13 @@ The review is `docs/sdlc/merge-reviews-2026-11/ledgerseal-followups-2-merge-revi
 
 - `docs/launch/approved-ticket-problem.md`: five checks and five `PASS` lines (adds the status check); "cryptographic immutability" replaced by "tamper evidence", with the 11.10(e) limit.
 - `site/apps/ledgerseal/open-verifier.md`: five checks, the status line in the expected output, and a note that a Marketplace export names `ls-prod-2026-11` while the worked example uses the development key.
+
+### Deploy and live check (development 4.5.0)
+
+- `forge deploy -e development`: 4.5.0 (code of `3dde4a6`).
+- PAY-10 evidence exported from the panel: 5 of 5 PASS with `tools/verifier` and the development key; property schema 3, signed, no account id.
+- M-7, L-13 live: not run live (M-7 needs a stopped conversion and two invocations on one old record; L-13 a closed or inactive account); proven by the tests above. No live write in this round.
+
+### Final gate (third follow-ups)
+
+`npx tsc --noEmit` 0 errors; `npm test`: 47 suites, 506 tests passed; coverage statements 97.88%, branches 94.23%, functions 96.79%, lines 98.67%; `npm run build` exit 0; `npm audit --omit=dev --audit-level=high` exit 0; `forge lint` "No issues found". Development version 4.5.0.
