@@ -122,6 +122,22 @@ describe('LedgerSeal Offline Verifier', () => {
     assert.match(res.stdout, /FAIL history chain/);
   });
 
+  it('fails evidence whose attestation status does not match the newest history entry, with exit code 1', () => {
+    const evidence = JSON.parse(readFileSync(join(FIXTURES, 'valid-evidence.json'), 'utf8'));
+    const dir = mkdtempSync(join(tmpdir(), 'lsv-'));
+    const file = join(dir, 'revoked-claim.json');
+    evidence.attestation.status = 'SEAL_REVOKED';
+    writeFileSync(file, JSON.stringify(evidence));
+    const res = run([file, join(FIXTURES, 'test-key.pub.pem')]);
+    assert.strictEqual(res.status, 1);
+    assert.match(res.stdout, /FAIL attestation status matches the history \(SEAL_REVOKED\)/);
+  });
+
+  it('checks the status past a redaction entry', () => {
+    const res = run([join(FIXTURES, 'redacted-evidence.json'), join(FIXTURES, 'redaction-key.pub.pem')]);
+    assert.match(res.stdout, /PASS attestation status matches the history \(SEAL_VALID\)/);
+  });
+
   it('prints no note for evidence without a redaction entry', () => {
     const res = run([join(FIXTURES, 'valid-evidence.json'), join(FIXTURES, 'test-key.pub.pem')]);
     assert.doesNotMatch(res.stdout, /NOTE/);

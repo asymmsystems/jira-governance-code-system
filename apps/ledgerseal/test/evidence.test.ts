@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createSigner } from '../src/domain/attestation';
-import { getSealEvidence, sealIssue, verifyIssue } from '../src/index';
+import { getSealEvidence, revokeSeal, sealIssue, verifyIssue } from '../src/index';
 import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
 
 jest.mock('@forge/api', () => ({ __esModule: true, default: {}, route: () => '' }));
@@ -110,6 +110,26 @@ describe('B-14 open verifier', () => {
     const run = spawnSync(process.execPath, [VERIFIER, file, wrongFile], { encoding: 'utf8' });
     expect(run.stdout).toContain('FAIL signature');
     expect(run.status).toBe(1);
+  });
+
+  it('L-1: the attestation status matches the history for a changed and a revoked seal', async () => {
+    const jira = new FakeJira(sampleIssue());
+    jira.approvers = new Set(['ann', 'bob']);
+    const storage = new MemoryStore();
+    const deps = { jira, storage, signer };
+    jira.currentUser = 'ann';
+    await sealIssue({ signature: validSignature() }, panelContext('ann'), deps);
+    jira.edit('mallory', '2099-01-01T00:00:00.000Z', 'summary', 'changed');
+    jira.currentUser = 'viewer';
+    await verifyIssue({}, panelContext('viewer'), deps);
+    const changed = runVerifier(await getSealEvidence({}, panelContext('viewer'), deps));
+    expect(changed.out).toContain('PASS attestation status matches the history (SEAL_BROKEN)');
+    expect(changed.status).toBe(0);
+    jira.currentUser = 'bob';
+    await revokeSeal({ reason: 'Scope withdrawn' }, panelContext('bob'), deps);
+    const revoked = runVerifier(await getSealEvidence({}, panelContext('viewer'), deps));
+    expect(revoked.out).toContain('PASS attestation status matches the history (SEAL_REVOKED)');
+    expect(revoked.status).toBe(0);
   });
 
   it('checks its own canonical JSON against the hand-written vectors', () => {

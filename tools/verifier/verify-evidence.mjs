@@ -15,7 +15,7 @@
  * limitations under the License.
  *
  * LedgerSeal open verifier (LedgerSeal spec v2 section 11). Checks a LedgerSeal evidence export without access to the app:
- * the snapshot hash, the history chain, the attestation's certificate and the Ed25519 signature.
+ * the snapshot hash, the history chain, the attestation's certificate, the attestation's status and the Ed25519 signature.
  * It also names each redaction entry (LS_REDACTED) in the history, where account ids were replaced by party tokens.
  * Uses the Node standard library only.
  *
@@ -79,6 +79,11 @@ function verifyEvidence(evidence, publicKeyPem) {
 
   const newestSeal = [...history].reverse().find(row => row.statusId === 'LS_SEALED');
   check(Boolean(newestSeal) && newestSeal.data?.certificateId === att.certificateId, 'attestation names the newest seal');
+
+  // The attestation's status must be the state of the newest entry that is not a redaction
+  const STATUS = { LS_SEALED: 'SEAL_VALID', LS_CHANGED: 'SEAL_BROKEN', LS_REVOKED: 'SEAL_REVOKED' };
+  const newestState = [...history].reverse().find(row => row.statusId !== 'LS_REDACTED');
+  check(Boolean(newestState) && STATUS[newestState.statusId] === att.status, `attestation status matches the history (${att.status ?? 'none'})`);
 
   let sigOk = false;
   try {

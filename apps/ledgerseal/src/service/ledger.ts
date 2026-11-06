@@ -817,6 +817,7 @@ const VERIFICATION_STEPS = [
   'Check that the SHA-256 of that text, in lowercase hex, equals attestation.snapshotHash.',
   'Check the history: each entry\'s entryHash is the SHA-256 of the canonical JSON of the entry without entryHash, and each prevEntryHash equals the entryHash before it (64 zeros for the first).',
   'Check that the newest LS_SEALED entry names attestation.certificateId.',
+  'Check that attestation.status is the state of the newest entry that is not LS_REDACTED: SEAL_VALID for LS_SEALED, SEAL_BROKEN for LS_CHANGED, SEAL_REVOKED for LS_REVOKED.',
   'Check the Ed25519 signature attestation.sig over the canonical JSON of the attestation without sig, with the public key named by attestation.keyId.',
   'Run: node verify-evidence.mjs <this file> <public key file>. It performs every step and exits 0 only when all pass.',
   'Records name people by party token (pty_...). "parties" maps each token in the history to its account id, or null when the account was closed. It is not signed and is not part of any hash.'
