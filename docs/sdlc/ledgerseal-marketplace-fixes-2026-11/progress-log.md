@@ -177,7 +177,7 @@ Source: `asymm-corporate/repository/code/asymm-corporate-code-pfw/src/main/jbake
 
 ## Shared files outside this branch's scope (changes needed)
 
-- `docs/marketplace/suite-launch-and-first-sale-playbook.md` (F-21): line 3 "PlanShift" -> "CascadePlan"; line 114 `asymm-systems/jira-governance-code-cli` -> `asymmsystems/jira-governance-code-cli`; line 116 the dev key -> the production key `ls-prod-2026-11`; line 151 "status turn orange `CHANGED`" -> "the red `CHANGED` lozenge".
+- `docs/marketplace/suite-launch-and-first-sale-playbook.md` (F-21): line 3 "PlanShift" -> "CascadePlan"; line 114 `asymm-systems/ledgerseal-verifier` -> `asymmsystems/ledgerseal-verifier`; line 116 the dev key -> the production key `ls-prod-2026-11`; line 151 "status turn orange `CHANGED`" -> "the red `CHANGED` lozenge".
 - `docs/launch/distribution-kit.md` line 33: "...verify signatures and hash chains independently without trusting us or Jira." -> "...check the evidence offline; a pass shows the evidence was not changed after export and was signed with the published key."; line 120 "meaning you don't have to rely on an app vendor during an audit" -> "so the check needs no access to the app".
 - `docs/design/asymm-jira-ui-standard.md` line 360 and `docs/design/prompt-other-apps-ui-adoption.md` line 106 ask every app for an "Open Four Realities panel" button; LedgerSeal no longer has it (F-04). The standard should say: only when FourRealities is installed, and it must open that panel.
 - `docs/marketplace/submission/developer-console-checklist.md`: Personal Data Reporting row, LedgerSeal: Ready (weekly report, scope declared, ADR-011); Real Screenshots: LedgerSeal Ready (1840 x 900).
