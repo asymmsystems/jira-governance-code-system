@@ -10,6 +10,10 @@ brief: a check that is not in use is not scored and is shown as "not used on thi
 issue must never lower its score just because a sibling app is absent; no upsell text as a next step
 when the sibling app is not in use. This ADR replaces spec v2 decision D-9.
 
+Updated 2026-11-06: the production keys of DefinitionGuard and LedgerSeal (=dg-prod-2026-11=,
+=ls-prod-2026-11=) are published and bundled for production (ADR-012 decision 3), so the
+consequences below that waited for them now hold in production too.
+
 * Context
 FourRealities rates four checks per issue: Intent, Process, Code and Audit. Process reads the record
 of DefinitionGuard or of Checklists for Jira (HeroCoders); Audit reads the record of LedgerSeal; Code
@@ -92,10 +96,11 @@ asks every app for a =jira:adminPage= (FourRealities: key =fourrealities-admin=,
 * Consequences
 ** Positive
 - A standalone install shows only the checks it can make, with a fair score.
-- Process and Audit turn on by themselves in development and, once production keys exist, in
-  production, as soon as the sibling app writes its first signed record.
+- Process and Audit turn on by themselves in development and in production (production keys
+  published 2026-11-06), as soon as the sibling app writes its first signed record.
 ** Negative
-- Until production keys exist, an administrator must turn Process and Audit on by hand in production.
+- Before the production keys were published (2026-11-06), an administrator had to turn Process and
+  Audit on by hand in production.
 - One more admin page to document and test.
 
 * Implementation Notes

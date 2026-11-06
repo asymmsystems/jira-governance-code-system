@@ -5,6 +5,8 @@
  */
 
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import { attestationChecker, canonicalJson, trustedKeysFor, verifyAttestation } from '../src/accessor/attestation-verifier';
 import { TRUSTED_KEYS, TrustedKey } from '../src/accessor/attestation-keys';
 import { factsFromIssue } from '../src/accessor/issue-facts';
@@ -71,23 +73,76 @@ describe('verifyAttestation', () => {
 });
 
 describe('trusted keys per Forge environment', () => {
-  it('trusts the development keys in development and staging only; production has none yet', () => {
-    expect(trustedKeysFor('DEVELOPMENT').map(k => k.keyId).sort()).toEqual(['dg-dev-2026-11', 'ls-dev-2026-11']);
-    expect(trustedKeysFor('STAGING').map(k => k.keyId).sort()).toEqual(['dg-dev-2026-11', 'ls-dev-2026-11']);
-    expect(trustedKeysFor('PRODUCTION')).toEqual([]);
+  const DEV_IDS = ['dg-dev-2026-11', 'ls-dev-2026-11'];
+  const PROD_IDS = ['dg-prod-2026-11', 'ls-prod-2026-11'];
+  const ids = (keys: readonly TrustedKey[]) => keys.map(k => k.keyId).sort();
+
+  it('trusts the development keys in development and staging only', () => {
+    expect(ids(trustedKeysFor('DEVELOPMENT'))).toEqual(DEV_IDS);
+    expect(ids(trustedKeysFor('STAGING'))).toEqual(DEV_IDS);
+  });
+
+  it('trusts exactly the two production keys in production, and no development key', () => {
+    expect(ids(trustedKeysFor('PRODUCTION'))).toEqual(PROD_IDS);
+    expect(trustedKeysFor('PRODUCTION').map(k => [k.producer, k.keyId]).sort()).toEqual([
+      ['definitionguard', 'dg-prod-2026-11'],
+      ['ledgerseal', 'ls-prod-2026-11']
+    ]);
   });
 
   it('treats an unknown environment as production', () => {
-    expect(trustedKeysFor(undefined)).toEqual([]);
-    expect(trustedKeysFor('SOMETHING')).toEqual([]);
+    expect(ids(trustedKeysFor(undefined))).toEqual(PROD_IDS);
+    expect(ids(trustedKeysFor('SOMETHING'))).toEqual(PROD_IDS);
     expect(trustedKeysFor(undefined, KEYS)).toEqual(KEYS);
   });
 
-  it('bundles valid Ed25519 public keys, one per producer', () => {
+  it('bundles valid Ed25519 public keys, one development and one production key per producer', () => {
     for (const k of TRUSTED_KEYS) {
       expect(crypto.createPublicKey(k.pem).asymmetricKeyType).toBe('ed25519');
     }
-    expect(TRUSTED_KEYS.map(k => k.producer).sort()).toEqual(['definitionguard', 'ledgerseal']);
+    expect(TRUSTED_KEYS.map(k => `${k.producer} ${k.keyId}`).sort()).toEqual([
+      'definitionguard dg-dev-2026-11',
+      'definitionguard dg-prod-2026-11',
+      'ledgerseal ls-dev-2026-11',
+      'ledgerseal ls-prod-2026-11'
+    ]);
+  });
+
+  it('bundles the same public keys as the published key files', () => {
+    const root = path.join(__dirname, '..', '..', '..');
+    const files: Record<string, string> = {
+      'dg-dev-2026-11': 'docs/marketplace/definitionguard-public-key.pem',
+      'dg-prod-2026-11': 'docs/marketplace/definitionguard-public-key-dg-prod-2026-11.pem',
+      'ls-dev-2026-11': 'apps/ledgerseal/keys/ls-dev-2026-11.pub.pem',
+      'ls-prod-2026-11': 'apps/ledgerseal/keys/ls-prod-2026-11.pub.pem'
+    };
+    for (const k of TRUSTED_KEYS) {
+      expect(k.pem).toBe(fs.readFileSync(path.join(root, files[k.keyId]), 'utf8'));
+    }
+  });
+
+  it('checks a production record against the bundled key its keyId names', () => {
+    const prod = trustedKeysFor('PRODUCTION');
+    // The real production key did not sign this record, so the check reaches the key and fails.
+    expect(verifyAttestation('ledgerseal', signed(BASE, 'ls-prod-2026-11'), '10001', prod)).toBe('BAD_SIGNATURE');
+    expect(verifyAttestation('definitionguard', signed(BASE, 'dg-prod-2026-11'), '10001', prod)).toBe('BAD_SIGNATURE');
+    // A development key id is not trusted in production.
+    expect(verifyAttestation('ledgerseal', signed(BASE, 'ls-dev-2026-11'), '10001', prod)).toBe('UNKNOWN_KEY');
+    expect(verifyAttestation('definitionguard', signed(BASE, 'dg-dev-2026-11'), '10001', prod)).toBe('UNKNOWN_KEY');
+  });
+
+  it('verifies a production record with the same table structure and a test-only key pair', () => {
+    const table = TRUSTED_KEYS.map(k => ({ ...k, pem: pair.pem }));
+    const prod = trustedKeysFor('PRODUCTION', table);
+    expect(verifyAttestation('ledgerseal', signed(BASE, 'ls-prod-2026-11'), '10001', prod)).toBe('VERIFIED');
+    expect(verifyAttestation('definitionguard', signed(BASE, 'dg-prod-2026-11'), '10001', prod)).toBe('VERIFIED');
+    // The producer must match the key: a LedgerSeal key does not verify a DefinitionGuard record.
+    expect(verifyAttestation('definitionguard', signed(BASE, 'ls-prod-2026-11'), '10001', prod)).toBe('UNKNOWN_KEY');
+    // Development keys stay out of production even with a valid signature, and in development the production keys are not trusted.
+    expect(verifyAttestation('ledgerseal', signed(BASE, 'ls-dev-2026-11'), '10001', prod)).toBe('UNKNOWN_KEY');
+    const dev = trustedKeysFor('DEVELOPMENT', table);
+    expect(verifyAttestation('ledgerseal', signed(BASE, 'ls-dev-2026-11'), '10001', dev)).toBe('VERIFIED');
+    expect(verifyAttestation('ledgerseal', signed(BASE, 'ls-prod-2026-11'), '10001', dev)).toBe('UNKNOWN_KEY');
   });
 });
 

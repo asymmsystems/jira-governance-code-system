@@ -98,7 +98,7 @@ Gate for every fix: `npx tsc --noEmit` with no errors, `npm test` green with the
 ## Owner commands
 
 1. CI: add FourRealities to the dependency audit step in `.github/workflows/apps-ci.yml` (the step has `if: matrix.app == 'cascadeplan'`; make it run for every app). This session did not edit the shared workflow.
-2. Production signing keys: when DefinitionGuard and LedgerSeal have production keys, add their public keys to `apps/fourrealities/src/accessor/attestation-keys.ts` with `environments: ['PRODUCTION']` (and the key id each producer uses), then release. Until then, in production their records show "Reported, not verified".
+2. **Done 2026-11-06** (branch `feature/production-public-keys`: `dg-prod-2026-11` and `ls-prod-2026-11` added for PRODUCTION only; the production deploy of step 3 makes it live). Production signing keys: when DefinitionGuard and LedgerSeal have production keys, add their public keys to `apps/fourrealities/src/accessor/attestation-keys.ts` with `environments: ['PRODUCTION']` (and the key id each producer uses), then release. Until then, in production their records show "Reported, not verified".
 3. Production deploy (after review and merge): `forge deploy -e production` from `apps/fourrealities`; the scope change makes a major version, so site administrators accept the new scope on upgrade.
 4. Licence check (review step 4): `forge install -e development --upgrade --license inactive` if the CLI supports it, then open the dashboard and an issue: expect "Licence not active". Not run in this session.
 5. Approve or adjust: the prompt-layer file `loop-engine/agents/fourrealities_usp_ux_research.md` still names `fourrealities-listing-v2.md` as its output.

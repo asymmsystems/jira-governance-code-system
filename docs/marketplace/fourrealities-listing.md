@@ -47,7 +47,7 @@ FourRealities checks the evidence for each issue, shows each check with a state 
 ## Works with, and works alone
 
 - **On its own:** Intent always works. Code works when your Git integration for Jira fills the Development field. Process and Audit show "Not used on this site" and are not scored, so a finished issue is never marked down because another app is not installed.
-- **With DefinitionGuard and LedgerSeal** (same publisher): their signed records are verified and scored. Until those apps publish production signing keys, FourRealities cannot verify their records in production: "Detect" leaves Process and Audit off, and a check an administrator turns on by hand shows "Evidence missing" on every Done issue.
+- **With DefinitionGuard and LedgerSeal** (same publisher): their signed records are verified and scored. In production FourRealities trusts only the production signing keys of those apps (`dg-prod-2026-11` and `ls-prod-2026-11`, published at https://asymm.systems/product/jira-governance/signing-keys.html); a record signed with a development key counts as not verified.
 - **With Checklists for Jira (HeroCoders):** a Jira administrator can choose it as the Process source; its `checklist` property is shown, but it cannot be verified, so it never counts as evidence.
 
 ---

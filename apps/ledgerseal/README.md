@@ -75,7 +75,8 @@ The property is a summary for searching. Any user who can edit an issue can chan
 The `seal-evidence-api` resolver returns a JSON export: a signed attestation of the stored seal, the canonical snapshot that was hashed, and the full history. An auditor checks it without access to LedgerSeal:
 
 ```bash
-node ../../tools/verifier/verify-evidence.mjs evidence.json keys/ls-dev-2026-11.pub.pem
+node ../../tools/verifier/verify-evidence.mjs evidence.json keys/ls-dev-2026-11.pub.pem    # development install
+node ../../tools/verifier/verify-evidence.mjs evidence.json keys/ls-prod-2026-11.pub.pem   # production (Marketplace) install
 node ../../tools/verifier/verify-evidence.mjs --self-test
 ```
 

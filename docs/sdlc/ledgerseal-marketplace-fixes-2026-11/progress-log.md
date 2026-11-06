@@ -186,14 +186,14 @@ Source: `asymm-corporate/repository/code/asymm-corporate-code-pfw/src/main/jbake
 
 Run in `apps/ledgerseal`, on the owner's own machine. Never paste the private key anywhere else.
 
-1. Make the production key (Ed25519, PKCS#8 DER, base64):
+1. **Done 2026-11-06.** Make the production key (Ed25519, PKCS#8 DER, base64):
    ```bash
    umask 077
    openssl genpkey -algorithm ed25519 -out ls-prod-2026-11.key.pem
    openssl pkey -in ls-prod-2026-11.key.pem -outform DER | base64 -w0 > ls-prod-2026-11.key.b64
    openssl pkey -in ls-prod-2026-11.key.pem -pubout -out keys/ls-prod-2026-11.pub.pem
    ```
-2. Set the Forge variables of the production environment:
+2. **Done 2026-11-06.** Set the Forge variables of the production environment:
    ```bash
    forge variables set -e production --encrypt LEDGERSEAL_SIGNING_KEY "$(cat ls-prod-2026-11.key.b64)"
    forge variables set -e production LEDGERSEAL_KEY_ID ls-prod-2026-11

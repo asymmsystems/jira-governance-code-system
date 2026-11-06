@@ -146,7 +146,7 @@ LedgerSeal resolves this through an **open-source, zero-dependency offline verif
 
 ```bash
 # Verify approval integrity completely offline using Node.js standard library
-node verify-evidence.mjs --evidence evidence.json --public-key ls-dev-2026-11.pub.pem
+node verify-evidence.mjs --evidence evidence.json --public-key ls-prod-2026-11.pub.pem
 ```
 
 The script executes four independent mathematical checks:
