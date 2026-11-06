@@ -10,8 +10,8 @@ Sources: Atlassian pages fetched on 2026-11-06 ("Become a partner", "Register as
 | 1. Partner profile | DONE: vendor "Asymm Systems", Vendor ID 334643263 |
 | 2. Contact roles | DONE: you are Admin and Primary (nothing else is needed while you are the only member) |
 | 3. Partner verification | IN PROGRESS: ticket ECOHELP-182280; Identity Information Collection SUBMITTED; Partner Security Questionnaire not attached yet; Stripe ID check not yet |
-| 4. Two support questions | NEXT |
-| 5. Payout and tax details | after step 4's answer |
+| 4. Support questions | NEXT: only the tax questions now (W-8BEN-E: where and when; withholding and the US-Sri Lanka treaty) |
+| 5. Payout and tax details | MOSTLY DONE: Payment tab filled (contact, Sri Lankan bank, company tax ID); check with the bank: exact account holder name (must match the verification form) and whether USD SWIFT needs an intermediary bank; W-8BEN-E waits on step 4 |
 | 6. Forge billing | to do |
 | 7. Developer space check | to do |
 | 8. Two-step verification, old sessions | later, when I tell you |
