@@ -1,0 +1,135 @@
+# Copyright (c) 2026 Asymm Systems. All rights reserved.
+#
+# @author Fahim Farook
+#
+# Scans every Forge app with FSRT, Atlassian's Forge Security Requirements Tester, the scanner
+# behind Marketplace security tickets such as AMS-76722 (Custom-Check-Authorization). FSRT is
+# built from a pinned commit and cached by that commit. The job fails on any finding that
+# docs/security/fsrt-allowlist.txt does not justify, and on a scan that does not complete.
+# The rule FSRT applies is written down in docs/security/fsrt-scan-2026-11-07.md.
+name: FSRT security scan
+
+on:
+  push:
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - '.github/workflows/fsrt.yml'
+      - 'tools/ci/fsrt_gate.py'
+      - 'docs/security/fsrt-allowlist.txt'
+  pull_request:
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - '.github/workflows/fsrt.yml'
+      - 'tools/ci/fsrt_gate.py'
+      - 'docs/security/fsrt-allowlist.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fsrt-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Change both together. A new commit means a new build and a new cache entry.
+  FSRT_REPOSITORY: atlassian-labs/FSRT
+  FSRT_SHA: 6c821bd199fd7e4801384c2eaf9c3100bca0f57e
+
+jobs:
+  build:
+    name: Build FSRT (pinned)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Restore the FSRT binary
+        id: bin
+        uses: actions/cache@v4
+        with:
+          path: ~/fsrt-bin
+          key: fsrt-bin-${{ runner.os }}-${{ env.FSRT_SHA }}
+
+      - name: Check out FSRT at the pinned commit
+        if: steps.bin.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.FSRT_REPOSITORY }}
+          ref: ${{ env.FSRT_SHA }}
+          path: fsrt-src
+          persist-credentials: false
+
+      - name: Restore the cargo cache
+        if: steps.bin.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            fsrt-src/target
+          key: fsrt-cargo-${{ runner.os }}-${{ env.FSRT_SHA }}
+
+      - name: Build FSRT
+        if: steps.bin.outputs.cache-hit != 'true'
+        working-directory: fsrt-src
+        run: |
+          test "$(git rev-parse HEAD)" = "$FSRT_SHA"
+          rustup toolchain install stable --profile minimal
+          cargo +stable build --release --locked -p fsrt
+          mkdir -p ~/fsrt-bin
+          cp target/release/fsrt ~/fsrt-bin/fsrt
+          echo "$FSRT_SHA" > ~/fsrt-bin/FSRT_SHA
+
+      - name: Show the FSRT build
+        run: |
+          test "$(cat ~/fsrt-bin/FSRT_SHA)" = "$FSRT_SHA"
+          ~/fsrt-bin/fsrt --version
+
+  scan:
+    name: FSRT ${{ matrix.app }}
+    needs: build
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [cascadeplan, definitionguard, ledgerseal, fourrealities]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Restore the FSRT binary
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/fsrt-bin
+          key: fsrt-bin-${{ runner.os }}-${{ env.FSRT_SHA }}
+          fail-on-cache-miss: true
+
+      # The default scanners are the ones Atlassian runs on a submission: authentication,
+      # authorization (AMS-76722), auth-header, permission, secret and runtime-version. The report
+      # carries the Marketplace app key, as Atlassian's does. secret-logging is opt-in in FSRT, so
+      # it runs as a second scan and is gated the same way.
+      - name: Run FSRT
+        run: |
+          mkdir -p fsrt-out
+          ~/fsrt-bin/fsrt --appkey "systems.asymm.${{ matrix.app }}" \
+            --out "fsrt-out/fsrt-${{ matrix.app }}.json" "apps/${{ matrix.app }}"
+          ~/fsrt-bin/fsrt --scanners secret-logging --appkey "systems.asymm.${{ matrix.app }}" \
+            --out "fsrt-out/fsrt-${{ matrix.app }}-secret-logging.json" "apps/${{ matrix.app }}"
+          cat fsrt-out/*.json
+
+      - name: Keep the raw FSRT output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fsrt-${{ matrix.app }}-${{ github.sha }}
+          path: fsrt-out/
+          retention-days: 90
+
+      - name: Fail on findings not in the allowlist
+        run: |
+          status=0
+          python3 tools/ci/fsrt_gate.py "${{ matrix.app }}" "fsrt-out/fsrt-${{ matrix.app }}.json" docs/security/fsrt-allowlist.txt || status=1
+          python3 tools/ci/fsrt_gate.py "${{ matrix.app }}" "fsrt-out/fsrt-${{ matrix.app }}-secret-logging.json" docs/security/fsrt-allowlist.txt || status=1
+          exit $status
