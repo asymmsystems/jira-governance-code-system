@@ -59,7 +59,11 @@ with sync_playwright() as p:
     for key in ('DEMO-40', 'DEMO-28'):
         pg.locator(f'#ganttBody tr.task-row[data-task-id="{key}"] td').nth(1).click(modifiers=['Control'])
     pg.fill('#selProgress', '50')
-    pg.click('#btnSelProgress'); pg.wait_for_timeout(1500)
+    pg.click('#btnSelProgress'); pg.wait_for_timeout(400)
+    # Both rows are To Do: the planner asks about the status (2026-11-06); Keep sends no status.
+    if pg.evaluate("document.getElementById('statusOfferModal').style.display === 'flex'"):
+        pg.click('#btnStatusOfferKeep')
+    pg.wait_for_timeout(1500)
     steps['3 progress'] = [classify(x) for x in writes_since(pg, n)]
     pg.keyboard.press('Escape'); pg.wait_for_timeout(300)
 

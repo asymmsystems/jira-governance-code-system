@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Asymm Systems. All rights reserved.
+#
+# @author Fahim Farook
 """Live: admin page and app names shown by Jira. Asymm Systems. @author Fahim Farook"""
 import json
 from playwright.sync_api import sync_playwright

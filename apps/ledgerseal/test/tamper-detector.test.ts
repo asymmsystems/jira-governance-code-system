@@ -1,3 +1,9 @@
+/**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 import { analyzeTamperState } from '../src/domain/tamper-detector';
 import { generateSealCertificate } from '../src/domain/crypto';
 import { CanonicalIssueSnapshot, ElectronicSignature } from '../src/domain/models';

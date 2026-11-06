@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Asymm Systems. All rights reserved.
+#
+# @author Fahim Farook
 """Print the full Jira changelog (duedate items) of given issues. Asymm Systems. @author Fahim Farook"""
 import json, sys
 from playwright.sync_api import sync_playwright

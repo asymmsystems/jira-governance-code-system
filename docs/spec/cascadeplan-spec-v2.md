@@ -24,8 +24,8 @@ CascadePlan is a Jira Cloud project page (Forge Custom UI) that plans issues on 
 |---|---|---|
 | INV-01 | No Jira or payload text reaches `innerHTML`, `outerHTML`, `insertAdjacentHTML` or an HTML attribute string, except through the escaping `html` tagged template (`src/ui/safe-html.ts`). | v1, review FE section 1 |
 | INV-02 | The UI has no inline script and no `on*` attribute, and calls the backend only through `invoke` from `@forge/bridge`. | v1 |
-| INV-03 | CascadePlan writes a Jira value only when the user chose it in this action, or when it follows directly from the user's action and the preview listed it before the drop (a cascaded due date, a block-moved sub-task's due date). It never writes a default: no default span, no default estimate, no status change caused by a progress edit, no "Unassigned". | v1, F-06, F-11 |
-| INV-04 | KVS holds only app-owned planning data. Summary, status, assignee, Jira estimate, Jira due date, parent, issue links and leaf progress are read live from Jira on every load. `[ADOPTED DEC-2 A]` The planner's records hold no Atlassian account id. The only account ids stored are the subjects of the baseline audit records (who froze, requested and reviewed), reported weekly with Forge's personal data reporting API (ADR-009). | v1, ADR-004, ADR-009 |
+| INV-03 | CascadePlan writes a Jira value only when the user chose it in this action, or when it follows directly from the user's action and the preview listed it before the drop (a cascaded due date, a block-moved sub-task's due date, a parent's due date that follows its roll-up end). The server and the preview compute these writes with the same code (`src/domain/drop-plan.ts`; `test/review/drop-preview-parity.test.ts`). It never writes a default: no default span, no default estimate, no status change caused by a progress edit, no "Unassigned". | v1, F-06, F-11 |
+| INV-04 | KVS holds only app-owned planning data. Summary, status, assignee, Jira estimate, Jira due date, parent, issue links and leaf progress are read live from Jira on every load. `[ADOPTED DEC-2 A]` The account ids stored are: the subjects of the baseline audit records (who froze, requested and reviewed), the contributors of a plan record (`parties[].partyId`, a person working on the task through a Jira sub-task, ADR-004 and the ADR-009 correction), and the Jira administrator who last saved the approver policy (`setByPartyId`). Records of builds before November 2026 that a project has not opened since may also hold `resourceAccountId` and `contributors[].accountId`. An hourly job reads every stored record in steps and reports each id with Forge's personal data reporting API at most once every 7 days, and removes closed accounts' ids (ADR-009, `src/storage/personal-data.ts`). Baseline items reach a user only for issues that user can browse (merge review M1). | v1, ADR-004, ADR-009 |
 | INV-05 | Every resolver returns `{ ok: boolean, ... }`. Every write resolver also returns `jiraSync: { ok, error?, writes[] }`, and the UI shows every failure. A thrown call is reported as failed, never as success. | v1, F-13 |
 | INV-06 | All Jira calls run as the user (`asUser()`), except the issue-deleted trigger, which runs as the app and only deletes CascadePlan records. | v1, BL-9 |
 | INV-07 | No KVS value exceeds 8 KiB at 1,000 tasks. `getProjectPlan` writes nothing, and opening the planner deletes nothing. | v1, BL-9 |
@@ -40,6 +40,7 @@ CascadePlan is a Jira Cloud project page (Forge Custom UI) that plans issues on 
 | INV-16 | Every write is checked against the user's Jira permissions before any KVS or Jira write. A failed check, or an error in the check, refuses the call. | BL-2 |
 | INV-17 | The response to a write shows the values Jira holds after the write. | F-03 |
 | INV-18 | Every relationship the planner shows exists in Jira: parents through Jira's `parent` field, dependencies as Jira "Blocks" links, the trigger percent as a Jira issue property. | ADR-004, ADR-006 |
+| INV-19 | The state of a work item (not started, in progress, done) comes only from its Jira status category. Progress measures how far an item has got; it never decides the state. A Done item shows 100% and its progress cannot be edited (the stored manual value stays for when it is reopened). When a progress edit disagrees with the status, the planner asks in the same action: above 0% on a To Do item offers "In Progress", 100% on an item that is not Done offers "Done"; 0% offers nothing. A batch gets one question. Only the user's choice is sent, through the workflow transition, so INV-03 holds; a refused transition is reported and the progress is still saved. | Owner decision 2026-11-06 |
 
 ## 3. Domain model
 
@@ -70,8 +71,8 @@ Rules:
 
 Unchanged from v1 section 3.3, items 1 to 10, with these changes:
 - **Today** is the user's local date, sent by the client and checked to be within one day of the server's UTC date (F-29).
-- **Progress source (item 9).** Done status category gives 100. A leaf uses `timespent / timeoriginalestimate`; a parent uses `aggregatetimespent / aggregatetimeoriginalestimate` (F-25).
-- **11. Started.** A work effort is started when its Jira status category is "In Progress" or "Done", or when its progress is above 0% (`src/domain/schedule-engine.ts:132`). A cascade never moves the start of a started work effort; it reports the conflict.
+- **Progress source (item 9).** Done status category gives 100, also over a manual value (INV-19). Otherwise a manual value set by hand, else a leaf uses `timespent / timeoriginalestimate`; a parent uses `aggregatetimespent / aggregatetimeoriginalestimate` (F-25).
+- **11. Started.** A work effort is started when its Jira status category is "In Progress" or "Done" (INV-19; progress alone never starts it, `src/domain/schedule-engine.ts:132`). A 0% link ("start together") is satisfied only once the predecessor has started. A cascade never moves the start of a started work effort; it reports the conflict.
 - **12. Inherited links.** When the engine evaluates a sub-task, it also applies the incoming links of each of its ancestors (N-06 rule 5).
 - **13. Roll-up in the cascade.** Before a cascade, the roll-ups of every changed parent are recomputed, and the cascade also starts from every ancestor whose roll-up changed (N-06 rule 1). A cascade that reaches a parent moves its block (section 3.4).
 - **14. Hierarchy links.** A dependency between an issue and its own ancestor or descendant is refused. Such links imported from Jira are shown, marked "ignored by the schedule", and left out of the engine (N-06 rule 6).
@@ -142,10 +143,10 @@ modules:
       events:
         - avi:jira:deleted:issue
   scheduledTrigger:
-    # ADR-009 decision 7: the weekly personal data report of the baseline audit records.
+    # ADR-009 decision 7: the personal data report, one step of the job each hour (900 s timeout).
     - key: personal-data-report
       function: personal-data-fn
-      interval: week
+      interval: hour
   function:
     - key: resolver
       handler: index.handler
@@ -155,6 +156,7 @@ modules:
       handler: index.issueDeletedTrigger
     - key: personal-data-fn
       handler: index.personalDataTrigger
+      timeoutSeconds: 900
 
 resources:
   - key: main
@@ -182,7 +184,7 @@ app:
 - No `content` permissions: no `scripts` and, since MK-09, no `'unsafe-inline'` styles (every style is in `style.css`; values computed at run time are set through CSSOM from `data-css-*` attributes). No egress.
 - `jira:entityProperty` `cascadeplan-create-id` indexes the issue property `cascadeplan.create` for JQL, so a repeated create finds the issue it already created (C7).
 - `write:jira-work` covers due dates, estimates, assignees, transitions the user chooses, issue links, issue properties, sub-task create and delete, parent changes and bulk moves. `read:jira-work` covers search, the permission checks, bulk move progress and the issue-deleted trigger.
-- `report:personal-data` and a weekly `scheduledTrigger` for the personal data report of the baseline audit records (ADR-009 decision 7). Adding the scope needs the site admin's consent on the next upgrade.
+- `report:personal-data` and an hourly `scheduledTrigger` (function `timeoutSeconds: 900`) for the personal data report of every stored account id (ADR-009 decision 7). Adding the scope needs the site admin's consent on the next upgrade.
 - `[ADOPTED DEC-4 B]` no custom entity in v1.
 
 ## 5. Storage schema
@@ -197,7 +199,8 @@ Keys use the project id and the issue id, never the keys (a renamed project or i
 | `cp:<projectId>:bl:<planId>:index` | `{ v, active, ids }`: the baseline versions of a plan and the active one (ADR-009) |
 | `cp:<projectId>:bl:<planId>:h:<id>`, `cp:<projectId>:bl:<planId>:c:<id>:<n>` | a baseline header (name, frozen at and by, counts, hours, SHA-256 digest, supersedes) and its chunks of at most 200 items `{ id, key, hours?, start?, end?, done? }` |
 | `cp:<projectId>:shift:<planId>:<shiftId>` | one scope-change request |
-| `cp:pd:accounts` | account ids stored as audit subjects, with the keys that name them (personal data report) |
+| `cp:pd:accounts` | account ids stored as audit subjects, with the time each was last written (personal data report) |
+| `cppd:state`, `cppd:f:<accountId>` | progress of the personal data job, and the ids found in this cycle until they are reported |
 | `cp:<projectId>:plans` | `{ v, plans }`: the list of plans, with a version that every change checks (F-22); each plan may carry `state` (`copying` or `deleting`) and `copyFrom` |
 | `cascadeplan:cfg:approver_policy` | approver groups (site) |
 | Jira issue property `cascadeplan.links` | trigger percents of the incoming links (ADR-006) |
@@ -226,10 +229,10 @@ All planner resolvers take the project from `req.context.extension.project` (key
 | `setPlanFilter` | Sets or clears the JQL filter of a plan after Jira accepts it (F-27) | Plan approver |
 | `createProjectPlan`, `continuePlanCopy`, `renameProjectPlan`, `deleteProjectPlan`, `continuePlanDelete` | Plan management; the `continue` resolvers run the next page of a clone or a delete (N-02) | Plan approver |
 | `checkPlanApprover` | Whether to show plan management to this user | none |
-| `updateWbsTask` | Dates, effort, progress, assignee, status the user chose; one link added or updated (`dependency`) or removed (`removeDependency`); `restore` for Undo and Redo (exact dates, no cascade) | `EDIT_ISSUES`; `SCHEDULE_ISSUES` for dates; `LINK_ISSUES` for links |
+| `updateWbsTask` | Dates, effort, progress, assignee, status the user chose; one link added or updated (`dependency`) or removed (`removeDependency`); `restore` for Undo and Redo (exact dates, no cascade); `enforceDependencies` refuses a start that breaks the task's or an ancestor's incoming link (N-06 rule 5) | `EDIT_ISSUES`; `SCHEDULE_ISSUES` for dates; `LINK_ISSUES` for links |
 | `batchUpdateTasks` | Up to 50 updates in one state (F-17) | as `updateWbsTask`, per issue |
 | `continueCascade` | The next 25 successors of a cascade | as `updateWbsTask`, per successor |
-| `moveTaskGroup` | Block move of a parent (ADR-003) | `EDIT_ISSUES`, `SCHEDULE_ISSUES` on every changed sub-task |
+| `moveTaskGroup` | Block move of a parent (ADR-003); `enforceDependencies` as for `updateWbsTask`, for each moving sub-task not started | `EDIT_ISSUES`, `SCHEDULE_ISSUES` on every changed sub-task |
 | `scheduleBacklogTask`, `unscheduleTask` | Put a backlog issue on the timeline, or take it off | `EDIT_ISSUES`; `SCHEDULE_ISSUES` when a due date is written |
 | `reorderWbsTasks` | Row order in this plan | `EDIT_ISSUES` |
 | `createInlineTask`, `createJiraEpic` | Create an issue (plan check first) | Jira's own create check |
@@ -283,5 +286,5 @@ v1 decisions D-01 and D-03 to D-10 stand. Changes and additions:
 | D-16 | The shared UI package builds itself during install | ADR-007 |
 | D-17 | Records are deleted only when Jira reports the issue deleted (trigger), never on a user's 404 | Fix plan BL-9 |
 | D-18 | Baseline, scope creep and shift approval | Built (DEC-1 Option B, owner): freeze, status, scope delta, requests and review, versions, comparison, CSV export, SHA-256 integrity check (ADR-009) |
-| D-19 | Personal data | The planner stores none (`[ADOPTED DEC-2 A]`); baseline audit records store account ids, reported weekly (ADR-009) |
+| D-19 | Personal data | Account ids of baseline and scope-change authors, plan record contributors and the approver policy's saver, each reported once every 7 days and erased for closed accounts (ADR-009, INV-04) |
 | D-20 | The parent's Jira due date follows its sub-tasks | Yes (`[ADOPTED DEC-6 A]`) |

@@ -207,13 +207,14 @@ describe('baseline resolvers', () => {
     const reported: any[] = [];
     const res = await reportPersonalData(storage, async accounts => { reported.push(...accounts); return [{ accountId: 'acc-1', status: 'closed' }]; });
     expect(reported.map(a => a.accountId)).toEqual(['acc-1']);
-    expect(res).toEqual({ reported: 1, closed: ['acc-1'] });
+    expect(res).toMatchObject({ status: 'done', reported: 1, closed: ['acc-1'] });
     expect((await new BaselineStore(storage, 'TEST', 'default').header(f.baseline.id))!.frozenBy).toBeNull();
     expect(storage.store.get(ACCOUNTS_KEY)).toEqual({});
     const l: any = await getPlanBaselines({ projectKey: 'TEST' }, storage);
     expect(l.activeIntact).toBe(true);
     expect(l.baselines[0].frozenByName).toBe('a deleted user');
-    expect(await reportPersonalData(storage, async () => [])).toEqual({ reported: 0, closed: [] });
+    // Within 7 days of the last report nothing is reported again.
+    expect(await reportPersonalData(storage, async () => [])).toMatchObject({ status: 'waiting', reported: 0, closed: [] });
   });
 
   it('personal data: contributors named in plan records are reported too, and a closed one is removed from its records', async () => {
@@ -225,15 +226,15 @@ describe('baseline resolvers', () => {
     const res = await reportPersonalData(storage, async accounts => { reported.push(...accounts); return [{ accountId: 'acc-9', status: 'closed' }]; });
     expect(reported.map(a => a.accountId).sort()).toEqual(['acc-8', 'acc-9']);
     expect(reported.find(a => a.accountId === 'acc-9').updatedAt).toBe('2026-10-01T00:00:00.000Z');
-    expect(res).toEqual({ reported: 2, closed: ['acc-9'] });
+    expect(res).toMatchObject({ reported: 2, closed: ['acc-9'] });
     for (const key of ['cp:TEST:we:1', 'cp:TEST:plan:p2:we:1']) {
       const parties = (storage.store.get(key) as any).parties;
       expect(parties.map((p: any) => p.partyId)).toEqual([undefined, 'acc-8']);
       expect(parties[0].subtaskKey).toBe('TEST-77');
     }
-    // The next report no longer names the closed account.
+    // The next report (a new cycle, 7 days later) no longer names the closed account.
     const again: any[] = [];
-    await reportPersonalData(storage, async accounts => { again.push(...accounts); return []; });
+    await reportPersonalData(storage, async accounts => { again.push(...accounts); return []; }, { now: () => Date.now() + 8 * 24 * 3600 * 1000 });
     expect(again.map(a => a.accountId)).toEqual(['acc-8']);
   });
 });

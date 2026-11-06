@@ -42,18 +42,18 @@ const FIELDS = [
   'keyId',
   'schemaVersion',
   'sealedAt',
-  'sealedByAccountId',
   'sig',
   'snapshotHash',
   'status'
 ];
 
 describe('B-09 signed attestation', () => {
-  it('writes the schema v2 body on seal, under 2 KiB, with every field', async () => {
+  it('writes the schema 3 body on seal, under 2 KiB, with every field and no account id (ADR-011)', async () => {
     const { jira } = await sealedWithSigner();
     const body = jira.propertyWrites[0].body;
     expect(Object.keys(body).sort()).toEqual(FIELDS);
-    expect(body).toMatchObject({ schemaVersion: 2, issueId: '10001', status: 'SEAL_VALID', everCompromised: 'false', incidentCount: 0, keyId: 'ls-test-1' });
+    expect(body).toMatchObject({ schemaVersion: 3, issueId: '10001', status: 'SEAL_VALID', everCompromised: 'false', incidentCount: 0, keyId: 'ls-test-1' });
+    expect(JSON.stringify(body)).not.toContain('ann');
     expect(Buffer.byteLength(JSON.stringify(body), 'utf8')).toBeLessThanOrEqual(2048);
   });
 
@@ -93,7 +93,7 @@ describe('B-09 signed attestation', () => {
     const body = jira.propertyWrites[0].body;
     expect(body.sig).toBeUndefined();
     expect(body.keyId).toBeUndefined();
-    expect(body.schemaVersion).toBe(2);
+    expect(body.schemaVersion).toBe(3);
   });
 
   it('reads the key only from the Forge variables, and returns no signer when they are missing or bad', () => {
@@ -107,7 +107,7 @@ describe('B-09 signed attestation', () => {
     const root = path.resolve(__dirname, '..');
     const walk = (d: string): string[] =>
       fs.readdirSync(d).flatMap(n => (fs.statSync(path.join(d, n)).isDirectory() ? walk(path.join(d, n)) : [path.join(d, n)]));
-    const files = ['src', 'test', 'keys', 'verifier']
+    const files = ['src', 'test', 'keys', '../../tools/verifier']
       .map(d => path.join(root, d))
       .filter(d => fs.existsSync(d))
       .flatMap(walk);

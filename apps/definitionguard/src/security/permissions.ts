@@ -62,6 +62,28 @@ export async function getProjectPermissions(projectKey: string, keys: JiraPermis
   return fetchGranted(() => withRetry(() => api.asUser().requestJira(route`/rest/api/3/mypermissions?projectKey=${projectKey}&permissions=${keys.join(',')}`)), keys);
 }
 
+/**
+ * Project admin or Jira admin. Jira lets a Jira admin change any project's settings without the
+ * Administer projects permission, so DefinitionGuard does the same (found live on PAY, 2026-11-06).
+ */
+export const ADMIN_KEYS: JiraPermissionKey[] = ['ADMINISTER_PROJECTS', 'ADMINISTER'];
+
+/** Throws PermissionDeniedError unless the user has at least one of the keys on the project. */
+export async function checkAnyProjectPermission(projectKey: string, keys: JiraPermissionKey[], deniedMessage: string): Promise<void> {
+  const granted = await getProjectPermissions(projectKey, keys);
+  if (!keys.some(k => granted[k])) {
+    throw new PermissionDeniedError(deniedMessage);
+  }
+}
+
+/** Throws PermissionDeniedError unless the user has at least one of the keys on the issue. */
+export async function checkAnyIssuePermission(issueKey: string, keys: JiraPermissionKey[], deniedMessage: string): Promise<void> {
+  const granted = await getIssuePermissions(issueKey, keys);
+  if (!keys.some(k => granted[k])) {
+    throw new PermissionDeniedError(deniedMessage);
+  }
+}
+
 export async function checkProjectPermissions(projectKey: string, keys: JiraPermissionKey[], deniedMessage: string): Promise<void> {
   const granted = await getProjectPermissions(projectKey, keys);
   if (!keys.every(k => granted[k])) {

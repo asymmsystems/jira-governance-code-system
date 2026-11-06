@@ -17,6 +17,7 @@ import { addDays } from '../domain/schedule-engine';
 import { planJql } from '../domain/plan-filter';
 import { logFailure } from '../logger';
 import { DATES_PROPERTY, LINKS_PROPERTY, getDefaultWeeks, getJiraCaller, gridFor, isIsoDate } from './core';
+import { shownProgress } from '../ui/progress-status';
 
 /**
  * Maps Jira status category to standard TaskStatus.
@@ -415,7 +416,8 @@ export function mapLiveIssues(
           resource: iss.fields?.assignee?.displayName || 'Unassigned',
           resourceAccountId: iss.fields?.assignee?.accountId || undefined,
           contributingResources: stored?.contributingResources,
-          progress: stored?.manualProgress === true && stored.progress !== undefined ? stored.progress : progress,
+          // Done always shows 100%; a manual value is kept and applies again when the item is reopened.
+          progress: shownProgress(status, stored?.manualProgress === true ? stored.progress : undefined, progress),
           targetProgress,
           manualProgress: stored?.manualProgress,
           manualTargetProgress: stored?.manualTargetProgress,

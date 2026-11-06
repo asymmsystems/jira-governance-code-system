@@ -377,9 +377,23 @@ export async function removeMirroredLink(linkId: string): Promise<boolean> {
  * afterwards (the response, or the next item of a batch) shows the written end, not the end read
  * before the write (F-03). A due date Jira refused is left as Jira holds it.
  */
+/** The Jira status category of each planner status, with its category name. */
+const STATUS_CATEGORY: Record<string, { key: string; name: string }> = {
+  NOT_STARTED: { key: 'new', name: 'To Do' },
+  IN_PROGRESS: { key: 'indeterminate', name: 'In Progress' },
+  COMPLETED: { key: 'done', name: 'Done' }
+};
+
 export function applyAcceptedDueDate(
   live: LiveData, issueKey: string, updates: Partial<WbsTask>, result: { synced: boolean; fields: string[] }
 ): void {
+  // A status Jira applied through a transition shows at once (INV-17): the search right after a
+  // transition can still return the old status (live on PAY-10, 2026-11-06).
+  const category = result.fields.includes('status') ? STATUS_CATEGORY[String(updates.status)] : undefined;
+  if (category) {
+    live.raw = { ...live.raw, issues: (live.raw.issues || []).map((i: any) => (!i || i.key !== issueKey) ? i
+      : { ...i, fields: { ...(i.fields || {}), status: { ...((i.fields && i.fields.status) || {}), name: category.name, statusCategory: { key: category.key } } } }) };
+  }
   if (!result.synced) return;
   const due = result.fields.includes('duedate') && typeof updates.endDate === 'string' ? updates.endDate.slice(0, 10) : undefined;
   // The start property this call wrote (ADR-008) is recorded the same way.

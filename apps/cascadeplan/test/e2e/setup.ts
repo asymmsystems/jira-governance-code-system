@@ -57,7 +57,11 @@ const withParent = (i: any) => {
   if (set[i.key]) f.parent = parentRef(set[i.key]); else delete f.parent;
   return f;
 };
-const withDue = (i: any) => ({ ...i, fields: { ...withParent(i), duedate: dues()[i.key] || null, issuelinks: linksOn(i.key) }, properties: props()[i.key] || {} });
+// Statuses set through a transition (progress and status, 2026-11-06): key -> status category key.
+const statuses = (): Record<string, string> => JSON.parse(localStorage.getItem('__harness_jira_status') || '{}');
+const NAMES: Record<string, string> = { new: 'To Do', indeterminate: 'In Progress', done: 'Done' };
+const withStatus = (key: string, f: any) => statuses()[key] ? { ...f, status: { statusCategory: { key: statuses()[key] }, name: NAMES[statuses()[key]] } } : f;
+const withDue = (i: any) => ({ ...i, fields: { ...withStatus(i.key, withParent(i)), duedate: dues()[i.key] || null, issuelinks: linksOn(i.key) }, properties: props()[i.key] || {} });
 w.__jira = async (url: string, opts: any) => {
   const method = (opts && opts.method) || 'GET';
   if (method !== 'GET' && /\/rest\/api\/3\/issue\//.test(url)) {
@@ -70,6 +74,15 @@ w.__jira = async (url: string, opts: any) => {
       if (method === 'DELETE') delete forIssue[pm[2]];
       localStorage.setItem('__harness_jira_props', JSON.stringify({ ...all, [pm[1]]: forIssue }));
       return ok({}, method === 'PUT' ? 200 : 204);
+    }
+    // A transition the fake offers (only with __harness_transitions): 21 starts, 31 finishes.
+    const tm = method === 'POST' ? url.match(/\/rest\/api\/3\/issue\/(DEMO-\d+)\/transitions$/) : null;
+    if (tm) {
+      const id = String(JSON.parse(opts.body || '{}').transition?.id || '');
+      const cat = id === '21' ? 'indeterminate' : id === '31' ? 'done' : '';
+      if (!cat) return ok({ errorMessages: ['Transition is not valid'] }, 400);
+      localStorage.setItem('__harness_jira_status', JSON.stringify({ ...statuses(), [tm[1]]: cat }));
+      return ok({}, 204);
     }
     const m = method === 'PUT' ? url.match(/\/rest\/api\/3\/issue\/(DEMO-\d+)$/) : null;
     // Review addition: keys listed in __harness_reject_due get the screen error for a due date.
@@ -156,7 +169,11 @@ w.__jira = async (url: string, opts: any) => {
   }
   const lq = url.match(/\/rest\/api\/3\/issue\/(DEMO-\d+)\?fields=issuelinks/);
   if (lq) return ok({ fields: { issuelinks: linksOn(lq[1]) } });
-  if (url.includes('/transitions')) return ok({ transitions: [] });
+  // Workflow transitions: none by default; with __harness_transitions, Start and Done.
+  if (url.includes('/transitions')) return ok({ transitions: localStorage.getItem('__harness_transitions') ? [
+    { id: '21', name: 'Start', to: { name: 'In Progress', statusCategory: { key: 'indeterminate' } } },
+    { id: '31', name: 'Done', to: { name: 'Done', statusCategory: { key: 'done' } } }
+  ] : [] });
   return ok({});
 };
 

@@ -18,7 +18,8 @@ import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from
 jest.mock('@forge/api', () => ({ __esModule: true, default: {}, route: () => '' }));
 jest.mock('@forge/kvs', () => ({ kvs: {} }));
 
-const VERIFIER = path.resolve(__dirname, '../verifier/verify-evidence.mjs');
+// The one copy of the open verifier, identical to the public repository asymmsystems/ledgerseal-verifier
+const VERIFIER = path.resolve(__dirname, '../../../tools/verifier/verify-evidence.mjs');
 const pair = crypto.generateKeyPairSync('ed25519');
 const signer = createSigner(pair.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64'), 'ls-test-1');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ls-evidence-'));
@@ -55,8 +56,8 @@ describe('B-14 evidence export', () => {
     const evidence = await sealedEvidence(true);
     expect(evidence.format).toBe('ledgerseal-evidence/1');
     expect(evidence.publicKeyId).toBe('ls-test-1');
-    expect(evidence.attestation).toMatchObject({ schemaVersion: 2, issueId: '10001', status: 'SEAL_VALID', everCompromised: 'true', incidentCount: 1 });
-    expect(evidence.snapshot.canonicalizerVersion).toBe('2.1.0');
+    expect(evidence.attestation).toMatchObject({ schemaVersion: 3, issueId: '10001', status: 'SEAL_VALID', everCompromised: 'true', incidentCount: 1 });
+    expect(evidence.snapshot.canonicalizerVersion).toBe('2.2.0');
     expect(evidence.history.map((r: any) => r.transitionName)).toEqual(['SEAL', 'CHANGE', 'RESEAL']);
     expect(evidence.verification.length).toBeGreaterThanOrEqual(4);
     expect(Buffer.byteLength(JSON.stringify(evidence), 'utf8')).toBeLessThan(5 * 1024 * 1024);

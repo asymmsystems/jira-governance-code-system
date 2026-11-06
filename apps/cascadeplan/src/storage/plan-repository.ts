@@ -17,6 +17,8 @@ export interface StorageProvider {
   delete(key: string): Promise<void>;
   /** All entries whose key starts with the prefix (paged by the provider). Used by PlanStore (B-09). */
   query?<T>(prefix: string): Promise<Array<{ key: string; value: T }>>;
+  /** One page of the entries under a prefix, from the cursor of the previous page (the personal data job, M2). */
+  queryPage?<T>(prefix: string, limit: number, cursor?: string): Promise<{ results: Array<{ key: string; value: T }>; nextCursor?: string }>;
   /** Atomically stores the value and returns the value it replaced. Used for the version check (B-09). */
   swap?<T>(key: string, value: T): Promise<T | undefined>;
 }

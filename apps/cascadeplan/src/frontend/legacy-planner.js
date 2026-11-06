@@ -14,7 +14,7 @@ import { MAIN_PLAN_ID, getSavedPlanId, setSavedPlanId, chooseActivePlan, parentK
 import { showFlag } from './flag';
 import { classifyResult } from '../ui/result';
 import { UndoStack } from '../ui/undo-stack';
-import { snapshotPlan, buildUndoEntry, actionLabel } from '../ui/undo-plan';
+import { snapshotPlan, buildUndoEntry, actionLabel, withWrittenStatuses } from '../ui/undo-plan';
 import { initErrorBanner, showErrorBanner } from './banner';
 import { enableTheme, onThemeChange } from './theme';
 import { openWhyPopup, closeWhyPopup, isWhyPopupOpen, initWhyPopup } from './why-popup';
@@ -41,7 +41,7 @@ import {
   clampColumnResize,
   computeFrozenLayout
 } from '../ui/column-layout';
-import { barRect, daysBetween, visibleRange, handleOffsets, portOffsets, nearestArrow, snapDays, previewMoves, xForDate } from '../ui/timeline-geometry';
+import { barRect, daysBetween, visibleRange, handleOffsets, portOffsets, nearestArrow, snapDays, shiftDates, xForDate } from '../ui/timeline-geometry';
 import { GRID_COLUMNS, navigate, rowCells, rowLevel, moveKey, moveAnnouncement } from '../ui/keyboard-grid';
 import { weeklyHours } from '../ui/weekly-hours';
 import { emptyState, showLinkHint } from '../ui/first-run';
@@ -49,11 +49,13 @@ import { applyDynamicStyles } from './dynamic-style';
 import { toggleKey, rangeKeys, moveSelectionBy, selectedBlockParents, progressFromDigit } from '../ui/selection';
 import { addDays as addDaysIso } from '../domain/schedule-engine';
 import { planBlockMove } from '../domain/block-move';
+import { previewSingleMove, previewBlockMove } from '../domain/drop-plan';
 import { baselineItems, compareItems } from '../domain/baseline';
 import { shouldAutoCompact, ZOOMS, zoomById, zoomStep, mondayOf, initialRange, rangeDays, extendRange, edgeToExtend, headerCells, gridLines, anchorScroll, dateAt } from '../ui/time-scale';
 import { buildTableViewRows, toggleTableView } from '../ui/table-view';
 import { findMatchingTasks, findNextMatch, formatMatchCount, isSearchShortcut } from '../ui/in-app-search';
 import { formatRemovalPrompt } from '../ui/second-person';
+import { statusOffers, offerPrompt, progressLockReason, progressText, isDone } from '../ui/progress-status';
 import {
   categorizePlan,
   suggestCloneName,
@@ -166,6 +168,7 @@ async function callResolver(fn, payload = {}, opts = {}) {
     showFlag({ text: verdict.message || 'The change was not saved.', error: true });
   } else {
     pendingUndo.done = true;
+    pendingUndo.jiraSync = res && res.jiraSync;
   }
   return res;
 }
@@ -175,7 +178,8 @@ function settleUndo() {
   const p = pendingUndo;
   if (!p || !p.done || !currentPlan) return;
   pendingUndo = null;
-  const entry = buildUndoEntry(p.before, snapshotPlan(currentPlan), p.payload.taskId || (p.payload.items && p.payload.items[0] && p.payload.items[0].taskId));
+  const after = withWrittenStatuses(snapshotPlan(currentPlan), p.payload, p.jiraSync);
+  const entry = buildUndoEntry(p.before, after, p.payload.taskId || (p.payload.items && p.payload.items[0] && p.payload.items[0].taskId));
   if (!entry) return;
   entry.label = actionLabel(p.fn, p.payload, entry);
   undoStack.push(entry);
@@ -323,6 +327,30 @@ function blockConflict(plan) {
   return worst;
 }
 
+/**
+ * The days a block move of `key` by `days` will use: with "Enforce dependencies" on, the whole block
+ * stops at the earliest day every link allows (ADR-003 section 6), as moveBlock does.
+ */
+function effectiveBlockDays(key, days) {
+  if (!days || !isEnforceDepsEnabled()) return days;
+  const conflict = blockConflict(blockPlan(key, days));
+  return conflict ? days + conflict.need : days;
+}
+
+/**
+ * Every Jira write of a drop, from the same computation the server applies (src/domain/drop-plan.ts,
+ * INV-03): `moves` for drawing (the moved bar included), `text` for the preview line.
+ */
+function dropPreview(key, start, end, blockDays) {
+  const plan = { tasks: currentPlan.tasks || [], backlogTasks: currentPlan.backlogTasks || [] };
+  const all = plan.tasks.concat(plan.backlogTasks);
+  const p = blockDays !== undefined ? previewBlockMove(plan, key, blockDays, todayIso()) : previewSingleMove(plan, key, start, end, todayIso());
+  const text = describePendingWrites(all, p.moves, key, { parentDue: p.parentDue, epics: p.epics }).text;
+  const moves = new Map(p.moves);
+  moves.set(key, { start, end });
+  return { moves, text };
+}
+
 /** Moves a parent and its sub-tasks as one block; one Undo restores them all. */
 async function moveBlock(key, days) {
   if (!days) return;
@@ -346,7 +374,7 @@ async function moveBlock(key, days) {
   }
   const expectedVersions = {};
   for (const c of plan.changes) expectedVersions[c.key] = (findAnyTask(c.key) && findAnyTask(c.key).version) || 0;
-  let res = await callResolver('moveTaskGroup', { taskId: key, days, expectedVersions });
+  let res = await callResolver('moveTaskGroup', { taskId: key, days, expectedVersions, enforceDependencies: enforce });
   // A block of more than 25 sub-tasks continues in batches of 25; the last batch runs the cascade.
   const rest = (res && Array.isArray(res.blockRemaining)) ? res.blockRemaining : [];
   for (let i = 0; i < rest.length; i += 25) {
@@ -887,11 +915,11 @@ function setupEventListeners() {
       e.stopPropagation();
       const pct = parseInt(btn.dataset.pct, 10);
       if (progPopover) progPopover.style.display = 'none';
-      if (!activeProgressTaskKey) return;
-      await callResolver('updateWbsTask', {
-        taskId: activeProgressTaskKey,
-        updates: { progress: pct, manualProgress: true }
-      });
+      const key = activeProgressTaskKey;
+      if (!key) return;
+      const updates = { progress: pct, manualProgress: true };
+      if (!(await withStatusChoice([{ key, progress: pct, updates }]))) return;
+      await callResolver('updateWbsTask', { taskId: key, updates });
       await loadProjectPlan();
     });
   });
@@ -918,11 +946,12 @@ function setupEventListeners() {
       e.stopPropagation();
       const val = parseInt(progNumInput?.value || progSlider?.value || '0', 10);
       if (progPopover) progPopover.style.display = 'none';
-      if (!activeProgressTaskKey) return;
-      await callResolver('updateWbsTask', {
-        taskId: activeProgressTaskKey,
-        updates: { progress: Math.max(0, Math.min(100, val)), manualProgress: true }
-      });
+      const key = activeProgressTaskKey;
+      if (!key) return;
+      const pct = Math.max(0, Math.min(100, val));
+      const updates = { progress: pct, manualProgress: true };
+      if (!(await withStatusChoice([{ key, progress: pct, updates }]))) return;
+      await callResolver('updateWbsTask', { taskId: key, updates });
       await loadProjectPlan();
     });
   }
@@ -1058,6 +1087,11 @@ function setupEventListeners() {
       if (editTargetValLabel) editTargetValLabel.textContent = `${pct}%`;
     });
   });
+
+  // Changing a Done item's status in the dialog unlocks its progress (2026-11-06).
+  document.getElementById('editStatusSelect')?.addEventListener('change', (e) => setDialogProgressLock(activeTaskId, e.target.value));
+  document.getElementById('btnStatusOfferMove')?.addEventListener('click', () => { if (statusOfferResolve) statusOfferResolve('move'); });
+  document.getElementById('btnStatusOfferKeep')?.addEventListener('click', () => { if (statusOfferResolve) statusOfferResolve('keep'); });
 
   const btnModalRollup = document.getElementById('btnModalUseRollup');
   if (btnModalRollup) {
@@ -2989,6 +3023,12 @@ function openProgressPicker(targetEl, taskKey) {
   activeProgressTaskKey = taskKey;
   const task = (currentPlan?.tasks || []).find(t => t.key === taskKey);
   if (!task) return;
+  const locked = progressLockReason(task);
+  if (locked) {
+    showFlag({ text: locked });
+    announce(locked);
+    return;
+  }
 
   const popover = document.getElementById('progressPickerPopover');
   const titleEl = document.getElementById('progressPickerTitle');
@@ -3837,12 +3877,13 @@ function buildTaskRow(task, rowIdx) {
   }
   if (visibleKeys.includes('progress')) {
     const isProgRollup = isEpic || (task.childrenCount && task.childrenCount > 0);
-    const progTitle = isProgRollup
-      ? `Actual progress: ${task.progress}% (Rollup from children: click to edit or override)`
-      : `Click to set actual progress (${task.progress}%)`;
+    const lockText = progressLockReason(task);
+    const progTitle = lockText || (isProgRollup
+      ? `Actual progress: ${progressText(task)} (Rollup from children: click to edit or override)`
+      : `Click to set actual progress (${progressText(task)})`);
     rowColsHtml = html`${rowColsHtml}
       <td class="td-data td-progress-cell jx-center-pointer" data-css-w="${columnWidths.progress}px" title="${progTitle}">
-        <div class="progress-chip-cell ${task.progress === 100 ? 'is-complete' : (task.progress > 0 ? 'is-active' : 'is-zero')}">
+        <div class="progress-chip-cell ${isDone(task.status) ? 'is-complete' : (task.progress > 0 ? 'is-active' : 'is-zero')}">
           <span class="progress-chip-fill" data-css-w="${task.progress}%"></span>
           <span class="progress-chip-text">${task.progress}% ▾</span>
         </div>
@@ -4754,11 +4795,9 @@ function startBarPointerEdit(e, key, mode, hit) {
     const s = snapDays(dx, dayPx(), ev.altKey ? 'day' : zoomById(zoomId).snap);
     if (s === shift && timeline.drag) return;
     shift = s;
-    const moves = previewMoves(currentPlan.tasks, key, mode === 'right' ? 0 : s, mode === 'left' ? 0 : s, today);
-    if (isBlockParent(task) && s !== 0) {
-      for (const c of blockPlan(key, s).changes) moves.set(c.key, { start: c.toStart, end: c.toEnd });
-    }
-    const mine = moves.get(key);
+    const mine = shiftDates(task, mode === 'right' ? 0 : s, mode === 'left' ? 0 : s);
+    if (!mine) return;
+    const moves = new Map([[key, mine]]);
 
     const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
     const isConflict = conflict.hasConflict;
@@ -4780,10 +4819,19 @@ function startBarPointerEdit(e, key, mode, hit) {
       }
     }
 
-    const currentMine = moves.get(key) || mine;
+    let currentMine = moves.get(key) || mine;
+    // The preview lists every Jira write of the drop, computed as the server will (INV-03, H2).
+    let preview;
+    if (isBlockParent(task)) {
+      const days = s !== 0 ? effectiveBlockDays(key, s) : 0;
+      currentMine = { start: addDaysIso(task.startDate, days), end: addDaysIso(task.endDate || task.startDate, days) };
+      preview = dropPreview(key, currentMine.start, currentMine.end, days);
+    } else {
+      preview = dropPreview(key, currentMine.start, currentMine.end);
+    }
     timeline.drag = {
       key,
-      moves,
+      moves: preview.moves,
       label,
       isConflict: enforceDeps ? false : isConflict,
       wasSnapped,
@@ -4791,7 +4839,7 @@ function startBarPointerEdit(e, key, mode, hit) {
       predKey: conflict.predKey
     };
     positionBarHit(hit, { ...task, startDate: currentMine.start, endDate: currentMine.end });
-    wrapper.dataset.preview = JSON.stringify(Object.fromEntries(moves));
+    wrapper.dataset.preview = JSON.stringify(Object.fromEntries(preview.moves));
 
     // Auto-expand time range dynamically when dragging/resizing beyond current boundaries
     if (timeRange && mine) {
@@ -4824,7 +4872,7 @@ function startBarPointerEdit(e, key, mode, hit) {
     // Name every issue and field the drop will change before the user lets go (B-23, INV-11).
     const strip = document.getElementById('writePreview');
     if (strip) {
-      let desc = describePendingWrites(currentPlan.tasks, moves, key).text;
+      let desc = preview.text;
       if (isConflict) {
         if (enforceDeps) {
           desc = `🔒 Enforce dependencies: will snap ${key} to ${conflict.earliestDate} to satisfy dependency on ${conflict.predKey}. ${desc}`;
@@ -4922,8 +4970,9 @@ function startBarPointerEdit(e, key, mode, hit) {
 
     try {
       // C3: the Jira due date this user saw; the server refuses the move when Jira changed it since.
+      // With "Enforce dependencies" on, the server checks the same links again before any write (L5).
       const res = await callResolver('updateWbsTask', { taskId: key, updates, expectedVersion: task.version || 0,
-        expectedDueDate: task.jiraDueDate ? String(task.jiraDueDate).slice(0, 10) : null }, { before: undoBefore });
+        expectedDueDate: task.jiraDueDate ? String(task.jiraDueDate).slice(0, 10) : null, enforceDependencies: enforceDeps }, { before: undoBefore });
       if (res && Array.isArray(res.tasks)) {
         applyPlanInPlace(res);
       } else {
@@ -5246,16 +5295,19 @@ function placeStripNear(strip, key) {
 
 /** Shows the live preview for day shifts of a task, as a drag does (B-13, B-23). */
 function showShiftPreview(key, startShift, endShift, label) {
-  const moves = previewMoves(currentPlan.tasks, key, startShift, endShift, todayIso());
-  // A block parent's preview also shows where each sub-task goes (ADR-003).
-  if (isBlockParent(findTask(key)) && startShift === endShift && startShift !== 0) {
-    for (const c of blockPlan(key, startShift).changes) moves.set(c.key, { start: c.toStart, end: c.toEnd });
-  }
-  const mine = moves.get(key);
-  timeline.drag = { key, moves, label: label(mine) };
+  const task = findTask(key);
+  const block = isBlockParent(task) && startShift === endShift && startShift !== 0;
+  // A block parent's preview shows where each sub-task goes (ADR-003); either way the line lists every
+  // Jira write of the drop, computed as the server will (INV-03, H2).
+  const days = block ? effectiveBlockDays(key, startShift) : undefined;
+  const shifted = task && shiftDates(task, block ? days : startShift, block ? days : endShift);
+  if (!shifted) return undefined;
+  const preview = dropPreview(key, shifted.start, shifted.end, days);
+  const mine = preview.moves.get(key);
+  timeline.drag = { key, moves: preview.moves, label: label(mine) };
   const strip = document.getElementById('writePreview');
   if (strip) {
-    strip.textContent = describePendingWrites(currentPlan.tasks, moves, key).text;
+    strip.textContent = preview.text;
     strip.hidden = false;
     placeStripNear(strip, key);
   }
@@ -5271,11 +5323,13 @@ function clearShiftPreview() {
 }
 
 /** One updateWbsTask call with exact dates and the version; the returned plan is used (B-13, B-14). */
-async function commitDates(key, start, end) {
+async function commitDates(key, start, end, opts = {}) {
   const task = findTask(key);
   // C3: the Jira due date this user saw; the server refuses the move when Jira changed it since.
+  // A move with "Enforce dependencies" on asks the server to check the links again (L5).
   const res = await callResolver('updateWbsTask', { taskId: key, updates: { startDate: start, endDate: end }, expectedVersion: (task && task.version) || 0,
-    expectedDueDate: (task && task.jiraDueDate) ? String(task.jiraDueDate).slice(0, 10) : null });
+    expectedDueDate: (task && task.jiraDueDate) ? String(task.jiraDueDate).slice(0, 10) : null,
+    ...(opts.enforce ? { enforceDependencies: true } : {}) });
   timeline.drag = null;
   if (res && Array.isArray(res.tasks)) applyPlanInPlace(res);
   else await loadProjectPlan();
@@ -5341,7 +5395,7 @@ async function onMoveKey(e) {
         focusGridCell();
         return;
       }
-      await commitDates(key, finalStart, finalEnd);
+      await commitDates(key, finalStart, finalEnd, { enforce: true });
       announce(`Enforce dependencies: snapped ${key} start to ${conflict.earliestDate} to satisfy dependency on ${conflict.predKey}.`);
       focusGridCell();
       return;
@@ -5362,7 +5416,7 @@ async function onMoveKey(e) {
     }
   }
 
-  await commitDates(key, finalStart, finalEnd);
+  await commitDates(key, finalStart, finalEnd, { enforce: isEnforceDepsEnabled() });
   announce(`Saved. ${key}: ${finalStart} to ${finalEnd}.`);
   focusGridCell();
 }
@@ -6186,9 +6240,15 @@ function versionOf(key) {
 }
 
 function initSelectionBar() {
-  document.getElementById('btnSelProgress')?.addEventListener('click', () => {
+  document.getElementById('btnSelProgress')?.addEventListener('click', async () => {
     const p = Math.max(0, Math.min(100, parseInt(document.getElementById('selProgress').value, 10) || 0));
-    runBatch([...selectedKeys].map(k => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) })), 'progress');
+    // A Done item keeps 100%; the others may offer a status change (2026-11-06).
+    const done = [...selectedKeys].filter(k => isDone(findTask(k)?.status));
+    if (done.length) showFlag({ text: `Not changed: ${done.join(', ')} ${done.length === 1 ? 'is' : 'are'} Done in Jira, so the progress stays 100%.` });
+    const items = [...selectedKeys].filter(k => !done.includes(k)).map(k => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) }));
+    if (!items.length) return;
+    if (!(await withStatusChoice(items.map(i => ({ key: i.taskId, progress: p, updates: i.updates }))))) return;
+    runBatch(items, 'progress');
   });
   document.getElementById('btnSelMove')?.addEventListener('click', async () => {
     const days = parseInt(document.getElementById('selDays').value, 10) || 0;
@@ -6219,6 +6279,11 @@ function fillAssigneeOptions() {
 
 /** Digits set a pending progress on the focused row; Enter saves every pending value in one call. */
 function setPendingProgress(key, pct) {
+  const locked = progressLockReason(findTask(key) || { key });
+  if (locked) {
+    announce(locked);
+    return;
+  }
   pendingProgress.set(key, pct);
   const chip = rowCache.get(key)?.querySelector('.progress-chip-text');
   if (chip) chip.textContent = `${pct}% (not saved)`;
@@ -6227,6 +6292,12 @@ function setPendingProgress(key, pct) {
 
 async function commitPendingProgress() {
   const items = [...pendingProgress].map(([k, p]) => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) }));
+  // One question for the whole batch when progress and Jira status disagree (2026-11-06).
+  if (!(await withStatusChoice(items.map(i => ({ key: i.taskId, progress: i.updates.progress, updates: i.updates }))))) {
+    announce(`Progress not saved yet. Enter saves the ${pendingProgress.size} changes, Escape drops them.`);
+    focusGridCell();
+    return;
+  }
   pendingProgress.clear();
   await runBatch(items, 'progress');
   announce(`Saved progress on ${items.length} issue${items.length === 1 ? '' : 's'}.`);
@@ -6314,6 +6385,7 @@ function openTaskDetailModal(taskKey) {
   }
   if (progSlider) progSlider.value = curProg;
   if (progValLabel) progValLabel.textContent = `${curProg}%`;
+  setDialogProgressLock(task.key, task.status);
   if (progNote) {
     progNote.style.display = isProgRollup ? 'block' : 'none';
     if (rollupPctText) {
@@ -6692,6 +6764,8 @@ async function saveTaskModalChanges() {
     closeModal('taskDetailModal');
     return;
   }
+  // A progress that disagrees with the Jira status offers the status change; the user chooses (INV-03).
+  if (updates.progress !== undefined && !(await withStatusChoice([{ key: activeTaskId, progress: updates.progress, updates }]))) return;
 
   const btn = document.getElementById('btnSaveTaskModal');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
@@ -6948,6 +7022,76 @@ function hideModal(modal) {
   modal.dataset.dirty = '';
   const prompt = modal.querySelector('.discard-prompt');
   if (prompt) prompt.remove();
+  // Escape or a backdrop click on the status question cancels the whole action.
+  if (modal.id === 'statusOfferModal' && statusOfferResolve) statusOfferResolve('cancel');
+}
+
+// Progress and Jira status (owner decision 2026-11-06, INV-03): the planner never changes a status by
+// itself. When a new progress disagrees with the status, it asks once, and the user chooses.
+let statusOfferResolve = null;
+
+/** Shows the status question. Resolves 'move', 'keep' or 'cancel'. */
+function askStatusOffers(offers) {
+  const prompt = offerPrompt(offers);
+  const modal = document.getElementById('statusOfferModal');
+  if (!prompt || !modal) return Promise.resolve('keep');
+  document.getElementById('statusOfferQuestion').textContent = prompt.question;
+  const list = document.getElementById('statusOfferList');
+  list.replaceChildren(...prompt.lines.map(line => {
+    const li = document.createElement('li');
+    li.textContent = line;
+    return li;
+  }));
+  list.hidden = prompt.lines.length === 0;
+  const move = document.getElementById('btnStatusOfferMove');
+  const keep = document.getElementById('btnStatusOfferKeep');
+  move.textContent = prompt.move;
+  keep.textContent = prompt.keep;
+  const opener = document.activeElement;
+  modal.style.display = 'flex';
+  move.focus();
+  announce(prompt.question);
+  return new Promise(resolve => {
+    statusOfferResolve = (choice) => {
+      statusOfferResolve = null;
+      hideModal(modal);
+      if (opener && typeof opener.focus === 'function') opener.focus();
+      resolve(choice);
+    };
+  });
+}
+
+/**
+ * Adds the status the user chooses to progress edits ({key, progress, updates}); false when the user
+ * cancelled, so nothing is written.
+ */
+async function withStatusChoice(edits) {
+  const offers = statusOffers(edits.map(e => ({ key: e.key, status: findTask(e.key)?.status, progress: e.progress, chosenStatus: e.updates.status })));
+  if (!offers.length) return true;
+  const choice = await askStatusOffers(offers);
+  if (choice === 'cancel') return false;
+  if (choice === 'move') {
+    for (const o of offers) {
+      const edit = edits.find(e => e.key === o.key);
+      if (edit) edit.updates.status = o.to;
+    }
+  }
+  return true;
+}
+
+/** A Done item's progress is 100% and locked in the dialog; choosing another status there unlocks it. */
+function setDialogProgressLock(key, status) {
+  const reason = progressLockReason({ key, status });
+  for (const id of ['editProgressInput', 'editProgressSlider', 'btnModalUseRollup']) {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !!reason;
+  }
+  document.querySelectorAll('.modal-prog-preset').forEach(b => { b.disabled = !!reason; });
+  const note = document.getElementById('editProgressLockNote');
+  if (note) {
+    note.textContent = reason || '';
+    note.hidden = !reason;
+  }
 }
 
 function openModal() {

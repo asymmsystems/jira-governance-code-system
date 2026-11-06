@@ -4,7 +4,7 @@
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
  */
-import { jira, CountingStorage, JiraCall } from '../helpers/forge-mocks';
+import { jira, CountingStorage, JiraCall, pseudonymOf, storedOutsideMap } from '../helpers/forge-mocks';
 
 jest.mock('@forge/api', () => {
   const m = require('../helpers/forge-mocks');
@@ -35,11 +35,11 @@ const goodTemplate = {
   ]
 };
 
-function respond(opts: { admin?: boolean; edit?: boolean; issueTypeId?: string } = {}) {
-  const { admin = true, edit = true, issueTypeId = '10004' } = opts;
+function respond(opts: { admin?: boolean; edit?: boolean; issueTypeId?: string; jiraAdmin?: boolean } = {}) {
+  const { admin = true, edit = true, issueTypeId = '10004', jiraAdmin = false } = opts;
   jira.handler = (c: JiraCall) => {
     if (c.path.includes('/mypermissions')) {
-      return { status: 200, body: { permissions: { ADMINISTER_PROJECTS: { havePermission: admin }, EDIT_ISSUES: { havePermission: edit } } } };
+      return { status: 200, body: { permissions: { ADMINISTER_PROJECTS: { havePermission: admin }, ADMINISTER: { havePermission: jiraAdmin }, EDIT_ISSUES: { havePermission: edit } } } };
     }
     if (c.path.startsWith('/rest/api/3/project/')) {
       return { status: 200, body: { id: '10000', key: 'DEMO', issueTypes: [{ id: '10004', name: 'Task' }, { id: '10005', name: 'Bug' }] } };
@@ -99,11 +99,18 @@ describe('B-06 settings resolvers', () => {
 
   it('refuses a non-admin, as the user, and writes nothing', async () => {
     respond({ admin: false });
-    await expect(saveTemplate({ issueTypeId: '10004', template: goodTemplate }, settingsCtx('712020:dev'), storage)).rejects.toThrow('Only a project admin can change DefinitionGuard templates.');
+    await expect(saveTemplate({ issueTypeId: '10004', template: goodTemplate }, settingsCtx('712020:dev'), storage)).rejects.toThrow('Only a project admin or a Jira admin can change DefinitionGuard templates.');
     await expect(getSettings({}, settingsCtx('712020:dev'), storage)).rejects.toThrow(PermissionDeniedError);
     expect(storage.sets).toEqual([]);
     expect(jira.callsTo('/mypermissions', 'user')[0].path).toContain('projectKey=DEMO');
     expect(jira.callsTo('/mypermissions', 'app')).toEqual([]);
+  });
+
+  it('lets a Jira admin who is not a project admin use the settings, as Jira does (found live on PAY)', async () => {
+    respond({ admin: false, jiraAdmin: true });
+    const res: any = await saveTemplate({ issueTypeId: '10004', template: goodTemplate }, settingsCtx('712020:site-admin'), storage);
+    expect(res.template.version).toBe(1);
+    expect(decodeURIComponent(jira.callsTo('/mypermissions', 'user')[0].path)).toContain('permissions=ADMINISTER_PROJECTS,ADMINISTER');
   });
 
   it('rejects an invalid template and names the field', async () => {
@@ -122,7 +129,8 @@ describe('B-06 settings resolvers', () => {
     const stored = storage.read(templateKey('10000', '10004'));
     expect(first.template.version).toBe(1);
     expect(second.template.version).toBe(2);
-    expect(stored).toMatchObject({ workEffortTypeId: 'DOD_TEMPLATE', revisionNumber: 2, lastModifiedByPartyId: '712020:admin-2', projectId: '10000', issueTypeId: '10004' });
+    expect(stored).toMatchObject({ workEffortTypeId: 'DOD_TEMPLATE', revisionNumber: 2, lastModifiedByPartyId: pseudonymOf(storage, '712020:admin-2'), projectId: '10000', issueTypeId: '10004' });
+    expect(storedOutsideMap(storage, '712020:admin-2')).toEqual([]);
     expect(typeof stored.lastModifiedDate).toBe('string');
     expect(stored.workEffortId).toBe('project-10000-10004');
     expect(stored.criteria.map((c: any) => c.templateItemId)).toEqual(['security-signoff', 'docs']);

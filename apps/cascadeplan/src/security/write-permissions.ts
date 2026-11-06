@@ -12,7 +12,7 @@
  */
 import api, { route } from '@forge/api';
 
-export type IssuePermission = 'EDIT_ISSUES' | 'SCHEDULE_ISSUES' | 'LINK_ISSUES' | 'CREATE_ISSUES' | 'MOVE_ISSUES';
+export type IssuePermission = 'EDIT_ISSUES' | 'SCHEDULE_ISSUES' | 'LINK_ISSUES' | 'CREATE_ISSUES' | 'MOVE_ISSUES' | 'BROWSE_PROJECTS';
 
 /** For each permission, the issue ids the user holds it for. */
 export type PermissionChecker = (issueIds: string[], permissions: IssuePermission[]) => Promise<Map<IssuePermission, Set<string>>>;
@@ -93,7 +93,8 @@ const PERMISSION_NAMES: Record<IssuePermission, string> = {
   SCHEDULE_ISSUES: 'Schedule issues',
   LINK_ISSUES: 'Link issues',
   CREATE_ISSUES: 'Create issues',
-  MOVE_ISSUES: 'Move issues'
+  MOVE_ISSUES: 'Move issues',
+  BROWSE_PROJECTS: 'Browse projects'
 };
 
 /** Plain text naming the Jira permissions a user lacks. */

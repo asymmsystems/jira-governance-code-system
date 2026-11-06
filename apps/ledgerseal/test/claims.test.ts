@@ -85,7 +85,7 @@ describe('B-10 no unsupported claims', () => {
   it('uses the validator messages of spec v2 section 9', () => {
     const live = { issueId: '1', issueKey: 'X-1', projectKey: 'X', issueType: 'T', status: 'S', fields: [], attachments: [], capturedAt: 't' };
     expect(validateTransitionGate(null, live).errorMessage).toBe(
-      'LedgerSeal: this issue is not sealed. To proceed: open the LedgerSeal panel on this issue, select your sign-off role, agree to the declaration, and click "Seal issue".'
+      'LedgerSeal: this issue is not sealed. To proceed: open the LedgerSeal panel on this issue, select your sign-off role, agree to the declaration, and click "Seal this issue".'
     );
     const sealed = { snapshotHash: 'x', snapshot: live, revoked: false, compromised: false };
     expect(validateTransitionGate({ ...sealed, revoked: true }, live, { revocationReason: 'scope withdrawn', revokedAt: '2026-11-01T10:00:00.000Z' }).errorMessage).toBe(

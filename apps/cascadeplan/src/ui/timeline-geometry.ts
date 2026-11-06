@@ -9,7 +9,8 @@
  * Bars are placed by exact dates in days from the first visible week; an end date is inclusive.
  */
 
-import { cascade, addDays, ScheduleEffort, ScheduleLink } from '../domain/schedule-engine';
+import { addDays } from '../domain/schedule-engine';
+import { DropTask, previewSingleMove } from '../domain/drop-plan';
 
 /** Pointer hit area of a resize handle, centred on the bar edge (WCAG 2.5.8, UR-04). */
 export const HANDLE_PX = 24;
@@ -111,47 +112,24 @@ export function snapDays(deltaPx: number, dayPx: number, mode: 'week' | 'day'): 
   return days === 0 ? 0 : days;
 }
 
-interface PreviewTask {
-  key: string;
-  startDate?: string;
-  endDate?: string;
-  progress?: number;
-  status?: string;
-  dependency?: { predecessorKey?: string; triggerPercent?: number } | null;
-  dependencies?: Array<{ predecessorKey?: string; triggerPercent?: number }>;
+/**
+ * Dates of the dragged task (start and end shifted by days) and of every task the drop moves, for the
+ * live preview while dragging (UR-05). The same computation as the server (src/domain/drop-plan.ts).
+ */
+export function previewMoves(tasks: DropTask[], key: string, startShift: number, endShift: number, today: string): Map<string, { start: string; end: string }> {
+  const target = tasks.find(t => t.key === key);
+  const dates = target && shiftDates(target, startShift, endShift);
+  if (!dates) return new Map();
+  return previewSingleMove({ tasks }, key, dates.start, dates.end, today).moves;
 }
 
-/**
- * Dates of the dragged task (start and end shifted by days) and of every dependent the schedule
- * engine would move, for the live preview while dragging (UR-05). Uses the same engine as the server.
- */
-export function previewMoves(tasks: PreviewTask[], key: string, startShift: number, endShift: number, today: string): Map<string, { start: string; end: string }> {
-  const out = new Map<string, { start: string; end: string }>();
-  const target = tasks.find(t => t.key === key);
-  if (!target || !target.startDate) return out;
-  const start = addDays(target.startDate, startShift);
-  let end = addDays(target.endDate || target.startDate, endShift);
+/** A task's dates shifted by days at each end (the end never before the start), or null without a start. */
+export function shiftDates(task: { startDate?: string; endDate?: string }, startShift: number, endShift: number): { start: string; end: string } | null {
+  if (!task.startDate) return null;
+  const start = addDays(task.startDate, startShift);
+  let end = addDays(task.endDate || task.startDate, endShift);
   if (end < start) end = start;
-  out.set(key, { start, end });
-  const efforts = new Map<string, ScheduleEffort>();
-  const links: ScheduleLink[] = [];
-  for (const t of tasks) {
-    if (!t.startDate) continue;
-    const moved = t.key === key;
-    efforts.set(t.key, { workEffortId: t.key, estimatedStartDate: moved ? start : t.startDate, estimatedCompletionDate: moved ? end : (t.endDate || t.startDate),
-      percentComplete: t.progress || 0, started: t.status === 'IN_PROGRESS' || t.status === 'COMPLETED' });
-    for (const d of t.dependencies || (t.dependency ? [t.dependency] : [])) {
-      if (d.predecessorKey && typeof d.triggerPercent === 'number') {
-        links.push({ workEffortIdFrom: d.predecessorKey, workEffortIdTo: t.key, workEffortAssocTypeId: 'WORK_EFF_PRECEDENCY', triggerPercent: d.triggerPercent });
-      }
-    }
-  }
-  try {
-    for (const c of cascade(efforts, links, key, today).changes) out.set(c.key, { start: c.toStart, end: c.toEnd });
-  } catch {
-    // A cycle shows no preview of dependents; the server rejects cycles on save.
-  }
-  return out;
+  return { start, end };
 }
 
 /**

@@ -123,7 +123,8 @@ export class PlannerEngine {
 
     // Past or Current week evaluation
     if (weekIndex <= currentWeekIndex) {
-      if (task.status === 'COMPLETED' || task.progress >= 100) {
+      // Done comes from the Jira status only: 100% without Done is still open work (2026-11-06).
+      if (task.status === 'COMPLETED') {
         return 'COMPLETED';
       }
       if (task.progress < task.targetProgress || task.progress === 0) {

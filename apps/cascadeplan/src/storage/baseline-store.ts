@@ -152,10 +152,11 @@ export class BaselineStore {
 
   /** Records that a key names an account id, for the weekly personal data report (DEC-2, BL-5). */
   private async noteAccount(accountId: string, key: string): Promise<void> {
-    const idx = (await this.storage.get<Record<string, { keys: string[]; updatedAt: string }>>(ACCOUNTS_KEY)) || {};
-    const cur = idx[accountId] || { keys: [], updatedAt: new Date().toISOString() };
-    if (!cur.keys.includes(key)) cur.keys.push(key);
-    idx[accountId] = { keys: cur.keys, updatedAt: new Date().toISOString() };
+    // Only the time of the last write is kept: the personal data job finds the records themselves by
+    // reading them, so the index stays small however many records name the account (M2).
+    void key;
+    const idx = (await this.storage.get<Record<string, { keys?: string[]; updatedAt: string }>>(ACCOUNTS_KEY)) || {};
+    idx[accountId] = { updatedAt: new Date().toISOString() };
     await this.storage.set(ACCOUNTS_KEY, idx);
   }
 }
@@ -166,12 +167,12 @@ export class BaselineStore {
  */
 export async function eraseClosedAccounts(storage: StorageProvider, closed: string[]): Promise<string[]> {
   if (closed.length === 0) return [];
-  const idx = (await storage.get<Record<string, { keys: string[]; updatedAt: string }>>(ACCOUNTS_KEY)) || {};
+  const idx = (await storage.get<Record<string, { keys?: string[]; updatedAt: string }>>(ACCOUNTS_KEY)) || {};
   const done: string[] = [];
   for (const accountId of closed) {
     const entry = idx[accountId];
     if (!entry) continue;
-    for (const key of entry.keys) {
+    for (const key of entry.keys || []) {
       const rec = await storage.get<any>(key);
       if (!rec) continue;
       const next = { ...rec };

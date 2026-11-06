@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Asymm Systems. All rights reserved.
+#
+# @author Fahim Farook
 """End-to-end check of the four CascadePlan defects in headless Chrome, against the real bundled
 frontend and the real resolvers (only the Forge platform is stubbed; KVS lives in localStorage).
 

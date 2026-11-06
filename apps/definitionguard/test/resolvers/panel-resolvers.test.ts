@@ -4,7 +4,7 @@
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
  */
-import { jira, CountingStorage, JiraCall } from '../helpers/forge-mocks';
+import { jira, CountingStorage, JiraCall, pseudonymOf, storedOutsideMap } from '../helpers/forge-mocks';
 
 jest.mock('@forge/api', () => {
   const m = require('../helpers/forge-mocks');
@@ -106,7 +106,7 @@ describe('panel resolvers (v3 change log)', () => {
     it('writes a Create entry, a Complete entry and the state on the first change', async () => {
       const res = await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx(), storage);
       expect(storage.read(eventKey('40001', 1)).transitionName).toBe('Create');
-      expect(storage.read(eventKey('40001', 2))).toMatchObject({ transitionName: 'Complete', actorPartyId: '712020:alice' });
+      expect(storage.read(eventKey('40001', 2))).toMatchObject({ transitionName: 'Complete', actorPartyId: pseudonymOf(storage, '712020:alice') });
       expect(storage.read(eventKey('40001', 2)).rows[0]).toMatchObject({ entity: 'WorkEffortStatus', workEffortId: 'crit:40001:item-unit-tests', statusId: 'DOD_DONE' });
       expect(storage.read(stateKey('40001')).seq).toBe(2);
       expect(res.checklistHash).toBe(storage.read(eventKey('40001', 2)).hash);
@@ -119,10 +119,32 @@ describe('panel resolvers (v3 change log)', () => {
       expect(res.items.find(i => i.id === 'item-unit-tests')!.isCompleted).toBe(false);
     });
 
-    it('stores the accountId, not a display name, and makes no user lookup', async () => {
-      await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx(), storage);
-      expect(storage.read(stateKey('40001')).criteria[0].lastStatusByPartyId).toBe('712020:alice');
+    it('(ADR-010) stores a pseudonym, never the account id or a display name, and makes no user lookup', async () => {
+      const res = await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx(), storage);
+      const p = pseudonymOf(storage, '712020:alice');
+      expect(p).toMatch(/^dgp-[0-9a-f]{32}$/);
+      expect(storage.read(stateKey('40001')).criteria[0].lastStatusByPartyId).toBe(p);
+      expect(storage.read(`dg:pid:${p}`)).toEqual({ accountId: '712020:alice' });
+      expect(storedOutsideMap(storage, '712020:alice')).toEqual([]);
+      // The panel still gets the account id, for the User component.
+      expect(res.items.find(i => i.id === 'item-unit-tests')!.completedByAccountId).toBe('712020:alice');
+      expect(res.lastModifiedBy).toBe('712020:alice');
       expect(jira.callsTo('/rest/api/3/user')).toEqual([]);
+    });
+
+    it('(M-1) returns the approver groups a Jira admin chose and the waiver permission, for the approver line', async () => {
+      storage.put('dg:cfg:approver_policy', { roleTypeId: 'DG_APPROVER', parties: [{ partyId: 'g2', partyTypeId: 'GROUP', name: 'qa-leads' }, { partyId: 'g1', partyTypeId: 'GROUP', name: 'dev-leads' }], fromDate: T, setByPartyId: 'dgp-x' });
+      const res = await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx(), storage);
+      expect(res.approverGroups).toEqual(['dev-leads', 'qa-leads']);
+      expect(res.waiverPermissionLabel).toBe('Administer projects');
+      const loaded = await getIssueChecklist({}, ctx(), storage);
+      expect(loaded.approverGroups).toEqual(['dev-leads', 'qa-leads']);
+    });
+
+    it('(ADR-010) reuses the same pseudonym for the same person', async () => {
+      await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx(), storage);
+      await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: false }, ctx(), storage);
+      expect(storage.read(eventKey('40001', 3)).actorPartyId).toBe(storage.read(eventKey('40001', 2)).actorPartyId);
     });
 
     it('refuses a change that StatusValidChange does not allow, before any Jira call or write (B-21)', async () => {
@@ -144,12 +166,12 @@ describe('panel resolvers (v3 change log)', () => {
       await expect(toggleChecklistItem({}, ctx(), storage)).rejects.toThrow('Missing itemId');
     });
 
-    it('publishes the schema v2 property with the counts and the head hash', async () => {
+    it('publishes the schema v3 property with the counts and the head hash', async () => {
       const res = await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: true }, ctx(), storage);
       const put = jira.callsTo('/properties/definitionguard-dod', 'app')[0];
       expect(put.method).toBe('PUT');
       expect(put.body).toMatchObject({
-        schemaVersion: 2,
+        schemaVersion: 3,
         issueId: '40001',
         mandatoryTotal: DEFAULT_DEFINITION_OF_DONE.items.filter(i => i.isMandatory).length,
         mandatoryCompleted: 1,
@@ -268,7 +290,7 @@ describe('panel resolvers (v3 change log)', () => {
 
         const builder: any = { where: jest.fn(() => builder), limit: jest.fn(() => builder), cursor: jest.fn(() => builder), getMany: jest.fn(async () => ({ results: [{ key: 'p:1', value: 1 }], nextCursor: 'c2' })) };
         kvsMock.query.mockReturnValue(builder);
-        expect(await kv.listByPrefix('p:', 'c1', 50)).toEqual({ values: [1], nextCursor: 'c2' });
+        expect(await kv.listByPrefix('p:', 'c1', 50)).toEqual({ values: [1], keys: ['p:1'], nextCursor: 'c2' });
         expect(builder.cursor).toHaveBeenCalledWith('c1');
         expect(builder.limit).toHaveBeenCalledWith(50);
         await kv.listByPrefix('p:');

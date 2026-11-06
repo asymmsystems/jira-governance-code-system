@@ -1,3 +1,9 @@
+/**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
+ * @author Fahim Farook
+ */
+
 import { validateTransition, sealIssue, verifyIssue, handler } from '../src/index';
 import { FakeJira, MemoryStore, panelContext, validSignature, model } from './support/fakes';
 
@@ -7,7 +13,7 @@ jest.mock('@forge/api', () => ({
   route: (strings: any, ...values: any[]) =>
     strings.reduce((acc: string, str: string, i: number) => acc + str + (values[i] !== undefined ? values[i] : ''), '')
 }));
-jest.mock('@forge/kvs', () => ({ kvs: {} }));
+jest.mock('@forge/kvs', () => ({ kvs: {}, WhereConditions: { beginsWith: (v: string) => ({ condition: 'BEGINS_WITH', value: v }) } }));
 
 const sampleIssue = {
   id: '10001',
@@ -44,8 +50,9 @@ describe('Forge Function Entry Points (index.ts)', () => {
 
       const stored = await model.workEffort(storage);
       expect(stored.attributes.snapshotHash).toBe(result.snapshotHash);
-      expect(model.assignments(storage)[0].partyId).toBe('lead');
-      expect(model.statusRows(storage)[0].data.signerName).toBe('Lead Engineer');
+      // The seal names the signer by party token, and stores no account id and no name (ADR-011)
+      expect(model.assignments(storage)[0].partyId).toBe(await model.token(storage, 'lead'));
+      expect(JSON.stringify([...storage.map.entries()].filter(([k]) => !k.startsWith('ls3:party:')))).not.toMatch(/"lead"|Lead Engineer/);
       expect(jira.propertyWrites[0].body).toMatchObject({ status: 'SEAL_VALID', snapshotHash: result.snapshotHash });
     });
 
@@ -70,10 +77,10 @@ describe('Forge Function Entry Points (index.ts)', () => {
       expect(storage.sets).toEqual([]);
     });
 
-    it('falls back to the account id when Jira hides the display name', async () => {
-      jira.users = {};
+    it('stores no signer name, and maps the token to the account in one key outside the records', async () => {
       await sealIssue({ signature: sampleSig }, ctx, deps());
-      expect(model.statusRows(storage)[0].data.signerName).toBe('lead');
+      expect(model.statusRows(storage)[0].data).not.toHaveProperty('signerName');
+      expect(storage.map.get(`ls3:party:${await model.token(storage, 'lead')}`)).toMatchObject({ accountId: 'lead' });
     });
   });
 
@@ -182,6 +189,14 @@ describe('Forge Function Entry Points (index.ts)', () => {
       await withUser.storage.commit([{ key: 'a', value: 1 }, { key: 'b', value: 2 }]);
       expect(tx.set.mock.calls).toEqual([['a', 1], ['b', 2]]);
       expect(tx.execute).toHaveBeenCalledTimes(1);
+      // query reads page after page with the cursor until there is none
+      const builder: any = { where: jest.fn(() => builder), limit: jest.fn(() => builder), cursor: jest.fn(() => builder), getMany: jest.fn() };
+      builder.getMany
+        .mockResolvedValueOnce({ results: [{ key: 'p:1', value: 1 }], nextCursor: 'c2' })
+        .mockResolvedValueOnce({ results: [{ key: 'p:2', value: 2 }] });
+      kvs.query = jest.fn(() => builder);
+      await expect(withUser.storage.query('p:')).resolves.toEqual([{ key: 'p:1', value: 1 }, { key: 'p:2', value: 2 }]);
+      expect(builder.cursor).toHaveBeenCalledWith('c2');
       const appOnly = forgeDeps(false);
       await expect(appOnly.jira.hasApproverPermission('1')).resolves.toEqual({ ok: false, error: 'FORBIDDEN' });
       expect(api.asUser).not.toHaveBeenCalled();

@@ -36,4 +36,11 @@ describe('B-20 manifest', () => {
   it('declares the read:jira-user scope for group checks and picker', () => {
     expect(manifest).toContain('- read:jira-user');
   });
+
+  it('(BL-1, ADR-010) declares report:personal-data and a weekly trigger bound to personalDataTrigger', () => {
+    expect(manifest).toContain('- report:personal-data');
+    expect(manifest).toMatch(/scheduledTrigger:\n(?:\s+#.*\n)*\s+- key: personal-data-report\n\s+function: personal-data-fn\n\s+interval: week/);
+    expect(manifest).toMatch(/- key: personal-data-fn\n\s+handler: index\.personalDataTrigger/);
+    expect(typeof require('../src/index').personalDataTrigger).toBe('function');
+  });
 });

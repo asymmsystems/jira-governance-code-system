@@ -28,7 +28,7 @@ Mode: read-only. No deploy, no tunnel, no network calls. Scratch work is in /hom
 | 05b593dff3b349cc9e78844bdd48eb18 | test/storage/checklist-repository.test.ts |
 | 8013de1bfb00d8c2f8be821dc4e82f7f | test/validator/transition-validator.test.ts |
 | 77704df0310d74a98710ad0d63293464 | docs/spec/definitionguard-spec.md (claims only) |
-| 02dd76552b476677329559f5cb5b9873 | docs/marketplace/definitionguard-listing.md (claims only) |
+| 02dd76552b476677329559f5cb5b9873 | docs/marketplace/definitionguard-listing.md (claims only; deleted 2026-11-06, superseded by `docs/marketplace/definitionguard-listing-v2.md`) |
 
 Not read: dist/ and coverage/ (build output, committed in the app folder). The working tree has uncommitted changes only under apps/planshift; none under apps/definitionguard.
 Cross-app facts in section 6 come from grep only on apps/fourrealities and apps/ledgerseal. I did not read those apps in full.

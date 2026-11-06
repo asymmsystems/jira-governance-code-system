@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Asymm Systems. All rights reserved.
+#
+# @author Fahim Farook
 """Probe: is Undo offered after a drag when the resolver response is not stale? Asymm Systems. @author Fahim Farook"""
 import pathlib
 from playwright.sync_api import sync_playwright

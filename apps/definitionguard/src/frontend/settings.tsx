@@ -44,6 +44,7 @@ type Settings = {
   templates: Record<string, any>;
   doneStatuses: Array<{ id: string; name: string }>;
   exemptStatusIds: string[];
+  licenceNotice?: string;
 };
 
 // Text fields are uncontrolled (defaultValue, remounted by key): a controlled UI Kit Textfield
@@ -164,6 +165,11 @@ export const SettingsPage: React.FC = () => {
       <Heading as="h2">Definition of Done templates</Heading>
       <Text>Choose an issue type, list its Definition of Done items, and save. Issues that already have a checklist keep their items.</Text>
 
+      {settings?.licenceNotice && (
+        <SectionMessage appearance="warning" title="Licence not active">
+          <Text>{settings.licenceNotice}</Text>
+        </SectionMessage>
+      )}
       {error && (
         <SectionMessage appearance="error" title="Not saved">
           <Text>{error}</Text>

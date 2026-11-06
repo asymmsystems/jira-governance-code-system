@@ -32,11 +32,11 @@ class ForgeKvsProvider implements StorageProvider {
     }
   }
 
-  async listByPrefix(prefix: string, cursor?: string, limit = 100): Promise<{ values: any[]; nextCursor?: string }> {
+  async listByPrefix(prefix: string, cursor?: string, limit = 100): Promise<{ values: any[]; keys: string[]; nextCursor?: string }> {
     let query = kvs.query().where('key', WhereConditions.beginsWith(prefix)).limit(limit);
     if (cursor) query = query.cursor(cursor);
     const page = await query.getMany<any>();
-    return { values: page.results.map(r => r.value), nextCursor: page.nextCursor };
+    return { values: page.results.map(r => r.value), keys: page.results.map(r => r.key), nextCursor: page.nextCursor };
   }
 }
 

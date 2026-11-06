@@ -111,13 +111,14 @@ describe('B-04 paged history and panel reads', () => {
     expect(p2.eventCount).toBe(150);
   });
 
-  it('reads the state and one head probe on a panel load, and writes nothing', async () => {
+  it('reads the state, one head probe, one link per pseudonym shown and the approver groups on a panel load, and writes nothing', async () => {
     const storage = new CountingStorage();
     await toggles(new ChecklistStore(storage), '60005', template(6), 200);
     storage.gets = []; storage.sets = [];
     const res = await getIssueChecklist({}, ctx, storage);
-    // 200 toggles plus the CREATED event: seq 201, so the head probe reads event 202.
-    expect(storage.gets).toEqual([stateKey('60005'), eventKey('60005', 202)]);
+    // 200 toggles plus the CREATED event: seq 201, so the head probe reads event 202. The actors here
+    // are plain ids, so no pseudonym link is read (ADR-010); M-1 adds the approver policy.
+    expect(storage.gets).toEqual([stateKey('60005'), eventKey('60005', 202), 'dg:cfg:approver_policy']);
     expect(storage.sets).toEqual([]);
     expect(res.stateVersion).toBe(201);
   });

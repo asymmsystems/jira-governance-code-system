@@ -8,7 +8,7 @@
  * CascadePlan: undo entries from plan snapshots, including the cascade (B-14 criterion 1).
  */
 
-import { snapshotPlan, buildUndoEntry, actionLabel, UndoOp } from '../../src/ui/undo-plan';
+import { snapshotPlan, buildUndoEntry, actionLabel, UndoOp, withWrittenStatuses } from '../../src/ui/undo-plan';
 import { UndoStack } from '../../src/ui/undo-stack';
 import { addDays } from '../../src/domain/schedule-engine';
 
@@ -149,5 +149,28 @@ describe('20 edits then 20 undos restore every date exactly (B-14 criterion 1)',
     const redo = stack.redo()!;
     for (const op of redo.reapply) tasks = tasks.map(t => (t.key === op.key ? { ...t, ...op.updates } : t));
     expect(tasks.map(t => [t.key, t.startDate, t.endDate])).toEqual(history[1].map(t => [t.key, t.startDate, t.endDate]));
+  });
+});
+
+describe('withWrittenStatuses (live PAY-10, 2026-11-06)', () => {
+  const plan = { tasks: [{ key: 'P-1', startDate: '2026-11-02', endDate: '2026-11-06', status: 'NOT_STARTED', progress: 40, manualProgress: true }] };
+  const before = snapshotPlan({ tasks: [{ ...plan.tasks[0], progress: 0, manualProgress: false }] });
+
+  it('puts the applied status on the after-snapshot, so Undo moves the status back', () => {
+    const after = withWrittenStatuses(snapshotPlan(plan), { taskId: 'P-1', updates: { progress: 40, status: 'IN_PROGRESS' } },
+      { writes: [{ key: 'P-1', fields: ['status'] }] });
+    expect(after.get('P-1')!.status).toBe('IN_PROGRESS');
+    const entry = buildUndoEntry(before, after, 'P-1')!;
+    const op = entry.restore.find((o: UndoOp) => o.key === 'P-1')!;
+    expect(op.updates).toMatchObject({ status: 'NOT_STARTED', manualProgress: false });
+    expect(entry.reapply.find((o: UndoOp) => o.key === 'P-1')!.updates).toMatchObject({ status: 'IN_PROGRESS', progress: 40 });
+  });
+
+  it('leaves the snapshot alone when Jira refused the status or none was sent', () => {
+    const snap = snapshotPlan(plan);
+    expect(withWrittenStatuses(snap, { taskId: 'P-1', updates: { status: 'IN_PROGRESS' } }, { writes: [{ key: 'P-1', fields: [] }] }).get('P-1')!.status).toBe('NOT_STARTED');
+    expect(withWrittenStatuses(snap, { taskId: 'P-1', updates: { progress: 10 } }, { writes: [] })).toBe(snap);
+    expect(withWrittenStatuses(snap, { items: [{ taskId: 'P-1', updates: { status: 'COMPLETED' } }] }, { writes: [{ key: 'P-1', fields: ['status'] }] }).get('P-1')!.status).toBe('COMPLETED');
+    expect(withWrittenStatuses(snap, null, null)).toBe(snap);
   });
 });

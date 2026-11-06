@@ -59,10 +59,15 @@ describe('PlannerEngine Domain Tests', () => {
       expect(res).toBe('PLANNED_LEFT');
     });
 
-    it('returns COMPLETED in past week when task status is COMPLETED or progress is 100', () => {
+    it('returns COMPLETED in past week when task status is COMPLETED', () => {
       const completedTask: WbsTask = { ...sampleTask, status: 'COMPLETED', progress: 100 };
       const res = PlannerEngine.calculateCellVisualState(completedTask, sampleWeek, 0, 5);
       expect(res).toBe('COMPLETED');
+    });
+
+    it('does not return COMPLETED for 100% when Jira does not say Done (2026-11-06)', () => {
+      const openTask: WbsTask = { ...sampleTask, status: 'IN_PROGRESS', progress: 100, targetProgress: 100 };
+      expect(PlannerEngine.calculateCellVisualState(openTask, sampleWeek, 0, 5)).toBe('PLANNED_LEFT');
     });
 
     it('returns BEHIND_SCHEDULE in past week when progress < targetProgress', () => {

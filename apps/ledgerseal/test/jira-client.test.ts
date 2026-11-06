@@ -84,9 +84,34 @@ describe('Jira client paging and mapping', () => {
     const asApp = {
       requestJira: jest.fn().mockResolvedValueOnce(reply(200, { isLast: false })).mockResolvedValueOnce(reply(404))
     };
-    const client = createJiraClient(asApp, null);
-    await expect(client.getChangelog('1')).resolves.toEqual({ ok: true, value: [] });
-    await expect(client.getChangelog('1')).resolves.toEqual({ ok: false, error: 'NOT_FOUND', status: 404 });
+    await expect(createJiraClient(asApp, null).getChangelog('1')).resolves.toEqual({ ok: true, value: [] });
+    await expect(createJiraClient(asApp, null).getChangelog('1')).resolves.toEqual({ ok: false, error: 'NOT_FOUND', status: 404 });
+  });
+
+  it('F-10: reads the change log once per invocation, and reads again after a failure', async () => {
+    const asApp = {
+      requestJira: jest
+        .fn()
+        .mockResolvedValueOnce(reply(503))
+        .mockResolvedValueOnce(reply(200, { isLast: true, values: [{ id: '1', created: 't', items: [] }] }))
+    };
+    const client = createJiraClient(asApp, null, { maxRetries: 0 });
+    await expect(client.getChangelog('1')).resolves.toMatchObject({ ok: false });
+    await expect(client.getChangelog('1')).resolves.toMatchObject({ ok: true });
+    await expect(client.getChangelog('1')).resolves.toMatchObject({ ok: true });
+    expect(asApp.requestJira).toHaveBeenCalledTimes(2);
+  });
+
+  it('F-10: fails closed with TOO_LARGE past 50 pages of comments or change log entries', async () => {
+    const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const full = (n: number) => Array.from({ length: n }, (_, i) => ({ id: String(i), created: 't', items: [] }));
+    const comments = { requestJira: jest.fn().mockImplementation(async () => reply(200, { total: 99999, comments: full(100) })) };
+    await expect(createJiraClient(comments, null).getComments('1')).resolves.toEqual({ ok: false, error: 'TOO_LARGE' });
+    expect(comments.requestJira).toHaveBeenCalledTimes(50);
+    const changelog = { requestJira: jest.fn().mockImplementation(async () => reply(200, { isLast: false, values: full(100) })) };
+    await expect(createJiraClient(changelog, null).getChangelog('1')).resolves.toEqual({ ok: false, error: 'TOO_LARGE' });
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
   });
 
   it('passes a permission read failure through and treats a missing permissions object as no permission', async () => {

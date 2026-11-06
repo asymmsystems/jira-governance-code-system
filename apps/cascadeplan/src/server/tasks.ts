@@ -13,13 +13,14 @@ import api, { route } from '@forge/api';
 import { ProjectPlanState, WbsTask, WeeklySprintColumn, TaskDependency, ScheduleBacklogRequest, UnscheduleTaskRequest, ReorderTasksRequest, ProjectMilestone, ColumnWidthConfig, JiraSyncReport, JiraWriteRecord } from '../domain/models';
 import { PlannerEngine } from '../domain/planner-engine';
 import { describeJiraChanges } from '../domain/jira-change';
-import { applyLinkUpdate, contributorsFromNames, rollUpParentDates } from '../domain/work-effort-links';
+import { applyLinkUpdate, contributorsFromNames } from '../domain/work-effort-links';
 import { formatSubtaskSummary } from '../ui/second-person';
+import { checkDependencyConflict } from '../ui/dependency-edit';
 import { evaluateEffort, cascade, addDays } from '../domain/schedule-engine';
 import { StorageProvider } from '../storage/plan-repository';
 import { PlanStore, StoredEntry, sequenceBetween } from '../storage/plan-store';
 import { BatchStorage } from '../storage/batch-storage';
-import { planBlockMove } from '../domain/block-move';
+import { ancestorKeys, withRollUps, expandParentCascades, singleMoveCascade, cascadeFromRoots, parentDueDateTargets } from '../domain/drop-plan';
 import { logFailure } from '../logger';
 import { IssuePermission, deniedIssues, describeMissing, forbiddenResult, requireIssuePermissions } from '../security/write-permissions';
 import { ValidationError, assertIssueKey, validateTaskUpdates, validateDependencyPayload, validateColumnWidths, validateHiddenColumns, validateMilestone, validateSchedulePayload, reconcileIdsOf } from '../validation';
@@ -28,6 +29,8 @@ import { DATES_PROPERTY, DEFAULT_MILESTONES, SHARED_DATE_FIELDS, SyncLog, addDay
 import { LiveData, currentJiraDueDate, loadLive, readJiraDueDate } from './jira-read';
 import { applyAcceptedDueDate, applyPlannedJiraWrites, createIdOf, mirrorDependencyToJira, removeMirroredLink, syncTaskToJira } from './jira-write';
 import { getProjectPlan, migrateIfNeeded, planFilterOf } from './plan-read';
+
+export { ancestorKeys, withRollUps, expandParentCascades };
 
 /**
  * Schedules an issue from the backlog shelf directly onto the timeline grid.
@@ -104,7 +107,7 @@ export async function scheduleBacklogTask(
  * Updates a task schedule, dates, effort, progress, or resource.
  */
 export async function updateWbsTask(
-  payload: { projectKey: string; projectId?: string; planId?: string; taskId: string; updates: Partial<WbsTask>; expectedVersion?: number; reconcileIds?: string[]; restore?: boolean; expectedDueDate?: string | null },
+  payload: { projectKey: string; projectId?: string; planId?: string; taskId: string; updates: Partial<WbsTask>; expectedVersion?: number; reconcileIds?: string[]; restore?: boolean; expectedDueDate?: string | null; enforceDependencies?: boolean },
   storageProvider?: StorageProvider,
   preloaded?: LiveData,
   options?: { skipResponse?: boolean }
@@ -115,6 +118,7 @@ export async function updateWbsTask(
   // new cascade runs; a cascade would move again a successor whose old dates broke a link (B-14).
   if (payload.restore !== undefined && typeof payload.restore !== 'boolean') throw new ValidationError('restore', 'restore must be true or false');
   const restoring = payload.restore === true;
+  if (payload.enforceDependencies !== undefined && typeof payload.enforceDependencies !== 'boolean') throw new ValidationError('enforceDependencies', 'enforceDependencies must be true or false');
   if (expectedVersion !== undefined && (!Number.isInteger(expectedVersion) || expectedVersion < 0)) {
     throw new ValidationError('expectedVersion', 'expectedVersion must be a whole number of at least 0');
   }
@@ -185,7 +189,15 @@ export async function updateWbsTask(
     }
   }
 
-  // Progress and Target Progress handling & Status auto-transition
+  // A Done item always shows 100% and its progress is not edited, unless the same action reopens it
+  // (owner decision 2026-11-06). The stored manual value stays for when it is reopened.
+  const reopens = sanitized.status !== undefined && sanitized.status !== 'COMPLETED';
+  if (sanitized.progress !== undefined && targetTask.status === 'COMPLETED' && !reopens) {
+    delete sanitized.progress;
+    delete sanitized.manualProgress;
+  }
+
+  // Progress and Target Progress handling
   if (sanitized.progress !== undefined) {
     const rawP = Number(sanitized.progress);
     sanitized.progress = isNaN(rawP) ? 0 : Math.max(0, Math.min(100, Math.round(rawP)));
@@ -368,6 +380,13 @@ export async function updateWbsTask(
     }
   }
 
+  // N-06 rule 5 on the server (merge review L5): with "Enforce dependencies" on, a new start must meet
+  // the task's own links and the links into each of its ancestors (a parent's links bind its
+  // sub-tasks), as the planner checks before it sends the move. Refused before any write.
+  if (!restoring && payload.enforceDependencies === true && isIsoDate(sanitized.startDate) && sanitized.startDate !== targetTask.startDate) {
+    refuseDependencyConflict(targetTask.key, sanitized.startDate as string, plan.tasks);
+  }
+
   // Recalculate targetProgress if auto-target is active and dates were modified
   if (!targetTask.manualTargetProgress && sanitized.manualTargetProgress !== true && sanitized.targetProgress === undefined && (sanitized.startDate !== undefined || sanitized.endDate !== undefined)) {
     const s = sanitized.startDate || targetTask.startDate;
@@ -400,26 +419,11 @@ export async function updateWbsTask(
   // Cascade date shifts to conflicting successors, at most CASCADE_BATCH_LIMIT per call (B-10, B-11).
   let cascadeRemaining: string[] = [];
   if (!restoring && (sanitized.startDate || sanitized.endDate || activeAfter)) {
-    // The parents' roll-ups are recomputed with the new dates before the cascade (N-06 rule 1).
-    const candidateTasks = withRollUps(plan.tasks.map(t => (t.key === targetTask.key ? { ...t, ...sanitized, ...depView } : t)));
-    const inputs = engineInputs(candidateTasks);
-    const first = cascade(inputs.efforts, inputs.links, targetTask.key, todayIso());
-    reportCycle(first.cycle, log);
-    const changes = [...first.changes];
-    let efforts = first.efforts;
-    // Every ancestor whose roll-up changed also cascades to its own successors. (The parent's own Jira
-    // due date follows only when the drag preview lists it, INV-03; DEC-6 is not built yet.)
-    for (const anc of ancestorKeys(targetTask.key, plan.tasks)) {
-      const was = plan.tasks.find(t => t.key === anc);
-      const now = candidateTasks.find(t => t.key === anc);
-      if (!was || !now || !now.datesFromChildren || (was.startDate === now.startDate && was.endDate === now.endDate)) continue;
-      const more = cascade(efforts, inputs.links, anc, todayIso());
-      reportCycle(more.cycle, log);
-      for (const c of more.changes) if (!changes.some(x => x.key === c.key)) changes.push(c);
-      efforts = more.efforts;
-    }
-    // A cascade into a task or story parent moves its block (N-06 rule 2).
-    const expanded = expandParentCascades(changes, [...plan.tasks, ...(plan.backlogTasks || [])], todayIso(), new Set([targetTask.key]));
+    // The same computation as the drop preview (src/domain/drop-plan.ts, INV-03): the cascade from the
+    // task, then from every ancestor whose roll-up changed (N-06 rule 1), and a cascade into a task or
+    // story parent moves its block (N-06 rule 2).
+    const expanded = singleMoveCascade(plan.tasks, [...plan.tasks, ...(plan.backlogTasks || [])], targetTask.key, { ...sanitized, ...depView } as any, todayIso());
+    reportCycle(expanded.cycles, log);
     reportEpicsNotMoved(expanded.epics, log);
     cascadeRemaining = expanded.changes.slice(CASCADE_BATCH_LIMIT).map(c => c.key);
     for (const c of expanded.changes.slice(0, CASCADE_BATCH_LIMIT)) {
@@ -602,30 +606,16 @@ export function writtenIssueIds(log: { report: () => JiraSyncReport }, tasks: Ar
   return [...new Set(ids)].slice(0, 50);
 }
 
-/** The keys of every ancestor of a task, nearest first. */
-export function ancestorKeys(key: string, tasks: Array<{ key: string; parentKey?: string }>): string[] {
-  const byKey = new Map(tasks.map(t => [t.key, t]));
-  const out: string[] = [];
-  let cur = byKey.get(key)?.parentKey;
-  while (cur && !out.includes(cur)) { out.push(cur); cur = byKey.get(cur)?.parentKey; }
-  return out;
-}
-
-/** A copy of the tasks with every roll-up parent's dates recomputed from its dated children. */
-export function withRollUps<T extends { key: string; parentKey?: string; startDate?: string; endDate?: string; datesFromChildren?: boolean }>(tasks: T[]): T[] {
-  let out = tasks.map(t => ({ ...t }));
-  for (let pass = 0; pass < 4; pass++) {
-    const spans = rollUpParentDates(out);
-    let changed = false;
-    out = out.map(t => {
-      const span = spans.get(t.key);
-      if (!span || (t.startDate === span.startDate && t.endDate === span.endDate)) return t;
-      changed = true;
-      return { ...t, ...span, datesFromChildren: true };
-    });
-    if (!changed) break;
-  }
-  return out;
+/**
+ * Throws a validation error, before any write, when a start breaks a link that binds the task: its own
+ * incoming links or those of any ancestor (N-06 rule 5; a link from the task itself or below it does
+ * not bind it, rule 6). The same check the planner makes (src/ui/dependency-edit.ts).
+ */
+export function refuseDependencyConflict(key: string, startDate: string, tasks: WbsTask[], prefix = ''): void {
+  const c = checkDependencyConflict({ key, startDate }, tasks, todayIso());
+  if (!c.hasConflict) return;
+  const via = c.viaParent ? `its parent ${c.viaParent} depends on ${c.predKey}` : `it depends on ${c.predKey}`;
+  throw new ValidationError('startDate', `${prefix}${key} cannot start before ${c.earliestDate}: ${via} (${c.triggerPercent}%). Turn off "Enforce dependencies" to move it anyway.`);
 }
 
 /** Tasks in a dependency cycle are not moved by a cascade; each is reported (F-15). */
@@ -636,35 +626,6 @@ export function reportCycle(cycle: string[] | undefined, log: SyncLog): void {
 }
 
 export const CASCADE_BATCH_LIMIT = 25;
-
-/**
- * N-06 rule 2, ADR-003 section 3: a cascade that reaches a task or story roll-up parent moves the
- * parent's block by the block rules; the parent has no record of its own to write. A cascade into
- * an epic is not applied in v1 (DEC-5b): the epic is returned, to be reported "not moved".
- * Keys in `exclude` (the task the user moved) are never changed by the expansion.
- */
-export function expandParentCascades<C extends { key: string; toStart: string; toEnd: string }>(
-  changes: C[], tasks: WbsTask[], today: string, exclude: Set<string> = new Set()
-): { changes: Array<{ key: string; toStart: string; toEnd: string }>; epics: string[] } {
-  const out: Array<{ key: string; toStart: string; toEnd: string }> = [];
-  const epics: string[] = [];
-  const seen = new Set(exclude);
-  for (const c of changes) {
-    const t = tasks.find(x => x.key === c.key);
-    if (!t || !t.datesFromChildren) {
-      if (!seen.has(c.key)) { out.push(c); seen.add(c.key); }
-      continue;
-    }
-    if (t.isEpic || (t.hierarchyLevel ?? 0) >= 1) { epics.push(c.key); continue; }
-    if (!isIsoDate(t.startDate)) continue;
-    const days = Math.round((Date.parse(`${c.toStart}T00:00:00Z`) - Date.parse(`${t.startDate}T00:00:00Z`)) / 86400000);
-    if (days === 0) continue;
-    for (const b of planBlockMove(tasks.filter(x => x.parentKey === t.key), days, today).changes) {
-      if (!seen.has(b.key)) { out.push({ key: b.key, toStart: b.toStart, toEnd: b.toEnd }); seen.add(b.key); }
-    }
-  }
-  return { changes: out, epics };
-}
 
 export function reportEpicsNotMoved(epics: string[], log: SyncLog): void {
   for (const key of epics) log.record(key, ['plan'], { synced: false, error: 'not moved: it is an epic; move its work items' });
@@ -957,23 +918,7 @@ export async function followParentDueDates(
   reparent?: { key: string; parentKey?: string }
 ): Promise<void> {
   if (moved.size === 0 && !reparent) return;
-  const shifted = before.map(t => {
-    let n = moved.has(t.key) ? { ...t, ...moved.get(t.key) } : t;
-    if (reparent && t.key === reparent.key) n = { ...n, parentKey: reparent.parentKey };
-    return n;
-  });
-  const after = withRollUps(shifted);
-  const parents = new Set<string>();
-  for (const key of moved.keys()) for (const a of ancestorKeys(key, before)) if (!moved.has(a)) parents.add(a);
-  if (reparent) for (const list of [before, shifted]) for (const a of ancestorKeys(reparent.key, list)) parents.add(a);
-  const targets: Array<{ key: string; id?: string; endDate: string; was: WbsTask }> = [];
-  for (const key of parents) {
-    const was = before.find(t => t.key === key);
-    const now = after.find(t => t.key === key);
-    if (!was || !now || !now.datesFromChildren || !isIsoDate(now.endDate) || was.endDate === now.endDate) continue;
-    if (String(was.jiraDueDate || '').slice(0, 10) === now.endDate) continue;
-    targets.push({ key, id: was.id, endDate: now.endDate as string, was });
-  }
+  const targets = parentDueDateTargets(before, moved, reparent);
   if (targets.length === 0) return;
   const denied = new Map((await deniedIssues(targets, ['EDIT_ISSUES', 'SCHEDULE_ISSUES'])).map(d => [d.key, d.missing]));
   for (const t of targets) {
@@ -998,18 +943,11 @@ export async function cascadeAndApply(ctx: {
   moved: Map<string, { startDate?: string; endDate?: string }>;
 }): Promise<{ cascadeRemaining: string[]; notMoved: Set<string> }> {
   const { candidate, all, store, entries, idByKey, activeWeeks, log, live, moved } = ctx;
-  const inputs = engineInputs(candidate);
-  let efforts = inputs.efforts;
-  const cascaded: Array<{ key: string; toStart: string; toEnd: string }> = [];
   const notMoved = new Set<string>();
-  for (const root of ctx.roots) {
-    const r = cascade(efforts, inputs.links, root, todayIso());
-    reportCycle(r.cycle, log);
-    efforts = r.efforts;
-    const expanded = expandParentCascades(r.changes, all, todayIso(), ctx.exclude);
-    reportEpicsNotMoved(expanded.epics, log);
-    for (const c of expanded.changes) if (!cascaded.some(x => x.key === c.key)) cascaded.push(c);
-  }
+  const r = cascadeFromRoots(candidate, all, ctx.roots, ctx.exclude, todayIso());
+  reportCycle(r.cycles, log);
+  reportEpicsNotMoved(r.epics, log);
+  const cascaded = r.changes;
   const cascadeRemaining = cascaded.slice(CASCADE_BATCH_LIMIT).map(c => c.key);
   const now = cascaded.slice(0, CASCADE_BATCH_LIMIT);
   for (const d of await deniedIssues(now.map(c => ({ key: c.key, id: idByKey.get(c.key) })), ['EDIT_ISSUES', 'SCHEDULE_ISSUES'])) {

@@ -103,6 +103,29 @@ function scheduleOp(s: TaskSnap): UndoOp {
   return { kind: 'schedule', key: s.key, updates: { startWeek: s.startWeek, spanWeeks: s.spanWeeks, startDate: s.startDate, endDate: s.endDate } };
 }
 
+/**
+ * The after-snapshot with each status Jira applied in this write. A read right after a workflow
+ * transition can still show the old status; without this, Undo would not move the status back
+ * (live on PAY-10, 2026-11-06). A status counts only when its write record lists "status".
+ */
+export function withWrittenStatuses(
+  after: Map<string, TaskSnap>,
+  payload: { taskId?: string; updates?: any; items?: Array<{ taskId: string; updates: any }> } | null | undefined,
+  jiraSync: { writes?: Array<{ key: string; fields?: string[] }> } | null | undefined
+): Map<string, TaskSnap> {
+  const sent = new Map<string, string>();
+  if (payload && payload.taskId && payload.updates && payload.updates.status) sent.set(payload.taskId, payload.updates.status);
+  for (const i of (payload && payload.items) || []) if (i && i.taskId && i.updates && i.updates.status) sent.set(i.taskId, i.updates.status);
+  if (!sent.size) return after;
+  const applied = new Set(((jiraSync && jiraSync.writes) || []).filter(w => (w.fields || []).includes('status')).map(w => w.key));
+  const out = new Map(after);
+  for (const [key, status] of sent) {
+    const snapNow = out.get(key);
+    if (snapNow && applied.has(key)) out.set(key, { ...snapNow, status });
+  }
+  return out;
+}
+
 /** The undo entry for one write, or null when the write changed nothing. */
 export function buildUndoEntry(before: Map<string, TaskSnap>, after: Map<string, TaskSnap>, targetKey: string): UndoEntry | null {
   const changed = [...after.keys()].filter(k => before.has(k) && JSON.stringify(before.get(k)) !== JSON.stringify(after.get(k)));

@@ -34,30 +34,34 @@ describe('toChangeEntries (B-23 criterion 2)', () => {
   });
 });
 
-describe('describePendingWrites (B-23 criterion 1)', () => {
+describe('describePendingWrites (B-23 criterion 1, INV-03, merge review H2)', () => {
   const tasks = [
-    { key: 'API-4', startDate: '2026-11-01', endDate: '2026-11-10' },
-    { key: 'API-5', startDate: '2026-11-11', endDate: '2026-11-17', parentKey: 'API-1' },
-    { key: 'API-6', startDate: '2026-11-18', endDate: '2026-11-24' },
-    { key: 'API-1', startDate: '2026-11-01', endDate: '2026-11-30' }
+    { key: 'API-4', startDate: '2026-11-01', endDate: '2026-11-10', jiraDueDate: '2026-11-10' },
+    { key: 'API-5', startDate: '2026-11-11', endDate: '2026-11-17', jiraDueDate: '2026-11-17', parentKey: 'API-1' },
+    { key: 'API-6', startDate: '2026-11-18', endDate: '2026-11-24', jiraDueDate: '2026-11-24' },
+    { key: 'API-1', startDate: '2026-11-01', endDate: '2026-11-30', jiraDueDate: '2026-11-17' }
   ];
 
-  it('names every issue and field: Jira due dates, then start dates (the shared issue property) and the parent roll-up', () => {
+  it('names every issue and field: Jira due dates (with the parent due date of DEC-6), then start dates', () => {
     const moves = new Map([['API-5', { start: '2026-11-12', end: '2026-11-18' }], ['API-6', { start: '2026-11-19', end: '2026-11-25' }]]);
-    expect(describePendingWrites(tasks, moves, 'API-5')).toEqual({
-      jira: ['API-5 due 2026-11-18', 'API-6 due 2026-11-25'],
+    expect(describePendingWrites(tasks, moves, 'API-5', { parentDue: new Map([['API-1', '2026-11-30']]) })).toEqual({
+      jira: ['API-5 due 2026-11-18', 'API-6 due 2026-11-25', 'API-1 due 2026-11-30'],
       starts: ['API-5 2026-11-12', 'API-6 2026-11-19'],
-      text: 'Jira: API-5 due 2026-11-18, API-6 due 2026-11-25. Start dates (every plan): API-5 2026-11-12, API-6 2026-11-19. API-1 dates follow its children.'
+      text: 'Jira: API-5 due 2026-11-18, API-6 due 2026-11-25, API-1 due 2026-11-30. Start dates (every plan): API-5 2026-11-12, API-6 2026-11-19.'
     });
   });
 
-  it('a start-only change writes no due date, and no parent on the plan adds no roll-up', () => {
+  it('a due date is listed when it differs from the Jira due date: a start-only change of an issue with none writes one', () => {
     const moves = new Map([['API-4', { start: '2026-11-03', end: '2026-11-10' }]]);
     expect(describePendingWrites(tasks, moves, 'API-4')).toEqual({ jira: [], starts: ['API-4 2026-11-03'],
       text: 'Jira: no due date change. Start dates (every plan): API-4 2026-11-03.' });
-    const orphan = [{ key: 'B-2', startDate: '2026-11-01', endDate: '2026-11-02', parentKey: 'B-1' }];
-    expect(describePendingWrites(orphan, new Map([['B-2', { start: '2026-11-01', end: '2026-11-04' }]]), 'B-2'))
-      .toEqual({ jira: ['B-2 due 2026-11-04'], starts: [], text: 'Jira: B-2 due 2026-11-04.' });
+    const none = [{ key: 'B-2', startDate: '2026-11-01', endDate: '2026-11-04' }];
+    expect(describePendingWrites(none, new Map([['B-2', { start: '2026-11-02', end: '2026-11-04' }]]), 'B-2').jira).toEqual(['B-2 due 2026-11-04']);
     expect(describePendingWrites(tasks, new Map([['ZZ-1', { start: 'a', end: 'b' }]]), 'ZZ-1').jira).toEqual([]);
+  });
+
+  it('names an epic the cascade reaches as not moved; a parent due date equal to Jira is not listed', () => {
+    const d = describePendingWrites(tasks, new Map(), 'API-4', { parentDue: new Map([['API-1', '2026-11-17'], ['ZZ-9', '2026-11-20']]), epics: ['EP-1'] });
+    expect(d.text).toBe('Jira: no due date change. Not moved: EP-1 (epic; move its work items).');
   });
 });

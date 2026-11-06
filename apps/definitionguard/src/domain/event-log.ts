@@ -238,7 +238,7 @@ function foldRows(state: DodState, transitionName: TransitionName, seq: number, 
       const { entity: _e, workEffortTypeId: _t, ...fields } = r as any;
       const old = previous.get(fields.workEffortId);
       return old
-        ? { ...fields, currentStatusId: old.currentStatusId, lastStatusUpdate: old.lastStatusUpdate, lastStatusByPartyId: old.lastStatusByPartyId, lastStatusSeq: old.lastStatusSeq, evidenceContentId: old.evidenceContentId, legacyName: old.legacyName, breakdownFromDate: old.breakdownFromDate }
+        ? { ...fields, currentStatusId: old.currentStatusId, lastStatusUpdate: old.lastStatusUpdate, lastStatusByPartyId: old.lastStatusByPartyId, lastStatusSeq: old.lastStatusSeq, evidenceContentId: old.evidenceContentId, legacyName: old.legacyName, breakdownFromDate: old.breakdownFromDate, openedAt: old.openedAt }
         : { ...fields, currentStatusId: 'DOD_OPEN' };
     }) as CriterionState[];
   }
@@ -267,6 +267,10 @@ function foldRows(state: DodState, transitionName: TransitionName, seq: number, 
         if (transitionName !== 'Migrate' && !isValidChange(c.currentStatusId, row.statusId, transitionName)) {
           throw new Error(`DefinitionGuard: ${c.currentStatusId} to ${row.statusId} is not a valid ${transitionName}`);
         }
+        // H-2: openedAt is set only when a closed item is opened again (Reopen, Reset). A criterion that
+        // was never reopened has none, so the not-the-assignee rule looks at the whole issue history:
+        // the checklist exists, at least in memory, from the moment the issue exists.
+        if (row.statusId === 'DOD_OPEN' && c.currentStatusId !== 'DOD_OPEN') c.openedAt = row.statusDatetime;
         c.currentStatusId = row.statusId;
         c.lastStatusUpdate = row.statusId === 'DOD_OPEN' ? undefined : row.statusDatetime;
         c.lastStatusByPartyId = row.statusId === 'DOD_OPEN' ? undefined : row.setByPartyId || undefined;
@@ -284,6 +288,7 @@ function foldRows(state: DodState, transitionName: TransitionName, seq: number, 
         next.legacy = row.legacy;
         break;
       case 'Content':
+      case 'Redaction':
         break;
     }
   }
@@ -334,6 +339,7 @@ export const CHAIN_LIMIT_NOTE =
  */
 export function verifyChain(issueId: string, entries: ChangeEntry[], state?: DodState): ChainCheck {
   const sorted = [...entries].sort((a, b) => a.seq - b.seq);
+  const redactions = redactionsOf(sorted);
   let expectedPrev = genesisHash(issueId);
   let checked = 0;
   for (let i = 0; i < sorted.length; i++) {
@@ -342,7 +348,9 @@ export function verifyChain(issueId: string, entries: ChangeEntry[], state?: Dod
     if (e.seq !== seq) return { ok: false, checked, brokenAt: seq, reason: 'event missing' };
     if (e.issueId !== issueId) return { ok: false, checked, brokenAt: seq, reason: 'event belongs to another issue' };
     if (e.prevHash !== expectedPrev) return { ok: false, checked, brokenAt: seq, reason: 'chain broken' };
-    if (hashEntry(e) !== e.hash) return { ok: false, checked, brokenAt: seq, reason: 'content changed' };
+    const actual = hashEntry(e);
+    const redacted = (redactions.get(seq) || []).some(r => r.originalHash === e.hash && r.redactedHash === actual);
+    if (actual !== e.hash && !redacted) return { ok: false, checked, brokenAt: seq, reason: 'content changed' };
     expectedPrev = e.hash;
     checked++;
   }
@@ -353,6 +361,39 @@ export function verifyChain(issueId: string, entries: ChangeEntry[], state?: Dod
     }
   }
   return { ok: true, checked };
+}
+
+/**
+ * The Redaction rows of the chain (ADR-010), by the seq they name. A row counts only when its
+ * Redact event comes after the event it names.
+ */
+function redactionsOf(sorted: ChangeEntry[]): Map<number, Array<{ originalHash: string; redactedHash: string }>> {
+  const out = new Map<number, Array<{ originalHash: string; redactedHash: string }>>();
+  for (const e of sorted) {
+    if (e.transitionName !== 'Redact') continue;
+    for (const r of e.rows) {
+      if (r.entity !== 'Redaction' || r.seq >= e.seq) continue;
+      out.set(r.seq, [...(out.get(r.seq) || []), { originalHash: r.originalHash, redactedHash: r.redactedHash }]);
+    }
+  }
+  return out;
+}
+
+/** Most Redaction rows in one Redact event, so each event stays small. */
+export const REDACTIONS_PER_EVENT = 50;
+
+/** The Redact events that record rewritten earlier events (ADR-010). */
+export function redactEntries(redactions: Array<{ seq: number; originalHash: string; redactedHash: string }>, at: string): EntryInput[] {
+  const out: EntryInput[] = [];
+  for (let i = 0; i < redactions.length; i += REDACTIONS_PER_EVENT) {
+    out.push({
+      transitionName: 'Redact',
+      at,
+      actorPartyId: 'system',
+      rows: redactions.slice(i, i + REDACTIONS_PER_EVENT).map(r => ({ entity: 'Redaction' as const, seq: r.seq, originalHash: r.originalHash, redactedHash: r.redactedHash }))
+    });
+  }
+  return out;
 }
 
 export function chainMessage(check: ChainCheck): string {

@@ -6099,19 +6099,24 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     return out;
   }
-  function describePendingWrites(tasks, moves, key) {
+  function describePendingWrites(tasks, moves, key, extra = {}) {
+    void key;
     const byKey = new Map(tasks.map((t) => [t.key, t]));
     const jira = [];
     const starts = [];
+    const dueOf = (t) => t.jiraDueDate ? String(t.jiraDueDate).slice(0, 10) : null;
     for (const [k, m] of moves) {
       const t = byKey.get(k);
       if (!t) continue;
-      if (m.end !== t.endDate) jira.push(`${k} due ${m.end}`);
+      if (m.end !== dueOf(t)) jira.push(`${k} due ${m.end}`);
       if (m.start !== t.startDate) starts.push(`${k} ${m.start}`);
     }
-    const parent = byKey.get(key)?.parentKey;
-    const rollUp = parent && byKey.has(parent) ? ` ${parent} dates follow its children.` : "";
-    const text = `Jira: ${jira.length ? jira.join(", ") : "no due date change"}.` + (starts.length ? ` Start dates (every plan): ${starts.join(", ")}.` : "") + rollUp;
+    for (const [k, end] of extra.parentDue || []) {
+      const t = byKey.get(k);
+      if (t && end !== dueOf(t) && !moves.has(k)) jira.push(`${k} due ${end}`);
+    }
+    const epics = extra.epics || [];
+    const text = `Jira: ${jira.length ? jira.join(", ") : "no due date change"}.` + (starts.length ? ` Start dates (every plan): ${starts.join(", ")}.` : "") + (epics.length ? ` Not moved: ${epics.join(", ")} (epic; move its work items).` : "");
     return { jira, starts, text };
   }
 
@@ -6502,6 +6507,19 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   function scheduleOp(s) {
     return { kind: "schedule", key: s.key, updates: { startWeek: s.startWeek, spanWeeks: s.spanWeeks, startDate: s.startDate, endDate: s.endDate } };
+  }
+  function withWrittenStatuses(after, payload, jiraSync) {
+    const sent = /* @__PURE__ */ new Map();
+    if (payload && payload.taskId && payload.updates && payload.updates.status) sent.set(payload.taskId, payload.updates.status);
+    for (const i of payload && payload.items || []) if (i && i.taskId && i.updates && i.updates.status) sent.set(i.taskId, i.updates.status);
+    if (!sent.size) return after;
+    const applied = new Set((jiraSync && jiraSync.writes || []).filter((w) => (w.fields || []).includes("status")).map((w) => w.key));
+    const out = new Map(after);
+    for (const [key, status] of sent) {
+      const snapNow = out.get(key);
+      if (snapNow && applied.has(key)) out.set(key, { ...snapNow, status });
+    }
+    return out;
   }
   function buildUndoEntry(before, after, targetKey) {
     const changed = [...after.keys()].filter((k) => before.has(k) && JSON.stringify(before.get(k)) !== JSON.stringify(after.get(k)));
@@ -6968,7 +6986,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
   function earliestStart(pred, triggerPercent, today) {
     const p = pred.percentComplete || 0;
     const x = triggerPercent;
-    if (p >= x && (x > 0 || p > 0 || pred.started === true)) {
+    if (p >= x && (x > 0 || pred.started === true)) {
       return { basis: "satisfied", date: null, triggerDate: null, reason: `${pred.workEffortId} is at ${p}%, past the ${x}% trigger` };
     }
     const s = dayNumber(pred.estimatedStartDate);
@@ -7014,7 +7032,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const e = best.res.date;
     const reason = `Starts ${e} because ${best.res.reason}.`;
     const detail = { triggerDate: best.res.triggerDate, triggerPercent: best.link.triggerPercent, basis: best.res.basis };
-    const started = own.started === true || (own.percentComplete || 0) > 0;
+    const started = own.started === true;
     if (started) {
       return {
         earliestStartDate: e,
@@ -7091,6 +7109,219 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return cycle.length ? { changes, efforts: work, cycle } : { changes, efforts: work };
   }
 
+  // src/domain/block-move.ts
+  var ISO = /^\d{4}-\d{2}-\d{2}$/;
+  function addDays2(iso2, days) {
+    return new Date(Date.parse(`${iso2}T00:00:00Z`) + days * 864e5).toISOString().slice(0, 10);
+  }
+  function blockState(m) {
+    if (!m.startDate || !ISO.test(m.startDate)) return "undated";
+    if (m.status === "COMPLETED") return "done";
+    if (m.status === "IN_PROGRESS") return "in-progress";
+    return "not-started";
+  }
+  function planBlockMove(members, days, today) {
+    const changes = [];
+    const fixed = [];
+    for (const m of members) {
+      const state = blockState(m);
+      if (state === "undated") {
+        fixed.push({ key: m.key, state, reason: "undated: stays in the backlog" });
+        continue;
+      }
+      if (state === "done") {
+        fixed.push({ key: m.key, state, reason: "done: its dates record finished work" });
+        continue;
+      }
+      const fromStart = m.startDate;
+      const fromEnd = m.endDate && ISO.test(m.endDate) ? m.endDate : fromStart;
+      if (state === "not-started") {
+        changes.push({ key: m.key, state, fromStart, fromEnd, toStart: addDays2(fromStart, days), toEnd: addDays2(fromEnd, days) });
+        continue;
+      }
+      let toEnd = addDays2(fromEnd, days);
+      if (toEnd < today) toEnd = today;
+      if (toEnd < fromStart) toEnd = fromStart;
+      if (toEnd === fromEnd) fixed.push({ key: m.key, state, reason: "in progress: start kept, end not before today" });
+      else changes.push({ key: m.key, state, fromStart, fromEnd, toStart: fromStart, toEnd });
+    }
+    return { changes, fixed };
+  }
+
+  // src/domain/work-effort-links.ts
+  function rollUpParentDates(tasks) {
+    const out = /* @__PURE__ */ new Map();
+    for (const t of tasks) {
+      if (!t.parentKey || !t.startDate) continue;
+      const end = t.endDate && t.endDate >= t.startDate ? t.endDate : t.startDate;
+      const cur = out.get(t.parentKey);
+      out.set(t.parentKey, cur ? { startDate: t.startDate < cur.startDate ? t.startDate : cur.startDate, endDate: end > cur.endDate ? end : cur.endDate } : { startDate: t.startDate, endDate: end });
+    }
+    return out;
+  }
+
+  // src/domain/drop-plan.ts
+  var ISO2 = /^\d{4}-\d{2}-\d{2}$/;
+  var isIso = (v) => typeof v === "string" && ISO2.test(v);
+  var dayDiff = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 864e5);
+  function engineInputs(tasks) {
+    const efforts = /* @__PURE__ */ new Map();
+    const links = [];
+    for (const t of tasks) {
+      if (!t.key || !isIso(t.startDate)) continue;
+      efforts.set(t.key, {
+        workEffortId: t.key,
+        estimatedStartDate: t.startDate,
+        estimatedCompletionDate: isIso(t.endDate) ? t.endDate : t.startDate,
+        percentComplete: t.progress || 0,
+        started: t.status === "IN_PROGRESS" || t.status === "COMPLETED"
+      });
+      for (const d of t.dependencies || (t.dependency ? [t.dependency] : [])) {
+        if (d.predecessorKey && typeof d.triggerPercent === "number") {
+          links.push({ workEffortIdFrom: d.predecessorKey, workEffortIdTo: t.key, workEffortAssocTypeId: "WORK_EFF_PRECEDENCY", triggerPercent: d.triggerPercent });
+        }
+      }
+    }
+    return { efforts, links };
+  }
+  function ancestorKeys(key, tasks) {
+    const byKey = new Map(tasks.map((t) => [t.key, t]));
+    const out = [];
+    let cur = byKey.get(key)?.parentKey;
+    while (cur && !out.includes(cur)) {
+      out.push(cur);
+      cur = byKey.get(cur)?.parentKey;
+    }
+    return out;
+  }
+  function withRollUps(tasks) {
+    let out = tasks.map((t) => ({ ...t }));
+    for (let pass = 0; pass < 4; pass++) {
+      const spans = rollUpParentDates(out);
+      let changed = false;
+      out = out.map((t) => {
+        const span = spans.get(t.key);
+        if (!span || t.startDate === span.startDate && t.endDate === span.endDate) return t;
+        changed = true;
+        return { ...t, ...span, datesFromChildren: true };
+      });
+      if (!changed) break;
+    }
+    return out;
+  }
+  function expandParentCascades(changes, tasks, today, exclude = /* @__PURE__ */ new Set()) {
+    const out = [];
+    const epics = [];
+    const seen = new Set(exclude);
+    for (const c of changes) {
+      const t = tasks.find((x) => x.key === c.key);
+      if (!t || !t.datesFromChildren) {
+        if (!seen.has(c.key)) {
+          out.push(c);
+          seen.add(c.key);
+        }
+        continue;
+      }
+      if (t.isEpic || (t.hierarchyLevel ?? 0) >= 1) {
+        epics.push(c.key);
+        continue;
+      }
+      if (!isIso(t.startDate)) continue;
+      const days = dayDiff(t.startDate, c.toStart);
+      if (days === 0) continue;
+      for (const b of planBlockMove(tasks.filter((x) => x.parentKey === t.key), days, today).changes) {
+        if (!seen.has(b.key)) {
+          out.push({ key: b.key, toStart: b.toStart, toEnd: b.toEnd });
+          seen.add(b.key);
+        }
+      }
+    }
+    return { changes: out, epics };
+  }
+  function singleMoveCascade(timeline2, all, key, patch, today) {
+    const candidate = withRollUps(timeline2.map((t) => t.key === key ? { ...t, ...patch } : t));
+    const inputs = engineInputs(candidate);
+    const first = cascade(inputs.efforts, inputs.links, key, today);
+    const cycles = [...first.cycle || []];
+    const changes = first.changes.map((c) => ({ key: c.key, toStart: c.toStart, toEnd: c.toEnd }));
+    let efforts = first.efforts;
+    for (const anc of ancestorKeys(key, timeline2)) {
+      const was = timeline2.find((t) => t.key === anc);
+      const now = candidate.find((t) => t.key === anc);
+      if (!was || !now || !now.datesFromChildren || was.startDate === now.startDate && was.endDate === now.endDate) continue;
+      const more = cascade(efforts, inputs.links, anc, today);
+      cycles.push(...more.cycle || []);
+      for (const c of more.changes) if (!changes.some((x) => x.key === c.key)) changes.push({ key: c.key, toStart: c.toStart, toEnd: c.toEnd });
+      efforts = more.efforts;
+    }
+    const expanded = expandParentCascades(changes, all, today, /* @__PURE__ */ new Set([key]));
+    return { changes: expanded.changes, epics: expanded.epics, cycles };
+  }
+  function cascadeFromRoots(candidate, all, roots, exclude, today) {
+    const inputs = engineInputs(candidate);
+    let efforts = inputs.efforts;
+    const out = [];
+    const epics = [];
+    const cycles = [];
+    for (const root of roots) {
+      const r = cascade(efforts, inputs.links, root, today);
+      cycles.push(...r.cycle || []);
+      efforts = r.efforts;
+      const expanded = expandParentCascades(r.changes, all, today, exclude);
+      epics.push(...expanded.epics);
+      for (const c of expanded.changes) if (!out.some((x) => x.key === c.key)) out.push(c);
+    }
+    return { changes: out, epics, cycles };
+  }
+  function parentDueDateTargets(before, moved, reparent) {
+    const shifted = before.map((t) => {
+      let n = moved.has(t.key) ? { ...t, ...moved.get(t.key) } : t;
+      if (reparent && t.key === reparent.key) n = { ...n, parentKey: reparent.parentKey };
+      return n;
+    });
+    const after = withRollUps(shifted);
+    const parents = /* @__PURE__ */ new Set();
+    for (const key of moved.keys()) for (const a of ancestorKeys(key, before)) if (!moved.has(a)) parents.add(a);
+    if (reparent) for (const list of [before, shifted]) for (const a of ancestorKeys(reparent.key, list)) parents.add(a);
+    const out = [];
+    for (const key of parents) {
+      const was = before.find((t) => t.key === key);
+      const now = after.find((t) => t.key === key);
+      if (!was || !now || !now.datesFromChildren || !isIso(now.endDate) || was.endDate === now.endDate) continue;
+      if (String(was.jiraDueDate || "").slice(0, 10) === now.endDate) continue;
+      out.push({ key, id: was.id, endDate: now.endDate, was });
+    }
+    return out;
+  }
+  function finish(all, moves, epics) {
+    const moved = new Map([...moves].map(([k, m]) => [k, { startDate: m.start, endDate: m.end }]));
+    const parentDue = new Map(parentDueDateTargets(all, moved).map((t) => [t.key, t.endDate]));
+    return { moves, parentDue, epics: [...new Set(epics)] };
+  }
+  function previewSingleMove(plan, key, start, end, today) {
+    const all = [...plan.tasks, ...plan.backlogTasks || []];
+    const moves = /* @__PURE__ */ new Map();
+    if (!all.some((t) => t.key === key)) return { moves, parentDue: /* @__PURE__ */ new Map(), epics: [] };
+    moves.set(key, { start, end });
+    const r = singleMoveCascade(plan.tasks, all, key, { startDate: start, endDate: end }, today);
+    for (const c of r.changes) moves.set(c.key, { start: c.toStart, end: c.toEnd });
+    return finish(all, moves, r.epics);
+  }
+  function previewBlockMove(plan, parentKey, days, today) {
+    const all = [...plan.tasks, ...plan.backlogTasks || []];
+    const members = all.filter((t) => t.parentKey === parentKey);
+    const moves = /* @__PURE__ */ new Map();
+    const block = planBlockMove(members, days, today).changes;
+    if (block.length === 0) return { moves, parentDue: /* @__PURE__ */ new Map(), epics: [] };
+    for (const c of block) moves.set(c.key, { start: c.toStart, end: c.toEnd });
+    const moved = new Map(block.map((c) => [c.key, { startDate: c.toStart, endDate: c.toEnd }]));
+    const candidate = withRollUps(all.map((t) => moved.has(t.key) ? { ...t, ...moved.get(t.key) } : t));
+    const roots = [parentKey, ...block.map((c) => c.key), ...ancestorKeys(parentKey, all)];
+    const r = cascadeFromRoots(candidate, all, roots, /* @__PURE__ */ new Set([parentKey, ...members.map((m) => m.key)]), today);
+    for (const c of r.changes) moves.set(c.key, { start: c.toStart, end: c.toEnd });
+    return finish(all, moves, r.epics);
+  }
+
   // src/ui/timeline-geometry.ts
   var HANDLE_PX = 24;
   var DAY_MS2 = 864e5;
@@ -7161,37 +7392,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const days = mode === "week" ? Math.round(deltaPx / (dayPx2 * 7)) * 7 : Math.round(deltaPx / dayPx2);
     return days === 0 ? 0 : days;
   }
-  function previewMoves(tasks, key, startShift, endShift, today) {
-    const out = /* @__PURE__ */ new Map();
-    const target = tasks.find((t) => t.key === key);
-    if (!target || !target.startDate) return out;
-    const start = addDays(target.startDate, startShift);
-    let end = addDays(target.endDate || target.startDate, endShift);
+  function shiftDates(task, startShift, endShift) {
+    if (!task.startDate) return null;
+    const start = addDays(task.startDate, startShift);
+    let end = addDays(task.endDate || task.startDate, endShift);
     if (end < start) end = start;
-    out.set(key, { start, end });
-    const efforts = /* @__PURE__ */ new Map();
-    const links = [];
-    for (const t of tasks) {
-      if (!t.startDate) continue;
-      const moved = t.key === key;
-      efforts.set(t.key, {
-        workEffortId: t.key,
-        estimatedStartDate: moved ? start : t.startDate,
-        estimatedCompletionDate: moved ? end : t.endDate || t.startDate,
-        percentComplete: t.progress || 0,
-        started: t.status === "IN_PROGRESS" || t.status === "COMPLETED"
-      });
-      for (const d of t.dependencies || (t.dependency ? [t.dependency] : [])) {
-        if (d.predecessorKey && typeof d.triggerPercent === "number") {
-          links.push({ workEffortIdFrom: d.predecessorKey, workEffortIdTo: t.key, workEffortAssocTypeId: "WORK_EFF_PRECEDENCY", triggerPercent: d.triggerPercent });
-        }
-      }
-    }
-    try {
-      for (const c of cascade(efforts, links, key, today).changes) out.set(c.key, { start: c.toStart, end: c.toEnd });
-    } catch {
-    }
-    return out;
+    return { start, end };
   }
 
   // src/ui/canvas-palette.ts
@@ -7956,6 +8162,53 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return { visibleKeys, widths, offsets, totalWidth: x, lastKey };
   }
 
+  // src/ui/progress-status.ts
+  var LABEL = { NOT_STARTED: "To Do", IN_PROGRESS: "In Progress", COMPLETED: "Done" };
+  function planStatus(status) {
+    return status === "COMPLETED" || status === "IN_PROGRESS" ? status : "NOT_STARTED";
+  }
+  function isDone(status) {
+    return status === "COMPLETED";
+  }
+  function statusOffers(edits) {
+    const out = [];
+    for (const e of edits) {
+      if (e.chosenStatus !== void 0) continue;
+      const from = planStatus(e.status);
+      if (from === "COMPLETED") continue;
+      const p = Number(e.progress);
+      if (!Number.isFinite(p) || p <= 0) continue;
+      if (p >= 100) out.push({ key: e.key, from, to: "COMPLETED" });
+      else if (from === "NOT_STARTED") out.push({ key: e.key, from, to: "IN_PROGRESS" });
+    }
+    return out;
+  }
+  function offerPrompt(offers) {
+    if (!offers.length) return null;
+    if (offers.length === 1) {
+      const o = offers[0];
+      return {
+        question: `${o.key} is ${LABEL[o.from]} in Jira. Also move it to ${LABEL[o.to]}?`,
+        lines: [],
+        move: `Move to ${LABEL[o.to]}`,
+        keep: `Keep ${LABEL[o.from]}`
+      };
+    }
+    return {
+      question: `The new progress does not match the Jira status of ${offers.length} work items. Also change their status in Jira?`,
+      lines: offers.map((o) => `${o.key}: ${LABEL[o.from]} to ${LABEL[o.to]}`),
+      move: "Change the statuses",
+      keep: "Keep the statuses"
+    };
+  }
+  function progressLockReason(t) {
+    return isDone(t.status) ? `${t.key} is Done in Jira, so its progress is 100%. Change its status to reopen it.` : null;
+  }
+  function progressText(t) {
+    const p = Math.max(0, Math.min(100, Math.round(Number(t.progress) || 0)));
+    return p === 100 && !isDone(t.status) ? "100%, not Done in Jira" : `${p}%`;
+  }
+
   // src/ui/keyboard-grid.ts
   var GRID_COLUMNS = ["Key", "Summary", "Start", "Due", "Progress", "Status", "Dependencies"];
   var clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -7994,7 +8247,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       t.summary || "No summary",
       t.startDate || "Not scheduled",
       t.endDate || "Not scheduled",
-      `${t.progress || 0}%`,
+      progressText(t),
       STATUS[t.status] || t.status,
       dependencyText(t.dependency)
     ];
@@ -8119,45 +8372,6 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   function progressFromDigit(key) {
     return /^[0-9]$/.test(key) ? Number(key) * 10 : null;
-  }
-
-  // src/domain/block-move.ts
-  var ISO = /^\d{4}-\d{2}-\d{2}$/;
-  function addDays2(iso2, days) {
-    return new Date(Date.parse(`${iso2}T00:00:00Z`) + days * 864e5).toISOString().slice(0, 10);
-  }
-  function blockState(m) {
-    if (!m.startDate || !ISO.test(m.startDate)) return "undated";
-    if (m.status === "COMPLETED") return "done";
-    if (m.status === "IN_PROGRESS" || (m.progress || 0) > 0) return "in-progress";
-    return "not-started";
-  }
-  function planBlockMove(members, days, today) {
-    const changes = [];
-    const fixed = [];
-    for (const m of members) {
-      const state = blockState(m);
-      if (state === "undated") {
-        fixed.push({ key: m.key, state, reason: "undated: stays in the backlog" });
-        continue;
-      }
-      if (state === "done") {
-        fixed.push({ key: m.key, state, reason: "done: its dates record finished work" });
-        continue;
-      }
-      const fromStart = m.startDate;
-      const fromEnd = m.endDate && ISO.test(m.endDate) ? m.endDate : fromStart;
-      if (state === "not-started") {
-        changes.push({ key: m.key, state, fromStart, fromEnd, toStart: addDays2(fromStart, days), toEnd: addDays2(fromEnd, days) });
-        continue;
-      }
-      let toEnd = addDays2(fromEnd, days);
-      if (toEnd < today) toEnd = today;
-      if (toEnd < fromStart) toEnd = fromStart;
-      if (toEnd === fromEnd) fixed.push({ key: m.key, state, reason: "in progress: start kept, end not before today" });
-      else changes.push({ key: m.key, state, fromStart, fromEnd, toStart: fromStart, toEnd });
-    }
-    return { changes, fixed };
   }
 
   // src/domain/baseline.ts
@@ -8535,6 +8749,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       showFlag({ text: verdict.message || "The change was not saved.", error: true });
     } else {
       pendingUndo.done = true;
+      pendingUndo.jiraSync = res && res.jiraSync;
     }
     return res;
   }
@@ -8542,7 +8757,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
     const p = pendingUndo;
     if (!p || !p.done || !currentPlan) return;
     pendingUndo = null;
-    const entry = buildUndoEntry(p.before, snapshotPlan(currentPlan), p.payload.taskId || p.payload.items && p.payload.items[0] && p.payload.items[0].taskId);
+    const after = withWrittenStatuses(snapshotPlan(currentPlan), p.payload, p.jiraSync);
+    const entry = buildUndoEntry(p.before, after, p.payload.taskId || p.payload.items && p.payload.items[0] && p.payload.items[0].taskId);
     if (!entry) return;
     entry.label = actionLabel(p.fn, p.payload, entry);
     undoStack.push(entry);
@@ -8674,6 +8890,20 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     return worst;
   }
+  function effectiveBlockDays(key, days) {
+    if (!days || !isEnforceDepsEnabled()) return days;
+    const conflict = blockConflict(blockPlan(key, days));
+    return conflict ? days + conflict.need : days;
+  }
+  function dropPreview(key, start, end, blockDays) {
+    const plan = { tasks: currentPlan.tasks || [], backlogTasks: currentPlan.backlogTasks || [] };
+    const all = plan.tasks.concat(plan.backlogTasks);
+    const p = blockDays !== void 0 ? previewBlockMove(plan, key, blockDays, todayIso()) : previewSingleMove(plan, key, start, end, todayIso());
+    const text = describePendingWrites(all, p.moves, key, { parentDue: p.parentDue, epics: p.epics }).text;
+    const moves = new Map(p.moves);
+    moves.set(key, { start, end });
+    return { moves, text };
+  }
   async function moveBlock(key, days) {
     if (!days) return;
     let plan = blockPlan(key, days);
@@ -8695,7 +8925,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     const expectedVersions = {};
     for (const c of plan.changes) expectedVersions[c.key] = findAnyTask(c.key) && findAnyTask(c.key).version || 0;
-    let res = await callResolver2("moveTaskGroup", { taskId: key, days, expectedVersions });
+    let res = await callResolver2("moveTaskGroup", { taskId: key, days, expectedVersions, enforceDependencies: enforce });
     const rest = res && Array.isArray(res.blockRemaining) ? res.blockRemaining : [];
     for (let i = 0; i < rest.length; i += 25) {
       const items = rest.slice(i, i + 25);
@@ -9192,11 +9422,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
         e.stopPropagation();
         const pct = parseInt(btn.dataset.pct, 10);
         if (progPopover) progPopover.style.display = "none";
-        if (!activeProgressTaskKey) return;
-        await callResolver2("updateWbsTask", {
-          taskId: activeProgressTaskKey,
-          updates: { progress: pct, manualProgress: true }
-        });
+        const key = activeProgressTaskKey;
+        if (!key) return;
+        const updates = { progress: pct, manualProgress: true };
+        if (!await withStatusChoice([{ key, progress: pct, updates }])) return;
+        await callResolver2("updateWbsTask", { taskId: key, updates });
         await loadProjectPlan();
       });
     });
@@ -9221,11 +9451,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
         e.stopPropagation();
         const val = parseInt(progNumInput?.value || progSlider?.value || "0", 10);
         if (progPopover) progPopover.style.display = "none";
-        if (!activeProgressTaskKey) return;
-        await callResolver2("updateWbsTask", {
-          taskId: activeProgressTaskKey,
-          updates: { progress: Math.max(0, Math.min(100, val)), manualProgress: true }
-        });
+        const key = activeProgressTaskKey;
+        if (!key) return;
+        const pct = Math.max(0, Math.min(100, val));
+        const updates = { progress: pct, manualProgress: true };
+        if (!await withStatusChoice([{ key, progress: pct, updates }])) return;
+        await callResolver2("updateWbsTask", { taskId: key, updates });
         await loadProjectPlan();
       });
     }
@@ -9347,6 +9578,13 @@ Please see https://iframe-resizer.com/upgrade for more details.
         if (editTargetSlider) editTargetSlider.value = pct;
         if (editTargetValLabel) editTargetValLabel.textContent = `${pct}%`;
       });
+    });
+    document.getElementById("editStatusSelect")?.addEventListener("change", (e) => setDialogProgressLock(activeTaskId, e.target.value));
+    document.getElementById("btnStatusOfferMove")?.addEventListener("click", () => {
+      if (statusOfferResolve) statusOfferResolve("move");
+    });
+    document.getElementById("btnStatusOfferKeep")?.addEventListener("click", () => {
+      if (statusOfferResolve) statusOfferResolve("keep");
     });
     const btnModalRollup = document.getElementById("btnModalUseRollup");
     if (btnModalRollup) {
@@ -9996,7 +10234,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
           nameSpan.replaceWith(renameInp);
           renameInp.focus();
           renameInp.select();
-          const finish = async (save) => {
+          const finish2 = async (save) => {
             const newName = renameInp.value.trim();
             if (save && newName && newName !== origName) {
               const res = await callResolver2("renameProjectPlan", { planId: p.id, name: newName });
@@ -10012,10 +10250,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
             }
           };
           renameInp.addEventListener("keydown", (ke) => {
-            if (ke.key === "Enter") finish(true);
-            if (ke.key === "Escape") finish(false);
+            if (ke.key === "Enter") finish2(true);
+            if (ke.key === "Escape") finish2(false);
           });
-          renameInp.addEventListener("blur", () => finish(true));
+          renameInp.addEventListener("blur", () => finish2(true));
         });
         actions.appendChild(btnRename);
         const btnDel = document.createElement("button");
@@ -10995,6 +11233,12 @@ Please see https://iframe-resizer.com/upgrade for more details.
     activeProgressTaskKey = taskKey;
     const task = (currentPlan?.tasks || []).find((t) => t.key === taskKey);
     if (!task) return;
+    const locked = progressLockReason(task);
+    if (locked) {
+      showFlag({ text: locked });
+      announce(locked);
+      return;
+    }
     const popover = document.getElementById("progressPickerPopover");
     const titleEl = document.getElementById("progressPickerTitle");
     const valLabel = document.getElementById("progressPickerValLabel");
@@ -11703,10 +11947,11 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     if (visibleKeys.includes("progress")) {
       const isProgRollup = isEpic || task.childrenCount && task.childrenCount > 0;
-      const progTitle = isProgRollup ? `Actual progress: ${task.progress}% (Rollup from children: click to edit or override)` : `Click to set actual progress (${task.progress}%)`;
+      const lockText = progressLockReason(task);
+      const progTitle = lockText || (isProgRollup ? `Actual progress: ${progressText(task)} (Rollup from children: click to edit or override)` : `Click to set actual progress (${progressText(task)})`);
       rowColsHtml = html`${rowColsHtml}
       <td class="td-data td-progress-cell jx-center-pointer" data-css-w="${columnWidths.progress}px" title="${progTitle}">
-        <div class="progress-chip-cell ${task.progress === 100 ? "is-complete" : task.progress > 0 ? "is-active" : "is-zero"}">
+        <div class="progress-chip-cell ${isDone(task.status) ? "is-complete" : task.progress > 0 ? "is-active" : "is-zero"}">
           <span class="progress-chip-fill" data-css-w="${task.progress}%"></span>
           <span class="progress-chip-text">${task.progress}% ▾</span>
         </div>
@@ -12527,11 +12772,9 @@ Click to manage or assign.`;
       const s = snapDays(dx, dayPx(), ev.altKey ? "day" : zoomById(zoomId).snap);
       if (s === shift && timeline.drag) return;
       shift = s;
-      const moves = previewMoves(currentPlan.tasks, key, mode === "right" ? 0 : s, mode === "left" ? 0 : s, today);
-      if (isBlockParent(task) && s !== 0) {
-        for (const c of blockPlan(key, s).changes) moves.set(c.key, { start: c.toStart, end: c.toEnd });
-      }
-      const mine = moves.get(key);
+      const mine = shiftDates(task, mode === "right" ? 0 : s, mode === "left" ? 0 : s);
+      if (!mine) return;
+      const moves = /* @__PURE__ */ new Map([[key, mine]]);
       const conflict = checkDependencyConflict({ key, startDate: mine.start }, currentPlan.tasks, today);
       const isConflict = conflict.hasConflict;
       const enforceDeps = isEnforceDepsEnabled();
@@ -12548,10 +12791,18 @@ Click to manage or assign.`;
           label2 += ` \xB7 \u26A0\uFE0F Conflict: ${conflict.predKey} (${conflict.triggerPercent}%)`;
         }
       }
-      const currentMine = moves.get(key) || mine;
+      let currentMine = moves.get(key) || mine;
+      let preview;
+      if (isBlockParent(task)) {
+        const days = s !== 0 ? effectiveBlockDays(key, s) : 0;
+        currentMine = { start: addDays(task.startDate, days), end: addDays(task.endDate || task.startDate, days) };
+        preview = dropPreview(key, currentMine.start, currentMine.end, days);
+      } else {
+        preview = dropPreview(key, currentMine.start, currentMine.end);
+      }
       timeline.drag = {
         key,
-        moves,
+        moves: preview.moves,
         label: label2,
         isConflict: enforceDeps ? false : isConflict,
         wasSnapped,
@@ -12559,7 +12810,7 @@ Click to manage or assign.`;
         predKey: conflict.predKey
       };
       positionBarHit(hit, { ...task, startDate: currentMine.start, endDate: currentMine.end });
-      wrapper.dataset.preview = JSON.stringify(Object.fromEntries(moves));
+      wrapper.dataset.preview = JSON.stringify(Object.fromEntries(preview.moves));
       if (timeRange && mine) {
         if (mine.start < timeRange.start) {
           const diffDays = daysBetween(mine.start, timeRange.start);
@@ -12586,7 +12837,7 @@ Click to manage or assign.`;
       }
       const strip = document.getElementById("writePreview");
       if (strip) {
-        let desc = describePendingWrites(currentPlan.tasks, moves, key).text;
+        let desc = preview.text;
         if (isConflict) {
           if (enforceDeps) {
             desc = `\u{1F512} Enforce dependencies: will snap ${key} to ${conflict.earliestDate} to satisfy dependency on ${conflict.predKey}. ${desc}`;
@@ -12680,7 +12931,8 @@ Click to manage or assign.`;
           taskId: key,
           updates,
           expectedVersion: task.version || 0,
-          expectedDueDate: task.jiraDueDate ? String(task.jiraDueDate).slice(0, 10) : null
+          expectedDueDate: task.jiraDueDate ? String(task.jiraDueDate).slice(0, 10) : null,
+          enforceDependencies: enforceDeps
         }, { before: undoBefore });
         if (res && Array.isArray(res.tasks)) {
           applyPlanInPlace(res);
@@ -12970,15 +13222,17 @@ Click to manage or assign.`;
     strip.style.bottom = "auto";
   }
   function showShiftPreview(key, startShift, endShift, label2) {
-    const moves = previewMoves(currentPlan.tasks, key, startShift, endShift, todayIso());
-    if (isBlockParent(findTask(key)) && startShift === endShift && startShift !== 0) {
-      for (const c of blockPlan(key, startShift).changes) moves.set(c.key, { start: c.toStart, end: c.toEnd });
-    }
-    const mine = moves.get(key);
-    timeline.drag = { key, moves, label: label2(mine) };
+    const task = findTask(key);
+    const block = isBlockParent(task) && startShift === endShift && startShift !== 0;
+    const days = block ? effectiveBlockDays(key, startShift) : void 0;
+    const shifted = task && shiftDates(task, block ? days : startShift, block ? days : endShift);
+    if (!shifted) return void 0;
+    const preview = dropPreview(key, shifted.start, shifted.end, days);
+    const mine = preview.moves.get(key);
+    timeline.drag = { key, moves: preview.moves, label: label2(mine) };
     const strip = document.getElementById("writePreview");
     if (strip) {
-      strip.textContent = describePendingWrites(currentPlan.tasks, moves, key).text;
+      strip.textContent = preview.text;
       strip.hidden = false;
       placeStripNear(strip, key);
     }
@@ -12991,13 +13245,14 @@ Click to manage or assign.`;
     if (strip) strip.hidden = true;
     drawTimeline();
   }
-  async function commitDates(key, start, end) {
+  async function commitDates(key, start, end, opts = {}) {
     const task = findTask(key);
     const res = await callResolver2("updateWbsTask", {
       taskId: key,
       updates: { startDate: start, endDate: end },
       expectedVersion: task && task.version || 0,
-      expectedDueDate: task && task.jiraDueDate ? String(task.jiraDueDate).slice(0, 10) : null
+      expectedDueDate: task && task.jiraDueDate ? String(task.jiraDueDate).slice(0, 10) : null,
+      ...opts.enforce ? { enforceDependencies: true } : {}
     });
     timeline.drag = null;
     if (res && Array.isArray(res.tasks)) applyPlanInPlace(res);
@@ -13059,7 +13314,7 @@ Click to manage or assign.`;
           focusGridCell();
           return;
         }
-        await commitDates(key, finalStart, finalEnd);
+        await commitDates(key, finalStart, finalEnd, { enforce: true });
         announce(`Enforce dependencies: snapped ${key} start to ${conflict.earliestDate} to satisfy dependency on ${conflict.predKey}.`);
         focusGridCell();
         return;
@@ -13079,7 +13334,7 @@ Click to manage or assign.`;
         return;
       }
     }
-    await commitDates(key, finalStart, finalEnd);
+    await commitDates(key, finalStart, finalEnd, { enforce: isEnforceDepsEnabled() });
     announce(`Saved. ${key}: ${finalStart} to ${finalEnd}.`);
     focusGridCell();
   }
@@ -13839,9 +14094,14 @@ Click to manage or assign.`;
     return findTask(key)?.version || 0;
   }
   function initSelectionBar() {
-    document.getElementById("btnSelProgress")?.addEventListener("click", () => {
+    document.getElementById("btnSelProgress")?.addEventListener("click", async () => {
       const p = Math.max(0, Math.min(100, parseInt(document.getElementById("selProgress").value, 10) || 0));
-      runBatch([...selectedKeys].map((k) => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) })), "progress");
+      const done = [...selectedKeys].filter((k) => isDone(findTask(k)?.status));
+      if (done.length) showFlag({ text: `Not changed: ${done.join(", ")} ${done.length === 1 ? "is" : "are"} Done in Jira, so the progress stays 100%.` });
+      const items = [...selectedKeys].filter((k) => !done.includes(k)).map((k) => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) }));
+      if (!items.length) return;
+      if (!await withStatusChoice(items.map((i) => ({ key: i.taskId, progress: p, updates: i.updates })))) return;
+      runBatch(items, "progress");
     });
     document.getElementById("btnSelMove")?.addEventListener("click", async () => {
       const days = parseInt(document.getElementById("selDays").value, 10) || 0;
@@ -13867,6 +14127,11 @@ Click to manage or assign.`;
     }));
   }
   function setPendingProgress(key, pct) {
+    const locked = progressLockReason(findTask(key) || { key });
+    if (locked) {
+      announce(locked);
+      return;
+    }
     pendingProgress.set(key, pct);
     const chip = rowCache.get(key)?.querySelector(".progress-chip-text");
     if (chip) chip.textContent = `${pct}% (not saved)`;
@@ -13874,6 +14139,11 @@ Click to manage or assign.`;
   }
   async function commitPendingProgress() {
     const items = [...pendingProgress].map(([k, p]) => ({ taskId: k, updates: { progress: p }, expectedVersion: versionOf(k) }));
+    if (!await withStatusChoice(items.map((i) => ({ key: i.taskId, progress: i.updates.progress, updates: i.updates })))) {
+      announce(`Progress not saved yet. Enter saves the ${pendingProgress.size} changes, Escape drops them.`);
+      focusGridCell();
+      return;
+    }
     pendingProgress.clear();
     await runBatch(items, "progress");
     announce(`Saved progress on ${items.length} issue${items.length === 1 ? "" : "s"}.`);
@@ -13943,6 +14213,7 @@ Click to manage or assign.`;
     }
     if (progSlider) progSlider.value = curProg;
     if (progValLabel) progValLabel.textContent = `${curProg}%`;
+    setDialogProgressLock(task.key, task.status);
     if (progNote) {
       progNote.style.display = isProgRollup ? "block" : "none";
       if (rollupPctText) {
@@ -14287,6 +14558,7 @@ Click to manage or assign.`;
       closeModal("taskDetailModal");
       return;
     }
+    if (updates.progress !== void 0 && !await withStatusChoice([{ key: activeTaskId, progress: updates.progress, updates }])) return;
     const btn = document.getElementById("btnSaveTaskModal");
     if (btn) {
       btn.disabled = true;
@@ -14529,6 +14801,65 @@ Click to manage or assign.`;
     modal.dataset.dirty = "";
     const prompt = modal.querySelector(".discard-prompt");
     if (prompt) prompt.remove();
+    if (modal.id === "statusOfferModal" && statusOfferResolve) statusOfferResolve("cancel");
+  }
+  var statusOfferResolve = null;
+  function askStatusOffers(offers) {
+    const prompt = offerPrompt(offers);
+    const modal = document.getElementById("statusOfferModal");
+    if (!prompt || !modal) return Promise.resolve("keep");
+    document.getElementById("statusOfferQuestion").textContent = prompt.question;
+    const list = document.getElementById("statusOfferList");
+    list.replaceChildren(...prompt.lines.map((line) => {
+      const li = document.createElement("li");
+      li.textContent = line;
+      return li;
+    }));
+    list.hidden = prompt.lines.length === 0;
+    const move = document.getElementById("btnStatusOfferMove");
+    const keep = document.getElementById("btnStatusOfferKeep");
+    move.textContent = prompt.move;
+    keep.textContent = prompt.keep;
+    const opener = document.activeElement;
+    modal.style.display = "flex";
+    move.focus();
+    announce(prompt.question);
+    return new Promise((resolve) => {
+      statusOfferResolve = (choice) => {
+        statusOfferResolve = null;
+        hideModal(modal);
+        if (opener && typeof opener.focus === "function") opener.focus();
+        resolve(choice);
+      };
+    });
+  }
+  async function withStatusChoice(edits) {
+    const offers = statusOffers(edits.map((e) => ({ key: e.key, status: findTask(e.key)?.status, progress: e.progress, chosenStatus: e.updates.status })));
+    if (!offers.length) return true;
+    const choice = await askStatusOffers(offers);
+    if (choice === "cancel") return false;
+    if (choice === "move") {
+      for (const o of offers) {
+        const edit = edits.find((e) => e.key === o.key);
+        if (edit) edit.updates.status = o.to;
+      }
+    }
+    return true;
+  }
+  function setDialogProgressLock(key, status) {
+    const reason = progressLockReason({ key, status });
+    for (const id of ["editProgressInput", "editProgressSlider", "btnModalUseRollup"]) {
+      const el3 = document.getElementById(id);
+      if (el3) el3.disabled = !!reason;
+    }
+    document.querySelectorAll(".modal-prog-preset").forEach((b) => {
+      b.disabled = !!reason;
+    });
+    const note = document.getElementById("editProgressLockNote");
+    if (note) {
+      note.textContent = reason || "";
+      note.hidden = !reason;
+    }
   }
   function openModal() {
     return [...document.querySelectorAll(".modal-backdrop")].find((m) => m.style.display === "flex" || m.style.display === "block") || null;

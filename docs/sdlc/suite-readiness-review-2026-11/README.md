@@ -19,7 +19,7 @@ The three reviews were static reviews (code, tests, build, `forge lint`); none u
 
 | App | Verdict | Blockers | Fix size (my estimate) |
 |---|---|---|---|
-| CascadePlan | Ready after the owner steps | No code blocker. Left: owner review and merge of `feature/cascadeplan-marketplace-fixes`, production deploy, console submission, licence test MK-08 after approval. Approved 2026-11-06 and being built: progress and status rules (section 6). | 1 day (progress and status), then owner steps |
+| CascadePlan | Ready after review and merge | No code blocker. Left: the progress and status rules (approved, being built), an independent review and merge (`docs/sdlc/cascadeplan-marketplace-review-2026-11/merge-review-prompt.md`), then the joint launch. | 1 day (progress and status) |
 | DefinitionGuard | Ready after the listed fixes | 7: personal data report, production signing key, screenshots, inactive licence blocks every gated move, 8 high npm advisories, false listing claims, reviewer notes tied to our site | 3 to 4 days |
 | LedgerSeal | Not ready | 7: personal data report (ids sit inside hashed, chained records), false separation-of-duties claims, verifier not public, Part 11 boundary missing, no production signing key, screenshots, never deployed to production | 5 to 7 days |
 | FourRealities | Not ready | 5: rejects DefinitionGuard's current record, misleading score without the other two apps, personal data report, false claims and media, 8 high npm advisories | 4 to 6 days, after DefinitionGuard |
@@ -59,6 +59,17 @@ Each fact has a source in `marketplace-commercial-rules.md` or `pricing-research
 
 ## 4. Price
 
+**Decided by the owner, 2026-11-06** (per user per month; free for 1 to 10 users; custom above 1,000):
+
+| App | 11 to 100 | 101 to 250 | 251 to 1,000 | Rule |
+|---|---|---|---|---|
+| CascadePlan | $1.50 | $1.20 | $0.90 | The base (X) |
+| FourRealities | $1.40 | $1.10 | $0.80 | X minus 10 cents |
+| DefinitionGuard | $0.95 | $0.75 | $0.24 | A few cents below the dearest leading paid checklist app (HeroCoders Enterprise, $1.00 / $0.80 / $0.25) |
+| LedgerSeal | $0.95 | $0.75 | $0.24 | The same as DefinitionGuard |
+
+The analysis that led to it follows.
+
 Current plan for all four (owner, 2026-11-06): free 1 to 10 users, $1.50 (11 to 100), $1.20 (101 to 250), $0.90 (251 to 1,000), custom above.
 
 Research recommendation (judgment, not sourced fact):
@@ -78,6 +89,9 @@ The first paid customer needs four things in a row: a partner account that can b
 
 ### Phase 0. Owner only, start now (2 to 3 weeks, in parallel)
 
+Step by step: `docs/marketplace/submission/owner-partner-setup-guide.md`.
+
+
 1. Create the Marketplace partner profile with an `@asymm.systems` address (a personal domain may be refused).
 2. Accept the Marketplace Partner Agreement, turn on two-step verification, complete the identity check.
 3. Ask Developer and Marketplace support, in writing, whether payouts to a Sri Lankan company bank account are supported, and how app income is treated under the US-Sri Lanka treaty. This is the largest open unknown.
@@ -85,26 +99,29 @@ The first paid customer needs four things in a row: a partner account that can b
 5. Put a payment method on the Forge developer account (platform usage billing).
 6. End the live Jira sessions whose cookies were committed in `docs/design/in-jira-automated-testing-guide.md` (N-12).
 
-### Phase 1. CascadePlan to submission (me, then owner; about 1 week)
+### Phase 1. Fix all four apps (me, started 2026-11-06, in parallel)
 
-1. Build and live-check the progress and status rules (approved).
-2. Owner reviews the branch; merge `feature/cascadeplan-marketplace-fixes` to `master` on the owner's word.
-3. Release the site preview (guide, terms, support, privacy, FAQ, quick starts) on the owner's word.
-4. Owner: `forge deploy -e production` for CascadePlan, then the console listing with the prices decided in section 4, using `docs/marketplace/submission/developer-console-checklist.md` and `cascadeplan-security-questionnaires.md`.
-5. Atlassian review: 2 to 4 weeks. Licence test MK-08 after approval.
+Owner decision 2026-11-06: launch all four apps together. The review and the merge are mine, not the owner's.
 
-### Phase 2. The other three apps (me, during CascadePlan's review; about 3 weeks)
+1. CascadePlan: build and live-check the progress and status rules (approved).
+2. DefinitionGuard, LedgerSeal and FourRealities: fixed in parallel, each in its own branch (`feature/<app>-marketplace-fixes`): the blockers and High findings of its review, gate (tests, build, lint, audit), deploy to development, live check, new screenshots, listing and notes corrected. FourRealities reads the other two apps' records, so it is checked last against their final shapes.
+3. Each branch gets an independent review in a separate session (`docs/sdlc/cascadeplan-marketplace-review-2026-11/merge-review-prompt.md`), which merges it to `master` when there is no Critical or High finding.
+4. Site: the guides, terms, support, privacy, FAQ, quick starts and the verifier download, released once all four apps are merged.
 
-Order: DefinitionGuard (fewest blockers), then LedgerSeal, then FourRealities (it depends on the other two being fixed). Each: fix the blockers and the High findings, gate (tests, build, lint, audit), deploy to development, live check, new screenshots, listing and notes corrected, then the owner's production deploy and submission. The public verifier repository and the production keys come with LedgerSeal and DefinitionGuard.
+### Phase 2. Joint launch (me, with the owner where Atlassian requires the account owner)
+
+1. Production signing keys (LedgerSeal, DefinitionGuard), production deploys of all four apps: listed for the owner before each one.
+2. Console listings with the prices decided in section 4, the security questionnaires, the Privacy and Security tab, using `docs/marketplace/submission/developer-console-checklist.md`.
+3. Submission of all four apps. Atlassian review: 2 to 4 weeks. Licence test MK-08 after approval.
 
 ### Phase 3. Being found (from the day a listing is live)
 
-Inbound and written only, following the owner's rule: no founder-led cold sales.
+The partner-led rule is for Eliya and Dial, not for this suite (owner, 2026-11-06), so direct outreach is allowed. Atlassian's rule still applies: evaluators are contacted only when they ask or consent.
 
 1. **Marketplace search**: titles and taglines with the words buyers search for ("Gantt", "timeline", "dependencies", "Definition of Done", "approval", "electronic signature"). Ask satisfied users for a review; never reward reviews.
 2. **Atlassian Community answers**: real questions the apps answer, for example "start a task when the previous one is 50% done", "lock a Jira issue after approval", "enforce Definition of Done". One honest answer each, naming the app only where it fits.
 3. **One technical article per app** on asymm.systems (the drafts in `docs/launch/` are the start), and the 60 to 90 second videos in `docs/launch/video-scripts.md`.
-4. **Partners**: written introductions to Atlassian Solution Partners and to a commercial partner, with the owner giving technical demos only (owner's partner-led rule).
+4. **Partners and direct outreach**: Atlassian Solution Partners who resell apps, and teams in regulated industries (finance, health, medical devices) for LedgerSeal and DefinitionGuard.
 
 ### Phase 4. Trial to paid (30 days per trial)
 
@@ -117,11 +134,11 @@ Inbound and written only, following the owner's rule: no founder-led cold sales.
 
 | Step | Earliest |
 |---|---|
-| CascadePlan submitted | mid-November 2026 |
-| CascadePlan approved and listed | early to mid-December 2026 |
-| First trials | December 2026 |
-| First paid CascadePlan customer | mid-January 2027 (30-day trial) |
-| Other three apps listed | January 2027 |
+| All four apps fixed, reviewed and merged | late November 2026 |
+| All four submitted (needs a verified partner) | late November to early December 2026 |
+| Listed | mid to late December 2026 |
+| First trials | late December 2026 |
+| First paid customer | late January 2027 (30-day trial) |
 | First payout | when $500 profit has built up, then within 30 days; with a few small sites (an 11-user site pays $16.50 a month) this can take several months |
 
 ## 6. Approved 2026-11-06
@@ -131,6 +148,6 @@ Inbound and written only, following the owner's rule: no founder-led cold sales.
 
 ## 7. Owner decisions, one at a time
 
-1. Launch order: CascadePlan first on its own, or the four together (asked 2026-11-06).
-2. Price per app (section 4).
+1. Launch order: answered 2026-11-06, all four together.
+2. Price per app: decided 2026-11-06 (section 4).
 3. FourRealities on a site without the other apps: hide the two checks it cannot make, or keep them and explain (after the DefinitionGuard and LedgerSeal fixes).

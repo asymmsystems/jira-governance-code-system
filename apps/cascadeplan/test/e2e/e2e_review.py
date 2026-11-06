@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Asymm Systems. All rights reserved.
+#
+# @author Fahim Farook
 """Review checks added on top of e2e.py (marketplace readiness review, 2026-11-05).
 
 Runs against the real bundled frontend and real resolvers; only Forge is stubbed (KVS in

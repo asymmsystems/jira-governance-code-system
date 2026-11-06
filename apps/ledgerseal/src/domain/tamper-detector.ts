@@ -1,7 +1,11 @@
 /**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ *
  * LedgerSeal: Tamper Detection & Diff Analysis Engine
  * Compares live issue state against sealed cryptographic certificate.
  * Enforces non-monotonic tamper tracking: reverting tampered content does not heal the seal.
+ *
+ * @author Fahim Farook
  */
 
 import { AttachmentDiff, CanonicalIssueSnapshot, FieldDiff, SealCertificate, TamperAnalysis, TamperIncident } from './models';

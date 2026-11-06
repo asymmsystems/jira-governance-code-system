@@ -1,3 +1,9 @@
+/**
+ * Tests of the v1 checklist hash.
+ *
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ * @author Fahim Farook
+ */
 import { calculateChecklistHash } from '../../src/domain/hasher';
 import { ChecklistItemInstance } from '../../src/domain/models';
 

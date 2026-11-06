@@ -50,7 +50,7 @@ describe('B-02 history that a reseal cannot hide', () => {
     expect(entries[1].prevEntryHash).toBe(entries[0].entryHash);
     expect(entries[2].prevEntryHash).toBe(entries[1].entryHash);
     expect(entries[1].data.changes).toEqual([
-      { fieldId: 'summary', fieldName: 'Summary', changedBy: ['mallory'], changedAt: '2099-01-01T00:00:00.000Z' }
+      { fieldId: 'summary', fieldName: 'Summary', changedBy: [await model.token(storage, 'mallory')], changedAt: '2099-01-01T00:00:00.000Z' }
     ]);
     expect(verifyChain(entries).valid).toBe(true);
   });
@@ -61,7 +61,7 @@ describe('B-02 history that a reseal cannot hide', () => {
     expect(record).toMatchObject({ everCompromised: true, incidentCount: 1, lastIncidentHash: null, currentStatusId: 'LS_SEALED' });
     const view: any = await verifyIssue({}, panelContext('auditor'), as('auditor'));
     expect(view.status).toBe('SEAL_VALID');
-    expect(view.seal).toMatchObject({ everCompromised: true, incidentCount: 1, sealedByName: 'Bob Approver', historyLength: 3 });
+    expect(view.seal).toMatchObject({ everCompromised: true, incidentCount: 1, sealedByAccountId: 'bob', historyLength: 3 });
   });
 
   it('records the change before a reseal even when no one viewed the changed issue', async () => {
@@ -148,7 +148,7 @@ describe('B-02 edge paths', () => {
     jira.edit('mallory', '2099-01-01T00:00:00.000Z', 'summary', 'after the seal');
     await verifyIssue({}, panelContext('viewer'), as('viewer'));
     const incident = await storage.get(model.statusKey(2));
-    expect(incident.data.changes[0].changedBy).toEqual(['mallory']);
+    expect(incident.data.changes[0].changedBy).toEqual([await model.token(storage, 'mallory')]);
   });
 
   it('still records the incident when the change log cannot be read, with no names', async () => {
