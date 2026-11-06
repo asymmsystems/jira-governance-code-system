@@ -186,6 +186,11 @@ export class SealRepository {
     ]);
   }
 
+  /** Deletes every part of one sealed snapshot (a superseded seal's snapshot, which nothing reads). */
+  async deleteContent(contentId: string): Promise<void> {
+    for (const row of await this.storage.query(`ls3:content:${contentId}:`)) await this.storage.delete(row.key);
+  }
+
   /** Saves the work effort alone (a change incident updates only its current values). */
   async saveWorkEffort(workEffort: SealedWorkEffort): Promise<void> {
     await this.storage.commit([{ key: this.getWorkEffortKey(workEffort.workEffortId), value: workEffort }]);

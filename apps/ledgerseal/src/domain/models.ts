@@ -129,7 +129,8 @@ export interface ApproverPolicy {
   roleTypeId: 'LS_APPROVER';
   parties: { partyId: string; partyTypeId: 'GROUP'; name: string }[];
   fromDate: string;
-  setByPartyId: string;
+  /** The Jira admin who saved the policy; null after that account was closed (ADR-010 decision 5). */
+  setByPartyId: string | null;
 }
 
 export interface ViewerRights {

@@ -13,7 +13,7 @@ jest.mock('@forge/api', () => ({
   route: (strings: any, ...values: any[]) =>
     strings.reduce((acc: string, str: string, i: number) => acc + str + (values[i] !== undefined ? values[i] : ''), '')
 }));
-jest.mock('@forge/kvs', () => ({ kvs: {} }));
+jest.mock('@forge/kvs', () => ({ kvs: {}, WhereConditions: { beginsWith: (v: string) => ({ condition: 'BEGINS_WITH', value: v }) } }));
 
 const sampleIssue = {
   id: '10001',
@@ -189,6 +189,14 @@ describe('Forge Function Entry Points (index.ts)', () => {
       await withUser.storage.commit([{ key: 'a', value: 1 }, { key: 'b', value: 2 }]);
       expect(tx.set.mock.calls).toEqual([['a', 1], ['b', 2]]);
       expect(tx.execute).toHaveBeenCalledTimes(1);
+      // query reads page after page with the cursor until there is none
+      const builder: any = { where: jest.fn(() => builder), limit: jest.fn(() => builder), cursor: jest.fn(() => builder), getMany: jest.fn() };
+      builder.getMany
+        .mockResolvedValueOnce({ results: [{ key: 'p:1', value: 1 }], nextCursor: 'c2' })
+        .mockResolvedValueOnce({ results: [{ key: 'p:2', value: 2 }] });
+      kvs.query = jest.fn(() => builder);
+      await expect(withUser.storage.query('p:')).resolves.toEqual([{ key: 'p:1', value: 1 }, { key: 'p:2', value: 2 }]);
+      expect(builder.cursor).toHaveBeenCalledWith('c2');
       const appOnly = forgeDeps(false);
       await expect(appOnly.jira.hasApproverPermission('1')).resolves.toEqual({ ok: false, error: 'FORBIDDEN' });
       expect(api.asUser).not.toHaveBeenCalled();

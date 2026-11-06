@@ -45,6 +45,15 @@ modules:
         - avi:jira:created:worklog
         - avi:jira:updated:worklog
         - avi:jira:deleted:worklog
+    - key: ledgerseal-issue-deleted
+      function: on-issue-deleted
+      events:
+        - avi:jira:deleted:issue
+  scheduledTrigger:
+    # ADR-010 decision 5: the weekly personal data report; closed accounts are erased from the party map.
+    - key: ledgerseal-personal-data-report
+      function: personal-data-report
+      interval: week
   function:
     - key: resolver
       handler: index.handler
@@ -52,6 +61,11 @@ modules:
       handler: index.validateTransition
     - key: on-issue-changed
       handler: index.onIssueChanged
+    - key: on-issue-deleted
+      handler: index.onIssueDeleted
+    - key: personal-data-report
+      handler: index.personalDataReport
+      timeoutSeconds: 300
 
 resources:
   - key: main
@@ -74,3 +88,4 @@ permissions:
     - write:jira-work
     - read:jira-user
     - storage:app
+    - report:personal-data

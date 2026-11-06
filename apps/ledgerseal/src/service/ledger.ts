@@ -509,6 +509,14 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   // A revoked seal already ended at the revoke time; keep that date
   const ended = previous && previous.assignment.thruDate === null ? { ...previous.assignment, thruDate: now } : null;
   await commitAfterClaim(repo, row, () => repo.saveSeal(workEffort, assignment, contentParts, ended));
+  // The snapshot of the seal this one replaces is read by nothing, so it is deleted (F-11)
+  if (previousWorkEffort?.currentContentId && previousWorkEffort.currentContentId !== certificateId) {
+    try {
+      await repo.deleteContent(previousWorkEffort.currentContentId);
+    } catch (err) {
+      console.error(`LedgerSeal: could not delete the replaced snapshot of issue ${issue.id}`, err);
+    }
+  }
 
   // The ledgerseal-cert property names no person (ADR-010 decision 8)
   await writeAttestation(deps, { workEffort, assignment, sealingRow: row }, 'SEAL_VALID', now);

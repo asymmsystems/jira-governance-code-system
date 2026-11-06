@@ -25,6 +25,8 @@ import {
   verifyIssueFlow
 } from './service/ledger';
 import { getPolicyFlow, searchGroupsFlow, setPolicyFlow } from './service/policy-admin';
+import { deleteIssueRecords, reportPersonalData, ReportFn } from './service/personal-data';
+import { privacy } from '@forge/api';
 
 export { LedgerSealDeps } from './service/ledger';
 
@@ -230,6 +232,41 @@ export async function searchApproverGroups(payload: any, context?: any, deps: Le
  */
 export async function onIssueChanged(event: any, context?: any, deps: LedgerSealDeps = forgeDeps(false)) {
   return issueChangedFlow(event, deps);
+}
+
+/**
+ * Product event trigger: a deleted issue's LedgerSeal records are deleted with it (ADR-010 decision 9).
+ */
+export async function onIssueDeleted(event: any, context?: any, storage: StorageProvider = new ForgeKvsProvider()) {
+  const issueId = event?.issue?.id ? String(event.issue.id) : '';
+  if (!issueId) return { deleted: 0 };
+  try {
+    const deleted = await deleteIssueRecords(storage, issueId);
+    console.log(`LedgerSeal: issue ${issueId} deleted, ${deleted} record key(s) deleted`);
+    return { deleted };
+  } catch (err) {
+    console.error(`LedgerSeal: could not delete the records of deleted issue ${issueId}`, err);
+    return { deleted: 0 };
+  }
+}
+
+/**
+ * Weekly scheduled trigger: the personal data report (ADR-010 decision 5).
+ */
+export async function personalDataReport(
+  event?: any,
+  context?: any,
+  storage: StorageProvider = new ForgeKvsProvider(),
+  report: ReportFn = accounts => privacy.reportPersonalData(accounts)
+) {
+  try {
+    const result = await reportPersonalData(storage, report);
+    console.log(`LedgerSeal: personal data report: ${result.reported} account(s) reported, ${result.closed.length} closed and erased`);
+    return result;
+  } catch (err) {
+    console.error('LedgerSeal: the personal data report failed', err);
+    return { reported: 0, closed: [] };
+  }
 }
 
 // Register Forge Resolver for UI Kit 2 bridge invocations
