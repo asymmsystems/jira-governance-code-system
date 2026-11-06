@@ -201,7 +201,12 @@ async function convertedIncidentHash(deps: ConversionDeps, we: SealedWorkEffort,
  * Converts one issue's record (ADR-011 decision 7). Safe to run again: a finished record gives ALREADY, and a
  * conversion stopped midway is finished from its journal.
  */
-export async function convertRecord(deps: ConversionDeps, issueId: string, now: string = new Date().toISOString()): Promise<ConversionResult> {
+export async function convertRecord(
+  deps: ConversionDeps,
+  issueId: string,
+  now: string = new Date().toISOString(),
+  attempt: number = 1
+): Promise<ConversionResult> {
   const { storage } = deps;
   const repo = new SealRepository(storage);
   const we = await repo.getWorkEffort(issueId);
@@ -218,6 +223,14 @@ export async function convertRecord(deps: ConversionDeps, issueId: string, now: 
   // M-7: every attempt, first or resumed, claims the record's lease; a run that cannot claim it stops
   const holder = await takeLease(storage, issueId, now);
   if (!holder) return 'BUSY';
+  // M-9: the record and the journal were read before the lease was claimed. Another run may have converted the
+  // record (and a seal or revoke followed) in between, so both are read again; if either changed, start over.
+  const weNow = await repo.getWorkEffort(issueId);
+  const journalNow: Journal | null = (await storage.get(journalKey)) || null;
+  if (!weNow || weNow.recordHash !== we.recordHash || canonicalJson(journalNow) !== canonicalJson(journal)) {
+    await releaseLease(storage, issueId, holder);
+    return attempt < 3 ? convertRecord(deps, issueId, now, attempt + 1) : 'BUSY';
+  }
   const result = await convertHeld(deps, issueId, now, we, journal, holder);
   // A run that threw keeps its lease until it expires, so a stopped run is resumed only after the lease
   await releaseLease(storage, issueId, holder);
@@ -257,9 +270,14 @@ async function convertHeld(
   const newContent = content ? redactSnapshot(content, r) : null;
   const currentParty = r.id(we.currentAssignment.partyId, true) as string;
 
+  // M-9: before writing, this run must still hold the lease and the record must be the one it read
+  const heldAndUnchanged = async () =>
+    (await holdsLease(storage, issueId, holder)) && (await repo.getWorkEffort(issueId))?.recordHash === we.recordHash;
+
   if (!valid) {
     // Replace the ids where they are, without new hashes: the record stays invalid, and no id remains
     if (r.count === 0) return 'ALREADY';
+    if (!(await heldAndUnchanged())) return 'BUSY';
     await parties.register([...r.actors], party, now, id => deps.jira.accountState(id));
     for (const row of newRows) await storage.set(`ls3:wes:${issueId}:${String(row.seq).padStart(6, '0')}`, row);
     for (const a of newAssignments) await storage.set(a.key, a.value);
@@ -320,9 +338,10 @@ async function convertHeld(
   // M-5, M-7: before each group of writes, this run must still hold the lease and the record must not have moved on
   // (another writer finished the conversion and added a row). Otherwise it writes nothing more.
   const stillCurrent = async () => {
-    if (!(await holdsLease(storage, issueId, holder))) return false;
     const latest = await repo.getWorkEffort(issueId);
-    return Boolean(latest) && latest!.recordHash === we.recordHash && !(await repo.getStatusRow(issueId, redaction.seq + 1));
+    if (!latest || latest.recordHash !== we.recordHash || (await repo.getStatusRow(issueId, redaction.seq + 1))) return false;
+    // The lease is read last, just before the writes it guards
+    return holdsLease(storage, issueId, holder);
   };
   if (!(await stillCurrent())) return 'BUSY';
 

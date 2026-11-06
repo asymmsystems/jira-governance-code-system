@@ -153,7 +153,7 @@ The script executes five independent checks:
 1. **Snapshot Hash Verification:** Recalculates the SHA-256 digest of the canonical snapshot payload and matches it against the hash in the attestation.
 2. **Chain Continuity Verification:** Validates that every entry in the ticket's history points to its predecessor's hash, starting from the all-zero genesis value, with no gaps in the sequence.
 3. **Newest Seal:** Confirms that the attestation names the certificate of the newest seal in the history.
-4. **Status:** Confirms that the attestation's status (sealed, changed or revoked) is the state of the newest history entry.
+4. **Status:** Confirms that the attestation's status (sealed, changed or revoked) is the state of the newest history entry that is not a redaction entry (the verifier skips redaction entries).
 5. **Digital Signature Verification:** Validates the Ed25519 signature over the attestation using the vendor public key.
 
 If all five checks succeed, the script prints five `PASS` lines and exits with code `0`. If any check fails, it prints `FAIL` for that check and exits with code `1`.
@@ -183,7 +183,7 @@ It is solved by **tamper evidence at the workflow transition gate**:
 - Developers retain the freedom to collaborate, comment, and adjust non-critical metadata.
 - Critical specifications, configurations, and test evidence are cryptographically sealed upon approval.
 - The deployment gate permits only verified, untampered tickets to enter production.
-- The seal makes a change after approval visible; it does not stop someone who can rewrite the app's stored data, including the vendor, from writing a new consistent record (see the 11.10(e) row).
+- The seal makes a change after approval visible; it does not stop someone who can rewrite the app's stored data, including the vendor, from writing a new consistent record (see the § 11.10e row).
 
 Change control should be mathematical, verifiable, and transparent.
 
