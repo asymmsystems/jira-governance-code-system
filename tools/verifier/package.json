@@ -1,5 +1,5 @@
 {
-  "name": "@asymm/ledgerseal-verifier",
+  "name": "@asymm/jira-governance-code-cli",
   "version": "1.3.0",
   "description": "Standalone offline verifier for LedgerSeal Jira cryptographic approval evidence",
   "main": "verify-evidence.mjs",
