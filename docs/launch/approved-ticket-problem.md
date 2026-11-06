@@ -109,14 +109,14 @@ If a single character, punctuation mark, or file attachment is modified, the res
 
 ### 3. Cryptographic Sealing & Chaining
 When an authorized approver reviews the ticket:
-1. LedgerSeal verifies that the user belongs to the designated Approver Group (enforcing strict separation of duties: the ticket assignee cannot approve their own work).
-2. LedgerSeal generates a **Seal Record** containing:
-   - The ticket issue key and project ID.
+1. LedgerSeal checks that the user is an approver: a project admin, a Jira admin, or a member of an approver group. Separation of duties: a user who changed the ticket after the last seal (a field, a comment, a work log or an attachment) cannot approve the change or revoke the seal.
+2. LedgerSeal writes a **Seal Record** to Atlassian Forge storage on the customer's site, containing:
+   - The issue id and key, and the project id.
    - The SHA-256 snapshot hash.
-   - The approver's Atlassian Account ID and display name.
-   - The exact UTC timestamp.
-   - The previous seal hash (forming an unbroken cryptographic hash chain).
-3. The seal is digitally signed using an Ed25519 private key and committed to Atlassian Forge Key-Value Storage (KVS) within the customer's cloud site.
+   - The approver as a pseudonymous party token (a keyed hash of the Atlassian account id). No name is stored; the panel shows the approver's name from their Atlassian account while it exists.
+   - The exact UTC timestamp and the meaning of the sign-off.
+   - The hash of the previous history entry (forming a hash chain).
+3. LedgerSeal writes an attestation of the seal to the issue property `ledgerseal-cert`, signed with the Asymm Systems Ed25519 key. The signature is made by the app, not by the approver.
 
 ### 4. The Workflow Transition Gate
 The decisive control is the **LedgerSeal Workflow Transition Validator** (`ledgerseal-validator`).
@@ -161,12 +161,14 @@ If all four checks succeed, the script prints four `PASS` lines and exits with c
 
 ## Enterprise Compliance Mapping
 
-| Regulatory Standard | Requirement | How LedgerSeal Satisfies the Standard |
+| Regulatory Standard | Requirement | How LedgerSeal Supports It |
 | :--- | :--- | :--- |
 | **SOC 2 Type II (CC8.1)** | Changes to software, data, and infrastructure are authorized, tested, and approved prior to production release. | Cryptographic seals bind approvals to explicit issue state snapshots. Workflow gates block unapproved or tampered changes from reaching terminal states. |
 | **ISO/IEC 27001:2022 (A.8.32)** | Change management rules ensure modifications are documented, verified, and authorized. | Full audit history and hash-chained records prove that deployed tickets were verified by authorized approvers without intervening modifications. |
-| **FDA 21 CFR Part 11 (§ 11.10e)** | Time-stamped, tamper-evident audit trails recording the date, time, and operator of record modifications. | Append-only hash chain records actor Atlassian Account ID, UTC timestamp, and signed cryptographic hash in tenant Forge storage. |
-| **FDA 21 CFR Part 11 (§ 11.50/70)** | Electronic signatures linked to records to prevent falsification, duplication, or repudiation. | Ed25519 signature binds reviewer identity directly to the specific issue state snapshot digest. |
+| **FDA 21 CFR Part 11 (§ 11.10e)** | Time-stamped, tamper-evident audit trails recording the date, time, and operator of record modifications. | The hash chain records each seal, detected change, approval and revoke with a UTC timestamp and the actor's pseudonymous party token, in Forge storage on the customer's site. The chain does not stop someone who can rewrite the app's storage, including the vendor, from writing a new consistent chain. |
+| **FDA 21 CFR Part 11 (§ 11.50)** | Signature manifestation: printed name of the signer, date and time, and meaning. | Partly met. Each seal records the date, time and meaning of the signature. The signer's name is shown from their Atlassian account while it exists; after the account is closed, it is shown as a deleted user, so a printed name is not kept in the record. |
+| **FDA 21 CFR Part 11 (§ 11.70)** | Electronic signatures linked to their records so they cannot be excised, copied or transferred. | Each seal is linked to the snapshot hash and certificate id in the hash chain, and the attestation is signed with Ed25519. This is a signature by the app, not by the approver; your auditor decides whether it meets 11.70. |
+| **FDA 21 CFR Part 11 (§ 11.200, 11.300)** | Two distinct identification components at signing; controls for identification codes and passwords. | Not met. LedgerSeal does not ask the signer to log in again and does not perform two-component signing. |
 
 ---
 

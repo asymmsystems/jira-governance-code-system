@@ -229,7 +229,7 @@ The review is `docs/sdlc/merge-reviews-2026-11/ledgerseal-merge-review.md` (prob
 - **M-1:** a conversion journal means "not finished" for a seal or revoke as for the weekly job (`convertIfNeeded` checks `hasConversionJournal`). A record already committed (`parties: TOKEN`) with a journal is never written again from it: the conversion only deletes superseded snapshots and the journal (`finishCleanup`), so a revoke or seal made after the stop stays.
 - **M-2:** `PartyRepository.register` adds an account not yet in the map only when Jira reports it active (`JiraClient.isActiveUser`: `GET /rest/api/3/user`, `active`; 404 counts as not active; unknown is not added now). Used for change authors in incidents and for actors found by a conversion. Seal and revoke callers are signed in.
 - **L-2:** `deleteIssueRecords` deletes `ls3:convert:{issueId}`.
-- **Proof:** `test/review-followups.test.ts` (7), built from probes R1 and R2 without master's code (`test/support/old-record.ts`). With the M-1 change reverted the two M-1 tests fail; with the M-2 filter removed the two M-2 incident tests fail; with both in place all pass.
+- **Proof:** `test/review-followups.test.ts` (7), built from probes R1 and R2 without master's code (`test/support/old-record.ts`). With the M-1 change reverted the two M-1 tests fail; with the M-2 filter removed three tests fail (the two M-2 incident tests and the conversion test; corrected after the follow-ups review, L-10); with both in place all pass.
 
 ### L-1, L-7. Open verifier 1.2.0
 
@@ -279,3 +279,33 @@ The review is `docs/sdlc/merge-reviews-2026-11/ledgerseal-merge-review.md` (prob
 ### Final gate (follow-up branch head)
 
 `npx tsc --noEmit` 0 errors; `npm test`: 47 suites, 497 tests passed; coverage statements 97.86%, branches 94.33%, functions 96.69%, lines 98.63%; `npm run build` exit 0; `npm audit --omit=dev --audit-level=high` exit 0; `forge lint` "No issues found"; `tools/verifier` 12 of 12. Development version 4.3.0.
+
+
+## Second follow-ups (branch `feature/ledgerseal-review-followups-2`, from `origin/master` `47ad030`)
+
+The review is `docs/sdlc/merge-reviews-2026-11/ledgerseal-followups-merge-review.md` (probe P1 in `/home/fahimfarookme/.cache/jira-suite-merge-review/ledgerseal-followups/probes/zz-probe-concurrent.test.ts`).
+
+### M-5. Two conversions of one record never overlap
+
+- **What changed (`src/service/conversion.ts`):**
+  - Lease: a conversion journal younger than `CONVERSION_LEASE_MS` (10 minutes: the weekly function's 300 s limit plus a margin) belongs to a conversion that may still be running. Another conversion of the record returns BUSY instead of resuming it, so a seal or revoke at that moment answers CONFLICT and the user tries again. An older journal is a stopped run, resumed as before.
+  - Re-check: just before its commit a conversion reads the record again and returns BUSY, writing nothing more, if the record changed or a row exists after the redaction row.
+  - Residual: Forge KVS has no conditional write for plain keys (transaction checks apply to custom entities only), so the re-check and the commit are two calls. The lease closes the window for two conversions; the re-check covers a run that stalls past its lease.
+- **Proof:** `test/review-followups.test.ts`, describe "M-5" (2): P1 exactly (the weekly run paused inside its commit; the revoke answers CONFLICT, the weekly run commits, the retried revoke goes in, history SEAL, REDACT, REVOKE, a new seal works), and a stalled run past its lease that wakes after a revoke (BUSY, record revoked, a new seal works). Without the lease the P1 test fails; without the re-check the stalled-run test fails.
+
+### L-8. An existing account is never shown as a deleted user
+
+- **What changed:** on closure the map key becomes a closed mark `{ closed: true, closedAt }` (no account id) instead of being deleted. Registration skips a closed mark (M-2 holds without asking Jira) and marks an account closed when Jira answers 404 (`JiraClient.accountState`: active, inactive, gone, or null). An active, deactivated or unreadable account keeps its mapping; the weekly report erases it if Atlassian reports it closed. Display: "a deleted user" only for a closed mark; a token with no entry is "an unknown user" (signer, revoker, changer, history), and the evidence `parties` map leaves it out (null stays "closed").
+- **Proof:** `test/review-followups.test.ts` (L-8 tests, 2), updated M-2 and report tests (the closed mark).
+
+### L-9. Listing test
+
+- `test/listing.test.ts` fails when a panel label speaks of "closed account" or "closed accounts", and reads `site/apps/ledgerseal/compliance-mapping.md` for the decided 11.50 wording. Setting the plural label back to "closed accounts" makes it fail.
+
+### M-6. Launch article
+
+- `docs/launch/approved-ticket-problem.md`: the seal record holds a pseudonymous party token and no name; the signature is the app's; separation of duties as built; the mapping header "How LedgerSeal Supports It"; 11.10(e) with the token and the vendor limit; 11.50 "Partly met" with the decided wording; 11.70 "your auditor decides"; 11.200 and 11.300 "Not met". A search of `docs/launch` and `docs/marketplace` for "satisf", "11.50" and "Account ID" finds no other LedgerSeal claim (lines 15 and 39 of the article describe the approvers and Jira).
+
+### L-10
+
+- The M-2 proof above now says three tests.
