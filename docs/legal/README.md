@@ -67,9 +67,10 @@ the owner's rule, not a fatwa.
    merge review then checked the log lines (L-65): DefinitionGuard (three lines) and FourRealities
    (one line) write a caught error's message, so "no account id" there rests on what Forge storage
    and the personal data reporting API put in their errors. Annex II, "Logs", therefore says what
-   the questionnaire answers state, as Annex I does. Branch `feature/safe-error-logging` changes
-   those lines to write only the error's name, code and HTTP status, as LedgerSeal does; once it is
-   merged, Annex II may state the fact itself.
+   the questionnaire answers state, as Annex I does. Closed: branch `feature/safe-error-logging`
+   (merged to master as f896fae) changes those lines to write only the error's name, code and HTTP
+   status, as LedgerSeal does, in all four apps; Annex II, "Logs", now states the fact
+   (`docs/sdlc/merge-reviews-2026-11/safe-error-logging-merge-review.md`).
 
 ## Inconsistencies to fix on the site
 
@@ -80,8 +81,8 @@ the owner's rule, not a fatwa.
 2. (L-64) The compliance page's Personal Data answer says CascadePlan stores account ids "of who
    froze a baseline, of who requested or reviewed a scope change, and of each person who works on a
    task through a Jira sub-task". It leaves out the account id of the Jira administrator who last
-   saved the approver groups, which the privacy policy, the FAQ and the DPA all name. The site fix
-   is in progress on the site branch `feature/regulated-migration`.
+   saved the approver groups, which the privacy policy, the FAQ and the DPA all name. Fixed on the
+   site's `develop` branch (merge 0df0c1e, with item 1); public when the owner releases `develop`.
 
 ## Sources read for the draft
 

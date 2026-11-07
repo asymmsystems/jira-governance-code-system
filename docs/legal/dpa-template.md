@@ -355,7 +355,7 @@ Atlassian's.
 | Pseudonymisation | LedgerSeal names people in its records by a keyed hash of the account id. DefinitionGuard stores people as random pseudonyms, with the account id only in one link per person. | privacy policy; listing files |
 | Data minimisation | No App stores email addresses. FourRealities stores no names; it reads them from Jira when it shows them. | privacy policy |
 | Erasure of closed accounts | Personal data reporting and erasure, as Annex I.1 describes. | `apps/*/manifest.yml` scheduled triggers; privacy policy |
-| Logs | The questionnaire answers state that backend log lines hold no account id, name, email, issue text, token or key. | questionnaire question 8 for each App |
+| Logs | Backend log lines hold no account id, name, email, issue text, token or key. A caught error is logged only by its name, code and HTTP status, never its message, stack or the object. | questionnaire question 8 for each App; `apps/*/test/log-safety.test.ts` |
 | Input validation | The issue and project come from the Forge context, not from the request. Paths to Jira are built with the `route` tag of `@forge/api`, which encodes them. | questionnaire question 9 for each App |
 | Tamper evidence | LedgerSeal and DefinitionGuard keep hash-chained histories, so changes to stored entries can be detected. This does not stop someone who can rewrite all of an App's stored data, including the vendor, from writing a new consistent chain. | compliance page; listing files |
 
