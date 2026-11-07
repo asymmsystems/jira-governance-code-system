@@ -166,3 +166,8 @@ The report format stays `fourrealities-evidence-report/1` (not released): `count
 | FSRT probe | unchecked as-app call before `reportPermissionsAsUser`: reported (`Custom-Check-Authorization-9031189739672450855`); after it: none |
 | Semgrep 1.182.1 | 0 findings, 216 files |
 | Verifier `npm test` | 18 passed |
+| `forge eligibility -e development` | 7.8.0 eligible for Runs on Atlassian |
+
+### Deploy (fix round 1)
+
+`forge deploy -e development`: **7.8.0** from `72c5401` (minor: the hourly trigger is not a major change). Jira and Confluence installations at major version 7, "Up-to-date". Production and staging untouched. Retest in Chrome: see the report of this round (download of the four files, the list refresh, the date placeholder, and the report `18520860`: made on 7.7.0 before the H-1 fix, so it has no `notReadable` field; make a new report to check it).
