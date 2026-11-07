@@ -5,6 +5,7 @@
 # Static analysis (SAST) of the Forge app and shared package sources with Semgrep Community
 # Edition, pinned, and its stock rule packs. Any finding fails the job. The raw JSON report is kept
 # as an artifact. How to run it locally and how false positives are handled: docs/security/sast.md.
+# The weekly run on master shows a finding from a newly released registry rule in a run of its own.
 name: SAST (Semgrep)
 
 on:
@@ -18,6 +19,9 @@ on:
       - 'apps/**'
       - 'packages/**'
       - '.github/workflows/sast.yml'
+  schedule:
+    # Mondays 03:17 UTC. Scheduled runs use the default branch (master).
+    - cron: '17 3 * * 1'
   workflow_dispatch:
 
 permissions:
