@@ -6,6 +6,13 @@ modules:
       resource: main
       resolver:
         function: resolver
+  jira:globalPage:
+    - key: fourrealities-spike
+      title: FR spike
+      render: native
+      resource: spike
+      resolver:
+        function: spike-resolver
   jira:issuePanel:
     - key: fourrealities-issue-panel
       title: Four Realities
@@ -38,7 +45,26 @@ modules:
     - key: fourrealities-personal-data
       function: personal-data
       interval: week
+  objectStore:
+    - key: fr-reports
+      storageClass: standard
+  webtrigger:
+    - key: fourrealities-spike-web
+      function: spike-web
+      response:
+        type: dynamic
+  consumer:
+    - key: fourrealities-report-consumer
+      queue: fourrealities-report-jobs
+      function: report-worker
   function:
+    - key: spike-resolver
+      handler: spike.handler
+    - key: spike-web
+      handler: spike.web
+    - key: report-worker
+      handler: spike.worker
+      timeoutSeconds: 900
     - key: resolver
       handler: index.handler
     - key: snapshot
@@ -55,6 +81,8 @@ resources:
     path: src/frontend/index.tsx
   - key: admin
     path: src/frontend/admin.tsx
+  - key: spike
+    path: src/frontend/spike.tsx
   - key: icons
     path: static/icons
 
@@ -62,6 +90,7 @@ app:
   id: ari:cloud:ecosystem::app/974e4981-7626-4b1c-a41f-7eaccb7f3605
   runtime:
     name: nodejs22.x
+    memoryMB: 1024
   licensing:
     enabled: true
 
