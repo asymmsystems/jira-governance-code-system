@@ -45,9 +45,14 @@ the owner's rule, not a fatwa.
 
 1. Asymm Systems' company number and registered address.
 2. That every person with access is bound by a written confidentiality undertaking (section 4).
-3. That the production versions of LedgerSeal and FourRealities include the permission-check
-   changes that the questionnaire answers describe (merged to master as 696c763 and 67b6fd6;
-   production deploys not checked).
+3. Closed, confirmed. The production versions of LedgerSeal and FourRealities include the
+   permission-check changes that the questionnaire answers describe. LedgerSeal was deployed to
+   production at 2026-11-06 16:22:58 UTC, after merge 696c763 (16:14:39 UTC); FourRealities at
+   16:46:52 UTC, after merge 67b6fd6 (16:41:38 UTC). Neither app has a later production deploy.
+   The one later master commit that touches either app, b86f033, changes only repository paths in
+   documents, tests and one code comment. The deploy list does not record the source commit, so the evidence is
+   the timing (`docs/sdlc/merge-reviews-2026-11/dpa-template-merge-review.md`, section 3). The
+   matching `[CONFIRM]` in Annex II, "Access control", is removed.
 4. How Asymm Systems would delete or return one site's Forge storage on request (section 11.3).
 5. Which app functions let a customer export its data before uninstall (section 11.1). The
    compliance page says a LedgerSeal record "can be copied as standalone JSON".
@@ -58,15 +63,25 @@ the owner's rule, not a fatwa.
 8. Whether Asymm Systems can read the Forge function logs of a customer's site without the site
    administrator's consent; the draft says only that the logs hold no personal data, as the
    questionnaire answers state.
-9. The questionnaire answers for question 8 (logs) were taken as written; the log lines were not
-   checked again in the code for this draft.
+9. The questionnaire answers for question 8 (logs) were taken as written for the draft. The DPA
+   merge review then checked the log lines (L-65): DefinitionGuard (three lines) and FourRealities
+   (one line) write a caught error's message, so "no account id" there rests on what Forge storage
+   and the personal data reporting API put in their errors. Annex II, "Logs", therefore says what
+   the questionnaire answers state, as Annex I does. Branch `feature/safe-error-logging` changes
+   those lines to write only the error's name, code and HTTP status, as LedgerSeal does; once it is
+   merged, Annex II may state the fact itself.
 
-## Inconsistency to fix on the site
+## Inconsistencies to fix on the site
 
-The compliance page (section 4, "Personal Data") says that LedgerSeal stores account ids "to
-record who did each action". The privacy policy and the LedgerSeal listing say that LedgerSeal
-records name people by a pseudonymous token and keep the account id only in one link record per
-person. The DPA follows the privacy policy. The compliance page should say the same.
+1. The compliance page (section 4, "Personal Data") says that LedgerSeal stores account ids "to
+   record who did each action". The privacy policy and the LedgerSeal listing say that LedgerSeal
+   records name people by a pseudonymous token and keep the account id only in one link record per
+   person. The DPA follows the privacy policy. The compliance page should say the same.
+2. (L-64) The compliance page's Personal Data answer says CascadePlan stores account ids "of who
+   froze a baseline, of who requested or reviewed a scope change, and of each person who works on a
+   task through a Jira sub-task". It leaves out the account id of the Jira administrator who last
+   saved the approver groups, which the privacy policy, the FAQ and the DPA all name. The site fix
+   is in progress on the site branch `feature/regulated-migration`.
 
 ## Sources read for the draft
 
