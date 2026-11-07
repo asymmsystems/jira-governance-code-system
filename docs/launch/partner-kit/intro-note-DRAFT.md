@@ -13,7 +13,7 @@ Copyright (c) 2026 Asymm Systems. All rights reserved.
 
 Hello [name],
 
-I am Fahim Farook, Founder, Asymm Systems. We build four Forge apps for Jira Cloud that cover change-control steps regulated teams often ran on Data Center apps or in-house plugins. I am writing because [partner] runs [regulated migrations / Government Cloud work / GxP projects], from [your public page or post].
+I am Fahim Farook, Founder and Chief Architect, Asymm Systems. We build four Forge apps for Jira Cloud that cover change-control steps regulated teams often ran on Data Center apps or in-house plugins. I am writing because [partner] runs [regulated migrations / Government Cloud work / GxP projects], from [your public page or post].
 
 When the migration assistant shows "This app is not available in cloud" for an approval, signature or checklist app, your client still needs the control. Our apps:
 
