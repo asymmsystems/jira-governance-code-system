@@ -1,12 +1,26 @@
 #+TITLE: ADR-015: FourRealities Evidence Reports for Change-Management Audits
 #+DATE: 2026-11-08
-#+STATUS: Proposed
+#+STATUS: Accepted
 
 * Status
-Proposed, 2026-11-08. Not approved. No code is written until the owner approves this ADR, the
-specification delta (=docs/spec/fourrealities-spec-v4-draft.md=) and the high-level design
-(=architecture/model/fourrealities-evidence-report-hld.org=). The open questions for the owner are
-in section "Open questions" below and in the HLD, section 11.
+Accepted, 2026-11-08. The owner approved this ADR, the specification delta and the high-level design
+(=architecture/model/fourrealities-evidence-report-hld.org=) on 2026-11-08, with all nine
+recommendations of the HLD, section 11. The decisions are recorded verbatim in "Owner decisions"
+below. The delta is merged into the full specification =docs/spec/fourrealities-spec-v4.md=;
+=docs/spec/fourrealities-spec-v3.md= is frozen. The changes that the spikes made necessary are in
+=docs/sdlc/fourrealities-evidence-reports-2026-11/spike-results.md= and in spec v4, section 11.10.
+
+* Owner decisions (2026-11-08)
+All nine recommendations of the HLD, section 11, are approved. The owner's words:
+- Q1 Option C.
+- Q2: only project or Jira admins plus a configured group create reports.
+- Q3: retention 400 days by default, 90 days to 7 years.
+- Q4: free-text fields show "changed" plus length only.
+- Q5: use Forge Object Store (Preview), with the costed fallback.
+- Q6: 200 reports per project, 50 MB per file.
+- Q7: listing wording "evidence reports for change-management audits", never "audit log".
+- Q8: Jira admins may delete a report early, with a reason and a record left in its place.
+- Q9: when the licence is inactive, viewing and downloading existing reports keep working, but no new reports are made.
 
 * Context
 
@@ -154,7 +168,7 @@ period.
    personal data report (ADR-014) adds the accounts in the token map.
 8. *Who may create a report.* Tier 1 of the permission standard (Administer projects in the
    project, or Administer Jira) or a member of an "evidence report" group set on the admin page
-   (Tier 2), plus Browse projects. (Open question Q2.)
+   (Tier 2), plus Browse projects. (Decided: Q2.)
 
 ** 3. What belongs to LedgerSeal or DefinitionGuard
 - The hash-chained history of sealed content, its incidents, reseals and revokes, and the per-issue
@@ -255,8 +269,8 @@ See "Considered and excluded" below.
 - The size limits and the issue cap stop a single report from exhausting time, memory or storage.
 - Party tokens keep account ids out of the signed files, so erasure never breaks a signature.
 
-* Open questions for the owner
-Each has a recommendation; the HLD, section 11, gives the trade-offs.
+* Open questions for the owner (decided 2026-11-08)
+All decided as recommended; see "Owner decisions" above. Kept as asked, for the record.
 - Q1. Approve Option C? (Recommended: yes.)
 - Q2. Who may create reports: Tier 1 plus an "evidence report" group (recommended), or anyone with
   Browse projects?
@@ -275,7 +289,9 @@ Each has a recommendation; the HLD, section 11, gives the trade-offs.
 
 * References
 - =docs/launch/research/dc-migration-gap-2026-11.md= (sections 2 and 4)
-- =docs/spec/fourrealities-spec-v3.md=; delta =docs/spec/fourrealities-spec-v4-draft.md=
+- =docs/spec/fourrealities-spec-v4.md= (current); =docs/spec/fourrealities-spec-v3.md= (frozen); the
+  approved delta =docs/spec/fourrealities-spec-v4-draft.md= (frozen)
+- =docs/sdlc/fourrealities-evidence-reports-2026-11/spike-results.md= (spikes S-1 to S-4)
 - =architecture/model/fourrealities-evidence-report-hld.org=
 - [[file:adr-00001-fourrealities-evidence-data-model.org][ADR-001]], [[file:adr-00002-fourrealities-volatility-layering.org][ADR-002]], [[file:adr-00011-ledgerseal-personal-data.org][ADR-011]], [[file:adr-00012-fourrealities-sibling-evidence-verification.org][ADR-012]], [[file:adr-00013-fourrealities-evidence-sources-in-use.org][ADR-013]], [[file:adr-00014-fourrealities-personal-data.org][ADR-014]]
 - =docs/spec/ledgerseal-spec-v3.md= sections 8 and 11 (signature scheme, evidence export, verifier)

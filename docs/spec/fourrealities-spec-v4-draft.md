@@ -5,7 +5,7 @@ Copyright (c) 2026 Asymm Systems. All rights reserved.
 -->
 # FourRealities: Specification v4 (draft, delta only)
 
-- **Status:** draft, not approved. Delta against `docs/spec/fourrealities-spec-v3.md`, which stays the working specification until the owner approves ADR-015. On approval, v3 is frozen and this delta is merged into a full `fourrealities-spec-v4.md`.
+- **Status:** FROZEN 2026-11-08. Approved by the owner on 2026-11-08 (ADR-015, decisions Q1 to Q9) and merged into `docs/spec/fourrealities-spec-v4.md`, which is the working specification. Kept unchanged below this line as the approved delta.
 - **Date:** 2026-11-08
 - **Sources:** ADR-015 (`architecture/decision/adr-00015-fourrealities-evidence-reports.org`, Proposed) and its high-level design (`architecture/model/fourrealities-evidence-report-hld.org`, Proposed). Section numbers "HLD n" refer to that file.
 
