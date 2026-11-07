@@ -1,0 +1,515 @@
+#+TITLE: FourRealities Evidence Reports (High-Level Design)
+#+DATE: 2026-11-08
+#+STATUS: Proposed
+
+* Purpose
+
+The high-level design for [[file:../decision/adr-00015-fourrealities-evidence-reports.org][ADR-015]]
+(Proposed): stored, signed, per-project evidence reports for change-management audits. It gives the
+data model, the storage, the components, the resolvers, the flows, the UI, the export format, the
+limits for large projects, the effort and the open questions. The specification delta is
+=docs/spec/fourrealities-spec-v4-draft.md=. Nothing here is built. The approved domain model
+([[file:fourrealities-domain-model.org][fourrealities-domain-model.org]]) does not change; this file
+adds to it.
+
+Words used:
+- *Report*: one evidence report for one project and one date range. Three signed parts (JSON, CSV,
+  manifest) and one unsigned part made at download (people file).
+- *Job*: the work that builds a report. Its state is in KVS.
+- *In scope*: an issue of the project that was created in the range or has at least one changelog
+  entry in the range that passes the filters.
+- *Party token*: =pty_= plus 32 hexadecimal characters, an HMAC-SHA-256 of an account id under a
+  per-site key, as in LedgerSeal (ADR-011). It names a person without an account id.
+
+* 1. What a report answers
+
+For an auditor's sample of changes in a period (SOC 2 CC8.1 points of focus "track", "document",
+"approve"; ISO/IEC 27001:2022 A.8.32 records of request, approval, testing and deployment; A.8.15
+user id, UTC time and event type per entry), a report gives, per issue in scope:
+
+| Question | Where it comes from | Owner of the fact |
+|----------+---------------------+-------------------|
+| Who changed which field, when, from what to what | Jira changelog | Jira |
+| Was there a decision record (intent) | FourRealities Intent observation | FourRealities (derived) |
+| Was the Definition of Done complete, and which record says so | DefinitionGuard =definitionguard-dod= (verified), referenced by =headHash= | DefinitionGuard |
+| Was there a merged pull request | Development field (heuristic) | Jira and the Git integration |
+| Was the work approved and sealed, and is the seal intact | LedgerSeal =ledgerseal-cert= (verified), referenced by =certificateId= and =snapshotHash= | LedgerSeal |
+| Was an exception to the Code check approved, by whom, and why | FourRealities Code exception events | FourRealities |
+| Why was there rework | FourRealities rework notes | FourRealities |
+
+The gate observations are taken *when the report is built* (=observedAt=), not at the time of each
+change. Jira keeps no history of the evidence state, so FourRealities cannot rebuild a gate state for
+a past date. The report says so in its header (=gatesObservedAt=).
+
+* 2. Logical model
+
+#+begin_src text
+ KNOWLEDGE LEVEL (FourRealities)               OPERATIONAL LEVEL (FourRealities)
+ ───────────────────────────────               ─────────────────────────────────
+ REPORT_SETTINGS (site)                        REPORT_JOB ─────────────── one per report
+   retentionDays, reportGroups                   reportId, project, range, filters, trigger,
+ REPORT_SCHEDULE (per project, at most 5)        requestedBy (party token), state, progress,
+   cadence WEEKLY | MONTHLY, filters             cursor, files, expiresAt, previousManifestHash
+ FIELD_CLASS (derived from Jira field schema)    │
+   USER | FREE_TEXT | OTHER                      ├─► REPORT (signed, immutable)
+ JOB_STATE + VALID_TRANSITION                    │     manifest.json  (Ed25519, file hashes)
+   QUEUED → RUNNING → DONE | FAILED              │     report.json    (full record)
+   DONE → EXPIRED (retention) | DELETED (admin)  │     report.csv     (one row per change)
+                                                 ├─► REPORT_TOMBSTONE (admin delete, append-only)
+                                                 └─► PEOPLE_FILE (unsigned, per download, 24 h)
+ PARTY (Jira owns)  ◄── PARTY_TOKEN_MAP (token → account id; closed mark on erasure)
+#+end_src
+
+Mapping to the patterns of ADR-001:
+- REPORT is a *Measurement set* (Fowler Observation pattern): a dated, derived record of
+  observations, with its method (=sourcesInUse=, catalog) recorded.
+- REPORT_JOB has a *status with valid transitions* (Silverston status pattern): the table in
+  section 7.6.
+- PARTY_TOKEN_MAP is the *Party* reference without personal data in the signed record (ADR-011).
+- The changelog entries inside a report are *Jira's facts, quoted with their ids*
+  (=changelogId=); FourRealities does not keep them as its own facts outside a report.
+
+* 3. Export format
+
+** 3.1 Files of one report
+
+| Object key (Object Store) | Media type | Signed | Content |
+|---------------------------+------------+--------+---------|
+| =reports/{projectId}/{reportId}/manifest.json= | =application/json= | yes (Ed25519) | header, file hashes, chain link, signature |
+| =reports/{projectId}/{reportId}/report.json= | =application/json= | by hash in the manifest | full record (3.3) |
+| =reports/{projectId}/{reportId}/report.csv= | =text/csv; charset=utf-8= | by hash in the manifest | one row per change (3.4) |
+| =tmp/{reportId}/{downloadId}/people.csv= and =people.json= | as above | no | token, account id, display name, active (3.5) |
+
+The download file names are =fourrealities-{projectKey}-{from}-{to}-{reportId8}.{json,csv}= and
+=...-manifest.json= (spike S-1 checks how a name is set).
+
+** 3.2 Manifest (=fourrealities-evidence-report/1=)
+
+#+begin_src json
+{
+  "format": "fourrealities-evidence-report/1",
+  "reportId": "uuid",
+  "siteHost": "example.atlassian.net",
+  "environment": "production",
+  "projectId": "10001", "projectKey": "PAY",
+  "range": { "from": "2026-10-01T00:00:00Z", "to": "2026-11-01T00:00:00Z" },
+  "filters": { "fieldIds": ["status", "resolution"], "actors": ["pty_…"] },
+  "trigger": "user | scheduled",
+  "requestedBy": "pty_… | scheduled",
+  "generatedAt": "ISO-8601 UTC",
+  "gatesObservedAt": "ISO-8601 UTC",
+  "appVersion": "string from the app context, when present",
+  "counts": { "issues": 412, "changes": 9031, "missingSincePrevious": 1 },
+  "files": [
+    { "name": "report.json", "mediaType": "application/json", "bytes": 1234567, "sha256": "64 hex" },
+    { "name": "report.csv",  "mediaType": "text/csv",         "bytes": 987654,  "sha256": "64 hex" }
+  ],
+  "previous": { "reportId": "uuid", "manifestSha256": "64 hex" },
+  "keyId": "fr-prod-2026-11",
+  "sig": "base64 Ed25519 over the canonical JSON of every other field"
+}
+#+end_src
+
+- Canonical JSON as ADR-012 decision 2 and LedgerSeal spec v3 section 4.1: keys sorted at every
+  level, no white space, =undefined= left out. =previous= is =null= for the first report of a
+  project. =manifestSha256= is the SHA-256 of the previous manifest's canonical JSON including its
+  =sig=.
+- No signing key configured: =keyId= and =sig= are absent, =warning: "UNSIGNED"= is present, and the
+  UI shows "This report is not signed" (as LedgerSeal spec v3, section 8).
+
+** 3.3 report.json (=fourrealities-evidence-report-data/1=)
+
+#+begin_src typescript
+interface ReportData {
+  format: 'fourrealities-evidence-report-data/1';
+  header: ManifestHeader;                // the manifest fields except files, keyId, sig
+  sourcesInUse: SourcesInUse;            // ADR-013, at gatesObservedAt
+  decisionIssueTypes: string[];
+  issues: ReportIssue[];                 // ordered by issueId (numeric)
+  missingSincePrevious: { issueId: string; issueKey: string }[]; // in the previous report, not readable now
+  warnings: ReportWarning[];             // e.g. 'UNSIGNED', 'REMOTE_LINKS_NOT_READ'
+}
+
+interface ReportIssue {
+  issueId: string; issueKey: string; issueTypeName: string;
+  summary: string;                       // current summary, at most 120 characters (as snapshot rows)
+  created: string;                       // ISO UTC
+  statusCategory: 'new' | 'indeterminate' | 'done'; statusId: string;
+  gates: Record<GateName, GateResult>;   // spec v3 model, observed at gatesObservedAt
+  rai: number | null; risk: Risk;
+  ledgerseal: SiblingRef | null;         // { certificateId, snapshotHash, status, sealedAt, issuedAt, keyId, verification }
+  definitionguard: SiblingRef | null;    // { headHash, stateVersion, issuedAt, mandatoryCompleted, mandatoryTotal, keyId, verification }
+  codeException: { status: string; at: string; by: string /* token */; asRole: string; reason: string; migrated?: boolean }[];
+  reworkNotes: { recordedAt: string; by: string /* token */; reason: string; notes?: string }[];
+  changes: ReportChange[];               // in range, after filters, oldest first
+}
+
+interface ReportChange {
+  changelogId: string; at: string;       // Jira changelog id and created time (UTC)
+  author: string | null;                 // party token; null when Jira gives no author
+  fieldId: string; field: string; fieldClass: 'USER' | 'FREE_TEXT' | 'OTHER';
+  from: string | null; to: string | null;          // OTHER: Jira's ids; USER: party tokens
+  fromString: string | null; toString: string | null; // OTHER only, at most 500 characters each
+  omitted?: { reason: 'FREE_TEXT'; fromLength: number; toLength: number }; // FREE_TEXT only (Q4)
+  truncated?: boolean;                   // a value was cut to 500 characters
+}
+#+end_src
+
+Field classes come from =GET /rest/api/3/field= (already cached in =fr:cfg:site=): =USER= when
+=schema.type= is =user= or an array of =user=; =FREE_TEXT= for =summary=, =description=,
+=environment= and custom fields of type text field or text area; =OTHER= for the rest. A changelog
+item whose field id is not in the list is =OTHER=.
+
+** 3.4 report.csv
+
+RFC 4180, UTF-8 without byte order mark, CRLF line ends, header row first, one row per change, and
+one row with =rowType= =ISSUE= for an issue in scope with no change row (created in the range, or
+kept by a filter on its gate references only).
+
+| Column | Value |
+|--------+-------|
+| reportId, rowType | uuid; =CHANGE= or =ISSUE= |
+| issueKey, issueId, issueType | |
+| changeAt, changelogId | UTC ISO time; Jira id |
+| author | party token |
+| fieldId, field, fieldClass | |
+| from, to, fromString, toString | as 3.3; empty when omitted |
+| omitted | =FREE_TEXT (12 -> 40 characters)= or empty |
+| intent, process, code, audit | gate state and verification, for example =FOUND VERIFIED= |
+| sealStatus, sealCertificateId, sealSnapshotHash | from the verified LedgerSeal record |
+| dodHeadHash, dodComplete | from the verified DefinitionGuard record |
+| codeExceptionStatus | last event status, or empty |
+
+Cell rule (CSV formula injection): a cell that starts with =, +, -, @, a tab or a carriage return gets
+a leading apostrophe. The JSON keeps the original value. Quotes are doubled and every cell is quoted.
+
+** 3.5 People file (unsigned)
+Made at download, as the downloading user: for each token in the report, the account id from the
+token map (empty for a closed account, shown as "a former user"), the display name and =active=
+from =GET /rest/api/3/user/bulk= (as the user, scope =read:jira-user=). It is not signed, because names
+change and a closed account must disappear. It is stored as a temporary object and removed by the
+daily run after 24 hours.
+
+** 3.6 Verification
+The public verifier (=jira-governance-code-cli=, Apache-2.0, Node standard library only) gains
+=verify-fourrealities-report.mjs <manifest> <report.json> <report.csv> [publicKey.pem] [--previous <manifest>]=.
+It checks: (1) the SHA-256 and byte count of each file against the manifest; (2) the Ed25519
+signature of the manifest with the public key named by =keyId=; (3) that =report.json= =header=
+equals the manifest header fields; (4) with =--previous=, that =previous.manifestSha256= is the hash
+of that manifest. Exit codes as =verify-evidence.mjs=: 0 all pass, 1 a check failed, 2 usage or a
+missing file. The verifier does not need the people file.
+
+* 4. Storage
+
+** 4.1 KVS keys (all with the =fr:= prefix, so invariant 1 of spec v3 holds)
+
+| Key | Value | Bound |
+|-----+-------+-------|
+| =fr:cfg:reports= | ={ retentionDays, reportGroups: [{ partyId, name }], fromDate }= | under 4 KiB; at most 20 groups; no account id |
+| =fr:p:{projectKey}:reports= | the project's report ids, newest first, with state, range, expiresAt | at most 200 entries (Q6), under 64 KiB |
+| =fr:p:{projectKey}:reports:head= | ={ reportId, manifestSha256 }= of the newest DONE report | under 1 KiB |
+| =fr:p:{projectKey}:schedules= | at most 5 =ReportSchedule= | under 8 KiB |
+| =fr:rj:{reportId}= | =ReportJob= (section 7.6) | under 16 KiB |
+| =fr:rj:{reportId}:ids:{i}= | issue ids of the job, at most 5,000 per value | under 64 KiB each; at most 2 values |
+| =fr:rj:{reportId}:part:{i}= | serialised =ReportIssue[]= of one batch, before assembly | at most 200,000 bytes each; deleted after assembly |
+| =fr:rt:{projectKey}:{deletedAt}:{seq}= | =ReportTombstone= ={ reportId, deletedAt, by, reason }=, written once | under 2 KiB each |
+| =fr:partykey= | the site key of the party tokens (32 random bytes, base64) | under 1 KiB |
+| =fr:party:{token}= | ={ accountId, updatedAt }=, or ={ closed: true, closedAt }= | under 1 KiB |
+
+The site key is written once (=keyPolicy: FAIL_IF_EXISTS=). A token is never mapped to another
+account.
+
+** 4.2 Object Store
+The three signed files of each DONE report, and the temporary people files. Objects are written
+once and never rewritten; they are deleted only by the retention run or a Jira administrator's
+delete (with a tombstone). Object Store is data residency enabled and "meets the storage criterion"
+for Runs on Atlassian (Forge Object Store page, updated 2026-09-28).
+
+Fallback, if spike S-1 fails (no UI Kit download, or a new scope or egress is needed): the files
+are kept in KVS parts of 200,000 bytes (=fr:rf:{reportId}:{file}:{i}=) and a Custom UI page
+(=jira:projectPage= second module) streams the parts through a resolver and saves a =Blob=. This
+needs Custom UI, which spec v3 left out because it adds dependencies; the cost is in section 10.
+
+** 4.3 Size of storage
+A report of 10,000 issues and 250,000 changes is about 60 MB in JSON and 40 MB in CSV at about 240
+and 160 bytes per change (estimate; spike S-3 measures it). The per-file cap of 50 MB (section 9)
+makes such a report fail with =REPORT_TOO_LARGE= and ask for a shorter range or a field filter.
+
+* 5. Components (ADR-002)
+
+#+begin_src text
+ CLIENT     src/frontend/evidence-reports.tsx (tab on the project page), admin.tsx (settings section),
+            src/ui/report-text.ts (words, no React), src/index.ts (resolvers, consumer, triggers, wiring)
+               │
+ MANAGER    DefaultEvidenceReportManager  implements EvidenceReportManager (user resolvers)
+               │                          and ReportJobManager (queue consumer, daily run)
+               │                          one subject: the report; no Manager calls another
+               ├──────────────────────────────┬────────────────────────────────────────────────┐
+ ENGINE     DefaultReportEngine               DefaultReportPolicyEngine
+            (pure, no I/O, no crypto)         (pure)
+            - inScope(issues, changes,        - validateRequest(input, limits, today)
+              range, filters)                 - mayCreate / mayDownload / maySchedule (permission facts)
+            - classifyField(fieldSchema)      - nextStep(job, budget) and job transitions
+            - reportIssue(facts, gates,       - duePeriods(schedule, today), expiresAt(settings)
+              tokens) → ReportIssue           - retentionDue(reports, now)
+            - toJson / toCsv / manifestBody
+            - canonicalJson(value)
+               │
+ ACCESSOR   JiraIssueAccessor (+ searchIdsAsUser, searchIdsAsApp, readByIds, existingAmong, visibleAmong)
+            JiraChangelogAccessor (bulk fetch, as the app)       NEW
+            JiraPermissionAccessor (+ reportPermissions, as the user)
+            KvsReportJobAccessor (jobs, ids, parts, index, head, schedules, tombstones)   NEW
+            KvsPartyTokenAccessor (site key, token map, erasure)  NEW
+            ObjectStoreAccessor (put, delete, createDownloadUrl)  NEW (Object Store package)
+            QueueAccessor (push job events)                       NEW (@forge/events)
+            ReportCryptoAccessor (sha256, HMAC token, Ed25519 sign with the encrypted variable) NEW (crypto)
+            existing: SiteConfigAccessor, ExceptionEventAccessor, NoteAccessor, SettingsAccessor,
+                      AttestationHistoryAccessor, PrivacyAccessor
+#+end_src
+
+Architecture test (=test/architecture.test.ts=) gains two rules: =@forge/events= and the Object Store
+package are imported only in =src/accessor/=; =crypto= stays limited to =src/accessor/=. The engines
+receive hashes and tokens as data, so they stay pure.
+
+The issue facts for a report are built by the existing =issue-facts.ts= path (properties, Development
+field, links, remote links, signature checks of ADR-012) and evaluated by the existing
+=DefaultGateEngine=, so the report and the dashboard give the same gate result for the same issue.
+The rollback history =fr:att:{issueId}= is read, not written, by a report job (a report is a read).
+
+* 6. Manifest changes
+
+#+begin_src yaml
+modules:
+  consumer:
+    - key: fourrealities-report-consumer
+      queue: fourrealities-report-jobs
+      function: report-worker
+  scheduledTrigger:
+    - key: fourrealities-report-daily          # schedules, retention, temporary files, stale jobs
+      function: report-daily
+      interval: day
+  function:
+    - key: report-worker
+      handler: index.reportWorker
+      timeoutSeconds: 900
+    - key: report-daily
+      handler: index.reportDaily
+      timeoutSeconds: 600
+  objectStore: …                                # exact shape from the Object Store reference (spike S-1)
+app:
+  runtime:
+    name: nodejs22.x
+    memoryMB: 1024                              # for assembly of a 50 MB file (spike S-3)
+#+end_src
+
+- No new scope is expected: bulk changelog fetch and searches use =read:jira-work=, user names use
+  =read:jira-user=, KVS uses =storage:app=. Spike S-1 confirms what Object Store needs.
+- No =permissions.external=. =forge eligibility= must still report Runs on Atlassian (spike S-1).
+- Encrypted variables =FOURREALITIES_SIGNING_KEY= (PKCS#8 DER, base64) and =FOURREALITIES_KEY_ID=,
+  set with =forge variables set --encrypt=, never logged (as LedgerSeal spec v3, section 8). Public
+  key =apps/fourrealities/keys/fr-prod-2026-11.pub.pem= and the development key
+  =fr-dev-2026-11.pub.pem=, published on the signing keys page.
+- Adding the =objectStore= module "triggers a major version upgrade": each site administrator
+  accepts it.
+
+* 7. Resolvers, consumer and triggers
+
+All resolvers return ={ ok: true, ... }= or ={ ok: false, error: { code, message, status? } }=. New
+codes: =NOT_REPORT_AUTHOR= (may not create), =NOT_ALL_VISIBLE=, =TOO_MANY_ISSUES=,
+=REPORT_TOO_LARGE=, =RANGE_INVALID=, =JOB_LIMIT=, =REPORT_NOT_READY=.
+
+** 7.1 Permission checks (FSRT-visible form)
+Every check is one direct call as the user with a literal route, in the checking method's own body,
+not inside a closure, and fails closed on any error:
+=await api.asUser().requestJira(route`/rest/api/3/mypermissions?projectKey=${projectKey}&permissions=BROWSE_PROJECTS,ADMINISTER_PROJECTS,ADMINISTER`)=.
+Tier 2 membership: =GET /rest/api/3/myself?expand=groups= as the user, only when Tier 1 fails and
+=reportGroups= is not empty (permission standard, section 3). Each resolver runs the check before any
+storage read and before any call as the app. A test like DefinitionGuard's
+=test/security/fsrt-authorization.test.ts= calls every new resolver key for a user whom Jira grants
+nothing and checks: refused, no KVS or Object Store access, no call as the app, and a new key without
+a case fails the test.
+
+** 7.2 Resolver contracts (project page resolver; project from context only)
+
+| Resolver | Input | Rules | Output |
+|----------+-------+-------+--------|
+| =getEvidenceReports= | ={ cursor? }= | Browse projects. Lists the project's reports (25 per page), the schedules, the tombstones, the viewer's rights and the retention. | ={ reports, schedules, tombstones, canCreate, canSchedule, retentionDays, signingKeyId, next? }= |
+| =createEvidenceReport= | ={ from, to, fieldIds?, actorAccountIds? }= | Browse projects plus Tier 1 or Tier 2 (Q2). =from= < =to=, dates at 00:00 UTC, range at most 366 days, =to= at most tomorrow; at most 10 field ids, each in the field list; at most 10 account ids. At most one running and 3 queued jobs per project, 10 running on the site (=JOB_LIMIT=). Issue ids by JQL *as the user*: =project = {id} AND updated >= "{from}" AND created < "{to}"=, =fields=id=, paged to the end; more than 10,000 gives =TOO_MANY_ISSUES= and nothing is stored. Writes the job and its ids, then pushes the first event. | ={ reportId, state: 'QUEUED' }= |
+| =getEvidenceReport= | ={ reportId }= | Browse projects; the report belongs to the context project. | ={ job, manifest? }= |
+| =generateReportDownloadUrls= | ={ keys }= (the =functionKey= of =useObjectStore=) | Browse projects. Each key belongs to a DONE report of the context project. Visibility: the report's issue ids are checked *as the user* (=id in (...)=, 500 ids per call, =fields=id=); any id that exists but is not returned gives =NOT_ALL_VISIBLE= with the count. Then, as the app, the ids not returned are checked for existence; ids that no longer exist (deleted) are allowed only to a Tier 1 user. A people key builds the people file first. | pre-signed URLs, valid 1 hour |
+| =saveReportSchedule= | ={ scheduleId?, cadence, fieldIds?, actorAccountIds? }= | Tier 1 only (Administer projects or Administer Jira). At most 5 per project. | ={ schedules }= |
+| =deleteReportSchedule= | ={ scheduleId }= | Tier 1 only. | ={ schedules }= |
+| =deleteEvidenceReport= | ={ reportId, reason }= | Administer Jira only; reason 15 to 500 characters. Writes the tombstone first, then deletes the objects and the job (Q8). | ={ tombstone }= |
+
+Admin resolver (=admin-resolver=, Administer Jira, as ADR-013): =getReportSettings= and
+=setReportSettings= ={ retentionDays, reportGroupIds }=: =retentionDays= is one of 90, 180, 400, 730,
+1095, 1825, 2555; groups as the approver groups (=/rest/api/3/group/bulk= as the user). A shorter
+retention applies to existing reports from the next daily run, and the page says so before saving.
+
+Licence: =createEvidenceReport= and the schedule resolvers return =LICENSE_INACTIVE= when
+=context.license.isActive === false=; listing and download stay available (Q9), so a lapsed licence
+does not lock a customer's evidence (the same reason as LedgerSeal D-8).
+
+** 7.3 Queue consumer (=report-worker=, 900 s, as the app)
+Event body ={ reportId, step }=. Each event works until 780 s from its start, saves the cursor in the
+job and pushes the next event. A 429 waits =Retry-After= (at most 30 s) inside the budget. A step
+that fails three times sets the job FAILED with the code; the parts are deleted.
+
+| Step | Work (as the app, only for the job's issue ids) |
+|------+--------------------------------------------------|
+| =FACTS= | Batches of 100 ids: =POST /rest/api/3/search/jql= with =jql: id in (...)=, the fields of spec v3 and =properties=ledgerseal-cert,definitionguard-dod,fourrealities-exception,checklist=; remote links 8 at a time (no NEEDS_RECHECK from time: the job continues in the next event); exception events and notes only for issues with a =fourrealities-exception= property or a note key; gates by =DefaultGateEngine= |
+| =CHANGES= | =POST /rest/api/3/changelog/bulkfetch= with up to 1,000 ids, =fieldIds= when filtered (at most 10), =maxResults= 10,000, following =nextPageToken=; entries outside the range are dropped; account ids are turned into tokens |
+| =PARTS= | =DefaultReportEngine.reportIssue= per issue; in-scope rule; the batch is written to =fr:rj:{id}:part:{i}= |
+| =ASSEMBLE= | Reads the parts in order; builds JSON and CSV; checks the 50 MB caps; computes hashes; reads the head for =previous=; signs the manifest; puts the three objects; in one transaction: job DONE, index entry, head; then deletes the parts and ids |
+
+A report is complete or it is not stored: a failed job stores no file. The job record keeps the
+failure code and the counts for the UI.
+
+** 7.4 Daily trigger (=report-daily=, as the app)
+1. Licence active: for each project with schedules, the periods that ended and have no report
+   become jobs (=trigger: scheduled=; issue ids by the same JQL *as the app*; this is the same
+   deliberate rule as the daily snapshot, spec v3 D-4: built as the app, gated per viewer at read
+   time, here at download).
+2. Reports past =expiresAt=: objects deleted, index entry set EXPIRED (the entry stays until the
+   index is full, so the chain gap is explained).
+3. Temporary people files older than 24 hours deleted.
+4. Jobs RUNNING with no progress for 2 hours set FAILED (=STALLED=).
+Runs within a 540 s budget; the rest waits for the next day.
+
+** 7.5 Weekly personal data run (ADR-014, extended)
+Adds every account id in =fr:party:*= (with =updatedAt=) to the report sent by
+=privacy.reportPersonalData=. For each account reported closed: =fr:party:{token}= becomes
+={ closed: true, closedAt }=. Signed files keep the token and never change. Temporary people files
+are at most 24 hours old and are not rewritten.
+
+** 7.6 Job states
+
+| From | To | When |
+|------+----+------|
+| (none) | QUEUED | =createEvidenceReport= or the daily run |
+| QUEUED | RUNNING | first event starts |
+| RUNNING | DONE | assembly committed |
+| QUEUED, RUNNING | FAILED | a cap, three failures of a step, or stalled |
+| DONE | EXPIRED | retention |
+| DONE | DELETED | a Jira administrator deletes it (tombstone first) |
+
+* 8. UI
+
+All in UI Kit with the brand layout (=src/brand/=) and the accessibility rules of spec v3.
+
+** 8.1 Project page: tab "Evidence reports"
+The project page gets two tabs, "Dashboard" (today's page, unchanged) and "Evidence reports".
+- =PageHeader= "Evidence reports", the retention ("Reports are kept for 400 days") and the signing
+  key id ("Signed with fr-prod-2026-11"), or a warning when unsigned.
+- =TableCard= list, newest first: Period ("1 Oct 2026 to 31 Oct 2026"), Filters ("All fields" or
+  "Status, Resolution; 2 people"), Requested ("Scheduled" or "by you" or a user name read as the
+  viewer), State (=Lozenge=: Queued, Running "312 of 412 issues", Ready, Failed with the reason,
+  Expired, Deleted), Size, SHA-256 (first 12 characters, full value in the tooltip), Action
+  ("Download" opens a modal with four =FileCard= rows: report JSON, report CSV, manifest, people
+  file).
+- "New evidence report" (primary, shown enabled only when =canCreate=): modal with From and To
+  (=DatePicker=), Fields (=Select= multi, at most 10, empty means all fields), People (=UserPicker=
+  multi, at most 10), and the note "The report holds every change in the range that you can see. It
+  is kept until 9 Dec 2027. Free-text fields show that they changed, not the text."
+- "Schedules" section (Tier 1): weekly (Monday to Sunday, UTC) or monthly (calendar month, UTC),
+  with the same filters; "The report for a period is made the day after the period ends and stored
+  here. It is not sent anywhere."
+- "How to check a report": the verifier command and a link to the signing keys page.
+- Download refused: =SectionMessage= "You cannot see 3 of the 412 issues in this report, so you
+  cannot download it. Ask a project administrator, or make a new report: it will hold only the
+  issues you can see."
+
+** 8.2 Admin page "FourRealities gate authority": section "Evidence reports"
+Retention (=Select= of the allowed values), the report groups (shared =AdminPolicyPanel=), and the
+signing key id. The text: "Reports are FourRealities records. Jira's own history and audit log keep
+their own retention."
+
+** 8.3 Words not used
+"Audit log" for the report (it is not one), "tamper-proof", "tamper-evident" (spec v3 hard rule),
+"compliant". The report "is signed by FourRealities; a changed file fails the check".
+
+* 9. Limits for large projects
+
+| Limit | Value | Why |
+|-------+-------+-----|
+| Issues per report | 10,000 (=TOO_MANY_ISSUES= before anything is stored) | 10 bulk changelog calls of 1,000 ids; download visibility check of 20 calls of 500 ids fits the 25 s resolver limit (spike S-3 measures) |
+| Range | at most 366 days | a SOC 2 Type II period is usually 6 to 12 months |
+| Changes per report | 250,000 | assembly memory |
+| File size | 50 MB per file (=REPORT_TOO_LARGE=, no file stored) | assembly in 1,024 MB; download time; storage cost |
+| Field and people filters | 10 each | bulk changelog =fieldIds= =maxItems= 10 |
+| Jobs | 1 running and 3 queued per project; 10 running per site | KVS (4,000 reads and writes per minute per installation) and Jira rate limits |
+| Event budget | 780 s of the 900 s consumer limit | margin for the cursor save and the next push |
+| Part size | 200,000 bytes per KVS value | under the 240 KiB value limit, as snapshot chunks |
+| Reports per project | 200 kept in the index (Q6) | index value under 64 KiB; storage cost |
+| Schedules | 5 per project | daily run budget |
+| Jira reads | 100 issues per search page; 8 remote-link reads at a time; 429 handled with =Retry-After= | as spec v3; inside 100,000 requests per minute per app per tenant |
+
+Rough cost for 10,000 issues (estimate before spike S-3): 100 searches, 10,000 remote-link reads
+(about 4 minutes at 8 at a time), about 30 bulk changelog pages, 50 KVS part writes, 3 object writes:
+one to three consumer events, under 15 minutes in all.
+
+* 10. Effort
+
+Days of one engineer, including tests to the 90 % per-file coverage of =apps/fourrealities=, FSRT and
+Semgrep passing, and a live check on the development site. "Essential" closes N3 to N7 of ADR-015;
+"additional" can follow.
+
+| # | Item | Essential | Days |
+|---+------+-----------+------|
+| 1 | Spikes S-1 to S-4 (section 12) | yes | 2.0 |
+| 2 | Contracts and data types; job states | yes | 1.0 |
+| 3 | =DefaultReportEngine=: scope, field classes, JSON, CSV with the cell rule, canonical JSON, manifest body | yes | 2.5 |
+| 4 | =DefaultReportPolicyEngine=: validation, rights, steps, due periods, retention | yes | 1.5 |
+| 5 | Accessors: changelog bulk fetch, searches, visibility and existence, job KVS, Object Store, queue, crypto (hash, HMAC, Ed25519), party tokens | yes | 3.5 |
+| 6 | Manager, resolvers, consumer steps, daily trigger, licence rules | yes | 3.0 |
+| 7 | Personal data: tokens, people file, weekly report and erasure | yes | 1.5 |
+| 8 | UI: tab, list, new report modal, download modal, schedules, admin section | yes | 3.0 |
+| 9 | Signing keys (development and production), key rotation note, signing keys page | yes | 0.5 |
+| 10 | Verifier command, test vectors, release notes of =jira-governance-code-cli= | yes | 1.5 |
+| 11 | FSRT authorization tests for every new resolver key; architecture test rules; Semgrep run | yes | 1.0 |
+| 12 | Live check on the development site with a synthetic project of 10,000 issues; size and time measurements into this HLD | yes | 1.0 |
+| 13 | Spec v4 final, user guide page, listing copy (after approval), privacy policy row | yes | 1.0 |
+| | *Essential total* | | *23.0* |
+| 14 | Fallback store and Custom UI download page, only if S-1 fails | no | +4.0 |
+| 15 | People file as a signed snapshot option, if an auditor asks | no | +1.0 |
+| 16 | Per-project retention | no | +1.0 |
+
+Recommended execution: one build branch per ADR-015 approval; spikes first and reported to the owner
+before item 2; the rest in the order of the table.
+
+* 11. Open questions for the owner
+
+| # | Question | Options | Trade-offs | Recommendation |
+|---+----------+---------+------------+----------------|
+| Q1 | Build Option C of ADR-015? | A no change; B synchronous export; C stored signed reports; D mirror all history; E add the Jira audit log | C closes N3 to N7 in about 23 days; B is 8 days but small projects only and no record after deletion; D and E break ADR-001 or need =manage:jira-configuration= | C |
+| Q2 | Who may create a report? | (a) Tier 1 plus report groups; (b) anyone with Browse projects | (a) is the standard's model and limits bulk extraction of who-did-what; (b) matches Jira (anyone with Browse sees each History tab) but lets any user pull a site-wide personal data file | (a); download needs Browse and full visibility either way |
+| Q3 | Retention default and range | 400 days default, 90 days to 7 years; or another default | 400 days covers a 12-month audit period plus the report-writing months; 7 years matches common record-keeping rules; longer means more storage cost | 400 days, 90 days to 7 years |
+| Q4 | Free-text fields in a report | (a) "changed" with lengths; (b) text cut to 500 characters | (a) keeps confidential text and names in descriptions out of a signed file that cannot be erased; (b) is more complete but the text is personal data we cannot redact without breaking the signature | (a) |
+| Q5 | Use Object Store (Preview)? | Object Store; KVS parts and Custom UI | Object Store: built for files, data residency enabled, 1 GB objects, UI Kit download; Preview can have "shorter deprecation windows" and needs a major version upgrade. Fallback: about 4 more days and Custom UI dependencies | Object Store, after spike S-1 |
+| Q6 | Storage caps | 200 reports per project and 50 MB per file; or other | Forge storage is billed by use since 2026-01-01, paid by us; caps bound the cost per customer | 200 and 50 MB; review after the first production month |
+| Q7 | Listing words after approval | "evidence reports for change-management audits" | Must not suggest a general Jira audit log (gap research section 4, rank 5) | as stated; and "Jira's audit log and Atlassian Guard keep the administrative audit log" in the boundary text |
+| Q8 | May a Jira administrator delete a report before expiry? | (a) yes, with a reason and a tombstone; (b) never | (a) handles a report made with a wrong filter or holding data that must go; the chain and the tombstone show it; (b) is stricter but leaves no remedy | (a) |
+| Q9 | Download when the licence is inactive? | (a) list and download stay available, creation stops; (b) everything stops (spec v3 rule) | (a) does not lock a customer out of its own evidence (LedgerSeal D-8 reasoning); (b) is uniform with the other resolvers | (a) |
+
+* 12. Spikes (before any build item)
+
+| # | Question | Pass condition |
+|---+----------+----------------|
+| S-1 | Can a UI Kit page download an Object Store object with =useObjectStore= and =FileCard=, with a file name we choose; which scope or module it needs; does =forge eligibility= still report Runs on Atlassian? | A file saved in Chrome and Firefox on the development site with the chosen name; no =permissions.external=; eligibility unchanged |
+| S-2 | Does =POST /rest/api/3/changelog/bulkfetch= work from Forge as the app with =read:jira-work=, and what are the response sizes? (The OpenAPI marks it "INACCESSIBLE" for Connect.) | 1,000 ids answered; size per 10,000 entries measured |
+| S-3 | Time and memory of a 10,000-issue job and of the download visibility check | job under 15 minutes; check under 20 s; assembly under 800 MB |
+| S-4 | Does =api.asUser()= work in a queue consumer whose event was pushed from a resolver? (A community thread says no.) | If yes, the on-demand job can read as the user throughout, and the design is simplified; if no, the design stands as written |
+
+* 13. Security and quality gates
+
+- FSRT: the new resolvers are FSRT entry points (=jira:projectPage= resolver). Each makes its
+  =/mypermissions= call as the user, directly, before any call as the app (7.1). The consumer and the
+  daily trigger are not FSRT entry points (FSRT report, section 3.1); their reads are limited to the
+  job's stored ids.
+- Semgrep (=.github/workflows/sast.yml=): no dynamic code; the report id is checked as a UUID and the
+  project key against the context before any key or object name is built; no log line holds report
+  content, a token, an account id or a name; CSV cells follow the cell rule of 3.4.
+- Signing key: never logged or committed; rotation per =docs/security/signing-key-rotation.md=.
+- Tests: engine tests with plain inputs; accessor tests against the real =route= tag; the FSRT
+  authorization test of 7.1; a contract test that the verifier accepts a report made by the real
+  engine and signer with a generated key, and rejects one changed byte in each file.

@@ -1,0 +1,283 @@
+#+TITLE: ADR-015: FourRealities Evidence Reports for Change-Management Audits
+#+DATE: 2026-11-08
+#+STATUS: Proposed
+
+* Status
+Proposed, 2026-11-08. Not approved. No code is written until the owner approves this ADR, the
+specification delta (=docs/spec/fourrealities-spec-v4-draft.md=) and the high-level design
+(=architecture/model/fourrealities-evidence-report-hld.org=). The open questions for the owner are
+in section "Open questions" below and in the HLD, section 11.
+
+* Context
+
+** Why now
+The gap research (=docs/launch/research/dc-migration-gap-2026-11.md=, section 2 and section 4 rank
+5) lists "Auditor for Jira" by Enhancera as a Data Center and Server app with no cloud version
+(148 installs, migration path UNKNOWN). It names FourRealities as our cover and states the limit:
+"Not a general Jira audit log". This ADR decides what FourRealities adds, and what it does not, so
+that a regulated team that leaves Data Center can answer its change-management auditor in Jira Cloud.
+
+** What Auditor for Jira does (checked 2026-11-08)
+Sources: Marketplace REST API =https://marketplace.atlassian.com/rest/2/addons/com.plugenta.jiraauditor=
+and =.../versions/latest?hosting=datacenter= (read 2026-11-08; =hosting=cloud= returns 404), and the
+vendor's tour page =https://enhancera.com/jira/auditor/tour.html= (read 2026-11-08). Raw copies:
+=~/Documents/projects/jira-governance/.tmp/cache/fr-audit-design/raw/= (not in git).
+
+| Fact | Vendor wording or API value |
+|------+-----------------------------|
+| Purpose | "Comprehensive Audit Log plugin for Jira. Unlike built-in audit log, tracks ALL administrative events and allows admins to view this audit trail and make decisions accordingly." |
+| Tagline | "Track ALL your admin activity, not just what built-in log supports" |
+| Installs, downloads | 148 installs, 19,541 downloads (API =distribution=) |
+| Hosting | Data Center only in the latest version 3.6.11 (2026-09-03), Jira 11.0.0 to 11.3.13 |
+| Highlights | "Comprehensive audit log", "Event filters", "High configurability" |
+| Coverage | A table of about 120 administrative areas (schemes, workflows, custom fields, plugins, mail servers, user directories, and so on); "Built-in audit log only covers about 55%" |
+| Record fields | "Event ID, Time of the event, Admin user name, IP address, Event type, Event parameters" |
+| Filters | "by event type, time frame, user or IP address" |
+| Settings | "how many days to keep events in the log"; access for "all administrators or only system admins" |
+| Personal data | API =storesPersonalData: false= |
+
+So Auditor for Jira is an *administrative configuration* audit log for Jira Data Center. It is not a
+per-issue change history, and it does not collect delivery evidence. Its comparison is against the
+*Data Center* built-in audit log.
+
+** What Jira Cloud and Atlassian Guard give natively (checked 2026-11-08)
+
+| Need | Native answer in cloud | Source |
+|------+------------------------+--------|
+| Who changed which field on an issue, and when | The issue changelog (History tab). REST =GET /rest/api/3/issue/{id}/changelog= and =POST /rest/api/3/changelog/bulkfetch= (up to 1,000 issues and 10 field ids per request, page up to 10,000 items), scope =read:jira-work=, Browse projects and issue security apply. No retention limit is documented. | Jira Cloud OpenAPI v3 (=swagger-v3.v3.json=, read 2026-11-08) |
+| What happens to that history when an issue is deleted | It is removed. The Jira audit log records the deletion: "Work item delete: Tracked by work item number". There is no restore. | "Audit activities in Jira", https://support.atlassian.com/jira-cloud-administration/docs/audit-activities-in-jira-applications/ (read 2026-11-08); Atlassian suggestion JRASERVER-12630 ("Won't Do") |
+| Jira configuration changes (permissions, workflows, screens, custom fields, sprints, work types, field schemes) | The Jira audit log, for users with Administer Jira. "The audit log is intended to record configuration changes that can impact users and spaces." Retention is a setting ("Select your retention period e.g. 6 months"). Export: "up to 100,000 events as a CSV file". "You can't sort the audit log." "The audit log isn't available if all of your Jira Cloud apps are on the Free plan." | Same page |
+| Jira audit log by API | =GET /rest/api/3/auditing/record= with =from=, =to=, =filter=; Administer Jira; scope =manage:jira-configuration= | Jira Cloud OpenAPI v3 |
+| Organization audit log (admin and user activity across products) | Jira admin and user logs need Atlassian Guard Premium or Cloud Enterprise (Guard Standard with Cloud Premium gives the Jira admin log only). The Jira user log includes "Created Jira issue", "Edited Jira issue", "Viewed Jira issue", "Deleted Jira issue", and permission and security scheme changes. | "What activities does the audit log include?", https://support.atlassian.com/security-and-access-policies/docs/accessing-audit-log-activities/ and "Audit log activities database", .../audit-log-activities-database/ (read 2026-11-08) |
+| Organization audit log retention | With Atlassian Guard: "On October 1, 2026, audit log activity is available to you for 365 days." Without: "Audit log activity is available to you for 180 days." Upgrading "doesn't recover events from before you upgraded". | Same page; "View audit log activities" (read 2026-11-08). Older community posts still say 180 days for all plans; the live page is the source used here. |
+| Organization audit log export | CSV "up to 10,000 activities", the filtered set only, link valid one day; also the organizations REST API and webhooks. | "Export audit logs", https://support.atlassian.com/security-and-access-policies/docs/export-audit-logs/ (read 2026-11-08) |
+
+** What change-management auditors ask
+- *SOC 2, CC8.1* (AICPA 2017 Trust Services Criteria, revised points of focus 2022): "The entity
+  authorizes, designs, develops or acquires, configures, documents, tests, approves, and implements
+  changes to infrastructure, data, software, and procedures to meet its objectives." Points of focus
+  include processes to authorize, document, track, test, approve and deploy changes, and to provide
+  changes in emergency situations. Source: the criterion and point-of-focus wording as quoted by
+  KirkpatrickPrice, https://kirkpatrickprice.com/tag/soc-2-academy/page/4/ (read 2026-11-08). The
+  AICPA PDF itself needs a login, so it was not read. A Type II report covers a period, usually 6 to
+  12 months, and the auditor samples changes from that period.
+- *ISO/IEC 27001:2022, A.8.32 Change management*: changes to information processing facilities and
+  information systems are subject to change management procedures. Guidance (secondary source,
+  UpGuard, https://www.upguard.com/compliance/iso-27001/8-32.md, read 2026-11-08): log "the request,
+  risk assessment, approval, testing results, deployment timestamp, and post-implementation
+  status"; emergency changes "still require retrospective documentation".
+- *ISO/IEC 27001:2022, A.8.15 Logging*: logs of activities, exceptions, faults and other relevant
+  events are produced, stored, protected and analysed. Guidance (UpGuard,
+  https://www.upguard.com/compliance/iso-27001/8-15.md, read 2026-11-08): a user id, a UTC time and
+  an event type per entry; protection "from tampering, unauthorized access, and deletion";
+  retention set by legal and forensic needs, with both a minimum and a maximum.
+- The ISO texts are paid documents and were not read. The wording above is a paraphrase from the
+  secondary sources named, not the normative text.
+
+What these mean for a Jira team: for a sample of changes (issues) in the audit period, show who asked
+for it, the intent, the approval, the test or Definition of Done, the code, the deployment, and who
+changed what and when, in a form that the auditor can keep and that shows it was not edited later.
+
+** Constraints
+- Runs on Atlassian; the manifest declares no external egress (spec v3, invariant 8).
+- Read as the user, with a Browse projects check as the user, before any read as the app
+  (Uniform Permission Management Standard, invariant 1; spec v3, invariant 7).
+- FSRT and Semgrep CI gates (=.github/workflows/fsrt.yml=, =.github/workflows/sast.yml=); every
+  =/mypermissions= call is a direct =await api.asUser().requestJira(route`...`)= (FSRT report,
+  =docs/security/fsrt-scan-2026-11-07.md=, section 4.4).
+- Personal data: store account ids only where a rule needs them, report them weekly, erase closed
+  accounts (ADR-014).
+- Layering (ADR-002): Engines pure; Accessors the only I/O; Managers orchestrate; one composition
+  point.
+- ADR-001: "Jira owns the work data ... FourRealities reads them and never copies them as its own
+  facts."
+- Forge limits (checked 2026-11-08): UI invocation 25 s; scheduled trigger and async event consumer
+  up to 900 s; memory up to 1,024 MB; resolver response 5 MB; KVS value 240 KiB, 25 operations per
+  transaction; Object Store (Preview) objects up to 1 GB, pre-signed URL valid 1 hour, data residency
+  enabled and meets the Runs on Atlassian storage criterion; Forge SQL 1 GiB per production install.
+  Sources: =https://developer.atlassian.com/platform/forge/limits-invocation/= (updated 2026-09-01),
+  =.../limits-kvs-ce/= and =.../limits-object-store/= (updated 2026-09-28), =.../limits-sql/=
+  (updated 2025-12-01), =.../storage-reference/object-store/= (updated 2026-09-28),
+  =.../runs-on-atlassian/= (updated 2026-08-24).
+
+* Decision
+
+** 1. Which needs are real gaps for a Jira Cloud migrator
+
+| # | Need | Native cloud answer | Gap? |
+|---+------+---------------------+------|
+| N1 | Admin configuration audit log (Auditor for Jira's purpose) | Jira audit log (config changes, retention setting, CSV export); Guard for organization events | *Mostly closed natively.* What stays open is Atlassian's to close (event coverage, Free plan). Not an app gap we can close. |
+| N2 | Who changed which field on an issue | Issue changelog, kept with no documented limit | *Closed* per issue. |
+| N3 | One exportable record, for a project and an audit period, of the changes and their evidence (intent, Definition of Done, pull request, approval, exceptions), with who changed what | None. The History tab is per issue; the audit logs hold no per-issue field changes (the Guard Premium user log holds "Edited Jira issue" events, not field values, and keeps 365 days) | *Real gap.* |
+| N4 | The auditor can show that the exported record was not edited after export | None for issue history | *Real gap.* |
+| N5 | The record outlives the issue (deletion removes the changelog) and the 180-day or 365-day log windows | Only the deletion event in the Jira audit log | *Real gap*, for the exported record only. |
+| N6 | Filters by user and by field | Per-issue History tab has none; JQL =CHANGED BY= finds issues, not the changes | *Real gap*, inside N3. |
+| N7 | A record for each period without someone remembering to export it | None for issue history | *Real gap*, inside N3. |
+| N8 | Tamper-evident history of the approved content itself | Not native | *Owned by LedgerSeal* (hash-chained seal history, evidence export, open verifier). |
+| N9 | History of Definition of Done changes | Not native | *Owned by DefinitionGuard* (=headHash= chain). |
+| N10 | Who viewed an issue | Guard Premium or Cloud Enterprise user log ("Viewed Jira issue") | *Closed natively* for those plans; an app cannot see views. |
+| N11 | IP address per event | Organization audit log | *Closed natively*; Forge apps get no IP address. |
+
+** 2. What FourRealities owns
+FourRealities adds *evidence reports*: for one project and one date range, a report of the issues
+in scope, each with its four gate observations, the references to the DefinitionGuard and LedgerSeal
+records it verified, its own Code exception events and rework notes, and the Jira changelog entries
+in the range (who changed which field, when, from what to what), filtered by user and field when
+asked. This fits the product's purpose, "delivery evidence per issue", one level up: a project and a
+period.
+
+1. *Formats.* Each report is one JSON file (the full record) and one CSV file (one row per change,
+   for spreadsheets), plus a signed manifest that holds the SHA-256 of both files.
+2. *Signed.* FourRealities signs the manifest with Ed25519 under its own key (=fr-prod-2026-11=
+   in production), the scheme LedgerSeal already uses (spec v3, section 8). The open verifier
+   (=jira-governance-code-cli=) gains a command that checks the signature and both file hashes
+   offline. A report also holds the hash of the project's previous report, so a removed report
+   shows as a break in the chain.
+3. *Stored in the app, not sent.* Reports are kept in Forge Object Store and listed on the project
+   page. A user downloads a file through the UI. Nothing is sent out (no egress, no e-mail, no
+   webhook).
+4. *Scheduled reports.* A project administrator may set a weekly or monthly schedule. The daily
+   trigger builds the report for the period that ended and stores it for download. "Scheduled"
+   means stored in the app, never sent.
+5. *Retention.* A Jira administrator sets how long reports are kept: default 400 days, at least 90
+   days, at most 7 years. This retention applies to FourRealities reports only. FourRealities does
+   not mirror Jira's history and does not extend Jira's own retention.
+6. *Reads.* The issue set of an on-demand report comes from a JQL search *as the requesting user*,
+   after a Browse projects check as that user. The long read of changelogs then runs as the app,
+   only for those issue ids, in a queued job. A scheduled report reads as the app, and its download
+   is allowed only to a user who can browse every issue in it (checked as the user at download time).
+   No user ever receives an issue they cannot browse.
+7. *Personal data.* A report holds no names and no raw account ids: it holds per-site keyed party
+   tokens, as LedgerSeal does (ADR-011). At download, FourRealities builds an unsigned
+   "people" file that maps tokens to account ids and display names, read as the downloading user.
+   On account closure the token map entry is removed, so the signed files never change. The weekly
+   personal data report (ADR-014) adds the accounts in the token map.
+8. *Who may create a report.* Tier 1 of the permission standard (Administer projects in the
+   project, or Administer Jira) or a member of an "evidence report" group set on the admin page
+   (Tier 2), plus Browse projects. (Open question Q2.)
+
+** 3. What belongs to LedgerSeal or DefinitionGuard
+- The hash-chained history of sealed content, its incidents, reseals and revokes, and the per-issue
+  evidence export with the open verifier, stay in LedgerSeal. FourRealities cannot read
+  LedgerSeal's app storage (each Forge app has its own) and must not copy its facts. A report
+  references the seal by =certificateId=, =snapshotHash=, =status=, =sealedAt=, =keyId= and the
+  verification result, so the auditor can fetch the LedgerSeal evidence for a sampled issue and
+  check it with the same verifier.
+- The Definition of Done history stays in DefinitionGuard; the report references =headHash=,
+  =stateVersion=, =issuedAt= and the verification result.
+- A project-level bulk LedgerSeal evidence export is a LedgerSeal backlog item, not part of this
+  ADR.
+
+** 4. Out of scope
+See "Considered and excluded" below.
+
+* Options
+
+** Option A: No change; point to native features and LedgerSeal
+- For: no work; no new storage, no new personal data.
+- Against: N3 to N7 stay open. The migrating team still opens issues one by one for the auditor's
+  sample, which is the problem our listing names.
+
+** Option B: Synchronous export in the dashboard (CSV and JSON shown or copied, not stored)
+- For: small; reads as the user only; nothing stored.
+- Against: a resolver call has 25 s and a 5 MB response, so it fits small projects only. No record
+  outlives the issue (N5), no schedule (N7), and no signature the auditor can check later unless the
+  file is also signed (N4).
+
+** Option C: Stored, signed evidence reports built by a queued job (chosen, recommended)
+- For: closes N3 to N7; bounded by design (see the HLD, section 9); reuses the signing scheme, the
+  verifier and the party token pattern of LedgerSeal; stays inside FourRealities' purpose.
+- Against: new storage (Object Store, in Preview), a new signing key, a new queue consumer, more
+  personal data handling, and the most work of the options (HLD, section 10).
+
+** Option D: FourRealities mirrors every issue change in its own append-only log (product events)
+- For: keeps history after deletion for every issue, not only at report time; could be hash-chained.
+- Against: contradicts ADR-001 (FourRealities would copy Jira's facts as its own); storage and
+  personal data grow with every edit on the site; product events can arrive late and can be missed,
+  so the log is not complete; it duplicates LedgerSeal's role for the content that matters.
+
+** Option E: Read the Jira audit log and add configuration events to the report
+- For: one file with configuration and issue changes, closest to Auditor for Jira.
+- Against: needs =manage:jira-configuration=, a scope that also allows changing Jira configuration;
+  the data is already exportable natively by the same administrators; a high-risk scope for an
+  evidence app.
+
+| Option | N3 | N4 | N5 | N6 | N7 | New scope | New storage | Effort (HLD 10) |
+|--------+----+----+----+----+----+-----------+-------------+-----------------|
+| A | no | no | no | no | no | none | none | 0 |
+| B | small projects | if signed | no | yes | no | none | none | about 8 days |
+| C | yes | yes | yes, the report | yes | yes | none expected (spike S-1) | Object Store, KVS | about 23 days |
+| D | yes | yes | yes, all issues | yes | yes | none | large, growing | above 30 days |
+| E | yes, plus config | as C | as C | as C | as C | =manage:jira-configuration= | as C | C plus 3 days |
+
+* Considered and excluded
+
+| Capability | Why excluded | Where the need is met |
+|------------+--------------+-----------------------|
+| Administrative configuration audit log (the core of Auditor for Jira) | Forge apps get no event for most configuration changes; reading the Jira audit log needs =manage:jira-configuration= (Option E). | Jira audit log; organization audit log with Atlassian Guard |
+| Issue view logging | Apps cannot see views. | Guard Premium or Cloud Enterprise user log ("Viewed Jira issue") |
+| IP address per event | Forge gives apps no client IP. | Organization audit log |
+| Mirroring all issue history for retention (Option D) | ADR-001; unbounded storage and personal data; incomplete by nature. | Jira keeps issue history; reports freeze what an audit needs |
+| Restore of deleted issues | Not an evidence function; needs a full copy of issue content. | Backup apps; Jira admin process |
+| Sending reports out: e-mail, webhooks, SIEM, S3, SFTP | No egress (Runs on Atlassian). | The user downloads the file |
+| PDF reports | Needs a new dependency; a PDF cannot be rechecked by the verifier (LedgerSeal D-7). | JSON and CSV with a signed manifest |
+| Copy of LedgerSeal or DefinitionGuard histories inside the report | Not readable across apps; one writer per fact (spec v3, invariant 1). | References by id and hash; LedgerSeal evidence export |
+| Field values of free-text fields (Summary, Description, Environment, text area custom fields) | They can hold any personal or confidential data and can be large. The report records that the field changed, with the lengths, not the text (open question Q4). | The issue's History tab, as the user |
+| Comment and attachment content | Same reason; not change-management evidence. | Jira |
+| Electronic signature of an approval, 21 CFR Part 11 | Not this app (LedgerSeal listing, "Honest Compliance Boundary"). | A dedicated signing control |
+| Confluence audit (Auditor for Confluence) | Jira only. | Confluence and Guard audit logs |
+| Per-project retention settings | No customer asked; one site setting is simpler (ADR-013 deferred per-project settings for the same reason). | Site setting |
+| Rewriting Jira history or locking issues | FourRealities never writes evidence other apps or Jira own. | LedgerSeal with =jira.issue.editable= (LedgerSeal spec v3, section 1) |
+
+* Consequences
+
+** Positive
+- A migrating team can hand its auditor one signed file pair per project and period, with the gate
+  evidence and the change history together, and the auditor can check it offline.
+- The listing can name a concrete answer to "audit trail" without claiming to be a general Jira
+  audit log.
+- The record of the period stays after an issue is deleted, and the chain shows a deleted report.
+
+** Negative
+- New storage (Object Store, in Preview: "may be subject to shorter deprecation windows"); adding the
+  =objectStore= module "triggers a major version upgrade", so each site administrator must accept
+  the update.
+- A new signing key to hold, rotate and publish (=docs/security/signing-key-rotation.md=).
+- Reports hold change data from Jira (who changed what), so storage and personal data grow with use,
+  bounded by the retention setting and the size limits.
+- Forge storage is billed by use since 2026-01-01; the vendor pays for stored reports (Q6).
+- FourRealities can only report what Jira's changelog holds: an issue deleted *before* a report was
+  built is not in it. The report lists issues of the previous report that can no longer be read.
+
+** Mitigations
+- Spike S-1 proves the Object Store download from UI Kit before any other work; if it fails, the
+  fallback (KVS chunks and a Custom UI download page) is costed in the HLD, section 10.
+- The size limits and the issue cap stop a single report from exhausting time, memory or storage.
+- Party tokens keep account ids out of the signed files, so erasure never breaks a signature.
+
+* Open questions for the owner
+Each has a recommendation; the HLD, section 11, gives the trade-offs.
+- Q1. Approve Option C? (Recommended: yes.)
+- Q2. Who may create reports: Tier 1 plus an "evidence report" group (recommended), or anyone with
+  Browse projects?
+- Q3. Default retention 400 days, range 90 days to 7 years? (Recommended: yes.)
+- Q4. Free-text fields: record "changed" with lengths only (recommended), or include the text cut to
+  500 characters?
+- Q5. Accept Object Store (Preview) as the store, given the spike? (Recommended: yes, with the
+  fallback costed.)
+- Q6. Storage cost: cap stored reports per project (recommended: 200) and per file (50 MB)?
+- Q7. Listing wording after approval: "evidence reports for change-management audits", never "audit
+  log".
+- Q8. May a Jira administrator delete a report before expiry, with a reason and a tombstone?
+  (Recommended: yes.)
+- Q9. Keep listing and download available when the licence is inactive, and stop only creation and
+  schedules? (Recommended: yes.)
+
+* References
+- =docs/launch/research/dc-migration-gap-2026-11.md= (sections 2 and 4)
+- =docs/spec/fourrealities-spec-v3.md=; delta =docs/spec/fourrealities-spec-v4-draft.md=
+- =architecture/model/fourrealities-evidence-report-hld.org=
+- [[file:adr-00001-fourrealities-evidence-data-model.org][ADR-001]], [[file:adr-00002-fourrealities-volatility-layering.org][ADR-002]], [[file:adr-00011-ledgerseal-personal-data.org][ADR-011]], [[file:adr-00012-fourrealities-sibling-evidence-verification.org][ADR-012]], [[file:adr-00013-fourrealities-evidence-sources-in-use.org][ADR-013]], [[file:adr-00014-fourrealities-personal-data.org][ADR-014]]
+- =docs/spec/ledgerseal-spec-v3.md= sections 8 and 11 (signature scheme, evidence export, verifier)
+- =docs/design/uniform-permission-management-standard.md=; =docs/security/fsrt-scan-2026-11-07.md=
+- External sources with their read dates are in the Context section.
