@@ -1,12 +1,11 @@
-#+TITLE: ADR-016: LedgerSeal Multi-Step Approval Routes
+#+TITLE: ADR-017: LedgerSeal Multi-Step Approval Routes
 #+DATE: 2026-11-08
-#+STATUS: Proposed
+#+STATUS: Accepted
 
 * Status
-[PROPOSED: 2026-11-08, awaiting the owner's approval. Nothing is built.]
+[ACCEPTED: 2026-11-08 by the owner, option A, with the defaults in "Owner decisions" below.]
 
-Spec delta: =docs/spec/ledgerseal-spec-v4-draft.md= section 3; high-level design in its section
-3.6. Related: ADR-015 (signing credential), ADR-017 (signing on the transition screen).
+Spec: =docs/spec/ledgerseal-spec-v4.md= section 15 (with 18 for the open questions). Related: ADR-016 (signing credential), ADR-018 (signing on the transition screen).
 
 * Context
 Today one seal is one signature. Any approver (project admin, Jira admin or a member of the
@@ -61,7 +60,22 @@ each gate.
 ** D. Use Jira Service Management approvals
 - Against: JSM only; approval steps bypass validators; the approval is not bound to the content.
 
-* Decision (recommended)
+* Owner decisions (2026-11-08)
+The owner approved option A and told the developer to use the spec's recommended default for each
+open question that he did not answer himself:
+- *Q-06 (approval of changes after a routed seal):* the full route again, by default; a route may
+  name a shorter re-approval list of stages (decision 7).
+- *Q-07 (route edited while a run is open):* the run stays pinned to the route version of its first
+  signature (decision 3).
+- *Q-08 (who may edit routes):* Jira admins only.
+- *Q-09 (verifier version for format 2):* 1.4.0, because no existing result changes (decision 13).
+- *Q-11 (group names in the evidence):* included; group names are not personal data.
+- *Q-15 (new, FourRealities):* the one-line FourRealities change is part of this work: a
+  =ledgerseal-cert= property with no =status= reads as "not sealed", not as "shape unknown".
+- When Part 11 signing (ADR-016) is on for the project, each stage signature and each rejection
+  needs the emailed single-use code of ADR-016 decision 2.
+
+* Decision (accepted 2026-11-08)
 Adopt option A.
 
 1. *Route.* A route has 1 to 8 stages in 1 to 8 order groups. A stage has a name, a meaning
@@ -117,7 +131,7 @@ Adopt option A.
 14. *Migration.* Nothing is rewritten. Existing seals stay valid with no route. A route applies to
     the next signature on an issue after it is bound. An issue sealed before the binding stays
     sealed; its next approval of changes uses the route.
-15. *Part 11 mode.* When ADR-015's mode is on, every stage signature and every rejection needs the
+15. *Part 11 mode.* When ADR-016's mode is on, every stage signature and every rejection needs the
     signing credential.
 
 * Consequences

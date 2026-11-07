@@ -1,9 +1,9 @@
 # LedgerSeal: Technical Specification v4 (DRAFT, delta from v3)
 
 > **DRAFT, PENDING THE OWNER'S APPROVAL.** Nothing in this file is built or deployed. It states only what changes from `docs/spec/ledgerseal-spec-v3.md`; everything not named here stays as in v3. Each feature has its own ADR, status Proposed:
-> - ADR-015 `architecture/decision/adr-00015-ledgerseal-part11-signing-credential.org` (section 2)
-> - ADR-016 `architecture/decision/adr-00016-ledgerseal-approval-routes.org` (section 3)
-> - ADR-017 `architecture/decision/adr-00017-ledgerseal-sign-on-transition.org` (section 4)
+> - ADR-016 `architecture/decision/adr-00016-ledgerseal-part11-signing-credential.org` (section 2)
+> - ADR-017 `architecture/decision/adr-00017-ledgerseal-approval-routes.org` (section 3)
+> - ADR-018 `architecture/decision/adr-00018-ledgerseal-sign-on-transition.org` (section 4)
 >
 > When the owner approves, v3 is frozen and this delta is merged into a full `ledgerseal-spec-v4.md`.
 
@@ -32,7 +32,7 @@
 
 ---
 
-## 2. Feature 1: signing credential for 21 CFR 11.200 and 11.300 (ADR-015)
+## 2. Feature 1: signing credential for 21 CFR 11.200 and 11.300 (ADR-016)
 
 ### 2.1 Behaviour
 - A Jira admin turns on **Part 11 signing** on the admin page and names: the signing administrator groups (party role `LS_SIGNING_ADMIN`), the alert issue, the credential lifetime (default 365 days, 30 to 730) and the lockout threshold (default 5, fixed range 3 to 10).
@@ -164,7 +164,7 @@ A secret write cannot be shown to join a `kvs.transact()` (not documented, spike
 
 ---
 
-## 3. Feature 2: multi-step approval routes (ADR-016)
+## 3. Feature 2: multi-step approval routes (ADR-017)
 
 ### 3.1 Behaviour
 - A Jira admin defines routes on the admin page and binds each to a project and issue types.
@@ -276,7 +276,7 @@ None of the stored data changes. Existing seals have no `run` and are read as th
 
 ---
 
-## 4. Feature 3: signing while transitioning (ADR-017)
+## 4. Feature 3: signing while transitioning (ADR-018)
 
 ### 4.1 Behaviour
 - A Jira admin adds the "LedgerSeal signature" field to a transition screen and the Require Valid LedgerSeal validator to that transition.
@@ -326,7 +326,7 @@ The rules of 2.2.0, plus one exclusion: a field whose `schema.custom` is LedgerS
 ### 4.7 Platform spikes (before any build; on the development site, isolated project LSP)
 | Id | Question | Pass condition | If it fails |
 |---|---|---|---|
-| S-1 | Does a Forge custom field's UI Kit edit view render and call its resolver on the new transition dialog? (Docs list `issue-transition` but the limitations section names only view and create screens.) | Field renders, `invoke` works, `view.submit` sets the value | Build ADR-017 fallback only |
+| S-1 | Does a Forge custom field's UI Kit edit view render and call its resolver on the new transition dialog? (Docs list `issue-transition` but the limitations section names only view and create screens.) | Field renders, `invoke` works, `view.submit` sets the value | Build ADR-018 fallback only |
 | S-2 | Does the function validator payload carry the transitioning user and the Forge field in `modifiedFields`? (Spec v3 saw `user` live on 2026-11-06; docs do not list it.) | Both present on board drag and issue view transitions | Fallback only |
 | S-3 | Does Jira field history show only the intent id, never the typed code? | Only the submitted value appears | Redesign the edit view |
 | S-4 | Which entry points open the dialog with the field (issue view, board drag, list view, bulk change)? | Recorded per entry point | Documented as limits |
@@ -337,7 +337,7 @@ The rules of 2.2.0, plus one exclusion: a field whose `schema.custom` is LedgerS
 ---
 
 ## 5. New invariants (v3 section 2)
-14. **Credential at signing.** In Part 11 mode no signature, revoke or rejection row is written unless the signing ID and a fresh TOTP code were verified in the same invocation (or in the intent it consumes, ADR-017), and each code step is used once.
+14. **Credential at signing.** In Part 11 mode no signature, revoke or rejection row is written unless the signing ID and a fresh TOTP code were verified in the same invocation (or in the intent it consumes, ADR-018), and each code step is used once.
 15. **No secret leaves the app.** The seed, the code and the signing ID text are never logged, put in a hashed row, the property or the evidence.
 16. **One person, one stage.** No party signs two stages of one run.
 17. **Same content for every stage.** Every signature of a run signs the run's snapshot hash; a covered change voids the run.
@@ -396,15 +396,15 @@ Order: spikes, then feature 1, then feature 2, then feature 3 (feature 3 needs t
 
 | ID | Decision | Options considered | Choice and reason |
 |---|---|---|---|
-| D-12 | Two-component signing in Forge | (a) signing ID + TOTP; (b) signing ID + passphrase; (c) Atlassian session + one component | (a), ADR-015. Meets 11.200(a)(1) at every signing; the device case of 11.300(c), (e); no egress |
-| D-13 | Multi-step approval | A stages on one seal; B one seal per stage; C workflow statuses; D JSM approvals | A, ADR-016. One certificate; quorum and separation of duties checkable offline |
-| D-14 | Sign while transitioning | A Forge field + validator intent; B issue view then transition; C REST transition; D UIM; E post function; F condition | A with B as fallback, ADR-017. No new write scope; fails closed |
+| D-12 | Two-component signing in Forge | (a) signing ID + TOTP; (b) signing ID + passphrase; (c) Atlassian session + one component | (a), ADR-016. Meets 11.200(a)(1) at every signing; the device case of 11.300(c), (e); no egress |
+| D-13 | Multi-step approval | A stages on one seal; B one seal per stage; C workflow statuses; D JSM approvals | A, ADR-017. One certificate; quorum and separation of duties checkable offline |
+| D-14 | Sign while transitioning | A Forge field + validator intent; B issue view then transition; C REST transition; D UIM; E post function; F condition | A with B as fallback, ADR-018. No new write scope; fails closed |
 
 ## 9. Open questions for the owner
 
 | Id | Question | Options | Recommendation |
 |---|---|---|---|
-| Q-01 | Is a second device (authenticator) acceptable for your target customers? | TOTP (ADR-015); passphrase only; both as an admin choice | TOTP; add passphrase later only if customers ask |
+| Q-01 | Is a second device (authenticator) acceptable for your target customers? | TOTP (ADR-016); passphrase only; both as an admin choice | TOTP; add passphrase later only if customers ask |
 | Q-02 | Which scope for alert emails? | `send:notification:jira` (granular, Beta); `write:jira-work` (classic, broad); no email (admin page only) | `send:notification:jira`, after spike S-5; it needs the site admin's consent at upgrade |
 | Q-03 | Wording of the Part 11 declaration (version 2) | Your text | You write it; I can propose a draft in chat |
 | Q-04 | QR code for enrolment | Hand-written encoder in `src/domain/` (no dependency, about 400 lines); an npm QR library; text seed only | Hand-written, if S-6 shows UI Kit can render it |
@@ -413,7 +413,7 @@ Order: spikes, then feature 1, then feature 2, then feature 3 (feature 3 needs t
 | Q-07 | Route edited while a run is open | Pin the run to its version; void the run | Pin |
 | Q-08 | Who may edit routes? | Jira admins only; also project admins for their project | Jira admins only first |
 | Q-09 | Verifier version for format 2 | 1.4.0 (no old result changes); 2.0.0 (new format) | 1.4.0 |
-| Q-10 | Transition screens with covered fields or a comment | Block (ADR-017 decision 4); seal the screen's values | Block |
+| Q-10 | Transition screens with covered fields or a comment | Block (ADR-018 decision 4); seal the screen's values | Block |
 | Q-11 | Group names in evidence | Include (readable); ids only (less data) | Include; they are not personal data |
 | Q-12 | Adding the signature field to an issue sealed before 2.3.0 | Seal shows CHANGED until approved; treat changes of only this field as non-content for older versions | Show CHANGED, and say so in the admin guide; the other choice edits old version rules, which v3 section 4.1 forbids |
 | Q-13 | Lockout threshold and lifetime defaults | 5 and 365 days; other values | 5 and 365 |
@@ -425,7 +425,7 @@ Each ADR lists its sources with URLs. The main ones:
 - FDA Scope and Application (2003), https://www.fda.gov/regulatory-information/search-fda-guidance-documents/part-11-electronic-records-electronic-signatures-scope-and-application
 - FDA Q&A (October 2024), https://www.fda.gov/regulatory-information/search-fda-guidance-documents/electronic-systems-electronic-records-and-electronic-signatures-clinical-investigations-questions
 - 62 FR 13430 preamble, https://www.govinfo.gov/content/pkg/FR-1997-03-20/html/97-6833.htm
-- Forge: resolver context, secret storage, runtime, limits, Runs on Atlassian, custom field, UI modifications, validator, post function, condition, issue action (URLs in ADR-015 and ADR-017)
+- Forge: resolver context, secret storage, runtime, limits, Runs on Atlassian, custom field, UI modifications, validator, post function, condition, issue action (URLs in ADR-016 and ADR-018)
 - Jira REST v3 OpenAPI, https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json
 - RFC 6238, https://www.rfc-editor.org/rfc/rfc6238 ; NIST SP 800-63B-4, https://pages.nist.gov/800-63-4/sp800-63b.html ; WCAG 2.2 SC 3.3.8, https://www.w3.org/WAI/WCAG22/Understanding/accessible-authentication-minimum.html
 - Appfire ES cloud FAQ, https://support.appfire.com/space/ESF/17498212/ES+cloud+-+FAQ
