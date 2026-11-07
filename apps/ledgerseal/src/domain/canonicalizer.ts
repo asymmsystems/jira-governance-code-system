@@ -78,6 +78,8 @@ interface ExclusionRules {
   custom: Record<string, string>;
   /** 2.2.0 and later: `{ id }` only for reference fields; every other object is hashed in full (F-07). */
   idOnlyInReferenceFields?: boolean;
+  /** 2.3.0 and later: custom field types matched by a pattern, with the reason shown. */
+  customPatterns?: [RegExp, string][];
 }
 
 /**
@@ -111,8 +113,22 @@ const RULES: Record<string, ExclusionRules> = {
  */
 RULES['2.2.0'] = { ...RULES['2.1.0'], idOnlyInReferenceFields: true };
 
+/**
+ * LedgerSeal's own signature field (ADR-018, spike S-1): Jira names its type
+ * `ari:cloud:ecosystem::extension/<app id>/<environment id>/static/ledgerseal-signature`. The app id is the same in
+ * every environment; the environment id differs, so it is matched by any value.
+ */
+export const SIGNATURE_FIELD_TYPE = /^ari:cloud:ecosystem::extension\/7489a645-7c96-400a-b289-eb36f2701a00\/[0-9a-f-]+\/static\/ledgerseal-signature$/;
+export const SIGNATURE_FIELD_REASON = "LedgerSeal's own signature field.";
+
+/**
+ * 2.3.0 (ADR-018 decision 7): the rules of 2.2.0, plus LedgerSeal's own signature field, which holds only a signing
+ * intent id and is set by the signature itself.
+ */
+RULES['2.3.0'] = { ...RULES['2.2.0'], customPatterns: [[SIGNATURE_FIELD_TYPE, SIGNATURE_FIELD_REASON]] };
+
 /** Versions whose sealed snapshots hold party tokens, never account ids. */
-export const PSEUDONYMOUS_VERSIONS = new Set(['2.2.0']);
+export const PSEUDONYMOUS_VERSIONS = new Set(['2.2.0', '2.3.0']);
 
 /** System fields whose values point at another Jira item, so the item is identified by its id. */
 const REFERENCE_SYSTEM_FIELDS = new Set([
@@ -136,7 +152,7 @@ export function isReferenceField(key: string, schema: FieldSchema | undefined): 
 const COVERED_ELSEWHERE = new Set(['project', 'issuetype', 'attachment', 'comment']);
 
 /** The canonical form new seals use. Read through the module export, so a test can stand in for an older app. */
-export const CANONICALIZER_VERSION: string = '2.2.0';
+export const CANONICALIZER_VERSION: string = '2.3.0';
 
 export function isKnownCanonicalizerVersion(version: unknown): boolean {
   return typeof version === 'string' && Object.prototype.hasOwnProperty.call(RULES, version);
@@ -152,7 +168,9 @@ function exclusionReason(rules: ExclusionRules, key: string, schema: FieldSchema
   const system = schema?.schema?.system;
   if (system && rules.system[system]) return rules.system[system];
   const custom = schema?.schema?.custom;
-  return custom && rules.custom[custom] ? rules.custom[custom] : null;
+  if (custom && rules.custom[custom]) return rules.custom[custom];
+  const pattern = custom ? (rules.customPatterns ?? []).find(([re]) => re.test(custom)) : undefined;
+  return pattern ? pattern[1] : null;
 }
 
 /**

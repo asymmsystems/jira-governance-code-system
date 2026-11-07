@@ -698,7 +698,7 @@ jira:customField:
     name: LedgerSeal signature
     type: string
     edit: { resource: signature-edit, render: native }   # no experience limit: the bundled manifest schema (@forge/manifest 13.8.0) has no "issue-transition" value; spike S-1 showed the field on the new transition dialog without it
-    view: { resource: signature-view, render: native, experience: [issue-view] }
+    # no view resource: with one, the new transition dialog showed a plain text box (live, LSP-6); the issue view shows the intent id
     resolver: { function: resolver }
 jira:issueAction:
   - key: ledgerseal-sign-action
@@ -727,7 +727,7 @@ The rules of 2.2.0, plus one exclusion: a field whose `schema.custom` is LedgerS
 - **Data model:** `SigningIntent` (above); signature rows add `via: 'PANEL' | 'ISSUE_ACTION' | 'TRANSITION_SCREEN'` and, for the last, `transitionToStatusId`.
 - **Storage keys:** `ls3:intent:{intentId}` (deleted by the weekly job after 1 day), `ls3:intentuse:{intentId}`.
 - **Resolvers:** `transition-sign-context-api` (what the field shows), `transition-sign-intent-api`; the validator function `validate-transition` gains the intent branch; shared service code with `seal-issue-api` so both paths write the same rows.
-- **UI surfaces:** the field edit view (UI Kit), the field issue-view (shows "Signed by ... at ..." from the panel data, not from the field value), the issue action modal.
+- **UI surfaces:** the field edit view (UI Kit; it calls `view.submit(intentId)` as soon as the intent exists), the issue action modal (the panel). No field issue-view resource: a `view` resource hid the edit view on the new transition dialog (live, 2026-11-08); the issue view shows the stored intent id.
 - **Verifier:** no change beyond 2.3.0 vectors; `via` is in the hashed row, so it is covered by the chain check.
 - **Migration:** none; the field is new. Seals made before 2.3.0 keep their version, so adding the field to a screen does not break them unless someone sets the field on an issue sealed under 2.2.0 or earlier. Then that seal shows CHANGED (the field is covered under 2.2.0). The admin guide says to approve once after adding the field, or the app treats a change of only this field type as a non-content change for older versions too (open question Q-12).
 
