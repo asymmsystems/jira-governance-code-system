@@ -201,7 +201,7 @@ Added 2026-11-08. The detail is in `docs/launch/regulated-enterprise-playbook.md
 
 ### 9.1 Why now
 
-Atlassian stopped new Data Center apps on 2025-12-16 and new Data Center customers on 2026-03-30. Existing customers can buy and expand until 2028-03-30. Data Center becomes read-only on 2029-03-28 (Atlassian, "Data Center end of life", https://www.atlassian.com/licensing/data-center-end-of-life). Regulated enterprises must move to Cloud Enterprise with data residency, Isolated Cloud or Government Cloud. When the Jira Cloud Migration Assistant finds an app with no cloud version, it shows "This app is not available in cloud" and lets the admin choose an alternative.
+Atlassian stopped new Data Center apps on 2025-12-16 (Atlassian developer blog, "From Data Center to Cloud: The Next Chapter for Marketplace Apps", 2025-09-08) and new Data Center customers on 2026-03-30. Existing customers can buy and expand until 2028-03-30. Data Center becomes read-only on 2029-03-28 (Atlassian, "Data Center end of life", https://www.atlassian.com/licensing/data-center-end-of-life). Regulated enterprises must move to Cloud Enterprise with data residency, Isolated Cloud or Government Cloud. When the Jira Cloud Migration Assistant finds an app with no cloud version, it shows "This app is not available in cloud" and lets the admin choose an alternative.
 
 ### 9.2 The wedge
 

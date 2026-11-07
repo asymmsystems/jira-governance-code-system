@@ -9,7 +9,7 @@ Copyright (c) 2026 Asymm Systems. All rights reserved.
 
 ## The situation
 
-Atlassian ends Jira Data Center on 2029-03-28. New Data Center apps could not be submitted after 2025-12-16, and new customers could not buy Data Center after 2026-03-30 (Atlassian, "Data Center end of life", https://www.atlassian.com/licensing/data-center-end-of-life). Regulated teams must keep their change control when they move. Some Data Center governance apps have no cloud version; the migration assistant then says "This app is not available in cloud".
+Atlassian ends Jira Data Center on 2029-03-28. New Data Center apps could not be submitted after 2025-12-16 (Atlassian developer blog, https://www.atlassian.com/blog/developer/from-data-center-to-cloud-the-next-chapter-for-marketplace-apps), and new customers could not buy Data Center after 2026-03-30 (Atlassian, "Data Center end of life", https://www.atlassian.com/licensing/data-center-end-of-life). Regulated teams must keep their change control when they move. Some Data Center governance apps have no cloud version; the migration assistant then says "This app is not available in cloud".
 
 ## The four apps
 

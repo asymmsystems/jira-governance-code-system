@@ -54,7 +54,7 @@ SOX: auditors test change management as an IT general control. We have no SOX-sp
 
 - Data residency for Jira Cloud covers the EU, Germany and Switzerland, among other regions [S31]. App data in Forge-hosted storage follows Atlassian's residency rules; our apps keep all their data in Forge storage and in Jira issue properties.
 - GDPR: no egress; people in hashed records are pseudonyms (LedgerSeal, DefinitionGuard); every app reports account ids to Atlassian weekly and removes closed accounts (privacy policy). A data processing agreement is being drafted (section 5).
-- NIS2: Article 21 requires risk-management measures that include supply chain security and security in system acquisition, development and maintenance. Check the Directive (EU) 2022/2555 text before any public use. Our message is a fact, not a claim of conformity: "the app adds no new processor outside Atlassian and no new network path".
+- NIS2: Article 21(1) of Directive (EU) 2022/2555 requires Member States to ensure that essential and important entities take cybersecurity risk-management measures. Article 21(2) says the measures "shall include at least", among others, "(d) supply chain security, including security-related aspects concerning the relationships between each entity and its direct suppliers or service providers" and "(e) security in network and information systems acquisition, development and maintenance, including vulnerability handling and disclosure". Article 21(3) asks entities to take into account "the overall quality of products and cybersecurity practices of their suppliers and service providers, including their secure development procedures" (EUR-Lex, CELEX 32022L2555, read 2026-11-08). The duty is the customer's, not ours. Our message is a fact, not a claim of conformity: "the app adds no new processor outside Atlassian and no new network path".
 - There is no EU sovereign cloud from Atlassian today; Atlassian invites design partners, with no date [S16]. Do not promise one.
 
 ## 3. Buyer and influencer roles
@@ -98,10 +98,10 @@ What a regulated buyer's security and procurement team asks for, and where we st
 | Penetration test | Exists, in-house only (2026-11-06, development site) | `docs/security/pentest-report-2026-11-06.md`. Not a third-party test. Owner decides whether a summary is shared. |
 | Forge security scan (FSRT, Atlassian's scanner) | Exists, in CI | `docs/security/fsrt-scan-2026-11-07.md`, `.github/workflows/fsrt.yml` |
 | Dependency scan (SCA) | Exists, in CI | `npm audit --omit=dev --audit-level=high` in `.github/workflows/apps-ci.yml` |
-| Static analysis (SAST) | Being added | Semgrep CE on branch `feature/ci-sast` (not merged on 2026-11-08) |
-| Data processing agreement (DPA) | Being drafted | Branch `feature/dpa-template` (not merged on 2026-11-08) |
+| Static analysis (SAST) | Exists, in CI | Semgrep CE 1.182.1 with stock packs, any finding fails the build: `.github/workflows/sast.yml`, `docs/security/sast.md` (merged `ea6ae40`) |
+| Data processing agreement (DPA) | Draft for the owner's lawyer | `docs/legal/dpa-template.md` (merged `0bc2164`). Not offered to customers until the lawyer has reviewed it and the owner has approved it. |
 | Privacy and Security tab on each listing | Prepared, filled at submission | `docs/marketplace/submission/developer-console-checklist.md` |
-| Runs on Atlassian badge | Not yet: Atlassian applies it automatically to eligible listed apps [S38] | The apps are built to the criteria (Forge compute and storage only, no egress). Run `forge eligibility` per app before any claim that the badge will show. |
+| Runs on Atlassian | Eligible; the badge shows once listed | `forge eligibility -e production` on 2026-11-08 reports all four production versions eligible for the Runs on Atlassian program (CascadePlan 2.3.0, DefinitionGuard 3.1.0, LedgerSeal 3.1.0, FourRealities 2.2.0). Atlassian applies the badge to eligible listed apps [S38]. Public wording: "eligible for Runs on Atlassian (Forge eligibility check, 2026-11-08)"; the badge itself only once it shows on the listing. Run the check again after each production deploy. |
 | Status page | Missing | AEC requires a public incident process with a Statuspage [S22] |
 | VPAT (accessibility conformance report), per app | Missing | AEC requires a public VPAT per app [S22] |
 | Data flow diagram, per app | Missing | AEC requires one [S22] |
@@ -110,7 +110,7 @@ What a regulated buyer's security and procurement team asks for, and where we st
 | Validation support pack for GxP customers (intended use, test evidence summary, change history) | Missing | Optional, not an Atlassian requirement; a strong differentiator in pharma and medtech |
 | Atlassian Enterprise Certified | Later stage | Needs the items above |
 
-Order of work we suggest (owner decides): DPA and SAST first (in progress), then a status page and data flow diagrams (cheap), then VPATs, then the GxP validation pack, then SOC 2 or ISO 27001 and AEC.
+Order of work we suggest (owner decides): SAST is done and the DPA is drafted for the lawyer; then a status page and data flow diagrams (cheap), then VPATs, then the GxP validation pack, then SOC 2 or ISO 27001 and AEC.
 
 ## 6. Isolated Cloud and Government Cloud availability
 
@@ -151,7 +151,7 @@ Forge features not supported on AGC: SQL storage and Object Store, arm64, featur
 
 ### 6.3 The 16 AGC security requirements: our status
 
-Checked from the code on `origin/master` at `762f109`, 2026-11-08. "Met" means the code shows it; it is not Atlassian's verdict. Atlassian decides at onboarding.
+Checked from the code on `origin/master` at `762f109`, 2026-11-08; rule 15 updated after the SAST merge `ea6ae40`. "Met" means the code shows it; it is not Atlassian's verdict. Atlassian decides at onboarding.
 
 | # | Requirement | Status | Evidence |
 |---|---|---|---|
@@ -169,7 +169,7 @@ Checked from the code on `origin/master` at `762f109`, 2026-11-08. "Met" means t
 | 12 | Disclose data handling on the Privacy and Security tab | Prepared | Filled at submission (`docs/marketplace/submission/developer-console-checklist.md`) |
 | 13 | No Critical or High dependency vulnerabilities | Met in CI | `npm audit --omit=dev --audit-level=high` fails the build |
 | 14 | Supported runtime, maintained libraries | Met today | `nodejs22.x` in all four manifests. Node.js 22 reaches end of life in April 2027 (Node.js release schedule); plan the move to the next runtime |
-| 15 | SAST and SCA | Partly | SCA: npm audit; Forge scan: FSRT. SAST: Semgrep CE on `feature/ci-sast`, not merged |
+| 15 | SAST and SCA | Met in CI | SAST: Semgrep CE 1.182.1 (`.github/workflows/sast.yml`, merged `ea6ae40`, `docs/security/sast.md`); SCA: `npm audit --omit=dev --audit-level=high` (`.github/workflows/apps-ci.yml`); Forge scan: FSRT (`.github/workflows/fsrt.yml`) |
 | 16 | A security contact with an ecosystem.atlassian.net account for Marketplace Security tickets | Partly | `security@asymm.systems` is published; the ecosystem.atlassian.net account is the owner's to confirm (ticket AMS-76722 was received, so an account exists for at least one contact) |
 
 Public wording until done: "Government Cloud: planned. The apps have no egress and no Connect modules. AGC onboarding has not started."
