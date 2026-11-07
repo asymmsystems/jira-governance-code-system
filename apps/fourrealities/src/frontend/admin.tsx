@@ -26,6 +26,7 @@ import {
 import { SPACE, TEXT_ROLE } from '../brand/brand';
 import { ActionRow, AppSurface, Card, CardHeader, FormField, NoteBox, PageHeader } from '../brand/layout';
 import { TextChange } from './modals';
+import { ReportSettingsSection } from './report-settings';
 
 type AdminResponse = AdminResult<AdminView> | null;
 type GroupResponse = AdminResult<{ groups: GroupChoice[] }> | null;
@@ -34,7 +35,6 @@ type GroupResponse = AdminResult<{ groups: GroupChoice[] }> | null;
 const failure = (r: { ok: boolean; message?: string } | null | undefined, fallback: string): string => (r && !r.ok && r.message) || fallback;
 
 const ROLE = 'approve, reject and revoke Code exceptions';
-
 /** One evidence source control: the select, what FourRealities has seen, and whether the check is in use. */
 const SourceField: React.FC<{
   gate: GateName;
@@ -193,6 +193,8 @@ export const FourRealitiesAdmin: React.FC = () => {
           }}
         />
       </Card>
+
+      <ReportSettingsSection />
     </AppSurface>
   );
 };

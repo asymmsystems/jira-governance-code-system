@@ -21,6 +21,23 @@ export class DefaultForgeKvsStore implements StorageProvider {
     await kvs.delete(key);
   }
 
+  async transact(sets: Array<{ key: string; value: unknown }>): Promise<void> {
+    let tx = kvs.transact();
+    for (const { key, value } of sets) tx = tx.set(key, value);
+    await tx.execute();
+  }
+
+  async setIfAbsent(key: string, value: unknown): Promise<boolean> {
+    try {
+      await kvs.set(key, value, { keyPolicy: 'FAIL_IF_EXISTS' });
+      return true;
+    } catch (failure) {
+      // FAIL_IF_EXISTS refused the write: the key is there. Any other failure is passed on.
+      if ((await kvs.get(key)) !== undefined) return false;
+      throw failure;
+    }
+  }
+
   async queryPrefix<T>(prefix: string, cursor?: string): Promise<{ results: Array<{ key: string; value: T }>; nextCursor?: string }> {
     let query = kvs.query().where('key', WhereConditions.beginsWith(prefix)).limit(100);
     if (cursor) {

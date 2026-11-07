@@ -8,7 +8,7 @@
 import api, { Route, route } from '@forge/api';
 import { DevFieldSummary, ExceptionProperty, IssueFacts, ProjectSearchResult, RemoteLink, SiteConfig, VisibleIds } from '../contract/data/models';
 import { JiraIssueAccessor } from '../contract/accessors';
-import { JiraRequest, withRetry } from './jira-request';
+import { defaultSleep, JiraRequest, withRetry } from './jira-request';
 import { issueFields, searchProjectIssues, visibleIssueIds } from './jira-search';
 import { readRemoteLinks } from './remote-links';
 import { factsFromIssue, normalizeRemoteLinks, PROPERTY_KEYS } from './issue-facts';
@@ -18,12 +18,12 @@ import { JiraIssueJson, JiraRemoteLinkJson, JiraRequestInit } from './jira-types
 
 export type Principal = 'user' | 'app';
 
-/** A request function for the principal, with 429 retry inside the deadline. */
-export function requestAs(principal: Principal, deadline: () => number): JiraRequest {
+/** A request function for the principal, with 429 retry inside the deadline (waits up to maxWaitMs). */
+export function requestAs(principal: Principal, deadline: () => number, maxWaitMs?: number): JiraRequest {
   // The platform response has the status, json and headers that JiraRequest names.
   const send: JiraRequest = (r: Route, init?: JiraRequestInit) =>
     (principal === 'user' ? api.asUser() : api.asApp()).requestJira(r, init) as ReturnType<JiraRequest>;
-  return withRetry(send, deadline);
+  return withRetry(send, deadline, defaultSleep, maxWaitMs);
 }
 
 export class DefaultForgeJiraIssueAccessor implements JiraIssueAccessor {

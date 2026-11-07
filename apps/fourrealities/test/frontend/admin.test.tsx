@@ -13,6 +13,8 @@ import { DEFAULT_SOURCE_SETTINGS } from '../../src/contract/data/models';
 
 jest.mock('@forge/react', () => require('./forge-mocks').reactMock());
 jest.mock('@forge/bridge', () => require('./forge-mocks').bridgeMock());
+// The evidence report section has its own resolvers and tests (test/frontend/report-settings.test.tsx).
+jest.mock('../../src/frontend/report-settings', () => ({ ReportSettingsSection: () => null }));
 
 import { FourRealitiesAdmin } from '../../src/frontend/admin';
 

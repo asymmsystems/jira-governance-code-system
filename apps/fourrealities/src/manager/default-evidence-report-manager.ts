@@ -1,0 +1,750 @@
+/**
+ * Copyright (c) 2026 Asymm Systems. All rights reserved.
+ * @author Fahim Farook
+ * FourRealities: evidence reports for change-management audits (ADR-015, spec v4). One subject, the report:
+ * the project page resolvers (each after the caller's permission check as the user, done by the resolver
+ * before this Manager is called, and before any storage read or call as the app), the queue consumer that
+ * builds a report as the app for the job's stored issue ids only, and the daily run (schedules, retention,
+ * temporary files, stalled jobs). Orchestration only: rules are in the report Engines.
+ */
+
+import { AttestationHistory, GateExceptionEvent, IssueFacts, RemoteLink, ReworkNote, SourcesInUse } from '../contract/data/models';
+import {
+  ChainLink,
+  ChangelogEntry,
+  DownloadDecision,
+  FieldInfo,
+  ManifestHeader,
+  PeopleRow,
+  REPORT_LIMITS,
+  ReportCaller,
+  ReportDailyResult,
+  ReportDetail,
+  ReportError,
+  ReportErrorCode,
+  ReportFileName,
+  ReportFilters,
+  ReportIndexEntry,
+  ReportIssue,
+  ReportIssueBasics,
+  ReportJob,
+  ReportListRow,
+  ReportManifest,
+  ReportPermissions,
+  ReportRange,
+  ReportResult,
+  ReportSchedule,
+  ReportSettings,
+  ReportTombstone,
+  ReportsView
+} from '../contract/data/reports';
+import { AttestationHistoryAccessor, ExceptionEventAccessor, JiraIssueAccessor, ReworkNoteAccessor, SettingsAccessor, SiteConfigAccessor } from '../contract/accessors';
+import { ExceptionPolicyEngine, GateEngine, MetricsEngine, SourcePolicyEngine } from '../contract/engines';
+import {
+  EvidenceReportManager,
+  JiraReportAccessor,
+  ObjectStoreAccessor,
+  PartyTokenAccessor,
+  ReportCryptoAccessor,
+  ReportEngine,
+  ReportJobManager,
+  ReportPeopleAccessor,
+  ReportPolicyEngine,
+  ReportQueueAccessor,
+  ReportRuntimeAccessor,
+  ReportStoreAccessor
+} from '../contract/reports';
+
+export interface EvidenceReportManagerDeps {
+  store: ReportStoreAccessor;
+  objects: ObjectStoreAccessor;
+  queue: ReportQueueAccessor;
+  crypto: ReportCryptoAccessor;
+  tokens: PartyTokenAccessor;
+  runtime: ReportRuntimeAccessor;
+  /** Jira as the caller: the field list, the scope search and the visibility check. */
+  userJira: JiraReportAccessor;
+  /** Jira as the app: the job's reads (only its stored ids), the existence check, scheduled scope searches. */
+  appJira: JiraReportAccessor;
+  /** Jira as the app: remote links of the job's issues, for the Intent check. */
+  appIssues: JiraIssueAccessor;
+  /** People as the caller: names for the list and the people file, the caller's groups. */
+  people: ReportPeopleAccessor;
+  siteConfig: SiteConfigAccessor;
+  settings: SettingsAccessor;
+  sources: SourcePolicyEngine;
+  gates: GateEngine;
+  metrics: MetricsEngine;
+  events: ExceptionEventAccessor;
+  notes: ReworkNoteAccessor;
+  lifecycle: ExceptionPolicyEngine;
+  history: AttestationHistoryAccessor;
+  engine: ReportEngine;
+  policy: ReportPolicyEngine;
+  /** End of a resolver invocation (25 s Forge limit, less a reserve). */
+  deadline: number;
+  now?: () => Date;
+}
+
+export const BROWSE_DENIED_TEXT = 'FourRealities: you need the Browse projects Jira permission on this project to see its evidence reports.';
+export const CHECK_FAILED_TEXT = 'FourRealities could not check your Jira permissions for this project, so nothing is shown. Try again.';
+export const NOT_AUTHOR_TEXT = 'Only a project administrator, a Jira administrator or a member of an evidence report group can make a report.';
+export const NOT_SCHEDULER_TEXT = 'Only a project administrator or a Jira administrator can set report schedules.';
+export const NOT_DELETER_TEXT = 'Only a Jira administrator can delete a report before it expires.';
+export const LICENCE_TEXT = 'The FourRealities licence for this site is not active, so no new reports are made. Existing reports can still be viewed and downloaded.';
+export const NOT_READY_TEXT = 'This report is not ready to download.';
+export const PEOPLE_NOTE = 'Not signed. Maps each party token of the report to an account id and a display name, read as you when you downloaded it. A closed account shows as a former user. Kept for 24 hours.';
+
+/** Time a consumer event keeps for saving the job and pushing the next event. */
+export const EVENT_RESERVE_MS = 60_000;
+/** Time the assembly of a 50 MB report needs (spike S-3: about 30 s for reading the parts, building and writing). */
+export const ASSEMBLE_RESERVE_MS = 180_000;
+export const RETRY_DELAY_SECONDS = 30;
+
+const FILES: ReportFileName[] = ['manifest.json', 'report.json', 'report.csv'];
+const MEDIA: Record<ReportFileName, string> = { 'manifest.json': 'application/json', 'report.json': 'application/json', 'report.csv': 'text/csv; charset=utf-8' };
+const FILE_KEY = /^reports\/(\d+)\/([0-9a-f-]{36})\/(manifest\.json|report\.json|report\.csv)$/;
+const PEOPLE_KEY = /^people:([0-9a-f-]{36}):(json|csv)$/;
+
+const fail = (code: ReportErrorCode, message: string, extra: Partial<ReportError> = {}): { ok: false; error: ReportError } => ({ ok: false, error: { code, message, ...extra } });
+
+/** A failed step of a job: the code that the job records. */
+class JobStepError extends Error {
+  constructor(readonly code: string, message: string) {
+    super(message);
+  }
+}
+
+export const objectKey = (projectId: string, reportId: string, file: ReportFileName) => `reports/${projectId}/${reportId}/${file}`;
+const partKey = (reportId: string, i: number) => `tmp/${reportId}/part-${i}.json`;
+const idOf = (entry: string) => entry.split(':')[0];
+
+export class DefaultEvidenceReportManager implements EvidenceReportManager, ReportJobManager {
+  readonly serviceType = 'manager' as const;
+
+  constructor(private readonly d: EvidenceReportManagerDeps) {}
+
+  private now(): Date {
+    return (this.d.now || (() => new Date()))();
+  }
+
+  /** The common refusal: no project, no answer from Jira, or no Browse projects. */
+  private guard(caller: ReportCaller, p: ReportPermissions): { ok: false; error: ReportError } | undefined {
+    if (!caller.projectKey || !caller.projectId) return fail('INVALID_INPUT', 'FourRealities: open this page from a Jira project.');
+    if (p.status !== 200) return fail('JIRA_ERROR', CHECK_FAILED_TEXT, p.status ? { status: p.status } : {});
+    if (!p.browse) return fail('FORBIDDEN', BROWSE_DENIED_TEXT);
+    return undefined;
+  }
+
+  /** Tier 2 (owner decision Q2): the caller is in a report group set on the admin page. */
+  private async inReportGroup(settings: ReportSettings): Promise<boolean> {
+    if (settings.reportGroups.length === 0) return false;
+    const mine = await this.d.people.myGroupIds();
+    if (mine.status !== 200) return false;
+    const groups = new Set(settings.reportGroups.map(g => g.partyId));
+    return mine.groupIds.some(g => groups.has(g));
+  }
+
+  private async rightsOf(p: ReportPermissions, settings: ReportSettings) {
+    const tier1 = this.d.policy.rights(p, false);
+    return tier1.canCreate ? tier1 : this.d.policy.rights(p, await this.inReportGroup(settings));
+  }
+
+  private async fieldList(): Promise<FieldInfo[] | undefined> {
+    const res = await this.d.userJira.fields();
+    return res.status === 200 ? res.fields : undefined;
+  }
+
+  // ---------------------------------------------------------------- resolvers
+
+  async list(caller: ReportCaller, p: ReportPermissions, payload: unknown): Promise<ReportResult<ReportsView>> {
+    const refused = this.guard(caller, p);
+    if (refused) return refused;
+    const projectKey = String(caller.projectKey);
+    const settings = await this.d.store.getSettings();
+    const rights = await this.rightsOf(p, settings);
+    const index = await this.d.store.getIndex(projectKey);
+    const offset = Math.max(0, Number((payload as { cursor?: unknown } | undefined)?.cursor) || 0);
+    const page = index.slice(offset, offset + REPORT_LIMITS.pageSize);
+    const fields = rights.canCreate || rights.canSchedule ? (await this.fieldList()) || [] : [];
+    return {
+      ok: true,
+      projectKey,
+      reports: await this.rows(caller, page, settings),
+      schedules: await this.d.store.getSchedules(projectKey),
+      tombstones: await this.d.store.listTombstones(projectKey),
+      canCreate: rights.canCreate && caller.licenceActive,
+      canSchedule: rights.canSchedule,
+      canDelete: rights.canDelete,
+      licenceActive: caller.licenceActive,
+      retentionDays: settings.retentionDays,
+      signingKeyId: this.d.crypto.keyId(),
+      fields: fields.map(f => ({ id: f.id, name: f.name })).sort((a, b) => a.name.localeCompare(b.name)),
+      ...(offset + REPORT_LIMITS.pageSize < index.length ? { next: String(offset + REPORT_LIMITS.pageSize) } : {})
+    };
+  }
+
+  /** The rows as the viewer sees them: who asked (read as the viewer, never stored), progress and expiry. */
+  private async rows(caller: ReportCaller, entries: ReportIndexEntry[], settings: ReportSettings): Promise<ReportListRow[]> {
+    const tokens = entries.map(e => e.requestedBy).filter(t => t.startsWith('pty_'));
+    const map = tokens.length ? await this.d.tokens.entries(tokens) : {};
+    const ids = Object.values(map).flatMap(e => (e && 'accountId' in e ? [e.accountId] : []));
+    const names = ids.length ? await this.d.people.people(ids.filter(id => id !== caller.accountId)) : {};
+    const out: ReportListRow[] = [];
+    for (const e of entries) {
+      const party = map[e.requestedBy];
+      let requestedByText = 'Scheduled';
+      if (e.trigger === 'user') {
+        if (!party || !('accountId' in party)) requestedByText = 'a former user';
+        else if (party.accountId === caller.accountId) requestedByText = 'by you';
+        else requestedByText = names[party.accountId]?.displayName || 'Name not available';
+      }
+      const row: ReportListRow = { ...e, requestedByText };
+      if (e.state === 'DONE') {
+        row.expiresAt = this.d.policy.expiresAt(e.finishedAt || e.createdAt, settings.retentionDays);
+        row.objectKeys = Object.fromEntries(FILES.map(f => [f, objectKey(String(caller.projectId), e.reportId, f)]));
+      }
+      if (e.state === 'QUEUED' || e.state === 'RUNNING') row.progress = (await this.d.store.getJob(e.reportId))?.progress;
+      out.push(row);
+    }
+    return out;
+  }
+
+  async create(caller: ReportCaller, p: ReportPermissions, payload: unknown): Promise<ReportResult<{ reportId: string; state: 'QUEUED' }>> {
+    if (!caller.licenceActive) return fail('LICENSE_INACTIVE', LICENCE_TEXT);
+    const refused = this.guard(caller, p);
+    if (refused) return refused;
+    const settings = await this.d.store.getSettings();
+    if (!(await this.rightsOf(p, settings)).canCreate) return fail('NOT_REPORT_AUTHOR', NOT_AUTHOR_TEXT);
+    const fields = await this.fieldList();
+    if (!fields) return fail('JIRA_ERROR', 'FourRealities could not read the fields of this site. Try again.');
+    const input = this.d.policy.validateCreate(payload, fields, this.now());
+    if ('error' in input) return { ok: false, error: input.error };
+    const tokenOf = await this.d.tokens.tokensFor([String(caller.accountId || ''), ...input.actorAccountIds], this.now().toISOString());
+    const filters: ReportFilters = { fieldIds: input.fieldIds, actors: input.actorAccountIds.map(id => tokenOf[id]).sort() };
+    return this.enqueue({
+      projectKey: String(caller.projectKey),
+      projectId: String(caller.projectId),
+      range: input.range,
+      filters,
+      trigger: 'user',
+      requestedBy: caller.accountId ? tokenOf[caller.accountId] : 'unknown',
+      jira: this.d.userJira,
+      deadline: this.d.deadline
+    });
+  }
+
+  /** Searches the scope, writes the job, its ids and its index entry, then queues it. Nothing is stored on a refusal. */
+  private async enqueue(r: { projectKey: string; projectId: string; range: ReportRange; filters: ReportFilters; trigger: ReportJob['trigger']; requestedBy: string; scheduleId?: string; jira: JiraReportAccessor; deadline: number }): Promise<ReportResult<{ reportId: string; state: 'QUEUED' }>> {
+    const index = await this.d.store.getIndex(r.projectKey);
+    const limit = this.d.policy.jobLimit(index);
+    if (limit) return { ok: false, error: limit };
+    const admitted = this.d.policy.admit(index);
+    if ('error' in admitted) return { ok: false, error: admitted.error };
+    const found = await r.jira.searchIds(this.d.engine.scopeJql(r.projectId, r.range), REPORT_LIMITS.maxIssues, r.deadline);
+    if (found.status !== 200) return fail('JIRA_ERROR', `FourRealities could not search the issues of this project (HTTP ${found.status}). Try again.`, { status: found.status });
+    if (found.ids.length > REPORT_LIMITS.maxIssues) {
+      return fail('TOO_MANY_ISSUES', `More than ${REPORT_LIMITS.maxIssues.toLocaleString('en-US')} issues may be in this range, so no report was made. Choose a shorter range.`);
+    }
+    const now = this.now().toISOString();
+    const reportId = this.d.crypto.newId();
+    const idChunks = await this.d.store.saveIds(reportId, found.ids);
+    const job: ReportJob = {
+      schemaVersion: 1,
+      reportId,
+      projectId: r.projectId,
+      projectKey: r.projectKey,
+      range: r.range,
+      filters: r.filters,
+      trigger: r.trigger,
+      requestedBy: r.requestedBy,
+      ...(r.scheduleId ? { scheduleId: r.scheduleId } : {}),
+      state: 'QUEUED',
+      cursor: 0,
+      parts: 0,
+      idChunks,
+      failures: 0,
+      progress: { issuesTotal: found.ids.length, issuesDone: 0, changes: 0, linksNotRead: 0 },
+      createdAt: now,
+      updatedAt: now
+    };
+    await this.d.store.saveJob(job);
+    const entry: ReportIndexEntry = { reportId, state: 'QUEUED', range: r.range, filters: r.filters, trigger: r.trigger, requestedBy: r.requestedBy, createdAt: now };
+    await this.d.store.saveIndex(r.projectKey, [entry, ...admitted.entries]);
+    await this.d.store.registerProject(r.projectKey, r.projectId);
+    await this.d.queue.push(reportId);
+    return { ok: true, reportId, state: 'QUEUED' };
+  }
+
+  /** The report's issues that the viewer cannot see now (checked as the viewer), and those deleted since. */
+  private async visibility(job: ReportJob, isTier1: boolean): Promise<DownloadDecision> {
+    const ids = (await this.d.store.loadIds(job.reportId, job.idChunks)).map(idOf);
+    const seen = await this.d.userJira.presentAmong(ids, this.d.deadline);
+    if (!seen) return { allowed: false, code: 'JIRA_ERROR', message: 'FourRealities could not check which issues of this report you can see. Try again.' };
+    const notSeen = ids.filter(id => !seen.has(id));
+    let hidden = 0;
+    if (notSeen.length > 0) {
+      // As the app, after the caller's check: which of the issues the caller cannot see still exist.
+      const existing = await this.d.appJira.presentAmong(notSeen, this.d.deadline);
+      if (!existing) return { allowed: false, code: 'JIRA_ERROR', message: 'FourRealities could not check the issues of this report. Try again.' };
+      hidden = existing.size;
+    }
+    return this.d.policy.download({ total: ids.length, hidden, deleted: notSeen.length - hidden, isTier1 });
+  }
+
+  /** The report of the context project, or undefined. */
+  private async ownJob(caller: ReportCaller, reportId: unknown): Promise<{ job?: ReportJob; entry?: ReportIndexEntry }> {
+    if (!this.d.policy.isReportId(reportId)) return {};
+    const entry = (await this.d.store.getIndex(String(caller.projectKey))).find(e => e.reportId === reportId);
+    if (!entry) return {};
+    const job = await this.d.store.getJob(reportId);
+    return { entry, ...(job && job.projectKey === caller.projectKey && job.projectId === caller.projectId ? { job } : {}) };
+  }
+
+  async detail(caller: ReportCaller, p: ReportPermissions, payload: unknown): Promise<ReportResult<ReportDetail>> {
+    const refused = this.guard(caller, p);
+    if (refused) return refused;
+    const { job, entry } = await this.ownJob(caller, (payload as { reportId?: unknown } | undefined)?.reportId);
+    if (!entry) return fail('NOT_FOUND', 'FourRealities found no such report in this project.');
+    const settings = await this.d.store.getSettings();
+    const [report] = await this.rows(caller, [entry], settings);
+    const fileNames = Object.fromEntries(
+      [...FILES, 'people.json', 'people.csv'].map(f => [f, this.d.engine.fileName(String(caller.projectKey), entry.range, entry.reportId, f)])
+    ) as ReportDetail['fileNames'];
+    if (entry.state !== 'DONE' || !job) return { ok: true, report, fileNames, download: { allowed: false, code: 'REPORT_NOT_READY', message: NOT_READY_TEXT } };
+    const text = await this.d.objects.readText(objectKey(job.projectId, job.reportId, 'manifest.json'));
+    const manifest = text ? (JSON.parse(text) as ReportManifest) : undefined;
+    const download = await this.visibility(job, this.d.policy.rights(p, false).isTier1);
+    return { ok: true, report, fileNames, download, ...(manifest ? { manifest } : {}) };
+  }
+
+  async downloadUrls(caller: ReportCaller, p: ReportPermissions, payload: unknown): Promise<Record<string, string>> {
+    if (this.guard(caller, p)) return {};
+    const keys = (payload as { keys?: unknown } | undefined)?.keys;
+    if (!Array.isArray(keys) || keys.length === 0 || keys.length > 5 || !keys.every(k => typeof k === 'string')) return {};
+    const parsed = (keys as string[]).map(key => {
+      const file = FILE_KEY.exec(key);
+      if (file) return { key, reportId: file[2], projectId: file[1], people: undefined };
+      const people = PEOPLE_KEY.exec(key);
+      return people ? { key, reportId: people[1], projectId: String(caller.projectId), people: people[2] as 'json' | 'csv' } : undefined;
+    });
+    if (parsed.some(k => !k || k.projectId !== caller.projectId) || new Set(parsed.map(k => k?.reportId)).size !== 1) return {};
+    const { job } = await this.ownJob(caller, parsed[0]?.reportId);
+    if (!job || job.state !== 'DONE') return {};
+    if (!(await this.visibility(job, this.d.policy.rights(p, false).isTier1)).allowed) return {};
+    const out: Record<string, string> = {};
+    let people: Record<'json' | 'csv', string> | undefined;
+    for (const k of parsed) {
+      if (!k) continue;
+      if (k.people) people = people || (await this.peopleFile(job));
+      const target = k.people ? people?.[k.people] : k.key;
+      const url = target ? await this.d.objects.downloadUrl(target) : undefined;
+      if (url) out[url] = k.key;
+    }
+    return out;
+  }
+
+  /** The unsigned people file (HLD 3.5): tokens to account ids from the token map, names read as the caller. */
+  private async peopleFile(job: ReportJob): Promise<Record<'json' | 'csv', string> | undefined> {
+    const tokens = await this.d.store.loadTokens(job.reportId, job.tokenChunks || 0);
+    const entries = await this.d.tokens.entries(tokens);
+    const ids = Object.values(entries).flatMap(e => (e && 'accountId' in e ? [e.accountId] : []));
+    const people = await this.d.people.people(ids);
+    const rows: PeopleRow[] = tokens.map(token => {
+      const e = entries[token];
+      if (!e || !('accountId' in e)) return { token, accountId: null, displayName: null, active: null };
+      const person = people[e.accountId];
+      return { token, accountId: e.accountId, displayName: person?.displayName ?? null, active: person ? person.active : null };
+    });
+    const createdAt = this.now().toISOString();
+    const downloadId = this.d.crypto.newId();
+    const keys = { json: `tmp/${job.reportId}/${downloadId}/people.json`, csv: `tmp/${job.reportId}/${downloadId}/people.csv` };
+    await this.d.store.addTmp(`${createdAt}:${job.reportId}:${downloadId}`, { objectKeys: [keys.json, keys.csv], createdAt });
+    const json = this.d.engine.canonicalJson({ format: 'fourrealities-evidence-report-people/1', reportId: job.reportId, generatedAt: createdAt, note: PEOPLE_NOTE, people: rows });
+    const okJson = await this.d.objects.putOnce(keys.json, json, 'application/json');
+    const okCsv = await this.d.objects.putOnce(keys.csv, this.d.engine.peopleCsv(rows), 'text/csv; charset=utf-8');
+    return okJson && okCsv ? keys : undefined;
+  }
+
+  async saveSchedule(caller: ReportCaller, p: ReportPermissions, payload: unknown): Promise<ReportResult<{ schedules: ReportSchedule[] }>> {
+    if (!caller.licenceActive) return fail('LICENSE_INACTIVE', LICENCE_TEXT);
+    const refused = this.guard(caller, p);
+    if (refused) return refused;
+    if (!this.d.policy.rights(p, false).canSchedule) return fail('FORBIDDEN', NOT_SCHEDULER_TEXT);
+    const fields = await this.fieldList();
+    if (!fields) return fail('JIRA_ERROR', 'FourRealities could not read the fields of this site. Try again.');
+    const input = this.d.policy.validateSchedule(payload, fields);
+    if ('error' in input) return { ok: false, error: input.error };
+    const projectKey = String(caller.projectKey);
+    const schedules = await this.d.store.getSchedules(projectKey);
+    const now = this.now();
+    const tokenOf = await this.d.tokens.tokensFor([String(caller.accountId || ''), ...input.actorAccountIds], now.toISOString());
+    const filters: ReportFilters = { fieldIds: input.fieldIds, actors: input.actorAccountIds.map(id => tokenOf[id]).sort() };
+    const existing = input.scheduleId ? schedules.find(s => s.scheduleId === input.scheduleId) : undefined;
+    if (input.scheduleId && !existing) return fail('NOT_FOUND', 'FourRealities found no such schedule.');
+    if (!existing && schedules.length >= REPORT_LIMITS.schedulesPerProject) return fail('INVALID_INPUT', `A project has at most ${REPORT_LIMITS.schedulesPerProject} schedules.`);
+    const schedule: ReportSchedule = existing
+      ? { ...existing, cadence: input.cadence, filters }
+      : { scheduleId: this.d.crypto.newId(), cadence: input.cadence, filters, createdBy: caller.accountId ? tokenOf[caller.accountId] : 'unknown', createdAt: now.toISOString() };
+    const next = existing ? schedules.map(s => (s.scheduleId === schedule.scheduleId ? schedule : s)) : [...schedules, schedule];
+    await this.d.store.saveSchedules(projectKey, next);
+    await this.d.store.registerProject(projectKey, String(caller.projectId));
+    return { ok: true, schedules: next };
+  }
+
+  async deleteSchedule(caller: ReportCaller, p: ReportPermissions, payload: unknown): Promise<ReportResult<{ schedules: ReportSchedule[] }>> {
+    if (!caller.licenceActive) return fail('LICENSE_INACTIVE', LICENCE_TEXT);
+    const refused = this.guard(caller, p);
+    if (refused) return refused;
+    if (!this.d.policy.rights(p, false).canSchedule) return fail('FORBIDDEN', NOT_SCHEDULER_TEXT);
+    const id = (payload as { scheduleId?: unknown } | undefined)?.scheduleId;
+    const projectKey = String(caller.projectKey);
+    const schedules = await this.d.store.getSchedules(projectKey);
+    if (!this.d.policy.isReportId(id) || !schedules.some(s => s.scheduleId === id)) return fail('NOT_FOUND', 'FourRealities found no such schedule.');
+    const next = schedules.filter(s => s.scheduleId !== id);
+    await this.d.store.saveSchedules(projectKey, next);
+    return { ok: true, schedules: next };
+  }
+
+  async deleteReport(caller: ReportCaller, p: ReportPermissions, payload: unknown): Promise<ReportResult<{ tombstone: ReportTombstone }>> {
+    const refused = this.guard(caller, p);
+    if (refused) return refused;
+    if (!this.d.policy.rights(p, false).canDelete) return fail('FORBIDDEN', NOT_DELETER_TEXT);
+    const body = (payload || {}) as { reportId?: unknown; reason?: unknown };
+    const reason = this.d.policy.validateReason(body.reason);
+    if ('error' in reason) return { ok: false, error: reason.error };
+    const { job, entry } = await this.ownJob(caller, body.reportId);
+    if (!entry || !job || entry.state !== 'DONE') return fail('NOT_FOUND', 'FourRealities found no stored report with this id in this project.');
+    const now = this.now().toISOString();
+    const by = caller.accountId ? (await this.d.tokens.tokensFor([caller.accountId], now))[caller.accountId] : 'unknown';
+    const tombstone: ReportTombstone = { reportId: job.reportId, deletedAt: now, by, reason: reason.reason };
+    // The tombstone is written first, so a delete that stops half way still leaves its record (Q8).
+    await this.d.store.addTombstone(job.projectKey, tombstone);
+    await this.removeStored(job);
+    await this.setEntry(job.projectKey, job.reportId, { state: 'DELETED' });
+    return { ok: true, tombstone };
+  }
+
+  // ---------------------------------------------------------------- the job (as the app)
+
+  private async setEntry(projectKey: string, reportId: string, patch: Partial<ReportIndexEntry>): Promise<ReportIndexEntry[]> {
+    const index = await this.d.store.getIndex(projectKey);
+    const next = index.map(e => (e.reportId === reportId ? { ...e, ...patch } : e));
+    await this.d.store.saveIndex(projectKey, next);
+    return next;
+  }
+
+  /** Deletes the files, the ids, the tokens and the job of a report. */
+  private async removeStored(job: ReportJob): Promise<void> {
+    for (const f of FILES) await this.d.objects.delete(objectKey(job.projectId, job.reportId, f));
+    await this.d.store.deleteIds(job.reportId, job.idChunks);
+    await this.d.store.deleteTokens(job.reportId, job.tokenChunks || 0);
+    await this.d.store.deleteJob(job.reportId);
+  }
+
+  private async deleteParts(job: ReportJob): Promise<void> {
+    for (let i = 0; i < job.parts; i++) await this.d.objects.delete(partKey(job.reportId, i));
+  }
+
+  /** A failed job stores no file (spec v4 invariant 11): parts, ids and the job record go; the index keeps the reason. */
+  private async failJob(job: ReportJob, code: string, message: string): Promise<void> {
+    await this.deleteParts(job);
+    await this.d.store.deleteIds(job.reportId, job.idChunks);
+    await this.d.store.deleteJob(job.reportId);
+    await this.setEntry(job.projectKey, job.reportId, { state: 'FAILED', finishedAt: this.now().toISOString(), error: { code, message } });
+  }
+
+  private async siteRunning(): Promise<number> {
+    let running = 0;
+    for (const projectKey of await this.d.store.projects()) running += (await this.d.store.getIndex(projectKey)).filter(e => e.state === 'RUNNING').length;
+    return running;
+  }
+
+  async work(reportId: string, deadline: number): Promise<void> {
+    if (!this.d.policy.isReportId(reportId)) return;
+    const job = await this.d.store.getJob(reportId);
+    if (!job || (job.state !== 'QUEUED' && job.state !== 'RUNNING')) return;
+    if (job.state === 'QUEUED') {
+      const index = await this.d.store.getIndex(job.projectKey);
+      if (!this.d.policy.mayStart(index, reportId, await this.siteRunning())) {
+        await this.d.store.saveJob({ ...job, updatedAt: this.now().toISOString() });
+        await this.d.queue.push(reportId, REPORT_LIMITS.requeueSeconds);
+        return;
+      }
+      const now = this.now().toISOString();
+      Object.assign(job, { state: 'RUNNING', step: 'FACTS', startedAt: now, updatedAt: now });
+      await this.d.store.saveJob(job);
+      await this.setEntry(job.projectKey, reportId, { state: 'RUNNING' });
+    }
+    try {
+      await this.advance(job, deadline);
+    } catch (failure) {
+      const code = failure instanceof JobStepError ? failure.code : 'JOB_FAILED';
+      const message = failure instanceof JobStepError ? failure.message : 'FourRealities could not finish this report.';
+      job.failures++;
+      if (code === 'REPORT_TOO_LARGE' || code === 'STORE_FAILED') {
+        await this.failJob(job, code, message);
+        return;
+      }
+      if (job.failures >= REPORT_LIMITS.maxStepFailures) {
+        await this.failJob(job, code, `FourRealities could not read Jira for this report three times (${message}) Make the report again.`);
+        return;
+      }
+      await this.d.store.saveJob({ ...job, updatedAt: this.now().toISOString() });
+      await this.d.queue.push(reportId, RETRY_DELAY_SECONDS);
+    }
+  }
+
+  /** Reads batch after batch inside the event budget, then assembles; the cursor is saved after each batch. */
+  private async advance(job: ReportJob, deadline: number): Promise<void> {
+    const config = await this.d.siteConfig.get();
+    const fieldsRes = await this.d.appJira.fields();
+    if (fieldsRes.status !== 200) throw new JobStepError('JIRA_ERROR', `Jira field list failed with HTTP ${fieldsRes.status}.`);
+    const sources = this.d.sources.resolve(await this.d.settings.getSettings(), await this.d.settings.getDetected(), config);
+    const history = await this.d.history.listAll();
+    const events = await this.d.events.listAll();
+    const notes = await this.d.notes.listAll();
+    const ids = await this.d.store.loadIds(job.reportId, job.idChunks);
+    const size = REPORT_LIMITS.batchSize;
+    while (job.cursor * size < ids.length) {
+      if (Date.now() > deadline - EVENT_RESERVE_MS) return this.pause(job);
+      const batch = ids.slice(job.cursor * size, (job.cursor + 1) * size);
+      job.step = 'FACTS';
+      const facts = await this.d.appJira.factsByIds(batch, config);
+      if (facts.status !== 200) throw new JobStepError('JIRA_ERROR', `Jira search failed with HTTP ${facts.status}.`);
+      const started = facts.issues.filter(i => i.facts.started).map(i => i.facts.issueId);
+      const links = await this.d.appIssues.remoteLinks(started, deadline - EVENT_RESERVE_MS);
+      // A link read cut by time is not a result: the batch is read again in the next event.
+      if (started.some(id => !links.has(id)) && Date.now() > deadline - EVENT_RESERVE_MS) return this.pause(job);
+      job.step = 'CHANGES';
+      const logs = await this.d.appJira.changelogs(batch, job.filters.fieldIds, deadline - EVENT_RESERVE_MS);
+      if (logs.status !== 200) throw new JobStepError('JIRA_ERROR', `Jira changelog read failed with HTTP ${logs.status}.`);
+      job.step = 'PARTS';
+      const issues = await this.batchIssues(job, facts.issues, logs.byIssue, links, fieldsRes.fields, sources, history, events, notes);
+      if (!(await this.d.objects.putOnce(partKey(job.reportId, job.parts), this.d.engine.canonicalJson(issues), 'application/json'))) {
+        throw new JobStepError('STORE_FAILED', 'FourRealities could not store a part of this report.');
+      }
+      job.parts++;
+      job.cursor++;
+      job.failures = 0;
+      job.progress = {
+        ...job.progress,
+        issuesDone: Math.min(ids.length, job.cursor * size),
+        changes: job.progress.changes + issues.reduce((n, i) => n + i.changes.length, 0),
+        linksNotRead: job.progress.linksNotRead + started.filter(id => !links.has(id)).length
+      };
+      job.updatedAt = this.now().toISOString();
+      await this.d.store.saveJob(job);
+      if (job.progress.changes > REPORT_LIMITS.maxChanges) throw new JobStepError('REPORT_TOO_LARGE', String(this.d.policy.tooLarge([], job.progress.changes)?.message));
+    }
+    if (Date.now() > deadline - ASSEMBLE_RESERVE_MS) return this.pause(job);
+    job.step = 'ASSEMBLE';
+    await this.assemble(job, ids, sources);
+  }
+
+  private async pause(job: ReportJob): Promise<void> {
+    await this.d.store.saveJob({ ...job, updatedAt: this.now().toISOString() });
+    await this.d.queue.push(job.reportId);
+  }
+
+  private async batchIssues(
+    job: ReportJob,
+    read: Array<{ facts: IssueFacts; basics: ReportIssueBasics }>,
+    logs: Map<string, ChangelogEntry[]>,
+    links: Map<string, RemoteLink[]>,
+    fields: FieldInfo[],
+    sources: SourcesInUse,
+    history: Map<string, AttestationHistory>,
+    events: Map<string, GateExceptionEvent[]>,
+    notes: Map<string, ReworkNote[]>
+  ): Promise<ReportIssue[]> {
+    const accountIds = read.flatMap(r => this.d.engine.accountIdsOf(logs.get(r.facts.issueId) || [], fields, events.get(r.facts.issueId) || [], notes.get(r.facts.issueId) || []));
+    const tokenOf = await this.d.tokens.tokensFor(accountIds, this.now().toISOString());
+    const out: ReportIssue[] = [];
+    for (const { facts: base, basics } of read) {
+      const id = base.issueId;
+      const changes = this.d.engine.reportChanges(logs.get(id) || [], job.range, job.filters, fields, tokenOf);
+      if (!this.d.engine.inScope(basics.created, changes, job.range)) continue;
+      const issueEvents = events.get(id) || [];
+      const issueNotes = notes.get(id) || [];
+      const facts = {
+        ...base,
+        attestationHistory: history.get(id) || {},
+        reworkNotes: issueNotes,
+        codeException: this.d.lifecycle.currentState(issueEvents),
+        remoteLinks: links.get(id) ?? (base.started ? undefined : [])
+      };
+      const gates = this.d.gates.evaluate(facts, sources);
+      const row = this.d.metrics.buildRow(facts, gates);
+      out.push(this.d.engine.reportIssue({ facts, basics, gates, rai: row.rai, risk: row.risk, events: issueEvents, notes: issueNotes, changes, tokenOf }));
+    }
+    return out;
+  }
+
+  /** Reads the parts, builds and checks the files, signs the manifest, stores the files once, then commits. */
+  private async assemble(job: ReportJob, ids: string[], sources: SourcesInUse): Promise<void> {
+    const issues: ReportIssue[] = [];
+    for (let i = 0; i < job.parts; i++) {
+      const text = await this.d.objects.readText(partKey(job.reportId, i));
+      if (text === undefined) throw new JobStepError('JOB_FAILED', 'A part of this report could not be read.');
+      issues.push(...(JSON.parse(text) as ReportIssue[]));
+    }
+    const changes = issues.reduce((n, i) => n + i.changes.length, 0);
+    const config = await this.d.siteConfig.get();
+    const head = (await this.d.store.getHead(job.projectKey)) || null;
+    const missing = await this.missingSince(head);
+    const keyId = this.d.crypto.keyId();
+    const header: ManifestHeader = {
+      format: 'fourrealities-evidence-report/1',
+      reportId: job.reportId,
+      siteHost: config.siteHost || '',
+      environment: this.d.runtime.environment(),
+      projectId: job.projectId,
+      projectKey: job.projectKey,
+      range: job.range,
+      filters: job.filters,
+      trigger: job.trigger,
+      requestedBy: job.requestedBy,
+      generatedAt: this.now().toISOString(),
+      gatesObservedAt: job.startedAt || job.createdAt,
+      ...(this.d.runtime.appVersion() ? { appVersion: this.d.runtime.appVersion() } : {}),
+      counts: { issues: issues.length, changes, missingSincePrevious: missing.length },
+      previous: head,
+      ...(keyId ? {} : { warning: 'UNSIGNED' as const })
+    };
+    const json = this.d.engine.reportJson({ header, sourcesInUse: sources, issues, missingSincePrevious: missing, linksNotRead: job.progress.linksNotRead });
+    const csv = this.d.engine.reportCsv(job.reportId, issues);
+    const dj = this.d.crypto.digest(json);
+    const dc = this.d.crypto.digest(csv);
+    const large = this.d.policy.tooLarge([dj.bytes, dc.bytes], changes);
+    if (large) throw new JobStepError(large.code, large.message);
+    const files: ReportManifest['files'] = [
+      { name: 'report.json', mediaType: MEDIA['report.json'], bytes: dj.bytes, sha256: dj.sha256 },
+      { name: 'report.csv', mediaType: MEDIA['report.csv'], bytes: dc.bytes, sha256: dc.sha256 }
+    ];
+    const { manifest, signedText } = this.d.engine.manifest(header, files, keyId);
+    const signed = keyId ? this.d.crypto.sign(signedText) : null;
+    const manifestText = this.d.engine.canonicalJson(signed ? { ...manifest, sig: signed.sig } : manifest);
+    const dm = this.d.crypto.digest(manifestText);
+    const bodies: Record<ReportFileName, string> = { 'report.json': json, 'report.csv': csv, 'manifest.json': manifestText };
+    for (const f of ['report.json', 'report.csv', 'manifest.json'] as ReportFileName[]) {
+      if (!(await this.d.objects.putOnce(objectKey(job.projectId, job.reportId, f), bodies[f], MEDIA[f]))) {
+        for (const g of FILES) await this.d.objects.delete(objectKey(job.projectId, job.reportId, g));
+        throw new JobStepError('STORE_FAILED', 'FourRealities could not store the files of this report.');
+      }
+    }
+    const tokenChunks = await this.d.store.saveTokens(job.reportId, this.d.engine.tokensOf(issues, job.filters, job.requestedBy));
+    await this.d.store.deleteIds(job.reportId, job.idChunks);
+    const idChunks = await this.d.store.saveIds(job.reportId, issues.map(i => `${i.issueId}:${i.issueKey}`));
+    const finishedAt = this.now().toISOString();
+    const done: ReportJob = {
+      ...job,
+      state: 'DONE',
+      step: 'ASSEMBLE',
+      idChunks,
+      tokenChunks,
+      finishedAt,
+      updatedAt: finishedAt,
+      progress: { ...job.progress, issuesDone: ids.length, changes },
+      files: [
+        { name: 'manifest.json', objectKey: objectKey(job.projectId, job.reportId, 'manifest.json'), bytes: dm.bytes, sha256: dm.sha256 },
+        ...files.map(f => ({ name: f.name, objectKey: objectKey(job.projectId, job.reportId, f.name), bytes: f.bytes, sha256: f.sha256 }))
+      ],
+      manifestSha256: dm.sha256,
+      previous: head,
+      ...(signed ? { keyId: signed.keyId } : {})
+    };
+    const index = (await this.d.store.getIndex(job.projectKey)).map(e =>
+      e.reportId === job.reportId
+        ? { ...e, state: 'DONE' as const, finishedAt, issues: issues.length, changes, bytes: dj.bytes + dc.bytes + dm.bytes, reportSha256: dj.sha256, manifestSha256: dm.sha256, ...(signed ? { keyId: signed.keyId } : { unsigned: true }) }
+        : e
+    );
+    await this.d.store.commitDone(done, job.projectKey, index, { reportId: job.reportId, manifestSha256: dm.sha256 });
+    await this.deleteParts(done);
+  }
+
+  /** The issues of the previous report that the app can no longer read (deleted or moved away). */
+  private async missingSince(head: ChainLink | null): Promise<Array<{ issueId: string; issueKey: string }>> {
+    if (!head) return [];
+    const previous = await this.d.store.getJob(head.reportId);
+    if (!previous || previous.state !== 'DONE') return [];
+    const entries = await this.d.store.loadIds(previous.reportId, previous.idChunks);
+    const present = await this.d.appJira.presentAmong(entries.map(idOf), Date.now() + REPORT_LIMITS.eventBudgetMs);
+    if (!present) throw new JobStepError('JIRA_ERROR', 'FourRealities could not check the issues of the previous report.');
+    return entries.filter(e => !present.has(idOf(e))).map(e => ({ issueId: idOf(e), issueKey: e.slice(idOf(e).length + 1) }));
+  }
+
+  // ---------------------------------------------------------------- the daily run (as the app)
+
+  async daily(deadline: number, licenceActive: boolean): Promise<ReportDailyResult> {
+    const result: ReportDailyResult = { scheduled: 0, expired: 0, tmpDeleted: 0, stalled: 0, skipped: false };
+    const now = this.now();
+    const settings = await this.d.store.getSettings();
+    for (const projectKey of await this.d.store.projects()) {
+      if (Date.now() >= deadline) {
+        result.skipped = true;
+        break;
+      }
+      try {
+        await this.dailyProject(projectKey, now, settings, licenceActive, deadline, result);
+      } catch {
+        // One project's failure never stops the others; the next day tries again.
+      }
+    }
+    for (const { id, entry } of await this.d.store.listTmp()) {
+      if (Date.now() >= deadline) {
+        result.skipped = true;
+        break;
+      }
+      if (now.getTime() - Date.parse(entry.createdAt) < REPORT_LIMITS.tmpMaxAgeMs) continue;
+      for (const key of entry.objectKeys) await this.d.objects.delete(key);
+      await this.d.store.deleteTmp(id);
+      result.tmpDeleted++;
+    }
+    return result;
+  }
+
+  private async dailyProject(projectKey: string, now: Date, settings: ReportSettings, licenceActive: boolean, deadline: number, result: ReportDailyResult): Promise<void> {
+    const index = await this.d.store.getIndex(projectKey);
+    for (const e of index.filter(x => x.state === 'QUEUED' || x.state === 'RUNNING')) {
+      const job = await this.d.store.getJob(e.reportId);
+      if (!job || this.d.policy.stalled(job, now)) {
+        if (job) await this.failJob(job, 'STALLED', 'FourRealities stopped this report: it made no progress for 2 hours. Make the report again.');
+        else await this.setEntry(projectKey, e.reportId, { state: 'FAILED', error: { code: 'STALLED', message: 'The job record is missing.' } });
+        result.stalled++;
+      }
+    }
+    // Retention (owner decision Q3): a shorter setting applies to existing reports from this run on.
+    for (const reportId of this.d.policy.retentionDue(await this.d.store.getIndex(projectKey), settings.retentionDays, now)) {
+      const job = await this.d.store.getJob(reportId);
+      if (job) await this.removeStored(job);
+      await this.setEntry(projectKey, reportId, { state: 'EXPIRED' });
+      result.expired++;
+    }
+    if (!licenceActive) return;
+    const projectId = await this.d.store.projectId(projectKey);
+    if (!projectId) return;
+    const schedules = await this.d.store.getSchedules(projectKey);
+    let changed = false;
+    for (const schedule of schedules) {
+      for (const range of this.d.policy.duePeriods(schedule, now)) {
+        if (Date.now() >= deadline) break;
+        const made = await this.enqueue({ projectKey, projectId, range, filters: schedule.filters, trigger: 'scheduled', requestedBy: 'scheduled', scheduleId: schedule.scheduleId, jira: this.d.appJira, deadline });
+        if (!made.ok && made.error.code === 'JOB_LIMIT') break;
+        if (made.ok) result.scheduled++;
+        else await this.recordRefusal(projectKey, range, schedule, made.error);
+        schedule.lastPeriodEnd = range.to;
+        changed = true;
+      }
+    }
+    if (changed) await this.d.store.saveSchedules(projectKey, schedules);
+  }
+
+  /** A scheduled period that could not be made gets a FAILED row, so the list says why (nothing else is stored). */
+  private async recordRefusal(projectKey: string, range: ReportRange, schedule: ReportSchedule, error: ReportError): Promise<void> {
+    const admitted = this.d.policy.admit(await this.d.store.getIndex(projectKey));
+    if ('error' in admitted) return;
+    const entry: ReportIndexEntry = { reportId: this.d.crypto.newId(), state: 'FAILED', range, filters: schedule.filters, trigger: 'scheduled', requestedBy: 'scheduled', createdAt: this.now().toISOString(), error: { code: error.code, message: error.message } };
+    await this.d.store.saveIndex(projectKey, [entry, ...admitted.entries]);
+  }
+}

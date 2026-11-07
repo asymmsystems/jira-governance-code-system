@@ -46,12 +46,16 @@ describe('ADR-002 volatility layering', () => {
     expect(violations(f => inside(f, 'manager'), s => inside(s, 'contract'))).toEqual([]);
   });
 
-  it('only Accessors import @forge/api or @forge/kvs', () => {
-    expect(violations(f => !inside(f, 'accessor'), s => !/^@forge\/(api|kvs)$/.test(s))).toEqual([]);
+  it('only Accessors import @forge/api, @forge/kvs, @forge/events or @forge/object-store (ADR-015)', () => {
+    expect(violations(f => !inside(f, 'accessor'), s => !/^@forge\/(api|kvs|events|object-store)$/.test(s))).toEqual([]);
   });
 
-  it('Accessors import only contracts, other accessors and the platform (Node crypto for signatures, ADR-012)', () => {
-    expect(violations(f => inside(f, 'accessor'), s => inside(s, 'contract') || inside(s, 'accessor') || /^@forge\/(api|kvs)$/.test(s) || s === 'crypto')).toEqual([]);
+  it('Accessors import only contracts, other accessors and the platform (Node crypto for signatures, ADR-012 and ADR-015)', () => {
+    expect(violations(f => inside(f, 'accessor'), s => inside(s, 'contract') || inside(s, 'accessor') || /^@forge\/(api|kvs|events|object-store)$/.test(s) || s === 'crypto')).toEqual([]);
+  });
+
+  it('ADR-015: crypto, the queue and Object Store are imported only in src/accessor/', () => {
+    expect(violations(f => !inside(f, 'accessor'), s => !['crypto', '@forge/events', '@forge/object-store'].includes(s))).toEqual([]);
   });
 
   it('only index.ts imports Default implementations', () => {

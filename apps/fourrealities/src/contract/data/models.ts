@@ -519,7 +519,7 @@ export interface ForgeContext {
   accountId?: string;
   /** Manifest module key of the surface that runs the UI, for example fourrealities-issue-context. */
   moduleKey?: string;
-  extension?: { issue?: { id?: string | number; key?: string }; project?: { key?: string } };
+  extension?: { issue?: { id?: string | number; key?: string }; project?: { key?: string; id?: string | number } };
   /** Marketplace licence; Forge gives none on development installs (spec v2, D-10). */
   license?: { isActive?: boolean };
 }
