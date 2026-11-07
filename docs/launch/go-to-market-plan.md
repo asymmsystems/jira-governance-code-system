@@ -194,3 +194,35 @@ Source: `docs/sdlc/suite-readiness-review-2026-11/README.md`, section 3, which c
 | Low prices and a $500 payout threshold | Months before the first payout | Accepted for launch; price shape reviewed after 30 to 50 paying sites |
 | FourRealities on a site without the other two apps | A weaker first value | Owner decision 3 in the readiness review, section 7 |
 | One person answers support | A missed 4-hour or 24-hour promise | Saved replies in `docs/launch/support-playbook.md`; the weekly check of missed promises |
+
+## 9. Regulated strategy: the cloud governance layer for regulated migrations
+
+Added 2026-11-08. The detail is in `docs/launch/regulated-enterprise-playbook.md`; the competitive gap is in `docs/launch/research/dc-migration-gap-2026-11.md`; partner material is in `docs/launch/partner-kit/`.
+
+### 9.1 Why now
+
+Atlassian stopped new Data Center apps on 2025-12-16 and new Data Center customers on 2026-03-30. Existing customers can buy and expand until 2028-03-30. Data Center becomes read-only on 2029-03-28 (Atlassian, "Data Center end of life", https://www.atlassian.com/licensing/data-center-end-of-life). Regulated enterprises must move to Cloud Enterprise with data residency, Isolated Cloud or Government Cloud. When the Jira Cloud Migration Assistant finds an app with no cloud version, it shows "This app is not available in cloud" and lets the admin choose an alternative.
+
+### 9.2 The wedge
+
+Some governance apps on Data Center have no cloud version, for example Electronic Signature for Jira and Approvals - Advanced Issue Acceptance (both Deviniti), and Auditor for Jira (Enhancera). For some cloud versions, the vendor's own pages list missing features, for example Appfire Electronic Signatures ("Requiring Electronic Signatures on the ticket transition screen" is Data Center only, vendor FAQ updated 2026-11-03). Checked 2026-11-08; the gap note has the URLs. The install counts are small (56 to 293), so the wedge is the message, not the market size: the governance step you had on Data Center has a cloud answer.
+
+### 9.3 Segments
+
+| Segment | Lead app | Message |
+|---|---|---|
+| Pharma and medtech (GxP, 21 CFR Part 11) | LedgerSeal, then DefinitionGuard | Part 11 audit trail (11.10(e)) for Jira change records in cloud; keep your own signing control for 11.200 and 11.300 |
+| Finance (SOX ITGC, SOC 2) | LedgerSeal and DefinitionGuard | SOC 2 CC8.1 evidence: approval bound to content, separation of duties, Definition of Done gate |
+| US government (FedRAMP, AGC) | All four, later | No egress, no Connect. AGC availability is planned, not done |
+| EU (GDPR, NIS2) | All four | Data stays in Atlassian storage with residency; pseudonyms in hashed records; DPA being drafted |
+
+### 9.4 What must be true before we push this message
+
+1. At least LedgerSeal is listed (week 0 of section 6).
+2. The regulated migration page is live on asymm.systems (branch `feature/regulated-migration` of `asymm-corporate-code-pfw`).
+3. The procurement pack has the DPA and SAST (playbook, section 5).
+4. Isolated Cloud and Government Cloud are always described as planned until the listings exist.
+
+### 9.5 Channel and metrics
+
+Solution Partners with a regulated or migration focus (partner kit, target list). The owner decides on every contact. Metrics in the playbook, section 8: evaluations and paid licences at 101 or more users, procurement pack requests, partner conversations.
