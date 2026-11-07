@@ -141,3 +141,22 @@ Added 2026-11-08. For use **after** Atlassian approves this listing: a listing c
   - Supports SOC 2 CC8.1 and ISO/IEC 27001:2022 A.8.32. It cannot read pull request approvals, and it verifies signatures, not content.
   - Runs on Atlassian Forge. It calls only Jira and the Confluence REST API of your own site; no external APIs.
 - **Search words to keep in the text:** audit evidence, audit readiness, traceability, change management, Definition of Done, approval.
+
+---
+
+## Release copy: evidence reports (ADR-015)
+
+Added 2026-11-08 (owner decision Q7). Use **when the version with evidence reports is in production** (it is in development only, version 7.7.0), not before: the listing must not claim a feature that the Marketplace version does not have. The words for the feature are "evidence reports for change-management audits", never "audit log", "tamper-proof", "tamper-evident" or "compliant" (spec v4 section 11.9).
+
+- **Capability row** (add to "Key Capabilities & Verifiable Proof"):
+
+| Capability | Underlying Mechanism | Verifiable Proof in Code & Tests |
+|---|---|---|
+| **Evidence Reports for Change-Management Audits** | For one project and one period, a report of the issues in scope with their four checks, the verified DefinitionGuard and LedgerSeal records, Code exceptions and rework notes, and who changed which field and when, from Jira's history. A JSON file, a CSV file and a manifest that FourRealities signs with Ed25519; each manifest holds the hash of the project's previous one, and the open verifier checks a report offline. Made on request by project or Jira administrators or an evidence report group, or on a weekly or monthly schedule; kept in the app (400 days by default) and never sent anywhere. A download needs every issue of the report to be visible to you. People appear as tokens in the signed files; free-text fields show that they changed, not the text. | `apps/fourrealities/src/manager/default-evidence-report-manager.ts`, `apps/fourrealities/src/engine/default-report-engine.ts`, `tools/verifier/verify-fourrealities-report.mjs`, `apps/fourrealities/test/contract/report-verifier.test.ts` |
+
+- **Compliance boundary sentence** (add to "Honest Compliance Boundary"): FourRealities is not an administrative audit log: Jira's audit log and Atlassian Guard keep it. An evidence report holds what Jira's history held when the report was made; an issue deleted before then is not in it.
+- **Customer Tenant Storage** (replace the bullet): Snapshots, exception events, rework reasons, site settings and report records are stored in Atlassian Forge Key-Value Storage (KVS); evidence report files are stored in Atlassian Forge Object Store. The `fourrealities-exception` issue property and remote links added by users are stored in Jira.
+- **Personal Data** (add): Evidence report files name people by party token, never by account id or name. The token map is reported to Atlassian every week with the other account ids, and a closed account's entry is removed, so the signed files never change. The people file of a download is made as you, is not signed, and is removed after 24 hours.
+- **Description line** (add to the regulated migration copy): Evidence reports for change-management audits: one signed record per project and period, for the auditor's sample, checked offline with the open verifier.
+- **Release note**: Adding Forge Object Store makes this a major version: each site administrator accepts the update. No new scope.
+

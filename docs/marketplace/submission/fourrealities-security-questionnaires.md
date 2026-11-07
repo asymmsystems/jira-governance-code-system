@@ -72,3 +72,29 @@ Scope justification and the data residency statement are in `fourrealities-submi
 ## 4. Partner questionnaire and other console items
 
 As for CascadePlan (`cascadeplan-security-questionnaires.md` sections 4 and 5): the partner questionnaire is information only and the owner answers it; the security contact, partner identity verification and the submission scan are owner steps.
+
+---
+
+## 5. Evidence reports (ADR-015): changed answers for the version that has them
+
+Branch `feature/fourrealities-evidence-reports`, deployed to the **development** environment only (Forge version 7.7.0, 2026-11-08). The answers above stay true for production until this version is merged and deployed; then replace them with these. Scopes do not change. Adding Forge Object Store makes a major version.
+
+| # | Question | Answer | Change and proof |
+|---|---|---|---|
+| 3 | Permission check before `asApp()` | Yes | Every evidence report resolver (`getEvidenceReports`, `createEvidenceReport`, `getEvidenceReport`, `generateReportDownloadUrls`, `saveReportSchedule`, `deleteReportSchedule`, `deleteEvidenceReport`; `src/index.ts`) first calls `reportPermissionsAsUser` (`src/accessor/default-forge-report-permission-accessor.ts`): one direct `api.asUser().requestJira(route\`/rest/api/3/mypermissions?projectKey=${projectKey}&permissions=BROWSE_PROJECTS,ADMINISTER_PROJECTS,ADMINISTER\`)`, fail closed, before any storage read or call as the app. The report scope is a JQL search as the user; the job then reads as the app only those stored issue ids. A download checks, as the user, that every issue of the report is visible (`id in (...)`), and only then asks, as the app, which unseen ids still exist. Tests: `test/security/report-fsrt-authorization.test.ts` (every resolver key, a user with no permission: refused, no storage, no call as the app), `test/manager/evidence-report-manager.test.ts`. FSRT (`6c821bd`) sees the check: an unchecked `asApp` call placed before it is reported (`Custom-Check-Authorization-9031189739672450855`), after it is not. |
+| 6 | Egress to external hosts | No | Still no `permissions.external`. Report files go to Forge Object Store through pre-signed URLs on `tdp-os.services.atlassian.com` (an Atlassian host); `forge eligibility` reports 7.7.0 eligible for Runs on Atlassian. Users download files from the same pre-signed URLs in their browser; nothing is sent anywhere else. |
+| 7 | Least privilege | Yes | Unchanged scopes. The bulk changelog fetch and searches use `read:jira-work`; names for the people file use `read:jira-user`; KVS uses `storage:app`; Object Store needs no scope (spike S-1). |
+| 8 | Sensitive information in logs | No | Two more log lines, both in `src/index.ts`: `reportDaily` logs `ReportDailyResult` (five counts) or, on failure, `errorSummary` only; `reportWorker` logs only `errorSummary` on failure. The signing key is never logged. Proof: `test/security/report-fsrt-authorization.test.ts` (a failing storage whose message holds a secret and an account id; neither is logged) and the source rule of `test/log-safety.test.ts`. |
+| 9 | Input validation | Yes | Report inputs: dates at 00:00 UTC, range at most 366 days, at most 10 field ids (each a field of the site) and 10 account ids (pattern), reason 15 to 500 characters, retention one of seven values, at most 20 groups (`src/engine/default-report-policy-engine.ts`). Object keys are checked against the context project and a UUID report id before use (`downloadUrls`). JQL id lists hold digits only (`idsJql`). CSV cells that a spreadsheet would read as a formula get a leading apostrophe (`csvCell`). |
+| 19 | Additional details | Add | "Evidence reports are built by a queue consumer as the app, only for issue ids that a search as the requesting user returned, and are downloaded only by a user who can see every issue in them. Files are stored in Forge Object Store and signed with Ed25519; people appear as tokens; nothing is sent out." |
+
+New `asApp` uses (add to 2.1):
+
+| Use | Endpoints | Check before it |
+|---|---|---|
+| Report job (`work`, queue consumer `report-worker`) | `POST /rest/api/3/search/jql` (`id in (...)` of the job's stored ids), `POST /rest/api/3/changelog/bulkfetch`, `GET /rest/api/3/issue/{id}/remotelink`, `GET /rest/api/3/field` | The ids were returned by the requesting user's own search after `reportPermissionsAsUser` (on demand), or are the project's issues (scheduled, no user; downloaded only after the full visibility check as the user). |
+| Download existence check (`visibility`) | `POST /rest/api/3/search/jql` (`id in (...)`) | `reportPermissionsAsUser`, then the user's own visibility search. |
+| Daily report run (`daily`) | `POST /rest/api/3/search/jql` (scheduled scope) | Scheduled, no user. |
+
+Privacy & Security tab: Forge Object Store is data residency enabled ("meets the storage criterion" for Runs on Atlassian, Forge Object Store page, read 2026-11-08), so the answers on residency do not change.
+
