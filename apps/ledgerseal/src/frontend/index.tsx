@@ -18,10 +18,12 @@ import ForgeReconciler, {
   RadioGroup,
   TextArea,
   CodeBlock,
-  Heading
+  Heading,
+  Textfield
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
-import { DECLARATION, MEANINGS } from '../domain/declaration';
+import { MEANINGS } from '../domain/declaration';
+import { buildSigningForm } from './signing-view-model';
 import { logFailure } from '../service/log';
 import { buildPanelView, formatTime, historyLabel, PanelView } from './view-model';
 import {
@@ -65,6 +67,10 @@ export const LedgerSealPanel: React.FC = () => {
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [evidence, setEvidence] = useState<string | null>(null);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  // ADR-016 code signing: the request the code belongs to, and the code as typed
+  const [challenge, setChallenge] = useState<{ challengeId: string; expiresAt: string } | null>(null);
+  const [code, setCode] = useState<string>('');
+  const [sending, setSending] = useState<boolean>(false);
 
   const loadState = async () => {
     setLoading(true);
@@ -89,31 +95,55 @@ export const LedgerSealPanel: React.FC = () => {
   const sealReasonLabel = form === 'seal' ? view.actions.seal?.reasonLabel : undefined;
   const reasonNeeded = form === 'approve' || form === 'revoke' || Boolean(sealReasonLabel);
   const reasonMissing = reasonNeeded && reason.trim().length === 0;
+  const signingForm = buildSigningForm(result, { challengeId: challenge?.challengeId ?? null, expiresAt: challenge?.expiresAt ?? null, code });
+  const signingAction = form === 'revoke' ? 'REVOKE' : form === 'approve' ? 'RESEAL' : 'SEAL';
 
   const openForm = (mode: FormMode) => {
     setForm(mode);
     setActionError(null);
     setReason('');
     setDeclarationAgreed(false);
+    setChallenge(null);
+    setCode('');
+  };
+
+  const sendCode = async () => {
+    setSending(true);
+    setActionError(null);
+    try {
+      const r = (await invoke('signing-code-request-api', { action: signingAction })) as any;
+      if (r?.ok) {
+        setChallenge({ challengeId: r.challengeId, expiresAt: r.expiresAt });
+      } else {
+        setActionError(r?.message || 'LedgerSeal could not send a code. Try again.');
+      }
+    } catch (err) {
+      logFailure('code request failed', err);
+      setActionError('LedgerSeal could not send a code. Try again.');
+    } finally {
+      setSending(false);
+    }
   };
 
   const submit = async () => {
-    if (reasonMissing || (form !== 'revoke' && !declarationAgreed)) return;
+    if (reasonMissing || (form !== 'revoke' && !declarationAgreed) || !signingForm.canSubmit) return;
+    const signing = signingForm.needsCode && challenge ? { challengeId: challenge.challengeId, code: code.trim() } : undefined;
     setSubmitting(true);
     setActionError(null);
     try {
       const response =
         form === 'revoke'
-          ? ((await invoke('revoke-seal-api', { reason: reason.trim() })) as { ok: boolean; message?: string } | undefined)
+          ? ((await invoke('revoke-seal-api', { reason: reason.trim(), signing })) as { ok: boolean; message?: string } | undefined)
           : ((await invoke('seal-issue-api', {
               // F-05: the state this panel showed; the seal is refused when the issue changed since
               viewHash: result?.viewHash,
               signature: {
                 meaning,
-                declarationVersion: DECLARATION.version,
-                declarationText: DECLARATION.text,
+                declarationVersion: signingForm.declaration.version,
+                declarationText: signingForm.declaration.text,
                 reason: reasonNeeded ? reason.trim() : undefined
-              }
+              },
+              signing
             })) as { ok: boolean; message?: string } | undefined);
       if (!response?.ok) {
         setActionError(response?.message || 'LedgerSeal could not save this. Nothing was saved.');
@@ -433,7 +463,7 @@ export const LedgerSealPanel: React.FC = () => {
           {form !== 'revoke' && (
             <Stack space={SPACE.sub}>
               <NoteBox>
-                <Text as="span" size="small">{DECLARATION.text}</Text>
+                <Text as="span" size="small">{signingForm.declaration.text}</Text>
               </NoteBox>
               <Checkbox
                 value="agreed"
@@ -441,6 +471,28 @@ export const LedgerSealPanel: React.FC = () => {
                 onChange={(e: any) => setDeclarationAgreed(e.target.checked)}
                 label="I agree to the declaration above."
               />
+            </Stack>
+          )}
+          {signingForm.blockedText && (
+            <SectionMessage appearance="warning">
+              <Text as="span">{signingForm.blockedText}</Text>
+            </SectionMessage>
+          )}
+          {signingForm.needsCode && !signingForm.blockedText && (
+            <Stack space={SPACE.sub}>
+              <Text as="span" size="small">This project needs a signing code for each signature. LedgerSeal emails it to your own Atlassian address.</Text>
+              <Box>
+                <Button appearance="default" isDisabled={sending || submitting} onClick={sendCode}>
+                  {sending ? 'Sending...' : challenge ? 'Send a new code' : 'Send me a code'}
+                </Button>
+              </Box>
+              {signingForm.sentText && <Text as="span" size="small" color={TEXT_ROLE.secondary}>{signingForm.sentText}</Text>}
+              {challenge && (
+                <FormField id="signing-code" label="Code from the email (6 digits)">
+                  {/* Uncontrolled, as the reason field: one paste-able field, no timer of its own */}
+                  <Textfield key={`code-${challenge.challengeId}`} id="signing-code" name="signing-code" onChange={(e: any) => setCode(e.target.value)} />
+                </FormField>
+              )}
             </Stack>
           )}
           {actionError && (
@@ -451,7 +503,7 @@ export const LedgerSealPanel: React.FC = () => {
           <ActionRow>
             <Button
               appearance="primary"
-              isDisabled={reasonMissing || (form !== 'revoke' && !declarationAgreed) || submitting}
+              isDisabled={reasonMissing || (form !== 'revoke' && !declarationAgreed) || !signingForm.canSubmit || submitting}
               onClick={submit}
             >
               {submitting ? 'Saving...' : form === 'revoke' ? 'Revoke' : 'Sign and seal'}

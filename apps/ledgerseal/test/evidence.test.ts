@@ -187,3 +187,44 @@ describe('B-14 export failure paths', () => {
     expect(run.stderr).toContain('No public key file');
   });
 });
+
+describe('ADR-016 code-signed evidence (format 2) through the open verifier', () => {
+  it('passes the app export with code-signed seal and approval, and fails one whose signing data was removed', async () => {
+    const declaration = require('../src/domain/declaration');
+    const approved = jest.spyOn(declaration, 'isDeclarationV2Approved').mockReturnValue(true);
+    const { setSigningPolicyFlow, requestCodeFlow } = require('../src/service/signing');
+    const { signingAuthority } = require('../src/index');
+    const jira = new FakeJira(sampleIssue());
+    jira.approvers = new Set(['ann', 'bob']);
+    jira.jiraAdmins.add('admin');
+    const storage = new MemoryStore();
+    const deps = { jira, storage, secrets: storage, signer };
+    jira.currentUser = 'admin';
+    await setSigningPolicyFlow({ enabled: true, projectKeys: ['CHG'] }, panelContext('admin'), deps);
+    const v2 = { meaning: 'APPROVAL', declarationVersion: '2', declarationText: declaration.DECLARATION_V2.text };
+    const signed = async (who: string, action: string, extra: any = {}) => {
+      jira.currentUser = who;
+      const req = await requestCodeFlow({ action }, panelContext(who), deps, signingAuthority);
+      return sealIssue({ signature: { ...v2, ...extra }, signing: { challengeId: req.challengeId, code: jira.lastCode(who) } }, panelContext(who), deps);
+    };
+    await expect(signed('ann', 'SEAL')).resolves.toMatchObject({ ok: true });
+    jira.edit('mallory', '2099-01-01T00:00:00.000Z', 'summary', 'changed');
+    await expect(signed('bob', 'RESEAL', { reason: 'Approved by CAB' })).resolves.toMatchObject({ ok: true });
+    jira.currentUser = 'auditor';
+    const evidence: any = await getSealEvidence({}, panelContext('auditor'), deps);
+    approved.mockRestore();
+    expect(evidence.format).toBe('ledgerseal-evidence/2');
+    const ok = runVerifier(evidence);
+    expect(ok.out).toContain('PASS signing policies (1 versions)');
+    expect(ok.out).toContain('PASS code signing on every signature that needs it');
+    expect(ok.status).toBe(0);
+    // Removing the code check from the approval row breaks its entry hash and the code-signing check
+    const stripped = JSON.parse(JSON.stringify(evidence));
+    const reseal = stripped.history.find((r: any) => r.transitionName === 'RESEAL');
+    delete reseal.data.signing;
+    const bad = runVerifier(stripped);
+    expect(bad.status).toBe(1);
+    expect(bad.out).toContain('FAIL history chain');
+    expect(bad.out).toMatch(/FAIL code signing on every signature that needs it \(entries \d+\)/);
+  });
+});

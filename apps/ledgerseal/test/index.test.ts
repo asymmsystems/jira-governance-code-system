@@ -5,7 +5,7 @@
  */
 
 import { validateTransition, sealIssue, verifyIssue, handler } from '../src/index';
-import { FakeJira, MemoryStore, panelContext, validSignature, model } from './support/fakes';
+import { FakeJira, MemoryStore, panelContext, sampleIssue as fakeIssue, validSignature, model } from './support/fakes';
 
 jest.mock('@forge/api', () => ({
   __esModule: true,
@@ -162,6 +162,30 @@ describe('Forge Function Entry Points (index.ts)', () => {
     });
   });
 
+  describe('code signing resolvers (ADR-016)', () => {
+    it.each(['signing-code-request-api', 'signing-policy-get-api', 'signing-policy-set-api', 'signing-alerts-api', 'signing-alert-ack-api', 'signing-unlock-api'])(
+      'registers %s, which refuses a call without identity',
+      async key => {
+        const noUser = { extension: { issue: { id: '10001' } } };
+        await expect(handler({ call: { functionKey: key, payload: {} }, context: noUser } as any)).resolves.toMatchObject({ ok: false, code: 'NO_IDENTITY' });
+      }
+    );
+  });
+
+  describe('code signing entry points', () => {
+    it('pass the payload, context and deps to the flows', async () => {
+      const { requestSigningCode, getSigningPolicy, setSigningPolicy, getSigningAlerts, ackSigningAlert, unlockSigning } = require('../src/index');
+      const jira = new FakeJira(fakeIssue());
+      const storage = new MemoryStore();
+      const d = { jira, storage, secrets: storage };
+      jira.currentUser = 'u';
+      for (const call of [getSigningPolicy, setSigningPolicy, getSigningAlerts, ackSigningAlert, unlockSigning]) {
+        await expect(call({}, { accountId: 'u' }, d)).resolves.toMatchObject({ ok: false, code: 'NOT_ADMIN' });
+      }
+      await expect(requestSigningCode({ action: 'SEAL' }, panelContext('u'), d)).resolves.toMatchObject({ ok: false, code: 'NOT_PART11' });
+    });
+  });
+
   describe('forgeDeps', () => {
     it('uses Forge KVS for storage and builds the Jira client with or without a user', async () => {
       const { kvs } = require('@forge/kvs');
@@ -200,6 +224,25 @@ describe('Forge Function Entry Points (index.ts)', () => {
       const appOnly = forgeDeps(false);
       await expect(appOnly.jira.hasApproverPermission('1')).resolves.toEqual({ ok: false, error: 'FORBIDDEN' });
       expect(api.asUser).not.toHaveBeenCalled();
+    });
+
+    it('passes a time to live to KVS and keeps secrets in the secret store (ADR-016, spike S-7)', async () => {
+      const { kvs } = require('@forge/kvs');
+      kvs.set = jest.fn().mockResolvedValue(undefined);
+      const { forgeDeps } = require('../src/index');
+      const deps = forgeDeps(false);
+      expect(deps.secrets).toBe(deps.storage);
+      await deps.storage.set('t', 1, { ttlSeconds: 60 });
+      expect(kvs.set).toHaveBeenCalledWith('t', 1, { ttl: { value: 60, unit: 'SECONDS' } });
+      await deps.storage.createIfAbsent('c', 2, { ttlSeconds: 5 });
+      expect(kvs.set).toHaveBeenCalledWith('c', 2, { keyPolicy: 'FAIL_IF_EXISTS', ttl: { value: 5, unit: 'SECONDS' } });
+      kvs.getSecret = jest.fn().mockResolvedValueOnce('s').mockResolvedValueOnce({ key: 'x' }).mockResolvedValueOnce(undefined);
+      kvs.setSecret = jest.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('KEY_CONFLICT')).mockRejectedValueOnce(new Error('down'));
+      await expect(deps.secrets.getSecret('k')).resolves.toBe('s');
+      await expect(deps.secrets.createSecretIfAbsent('k', { key: 'x' })).resolves.toBe(true);
+      expect(kvs.setSecret).toHaveBeenCalledWith('k', { key: 'x' }, { keyPolicy: 'FAIL_IF_EXISTS' });
+      await expect(deps.secrets.createSecretIfAbsent('k', { key: 'y' })).resolves.toBe(false);
+      await expect(deps.secrets.createSecretIfAbsent('k', { key: 'z' })).rejects.toThrow('down');
     });
   });
 });

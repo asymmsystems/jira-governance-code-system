@@ -34,7 +34,7 @@ describe('approver policy admin page', () => {
   it('declares a native Jira admin page on the shared resolver, with its own UI resource', () => {
     expect(manifest).toContain(`  jira:adminPage:
     - key: ledgerseal-admin
-      title: LedgerSeal approvers
+      title: LedgerSeal settings
       render: native
       resource: admin
       resolver:
@@ -43,7 +43,8 @@ describe('approver policy admin page', () => {
   });
 
   it('declares the work scopes, the issue property write scope (F-20) and the personal data report scope, nothing else', () => {
-    expect(manifest).toMatch(/scopes:\n    - read:jira-work\n    - write:issue\.property:jira\n    - read:jira-user\n    - storage:app\n    - report:personal-data\n?$/);
+    // ADR-016: send:notification:jira (granular) only emails a signer their own signing code (spike S-8)
+    expect(manifest).toMatch(/scopes:\n    - read:jira-work\n    - write:issue\.property:jira\n    - read:jira-user\n    - storage:app\n    - report:personal-data\n    - send:notification:jira\n?$/);
   });
 });
 

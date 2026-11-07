@@ -10,6 +10,8 @@ After that, LedgerSeal:
 - writes an Ed25519-signed summary to the `ledgerseal-cert` issue property, which other tools can check with the public key in `keys/`; the property holds no account id;
 - names people in its records by a pseudonymous party token, reports the account ids it holds every week, and erases a closed account's link (ADR-011).
 
+**Code signing (ADR-016):** a Jira admin can name projects in which every seal, approval of changes and revoke also needs a single-use 6-digit code. LedgerSeal emails the code, through Jira, to the signer's own Atlassian address; it works once, for 5 minutes, for that person, issue and action. Requests are rate limited, a person is locked out after 5 failed attempts in a row (3 to 10) until another Jira admin unlocks them, and every request, failure, lock and unlock is kept in hash-chained records shown on the admin page. The signer's identity stays their Atlassian account. Code signing cannot be turned on until the owner approves the text of declaration version 2.
+
 LedgerSeal is tamper-evident, not tamper-proof: it detects changes, it does not stop them. Where a status lock fits, also set the workflow property `jira.issue.editable` to `false`. LedgerSeal does not provide regulated electronic signatures by itself, and it does not ask the signer to log in again. Your own validation and procedures decide whether it fits a regulated process.
 
 Built on Atlassian Forge. The app backend makes no outbound network calls, and the panel icon is bundled with the app.
@@ -31,7 +33,7 @@ Built on Atlassian Forge. The app backend makes no outbound network calls, and t
 | `jira:issuePanel` `ledgerseal-panel` | UI Kit panel: seal, approve changes, history |
 | `jira:issueContext` `ledgerseal-context` | "Approval seal" entry in the issue details column: the seal state without opening the panel (F-12) |
 | `jira:workflowValidator` `ledgerseal-validator` | Blocks a transition unless the issue is sealed and unchanged |
-| `jira:adminPage` `ledgerseal-admin` | Jira admins choose the approver groups |
+| `jira:adminPage` `ledgerseal-admin` | "LedgerSeal settings": Jira admins choose the approver groups, set up code signing, and see and acknowledge security alerts |
 | `trigger` `ledgerseal-issue-changed`, `ledgerseal-issue-deleted` | Record a change when Jira reports it; delete a deleted issue's records |
 | `scheduledTrigger` `ledgerseal-personal-data-report` | Weekly personal data report; converts records made before ADR-011 |
 
@@ -42,6 +44,7 @@ Built on Atlassian Forge. The app backend makes no outbound network calls, and t
 | `read:jira-user` | Read display names to show who changed an item (never stored), the caller's own groups, and groups for the admin page |
 | `storage:app` | Keep seal records, history and the token-to-account map |
 | `report:personal-data` | Report the account ids the app holds every week, and erase closed accounts (ADR-011) |
+| `send:notification:jira` | Email a signer their own single-use signing code, only in code-signing projects (ADR-016). The app emails nothing else |
 
 ## Storage (Forge KVS)
 
@@ -58,6 +61,10 @@ Seals are stored on the Silverston WorkEffort, Party and Status patterns (ADR-01
 | `ls3:party:{token}` | One account behind a party token; deleted when the account is closed |
 | `ls3:convert:{issueId}` | Journal of a conversion of an old record, while it runs |
 | `cert:active:{issueId}` | Old-format records, read only; their personal data is replaced by a stub |
+| `ls3:sig:policy`, `ls3:sig:policyver:{n}` | Code-signing settings, each version created once and hash-chained |
+| `ls3:sig:key` (Forge secret store) | The site key that hashes signing codes |
+| `ls3:sig:chal:*`, `ls3:sig:used:*`, `ls3:sig:chalfail:*`, `ls3:sig:fail:*`, `ls3:sig:req:*` | Code requests (keyed hash only) and the claims for single use, failures and rate limits; they expire |
+| `ls3:sig:state:{token}`, `ls3:sig:ev:{token}:{seq}`, `ls3:sig:alert:{seq}` | Lockout state, each person's signing history, and the site alert log (hash-chained) |
 
 ## Find issues by seal state (JQL)
 
@@ -84,9 +91,9 @@ node ../../tools/verifier/verify-evidence.mjs --self-test
 
 `tools/verifier` is the one copy of the open verifier in this repository. It is identical to the public repository https://github.com/asymmsystems/jira-governance-code-cli (Apache-2.0), where auditors download it.
 
-The verifier uses the Node standard library only. It exits 0 only when the snapshot hash, the history chain, the certificate and the signature all pass.
+The verifier uses the Node standard library only. It exits 0 only when the snapshot hash, the history chain, the certificate and the signature all pass. Evidence with code-signed rows has `format: "ledgerseal-evidence/2"`; use verifier 1.4.0 or later for it.
 
-The full design is in `docs/spec/ledgerseal-spec-v3.md`.
+The full design is in `docs/spec/ledgerseal-spec-v4.md` (v3 frozen).
 
 ## Tests
 
