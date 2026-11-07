@@ -105,3 +105,10 @@ Both runs on 2026-11-07 (UTC), workflow "SAST (Semgrep)", Semgrep 1.182.1, 110 r
 
 Each run kept its raw report as an artifact (`semgrep-<commit>`). The throwaway branch was
 deleted after the run; its commit was never merged.
+
+The throwaway commit touched `apps/**`, so the other workflows ran on it too. FSRT run 42402331200
+passed. Apps CI run 42402331115 failed in job "app (cascadeplan)", step "Rebuild the UI bundle and
+compare with the committed one", because the planted function changed the frontend bundle; the
+other three app jobs passed. That failure was a side effect of the test, not a problem on master.
+Prove later gate changes locally (section 2, with a planted line that is not committed), so that no
+failing branch is pushed.
