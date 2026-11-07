@@ -202,3 +202,8 @@ Also: the index and tombstone sort comparators are single comparisons (same orde
 | FSRT `6c821bd` default and secret-logging | 0 findings; 75 files, 15 and 7 checks; `fsrt_gate.py` passes |
 | Semgrep 1.182.1 | 0 findings, 216 files |
 | verifier `npm test` | 19 passed |
+| `forge eligibility -e development` | 7.9.0 eligible for Runs on Atlassian |
+
+### Deploy (fix round 2)
+
+`forge deploy -e development`: **7.9.0** from `8b1c2f5`; Jira and Confluence installations at major version 7, "Up-to-date". Production and staging untouched. The reports made on 7.7.0 and 7.8.0 are not listed any more (N-4); make new ones to retest.
