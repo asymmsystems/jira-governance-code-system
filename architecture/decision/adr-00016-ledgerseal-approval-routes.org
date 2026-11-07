@@ -1,0 +1,160 @@
+#+TITLE: ADR-016: LedgerSeal Multi-Step Approval Routes
+#+DATE: 2026-11-08
+#+STATUS: Proposed
+
+* Status
+[PROPOSED: 2026-11-08, awaiting the owner's approval. Nothing is built.]
+
+Spec delta: =docs/spec/ledgerseal-spec-v4-draft.md= section 3; high-level design in its section
+3.6. Related: ADR-015 (signing credential), ADR-017 (signing on the transition screen).
+
+* Context
+Today one seal is one signature. Any approver (project admin, Jira admin or a member of the
+approver groups, spec v3 section 7.1) seals, and a different approver approves later changes
+(section 7.2). There is no path such as "QA, then Regulatory", no group per step and no quorum.
+
+The gap research (=docs/launch/research/dc-migration-gap-2026-11.md=, section 2 and section 4 rank 2)
+lists Data Center apps without a cloud version whose need is approval routing: Deviniti "Approvals
+- Advanced Issue Acceptance" (151 installs) and Globo "Issue Approval" (64). Their feature lists
+were not read (research open point 3), so this ADR does not claim parity with them. It designs what
+regulated teams commonly need: ordered or parallel stages, a group per stage, "any one" or "N of
+the group", separation of duties across stages, and rejection.
+
+Constraints from the current design:
+- The hash chain, the snapshot canonical form and the evidence format are public through the open
+  verifier (=asymmsystems/jira-governance-code-cli=, release v1.3.0; copy in =tools/verifier=).
+  Evidence made today must still verify, and an old verifier must never PASS something it does not
+  understand.
+- The verifier's check 4 maps the newest row that is not =LS_REDACTED= to the attestation status
+  (=LS_SEALED=, =LS_CHANGED=, =LS_REVOKED=). Any new status id in the newest row makes v1.3.0 FAIL.
+- FourRealities reads the =ledgerseal-cert= property. It requires =status=, a UUID
+  =certificateId=, =snapshotHash= and =sealedAt=, treats =SEAL_VALID= as sealed and
+  =SEAL_BROKEN= or =SEAL_COMPROMISED= as broken, and any other status as "other"
+  (=apps/fourrealities/src/engine/default-gate-engine.ts=, =isLedgerSealShape= and lines 288 to 296).
+- Forge workflow validators get =transition.from.id= and =transition.to.id= and can have a
+  configuration, but "Adding validator configuration with UI Kit is currently not supported"
+  (jira-workflow-validator manifest page, 2025-03-12). LedgerSeal is UI Kit only.
+- Jira Service Management approval steps "bypass workflow validators" (Atlassian KB).
+
+* Options considered
+** A. Stages on one seal: a route run collects stage signatures over one snapshot
+A route is an ordered list of stage groups; stages in one group run in parallel. Each stage
+signature signs the same snapshot hash. When the last group reaches quorum, the final signature
+writes the seal (=LS_SEALED=) and names every stage signature. A covered change or a rejection
+ends the run, and a new run starts at the first group.
+- For: one certificate per approval, as today; the validator, change detection and the evidence
+  keep their meaning; the verifier can check quorum and separation of duties from the history.
+- Against: new row types in the chain and a new evidence format; more resolver logic.
+** B. One full seal per stage
+Each stage writes its own seal and certificate; the validator checks the seal of the stage it
+gates.
+- For: little new logic per seal.
+- Against: several "current" certificates per issue; a QA seal and a Regulatory seal could cover
+  different content unless more rules are added; the property and FourRealities see only one; the
+  verifier cannot tell a finished route from a half one.
+** C. Leave routing to Jira workflow statuses
+Each workflow status is a stage; a Jira condition limits who may transition; LedgerSeal seals at
+each gate.
+- For: almost no new code.
+- Against: no quorum, no separation of duties across stages, nothing in LedgerSeal's evidence that
+  shows the route; it depends on each customer's workflow being right.
+** D. Use Jira Service Management approvals
+- Against: JSM only; approval steps bypass validators; the approval is not bound to the content.
+
+* Decision (recommended)
+Adopt option A.
+
+1. *Route.* A route has 1 to 8 stages in 1 to 8 order groups. A stage has a name, a meaning
+   (=LS_APPROVER=, =LS_REVIEWER=, =LS_VERIFIER=), 1 to 10 approver groups, and a quorum: "any one"
+   or "N of the group" (N from 1 to 10, counting distinct people). Stages in one order group may
+   be signed in any order; the next group opens only when every stage of the current group has
+   its quorum.
+2. *Scope.* A Jira administrator binds a route to a project and to issue types (or all issue types
+   of that project) on the admin page. The most specific binding wins (issue type over "all").
+   With no binding, the implicit default route applies: one stage, quorum "any one", approvers as
+   in spec v3 section 7.1. This is exactly today's behaviour.
+3. *Versions.* Every save of a route makes a new immutable route version with a =routeHash= (the
+   SHA-256 of its canonical JSON, spec v3 section 4.1 rules). A run is pinned to the version in use
+   at its first signature. Editing a route does not change running runs (open question Q-07).
+4. *Separation of duties.*
+   - A person signs at most one stage in a run.
+   - A person who changed covered content since the last seal cannot sign any stage of the run that
+     approves those changes (the spec v3 section 7.2 rule, extended to every stage).
+   - Membership is checked as the user at signing (=/rest/api/3/myself?expand=groups=); the group
+     that qualified the signer is recorded in the row.
+5. *Rejection.* A person allowed to sign an open stage may reject, with a reason (1 to 500
+   characters). The run ends; its signatures stay in the history as a permanent record (preamble
+   comment 127: signatures "must remain a permanent part of the record") but count for nothing. The
+   next signature starts a new run at the first group.
+6. *Change during a run.* A covered change voids the run (all its signatures signed another hash).
+   This is recorded as a "run voided" row, not as an incident: no seal was broken, so
+   =everCompromised= does not change. If a seal exists, the existing incident rules still apply.
+7. *Approval of changes after a seal.* A change after a seal is approved by a full new run of the
+   route (default). A route may name a shorter "re-approval" list of stages (open question Q-06).
+8. *Revoke.* Unchanged, except that in a routed issue the revoker must be allowed to sign a stage of
+   the route's last order group. A revoke applies to a seal, as today; when a seal exists, revoking
+   it also ends an open run. With no seal, a run ends only by rejection or by a covered change.
+9. *Seal state stays separate from run state.* The seal state machine of spec v3 (=LS_SEALED=,
+   =LS_CHANGED=, =LS_REVOKED=) is unchanged. Run rows get their own status ids:
+   =LS_RUN_SIGNED= (transition =SIGN_STAGE=), =LS_RUN_REJECTED= (=REJECT=), =LS_RUN_VOIDED=
+   (=VOID=). The final stage signature is the =LS_SEALED= row itself (=SEAL= or =RESEAL=); its data
+   lists the entry hashes of the run's other signature rows and the route version and hash.
+10. *Default route makes no run rows.* With the implicit route, a seal writes exactly the rows it
+    writes today, so existing evidence and new single-stage evidence look the same.
+11. *Validator.* The gate passes only for a completed seal that is unchanged, as today. A stage may
+    name target statuses it gates (for example "QA approved"): a transition to such a status passes
+    when that stage, and every stage before it, has its quorum in the open run or the seal. The
+    validator reads =transition.to.id=, so no validator configuration screen is needed.
+12. *Attestation.* Schema 4 adds an =approval= object (=runState=, =stagesComplete=,
+    =stagesTotal=, =routeHash=). =status= keeps its four values and meanings. Before the first seal
+    the property has no =status= and no =certificateId=. A new index path =approval.runState=
+    (alias =ledgersealApproval=) lets JQL find issues waiting for approval.
+13. *Evidence and verifier.* Evidence with route data uses =format: "ledgerseal-evidence/2"= and
+    includes the route version it was checked against. Verifier 1.4.0 checks the route hash,
+    quorum, group order, one stage per person, and that every stage signature signed the sealed
+    snapshot. It skips run rows when it compares the newest state with the attestation, as it
+    skips =LS_REDACTED=. Evidence of format 1 gives the same result as in v1.3.0.
+14. *Migration.* Nothing is rewritten. Existing seals stay valid with no route. A route applies to
+    the next signature on an issue after it is bound. An issue sealed before the binding stays
+    sealed; its next approval of changes uses the route.
+15. *Part 11 mode.* When ADR-015's mode is on, every stage signature and every rejection needs the
+    signing credential.
+
+* Consequences
+** Positive
+- Closes the "no multi-step approval" gap stated in the gap research, with evidence an auditor can
+  recheck offline, including quorum and separation of duties.
+- Supports 11.10(f) "operational system checks to enforce permitted sequencing of steps".
+- No change for customers who bind no route.
+** Negative
+- Verifier v1.3.0 FAILs evidence whose newest row is a run row (an issue still in approval). It
+  never gives a false PASS. A completed routed seal PASSes in v1.3.0, but v1.3.0 does not check the
+  route; the user guide must say "use 1.4.0 or later for routed evidence".
+- FourRealities needs a small change: a property with no =status= means "not sealed" (today it
+  would read as "shape unknown").
+- The sealed issue record grows (route reference and stage counts): its size budget goes from
+  under 4 KiB to under 16 KiB.
+- An admin page section for routes, and more resolver paths to test.
+
+* Considered and excluded
+| Option or item | Why excluded |
+|---|---|
+| B. One seal per stage | Several current certificates; content of stages can differ; verifier cannot tell a finished route |
+| C. Workflow statuses as stages | No quorum, no cross-stage separation of duties, nothing in the evidence |
+| D. JSM approvals | JSM only; approval steps bypass validators; not bound to content |
+| Weighted votes, "majority of group" | Not asked; "N of the group" covers the stated need |
+| Delegation ("sign on behalf of") | Preamble comment 127: substituting another person's signature is falsification. A person signs only as themself |
+| Automatic escalation, reminders by email | Needs a notify or write scope on every stage; not needed for the control. Later, if asked |
+| Validator configuration screen | Custom UI only, a second UI technology; the stage's target statuses on the admin page do the same |
+| Project admins editing routes | Kept to Jira admins first (open question Q-08) |
+| Re-signing old evidence into the new format | Would rewrite the chain; old evidence stays format 1 |
+
+* Sources
+- Spec v3, =docs/spec/ledgerseal-spec-v3.md= sections 3, 7, 8, 9, 11
+- Open verifier, =tools/verifier/verify-evidence.mjs= (identical to
+  https://github.com/asymmsystems/jira-governance-code-cli release v1.3.0)
+- Gap research, =docs/launch/research/dc-migration-gap-2026-11.md=
+- Forge workflow validator, https://developer.atlassian.com/platform/forge/manifest-reference/modules/jira-workflow-validator/
+- JSM approvals and validators, https://support.atlassian.com/jira/kb/workflow-validator-doesnt-work-on-approval-step-transitions/
+- 21 CFR 11.10(f), https://www.ecfr.gov/current/title-21/chapter-I/subchapter-A/part-11
+- Final rule preamble comment 127, https://www.govinfo.gov/content/pkg/FR-1997-03-20/html/97-6833.htm
