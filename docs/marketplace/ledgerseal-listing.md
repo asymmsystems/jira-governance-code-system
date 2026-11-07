@@ -40,7 +40,7 @@ LedgerSeal addresses this by binding the approval to the issue content with a SH
 | **Ed25519 Signed Attestation** | Every seal attestation and evidence export is signed with Ed25519 by the Asymm Systems signing key of the app's production environment (`ls-prod-2026-11`, public key in the open verifier repository). Asymm Systems holds the private key, so a valid signature shows that LedgerSeal wrote the attestation; it does not protect against the vendor. If a key were ever missing, the panel shows a warning and the evidence is marked unsigned. | `apps/ledgerseal/src/domain/attestation.ts`, `apps/ledgerseal/test/attestation.test.ts`, `apps/ledgerseal/test/panel-notes.test.ts` |
 | **Approver Groups Admin Page** | Jira administrators choose the Jira groups whose members may seal, approve changes, and revoke. Project administrators and Jira administrators always may. | `apps/ledgerseal/src/frontend/admin.tsx`, `apps/ledgerseal/src/service/policy-admin.ts`, `apps/ledgerseal/test/approver-policy.test.ts` |
 | **Offline Verifier** | Open-source (Apache-2.0) Node.js script, https://github.com/asymmsystems/jira-governance-code-cli, that checks an evidence record offline with the Node standard library only: the snapshot hash, the history chain, the newest seal, the seal status and the signature. Exit code 0 when every check passes, 1 when a check fails, 2 for a usage error or a missing file. A pass shows the record was not changed after export and was signed with the published key; it does not show that nobody could have written a different, consistent record. | https://github.com/asymmsystems/jira-governance-code-cli (`verify-evidence.mjs`, `test/verify.test.mjs`) |
-| **Personal Data** | Seal records name people by a pseudonymous party token, not by account id; the issue property holds no account id. The app reports the account ids it holds to Atlassian every week, and erases a closed account's link to its token. | `architecture/decision/adr-00011-ledgerseal-personal-data.org`, `apps/ledgerseal/test/personal-data.test.ts` |
+| **Personal Data** | Seal records name people by a pseudonymous party token (a keyed hash of the account id), not by account id; the issue property holds no account id. The app keeps the account id in one link record per person who sealed, revoked or changed a sealed issue, and keeps the account id of the Jira administrator who last saved the approver groups. It reports these account ids to Atlassian every week; when Atlassian reports an account as closed, it deletes the link from the token to the account and the administrator id. No email address and no display name is stored. | `architecture/decision/adr-00011-ledgerseal-personal-data.org`, `apps/ledgerseal/src/storage/party-repository.ts`, `apps/ledgerseal/src/service/policy-admin.ts`, `apps/ledgerseal/src/service/personal-data.ts`, `apps/ledgerseal/test/personal-data.test.ts` |
 
 ---
 
@@ -116,3 +116,21 @@ Real captures of LedgerSeal 4.1.0 on the development site (project PAY "Payments
 - **Terms of Service:** https://asymm.systems/terms
 - **Support Portal & SLA:** https://asymm.systems/support
 - **Direct Support Contact:** `support@asymm.systems`
+
+
+---
+
+## Post-approval copy: regulated migration
+
+Added 2026-11-08. For use **after** Atlassian approves this listing: a listing cannot be edited while it is pending. Facts only, from the sections above. Do not name another vendor or app in the listing. Do not mention Isolated Cloud or Government Cloud until those listings exist. Strategy: `docs/launch/regulated-enterprise-playbook.md`.
+
+- **Tagline (75 characters):** Approval seals and change control for teams moving regulated Jira to cloud.
+- **Highlight (206 characters):** Moving from Data Center? LedgerSeal seals Jira issues at approval, names every later change and who made it, and blocks the release transition until another approver approves. Forge app, no external egress.
+- **Description lines:**
+  - Moving regulated Jira from Data Center to cloud? Keep the approval step your auditor tests: the approved ticket is the ticket that ships.
+  - LedgerSeal seals an issue at approval with a SHA-256 snapshot of the covered fields, comments and attachments.
+  - Each later change is shown with its value at approval, its value now and who changed it. The person who made the changes cannot approve them.
+  - The Require Valid LedgerSeal validator blocks the transition until another approver approves the changes. A Jira admin adds it to each transition.
+  - Supports SOC 2 CC8.1, ISO/IEC 27001:2022 A.8.32 and the 21 CFR 11.10(e) audit trail. It does not provide Part 11 electronic signatures by itself: it does not meet 11.200 or 11.300.
+  - Runs on Atlassian Forge. The manifest declares no external egress; data stays in Forge storage for your site, under Atlassian's data residency rules.
+- **Search words to keep in the text:** approval, sign-off, electronic signature, change control, audit trail, 21 CFR Part 11, SOC 2, ISO 27001.

@@ -157,3 +157,21 @@ Real captures of DefinitionGuard 6.x on a Jira Cloud site, project "Payments Pla
 - **Terms of Service:** https://asymm.systems/terms
 - **Support Portal & SLA:** https://asymm.systems/support
 - **Direct Support Contact:** `support@asymm.systems`
+
+
+---
+
+## Post-approval copy: regulated migration
+
+Added 2026-11-08. For use **after** Atlassian approves this listing: a listing cannot be edited while it is pending. Facts only, from the sections above. Do not name another vendor or app in the listing. Do not mention Isolated Cloud or Government Cloud until those listings exist. Strategy: `docs/launch/regulated-enterprise-playbook.md`.
+
+- **Tagline (69 characters):** Enforced Definition of Done for teams moving regulated Jira to cloud.
+- **Highlight (209 characters):** Moving from Data Center? DefinitionGuard blocks moves into Done while a mandatory item is open, requires evidence where you choose, keeps review items from the assignee and records waivers. No external egress.
+- **Description lines:**
+  - Moving regulated Jira from Data Center to cloud? Keep the Definition of Done gate your quality process depends on.
+  - The DefinitionGuard DoD Enforcement validator blocks a move into a Done-category status while a mandatory item is open and not waived. Gate coverage shows the transitions without it.
+  - Items marked "Evidence required" are ticked only with a link or a note. Items marked "Not the assignee" cannot be ticked or waived by the assignee.
+  - Waivers need a reason of 10 to 500 characters. Every tick, reopen, waiver and reset is kept in a hash-chained history that admins can export as JSON.
+  - Supports SOC 2 CC8.1 and ISO/IEC 27001:2022 A.8.29 and A.8.32. A tick is not an electronic signature and does not meet 21 CFR Part 11 signature requirements on its own.
+  - Runs on Atlassian Forge with no external egress. People are stored as pseudonyms; the link to a closed account is deleted.
+- **Search words to keep in the text:** Definition of Done, checklist, quality gate, evidence, waiver, audit trail, GxP, SOC 2.

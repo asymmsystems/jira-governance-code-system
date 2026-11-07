@@ -124,3 +124,20 @@ Capture: `apps/fourrealities/test/live/marketplace_shots.py`.
 - **Terms of Service:** https://asymm.systems/terms
 - **Support Portal & SLA:** https://asymm.systems/support
 - **Direct Support Contact:** `support@asymm.systems`
+
+
+---
+
+## Post-approval copy: regulated migration
+
+Added 2026-11-08. For use **after** Atlassian approves this listing: a listing cannot be edited while it is pending. Facts only, from the sections above. Do not name another vendor or app in the listing. Do not mention Isolated Cloud or Government Cloud until those listings exist. Strategy: `docs/launch/regulated-enterprise-playbook.md`.
+
+- **Tagline (69 characters):** Delivery evidence per Jira issue, for audits after the move to cloud.
+- **Highlight (205 characters):** Moving from Data Center? FourRealities shows, per Jira issue, whether a decision record, a Definition of Done, a pull request and an approval seal exist. Signed records count only when verified. No egress.
+- **Description lines:**
+  - Moving regulated Jira from Data Center to cloud? Answer the auditor's sampling question per issue, without opening every issue by hand.
+  - Four checks per issue: Intent, Process, Code and Audit, each with its state and its source.
+  - DefinitionGuard and LedgerSeal records count only when their Ed25519 signature is verified. Checks your site does not use are not scored.
+  - Supports SOC 2 CC8.1 and ISO/IEC 27001:2022 A.8.32. It cannot read pull request approvals, and it verifies signatures, not content.
+  - Runs on Atlassian Forge. It calls only Jira and the Confluence REST API of your own site; no external APIs.
+- **Search words to keep in the text:** audit evidence, audit readiness, traceability, change management, Definition of Done, approval.
