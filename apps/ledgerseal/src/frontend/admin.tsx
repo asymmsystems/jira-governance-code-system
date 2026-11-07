@@ -10,6 +10,7 @@
 import React, { useState, useEffect } from 'react';
 import ForgeReconciler from '@forge/react';
 import { invoke } from '@forge/bridge';
+import { logFailure } from '../service/log';
 import {
   AdminPolicyPanel,
   buildAdminPolicyView,
@@ -33,7 +34,7 @@ export const LedgerSealAdmin: React.FC = () => {
       setResponse(r);
       setChosen(savedGroups(r));
     } catch (err) {
-      console.error('Failed to load the approver groups', err);
+      logFailure('could not load the approver groups', err);
       setResponse(null);
     } finally {
       setLoading(false);
@@ -73,7 +74,7 @@ export const LedgerSealAdmin: React.FC = () => {
         setNotice(r?.message || 'LedgerSeal could not save. Nothing was saved.');
       }
     } catch (err) {
-      console.error('Failed to save the approver groups', err);
+      logFailure('could not save the approver groups', err);
       setNotice('LedgerSeal could not save. Nothing was saved. Try again.');
     } finally {
       setSaving(false);

@@ -10,6 +10,7 @@
 import React, { useState, useEffect } from 'react';
 import ForgeReconciler from '@forge/react';
 import { invoke } from '@forge/bridge';
+import { logFailure } from '../logger';
 import {
   AdminPolicyPanel,
   buildAdminPolicyView,
@@ -33,7 +34,7 @@ export const CascadePlanAdmin: React.FC = () => {
       setResponse(r);
       setChosen(savedGroups(r));
     } catch (err) {
-      console.error('Failed to load approver groups', err);
+      logFailure('load approver groups', err);
       setResponse(null);
     } finally {
       setLoading(false);
@@ -80,7 +81,7 @@ export const CascadePlanAdmin: React.FC = () => {
         setNotice(r?.message || 'CascadePlan could not save. Nothing was saved.');
       }
     } catch (err) {
-      console.error('Failed to save approver groups', err);
+      logFailure('save approver groups', err);
       setNotice('CascadePlan could not save. Nothing was saved. Try again.');
     } finally {
       setSaving(false);

@@ -6180,6 +6180,21 @@ Please see https://iframe-resizer.com/upgrade for more details.
     render();
   }
 
+  // src/logger.ts
+  function logFailure(where, detail) {
+    console.warn(`cascadeplan ${where}: ${failureSummary(detail)}`);
+  }
+  function failureSummary(detail) {
+    const d = detail;
+    if (d && typeof d === "object" && typeof d.status === "number" && Number.isInteger(d.status)) return `HTTP ${d.status}`;
+    if (detail instanceof Error) {
+      const name = typeof d.name === "string" && /^[A-Za-z]{1,40}$/.test(d.name) ? d.name : "Error";
+      const code = typeof d.code === "string" || typeof d.code === "number" ? String(d.code) : "";
+      return /^[A-Za-z0-9_.:-]{1,40}$/.test(code) ? `${name} ${code}` : name;
+    }
+    return typeof detail;
+  }
+
   // src/frontend/bridge.ts
   var recentWrites = /* @__PURE__ */ new Map();
   var RECENT_MS = 6e4;
@@ -6218,7 +6233,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       rememberWrites(res);
       noteCreateOutcome(signature, payload.createId, true);
     } catch (err) {
-      console.error("Forge resolver error:", fnName, err);
+      logFailure(`resolver ${fnName}`, err);
       noteCreateOutcome(signature, payload.createId, false);
       const message = fnName.startsWith("get") || fnName.startsWith("check") ? err?.message || "The planner could not reach Jira." : signature ? "The result is unknown. Check the plan, or make the same request again: CascadePlan will not create the work item twice." : "The result is unknown. Check the plan before you try again.";
       res = { ok: false, success: false, error: fnName.startsWith("get") || fnName.startsWith("check") ? "unavailable" : "unknown", message };
@@ -6583,7 +6598,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
     try {
       await import_bridge3.view.theme.enable();
     } catch (err) {
-      console.warn("Theming not available; using light fallbacks", err);
+      logFailure("theming not available, using light fallbacks", err);
     }
   }
   function cssToken(name, fallback = "") {
@@ -8708,7 +8723,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       if (event) event.preventDefault();
       return;
     } catch (err) {
-      console.warn("Forge router.open failed, using window.open fallback:", err);
+      logFailure("router.open failed, using window.open", err);
     }
     const baseUrl = getJiraBaseUrl();
     const fullUrl = `${baseUrl}/browse/${issueKey}`;
@@ -11649,7 +11664,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
               if (res && res.ok === true) showFlag({ text: "Scheduled " + data.taskId + " to timeline." });
             }
           } catch (err) {
-            console.error("Error handling empty state drop:", err);
+            logFailure("empty state drop", err);
           }
         });
       }
@@ -12318,7 +12333,7 @@ Click to manage or assign.`;
         }
         await loadProjectPlan();
       } catch (err) {
-        console.error("Error handling row drop:", err);
+        logFailure("row drop", err);
       }
     });
     const trackTd = document.createElement("td");
@@ -13992,7 +14007,7 @@ Click to manage or assign.`;
             if (res && res.ok === true) showFlag({ text: "Scheduled " + data.taskId + " to timeline." });
           }
         } catch (err) {
-          console.error("Error on wrapper drop:", err);
+          logFailure("wrapper drop", err);
         }
       });
     }
@@ -14433,7 +14448,7 @@ Click to manage or assign.`;
       closeModal("taskDetailModal");
       await loadProjectPlan();
     } catch (err) {
-      console.error("Failed to unschedule task:", err);
+      logFailure("unschedule task", err);
     } finally {
       if (btn) {
         btn.disabled = false;

@@ -11,6 +11,7 @@
 import { StorageProvider } from '../storage/checklist-repository';
 import { resolveStorage } from '../storage/forge-storage';
 import { eventPrefix, legacyKey, stateKey } from '../storage/checklist-store';
+import { logFailure } from '../log';
 
 /** At most this many history pages are deleted per call (100 events each). */
 export const MAX_DELETE_PAGES = 200;
@@ -45,6 +46,6 @@ export async function issueDeletedTrigger(event: any, _context?: any, storagePro
     const n = await deleteIssueRecords(resolveStorage(storageProvider), issueId);
     console.log(`DefinitionGuard issue deleted: ${n} record(s) removed.`);
   } catch (err) {
-    console.error(`DefinitionGuard: could not remove the records of a deleted issue: ${(err as Error)?.message}`);
+    logFailure('could not remove the records of a deleted issue', err);
   }
 }

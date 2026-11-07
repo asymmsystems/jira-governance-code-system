@@ -138,7 +138,7 @@ describe('BL-1 weekly personal data report and erasure', () => {
       mockReport.mockRejectedValue(new Error('report endpoint down'));
       await toggleChecklistItem({ itemId: 'item-unit-tests', isCompleted: false }, ctx('712020:carol'), storage);
       await expect(personalDataTrigger()).resolves.toBeUndefined();
-      expect(err.mock.calls[0][0]).toBe('DefinitionGuard: the personal data report failed: report endpoint down');
+      expect(err.mock.calls[0][0]).toBe('DefinitionGuard: the personal data report failed: Error');
       expect(JSON.stringify([...log.mock.calls, ...err.mock.calls])).not.toContain('712020:');
     } finally {
       log.mockRestore();

@@ -8,6 +8,7 @@
 import Resolver from '@forge/resolver';
 import { AdminResult, AdminView, ApprovalView, PersonalDataRunResult, CallerContext, DecideExceptionPayload, ForgeContext, IssueRow, LinkDecisionPayload, ProjectDashboardView, RecordExceptionPayload, RequestReviewPayload, ResolverResult, ScheduledRunResult, WriteResult } from './contract/data/models';
 import { ConfluencePage, ConfluencePageSearchAccessor, PrivacyReportAccessor, StorageProvider } from './contract/accessors';
+import { errorSummary } from './contract/data/errors';
 import { DefaultForgeKvsStore } from './accessor/default-forge-kvs-store';
 import { DefaultForgeConfluenceSearchAccessor } from './accessor/default-forge-confluence-search-accessor';
 import { DefaultForgeJiraIssueAccessor, Principal } from './accessor/default-forge-jira-issue-accessor';
@@ -184,7 +185,7 @@ export const personalData = async (): Promise<void> => {
     const result = await reportPersonalData();
     console.log('FourRealities: personal data report', JSON.stringify(result));
   } catch (err) {
-    console.error('FourRealities: personal data report failed', err instanceof Error ? err.message : String(err));
+    console.error(`FourRealities: personal data report failed: ${errorSummary(err)}`);
   }
 };
 

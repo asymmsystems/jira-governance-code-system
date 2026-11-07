@@ -330,11 +330,11 @@ describe('FourRealities Index / Forge Handlers', () => {
         const broken: any = { get: async () => { throw new Error('kvs down'); }, set: async () => undefined, delete: async () => undefined, queryPrefix: async () => { throw new Error('kvs down'); } };
         setGlobalStorageProvider(broken);
         await personalData();
-        expect(err).toHaveBeenLastCalledWith('FourRealities: personal data report failed', 'kvs down');
+        expect(err).toHaveBeenLastCalledWith('FourRealities: personal data report failed: Error');
         broken.queryPrefix = async () => { throw 'plain'; };
         broken.get = async () => { throw 'plain'; };
         await personalData();
-        expect(err).toHaveBeenLastCalledWith('FourRealities: personal data report failed', 'plain');
+        expect(err).toHaveBeenLastCalledWith('FourRealities: personal data report failed: string');
       } finally {
         log.mockRestore();
         err.mockRestore();

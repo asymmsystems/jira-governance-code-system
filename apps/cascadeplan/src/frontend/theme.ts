@@ -11,13 +11,14 @@
  */
 
 import { view } from '@forge/bridge';
+import { logFailure } from '../logger';
 
 /** Asks Jira to apply its theme (light, dark) and the ADS token sheet to this iframe. */
 export async function enableTheme(): Promise<void> {
   try {
     await view.theme.enable();
   } catch (err) {
-    console.warn('Theming not available; using light fallbacks', err);
+    logFailure('theming not available, using light fallbacks', err);
   }
 }
 

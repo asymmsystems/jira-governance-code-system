@@ -21,6 +21,7 @@ import ForgeReconciler, {
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
 import { IssueChecklistState, ChecklistAuditEvent } from '../domain/models';
+import { logFailure } from '../log';
 import { buildPanelViewModel, historyRows, panelErrorText, Attribution } from '../ui/panel-view-model';
 import {
   AppSurface,
@@ -70,7 +71,7 @@ export const DefinitionGuardPanel: React.FC = () => {
     try {
       await call();
     } catch (err) {
-      console.error(`DefinitionGuard: ${action} failed`, err);
+      logFailure(`${action} failed`, err);
       setErrorMessage(panelErrorText(err, action));
     } finally {
       setBusyId(null);

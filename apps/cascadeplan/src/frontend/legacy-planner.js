@@ -12,6 +12,7 @@
 import { callResolver as rawCallResolver, openIssueInNewTab, getProjectScope } from './bridge';
 import { MAIN_PLAN_ID, getSavedPlanId, setSavedPlanId, chooseActivePlan, parentKeysOf, visibleRows } from '../ui/plan-view-state';
 import { showFlag } from './flag';
+import { logFailure } from '../logger';
 import { classifyResult } from '../ui/result';
 import { UndoStack } from '../ui/undo-stack';
 import { snapshotPlan, buildUndoEntry, actionLabel, withWrittenStatuses } from '../ui/undo-plan';
@@ -116,7 +117,7 @@ function openJiraIssueInNewTab(issueKey, event) {
     if (event) event.preventDefault();
     return;
   } catch (err) {
-    console.warn('Forge router.open failed, using window.open fallback:', err);
+    logFailure('router.open failed, using window.open', err);
   }
 
   const baseUrl = getJiraBaseUrl();
@@ -3537,7 +3538,7 @@ function renderTimelineRows() {
             if (res && res.ok === true) showFlag({ text: 'Scheduled ' + data.taskId + ' to timeline.' });
           }
         } catch (err) {
-          console.error('Error handling empty state drop:', err);
+          logFailure('empty state drop', err);
         }
       });
     }
@@ -4276,7 +4277,7 @@ function buildTaskRow(task, rowIdx) {
       }
       await loadProjectPlan();
     } catch (err) {
-      console.error('Error handling row drop:', err);
+      logFailure('row drop', err);
     }
   });
 
@@ -6125,7 +6126,7 @@ function initKeyboard() {
           if (res && res.ok === true) showFlag({ text: 'Scheduled ' + data.taskId + ' to timeline.' });
         }
       } catch (err) {
-        console.error('Error on wrapper drop:', err);
+        logFailure('wrapper drop', err);
       }
     });
   }
@@ -6621,7 +6622,7 @@ async function handleUnscheduleFromModal() {
     closeModal('taskDetailModal');
     await loadProjectPlan();
   } catch (err) {
-    console.error('Failed to unschedule task:', err);
+    logFailure('unschedule task', err);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '📤 Move to Backlog'; }
   }

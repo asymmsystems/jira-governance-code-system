@@ -13,6 +13,7 @@ import ForgeReconciler, { Lozenge, Spinner, Stack, Text } from '@forge/react';
 import { invoke } from '@forge/bridge';
 import { SPACE, TEXT_ROLE } from '@asymm/jira-ui';
 import { buildContextView } from './view-model';
+import { logFailure } from '../service/log';
 
 export const LedgerSealContext: React.FC = () => {
   const [result, setResult] = useState<any>(null);
@@ -24,7 +25,7 @@ export const LedgerSealContext: React.FC = () => {
       try {
         setResult(await invoke('verify-issue-api', {}));
       } catch (err) {
-        console.error('LedgerSeal: seal state failed', err);
+        logFailure('seal state failed', err);
         setFailed(true);
       } finally {
         setLoading(false);
