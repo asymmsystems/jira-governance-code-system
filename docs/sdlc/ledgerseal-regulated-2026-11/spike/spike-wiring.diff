@@ -1,0 +1,74 @@
+diff --git a/apps/ledgerseal/manifest.yml b/apps/ledgerseal/manifest.yml
+index 1fa485c..7f007f7 100644
+--- a/apps/ledgerseal/manifest.yml
++++ b/apps/ledgerseal/manifest.yml
+@@ -25,6 +25,23 @@ modules:
+       resource: admin
+       resolver:
+         function: resolver
++  jira:globalPage:
++    - key: ledgerseal-spike
++      title: LedgerSeal spike
++      render: native
++      resource: spike
++      resolver:
++        function: resolver
++  jira:customField:
++    - key: ledgerseal-signature
++      name: LedgerSeal signature
++      description: LedgerSeal signature (Phase 1 spike)
++      type: string
++      edit:
++        resource: sigedit
++        render: native
++      resolver:
++        function: resolver
+   jira:workflowValidator:
+     - key: ledgerseal-validator
+       name: Require Valid LedgerSeal
+@@ -86,6 +103,10 @@ resources:
+     path: src/frontend/context.tsx
+   - key: icons
+     path: static/icons
++  - key: spike
++    path: src/spike/spike-page.tsx
++  - key: sigedit
++    path: src/spike/sig-edit.tsx
+ 
+ app:
+   id: ari:cloud:ecosystem::app/7489a645-7c96-400a-b289-eb36f2701a00
+@@ -101,3 +122,4 @@ permissions:
+     - read:jira-user
+     - storage:app
+     - report:personal-data
++    - send:notification:jira
+diff --git a/apps/ledgerseal/src/index.ts b/apps/ledgerseal/src/index.ts
+index bc66ec1..47bb353 100644
+--- a/apps/ledgerseal/src/index.ts
++++ b/apps/ledgerseal/src/index.ts
+@@ -29,6 +29,7 @@ import { getPolicyFlow, searchGroupsFlow, setPolicyFlow } from './service/policy
+ import { deleteIssueRecords, ReportFn, weeklyPersonalDataJob } from './service/personal-data';
+ import { privacy } from '@forge/api';
+ import { logFailure } from './service/log';
++import { spikeIntent, spikeNotify, spikeSecret, spikeValidator } from './spike/spike-backend';
+ 
+ export { LedgerSealDeps } from './service/ledger';
+ 
+@@ -154,6 +155,8 @@ export const JIRA_UNREACHABLE_MESSAGE =
+  * Applies the values typed on the transition screen (modifiedFields) before the check, so they cannot bypass it.
+  */
+ export async function validateTransition(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(false)) {
++  const spike = await spikeValidator(payload);
++  if (spike) return spike;
+   return withLicenceNote(await gate(payload, deps), payload, context);
+ }
+ 
+@@ -371,4 +374,8 @@ resolver.define('approver-group-search-api', async (req) => {
+   return await searchApproverGroups(req.payload, req.context);
+ });
+ 
++resolver.define('spike-notify', async req => spikeNotify(req.payload, req.context));
++resolver.define('spike-secret', async () => spikeSecret());
++resolver.define('spike-intent', async req => spikeIntent(req.payload, req.context));
++
+ export const handler = resolver.getDefinitions();
