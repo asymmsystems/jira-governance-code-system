@@ -1,0 +1,64 @@
+# Copyright (c) 2026 Asymm Systems. All rights reserved.
+#
+# @author Fahim Farook
+#
+# Static analysis (SAST) of the Forge app and shared package sources with Semgrep Community
+# Edition, pinned, and its stock rule packs. Any finding fails the job. The raw JSON report is kept
+# as an artifact. How to run it locally and how false positives are handled: docs/security/sast.md.
+name: SAST (Semgrep)
+
+on:
+  push:
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - '.github/workflows/sast.yml'
+  pull_request:
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - '.github/workflows/sast.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sast-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SEMGREP_VERSION: 1.182.1
+
+jobs:
+  semgrep:
+    name: Semgrep
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Semgrep (pinned)
+        run: |
+          python3 -m pip install --user "semgrep==${SEMGREP_VERSION}"
+          semgrep --version
+
+      - name: Scan
+        env:
+          SEMGREP_SEND_METRICS: 'off'
+        run: |
+          mkdir -p sast-out
+          semgrep scan --metrics=off \
+            --config p/typescript --config p/javascript --config p/nodejs --config p/secrets \
+            --error --json-output=sast-out/semgrep.json \
+            apps/*/src packages/*/src
+
+      - name: Keep the raw report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-${{ github.sha }}
+          path: sast-out/
+          retention-days: 90
