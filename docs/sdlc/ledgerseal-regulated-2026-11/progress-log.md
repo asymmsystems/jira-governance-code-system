@@ -93,3 +93,39 @@ owner's own address; one dummy secret `ls3:spike:secret` in the development secr
 
 ### Major version
 Yes: the scope `send:notification:jira` makes the next production deploy a major version (site admins consent on upgrade).
+
+## Phase 3: signing on the transition screen (ADR-018 option A)
+
+### What was built
+- **Canonical form 2.3.0** (`src/domain/canonicalizer.ts`): the rules of 2.2.0 plus LedgerSeal's own signature field, matched by `ari:cloud:ecosystem::extension/7489a645-.../<any environment>/static/ledgerseal-signature` (spike S-1 showed the environment id in the type). New seals use 2.3.0; 2.0.0 to 2.2.0 unchanged. Hand-written vectors `test/fixtures/vectors-2.3.0.json` (4) and `test/canonical-v23.test.ts`.
+- **Seal modes** (`sealIssueFlow`, `src/service/ledger.ts`): `prepare` (every check as the user, including the code with action `TRANSITION` in a code-signing project; stops before the first seal write) and `complete` (the validator; Browse, approver and code results come from the intent; the issue is read with the screen's values). The row of a transition signature adds `via: "TRANSITION_SCREEN"` and `transitionToStatusId`.
+- **Intent** (`src/service/transition-signing.ts`): `transition-sign-intent-api` stores `ls3:intent:{lsi_...}` (party token, issue, hash shown, signature, code-check result; 120 seconds; TTL 1 day) and returns only the id. The validator (`completeIntent`, called first in `gate`) finds an intent value in LedgerSeal's own field (by field type; any `lsi_` value when the field list cannot be read, fail closed), checks it exists, is unexpired and unclaimed, that `user.accountId`'s token is the intent's party and the issue matches, claims `ls3:intentuse:{id}` once, then seals. A changed covered field or a typed comment on the screen gives "LedgerSeal: fields on this screen changed the approved content..." (Q-10). Then the normal gate decides.
+- **UI:** `src/frontend/signature-field.tsx` (UI Kit field edit view: the seal or approval form, the code in code-signing projects, Sign, then `view.submit(intentId)`), `src/frontend/signature-field-view-model.ts`.
+- **Manifest:** `jira:customField` `ledgerseal-signature` (string, edit `sigedit`, no `view`, no `experience`), `jira:issueAction` `ledgerseal-sign-action` "Sign with LedgerSeal" (the panel resource). No new scope.
+
+### Tests (rules)
+`test/transition-signing.test.ts` (19): intent checks (identity, Browse, approver, shown hash required and current, separation of duties and reason); no seal written by an intent; 120-second life; validator seals for the signer and records the transition; single use; expired and unknown; another user or no user (intent kept); another issue; screen changes (comment, covered field); a seal failure passed back within 250 characters; another app's look-alike field ignored and an unreadable field list treated as ours; no intent leaves the normal gate; approval of changes with a reason; the claim race; missing issue key and target status; code signing needs a TRANSITION code, stores only its evidence and writes it into the row; completion without a code check refused; the field view model. `test/canonical-v23.test.ts` (6). `test/manifest.test.ts`: the field has no `view` and no `experience` (live finding), the issue action. `test/permission-checks.test.ts` and `test/index.test.ts`: the intent resolver is Browse-first and registered.
+
+### Gate (code of the Phase 3 commit)
+| Step | Result |
+|---|---|
+| `npx tsc --noEmit` | 0 errors |
+| `npx jest --coverage` | 56 suites, 699 tests passed; all files: statements 98.37%, branches 94.54%, functions 97.57%, lines 99.03%; branches: transition-signing 90.47%, signature-field-view-model 93.33%, canonicalizer 95.29%, ledger 91.66% |
+| `npm run build` | exit 0 |
+| `npm audit --omit=dev --audit-level=high` | exit 0 (7 moderate, unchanged) |
+| `forge lint` | No issues found |
+| FSRT `6c821bd`, default and `secret-logging` | 0 findings each |
+| Semgrep 1.182.1 | 0 findings, 205 files |
+| `forge eligibility -e development` | 6.6.0 eligible for Runs on Atlassian |
+
+### Deploy and live check (development only)
+- Versions: 6.2.0 (Phase 3 code), 6.3.0 (view without `experience`), 6.4.0 (no `view`), 6.5.0 (`view.submit` on sign), 6.6.0 (final Phase 3 code). Production not touched.
+- LSP transition 41 got screen 10056 with only the field, for the probe, and lost it again (`hasScreen: false`, validator kept; screen deleted).
+- Probe issue **LSP-6** (created for this probe, labels `ls-probe`, `ls-probe-regulated`): signed in the field on the new transition dialog, Update: moved to Done; change log `LedgerSeal signature: lsi_20ffe6ca...`, resolution, status; property `ledgerseal-cert` schema 3, `SEAL_VALID`, signed `ls-dev-2026-11`; the context entry shows "Sealed. No change detected since approval" with the field set. LSP-6 stays Done as the probe record.
+- Live findings (spike-results section 6): a field `view` hides the edit view on the dialog; the field must call `view.submit` itself.
+
+### Listing and site
+- Site items R-7 to R-9. Listing: `docs/marketplace/ledgerseal-listing.md` "Post-approval copy: code signing" gains a transition-screen line, held until release and live probes (Q-14).
+
+### Major version
+No new scope in Phase 3. The next production deploy is major because of Phase 2's scope.

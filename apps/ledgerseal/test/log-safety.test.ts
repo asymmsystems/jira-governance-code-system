@@ -141,7 +141,10 @@ describe('Q8 the frontend failure log lines', () => {
     ['admin-signing.tsx', "logFailure('could not load code signing', err);"],
     ['admin-signing.tsx', "logFailure('could not save code signing', err);"],
     ['admin-signing.tsx', "logFailure('could not load the alerts', err);"],
-    ['admin-signing.tsx', "logFailure('alert action failed', err);"]
+    ['admin-signing.tsx', "logFailure('alert action failed', err);"],
+    ['signature-field.tsx', "logFailure('signature field could not load', err);"],
+    ['signature-field.tsx', "logFailure('signature field code request failed', err);"],
+    ['signature-field.tsx', "logFailure('signature field sign failed', err);"]
   ];
 
   it.each(sites)('src/frontend/%s: %s drops the secret', (file, call) => {
@@ -154,7 +157,7 @@ describe('Q8 the frontend failure log lines', () => {
   });
 
   it('no frontend file logs any other way', () => {
-    for (const file of ['context.tsx', 'admin.tsx', 'index.tsx', 'admin-signing.tsx']) {
+    for (const file of ['context.tsx', 'admin.tsx', 'index.tsx', 'admin-signing.tsx', 'signature-field.tsx']) {
       const text = fs.readFileSync(path.join(APP, 'src/frontend', file), 'utf8');
       expect(text).not.toMatch(/console\./);
       expect((text.match(/logFailure\(/g) || []).length).toBe(sites.filter(([f]) => f === file).length);

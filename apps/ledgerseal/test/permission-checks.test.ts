@@ -9,7 +9,7 @@
  * @author Fahim Farook
  */
 
-import { getSealEvidence, getSealHistory, requestSigningCode, revokeSeal, sealIssue, verifyIssue } from '../src/index';
+import { createSigningIntent, getSealEvidence, getSealHistory, requestSigningCode, revokeSeal, sealIssue, verifyIssue } from '../src/index';
 import { createJiraClient } from '../src/jira/jira-client';
 import { buildPanelView } from '../src/frontend/view-model';
 import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
@@ -40,7 +40,8 @@ const RESOLVERS: [string, (user: string, deps: any) => Promise<any>][] = [
   ['revoke-seal-api', (user, deps) => revokeSeal({ reason: 'Scope withdrawn' }, panelContext(user), deps)],
   ['seal-history-api', (user, deps) => getSealHistory({}, panelContext(user), deps)],
   ['seal-evidence-api', (user, deps) => getSealEvidence({}, panelContext(user), deps)],
-  ['signing-code-request-api', (user, deps) => requestSigningCode({ action: 'SEAL' }, panelContext(user), deps)]
+  ['signing-code-request-api', (user, deps) => requestSigningCode({ action: 'SEAL' }, panelContext(user), deps)],
+  ['transition-sign-intent-api', (user, deps) => createSigningIntent({ viewHash: 'x', signature: validSignature() }, panelContext(user), deps)]
 ];
 
 describe('Q3 a Browse projects check as the user comes before any app read', () => {

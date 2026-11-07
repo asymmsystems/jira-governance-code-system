@@ -110,3 +110,9 @@ LSP-4's change log after the first signed transition: one entry (2026-11-08T03:5
 | Canonical form 2.3.0 matches the field by app id and module key (`.../static/ledgerseal-signature`), any environment | spec v4 section 16.3 |
 | Site signing key: `setSecret` with `FAIL_IF_EXISTS`; claim and challenge keys with TTL | spec v4 section 14.5 |
 | No fallback was needed; nothing stopped the build | |
+
+## 6. Phase 3 live finding (2026-11-08, development 6.2.0 to 6.6.0)
+
+- **A `view` resource on the Forge custom field hides the edit view on the new transition dialog.** With `view: { resource, render: native }` (with or without `experience: [issue-view]`), the dialog showed Jira's own plain text box for the LedgerSeal signature field. With no `view` (the spike S-1 shape), the UI Kit edit view rendered. The module therefore has no `view`; the issue view shows the stored intent id, and who signed and when stays in the panel. Guarded by `test/manifest.test.ts`.
+- **The field must submit its value itself.** With `CustomFieldEdit` `onSubmit` only, a signature made with the Sign button (no text box focused) reached the validator without the field (`modifiedFields` empty; the gate answered "not sealed"). Calling `view.submit(intentId)` as soon as the intent exists fixed it (live, LSP-6).
+- The field's description in the dialog stays the one Jira copied into the field configuration when the field was created ("LedgerSeal signature (Phase 1 spike)" on the development site); the manifest description changes only the field's own description.

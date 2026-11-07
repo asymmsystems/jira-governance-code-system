@@ -163,7 +163,7 @@ describe('Forge Function Entry Points (index.ts)', () => {
   });
 
   describe('code signing resolvers (ADR-016)', () => {
-    it.each(['signing-code-request-api', 'signing-policy-get-api', 'signing-policy-set-api', 'signing-alerts-api', 'signing-alert-ack-api', 'signing-unlock-api'])(
+    it.each(['transition-sign-intent-api', 'signing-code-request-api', 'signing-policy-get-api', 'signing-policy-set-api', 'signing-alerts-api', 'signing-alert-ack-api', 'signing-unlock-api'])(
       'registers %s, which refuses a call without identity',
       async key => {
         const noUser = { extension: { issue: { id: '10001' } } };
