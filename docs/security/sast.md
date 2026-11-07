@@ -96,6 +96,12 @@ that line and exited with code 1.
 
 ### 4.3 CI runs
 
-| Run | Commit | Result |
+Both runs on 2026-11-07 (UTC), workflow "SAST (Semgrep)", Semgrep 1.182.1, 110 rules, 196 files.
+
+| Run | Branch and commit | Result |
 |---|---|---|
-| (filled in after the push) | | |
+| 42402321552 | `feature/ci-sast` 757dddc (this workflow on master 762f109) | success: 0 findings |
+| 42402331210 | `throwaway/sast-gate-proof` f6dfc5c (757dddc plus the planted function) | failure, as intended: 1 finding (`detect-eval-with-expression`, 1 blocking), exit code 1 |
+
+Each run kept its raw report as an artifact (`semgrep-<commit>`). The throwaway branch was
+deleted after the run; its commit was never merged.
