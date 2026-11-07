@@ -1,14 +1,14 @@
-#+TITLE: ADR-017: LedgerSeal Signing While Transitioning
+#+TITLE: ADR-018: LedgerSeal Signing While Transitioning
 #+DATE: 2026-11-08
-#+STATUS: Proposed
+#+STATUS: Accepted
 
 * Status
-[PROPOSED: 2026-11-08, awaiting the owner's approval. Nothing is built. The decision depends on
-the platform spikes S-1 to S-4 in =docs/spec/ledgerseal-spec-v4-draft.md= section 4.7; if a spike
+[ACCEPTED: 2026-11-08 by the owner, with the defaults in "Owner decisions" below. Option A depends on
+the platform spikes S-1 to S-4 (=docs/sdlc/ledgerseal-regulated-2026-11/spike-results.md=); if a spike
 fails, the fallback in decision 6 is the whole feature.]
 
-Spec delta: =docs/spec/ledgerseal-spec-v4-draft.md= section 4; high-level design in section 4.6.
-Depends on ADR-015 (the signing credential) and uses ADR-016 (stages).
+Spec: =docs/spec/ledgerseal-spec-v4.md= section 16 (with 18 for the open questions).
+Depends on ADR-016 (the signing credential) and uses ADR-017 (stages).
 
 * Context
 Appfire Electronic Signatures lists "Requiring Electronic Signatures on the ticket transition
@@ -76,11 +76,20 @@ The panel or an issue action modal takes the signature; the validator lets the t
 - Against: it can read only the property, which editors can change; it is a convenience, not a
   control. The validator stays the control.
 
-* Decision (recommended)
+* Owner decisions (2026-11-08)
+The spec's recommended defaults, as the owner instructed:
+- *Q-10 (transition screens with covered fields or a comment):* block (decision 4).
+- *Q-12 (the signature field set on an issue sealed before 2.3.0):* the seal shows CHANGED until it
+  is approved again; the admin guide says so. Old version rules are never edited (spec v3
+  section 4.1).
+- The second component is the emailed single-use code of ADR-016 (option B): the field asks for
+  "Send me a code", then the code. The intent is created only after the code is verified.
+
+* Decision (accepted 2026-11-08)
 1. Build A as the primary way to sign while transitioning, and keep B as the fallback that always
    works. Both write the same signature record through the same service code.
 2. *Signing intent.* The intent is created only after the server checks identity (context), Browse
-   permission, the approver or stage right, separation of duties, the credential (ADR-015) and the
+   permission, the approver or stage right, separation of duties, the credential (ADR-016) and the
    viewed hash. It is bound to the party token, the issue, the hash the user saw, the stage and the
    meaning, is single use and lives 120 seconds. The field value is the intent id only: never the
    code, never the signing ID.
@@ -88,7 +97,7 @@ The panel or an issue action modal takes the signature; the validator lets the t
    is unexpired and unused (claimed once with =FAIL_IF_EXISTS=); the payload user equals the
    intent's party (no user: blocked); and the live issue with the screen's values applied hashes to
    the intent's hash. Then it writes the signature (seal, reseal or stage signature) and decides the
-   gate as in spec v3 section 9 and ADR-016 decision 11. Any failure blocks with a message of at
+   gate as in spec v3 section 9 and ADR-017 decision 11. Any failure blocks with a message of at
    most 250 characters.
 4. *What is signed is what was shown.* The field cannot see other fields on the same screen. So a
    transition screen that changes covered content (a covered field, or a transition comment) makes
