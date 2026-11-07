@@ -114,6 +114,15 @@ The spec's recommended defaults, as the owner instructed:
    LedgerSeal's own signature field type is excluded, with the reason "LedgerSeal's own signature
    field". Older seals keep their version.
 
+* Spike and build results (2026-11-08)
+Spikes S-1 to S-4 passed (=docs/sdlc/ledgerseal-regulated-2026-11/spike-results.md= sections 1 and 3), so
+option A was built, with option B (panel and "Sign with LedgerSeal" issue action) for every other path.
+Live on development (LSP-6): the person signed in the field on the new transition dialog, the validator
+wrote the seal (=via: TRANSITION_SCREEN=) and let the move to Done pass; the panel then showed the issue
+sealed and unchanged with the field set (canonical form 2.3.0). Two platform facts changed the build
+(spike-results section 6): the field has no =view= resource (a view hid the edit view on the dialog), and
+the field submits its value itself with =view.submit= when the intent exists.
+
 * What is not possible in Jira Cloud (stated in the listing and user guide)
 - Re-entering the Atlassian password at the transition: no API, and apps must not collect it.
 - Intercepting the transition button, or opening an app dialog before Jira's transition dialog.

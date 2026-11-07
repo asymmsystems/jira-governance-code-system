@@ -80,3 +80,21 @@ describe('B-20 bundled icon and no dead code', () => {
     for (const file of tests) expect(fs.readFileSync(path.join(__dirname, file), 'utf8')).not.toContain('renderIssuePanel');
   });
 });
+
+describe('ADR-018 signature field and issue action', () => {
+  const fs = require('fs');
+  const text: string = fs.readFileSync(require('path').resolve(__dirname, '../manifest.yml'), 'utf8');
+  it('declares the signature field with a UI Kit edit view, no view resource and no experience limit', () => {
+    const block = text.slice(text.indexOf('  jira:customField:'), text.indexOf('  jira:issueAction:'));
+    expect(block).toContain('- key: ledgerseal-signature');
+    expect(block).toMatch(/edit:\n        resource: sigedit\n        render: native\n      resolver:\n        function: resolver/);
+    // A view resource made the new transition dialog show a plain text box (live, LSP-6)
+    expect(block).not.toMatch(/^      view:/m);
+    expect(block).not.toMatch(/experience:/);
+  });
+
+  it('declares the "Sign with LedgerSeal" issue action on the panel resource', () => {
+    expect(text).toMatch(/jira:issueAction:\n(?:    #.*\n)*    - key: ledgerseal-sign-action\n      title: Sign with LedgerSeal\n      render: native\n      resource: main/);
+    expect(text).toMatch(/  - key: sigedit\n    path: src\/frontend\/signature-field\.tsx/);
+  });
+});

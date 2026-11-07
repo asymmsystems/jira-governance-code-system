@@ -448,25 +448,57 @@ export async function part11Policy(deps: LedgerSealDeps, issueId: string): Promi
   return state.on ? state.policy : null;
 }
 
-export async function sealIssueFlow(payload: any, context: any, deps: LedgerSealDeps) {
+/**
+ * How a seal is made (ADR-018). By default the user signs in the panel and every check runs in this invocation.
+ * `prepare`: the transition-screen field asks for a signing intent; every check runs as the user, including the code
+ * in a code-signing project, and the flow stops before its first seal write. `complete`: the workflow validator
+ * finishes an intent; the checks made as the user (Browse, approver, code) come from the intent, which holds their
+ * result, and the live issue is read with the transition-screen values applied.
+ */
+export interface SealMode {
+  prepare?: boolean;
+  complete?: {
+    policy: SigningPolicy | null;
+    signingEvidence: SigningEvidence | null;
+    transitionToStatusId: string;
+    apply: (raw: any) => any;
+  };
+}
+
+/** What a prepared seal hands to the intent: the hash the signer saw and the code check's result. */
+export interface PreparedSeal {
+  ok: true;
+  prepared: true;
+  viewHash: string;
+  approvingChanges: boolean;
+  policy: SigningPolicy | null;
+  signingEvidence: SigningEvidence | null;
+}
+
+export async function sealIssueFlow(payload: any, context: any, deps: LedgerSealDeps, mode: SealMode = {}) {
   const accountId = context?.accountId ? String(context.accountId) : '';
   if (!accountId) return fail('NO_IDENTITY');
-  if (licenseInactive(context)) return fail('LICENSE_INACTIVE');
+  if (!mode.complete && licenseInactive(context)) return fail('LICENSE_INACTIVE');
   const issue = contextIssue(context);
   if (!issue) return fail('MISSING_ISSUE');
   const signature = payload?.signature;
   if (!signature) return fail('INVALID_REQUEST');
-  const denied = await browseDenied(deps, issue.id);
-  if (denied) return denied;
+  let policy: SigningPolicy | null;
+  if (mode.complete) {
+    policy = mode.complete.policy;
+  } else {
+    const denied = await browseDenied(deps, issue.id);
+    if (denied) return denied;
 
-  const permission = await isApprover(deps.jira, deps.storage, issue.id);
-  if (!permission.ok) return fail(permission.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
-  if (!permission.value) return fail('NOT_APPROVER');
+    const permission = await isApprover(deps.jira, deps.storage, issue.id);
+    if (!permission.ok) return fail(permission.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
+    if (!permission.value) return fail('NOT_APPROVER');
 
-  // Code-signing projects (ADR-016): read the project only when some policy is on, so other sites make no extra call
-  const part11 = await part11Policy(deps, issue.id);
-  if (typeof part11 === 'object' && part11 && 'code' in part11) return part11;
-  const policy = part11 as SigningPolicy | null;
+    // Code-signing projects (ADR-016): read the project only when some policy is on, so other sites make no extra call
+    const part11 = await part11Policy(deps, issue.id);
+    if (typeof part11 === 'object' && part11 && 'code' in part11) return part11;
+    policy = part11 as SigningPolicy | null;
+  }
   // The signer agrees to the one declaration the panel shows (LS-09): version 2 in a code-signing project
   const declaration = declarationFor(Boolean(policy));
   if (signature.declarationVersion !== declaration.version || signature.declarationText !== declaration.text) return fail('DECLARATION_MISMATCH');
@@ -477,10 +509,12 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   // Fetch real live Jira issue. Never fall back to client-supplied payload.
   const now = new Date().toISOString();
   const parties = new PartyRepository(deps.storage);
-  const read = await readLiveSnapshot(deps.jira, issue.id, now, { party: await parties.partyForRead() });
+  const read = await readLiveSnapshot(deps.jira, issue.id, now, { party: await parties.partyForRead(), apply: mode.complete?.apply });
   if (!read) return fail('JIRA_UNREACHABLE');
   // F-05: the seal covers what the approver reviewed; a change since the panel loaded refuses the seal
   if (typeof payload?.viewHash === 'string' && payload.viewHash !== viewHash(read, now)) return fail('ISSUE_CHANGED');
+  // An intent always names what its signer saw (ADR-018 decision 2)
+  if ((mode.prepare || mode.complete) && typeof payload?.viewHash !== 'string') return fail('INVALID_REQUEST');
   const repo = new SealRepository(deps.storage);
   // A record written before ADR-011 is converted first, so the new seal continues a record with tokens only
   const conversion = await convertIfNeeded(deps, repo, issue.id);
@@ -552,19 +586,25 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
 
   if (!(await storeKey())) return fail('CONFLICT');
   // ADR-016: in a code-signing project the emailed code is checked last, after every other check and before the first write
-  let signingEvidence: SigningEvidence | null = null;
-  if (policy) {
+  let signingEvidence: SigningEvidence | null = mode.complete ? mode.complete.signingEvidence : null;
+  if (policy && !mode.complete) {
     const checked = await checkSigningCode(deps, {
       accountId,
       partyId: party(accountId),
       issueId: issue.id,
-      action: approvingChanges ? 'RESEAL' : 'SEAL',
+      action: mode.prepare ? 'TRANSITION' : approvingChanges ? 'RESEAL' : 'SEAL',
       stageId: null,
       policy,
       signing: payload?.signing
     });
     if (!checked.ok) return checked;
     signingEvidence = checked.evidence;
+  }
+  if (policy && mode.complete && !signingEvidence) return fail('SIGNING_REQUIRED');
+  // ADR-018: a prepared seal stops here, before its first seal write; the intent holds this result
+  if (mode.prepare) {
+    const prepared: PreparedSeal = { ok: true, prepared: true, viewHash: viewHash(read, now), approvingChanges, policy, signingEvidence };
+    return prepared;
   }
   const row = buildStatusRow(previousWorkEffort ? previousWorkEffort.statusHead : null, {
     workEffortId: issue.id,
@@ -580,7 +620,9 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
       declarationVersion: declaration.version,
       previousCertificateId: previousWorkEffort ? previousWorkEffort.currentContentId : null,
       previousState,
-      ...(signingEvidence ? { signing: signingEvidence } : {})
+      ...(signingEvidence ? { signing: signingEvidence } : {}),
+      // ADR-018 decision 5: a signature made on the transition screen says so, and names the target status
+      ...(mode.complete ? { via: 'TRANSITION_SCREEN', transitionToStatusId: mode.complete.transitionToStatusId } : {})
     }
   });
   if (!(await repo.appendStatus(row))) return fail('CONFLICT');

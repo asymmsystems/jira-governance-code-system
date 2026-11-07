@@ -19,7 +19,7 @@ Built on Atlassian Forge. The app backend makes no outbound network calls, and t
 ## How it decides
 
 - **Separation of duties:** a user who changed covered content after the last seal (a covered field in Jira's change log, a comment or work log they added or edited, an attachment they added) cannot approve the changes, revoke the seal, or seal again after another approver revokes it. Status, Rank and Sprint changes do not count. Jira does not record who deleted a comment or a work log, so a deletion cannot be attributed.
-- **What was seen is what is sealed:** the panel sends the hash of the issue as it showed it; a seal is refused if the issue changed since.
+- **What was seen is what is sealed:** the panel sends the hash of the issue as it showed it; a seal is refused if the issue changed since. On the transition screen the same rule applies with the screen's values: a covered field or a comment typed on the signing screen blocks the transition, so use a screen with only the LedgerSeal signature field (canonical form 2.3.0 leaves that field out of the hash; a seal made before 2.3.0 shows a change when the field is first set, and must be approved again).
 - **Restricted comments and work logs (F-06, M-11):** Comments and work logs restricted to a project role or group are covered only when Jira lets the LedgerSeal app read them, that is when the app's user is in that role or group; otherwise a change to such a comment or work log is not detected. A covered comment that is restricted, at the seal or now, is shown in the panel only to a user who can see it in Jira; others see that a comment changed, without its text, author or time. The panel shows only the number of work logs, never their text. The evidence is exported only to a user who can see every such comment and work log. If LedgerSeal can no longer read a covered comment or work log (it was deleted, or restricted since to a role or group the app's user is not in), the panel shows that comment's sealed text to no one, and for that seal: its evidence is not exported to anyone; approving the changes makes a new seal whose evidence can be exported.
 - **Covered fields** are chosen by field type from the site field list (`/rest/api/3/field`). Rank, Sprint, SLA timers, satisfaction, request participants, approvals, development summary, Sentiment, forms counts, Agent Sessions, status, resolution and Jira's own timestamps are left out, and the panel lists each with the reason. Every other field with a value is covered.
 - **Trust:** the panel and the validator decide only from app storage, which only the app can read and write. The `ledgerseal-cert` property is an output for other tools. Any user who can edit an issue can change its properties, so a reader must check the signature.
@@ -32,7 +32,9 @@ Built on Atlassian Forge. The app backend makes no outbound network calls, and t
 |---|---|
 | `jira:issuePanel` `ledgerseal-panel` | UI Kit panel: seal, approve changes, history |
 | `jira:issueContext` `ledgerseal-context` | "Approval seal" entry in the issue details column: the seal state without opening the panel (F-12) |
-| `jira:workflowValidator` `ledgerseal-validator` | Blocks a transition unless the issue is sealed and unchanged |
+| `jira:workflowValidator` `ledgerseal-validator` | Blocks a transition unless the issue is sealed and unchanged; seals the issue first when the LedgerSeal signature field on the transition screen holds the transitioning user's own signing intent (ADR-018) |
+| `jira:customField` `ledgerseal-signature` | "LedgerSeal signature": a Jira admin adds it to a transition screen; the person signs in it during the transition. Its value is only a single-use intent id, never a code; the issue view shows that id (who signed and when is in the panel) |
+| `jira:issueAction` `ledgerseal-sign-action` | "Sign with LedgerSeal" in the issue's actions menu: the panel, for any transition without the field |
 | `jira:adminPage` `ledgerseal-admin` | "LedgerSeal settings": Jira admins choose the approver groups, set up code signing, and see and acknowledge security alerts |
 | `trigger` `ledgerseal-issue-changed`, `ledgerseal-issue-deleted` | Record a change when Jira reports it; delete a deleted issue's records |
 | `scheduledTrigger` `ledgerseal-personal-data-report` | Weekly personal data report; converts records made before ADR-011 |
@@ -65,6 +67,7 @@ Seals are stored on the Silverston WorkEffort, Party and Status patterns (ADR-01
 | `ls3:sig:key` (Forge secret store) | The site key that hashes signing codes |
 | `ls3:sig:chal:*`, `ls3:sig:used:*`, `ls3:sig:chalfail:*`, `ls3:sig:fail:*`, `ls3:sig:req:*` | Code requests (keyed hash only) and the claims for single use, failures and rate limits; they expire |
 | `ls3:sig:state:{token}`, `ls3:sig:ev:{token}:{seq}`, `ls3:sig:alert:{seq}` | Lockout state, each person's signing history, and the site alert log (hash-chained) |
+| `ls3:intent:{id}`, `ls3:intentuse:{id}` | A signing intent from the transition screen (party token, issue, the hash shown, the signature; valid 120 seconds) and its single-use claim; they expire after a day |
 
 ## Find issues by seal state (JQL)
 

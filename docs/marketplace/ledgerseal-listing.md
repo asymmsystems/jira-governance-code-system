@@ -143,3 +143,4 @@ Added 2026-11-08 by the regulated build (`feature/ledgerseal-regulated`). **Use 
 - **Scope line for the Privacy & Security tab:** `send:notification:jira`: emails a signer their own single-use signing code, only in projects where a Jira admin turned code signing on. The app emails nothing else.
 - **Limits to state:** a shared or delegated mailbox defeats the code; when Jira outgoing email is off, nobody can sign in a code-signing project; security alerts are shown on the admin page and are not emailed.
 - **Search words:** electronic signature, signing code, two-step signing.
+- **Transition screen (ADR-018), proposed line:** "Sign on the transition screen: a Jira admin adds the LedgerSeal signature field to a transition screen, and the person signs in the dialog before the move. Transitions without the field (REST, automation, bulk changes) are blocked by the validator until the issue is sealed."

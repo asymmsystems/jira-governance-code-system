@@ -28,6 +28,7 @@ import {
 import { getPolicyFlow, searchGroupsFlow, setPolicyFlow } from './service/policy-admin';
 import { ackAlertFlow, getSigningPolicyFlow, requestCodeFlow, setSigningPolicyFlow, signingAlertsFlow, SigningAuthority, unlockFlow } from './service/signing';
 import { isApprover } from './service/approver';
+import { completeIntent, createIntentFlow } from './service/transition-signing';
 import { fail } from './service/ledger';
 import { deleteIssueRecords, ReportFn, weeklyPersonalDataJob } from './service/personal-data';
 import { privacy } from '@forge/api';
@@ -199,6 +200,9 @@ async function gate(payload: any, deps: LedgerSealDeps): Promise<{ result: boole
 
   // Read the live issue and apply the transition-screen values (F-02, F-03)
   const screen = transitionScreenValues(payload);
+  // ADR-018: a signature made in the LedgerSeal field on this screen is written first, then the gate decides as usual
+  const signed = await completeIntent(payload, screen, deps, raw => applyTransitionScreen(raw, screen, now));
+  if (signed && !signed.ok) return { result: false, errorMessage: signed.message };
   const party = await new PartyRepository(deps.storage).partyForRead();
   const live = await readLiveSnapshot(deps.jira, issueId || issueKey, now, {
     party,
@@ -373,6 +377,11 @@ export const signingAuthority: SigningAuthority = async (deps, issueId, action) 
   return permission.value ? null : fail('NOT_APPROVER');
 };
 
+/** ADR-018: the signature field on the transition screen asks for a single-use signing intent. */
+export async function createSigningIntent(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return createIntentFlow(payload, context, deps);
+}
+
 /** Code signing (ADR-016): the code request, and the admin page flows. */
 export async function requestSigningCode(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
   return requestCodeFlow(payload, context, deps, signingAuthority);
@@ -431,6 +440,10 @@ resolver.define('approver-policy-set-api', async (req) => {
 
 resolver.define('approver-group-search-api', async (req) => {
   return await searchApproverGroups(req.payload, req.context);
+});
+
+resolver.define('transition-sign-intent-api', async (req) => {
+  return await createSigningIntent(req.payload, req.context);
 });
 
 resolver.define('signing-code-request-api', async (req) => {
