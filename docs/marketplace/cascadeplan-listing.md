@@ -106,3 +106,20 @@ Images used: highlight 1 `01-timeline.png`, highlight 2 `03-move-preview.png`, h
 - **Terms of Service:** https://asymm.systems/terms
 - **Support Portal & SLA:** https://asymm.systems/support
 - **Direct Support Contact:** `support@asymm.systems`
+
+
+---
+
+## Post-approval copy: regulated migration
+
+Added 2026-11-08. For use **after** Atlassian approves this listing: a listing cannot be edited while it is pending. Facts only, from the sections above. Do not name another vendor or app in the listing. Do not mention Isolated Cloud or Government Cloud until those listings exist. Strategy: `docs/launch/regulated-enterprise-playbook.md`.
+
+- **Tagline (68 characters):** Jira timeline with percent links, reviewed scope baselines and undo.
+- **Highlight (205 characters):** Moving from Data Center? CascadePlan keeps every link, parent and date in Jira, shows every Jira write before it happens, and freezes baselines so a scope change needs another approver. No external egress.
+- **Description lines:**
+  - Moving Jira from Data Center to cloud? Plan in Jira itself: links are Jira "Blocks" links, parents are Jira parents, contributors are Jira sub-tasks.
+  - Every Jira write is listed before the drop, made as the signed-in user after a permission check, and can be undone.
+  - A plan approver freezes a baseline with a SHA-256 digest. A scope change is accepted or rejected by a plan approver other than the requester.
+  - CascadePlan is a planning tool; its compliance angle is narrow (see Enterprise Compliance Grounding).
+  - Runs on Atlassian Forge. The manifest declares no external endpoint.
+- **Search words to keep in the text:** Gantt, timeline, dependencies, baseline, scope change, project plan.

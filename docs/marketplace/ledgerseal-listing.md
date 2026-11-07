@@ -116,3 +116,21 @@ Real captures of LedgerSeal 4.1.0 on the development site (project PAY "Payments
 - **Terms of Service:** https://asymm.systems/terms
 - **Support Portal & SLA:** https://asymm.systems/support
 - **Direct Support Contact:** `support@asymm.systems`
+
+
+---
+
+## Post-approval copy: regulated migration
+
+Added 2026-11-08. For use **after** Atlassian approves this listing: a listing cannot be edited while it is pending. Facts only, from the sections above. Do not name another vendor or app in the listing. Do not mention Isolated Cloud or Government Cloud until those listings exist. Strategy: `docs/launch/regulated-enterprise-playbook.md`.
+
+- **Tagline (75 characters):** Approval seals and change control for teams moving regulated Jira to cloud.
+- **Highlight (206 characters):** Moving from Data Center? LedgerSeal seals Jira issues at approval, names every later change and who made it, and blocks the release transition until another approver approves. Forge app, no external egress.
+- **Description lines:**
+  - Moving regulated Jira from Data Center to cloud? Keep the approval step your auditor tests: the approved ticket is the ticket that ships.
+  - LedgerSeal seals an issue at approval with a SHA-256 snapshot of the covered fields, comments and attachments.
+  - Each later change is shown with its value at approval, its value now and who changed it. The person who made the changes cannot approve them.
+  - The Require Valid LedgerSeal validator blocks the transition until another approver approves the changes. A Jira admin adds it to each transition.
+  - Supports SOC 2 CC8.1, ISO/IEC 27001:2022 A.8.32 and the 21 CFR 11.10(e) audit trail. It does not provide Part 11 electronic signatures by itself: it does not meet 11.200 or 11.300.
+  - Runs on Atlassian Forge. The manifest declares no external egress; data stays in Forge storage for your site, under Atlassian's data residency rules.
+- **Search words to keep in the text:** approval, sign-off, electronic signature, change control, audit trail, 21 CFR Part 11, SOC 2, ISO 27001.
