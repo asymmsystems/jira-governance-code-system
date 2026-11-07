@@ -34,6 +34,23 @@ describe('field classes', () => {
     expect(engine.classifyField('labels', FIELDS)).toBe('OTHER');
     expect(engine.classifyField('not-in-list', FIELDS)).toBe('OTHER');
   });
+
+  it('classes every text custom field as FREE_TEXT: app text fields, URL and read-only fields, and deleted custom fields (Q4, review M-2)', () => {
+    const more: FieldInfo[] = [
+      { id: 'customfield_20', name: 'App notes', schemaType: 'string', custom: 'ari:cloud:ecosystem::extension/app/static/notes' },
+      { id: 'customfield_21', name: 'Link', schemaType: 'string', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:url' },
+      { id: 'customfield_22', name: 'Read only', schemaType: 'string', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:readonlyfield' },
+      { id: 'customfield_23', name: 'No schema' },
+      { id: 'customfield_24', name: 'Points', schemaType: 'number', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:float' },
+      { id: 'customfield_25', name: 'Approvers', schemaType: 'array', schemaItems: 'user', custom: 'x:multiuserpicker' }
+    ];
+    for (const id of ['customfield_20', 'customfield_21', 'customfield_22', 'customfield_23', 'customfield_99999']) expect(engine.classifyField(id, more)).toBe('FREE_TEXT');
+    expect(engine.classifyField('customfield_24', more)).toBe('OTHER');
+    expect(engine.classifyField('customfield_25', more)).toBe('USER');
+    expect(engine.classifyField('Link', more)).toBe('OTHER');
+    const change = engine.reportChanges([entry('1', '2026-10-02T00:00:00.000Z', null, [item('customfield_99999', null, null, 'old secret text', 'new secret text')])], RANGE, { fieldIds: [], actors: [] }, more, {});
+    expect(change[0]).toMatchObject({ fieldClass: 'FREE_TEXT', fromString: null, toString: null, omitted: { fromLength: 15, toLength: 15 } });
+  });
 });
 
 describe('changes in the range', () => {
@@ -158,21 +175,22 @@ describe('report rows', () => {
 const HEADER: ManifestHeader = {
   format: 'fourrealities-evidence-report/1', reportId: '11111111-2222-4333-8444-555555555555', siteHost: 'example.atlassian.net', environment: 'development',
   projectId: '10000', projectKey: 'PAY', range: RANGE, filters: { fieldIds: [], actors: [] }, trigger: 'user', requestedBy: TOKENS['acc-ana'],
-  generatedAt: 'g', gatesObservedAt: 'o', counts: { issues: 2, changes: 0, missingSincePrevious: 0 }, previous: null
+  generatedAt: 'g', gatesObservedAt: 'o', counts: { issues: 2, changes: 0, missingSincePrevious: 0, notReadable: 0 }, previous: null
 };
 const SOURCES = { intent: true, process: 'definitionguard' as const, code: false, audit: true, decisionIssueTypes: DEFAULT_SOURCE_SETTINGS.decisionIssueTypes, detected: { process: true, code: false, audit: true } };
 
 describe('report.json', () => {
   it('is canonical JSON with the issues by numeric id and the warnings', () => {
-    const text = engine.reportJson({ header: { ...HEADER, warning: 'UNSIGNED' }, sourcesInUse: SOURCES, issues: [issue({ issueId: '10' }), issue({ issueId: '9' })], missingSincePrevious: [{ issueId: '100', issueKey: 'PAY-100' }, { issueId: '20', issueKey: 'PAY-20' }], linksNotRead: 2 });
+    const text = engine.reportJson({ header: { ...HEADER, warning: 'UNSIGNED' }, sourcesInUse: SOURCES, issues: [issue({ issueId: '10' }), issue({ issueId: '9' })], missingSincePrevious: [{ issueId: '100', issueKey: 'PAY-100' }, { issueId: '20', issueKey: 'PAY-20' }], notReadable: [{ issueId: '31', reason: 'MOVED' }, { issueId: '4', reason: 'NOT_READABLE' }], linksNotRead: 2 });
     const data = JSON.parse(text);
     expect(canonicalJson(data)).toBe(text);
     expect(data.format).toBe('fourrealities-evidence-report-data/1');
     expect(data.issues.map((i: ReportIssue) => i.issueId)).toEqual(['9', '10']);
     expect(data.missingSincePrevious.map((i: { issueId: string }) => i.issueId)).toEqual(['20', '100']);
-    expect(data.warnings).toEqual([{ code: 'UNSIGNED' }, { code: 'REMOTE_LINKS_NOT_READ', count: 2 }]);
+    expect(data.warnings).toEqual([{ code: 'UNSIGNED' }, { code: 'REMOTE_LINKS_NOT_READ', count: 2 }, { code: 'ISSUES_NOT_READ', count: 2 }]);
+    expect(data.notReadable).toEqual([{ issueId: '4', reason: 'NOT_READABLE' }, { issueId: '31', reason: 'MOVED' }]);
     expect(data.decisionIssueTypes).toEqual(SOURCES.decisionIssueTypes);
-    expect(JSON.parse(engine.reportJson({ header: HEADER, sourcesInUse: SOURCES, issues: [], missingSincePrevious: [], linksNotRead: 0 })).warnings).toEqual([]);
+    expect(JSON.parse(engine.reportJson({ header: HEADER, sourcesInUse: SOURCES, issues: [], missingSincePrevious: [], notReadable: [], linksNotRead: 0 })).warnings).toEqual([]);
   });
 
   it('canonical JSON sorts keys at every level, leaves out undefined and writes non-finite numbers as null', () => {

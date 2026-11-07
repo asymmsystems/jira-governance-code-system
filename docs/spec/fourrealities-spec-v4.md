@@ -34,7 +34,7 @@ FourRealities also makes **evidence reports**. For one project and one date rang
 7. **Viewer permissions.** Rows that a viewer cannot browse in Jira are never returned to that viewer.
 8. **Zero external egress.** The manifest declares no external fetch.
 9. **Deterministic metrics.** The same input gives the same output.
-11. **Complete or not stored.** A report that cannot be finished stores no file. It never holds a part of its range without saying so.
+11. **Complete or not stored.** A report that cannot be finished stores no file. It never holds a part of its range without saying so: every issue of the scope search is in the report, or listed in `notReadable` with its reason (`NOT_READABLE`: the app's read did not return it; `MOVED`: it is in another project now), counted in `counts.notReadable` and named by the warning `ISSUES_NOT_READ` (review round 1, H-1). Each batch read pages to Jira's last page.
 12. **Signed files never change.** Report files are written once. They are removed only by expiry or by a Jira administrator's delete, which leaves a tombstone. Object Store does not refuse a second write to a key (spike S-1), so FourRealities refuses to write a key that exists and checks the stored checksum after each write.
 
 ## Domain Model
@@ -319,7 +319,7 @@ Preset views (B-40, B-48) set several filters at once, reflect `isSelected` when
 - `app.licensing.enabled: true`. Every resolver, including the admin resolvers, returns `LICENSE_INACTIVE` when `context.license.isActive === false`, before any Jira or storage call. The daily trigger reads the licence from the app context and skips the run when it is inactive. The weekly personal data run runs whatever the licence state.
 - Scopes: `read:jira-work`, `write:jira-work`, `storage:app`, `search:confluence`, `read:confluence-content.summary`, `read:jira-user`, `report:personal-data`.
 - Runtime `nodejs22.x`, `memoryMB: 1024` (the assembly of a 50 MB report; spike S-3 measured 540 MB at the peak). No external egress.
-- Evidence reports (ADR-015): `consumer` `fourrealities-report-consumer` (queue `fourrealities-report-jobs`, function `report-worker`, 900 s); `scheduledTrigger` `fourrealities-report-daily` (`interval: day`, function `report-daily`, 600 s); `objectStore` `fourrealities-reports` (`storageClass: standard`). A tab "Evidence reports" on the existing `jira:projectPage` and a section "Evidence reports" on the existing admin page. Encrypted variables `FOURREALITIES_SIGNING_KEY` (PKCS#8 DER, base64) and `FOURREALITIES_KEY_ID`. No new scope: spike S-1 showed that Object Store and the PUT to its pre-signed URL need none, and that the app stays eligible for Runs on Atlassian. Adding the `objectStore` module makes a major version: each site administrator accepts the update.
+- Evidence reports (ADR-015): `consumer` `fourrealities-report-consumer` (queue `fourrealities-report-jobs`, function `report-worker`, 900 s); `scheduledTrigger` `fourrealities-report-daily` (`interval: day`, function `report-daily`, 600 s) and `fourrealities-report-tmp` (`interval: hour`, function `report-tmp`, 600 s); `objectStore` `fourrealities-reports` (`storageClass: standard`). A tab "Evidence reports" on the existing `jira:projectPage` and a section "Evidence reports" on the existing admin page. Encrypted variables `FOURREALITIES_SIGNING_KEY` (PKCS#8 DER, base64) and `FOURREALITIES_KEY_ID`. No new scope: spike S-1 showed that Object Store and the PUT to its pre-signed URL need none, and that the app stays eligible for Runs on Atlassian. Adding the `objectStore` module makes a major version: each site administrator accepts the update.
 - Licence for the reports (owner decision Q9): `createEvidenceReport`, `saveReportSchedule` and `deleteReportSchedule` return `LICENSE_INACTIVE`; listing, download and early deletion stay available; the daily report run makes no scheduled report but still removes expired reports and temporary files.
 
 ## Storage Schema
@@ -341,7 +341,7 @@ Preset views (B-40, B-48) set several filters at once, reflect `isSelected` when
 | `fr:att:{issueId}` | the newest verified DefinitionGuard (`stateVersion`, `issuedAt`) and LedgerSeal (`issuedAt`) record seen on the issue, against rollbacks | under 1 KiB |
 | `fr:p:{projectKey}:accounts` | `{ generatedAt, accountIds }`: the distinct assignee ids of the snapshot, for the personal data report | under 64 KiB |
 | `fr:cfg:reports` | `ReportSettings`: retention and report groups; no account id | under 4 KiB |
-| `fr:p:{projectKey}:reports` | `ReportIndexEntry[]`, newest first, at most 200 | under 64 KiB |
+| `fr:p:{projectKey}:rep:{createdAt}:{reportId}` | one `ReportIndexEntry` per report, at most 200 per project (review M-1; replaces `fr:p:{projectKey}:reports`) | under 2 KiB each |
 | `fr:p:{projectKey}:reports:head` | `{ reportId, manifestSha256 }` of the newest DONE report | under 1 KiB |
 | `fr:p:{projectKey}:schedules` | `ReportSchedule[]`, at most 5 | under 8 KiB |
 | `fr:rj:{reportId}` | `ReportJob`; removed when the report fails, expires or is deleted | under 16 KiB |
@@ -433,15 +433,15 @@ The gate evaluation pipeline, for one issue:
 
 ### 11.2 Field values (owner decision Q4)
 - `USER` fields (`schema.type` `user`, or an array of `user`): account ids become party tokens; display names are left out.
-- `FREE_TEXT` fields (`summary`, `description`, `environment`, text field and text area custom fields): the change is recorded with the old and new lengths, not the text.
-- `OTHER` fields: Jira's `from`, `to`, `fromString` and `toString`, each cut to 500 characters, with `truncated` set when cut. A changelog item whose field is not in the field list is `OTHER`.
+- `FREE_TEXT` fields: `summary`, `description`, `environment`; every custom field whose schema type is `string` or not given (text field, text area, URL, read-only text, and app text fields); and every `customfield_*` that is not in the field list (for example a deleted field). The change is recorded with the old and new lengths, not the text (owner decision Q4, review M-2).
+- `OTHER` fields: Jira's `from`, `to`, `fromString` and `toString`, each cut to 500 characters, with `truncated` set when cut. A changelog item whose field is not in the field list is `OTHER`, except a `customfield_*` id, which is `FREE_TEXT`.
 
 ### 11.3 Files, signature and chain
 - `report.json` (`fourrealities-evidence-report-data/1`), `report.csv` (RFC 4180, UTF-8 without byte order mark, CRLF, every cell quoted, quotes doubled; a cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading apostrophe, the JSON keeps the value) and `manifest.json` (`fourrealities-evidence-report/1`), as HLD 3.2 to 3.4. `report.json` and the manifest are canonical JSON (ADR-012 decision 2).
 - The manifest holds the SHA-256 and byte count of each file and `previous`, the id and SHA-256 of the canonical JSON (with `sig`) of the project's previous DONE manifest, or `null` for the first. It is signed with Ed25519 over the canonical JSON of every other field, key `fr-dev-2026-11` in development and staging and `fr-prod-2026-11` in production. Without a configured key it carries `warning: "UNSIGNED"` and no `keyId` or `sig`, and the UI says so. The `header` of `report.json` equals the manifest without `files`, `keyId` and `sig`.
 - The open verifier checks a report offline: `verify-fourrealities-report.mjs <manifest> <report.json> <report.csv> [publicKey.pem] [--previous <manifest>]` (HLD 3.6), in `tools/verifier` and the public `jira-governance-code-cli`.
 - The download file names are `fourrealities-{projectKey}-{from}-{to}-{reportId8}.json`, `.csv`, `-manifest.json` and `-people.csv`, where `to` is the exclusive end date. Object Store sends no file name (no `Content-Disposition`, spike S-1), so the UI Kit `FileCard` sets it.
-- The people file (unsigned, HLD 3.5) is made at download, as the downloading user, from the token map and `GET /rest/api/3/user/bulk`; a closed account shows as "a former user". It is stored as a temporary object and removed by the daily run after 24 hours. The UI offers its CSV form.
+- The people file (unsigned, HLD 3.5) is made at download, as the downloading user, from the token map and `GET /rest/api/3/user/bulk`; a closed account shows as "a former user". It is stored as a temporary object and removed 24 to 25 hours after the download by the hourly run `report-tmp` (review L-3). The UI offers its CSV form.
 
 ### 11.4 Who may do what (owner decisions Q2 and Q8)
 
@@ -472,11 +472,13 @@ The gate evaluation pipeline, for one issue:
 
 ### 11.7 Queue consumer and daily run
 - `report-worker` (as the app, 900 s): event body `{ reportId }`. A QUEUED job starts only when no other job of its project runs, it is the oldest queued one, and fewer than 10 run on the site. Then, per batch of 100 of the job's ids: the gate facts (one `search/jql` with `id in (...)`, the v3 fields, `created`, `issuetype` and the sibling properties), the remote links of started issues (8 at a time; a batch whose link reads were cut by time is read again in the next event), the bulk changelog (`POST /rest/api/3/changelog/bulkfetch`, `fieldIds` when filtered), the report issues in scope, one part object. The cursor is saved after each batch and the next event is pushed 60 s before the budget ends. The assembly reads the parts, checks the caps, builds both files, signs the manifest, writes the three objects once, then in one KVS transaction the DONE job, the index and the head, then removes the parts. A step that fails is tried again after 30 s, three times.
-- `report-daily` (as the app, 540 s budget): stalled jobs (no progress for 2 hours) fail with `STALLED`; DONE reports past `finishedAt + retentionDays` are removed and their entry becomes EXPIRED (a shorter retention applies from this run); when the licence is active, each schedule's ended periods (weekly: Monday 00:00 UTC to the next Monday; monthly: calendar months, UTC; at most 3 per run) become scheduled jobs, with the scope searched as the app; temporary people files older than 24 hours are removed.
+- `report-daily` (as the app, 540 s budget): stalled jobs (no progress for 2 hours) fail with `STALLED`; DONE reports past `finishedAt + retentionDays` are removed and their entry becomes EXPIRED (a shorter retention applies from this run); when the licence is active, each schedule's ended periods (weekly: Monday 00:00 UTC to the next Monday; monthly: calendar months, UTC; at most 3 per run) become scheduled jobs, with the scope searched as the app; temporary people files older than 24 hours are removed first. A period refused with `JIRA_ERROR`, `JOB_LIMIT` or `REPORT_LIMIT` is kept and tried again the next day, and the schedule records the refusal (`lastRefusal`, shown on the tab); a period refused for good (`TOO_MANY_ISSUES`) gets a FAILED row and is passed (review M-3).
+- `report-tmp` (as the app, every hour): removes temporary people files older than 24 hours.
+- A job event holds a lease (`job.lease`, the event id until the event's deadline); a second event for the same job ends at once while the lease holds (review L-1). A failed or stalled job removes its parts, its report objects, its token chunks and its ids (review L-2).
 - Job transitions: none to QUEUED; QUEUED to RUNNING or FAILED; RUNNING to DONE or FAILED; DONE to EXPIRED or DELETED.
 
 ### 11.8 Personal data (amends ADR-014)
-The weekly run also reports every account id in `fr:party:*`, and on closure replaces the entry with `{ closed: true, closedAt }`. Signed files keep the token. Report jobs, index entries, schedules and tombstones hold tokens only. The people file holds account ids and names for 24 hours.
+The weekly run also reports every account id in `fr:party:*`, and on closure replaces the entry with `{ closed: true, closedAt }`. Signed files keep the token. Report jobs, index entries, schedules and tombstones hold tokens only. The people file holds account ids and names for 24 to 25 hours.
 
 ### 11.9 UI
 The project page has the tabs "Dashboard" and "Evidence reports" (the second loads when opened): the list (period, filters, who asked, state, size, SHA-256, action), "New evidence report" (From, To, Fields, People, and the note "The report holds every change in the range that you can see. It is kept until ... Free-text fields show that they changed, not the text."), the download modal with four `FileCard` rows (report JSON, report CSV, signed manifest, people file), early deletion with a reason (Jira administrators), the deleted reports, the schedules (Tier 1) and "How to check a report". The admin page has the section "Evidence reports" with the retention, the report groups and the signing key id. The accessibility rules of v3 apply. The words "audit log", "tamper-proof", "tamper-evident" and "compliant" are not used for reports.
@@ -487,6 +489,14 @@ The project page has the tabs "Dashboard" and "Evidence reports" (the second loa
 - The in-scope ids of a DONE report and its party tokens are kept while the report is kept: the download check and `missingSincePrevious` need the ids, the people file needs the tokens. The HLD deleted the ids after assembly.
 - `REPORT_LIMIT` is the code of the full index (200 reports), separate from `JOB_LIMIT`.
 - The site list `fr:reports:projects` and the temporary file register `fr:tmp:` (Object Store cannot list objects).
+
+### 11.11 Changes after review round 1 (2026-11-08)
+- H-1: `notReadable` and `counts.notReadable` (invariant 11 above); the batch read pages to the end.
+- M-1: the index is one KVS value per report (`fr:p:{projectKey}:rep:{createdAt}:{reportId}`), so a writer changes only its own report's row; the single value `fr:p:{projectKey}:reports` is moved to these keys when read. A new entry's `createdAt` is later than the newest entry's, so the order of the index is the order of creation.
+- M-2: the free-text rule of 11.2.
+- M-3: scheduled periods kept on a temporary refusal (11.7).
+- L-3: the hourly `report-tmp` run; L-1 lease; L-2 clean-up; L-5 the previous-report check uses the event deadline; L-6 party tokens are made only after every refusal; L-7 a key id with `-dev-` never signs a production report and one with `-prod-` never a development or staging report, and the verifier warns for a development key and fails a production report signed with one; L-8 the list has no issue or change counts, and `getEvidenceReport` gives the manifest only with a download decision that allows it.
+- Download: the UI Kit `FileCard` does not save the Blob that `onDownload` returns (live check of 7.7.0); the tab saves the file itself with an object URL and a clicked anchor, as Atlassian's Object Store sample app does. The list reads itself again while a report is queued or running (5 s, doubling to 60 s, at most 40 times).
 
 ### Grader conflict
 

@@ -595,7 +595,10 @@ describe('robustness: every failure ends in a clear state', () => {
     await h.store.saveSchedules('PAY', [{ scheduleId: 's1', cadence: 'MONTHLY', filters: { fieldIds: [], actors: [] }, createdBy: 'pty_x', createdAt: '2026-10-15T00:00:00.000Z' }]);
     await h.manager.daily(Date.now() + 540_000, true);
     expect(await h.store.getIndex('PAY')).toHaveLength(200);
-    expect((await h.store.getSchedules('PAY'))[0].lastPeriodEnd).toBe('2026-11-01T00:00:00.000Z');
+    // A full project keeps the period for later, and the schedule says why (review M-3).
+    const schedule = (await h.store.getSchedules('PAY'))[0];
+    expect(schedule.lastPeriodEnd).toBeUndefined();
+    expect(schedule.lastRefusal).toMatchObject({ code: 'REPORT_LIMIT', range: { from: '2026-10-01T00:00:00.000Z', to: '2026-11-01T00:00:00.000Z' } });
   });
 
   it('names an unknown caller "unknown" in a schedule and a tombstone', async () => {
@@ -605,5 +608,112 @@ describe('robustness: every failure ends in a clear state', () => {
     expect((await h.manager.saveSchedule(anon, ADMIN, { cadence: 'WEEKLY' }) as { schedules: Array<{ createdBy: string }> }).schedules[0].createdBy).toBe('unknown');
     expect((await h.manager.deleteReport(anon, ADMIN, { reportId: id, reason: 'Removed by the admin for a test.' }) as { tombstone: { by: string } }).tombstone.by).toBe('unknown');
     expect((await h.manager.deleteReport(anon, ADMIN, undefined) as { error: { code: string } }).error.code).toBe('INVALID_INPUT');
+  });
+});
+
+describe('review round 1', () => {
+  it('H-1: an issue the job cannot read, or that moved, is listed with a warning and counted, never left out silently', async () => {
+    const h = seeded();
+    const r = await h.manager.create(caller(), ADMIN, RANGE) as { reportId: string };
+    h.appJira.dropIds.add('102');
+    h.appJira.movedIds.add('103');
+    await h.drain();
+    const f = filesOf(h, r.reportId);
+    const data = JSON.parse(f.json);
+    expect(data.issues.map((i: { issueId: string }) => i.issueId)).toEqual(['101']);
+    expect(data.notReadable).toEqual([{ issueId: '102', reason: 'NOT_READABLE' }, { issueId: '103', reason: 'MOVED' }]);
+    expect(data.warnings).toEqual([{ code: 'ISSUES_NOT_READ', count: 2 }]);
+    expect(JSON.parse(f.manifest).counts).toEqual({ issues: 1, changes: 2, missingSincePrevious: 0, notReadable: 2 });
+    expect((await h.store.getJob(r.reportId))?.progress.notReadable).toBe(2);
+    expect(h.appJira.calls).toContain('changelog:2'); // only 101 and 104: 102 was not read and 103 moved
+  });
+
+  it('M-1: a create that read the index before a commit does not undo the commit, and the commit keeps the new report', async () => {
+    const h = seeded();
+    const a = await h.manager.create(caller(), ADMIN, RANGE) as { reportId: string };
+    const stale = await h.store.getIndex('PAY');
+    const getIndex = h.store.getIndex.bind(h.store);
+    const spy = jest.spyOn(h.store, 'getIndex').mockImplementationOnce(async () => stale);
+    const b = await h.manager.create(caller(), ADMIN, RANGE) as { reportId: string };
+    spy.mockRestore();
+    await h.manager.work(a.reportId, Date.now() + 780_000);
+    const states = Object.fromEntries((await getIndex('PAY')).map(e => [e.reportId, e.state]));
+    expect(states).toEqual({ [a.reportId]: 'DONE', [b.reportId]: 'QUEUED' });
+  });
+
+  it('M-3: a Jira error keeps the scheduled period and says why on the schedule; the next run makes it', async () => {
+    const NOW = new Date('2026-11-08T03:00:00.000Z');
+    const h = seeded({ now: () => NOW });
+    await h.store.saveSchedules('PAY', [{ scheduleId: 's1', cadence: 'MONTHLY', filters: { fieldIds: [], actors: [] }, createdBy: 'pty_x', createdAt: '2026-10-15T00:00:00.000Z' }]);
+    await h.store.registerProject('PAY', '10000');
+    h.appJira.searchStatus = 503;
+    await h.manager.daily(Date.now() + 540_000, true);
+    let schedule = (await h.store.getSchedules('PAY'))[0];
+    expect(schedule.lastPeriodEnd).toBeUndefined();
+    expect(schedule.lastRefusal).toMatchObject({ code: 'JIRA_ERROR', at: NOW.toISOString() });
+    expect(await h.store.getIndex('PAY')).toEqual([]);
+    h.appJira.searchStatus = 200;
+    expect(await h.manager.daily(Date.now() + 540_000, true)).toMatchObject({ scheduled: 1 });
+    schedule = (await h.store.getSchedules('PAY'))[0];
+    expect(schedule.lastPeriodEnd).toBe('2026-11-01T00:00:00.000Z');
+    expect(schedule.lastRefusal).toBeUndefined();
+  });
+
+  it('L-1: a second event for a job that another event holds ends at once; an expired lease is taken over', async () => {
+    const h = seeded();
+    const r = await h.manager.create(caller(), ADMIN, RANGE) as { reportId: string };
+    const job = (await h.store.getJob(r.reportId))!;
+    await h.store.saveJob({ ...job, state: 'RUNNING', lease: { owner: 'other', until: new Date(Date.now() + 60_000).toISOString() } });
+    const ops = h.storage.ops.length;
+    await h.manager.work(r.reportId, Date.now() + 780_000, 'event-2');
+    expect(h.storage.ops.slice(ops).filter(o => o.op === 'set')).toEqual([]);
+    await h.store.saveJob({ ...job, state: 'RUNNING', lease: { owner: 'other', until: new Date(Date.now() - 1).toISOString() } });
+    await h.manager.work(r.reportId, Date.now() + 780_000, 'event-3');
+    expect((await h.store.getJob(r.reportId))).toMatchObject({ state: 'DONE' });
+    expect((await h.store.getJob(r.reportId))?.lease).toBeUndefined();
+  });
+
+  it('L-2: a stalled job leaves no report object and no token chunk behind', async () => {
+    let now = new Date('2026-11-08T03:00:00.000Z');
+    const h = seeded({ now: () => now });
+    const r = await h.manager.create(caller(), ADMIN, RANGE) as { reportId: string };
+    const job = (await h.store.getJob(r.reportId))!;
+    await h.objects.putOnce(objectKey('10000', r.reportId, 'report.json'), '{}');
+    const tokenChunks = await h.store.saveTokens(r.reportId, ['pty_a']);
+    await h.store.saveJob({ ...job, state: 'RUNNING', tokenChunks });
+    now = new Date('2026-11-08T06:00:00.000Z');
+    expect(await h.manager.daily(Date.now() + 540_000, false)).toMatchObject({ stalled: 1 });
+    expect(Array.from(h.objects.objects.keys())).toEqual([]);
+    expect(await h.store.loadTokens(r.reportId, 1)).toEqual([]);
+  });
+
+  it('L-3: the hourly sweep removes a people file older than 24 hours and keeps a younger one', async () => {
+    let now = new Date('2026-11-08T03:00:00.000Z');
+    const h = seeded({ now: () => now });
+    const id = await makeReport(h);
+    await h.manager.downloadUrls(caller(), ADMIN, { keys: [`people:${id}:csv`] });
+    now = new Date('2026-11-09T02:59:00.000Z');
+    expect(await h.manager.sweepTmp(Date.now() + 1000)).toEqual({ deleted: 0, skipped: false });
+    now = new Date('2026-11-09T03:01:00.000Z');
+    expect(await h.manager.sweepTmp(Date.now() + 1000)).toEqual({ deleted: 1, skipped: false });
+    expect(Array.from(h.objects.objects.keys()).filter(k => k.startsWith('tmp/'))).toEqual([]);
+  });
+
+  it('L-6: a refused create stores no party token for the people filter', async () => {
+    const h = seeded();
+    h.userJira.extraIds = Array.from({ length: 10_001 }, (_, i) => String(40_000 + i));
+    await h.manager.create(caller(), ADMIN, { ...RANGE, actorAccountIds: ['acc-filter'] });
+    expect(Array.from(h.storage.store.keys()).filter(k => k.startsWith('fr:party:'))).toEqual([]);
+  });
+
+  it('L-8: the list gives no issue or change counts, and the manifest goes only to a viewer who may download', async () => {
+    const h = seeded();
+    const id = await makeReport(h);
+    const row = ok<ReportsView>(await h.manager.list(caller(), BROWSER, {})).reports[0];
+    expect(row).not.toHaveProperty('issues');
+    expect(row).not.toHaveProperty('changes');
+    h.issues.find(i => i.id === '103')!.hidden = true;
+    const detail = await h.manager.detail(caller(), BROWSER, { reportId: id });
+    expect(detail.ok && 'manifest' in detail).toBe(false);
   });
 });

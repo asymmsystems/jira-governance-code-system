@@ -105,6 +105,24 @@ describe('Jira report reads', () => {
     expect((await new DefaultForgeJiraReportAccessor(fakeRequest([{ status: 200, json: null }]).request).factsByIds(['1'], { devFieldId: null, siteHost: null, statusCategories: {}, readAt: 't' })).issues).toEqual([]);
   });
 
+  it('H-1: reads every page of a batch, and fails a read that never reaches the last page', async () => {
+    const config = { devFieldId: null, siteHost: null, statusCategories: {}, readAt: 't' };
+    const f = fakeRequest([
+      { status: 200, json: { issues: [{ id: 7, key: 'PAY-7', fields: { project: { key: 'PAY' } } }], nextPageToken: 'more', isLast: false } },
+      { status: 200, json: { issues: [{ id: 8, key: 'PAY-8', fields: { project: { key: 'MOVED' } } }], isLast: true } }
+    ]);
+    const out = await new DefaultForgeJiraReportAccessor(f.request).factsByIds(['7', '8'], config);
+    expect(out.issues.map(i => [i.basics.issueId, i.basics.projectKey])).toEqual([['7', 'PAY'], ['8', 'MOVED']]);
+    expect(f.calls[1].body).toMatchObject({ nextPageToken: 'more' });
+    expect(f.calls[0].body?.fields).toContain('project');
+    const tokenOnly = fakeRequest([{ status: 200, json: { issues: [], nextPageToken: 'x' } }, { status: 200, json: { issues: [] } }]);
+    expect((await new DefaultForgeJiraReportAccessor(tokenOnly.request).factsByIds(['7'], config)).status).toBe(200);
+    const endless = fakeRequest([{ status: 200, json: { issues: [], nextPageToken: 'x', isLast: false } }, { status: 200, json: { issues: [], nextPageToken: 'x', isLast: false } }]);
+    expect(await new DefaultForgeJiraReportAccessor(endless.request).factsByIds(['7'], config)).toEqual({ status: 504, issues: [] });
+    const second = fakeRequest([{ status: 200, json: { issues: [{ id: 7 }], nextPageToken: 'n', isLast: false } }, { status: 500 }]);
+    expect(await new DefaultForgeJiraReportAccessor(second.request).factsByIds(['7', '8'], config)).toEqual({ status: 500, issues: [] });
+  });
+
   it('reads the bulk changelog with paging and the field filter (spike S-2 shape)', async () => {
     const page1 = { issueChangeLogs: [{ issueId: '7', changeHistories: [{ id: '100', author: { accountId: 'acc-a' }, created: 1793900065243, items: [{ field: 'status', fieldId: 'status', from: '1', fromString: 'To Do', to: '3', toString: 'Done' }] }] }], nextPageToken: 'n' };
     const page2 = { issueChangeLogs: [{ issueId: '7', changeHistories: [{ id: 101, created: '2026-10-01T00:00:00.000Z', items: [{ field: 'Link', to: null }] }] }, { issueId: 8 }] };
@@ -212,9 +230,10 @@ describe('report records in KVS', () => {
     await store.saveIndex('PAY', many);
     expect(await store.getIndex('PAY')).toHaveLength(200);
     expect(await store.getIndex('OTHER')).toEqual([]);
-    await store.commitDone(job({ state: 'DONE' }), 'PAY', [many[0]], { reportId: 'r1', manifestSha256: 'm' });
+    await store.commitDone(job({ state: 'DONE' }), 'PAY', { ...many[0], state: 'DONE' }, { reportId: 'r1', manifestSha256: 'm' });
     expect(await store.getHead('PAY')).toEqual({ reportId: 'r1', manifestSha256: 'm' });
-    expect(await store.getIndex('PAY')).toHaveLength(1);
+    expect(await store.getIndex('PAY')).toHaveLength(200);
+    expect((await store.getIndex('PAY')).find(e => e.reportId === 'r0')?.state).toBe('DONE');
     expect((await store.getJob('r1'))?.state).toBe('DONE');
     await store.saveSchedules('PAY', Array.from({ length: 6 }, (_, i) => ({ scheduleId: `s${i}` }) as never));
     expect(await store.getSchedules('PAY')).toHaveLength(5);
@@ -232,8 +251,30 @@ describe('report records in KVS', () => {
     const storage = new MemoryStorage() as MemoryStorage & { transact?: (s: Array<{ key: string; value: unknown }>) => Promise<void> };
     const tx: string[] = [];
     storage.transact = async sets => { for (const s of sets) { tx.push(s.key); await storage.set(s.key, s.value); } };
-    await new DefaultKvsReportStoreAccessor(storage).commitDone(job(), 'PAY', [], { reportId: 'r1', manifestSha256: 'm' });
-    expect(tx).toEqual(['fr:rj:r1', 'fr:p:PAY:reports', 'fr:p:PAY:reports:head']);
+    await new DefaultKvsReportStoreAccessor(storage).commitDone(job(), 'PAY', { reportId: 'r1', createdAt: 't' } as ReportIndexEntry, { reportId: 'r1', manifestSha256: 'm' });
+    expect(tx).toEqual(['fr:rj:r1', 'fr:p:PAY:rep:t:r1', 'fr:p:PAY:reports:head']);
+  });
+
+  it('keeps one key per index entry, so two writers never overwrite each other (review M-1), and moves the old single value', async () => {
+    const storage = new MemoryStorage();
+    const store = new DefaultKvsReportStoreAccessor(storage);
+    const a = { reportId: 'a', state: 'RUNNING', createdAt: '2026-11-01T00:00:00.000Z' } as ReportIndexEntry;
+    const b = { reportId: 'b', state: 'QUEUED', createdAt: '2026-11-02T00:00:00.000Z' } as ReportIndexEntry;
+    await storage.set('fr:p:PAY:reports', [a]);
+    // A create (writes B) and a commit (writes A DONE), interleaved: each writes only its own key.
+    const seenByCreate = await store.getIndex('PAY');
+    await store.putEntry('PAY', { ...a, state: 'DONE' });
+    await store.putEntry('PAY', b);
+    expect(seenByCreate).toEqual([a]);
+    expect(await storage.get('fr:p:PAY:reports')).toBeUndefined();
+    expect((await store.getIndex('PAY')).map(e => `${e.reportId}:${e.state}`)).toEqual(['b:QUEUED', 'a:DONE']);
+    await store.deleteEntry('PAY', b);
+    expect((await store.getIndex('PAY')).map(e => e.reportId)).toEqual(['a']);
+    await store.putEntry('PAY', { ...b, createdAt: a.createdAt, reportId: 'c' });
+    expect((await store.getIndex('PAY')).map(e => e.reportId)).toEqual(['c', 'a']);
+    await store.putEntry('PAY', { ...b, createdAt: a.createdAt, reportId: '0' });
+    expect((await store.getIndex('PAY')).map(e => e.reportId)).toEqual(['c', 'a', '0']);
+    expect(await new DefaultKvsReportStoreAccessor(new MemoryStorage()).projectId('X')).toBeUndefined();
   });
 
   it('writes each tombstone once under a free key, and lists them newest first', async () => {
@@ -244,6 +285,8 @@ describe('report records in KVS', () => {
     await store.addTombstone('PAY', { reportId: 'c', deletedAt: '2026-11-02T00:00:00.000Z', by: 'pty_x', reason: 'r' });
     expect(storage.store.has('fr:rt:PAY:2026-11-01T00:00:00.000Z:1')).toBe(true);
     expect((await store.listTombstones('PAY')).map(t => t.reportId)).toEqual(['c', 'a', 'b']);
+    await store.addTombstone('PAY', { reportId: 'z', deletedAt: '2026-10-01T00:00:00.000Z', by: 'pty_x', reason: 'r' });
+    expect((await store.listTombstones('PAY')).map(t => t.reportId)).toEqual(['c', 'a', 'b', 'z']);
     const policyStorage = Object.assign(new MemoryStorage(), { setIfAbsent: jest.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true) });
     await new DefaultKvsReportStoreAccessor(policyStorage).addTombstone('PAY', { reportId: 'd', deletedAt: 't', by: 'p', reason: 'r' });
     expect(policyStorage.setIfAbsent).toHaveBeenLastCalledWith('fr:rt:PAY:t:1', expect.objectContaining({ reportId: 'd' }));
@@ -370,6 +413,12 @@ describe('queue, hashes and signature, runtime, people', () => {
     expect(new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64'), FOURREALITIES_KEY_ID: 'Bad Id!' }).keyId()).toBeNull();
     const rsa = crypto.generateKeyPairSync('rsa', { modulusLength: 1024 }).privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64');
     expect(new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: rsa, FOURREALITIES_KEY_ID: 'k' }).keyId()).toBeNull();
+    // Review L-7: a development key never signs a production report, a production key never a development one.
+    const der = privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64');
+    expect(new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: der, FOURREALITIES_KEY_ID: 'fr-dev-2026-11' }, 'production').keyId()).toBeNull();
+    expect(new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: der, FOURREALITIES_KEY_ID: 'fr-dev-2026-11' }, 'development').keyId()).toBe('fr-dev-2026-11');
+    expect(new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: der, FOURREALITIES_KEY_ID: 'fr-prod-2026-11' }, 'staging').keyId()).toBeNull();
+    expect(new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: der, FOURREALITIES_KEY_ID: 'fr-prod-2026-11' }, 'production').keyId()).toBe('fr-prod-2026-11');
     expect(new DefaultReportCryptoAccessor().keyId() === null || typeof new DefaultReportCryptoAccessor().keyId() === 'string').toBe(true);
   });
 

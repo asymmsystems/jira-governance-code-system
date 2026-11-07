@@ -128,7 +128,8 @@ export interface ReportJob {
   /** How many KVS values hold the report's party tokens (after assembly). */
   tokenChunks?: number;
   failures: number;
-  progress: { issuesTotal: number; issuesDone: number; changes: number; linksNotRead: number };
+  /** notReadable: ids of the scope that the app could not read, or that moved to another project (review H-1). */
+  progress: { issuesTotal: number; issuesDone: number; changes: number; linksNotRead: number; notReadable?: number };
   createdAt: string;
   updatedAt: string;
   startedAt?: string;
@@ -138,6 +139,8 @@ export interface ReportJob {
   manifestSha256?: string;
   previous?: ChainLink | null;
   keyId?: string;
+  /** The event that works the job now, and until when (review L-1: a second event for the same job waits). */
+  lease?: { owner: string; until: string };
 }
 
 /** One row of the project's report index, at fr:p:{projectKey}:reports (newest first, at most 200). */
@@ -169,6 +172,8 @@ export interface ReportSchedule {
   createdAt: string;
   /** The end of the last period a report was made for. */
   lastPeriodEnd?: string;
+  /** Why the newest due period was not made yet (a Jira error or a full project); it is tried again (review M-3). */
+  lastRefusal?: { code: string; message: string; at: string; range: ReportRange };
 }
 
 /** Site settings at fr:cfg:reports. They hold no account id. */
@@ -212,7 +217,8 @@ export interface ManifestHeader {
   generatedAt: string;
   gatesObservedAt: string;
   appVersion?: string;
-  counts: { issues: number; changes: number; missingSincePrevious: number };
+  /** notReadable: issues of the scope that are not in the report, listed in report.json (review H-1). */
+  counts: { issues: number; changes: number; missingSincePrevious: number; notReadable: number };
   previous: ChainLink | null;
   warning?: 'UNSIGNED';
 }
@@ -282,7 +288,7 @@ export interface ReportIssue {
 }
 
 export interface ReportWarning {
-  code: 'UNSIGNED' | 'REMOTE_LINKS_NOT_READ';
+  code: 'UNSIGNED' | 'REMOTE_LINKS_NOT_READ' | 'ISSUES_NOT_READ';
   count?: number;
 }
 
@@ -293,7 +299,22 @@ export interface ReportData {
   decisionIssueTypes: string[];
   issues: ReportIssue[];
   missingSincePrevious: Array<{ issueId: string; issueKey: string }>;
+  /** Issues of the scope search that are not in the report, and why: never left out silently (spec v4 invariant 11). */
+  notReadable: NotReadableIssue[];
   warnings: ReportWarning[];
+}
+
+/** An issue the scope search returned that the job could not put in the report. */
+export interface NotReadableIssue {
+  issueId: string;
+  /** NOT_READABLE: the app's read did not return it (deleted, or no longer readable); MOVED: it is in another project now. */
+  reason: 'NOT_READABLE' | 'MOVED';
+}
+
+/** One part object of a job (tmp/{reportId}/part-{i}.json). */
+export interface ReportPart {
+  issues: ReportIssue[];
+  notReadable: NotReadableIssue[];
 }
 
 /** One item of a Jira changelog entry, as the bulk changelog fetch returns it. */
@@ -330,6 +351,8 @@ export interface ReportIssueBasics {
   issueTypeName: string;
   created: string;
   statusId: string;
+  /** The project the issue is in now; absent when Jira did not say. */
+  projectKey?: string;
 }
 
 /** The caller's permissions in one project, asked as the caller in one call (spec v4 section 4.4). */

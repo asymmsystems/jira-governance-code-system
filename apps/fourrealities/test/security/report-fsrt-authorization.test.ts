@@ -34,7 +34,9 @@ import {
   handler,
   reportCallerOf,
   reportDaily,
+  reportTmp,
   reportWorker,
+  runReportTmpSweep,
   runReportDaily,
   setGlobalStorageProvider,
   setReportPlatform,
@@ -195,6 +197,25 @@ describe('question 8: the consumer and the daily run log no error message, objec
     await expect(reportWorker({ body: { reportId: REPORT_ID } })).resolves.toBeUndefined();
     await expect(reportWorker(undefined)).resolves.toBeUndefined();
     expect(lines.map(a => a.join(' '))).toEqual(['FourRealities: report job event failed: Error code=KVS_DOWN']);
+  });
+
+  it('the hourly sweep logs its counts, or only the error name and code', async () => {
+    setReportPlatform({ objects });
+    await reportTmp();
+    setGlobalStorageProvider(broken());
+    await reportTmp();
+    expect(lines.map(a => a.join(' '))).toEqual([
+      'FourRealities: report temporary files {"deleted":0,"skipped":false}',
+      'FourRealities: report temporary files failed: Error code=KVS_DOWN'
+    ]);
+    expect(await runReportTmpSweep(new MemoryStorage(), Date.now() - 1)).toEqual({ deleted: 0, skipped: false });
+  });
+
+  it('the download resolver logs only how many URLs were asked and given', async () => {
+    mockUser.mockResolvedValue(json(200, NOTHING));
+    await (handler as (e: unknown, r: unknown) => Promise<unknown>)({ call: { functionKey: 'generateReportDownloadUrls', payload: { keys: ['a', 'b'] } }, context: CONTEXT }, RUNTIME);
+    await (handler as (e: unknown, r: unknown) => Promise<unknown>)({ call: { functionKey: 'generateReportDownloadUrls', payload: {} }, context: CONTEXT }, RUNTIME);
+    expect(lines.map(a => a.join(' '))).toEqual(['FourRealities: report download URLs {"asked":2,"given":0}', 'FourRealities: report download URLs {"asked":0,"given":0}']);
   });
 
   it('the daily run logs its counts, or only the error name and code', async () => {

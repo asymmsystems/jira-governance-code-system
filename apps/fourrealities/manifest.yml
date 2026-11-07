@@ -42,6 +42,10 @@ modules:
     - key: fourrealities-report-daily
       function: report-daily
       interval: day
+    # ADR-015: temporary people files are removed 24 to 25 hours after a download (review L-3).
+    - key: fourrealities-report-tmp
+      function: report-tmp
+      interval: hour
   # ADR-015: evidence report files (Forge Object Store, Preview; owner decision Q5).
   objectStore:
     - key: fourrealities-reports
@@ -66,6 +70,9 @@ modules:
       timeoutSeconds: 900
     - key: report-daily
       handler: index.reportDaily
+      timeoutSeconds: 600
+    - key: report-tmp
+      handler: index.reportTmp
       timeoutSeconds: 600
 
 resources:

@@ -88,6 +88,10 @@ export class FakeJira implements JiraReportAccessor {
   extraIds: string[] = [];
   onFacts: (() => void) | null = null;
   presentFails = false;
+  /** Ids that the batch read does not return (a short page, or an issue deleted during the job: review H-1). */
+  dropIds = new Set<string>();
+  /** Ids that are in another project now. */
+  movedIds = new Set<string>();
   changelogStatus = 200;
   constructor(private readonly issues: () => IssueSpec[], private readonly principal: 'user' | 'app') {}
   private visible(): IssueSpec[] {
@@ -114,11 +118,11 @@ export class FakeJira implements JiraReportAccessor {
     const byId = new Map(this.visible().map(i => [i.id, i]));
     return {
       status: 200,
-      issues: ids.filter(id => byId.has(id)).map(id => {
+      issues: ids.filter(id => byId.has(id) && !this.dropIds.has(id)).map(id => {
         const spec = byId.get(id)!;
         return {
           facts: makeFacts({ issueId: id, issueKey: `PAY-${id}`, summary: `Summary of ${id} with private words`, statusCategory: 'done', properties: spec.properties || {} }),
-          basics: { issueId: id, issueKey: `PAY-${id}`, issueTypeName: 'Story', created: spec.created || '2026-10-05T00:00:00.000Z', statusId: '3' }
+          basics: { issueId: id, issueKey: `PAY-${id}`, issueTypeName: 'Story', created: spec.created || '2026-10-05T00:00:00.000Z', statusId: '3', projectKey: this.movedIds.has(id) ? 'OTHER' : 'PAY' }
         };
       })
     };

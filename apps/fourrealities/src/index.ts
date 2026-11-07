@@ -164,7 +164,8 @@ export function composeReports(storageProvider: StorageProvider | undefined, bud
   const until = () => deadline;
   const verify = attestationChecker(trustedKeys());
   const store = new DefaultKvsReportStoreAccessor(storage);
-  const crypto = reportPlatform.crypto || new DefaultReportCryptoAccessor();
+  const runtime = reportPlatform.runtime || new DefaultForgeReportRuntimeAccessor();
+  const crypto = reportPlatform.crypto || new DefaultReportCryptoAccessor(process.env, runtime.environment());
   const policy = new DefaultReportPolicyEngine();
   const appRequest = requestAs('app', until, JOB_MAX_WAIT_MS);
   const reports = new DefaultEvidenceReportManager({
@@ -173,7 +174,7 @@ export function composeReports(storageProvider: StorageProvider | undefined, bud
     queue: reportPlatform.queue || new DefaultForgeReportQueueAccessor(),
     crypto,
     tokens: new DefaultKvsPartyTokenAccessor(storage),
-    runtime: reportPlatform.runtime || new DefaultForgeReportRuntimeAccessor(),
+    runtime,
     userJira: new DefaultForgeJiraReportAccessor(requestAs('user', until), verify),
     appJira: new DefaultForgeJiraReportAccessor(appRequest, verify),
     appIssues: new DefaultForgeJiraIssueAccessor('app', until, appRequest, verify),
@@ -192,7 +193,7 @@ export function composeReports(storageProvider: StorageProvider | undefined, bud
     deadline
   });
   const settings = new DefaultReportSettingsManager({ directory: new DefaultForgeJiraDirectoryAccessor(requestAs('user', until)), store, crypto, policy });
-  return { reports, settings, runtime: reportPlatform.runtime || new DefaultForgeReportRuntimeAccessor() };
+  return { reports, settings, runtime };
 }
 
 export const LICENCE_INACTIVE_MESSAGE = 'The FourRealities licence for this site is not active. A site administrator can renew it in Manage apps.';
@@ -375,7 +376,10 @@ export async function getEvidenceReport(payload: unknown, context?: ForgeContext
 export async function generateReportDownloadUrls(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider) {
   const caller = reportCallerOf(context);
   const permissions: ReportPermissions = await reportPermissionsAsUser(caller.projectKey);
-  return composeReports(storageProvider, RESOLVER_LINK_BUDGET_MS).reports.downloadUrls(caller, permissions, payload);
+  const urls = await composeReports(storageProvider, RESOLVER_LINK_BUDGET_MS).reports.downloadUrls(caller, permissions, payload);
+  // For diagnosis of a failed download: counts only, never a key, an id or a URL.
+  console.log('FourRealities: report download URLs', JSON.stringify({ asked: Array.isArray((payload as { keys?: unknown } | undefined)?.keys) ? ((payload as { keys: unknown[] }).keys).length : 0, given: Object.keys(urls).length }));
+  return urls;
 }
 
 export async function saveReportSchedule(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider) {
@@ -397,15 +401,16 @@ export async function deleteEvidenceReport(payload: unknown, context?: ForgeCont
 }
 
 /** One event of a report job, as the app, for the job's stored ids only. */
-export async function runReportJob(reportId: string, storageProvider?: StorageProvider, deadline: number = Date.now() + REPORT_EVENT_BUDGET_MS): Promise<void> {
-  await composeReports(storageProvider, Math.max(0, deadline - Date.now())).reports.work(reportId, deadline);
+export async function runReportJob(reportId: string, storageProvider?: StorageProvider, deadline: number = Date.now() + REPORT_EVENT_BUDGET_MS, eventId?: string): Promise<void> {
+  await composeReports(storageProvider, Math.max(0, deadline - Date.now())).reports.work(reportId, deadline, eventId);
 }
 
 /** Forge consumer of the queue fourrealities-report-jobs (manifest function report-worker). */
-export const reportWorker = async (event: { body?: { reportId?: unknown } } | undefined): Promise<void> => {
+export const reportWorker = async (event: { body?: { reportId?: unknown }; eventId?: unknown } | undefined): Promise<void> => {
   const reportId = typeof event?.body?.reportId === 'string' ? event.body.reportId : '';
+  const eventId = typeof event?.eventId === 'string' ? event.eventId : undefined;
   try {
-    await runReportJob(reportId);
+    await runReportJob(reportId, undefined, Date.now() + REPORT_EVENT_BUDGET_MS, eventId);
   } catch (err) {
     console.error(`FourRealities: report job event failed: ${errorSummary(err)}`);
   }
@@ -417,6 +422,21 @@ export async function runReportDaily(storageProvider?: StorageProvider, deadline
   // Retention and clean-up run whatever the licence; only new scheduled reports stop (Q9).
   return app.reports.daily(deadline, app.runtime.licenceActive() !== false);
 }
+
+/** The hourly sweep of temporary people files (review L-3: a file lives at most 25 hours). */
+export async function runReportTmpSweep(storageProvider?: StorageProvider, deadline: number = Date.now() + SCHEDULED_BUDGET_MS): Promise<{ deleted: number; skipped: boolean }> {
+  return composeReports(storageProvider, Math.max(0, deadline - Date.now())).reports.sweepTmp(deadline);
+}
+
+/** Forge scheduledTrigger handler (manifest function report-tmp). */
+export const reportTmp = async (): Promise<void> => {
+  try {
+    const result = await runReportTmpSweep();
+    console.log('FourRealities: report temporary files', JSON.stringify(result));
+  } catch (err) {
+    console.error(`FourRealities: report temporary files failed: ${errorSummary(err)}`);
+  }
+};
 
 /** Forge scheduledTrigger handler (manifest function report-daily). */
 export const reportDaily = async (): Promise<void> => {

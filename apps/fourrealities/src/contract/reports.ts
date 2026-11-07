@@ -13,6 +13,7 @@ import {
   FieldClass,
   FieldInfo,
   ManifestHeader,
+  NotReadableIssue,
   PartyEntry,
   PeopleRow,
   ReportCaller,
@@ -65,11 +66,15 @@ export interface ReportStoreAccessor extends Accessor {
   saveTokens(reportId: string, tokens: string[]): Promise<number>;
   loadTokens(reportId: string, chunks: number): Promise<string[]>;
   deleteTokens(reportId: string, chunks: number): Promise<void>;
+  /** The project's entries, newest first. Each entry is its own KVS value, so writers never overwrite each other's rows (review M-1). */
   getIndex(projectKey: string): Promise<ReportIndexEntry[]>;
+  putEntry(projectKey: string, entry: ReportIndexEntry): Promise<void>;
+  deleteEntry(projectKey: string, entry: ReportIndexEntry): Promise<void>;
+  /** Makes the index exactly these entries (tests and tools). */
   saveIndex(projectKey: string, entries: ReportIndexEntry[]): Promise<void>;
   getHead(projectKey: string): Promise<ChainLink | undefined>;
-  /** Writes the DONE job, the index and the head in one transaction. */
-  commitDone(job: ReportJob, projectKey: string, entries: ReportIndexEntry[], head: ChainLink): Promise<void>;
+  /** Writes the DONE job, its index entry and the head in one transaction. */
+  commitDone(job: ReportJob, projectKey: string, entry: ReportIndexEntry, head: ChainLink): Promise<void>;
   getSchedules(projectKey: string): Promise<ReportSchedule[]>;
   saveSchedules(projectKey: string, schedules: ReportSchedule[]): Promise<void>;
   /** Written once; never rewritten. */
@@ -150,7 +155,7 @@ export interface ReportEngine extends Engine {
   accountIdsOf(entries: ChangelogEntry[], fields: FieldInfo[], events: GateExceptionEvent[], notes: ReworkNote[]): string[];
   tokensOf(issues: ReportIssue[], filters: ReportFilters, requestedBy: string): string[];
   canonicalJson(value: unknown): string;
-  reportJson(data: { header: ManifestHeader; sourcesInUse: SourcesInUse; issues: ReportIssue[]; missingSincePrevious: Array<{ issueId: string; issueKey: string }>; linksNotRead: number }): string;
+  reportJson(data: { header: ManifestHeader; sourcesInUse: SourcesInUse; issues: ReportIssue[]; missingSincePrevious: Array<{ issueId: string; issueKey: string }>; notReadable: NotReadableIssue[]; linksNotRead: number }): string;
   reportCsv(reportId: string, issues: ReportIssue[]): string;
   /** The manifest without its signature, with keyId when a key signs it; signedText is what the key signs. */
   manifest(header: ManifestHeader, files: ReportManifest['files'], keyId: string | null): { manifest: ReportManifest; signedText: string };
@@ -200,8 +205,11 @@ export interface EvidenceReportManager extends Manager {
 
 /** The queue consumer and the daily run (as the app). */
 export interface ReportJobManager extends Manager {
-  work(reportId: string, deadline: number): Promise<void>;
+  /** One event of a job; eventId names the event's lease (review L-1). */
+  work(reportId: string, deadline: number, eventId?: string): Promise<void>;
   daily(deadline: number, licenceActive: boolean): Promise<ReportDailyResult>;
+  /** Removes temporary people files older than 24 hours (hourly and in the daily run). */
+  sweepTmp(deadline: number): Promise<{ deleted: number; skipped: boolean }>;
 }
 
 /** The admin page section "Evidence reports": Jira administrators only, checked as the user on every call. */

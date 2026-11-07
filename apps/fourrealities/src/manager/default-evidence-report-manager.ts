@@ -15,6 +15,7 @@ import {
   DownloadDecision,
   FieldInfo,
   ManifestHeader,
+  NotReadableIssue,
   PeopleRow,
   REPORT_LIMITS,
   ReportCaller,
@@ -30,6 +31,7 @@ import {
   ReportJob,
   ReportListRow,
   ReportManifest,
+  ReportPart,
   ReportPermissions,
   ReportRange,
   ReportResult,
@@ -93,13 +95,15 @@ export const NOT_SCHEDULER_TEXT = 'Only a project administrator or a Jira admini
 export const NOT_DELETER_TEXT = 'Only a Jira administrator can delete a report before it expires.';
 export const LICENCE_TEXT = 'The FourRealities licence for this site is not active, so no new reports are made. Existing reports can still be viewed and downloaded.';
 export const NOT_READY_TEXT = 'This report is not ready to download.';
-export const PEOPLE_NOTE = 'Not signed. Maps each party token of the report to an account id and a display name, read as you when you downloaded it. A closed account shows as a former user. Kept for 24 hours.';
+export const PEOPLE_NOTE = 'Not signed. Maps each party token of the report to an account id and a display name, read as you when you downloaded it. A closed account shows as a former user. Removed 24 to 25 hours after the download.';
 
 /** Time a consumer event keeps for saving the job and pushing the next event. */
 export const EVENT_RESERVE_MS = 60_000;
 /** Time the assembly of a 50 MB report needs (spike S-3: about 30 s for reading the parts, building and writing). */
 export const ASSEMBLE_RESERVE_MS = 180_000;
 export const RETRY_DELAY_SECONDS = 30;
+/** Refusals of a scheduled period that are tried again the next day; others are final and get a FAILED row. */
+const RETRY_LATER: ReportErrorCode[] = ['JIRA_ERROR', 'JOB_LIMIT', 'REPORT_LIMIT'];
 
 const FILES: ReportFileName[] = ['manifest.json', 'report.json', 'report.csv'];
 const MEDIA: Record<ReportFileName, string> = { 'manifest.json': 'application/json', 'report.json': 'application/json', 'report.csv': 'text/csv; charset=utf-8' };
@@ -199,7 +203,9 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
         else if (party.accountId === caller.accountId) requestedByText = 'by you';
         else requestedByText = names[party.accountId]?.displayName || 'Name not available';
       }
-      const row: ReportListRow = { ...e, requestedByText };
+      // No issue or change counts in the list: a viewer may not see every issue of a report (review L-8, D-4).
+      const { issues: _issues, changes: _changes, ...shown } = e;
+      const row: ReportListRow = { ...shown, requestedByText };
       if (e.state === 'DONE') {
         row.expiresAt = this.d.policy.expiresAt(e.finishedAt || e.createdAt, settings.retentionDays);
         row.objectKeys = Object.fromEntries(FILES.map(f => [f, objectKey(String(caller.projectId), e.reportId, f)]));
@@ -220,22 +226,27 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
     if (!fields) return fail('JIRA_ERROR', 'FourRealities could not read the fields of this site. Try again.');
     const input = this.d.policy.validateCreate(payload, fields, this.now());
     if ('error' in input) return { ok: false, error: input.error };
-    const tokenOf = await this.d.tokens.tokensFor([String(caller.accountId || ''), ...input.actorAccountIds], this.now().toISOString());
-    const filters: ReportFilters = { fieldIds: input.fieldIds, actors: input.actorAccountIds.map(id => tokenOf[id]).sort() };
     return this.enqueue({
       projectKey: String(caller.projectKey),
       projectId: String(caller.projectId),
       range: input.range,
-      filters,
+      filters: { fieldIds: input.fieldIds, actors: [] },
+      people: { accountId: caller.accountId, actorAccountIds: input.actorAccountIds },
       trigger: 'user',
-      requestedBy: caller.accountId ? tokenOf[caller.accountId] : 'unknown',
+      requestedBy: 'unknown',
       jira: this.d.userJira,
       deadline: this.d.deadline
     });
   }
 
+  /** Party tokens for the caller and the people filter, made only after every refusal (review L-6). */
+  private async tokensOfPeople(people: { accountId?: string; actorAccountIds: string[] }): Promise<{ requestedBy: string; actors: string[] }> {
+    const tokenOf = await this.d.tokens.tokensFor([String(people.accountId || ''), ...people.actorAccountIds], this.now().toISOString());
+    return { requestedBy: people.accountId ? tokenOf[people.accountId] : 'unknown', actors: people.actorAccountIds.map(id => tokenOf[id]).sort() };
+  }
+
   /** Searches the scope, writes the job, its ids and its index entry, then queues it. Nothing is stored on a refusal. */
-  private async enqueue(r: { projectKey: string; projectId: string; range: ReportRange; filters: ReportFilters; trigger: ReportJob['trigger']; requestedBy: string; scheduleId?: string; jira: JiraReportAccessor; deadline: number }): Promise<ReportResult<{ reportId: string; state: 'QUEUED' }>> {
+  private async enqueue(r: { projectKey: string; projectId: string; range: ReportRange; filters: ReportFilters; people?: { accountId?: string; actorAccountIds: string[] }; trigger: ReportJob['trigger']; requestedBy: string; scheduleId?: string; jira: JiraReportAccessor; deadline: number }): Promise<ReportResult<{ reportId: string; state: 'QUEUED' }>> {
     const index = await this.d.store.getIndex(r.projectKey);
     const limit = this.d.policy.jobLimit(index);
     if (limit) return { ok: false, error: limit };
@@ -246,7 +257,13 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
     if (found.ids.length > REPORT_LIMITS.maxIssues) {
       return fail('TOO_MANY_ISSUES', `More than ${REPORT_LIMITS.maxIssues.toLocaleString('en-US')} issues may be in this range, so no report was made. Choose a shorter range.`);
     }
-    const now = this.now().toISOString();
+    if (r.people) {
+      const t = await this.tokensOfPeople(r.people);
+      r = { ...r, requestedBy: t.requestedBy, filters: { ...r.filters, actors: t.actors } };
+    }
+    // Strictly after the newest entry, so the index order is the order of creation, also within one millisecond.
+    const newest = index[0] ? Date.parse(index[0].createdAt) : NaN;
+    const now = new Date(Number.isFinite(newest) ? Math.max(this.now().getTime(), newest + 1) : this.now().getTime()).toISOString();
     const reportId = this.d.crypto.newId();
     const idChunks = await this.d.store.saveIds(reportId, found.ids);
     const job: ReportJob = {
@@ -264,13 +281,15 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
       parts: 0,
       idChunks,
       failures: 0,
-      progress: { issuesTotal: found.ids.length, issuesDone: 0, changes: 0, linksNotRead: 0 },
+      progress: { issuesTotal: found.ids.length, issuesDone: 0, changes: 0, linksNotRead: 0, notReadable: 0 },
       createdAt: now,
       updatedAt: now
     };
     await this.d.store.saveJob(job);
     const entry: ReportIndexEntry = { reportId, state: 'QUEUED', range: r.range, filters: r.filters, trigger: r.trigger, requestedBy: r.requestedBy, createdAt: now };
-    await this.d.store.saveIndex(r.projectKey, [entry, ...admitted.entries]);
+    // One write per entry: the new report's own key, and the removal of the entry that made room (review M-1).
+    for (const gone of index.filter(e => !admitted.entries.includes(e))) await this.d.store.deleteEntry(r.projectKey, gone);
+    await this.d.store.putEntry(r.projectKey, entry);
     await this.d.store.registerProject(r.projectKey, r.projectId);
     await this.d.queue.push(reportId);
     return { ok: true, reportId, state: 'QUEUED' };
@@ -315,7 +334,8 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
     const text = await this.d.objects.readText(objectKey(job.projectId, job.reportId, 'manifest.json'));
     const manifest = text ? (JSON.parse(text) as ReportManifest) : undefined;
     const download = await this.visibility(job, this.d.policy.rights(p, false).isTier1);
-    return { ok: true, report, fileNames, download, ...(manifest ? { manifest } : {}) };
+    // The manifest holds counts of the whole report: only for a viewer who may download it (review L-8).
+    return { ok: true, report, fileNames, download, ...(manifest && download.allowed ? { manifest } : {}) };
   }
 
   async downloadUrls(caller: ReportCaller, p: ReportPermissions, payload: unknown): Promise<Record<string, string>> {
@@ -378,14 +398,14 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
     const projectKey = String(caller.projectKey);
     const schedules = await this.d.store.getSchedules(projectKey);
     const now = this.now();
-    const tokenOf = await this.d.tokens.tokensFor([String(caller.accountId || ''), ...input.actorAccountIds], now.toISOString());
-    const filters: ReportFilters = { fieldIds: input.fieldIds, actors: input.actorAccountIds.map(id => tokenOf[id]).sort() };
     const existing = input.scheduleId ? schedules.find(s => s.scheduleId === input.scheduleId) : undefined;
     if (input.scheduleId && !existing) return fail('NOT_FOUND', 'FourRealities found no such schedule.');
     if (!existing && schedules.length >= REPORT_LIMITS.schedulesPerProject) return fail('INVALID_INPUT', `A project has at most ${REPORT_LIMITS.schedulesPerProject} schedules.`);
+    const t = await this.tokensOfPeople({ accountId: caller.accountId, actorAccountIds: input.actorAccountIds });
+    const filters: ReportFilters = { fieldIds: input.fieldIds, actors: t.actors };
     const schedule: ReportSchedule = existing
       ? { ...existing, cadence: input.cadence, filters }
-      : { scheduleId: this.d.crypto.newId(), cadence: input.cadence, filters, createdBy: caller.accountId ? tokenOf[caller.accountId] : 'unknown', createdAt: now.toISOString() };
+      : { scheduleId: this.d.crypto.newId(), cadence: input.cadence, filters, createdBy: t.requestedBy, createdAt: now.toISOString() };
     const next = existing ? schedules.map(s => (s.scheduleId === schedule.scheduleId ? schedule : s)) : [...schedules, schedule];
     await this.d.store.saveSchedules(projectKey, next);
     await this.d.store.registerProject(projectKey, String(caller.projectId));
@@ -427,10 +447,12 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
 
   // ---------------------------------------------------------------- the job (as the app)
 
-  private async setEntry(projectKey: string, reportId: string, patch: Partial<ReportIndexEntry>): Promise<ReportIndexEntry[]> {
-    const index = await this.d.store.getIndex(projectKey);
-    const next = index.map(e => (e.reportId === reportId ? { ...e, ...patch } : e));
-    await this.d.store.saveIndex(projectKey, next);
+  /** Changes one report's entry; it writes only that entry's key (review M-1). */
+  private async setEntry(projectKey: string, reportId: string, patch: Partial<ReportIndexEntry>): Promise<ReportIndexEntry | undefined> {
+    const entry = (await this.d.store.getIndex(projectKey)).find(e => e.reportId === reportId);
+    if (!entry) return undefined;
+    const next = { ...entry, ...patch };
+    await this.d.store.putEntry(projectKey, next);
     return next;
   }
 
@@ -449,6 +471,9 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
   /** A failed job stores no file (spec v4 invariant 11): parts, ids and the job record go; the index keeps the reason. */
   private async failJob(job: ReportJob, code: string, message: string): Promise<void> {
     await this.deleteParts(job);
+    // A job stopped during the assembly may have written some files or tokens already (review L-2).
+    for (const f of FILES) await this.d.objects.delete(objectKey(job.projectId, job.reportId, f));
+    await this.d.store.deleteTokens(job.reportId, job.tokenChunks || 0);
     await this.d.store.deleteIds(job.reportId, job.idChunks);
     await this.d.store.deleteJob(job.reportId);
     await this.setEntry(job.projectKey, job.reportId, { state: 'FAILED', finishedAt: this.now().toISOString(), error: { code, message } });
@@ -460,10 +485,13 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
     return running;
   }
 
-  async work(reportId: string, deadline: number): Promise<void> {
+  async work(reportId: string, deadline: number, eventId?: string): Promise<void> {
     if (!this.d.policy.isReportId(reportId)) return;
     const job = await this.d.store.getJob(reportId);
     if (!job || (job.state !== 'QUEUED' && job.state !== 'RUNNING')) return;
+    // A second event for a job that another event is working on waits for nothing and ends (review L-1).
+    if (job.lease && Date.parse(job.lease.until) > Date.now()) return;
+    const owner = eventId || this.d.crypto.newId();
     if (job.state === 'QUEUED') {
       const index = await this.d.store.getIndex(job.projectKey);
       if (!this.d.policy.mayStart(index, reportId, await this.siteRunning())) {
@@ -473,9 +501,10 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
       }
       const now = this.now().toISOString();
       Object.assign(job, { state: 'RUNNING', step: 'FACTS', startedAt: now, updatedAt: now });
-      await this.d.store.saveJob(job);
       await this.setEntry(job.projectKey, reportId, { state: 'RUNNING' });
     }
+    job.lease = { owner, until: new Date(deadline).toISOString() };
+    await this.d.store.saveJob(job);
     try {
       await this.advance(job, deadline);
     } catch (failure) {
@@ -490,7 +519,7 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
         await this.failJob(job, code, `FourRealities could not read Jira for this report three times (${message}) Make the report again.`);
         return;
       }
-      await this.d.store.saveJob({ ...job, updatedAt: this.now().toISOString() });
+      await this.d.store.saveJob({ ...job, lease: undefined, updatedAt: this.now().toISOString() });
       await this.d.queue.push(reportId, RETRY_DELAY_SECONDS);
     }
   }
@@ -510,18 +539,27 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
       if (Date.now() > deadline - EVENT_RESERVE_MS) return this.pause(job);
       const batch = ids.slice(job.cursor * size, (job.cursor + 1) * size);
       job.step = 'FACTS';
-      const facts = await this.d.appJira.factsByIds(batch, config);
-      if (facts.status !== 200) throw new JobStepError('JIRA_ERROR', `Jira search failed with HTTP ${facts.status}.`);
+      const read = await this.d.appJira.factsByIds(batch, config);
+      if (read.status !== 200) throw new JobStepError('JIRA_ERROR', `Jira search failed with HTTP ${read.status}.`);
+      // Every id of the batch is in the report, or listed as not readable or moved: none is left out silently (review H-1).
+      const returned = new Set(read.issues.map(i => i.basics.issueId));
+      const moved = read.issues.filter(i => i.basics.projectKey !== undefined && i.basics.projectKey !== job.projectKey);
+      const notReadable: NotReadableIssue[] = [
+        ...batch.filter(id => !returned.has(id)).map(issueId => ({ issueId, reason: 'NOT_READABLE' as const })),
+        ...moved.map(i => ({ issueId: i.basics.issueId, reason: 'MOVED' as const }))
+      ];
+      const facts = { issues: read.issues.filter(i => !moved.includes(i)) };
       const started = facts.issues.filter(i => i.facts.started).map(i => i.facts.issueId);
       const links = await this.d.appIssues.remoteLinks(started, deadline - EVENT_RESERVE_MS);
       // A link read cut by time is not a result: the batch is read again in the next event.
       if (started.some(id => !links.has(id)) && Date.now() > deadline - EVENT_RESERVE_MS) return this.pause(job);
       job.step = 'CHANGES';
-      const logs = await this.d.appJira.changelogs(batch, job.filters.fieldIds, deadline - EVENT_RESERVE_MS);
+      const logs = await this.d.appJira.changelogs(facts.issues.map(i => i.basics.issueId), job.filters.fieldIds, deadline - EVENT_RESERVE_MS);
       if (logs.status !== 200) throw new JobStepError('JIRA_ERROR', `Jira changelog read failed with HTTP ${logs.status}.`);
       job.step = 'PARTS';
       const issues = await this.batchIssues(job, facts.issues, logs.byIssue, links, fieldsRes.fields, sources, history, events, notes);
-      if (!(await this.d.objects.putOnce(partKey(job.reportId, job.parts), this.d.engine.canonicalJson(issues), 'application/json'))) {
+      const part: ReportPart = { issues, notReadable };
+      if (!(await this.d.objects.putOnce(partKey(job.reportId, job.parts), this.d.engine.canonicalJson(part), 'application/json'))) {
         throw new JobStepError('STORE_FAILED', 'FourRealities could not store a part of this report.');
       }
       job.parts++;
@@ -531,7 +569,8 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
         ...job.progress,
         issuesDone: Math.min(ids.length, job.cursor * size),
         changes: job.progress.changes + issues.reduce((n, i) => n + i.changes.length, 0),
-        linksNotRead: job.progress.linksNotRead + started.filter(id => !links.has(id)).length
+        linksNotRead: job.progress.linksNotRead + started.filter(id => !links.has(id)).length,
+        notReadable: (job.progress.notReadable || 0) + notReadable.length
       };
       job.updatedAt = this.now().toISOString();
       await this.d.store.saveJob(job);
@@ -539,11 +578,11 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
     }
     if (Date.now() > deadline - ASSEMBLE_RESERVE_MS) return this.pause(job);
     job.step = 'ASSEMBLE';
-    await this.assemble(job, ids, sources);
+    await this.assemble(job, ids, sources, deadline);
   }
 
   private async pause(job: ReportJob): Promise<void> {
-    await this.d.store.saveJob({ ...job, updatedAt: this.now().toISOString() });
+    await this.d.store.saveJob({ ...job, lease: undefined, updatedAt: this.now().toISOString() });
     await this.d.queue.push(job.reportId);
   }
 
@@ -582,17 +621,20 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
   }
 
   /** Reads the parts, builds and checks the files, signs the manifest, stores the files once, then commits. */
-  private async assemble(job: ReportJob, ids: string[], sources: SourcesInUse): Promise<void> {
+  private async assemble(job: ReportJob, ids: string[], sources: SourcesInUse, deadline: number): Promise<void> {
     const issues: ReportIssue[] = [];
+    const notReadable: NotReadableIssue[] = [];
     for (let i = 0; i < job.parts; i++) {
       const text = await this.d.objects.readText(partKey(job.reportId, i));
       if (text === undefined) throw new JobStepError('JOB_FAILED', 'A part of this report could not be read.');
-      issues.push(...(JSON.parse(text) as ReportIssue[]));
+      const part = JSON.parse(text) as ReportPart | ReportIssue[];
+      issues.push(...(Array.isArray(part) ? part : part.issues));
+      if (!Array.isArray(part)) notReadable.push(...part.notReadable);
     }
     const changes = issues.reduce((n, i) => n + i.changes.length, 0);
     const config = await this.d.siteConfig.get();
     const head = (await this.d.store.getHead(job.projectKey)) || null;
-    const missing = await this.missingSince(head);
+    const missing = await this.missingSince(head, deadline);
     const keyId = this.d.crypto.keyId();
     const header: ManifestHeader = {
       format: 'fourrealities-evidence-report/1',
@@ -608,11 +650,11 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
       generatedAt: this.now().toISOString(),
       gatesObservedAt: job.startedAt || job.createdAt,
       ...(this.d.runtime.appVersion() ? { appVersion: this.d.runtime.appVersion() } : {}),
-      counts: { issues: issues.length, changes, missingSincePrevious: missing.length },
+      counts: { issues: issues.length, changes, missingSincePrevious: missing.length, notReadable: notReadable.length },
       previous: head,
       ...(keyId ? {} : { warning: 'UNSIGNED' as const })
     };
-    const json = this.d.engine.reportJson({ header, sourcesInUse: sources, issues, missingSincePrevious: missing, linksNotRead: job.progress.linksNotRead });
+    const json = this.d.engine.reportJson({ header, sourcesInUse: sources, issues, missingSincePrevious: missing, notReadable, linksNotRead: job.progress.linksNotRead });
     const csv = this.d.engine.reportCsv(job.reportId, issues);
     const dj = this.d.crypto.digest(json);
     const dc = this.d.crypto.digest(csv);
@@ -645,7 +687,8 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
       tokenChunks,
       finishedAt,
       updatedAt: finishedAt,
-      progress: { ...job.progress, issuesDone: ids.length, changes },
+      progress: { ...job.progress, issuesDone: ids.length, changes, notReadable: notReadable.length },
+      lease: undefined,
       files: [
         { name: 'manifest.json', objectKey: objectKey(job.projectId, job.reportId, 'manifest.json'), bytes: dm.bytes, sha256: dm.sha256 },
         ...files.map(f => ({ name: f.name, objectKey: objectKey(job.projectId, job.reportId, f.name), bytes: f.bytes, sha256: f.sha256 }))
@@ -654,22 +697,20 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
       previous: head,
       ...(signed ? { keyId: signed.keyId } : {})
     };
-    const index = (await this.d.store.getIndex(job.projectKey)).map(e =>
-      e.reportId === job.reportId
-        ? { ...e, state: 'DONE' as const, finishedAt, issues: issues.length, changes, bytes: dj.bytes + dc.bytes + dm.bytes, reportSha256: dj.sha256, manifestSha256: dm.sha256, ...(signed ? { keyId: signed.keyId } : { unsigned: true }) }
-        : e
-    );
-    await this.d.store.commitDone(done, job.projectKey, index, { reportId: job.reportId, manifestSha256: dm.sha256 });
+    const current = (await this.d.store.getIndex(job.projectKey)).find(e => e.reportId === job.reportId);
+    if (!current) throw new JobStepError('STORE_FAILED', 'The index entry of this report is missing.');
+    const entry: ReportIndexEntry = { ...current, state: 'DONE', finishedAt, issues: issues.length, changes, bytes: dj.bytes + dc.bytes + dm.bytes, reportSha256: dj.sha256, manifestSha256: dm.sha256, ...(signed ? { keyId: signed.keyId } : { unsigned: true }) };
+    await this.d.store.commitDone(done, job.projectKey, entry, { reportId: job.reportId, manifestSha256: dm.sha256 });
     await this.deleteParts(done);
   }
 
   /** The issues of the previous report that the app can no longer read (deleted or moved away). */
-  private async missingSince(head: ChainLink | null): Promise<Array<{ issueId: string; issueKey: string }>> {
+  private async missingSince(head: ChainLink | null, deadline: number): Promise<Array<{ issueId: string; issueKey: string }>> {
     if (!head) return [];
     const previous = await this.d.store.getJob(head.reportId);
     if (!previous || previous.state !== 'DONE') return [];
     const entries = await this.d.store.loadIds(previous.reportId, previous.idChunks);
-    const present = await this.d.appJira.presentAmong(entries.map(idOf), Date.now() + REPORT_LIMITS.eventBudgetMs);
+    const present = await this.d.appJira.presentAmong(entries.map(idOf), deadline);
     if (!present) throw new JobStepError('JIRA_ERROR', 'FourRealities could not check the issues of the previous report.');
     return entries.filter(e => !present.has(idOf(e))).map(e => ({ issueId: idOf(e), issueKey: e.slice(idOf(e).length + 1) }));
   }
@@ -680,6 +721,10 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
     const result: ReportDailyResult = { scheduled: 0, expired: 0, tmpDeleted: 0, stalled: 0, skipped: false };
     const now = this.now();
     const settings = await this.d.store.getSettings();
+    // Temporary files first, so a long project loop never delays them (review L-3); the hourly run sweeps too.
+    const swept = await this.sweepTmp(deadline);
+    result.tmpDeleted = swept.deleted;
+    result.skipped = swept.skipped;
     for (const projectKey of await this.d.store.projects()) {
       if (Date.now() >= deadline) {
         result.skipped = true;
@@ -691,17 +736,21 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
         // One project's failure never stops the others; the next day tries again.
       }
     }
+    return result;
+  }
+
+  /** Removes the temporary people files older than 24 hours. Run every hour, so a file lives at most 25 hours. */
+  async sweepTmp(deadline: number): Promise<{ deleted: number; skipped: boolean }> {
+    const now = this.now().getTime();
+    let deleted = 0;
     for (const { id, entry } of await this.d.store.listTmp()) {
-      if (Date.now() >= deadline) {
-        result.skipped = true;
-        break;
-      }
-      if (now.getTime() - Date.parse(entry.createdAt) < REPORT_LIMITS.tmpMaxAgeMs) continue;
+      if (Date.now() >= deadline) return { deleted, skipped: true };
+      if (now - Date.parse(entry.createdAt) < REPORT_LIMITS.tmpMaxAgeMs) continue;
       for (const key of entry.objectKeys) await this.d.objects.delete(key);
       await this.d.store.deleteTmp(id);
-      result.tmpDeleted++;
+      deleted++;
     }
-    return result;
+    return { deleted, skipped: false };
   }
 
   private async dailyProject(projectKey: string, now: Date, settings: ReportSettings, licenceActive: boolean, deadline: number, result: ReportDailyResult): Promise<void> {
@@ -730,11 +779,17 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
       for (const range of this.d.policy.duePeriods(schedule, now)) {
         if (Date.now() >= deadline) break;
         const made = await this.enqueue({ projectKey, projectId, range, filters: schedule.filters, trigger: 'scheduled', requestedBy: 'scheduled', scheduleId: schedule.scheduleId, jira: this.d.appJira, deadline });
-        if (!made.ok && made.error.code === 'JOB_LIMIT') break;
+        changed = true;
+        if (!made.ok && RETRY_LATER.includes(made.error.code)) {
+          // A Jira error, a full queue or a full project: the period is kept and tried again tomorrow, and the
+          // schedule says why (review M-3).
+          schedule.lastRefusal = { code: made.error.code, message: made.error.message, at: now.toISOString(), range };
+          break;
+        }
         if (made.ok) result.scheduled++;
         else await this.recordRefusal(projectKey, range, schedule, made.error);
         schedule.lastPeriodEnd = range.to;
-        changed = true;
+        delete schedule.lastRefusal;
       }
     }
     if (changed) await this.d.store.saveSchedules(projectKey, schedules);
@@ -742,9 +797,11 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
 
   /** A scheduled period that could not be made gets a FAILED row, so the list says why (nothing else is stored). */
   private async recordRefusal(projectKey: string, range: ReportRange, schedule: ReportSchedule, error: ReportError): Promise<void> {
-    const admitted = this.d.policy.admit(await this.d.store.getIndex(projectKey));
+    const index = await this.d.store.getIndex(projectKey);
+    const admitted = this.d.policy.admit(index);
     if ('error' in admitted) return;
     const entry: ReportIndexEntry = { reportId: this.d.crypto.newId(), state: 'FAILED', range, filters: schedule.filters, trigger: 'scheduled', requestedBy: 'scheduled', createdAt: this.now().toISOString(), error: { code: error.code, message: error.message } };
-    await this.d.store.saveIndex(projectKey, [entry, ...admitted.entries]);
+    for (const gone of index.filter(e => !admitted.entries.includes(e))) await this.d.store.deleteEntry(projectKey, gone);
+    await this.d.store.putEntry(projectKey, entry);
   }
 }

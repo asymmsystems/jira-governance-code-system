@@ -57,9 +57,16 @@ function actionButton(r: any, rowIndex: number, label: string): any {
   return button;
 }
 
+const mounted: any[] = [];
+afterEach(() => {
+  // Unmounting clears the refresh timer of a list with a running report.
+  for (const r of mounted.splice(0)) act(() => { r.unmount(); });
+});
+
 async function mount(): Promise<any> {
   let r: any;
   await act(async () => { r = TestRenderer.create(<EvidenceReports />); });
+  mounted.push(r);
   await settle(act);
   return r;
 }
@@ -259,6 +266,7 @@ describe('the project page tabs', () => {
     answer({ getProjectDashboard: dashboard, getEvidenceReports: VIEW });
     let r: any;
     await act(async () => { r = TestRenderer.create(<FourRealitiesApp />); });
+    mounted.push(r);
     await settle(act);
     expect(findAll(r.root, 'Tab').map(t => textOf(t.props.children))).toEqual(['Dashboard', 'Evidence reports']);
     expect(bridgeState.invoke.mock.calls.map(c => c[0])).not.toContain('getEvidenceReports');

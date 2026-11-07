@@ -102,7 +102,7 @@ The SHA-256 fingerprint of the DER public key of `fr-dev-2026-11` is `f2ad70911a
 node verify-fourrealities-report.mjs <manifest.json> <report.json> <report.csv> [public-key.pem] [--previous <previous-manifest.json>]
 ```
 
-Without a key file, the key is read from `keys/<keyId>.pub.pem`. An unsigned report (manifest `warning: "UNSIGNED"`) fails check 2. The people file of a download is not signed (names change, and a closed account must disappear) and is not needed. Exit codes as above: `0` every check passed, `1` a check failed, `2` a missing argument or file.
+A report signed with a development key (a key id with `-dev-`, such as `fr-dev-2026-11`) prints a `WARN` line: it is a test report, not evidence from a production site. Such a report that says `environment: production` fails. Without a key file, the key is read from `keys/<keyId>.pub.pem`. An unsigned report (manifest `warning: "UNSIGNED"`) fails check 2. The people file of a download is not signed (names change, and a closed account must disappear) and is not needed. Exit codes as above: `0` every check passed, `1` a check failed, `2` a missing argument or file.
 
 What a PASS means: the three files are the ones FourRealities signed, and, with `--previous`, the report follows the previous one. It does not mean that the report holds everything Jira ever recorded: FourRealities reports what Jira's changelog held when the report was made, free-text fields show only that they changed, and the gate results are observed when the report was made.
 

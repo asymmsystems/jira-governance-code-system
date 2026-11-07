@@ -92,25 +92,34 @@ export class DefaultForgeJiraReportAccessor implements JiraReportAccessor {
     return found;
   }
 
+  /**
+   * Reads every page: Jira may return fewer issues per page than asked when many fields and properties are
+   * requested (review H-1). A read that does not reach the last page is an error, never a smaller batch.
+   */
   async factsByIds(ids: string[], config: SiteConfig): Promise<{ status: number; issues: Array<{ facts: IssueFacts; basics: ReportIssueBasics }> }> {
     const batch = ids.filter(id => /^\d+$/.test(id));
     if (batch.length === 0) return { status: 200, issues: [] };
-    const fields = [...issueFields(config.devFieldId).split(','), 'created', 'issuetype'];
-    const res = await this.post('search', { jql: `id in (${batch.join(',')})`, fields, properties: PROPERTY_KEYS, expand: 'changelog', maxResults: REPORT_LIMITS.batchSize });
-    if (res.status !== 200) return { status: res.status, issues: [] };
-    const page = ((await res.json()) || {}) as { issues?: JiraIssueJson[] };
+    const fields = [...issueFields(config.devFieldId).split(','), 'created', 'issuetype', 'project'];
     const options = { devFieldId: config.devFieldId, siteHost: config.siteHost || undefined, statusCategories: config.statusCategories, verify: this.verify };
-    return {
-      status: 200,
-      issues: (page.issues || []).map(iss => {
+    const issues: Array<{ facts: IssueFacts; basics: ReportIssueBasics }> = [];
+    let token: string | undefined;
+    // One page per issue at most: a token that never ends the read cannot loop for ever.
+    for (let pages = 0; pages <= batch.length; pages++) {
+      const res = await this.post('search', { jql: `id in (${batch.join(',')})`, fields, properties: PROPERTY_KEYS, expand: 'changelog', maxResults: REPORT_LIMITS.batchSize, ...(token ? { nextPageToken: token } : {}) });
+      if (res.status !== 200) return { status: res.status, issues: [] };
+      const page = ((await res.json()) || {}) as { issues?: JiraIssueJson[]; nextPageToken?: string; isLast?: boolean };
+      for (const iss of page.issues || []) {
         const f = iss.fields || {};
         const type = f.issuetype as { name?: string } | undefined;
-        return {
+        issues.push({
           facts: factsFromIssue(iss, options),
-          basics: { issueId: String(iss.id), issueKey: String(iss.key), issueTypeName: String(type?.name || ''), created: changelogTime(f.created), statusId: String(f.status?.id || '') }
-        };
-      })
-    };
+          basics: { issueId: String(iss.id), issueKey: String(iss.key), issueTypeName: String(type?.name || ''), created: changelogTime(f.created), statusId: String(f.status?.id || ''), ...(f.project?.key ? { projectKey: String(f.project.key) } : {}) }
+        });
+      }
+      token = page.isLast === false || (page.isLast === undefined && page.nextPageToken) ? page.nextPageToken : undefined;
+      if (!token) return { status: 200, issues };
+    }
+    return { status: 504, issues: [] };
   }
 
   async changelogs(ids: string[], fieldIds: string[], deadline: number): Promise<{ status: number; byIssue: Map<string, ChangelogEntry[]> }> {

@@ -16,11 +16,16 @@ export class DefaultReportCryptoAccessor implements ReportCryptoAccessor {
   private readonly key: crypto.KeyObject | null;
   private readonly id: string | null;
 
-  constructor(env: Record<string, string | undefined> = process.env) {
+  /**
+   * environment: the Forge environment the report is made in. A development key ("-dev-") never signs a
+   * production report, and a production key ("-prod-") never signs a development or staging one (review L-7).
+   */
+  constructor(env: Record<string, string | undefined> = process.env, environment?: string) {
     const raw = env.FOURREALITIES_SIGNING_KEY;
     const id = env.FOURREALITIES_KEY_ID;
     let key: crypto.KeyObject | null = null;
-    if (raw && id && KEY_ID.test(id)) {
+    const fits = !environment || (environment === 'production' ? !String(id).includes('-dev-') : !String(id).includes('-prod-'));
+    if (raw && id && KEY_ID.test(id) && fits) {
       try {
         key = crypto.createPrivateKey({ key: Buffer.from(raw, 'base64'), format: 'der', type: 'pkcs8' });
         if (key.asymmetricKeyType !== 'ed25519') key = null;

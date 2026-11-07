@@ -56,6 +56,9 @@ describe('manifest.yml', () => {
     expect(manifest).toMatch(/consumer:\s*\n\s*- key: fourrealities-report-consumer\s*\n\s*queue: fourrealities-report-jobs\s*\n\s*function: report-worker/);
     expect(manifest).toMatch(/- key: report-worker\s*\n\s*handler: index\.reportWorker\s*\n\s*timeoutSeconds: 900/);
     expect(manifest).toMatch(/- key: report-daily\s*\n\s*handler: index\.reportDaily\s*\n\s*timeoutSeconds: 600/);
+    // Review L-3: the people files are swept every hour.
+    expect(manifest).toMatch(/- key: fourrealities-report-tmp\s*\n\s*function: report-tmp\s*\n\s*interval: hour/);
+    expect(manifest).toMatch(/- key: report-tmp\s*\n\s*handler: index\.reportTmp\s*\n\s*timeoutSeconds: 600/);
     expect(manifest).toMatch(/runtime:\s*\n\s*name: nodejs22\.x\s*\n(?:\s*#.*\n)?\s*memoryMB: 1024/);
     expect(manifest).not.toMatch(/webtrigger|external:/);
   });

@@ -8,7 +8,9 @@
  *   fr:rj:{reportId}                        ReportJob
  *   fr:rj:{reportId}:ids:{i}                issue ids, at most 5,000 per value (kept while the report is kept)
  *   fr:rj:{reportId}:tokens:{i}             party tokens of the report, at most 4,000 per value
- *   fr:p:{projectKey}:reports               ReportIndexEntry[], newest first, at most 200
+ *   fr:p:{projectKey}:rep:{createdAt}:{id}  one ReportIndexEntry per report, at most 200 per project; each writer
+ *                                           writes only its own report's key (review M-1). The older single value
+ *                                           fr:p:{projectKey}:reports is moved to these keys when it is read.
  *   fr:p:{projectKey}:reports:head          ChainLink of the newest DONE report
  *   fr:p:{projectKey}:schedules             ReportSchedule[], at most 5
  *   fr:rt:{projectKey}:{deletedAt}:{seq}    ReportTombstone, written once
@@ -22,6 +24,7 @@ import { ReportStoreAccessor } from '../contract/reports';
 import { queryAll } from './kvs-v2-exception';
 
 const PROJECTS = 'fr:reports:projects';
+const entryKey = (projectKey: string, e: ReportIndexEntry) => `fr:p:${projectKey}:rep:${e.createdAt}:${e.reportId}`;
 
 async function writeAll(storage: StorageProvider, sets: Array<{ key: string; value: unknown }>): Promise<void> {
   if (storage.transact) {
@@ -96,22 +99,40 @@ export class DefaultKvsReportStoreAccessor implements ReportStoreAccessor {
     return this.deleteChunks(`fr:rj:${reportId}:tokens`, chunks);
   }
 
+  /** The project's entries, newest first. */
   async getIndex(projectKey: string): Promise<ReportIndexEntry[]> {
-    return (await this.storage.get<ReportIndexEntry[]>(`fr:p:${projectKey}:reports`)) || [];
+    const legacy = await this.storage.get<ReportIndexEntry[]>(`fr:p:${projectKey}:reports`);
+    if (legacy) {
+      for (const e of legacy) await this.putEntry(projectKey, e);
+      await this.storage.delete(`fr:p:${projectKey}:reports`);
+    }
+    const rows = (await queryAll(this.storage, `fr:p:${projectKey}:rep:`)).map(r => r.value as ReportIndexEntry);
+    return rows.sort((x, y) => (x.createdAt < y.createdAt ? 1 : x.createdAt > y.createdAt ? -1 : x.reportId < y.reportId ? 1 : -1));
   }
 
+  async putEntry(projectKey: string, entry: ReportIndexEntry): Promise<void> {
+    await this.storage.set(entryKey(projectKey, entry), entry);
+  }
+
+  async deleteEntry(projectKey: string, entry: ReportIndexEntry): Promise<void> {
+    await this.storage.delete(entryKey(projectKey, entry));
+  }
+
+  /** Makes the index exactly these entries (tests and tools; the Manager writes one entry at a time). */
   async saveIndex(projectKey: string, entries: ReportIndexEntry[]): Promise<void> {
-    await this.storage.set(`fr:p:${projectKey}:reports`, entries.slice(0, REPORT_LIMITS.reportsPerProject));
+    const keep = new Set(entries.slice(0, REPORT_LIMITS.reportsPerProject).map(e => entryKey(projectKey, e)));
+    for (const r of await queryAll(this.storage, `fr:p:${projectKey}:rep:`)) if (!keep.has(r.key)) await this.storage.delete(r.key);
+    for (const e of entries.slice(0, REPORT_LIMITS.reportsPerProject)) await this.putEntry(projectKey, e);
   }
 
   getHead(projectKey: string): Promise<ChainLink | undefined> {
     return this.storage.get<ChainLink>(`fr:p:${projectKey}:reports:head`);
   }
 
-  commitDone(job: ReportJob, projectKey: string, entries: ReportIndexEntry[], head: ChainLink): Promise<void> {
+  commitDone(job: ReportJob, projectKey: string, entry: ReportIndexEntry, head: ChainLink): Promise<void> {
     return writeAll(this.storage, [
       { key: `fr:rj:${job.reportId}`, value: job },
-      { key: `fr:p:${projectKey}:reports`, value: entries.slice(0, REPORT_LIMITS.reportsPerProject) },
+      { key: entryKey(projectKey, entry), value: entry },
       { key: `fr:p:${projectKey}:reports:head`, value: head }
     ]);
   }

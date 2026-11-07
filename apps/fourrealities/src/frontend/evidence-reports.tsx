@@ -50,6 +50,8 @@ import {
   filtersText,
   newReportNote,
   periodText,
+  pollDelayMs,
+  refusalLine,
   pickedAccountIds,
   pickedValues,
   retentionText,
@@ -60,6 +62,7 @@ import {
   stateOf
 } from '../ui/report-text';
 import { TextChange } from './modals';
+import { saveBlob } from '../ui/save-file';
 
 type ListResponse = ReportResult<ReportsView> | null;
 type Option = { label: string; value: string };
@@ -74,6 +77,8 @@ const NewReportModal: React.FC<{ view: ReportsView; onClose: () => void; onDone:
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const options: Option[] = view.fields.map(f => ({ label: f.name, value: f.id }));
+  // An empty date field shows today, not the component's own example date (live check, 2026-11-08).
+  const today = new Date().toISOString().slice(0, 10);
   const submit = async () => {
     setBusy(true);
     setError(null);
@@ -95,10 +100,10 @@ const NewReportModal: React.FC<{ view: ReportsView; onClose: () => void; onDone:
       <ModalBody>
         <ModalContent>
           <FormField id="fr-report-from" label="From" helper="The first day of the period (UTC).">
-            <DatePicker id="fr-report-from" value={from} onChange={(v: string) => setFrom(v || '')} />
+            <DatePicker id="fr-report-from" value={from} placeholder={today} onChange={(v: string) => setFrom(v || '')} />
           </FormField>
           <FormField id="fr-report-to" label="To" helper="The last day of the period (UTC). At most 366 days.">
-            <DatePicker id="fr-report-to" value={to} onChange={(v: string) => setTo(v || '')} />
+            <DatePicker id="fr-report-to" value={to} placeholder={today} onChange={(v: string) => setTo(v || '')} />
           </FormField>
           <FormField id="fr-report-fields" label="Fields" helper="At most 10. Empty means all fields.">
             <Select id="fr-report-fields" isMulti options={options} onChange={(v: unknown) => setFieldIds(pickedValues(v).slice(0, 10))} />
@@ -153,7 +158,11 @@ const DownloadModal: React.FC<{ row: ReportListRow; onClose: () => void }> = ({ 
               if (!key) return undefined;
               const results = await downloadObjects({ functionKey: 'generateReportDownloadUrls', keys: [key] });
               const first = results[0];
-              if (first?.success && first.blob) return first.blob;
+              if (first?.success && first.blob) {
+                // FileCard does not save a returned Blob on this platform: save it here (see ui/save-file.ts).
+                if (saveBlob(first.blob, detail.fileNames[f.file])) return undefined;
+                return first.blob;
+              }
               setNotice('FourRealities could not download this file. Check that you can see every issue of the report, then try again.');
               return undefined;
             }}
@@ -246,6 +255,7 @@ const Schedules: React.FC<{ view: ReportsView; onChanged: (schedules: ReportSche
         {view.schedules.map(s => (
           <Inline key={s.scheduleId} space={SPACE.item} alignBlock="center" shouldWrap>
             <Text as="span">{scheduleLine(s, view.fields)}</Text>
+            {s.lastRefusal ? <Text as="span" size="small" color={TEXT_ROLE.secondary}>{refusalLine(s.lastRefusal)}</Text> : null}
             <Button appearance="subtle" spacing="compact" onClick={() => call('deleteReportSchedule', { scheduleId: s.scheduleId }, 'Schedule removed.')}>Remove</Button>
           </Inline>
         ))}
@@ -274,19 +284,31 @@ export const EvidenceReports: React.FC = () => {
   const [downloading, setDownloading] = useState<ReportListRow | null>(null);
   const [deleting, setDeleting] = useState<ReportListRow | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const load = async () => {
-    setLoading(true);
+  const [polls, setPolls] = useState(0);
+  const load = async (quiet = false) => {
+    if (!quiet) setLoading(true);
     try {
       setResponse(((await invoke('getEvidenceReports', {})) as ListResponse) || null);
     } catch {
-      setResponse(null);
+      if (!quiet) setResponse(null);
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   };
   useEffect(() => {
     load();
   }, []);
+  // While a report is queued or running, read the list again with a growing wait, and stop after a cap.
+  const active = Boolean(response && response.ok && response.reports.some(r => r.state === 'QUEUED' || r.state === 'RUNNING'));
+  const delay = active ? pollDelayMs(polls) : null;
+  useEffect(() => {
+    if (delay === null) return undefined;
+    const timer = setTimeout(() => {
+      setPolls(n => n + 1);
+      load(true);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [delay, response, polls]);
   if (loading) return <Spinner size="small" label="Loading evidence reports" />;
   if (!response || !response.ok) {
     return (
@@ -300,6 +322,7 @@ export const EvidenceReports: React.FC = () => {
     setCreating(false);
     setDeleting(null);
     setNotice(text);
+    setPolls(0);
     load();
   };
   const head = { cells: ['Period', 'Filters', 'Requested', 'State', 'Size', 'SHA-256', 'Action'].map(text => ({ key: text, content: text })) };

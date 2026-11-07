@@ -23,7 +23,7 @@ export const SHORTER_RETENTION_TEXT = 'A shorter retention applies to existing r
 export const VERIFY_TEXT = 'A report is signed by FourRealities; a changed file fails the check. Download the three report files and run the open verifier (Node.js 18 or later):';
 export const VERIFY_COMMAND = 'node verify-fourrealities-report.mjs <manifest.json> <report.json> <report.csv> [--previous <previous-manifest.json>]';
 export const SIGNING_KEYS_URL = 'https://asymm.systems/product/jira-governance/signing-keys.html';
-export const PEOPLE_FILE_TEXT = 'The people file is not signed. It names the people of the report as you can see them today.';
+export const PEOPLE_FILE_TEXT = 'The people file is not signed. It names the people of the report as you can see them today, and it is removed 24 to 25 hours after the download.';
 export const DELETE_TEXT = 'The report files are removed now. A record of the deletion, with your reason, stays in their place and the next report still links to this one.';
 
 /** "1 Oct 2026" for an ISO time (UTC). */
@@ -112,4 +112,15 @@ export function pickedAccountIds(value: unknown): string[] {
 export function pickedValues(value: unknown): string[] {
   const list = Array.isArray(value) ? value : value ? [value] : [];
   return list.map(o => String((o as { value?: unknown })?.value ?? '')).filter(Boolean);
+}
+
+/** The wait before the n-th refresh of a list with a queued or running report: 5 s, doubling to 60 s; null after 40 refreshes. */
+export function pollDelayMs(polls: number): number | null {
+  if (polls >= 40) return null;
+  return Math.min(60_000, 5_000 * 2 ** Math.min(polls, 4));
+}
+
+/** Why the newest period of a schedule was not made yet (review M-3). */
+export function refusalLine(refusal: { message: string; range: ReportRange }): string {
+  return `The report for ${periodText(refusal.range)} is not made yet: ${refusal.message} FourRealities tries again on its next daily run.`;
 }

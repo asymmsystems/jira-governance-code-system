@@ -39,9 +39,9 @@ function run(args) {
 }
 
 /** A signed report of one project, linked to `previous` (a manifest text) when given. */
-function makeReport(dir, name, privateKey, previous) {
+function makeReport(dir, name, privateKey, previous, keyId = 'test-key', environment = 'development') {
   const header = {
-    format: 'fourrealities-evidence-report/1', reportId: `${name}-0000-4000-8000-000000000000`, siteHost: 'example.atlassian.net', environment: 'development',
+    format: 'fourrealities-evidence-report/1', reportId: `${name}-0000-4000-8000-000000000000`, siteHost: 'example.atlassian.net', environment,
     projectId: '10000', projectKey: 'PAY', range: { from: '2026-10-01T00:00:00.000Z', to: '2026-11-01T00:00:00.000Z' }, filters: { fieldIds: [], actors: [] },
     trigger: 'user', requestedBy: 'pty_' + 'a'.repeat(32), generatedAt: '2026-11-08T00:00:00.000Z', gatesObservedAt: '2026-11-08T00:00:00.000Z',
     counts: { issues: 1, changes: 1, missingSincePrevious: 0 },
@@ -52,7 +52,7 @@ function makeReport(dir, name, privateKey, previous) {
   const unsigned = { ...header, files: [
     { name: 'report.json', mediaType: 'application/json', bytes: Buffer.byteLength(json), sha256: sha256(json) },
     { name: 'report.csv', mediaType: 'text/csv; charset=utf-8', bytes: Buffer.byteLength(csv), sha256: sha256(csv) }
-  ], keyId: 'test-key' };
+  ], keyId };
   const manifest = canonicalJson({ ...unsigned, sig: sign(null, Buffer.from(canonicalJson(unsigned)), privateKey).toString('base64') });
   const paths = { manifest: join(dir, `${name}-manifest.json`), json: join(dir, `${name}.json`), csv: join(dir, `${name}.csv`) };
   writeFileSync(paths.manifest, manifest);
@@ -101,6 +101,17 @@ describe('FourRealities evidence report verifier', () => {
     assert.strictEqual(run([first.paths.manifest]).status, 2);
     assert.strictEqual(run([first.paths.manifest, first.paths.json, join(dir, 'none.csv')]).status, 2);
     assert.strictEqual(run([first.paths.manifest, first.paths.json, first.paths.csv]).status, 2);
+  });
+
+  it('warns for a development key, and fails a production report signed with one', () => {
+    const dev = makeReport(dir, 'cccccccc-3333', privateKey, undefined, 'fr-dev-2026-11', 'development');
+    const ok = run([dev.paths.manifest, dev.paths.json, dev.paths.csv, key]);
+    assert.strictEqual(ok.status, 0);
+    assert.match(ok.stdout, /WARN signed with the development key fr-dev-2026-11: this is a test report/);
+    const prod = makeReport(dir, 'dddddddd-4444', privateKey, undefined, 'fr-dev-2026-11', 'production');
+    const bad = run([prod.paths.manifest, prod.paths.json, prod.paths.csv, key]);
+    assert.strictEqual(bad.status, 1);
+    assert.match(bad.stdout, /FAIL signing key fr-dev-2026-11 is a development key/);
   });
 
   it('reads the key named by keyId from keys/ when no key file is given', () => {

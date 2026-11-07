@@ -89,7 +89,7 @@ Apply only when the version with evidence reports is in production.
 2. Same page, section 5, replace the bullet "**Storage:** snapshots, Code exception events, rework reasons and site settings are kept in Atlassian Forge storage." with "**Storage:** snapshots, Code exception events, rework reasons, site settings and evidence report records are kept in Atlassian Forge storage; evidence report files are kept in Atlassian Forge Object Store. Nothing is sent outside your Atlassian site."
 3. Same page, section 5, replace "With an inactive licence the app shows "Licence not active" and reads nothing." with "With an inactive licence the app shows "Licence not active" and makes no new evidence reports; existing evidence reports can still be viewed and downloaded."
 4. `src/main/jbake/content/privacy.html`, section FourRealities, replace the "What it accesses and stores" item with: "**What it accesses and stores:** it reads the issue, its Development field, its changelog and the issue properties of LedgerSeal and DefinitionGuard, and searches the Confluence pages of your own site. It stores snapshots, exception events, rework reasons and site settings in Forge storage. When you make an evidence report, it stores the report files (who changed which field and when, with the values of fields that are not free text) in Forge Object Store on your site, for the retention your Jira administrator sets (400 days by default)."
-5. Same section, add to the "Personal data" item: "Evidence report files name people by a pseudonymous token, a keyed hash of the Atlassian account id under a key only the app can read; the app keeps one link from each token to the account id and reports these account ids to Atlassian every week. When Atlassian reports an account as closed, the link is removed, so the report shows a former user and the signed files never change. The people file of a download maps tokens to account ids and names as the downloading user; it is kept for 24 hours."
+5. Same section, add to the "Personal data" item: "Evidence report files name people by a pseudonymous token, a keyed hash of the Atlassian account id under a key only the app can read; the app keeps one link from each token to the account id and reports these account ids to Atlassian every week. When Atlassian reports an account as closed, the link is removed, so the report shows a former user and the signed files never change. The people file of a download maps tokens to account ids and names as the downloading user; it is removed 24 to 25 hours after the download."
 6. Signing keys page (`product/jira-governance/signing-keys.html`): add `fr-dev-2026-11` (FourRealities evidence reports, development builds only) with its fingerprint above; add `fr-prod-2026-11` when the production key exists.
 7. Open verifier page (`product/jira-governance/user-guide/open-verifier`): add `verify-fourrealities-report.mjs` with the four checks of `tools/verifier/README.md`, section "FourRealities evidence reports", and the download of verifier 1.4.0 with its checksums.
 
@@ -121,3 +121,48 @@ Then tag v1.4.0 with a new `SHA256SUMS`. Not done: the owner's push rules apply 
 - Production signing key `fr-prod-2026-11`, its Forge production variables, and its public key in `apps/fourrealities/keys/`, `tools/verifier/keys/` and on the signing keys page: at production release.
 - Merge review and production deploy (major version): not in this task.
 - The 1,000-ids bulk changelog request and a real 10,000-issue run: no such project on the development site.
+
+## Fix round 1 (2026-11-08)
+
+Inputs: the independent review `repository/tmp/fr-evidence-review/REVIEW.md` (branch at `cee99f8`; verdict "one blocker, H-1"), and the coordinator's live Chrome run on 7.7.0 (project PAY, report 1 Jan to 7 Nov 2026, id ending `18520860`, Ready, 66.0 KB, SHA-256 starting `367c6afd06a9`).
+
+### Live findings
+
+- **Download did nothing.** The four FileCard rows showed the right names; a click sent one GraphQL POST (the resolver call) and saved no file. Cause, with evidence: the UI Kit `FileCard` does not save the Blob that `onDownload` returns on this platform. Atlassian's own Object Store sample app (`bitbucket.org/atlassian/forge-ui-object-store-example-app`, `src/frontend/index.tsx`) has the comment "Known bug: FileCard onDownload is () => void; trigger browser save explicitly" and saves the Blob itself with `URL.createObjectURL` and a clicked anchor. Fix: `src/ui/save-file.ts` (`saveBlob`) does the same, and the tab returns nothing to FileCard after a save (no double download if Atlassian fixes the bug). `forge logs` held no line for 04:16 to 04:20 local time (the report resolvers logged nothing); `generateReportDownloadUrls` now logs how many URLs were asked and given (two numbers). The live run also settles review L-4: the report reached Ready, so the stored checksum format matches. The Custom UI fallback is not needed and was not built.
+- **List stayed "Queued".** The tab now reads the list again while a report is QUEUED or RUNNING: after 5 s, doubling to 60 s, at most 40 times; a failed refresh keeps the list and the next refresh still runs.
+- **Date placeholder 2/18/1993.** Both date pickers show today's date as the placeholder.
+
+### Review findings
+
+| Finding | Fix | Tests |
+|---|---|---|
+| H-1 (blocker) | `factsByIds` pages to the last page (one page per issue at most; an endless token is an error). The job compares the ids read with the batch: an id not returned is listed as `NOT_READABLE`, an issue now in another project as `MOVED` (it is left out of the report, no longer reported under the old project: L-10 part one). Both go to `report.json` `notReadable`, `counts.notReadable`, the warning `ISSUES_NOT_READ`, and the job's progress. Spec v4 invariant 11. | `accessor-reports.test.ts` (short page, token only, endless token, failed second page); `evidence-report-manager.test.ts` "H-1" (a dropped and a moved issue) |
+| M-1 | One KVS value per index entry (`fr:p:{projectKey}:rep:{createdAt}:{reportId}`); each writer writes only its own report's key; the DONE commit writes the job, its entry and the head in one transaction; the old single value is moved when read. New entries are strictly later than the newest one, so the order is the order of creation (found while testing: two creates in one millisecond had no order). | `accessor-reports.test.ts` (interleaved writers, migration); manager "M-1" (a create with a stale index during a commit) |
+| M-2 | FREE_TEXT also for every custom field with schema type `string` or none (text, URL, read-only, app text fields) and for every `customfield_*` not in the field list. Spec 11.2. | `report-engine.test.ts` (app, URL, read-only, no schema, deleted; number and user fields stay OTHER and USER) |
+| M-3 | A period refused with `JIRA_ERROR`, `JOB_LIMIT` or `REPORT_LIMIT` is kept, tried again the next day, and the schedule shows `lastRefusal` on the tab. | manager "M-3" (a 503, then a good run) and the full-project case |
+| L-1 | A lease on the job (event id until the event's deadline); a second event while it holds ends at once. Not airtight (two events that read at the same moment), but closes redelivery after a timeout. | manager "L-1" |
+| L-2 | A failed or stalled job also removes its report objects and token chunks. | manager "L-2" |
+| L-3 (public claim) | An hourly scheduled trigger `fourrealities-report-tmp` (function `report-tmp`) sweeps people files older than 24 hours, and the daily run sweeps first. All texts now say "removed 24 to 25 hours after the download" (people note, tab text, spec, listing release copy, privacy site item). | manager "L-3"; `manifest.test.ts`; log lines |
+| L-4 | Settled by the live run (report Ready on 7.7.0). | none needed |
+| L-5 | The previous-report check uses the event deadline. | covered by the chain tests |
+| L-6 | Party tokens for the caller and the people filter are made only after every refusal (create and schedule). | manager "L-6" |
+| L-7 (public claim) | The signer refuses a `-dev-` key in production and a `-prod-` key in development or staging. The verifier prints `WARN signed with the development key ...: this is a test report ...` for a development key, and FAILs a report that says `environment: production` with one. README says so. | `accessor-reports.test.ts`; verifier test |
+| L-8 | The list has no issue or change counts; `getEvidenceReport` gives the manifest only when the download is allowed. | manager "L-8" |
+| L-9 | Not changed: every event reads `fr:att:`, `fr:ex:`, `fr:note:` site-wide. Reason: correct, bounded by the site's own records, and a per-issue read would cost about 300 reads per batch of 100; worth a change only with a measured large site. | none |
+| L-10 | Part one fixed with H-1 (a moved issue is listed as `MOVED`). Part two not changed: a decision-issue `evidenceRef` can name a linked issue the downloader cannot browse. Reason: the same rule as today's dashboard snapshot; changing it needs a per-viewer check of linked keys at download, a separate decision. | none |
+
+The report format stays `fourrealities-evidence-report/1` (not released): `counts` gains `notReadable`, `report.json` gains `notReadable`. The verifier needs no change for these (the header check covers them).
+
+### Gate (fix round 1)
+
+| Check | Result |
+|---|---|
+| `npx tsc --noEmit` | exit 0 |
+| `npm test` with coverage | 59 suites, 788 tests passed; all files 99.32 % statements, 96.5 % branches, 99.31 % functions, 99.84 % lines; every per-file threshold met |
+| `npm run build` | exit 0 |
+| `npm audit --omit=dev --audit-level=high` | exit 0; 9 moderate, 0 high (unchanged) |
+| `npx --yes @forge/cli@15.0.0 lint` | "No issues found." |
+| FSRT `6c821bd`, default and secret-logging | 0 findings each; 75 files, 15 and 7 function checks; `fsrt_gate.py` passes both |
+| FSRT probe | unchecked as-app call before `reportPermissionsAsUser`: reported (`Custom-Check-Authorization-9031189739672450855`); after it: none |
+| Semgrep 1.182.1 | 0 findings, 216 files |
+| Verifier `npm test` | 18 passed |

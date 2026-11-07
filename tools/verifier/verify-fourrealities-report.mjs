@@ -18,8 +18,9 @@
  * offline, without access to Jira or the app: (1) the SHA-256 and byte count of report.json and report.csv
  * against the manifest; (2) the Ed25519 signature of the manifest with the public key named by keyId;
  * (3) that the header of report.json equals the manifest without files, keyId and sig; (4) with --previous,
- * that the manifest's previous.manifestSha256 is the SHA-256 of the previous manifest. The people file is
- * not signed and is not needed. Uses the Node standard library only.
+ * that the manifest's previous.manifestSha256 is the SHA-256 of the previous manifest. A report signed with a
+ * development key gets a WARN line, and fails when it says it is from production. The people file is not
+ * signed and is not needed. Uses the Node standard library only.
  *
  * Usage:
  *   node verify-fourrealities-report.mjs <manifest.json> <report.json> <report.csv> [public-key.pem] [--previous <manifest.json>]
@@ -70,6 +71,12 @@ export function verifyReport({ manifestText, reportJson, reportCsv, publicKeyPem
     }
   }
   check(sigOk, manifest.sig ? `manifest signature (${manifest.keyId ?? 'no key id'})` : 'manifest signature (the report is not signed)');
+
+  // A development key signs only test reports: say so, and fail a report that claims production with it.
+  if (typeof manifest.keyId === 'string' && manifest.keyId.includes('-dev-')) {
+    if (manifest.environment === 'production') check(false, `signing key ${manifest.keyId} is a development key, but the report says it is from production`);
+    else results.push(`WARN signed with the development key ${manifest.keyId}: this is a test report from a ${manifest.environment ?? 'non-production'} environment, not evidence from a production site.`);
+  }
 
   let headerOk = false;
   try {

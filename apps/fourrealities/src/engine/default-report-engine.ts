@@ -14,6 +14,7 @@ import {
   FieldInfo,
   LedgerSealRef,
   ManifestHeader,
+  NotReadableIssue,
   PeopleRow,
   REPORT_LIMITS,
   ReportChange,
@@ -28,7 +29,8 @@ import { ReportEngine } from '../contract/reports';
 
 /** Built-in fields whose values can hold any text (owner decision Q4). */
 const FREE_TEXT_FIELDS = new Set(['summary', 'description', 'environment']);
-const FREE_TEXT_CUSTOM = new Set(['com.atlassian.jira.plugin.system.customfieldtypes:textfield', 'com.atlassian.jira.plugin.system.customfieldtypes:textarea']);
+/** A custom field id; a custom field no longer in the field list (deleted) may have held text (review M-2). */
+const CUSTOM_FIELD_ID = /^customfield_\d+$/;
 const DAY_MS = 86_400_000;
 
 export const CSV_COLUMNS = [
@@ -115,8 +117,10 @@ export class DefaultReportEngine implements ReportEngine {
   classifyField(fieldId: string, fields: FieldInfo[]): FieldClass {
     if (FREE_TEXT_FIELDS.has(fieldId)) return 'FREE_TEXT';
     const field = fields.find(f => f.id === fieldId);
-    if (!field) return 'OTHER';
-    if (field.custom && FREE_TEXT_CUSTOM.has(field.custom)) return 'FREE_TEXT';
+    // Owner decision Q4, review M-2: every custom field whose value is text (text, URL, read-only, app text
+    // fields), and every custom field that is not in the field list, shows only that it changed.
+    if (!field) return CUSTOM_FIELD_ID.test(fieldId) ? 'FREE_TEXT' : 'OTHER';
+    if ((field.custom || CUSTOM_FIELD_ID.test(field.id)) && (field.schemaType === 'string' || field.schemaType === undefined)) return 'FREE_TEXT';
     if (field.schemaType === 'user' || (field.schemaType === 'array' && field.schemaItems === 'user')) return 'USER';
     return 'OTHER';
   }
@@ -222,10 +226,11 @@ export class DefaultReportEngine implements ReportEngine {
     return canonicalJson(value);
   }
 
-  reportJson(data: { header: ManifestHeader; sourcesInUse: SourcesInUse; issues: ReportIssue[]; missingSincePrevious: Array<{ issueId: string; issueKey: string }>; linksNotRead: number }): string {
+  reportJson(data: { header: ManifestHeader; sourcesInUse: SourcesInUse; issues: ReportIssue[]; missingSincePrevious: Array<{ issueId: string; issueKey: string }>; notReadable: NotReadableIssue[]; linksNotRead: number }): string {
     const warnings: ReportWarning[] = [];
     if (data.header.warning === 'UNSIGNED') warnings.push({ code: 'UNSIGNED' });
     if (data.linksNotRead > 0) warnings.push({ code: 'REMOTE_LINKS_NOT_READ', count: data.linksNotRead });
+    if (data.notReadable.length > 0) warnings.push({ code: 'ISSUES_NOT_READ', count: data.notReadable.length });
     const report: ReportData = {
       format: 'fourrealities-evidence-report-data/1',
       header: data.header,
@@ -233,6 +238,7 @@ export class DefaultReportEngine implements ReportEngine {
       decisionIssueTypes: data.sourcesInUse.decisionIssueTypes,
       issues: [...data.issues].sort((a, b) => numericOrder(a.issueId, b.issueId)),
       missingSincePrevious: [...data.missingSincePrevious].sort((a, b) => numericOrder(a.issueId, b.issueId)),
+      notReadable: [...data.notReadable].sort((a, b) => numericOrder(a.issueId, b.issueId)),
       warnings
     };
     return canonicalJson(report);
