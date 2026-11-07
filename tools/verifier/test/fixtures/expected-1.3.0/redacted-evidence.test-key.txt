@@ -1,0 +1,7 @@
+PASS snapshot hash
+PASS history chain (2 entries)
+PASS attestation names the newest seal
+PASS attestation status matches the history (SEAL_VALID)
+FAIL signature (redaction-test-key)
+NOTE entry 2 is a redaction: 5 account ids and names were replaced by party tokens, and the entries before it were rewritten (head hash before: 9d753fff15fc42f465cd155e7b9eda007416d146d6bb08a97222799a761628ce).
+NOTE "parties" maps party tokens to account ids (null: a closed account). It is not signed and no check uses it.

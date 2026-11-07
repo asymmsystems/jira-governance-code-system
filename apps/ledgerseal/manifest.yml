@@ -20,7 +20,7 @@ modules:
         function: resolver
   jira:adminPage:
     - key: ledgerseal-admin
-      title: LedgerSeal approvers
+      title: LedgerSeal settings
       render: native
       resource: admin
       resolver:
@@ -101,3 +101,4 @@ permissions:
     - read:jira-user
     - storage:app
     - report:personal-data
+    - send:notification:jira
