@@ -21,6 +21,7 @@ All nine recommendations of the HLD, section 11, are approved. The owner's words
 - Q7: listing wording "evidence reports for change-management audits", never "audit log".
 - Q8: Jira admins may delete a report early, with a reason and a record left in its place.
 - Q9: when the licence is inactive, viewing and downloading existing reports keep working, but no new reports are made.
+- Invariant 11 (decided later on 2026-11-08, after review round 2): "Sign, list them". When Jira cannot return an in-scope issue (deleted, moved, or not readable), the report is still signed and names every missing issue with its key and the reason, in the verifier output, the UI and the CSV; a report is never refused for this (spec v4, invariant 11 and D-19).
 
 * Context
 

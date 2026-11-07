@@ -34,7 +34,7 @@ FourRealities also makes **evidence reports**. For one project and one date rang
 7. **Viewer permissions.** Rows that a viewer cannot browse in Jira are never returned to that viewer.
 8. **Zero external egress.** The manifest declares no external fetch.
 9. **Deterministic metrics.** The same input gives the same output.
-11. **Complete or not stored.** A report that cannot be finished stores no file. It never holds a part of its range without saying so: every issue of the scope search is in the report, or listed in `notReadable` with its reason (`NOT_READABLE`: the app's read did not return it; `MOVED`: it is in another project now), counted in `counts.notReadable` and named by the warning `ISSUES_NOT_READ` (review round 1, H-1). Each batch read pages to Jira's last page.
+11. **Complete or not stored; missing issues are signed and listed.** A report that cannot be finished (a cap, three failed reads, a lost part, no signing key in production) stores no file. When Jira cannot return an issue of the scope (deleted, moved to another project, or not readable), the report is still signed, and it names every such issue with its key and the reason: in `report.json` (`notReadable`, counted in the signed `counts.notReadable`), in the verifier output (a `WARN` line with the count and one line per issue), in the UI (a badge on the row and a notice in the download modal) and in the CSV (a `NOT_READ` row per issue). A report is never refused for this (owner decision of 2026-11-08, "Sign, list them"; D-19).
 12. **Signed files never change.** Report files are written once. They are removed only by expiry or by a Jira administrator's delete, which leaves a tombstone. Object Store does not refuse a second write to a key (spike S-1), so FourRealities refuses to write a key that exists and checks the stored checksum after each write.
 
 ## Domain Model
@@ -421,6 +421,7 @@ The gate evaluation pipeline, for one issue:
 | D-16 | Report retention is a FourRealities setting for its own reports only | Mirror Jira's history to extend it | Jira keeps issue history; FourRealities keeps the record it made |
 | D-17 | The parts of a job are temporary Object Store objects, not KVS values (spike S-3) | KVS parts of 200,000 bytes (HLD 4.1) | KVS writes are limited to 4,000 units of 10 KB per minute per installation; the spike's KVS parts hit `RATE_LIMIT_EXCEEDED` after about 205 parts, and they would starve the dashboard's own KVS use |
 | D-18 | FourRealities makes "written once" true itself | Rely on `overwrite: false` | Object Store accepted a second write to the same key with `overwrite: false` (spike S-1) |
+| D-19 | When Jira cannot return an in-scope issue (deleted, moved, or not readable), the report is still signed and names every missing issue with its key and the reason, in the verifier output, the UI and the CSV; a report is never refused for this (invariant 11) | Refuse the report (not stored) when an issue cannot be read | Owner decision of 2026-11-08: "Sign, list them". A refused report gives the auditor nothing for the period; a signed report that names its gaps keeps the record and the gaps visible |
 
 ## 11. Evidence reports (ADR-015)
 
@@ -499,7 +500,7 @@ The project page has the tabs "Dashboard" and "Evidence reports" (the second loa
 - Download: the UI Kit `FileCard` does not save the Blob that `onDownload` returns (live check of 7.7.0); the tab saves the file itself with an object URL and a clicked anchor, as Atlassian's Object Store sample app does. The list reads itself again while a report is queued or running (5 s, doubling to 60 s, at most 40 times).
 
 ### 11.12 Changes after review round 2 (2026-11-08)
-Invariant 11 is not changed in this round: the owner is deciding the rule. The behaviour stays: a signed report, with the issues it could not hold disclosed.
+Invariant 11 was not changed in this round while the owner decided the rule; the owner then chose "Sign, list them" on 2026-11-08, and invariant 11 and D-19 now say so.
 - N-1: the disclosure is where readers look. `report.json` `notReadable` entries carry `issueId`, `issueKey` and `reason`; `report.csv` has one `NOT_READ` row per such issue (after the issue rows; the `omitted` cell gives the reason); the tab shows a badge "N issues not in report" on the row and a notice in the download modal; the verifier prints a `WARN` line with the signed count and one line per issue, and fails when `report.json` lists a different number. The scope search keeps each issue's key with its id (`fr:rj:{id}:ids:{i}` holds `{issueId}:{issueKey}`).
 - N-2: a project's report records (index, head, schedules, tombstones) are keyed by the project id; MOVED compares the project id; `getEvidenceReport` and downloads match the job by project id. A project key rename keeps every issue, report and schedule; the header names the key at the time of the report. Records of the development builds 7.7.0 and 7.8.0 (keyed by project key) are not read (N-4: no migration, so no migration can undo a newer write).
 - N-3: the job records its token chunk count before it writes them, so a failed commit's clean-up removes them.
