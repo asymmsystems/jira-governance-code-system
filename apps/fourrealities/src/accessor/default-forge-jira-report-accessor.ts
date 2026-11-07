@@ -64,18 +64,22 @@ export class DefaultForgeJiraReportAccessor implements JiraReportAccessor {
     return this.request(r, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) });
   }
 
-  async searchIds(jql: string, limit: number, deadline: number): Promise<{ status: number; ids: string[] }> {
+  async searchIds(jql: string, limit: number, deadline: number): Promise<{ status: number; ids: string[]; keys: Record<string, string> }> {
     const ids: string[] = [];
+    const keys: Record<string, string> = {};
     let token: string | undefined;
     do {
       const res = await this.post('search', { jql, fields: ['id'], maxResults: ID_PAGE, ...(token ? { nextPageToken: token } : {}) });
-      if (res.status !== 200) return { status: res.status, ids: [] };
-      const page = ((await res.json()) || {}) as { issues?: Array<{ id?: string | number }>; nextPageToken?: string; isLast?: boolean };
-      for (const issue of page.issues || []) ids.push(String(issue.id));
+      if (res.status !== 200) return { status: res.status, ids: [], keys: {} };
+      const page = ((await res.json()) || {}) as { issues?: Array<{ id?: string | number; key?: string }>; nextPageToken?: string; isLast?: boolean };
+      for (const issue of page.issues || []) {
+        ids.push(String(issue.id));
+        if (issue.key) keys[String(issue.id)] = String(issue.key);
+      }
       token = page.isLast ? undefined : page.nextPageToken;
     } while (token && ids.length <= limit && Date.now() < deadline);
     // A read cut by the deadline is an error, never a smaller scope (spec v4 invariant 11).
-    return token && ids.length <= limit ? { status: 504, ids: [] } : { status: 200, ids };
+    return token && ids.length <= limit ? { status: 504, ids: [], keys: {} } : { status: 200, ids, keys };
   }
 
   async presentAmong(ids: string[], deadline: number): Promise<Set<string> | null> {
@@ -111,9 +115,10 @@ export class DefaultForgeJiraReportAccessor implements JiraReportAccessor {
       for (const iss of page.issues || []) {
         const f = iss.fields || {};
         const type = f.issuetype as { name?: string } | undefined;
+        const project = f.project as { id?: string | number; key?: string } | undefined;
         issues.push({
           facts: factsFromIssue(iss, options),
-          basics: { issueId: String(iss.id), issueKey: String(iss.key), issueTypeName: String(type?.name || ''), created: changelogTime(f.created), statusId: String(f.status?.id || ''), ...(f.project?.key ? { projectKey: String(f.project.key) } : {}) }
+          basics: { issueId: String(iss.id), issueKey: String(iss.key), issueTypeName: String(type?.name || ''), created: changelogTime(f.created), statusId: String(f.status?.id || ''), ...(f.project?.key ? { projectKey: String(f.project.key) } : {}), ...(project?.id !== undefined ? { projectId: String(project.id) } : {}) }
         });
       }
       token = page.isLast === false || (page.isLast === undefined && page.nextPageToken) ? page.nextPageToken : undefined;

@@ -18,7 +18,8 @@
  * offline, without access to Jira or the app: (1) the SHA-256 and byte count of report.json and report.csv
  * against the manifest; (2) the Ed25519 signature of the manifest with the public key named by keyId;
  * (3) that the header of report.json equals the manifest without files, keyId and sig; (4) with --previous,
- * that the manifest's previous.manifestSha256 is the SHA-256 of the previous manifest. A report signed with a
+ * that the manifest's previous.manifestSha256 is the SHA-256 of the previous manifest. Issues of the scope that
+ * are not in the report (counts.notReadable) get a WARN line each. A report signed with a
  * development key gets a WARN line, and fails when it says it is from production. The people file is not
  * signed and is not needed. Uses the Node standard library only.
  *
@@ -79,13 +80,23 @@ export function verifyReport({ manifestText, reportJson, reportCsv, publicKeyPem
   }
 
   let headerOk = false;
+  let data = null;
   try {
-    const data = JSON.parse(reportJson.toString('utf8'));
+    data = JSON.parse(reportJson.toString('utf8'));
     headerOk = data.format === DATA_FORMAT && canonicalJson(data.header) === canonicalJson(without(manifest, ['files', 'keyId', 'sig']));
   } catch {
     headerOk = false;
   }
   check(headerOk, 'report.json header matches the manifest');
+
+  // Issues of the scope that are not in the report: the count is signed in the manifest; each one is named.
+  const signedCount = manifest.counts?.notReadable ?? 0;
+  const listed = Array.isArray(data?.notReadable) ? data.notReadable : [];
+  if (signedCount > 0 || listed.length > 0) {
+    check(listed.length === signedCount, `report.json lists the ${signedCount} issues that the manifest counts as not in the report`);
+    results.push(`WARN ${signedCount} issue(s) of the scope are NOT in this report: the report does not hold their changes. Check them in Jira before you sample.`);
+    for (const n of listed) results.push(`WARN   not in the report: ${n.issueKey || '(no key)'} (id ${n.issueId}): ${n.reason === 'MOVED' ? 'in another project when the report was made' : 'FourRealities could not read it when the report was made (deleted, or no longer readable)'}`);
+  }
 
   if (previousText !== undefined) {
     let prev = null;

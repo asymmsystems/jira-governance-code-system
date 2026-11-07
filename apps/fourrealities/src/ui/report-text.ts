@@ -124,3 +124,14 @@ export function pollDelayMs(polls: number): number | null {
 export function refusalLine(refusal: { message: string; range: ReportRange }): string {
   return `The report for ${periodText(refusal.range)} is not made yet: ${refusal.message} FourRealities tries again on its next daily run.`;
 }
+
+/** The badge of a report with issues of the scope that are not in it (review N-1). */
+export function notReadBadge(count: number | undefined): string | null {
+  if (!count) return null;
+  return `${count} ${count === 1 ? 'issue' : 'issues'} not in report`;
+}
+
+/** The notice of the download modal for such a report. */
+export function notReadNotice(count: number): string {
+  return `${count} ${count === 1 ? 'issue' : 'issues'} of the scope ${count === 1 ? 'is' : 'are'} not in this report: deleted, no longer readable, or moved to another project while the report was made. Their changes are not in the files. report.json and report.csv name each one, and the verifier lists them.`;
+}

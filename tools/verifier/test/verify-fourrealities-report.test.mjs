@@ -39,15 +39,15 @@ function run(args) {
 }
 
 /** A signed report of one project, linked to `previous` (a manifest text) when given. */
-function makeReport(dir, name, privateKey, previous, keyId = 'test-key', environment = 'development') {
+function makeReport(dir, name, privateKey, previous, keyId = 'test-key', environment = 'development', notReadable = [], counted = notReadable.length) {
   const header = {
     format: 'fourrealities-evidence-report/1', reportId: `${name}-0000-4000-8000-000000000000`, siteHost: 'example.atlassian.net', environment,
     projectId: '10000', projectKey: 'PAY', range: { from: '2026-10-01T00:00:00.000Z', to: '2026-11-01T00:00:00.000Z' }, filters: { fieldIds: [], actors: [] },
     trigger: 'user', requestedBy: 'pty_' + 'a'.repeat(32), generatedAt: '2026-11-08T00:00:00.000Z', gatesObservedAt: '2026-11-08T00:00:00.000Z',
-    counts: { issues: 1, changes: 1, missingSincePrevious: 0 },
+    counts: { issues: 1, changes: 1, missingSincePrevious: 0, notReadable: counted },
     previous: previous ? { reportId: JSON.parse(previous).reportId, manifestSha256: sha256(previous) } : null
   };
-  const json = canonicalJson({ format: 'fourrealities-evidence-report-data/1', header, issues: [{ issueId: '1', issueKey: 'PAY-1', changes: [{ changelogId: '9', fieldId: 'status' }] }], missingSincePrevious: [], warnings: [] });
+  const json = canonicalJson({ format: 'fourrealities-evidence-report-data/1', header, issues: [{ issueId: '1', issueKey: 'PAY-1', changes: [{ changelogId: '9', fieldId: 'status' }] }], missingSincePrevious: [], notReadable, warnings: [] });
   const csv = '"reportId","rowType"\r\n"r","CHANGE"\r\n';
   const unsigned = { ...header, files: [
     { name: 'report.json', mediaType: 'application/json', bytes: Buffer.byteLength(json), sha256: sha256(json) },
@@ -101,6 +101,21 @@ describe('FourRealities evidence report verifier', () => {
     assert.strictEqual(run([first.paths.manifest]).status, 2);
     assert.strictEqual(run([first.paths.manifest, first.paths.json, join(dir, 'none.csv')]).status, 2);
     assert.strictEqual(run([first.paths.manifest, first.paths.json, first.paths.csv]).status, 2);
+  });
+
+  it('names each issue that is not in the report, and fails when the list and the signed count differ', () => {
+    const gaps = [{ issueId: '12', issueKey: 'PAY-12', reason: 'NOT_READABLE' }, { issueId: '13', issueKey: 'PAY-13', reason: 'MOVED' }];
+    const r = makeReport(dir, 'eeeeeeee-5555', privateKey, undefined, 'test-key', 'development', gaps);
+    const res = run([r.paths.manifest, r.paths.json, r.paths.csv, key]);
+    assert.strictEqual(res.status, 0);
+    assert.match(res.stdout, /WARN 2 issue\(s\) of the scope are NOT in this report/);
+    assert.match(res.stdout, /WARN   not in the report: PAY-12 \(id 12\): FourRealities could not read it/);
+    assert.match(res.stdout, /WARN   not in the report: PAY-13 \(id 13\): in another project/);
+    const bad = makeReport(dir, 'ffffffff-6666', privateKey, undefined, 'test-key', 'development', gaps, 3);
+    const out = run([bad.paths.manifest, bad.paths.json, bad.paths.csv, key]);
+    assert.strictEqual(out.status, 1);
+    assert.match(out.stdout, /FAIL report\.json lists the 3 issues/);
+    assert.doesNotMatch(run([first.paths.manifest, first.paths.json, first.paths.csv, key]).stdout, /NOT in this report/);
   });
 
   it('warns for a development key, and fails a production report signed with one', () => {

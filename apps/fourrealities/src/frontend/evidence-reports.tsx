@@ -50,6 +50,8 @@ import {
   filtersText,
   newReportNote,
   periodText,
+  notReadBadge,
+  notReadNotice,
   pollDelayMs,
   refusalLine,
   pickedAccountIds,
@@ -148,6 +150,11 @@ const DownloadModal: React.FC<{ row: ReportListRow; onClose: () => void }> = ({ 
     if (!detail.download.allowed) return <SectionMessage appearance="warning" title="You cannot download this report"><Text as="span">{detail.download.message || ''}</Text></SectionMessage>;
     return (
       <Stack space={SPACE.item}>
+        {row.notReadable ? (
+          <SectionMessage appearance="warning" title="Not every issue is in this report">
+            <Text as="span">{notReadNotice(row.notReadable)}</Text>
+          </SectionMessage>
+        ) : null}
         {FILE_ROWS.map(f => (
           <FileCard
             key={f.file}
@@ -334,7 +341,15 @@ export const EvidenceReports: React.FC = () => {
         { key: 'period', content: periodText(r.range) },
         { key: 'filters', content: filtersText(r.filters, view.fields) },
         { key: 'by', content: r.requestedByText },
-        { key: 'state', content: <Lozenge appearance={state.appearance}>{state.text}</Lozenge> },
+        {
+          key: 'state',
+          content: notReadBadge(r.notReadable) ? (
+            <Inline space={SPACE.sub} shouldWrap>
+              <Lozenge appearance={state.appearance}>{state.text}</Lozenge>
+              <Lozenge appearance="moved" isBold>{notReadBadge(r.notReadable)}</Lozenge>
+            </Inline>
+          ) : <Lozenge appearance={state.appearance}>{state.text}</Lozenge>
+        },
         { key: 'size', content: sizeText(r.bytes) },
         { key: 'sha', content: r.reportSha256 ? <Tooltip content={r.reportSha256}><Text as="span">{shortHash(r.reportSha256)}</Text></Tooltip> : '' },
         {

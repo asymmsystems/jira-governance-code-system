@@ -276,3 +276,21 @@ describe('the project page tabs', () => {
     bridgeState.context = {};
   });
 });
+
+describe('review round 2: issues not in the report (N-1)', () => {
+  it('shows a badge with the count on the row and a notice in the download modal', async () => {
+    answer({ getEvidenceReports: { ...VIEW, reports: [{ ...DONE, notReadable: 3 }, { ...DONE, reportId: 'one', notReadable: 1 }] }, getEvidenceReport: DETAIL });
+    const r = await mount();
+    const state = table(r)[0].cells.find(c => c.key === 'state')!.content;
+    const badges = React.Children.toArray(state.props.children) as any[];
+    expect(badges.map(b => flatText(b.props.children))).toEqual(['Ready', '3 issues not in report']);
+    expect(badges[1].props.appearance).toBe('moved');
+    const single = table(r)[1].cells.find(c => c.key === 'state')!.content;
+    expect(flatText((React.Children.toArray(single.props.children) as any[])[1].props.children)).toBe('1 issue not in report');
+    await act(async () => { actionButton(r, 0, 'Download').props.onClick(); });
+    await settle(act);
+    expect(textOf(r.toJSON())).toContain('3 issues of the scope are not in this report');
+    expect(findAll(r.root, 'SectionMessage').map(m => m.props.title)).toContain('Not every issue is in this report');
+  });
+});
+

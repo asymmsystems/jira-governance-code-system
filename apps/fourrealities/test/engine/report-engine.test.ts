@@ -181,14 +181,14 @@ const SOURCES = { intent: true, process: 'definitionguard' as const, code: false
 
 describe('report.json', () => {
   it('is canonical JSON with the issues by numeric id and the warnings', () => {
-    const text = engine.reportJson({ header: { ...HEADER, warning: 'UNSIGNED' }, sourcesInUse: SOURCES, issues: [issue({ issueId: '10' }), issue({ issueId: '9' })], missingSincePrevious: [{ issueId: '100', issueKey: 'PAY-100' }, { issueId: '20', issueKey: 'PAY-20' }], notReadable: [{ issueId: '31', reason: 'MOVED' }, { issueId: '4', reason: 'NOT_READABLE' }], linksNotRead: 2 });
+    const text = engine.reportJson({ header: { ...HEADER, warning: 'UNSIGNED' }, sourcesInUse: SOURCES, issues: [issue({ issueId: '10' }), issue({ issueId: '9' })], missingSincePrevious: [{ issueId: '100', issueKey: 'PAY-100' }, { issueId: '20', issueKey: 'PAY-20' }], notReadable: [{ issueId: '31', issueKey: 'PAY-31', reason: 'MOVED' }, { issueId: '4', issueKey: 'PAY-4', reason: 'NOT_READABLE' }], linksNotRead: 2 });
     const data = JSON.parse(text);
     expect(canonicalJson(data)).toBe(text);
     expect(data.format).toBe('fourrealities-evidence-report-data/1');
     expect(data.issues.map((i: ReportIssue) => i.issueId)).toEqual(['9', '10']);
     expect(data.missingSincePrevious.map((i: { issueId: string }) => i.issueId)).toEqual(['20', '100']);
     expect(data.warnings).toEqual([{ code: 'UNSIGNED' }, { code: 'REMOTE_LINKS_NOT_READ', count: 2 }, { code: 'ISSUES_NOT_READ', count: 2 }]);
-    expect(data.notReadable).toEqual([{ issueId: '4', reason: 'NOT_READABLE' }, { issueId: '31', reason: 'MOVED' }]);
+    expect(data.notReadable).toEqual([{ issueId: '4', issueKey: 'PAY-4', reason: 'NOT_READABLE' }, { issueId: '31', issueKey: 'PAY-31', reason: 'MOVED' }]);
     expect(data.decisionIssueTypes).toEqual(SOURCES.decisionIssueTypes);
     expect(JSON.parse(engine.reportJson({ header: HEADER, sourcesInUse: SOURCES, issues: [], missingSincePrevious: [], notReadable: [], linksNotRead: 0 })).warnings).toEqual([]);
   });
@@ -222,6 +222,14 @@ describe('report.csv (RFC 4180 and the formula cell rule)', () => {
     expect(lines[3]).toContain('"rid","ISSUE","PAY-2","10002","Story"');
     expect(lines[3]).toContain('"FOUND VERIFIED","MISSING","NOT_APPLICABLE","FOUND VERIFIED","","","","","",""');
     expect(lines).toHaveLength(5);
+  });
+
+  it('adds one NOT_READ row per issue of the scope that is not in the report, after the issue rows (review N-1)', () => {
+    const lines = engine.reportCsv('rid', [issue()], [{ issueId: '30', issueKey: 'PAY-30', reason: 'MOVED' }, { issueId: '4', issueKey: '', reason: 'NOT_READABLE' }]).split('\r\n');
+    expect(lines[2]).toBe(`"rid","NOT_READ","","4","","","","","","","","","","","","NOT_READABLE: in the scope, but FourRealities could not read it when the report was made (deleted, or no longer readable); its changes are not in this report","","","","","","","","","",""`);
+    expect(lines[3]).toContain('"rid","NOT_READ","PAY-30","30"');
+    expect(lines[3]).toContain('"MOVED: in the scope, but in another project when the report was made');
+    expect(lines[2].split('","')).toHaveLength(CSV_COLUMNS.length);
   });
 
   it('marks an open Definition of Done as no and quotes every cell', () => {

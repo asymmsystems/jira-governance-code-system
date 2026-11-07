@@ -341,14 +341,14 @@ Preset views (B-40, B-48) set several filters at once, reflect `isSelected` when
 | `fr:att:{issueId}` | the newest verified DefinitionGuard (`stateVersion`, `issuedAt`) and LedgerSeal (`issuedAt`) record seen on the issue, against rollbacks | under 1 KiB |
 | `fr:p:{projectKey}:accounts` | `{ generatedAt, accountIds }`: the distinct assignee ids of the snapshot, for the personal data report | under 64 KiB |
 | `fr:cfg:reports` | `ReportSettings`: retention and report groups; no account id | under 4 KiB |
-| `fr:p:{projectKey}:rep:{createdAt}:{reportId}` | one `ReportIndexEntry` per report, at most 200 per project (review M-1; replaces `fr:p:{projectKey}:reports`) | under 2 KiB each |
-| `fr:p:{projectKey}:reports:head` | `{ reportId, manifestSha256 }` of the newest DONE report | under 1 KiB |
-| `fr:p:{projectKey}:schedules` | `ReportSchedule[]`, at most 5 | under 8 KiB |
+| `fr:rp:{projectId}:rep:{createdAt}:{reportId}` | one `ReportIndexEntry` per report, at most 200 per project (review M-1; keyed by the project id: review N-2) | under 2 KiB each |
+| `fr:rp:{projectId}:head` | `{ reportId, manifestSha256 }` of the newest DONE report | under 1 KiB |
+| `fr:rp:{projectId}:schedules` | `ReportSchedule[]`, at most 5 | under 8 KiB |
 | `fr:rj:{reportId}` | `ReportJob`; removed when the report fails, expires or is deleted | under 16 KiB |
 | `fr:rj:{reportId}:ids:{i}` | the job's issue ids, at most 5,000 per value; after assembly the in-scope `{issueId}:{issueKey}` of the report, kept while the report is kept (download check, `missingSincePrevious`) | under 200 KiB |
 | `fr:rj:{reportId}:tokens:{i}` | the party tokens of the report, at most 4,000 per value, for the people file | under 160 KiB |
-| `fr:rt:{projectKey}:{deletedAt}:{seq}` | `ReportTombstone`, written once | under 2 KiB |
-| `fr:reports:projects` | `{ projectKey: projectId }` of the projects with reports or schedules | under 16 KiB |
+| `fr:rt:{projectId}:{deletedAt}:{seq}` | `ReportTombstone`, written once | under 2 KiB |
+| `fr:reports:project-ids` | `{ projectId: current projectKey }` of the projects with reports or schedules; the key is updated when the tab is opened after a rename | under 16 KiB |
 | `fr:tmp:{createdAt}:{reportId}:{downloadId}` | the object keys of a temporary people file (Object Store cannot list) | under 1 KiB |
 | `fr:partykey` | the site key of the party tokens, 32 random bytes, written once | under 1 KiB |
 | `fr:party:{token}` | `{ accountId, updatedAt }` or `{ closed: true, closedAt }` | under 1 KiB |
@@ -377,7 +377,7 @@ All resolvers return `{ ok: true, ... }` or `{ ok: false, error: { code, message
 
 **Project-key check:** in issue context the payload `issueId` must equal the context issue id. In project context the resolver reads the issue as the user and rejects the call unless its project key equals the context project key. A 403 or 404 from Jira is returned as `FORBIDDEN` or `NOT_FOUND`.
 
-**Evidence report resolvers** (project page resolver; project from the context only): `getEvidenceReports`, `createEvidenceReport`, `getEvidenceReport`, `generateReportDownloadUrls`, `saveReportSchedule`, `deleteReportSchedule`, `deleteEvidenceReport`; admin resolvers `fr-admin-reports-get` and `fr-admin-reports-save`. New error codes: `NOT_REPORT_AUTHOR`, `NOT_ALL_VISIBLE`, `TOO_MANY_ISSUES`, `REPORT_TOO_LARGE`, `RANGE_INVALID`, `JOB_LIMIT`, `REPORT_LIMIT`, `REPORT_NOT_READY`. Every permission check is a direct `await api.asUser().requestJira(route\`/rest/api/3/mypermissions?...\`)` in the checking function's body, before any storage access or call as the app (FSRT form, `docs/security/fsrt-scan-2026-11-07.md` section 4.4). Section 11.6 gives the inputs, rules and outputs.
+**Evidence report resolvers** (project page resolver; project from the context only): `getEvidenceReports`, `createEvidenceReport`, `getEvidenceReport`, `generateReportDownloadUrls`, `saveReportSchedule`, `deleteReportSchedule`, `deleteEvidenceReport`; admin resolvers `fr-admin-reports-get` and `fr-admin-reports-save`. New error codes: `NO_SIGNING_KEY`, `NOT_REPORT_AUTHOR`, `NOT_ALL_VISIBLE`, `TOO_MANY_ISSUES`, `REPORT_TOO_LARGE`, `RANGE_INVALID`, `JOB_LIMIT`, `REPORT_LIMIT`, `REPORT_NOT_READY`. Every permission check is a direct `await api.asUser().requestJira(route\`/rest/api/3/mypermissions?...\`)` in the checking function's body, before any storage access or call as the app (FSRT form, `docs/security/fsrt-scan-2026-11-07.md` section 4.4). Section 11.6 gives the inputs, rules and outputs.
 
 **Jira calls:** search uses `/rest/api/3/search/jql` with `nextPageToken` until `isLast`, at most 2,000 issues. When capped, `/rest/api/3/search/approximate-count` gives `totalKnown`. A 429 is retried at most 3 times, waiting `Retry-After` seconds (at most 5 s each) inside the time budget; then `RATE_LIMITED`.
 
@@ -497,6 +497,15 @@ The project page has the tabs "Dashboard" and "Evidence reports" (the second loa
 - M-3: scheduled periods kept on a temporary refusal (11.7).
 - L-3: the hourly `report-tmp` run; L-1 lease; L-2 clean-up; L-5 the previous-report check uses the event deadline; L-6 party tokens are made only after every refusal; L-7 a key id with `-dev-` never signs a production report and one with `-prod-` never a development or staging report, and the verifier warns for a development key and fails a production report signed with one; L-8 the list has no issue or change counts, and `getEvidenceReport` gives the manifest only with a download decision that allows it.
 - Download: the UI Kit `FileCard` does not save the Blob that `onDownload` returns (live check of 7.7.0); the tab saves the file itself with an object URL and a clicked anchor, as Atlassian's Object Store sample app does. The list reads itself again while a report is queued or running (5 s, doubling to 60 s, at most 40 times).
+
+### 11.12 Changes after review round 2 (2026-11-08)
+Invariant 11 is not changed in this round: the owner is deciding the rule. The behaviour stays: a signed report, with the issues it could not hold disclosed.
+- N-1: the disclosure is where readers look. `report.json` `notReadable` entries carry `issueId`, `issueKey` and `reason`; `report.csv` has one `NOT_READ` row per such issue (after the issue rows; the `omitted` cell gives the reason); the tab shows a badge "N issues not in report" on the row and a notice in the download modal; the verifier prints a `WARN` line with the signed count and one line per issue, and fails when `report.json` lists a different number. The scope search keeps each issue's key with its id (`fr:rj:{id}:ids:{i}` holds `{issueId}:{issueKey}`).
+- N-2: a project's report records (index, head, schedules, tombstones) are keyed by the project id; MOVED compares the project id; `getEvidenceReport` and downloads match the job by project id. A project key rename keeps every issue, report and schedule; the header names the key at the time of the report. Records of the development builds 7.7.0 and 7.8.0 (keyed by project key) are not read (N-4: no migration, so no migration can undo a newer write).
+- N-3: the job records its token chunk count before it writes them, so a failed commit's clean-up removes them.
+- N-5: an event that meets another event's lease is pushed again when the lease ends; the same event delivered again takes the job over.
+- N-6: the 200-report cap stays a soft cap. A hard cap needs a conditional write on a counter, and Forge KVS offers conditions only on Custom Entities, not on plain keys. The overshoot is bounded by the creates that run at the same moment (at most 3 queued per project), and the next create removes the oldest removable entry.
+- N-7: in production, a missing or unfitting signing key (no key, a `-dev-` key) makes no report: `createEvidenceReport` returns `NO_SIGNING_KEY`, a running job fails with `NO_SIGNING_KEY`, and a scheduled period is kept with the refusal on its schedule. An unsigned report is made only outside production.
 
 ### Grader conflict
 

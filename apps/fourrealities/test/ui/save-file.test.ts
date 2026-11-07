@@ -6,7 +6,7 @@
  */
 
 import { saveBlob } from '../../src/ui/save-file';
-import { pollDelayMs, refusalLine } from '../../src/ui/report-text';
+import { notReadBadge, notReadNotice, pollDelayMs, refusalLine } from '../../src/ui/report-text';
 
 describe('saveBlob', () => {
   it('saves the Blob under the file name with an object URL and a clicked anchor, then cleans up', () => {
@@ -51,3 +51,12 @@ describe('list refresh and schedule refusal words', () => {
       .toBe('The report for 1 Oct 2026 to 31 Oct 2026 is not made yet: Jira did not answer. FourRealities tries again on its next daily run.');
   });
 });
+
+describe('not-read words (review N-1)', () => {
+  it('counts the issues that are not in a report', () => {
+    expect([notReadBadge(undefined), notReadBadge(0), notReadBadge(1), notReadBadge(4)]).toEqual([null, null, '1 issue not in report', '4 issues not in report']);
+    expect(notReadNotice(1)).toContain('1 issue of the scope is not in this report');
+    expect(notReadNotice(2)).toContain('2 issues of the scope are not in this report');
+  });
+});
+

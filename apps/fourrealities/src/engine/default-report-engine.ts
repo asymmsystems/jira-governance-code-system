@@ -33,6 +33,12 @@ const FREE_TEXT_FIELDS = new Set(['summary', 'description', 'environment']);
 const CUSTOM_FIELD_ID = /^customfield_\d+$/;
 const DAY_MS = 86_400_000;
 
+/** The omitted cell of a NOT_READ row. */
+export const NOT_READ_TEXT: Record<NotReadableIssue['reason'], string> = {
+  NOT_READABLE: 'NOT_READABLE: in the scope, but FourRealities could not read it when the report was made (deleted, or no longer readable); its changes are not in this report',
+  MOVED: 'MOVED: in the scope, but in another project when the report was made; its changes are not in this report'
+};
+
 export const CSV_COLUMNS = [
   'reportId', 'rowType', 'issueKey', 'issueId', 'issueType', 'changeAt', 'changelogId', 'author', 'fieldId', 'field', 'fieldClass',
   'from', 'to', 'fromString', 'toString', 'omitted', 'intent', 'process', 'code', 'audit', 'sealStatus', 'sealCertificateId',
@@ -244,7 +250,7 @@ export class DefaultReportEngine implements ReportEngine {
     return canonicalJson(report);
   }
 
-  reportCsv(reportId: string, issues: ReportIssue[]): string {
+  reportCsv(reportId: string, issues: ReportIssue[], notReadable: NotReadableIssue[] = []): string {
     const rows: unknown[][] = [CSV_COLUMNS];
     for (const issue of [...issues].sort((a, b) => numericOrder(a.issueId, b.issueId))) {
       const gate = (name: (typeof GATE_NAMES)[number]) => [issue.gates[name]?.state, issue.gates[name]?.verification].filter(Boolean).join(' ');
@@ -263,6 +269,10 @@ export class DefaultReportEngine implements ReportEngine {
         const omitted = c.omitted ? `FREE_TEXT (${c.omitted.fromLength} -> ${c.omitted.toLength} characters)` : '';
         rows.push([...head, 'CHANGE', issue.issueKey, issue.issueId, issue.issueTypeName, c.at, c.changelogId, c.author ?? '', c.fieldId, c.field, c.fieldClass, c.from ?? '', c.to ?? '', c.fromString ?? '', c.toString ?? '', omitted, ...tail]);
       }
+    }
+    // An issue of the scope that is not in the report is a row too, so a reader of the CSV sees it (review N-1).
+    for (const n of [...notReadable].sort((x, y) => numericOrder(x.issueId, y.issueId))) {
+      rows.push([reportId, 'NOT_READ', n.issueKey, n.issueId, '', '', '', '', '', '', '', '', '', '', '', NOT_READ_TEXT[n.reason], '', '', '', '', '', '', '', '', '', '']);
     }
     return csvRows(rows);
   }

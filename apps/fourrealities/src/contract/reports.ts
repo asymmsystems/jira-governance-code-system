@@ -41,8 +41,8 @@ import {
 
 /** Jira reads of a report, bound to one principal (the user for scope and visibility, the app for the job). */
 export interface JiraReportAccessor extends Accessor {
-  /** Issue ids of a JQL search, oldest first; stops above `limit` ids (the caller refuses then). */
-  searchIds(jql: string, limit: number, deadline: number): Promise<{ status: number; ids: string[] }>;
+  /** Issue ids of a JQL search, oldest first, with each issue's key; stops above `limit` ids (the caller refuses then). */
+  searchIds(jql: string, limit: number, deadline: number): Promise<{ status: number; ids: string[]; keys: Record<string, string> }>;
   /** The ids among `ids` that the principal's search returns (500 per call); null when a call failed. */
   presentAmong(ids: string[], deadline: number): Promise<Set<string> | null>;
   /** Gate facts and report basics of up to 100 issues, read in one search. */
@@ -53,7 +53,7 @@ export interface JiraReportAccessor extends Accessor {
   fields(): Promise<{ status: number; fields: FieldInfo[] }>;
 }
 
-/** Report jobs, ids, index, chain head, schedules, tombstones and settings in KVS (all keys fr:). */
+/** Report jobs, ids, index, chain head, schedules, tombstones and settings in KVS (all keys fr:). Project records are keyed by the Jira project id (review N-2). */
 export interface ReportStoreAccessor extends Accessor {
   getSettings(): Promise<ReportSettings>;
   saveSettings(settings: ReportSettings): Promise<void>;
@@ -67,23 +67,24 @@ export interface ReportStoreAccessor extends Accessor {
   loadTokens(reportId: string, chunks: number): Promise<string[]>;
   deleteTokens(reportId: string, chunks: number): Promise<void>;
   /** The project's entries, newest first. Each entry is its own KVS value, so writers never overwrite each other's rows (review M-1). */
-  getIndex(projectKey: string): Promise<ReportIndexEntry[]>;
-  putEntry(projectKey: string, entry: ReportIndexEntry): Promise<void>;
-  deleteEntry(projectKey: string, entry: ReportIndexEntry): Promise<void>;
+  getIndex(projectId: string): Promise<ReportIndexEntry[]>;
+  putEntry(projectId: string, entry: ReportIndexEntry): Promise<void>;
+  deleteEntry(projectId: string, entry: ReportIndexEntry): Promise<void>;
   /** Makes the index exactly these entries (tests and tools). */
-  saveIndex(projectKey: string, entries: ReportIndexEntry[]): Promise<void>;
-  getHead(projectKey: string): Promise<ChainLink | undefined>;
+  saveIndex(projectId: string, entries: ReportIndexEntry[]): Promise<void>;
+  getHead(projectId: string): Promise<ChainLink | undefined>;
   /** Writes the DONE job, its index entry and the head in one transaction. */
-  commitDone(job: ReportJob, projectKey: string, entry: ReportIndexEntry, head: ChainLink): Promise<void>;
-  getSchedules(projectKey: string): Promise<ReportSchedule[]>;
-  saveSchedules(projectKey: string, schedules: ReportSchedule[]): Promise<void>;
+  commitDone(job: ReportJob, projectId: string, entry: ReportIndexEntry, head: ChainLink): Promise<void>;
+  getSchedules(projectId: string): Promise<ReportSchedule[]>;
+  saveSchedules(projectId: string, schedules: ReportSchedule[]): Promise<void>;
   /** Written once; never rewritten. */
-  addTombstone(projectKey: string, tombstone: ReportTombstone): Promise<void>;
-  listTombstones(projectKey: string): Promise<ReportTombstone[]>;
-  /** The projects that have reports or schedules. */
+  addTombstone(projectId: string, tombstone: ReportTombstone): Promise<void>;
+  listTombstones(projectId: string): Promise<ReportTombstone[]>;
+  /** The ids of the projects that have reports or schedules. */
   projects(): Promise<string[]>;
-  registerProject(projectKey: string, projectId: string): Promise<void>;
-  projectId(projectKey: string): Promise<string | undefined>;
+  /** Records the project's current key under its id (a key rename keeps the id: review N-2). */
+  registerProject(projectId: string, projectKey: string): Promise<void>;
+  projectKey(projectId: string): Promise<string | undefined>;
   addTmp(id: string, entry: TmpObject): Promise<void>;
   listTmp(): Promise<Array<{ id: string; entry: TmpObject }>>;
   deleteTmp(id: string): Promise<void>;
@@ -156,7 +157,8 @@ export interface ReportEngine extends Engine {
   tokensOf(issues: ReportIssue[], filters: ReportFilters, requestedBy: string): string[];
   canonicalJson(value: unknown): string;
   reportJson(data: { header: ManifestHeader; sourcesInUse: SourcesInUse; issues: ReportIssue[]; missingSincePrevious: Array<{ issueId: string; issueKey: string }>; notReadable: NotReadableIssue[]; linksNotRead: number }): string;
-  reportCsv(reportId: string, issues: ReportIssue[]): string;
+  /** notReadable issues get one NOT_READ row each, after the issue rows (review N-1). */
+  reportCsv(reportId: string, issues: ReportIssue[], notReadable?: NotReadableIssue[]): string;
   /** The manifest without its signature, with keyId when a key signs it; signedText is what the key signs. */
   manifest(header: ManifestHeader, files: ReportManifest['files'], keyId: string | null): { manifest: ReportManifest; signedText: string };
   peopleCsv(rows: PeopleRow[]): string;

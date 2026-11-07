@@ -66,16 +66,18 @@ describe('Jira report reads', () => {
   it('pages an id search to the end, stops above the limit, and fails a read cut by the deadline', async () => {
     const f = fakeRequest([{ status: 200, json: { issues: [{ id: 1 }, { id: 2 }], nextPageToken: 't', isLast: false } }, { status: 200, json: { issues: [{ id: 3 }], isLast: true } }]);
     const jira = new DefaultForgeJiraReportAccessor(f.request);
-    expect(await jira.searchIds('project = 1', 10, FAR)).toEqual({ status: 200, ids: ['1', '2', '3'] });
+    expect(await jira.searchIds('project = 1', 10, FAR)).toEqual({ status: 200, ids: ['1', '2', '3'], keys: {} });
     expect(f.calls[1]).toEqual({ path: '/rest/api/3/search/jql', body: { jql: 'project = 1', fields: ['id'], maxResults: 5000, nextPageToken: 't' } });
     const over = fakeRequest([{ status: 200, json: { issues: [{ id: 1 }, { id: 2 }], nextPageToken: 't' } }]);
     expect((await new DefaultForgeJiraReportAccessor(over.request).searchIds('j', 1, FAR)).ids).toEqual(['1', '2']);
     const late = fakeRequest([{ status: 200, json: { issues: [{ id: 1 }], nextPageToken: 't' } }]);
-    expect(await new DefaultForgeJiraReportAccessor(late.request).searchIds('j', 10, Date.now() - 1)).toEqual({ status: 504, ids: [] });
+    expect(await new DefaultForgeJiraReportAccessor(late.request).searchIds('j', 10, Date.now() - 1)).toEqual({ status: 504, ids: [], keys: {} });
     const failed = fakeRequest([{ status: 403, json: {} }]);
-    expect(await new DefaultForgeJiraReportAccessor(failed.request).searchIds('j', 10, FAR)).toEqual({ status: 403, ids: [] });
+    expect(await new DefaultForgeJiraReportAccessor(failed.request).searchIds('j', 10, FAR)).toEqual({ status: 403, ids: [], keys: {} });
+    const keyed = fakeRequest([{ status: 200, json: { issues: [{ id: 5, key: 'PAY-5' }, { id: 6 }], isLast: true } }]);
+    expect(await new DefaultForgeJiraReportAccessor(keyed.request).searchIds('j', 10, FAR)).toEqual({ status: 200, ids: ['5', '6'], keys: { '5': 'PAY-5' } });
     const empty = fakeRequest([{ status: 200, json: null }]);
-    expect(await new DefaultForgeJiraReportAccessor(empty.request).searchIds('j', 10, FAR)).toEqual({ status: 200, ids: [] });
+    expect(await new DefaultForgeJiraReportAccessor(empty.request).searchIds('j', 10, FAR)).toEqual({ status: 200, ids: [], keys: {} });
   });
 
   it('checks which ids a search returns, 500 per call, digits only; null on a failed call or the deadline', async () => {
@@ -108,11 +110,11 @@ describe('Jira report reads', () => {
   it('H-1: reads every page of a batch, and fails a read that never reaches the last page', async () => {
     const config = { devFieldId: null, siteHost: null, statusCategories: {}, readAt: 't' };
     const f = fakeRequest([
-      { status: 200, json: { issues: [{ id: 7, key: 'PAY-7', fields: { project: { key: 'PAY' } } }], nextPageToken: 'more', isLast: false } },
-      { status: 200, json: { issues: [{ id: 8, key: 'PAY-8', fields: { project: { key: 'MOVED' } } }], isLast: true } }
+      { status: 200, json: { issues: [{ id: 7, key: 'PAY-7', fields: { project: { key: 'PAY', id: '10000' } } }], nextPageToken: 'more', isLast: false } },
+      { status: 200, json: { issues: [{ id: 8, key: 'PAY-8', fields: { project: { key: 'MOVED', id: 20000 } } }], isLast: true } }
     ]);
     const out = await new DefaultForgeJiraReportAccessor(f.request).factsByIds(['7', '8'], config);
-    expect(out.issues.map(i => [i.basics.issueId, i.basics.projectKey])).toEqual([['7', 'PAY'], ['8', 'MOVED']]);
+    expect(out.issues.map(i => [i.basics.issueId, i.basics.projectKey, i.basics.projectId])).toEqual([['7', 'PAY', '10000'], ['8', 'MOVED', '20000']]);
     expect(f.calls[1].body).toMatchObject({ nextPageToken: 'more' });
     expect(f.calls[0].body?.fields).toContain('project');
     const tokenOnly = fakeRequest([{ status: 200, json: { issues: [], nextPageToken: 'x' } }, { status: 200, json: { issues: [] } }]);
@@ -238,12 +240,15 @@ describe('report records in KVS', () => {
     await store.saveSchedules('PAY', Array.from({ length: 6 }, (_, i) => ({ scheduleId: `s${i}` }) as never));
     expect(await store.getSchedules('PAY')).toHaveLength(5);
     expect(await store.getSchedules('X')).toEqual([]);
-    await store.registerProject('PAY', '1');
-    await store.registerProject('PAY', '1');
-    await store.registerProject('ABC', '2');
-    expect(await store.projects()).toEqual(['ABC', 'PAY']);
-    expect(await store.projectId('ABC')).toBe('2');
-    expect(await store.projectId('NONE')).toBeUndefined();
+    await store.registerProject('1', 'PAY');
+    await store.registerProject('1', 'PAY');
+    await store.registerProject('2', 'ABC');
+    expect(await store.projects()).toEqual(['1', '2']);
+    expect(await store.projectKey('2')).toBe('ABC');
+    expect(await store.projectKey('9')).toBeUndefined();
+    // A key rename keeps the id and records the new key (review N-2).
+    await store.registerProject('1', 'PAYMENTS');
+    expect(await store.projectKey('1')).toBe('PAYMENTS');
     expect(Array.from(storage.store.keys()).every(k => k.startsWith('fr:'))).toBe(true);
   });
 
@@ -252,21 +257,23 @@ describe('report records in KVS', () => {
     const tx: string[] = [];
     storage.transact = async sets => { for (const s of sets) { tx.push(s.key); await storage.set(s.key, s.value); } };
     await new DefaultKvsReportStoreAccessor(storage).commitDone(job(), 'PAY', { reportId: 'r1', createdAt: 't' } as ReportIndexEntry, { reportId: 'r1', manifestSha256: 'm' });
-    expect(tx).toEqual(['fr:rj:r1', 'fr:p:PAY:rep:t:r1', 'fr:p:PAY:reports:head']);
+    expect(tx).toEqual(['fr:rj:r1', 'fr:rp:PAY:rep:t:r1', 'fr:rp:PAY:head']);
   });
 
-  it('keeps one key per index entry, so two writers never overwrite each other (review M-1), and moves the old single value', async () => {
+  it('keeps one key per index entry, so two writers never overwrite each other (review M-1), and reads no old-format record (review N-4)', async () => {
     const storage = new MemoryStorage();
     const store = new DefaultKvsReportStoreAccessor(storage);
     const a = { reportId: 'a', state: 'RUNNING', createdAt: '2026-11-01T00:00:00.000Z' } as ReportIndexEntry;
     const b = { reportId: 'b', state: 'QUEUED', createdAt: '2026-11-02T00:00:00.000Z' } as ReportIndexEntry;
+    // The 7.7.0 and 7.8.0 development formats are not read, so no migration can write over a newer entry.
     await storage.set('fr:p:PAY:reports', [a]);
-    // A create (writes B) and a commit (writes A DONE), interleaved: each writes only its own key.
+    await storage.set('fr:p:PAY:rep:2026-11-01T00:00:00.000Z:a', a);
+    expect(await store.getIndex('PAY')).toEqual([]);
+    await store.putEntry('PAY', a);
     const seenByCreate = await store.getIndex('PAY');
     await store.putEntry('PAY', { ...a, state: 'DONE' });
     await store.putEntry('PAY', b);
     expect(seenByCreate).toEqual([a]);
-    expect(await storage.get('fr:p:PAY:reports')).toBeUndefined();
     expect((await store.getIndex('PAY')).map(e => `${e.reportId}:${e.state}`)).toEqual(['b:QUEUED', 'a:DONE']);
     await store.deleteEntry('PAY', b);
     expect((await store.getIndex('PAY')).map(e => e.reportId)).toEqual(['a']);
@@ -274,7 +281,7 @@ describe('report records in KVS', () => {
     expect((await store.getIndex('PAY')).map(e => e.reportId)).toEqual(['c', 'a']);
     await store.putEntry('PAY', { ...b, createdAt: a.createdAt, reportId: '0' });
     expect((await store.getIndex('PAY')).map(e => e.reportId)).toEqual(['c', 'a', '0']);
-    expect(await new DefaultKvsReportStoreAccessor(new MemoryStorage()).projectId('X')).toBeUndefined();
+    expect(await new DefaultKvsReportStoreAccessor(new MemoryStorage()).projectKey('X')).toBeUndefined();
   });
 
   it('writes each tombstone once under a free key, and lists them newest first', async () => {

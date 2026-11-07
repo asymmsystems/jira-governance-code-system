@@ -171,3 +171,34 @@ The report format stays `fourrealities-evidence-report/1` (not released): `count
 ### Deploy (fix round 1)
 
 `forge deploy -e development`: **7.8.0** from `72c5401` (minor: the hourly trigger is not a major change). Jira and Confluence installations at major version 7, "Up-to-date". Production and staging untouched. Retest in Chrome: see the report of this round (download of the four files, the list refresh, the date placeholder, and the report `18520860`: made on 7.7.0 before the H-1 fix, so it has no `notReadable` field; make a new report to check it).
+
+## Fix round 2 (2026-11-08)
+
+Input: `repository/tmp/fr-evidence-review/REVIEW-round2.md` (branch at `fcceaff`; no merge blockers; N-1 and N-2 block production). Invariant 11 and L-10 part two are with the owner and are not changed.
+
+| Finding | Fix | Test |
+|---|---|---|
+| N-1 (Medium) | Shown in four places. Verifier: `WARN N issue(s) of the scope are NOT in this report` with the signed count and one `WARN` line per issue (key, id, reason), and a FAIL when `report.json` lists a different number. Tab: badge "N issues not in report" on the row, and a notice in the download modal. CSV: one `NOT_READ` row per issue, the reason in the `omitted` cell. `report.json`: entries `{ issueId, issueKey, reason }`; the scope search keeps each key with its id. | verifier test; `evidence-reports.test.tsx` N-1; `report-engine.test.ts` NOT_READ rows; manager N-1 |
+| N-2 (Medium) | MOVED compares the project id. The report index, head, schedules and tombstones are keyed by the project id (`fr:rp:{projectId}:...`); the registry maps id to the current key, updated when the tab is opened; jobs and downloads match by project id. | manager N-2 (a key renamed to PAYMENTS: every issue stays, the reports and schedules are found under the new key) |
+| N-3 | The job saves its token chunk count before writing the chunks; the failed commit's clean-up removes them. The hand-set token part of the L-2 test is dropped. | manager N-3 (commit fails, retry ends STORE_FAILED, no `fr:rj:{id}*` key and no object left) |
+| N-4 | No migration: the development formats of 7.7.0 and 7.8.0 are not read, so nothing can write a stale copy. On the development site the reports made on 7.7.0 and 7.8.0 no longer show (their objects stay; development only). | `accessor-reports.test.ts` (old keys present, not read) |
+| N-5 | An event that meets another event's lease is pushed again after the lease ends (plus 5 s); the same event id takes the job over. | manager N-5 |
+| N-6 | Not made hard: a hard cap needs a conditional write, and Forge KVS has conditions only on Custom Entities. The overshoot is bounded by concurrent creates (3 queued per project). Spec 11.12. | none |
+| N-7 | Production with no fitting key: `createEvidenceReport` returns `NO_SIGNING_KEY` and stores nothing; a running job fails `NO_SIGNING_KEY`; a scheduled period is kept with the refusal on its schedule. Unsigned reports only outside production. | manager N-7 (two tests) |
+| M-1 test | Rewritten: B's create reads the index, then during its Jira search A is built and committed, then B writes. Run against the round-1 code `cee99f8` (scratch worktree, deleted after), it fails: A reads back QUEUED. It passes on this code. | manager M-1 |
+| L-5 test | The previous-report check gets the event deadline. | manager L-5 |
+
+Also: the index and tombstone sort comparators are single comparisons (same order).
+
+### Gate (fix round 2)
+
+| Check | Result |
+|---|---|
+| tsc | exit 0 |
+| tests with coverage | 59 suites, 798 tests passed; 99.32 % statements, 96.52 % branches, 99.31 % functions, 99.84 % lines; every per-file threshold met |
+| build | exit 0 |
+| `npm audit --omit=dev --audit-level=high` | exit 0; 0 high, 9 moderate (unchanged) |
+| `forge lint` (CLI 15.0.0) | "No issues found." |
+| FSRT `6c821bd` default and secret-logging | 0 findings; 75 files, 15 and 7 checks; `fsrt_gate.py` passes |
+| Semgrep 1.182.1 | 0 findings, 216 files |
+| verifier `npm test` | 19 passed |

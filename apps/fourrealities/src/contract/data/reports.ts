@@ -27,7 +27,9 @@ export type ReportErrorCode =
   | 'RANGE_INVALID'
   | 'JOB_LIMIT'
   | 'REPORT_LIMIT'
-  | 'REPORT_NOT_READY';
+  | 'REPORT_NOT_READY'
+  /** A production site with no valid signing key makes no report (review N-7). */
+  | 'NO_SIGNING_KEY';
 
 export interface ReportError {
   code: ReportErrorCode;
@@ -155,6 +157,8 @@ export interface ReportIndexEntry {
   finishedAt?: string;
   issues?: number;
   changes?: number;
+  /** Issues of the scope that are not in the report (review N-1); shown on the tab. */
+  notReadable?: number;
   bytes?: number;
   reportSha256?: string;
   manifestSha256?: string;
@@ -307,6 +311,8 @@ export interface ReportData {
 /** An issue the scope search returned that the job could not put in the report. */
 export interface NotReadableIssue {
   issueId: string;
+  /** The key the scope search returned (review N-1); empty when it gave none. */
+  issueKey: string;
   /** NOT_READABLE: the app's read did not return it (deleted, or no longer readable); MOVED: it is in another project now. */
   reason: 'NOT_READABLE' | 'MOVED';
 }
@@ -353,6 +359,8 @@ export interface ReportIssueBasics {
   statusId: string;
   /** The project the issue is in now; absent when Jira did not say. */
   projectKey?: string;
+  /** Its id: MOVED is decided by the id, which a project key rename does not change (review N-2). */
+  projectId?: string;
 }
 
 /** The caller's permissions in one project, asked as the caller in one call (spec v4 section 4.4). */

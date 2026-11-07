@@ -169,8 +169,8 @@ describe('licence (owner decision Q9) and wiring', () => {
     setReportPlatform({});
     expect(composeReports(storage, 1000).reports.serviceType).toBe('manager');
     setReportPlatform({ objects, runtime: { serviceType: 'accessor', environment: () => 'development', appVersion: () => undefined, licenceActive: () => false } });
-    await storage.set('fr:reports:projects', { PAY: '10000' });
-    await storage.set('fr:p:PAY:schedules', [{ scheduleId: 's', cadence: 'WEEKLY', filters: { fieldIds: [], actors: [] }, createdBy: 'x', createdAt: '2026-01-01T00:00:00.000Z' }]);
+    await storage.set('fr:reports:project-ids', { '10000': 'PAY' });
+    await storage.set('fr:rp:10000:schedules', [{ scheduleId: 's', cadence: 'WEEKLY', filters: { fieldIds: [], actors: [] }, createdBy: 'x', createdAt: '2026-01-01T00:00:00.000Z' }]);
     expect(await runReportDaily(storage)).toMatchObject({ scheduled: 0 });
     expect(mockApp).not.toHaveBeenCalled();
   });

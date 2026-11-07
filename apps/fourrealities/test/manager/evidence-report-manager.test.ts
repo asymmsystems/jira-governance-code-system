@@ -110,10 +110,10 @@ describe('creation and its caps (Q6)', () => {
     expect(job.filters.actors).toEqual([expect.stringMatching(/^pty_[0-9a-f]{32}$/)]);
     expect(job.requestedBy).toMatch(/^pty_/);
     expect(JSON.stringify(job)).not.toContain('acc-');
-    expect(await h.store.loadIds(id, job.idChunks)).toEqual(['101', '102', '103', '104']);
-    expect((await h.store.getIndex('PAY'))[0]).toMatchObject({ reportId: id, state: 'QUEUED' });
+    expect(await h.store.loadIds(id, job.idChunks)).toEqual(['101:PAY-101', '102:PAY-102', '103:PAY-103', '104:PAY-104']);
+    expect((await h.store.getIndex('10000'))[0]).toMatchObject({ reportId: id, state: 'QUEUED' });
     expect(h.pushes).toEqual([{ reportId: id }]);
-    expect(await h.store.projects()).toEqual(['PAY']);
+    expect(await h.store.projects()).toEqual(['10000']);
   });
 
   it('stores nothing when more than 10,000 issues may be in scope (TOO_MANY_ISSUES)', async () => {
@@ -132,7 +132,7 @@ describe('creation and its caps (Q6)', () => {
     for (let i = 0; i < 3; i++) expect((await h.manager.create(caller(), ADMIN, RANGE)).ok).toBe(true);
     expect((await h.manager.create(caller(), ADMIN, RANGE) as { error: { code: string } }).error.code).toBe('JOB_LIMIT');
     const full = Array.from({ length: 200 }, (_, i) => ({ reportId: `r${i}`, state: 'DONE' as const, range: { from: 'a', to: 'b' }, filters: { fieldIds: [], actors: [] }, trigger: 'user' as const, requestedBy: 'x', createdAt: 't' }));
-    await h.store.saveIndex('PAY', full);
+    await h.store.saveIndex('10000', full);
     expect((await h.manager.create(caller(), ADMIN, RANGE) as { error: { code: string } }).error.code).toBe('REPORT_LIMIT');
   });
 
@@ -173,13 +173,13 @@ describe('the job (as the app, the stored ids only) and the files', () => {
     expect(f.json).toContain('"omitted":{"fromLength":16,"reason":"FREE_TEXT","toLength":16}');
     expect(f.csv).toContain('FREE_TEXT (16 -> 16 characters)');
     expect(job.manifestSha256).toBe(sha(f.manifest));
-    expect(await h.store.getHead('PAY')).toEqual({ reportId: id, manifestSha256: sha(f.manifest) });
+    expect(await h.store.getHead('10000')).toEqual({ reportId: id, manifestSha256: sha(f.manifest) });
     expect(await h.store.loadIds(id, job.idChunks)).toEqual(['101:PAY-101', '102:PAY-102', '103:PAY-103']);
     expect(await h.store.loadTokens(id, job.tokenChunks || 0)).toHaveLength(3);
     expect(Array.from(h.objects.objects.keys()).filter(k => k.startsWith('tmp/'))).toEqual([]);
     expect(h.appJira.calls.some(c => c.startsWith('facts:101,102,103,104'))).toBe(true);
     expect(h.appJira.calls.some(c => c.startsWith('search'))).toBe(false);
-    const entry = (await h.store.getIndex('PAY'))[0];
+    const entry = (await h.store.getIndex('10000'))[0];
     expect(entry).toMatchObject({ state: 'DONE', issues: 3, changes: 3, reportSha256: sha(f.json), manifestSha256: sha(f.manifest), keyId: 'fr-test-key' });
   });
 
@@ -203,7 +203,7 @@ describe('the job (as the app, the stored ids only) and the files', () => {
     expect(manifest).not.toHaveProperty('sig');
     expect(manifest).not.toHaveProperty('keyId');
     expect(JSON.parse(filesOf(h, id).json).warnings).toEqual([{ code: 'UNSIGNED' }]);
-    expect((await h.store.getIndex('PAY'))[0].unsigned).toBe(true);
+    expect((await h.store.getIndex('10000'))[0].unsigned).toBe(true);
   });
 
   it('counts remote links that could not be read, and reads them as needs re-check', async () => {
@@ -224,9 +224,9 @@ describe('the job (as the app, the stored ids only) and the files', () => {
     const h = seeded({ policy: new TinyPolicy() });
     const id = await makeReport(h);
     expect(await h.store.getJob(id)).toBeUndefined();
-    expect((await h.store.getIndex('PAY'))[0]).toMatchObject({ state: 'FAILED', error: { code: 'REPORT_TOO_LARGE', message: 'too large' } });
+    expect((await h.store.getIndex('10000'))[0]).toMatchObject({ state: 'FAILED', error: { code: 'REPORT_TOO_LARGE', message: 'too large' } });
     expect(Array.from(h.objects.objects.keys())).toEqual([]);
-    expect(await h.store.getHead('PAY')).toBeUndefined();
+    expect(await h.store.getHead('10000')).toBeUndefined();
   });
 
   it('fails the job after three failed reads, retrying after 30 s', async () => {
@@ -237,19 +237,19 @@ describe('the job (as the app, the stored ids only) and the files', () => {
     await h.manager.work(r.reportId, Date.now() + 780_000);
     expect(h.pushes).toEqual([{ reportId: r.reportId, delay: 30 }]);
     await h.drain();
-    expect((await h.store.getIndex('PAY'))[0]).toMatchObject({ state: 'FAILED', error: { code: 'JIRA_ERROR', message: 'FourRealities could not read Jira for this report three times (Jira search failed with HTTP 500.) Make the report again.' } });
+    expect((await h.store.getIndex('10000'))[0]).toMatchObject({ state: 'FAILED', error: { code: 'JIRA_ERROR', message: 'FourRealities could not read Jira for this report three times (Jira search failed with HTTP 500.) Make the report again.' } });
   });
 
   it('fails a report whose files cannot be stored, and leaves no file', async () => {
     const h = seeded();
     h.objects.failWrites = /manifest\.json$/;
     await makeReport(h);
-    expect((await h.store.getIndex('PAY'))[0]).toMatchObject({ state: 'FAILED', error: { code: 'STORE_FAILED' } });
+    expect((await h.store.getIndex('10000'))[0]).toMatchObject({ state: 'FAILED', error: { code: 'STORE_FAILED' } });
     expect(Array.from(h.objects.objects.keys())).toEqual([]);
     const h2 = seeded();
     h2.objects.failWrites = /part-0/;
     await makeReport(h2);
-    expect((await h2.store.getIndex('PAY'))[0].error?.code).toBe('STORE_FAILED');
+    expect((await h2.store.getIndex('10000'))[0].error?.code).toBe('STORE_FAILED');
   });
 
   it('pauses when the event budget is nearly used, and goes on in the next event from the cursor', async () => {
@@ -267,7 +267,7 @@ describe('the job (as the app, the stored ids only) and the files', () => {
     spy.mockRestore();
     await h.drain();
     expect((await h.store.getJob(r.reportId))?.state).toBe('DONE');
-    expect((await h.store.getIndex('PAY'))[0].issues).toBe(153);
+    expect((await h.store.getIndex('10000'))[0].issues).toBe(153);
   });
 
   it('waits while another job of the project runs, and ignores unknown or finished jobs', async () => {
@@ -368,7 +368,7 @@ describe('early deletion (owner decision Q8)', () => {
     const r = await h.manager.deleteReport(caller(), ADMIN, { reportId: id, reason });
     expect(r).toEqual({ ok: true, tombstone: { reportId: id, deletedAt: expect.any(String), by: expect.stringMatching(/^pty_/), reason } });
     const writes = h.storage.ops.slice(ops).filter(o => o.op !== 'get' && o.op !== 'query').map(o => o.key);
-    const tombstoneAt = writes.findIndex(k => k.startsWith('fr:rt:PAY:'));
+    const tombstoneAt = writes.findIndex(k => k.startsWith('fr:rt:10000:'));
     expect(tombstoneAt).toBeGreaterThanOrEqual(0);
     expect(tombstoneAt).toBeLessThan(writes.findIndex(k => k.startsWith('object:')));
     expect(tombstoneAt).toBeLessThan(writes.findIndex(k => k.includes(':ids:')));
@@ -398,7 +398,7 @@ describe('the list', () => {
     const browser = ok<ReportsView>(await h.manager.list(caller('acc-x'), BROWSER, {}));
     expect(browser).toMatchObject({ canCreate: false, canSchedule: false, canDelete: false, fields: [] });
     const index = Array.from({ length: 30 }, (_, i) => ({ reportId: `r${i}`, state: 'EXPIRED' as const, range: { from: '2026-10-01T00:00:00.000Z', to: '2026-11-01T00:00:00.000Z' }, filters: { fieldIds: [], actors: [] }, trigger: 'scheduled' as const, requestedBy: 'scheduled', createdAt: 't' }));
-    await h.store.saveIndex('PAY', index);
+    await h.store.saveIndex('10000', index);
     const page1 = ok<ReportsView>(await h.manager.list(caller(), ADMIN, {}));
     expect(page1.reports).toHaveLength(25);
     expect(page1.next).toBe('25');
@@ -442,31 +442,31 @@ describe('schedules and the daily run', () => {
 
   it('makes the scheduled report of an ended period as the app, once, and none when the licence is inactive (Q9)', async () => {
     const h = seeded({ now: () => NOW });
-    await h.store.saveSchedules('PAY', [{ scheduleId: 's1', cadence: 'MONTHLY', filters: { fieldIds: [], actors: [] }, createdBy: 'pty_x', createdAt: '2026-10-15T00:00:00.000Z' }]);
-    await h.store.registerProject('PAY', '10000');
+    await h.store.saveSchedules('10000', [{ scheduleId: 's1', cadence: 'MONTHLY', filters: { fieldIds: [], actors: [] }, createdBy: 'pty_x', createdAt: '2026-10-15T00:00:00.000Z' }]);
+    await h.store.registerProject('10000', 'PAY');
     expect(await h.manager.daily(Date.now() + 540_000, false)).toEqual({ scheduled: 0, expired: 0, tmpDeleted: 0, stalled: 0, skipped: false });
     expect(await h.manager.daily(Date.now() + 540_000, true)).toMatchObject({ scheduled: 1 });
     expect(h.appJira.calls[0]).toContain('search:project = 10000');
     expect(h.userJira.calls).toEqual([]);
     await h.drain();
-    const entry = (await h.store.getIndex('PAY'))[0];
+    const entry = (await h.store.getIndex('10000'))[0];
     expect(entry).toMatchObject({ state: 'DONE', trigger: 'scheduled', requestedBy: 'scheduled', range: { from: '2026-10-01T00:00:00.000Z', to: '2026-11-01T00:00:00.000Z' } });
-    expect((await h.store.getSchedules('PAY'))[0].lastPeriodEnd).toBe('2026-11-01T00:00:00.000Z');
+    expect((await h.store.getSchedules('10000'))[0].lastPeriodEnd).toBe('2026-11-01T00:00:00.000Z');
     expect(await h.manager.daily(Date.now() + 540_000, true)).toMatchObject({ scheduled: 0 });
   });
 
   it('records a scheduled period that is too large as a FAILED row, and keeps a period for later when the queue is full', async () => {
     const h = seeded({ now: () => NOW });
     h.appJira.extraIds = Array.from({ length: 10_001 }, (_, i) => String(30_000 + i));
-    await h.store.saveSchedules('PAY', [{ scheduleId: 's1', cadence: 'MONTHLY', filters: { fieldIds: [], actors: [] }, createdBy: 'pty_x', createdAt: '2026-10-15T00:00:00.000Z' }]);
-    await h.store.registerProject('PAY', '10000');
+    await h.store.saveSchedules('10000', [{ scheduleId: 's1', cadence: 'MONTHLY', filters: { fieldIds: [], actors: [] }, createdBy: 'pty_x', createdAt: '2026-10-15T00:00:00.000Z' }]);
+    await h.store.registerProject('10000', 'PAY');
     await h.manager.daily(Date.now() + 540_000, true);
-    expect((await h.store.getIndex('PAY'))[0]).toMatchObject({ state: 'FAILED', trigger: 'scheduled', error: { code: 'TOO_MANY_ISSUES' } });
+    expect((await h.store.getIndex('10000'))[0]).toMatchObject({ state: 'FAILED', trigger: 'scheduled', error: { code: 'TOO_MANY_ISSUES' } });
     const h2 = seeded({ now: () => NOW });
     for (let i = 0; i < 3; i++) await h2.manager.create(caller(), ADMIN, RANGE);
-    await h2.store.saveSchedules('PAY', [{ scheduleId: 's1', cadence: 'MONTHLY', filters: { fieldIds: [], actors: [] }, createdBy: 'pty_x', createdAt: '2026-10-15T00:00:00.000Z' }]);
+    await h2.store.saveSchedules('10000', [{ scheduleId: 's1', cadence: 'MONTHLY', filters: { fieldIds: [], actors: [] }, createdBy: 'pty_x', createdAt: '2026-10-15T00:00:00.000Z' }]);
     await h2.manager.daily(Date.now() + 540_000, true);
-    expect((await h2.store.getSchedules('PAY'))[0].lastPeriodEnd).toBeUndefined();
+    expect((await h2.store.getSchedules('10000'))[0].lastPeriodEnd).toBeUndefined();
   });
 
   it('removes reports past the retention (a shorter setting applies at once), temporary files after 24 hours and stalled jobs, licence or not', async () => {
@@ -479,10 +479,10 @@ describe('schedules and the daily run', () => {
     now = new Date('2027-01-01T00:00:00.000Z');
     await h.store.saveSettings({ ...DEFAULT_REPORT_SETTINGS, retentionDays: 90 });
     expect(await h.manager.daily(Date.now() + 540_000, false)).toEqual({ scheduled: 0, expired: 0, tmpDeleted: 1, stalled: 1, skipped: false });
-    expect((await h.store.getIndex('PAY')).find(e => e.reportId === stuck.reportId)).toMatchObject({ state: 'FAILED', error: { code: 'STALLED' } });
+    expect((await h.store.getIndex('10000')).find(e => e.reportId === stuck.reportId)).toMatchObject({ state: 'FAILED', error: { code: 'STALLED' } });
     now = new Date('2027-02-10T00:00:00.000Z');
     expect(await h.manager.daily(Date.now() + 540_000, false)).toMatchObject({ expired: 1 });
-    expect((await h.store.getIndex('PAY')).find(e => e.reportId === old)?.state).toBe('EXPIRED');
+    expect((await h.store.getIndex('10000')).find(e => e.reportId === old)?.state).toBe('EXPIRED');
     expect(Array.from(h.objects.objects.keys())).toEqual([]);
     expect(await h.store.getJob(old)).toBeUndefined();
     expect(await h.manager.daily(Date.now() - 1, true)).toMatchObject({ skipped: true });
@@ -490,13 +490,13 @@ describe('schedules and the daily run', () => {
 
   it('fails an index entry whose job record is missing, and goes on when one project fails', async () => {
     const h = seeded({ now: () => NOW });
-    await h.store.registerProject('PAY', '10000');
-    await h.store.registerProject('BAD', '1');
-    await h.store.saveIndex('PAY', [{ reportId: 'lost', state: 'RUNNING', range: { from: 'a', to: 'b' }, filters: { fieldIds: [], actors: [] }, trigger: 'user', requestedBy: 'x', createdAt: 't' }]);
+    await h.store.registerProject('10000', 'PAY');
+    await h.store.registerProject('1', 'BAD');
+    await h.store.saveIndex('10000', [{ reportId: 'lost', state: 'RUNNING', range: { from: 'a', to: 'b' }, filters: { fieldIds: [], actors: [] }, trigger: 'user', requestedBy: 'x', createdAt: 't' }]);
     const getIndex = h.store.getIndex.bind(h.store);
-    jest.spyOn(h.store, 'getIndex').mockImplementation(async key => { if (key === 'BAD') throw new Error('x'); return getIndex(key); });
+    jest.spyOn(h.store, 'getIndex').mockImplementation(async key => { if (key === '1') throw new Error('x'); return getIndex(key); });
     expect(await h.manager.daily(Date.now() + 540_000, true)).toMatchObject({ stalled: 1 });
-    expect((await getIndex('PAY'))[0]).toMatchObject({ state: 'FAILED', error: { code: 'STALLED' } });
+    expect((await getIndex('10000'))[0]).toMatchObject({ state: 'FAILED', error: { code: 'STALLED' } });
   });
 });
 
@@ -536,18 +536,18 @@ describe('robustness: every failure ends in a clear state', () => {
       const h = seeded();
       setup(h);
       await makeReport(h);
-      expect((await h.store.getIndex('PAY'))[0]).toMatchObject({ state: 'FAILED' });
+      expect((await h.store.getIndex('10000'))[0]).toMatchObject({ state: 'FAILED' });
       expect(Array.from(h.objects.objects.keys())).toEqual([]);
     }
     const h = seeded();
     await makeReport(h);
     h.appJira.presentFails = true;
     await makeReport(h);
-    expect((await h.store.getIndex('PAY'))[0]).toMatchObject({ state: 'FAILED', error: { code: 'JIRA_ERROR' } });
+    expect((await h.store.getIndex('10000'))[0]).toMatchObject({ state: 'FAILED', error: { code: 'JIRA_ERROR' } });
     const generic = seeded();
     generic.appJira.onFacts = () => { throw new Error('x'); };
     await makeReport(generic);
-    expect((await generic.store.getIndex('PAY'))[0].error?.message).toBe('FourRealities could not read Jira for this report three times (FourRealities could not finish this report.) Make the report again.');
+    expect((await generic.store.getIndex('10000'))[0].error?.message).toBe('FourRealities could not read Jira for this report three times (FourRealities could not finish this report.) Make the report again.');
   });
 
   it('assembles in the next event when the budget cannot hold the assembly, and fails when a part is lost', async () => {
@@ -559,7 +559,7 @@ describe('robustness: every failure ends in a clear state', () => {
     expect(h.pushes).toEqual([{ reportId: r.reportId }]);
     await h.objects.delete(`tmp/${r.reportId}/part-0.json`);
     await h.drain();
-    expect((await h.store.getIndex('PAY'))[0]).toMatchObject({ state: 'FAILED', error: { code: 'JOB_FAILED' } });
+    expect((await h.store.getIndex('10000'))[0]).toMatchObject({ state: 'FAILED', error: { code: 'JOB_FAILED' } });
   });
 
   it('reads a batch again when its remote links were cut by time', async () => {
@@ -587,16 +587,16 @@ describe('robustness: every failure ends in a clear state', () => {
     const spy = jest.spyOn(Date, 'now');
     const t = Date.now();
     spy.mockReturnValueOnce(t).mockReturnValue(t + 10_000_000);
-    await h.store.registerProject('PAY', '10000');
+    await h.store.registerProject('10000', 'PAY');
     expect(await h.manager.daily(t + 1_000, true)).toMatchObject({ skipped: true });
     spy.mockRestore();
     const full = Array.from({ length: 200 }, (_, i) => ({ reportId: `r${i}`, state: 'DONE' as const, range: { from: 'a', to: 'b' }, filters: { fieldIds: [], actors: [] }, trigger: 'user' as const, requestedBy: 'x', createdAt: '2026-11-01T00:00:00.000Z', finishedAt: '2026-11-01T00:00:00.000Z' }));
-    await h.store.saveIndex('PAY', full);
-    await h.store.saveSchedules('PAY', [{ scheduleId: 's1', cadence: 'MONTHLY', filters: { fieldIds: [], actors: [] }, createdBy: 'pty_x', createdAt: '2026-10-15T00:00:00.000Z' }]);
+    await h.store.saveIndex('10000', full);
+    await h.store.saveSchedules('10000', [{ scheduleId: 's1', cadence: 'MONTHLY', filters: { fieldIds: [], actors: [] }, createdBy: 'pty_x', createdAt: '2026-10-15T00:00:00.000Z' }]);
     await h.manager.daily(Date.now() + 540_000, true);
-    expect(await h.store.getIndex('PAY')).toHaveLength(200);
+    expect(await h.store.getIndex('10000')).toHaveLength(200);
     // A full project keeps the period for later, and the schedule says why (review M-3).
-    const schedule = (await h.store.getSchedules('PAY'))[0];
+    const schedule = (await h.store.getSchedules('10000'))[0];
     expect(schedule.lastPeriodEnd).toBeUndefined();
     expect(schedule.lastRefusal).toMatchObject({ code: 'REPORT_LIMIT', range: { from: '2026-10-01T00:00:00.000Z', to: '2026-11-01T00:00:00.000Z' } });
   });
@@ -621,40 +621,49 @@ describe('review round 1', () => {
     const f = filesOf(h, r.reportId);
     const data = JSON.parse(f.json);
     expect(data.issues.map((i: { issueId: string }) => i.issueId)).toEqual(['101']);
-    expect(data.notReadable).toEqual([{ issueId: '102', reason: 'NOT_READABLE' }, { issueId: '103', reason: 'MOVED' }]);
+    expect(data.notReadable).toEqual([{ issueId: '102', issueKey: 'PAY-102', reason: 'NOT_READABLE' }, { issueId: '103', issueKey: 'PAY-103', reason: 'MOVED' }]);
     expect(data.warnings).toEqual([{ code: 'ISSUES_NOT_READ', count: 2 }]);
     expect(JSON.parse(f.manifest).counts).toEqual({ issues: 1, changes: 2, missingSincePrevious: 0, notReadable: 2 });
     expect((await h.store.getJob(r.reportId))?.progress.notReadable).toBe(2);
     expect(h.appJira.calls).toContain('changelog:2'); // only 101 and 104: 102 was not read and 103 moved
   });
 
-  it('M-1: a create that read the index before a commit does not undo the commit, and the commit keeps the new report', async () => {
+  it('M-1: a commit that runs inside a create, between its index read and its write, survives, and so does the create', async () => {
     const h = seeded();
     const a = await h.manager.create(caller(), ADMIN, RANGE) as { reportId: string };
-    const stale = await h.store.getIndex('PAY');
-    const getIndex = h.store.getIndex.bind(h.store);
-    const spy = jest.spyOn(h.store, 'getIndex').mockImplementationOnce(async () => stale);
+    // The create of B reads the index ([A QUEUED]), then searches Jira; during that search A is built and
+    // committed DONE; then B writes. With one value for the whole index (round 1 code), B wrote back
+    // [B QUEUED, A QUEUED] and undid A's commit.
+    const search = h.userJira.searchIds.bind(h.userJira);
+    let inner = false;
+    jest.spyOn(h.userJira, 'searchIds').mockImplementation(async (...args: Parameters<typeof search>) => {
+      if (!inner) {
+        inner = true;
+        await h.manager.work(a.reportId, Date.now() + 780_000);
+        expect((await h.store.getIndex('10000')).find(e => e.reportId === a.reportId)?.state).toBe('DONE');
+      }
+      return search(...args);
+    });
     const b = await h.manager.create(caller(), ADMIN, RANGE) as { reportId: string };
-    spy.mockRestore();
-    await h.manager.work(a.reportId, Date.now() + 780_000);
-    const states = Object.fromEntries((await getIndex('PAY')).map(e => [e.reportId, e.state]));
+    const states = Object.fromEntries((await h.store.getIndex('10000')).map(e => [e.reportId, e.state]));
     expect(states).toEqual({ [a.reportId]: 'DONE', [b.reportId]: 'QUEUED' });
+    expect((await h.manager.detail(caller(), ADMIN, { reportId: a.reportId }) as { download: { allowed: boolean } }).download.allowed).toBe(true);
   });
 
   it('M-3: a Jira error keeps the scheduled period and says why on the schedule; the next run makes it', async () => {
     const NOW = new Date('2026-11-08T03:00:00.000Z');
     const h = seeded({ now: () => NOW });
-    await h.store.saveSchedules('PAY', [{ scheduleId: 's1', cadence: 'MONTHLY', filters: { fieldIds: [], actors: [] }, createdBy: 'pty_x', createdAt: '2026-10-15T00:00:00.000Z' }]);
-    await h.store.registerProject('PAY', '10000');
+    await h.store.saveSchedules('10000', [{ scheduleId: 's1', cadence: 'MONTHLY', filters: { fieldIds: [], actors: [] }, createdBy: 'pty_x', createdAt: '2026-10-15T00:00:00.000Z' }]);
+    await h.store.registerProject('10000', 'PAY');
     h.appJira.searchStatus = 503;
     await h.manager.daily(Date.now() + 540_000, true);
-    let schedule = (await h.store.getSchedules('PAY'))[0];
+    let schedule = (await h.store.getSchedules('10000'))[0];
     expect(schedule.lastPeriodEnd).toBeUndefined();
     expect(schedule.lastRefusal).toMatchObject({ code: 'JIRA_ERROR', at: NOW.toISOString() });
-    expect(await h.store.getIndex('PAY')).toEqual([]);
+    expect(await h.store.getIndex('10000')).toEqual([]);
     h.appJira.searchStatus = 200;
     expect(await h.manager.daily(Date.now() + 540_000, true)).toMatchObject({ scheduled: 1 });
-    schedule = (await h.store.getSchedules('PAY'))[0];
+    schedule = (await h.store.getSchedules('10000'))[0];
     expect(schedule.lastPeriodEnd).toBe('2026-11-01T00:00:00.000Z');
     expect(schedule.lastRefusal).toBeUndefined();
   });
@@ -673,18 +682,16 @@ describe('review round 1', () => {
     expect((await h.store.getJob(r.reportId))?.lease).toBeUndefined();
   });
 
-  it('L-2: a stalled job leaves no report object and no token chunk behind', async () => {
+  it('L-2: a job that stalled during the assembly leaves no report object behind (token chunks: N-3)', async () => {
     let now = new Date('2026-11-08T03:00:00.000Z');
     const h = seeded({ now: () => now });
     const r = await h.manager.create(caller(), ADMIN, RANGE) as { reportId: string };
     const job = (await h.store.getJob(r.reportId))!;
     await h.objects.putOnce(objectKey('10000', r.reportId, 'report.json'), '{}');
-    const tokenChunks = await h.store.saveTokens(r.reportId, ['pty_a']);
-    await h.store.saveJob({ ...job, state: 'RUNNING', tokenChunks });
+    await h.store.saveJob({ ...job, state: 'RUNNING' });
     now = new Date('2026-11-08T06:00:00.000Z');
     expect(await h.manager.daily(Date.now() + 540_000, false)).toMatchObject({ stalled: 1 });
     expect(Array.from(h.objects.objects.keys())).toEqual([]);
-    expect(await h.store.loadTokens(r.reportId, 1)).toEqual([]);
   });
 
   it('L-3: the hourly sweep removes a people file older than 24 hours and keeps a younger one', async () => {
@@ -717,3 +724,97 @@ describe('review round 1', () => {
     expect(detail.ok && 'manifest' in detail).toBe(false);
   });
 });
+
+describe('review round 2', () => {
+  it('N-2: a renamed project key keeps every issue in the report (MOVED is decided by the project id)', async () => {
+    const h = seeded();
+    const r = await h.manager.create(caller(), ADMIN, RANGE) as { reportId: string };
+    h.appJira.currentKey = 'PAYMENTS';
+    await h.drain();
+    const data = JSON.parse(filesOf(h, r.reportId).json);
+    expect(data.issues.map((i: { issueId: string }) => i.issueId)).toEqual(['101', '102', '103']);
+    expect(data.notReadable).toEqual([]);
+    // The renamed project sees its reports and schedules by id, and the daily run uses the new key.
+    const renamed = { ...caller(), projectKey: 'PAYMENTS' };
+    const view = ok<ReportsView>(await h.manager.list(renamed, ADMIN, {}));
+    expect(view.reports.map(e => e.reportId)).toEqual([r.reportId]);
+    expect((await h.manager.detail(renamed, ADMIN, { reportId: r.reportId }) as { download: { allowed: boolean } }).download.allowed).toBe(true);
+    await h.manager.saveSchedule(renamed, ADMIN, { cadence: 'MONTHLY' });
+    expect(await h.store.projectKey('10000')).toBe('PAYMENTS');
+    expect(await h.store.getSchedules('10000')).toHaveLength(1);
+  });
+
+  it('N-1: the not-read issues are counted on the row, named with their keys, and are CSV rows', async () => {
+    const h = seeded();
+    const r = await h.manager.create(caller(), ADMIN, RANGE) as { reportId: string };
+    h.appJira.dropIds.add('102');
+    await h.drain();
+    expect(ok<ReportsView>(await h.manager.list(caller(), ADMIN, {})).reports[0].notReadable).toBe(1);
+    const csv = filesOf(h, r.reportId).csv.split('\r\n');
+    expect(csv.find(l => l.includes('"NOT_READ"'))).toContain('"NOT_READ","PAY-102","102"');
+    expect(csv.find(l => l.includes('"NOT_READ"'))).toContain('NOT_READABLE: in the scope, but FourRealities could not read it');
+  });
+
+  it('N-3: a commit that fails after the tokens were written leaves no token chunk once the job fails', async () => {
+    const h = seeded();
+    const r = await h.manager.create(caller(), ADMIN, RANGE) as { reportId: string };
+    h.pushes.length = 0;
+    jest.spyOn(h.store, 'commitDone').mockRejectedValueOnce(new Error('kvs down'));
+    await h.manager.work(r.reportId, Date.now() + 780_000);
+    expect(Array.from(h.storage.store.keys()).filter(k => k.startsWith(`fr:rj:${r.reportId}:tokens:`))).toHaveLength(1);
+    await h.drain();
+    expect((await h.store.getIndex('10000'))[0]).toMatchObject({ state: 'FAILED', error: { code: 'STORE_FAILED' } });
+    expect(Array.from(h.storage.store.keys()).filter(k => k.startsWith(`fr:rj:${r.reportId}`))).toEqual([]);
+    expect(Array.from(h.objects.objects.keys())).toEqual([]);
+  });
+
+  it('N-5: an event that meets another event\'s lease tries again when the lease ends; the same event takes over', async () => {
+    const h = seeded();
+    const r = await h.manager.create(caller(), ADMIN, RANGE) as { reportId: string };
+    h.pushes.length = 0;
+    const job = (await h.store.getJob(r.reportId))!;
+    await h.store.saveJob({ ...job, state: 'RUNNING', lease: { owner: 'event-1', until: new Date(Date.now() + 100_000).toISOString() } });
+    await h.manager.work(r.reportId, Date.now() + 780_000, 'event-2');
+    expect(h.pushes).toEqual([{ reportId: r.reportId, delay: expect.any(Number) }]);
+    expect(h.pushes[0].delay).toBeGreaterThanOrEqual(100);
+    expect((await h.store.getJob(r.reportId))?.state).toBe('RUNNING');
+    await h.manager.work(r.reportId, Date.now() + 780_000, 'event-1');
+    expect((await h.store.getJob(r.reportId))?.state).toBe('DONE');
+  });
+
+  it('N-7: production with no valid key makes no report: the create is refused, and a job fails with the reason', async () => {
+    const h = seeded({ keys: false });
+    h.runtime.environment = () => 'production';
+    expect(await h.manager.create(caller(), ADMIN, RANGE)).toMatchObject({ ok: false, error: { code: 'NO_SIGNING_KEY' } });
+    expect(await h.store.getIndex('10000')).toEqual([]);
+    h.runtime.environment = () => 'development';
+    const r = await h.manager.create(caller(), ADMIN, RANGE) as { reportId: string };
+    h.runtime.environment = () => 'production';
+    await h.drain();
+    expect((await h.store.getIndex('10000'))[0]).toMatchObject({ state: 'FAILED', error: { code: 'NO_SIGNING_KEY' } });
+    expect(Array.from(h.objects.objects.keys())).toEqual([]);
+    expect(await h.store.getJob(r.reportId)).toBeUndefined();
+  });
+
+  it('N-7: a scheduled period on a production site without a key is kept and the schedule says why', async () => {
+    const NOW = new Date('2026-11-08T03:00:00.000Z');
+    const h = seeded({ keys: false, now: () => NOW });
+    h.runtime.environment = () => 'production';
+    await h.store.saveSchedules('10000', [{ scheduleId: 's1', cadence: 'MONTHLY', filters: { fieldIds: [], actors: [] }, createdBy: 'pty_x', createdAt: '2026-10-15T00:00:00.000Z' }]);
+    await h.store.registerProject('10000', 'PAY');
+    await h.manager.daily(Date.now() + 540_000, true);
+    expect((await h.store.getSchedules('10000'))[0]).toMatchObject({ lastRefusal: { code: 'NO_SIGNING_KEY' } });
+    expect((await h.store.getSchedules('10000'))[0].lastPeriodEnd).toBeUndefined();
+  });
+
+  it('L-5: the previous-report check uses the event deadline', async () => {
+    const h = seeded();
+    await makeReport(h);
+    const spy = jest.spyOn(h.appJira, 'presentAmong');
+    const r = await h.manager.create(caller(), ADMIN, RANGE) as { reportId: string };
+    const deadline = Date.now() + 700_000;
+    await h.manager.work(r.reportId, deadline);
+    expect(spy).toHaveBeenCalledWith(expect.any(Array), deadline);
+  });
+});
+

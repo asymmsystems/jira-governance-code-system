@@ -92,15 +92,18 @@ export class FakeJira implements JiraReportAccessor {
   dropIds = new Set<string>();
   /** Ids that are in another project now. */
   movedIds = new Set<string>();
+  /** The project's key as Jira gives it now (a key rename keeps the project id: review N-2). */
+  currentKey = 'PAY';
   changelogStatus = 200;
   constructor(private readonly issues: () => IssueSpec[], private readonly principal: 'user' | 'app') {}
   private visible(): IssueSpec[] {
     return this.issues().filter(i => !i.deleted && (this.principal === 'app' || !i.hidden));
   }
-  async searchIds(jql: string, limit: number): Promise<{ status: number; ids: string[] }> {
+  async searchIds(jql: string, limit: number): Promise<{ status: number; ids: string[]; keys: Record<string, string> }> {
     this.calls.push(`search:${jql}`);
-    if (this.searchStatus !== 200) return { status: this.searchStatus, ids: [] };
-    return { status: 200, ids: [...this.visible().map(i => i.id), ...this.extraIds].slice(0, limit + 1) };
+    if (this.searchStatus !== 200) return { status: this.searchStatus, ids: [], keys: {} };
+    const ids = [...this.visible().map(i => i.id), ...this.extraIds].slice(0, limit + 1);
+    return { status: 200, ids, keys: Object.fromEntries(ids.map(id => [id, `PAY-${id}`])) };
   }
   async presentAmong(ids: string[]): Promise<Set<string> | null> {
     this.calls.push(`present:${ids.length}`);
@@ -122,7 +125,7 @@ export class FakeJira implements JiraReportAccessor {
         const spec = byId.get(id)!;
         return {
           facts: makeFacts({ issueId: id, issueKey: `PAY-${id}`, summary: `Summary of ${id} with private words`, statusCategory: 'done', properties: spec.properties || {} }),
-          basics: { issueId: id, issueKey: `PAY-${id}`, issueTypeName: 'Story', created: spec.created || '2026-10-05T00:00:00.000Z', statusId: '3', projectKey: this.movedIds.has(id) ? 'OTHER' : 'PAY' }
+          basics: { issueId: id, issueKey: `PAY-${id}`, issueTypeName: 'Story', created: spec.created || '2026-10-05T00:00:00.000Z', statusId: '3', projectKey: this.movedIds.has(id) ? 'OTHER' : this.currentKey, projectId: this.movedIds.has(id) ? '20000' : '10000' }
         };
       })
     };

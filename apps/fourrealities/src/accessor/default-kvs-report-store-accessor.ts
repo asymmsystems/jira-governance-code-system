@@ -8,13 +8,14 @@
  *   fr:rj:{reportId}                        ReportJob
  *   fr:rj:{reportId}:ids:{i}                issue ids, at most 5,000 per value (kept while the report is kept)
  *   fr:rj:{reportId}:tokens:{i}             party tokens of the report, at most 4,000 per value
- *   fr:p:{projectKey}:rep:{createdAt}:{id}  one ReportIndexEntry per report, at most 200 per project; each writer
- *                                           writes only its own report's key (review M-1). The older single value
- *                                           fr:p:{projectKey}:reports is moved to these keys when it is read.
- *   fr:p:{projectKey}:reports:head          ChainLink of the newest DONE report
- *   fr:p:{projectKey}:schedules             ReportSchedule[], at most 5
- *   fr:rt:{projectKey}:{deletedAt}:{seq}    ReportTombstone, written once
- *   fr:reports:projects                     { projectKey: projectId } of the projects with reports or schedules
+ *   Every project record is keyed by the Jira project id, which a key rename does not change (review N-2).
+ *   fr:rp:{projectId}:rep:{createdAt}:{id}  one ReportIndexEntry per report, at most 200 per project; each writer
+ *                                           writes only its own report's key (review M-1)
+ *   fr:rp:{projectId}:head                  ChainLink of the newest DONE report
+ *   fr:rp:{projectId}:schedules             ReportSchedule[], at most 5
+ *   fr:rt:{projectId}:{deletedAt}:{seq}     ReportTombstone, written once
+ *   fr:reports:project-ids                  { projectId: current projectKey } of the projects with reports or schedules
+ *   Records of the development builds 7.7.0 and 7.8.0 (keyed by project key) are not read (review N-4).
  *   fr:tmp:{id}                             a temporary people file (Object Store cannot list its objects)
  */
 
@@ -23,8 +24,8 @@ import { StorageProvider } from '../contract/accessors';
 import { ReportStoreAccessor } from '../contract/reports';
 import { queryAll } from './kvs-v2-exception';
 
-const PROJECTS = 'fr:reports:projects';
-const entryKey = (projectKey: string, e: ReportIndexEntry) => `fr:p:${projectKey}:rep:${e.createdAt}:${e.reportId}`;
+const PROJECTS = 'fr:reports:project-ids';
+const entryKey = (projectId: string, e: ReportIndexEntry) => `fr:rp:${projectId}:rep:${e.createdAt}:${e.reportId}`;
 
 async function writeAll(storage: StorageProvider, sets: Array<{ key: string; value: unknown }>): Promise<void> {
   if (storage.transact) {
@@ -100,54 +101,51 @@ export class DefaultKvsReportStoreAccessor implements ReportStoreAccessor {
   }
 
   /** The project's entries, newest first. */
-  async getIndex(projectKey: string): Promise<ReportIndexEntry[]> {
-    const legacy = await this.storage.get<ReportIndexEntry[]>(`fr:p:${projectKey}:reports`);
-    if (legacy) {
-      for (const e of legacy) await this.putEntry(projectKey, e);
-      await this.storage.delete(`fr:p:${projectKey}:reports`);
-    }
-    const rows = (await queryAll(this.storage, `fr:p:${projectKey}:rep:`)).map(r => r.value as ReportIndexEntry);
-    return rows.sort((x, y) => (x.createdAt < y.createdAt ? 1 : x.createdAt > y.createdAt ? -1 : x.reportId < y.reportId ? 1 : -1));
+  async getIndex(projectId: string): Promise<ReportIndexEntry[]> {
+    const rows = (await queryAll(this.storage, `fr:rp:${projectId}:rep:`)).map(r => r.value as ReportIndexEntry);
+    // Newest first by creation time, then by report id: one comparison of the two keys.
+    const key = (e: ReportIndexEntry) => `${e.createdAt} ${e.reportId}`;
+    return rows.sort((x, y) => Number(key(x) < key(y)) - Number(key(x) > key(y)));
   }
 
-  async putEntry(projectKey: string, entry: ReportIndexEntry): Promise<void> {
-    await this.storage.set(entryKey(projectKey, entry), entry);
+  async putEntry(projectId: string, entry: ReportIndexEntry): Promise<void> {
+    await this.storage.set(entryKey(projectId, entry), entry);
   }
 
-  async deleteEntry(projectKey: string, entry: ReportIndexEntry): Promise<void> {
-    await this.storage.delete(entryKey(projectKey, entry));
+  async deleteEntry(projectId: string, entry: ReportIndexEntry): Promise<void> {
+    await this.storage.delete(entryKey(projectId, entry));
   }
 
   /** Makes the index exactly these entries (tests and tools; the Manager writes one entry at a time). */
-  async saveIndex(projectKey: string, entries: ReportIndexEntry[]): Promise<void> {
-    const keep = new Set(entries.slice(0, REPORT_LIMITS.reportsPerProject).map(e => entryKey(projectKey, e)));
-    for (const r of await queryAll(this.storage, `fr:p:${projectKey}:rep:`)) if (!keep.has(r.key)) await this.storage.delete(r.key);
-    for (const e of entries.slice(0, REPORT_LIMITS.reportsPerProject)) await this.putEntry(projectKey, e);
+  async saveIndex(projectId: string, entries: ReportIndexEntry[]): Promise<void> {
+    const keep = new Set(entries.slice(0, REPORT_LIMITS.reportsPerProject).map(e => entryKey(projectId, e)));
+    for (const r of await queryAll(this.storage, `fr:rp:${projectId}:rep:`)) if (!keep.has(r.key)) await this.storage.delete(r.key);
+    for (const e of entries.slice(0, REPORT_LIMITS.reportsPerProject)) await this.putEntry(projectId, e);
   }
 
-  getHead(projectKey: string): Promise<ChainLink | undefined> {
-    return this.storage.get<ChainLink>(`fr:p:${projectKey}:reports:head`);
+  getHead(projectId: string): Promise<ChainLink | undefined> {
+    return this.storage.get<ChainLink>(`fr:rp:${projectId}:head`);
   }
 
-  commitDone(job: ReportJob, projectKey: string, entry: ReportIndexEntry, head: ChainLink): Promise<void> {
+  commitDone(job: ReportJob, projectId: string, entry: ReportIndexEntry, head: ChainLink): Promise<void> {
     return writeAll(this.storage, [
       { key: `fr:rj:${job.reportId}`, value: job },
-      { key: entryKey(projectKey, entry), value: entry },
-      { key: `fr:p:${projectKey}:reports:head`, value: head }
+      { key: entryKey(projectId, entry), value: entry },
+      { key: `fr:rp:${projectId}:head`, value: head }
     ]);
   }
 
-  async getSchedules(projectKey: string): Promise<ReportSchedule[]> {
-    return (await this.storage.get<ReportSchedule[]>(`fr:p:${projectKey}:schedules`)) || [];
+  async getSchedules(projectId: string): Promise<ReportSchedule[]> {
+    return (await this.storage.get<ReportSchedule[]>(`fr:rp:${projectId}:schedules`)) || [];
   }
 
-  async saveSchedules(projectKey: string, schedules: ReportSchedule[]): Promise<void> {
-    await this.storage.set(`fr:p:${projectKey}:schedules`, schedules.slice(0, REPORT_LIMITS.schedulesPerProject));
+  async saveSchedules(projectId: string, schedules: ReportSchedule[]): Promise<void> {
+    await this.storage.set(`fr:rp:${projectId}:schedules`, schedules.slice(0, REPORT_LIMITS.schedulesPerProject));
   }
 
-  async addTombstone(projectKey: string, tombstone: ReportTombstone): Promise<void> {
+  async addTombstone(projectId: string, tombstone: ReportTombstone): Promise<void> {
     for (let seq = 0; seq < 100; seq++) {
-      const key = `fr:rt:${projectKey}:${tombstone.deletedAt}:${seq}`;
+      const key = `fr:rt:${projectId}:${tombstone.deletedAt}:${seq}`;
       if (this.storage.setIfAbsent) {
         if (await this.storage.setIfAbsent(key, tombstone)) return;
       } else if ((await this.storage.get(key)) === undefined) {
@@ -158,22 +156,23 @@ export class DefaultKvsReportStoreAccessor implements ReportStoreAccessor {
     throw new Error('No free tombstone key');
   }
 
-  async listTombstones(projectKey: string): Promise<ReportTombstone[]> {
-    return (await queryAll(this.storage, `fr:rt:${projectKey}:`)).map(r => r.value as ReportTombstone).sort((a, b) => (a.deletedAt < b.deletedAt ? 1 : a.deletedAt > b.deletedAt ? -1 : 0));
+  async listTombstones(projectId: string): Promise<ReportTombstone[]> {
+    return (await queryAll(this.storage, `fr:rt:${projectId}:`)).map(r => r.value as ReportTombstone).sort((a, b) => Number(a.deletedAt < b.deletedAt) - Number(a.deletedAt > b.deletedAt));
   }
 
   async projects(): Promise<string[]> {
     return Object.keys((await this.storage.get<Record<string, string>>(PROJECTS)) || {}).sort();
   }
 
-  async registerProject(projectKey: string, projectId: string): Promise<void> {
+  /** Records the project's current key; a renamed project keeps its id and gets its new key. */
+  async registerProject(projectId: string, projectKey: string): Promise<void> {
     const map = (await this.storage.get<Record<string, string>>(PROJECTS)) || {};
-    if (map[projectKey] === projectId) return;
-    await this.storage.set(PROJECTS, { ...map, [projectKey]: projectId });
+    if (map[projectId] === projectKey) return;
+    await this.storage.set(PROJECTS, { ...map, [projectId]: projectKey });
   }
 
-  async projectId(projectKey: string): Promise<string | undefined> {
-    return ((await this.storage.get<Record<string, string>>(PROJECTS)) || {})[projectKey];
+  async projectKey(projectId: string): Promise<string | undefined> {
+    return ((await this.storage.get<Record<string, string>>(PROJECTS)) || {})[projectId];
   }
 
   async addTmp(id: string, entry: TmpObject): Promise<void> {
