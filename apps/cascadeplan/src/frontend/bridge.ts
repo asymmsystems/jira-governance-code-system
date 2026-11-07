@@ -14,6 +14,7 @@ import { invoke, router, view } from '@forge/bridge';
 import { classifyResult } from '../ui/result';
 import { showErrorBanner } from './banner';
 import { recordChanges } from './changes-panel';
+import { logFailure } from '../logger';
 
 /**
  * Issues written in the last minute. Jira's search is eventually consistent, so every call sends
@@ -72,7 +73,7 @@ async function callOnce(fnName: string, rawPayload: Record<string, unknown>): Pr
     rememberWrites(res);
     noteCreateOutcome(signature, payload.createId, true);
   } catch (err: any) {
-    console.error('Forge resolver error:', fnName, err);
+    logFailure(`resolver ${fnName}`, err);
     noteCreateOutcome(signature, payload.createId, false);
     // C7: a write call that ended without an answer (for example a timeout) may already have written
     // to Jira, so the planner never says it failed or succeeded: the result is unknown. A create made

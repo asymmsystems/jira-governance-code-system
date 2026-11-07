@@ -19,6 +19,7 @@ import { publishAttestation } from '../integrity/attestation';
 import { templateKey, StoredTemplate } from '../settings/template-store';
 import { projectConfigKey, ProjectConfig } from '../settings/project-config';
 import { APPROVER_POLICY_KEY } from '../storage/policy-repository';
+import { logFailure } from '../log';
 
 export const MIGRATION_KEY = 'dg:pd:migration';
 const PAGE = 20;
@@ -196,7 +197,7 @@ export async function reportPersonalData(
     migration = (await migrateLegacyPersonalData(storage, timeLeft)).phase;
   } catch (err) {
     // The report must still run; the pass continues next week from its saved place.
-    console.error(`DefinitionGuard: the personal data pass stopped: ${(err as Error)?.message}`);
+    logFailure('the personal data pass stopped', err);
     migration = 'failed';
   }
   const parties = new PartyStore(storage);
@@ -216,6 +217,6 @@ export const personalDataTrigger = async (): Promise<void> => {
     const r = await reportPersonalData();
     console.log(`DefinitionGuard personal data report: ${r.reported} account(s) reported, ${r.closed} closed and erased, pass ${r.migration}.`);
   } catch (err) {
-    console.error(`DefinitionGuard: the personal data report failed: ${(err as Error)?.message}`);
+    logFailure('the personal data report failed', err);
   }
 };

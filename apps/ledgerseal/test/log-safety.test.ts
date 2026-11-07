@@ -3,14 +3,18 @@
  *
  * Marketplace security questionnaire question 8: a backend log line about a failure holds only the error's name,
  * code and status. Each of the seven places that log a caught error is made to fail with an error whose message
- * holds a secret; no log call may receive that message, the error object or its stack.
+ * holds a secret; no log call may receive that message, the error object or its stack. The seven frontend
+ * places log through the same logFailure, and a source rule checks every console call in src/.
  *
  * @author Fahim Farook
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import { onIssueChanged, onIssueDeleted, personalDataReport, sealIssue, verifyIssue } from '../src/index';
 import { convertAll } from '../src/service/conversion';
-import { errorSummary } from '../src/service/log';
+import { errorSummary, logFailure } from '../src/service/log';
+import { consoleViolations } from './support/console-rule';
 import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
 
 jest.mock('@forge/api', () => ({ __esModule: true, default: {}, route: () => '', privacy: { reportPersonalData: jest.fn() } }));
@@ -119,5 +123,61 @@ describe('Q8 errorSummary', () => {
     expect(errorSummary(SECRET)).toBe('string');
     expect(errorSummary(undefined)).toBe('undefined');
     expect(errorSummary(null)).toBe('object');
+  });
+});
+
+const APP = path.join(__dirname, '..');
+
+describe('Q8 the seven frontend failure log lines', () => {
+  const sites: Array<[string, string]> = [
+    ['context.tsx', "logFailure('seal state failed', err);"],
+    ['admin.tsx', "logFailure('could not load the approver groups', err);"],
+    ['admin.tsx', "logFailure('could not save the approver groups', err);"],
+    ['index.tsx', "logFailure('could not load the seal state', err);"],
+    ['index.tsx', "logFailure('action failed', err);"],
+    ['index.tsx', "logFailure('history failed', err);"],
+    ['index.tsx', "logFailure('evidence failed', err);"]
+  ];
+
+  it.each(sites)('src/frontend/%s: %s drops the secret', (file, call) => {
+    const text = fs.readFileSync(path.join(APP, 'src/frontend', file), 'utf8');
+    expect(text).toContain("import { logFailure } from '../service/log';");
+    expect(text).toContain(call);
+    const what = /logFailure\('([^']+)'/.exec(call)![1];
+    logFailure(what, secretError());
+    expect(failureLines()).toEqual([`LedgerSeal: ${what}: Error code=KVS_DOWN`]);
+  });
+
+  it('no frontend file logs any other way', () => {
+    for (const file of ['context.tsx', 'admin.tsx', 'index.tsx']) {
+      const text = fs.readFileSync(path.join(APP, 'src/frontend', file), 'utf8');
+      expect(text).not.toMatch(/console\./);
+      expect((text.match(/logFailure\(/g) || []).length).toBe(sites.filter(([f]) => f === file).length);
+    }
+  });
+});
+
+const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap(f => (f.isDirectory() ? walk(path.join(d, f.name)) : [path.join(d, f.name)]));
+
+describe('Q8 source rule: no console call is given an error message, String(...) or an error object', () => {
+  it('holds for every source file in src/', () => {
+    const faults = walk(path.join(APP, 'src'))
+      .filter(f => /\.(tsx?|jsx?)$/.test(f))
+      .flatMap(f => consoleViolations(fs.readFileSync(f, 'utf8')).map(v => `${path.relative(APP, f)} ${v}`));
+    expect(faults).toEqual([]);
+  });
+
+  it('finds an unsafe call', () => {
+    expect(consoleViolations("try { x(); } catch (oops) { console.error('failed', oops); }")).toEqual(['line 1: console.error is given the error oops']);
+    expect(consoleViolations('console.error(`failed: ${(err as Error)?.message}`);')).toEqual(["line 1: console.error is given an error's message", 'line 1: console.error is given the error err']);
+    expect(consoleViolations("console.warn('failed', String(x));")).toEqual(['line 1: console.warn is given String(...)']);
+    expect(consoleViolations('console.error(`x ${errorSummary(err)}`);')).toEqual([]);
+  });
+
+  it('is the same file in every app', () => {
+    const mine = fs.readFileSync(path.join(__dirname, 'support/console-rule.ts'), 'utf8');
+    for (const app of ['cascadeplan', 'definitionguard', 'ledgerseal', 'fourrealities']) {
+      expect(fs.readFileSync(path.join(APP, '..', app, 'test/support/console-rule.ts'), 'utf8')).toBe(mine);
+    }
   });
 });

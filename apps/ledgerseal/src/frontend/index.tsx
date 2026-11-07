@@ -22,6 +22,7 @@ import ForgeReconciler, {
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
 import { DECLARATION, MEANINGS } from '../domain/declaration';
+import { logFailure } from '../service/log';
 import { buildPanelView, formatTime, historyLabel, PanelView } from './view-model';
 import {
   ActionRow,
@@ -71,7 +72,7 @@ export const LedgerSealPanel: React.FC = () => {
     try {
       setResult(await invoke('verify-issue-api', {}));
     } catch (err) {
-      console.error('Failed to load seal state', err);
+      logFailure('could not load the seal state', err);
       // A failed load is an error state, never "not sealed" (LS-12)
       setLoadFailed(true);
       setResult(null);
@@ -122,7 +123,7 @@ export const LedgerSealPanel: React.FC = () => {
       setHistory(null);
       await loadState();
     } catch (err) {
-      console.error('LedgerSeal action failed', err);
+      logFailure('action failed', err);
       setActionError('LedgerSeal could not save this. Nothing was saved. Try again.');
     } finally {
       setSubmitting(false);
@@ -137,7 +138,7 @@ export const LedgerSealPanel: React.FC = () => {
       setHistory([...before, ...(page?.entries ?? [])]);
       setHistoryNext(page?.nextFromSeq ?? null);
     } catch (err) {
-      console.error('LedgerSeal: history failed', err);
+      logFailure('history failed', err);
       setHistoryError('LedgerSeal could not load the history. Try again.');
     }
   };
@@ -160,7 +161,7 @@ export const LedgerSealPanel: React.FC = () => {
     try {
       setEvidence(JSON.stringify(await invoke('seal-evidence-api', {}), null, 2));
     } catch (err) {
-      console.error('LedgerSeal: evidence failed', err);
+      logFailure('evidence failed', err);
       setEvidenceError('LedgerSeal could not load the evidence record. Try again.');
     }
   };
