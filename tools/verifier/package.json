@@ -8,7 +8,7 @@
     "ledgerseal-verify": "./verify-evidence.mjs"
   },
   "scripts": {
-    "test": "node --test test/verify.test.mjs",
+    "test": "node --test test/verify.test.mjs test/format2.test.mjs",
     "self-test": "node verify-evidence.mjs --self-test"
   },
   "keywords": [

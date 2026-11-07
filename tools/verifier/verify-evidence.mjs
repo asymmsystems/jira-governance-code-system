@@ -14,8 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * LedgerSeal open verifier (LedgerSeal spec v2 section 11). Checks a LedgerSeal evidence export without access to the app:
- * the snapshot hash, the history chain, the attestation's certificate, the attestation's status and the Ed25519 signature.
+ * LedgerSeal open verifier (LedgerSeal spec v2 section 11, spec v4 section 15.7). Checks a LedgerSeal evidence export without
+ * access to the app: the snapshot hash, the history chain, the attestation's certificate, the attestation's status and the
+ * Ed25519 signature. For format 2 (ledgerseal-evidence/2) it also checks the signing policies and that every signature
+ * made under a code-signing policy carries its code check.
  * It also names each redaction entry (LS_REDACTED) in the history, where account ids were replaced by party tokens.
  * Uses the Node standard library only.
  *
@@ -93,6 +95,9 @@ function verifyEvidence(evidence, publicKeyPem) {
   }
   check(sigOk, `signature (${att.keyId ?? 'no key id'})`);
 
+  // Format 2 only (LedgerSeal spec v4 section 15.7); format 1 output is unchanged
+  if (evidence.format === 'ledgerseal-evidence/2') verifyFormat2(evidence, history, check);
+
   // A redaction entry is part of the chain, so the checks above cover it; it is named so a reader sees it
   const notes = history
     .filter(row => row.statusId === 'LS_REDACTED')
@@ -100,6 +105,45 @@ function verifyEvidence(evidence, publicKeyPem) {
   if (evidence.parties) notes.push('NOTE "parties" maps party tokens to account ids (null: a closed account). It is not signed and no check uses it.');
   for (const line of [...results, ...notes]) console.log(line);
   return results.every(line => line.startsWith('PASS'));
+}
+
+const SIGNING_METHOD = 'LS_ATL_EMAIL_OTP_1';
+const SIGNED_TRANSITIONS = new Set(['SEAL', 'RESEAL', 'REVOKE', 'SIGN_STAGE', 'REJECT']);
+
+/** The policy versions, oldest first, each hashing to its policyHash and naming the one before (check 10a). */
+function checkPolicies(policies) {
+  let prev = GENESIS;
+  return policies.every((p, i) => {
+    const ok = p.version === i + 1 && p.prevPolicyHash === prev && sha256(canonicalJson(without(p, 'policyHash'))) === p.policyHash;
+    prev = p.policyHash;
+    return ok;
+  });
+}
+
+/**
+ * Check 10: every seal, reseal, revoke, stage signature and rejection made while a code-signing policy that names the
+ * snapshot's project was on carries data.signing with two components and that policy's version and hash. A row that
+ * claims code signing must name a policy of the evidence.
+ */
+function checkCodeSigning(history, policies, projectId) {
+  const bad = [];
+  for (const row of history) {
+    if (!SIGNED_TRANSITIONS.has(row.transitionName)) continue;
+    const inForce = [...policies].reverse().find(p => String(p.fromDate) <= String(row.statusDatetime));
+    const required = Boolean(inForce && inForce.enabled && Array.isArray(inForce.projectIds) && inForce.projectIds.includes(projectId));
+    const s = row.data?.signing;
+    const named = s ? policies.find(p => p.version === s.policyVersion) : null;
+    const wellFormed = s && s.method === SIGNING_METHOD && s.components === 2 && named && named.policyHash === s.policyHash;
+    if (required ? !wellFormed || s.policyVersion !== inForce.version : s && !wellFormed) bad.push(row.seq);
+  }
+  return bad;
+}
+
+function verifyFormat2(evidence, history, check) {
+  const policies = [...(evidence.signingPolicies || [])].sort((a, b) => a.version - b.version);
+  check(checkPolicies(policies), `signing policies (${policies.length} versions)`);
+  const bad = checkCodeSigning(history, policies, String(evidence.snapshot?.projectId ?? ''));
+  check(bad.length === 0, `code signing on every signature that needs it${bad.length ? ` (entries ${bad.join(', ')})` : ''}`);
 }
 
 function main(args) {

@@ -1,14 +1,15 @@
 /**
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  *
- * The LedgerSeal admin page: a Jira admin chooses the approver groups.
+ * The LedgerSeal admin page: a Jira admin chooses the approver groups, and sets up code signing (ADR-016).
  * Adheres to the Uniform Permission Management Standard using AdminPolicyPanel from @asymm/jira-ui.
  *
  * @author Fahim Farook
  */
 
 import React, { useState, useEffect } from 'react';
-import ForgeReconciler from '@forge/react';
+import ForgeReconciler, { Tab, TabList, TabPanel, Tabs } from '@forge/react';
+import { SecurityAlertsTab, SigningCodesTab } from './admin-signing';
 import { invoke } from '@forge/bridge';
 import { logFailure } from '../service/log';
 import {
@@ -18,7 +19,7 @@ import {
   savedGroups
 } from '@asymm/jira-ui';
 
-export const LedgerSealAdmin: React.FC = () => {
+export const ApproverGroupsTab: React.FC = () => {
   const [response, setResponse] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [chosen, setChosen] = useState<GroupChoice[]>([]);
@@ -97,6 +98,26 @@ export const LedgerSealAdmin: React.FC = () => {
     />
   );
 };
+
+/** The admin page: one tab per setting. */
+export const LedgerSealAdmin: React.FC = () => (
+  <Tabs id="ledgerseal-admin-tabs">
+    <TabList>
+      <Tab>Approver groups</Tab>
+      <Tab>Signing codes</Tab>
+      <Tab>Security alerts</Tab>
+    </TabList>
+    <TabPanel>
+      <ApproverGroupsTab />
+    </TabPanel>
+    <TabPanel>
+      <SigningCodesTab />
+    </TabPanel>
+    <TabPanel>
+      <SecurityAlertsTab />
+    </TabPanel>
+  </Tabs>
+);
 
 export default LedgerSealAdmin;
 

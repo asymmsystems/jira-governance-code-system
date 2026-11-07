@@ -16,7 +16,7 @@ const MAX_QUERY_CHARS = 100;
 const MAX_GROUP_ID_CHARS = 128;
 
 /** The caller's account id when the caller is a Jira admin, or the failure to return. */
-async function adminCaller(context: any, deps: LedgerSealDeps): Promise<string | SealFailure> {
+export async function adminCaller(context: any, deps: LedgerSealDeps): Promise<string | SealFailure> {
   const accountId = context?.accountId ? String(context.accountId) : '';
   if (!accountId) return fail('NO_IDENTITY');
   if (licenseInactive(context)) return fail('LICENSE_INACTIVE');

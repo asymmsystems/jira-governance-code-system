@@ -8,7 +8,7 @@ import api from '@forge/api';
 import Resolver from '@forge/resolver';
 import { kvs, WhereConditions } from '@forge/kvs';
 import { validateTransitionGate } from './validator/workflow-validator';
-import { SealRepository, StorageProvider } from './storage/seal-repository';
+import { SealRepository, SecretStore, StorageProvider, WriteOptions } from './storage/seal-repository';
 import { PartyRepository } from './storage/party-repository';
 import { createJiraClient } from './jira/jira-client';
 import { signerFromEnvironment } from './domain/attestation';
@@ -26,29 +26,53 @@ import {
   verifyIssueFlow
 } from './service/ledger';
 import { getPolicyFlow, searchGroupsFlow, setPolicyFlow } from './service/policy-admin';
+import { ackAlertFlow, getSigningPolicyFlow, requestCodeFlow, setSigningPolicyFlow, signingAlertsFlow, SigningAuthority, unlockFlow } from './service/signing';
+import { isApprover } from './service/approver';
+import { fail } from './service/ledger';
 import { deleteIssueRecords, ReportFn, weeklyPersonalDataJob } from './service/personal-data';
 import { privacy } from '@forge/api';
 import { logFailure } from './service/log';
 
 export { LedgerSealDeps } from './service/ledger';
 
-class ForgeKvsProvider implements StorageProvider {
+/** Forge KVS `ttl` from a number of seconds. */
+function ttlOf(options?: WriteOptions) {
+  return options?.ttlSeconds ? { ttl: { value: options.ttlSeconds, unit: 'SECONDS' as const } } : {};
+}
+
+class ForgeKvsProvider implements StorageProvider, SecretStore {
   async get<T>(key: string): Promise<T | undefined> {
     const val = await kvs.get(key);
     return val as T;
   }
 
-  async set(key: string, value: any): Promise<void> {
-    await kvs.set(key, value);
+  async set(key: string, value: any, options?: WriteOptions): Promise<void> {
+    if (options?.ttlSeconds) await kvs.set(key, value, ttlOf(options));
+    else await kvs.set(key, value);
+  }
+
+  async getSecret(key: string): Promise<any> {
+    return kvs.getSecret(key);
+  }
+
+  async createSecretIfAbsent(key: string, value: any): Promise<boolean> {
+    try {
+      await kvs.setSecret(key, value, { keyPolicy: 'FAIL_IF_EXISTS' });
+      return true;
+    } catch (err) {
+      // Spike S-7: an existing secret answers KEY_CONFLICT; that is a lost race, not an error
+      if ((await kvs.getSecret(key)) !== undefined) return false;
+      throw err;
+    }
   }
 
   async delete(key: string): Promise<void> {
     await kvs.delete(key);
   }
 
-  async createIfAbsent(key: string, value: any): Promise<boolean> {
+  async createIfAbsent(key: string, value: any, options?: WriteOptions): Promise<boolean> {
     try {
-      await kvs.set(key, value, { keyPolicy: 'FAIL_IF_EXISTS' });
+      await kvs.set(key, value, { keyPolicy: 'FAIL_IF_EXISTS', ...ttlOf(options) });
       return true;
     } catch (err) {
       // A failed create on an existing key is a lost race, not an error.
@@ -80,9 +104,11 @@ class ForgeKvsProvider implements StorageProvider {
 }
 
 export function forgeDeps(asUser: boolean): LedgerSealDeps {
+  const store = new ForgeKvsProvider();
   return {
     jira: createJiraClient(api.asApp(), asUser ? api.asUser() : null),
-    storage: new ForgeKvsProvider(),
+    storage: store,
+    secrets: store,
     signer: signerFromEnvironment(process.env)
   };
 }
@@ -336,6 +362,42 @@ export async function personalDataReport(
   }
 }
 
+/**
+ * Who may ask for a signing code (ADR-016): an approver for seal, approval of changes, revoke and the transition
+ * signature. Stage actions are decided by the route (ADR-017).
+ */
+export const signingAuthority: SigningAuthority = async (deps, issueId, action) => {
+  if (action === 'SIGN_STAGE' || action === 'REJECT') return fail('NOT_APPROVER');
+  const permission = await isApprover(deps.jira, deps.storage, issueId);
+  if (!permission.ok) return fail(permission.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
+  return permission.value ? null : fail('NOT_APPROVER');
+};
+
+/** Code signing (ADR-016): the code request, and the admin page flows. */
+export async function requestSigningCode(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return requestCodeFlow(payload, context, deps, signingAuthority);
+}
+
+export async function getSigningPolicy(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return getSigningPolicyFlow(context, deps);
+}
+
+export async function setSigningPolicy(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return setSigningPolicyFlow(payload, context, deps);
+}
+
+export async function getSigningAlerts(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return signingAlertsFlow(context, deps);
+}
+
+export async function ackSigningAlert(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return ackAlertFlow(payload, context, deps);
+}
+
+export async function unlockSigning(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return unlockFlow(payload, context, deps);
+}
+
 // Register Forge Resolver for UI Kit 2 bridge invocations
 const resolver = new Resolver();
 
@@ -369,6 +431,30 @@ resolver.define('approver-policy-set-api', async (req) => {
 
 resolver.define('approver-group-search-api', async (req) => {
   return await searchApproverGroups(req.payload, req.context);
+});
+
+resolver.define('signing-code-request-api', async (req) => {
+  return await requestSigningCode(req.payload, req.context);
+});
+
+resolver.define('signing-policy-get-api', async (req) => {
+  return await getSigningPolicy(req.payload, req.context);
+});
+
+resolver.define('signing-policy-set-api', async (req) => {
+  return await setSigningPolicy(req.payload, req.context);
+});
+
+resolver.define('signing-alerts-api', async (req) => {
+  return await getSigningAlerts(req.payload, req.context);
+});
+
+resolver.define('signing-alert-ack-api', async (req) => {
+  return await ackSigningAlert(req.payload, req.context);
+});
+
+resolver.define('signing-unlock-api', async (req) => {
+  return await unlockSigning(req.payload, req.context);
 });
 
 export const handler = resolver.getDefinitions();

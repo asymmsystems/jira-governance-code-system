@@ -1,0 +1,5 @@
+PASS snapshot hash
+FAIL history chain (1 entries)
+PASS attestation names the newest seal
+PASS attestation status matches the history (SEAL_VALID)
+FAIL signature (test-key)
