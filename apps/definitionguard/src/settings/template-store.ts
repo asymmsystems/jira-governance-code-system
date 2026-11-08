@@ -10,6 +10,7 @@
 import { StorageProvider } from '../storage/checklist-repository';
 import { getTemplateForCategory } from '../domain/checklist-engine';
 import { toDodTemplate } from '../domain/dod-template';
+import { permissionKeyOf } from '../domain/roles';
 import { ChecklistCategory, ChecklistItemTemplate, DodTemplate } from '../domain/models';
 import { ITEM_ID_PATTERN } from '../domain/input-rules';
 
@@ -105,7 +106,11 @@ export class TemplateStore {
     return await this.storage.get<StoredTemplate>(templateKey(projectId, issueTypeId));
   }
 
-  /** Validates, then saves with revisionNumber + 1. Throws with every problem when invalid. */
+  /**
+   * Validates, then saves with revisionNumber + 1. Throws with every problem when invalid.
+   * A payload without waiverPermission keeps the saved template's waiver permission (DG-1); only a
+   * new template without one gets the default, Administer projects.
+   */
   public async save(projectId: string, issueTypeId: string, input: any, actorAccountId: string): Promise<StoredTemplate> {
     const errors = validateTemplate(input);
     if (errors.length > 0) throw new Error(errors.join(' '));
@@ -115,7 +120,9 @@ export class TemplateStore {
       name: input.name.trim(),
       description: input.description || '',
       version: (previous?.revisionNumber || 0) + 1,
-      waiverPermission: input.waiverPermission,
+      waiverPermission: input.waiverPermission !== undefined
+        ? input.waiverPermission
+        : previous ? permissionKeyOf(previous.waiverRoleTypeId) : undefined,
       items: input.items.map(normaliseItem)
     });
     const saved: StoredTemplate = { ...dod, projectId, issueTypeId, lastModifiedDate: new Date().toISOString(), lastModifiedByPartyId: actorAccountId };

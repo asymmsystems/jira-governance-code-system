@@ -182,3 +182,11 @@ To stop the churn seen in B-03 to B-14, these are frozen for B-21:
 4. Re-run the harness and all section 11.2 checks. One commit, `Refs: B-21`.
 
 Estimated effort: 1 to 2 days of session time.
+
+## 11. Change log
+
+| Date | Change | Why |
+|---|---|---|
+| 2026-11-08 | DG-1. The settings page shows and sends the template's waiver permission (`waiverPermission`, a field v2 already defines and `validateTemplate` already checks), with the choices Administer projects (default), Resolve issues and Transition issues. `TemplateStore.save` keeps the saved waiver permission when a payload leaves the field out. | The page sent no `waiverPermission`, so every save reset a non-default waiver permission to Administer projects. The payload contract of section 8 is unchanged: the field was optional in it and still is. |
+| 2026-11-08 | DG-2. The issue panel shows "Show more" while `getHistory` returns a `nextCursor`, and adds the next page of 100 events below the rows shown. Each page is a `getHistory` call with the Browse projects check as the user, as v2 section "Resolver contracts" states. | The panel read only the first page, so an issue with more than 100 events showed only its first 100. |
+

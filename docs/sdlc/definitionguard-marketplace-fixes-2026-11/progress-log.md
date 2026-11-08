@@ -228,3 +228,12 @@ Nothing below has been run by this session. Run in `apps/definitionguard` of thi
    ```
    Add the validator to a Done transition, open an issue: the panel shows "Licence not active"; a tick is refused ("Your DefinitionGuard licence is not active. Ask your Jira admin."); a move to Done with open items goes through. Repeat with `--license active` (the move is blocked) and `--license trial`.
 5. **CI** (`.github/workflows/apps-ci.yml`, main session): run "Dependency audit (production, high and critical)" for every app (drop `if: matrix.app == 'cascadeplan'`, `working-directory: apps/${{ matrix.app }}`). DefinitionGuard passes it (exit 0).
+
+## 2026-11-08: user guide code gaps DG-1 and DG-2
+
+Branch `fix/definitionguard-guide-gaps`, from `master` at `04d36a2`. The gaps are listed in `jira-governance/.tmp/cache/user-guides/code-gaps.md` (found while writing the user guides).
+
+| Gap | What changed | Proof |
+|---|---|---|
+| DG-1 | The settings page has "Who else can waive", with Administer projects (default), Resolve issues and Transition issues; a saved key not in the list is shown and kept. The page always sends `waiverPermission`, and `TemplateStore.save` keeps the saved value when a payload leaves it out. | `test/settings/project-templates.test.ts` (a save without the field keeps `RESOLVE_ISSUES`; an items-only edit from the page keeps `TRANSITION_ISSUES`; a change to Resolve issues and back to the default), `test/ui/template-editor.test.ts` |
+| DG-2 | The issue panel shows "Showing N of M events, oldest first." and **Show more** while the history has a next page; each page is a `getHistory` call with the cursor, checked for Browse projects as the user like the first. | `test/resolvers/history-paging.test.ts` (250 events in 3 pages, each once; Browse checked first on page 2; page 2 refused when Browse is denied, with no storage read) |

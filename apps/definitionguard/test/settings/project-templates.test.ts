@@ -18,6 +18,7 @@ import { validateTemplate, TemplateStore, templateKey, MAX_TEMPLATE_BYTES } from
 import { getSettings, saveTemplate, settingsHandler } from '../../src/settings/settings-resolvers';
 import { getIssueChecklist, toggleChecklistItem, resetChecklist, validateTransition, setGlobalStorageProvider } from '../../src/index';
 import { PermissionDeniedError, getProjectPermissions } from '../../src/security/permissions';
+import { addItem, editorFromTemplate, setWaiverPermission, toTemplatePayload } from '../../src/ui/template-editor';
 
 const PROJECT = { id: '10000', key: 'DEMO' };
 const settingsCtx = (accountId = '712020:admin') => ({ accountId, extension: { project: PROJECT } });
@@ -159,6 +160,44 @@ describe('B-06 settings resolvers', () => {
     expect(res.template.description).toBe('');
     expect(res.template.items[0]).toEqual({ id: 'security-signoff', title: 'Security sign-off', isMandatory: true, category: 'SECURITY', description: 'Signed by security', evidenceRequired: true, notAssignee: true, requiredPermission: 'RESOLVE_ISSUES' });
     expect(res.template.items[1]).toEqual({ id: 'docs', title: 'Docs updated', isMandatory: false, category: 'DOCUMENTATION' });
+  });
+
+  it('DG-1: a save without waiverPermission keeps a non-default waiver permission', async () => {
+    await saveTemplate({ issueTypeId: '10004', template: { ...goodTemplate, waiverPermission: 'RESOLVE_ISSUES' } }, settingsCtx(), storage);
+    // An older page, or any caller, that leaves the field out.
+    const res: any = await saveTemplate({ issueTypeId: '10004', template: { ...goodTemplate, name: 'Renamed DoD' } }, settingsCtx(), storage);
+    expect(res.template.version).toBe(2);
+    expect(res.template.waiverPermission).toBe('RESOLVE_ISSUES');
+    expect(storage.read(templateKey('10000', '10004')).waiverRoleTypeId).toBe('JIRA_PERM_RESOLVE_ISSUES');
+    const s: any = await getSettings({}, settingsCtx(), storage);
+    expect(s.templates['10004'].waiverPermission).toBe('RESOLVE_ISSUES');
+  });
+
+  it('DG-1: the settings page payload keeps a non-default waiver permission when only the items change', async () => {
+    await saveTemplate({ issueTypeId: '10004', template: { ...goodTemplate, waiverPermission: 'TRANSITION_ISSUES' } }, settingsCtx(), storage);
+    const view = (await getSettings({}, settingsCtx(), storage) as any).templates['10004'];
+    const editor = addItem(editorFromTemplate(view), 'Release notes');
+    const res: any = await saveTemplate({ issueTypeId: '10004', template: toTemplatePayload(editor) }, settingsCtx(), storage);
+    expect(res.template.items.map((i: any) => i.id)).toEqual(['security-signoff', 'docs', 'release-notes']);
+    expect(res.template.waiverPermission).toBe('TRANSITION_ISSUES');
+  });
+
+  it('DG-1: changing the waiver permission saves it, and choosing the default again stores the default role', async () => {
+    await saveTemplate({ issueTypeId: '10004', template: goodTemplate }, settingsCtx(), storage);
+    expect(storage.read(templateKey('10000', '10004')).waiverRoleTypeId).toBe('PROJECT_ADMIN');
+    let view = (await getSettings({}, settingsCtx(), storage) as any).templates['10004'];
+    let res: any = await saveTemplate({ issueTypeId: '10004', template: toTemplatePayload(setWaiverPermission(editorFromTemplate(view), 'RESOLVE_ISSUES')) }, settingsCtx(), storage);
+    expect(res.template.waiverPermission).toBe('RESOLVE_ISSUES');
+    expect(storage.read(templateKey('10000', '10004')).waiverRoleTypeId).toBe('JIRA_PERM_RESOLVE_ISSUES');
+    view = (await getSettings({}, settingsCtx(), storage) as any).templates['10004'];
+    res = await saveTemplate({ issueTypeId: '10004', template: toTemplatePayload(setWaiverPermission(editorFromTemplate(view), 'ADMINISTER_PROJECTS')) }, settingsCtx(), storage);
+    expect(res.template.waiverPermission).toBeUndefined();
+    expect(storage.read(templateKey('10000', '10004')).waiverRoleTypeId).toBe('PROJECT_ADMIN');
+  });
+
+  it('DG-1: a new template without waiverPermission gets the default, Administer projects', async () => {
+    const saved = await new TemplateStore(storage).save('10000', '10005', goodTemplate, 'pseudo-1');
+    expect(saved.waiverRoleTypeId).toBe('PROJECT_ADMIN');
   });
 
   it('refuses without a project context', async () => {
