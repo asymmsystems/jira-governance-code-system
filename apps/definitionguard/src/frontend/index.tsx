@@ -20,9 +20,9 @@ import ForgeReconciler, {
   CodeBlock
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
-import { IssueChecklistState, ChecklistAuditEvent } from '../domain/models';
+import { IssueChecklistState } from '../domain/models';
 import { logFailure } from '../log';
-import { buildPanelViewModel, historyRows, panelErrorText, Attribution } from '../ui/panel-view-model';
+import { buildPanelViewModel, historyRows, panelErrorText, Attribution, HistoryPageData, appendHistoryPage, historyShownText } from '../ui/panel-view-model';
 import {
   AppSurface,
   PanelHeader,
@@ -38,11 +38,7 @@ import {
 } from '@asymm/jira-ui';
 
 type Evidence = { url?: string; note?: string };
-type HistoryPage = {
-  auditTrail?: ChecklistAuditEvent[];
-  chain?: { ok: boolean; message: string; limit: string };
-  signature?: { signed: boolean; keyId: string | null; note: string };
-};
+type HistoryPage = HistoryPageData;
 
 const Who: React.FC<{ who?: Attribution }> = ({ who }) =>
   who ? (who.kind === 'user' ? <User accountId={who.accountId} /> : <Text as="span">{who.text}</Text>) : null;
@@ -539,6 +535,28 @@ export const DefinitionGuardPanel: React.FC = () => {
                 </ListRow>
               ))}
             </Stack>
+          )}
+
+          {history?.nextCursor && (
+            <ActionRow>
+              <Text as="span" size="small" color={TEXT_ROLE.secondary}>
+                {historyShownText(history)}
+              </Text>
+              <Button
+                appearance="default"
+                spacing="compact"
+                isDisabled={loading || busyId === 'history-more'}
+                onClick={() =>
+                  run('load more history', 'history-more', async () => {
+                    // The next page goes through the same Browse check as the first (getHistory).
+                    const next = (await invoke('getHistory', { cursor: history.nextCursor })) as unknown as HistoryPage;
+                    setHistory(appendHistoryPage(history, next));
+                  })
+                }
+              >
+                Show more
+              </Button>
+            </ActionRow>
           )}
         </Stack>
       </Section>

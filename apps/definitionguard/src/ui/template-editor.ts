@@ -22,6 +22,29 @@ export const PERMISSION_OPTIONS: Array<{ label: string; value: string }> = [
   { label: 'Administer projects', value: 'ADMINISTER_PROJECTS' }
 ];
 
+/** The Jira permission that lets a user waive an item, when that user is not an approver. */
+export const DEFAULT_WAIVER_PERMISSION = 'ADMINISTER_PROJECTS';
+
+/**
+ * Waiver permission choices: the permission keys the item choices offer (a waiver always needs one,
+ * so "No extra permission" is not a choice). Administer projects is the default.
+ */
+export const WAIVER_PERMISSION_OPTIONS: Array<{ label: string; value: string }> = [
+  { label: 'Administer projects (default)', value: DEFAULT_WAIVER_PERMISSION },
+  ...PERMISSION_OPTIONS.filter(o => o.value !== '' && o.value !== DEFAULT_WAIVER_PERMISSION)
+];
+
+/**
+ * The choices for one template. A saved permission that is not in the list (set before this page
+ * offered the choice) is shown with its key in plain words and a note: the server accepts only the
+ * listed choices (DG-1a), so a save asks for one of them.
+ */
+export function waiverPermissionOptions(current: string): Array<{ label: string; value: string }> {
+  if (!current || WAIVER_PERMISSION_OPTIONS.some(o => o.value === current)) return WAIVER_PERMISSION_OPTIONS;
+  const words = current.toLowerCase().split('_').join(' ');
+  return [...WAIVER_PERMISSION_OPTIONS, { label: `${words.charAt(0).toUpperCase() + words.slice(1)} (no longer accepted: choose another)`, value: current }];
+}
+
 export interface EditorItem extends ChecklistItemTemplate {
   key: string; // stable React key, not saved
 }
@@ -29,6 +52,8 @@ export interface EditorItem extends ChecklistItemTemplate {
 export interface EditorState {
   name: string;
   description: string;
+  /** Jira permission key of the template's waiver permission; always sent, so a save never resets it (DG-1). */
+  waiverPermission: string;
   items: EditorItem[];
 }
 
@@ -44,10 +69,11 @@ export function itemIdFor(title: string, taken: string[]): string {
 }
 
 export function editorFromTemplate(t?: ChecklistTemplate): EditorState {
-  if (!t) return { name: '', description: '', items: [] };
+  if (!t) return { name: '', description: '', waiverPermission: DEFAULT_WAIVER_PERMISSION, items: [] };
   return {
     name: t.name,
     description: t.description || '',
+    waiverPermission: t.waiverPermission || DEFAULT_WAIVER_PERMISSION,
     items: t.items.map(i => ({ ...i, key: newKey() }))
   };
 }
@@ -65,6 +91,10 @@ export function updateItem(state: EditorState, key: string, patch: Partial<Check
   return { ...state, items: state.items.map(i => (i.key === key ? { ...i, ...patch } : i)) };
 }
 
+export function setWaiverPermission(state: EditorState, value: string): EditorState {
+  return { ...state, waiverPermission: value || DEFAULT_WAIVER_PERMISSION };
+}
+
 export function moveItem(state: EditorState, key: string, delta: -1 | 1): EditorState {
   const idx = state.items.findIndex(i => i.key === key);
   const to = idx + delta;
@@ -79,6 +109,7 @@ export function toTemplatePayload(state: EditorState) {
   return {
     name: state.name,
     description: state.description,
+    waiverPermission: state.waiverPermission || DEFAULT_WAIVER_PERMISSION,
     items: state.items.map(({ key: _key, ...item }) => {
       const out: any = { id: item.id, title: item.title, isMandatory: item.isMandatory, category: item.category };
       if (item.description) out.description = item.description;

@@ -238,3 +238,39 @@ export function historyRows(trail: ChecklistAuditEvent[] | undefined, format: (i
   });
 }
 
+
+/** One page of the issue history, as the getHistory resolver returns it. */
+export interface HistoryPageData {
+  auditTrail?: ChecklistAuditEvent[];
+  chain?: { ok: boolean; message: string; limit: string };
+  signature?: { signed: boolean; keyId: string | null; note: string };
+  /** Set when more events follow; passed back to getHistory for the next page. */
+  nextCursor?: string;
+  /** The number of events in the history (the newest seq). */
+  eventCount?: number;
+}
+
+/**
+ * The history shown after "Show more" (DG-2): the rows already shown, then the rows of the next page
+ * that are not shown yet, oldest first. The chain check, the signature, the count and the cursor come
+ * from the newest page, so the next "Show more" continues after it and stops on the last page.
+ */
+export function appendHistoryPage(shown: HistoryPageData | null, next: HistoryPageData): HistoryPageData {
+  if (!shown) return next;
+  const ids = new Set((shown.auditTrail || []).map(e => e.id));
+  return {
+    ...next,
+    auditTrail: [...(shown.auditTrail || []), ...(next.auditTrail || []).filter(e => !ids.has(e.id))]
+  };
+}
+
+/**
+ * * The line above "Show more", for example "Showing 100 of 150 events, oldest first.". Undefined when every event
+ * is shown (no cursor).
+ */
+export function historyShownText(page: HistoryPageData | null): string | undefined {
+  if (!page || !page.nextCursor) return undefined;
+  const shown = (page.auditTrail || []).length;
+  const total = Math.max(page.eventCount || 0, shown);
+  return `Showing ${shown} of ${total} events, oldest first.`;
+}

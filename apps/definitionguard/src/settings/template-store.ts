@@ -10,6 +10,7 @@
 import { StorageProvider } from '../storage/checklist-repository';
 import { getTemplateForCategory } from '../domain/checklist-engine';
 import { toDodTemplate } from '../domain/dod-template';
+import { permissionKeyOf } from '../domain/roles';
 import { ChecklistCategory, ChecklistItemTemplate, DodTemplate } from '../domain/models';
 import { ITEM_ID_PATTERN } from '../domain/input-rules';
 
@@ -30,6 +31,13 @@ const ITEM_FIELDS = new Set(['id', 'title', 'description', 'isMandatory', 'categ
 const ID_PATTERN = ITEM_ID_PATTERN;
 const PERMISSION_PATTERN = /^[A-Z_]{1,64}$/;
 
+/**
+ * The only waiver permissions a template may hold: the choices of the settings page (DG-1a).
+ * Any other key is refused, so a direct resolver call cannot widen who may waive.
+ */
+export const WAIVER_PERMISSIONS: readonly string[] = ['ADMINISTER_PROJECTS', 'RESOLVE_ISSUES', 'TRANSITION_ISSUES'];
+export const WAIVER_PERMISSION_INVALID = 'The waiver permission must be Administer projects, Resolve issues or Transition issues.';
+
 /** Returns every problem with the template, each naming the field. An empty list means valid. */
 export function validateTemplate(input: any): string[] {
   if (!input || typeof input !== 'object') return ['The template is missing.'];
@@ -40,8 +48,8 @@ export function validateTemplate(input: any): string[] {
   if (input.description !== undefined && (typeof input.description !== 'string' || input.description.length > 500)) {
     errors.push('The template description must be text of 500 characters or less.');
   }
-  if (input.waiverPermission !== undefined && (typeof input.waiverPermission !== 'string' || !PERMISSION_PATTERN.test(input.waiverPermission))) {
-    errors.push('The waiver permission must be a Jira permission key.');
+  if (input.waiverPermission !== undefined && (typeof input.waiverPermission !== 'string' || !WAIVER_PERMISSIONS.includes(input.waiverPermission))) {
+    errors.push(WAIVER_PERMISSION_INVALID);
   }
   const items = input.items;
   if (!Array.isArray(items) || items.length < 1 || items.length > MAX_ITEMS) {
@@ -105,7 +113,11 @@ export class TemplateStore {
     return await this.storage.get<StoredTemplate>(templateKey(projectId, issueTypeId));
   }
 
-  /** Validates, then saves with revisionNumber + 1. Throws with every problem when invalid. */
+  /**
+   * Validates, then saves with revisionNumber + 1. Throws with every problem when invalid.
+   * A payload without waiverPermission keeps the saved template's waiver permission (DG-1); only a
+   * new template without one gets the default, Administer projects.
+   */
   public async save(projectId: string, issueTypeId: string, input: any, actorAccountId: string): Promise<StoredTemplate> {
     const errors = validateTemplate(input);
     if (errors.length > 0) throw new Error(errors.join(' '));
@@ -115,7 +127,9 @@ export class TemplateStore {
       name: input.name.trim(),
       description: input.description || '',
       version: (previous?.revisionNumber || 0) + 1,
-      waiverPermission: input.waiverPermission,
+      waiverPermission: input.waiverPermission !== undefined
+        ? input.waiverPermission
+        : previous ? permissionKeyOf(previous.waiverRoleTypeId) : undefined,
       items: input.items.map(normaliseItem)
     });
     const saved: StoredTemplate = { ...dod, projectId, issueTypeId, lastModifiedDate: new Date().toISOString(), lastModifiedByPartyId: actorAccountId };

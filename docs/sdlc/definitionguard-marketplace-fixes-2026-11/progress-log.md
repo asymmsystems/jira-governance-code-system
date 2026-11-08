@@ -228,3 +228,22 @@ Nothing below has been run by this session. Run in `apps/definitionguard` of thi
    ```
    Add the validator to a Done transition, open an issue: the panel shows "Licence not active"; a tick is refused ("Your DefinitionGuard licence is not active. Ask your Jira admin."); a move to Done with open items goes through. Repeat with `--license active` (the move is blocked) and `--license trial`.
 5. **CI** (`.github/workflows/apps-ci.yml`, main session): run "Dependency audit (production, high and critical)" for every app (drop `if: matrix.app == 'cascadeplan'`, `working-directory: apps/${{ matrix.app }}`). DefinitionGuard passes it (exit 0).
+
+## 2026-11-08: user guide code gaps DG-1 and DG-2
+
+Branch `fix/definitionguard-guide-gaps`, from `master` at `04d36a2`. The gaps are listed in `jira-governance/.tmp/cache/user-guides/code-gaps.md` (found while writing the user guides).
+
+| Gap | What changed | Proof |
+|---|---|---|
+| DG-1 | The settings page has "Who else can waive", with Administer projects (default), Resolve issues and Transition issues; a saved key not in the list is shown and kept. The page always sends `waiverPermission`, and `TemplateStore.save` keeps the saved value when a payload leaves it out. | `test/settings/project-templates.test.ts` (a save without the field keeps `RESOLVE_ISSUES`; an items-only edit from the page keeps `TRANSITION_ISSUES`; a change to Resolve issues and back to the default), `test/ui/template-editor.test.ts` |
+| DG-2 | The issue panel shows "Showing N of M events, oldest first." and **Show more** while the history has a next page; each page is a `getHistory` call with the cursor, checked for Browse projects as the user like the first. | `test/resolvers/history-paging.test.ts` (250 events in 3 pages, each once; Browse checked first on page 2; page 2 refused when Browse is denied, with no storage read) |
+
+- **Gate:** `tsc` clean; 37 suites, 506 tests pass, coverage 99.25 % statements, 96.67 % branches, 98.38 % functions, 99.46 % lines (90 % branches per file enforced); `npm run build` clean; `npm audit --omit=dev --audit-level=high` exits 0 (7 moderate, the known `@forge/manifest` chain); `forge lint` (`@forge/cli@15.0.0`) "No issues found"; FSRT `6c821bd` built locally and run as `fsrt.yml` runs it: canary reported, 0 findings in both scans; Semgrep 1.182.1 (`docs/security/sast.md` command) 110 rules, 217 files, 0 findings.
+- **Deploy:** development only, version 7.3.0 from `f549fa7`, eligible for Runs on Atlassian (`forge eligibility`). Production untouched.
+
+### Review follow-up DG-1a (2026-11-08)
+
+- `validateTemplate` accepts only `ADMINISTER_PROJECTS`, `RESOLVE_ISSUES` and `TRANSITION_ISSUES` as the waiver permission (`WAIVER_PERMISSIONS`) and refuses any other key, before any write, with "The waiver permission must be Administer projects, Resolve issues or Transition issues." A stored key outside the list is no longer kept by a save from the page: the page shows it with "(no longer accepted: choose another)". Spec v3 section 11 has the row.
+- **Proof:** `test/settings/project-templates.test.ts` "DG-1a" (Browse projects, Edit issues, Schedule issues, Administer, lower case and empty are refused with no write, through the resolver and the store; the three offered keys save; the server list equals the page choices).
+- **Gate (after `npm ci`):** `tsc` clean; 37 suites, 507 tests pass, 99.3 % statements, 96.77 % branches (90 % per file holds); build clean; `npm audit --omit=dev --audit-level=high` exit 0; `forge lint` "No issues found"; FSRT 0 findings in both scans; Semgrep 0 findings.
+- **Deploy:** development only, version 7.4.0, eligible for Runs on Atlassian.

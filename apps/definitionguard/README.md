@@ -26,7 +26,7 @@ What the code does is described in `docs/spec/definitionguard-spec-v3.md` (domai
 ## Modules
 
 - `jira:issuePanel` `definitionguard-issue-panel`: the checklist.
-- `jira:projectSettingsPage` `definitionguard-project-settings`: templates per issue type, exempt statuses, re-sync, gate coverage. Project admins only.
+- `jira:projectSettingsPage` `definitionguard-project-settings`: templates per issue type (each with its waiver permission), exempt statuses, re-sync, gate coverage. Project admins only.
 - `jira:adminPage` `definitionguard-admin`: "DefinitionGuard approvers", the Jira groups whose members may waive, reopen waived items and reset. Jira admins only.
 - `jira:workflowValidator` `definitionguard-workflow-validator`: the gate. A Jira admin adds it to each transition in the workflow editor; the app cannot add it.
 - `trigger` `issue-deleted` (`avi:jira:deleted:issue`) and `scheduledTrigger` `personal-data-report` (weekly).

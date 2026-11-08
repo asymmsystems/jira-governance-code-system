@@ -13,6 +13,7 @@ import ForgeReconciler, {
   Checkbox,
   Heading,
   Inline,
+  Label,
   Select,
   SectionMessage,
   Spinner,
@@ -32,8 +33,10 @@ import {
   editorFromTemplate,
   moveItem,
   removeItem,
+  setWaiverPermission,
   toTemplatePayload,
-  updateItem
+  updateItem,
+  waiverPermissionOptions
 } from '../ui/template-editor';
 import { panelErrorText } from '../ui/panel-view-model';
 import { SPACE } from '@asymm/jira-ui';
@@ -259,6 +262,22 @@ export const SettingsPage: React.FC = () => {
           Add item
         </Button>
       </Inline>
+
+      <Stack space={SPACE.sub}>
+        <Label labelFor="dg-waiver-permission">Who else can waive</Label>
+        <Text>
+          Approvers can always waive an item. Users with this Jira permission on the issue can waive too, and reopen a
+          waived item. The template saves this choice; the default is Administer projects.
+        </Text>
+        <Box>
+          <Select
+            inputId="dg-waiver-permission"
+            options={waiverPermissionOptions(editor.waiverPermission)}
+            value={waiverPermissionOptions(editor.waiverPermission).find(o => o.value === editor.waiverPermission)}
+            onChange={(o: any) => setEditor(setWaiverPermission(editor, o?.value || ''))}
+          />
+        </Box>
+      </Stack>
 
       <Inline space={SPACE.item}>
         <Button appearance="primary" isDisabled={saving || !issueTypeId} onClick={save}>

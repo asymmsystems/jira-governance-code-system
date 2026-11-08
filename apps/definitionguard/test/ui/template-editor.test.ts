@@ -4,7 +4,7 @@
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
  */
-import { itemIdFor, editorFromTemplate, addItem, removeItem, updateItem, moveItem, toTemplatePayload, CATEGORY_OPTIONS, PERMISSION_OPTIONS } from '../../src/ui/template-editor';
+import { itemIdFor, editorFromTemplate, addItem, removeItem, updateItem, moveItem, toTemplatePayload, setWaiverPermission, waiverPermissionOptions, CATEGORY_OPTIONS, PERMISSION_OPTIONS, WAIVER_PERMISSION_OPTIONS, DEFAULT_WAIVER_PERMISSION } from '../../src/ui/template-editor';
 import { validateTemplate } from '../../src/settings/template-store';
 import { BUG_DEFINITION_OF_DONE } from '../../src/domain/checklist-engine';
 
@@ -17,7 +17,7 @@ describe('template editor', () => {
   });
 
   it('starts empty, or from a template', () => {
-    expect(editorFromTemplate()).toEqual({ name: '', description: '', items: [] });
+    expect(editorFromTemplate()).toEqual({ name: '', description: '', waiverPermission: 'ADMINISTER_PROJECTS', items: [] });
     const e = editorFromTemplate(BUG_DEFINITION_OF_DONE);
     expect(e.items.map(i => i.id)).toEqual(BUG_DEFINITION_OF_DONE.items.map(i => i.id));
     expect(new Set(e.items.map(i => i.key)).size).toBe(e.items.length);
@@ -55,5 +55,27 @@ describe('template editor', () => {
 
   it('offers every category the validator accepts', () => {
     expect(CATEGORY_OPTIONS.map(o => o.value).sort()).toEqual(['CODE_QUALITY', 'COMPLIANCE', 'DOCUMENTATION', 'SECURITY', 'TESTING']);
+  });
+
+  it('DG-1: the editor keeps the template\'s waiver permission, and the payload always sends it', () => {
+    const e = editorFromTemplate({ ...BUG_DEFINITION_OF_DONE, waiverPermission: 'RESOLVE_ISSUES' });
+    expect(e.waiverPermission).toBe('RESOLVE_ISSUES');
+    expect(toTemplatePayload(e).waiverPermission).toBe('RESOLVE_ISSUES');
+    // A template with no stored value shows and sends the default.
+    expect(toTemplatePayload(editorFromTemplate(BUG_DEFINITION_OF_DONE)).waiverPermission).toBe(DEFAULT_WAIVER_PERMISSION);
+    expect(toTemplatePayload({ ...e, waiverPermission: '' }).waiverPermission).toBe(DEFAULT_WAIVER_PERMISSION);
+    expect(setWaiverPermission(e, 'TRANSITION_ISSUES').waiverPermission).toBe('TRANSITION_ISSUES');
+    expect(setWaiverPermission(e, '').waiverPermission).toBe(DEFAULT_WAIVER_PERMISSION);
+  });
+
+  it('DG-1: waiver choices start with the default, accept only valid keys, and show a saved key that is not listed', () => {
+    expect(WAIVER_PERMISSION_OPTIONS[0]).toEqual({ label: 'Administer projects (default)', value: 'ADMINISTER_PROJECTS' });
+    expect(WAIVER_PERMISSION_OPTIONS.map(o => o.value)).toEqual(['ADMINISTER_PROJECTS', 'RESOLVE_ISSUES', 'TRANSITION_ISSUES']);
+    for (const o of WAIVER_PERMISSION_OPTIONS) {
+      expect(validateTemplate({ name: 'n', waiverPermission: o.value, items: [{ id: 'a', title: 'a', isMandatory: true, category: 'TESTING' }] })).toEqual([]);
+    }
+    expect(waiverPermissionOptions('RESOLVE_ISSUES')).toBe(WAIVER_PERMISSION_OPTIONS);
+    expect(waiverPermissionOptions('')).toBe(WAIVER_PERMISSION_OPTIONS);
+    expect(waiverPermissionOptions('SCHEDULE_ISSUES').slice(-1)).toEqual([{ label: 'Schedule issues (no longer accepted: choose another)', value: 'SCHEDULE_ISSUES' }]);
   });
 });
