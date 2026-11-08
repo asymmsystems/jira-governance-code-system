@@ -253,6 +253,36 @@ function changeRows(diffs: FieldDiff[], input: PanelInput): ChangeRowView[] {
   });
 }
 
+/** LS-1: what the panel says an attachment change was. */
+const ATTACHMENT_CHANGE: Record<string, string> = { ADDED: 'Added', REMOVED: 'Removed', MODIFIED: 'Replaced' };
+
+/**
+ * LS-1: one change row per attachment added, removed or replaced after the seal: the file name, the kind of change,
+ * and who did it and when where Jira says so.
+ */
+function attachmentRows(diffs: any[], input: PanelInput): ChangeRowView[] {
+  return (diffs || []).map(diff => {
+    const name = String(diff?.filename ?? 'an attachment');
+    const kind = ATTACHMENT_CHANGE[String(diff?.type)] ?? 'Changed';
+    const was = diff?.type === 'ADDED' ? '(none)' : name;
+    const now = diff?.type === 'REMOVED' ? '(removed)' : diff?.type === 'ADDED' ? name : `${name} (replaced)`;
+    return {
+      fieldId: `attachment:${String(diff?.attachmentId ?? name)}`,
+      fieldName: `Attachment: ${name}`,
+      was,
+      now,
+      wasFull: was,
+      nowFull: now,
+      showFullToggle: false,
+      detail: `${kind} after the seal`,
+      changedBy: Array.isArray(diff?.changedBy) ? diff.changedBy.map(String) : [],
+      changedByClosed: 0,
+      changedByUnknown: 0,
+      changedAt: formatTime(diff?.changedAt ?? null, input.locale, input.timeZone)
+    };
+  });
+}
+
 const NO_RIGHTS: ViewerRights = { canSeal: false, canApproveChanges: false, canRevoke: false, blockedBySelfChange: false };
 
 export function statusSentence(state: PanelState, changesCount: number, seal?: SealSummary): string {
@@ -351,7 +381,8 @@ export function buildPanelView(input: PanelInput): PanelView {
     askText = ASK_OTHER_APPROVER;
   }
 
-  const changes = ['CHANGED', 'CHANGED_BACK'].includes(state) ? changeRows(r?.tamperedFields, input) : [];
+  // LS-1: field rows and attachment rows; the "N items modified" sentence counts both
+  const changes = ['CHANGED', 'CHANGED_BACK'].includes(state) ? [...changeRows(r?.tamperedFields, input), ...attachmentRows(r?.tamperedAttachments, input)] : [];
   const view: PanelView = {
     state,
     title: TITLES[state],
