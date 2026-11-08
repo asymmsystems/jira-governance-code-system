@@ -10,12 +10,14 @@
 
 import * as crypto from 'crypto';
 import {
+  ALERT_KINDS,
   buildChainEntry,
   ChainEntry,
   ChainKind,
   hasValidPolicyHash,
   MAX_REQUESTS_PER_WINDOW,
   MAX_WRONG_PER_CHALLENGE,
+  REQUEST_MIN_INTERVAL_SECONDS,
   SigningChallenge,
   SigningPolicy,
   SigningState
@@ -26,6 +28,8 @@ export const SIGNING_KEY = 'ls3:sig:key';
 export const POLICY_KEY = 'ls3:sig:policy';
 const DAY = 86400;
 const MAX_CHAIN_PROBE = 200;
+/** The slot size of the 30-second request rule (review H-2). */
+const REQUEST_SLOT_SECONDS = 5;
 const pad = (n: number) => String(n).padStart(6, '0');
 
 export class SigningRepository {
@@ -88,27 +92,34 @@ export class SigningRepository {
     return this.storage.createIfAbsent(`ls3:sig:used:${challengeId}`, { at }, { ttlSeconds: DAY });
   }
 
-  /** Counts one wrong code on a challenge. Returns its number, or null once the challenge has had its maximum. */
-  async claimChallengeFailure(challengeId: string, at: string): Promise<number | null> {
+  /**
+   * Review H-2: takes one of the request's 3 attempt slots before the code is compared, so parallel attempts cannot
+   * compare more than 3 codes for one request. Returns the slot number, or null when the request is used up.
+   */
+  async claimAttempt(challengeId: string, at: string): Promise<number | null> {
     for (let n = 1; n <= MAX_WRONG_PER_CHALLENGE; n++) {
-      if (await this.storage.createIfAbsent(`ls3:sig:chalfail:${challengeId}:${n}`, { at }, { ttlSeconds: DAY })) return n;
+      if (await this.storage.createIfAbsent(`ls3:sig:attempt:${challengeId}:${n}`, { at }, { ttlSeconds: DAY })) return n;
     }
     return null;
   }
 
-  /** Counts one failure in the person's current series; returns how many failures in a row that makes. */
-  async claimFailure(partyId: string, series: number, at: string, issueId: string | null): Promise<number> {
-    for (let n = 1; ; n++) {
+  /**
+   * Review H-2: takes the next failure slot of the person's current series before the code is compared. A series
+   * has `threshold` slots; null means they are all taken, so the person is (or is about to be) locked.
+   */
+  async claimFailureSlot(partyId: string, series: number, threshold: number, at: string, issueId: string | null): Promise<number | null> {
+    for (let n = 1; n <= threshold; n++) {
       if (await this.storage.createIfAbsent(`ls3:sig:fail:${partyId}:${series}:${n}`, { at, issueId }, { ttlSeconds: 30 * DAY })) return n;
     }
+    return null;
   }
 
-  /** True once the request has had its maximum of wrong codes. */
-  async challengeVoid(challengeId: string): Promise<boolean> {
-    return Boolean(await this.storage.get(`ls3:sig:chalfail:${challengeId}:${MAX_WRONG_PER_CHALLENGE}`));
+  /** Gives a failure slot back (an attempt that turned out not to be a failure, such as a code already used). */
+  async releaseFailureSlot(partyId: string, series: number, n: number): Promise<void> {
+    await this.storage.delete(`ls3:sig:fail:${partyId}:${series}:${n}`);
   }
 
-  /** Counts a code request in its window. Returns false once the window has its maximum. */
+  /** Counts a code request in its 15-minute window. Returns false once the window has its maximum. */
   async claimRequest(partyId: string, window: number, at: string): Promise<boolean> {
     for (let n = 1; n <= MAX_REQUESTS_PER_WINDOW; n++) {
       if (await this.storage.createIfAbsent(`ls3:sig:req:${partyId}:${window}:${n}`, { at }, { ttlSeconds: DAY })) return true;
@@ -116,18 +127,82 @@ export class SigningRepository {
     return false;
   }
 
-  async getState(partyId: string): Promise<SigningState> {
+  /**
+   * Review H-2: the 30-second rule as claims. A request claims its own 5-second slot and the 6 slots after it (7
+   * keys). A second request less than 30 seconds later always meets a claimed slot and loses; the loser gives back
+   * the slots it took. Requests 35 seconds or more apart never meet. False when refused.
+   */
+  async claimRequestSlot(partyId: string, atMs: number, at: string): Promise<boolean> {
+    const first = Math.floor(atMs / (REQUEST_SLOT_SECONDS * 1000));
+    const taken: string[] = [];
+    for (let n = 0; n <= REQUEST_MIN_INTERVAL_SECONDS / REQUEST_SLOT_SECONDS; n++) {
+      const key = `ls3:sig:reqslot:${partyId}:${first + n}`;
+      if (!(await this.storage.createIfAbsent(key, { at }, { ttlSeconds: DAY }))) {
+        for (const mine of taken) await this.storage.delete(mine);
+        return false;
+      }
+      taken.push(key);
+    }
+    return true;
+  }
+
+  /**
+   * The person's current failure series. Series 1 needs no key; series k + 1 starts when its key is created (once),
+   * by a success or an unlock. The stored state only holds a hint, so a lost write cannot move the series back.
+   */
+  async currentSeries(partyId: string): Promise<number> {
     const stored = await this.storage.get(`ls3:sig:state:${partyId}`);
-    return stored || { partyId, series: 1, locked: false, lockedAt: null, lastRequestAt: null };
+    let series = Math.max(1, Number(stored?.series) || 1);
+    while (await this.storage.get(`ls3:sig:series:${partyId}:${series + 1}`)) series++;
+    return series;
   }
 
+  /** Starts the next series after `from` (once). False when another writer started it first. */
+  async advanceSeries(partyId: string, from: number, at: string): Promise<boolean> {
+    const started = await this.storage.createIfAbsent(`ls3:sig:series:${partyId}:${from + 1}`, { at });
+    const stored = (await this.storage.get(`ls3:sig:state:${partyId}`)) || {};
+    if (!(Number(stored.series) > from + 1)) await this.storage.set(`ls3:sig:state:${partyId}`, { ...stored, partyId, series: from + 1 });
+    return started;
+  }
+
+  /** The lock of a series, if any. A lock is a key created once; only a new series (an unlock) ends it. */
+  async lockOf(partyId: string, series: number): Promise<{ at: string } | null> {
+    return (await this.storage.get(`ls3:sig:lock:${partyId}:${series}`)) || null;
+  }
+
+  /** Locks the series. True when this call created the lock. */
+  lock(partyId: string, series: number, at: string): Promise<boolean> {
+    return this.storage.createIfAbsent(`ls3:sig:lock:${partyId}:${series}`, { at });
+  }
+
+  /** The person's state, derived from the claims: the current series, its lock, and the last request time. */
+  async getState(partyId: string): Promise<SigningState> {
+    const stored = (await this.storage.get(`ls3:sig:state:${partyId}`)) || {};
+    const series = await this.currentSeries(partyId);
+    const lock = await this.lockOf(partyId, series);
+    return { partyId, series, locked: Boolean(lock), lockedAt: lock?.at ?? null, lastRequestAt: stored.lastRequestAt ?? null };
+  }
+
+  /**
+   * Saves the last request time and the series hint. `locked: true` locks the current series (create-once); a lock
+   * is never cleared here: only `advanceSeries` (a success or an unlock) leaves it behind.
+   */
   async saveState(state: SigningState): Promise<void> {
-    await this.storage.set(`ls3:sig:state:${state.partyId}`, state);
+    const stored = (await this.storage.get(`ls3:sig:state:${state.partyId}`)) || {};
+    await this.storage.set(`ls3:sig:state:${state.partyId}`, { ...stored, partyId: state.partyId, series: Math.max(Number(stored.series) || 1, state.series), lastRequestAt: state.lastRequestAt });
+    if (state.locked) await this.lock(state.partyId, await this.currentSeries(state.partyId), state.lockedAt ?? new Date().toISOString());
   }
 
-  /** Every person with a stored state (for the locked list). */
-  async allStates(): Promise<SigningState[]> {
-    return (await this.storage.query('ls3:sig:state:')).map(r => r.value as SigningState);
+  /** Every person whose current series is locked (the admin page's locked list). Reads only the lock keys. */
+  async lockedStates(): Promise<SigningState[]> {
+    const out: SigningState[] = [];
+    for (const row of await this.storage.query('ls3:sig:lock:')) {
+      const m = /^ls3:sig:lock:(.+):(\d+)$/.exec(row.key);
+      if (!m) continue;
+      if ((await this.currentSeries(m[1])) !== Number(m[2])) continue;
+      out.push({ partyId: m[1], series: Number(m[2]), locked: true, lockedAt: row.value?.at ?? null, lastRequestAt: null });
+    }
+    return out;
   }
 
   /** Appends to the person's signing history. */
@@ -136,12 +211,47 @@ export class SigningRepository {
   }
 
   /** Appends to the site alert log. */
-  appendAlert(fields: Partial<ChainEntry> & { at: string; kind: ChainKind }): Promise<ChainEntry> {
-    return this.append('ls3:sig:alert:', 'ls3:sig:alerthead', fields);
+  async appendAlert(fields: Partial<ChainEntry> & { at: string; kind: ChainKind }): Promise<ChainEntry> {
+    await this.indexAlertsOnce();
+    const entry = await this.append('ls3:sig:alert:', 'ls3:sig:alerthead', fields);
+    if (ALERT_KINDS.includes(entry.kind)) await this.storage.set(`ls3:sig:open:${pad(entry.seq)}`, entry);
+    if (entry.kind === 'ACK' && entry.ackSeq) await this.storage.delete(`ls3:sig:open:${pad(entry.ackSeq)}`);
+    return entry;
   }
 
   async events(partyId: string): Promise<ChainEntry[]> {
     return (await this.storage.query(`ls3:sig:ev:${partyId}:`)).map(r => r.value as ChainEntry).sort((a, b) => a.seq - b.seq);
+  }
+
+  /**
+   * Review L-8: the open alerts, oldest first, from an index kept with the log (an alert adds its key, its
+   * acknowledgement removes it). The index is built once from the log on first use (records written before it).
+   */
+  async openAlerts(): Promise<ChainEntry[]> {
+    await this.indexAlertsOnce();
+    return (await this.storage.query('ls3:sig:open:')).map(r => r.value as ChainEntry).sort((a, b) => a.seq - b.seq);
+  }
+
+  async alert(seq: number): Promise<ChainEntry | null> {
+    return (await this.storage.get(`ls3:sig:alert:${pad(seq)}`)) || null;
+  }
+
+  async isAlertOpen(seq: number): Promise<boolean> {
+    await this.indexAlertsOnce();
+    return Boolean(await this.storage.get(`ls3:sig:open:${pad(seq)}`));
+  }
+
+  /** One admin alert per name (for example a rate rule in one window). False when it was raised already. */
+  claimAlertOnce(name: string, at: string): Promise<boolean> {
+    return this.storage.createIfAbsent(`ls3:sig:alertonce:${name}`, { at }, { ttlSeconds: DAY });
+  }
+
+  private async indexAlertsOnce(): Promise<void> {
+    if (await this.storage.get('ls3:sig:openindex')) return;
+    const all = await this.alerts();
+    const acked = new Set(all.filter(e => e.kind === 'ACK').map(e => e.ackSeq));
+    for (const e of all) if (ALERT_KINDS.includes(e.kind) && !acked.has(e.seq)) await this.storage.set(`ls3:sig:open:${pad(e.seq)}`, e);
+    await this.storage.set('ls3:sig:openindex', { at: new Date().toISOString() });
   }
 
   async alerts(): Promise<ChainEntry[]> {

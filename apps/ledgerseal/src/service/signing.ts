@@ -39,9 +39,9 @@ import { PartyRepository, PartyResolver } from '../storage/party-repository';
 import { SigningRepository } from '../storage/signing-repository';
 import { browseDenied, contextIssue, fail, LedgerSealDeps, licenseInactive, SealFailure } from './ledger';
 import { adminCaller } from './policy-admin';
+import { isApprover } from './approver';
+import { openStageFor } from './routes';
 
-/** Decides whether the caller may perform the action on the issue (approver, or a stage group for stage actions). */
-export type SigningAuthority = (deps: LedgerSealDeps, issueId: string, action: SigningAction, stageId: string | null, accountId: string) => Promise<SealFailure | null>;
 
 function repoOf(deps: LedgerSealDeps): SigningRepository {
   return new SigningRepository(deps.storage, deps.secrets ?? null);
@@ -68,10 +68,30 @@ async function record(repo: SigningRepository, partyId: string, kind: ChainKind,
 }
 
 /**
+ * Review L-7: who may ask for a code, checked directly in the flow (no callback): an approver for seal, approval of
+ * changes, revoke and the transition signature; a member of a group of an open stage of the issue's route for stage
+ * signatures and rejections. The caller's groups are read as the user before the route is read as the app.
+ */
+export async function codeRequestRight(deps: LedgerSealDeps, issueId: string, action: SigningAction, stageId: string | null): Promise<SealFailure | null> {
+  if (action === 'SIGN_STAGE' || action === 'REJECT') {
+    const groups = await deps.jira.getMyGroupIds();
+    if (!groups.ok) return fail(groups.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
+    const stage = await openStageFor(deps, issueId, stageId);
+    if (stage === 'unreachable') return fail('JIRA_UNREACHABLE');
+    if (stage === null) return fail('NOT_APPROVER');
+    if (stage === 'closed') return fail('STAGE_NOT_OPEN');
+    return stage.approverGroups.some(g => groups.value.includes(g.id)) ? null : fail('NOT_APPROVER');
+  }
+  const permission = await isApprover(deps.jira, deps.storage, issueId);
+  if (!permission.ok) return fail(permission.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
+  return permission.value ? null : fail('NOT_APPROVER');
+}
+
+/**
  * `signing-code-request-api` (spec v4 section 14.2). Sends a code only to a person who may perform the action, who is
  * not locked out and within the rate limits.
  */
-export async function requestCodeFlow(payload: any, context: any, deps: LedgerSealDeps, authority: SigningAuthority) {
+export async function requestCodeFlow(payload: any, context: any, deps: LedgerSealDeps) {
   const accountId = context?.accountId ? String(context.accountId) : '';
   if (!accountId) return fail('NO_IDENTITY');
   if (licenseInactive(context)) return fail('LICENSE_INACTIVE');
@@ -90,7 +110,7 @@ export async function requestCodeFlow(payload: any, context: any, deps: LedgerSe
   if ('invalid' in part11) return fail('POLICY_INVALID');
   if (!part11.on) return fail('NOT_PART11');
   if (!isDeclarationV2Approved()) return fail('DECLARATION_PENDING');
-  const refused = await authority(deps, issue.id, action, stageId, accountId);
+  const refused = await codeRequestRight(deps, issue.id, action, stageId);
   if (refused) return refused;
 
   const repo = repoOf(deps);
@@ -103,9 +123,15 @@ export async function requestCodeFlow(payload: any, context: any, deps: LedgerSe
   await parties.register([accountId], partyFn, at);
   const state = await repo.getState(party);
   if (state.locked) return fail('SIGNING_LOCKED');
-  const recent = state.lastRequestAt && now.getTime() - Date.parse(state.lastRequestAt) < REQUEST_MIN_INTERVAL_SECONDS * 1000;
-  if (recent || !(await repo.claimRequest(party, requestWindow(now.getTime()), at))) {
-    await record(repo, party, 'RATE_LIMITED', at, { issueId: issue.id, action });
+  // Review H-2: the 30-second rule and the 15-minute window are claims (create-once keys), not reads
+  const tooSoon = !(await repo.claimRequestSlot(party, now.getTime(), at));
+  if (tooSoon || !(await repo.claimRequest(party, requestWindow(now.getTime()), at))) {
+    // Review L-8: every refusal is in the person's history; the admin alert is raised once per rule and window, so a
+    // burst of refused requests cannot grow the alert log
+    await repo.appendEvent(party, { at, kind: 'RATE_LIMITED', byPartyId: party, issueId: issue.id, action });
+    if (await repo.claimAlertOnce(`${party}:${tooSoon ? 'interval' : 'window'}:${requestWindow(now.getTime())}`, at)) {
+      await repo.appendAlert({ at, kind: 'RATE_LIMITED', partyId: party, byPartyId: null, issueId: issue.id, action });
+    }
     return fail('RATE_LIMITED');
   }
 
@@ -145,48 +171,64 @@ export async function checkSigningCode(deps: LedgerSealDeps, check: SigningCheck
   if (!isDeclarationV2Approved()) return fail('DECLARATION_PENDING');
   const repo = repoOf(deps);
   const at = new Date().toISOString();
-  const state = await repo.getState(check.partyId);
-  if (state.locked) return fail('SIGNING_LOCKED');
+  // Review H-2: every limit below is a create-once claim taken BEFORE the code is compared, so parallel attempts
+  // cannot compare more codes than the sequential rules allow
+  const series = await repo.currentSeries(check.partyId);
+  if (await repo.lockOf(check.partyId, series)) return fail('SIGNING_LOCKED');
   const given = check.signing as { challengeId?: unknown; code?: unknown } | undefined;
   if (!given || typeof given !== 'object') return fail('SIGNING_REQUIRED');
   const challengeId = typeof given.challengeId === 'string' ? given.challengeId : '';
   const code = normaliseCode(given.code);
   const extra = { issueId: check.issueId, action: check.action, challengeId: challengeId || null };
+  const threshold = check.policy.lockoutThreshold;
 
-  const failure = async (kind: 'SIGN_FAIL' | 'CODE_REUSED', answer: 'SIGNING_FAILED' | 'CODE_REUSED', reason: string) => {
-    const n = await repo.claimFailure(check.partyId, state.series, at, check.issueId);
-    await record(repo, check.partyId, kind, at, { ...extra, reason });
-    if (n >= check.policy.lockoutThreshold) {
-      await repo.saveState({ ...state, locked: true, lockedAt: at });
-      await record(repo, check.partyId, 'LOCKED', at, { ...extra, reason: `${n} failed attempts in a row` });
-      return fail('SIGNING_LOCKED');
-    }
+  const lockNow = async (reason: string) => {
+    if (await repo.lock(check.partyId, series, at)) await record(repo, check.partyId, 'LOCKED', at, { ...extra, reason });
+    return fail('SIGNING_LOCKED');
+  };
+  /** Counts a failure in the person's series: in the slot already taken, or in a new one. */
+  const failure = async (answer: 'SIGNING_FAILED', reason: string, slot?: number | null) => {
+    const n = slot === undefined ? await repo.claimFailureSlot(check.partyId, series, threshold, at, check.issueId) : slot;
+    await record(repo, check.partyId, 'SIGN_FAIL', at, { ...extra, reason });
+    if (n === null || n >= threshold) return lockNow(`${threshold} failed attempts in a row`);
     return fail(answer);
   };
 
   const challenge = challengeId ? await repo.getChallenge(challengeId) : null;
+  // Review L-4: a code asked for to seal also approves changes and the other way round (the issue may change
+  // between the request and the signature); revoke, stage and transition codes stay bound to their action
+  const sameAction = (a: string, b: string) => a === b || (['SEAL', 'RESEAL'].includes(a) && ['SEAL', 'RESEAL'].includes(b));
   const matches =
     challenge &&
     challenge.partyId === check.partyId &&
     challenge.issueId === check.issueId &&
-    challenge.action === check.action &&
+    sameAction(challenge.action, check.action) &&
     (challenge.stageId ?? null) === (check.stageId ?? null);
-  if (!challenge || !matches) return failure('SIGN_FAIL', 'SIGNING_FAILED', 'unknown or foreign request');
+  if (!challenge || !matches) return failure('SIGNING_FAILED', 'unknown or foreign request');
   if (Date.parse(challenge.expiresAt) <= Date.parse(at)) {
     // An expired code is recorded but does not count towards the lockout: waiting is not an attack
     await repo.appendEvent(check.partyId, { at, kind: 'SIGN_FAIL', byPartyId: check.partyId, ...extra, reason: 'expired' });
     return fail('CODE_EXPIRED');
   }
-  // After 3 wrong codes the request is void: the fourth answer fails whatever the code (spec v4 section 14.3 step 3)
-  if (await repo.challengeVoid(challengeId)) return failure('SIGN_FAIL', 'SIGNING_FAILED', 'request void after wrong codes');
+  // At most 3 answers per request (spec v4 section 14.3 step 3): the slot is claimed before the comparison
+  const attempt = await repo.claimAttempt(challengeId, at);
+  if (attempt === null) return failure('SIGNING_FAILED', 'request used up after 3 answers');
+  // One failure slot of the series is taken before the comparison; a person with no slot left is locked
+  const slot = await repo.claimFailureSlot(check.partyId, series, threshold, at, check.issueId);
+  if (slot === null) return lockNow(`${threshold} failed attempts in a row`);
   const key = await repo.siteKey();
-  if (!code || !macEquals(codeMac(key, challengeId, code), challenge.codeMac)) {
-    await repo.claimChallengeFailure(challengeId, at);
-    return failure('SIGN_FAIL', 'SIGNING_FAILED', 'wrong code');
+  if (!code || !macEquals(codeMac(key, challengeId, code), challenge.codeMac)) return failure('SIGNING_FAILED', 'wrong code', slot);
+  // A parallel failure may have locked the series while this code was compared
+  if (await repo.lockOf(check.partyId, series)) return fail('SIGNING_LOCKED');
+  if (!(await repo.claimUse(challengeId, at))) {
+    // Review L-4: the right code sent twice (a double submit) is recorded and alerted, but is not a failed attempt
+    await repo.releaseFailureSlot(check.partyId, series, slot);
+    await record(repo, check.partyId, 'CODE_REUSED', at, { ...extra, reason: 'code used before' });
+    return fail('CODE_REUSED');
   }
-  if (!(await repo.claimUse(challengeId, at))) return failure('CODE_REUSED', 'CODE_REUSED', 'code used before');
-  // A success ends the run of failures in a row
-  await repo.saveState({ ...state, series: state.series + 1 });
+  // A success ends the run of failures in a row: its slot is given back and the next series starts (once)
+  await repo.releaseFailureSlot(check.partyId, series, slot);
+  await repo.advanceSeries(check.partyId, series, at);
   await repo.appendEvent(check.partyId, { at, kind: 'SIGN_OK', byPartyId: check.partyId, ...extra });
   return {
     ok: true,
@@ -249,6 +291,8 @@ export async function setSigningPolicyFlow(payload: any, context: any, deps: Led
   const previous = await repo.getPolicy();
   const policy = nextPolicy(previous, { enabled, projectIds, lockoutThreshold: lockout, declarationVersion: DECLARATION_V2.version, setByPartyId: party(caller), fromDate: at });
   if (!(await repo.savePolicy(policy))) return fail('CONFLICT', 'Another admin saved code signing a moment ago. Reload and try again.');
+  // Review L-5: every policy change (on, off, projects, lockout) is an alert for the other admins to see and acknowledge
+  await repo.appendAlert({ at, kind: 'POLICY_CHANGED', partyId: party(caller), byPartyId: party(caller), reason: `policy version ${policy.version}: ${policy.enabled ? 'on' : 'off'}` });
   return { ok: true as const, policy };
 }
 
@@ -257,16 +301,16 @@ export async function signingAlertsFlow(context: any, deps: LedgerSealDeps) {
   const caller = await adminCaller(context, deps);
   if (typeof caller !== 'string') return caller;
   const repo = repoOf(deps);
-  const all = await repo.alerts();
-  const acked = new Set(all.filter(e => e.kind === 'ACK').map(e => e.ackSeq));
-  const open = all.filter(e => ALERT_KINDS.includes(e.kind) && !acked.has(e.seq)).reverse().slice(0, 100);
+  // Review L-8: the page reads the open alerts only (an index kept with the log), not the whole log
+  const openAll = await repo.openAlerts();
+  const open = openAll.slice().reverse().slice(0, 100);
   const resolver = new PartyResolver(new PartyRepository(deps.storage));
   const alerts = await Promise.all(
     open.map(async e => ({ seq: e.seq, at: e.at, kind: e.kind, accountId: (await resolver.resolve(e.partyId)) ?? '', issueId: e.issueId, action: e.action, reason: e.reason }))
   );
-  const lockedStates = (await repo.allStates()).filter(s => s.locked);
+  const lockedStates = await repo.lockedStates();
   const locked = await Promise.all(lockedStates.map(async s => ({ accountId: (await resolver.resolve(s.partyId)) ?? '', lockedAt: s.lockedAt })));
-  return { ok: true as const, alerts, locked, openCount: alerts.length };
+  return { ok: true as const, alerts, locked, openCount: openAll.length };
 }
 
 /** `signing-alert-ack-api`: a Jira admin acknowledges one alert; the acknowledgement is a new chained entry. */
@@ -276,10 +320,9 @@ export async function ackAlertFlow(payload: any, context: any, deps: LedgerSealD
   const seq = Number(payload?.seq);
   if (!Number.isInteger(seq) || seq < 1) return fail('INVALID_REQUEST');
   const repo = repoOf(deps);
-  const all = await repo.alerts();
-  const alert = all.find(e => e.seq === seq && ALERT_KINDS.includes(e.kind));
-  if (!alert) return fail('INVALID_REQUEST', 'LedgerSeal: no such alert.');
-  if (all.some(e => e.kind === 'ACK' && e.ackSeq === seq)) return { ok: true as const, already: true };
+  const alert = await repo.alert(seq);
+  if (!alert || !ALERT_KINDS.includes(alert.kind)) return fail('INVALID_REQUEST', 'LedgerSeal: no such alert.');
+  if (!(await repo.isAlertOpen(seq))) return { ok: true as const, already: true };
   const parties = new PartyRepository(deps.storage);
   const party = await parties.partyForWrite();
   const at = new Date().toISOString();
@@ -305,7 +348,8 @@ export async function unlockFlow(payload: any, context: any, deps: LedgerSealDep
   if (!state.locked) return fail('INVALID_REQUEST', 'LedgerSeal: this person is not locked out.');
   const at = new Date().toISOString();
   await parties.register([caller], party, at);
-  await repo.saveState({ ...state, locked: false, lockedAt: null, series: state.series + 1 });
+  // The lock stays on its series as a record; the unlock starts the next series (once)
+  if (!(await repo.advanceSeries(target, state.series, at))) return fail('CONFLICT', 'Another admin unlocked this person a moment ago.');
   await repo.appendEvent(target, { at, kind: 'UNLOCKED', byPartyId: party(caller), reason });
   await repo.appendAlert({ at, kind: 'UNLOCKED', partyId: target, byPartyId: party(caller), reason });
   return { ok: true as const };

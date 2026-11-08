@@ -26,7 +26,7 @@ import {
   verifyIssueFlow
 } from './service/ledger';
 import { getPolicyFlow, searchGroupsFlow, setPolicyFlow } from './service/policy-admin';
-import { ackAlertFlow, getSigningPolicyFlow, requestCodeFlow, setSigningPolicyFlow, signingAlertsFlow, SigningAuthority, unlockFlow } from './service/signing';
+import { ackAlertFlow, getSigningPolicyFlow, requestCodeFlow, setSigningPolicyFlow, signingAlertsFlow, unlockFlow } from './service/signing';
 import { isApprover } from './service/approver';
 import { completeIntent, createIntentFlow } from './service/transition-signing';
 import { bindRouteFlow, listRoutesFlow, rejectStageFlow, routeFor, saveRouteFlow, signStageFlow, stageGate, unbindRouteFlow, voidRunIfChanged } from './service/routes';
@@ -183,8 +183,19 @@ export const JIRA_UNREACHABLE_MESSAGE =
  * Applies the values typed on the transition screen (modifiedFields) before the check, so they cannot bypass it.
  */
 export async function validateTransition(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(false)) {
-  return withLicenceNote(await gate(payload, deps), payload, context);
+  // Review M-3: any error inside the gate blocks the move with a clear message (fail closed by construction); what
+  // Jira does with a validator that throws is not documented
+  let result: { result: boolean; errorMessage?: string };
+  try {
+    result = await gate(payload, deps);
+  } catch (err) {
+    logFailure('the transition check failed', err);
+    result = { result: false, errorMessage: VALIDATOR_ERROR_MESSAGE };
+  }
+  return withLicenceNote(result, payload, context);
 }
+
+export const VALIDATOR_ERROR_MESSAGE = 'LedgerSeal could not complete its check, so this transition is blocked. Try again in a minute.';
 
 async function gate(payload: any, deps: LedgerSealDeps): Promise<{ result: boolean; errorMessage?: string }> {
   const issueKey = payload?.issue?.key || payload?.issueKey;
@@ -373,29 +384,6 @@ export async function personalDataReport(
   }
 }
 
-/**
- * Who may ask for a signing code (ADR-016): an approver for seal, approval of changes, revoke and the transition
- * signature. Stage actions are decided by the route (ADR-017).
- */
-export const signingAuthority: SigningAuthority = async (deps, issueId, action, stageId) => {
-  if (action === 'SIGN_STAGE' || action === 'REJECT') {
-    // ADR-017: a member of a group of an open stage of the issue's route
-    const ctx = await routeFor(deps, issueId);
-    if (ctx === 'unreachable') return fail('JIRA_UNREACHABLE');
-    if (!ctx || ctx === 'invalid') return fail('NOT_APPROVER');
-    const sealExists = Boolean(await new SealRepository(deps.storage).getWorkEffort(issueId));
-    const required = ctx.open && ctx.run ? ctx.run.requiredStageIds : stagesForNewRun(ctx.route, sealExists);
-    const stage = openStages(ctx.route, required, stageCounts(ctx.open ? ctx.run : null)).find(s => s.stageId === stageId);
-    if (!stage) return fail('STAGE_NOT_OPEN');
-    const groups = await deps.jira.getMyGroupIds();
-    if (!groups.ok) return fail(groups.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
-    return stage.approverGroups.some(g => groups.value.includes(g.id)) ? null : fail('NOT_APPROVER');
-  }
-  const permission = await isApprover(deps.jira, deps.storage, issueId);
-  if (!permission.ok) return fail(permission.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
-  return permission.value ? null : fail('NOT_APPROVER');
-};
-
 /** ADR-018: the signature field on the transition screen asks for a single-use signing intent. */
 export async function createSigningIntent(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
   return createIntentFlow(payload, context, deps);
@@ -428,7 +416,7 @@ export async function rejectStage(payload: any, context?: any, deps: LedgerSealD
 
 /** Code signing (ADR-016): the code request, and the admin page flows. */
 export async function requestSigningCode(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
-  return requestCodeFlow(payload, context, deps, signingAuthority);
+  return requestCodeFlow(payload, context, deps);
 }
 
 export async function getSigningPolicy(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {

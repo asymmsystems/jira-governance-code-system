@@ -45,6 +45,7 @@ import {
   part11Policy,
   readLiveSnapshot,
   SealFailure,
+  policyReference,
   sealIssueFlow,
   viewHash,
   withParty,
@@ -56,6 +57,9 @@ import { adminCaller } from './policy-admin';
 import { checkSigningCode } from './signing';
 
 const MAX_ROUTES = 50;
+/** Tries to take a busy run lock before the flow answers "try again" (about 4 seconds in all). */
+const RUN_LOCK_TRIES = 20;
+export const RUN_BUSY_MESSAGE = 'Someone else is signing this issue at this moment. Try again in a few seconds.';
 const MAX_NAME = 60;
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -196,6 +200,27 @@ async function closedRunContext(repo: RouteRepository, run: StoredRun): Promise<
   return route ? { route, run, open: false } : null;
 }
 
+/**
+ * Review H-1: runs `fn` while holding the issue's run lock, so the run it reads is the run it writes over. A call
+ * that already holds the lock runs `fn` at once. 'busy' when the lock stays taken.
+ */
+export async function withRunLock<T>(deps: LedgerSealDeps, issueId: string, fn: (locked: LedgerSealDeps) => Promise<T>): Promise<T | 'busy'> {
+  if (deps.heldRunLocks?.has(issueId)) return fn(deps);
+  const repo = new RouteRepository(deps.storage);
+  const owner = crypto.randomUUID();
+  for (let attempt = 0; attempt < RUN_LOCK_TRIES; attempt++) {
+    if (await repo.acquireRunLock(issueId, owner, Date.now())) {
+      try {
+        return await fn({ ...deps, heldRunLocks: new Set([...(deps.heldRunLocks ?? []), issueId]) });
+      } finally {
+        await repo.releaseRunLock(issueId, owner);
+      }
+    }
+    await new Promise(resolve => setTimeout(resolve, 100 + Math.floor(Math.random() * 150)));
+  }
+  return 'busy';
+}
+
 /** True when a route is bound to the issue, so a seal must go through its stages (not the plain panel seal). */
 export async function routeGovernsSeal(deps: LedgerSealDeps, issueId: string): Promise<boolean | SealFailure> {
   const repo = new RouteRepository(deps.storage);
@@ -243,11 +268,18 @@ async function saveRun(deps: LedgerSealDeps, run: Omit<ApprovalRun, 'recordHash'
  * incident. Writes nothing when there is no open run or the issue did not change. Returns true when it voided.
  */
 export async function voidRunIfChanged(deps: LedgerSealDeps, issueId: string, live: LiveRead, at: string): Promise<boolean> {
-  const repo = new RouteRepository(deps.storage);
-  const run = await repo.run(issueId);
-  if (!run || run === 'invalid' || run.state !== 'OPEN') return false;
+  // A cheap read first (the panel calls this on every load); the void itself re-reads the run under the run lock
+  const first = await new RouteRepository(deps.storage).run(issueId);
+  if (!first || first === 'invalid' || first.state !== 'OPEN') return false;
   const liveHash = computeSnapshotHash(live.snapshot);
-  if (liveHash === run.snapshotHash) return false;
+  if (liveHash === first.snapshotHash) return false;
+  const done = await withRunLock(deps, issueId, locked => voidLocked(locked, issueId, liveHash, at));
+  return done === true;
+}
+
+async function voidLocked(deps: LedgerSealDeps, issueId: string, liveHash: string, at: string): Promise<boolean> {
+  const run = await new RouteRepository(deps.storage).run(issueId);
+  if (!run || run === 'invalid' || run.state !== 'OPEN' || liveHash === run.snapshotHash) return false;
   const row = await appendRunRow(deps, issueId, run, {
     workEffortId: issueId,
     statusId: 'LS_RUN_VOIDED',
@@ -286,6 +318,53 @@ async function changedSince(deps: LedgerSealDeps, issueId: string, live: LiveRea
   const changelog = await deps.jira.getChangelog(issueId);
   if (!changelog.ok) return null;
   return changeAuthorsSince(changelog.value, live.raw, sinceIso, id => !isExcludedField(version, id, live.fields)).has(accountId);
+}
+
+/**
+ * The stage a code request names (review L-7): the stage, null when no route applies or the record fails its hash,
+ * 'closed' when the stage is not open now. Reads as the app; the caller reads the person's groups as the user first.
+ */
+export async function openStageFor(deps: LedgerSealDeps, issueId: string, stageId: string | null): Promise<RouteStage | null | 'closed' | 'unreachable'> {
+  const ctx = await routeFor(deps, issueId);
+  if (ctx === 'unreachable') return 'unreachable';
+  if (!ctx || ctx === 'invalid') return null;
+  const sealExists = Boolean(await new SealRepository(deps.storage).getWorkEffort(issueId));
+  const required = ctx.open && ctx.run ? ctx.run.requiredStageIds : stagesForNewRun(ctx.route, sealExists);
+  return openStages(ctx.route, required, stageCounts(ctx.open ? ctx.run : null)).find(s => s.stageId === stageId) ?? 'closed';
+}
+
+/**
+ * The run-dependent decisions of a stage action: the route, an open stage, and whether a seal exists. Made in the
+ * checks, and made again under the run lock just before the write (review H-1), from a fresh read of the run.
+ */
+async function runDecision(deps: LedgerSealDeps, issueId: string, live: LiveRead, stageId: string): Promise<{ ctx: RouteContext; stage: RouteStage; sealExists: boolean } | SealFailure> {
+  const scope = { projectId: String(live.raw?.fields?.project?.id ?? ''), issueTypeId: String(live.raw?.fields?.issuetype?.id ?? '') };
+  const ctx = await routeFor(deps, issueId, scope);
+  if (ctx === 'invalid') return fail('INVALID_REQUEST', 'The approval record failed its integrity check. Contact your Jira admin.');
+  if (ctx === 'unreachable') return fail('JIRA_UNREACHABLE');
+  if (!ctx) return fail('NOT_ROUTED');
+  const stage = ctx.route.stages.find(s => s.stageId === stageId);
+  if (!stage) return fail('STAGE_NOT_OPEN');
+  const sealExists = Boolean(await new SealRepository(deps.storage).getWorkEffort(issueId));
+  const required = ctx.open && ctx.run ? ctx.run.requiredStageIds : stagesForNewRun(ctx.route, sealExists);
+  if (!openStages(ctx.route, required, stageCounts(ctx.open ? ctx.run : null)).some(s => s.stageId === stageId)) return fail('STAGE_NOT_OPEN');
+  return { ctx, stage, sealExists };
+}
+
+/**
+ * Review H-1: the decisions made again under the run lock. The run may have changed since the checks (another tab,
+ * another signer, a void): the stage must still be open, the person must not have signed another stage of the run,
+ * and an open run must still hold the snapshot this person signs.
+ */
+async function lockedStep(deps: LedgerSealDeps, step: StageStep): Promise<StageStep | SealFailure> {
+  const decided = await runDecision(deps, step.issue.id, step.live, step.stage.stageId);
+  if ('code' in decided) return decided;
+  const { ctx, stage, sealExists } = decided;
+  if (ctx.open && signedOtherStage(ctx.run, step.party(step.accountId))) return fail('SAME_PERSON_STAGE');
+  if (ctx.open && ctx.run && ctx.run.snapshotHash !== computeSnapshotHash(step.live.snapshot)) return fail('ISSUE_CHANGED');
+  // The run ended (voided, rejected, revoked or completed) since the checks: the person signs it again on a fresh view
+  if (step.ctx.open && step.ctx.run && ctx.run?.runId === step.ctx.run.runId && !ctx.open) return fail('ISSUE_CHANGED');
+  return { ...step, ctx, stage, sealExists };
 }
 
 interface StageStep {
@@ -328,24 +407,16 @@ async function stageChecks(payload: any, context: any, deps: LedgerSealDeps, act
   // A covered change since the run's snapshot ends it before anyone signs again (ADR-017 decision 6)
   await voidRunIfChanged(deps, issue.id, live, now);
 
-  const scope = { projectId: String(read.raw?.fields?.project?.id ?? ''), issueTypeId: String(read.raw?.fields?.issuetype?.id ?? '') };
-  const ctx = await routeFor(deps, issue.id, scope);
-  if (ctx === 'invalid') return fail('INVALID_REQUEST', 'The approval record failed its integrity check. Contact your Jira admin.');
-  if (ctx === 'unreachable') return fail('JIRA_UNREACHABLE');
-  if (!ctx) return fail('NOT_ROUTED');
-  const stage = ctx.route.stages.find(s => s.stageId === stageId);
-  if (!stage) return fail('STAGE_NOT_OPEN');
-  const seals = new SealRepository(deps.storage);
-  const sealed = await seals.getSeal(issue.id);
-  const sealExists = Boolean(sealed && sealed !== 'missing');
-  const required = ctx.open && ctx.run ? ctx.run.requiredStageIds : stagesForNewRun(ctx.route, sealExists);
-  const counts = stageCounts(ctx.open ? ctx.run : null);
-  if (!openStages(ctx.route, required, counts).some(s => s.stageId === stageId)) return fail('STAGE_NOT_OPEN');
+  const decided = await runDecision(deps, issue.id, live, stageId);
+  if ('code' in decided) return decided;
+  const { ctx, stage, sealExists } = decided;
   const group = await qualifyingGroup(deps, stage);
   if (group === null) return fail('NOT_APPROVER', `You are not in a group of the ${stage.name} stage.`);
   if (typeof group !== 'string') return group;
   const token = party(accountId);
   if (ctx.open && signedOtherStage(ctx.run, token)) return fail('SAME_PERSON_STAGE');
+  const seals = new SealRepository(deps.storage);
+  const sealed = await seals.getSeal(issue.id);
 
   // Separation of duties: the author of a covered change since the last seal signs no stage that approves it
   if (sealed && sealed !== 'missing') {
@@ -378,8 +449,16 @@ async function stageChecks(payload: any, context: any, deps: LedgerSealDeps, act
  * itself, naming every stage signature of the run; any other stage writes an LS_RUN_SIGNED row.
  */
 export async function signStageFlow(payload: any, context: any, deps: LedgerSealDeps) {
-  const step = await stageChecks(payload, context, deps, 'SIGN_STAGE');
-  if ('ok' in step) return step;
+  const checked = await stageChecks(payload, context, deps, 'SIGN_STAGE');
+  if ('ok' in checked) return checked;
+  const done = await withRunLock(deps, checked.issue.id, async locked => {
+    const step = await lockedStep(locked, checked);
+    return 'ok' in step ? step : signLocked(payload, locked, step);
+  });
+  return done === 'busy' ? fail('CONFLICT', RUN_BUSY_MESSAGE) : done;
+}
+
+async function signLocked(payload: any, deps: LedgerSealDeps, step: StageStep) {
   const { accountId, issue, stage, ctx, live, party, policy, signingEvidence, qualifyingGroupId, sealExists } = step;
   const now = new Date().toISOString();
   const token = party(accountId);
@@ -417,6 +496,8 @@ export async function signStageFlow(payload: any, context: any, deps: LedgerSeal
   const runData = { runId: run.runId, routeId: run.routeId, routeVersion: run.routeVersion, routeHash: run.routeHash, stageId: stage.stageId, qualifyingGroupId, snapshotHash: run.snapshotHash };
 
   if (!completes) {
+    const policyRef = await policyReference(deps, String(live.snapshot.projectId ?? ''), policy);
+    if (policyRef === 'changed') return fail('POLICY_CHANGED');
     // The chain continues from the previous run's head even when that run ended (rejected or voided)
     const row = await appendRunRow(deps, issue.id, ctx.run, {
       workEffortId: issue.id,
@@ -425,7 +506,7 @@ export async function signStageFlow(payload: any, context: any, deps: LedgerSeal
       setByPartyId: token,
       reason: null,
       transitionName: 'SIGN_STAGE',
-      data: { ...runData, ...(signingEvidence ? { signing: signingEvidence } : {}) }
+      data: { ...runData, ...(signingEvidence ? { signing: signingEvidence } : {}), ...(policyRef ? { signingPolicy: policyRef } : {}) }
     });
     if (!row) return fail('CONFLICT');
     await new PartyRepository(deps.storage).register([accountId], party, now);
@@ -464,13 +545,23 @@ export async function signStageFlow(payload: any, context: any, deps: LedgerSeal
 export async function rejectStageFlow(payload: any, context: any, deps: LedgerSealDeps) {
   const reason = validReason(payload?.reason);
   if (context?.accountId && !reason) return fail('REASON_REQUIRED', 'Give a reason for rejecting (1 to 500 characters).');
-  const step = await stageChecks(payload, context, deps, 'REJECT');
-  if ('ok' in step) return step;
+  const checked = await stageChecks(payload, context, deps, 'REJECT');
+  if ('ok' in checked) return checked;
+  const done = await withRunLock(deps, checked.issue.id, async locked => {
+    const step = await lockedStep(locked, checked);
+    return 'ok' in step ? step : rejectLocked(reason as string, locked, step);
+  });
+  return done === 'busy' ? fail('CONFLICT', RUN_BUSY_MESSAGE) : done;
+}
+
+async function rejectLocked(reason: string, deps: LedgerSealDeps, step: StageStep) {
   const { accountId, issue, stage, ctx, live, party, signingEvidence } = step;
   const now = new Date().toISOString();
   const token = party(accountId);
   const run = ctx.open && ctx.run ? ctx.run : null;
   const runId = run?.runId ?? crypto.randomUUID();
+  const policyRef = await policyReference(deps, String(live.snapshot.projectId ?? ''), step.policy);
+  if (policyRef === 'changed') return fail('POLICY_CHANGED');
   const row = await appendRunRow(deps, issue.id, ctx.run, {
     workEffortId: issue.id,
     statusId: 'LS_RUN_REJECTED',
@@ -478,7 +569,7 @@ export async function rejectStageFlow(payload: any, context: any, deps: LedgerSe
     setByPartyId: token,
     reason,
     transitionName: 'REJECT',
-    data: { runId, stageId: stage.stageId, snapshotHash: run?.snapshotHash ?? computeSnapshotHash(live.snapshot), routeHash: ctx.route.routeHash, ...(signingEvidence ? { signing: signingEvidence } : {}) }
+    data: { runId, stageId: stage.stageId, snapshotHash: run?.snapshotHash ?? computeSnapshotHash(live.snapshot), routeHash: ctx.route.routeHash, ...(signingEvidence ? { signing: signingEvidence } : {}), ...(policyRef ? { signingPolicy: policyRef } : {}) }
   });
   if (!row) return fail('CONFLICT');
   await new PartyRepository(deps.storage).register([accountId], party, now);
@@ -541,7 +632,8 @@ export async function panelRoute(deps: LedgerSealDeps, issueId: string, live: Li
         signed: await Promise.all(signers.map(async x => ({ accountId: (await resolver.resolve(x.partyId)) ?? '', seq: x.seq }))),
         open: open.has(s.stageId),
         canSign: open.has(s.stageId) && inGroup && !signedByMe,
-        canReject: open.has(s.stageId) && inGroup
+        // Review L-6: "one person, one stage" holds for a rejection too (stageChecks refuses it)
+        canReject: open.has(s.stageId) && inGroup && !signedByMe
       };
     })
   );
@@ -602,6 +694,11 @@ export async function mayRevokeRouted(deps: LedgerSealDeps, ctx: RouteContext): 
 
 /** Ends an open run because its seal was revoked (decision 8): the revoke row carries `endsRun`. */
 export async function endRunOnRevoke(deps: LedgerSealDeps, issueId: string, at: string, head: { seq: number; entryHash: string }): Promise<boolean> {
+  const done = await withRunLock(deps, issueId, locked => endRunLocked(locked, issueId, at, head));
+  return done === true;
+}
+
+async function endRunLocked(deps: LedgerSealDeps, issueId: string, at: string, head: { seq: number; entryHash: string }): Promise<boolean> {
   const repo = new RouteRepository(deps.storage);
   const run = await repo.run(issueId);
   if (!run || run === 'invalid' || run.state !== 'OPEN') return false;

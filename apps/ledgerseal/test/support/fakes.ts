@@ -322,3 +322,8 @@ export const model = {
     return `ls3:wes:${issueId}:${String(seq).padStart(6, '0')}`;
   }
 };
+
+/** Clears the 30-second request rule claims (review H-2), standing in for the wait between two code requests. */
+export function clearRequestSlots(store: MemoryStore): void {
+  for (const key of [...store.map.keys()]) if (key.startsWith('ls3:sig:reqslot:')) store.map.delete(key);
+}

@@ -193,7 +193,6 @@ describe('ADR-016 code-signed evidence (format 2) through the open verifier', ()
     const declaration = require('../src/domain/declaration');
     const approved = jest.spyOn(declaration, 'isDeclarationV2Approved').mockReturnValue(true);
     const { setSigningPolicyFlow, requestCodeFlow } = require('../src/service/signing');
-    const { signingAuthority } = require('../src/index');
     const jira = new FakeJira(sampleIssue());
     jira.approvers = new Set(['ann', 'bob']);
     jira.jiraAdmins.add('admin');
@@ -204,7 +203,7 @@ describe('ADR-016 code-signed evidence (format 2) through the open verifier', ()
     const v2 = { meaning: 'APPROVAL', declarationVersion: '2', declarationText: declaration.DECLARATION_V2.text };
     const signed = async (who: string, action: string, extra: any = {}) => {
       jira.currentUser = who;
-      const req = await requestCodeFlow({ action }, panelContext(who), deps, signingAuthority);
+      const req = await requestCodeFlow({ action }, panelContext(who), deps);
       return sealIssue({ signature: { ...v2, ...extra }, signing: { challengeId: req.challengeId, code: jira.lastCode(who) } }, panelContext(who), deps);
     };
     await expect(signed('ann', 'SEAL')).resolves.toMatchObject({ ok: true });
@@ -226,5 +225,40 @@ describe('ADR-016 code-signed evidence (format 2) through the open verifier', ()
     expect(bad.status).toBe(1);
     expect(bad.out).toContain('FAIL history chain');
     expect(bad.out).toMatch(/FAIL code signing on every signature that needs it \(entries \d+\)/);
+    // Review M-1: every row names the policy in force, and an edited format field or policy list fails
+    const signatures = evidence.history.filter((r: any) => ['SEAL', 'RESEAL'].includes(r.transitionName));
+    expect(signatures.length).toBe(2);
+    expect(signatures.every((r: any) => r.data.signingPolicy?.version === 1)).toBe(true);
+    const downgraded = runVerifier({ ...evidence, format: 'ledgerseal-evidence/1' });
+    expect(downgraded.out).toContain('PASS code signing on every signature that needs it');
+    const swapped = runVerifier({ ...evidence, format: 'ledgerseal-evidence/1', signingPolicies: [] });
+    expect(swapped.status).toBe(1);
+    expect(swapped.out).toMatch(/FAIL code signing on every signature that needs it/);
+  });
+
+  it('names an off policy in rows sealed without a code, so the record is format 2 and the verifier reads that policy (review M-1)', async () => {
+    const { setSigningPolicyFlow } = require('../src/service/signing');
+    const jira = new FakeJira(sampleIssue());
+    jira.approvers = new Set(['ann']);
+    jira.jiraAdmins.add('admin');
+    const storage = new MemoryStore();
+    const deps = { jira, storage, secrets: storage, signer };
+    jira.currentUser = 'admin';
+    expect((await setSigningPolicyFlow({ enabled: false, projectKeys: [] }, panelContext('admin'), deps)).ok).toBe(true);
+    jira.currentUser = 'ann';
+    await expect(sealIssue({ signature: { meaning: 'APPROVAL', declarationVersion: '1', declarationText: require('../src/domain/declaration').DECLARATION.text } }, panelContext('ann'), deps)).resolves.toMatchObject({ ok: true });
+    const evidence: any = await getSealEvidence({}, panelContext('ann'), deps);
+    expect(evidence.format).toBe('ledgerseal-evidence/2');
+    expect(evidence.history[0].data.signingPolicy).toEqual({ version: 1, policyHash: evidence.signingPolicies[0].policyHash });
+    const ok = runVerifier(evidence);
+    expect(ok.status).toBe(0);
+    // A policy list swapped for one that says "on" (self-consistent) no longer matches the named hash
+    const on = JSON.parse(JSON.stringify(evidence.signingPolicies[0]));
+    on.enabled = true;
+    on.projectIds = [evidence.snapshot.projectId];
+    const { withPolicyHash } = require('../src/domain/signing');
+    const swapped = withPolicyHash(on);
+    expect(swapped.policyHash).not.toBe(evidence.signingPolicies[0].policyHash);
+    expect(runVerifier({ ...evidence, signingPolicies: [swapped] }).status).toBe(1);
   });
 });

@@ -45,7 +45,8 @@ export const ALERT_TEXT: Record<string, string> = {
   CODE_REUSED: 'A used code was tried again',
   LOCKED: 'Locked out after failed attempts',
   RATE_LIMITED: 'Too many code requests',
-  CODE_NOT_SENT: 'Jira could not send a code (outgoing email may be off)'
+  CODE_NOT_SENT: 'Jira could not send a code (outgoing email may be off)',
+  POLICY_CHANGED: 'A Jira admin changed the code-signing policy'
 };
 
 export interface SigningAdminView {
