@@ -35,6 +35,26 @@ export function formatSubtaskSummary(_parentSummary: string, contributorName: st
 }
 
 /**
+ * The hours typed in the "+ Allocate Resource" field, or undefined when the field is empty or holds
+ * no positive whole number. Undefined sends no estimate: CascadePlan never writes a default (INV-03).
+ */
+export function enteredAllocationHours(raw: string | null | undefined): number | undefined {
+  const hours = parseInt(String(raw ?? '').trim(), 10);
+  return Number.isFinite(hours) && hours > 0 ? hours : undefined;
+}
+
+/**
+ * The status line after "+ Allocate Resource" created the sub-task. It names the estimate only when
+ * one was sent.
+ */
+export function allocationCreatedText(assigneeName: string, hours: number | undefined): string {
+  const who = assigneeName || 'Unassigned';
+  return hours === undefined
+    ? `✓ Created Jira subtask for ${who}, with no estimate`
+    : `✓ Created Jira subtask for ${who} (${hours}h)`;
+}
+
+/**
  * Formats the in-form prompt when removing a contributor who has an assigned Jira subtask.
  */
 export function formatRemovalPrompt(contributorName: string, subtaskKey: string): string {

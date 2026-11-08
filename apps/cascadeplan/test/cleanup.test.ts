@@ -48,8 +48,25 @@ describe('no synthetic data or dead UI (B-18 criteria 1, 4 and 5; D-10)', () => 
     expect(fs.existsSync(path.join(ROOT, 'src/frontend/index.tsx'))).toBe(false);
     expect(html).not.toContain('Subtasks &amp; Risk Buffer');
     expect(html).not.toContain('Subtasks & Risk Buffer');
-    expect(html).toContain('Jira sub-tasks and risk buffer');
+    expect(html).toContain('Jira sub-tasks</div>');
     expect(html).toContain('Create sub-task in Jira');
+  });
+
+  it('the task dialog has no risk buffer controls: nothing read or saved them (CP-3, spec v2 section 10)', () => {
+    expect(html).not.toMatch(/editBufferTypeSelect|editBufferValueInput|risk buffer|Buffer Type|Buffer Value/i);
+    expect(ui).not.toMatch(/editBuffer/);
+  });
+
+  it('the "+ Allocate Resource" hours field starts empty and is cleared for each task (CP-1, INV-03)', () => {
+    const field = html.match(/<input[^>]*id="multiResourceHours"[^>]*>/);
+    expect(field).not.toBeNull();
+    expect(field![0]).not.toMatch(/\svalue=/);
+    expect(ui).toMatch(/multiResHours\.value = ''/);
+    // No estimate field of the task dialog or of a create form carries a default value.
+    for (const id of ['multiResourceHours', 'newSubtaskHours', 'editEstimateValueInput', 'createEffortInput']) {
+      const input = html.match(new RegExp(`<input[^>]*id="${id}"[^>]*>`));
+      expect(input && input[0]).not.toMatch(/\svalue=/);
+    }
   });
 });
 

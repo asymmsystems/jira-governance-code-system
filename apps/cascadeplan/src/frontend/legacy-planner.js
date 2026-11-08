@@ -55,7 +55,7 @@ import { baselineItems, compareItems } from '../domain/baseline';
 import { shouldAutoCompact, ZOOMS, zoomById, zoomStep, mondayOf, initialRange, rangeDays, extendRange, edgeToExtend, headerCells, gridLines, anchorScroll, dateAt } from '../ui/time-scale';
 import { buildTableViewRows, toggleTableView } from '../ui/table-view';
 import { findMatchingTasks, findNextMatch, formatMatchCount, isSearchShortcut } from '../ui/in-app-search';
-import { formatRemovalPrompt } from '../ui/second-person';
+import { formatRemovalPrompt, enteredAllocationHours, allocationCreatedText } from '../ui/second-person';
 import { statusOffers, offerPrompt, progressLockReason, progressText, isDone } from '../ui/progress-status';
 import {
   categorizePlan,
@@ -6469,6 +6469,9 @@ function openTaskDetailModal(taskKey) {
     multiResStatus.textContent = '';
     multiResStatus.style.display = 'none';
   }
+  // The hours field starts empty for every task: an empty field writes no estimate (INV-03).
+  const multiResHours = document.getElementById('multiResourceHours');
+  if (multiResHours) multiResHours.value = '';
 
   // Predecessor Select
   const predSelect = document.getElementById('editPredecessorSelect');
@@ -6571,8 +6574,8 @@ async function handleAddResourceSubtask() {
   const assigneeName = selected ? selected.value : 'Unassigned';
   const assigneeAccountId = selected?.dataset?.accountId || undefined;
   // An empty hours field sends no estimate (F-06, INV-03).
-  const enteredHours = parseInt(document.getElementById('multiResourceHours').value, 10);
-  const hours = Number.isFinite(enteredHours) && enteredHours > 0 ? enteredHours : undefined;
+  const hoursInput = document.getElementById('multiResourceHours');
+  const hours = enteredAllocationHours(hoursInput && hoursInput.value);
 
   const statusEl = document.getElementById('multiResourceStatus');
   const addBtn = document.getElementById('btnAddResourceSubtaskBtn');
@@ -6594,10 +6597,12 @@ async function handleAddResourceSubtask() {
       }
     } else {
       if (statusEl) {
-        statusEl.textContent = `✓ Created Jira subtask for ${assigneeName} (${hours}h)`;
+        statusEl.textContent = allocationCreatedText(assigneeName, hours);
         statusEl.style.color = 'var(--cp-text-success)';
         statusEl.style.display = 'block';
       }
+      // The next allocation starts empty again, so no earlier value becomes its estimate.
+      if (hoursInput) hoursInput.value = '';
       await loadProjectPlan();
       const updated = currentPlan.tasks.find(t => t.key === activeTaskId);
       if (updated) renderModalSubtasks(updated);
