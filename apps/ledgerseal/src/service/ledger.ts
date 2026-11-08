@@ -11,7 +11,7 @@ import * as crypto from 'crypto';
 import { CANONICALIZER_VERSION, canonicalizeIssueState, FieldSchema, isExcludedField, PSEUDONYMOUS_VERSIONS } from '../domain/canonicalizer';
 import { canonicalForm, computeSnapshotHash } from '../domain/crypto';
 import { buildStatusRow, verifyChain } from '../domain/history';
-import { CanonicalIssueSnapshot, FieldDiff, SealedWorkEffort, SealSummary, WorkEffortPartyAssignment, WorkEffortStatus, TamperAnalysis } from '../domain/models';
+import { AttachmentDiff, CanonicalIssueSnapshot, FieldDiff, SealedWorkEffort, SealSummary, WorkEffortPartyAssignment, WorkEffortStatus, TamperAnalysis } from '../domain/models';
 import { changeAuthorsSince, itemAuthorsSince } from '../domain/policy';
 import { assignmentHash, isConsistent, LoadedSeal, summarise, withRecordHash } from '../domain/seal-record';
 import { canChange, LedgerSealStatusId, roleForMeaning } from '../domain/status';
@@ -402,6 +402,29 @@ function attribute(diffs: FieldDiff[], changelog: ChangelogEntry[], sinceIso: st
     const changedBy = [...new Set(entries.map(e => e.author?.accountId).filter((a): a is string => Boolean(a)))];
     const changedAt = entries.length > 0 ? entries[entries.length - 1].created : null;
     return { fieldId: diff.fieldId, fieldName: diff.fieldName, changedBy, changedAt };
+  });
+}
+
+/**
+ * LS-1: who added, removed or replaced each changed attachment, and when. An added one names its author (Jira's
+ * attachment record); otherwise the change log after the seal names who added or removed that attachment. Unknown
+ * stays empty.
+ */
+export function attributeAttachments(diffs: AttachmentDiff[], changelog: ChangelogEntry[], sinceIso: string, liveRaw: any): AttachmentDiff[] {
+  const since = Date.parse(sinceIso);
+  const live = new Map(((liveRaw?.fields?.attachment as any[]) ?? []).map(a => [String(a?.id), a]));
+  return diffs.map(diff => {
+    const entries = changelog.filter(
+      e =>
+        !(Date.parse(e.created) <= since) &&
+        e.items.some((item: any) => (item.fieldId === 'attachment' || item.field === 'Attachment') && (String(item.from ?? '') === diff.attachmentId || String(item.to ?? '') === diff.attachmentId))
+    );
+    const fromLog = [...new Set(entries.map(e => e.author?.accountId).filter((a): a is string => Boolean(a)))];
+    const added = diff.type === 'ADDED' ? live.get(diff.attachmentId) : null;
+    const author = added?.author?.accountId ? [String(added.author.accountId)] : [];
+    const changedBy = fromLog.length > 0 ? fromLog : author;
+    const changedAt = entries.length > 0 ? entries[entries.length - 1].created : (added?.created ?? null);
+    return { ...diff, changedBy, changedAt };
   });
 }
 
@@ -936,6 +959,11 @@ async function verifyAgainstSeal(
     })
   );
   analysis.seal = await resolveSummary(analysis.seal, resolver);
+  // LS-1: who added, removed or replaced each attachment, for the panel's change rows (the record is unchanged)
+  if (analysis.tamperedAttachments.length > 0) {
+    const changelog = await deps.jira.getChangelog(issueId);
+    analysis.tamperedAttachments = attributeAttachments(analysis.tamperedAttachments, changelog.ok ? changelog.value : [], seal.assignment.fromDate, live.raw);
+  }
   // F-06: a changed comment restricted to a role or group shows its text only to a viewer who can see it in Jira
   const commentIds = analysis.tamperedFields.filter(d => d.fieldId.startsWith('comment:')).map(d => d.fieldId.slice('comment:'.length));
   const hidden = await hiddenComments(deps, issueId, sealed, live.raw, commentIds);

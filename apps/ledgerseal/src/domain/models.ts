@@ -123,6 +123,9 @@ export interface AttachmentDiff {
   type: 'ADDED' | 'REMOVED' | 'MODIFIED';
   attachmentId: string;
   filename: string;
+  /** For the panel only (LS-1): who added, removed or replaced it, where Jira says so (account ids), and when. */
+  changedBy?: string[];
+  changedAt?: string | null;
 }
 
 export type TamperStatus = 'SEAL_VALID' | 'SEAL_BROKEN' | 'SEAL_COMPROMISED' | 'NO_SEAL' | 'SEAL_REVOKED' | 'LEGACY' | 'RECORD_INVALID' | 'ERROR';
