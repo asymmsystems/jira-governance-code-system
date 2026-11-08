@@ -552,3 +552,16 @@ Branch `feature/cascadeplan-csv-injection`, from `master` at `a5e834a`. The find
 - **Gate:** `tsc` clean; 85 suites, 983 tests pass, coverage 96.89 % statements, 90.91 % branches, 94.48 % functions, 98.54 % lines (thresholds 90); `npm run build` clean; `npm audit --omit=dev --audit-level=high` exits 0 (7 moderate, the known `@forge/manifest` chain, ASYMM-SEC-07); `forge lint` (`@forge/cli@15.0.0`) "No issues found".
 - **Deploy:** development only, version 3.17.0. Production untouched.
 - **Not checked live:** opening an exported file in Excel, LibreOffice Calc or Google Sheets. The unit tests cover the bytes of the file.
+
+## 2026-11-08: user guide code gaps CP-1, CP-2, CP-3
+
+Branch `fix/cascadeplan-guide-gaps`, from `master` at `04d36a2`. The gaps are listed in `jira-governance/.tmp/cache/user-guides/code-gaps.md` (found while writing the user guides).
+
+| Gap | What changed | Proof |
+|---|---|---|
+| CP-1 | The "+ Allocate Resource" hours field starts empty for each task and after each create. An empty field sends no estimate; the status reads "Created Jira subtask for <name>, with no estimate", not "(undefinedh)". | `test/second-person.test.ts` (helpers, and a create with no hours sends no `timetracking`), `test/cleanup.test.ts` (no default value on any estimate field) |
+| CP-2 | No code change. The link editor's Save and Remove Link already record an Undo step. The claim "each write" was wrong: the listing, the site guide, the partner kit, the go-to-market plan, the video script and spec INV-12 now name what Undo covers and what it does not, and say the history is in memory, cleared on a plan switch and a reload. | `test/ui/undo-coverage.test.ts`; harness probe `test/e2e/e2e_link_undo_probe.py` PASS |
+| CP-3 | The Buffer Type and Buffer Value controls are removed from the task dialog. Spec v2 section 3.1 does not say where a buffer is stored or how it changes the estimate, so wiring it would need a new rule; spec v2 section 10 records why. | `test/cleanup.test.ts` |
+
+- **Gate:** `tsc` clean; 87 suites, 1011 tests pass, coverage 96.93 % statements, 90.97 % branches, 94.61 % functions, 98.57 % lines (thresholds 90); `npm run build` clean; `npm audit --omit=dev --audit-level=high` exits 0 (7 moderate, the known `@forge/manifest` chain); `forge lint` (`@forge/cli@15.0.0`) "No issues found"; FSRT `6c821bd` built locally and run as `fsrt.yml` runs it: canary reported, 0 findings in both scans; Semgrep 1.182.1 (`docs/security/sast.md` command) 110 rules, 217 files, 0 findings.
+- **Deploy:** development only, version 3.20.0, eligible for Runs on Atlassian (`forge eligibility`). Production untouched.
