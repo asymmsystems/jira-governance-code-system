@@ -6,7 +6,7 @@ Answers for the owner to enter in the Developer Console. Nothing here has been s
 - Production build: LedgerSeal 3.0.0 was built from master at `fc8ca40` or later. `git diff --stat fc8ca40 origin/master -- apps/ledgerseal packages` shows only `apps/ledgerseal/test/listing.test.ts`, so `src/`, `manifest.yml`, `package.json` and `package-lock.json` are the same on master (`bda60e4`, 2026-11-06). Every answer below except questions 3, 8 and 19 is true for both (see the next point). (The 2.0.0 commit `c8be4c9` differs: restricted comments and work logs, the issue context module, and the granular property scope came after it.)
 - **Questions 3 and 8 describe the code of branch `feature/ledgerseal-permission-checks`** (commits `90522f7` and `cfe2cba`, development 5.5.0), not production 3.0.0. Production 3.0.0 (`fc8ca40`) has neither change. Enter the answers for questions 3, 8 and 19 only after that branch is merged and deployed to production; until then the answers in the previous version of this file (commit `8e44b40`) apply.
 - All paths below are under `apps/ledgerseal/` unless they start with `.github/` or `docs/`.
-- **Code signing (ADR-016, branch `feature/ledgerseal-regulated`, development 6.1.0, not in production):** questions 3, 7, 8, 9 and 13 and sections 2.1 and 2.2 below include it, marked "(code signing)". Enter those parts only after that branch is merged and deployed to production. The new scope makes that production deploy a major version.
+- **Code signing (ADR-016), approval routes (ADR-017) and signing on the transition screen (ADR-018) are in production since LedgerSeal 4.0.0** (master `2047559`, 2026-11-08; previous production 3.2.0). The parts of questions 3, 7, 8, 9 and 13 and sections 2.1 and 2.2 marked "(code signing)" or "(regulated build)" now apply. Section 5 gives the exact text to enter in the Developer Console for the new scope `send:notification:jira`. Nothing in section 5 has been entered yet: the owner applies it.
 
 ---
 
@@ -96,3 +96,40 @@ Scope justification and the data residency statement are in `ledgerseal-submissi
 ## 4. Partner questionnaire and other console items
 
 As for CascadePlan (`cascadeplan-security-questionnaires.md` sections 4 and 5): the partner questionnaire is information only and the owner answers it; the security contact, partner identity verification and the submission scan are owner steps.
+
+---
+
+## 5. Developer Console changes for LedgerSeal 4.0.0 (scope `send:notification:jira`): exact text to enter
+
+Prepared 2026-11-08 for production 4.0.0 (master `2047559`). **Not applied:** the owner enters it. Each block is the full new answer for the field; replace the old answer with it. Questions 1, 2, 4, 5, 6, 10, 11, 12 and 14 to 18 do not change: 4.0.0 adds no web trigger, display condition, remote, egress or credential, and the CI audit still covers the app.
+
+**Question 3 (permissions REST API before `asApp()`), answer: Yes. Text:**
+
+> Every resolver that acts on an issue first checks, as the user with the permissions REST API (mypermissions, BROWSE_PROJECTS), that the user may browse the issue, and refuses when the check fails or cannot be made. This covers the panel, seal, revoke, history, evidence, the signing-code request, the transition-screen signature and the approval-route stage signature and rejection. Seal and revoke then check the approver permission as the user (mypermissions and the user's groups). A stage signature or rejection checks, as the user, that the user is in a group of that stage. A signing-code request checks the same right for the action it asks a code for, and refuses a revoke code when the revoke would be refused. Admin actions (approver groups, approval routes, code-signing settings, alerts, unlock) check Administer Jira as the user first. Only after these checks does the app read the issue, send the signing-code email or write its own issue property as the app.
+
+**Question 7 (least privilege), answer: Yes. Text:**
+
+> Scopes: read:jira-work (issue, comments, work logs, change log, fields, permissions), write:issue.property:jira (the app's one write to Jira: its own ledgerseal-cert issue property), read:jira-user (display names, account state, the user's groups), storage:app, report:personal-data, and send:notification:jira. send:notification:jira is used for one call only: POST /rest/api/3/issue/{issueId}/notify, which emails a signer their own single-use signing code when code signing is on for the project. The call names the signer as the only recipient and switches the reporter, assignee, watchers, voters and groups off. We chose this granular scope instead of write:jira-work, so the app still cannot edit, create or transition issues.
+
+**Question 8 (sensitive information in logs), answer: No. Text:**
+
+> Backend log lines hold numeric issue ids, counts, fixed texts and, for a caught failure, only the error's name, code and HTTP status, never its message, stack or object. No account id, name, email, comment text or field value is logged. The attestation signing key is never logged. A single-use signing code is never logged, returned or stored in clear: only an HMAC-SHA-256 of it under a site key is stored, for at most a day, and the code itself goes only into the email to the signer. Automated tests check every log line and stored value for codes.
+
+**Question 9 (input validation), answer: Yes. Text:**
+
+> All input is checked on the server before use. The issue always comes from the Forge context, never from the payload. Seal, approval, stage signature, rejection and revoke must agree to the exact declaration text of their own action, and a seal is refused if the issue changed since the panel loaded. Reasons are 1 to 500 characters. A signing code is 6 digits, a code request id matches a fixed pattern before it is used, and an action and stage id are checked against fixed values and patterns. Code-signing settings take at most 100 existing project keys and a lockout of 3 to 10. Approval routes take bounded names, 1 to 8 stages, existing groups and statuses, and a quorum of 1 to 10. Approver group ids are checked against Jira. Every Jira path is built with the encoding route tag of @forge/api.
+
+**Question 13 (secrets in plain text), answer: No. Text:**
+
+> The app has two secrets, both stored encrypted, and no per-user secret. The Ed25519 key that signs the ledgerseal-cert attestation is an encrypted Forge environment variable; only public keys are published. The site key that hashes single-use signing codes is 32 random bytes the app creates once and keeps in the Forge secret store (kvs.setSecret); it is never logged, returned or written to plain storage. Signing codes are stored only as keyed hashes and expire. The signer's identity is their Atlassian account.
+
+**Question 19 (additional details), text:**
+
+> LedgerSeal runs only on Atlassian Forge (Node.js 22) with no remote backend and no egress. Its only write to Jira is its own issue property (write:issue.property:jira). Version 4.0.0 adds optional code signing: in projects a Jira admin names, each signature needs a single-use code that the app emails, through Jira's notify API (send:notification:jira), to the signer only. Every action on an issue first checks, with the permissions REST API as the user, that the user may browse it, and the approver or approval-stage right as the user, before any app-level call. The attestation signing key is an encrypted Forge variable and the code-hashing key is in the Forge secret store; only public keys are published. Records name people by a keyed pseudonymous token, and a weekly job reports account ids and erases closed accounts.
+
+**Privacy & Security tab, scope justification for `send:notification:jira` (add a line):**
+
+> send:notification:jira: to email a signer their own single-use signing code when code signing is on for the project (POST /rest/api/3/issue/{issueId}/notify, the signer as the only recipient). No other notification is sent.
+
+**Privacy & Security tab, personal data:** no change. The email goes to the signer's own Atlassian address through Jira; the app never reads or stores an email address.
+
