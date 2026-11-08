@@ -312,3 +312,11 @@ NOTE declaration reject/1 (entries 1): "I am signing this record electronically.
 NOTE declaration revoke/1 (entries 3): "I am signing this record electronically. I understand that my organisation treats this electronic signature as the legally binding equivalent of my handwritten signature. I withdraw the approval seal on this issue, for the reason I give, and I agree that this signature records the withdrawal."
 exit=0
 ```
+
+### M-2, the live watcher test (2026-11-08, development 6.17.0)
+- **Setup checked:** probe **LSP-12** had two watchers, Shuzan Fahim (who added themself) and the owner; no assignee; the owner as reporter.
+- **Code signing:** turned on for LSP (policy version 7).
+- **Code request:** in the LSP-12 panel, as the owner, "Seal this issue", then "Send me a code". The click came between **05:14:54.573Z and 05:14:59.443Z** UTC, which is 10:44:54 to 10:44:59 in Asia/Colombo (UTC+05:30). The panel answered "We emailed a code to your Atlassian email address".
+- **Owner's mailbox:** "[JIRA] LedgerSeal signing code for LSP-12" arrived at **05:15:01Z**, addressed to the owner only. Shuzan's mail was not read; the owner will confirm with Shuzan that no code email arrived.
+- **Completion:** the code was typed and "Sign and seal" pressed. The browser extension then lost its connection, so whether the seal was written, and its check, could not be confirmed from this session.
+- **Still to do by hand:** code signing for LSP is still **on** (policy version 7). Turn it off on the admin page, LedgerSeal settings, Signing codes. Then check LSP-12's panel or its `ledgerseal-cert` property (expected: `SEAL_VALID`).
