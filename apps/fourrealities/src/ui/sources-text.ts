@@ -84,6 +84,37 @@ export function detectionLine(gate: GateName, detected: DetectedSources): string
   }
 }
 
+/** Why Code can be Not applicable: it reads pull requests from Jira's Development field only (FR-1). */
+export const CODE_NEEDS_DEV_FIELD =
+  "Code needs Jira's Development field. Jira shows it when a development tool, for example Bitbucket, GitHub or GitLab, is connected to this site.";
+export const CODE_NOT_APPLICABLE_HERE = 'Not applicable on this site (no Development field)';
+const CODE_IN_USE_NO_EFFECT = 'In use (no effect: this site has no Development field)';
+
+/** True unless the admin view says this site has no Development field (null). An older view counts as having it. */
+export function siteHasDevField(devFieldId: string | null | undefined): boolean {
+  return devFieldId !== null;
+}
+
+/** The Code choices. On a site without the Development field, "In use" says that it has no effect. */
+export function codeOptions(devFieldId: string | null | undefined): Option<CodeMode>[] {
+  if (siteHasDevField(devFieldId)) return CODE_OPTIONS;
+  return CODE_OPTIONS.map(o => (o.value === 'on' ? { ...o, label: CODE_IN_USE_NO_EFFECT } : o));
+}
+
+/** The helper text under a source control: what was seen, and for Code what it needs. */
+export function sourceHelper(gate: GateName, detected: DetectedSources, devFieldId: string | null | undefined): string {
+  if (gate !== 'code') return detectionLine(gate, detected);
+  return siteHasDevField(devFieldId)
+    ? `${CODE_NEEDS_DEV_FIELD} ${detectionLine('code', detected)}`
+    : `${CODE_NEEDS_DEV_FIELD} This site has no Development field, so Code is Not applicable on every issue, whatever you choose here.`;
+}
+
+/** The "Now:" line under a source control. Code on a site without the Development field is Not applicable. */
+export function sourceNowLine(sources: SourcesInUse, gate: GateName, devFieldId: string | null | undefined): string {
+  if (gate === 'code' && !siteHasDevField(devFieldId)) return `Now: ${GATE_LABEL.code}: ${CODE_NOT_APPLICABLE_HERE}.`;
+  return `Now: ${inUseWord(sources, gate)}.`;
+}
+
 /** "In use" or "Not used on this site" for one check. */
 export function inUseWord(sources: SourcesInUse, gate: GateName): string {
   return gateInUse(sources, gate) ? `${GATE_LABEL[gate]}: in use` : `${GATE_LABEL[gate]}: not used on this site`;

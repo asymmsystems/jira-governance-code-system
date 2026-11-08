@@ -88,6 +88,7 @@ export class DefaultAdminManager implements AdminManager {
       settings,
       detected,
       sources: this.d.sources.resolve(settings, detected, config),
+      devFieldId: config.devFieldId,
       policy: { parties: (policy?.parties || []).map(p => ({ partyId: p.partyId, name: p.name })) },
       defaultDecisionIssueTypes: DEFAULT_DECISION_ISSUE_TYPES
     };

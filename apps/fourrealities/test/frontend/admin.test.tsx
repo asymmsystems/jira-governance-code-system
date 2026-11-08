@@ -81,6 +81,24 @@ describe('FourRealitiesAdmin', () => {
     expect(textOf(r.toJSON())).toContain('FourRealities could not save. Nothing was saved.');
   });
 
+  it('FR-1: says that Code needs the Development field, and on a site without it shows Code as Not applicable', async () => {
+    bridgeState.invoke.mockResolvedValueOnce({ ...VIEW, devFieldId: 'customfield_10000' });
+    let r = await mount();
+    let text = textOf(r.toJSON());
+    expect(text).toContain("Code needs Jira's Development field.");
+    expect(text).toContain('Now: Code: not used on this site.');
+    expect(findAll(r.root, 'Select', p => p.id === 'fr-source-code')[0].props.options.find((o: any) => o.value === 'on').label).toBe('In use');
+
+    bridgeState.invoke.mockResolvedValueOnce({ ...VIEW, devFieldId: null, settings: { ...VIEW.settings, code: 'on' }, sources: { ...VIEW.sources, code: true } });
+    r = await mount();
+    text = textOf(r.toJSON());
+    expect(text).toContain('This site has no Development field, so Code is Not applicable on every issue, whatever you choose here.');
+    expect(text).toContain('Now: Code: Not applicable on this site (no Development field).');
+    expect(text).not.toContain('Now: Code: in use.');
+    const code = findAll(r.root, 'Select', p => p.id === 'fr-source-code')[0];
+    expect(code.props.value).toEqual({ label: 'In use (no effect: this site has no Development field)', value: 'on' });
+  });
+
   it('searches, adds, removes and saves approver groups through the shared panel', async () => {
     bridgeState.invoke.mockResolvedValueOnce(VIEW);
     const r = await mount();

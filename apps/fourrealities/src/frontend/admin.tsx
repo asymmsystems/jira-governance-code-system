@@ -13,14 +13,14 @@ import { AdminPolicyPanel, GroupChoice, buildAdminPolicyView, savedGroups } from
 import { AdminResult, AdminView, EvidenceSourceSettings, GateName } from '../contract/data/models';
 import {
   AUDIT_OPTIONS,
-  CODE_OPTIONS,
   INTENT_OPTIONS,
   Option,
   PROCESS_OPTIONS,
-  detectionLine,
-  inUseWord,
+  codeOptions,
   optionOf,
   parseIssueTypes,
+  sourceHelper,
+  sourceNowLine,
   withSetting
 } from '../ui/sources-text';
 import { SPACE, TEXT_ROLE } from '../brand/brand';
@@ -44,14 +44,14 @@ const SourceField: React.FC<{
   view: AdminView;
   onChange: (value: string) => void;
 }> = ({ gate, label, options, value, view, onChange }) => (
-  <FormField id={`fr-source-${gate}`} label={label} helper={detectionLine(gate, view.detected)}>
+  <FormField id={`fr-source-${gate}`} label={label} helper={sourceHelper(gate, view.detected, view.devFieldId)}>
     <Select
       id={`fr-source-${gate}`}
       options={options}
       value={optionOf(options, value)}
       onChange={(o: Option<string> | null) => onChange(o?.value || options[0].value)}
     />
-    <Text as="span" size="small" color={TEXT_ROLE.muted}>{`Now: ${inUseWord(view.sources, gate)}.`}</Text>
+    <Text as="span" size="small" color={TEXT_ROLE.muted}>{sourceNowLine(view.sources, gate, view.devFieldId)}</Text>
   </FormField>
 );
 
@@ -136,7 +136,7 @@ export const FourRealitiesAdmin: React.FC = () => {
         <Stack space={SPACE.group}>
           <SourceField gate="intent" label="Intent (decision records)" options={INTENT_OPTIONS} value={form.intent} view={view} onChange={v => set('intent', v as EvidenceSourceSettings['intent'])} />
           <SourceField gate="process" label="Process (Definition of Done)" options={PROCESS_OPTIONS} value={form.process} view={view} onChange={v => set('process', v as EvidenceSourceSettings['process'])} />
-          <SourceField gate="code" label="Code (pull requests from the Jira Development field)" options={CODE_OPTIONS} value={form.code} view={view} onChange={v => set('code', v as EvidenceSourceSettings['code'])} />
+          <SourceField gate="code" label="Code (pull requests from the Jira Development field)" options={codeOptions(view.devFieldId)} value={form.code} view={view} onChange={v => set('code', v as EvidenceSourceSettings['code'])} />
           <SourceField gate="audit" label="Audit (approval seal)" options={AUDIT_OPTIONS} value={form.audit} view={view} onChange={v => set('audit', v as EvidenceSourceSettings['audit'])} />
           <FormField id="fr-decision-types" label="Decision issue types" helper={`Issue type names that count as a decision record for Intent, separated by commas. Default: ${view.defaultDecisionIssueTypes.join(', ')}.`}>
             <Textfield id="fr-decision-types" value={typesText} onChange={(e: TextChange) => setTypesText(e.target?.value || '')} />
