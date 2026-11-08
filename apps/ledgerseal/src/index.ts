@@ -8,7 +8,7 @@ import api from '@forge/api';
 import Resolver from '@forge/resolver';
 import { kvs, WhereConditions } from '@forge/kvs';
 import { validateTransitionGate } from './validator/workflow-validator';
-import { SealRepository, StorageProvider } from './storage/seal-repository';
+import { SealRepository, SecretStore, StorageProvider, WriteOptions } from './storage/seal-repository';
 import { PartyRepository } from './storage/party-repository';
 import { createJiraClient } from './jira/jira-client';
 import { signerFromEnvironment } from './domain/attestation';
@@ -26,29 +26,56 @@ import {
   verifyIssueFlow
 } from './service/ledger';
 import { getPolicyFlow, searchGroupsFlow, setPolicyFlow } from './service/policy-admin';
+import { ackAlertFlow, getSigningPolicyFlow, requestCodeFlow, setSigningPolicyFlow, signingAlertsFlow, unlockFlow } from './service/signing';
+import { isApprover } from './service/approver';
+import { completeIntent, createIntentFlow } from './service/transition-signing';
+import { bindRouteFlow, listRoutesFlow, rejectStageFlow, routeFor, saveRouteFlow, signStageFlow, stageGate, unbindRouteFlow, voidRunIfChanged } from './service/routes';
+import { openStages, stageCounts, stagesForNewRun } from './domain/route';
+import { fail } from './service/ledger';
 import { deleteIssueRecords, ReportFn, weeklyPersonalDataJob } from './service/personal-data';
 import { privacy } from '@forge/api';
 import { logFailure } from './service/log';
 
 export { LedgerSealDeps } from './service/ledger';
 
-class ForgeKvsProvider implements StorageProvider {
+/** Forge KVS `ttl` from a number of seconds. */
+function ttlOf(options?: WriteOptions) {
+  return options?.ttlSeconds ? { ttl: { value: options.ttlSeconds, unit: 'SECONDS' as const } } : {};
+}
+
+class ForgeKvsProvider implements StorageProvider, SecretStore {
   async get<T>(key: string): Promise<T | undefined> {
     const val = await kvs.get(key);
     return val as T;
   }
 
-  async set(key: string, value: any): Promise<void> {
-    await kvs.set(key, value);
+  async set(key: string, value: any, options?: WriteOptions): Promise<void> {
+    if (options?.ttlSeconds) await kvs.set(key, value, ttlOf(options));
+    else await kvs.set(key, value);
+  }
+
+  async getSecret(key: string): Promise<any> {
+    return kvs.getSecret(key);
+  }
+
+  async createSecretIfAbsent(key: string, value: any): Promise<boolean> {
+    try {
+      await kvs.setSecret(key, value, { keyPolicy: 'FAIL_IF_EXISTS' });
+      return true;
+    } catch (err) {
+      // Spike S-7: an existing secret answers KEY_CONFLICT; that is a lost race, not an error
+      if ((await kvs.getSecret(key)) !== undefined) return false;
+      throw err;
+    }
   }
 
   async delete(key: string): Promise<void> {
     await kvs.delete(key);
   }
 
-  async createIfAbsent(key: string, value: any): Promise<boolean> {
+  async createIfAbsent(key: string, value: any, options?: WriteOptions): Promise<boolean> {
     try {
-      await kvs.set(key, value, { keyPolicy: 'FAIL_IF_EXISTS' });
+      await kvs.set(key, value, { keyPolicy: 'FAIL_IF_EXISTS', ...ttlOf(options) });
       return true;
     } catch (err) {
       // A failed create on an existing key is a lost race, not an error.
@@ -80,9 +107,11 @@ class ForgeKvsProvider implements StorageProvider {
 }
 
 export function forgeDeps(asUser: boolean): LedgerSealDeps {
+  const store = new ForgeKvsProvider();
   return {
     jira: createJiraClient(api.asApp(), asUser ? api.asUser() : null),
-    storage: new ForgeKvsProvider(),
+    storage: store,
+    secrets: store,
     signer: signerFromEnvironment(process.env)
   };
 }
@@ -154,8 +183,19 @@ export const JIRA_UNREACHABLE_MESSAGE =
  * Applies the values typed on the transition screen (modifiedFields) before the check, so they cannot bypass it.
  */
 export async function validateTransition(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(false)) {
-  return withLicenceNote(await gate(payload, deps), payload, context);
+  // Review M-3: any error inside the gate blocks the move with a clear message (fail closed by construction); what
+  // Jira does with a validator that throws is not documented
+  let result: { result: boolean; errorMessage?: string };
+  try {
+    result = await gate(payload, deps);
+  } catch (err) {
+    logFailure('the transition check failed', err);
+    result = { result: false, errorMessage: VALIDATOR_ERROR_MESSAGE };
+  }
+  return withLicenceNote(result, payload, context);
 }
+
+export const VALIDATOR_ERROR_MESSAGE = 'LedgerSeal could not complete its check, so this transition is blocked. Try again in a minute.';
 
 async function gate(payload: any, deps: LedgerSealDeps): Promise<{ result: boolean; errorMessage?: string }> {
   const issueKey = payload?.issue?.key || payload?.issueKey;
@@ -173,6 +213,9 @@ async function gate(payload: any, deps: LedgerSealDeps): Promise<{ result: boole
 
   // Read the live issue and apply the transition-screen values (F-02, F-03)
   const screen = transitionScreenValues(payload);
+  // ADR-018: a signature made in the LedgerSeal field on this screen is written first, then the gate decides as usual
+  const signed = await completeIntent(payload, screen, deps, raw => applyTransitionScreen(raw, screen, now));
+  if (signed && !signed.ok) return { result: false, errorMessage: signed.message };
   const party = await new PartyRepository(deps.storage).partyForRead();
   const live = await readLiveSnapshot(deps.jira, issueId || issueKey, now, {
     party,
@@ -183,6 +226,11 @@ async function gate(payload: any, deps: LedgerSealDeps): Promise<{ result: boole
     return { result: false, errorMessage: JIRA_UNREACHABLE_MESSAGE };
   }
   issueId = String(live.raw.id || issueId);
+  // ADR-017: a covered change ends an open run (values typed on the screen are not in Jira yet, so they void nothing);
+  // then a stage gate on the target status decides, or the normal gate below
+  if (Object.keys(screen).length === 0 && party) await voidRunIfChanged(deps, issueId, live, now);
+  const staged = await stageGate(deps, issueId, live, String(payload?.transition?.to?.id ?? ''));
+  if (staged) return staged;
   const evaluation = await evaluate(repository, issueId, live, now);
 
   if (evaluation.kind === 'LEGACY') {
@@ -336,6 +384,61 @@ export async function personalDataReport(
   }
 }
 
+/** ADR-018: the signature field on the transition screen asks for a single-use signing intent. */
+export async function createSigningIntent(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return createIntentFlow(payload, context, deps);
+}
+
+/** ADR-017: approval routes (admin), stage signing and rejection. */
+export async function listRoutes(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return listRoutesFlow(context, deps);
+}
+
+export async function saveRoute(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return saveRouteFlow(payload, context, deps);
+}
+
+export async function bindRoute(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return bindRouteFlow(payload, context, deps);
+}
+
+export async function unbindRoute(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return unbindRouteFlow(payload, context, deps);
+}
+
+export async function signStage(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return signStageFlow(payload, context, deps);
+}
+
+export async function rejectStage(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return rejectStageFlow(payload, context, deps);
+}
+
+/** Code signing (ADR-016): the code request, and the admin page flows. */
+export async function requestSigningCode(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return requestCodeFlow(payload, context, deps);
+}
+
+export async function getSigningPolicy(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return getSigningPolicyFlow(context, deps);
+}
+
+export async function setSigningPolicy(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return setSigningPolicyFlow(payload, context, deps);
+}
+
+export async function getSigningAlerts(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return signingAlertsFlow(context, deps);
+}
+
+export async function ackSigningAlert(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return ackAlertFlow(payload, context, deps);
+}
+
+export async function unlockSigning(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return unlockFlow(payload, context, deps);
+}
+
 // Register Forge Resolver for UI Kit 2 bridge invocations
 const resolver = new Resolver();
 
@@ -369,6 +472,58 @@ resolver.define('approver-policy-set-api', async (req) => {
 
 resolver.define('approver-group-search-api', async (req) => {
   return await searchApproverGroups(req.payload, req.context);
+});
+
+resolver.define('route-list-api', async (req) => {
+  return await listRoutes(req.payload, req.context);
+});
+
+resolver.define('route-save-api', async (req) => {
+  return await saveRoute(req.payload, req.context);
+});
+
+resolver.define('route-bind-api', async (req) => {
+  return await bindRoute(req.payload, req.context);
+});
+
+resolver.define('route-unbind-api', async (req) => {
+  return await unbindRoute(req.payload, req.context);
+});
+
+resolver.define('stage-sign-api', async (req) => {
+  return await signStage(req.payload, req.context);
+});
+
+resolver.define('stage-reject-api', async (req) => {
+  return await rejectStage(req.payload, req.context);
+});
+
+resolver.define('transition-sign-intent-api', async (req) => {
+  return await createSigningIntent(req.payload, req.context);
+});
+
+resolver.define('signing-code-request-api', async (req) => {
+  return await requestSigningCode(req.payload, req.context);
+});
+
+resolver.define('signing-policy-get-api', async (req) => {
+  return await getSigningPolicy(req.payload, req.context);
+});
+
+resolver.define('signing-policy-set-api', async (req) => {
+  return await setSigningPolicy(req.payload, req.context);
+});
+
+resolver.define('signing-alerts-api', async (req) => {
+  return await getSigningAlerts(req.payload, req.context);
+});
+
+resolver.define('signing-alert-ack-api', async (req) => {
+  return await ackSigningAlert(req.payload, req.context);
+});
+
+resolver.define('signing-unlock-api', async (req) => {
+  return await unlockSigning(req.payload, req.context);
 });
 
 export const handler = resolver.getDefinitions();

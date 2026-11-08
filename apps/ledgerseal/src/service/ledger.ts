@@ -11,20 +11,27 @@ import * as crypto from 'crypto';
 import { CANONICALIZER_VERSION, canonicalizeIssueState, FieldSchema, isExcludedField, PSEUDONYMOUS_VERSIONS } from '../domain/canonicalizer';
 import { canonicalForm, computeSnapshotHash } from '../domain/crypto';
 import { buildStatusRow, verifyChain } from '../domain/history';
-import { CanonicalIssueSnapshot, FieldDiff, SealedWorkEffort, SealSummary, WorkEffortPartyAssignment, WorkEffortStatus, TamperAnalysis } from '../domain/models';
+import { AttachmentDiff, CanonicalIssueSnapshot, FieldDiff, SealedWorkEffort, SealSummary, WorkEffortPartyAssignment, WorkEffortStatus, TamperAnalysis } from '../domain/models';
 import { changeAuthorsSince, itemAuthorsSince } from '../domain/policy';
 import { assignmentHash, isConsistent, LoadedSeal, summarise, withRecordHash } from '../domain/seal-record';
 import { canChange, LedgerSealStatusId, roleForMeaning } from '../domain/status';
 import { compareToSeal, SealedState } from '../domain/tamper-detector';
 import { capped, LONG_VALUE_CHARS, richTextSummary } from '../domain/display';
-import { AttestationSource, AttestationStatus, buildAttestation, Signer } from '../domain/attestation';
-import { DECLARATION, isMeaning, matchesDeclaration, validReason } from '../domain/declaration';
+import { AttestationSource, AttestationStatus, buildAttestation, buildRoutedAttestation, Signer } from '../domain/attestation';
+import { approvalSummary } from './approval-summary';
+import { agreesTo, Declaration, declarationFor, declarationForAction, declarationKey, declarationTexts, isDeclarationV2Approved, isMeaning, validReason } from '../domain/declaration';
+import { declarationHash } from '../domain/declaration-hash';
 import { ChangelogEntry, JiraClient } from '../jira/jira-client';
 import { isPartyToken, partyFunction, PartyFn, PartySeen, pseudonymise, TOKEN_IN_TEXT } from '../domain/party';
 import { newSiteKey, PartyRepository, PartyResolver } from '../storage/party-repository';
 import { approverGroupNames, isApprover } from './approver';
 import { convertRecord, hasConversionJournal } from './conversion';
-import { HISTORY_PAGE_SIZE, MAX_CONTENT_PARTS, MAX_PART_BYTES, SealRepository, splitUtf8, StorageProvider } from '../storage/seal-repository';
+import { HISTORY_PAGE_SIZE, MAX_CONTENT_PARTS, MAX_PART_BYTES, SealRepository, SecretStore, splitUtf8, StorageProvider } from '../storage/seal-repository';
+import { hasValidPolicyHash, isPart11Project, SigningEvidence, SigningPolicy } from '../domain/signing';
+import { SigningRepository } from '../storage/signing-repository';
+import { anyPart11, checkSigningCode, giveBackCode, part11For, recordSignOk } from './signing';
+import { endRunOnRevoke, mayRevokeRouted, panelRoute, RouteContext, routeFor, routeGovernsSeal, RUN_BUSY_MESSAGE, stillHoldsRunLock, voidRunIfChanged, withRunLock } from './routes';
+import { RouteRepository } from '../storage/route-repository';
 import { logFailure } from './log';
 
 export interface LedgerSealDeps {
@@ -32,6 +39,10 @@ export interface LedgerSealDeps {
   storage: StorageProvider;
   /** Signs the ledgerseal-cert attestation. Absent or null: the attestation is written unsigned. */
   signer?: Signer | null;
+  /** The Forge secret store, for the site key that hashes signing codes (ADR-016). */
+  secrets?: SecretStore | null;
+  /** Issues whose run lock this call already holds (review H-1); set only by withRunLock. */
+  heldRunLocks?: ReadonlyMap<string, string>;
 }
 
 export type SealErrorCode =
@@ -49,8 +60,24 @@ export type SealErrorCode =
   | 'LICENSE_INACTIVE'
   | 'NOT_ADMIN'
   | 'ISSUE_CHANGED'
+  | 'POLICY_CHANGED'
   | 'RESTRICTED_EVIDENCE'
-  | 'NO_BROWSE_PERMISSION';
+  | 'NO_BROWSE_PERMISSION'
+  | 'NOT_PART11'
+  | 'SIGNING_REQUIRED'
+  | 'SIGNING_FAILED'
+  | 'CODE_EXPIRED'
+  | 'CODE_REUSED'
+  | 'SIGNING_LOCKED'
+  | 'RATE_LIMITED'
+  | 'CODE_NOT_SENT'
+  | 'SELF_UNLOCK'
+  | 'DECLARATION_PENDING'
+  | 'POLICY_INVALID'
+  | 'NOT_ROUTED'
+  | 'ROUTED'
+  | 'STAGE_NOT_OPEN'
+  | 'SAME_PERSON_STAGE';
 
 export interface SealFailure {
   ok: false;
@@ -74,6 +101,22 @@ const MESSAGES: Record<SealErrorCode, string> = {
   LICENSE_INACTIVE: 'The LedgerSeal licence is not active. Ask your Jira admin to renew it.',
   NOT_ADMIN: 'Only a Jira admin can change who can seal.',
   ISSUE_CHANGED: 'The issue changed since you opened it. Nothing was saved. Refresh, review the issue, and seal again.',
+  POLICY_CHANGED: 'A Jira admin changed the code-signing policy or the approval route while you signed. Nothing was saved. Sign again.',
+  NOT_PART11: 'This project does not use code signing, so no code is needed.',
+  SIGNING_REQUIRED: 'This project uses code signing. Ask for a code, then type it to sign.',
+  SIGNING_FAILED: 'The code did not work. Check the newest LedgerSeal email, or ask for a new code.',
+  CODE_EXPIRED: 'The code expired after 5 minutes. Ask for a new code.',
+  CODE_REUSED: 'This code was already used. Ask for a new code.',
+  SIGNING_LOCKED: 'Code signing is locked for you after too many failed attempts. Ask a Jira admin to unlock it.',
+  RATE_LIMITED: 'Too many code requests. Wait a minute, then ask again.',
+  CODE_NOT_SENT: 'LedgerSeal could not email your code through Jira (Jira outgoing email may be off). Nothing was signed. Ask your Jira admin.',
+  SELF_UNLOCK: 'Another Jira admin must unlock your own code signing.',
+  DECLARATION_PENDING: 'Code signing is not available yet: its declaration text is waiting for approval.',
+  POLICY_INVALID: 'The code signing settings failed their integrity check, so LedgerSeal signs nothing. Ask your Jira admin to save them again.',
+  NOT_ROUTED: 'This issue has no approval route. Seal it in the panel.',
+  ROUTED: 'This issue has an approval route: sign its stages in the LedgerSeal panel.',
+  STAGE_NOT_OPEN: 'This stage is not open for signing now. Reload to see the approval.',
+  SAME_PERSON_STAGE: 'You already signed a stage of this approval, so another person must sign this one.',
   RESTRICTED_EVIDENCE:
     'This seal covers comments or work logs that are restricted to a role or group you are not in, or that LedgerSeal can no longer read (deleted or restricted since), so LedgerSeal does not export its evidence. If a covered comment or work log was deleted, approving the changes makes a new seal whose evidence can be exported.'
 };
@@ -233,10 +276,21 @@ export const UNSIGNED_LOG =
   'LedgerSeal: LEDGERSEAL_SIGNING_KEY or LEDGERSEAL_KEY_ID is not set for this Forge environment, so this attestation is unsigned and the offline verifier will fail its signature check.';
 
 async function writeAttestation(deps: LedgerSealDeps, seal: LoadedSeal, status: AttestationStatus, at: string): Promise<void> {
-  const issueId = seal.workEffort.workEffortId;
+  await writeIssueAttestation(deps, seal.workEffort.workEffortId, seal, status, at);
+}
+
+/**
+ * Writes the property for the issue: schema 3, or schema 4 with `approval` when the issue has a route run (ADR-017).
+ * Before the first seal of a routed issue `seal` and `status` are null.
+ */
+export async function writeIssueAttestation(deps: LedgerSealDeps, issueId: string, seal: LoadedSeal | null, status: AttestationStatus | null, at: string): Promise<void> {
   // B5: an unsigned attestation is never written silently
   if (!deps.signer) console.error(`${UNSIGNED_LOG} Issue ${issueId}.`);
-  const written = await deps.jira.putSealProperty(issueId, buildAttestation(attestationSource(seal), status, at, deps.signer ?? null));
+  const approval = await approvalSummary(deps.storage, issueId);
+  const body = approval
+    ? buildRoutedAttestation(issueId, seal ? attestationSource(seal) : null, status, approval, at, deps.signer ?? null)
+    : buildAttestation(attestationSource(seal as LoadedSeal), status as AttestationStatus, at, deps.signer ?? null);
+  const written = await deps.jira.putSealProperty(issueId, body);
   if (!written) console.error(`LedgerSeal: could not write the ledgerseal-cert property on issue ${issueId}`);
 }
 
@@ -352,6 +406,29 @@ function attribute(diffs: FieldDiff[], changelog: ChangelogEntry[], sinceIso: st
 }
 
 /**
+ * LS-1: who added, removed or replaced each changed attachment, and when. An added one names its author (Jira's
+ * attachment record); otherwise the change log after the seal names who added or removed that attachment. Unknown
+ * stays empty.
+ */
+export function attributeAttachments(diffs: AttachmentDiff[], changelog: ChangelogEntry[], sinceIso: string, liveRaw: any): AttachmentDiff[] {
+  const since = Date.parse(sinceIso);
+  const live = new Map(((liveRaw?.fields?.attachment as any[]) ?? []).map(a => [String(a?.id), a]));
+  return diffs.map(diff => {
+    const entries = changelog.filter(
+      e =>
+        !(Date.parse(e.created) <= since) &&
+        e.items.some((item: any) => (item.fieldId === 'attachment' || item.field === 'Attachment') && (String(item.from ?? '') === diff.attachmentId || String(item.to ?? '') === diff.attachmentId))
+    );
+    const fromLog = [...new Set(entries.map(e => e.author?.accountId).filter((a): a is string => Boolean(a)))];
+    const added = diff.type === 'ADDED' ? live.get(diff.attachmentId) : null;
+    const author = added?.author?.accountId ? [String(added.author.accountId)] : [];
+    const changedBy = fromLog.length > 0 ? fromLog : author;
+    const changedAt = entries.length > 0 ? entries[entries.length - 1].created : (added?.created ?? null);
+    return { ...diff, changedBy, changedAt };
+  });
+}
+
+/**
  * Records a change incident when the live hash is new for the current seal (invariant 4).
  * Writes nothing when the issue is unchanged or the same change was already recorded.
  */
@@ -408,33 +485,122 @@ export async function recordIncidentIfNew(
   return { seal: updated, recorded: true };
 }
 
-export async function sealIssueFlow(payload: any, context: any, deps: LedgerSealDeps) {
+/**
+ * The code-signing policy in force for the issue's project (ADR-016), null when code signing does not apply, or the
+ * failure to return. The project is read only when some policy is on.
+ */
+export async function part11Policy(deps: LedgerSealDeps, issueId: string): Promise<SigningPolicy | null | SealFailure> {
+  if (!(await anyPart11(deps))) return null;
+  const scope = await deps.jira.getIssueScope(issueId);
+  if (!scope.ok) return fail('JIRA_UNREACHABLE');
+  const state = await part11For(deps, scope.value.projectId);
+  if ('invalid' in state) return fail('POLICY_INVALID');
+  return state.on ? state.policy : null;
+}
+
+/**
+ * Review M-1: the code-signing policy in force, named in the data of every signature row (on or off), so the
+ * verifier reads the policy from the chained row and never from the unsigned policy list alone. Null when no policy
+ * was ever saved (the record stays format 1). 'changed' when the decision made with `used` no longer holds: a policy
+ * saved during the signature refuses it, so a row never names a policy it was not checked against (review L-9).
+ */
+export async function policyReference(deps: LedgerSealDeps, projectId: string, used: SigningPolicy | null): Promise<{ version: number; policyHash: string; projectId: string } | null | 'changed'> {
+  const current = await new SigningRepository(deps.storage, deps.secrets ?? null).getPolicy();
+  if (!current) return used ? 'changed' : null;
+  if (!hasValidPolicyHash(current)) return 'changed';
+  if (isPart11Project(current, projectId) !== Boolean(used)) return 'changed';
+  if (used && used.policyHash !== current.policyHash) return 'changed';
+  // Review round 2 (V-2): the row names its project, so an issue moved to another project later is still judged right
+  return { version: current.version, policyHash: current.policyHash, projectId };
+}
+
+/**
+ * How a seal is made (ADR-018). By default the user signs in the panel and every check runs in this invocation.
+ * `prepare`: the transition-screen field asks for a signing intent; every check runs as the user, including the code
+ * in a code-signing project, and the flow stops before its first seal write. `complete`: the workflow validator
+ * finishes an intent; the checks made as the user (Browse, approver, code) come from the intent, which holds their
+ * result, and the live issue is read with the transition-screen values applied.
+ */
+export interface SealMode {
+  prepare?: boolean;
+  complete?: {
+    policy: SigningPolicy | null;
+    signingEvidence: SigningEvidence | null;
+    /** The target status of a transition-screen signature (ADR-018); null for a route's completing stage. */
+    transitionToStatusId: string | null;
+    apply?: (raw: any) => any;
+    /** ADR-017: the chain head of the run when the issue has no seal yet, and the route data of the seal row. */
+    chainHead?: { seq: number; entryHash: string } | null;
+    extraData?: Record<string, unknown>;
+    /** ADR-017: runs after the seal is stored and before the property is written (the run becomes COMPLETE). */
+    beforeAttestation?: (row: { seq: number; entryHash: string }) => Promise<void>;
+  };
+}
+
+/** What a prepared seal hands to the intent: the hash the signer saw and the code check's result. */
+export interface PreparedSeal {
+  ok: true;
+  prepared: true;
+  viewHash: string;
+  approvingChanges: boolean;
+  policy: SigningPolicy | null;
+  signingEvidence: SigningEvidence | null;
+}
+
+export async function sealIssueFlow(payload: any, context: any, deps: LedgerSealDeps, mode: SealMode = {}) {
   const accountId = context?.accountId ? String(context.accountId) : '';
   if (!accountId) return fail('NO_IDENTITY');
-  if (licenseInactive(context)) return fail('LICENSE_INACTIVE');
+  if (!mode.complete && licenseInactive(context)) return fail('LICENSE_INACTIVE');
   const issue = contextIssue(context);
   if (!issue) return fail('MISSING_ISSUE');
   const signature = payload?.signature;
   if (!signature) return fail('INVALID_REQUEST');
-  const denied = await browseDenied(deps, issue.id);
-  if (denied) return denied;
+  let policy: SigningPolicy | null;
+  if (mode.complete) {
+    policy = mode.complete.policy;
+    // Review L-1: the decisions made when the intent was prepared must still hold when it is completed. A route bound
+    // since then, or a code-signing policy saved since then (on, off or changed), refuses the signature
+    if (mode.complete.transitionToStatusId !== null) {
+      const routed = await routeGovernsSeal(deps, issue.id);
+      if (routed === true) return fail('ROUTED');
+      if (routed !== false) return routed;
+    }
+    const now11 = await part11Policy(deps, issue.id);
+    if (typeof now11 === 'object' && now11 && 'code' in now11) return now11;
+    if (((now11 as SigningPolicy | null)?.policyHash ?? null) !== (policy?.policyHash ?? null)) return fail('POLICY_CHANGED');
+  } else {
+    const denied = await browseDenied(deps, issue.id);
+    if (denied) return denied;
 
-  const permission = await isApprover(deps.jira, deps.storage, issue.id);
-  if (!permission.ok) return fail(permission.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
-  if (!permission.value) return fail('NOT_APPROVER');
+    const permission = await isApprover(deps.jira, deps.storage, issue.id);
+    if (!permission.ok) return fail(permission.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
+    if (!permission.value) return fail('NOT_APPROVER');
+    // ADR-017: a routed issue is sealed by its stages, never by the plain seal
+    const routed = await routeGovernsSeal(deps, issue.id);
+    if (routed === true) return fail('ROUTED');
+    if (routed !== false) return routed;
 
-  // The signer agrees to the one declaration the panel shows (LS-09)
-  if (!matchesDeclaration(signature.declarationVersion, signature.declarationText)) return fail('DECLARATION_MISMATCH');
+    // Code-signing projects (ADR-016): read the project only when some policy is on, so other sites make no extra call
+    const part11 = await part11Policy(deps, issue.id);
+    if (typeof part11 === 'object' && part11 && 'code' in part11) return part11;
+    policy = part11 as SigningPolicy | null;
+  }
+  // The signer agrees to the one declaration the panel shows (LS-09): version 2 in a code-signing project
+  const declaration = declarationForAction('approve', Boolean(policy)) as Declaration;
+  if (!agreesTo(signature, declaration)) return fail('DECLARATION_MISMATCH');
+  if (policy && !isDeclarationV2Approved()) return fail('DECLARATION_PENDING');
   const meaning = signature.meaning === undefined ? 'APPROVAL' : signature.meaning;
   if (!isMeaning(meaning)) return fail('INVALID_REQUEST');
 
   // Fetch real live Jira issue. Never fall back to client-supplied payload.
   const now = new Date().toISOString();
   const parties = new PartyRepository(deps.storage);
-  const read = await readLiveSnapshot(deps.jira, issue.id, now, { party: await parties.partyForRead() });
+  const read = await readLiveSnapshot(deps.jira, issue.id, now, { party: await parties.partyForRead(), apply: mode.complete?.apply });
   if (!read) return fail('JIRA_UNREACHABLE');
   // F-05: the seal covers what the approver reviewed; a change since the panel loaded refuses the seal
   if (typeof payload?.viewHash === 'string' && payload.viewHash !== viewHash(read, now)) return fail('ISSUE_CHANGED');
+  // An intent always names what its signer saw (ADR-018 decision 2)
+  if ((mode.prepare || mode.complete) && typeof payload?.viewHash !== 'string') return fail('INVALID_REQUEST');
   const repo = new SealRepository(deps.storage);
   // A record written before ADR-011 is converted first, so the new seal continues a record with tokens only
   const conversion = await convertIfNeeded(deps, repo, issue.id);
@@ -457,6 +623,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   let previous: LoadedSeal | null = null;
   let previousWorkEffort: SealedWorkEffort | null = null;
   let previousState: LedgerSealStatusId | 'RECORD_INVALID' | null = null;
+  let approvingChanges = false;
   const evaluation = await evaluate(repo, issue.id, live, now);
   if (evaluation.kind === 'SEAL') {
     previous = evaluation.seal;
@@ -464,6 +631,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
     previousState = previousWorkEffort.currentStatusId;
     const status = evaluation.analysis.status;
     if (status === 'SEAL_BROKEN' || status === 'SEAL_COMPROMISED') {
+      approvingChanges = true;
       // Separation of duties: the author of a change since the last seal cannot approve it
       const self = await changedSince(deps, issue.id, live, previous, accountId);
       if (self === null) return fail('JIRA_UNREACHABLE');
@@ -503,7 +671,35 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
   if (contentParts.length > MAX_CONTENT_PARTS) return fail('SNAPSHOT_TOO_LARGE');
 
   if (!(await storeKey())) return fail('CONFLICT');
-  const row = buildStatusRow(previousWorkEffort ? previousWorkEffort.statusHead : null, {
+  // ADR-016: in a code-signing project the emailed code is checked last, after every other check and before the first write
+  let signingEvidence: SigningEvidence | null = mode.complete ? mode.complete.signingEvidence : null;
+  if (policy && !mode.complete) {
+    const checked = await checkSigningCode(deps, {
+      accountId,
+      partyId: party(accountId),
+      issueId: issue.id,
+      action: mode.prepare ? 'TRANSITION' : approvingChanges ? 'RESEAL' : 'SEAL',
+      stageId: null,
+      policy,
+      signing: payload?.signing
+    });
+    if (!checked.ok) return checked;
+    signingEvidence = checked.evidence;
+  }
+  if (policy && mode.complete && !signingEvidence) return fail('SIGNING_REQUIRED');
+  // ADR-018: a prepared seal stops here, before its first seal write; the intent holds this result
+  if (mode.prepare) {
+    const prepared: PreparedSeal = { ok: true, prepared: true, viewHash: viewHash(read, now), approvingChanges, policy, signingEvidence };
+    return prepared;
+  }
+  // Review round 2 (R2-2): a code checked here and not followed by a written row is given back
+  const ownCode = !mode.complete ? signingEvidence : null;
+  const policyRef = await policyReference(deps, String(live.snapshot.projectId ?? ''), policy);
+  if (policyRef === 'changed') {
+    await giveBackCode(deps, ownCode);
+    return fail('POLICY_CHANGED');
+  }
+  const row = buildStatusRow(previousWorkEffort ? previousWorkEffort.statusHead : mode.complete?.chainHead ?? null, {
     workEffortId: issue.id,
     statusId: 'LS_SEALED',
     statusDatetime: now,
@@ -514,13 +710,27 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
       certificateId,
       snapshotHash,
       meaning,
-      declarationVersion: DECLARATION.version,
+      declarationVersion: declaration.version,
+      // Review round 2 (D-1): the exact text the signer agreed to, by hash, wherever the record is format 2 anyway
+      // (a code-signing policy exists, or a route's stage writes the seal); the evidence then carries the text.
+      // A plain seal keeps format 1, whose declaration version 1 text is fixed and published
+      // Review round 3 (D-5): the declaration's id too (`approve/1` or `approve/2`), so the verifier checks it matches the action
+      ...(policyRef || mode.complete?.extraData ? { declarationId: declaration.id, declarationHash: declarationHash(declaration.text) } : {}),
       previousCertificateId: previousWorkEffort ? previousWorkEffort.currentContentId : null,
-      previousState
+      previousState,
+      ...(signingEvidence ? { signing: signingEvidence } : {}),
+      ...(policyRef ? { signingPolicy: policyRef } : {}),
+      // ADR-018 decision 5: a signature made on the transition screen says so, and names the target status
+      ...(mode.complete && mode.complete.transitionToStatusId !== null ? { via: 'TRANSITION_SCREEN', transitionToStatusId: mode.complete.transitionToStatusId } : {}),
+      ...(mode.complete?.extraData ?? {})
     }
   });
-  if (!(await repo.appendStatus(row))) return fail('CONFLICT');
+  if (!(await repo.appendStatus(row))) {
+    await giveBackCode(deps, ownCode);
+    return fail('CONFLICT');
+  }
   await parties.register([accountId], party, now);
+  if (ownCode) await recordSignOk(deps, signer, { issueId: issue.id, action: transitionName, challengeId: ownCode.challengeId });
 
   const assignment: WorkEffortPartyAssignment = {
     workEffortId: issue.id,
@@ -530,7 +740,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
     thruDate: null,
     comments: reason,
     contentId: certificateId,
-    declaration: { version: DECLARATION.version, text: DECLARATION.text }
+    declaration: { version: declaration.version, text: declaration.text }
   };
   const workEffort = withRecordHash({
     schemaVersion: 3,
@@ -553,7 +763,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
     attributes: {
       snapshotHash,
       canonicalizerVersion: CANONICALIZER_VERSION,
-      declarationVersion: DECLARATION.version,
+      declarationVersion: declaration.version,
       statusAtSeal: snapshot.status,
       snapshotParts: contentParts.length,
       ...(conversion === 'TOO_LARGE' ? {} : { parties: 'TOKEN' as const })
@@ -575,6 +785,7 @@ export async function sealIssueFlow(payload: any, context: any, deps: LedgerSeal
     }
   }
 
+  if (mode.complete?.beforeAttestation) await mode.complete.beforeAttestation({ seq: row.seq, entryHash: row.entryHash });
   // The ledgerseal-cert property names no person (ADR-011 decision 8)
   await writeAttestation(deps, { workEffort, assignment, sealingRow: row }, 'SEAL_VALID', now);
 
@@ -626,6 +837,8 @@ export async function verifyIssueFlow(payload: any, context: any, deps: LedgerSe
   if (!live) return errorResult('JIRA_UNREACHABLE', now);
   let result: TamperAnalysis;
   try {
+    // ADR-017: a covered change ends an open approval run, recorded once like an incident
+    if (party) await voidRunIfChanged(deps, issue.id, live, now);
     result = await verifyAgainstSeal(deps, issue.id, live, now);
   } catch (err) {
     logFailure('verify failed', err);
@@ -637,9 +850,22 @@ export async function verifyIssueFlow(payload: any, context: any, deps: LedgerSe
     rights: await viewerRights(deps, issue.id, String(context.accountId), result, live),
     approverGroups: await approverGroupNames(deps.storage),
     viewHash: viewHash(live, now),
+    // ADR-016: the panel asks for a code and shows declaration version 2 in a code-signing project
+    part11: await panelPart11(deps, live),
+    // ADR-017: the route's stages, who signed, and what this viewer may sign
+    route: await panelRoute(deps, issue.id, live, String(context.accountId)),
     // B5: the panel says so when this installation writes unsigned attestations
     signing: { signed: Boolean(deps.signer), keyId: deps.signer?.keyId ?? null }
   };
+}
+
+/** What the panel needs to know about code signing for this issue. A failed read shows it as on (fail closed). */
+async function panelPart11(deps: LedgerSealDeps, live: LiveRead) {
+  const state = await part11For(deps, String(live.raw?.fields?.project?.id ?? ''));
+  // Review round 3 (D-5): each form shows the declaration for its own action
+  const declarations = (on: boolean) => ({ reject: declarationForAction('reject', on), revoke: declarationForAction('revoke', on) });
+  if ('invalid' in state) return { on: true, invalid: true, declaration: declarationFor(true), declarations: declarations(true), pending: !isDeclarationV2Approved() };
+  return { on: state.on, invalid: false, declaration: declarationFor(state.on), declarations: declarations(state.on), pending: state.on && !isDeclarationV2Approved() };
 }
 
 const CHANGED_STATES = new Set(['SEAL_BROKEN', 'SEAL_COMPROMISED']);
@@ -677,6 +903,23 @@ async function authorOfChange(deps: LedgerSealDeps, issueId: string, live: LiveR
   if (!changelog.ok) return null;
   const counts = (fieldId: string) => !isExcludedField(version, fieldId, live.fields);
   return changeAuthorsSince(changelog.value, live.raw, sinceIso, counts).has(accountId);
+}
+
+/**
+ * Review round 4 (R4-2): the revoke flow's own refusals that a code request can know before it emails a code: no
+ * seal, a seal already revoked or failing its check, and the separation of duties (the caller changed the issue after
+ * the seal). Null when a revoke could go ahead.
+ */
+export async function revokeRefusal(deps: LedgerSealDeps, issueId: string, accountId: string): Promise<SealFailure | null> {
+  const seal = await new SealRepository(deps.storage).getSeal(issueId);
+  if (!seal) return fail('NOT_SEALED', 'This issue is not sealed, so there is nothing to revoke.');
+  if (seal === 'missing' || !isConsistent(seal)) return fail('INVALID_REQUEST', 'The seal record failed its integrity check, so it cannot be revoked. Seal the issue again.');
+  if (!canChange(seal.workEffort.currentStatusId, 'LS_REVOKED')) return fail('INVALID_REQUEST', 'This seal is already revoked.');
+  const live = await readLiveSnapshot(deps.jira, issueId, new Date().toISOString(), { party: await new PartyRepository(deps.storage).partyForRead() });
+  if (!live) return fail('JIRA_UNREACHABLE');
+  const self = await changedSince(deps, issueId, live, seal, accountId);
+  if (self === null) return fail('JIRA_UNREACHABLE');
+  return self ? fail('SELF_APPROVAL', SELF_REVOKE_MESSAGE) : null;
 }
 
 function changedSince(deps: LedgerSealDeps, issueId: string, live: LiveRead, seal: LoadedSeal, accountId: string) {
@@ -733,6 +976,11 @@ async function verifyAgainstSeal(
     })
   );
   analysis.seal = await resolveSummary(analysis.seal, resolver);
+  // LS-1: who added, removed or replaced each attachment, for the panel's change rows (the record is unchanged)
+  if (analysis.tamperedAttachments.length > 0) {
+    const changelog = await deps.jira.getChangelog(issueId);
+    analysis.tamperedAttachments = attributeAttachments(analysis.tamperedAttachments, changelog.ok ? changelog.value : [], seal.assignment.fromDate, live.raw);
+  }
   // F-06: a changed comment restricted to a role or group shows its text only to a viewer who can see it in Jira
   const commentIds = analysis.tamperedFields.filter(d => d.fieldId.startsWith('comment:')).map(d => d.fieldId.slice('comment:'.length));
   const hidden = await hiddenComments(deps, issueId, sealed, live.raw, commentIds);
@@ -916,6 +1164,16 @@ const VERIFICATION_STEPS = [
   'Records name people by party token (pty_...). "parties" maps each token in the history to its account id, or null when the account was closed. It is not signed and is not part of any hash.'
 ];
 
+/** Added for format 2 (spec v4 section 15.7). */
+export const VERIFICATION_STEPS_V2 = [
+  'Format 2: check that each entry of "signingPolicies" hashes to its policyHash and names the policyHash before it (64 zeros for version 1).',
+  'Format 2: check that every seal, reseal, revoke, stage signature and rejection carries data.signing with components 2 when the policy in force is on and names the entry\'s project. The policy in force is the one the entry names in data.signingPolicy (version and policyHash, which must be in "signingPolicies"), and the project is data.signingPolicy.projectId (else the snapshot projectId); an entry written by an earlier app version has no data.signingPolicy and uses the newest policy whose fromDate is not after the entry.',
+  'Format 2: for every entry with data.declarationHash, check that "declarations" holds the text under "<declarationId>/<declarationVersion>" (an entry without declarationId is an approval), that the SHA-256 of that text equals the hash, and that the declaration fits the action: approve for SEAL, RESEAL and SIGN_STAGE, reject for REJECT, revoke for REVOKE. That text is what the signer agreed to.',
+  'Format 2 is needed whenever the content needs it (attestation schemaVersion 4, an LS_RUN_* entry, or data.runId, data.routeId, data.signing, data.signingPolicy or data.declarationHash in an entry), whatever "format" says. Then a missing "signingPolicies", "routes" or "declarations" list fails.',
+  'Format 2 with routes: check that each route version hashes to its routeHash; that the stage signatures of the sealing run all signed the sealed snapshot and are the ones the seal row names; quorum per stage and order groups in order; that no person signed two stages of one run; and that no entry of a run follows an entry that ended it (LS_RUN_VOIDED, LS_RUN_REJECTED, or a revoke with endsRun). Run rows (LS_RUN_*) are not seal states.',
+  'Use the open verifier 1.5.0 or later for format 2.'
+];
+
 export const UNSIGNED_EVIDENCE =
   'This installation has no LedgerSeal signing key, so this evidence is unsigned and the offline verifier fails its signature check. Contact support@asymm.systems.';
 
@@ -1004,8 +1262,27 @@ export async function evidenceFlow(payload: any, context: any, deps: LedgerSealD
     else if (await resolver.isClosed(token)) parties[token] = null;
   }
   if (!deps.signer) console.error(`${UNSIGNED_LOG} Evidence of issue ${issue.id}.`);
+  // Format 2 (spec v4 section 15.7) only when the history holds a code-signed signature; otherwise format 1, unchanged bytes
+  // Review M-1: a row that names the policy in force makes format 2 too, so the policy list is always exported with it
+  const signed = history.some(row => row.data && typeof row.data === 'object' && ('signing' in row.data || 'signingPolicy' in row.data || 'declarationHash' in row.data));
+  // Review round 2 (D-1): the text of every declaration version an entry names by hash
+  const texts = declarationTexts();
+  const declared = [...new Set(history.filter(row => typeof row.data?.declarationHash === 'string').map(row => declarationKey(row.data)))].sort();
+  const declarations = Object.fromEntries(declared.filter(k => k in texts).map(k => [k, texts[k]]));
+  // ADR-017: a run row or a stage-signed seal makes format 2, with every route version the history names
+  const routeRefs = [...new Set(history.filter(row => typeof row.data?.routeId === 'string').map(row => `${row.data.routeId}\u0000${row.data.routeVersion}`))];
+  const routed = routeRefs.length > 0 || history.some(row => String(row.statusId).startsWith('LS_RUN_'));
+  const routeRepo = new RouteRepository(deps.storage);
+  const routes = (await Promise.all(routeRefs.map(ref => routeRepo.version(ref.split('\u0000')[0], Number(ref.split('\u0000')[1]))))).filter(Boolean);
+  const format2 = {
+    ...(signed || routed ? { signingPolicies: await new SigningRepository(deps.storage, deps.secrets ?? null).policiesInForce() } : {}),
+    ...(declared.length > 0 ? { declarations } : {}),
+    ...(routed ? { routes } : {})
+  };
+  const v2 = signed || routed;
   return {
-    format: 'ledgerseal-evidence/1',
+    format: v2 ? 'ledgerseal-evidence/2' : 'ledgerseal-evidence/1',
+    ...format2,
     exportedAt: now,
     publicKeyId: deps.signer?.keyId ?? null,
     ...(deps.signer ? {} : { warning: UNSIGNED_EVIDENCE }),
@@ -1013,7 +1290,7 @@ export async function evidenceFlow(payload: any, context: any, deps: LedgerSealD
     snapshot: canonicalForm(snapshot),
     history,
     parties,
-    verification: VERIFICATION_STEPS
+    verification: v2 ? [...VERIFICATION_STEPS, ...VERIFICATION_STEPS_V2] : VERIFICATION_STEPS
   };
 }
 
@@ -1030,10 +1307,36 @@ export async function revokeFlow(payload: any, context: any, deps: LedgerSealDep
   if (!reason) return fail('REASON_REQUIRED', 'Give a reason for revoking the seal (1 to 500 characters).');
   const denied = await browseDenied(deps, issue.id);
   if (denied) return denied;
+  // A person without the right is refused before anything is written, the lock included
+  const right = await revokeRight(deps, issue.id);
+  if ('code' in right) return right;
+  // Review round 2 (R2-1): the route decision (again), the code, the revoke row and the end of the run happen under
+  // the run lock, so a stage signature cannot complete the run that this revoke ends
+  const done = await withRunLock(deps, issue.id, locked => revokeLocked(payload, accountId, issue, reason, locked));
+  return done === 'busy' ? fail('CONFLICT', RUN_BUSY_MESSAGE) : done;
+}
 
-  const permission = await isApprover(deps.jira, deps.storage, issue.id);
-  if (!permission.ok) return fail(permission.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
-  if (!permission.value) return fail('NOT_APPROVER');
+/** Who may revoke (spec v3 section 7.5, ADR-017 decision 8), and the route the decision used. */
+async function revokeRight(deps: LedgerSealDeps, issueId: string): Promise<{ routeCtx: Awaited<ReturnType<typeof routeFor>> } | SealFailure> {
+  // ADR-017 decision 8: in a routed issue the revoker must be able to sign a stage of the route's last order group
+  const routeCtx = await routeFor(deps, issueId);
+  if (routeCtx === 'unreachable') return fail('JIRA_UNREACHABLE');
+  if (routeCtx === 'invalid') return fail('INVALID_REQUEST', 'The approval record failed its integrity check. Contact your Jira admin.');
+  if (routeCtx) {
+    const may = await mayRevokeRouted(deps, routeCtx);
+    if (may !== true) return may === false ? fail('NOT_APPROVER', 'Only a member of a group of the last approval stage can revoke this seal.') : may;
+  } else {
+    const permission = await isApprover(deps.jira, deps.storage, issueId);
+    if (!permission.ok) return fail(permission.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
+    if (!permission.value) return fail('NOT_APPROVER');
+  }
+  return { routeCtx };
+}
+
+async function revokeLocked(payload: any, accountId: string, issue: { id: string; key: string }, reason: string, deps: LedgerSealDeps) {
+  const right = await revokeRight(deps, issue.id);
+  if ('code' in right) return right;
+  const routeCtx = right.routeCtx as RouteContext | null;
 
   const repo = new SealRepository(deps.storage);
   const conversion = await convertIfNeeded(deps, repo, issue.id);
@@ -1053,9 +1356,37 @@ export async function revokeFlow(payload: any, context: any, deps: LedgerSealDep
   if (self === null) return fail('JIRA_UNREACHABLE');
   if (self) return fail('SELF_APPROVAL', SELF_REVOKE_MESSAGE);
 
+  const part11 = await part11Policy(deps, issue.id);
+  if (part11 && 'code' in part11) return part11;
+  // Review round 3 (D-5): in a code-signing project the revoker agrees to the revoke declaration (`revoke/1`)
+  const revokeDeclaration = declarationForAction('revoke', Boolean(part11));
+  if (revokeDeclaration && !agreesTo(payload?.signature, revokeDeclaration)) return fail('DECLARATION_MISMATCH');
   const now = new Date().toISOString();
   const parties = new PartyRepository(deps.storage);
   const party = await parties.partyForWrite();
+  let signingEvidence: SigningEvidence | null = null;
+  if (part11) {
+    const checked = await checkSigningCode(deps, {
+      accountId,
+      partyId: party(accountId),
+      issueId: issue.id,
+      action: 'REVOKE',
+      stageId: null,
+      policy: part11,
+      signing: payload?.signing
+    });
+    if (!checked.ok) return checked;
+    signingEvidence = checked.evidence;
+  }
+  const policyRef = await policyReference(deps, String(live.snapshot.projectId ?? ''), part11 as SigningPolicy | null);
+  if (policyRef === 'changed') {
+    await giveBackCode(deps, signingEvidence);
+    return fail('POLICY_CHANGED');
+  }
+  if (!(await stillHoldsRunLock(deps, issue.id))) {
+    await giveBackCode(deps, signingEvidence);
+    return fail('CONFLICT', RUN_BUSY_MESSAGE);
+  }
   const row = buildStatusRow(we.statusHead, {
     workEffortId: we.workEffortId,
     statusId: 'LS_REVOKED',
@@ -1063,10 +1394,22 @@ export async function revokeFlow(payload: any, context: any, deps: LedgerSealDep
     setByPartyId: party(accountId),
     reason,
     transitionName,
-    data: { certificateId: we.currentContentId }
+    data: {
+      certificateId: we.currentContentId,
+      ...(revokeDeclaration
+        ? { declarationId: revokeDeclaration.id, declarationVersion: revokeDeclaration.version, declarationHash: declarationHash(revokeDeclaration.text) }
+        : {}),
+      ...(signingEvidence ? { signing: signingEvidence } : {}),
+      ...(policyRef ? { signingPolicy: policyRef } : {}),
+      ...(routeCtx && routeCtx.open ? { endsRun: true, runId: routeCtx.run?.runId } : {})
+    }
   });
-  if (!(await repo.appendStatus(row))) return fail('CONFLICT');
+  if (!(await repo.appendStatus(row))) {
+    await giveBackCode(deps, signingEvidence);
+    return fail('CONFLICT');
+  }
   await parties.register([accountId], party, now);
+  if (signingEvidence) await recordSignOk(deps, party(accountId), { issueId: issue.id, action: 'REVOKE', challengeId: signingEvidence.challengeId });
 
   const ended = { ...seal.assignment, thruDate: now };
   const updated: LoadedSeal = {
@@ -1083,6 +1426,7 @@ export async function revokeFlow(payload: any, context: any, deps: LedgerSealDep
     })
   };
   await commitAfterClaim(repo, row, () => repo.saveRevocation(updated.workEffort, ended));
+  if (routeCtx && routeCtx.open) await endRunOnRevoke(deps, issue.id, now, { seq: row.seq, entryHash: row.entryHash });
   await writeAttestation(deps, updated, 'SEAL_REVOKED', now);
   return { ok: true as const, revokedAt: now };
 }

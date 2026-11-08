@@ -34,7 +34,7 @@ describe('approver policy admin page', () => {
   it('declares a native Jira admin page on the shared resolver, with its own UI resource', () => {
     expect(manifest).toContain(`  jira:adminPage:
     - key: ledgerseal-admin
-      title: LedgerSeal approvers
+      title: LedgerSeal settings
       render: native
       resource: admin
       resolver:
@@ -43,7 +43,8 @@ describe('approver policy admin page', () => {
   });
 
   it('declares the work scopes, the issue property write scope (F-20) and the personal data report scope, nothing else', () => {
-    expect(manifest).toMatch(/scopes:\n    - read:jira-work\n    - write:issue\.property:jira\n    - read:jira-user\n    - storage:app\n    - report:personal-data\n?$/);
+    // ADR-016: send:notification:jira (granular) only emails a signer their own signing code (spike S-8)
+    expect(manifest).toMatch(/scopes:\n    - read:jira-work\n    - write:issue\.property:jira\n    - read:jira-user\n    - storage:app\n    - report:personal-data\n    - send:notification:jira\n?$/);
   });
 });
 
@@ -77,5 +78,23 @@ describe('B-20 bundled icon and no dead code', () => {
     expect(index).not.toContain('renderIssuePanel');
     const tests = fs.readdirSync(__dirname).filter(f => f.endsWith('.ts') && f !== 'manifest.test.ts');
     for (const file of tests) expect(fs.readFileSync(path.join(__dirname, file), 'utf8')).not.toContain('renderIssuePanel');
+  });
+});
+
+describe('ADR-018 signature field and issue action', () => {
+  const fs = require('fs');
+  const text: string = fs.readFileSync(require('path').resolve(__dirname, '../manifest.yml'), 'utf8');
+  it('declares the signature field with a UI Kit edit view, no view resource and no experience limit', () => {
+    const block = text.slice(text.indexOf('  jira:customField:'), text.indexOf('  jira:issueAction:'));
+    expect(block).toContain('- key: ledgerseal-signature');
+    expect(block).toMatch(/edit:\n        resource: sigedit\n        render: native\n      resolver:\n        function: resolver/);
+    // A view resource made the new transition dialog show a plain text box (live, LSP-6)
+    expect(block).not.toMatch(/^      view:/m);
+    expect(block).not.toMatch(/experience:/);
+  });
+
+  it('declares the "Sign with LedgerSeal" issue action on the panel resource', () => {
+    expect(text).toMatch(/jira:issueAction:\n(?:    #.*\n)*    - key: ledgerseal-sign-action\n      title: Sign with LedgerSeal\n      render: native\n      resource: main/);
+    expect(text).toMatch(/  - key: sigedit\n    path: src\/frontend\/signature-field\.tsx/);
   });
 });

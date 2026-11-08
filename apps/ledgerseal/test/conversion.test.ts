@@ -236,7 +236,7 @@ describe('ADR-011 conversion of an old record', () => {
     await expect(sealIssue({ signature: validSignature({ reason: 'Agreed' }) }, panelContext('bob'), as('bob'))).resolves.toMatchObject({ ok: true });
     expect(recordsText(storage)).not.toMatch(RAW);
     expect(model.statusRows(storage).map(r => r.transitionName)).toEqual(['SEAL', 'REDACT', 'CHANGE', 'RESEAL']);
-    expect((await model.workEffort(storage)).attributes).toMatchObject({ canonicalizerVersion: '2.2.0', parties: 'TOKEN' });
+    expect((await model.workEffort(storage)).attributes).toMatchObject({ canonicalizerVersion: '2.3.0', parties: 'TOKEN' });
 
     const other = setup();
     await writeOldRecord(other.storage, peopleIssue(), { fields: FIELDS });

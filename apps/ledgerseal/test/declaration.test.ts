@@ -9,6 +9,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { DECLARATION, MEANINGS } from '../src/domain/declaration';
+import { buildSigningForm } from '../src/frontend/signing-view-model';
 import { sealIssue } from '../src/index';
 import { FakeJira, MemoryStore, panelContext, sampleIssue, model } from './support/fakes';
 
@@ -39,7 +40,9 @@ describe('B-07 declaration text and version', () => {
       text: 'I approve this issue as it is now. I agree that this seal records my approval of its covered fields, comments and attachments.'
     });
     expect(UI).toContain("from '../domain/declaration'");
-    expect(UI).toMatch(/\{DECLARATION\.text\}/);
+    // The panel shows the declaration the view model chooses: version 1, unless the project needs a signing code (ADR-016)
+    expect(UI).toMatch(/\{declared\.text\}/);
+    expect(buildSigningForm({}, { challengeId: null, expiresAt: null, code: '' }).declaration).toEqual({ id: 'approve', ...DECLARATION });
     expect(UI).not.toContain('I certify that I am the authorized signer');
     expect(UI).not.toContain('per ' + 'compli' + 'ance guidelines');
   });
@@ -98,5 +101,22 @@ describe('B-07 declaration text and version', () => {
     const current = model.assignments(storage).find(a => a.thruDate === null);
     expect(current.comments).toBe('Scope agreed with the CAB');
     expect(model.statusRows(storage).pop().reason).toBe('Scope agreed with the CAB');
+  });
+});
+
+describe('ADR-016 declaration version 2 (owner decision Q-03)', () => {
+  it('holds the text the owner approved on 2026-11-08, verbatim, and is approved', () => {
+    const { DECLARATION_V2, isDeclarationV2Approved, declarationFor } = require('../src/domain/declaration');
+    expect(DECLARATION_V2.version).toBe('2');
+    expect(DECLARATION_V2.approved).toBe(true);
+    expect(isDeclarationV2Approved()).toBe(true);
+    expect(declarationFor(true)).toEqual({ version: '2', text: DECLARATION_V2.text });
+    expect(declarationFor(false)).toEqual({ version: DECLARATION.version, text: DECLARATION.text });
+    expect(DECLARATION_V2.text).toBe(
+      'I am signing this record electronically. I understand that my organisation treats this electronic signature as the legally binding equivalent of my handwritten signature. ' +
+        'I approve this issue as it is now, with the meaning shown above, and I agree that this signature records my approval of its covered fields, comments and attachments.'
+    );
+    // The app states the signer's understanding; it does not assert legal effect itself (11.100(c) is the customer's)
+    expect(DECLARATION_V2.text).not.toContain('My electronic signature');
   });
 });

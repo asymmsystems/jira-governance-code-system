@@ -80,7 +80,9 @@ describe('B2 revoke follows separation of duties', () => {
     s.jira.edit('bob', LATER, 'summary', 'changed');
     const sets = s.storage.sets.length;
     await expect(revokeSeal({ reason: 'Hide it' }, panelContext('bob'), s.as('bob'))).resolves.toEqual({ ok: false, code: 'SELF_APPROVAL', message: SELF_REVOKE_MESSAGE });
-    expect(s.storage.sets.length).toBe(sets);
+    // Only the run lock (review round 2, R2-1) was taken and given back; no record was written
+    expect(s.storage.sets.slice(sets).filter(k => !k.startsWith('ls3:runlock:'))).toEqual([]);
+    expect(s.storage.map.has('ls3:runlock:10001')).toBe(false);
     await expect(revokeSeal({ reason: 'Scope changed' }, panelContext('carl'), s.as('carl'))).resolves.toMatchObject({ ok: true });
   });
 

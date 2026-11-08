@@ -85,6 +85,44 @@ describe('B-15 panel view model states', () => {
     expect(v.actions.seal).toBeUndefined();
   });
 
+  it('CHANGED, attachments only (LS-1): one row per added, removed or replaced file, counted in the sentence', () => {
+    const v = view(
+      result('SEAL_BROKEN', {
+        tamperedAttachments: [
+          { type: 'ADDED', attachmentId: '10', filename: 'plan.pdf', changedBy: ['mallory'], changedAt: '2026-11-01T09:00:00.000Z' },
+          { type: 'REMOVED', attachmentId: '11', filename: 'old.txt', changedBy: [], changedAt: null },
+          { type: 'MODIFIED', attachmentId: '12', filename: 'spec.docx' }
+        ]
+      })
+    );
+    expect(v.statusSentence).toBe('Approval seal: Changed after approval. 3 items modified.');
+    expect(v.changes.map(c => [c.fieldId, c.fieldName, c.detail, c.was, c.now])).toEqual([
+      ['attachment:10', 'Attachment: plan.pdf', 'Added after the seal', '(none)', 'plan.pdf'],
+      ['attachment:11', 'Attachment: old.txt', 'Removed after the seal', 'old.txt', '(removed)'],
+      ['attachment:12', 'Attachment: spec.docx', 'Replaced after the seal', 'spec.docx', 'spec.docx (replaced)']
+    ]);
+    expect(v.changes[0]).toMatchObject({ changedBy: ['mallory'], changedAt: '1 Nov 2026, 14:30 GMT+5:30', showFullToggle: false });
+    expect(v.changes[2]).toMatchObject({ changedBy: [], changedAt: 'Unknown time' });
+  });
+
+  it('CHANGED, fields and attachments together (LS-1): fields first, then attachments, all counted', () => {
+    const v = view(
+      result('SEAL_BROKEN', {
+        tamperedFields: [{ fieldId: 'summary', fieldName: 'Summary', sealedValue: 'a', liveValue: 'b', changedBy: [], changedAt: null }],
+        tamperedAttachments: [{ type: 'ADDED', attachmentId: '10', filename: 'plan.pdf' }]
+      })
+    );
+    expect(v.statusSentence).toBe('Approval seal: Changed after approval. 2 items modified.');
+    expect(v.changes.map(c => c.fieldName)).toEqual(['Summary', 'Attachment: plan.pdf']);
+  });
+
+  it('CHANGED_BACK with an attachment row (LS-1)', () => {
+    const v = view(result('SEAL_COMPROMISED', { tamperedAttachments: [{ type: 'REMOVED', attachmentId: '11', filename: 'old.txt' }] }));
+    expect(v.state).toBe('CHANGED_BACK');
+    expect(v.statusSentence).toBe('Approval seal: Changed after approval, then changed back.');
+    expect(v.changes.map(c => c.fieldName)).toEqual(['Attachment: old.txt']);
+  });
+
   it('CHANGED_BACK', () => {
     const v = view(result('SEAL_COMPROMISED'));
     expect(v).toMatchObject({ state: 'CHANGED_BACK', title: 'Changed after approval, then changed back', lozenge: { text: 'CHANGED' } });

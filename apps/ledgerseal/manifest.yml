@@ -20,9 +20,31 @@ modules:
         function: resolver
   jira:adminPage:
     - key: ledgerseal-admin
-      title: LedgerSeal approvers
+      title: LedgerSeal settings
       render: native
       resource: admin
+      resolver:
+        function: resolver
+  jira:customField:
+    # ADR-018: sign on the transition screen. No `experience` limit: the manifest schema has no
+    # issue-transition value, and spike S-1 showed the field on the new transition dialog without one.
+    # No `view` either: with a view resource, the new transition dialog showed Jira's plain text box
+    # instead of this edit view (live, LSP-6, 2026-11-08), so the issue view shows the intent id.
+    - key: ledgerseal-signature
+      name: LedgerSeal signature
+      description: Sign with LedgerSeal on a transition screen. The value is a single-use signing intent id, never a code.
+      type: string
+      edit:
+        resource: sigedit
+        render: native
+      resolver:
+        function: resolver
+  jira:issueAction:
+    # ADR-018 decision 1, option B: sign from the issue's actions menu wherever the field is not on the screen.
+    - key: ledgerseal-sign-action
+      title: Sign with LedgerSeal
+      render: native
+      resource: main
       resolver:
         function: resolver
   jira:workflowValidator:
@@ -44,6 +66,10 @@ modules:
         - path: incidentCount
           type: number
           searchAlias: ledgersealIncidents
+        # ADR-017: issues waiting for approval (schema 4 only)
+        - path: approval.runState
+          type: string
+          searchAlias: ledgersealApproval
   trigger:
     - key: ledgerseal-issue-changed
       function: on-issue-changed
@@ -86,6 +112,8 @@ resources:
     path: src/frontend/context.tsx
   - key: icons
     path: static/icons
+  - key: sigedit
+    path: src/frontend/signature-field.tsx
 
 app:
   id: ari:cloud:ecosystem::app/7489a645-7c96-400a-b289-eb36f2701a00
@@ -101,3 +129,4 @@ permissions:
     - read:jira-user
     - storage:app
     - report:personal-data
+    - send:notification:jira

@@ -162,6 +162,14 @@ describe('ADR-012: Audit reads ledgerseal-cert and scores only a verified record
     }
   });
 
+  it('LedgerSeal ADR-017: reads a schema 4 property with no status (routed issue in approval) as not sealed', () => {
+    const inApproval = { schemaVersion: 4, issueId: '10001', approval: { runState: 'OPEN', stagesComplete: 1, stagesTotal: 2, routeHash: 'a'.repeat(64) }, issuedAt: '2026-11-08T00:00:00.000Z' };
+    expect(evaluateAudit(makeFacts({ properties: { ledgerseal: inApproval } }))).toEqual({ state: 'MISSING', reason: 'SEAL_NONE' });
+    expect(evaluateAudit(makeFacts({ statusCategory: 'indeterminate', properties: { ledgerseal: inApproval } }))).toEqual({ state: 'NOT_APPLICABLE', reason: 'NOT_DONE' });
+    // A schema 4 record that is sealed is read as before
+    expect(judged(evaluateAudit(makeFacts({ ...v, properties: { ledgerseal: { ...lsCert(), schemaVersion: 4 } } }))).reason).toBe('SEAL_VALID_LS');
+  });
+
   it('is missing when done with no record, not applicable before done, found before done when sealed', () => {
     expect(evaluateAudit(makeFacts())).toEqual({ state: 'MISSING', reason: 'SEAL_NONE' });
     expect(evaluateAudit(makeFacts({ statusCategory: 'indeterminate' }))).toEqual({ state: 'NOT_APPLICABLE', reason: 'NOT_DONE' });

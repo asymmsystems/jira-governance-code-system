@@ -1,0 +1,182 @@
+#+TITLE: ADR-018: LedgerSeal Signing While Transitioning
+#+DATE: 2026-11-08
+#+STATUS: Accepted
+
+* Status
+[ACCEPTED: 2026-11-08 by the owner, with the defaults in "Owner decisions" below. Option A depends on
+the platform spikes S-1 to S-4 (=docs/sdlc/ledgerseal-regulated-2026-11/spike-results.md=); if a spike
+fails, the fallback in decision 6 is the whole feature.]
+
+Spec: =docs/spec/ledgerseal-spec-v4.md= section 16 (with 18 for the open questions).
+Depends on ADR-016 (the signing credential) and uses ADR-017 (stages).
+
+* Context
+Appfire Electronic Signatures lists "Requiring Electronic Signatures on the ticket transition
+screen" as Data Center only (ES cloud FAQ, 2026-11-03). Its cloud version signs in an
+"E-Signatures" window on the issue view, then an "ES Validator" requires "the current user to sign
+the issue before proceeding". LedgerSeal today works the same way without a credential: seal in the
+panel, then the Require Valid LedgerSeal validator lets the transition pass.
+
+What Forge offers around a transition (developer.atlassian.com, read 2026-11-08):
+- *UI modifications* (=jira:uiModifications=) run on "Jira issue transition (Preview) (the new
+  experience)" for "Company-managed Jira Software" only. They can change fields already on the
+  form (=setValue=, =setVisible=, =setRequired=, =setReadOnly=); no page says they can add a
+  field; only =onInit= and =onChange= exist, so they cannot block submission; and "There is no
+  support for Forge custom fields."
+- *Forge custom fields* (=jira:customField=) support the edit experiences "'issue-view'
+  'issue-create' 'issue-transition' ...", and "can be added to the new Create issue dialog and Issue
+  transition dialog". The edit view has a resolver. In UI Kit "the entered value is submitted when
+  the user clicks outside the field". The known-limitations section names rich rendering on the
+  issue view and create screens but not the transition screen, so rendering there must be tested.
+- *Workflow validators* "check that any input made to the transition is valid before the
+  transition is performed", including "data entered by the user on the transition screen".
+  =modifiedFields= includes "All Forge custom fields". They return =result= and =errorMessage=;
+  the general limit is 25 seconds. The documented payload has no user account id; spec v3 section 9
+  records =user= in the payload as seen live on 2026-11-06.
+- *Post functions* run "after every transition", with event-style retries; no page documents a way
+  to fail or roll back the transition.
+- *Conditions* (Jira expressions) hide a transition; an expression can read issue properties, which
+  any editor can change.
+- *Issue actions* open a modal from the issue's "more actions" menu. Frontend =requestJira= always
+  runs as the user. Performing a transition by REST needs =write:jira-work= (or the Beta granular
+  =write:issue:jira=).
+- No hook lets an app intercept the transition button before Jira opens its dialog.
+
+* Options considered
+** A. A LedgerSeal signature field on the transition screen, checked by the validator
+A Jira admin adds the LedgerSeal signature field (a Forge custom field) to the transition screen.
+Its edit view shows the declaration, the stage and the meaning, and asks for the signing ID and
+code. "Sign" in the field calls the app, which checks the credential and the rights and returns a
+short-lived signing intent. Only the intent id becomes the field value. On submit, the validator
+finds the intent in =modifiedFields=, checks it, writes the signature, then runs the normal gate.
+- For: the user signs on the transition screen, as in Data Center; no new write scope; transitions
+  done without the screen (REST, automation) have no intent and are blocked, which is right for a
+  signature step.
+- Against: depends on Forge custom field rendering on the new transition dialog (spike S-1) and on
+  the validator payload naming the user (S-2); the intent id stays in the field's history; the
+  field must be excluded from the hash (a new canonical version).
+** B. Sign on the issue view, then transition (today's flow, with the credential)
+The panel or an issue action modal takes the signature; the validator lets the transition pass.
+- For: works on every Jira project type and every transition entry point; no platform risk.
+- Against: two steps for the user; the same as Appfire cloud, so no lead over it.
+** C. "Sign and move" button that performs the transition by REST
+- For: one click from the issue view.
+- Against: needs =write:jira-work= or the Beta =write:issue:jira=, so the listing's "the app never
+  edits issue fields" boundary changes; a transition screen with required fields fails, because
+  the app cannot show Jira's screen.
+** D. UI modification plus a plain text field for the code
+- Against: the code would be stored as a field value with history that every viewer can read; UI
+  modifications cannot block submission and cannot add the field; company-managed projects only.
+** E. A post function writes the signature
+- Against: it runs after the transition, so the gate on the same transition would block first, or,
+  if the gate trusted a pending intent, the issue would move with no stored signature when the post
+  function fails. That fails open.
+** F. A workflow condition that hides the transition until signed
+- For: a cleaner board (the button appears only when signed).
+- Against: it can read only the property, which editors can change; it is a convenience, not a
+  control. The validator stays the control.
+
+* Owner decisions (2026-11-08)
+The spec's recommended defaults, as the owner instructed:
+- *Q-10 (transition screens with covered fields or a comment):* block (decision 4).
+- *Q-12 (the signature field set on an issue sealed before 2.3.0):* the seal shows CHANGED until it
+  is approved again; the admin guide says so. Old version rules are never edited (spec v3
+  section 4.1).
+- The second component is the emailed single-use code of ADR-016 (option B): the field asks for
+  "Send me a code", then the code. The intent is created only after the code is verified.
+
+* Decision (accepted 2026-11-08)
+1. Build A as the primary way to sign while transitioning, and keep B as the fallback that always
+   works. Both write the same signature record through the same service code.
+2. *Signing intent.* The intent is created only after the server checks identity (context), Browse
+   permission, the approver or stage right, separation of duties, the credential (ADR-016) and the
+   viewed hash. It is bound to the party token, the issue, the hash the user saw, the stage and the
+   meaning, is single use and lives 120 seconds. The field value is the intent id only: never the
+   code, never the signing ID.
+3. *Validator.* When =modifiedFields= holds an intent id, the validator requires: the intent exists,
+   is unexpired and unused (claimed once with =FAIL_IF_EXISTS=); the payload user equals the
+   intent's party (no user: blocked); and the live issue with the screen's values applied hashes to
+   the intent's hash. Then it writes the signature (seal, reseal or stage signature) and decides the
+   gate as in spec v3 section 9 and ADR-017 decision 11. Any failure blocks with a message of at
+   most 250 characters.
+4. *What is signed is what was shown.* The field cannot see other fields on the same screen. So a
+   transition screen that changes covered content (a covered field, or a transition comment) makes
+   the hash differ and the validator blocks: "Fields on this screen changed the approved content.
+   Sign on a screen with only the LedgerSeal signature field, or sign in the panel." The admin
+   guide says to use a signing screen with only the signature field (open question Q-10).
+5. *If the transition fails after the signature.* Jira may still refuse the transition because of
+   another validator. The signature stands: the person signed the content they saw. The row records
+   =via: "TRANSITION_SCREEN"= and the target status id, so the history shows that the move did not
+   follow from it.
+6. *Fallback.* If spike S-1 or S-2 fails, only B is built (the credential in the panel and in an
+   issue action modal), and the listing says signing happens on the issue view.
+7. *New canonical version 2.3.0.* The rules of 2.2.0, plus: a field whose custom type is
+   LedgerSeal's own signature field type is excluded, with the reason "LedgerSeal's own signature
+   field". Older seals keep their version.
+
+* Spike and build results (2026-11-08)
+Spikes S-1 to S-4 passed (=docs/sdlc/ledgerseal-regulated-2026-11/spike-results.md= sections 1 and 3), so
+option A was built, with option B (panel and "Sign with LedgerSeal" issue action) for every other path.
+Live on development (LSP-6): the person signed in the field on the new transition dialog, the validator
+wrote the seal (=via: TRANSITION_SCREEN=) and let the move to Done pass; the panel then showed the issue
+sealed and unchanged with the field set (canonical form 2.3.0). Two platform facts changed the build
+(spike-results section 6): the field has no =view= resource (a view hid the edit view on the dialog), and
+the field submits its value itself with =view.submit= when the intent exists.
+
+* Fix round 1 (2026-11-08, independent review of 427f6c9)
+- /L-1./ When the validator completes an intent, it reads the code-signing policy and the route
+  binding again. A policy saved, or a route bound, during the 120 seconds refuses the signature.
+- /L-3./ The intent stores the issue key. A validator payload with only a key must name the
+  intent's issue.
+- /L-2, stated./ An intent and its =TRANSITION= code are bound to the party, the issue, the shown
+  hash, the stage and the meaning, not to one transition or target status. Within 120 seconds the
+  signer can use it on another transition of the same issue; the row records the real target status.
+
+* What is not possible in Jira Cloud (stated in the listing and user guide)
+- Re-entering the Atlassian password at the transition: no API, and apps must not collect it.
+- Intercepting the transition button, or opening an app dialog before Jira's transition dialog.
+- Adding a field to a transition screen from code: a Jira admin must put the signature field on the
+  screen.
+- UI modifications on Forge custom fields, on the legacy transition dialog, or on team-managed
+  projects.
+- Blocking the submit button from the screen: only the validator can refuse the transition.
+- Signing on a transition run by REST, automation or a JSM approval step: there is no screen; the
+  first two are blocked by the validator, and JSM approval steps bypass validators.
+- Rolling back a transition from a post function.
+
+* Consequences
+** Positive
+- Closes the stated Data Center-only gap ("Requiring Electronic Signatures on the ticket transition
+  screen") where the spikes pass, with a server-checked credential.
+- No new write scope.
+** Negative
+- A new module (=jira:customField=) and a new canonical version 2.3.0 with new test vectors in the
+  verifier.
+- The field's history shows intent ids and the time of each signing attempt (no secrets).
+- Admins must build signing screens; covered fields on the same screen block the transition.
+- Platform features in Preview (validators, UI modifications) may change.
+
+* Considered and excluded
+| Option | Why excluded |
+|---|---|
+| C. Transition by REST | New write scope; fails on screens with required fields |
+| D. UI modification with a text field | Code in field history; cannot add the field or block submit; no Forge field support |
+| E. Post function writes the signature | Runs after the transition; fails open |
+| F. Condition as the control | Reads an editable property; kept only as a possible convenience later |
+| Code typed into the field value | The value is stored and shown in history |
+| Sealing the screen's values without showing them | Breaks "what was seen is what is sealed" (spec v3 invariant 13) |
+
+* Sources
+- Appfire ES cloud FAQ, https://support.appfire.com/space/ESF/17498212/ES+cloud+-+FAQ (2026-11-03),
+  and its signing and workflow pages in space ESF (2026-08-27)
+- UI modifications, https://developer.atlassian.com/platform/forge/manifest-reference/modules/jira-ui-modifications/
+  and https://developer.atlassian.com/platform/forge/apis-reference/jira-api-bridge/uiModifications/ (2026-08-13)
+- Forge custom field, https://developer.atlassian.com/platform/forge/manifest-reference/modules/jira-custom-field/ (2026-10-21)
+- Workflow validator, https://developer.atlassian.com/platform/forge/manifest-reference/modules/jira-workflow-validator/ (2025-03-12)
+- Post function, https://developer.atlassian.com/platform/forge/manifest-reference/modules/jira-workflow-post-function/ (2026-01-13)
+- Workflow condition, https://developer.atlassian.com/platform/forge/manifest-reference/modules/jira-workflow-condition/ (2026-10-26)
+- Issue action, https://developer.atlassian.com/platform/forge/manifest-reference/modules/jira-issue-action/ (2026-10-09)
+- requestJira (frontend), https://developer.atlassian.com/platform/forge/apis-reference/ui-api-bridge/requestJira/ (2026-05-27)
+- Jira REST v3 OpenAPI (transitions scopes), https://dac-static.atlassian.com/cloud/jira/platform/swagger-v3.v3.json
+- JSM approval steps, https://support.atlassian.com/jira/kb/workflow-validator-doesnt-work-on-approval-step-transitions/
+- Invocation limits, https://developer.atlassian.com/platform/forge/limits-invocation/

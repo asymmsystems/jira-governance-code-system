@@ -14,8 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * LedgerSeal open verifier (LedgerSeal spec v2 section 11). Checks a LedgerSeal evidence export without access to the app:
- * the snapshot hash, the history chain, the attestation's certificate, the attestation's status and the Ed25519 signature.
+ * LedgerSeal open verifier (LedgerSeal spec v2 section 11, spec v4 section 15.7). Checks a LedgerSeal evidence export without
+ * access to the app: the snapshot hash, the history chain, the attestation's certificate, the attestation's status and the
+ * Ed25519 signature. For format 2 (ledgerseal-evidence/2) it also checks the signing policies and that every signature
+ * made under a code-signing policy carries its code check.
  * It also names each redaction entry (LS_REDACTED) in the history, where account ids were replaced by party tokens.
  * Uses the Node standard library only.
  *
@@ -58,7 +60,17 @@ function selfTest() {
   const failed = vectors.filter(v => canonicalJson(JSON.parse(v.canonical)) !== v.canonical);
   for (const v of failed) console.log(`FAIL ${v.name}`);
   console.log(`${failed.length === 0 ? 'PASS' : 'FAIL'} ${vectors.length - failed.length} of ${vectors.length} vectors`);
-  return failed.length === 0;
+  // 1.5.0: route versions hash to their routeHash, and canonical form 2.3.0 texts hash as written
+  const routeFile = join(HERE, 'vectors-route-1.json');
+  let routesOk = true;
+  if (existsSync(routeFile)) {
+    const { routes } = JSON.parse(readFileSync(routeFile, 'utf8'));
+    const bad = routes.filter(r => canonicalJson(without(r.route, 'routeHash')) !== r.canonical || sha256(r.canonical) !== r.route.routeHash);
+    for (const r of bad) console.log(`FAIL ${r.name}`);
+    console.log(`${bad.length === 0 ? 'PASS' : 'FAIL'} ${routes.length - bad.length} of ${routes.length} route vectors`);
+    routesOk = bad.length === 0;
+  }
+  return failed.length === 0 && routesOk;
 }
 
 function verifyEvidence(evidence, publicKeyPem) {
@@ -82,7 +94,8 @@ function verifyEvidence(evidence, publicKeyPem) {
 
   // The attestation's status must be the state of the newest entry that is not a redaction
   const STATUS = { LS_SEALED: 'SEAL_VALID', LS_CHANGED: 'SEAL_BROKEN', LS_REVOKED: 'SEAL_REVOKED' };
-  const newestState = [...history].reverse().find(row => row.statusId !== 'LS_REDACTED');
+  // Approval run rows (LS_RUN_*, format 2) are not seal states either; format 1 never has them
+  const newestState = [...history].reverse().find(row => row.statusId !== 'LS_REDACTED' && !String(row.statusId).startsWith('LS_RUN_'));
   check(Boolean(newestState) && STATUS[newestState.statusId] === att.status, `attestation status matches the history (${att.status ?? 'none'})`);
 
   let sigOk = false;
@@ -93,13 +106,192 @@ function verifyEvidence(evidence, publicKeyPem) {
   }
   check(sigOk, `signature (${att.keyId ?? 'no key id'})`);
 
+  // Format 2 (LedgerSeal spec v4 section 15.7) whenever the signed or chained content needs it, not only when the
+  // unsigned "format" field says so: a changed format field cannot switch the checks off. Format 1 output is unchanged
+  const format2Notes = evidence.format === 'ledgerseal-evidence/2' || needsFormat2(att, history) ? verifyFormat2(evidence, history, check) : [];
+
   // A redaction entry is part of the chain, so the checks above cover it; it is named so a reader sees it
   const notes = history
     .filter(row => row.statusId === 'LS_REDACTED')
     .map(row => `NOTE entry ${row.seq} is a redaction: ${row.data?.redactedValues ?? 'some'} account ids and names were replaced by party tokens, and the entries before it were rewritten (head hash before: ${row.data?.previousHeadHash ?? 'not given'}).`);
   if (evidence.parties) notes.push('NOTE "parties" maps party tokens to account ids (null: a closed account). It is not signed and no check uses it.');
+  notes.push(...format2Notes);
   for (const line of [...results, ...notes]) console.log(line);
   return results.every(line => line.startsWith('PASS'));
+}
+
+/** True when the attestation (signed) or a history entry (chained) holds content that only format 2 checks. */
+export function needsFormat2(att, history) {
+  if (att?.schemaVersion === 4) return true;
+  return history.some(row => {
+    const data = row?.data && typeof row.data === 'object' ? row.data : {};
+    return String(row?.statusId).startsWith('LS_RUN_') || 'runId' in data || 'routeId' in data || 'signing' in data || 'signingPolicy' in data || 'declarationHash' in data;
+  });
+}
+
+/** True when an entry belongs to an approval route (it needs the route versions of the evidence). */
+const isRouted = row => String(row?.statusId).startsWith('LS_RUN_') || (row?.data && typeof row.data === 'object' && ('runId' in row.data || 'routeId' in row.data));
+
+const SIGNING_METHOD = 'LS_ATL_EMAIL_OTP_1';
+const SIGNED_TRANSITIONS = new Set(['SEAL', 'RESEAL', 'REVOKE', 'SIGN_STAGE', 'REJECT']);
+
+/** The policy versions, oldest first, each hashing to its policyHash and naming the one before (check 10a). */
+function checkPolicies(policies) {
+  let prev = GENESIS;
+  return policies.every((p, i) => {
+    const ok = p.version === i + 1 && p.prevPolicyHash === prev && sha256(canonicalJson(without(p, 'policyHash'))) === p.policyHash;
+    prev = p.policyHash;
+    return ok;
+  });
+}
+
+/**
+ * Check 10: every seal, reseal, revoke, stage signature and rejection made while a code-signing policy that names the
+ * snapshot's project was on carries data.signing with two components and that policy's version and hash. A row that
+ * claims code signing must name a policy of the evidence. The policy in force is the one the row names in
+ * data.signingPolicy (chained), which must be in the evidence with the same hash; a swapped or emptied policy list
+ * fails. Only a row from an earlier app version, without data.signingPolicy, falls back to the policy dates.
+ */
+function checkCodeSigning(history, policies, projectId) {
+  const bad = [];
+  for (const row of history) {
+    if (!SIGNED_TRANSITIONS.has(row.transitionName)) continue;
+    const ref = row.data?.signingPolicy;
+    let inForce;
+    if (ref !== undefined) {
+      inForce = policies.find(p => p.version === ref?.version && p.policyHash === ref?.policyHash);
+      if (!inForce) {
+        bad.push(row.seq);
+        continue;
+      }
+    } else {
+      inForce = [...policies].reverse().find(p => String(p.fromDate) <= String(row.statusDatetime));
+    }
+    // The entry's own project when it names one (an issue can move between projects after it was signed)
+    const project = typeof ref?.projectId === 'string' ? ref.projectId : projectId;
+    const required = Boolean(inForce && inForce.enabled && Array.isArray(inForce.projectIds) && inForce.projectIds.includes(project));
+    const s = row.data?.signing;
+    const named = s ? policies.find(p => p.version === s.policyVersion) : null;
+    const wellFormed = s && s.method === SIGNING_METHOD && s.components === 2 && named && named.policyHash === s.policyHash;
+    if (required ? !wellFormed || s.policyVersion !== inForce.version : s && !wellFormed) bad.push(row.seq);
+  }
+  return bad;
+}
+
+const quorumOf = stage => (stage.quorum?.kind === 'N' ? stage.quorum.n : 1);
+
+/**
+ * Checks 7 to 9 for the sealing run: its stage signatures all signed the sealed snapshot and are the ones the seal
+ * row names; each order group was complete before the next was signed and every required stage met its quorum; and
+ * no person signed two stages of the run. Returns the failures, one text each.
+ */
+function checkSealingRun(history, routes, att) {
+  const seal = [...history].reverse().find(row => row.statusId === 'LS_SEALED');
+  if (!seal?.data?.runId) return null;
+  const route = routes.find(r => r.routeId === seal.data.routeId && r.version === seal.data.routeVersion);
+  const runRows = history.filter(row => row.statusId === 'LS_RUN_SIGNED' && row.data?.runId === seal.data.runId);
+  const sigs = [...runRows, seal];
+  const failures = [];
+  const named = JSON.stringify(runRows.map(r => r.entryHash)) === JSON.stringify(seal.data.stageSignatures || []);
+  const sameContent = sigs.every(r => r.data?.snapshotHash === att.snapshotHash);
+  if (!route || route.routeHash !== seal.data.routeHash || !named || !sameContent) failures.push('stage signatures of the sealing run');
+  const required = (route?.stages || []).filter(s => (seal.data.requiredStageIds || route.stages.map(x => x.stageId)).includes(s.stageId));
+  const counts = new Map();
+  let ordered = Boolean(route);
+  for (const sig of sigs) {
+    const stage = required.find(s => s.stageId === sig.data?.stageId);
+    if (!stage) {
+      ordered = false;
+      continue;
+    }
+    const earlier = required.filter(s => s.orderGroup < stage.orderGroup);
+    if (!earlier.every(s => (counts.get(s.stageId)?.size || 0) >= quorumOf(s))) ordered = false;
+    if (!counts.has(stage.stageId)) counts.set(stage.stageId, new Set());
+    counts.get(stage.stageId).add(sig.setByPartyId);
+  }
+  if (!ordered || !required.every(s => (counts.get(s.stageId)?.size || 0) >= quorumOf(s))) failures.push('quorum and stage order');
+  const stagesOf = new Map();
+  for (const sig of sigs) {
+    if (!stagesOf.has(sig.setByPartyId)) stagesOf.set(sig.setByPartyId, new Set());
+    stagesOf.get(sig.setByPartyId).add(sig.data?.stageId);
+  }
+  if ([...stagesOf.values()].some(set => set.size > 1) || sigs.length !== new Set(sigs.map(s => s.setByPartyId)).size) failures.push('one stage per person');
+  return failures;
+}
+
+/** The declaration a signing action states: approval, rejection or the withdrawal of a seal (LedgerSeal spec v4 18C). */
+const DECLARATION_FOR_ACTION = { SEAL: 'approve', RESEAL: 'approve', SIGN_STAGE: 'approve', REJECT: 'reject', REVOKE: 'revoke' };
+
+/** The key of an entry's declaration in "declarations": its id (an entry without one is an approval) and version. */
+const declarationKey = data => `${typeof data?.declarationId === 'string' ? data.declarationId : 'approve'}/${String(data?.declarationVersion)}`;
+
+/**
+ * Check 11 (1.5.0): every entry that names a declaration by hash has that declaration's text in the evidence under
+ * "<id>/<version>", the text hashes to it, and the declaration fits the entry's action (an approval entry with a
+ * rejection text fails, and the other way round). Returns the bad entries, and for each declaration whose every entry
+ * passed, the entries that agreed to it: only those texts are shown (review round 3, D-3).
+ */
+function checkDeclarations(history, declarations) {
+  const texts = declarations && typeof declarations === 'object' ? declarations : {};
+  const bad = [];
+  const byKey = new Map();
+  for (const row of history) {
+    const hash = row.data?.declarationHash;
+    if (hash === undefined) continue;
+    const key = declarationKey(row.data);
+    const text = texts[key];
+    const fits = DECLARATION_FOR_ACTION[row.transitionName] === key.split('/')[0];
+    const ok = fits && typeof text === 'string' && sha256(text) === hash;
+    if (!ok) bad.push(row.seq);
+    if (!byKey.has(key)) byKey.set(key, { entries: [], ok: true });
+    const seen = byKey.get(key);
+    seen.entries.push(row.seq);
+    seen.ok = seen.ok && ok;
+  }
+  const shown = [...byKey.entries()].filter(([, v]) => v.ok).sort(([a], [b]) => (a < b ? -1 : 1)).map(([key, v]) => ({ key, entries: v.entries, text: String(texts[key]) }));
+  return { bad, shown };
+}
+
+/** Check 12 (1.5.0): no entry of a run follows the entry that ended it. Returns the bad entries. */
+function checkEndedRuns(history) {
+  const ended = new Set();
+  const bad = [];
+  for (const row of history) {
+    const runId = row.data?.runId;
+    if (typeof runId !== 'string') continue;
+    if (ended.has(runId)) bad.push(row.seq);
+    if (row.statusId === 'LS_RUN_VOIDED' || row.statusId === 'LS_RUN_REJECTED' || row.data?.endsRun === true) ended.add(runId);
+  }
+  return bad;
+}
+
+function verifyFormat2(evidence, history, check) {
+  const notes = [];
+  const policies = [...(evidence.signingPolicies || [])].sort((a, b) => a.version - b.version);
+  check(checkPolicies(policies), `signing policies (${policies.length} versions)`);
+  const bad = checkCodeSigning(history, policies, String(evidence.snapshot?.projectId ?? ''));
+  check(bad.length === 0, `code signing on every signature that needs it${bad.length ? ` (entries ${bad.join(', ')})` : ''}`);
+  if (history.some(row => row.data?.declarationHash !== undefined)) {
+    const declared = checkDeclarations(history, evidence.declarations);
+    check(declared.bad.length === 0, `declaration texts${declared.bad.length ? ` (entries ${declared.bad.join(', ')})` : ` (${declared.shown.map(d => d.key).join(', ')})`}`);
+    // What each signer agreed to: only texts that matched every entry naming them, never an unused text of the file
+    for (const d of declared.shown) notes.push(`NOTE declaration ${d.key} (entries ${d.entries.join(', ')}): ${JSON.stringify(d.text)}`);
+  }
+  if (history.some(isRouted)) {
+    const continued = checkEndedRuns(history);
+    check(continued.length === 0, `no run continues after it ended${continued.length ? ` (entries ${continued.join(', ')})` : ''}`);
+  }
+  if (!Array.isArray(evidence.routes)) {
+    // Routed content without its route versions cannot be checked: fail, never skip
+    if (history.some(isRouted)) check(false, 'route versions (missing)');
+    return notes;
+  }
+  const routes = evidence.routes;
+  // Check 6: each route version hashes to its routeHash
+  check(routes.every(r => sha256(canonicalJson(without(r, 'routeHash'))) === r.routeHash), `route versions (${routes.length})`);
+  const failures = checkSealingRun(history, routes, evidence.attestation || {});
+  if (failures !== null) for (const name of ['stage signatures of the sealing run', 'quorum and stage order', 'one stage per person']) check(!failures.includes(name), name);
+  return notes;
 }
 
 function main(args) {

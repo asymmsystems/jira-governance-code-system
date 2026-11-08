@@ -145,3 +145,47 @@ describe('authorsSince', () => {
     expect([...authorsSince([log('c', '2020-01-01T00:00:00Z')], 'garbage')]).toEqual(['c']);
   });
 });
+
+describe('code signing calls (ADR-016)', () => {
+  const mail = { subject: 's', textBody: 't', htmlBody: 'h' };
+
+  it('emails one user through notify, as the app, and returns the status', async () => {
+    const asApp = { requestJira: jest.fn().mockResolvedValueOnce(reply(204)).mockResolvedValueOnce(reply(403)).mockRejectedValueOnce(new Error('net')) };
+    const asUser = { requestJira: jest.fn() };
+    const client = createJiraClient(asApp, asUser, { sleep: async () => undefined });
+    await expect(client.notifyUser('10001', 'acc-1', mail)).resolves.toBe(204);
+    const [path, init] = asApp.requestJira.mock.calls[0];
+    expect(path).toBe('/rest/api/3/issue/10001/notify');
+    expect(init.method).toBe('POST');
+    // Review M-2: only the named user; every other recipient kind is off by name
+    expect(JSON.parse(init.body)).toEqual({ ...mail, to: { reporter: false, assignee: false, watchers: false, voters: false, users: [{ accountId: 'acc-1' }], groups: [], groupIds: [] } });
+    await expect(client.notifyUser('10001', 'acc-1', mail)).resolves.toBe(403);
+    await expect(client.notifyUser('10001', 'acc-1', mail)).resolves.toBe(0);
+    expect(asUser.requestJira).not.toHaveBeenCalled();
+  });
+
+  it('reads the issue scope as the app', async () => {
+    const asApp = { requestJira: jest.fn().mockResolvedValueOnce(reply(200, { key: 'CHG-1', fields: { project: { id: 100 }, issuetype: { id: 3 } } })).mockResolvedValueOnce(reply(404)).mockResolvedValueOnce(reply(200, {})) };
+    const client = createJiraClient(asApp, null);
+    await expect(client.getIssueScope('10001')).resolves.toEqual({ ok: true, value: { projectId: '100', issueTypeId: '3', issueKey: 'CHG-1' } });
+    expect(asApp.requestJira.mock.calls[0][0]).toBe('/rest/api/3/issue/10001?fields=project%2Cissuetype');
+    await expect(client.getIssueScope('10001')).resolves.toMatchObject({ ok: false, error: 'NOT_FOUND' });
+    await expect(client.getIssueScope('10001')).resolves.toEqual({ ok: true, value: { projectId: '', issueTypeId: '', issueKey: '10001' } });
+  });
+
+  it('reads projects as the user, leaves unknown ones out, and fails on other errors', async () => {
+    const asUser = {
+      requestJira: jest
+        .fn()
+        .mockResolvedValueOnce(reply(200, { id: '100', key: 'CHG', name: 'Change' }))
+        .mockResolvedValueOnce(reply(404))
+        .mockResolvedValueOnce(reply(401))
+        .mockResolvedValueOnce(reply(200, { id: 7, key: 'X' }))
+    };
+    const client = createJiraClient({ requestJira: jest.fn() }, asUser);
+    await expect(client.getProjects(['CHG', 'NOPE'])).resolves.toEqual({ ok: true, value: [{ id: '100', key: 'CHG', name: 'Change' }] });
+    await expect(client.getProjects(['A'])).resolves.toMatchObject({ ok: false, error: 'FORBIDDEN' });
+    await expect(client.getProjects(['X'])).resolves.toEqual({ ok: true, value: [{ id: '7', key: 'X', name: '' }] });
+    await expect(createJiraClient({ requestJira: jest.fn() }, null).getProjects(['CHG'])).resolves.toEqual({ ok: false, error: 'FORBIDDEN' });
+  });
+});

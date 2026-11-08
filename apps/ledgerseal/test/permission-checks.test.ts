@@ -9,7 +9,7 @@
  * @author Fahim Farook
  */
 
-import { getSealEvidence, getSealHistory, revokeSeal, sealIssue, verifyIssue } from '../src/index';
+import { createSigningIntent, getSealEvidence, getSealHistory, rejectStage, requestSigningCode, revokeSeal, sealIssue, signStage, verifyIssue } from '../src/index';
 import { createJiraClient } from '../src/jira/jira-client';
 import { buildPanelView } from '../src/frontend/view-model';
 import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
@@ -17,7 +17,7 @@ import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from
 jest.mock('@forge/api', () => ({ __esModule: true, default: {}, route: (s: any, ...v: any[]) => s.reduce((a: string, x: string, i: number) => a + x + (v[i] ?? ''), '') }));
 jest.mock('@forge/kvs', () => ({ kvs: {} }));
 
-const APP_READS = ['getIssue', 'getComments', 'getWorklogs', 'getFields', 'getChangelog', 'getUserName', 'accountState', 'putSealProperty'] as const;
+const APP_READS = ['getIssue', 'getComments', 'getWorklogs', 'getFields', 'getChangelog', 'getUserName', 'accountState', 'putSealProperty', 'getIssueScope', 'notifyUser'] as const;
 
 async function sealedIssue() {
   const jira = new FakeJira(sampleIssue());
@@ -39,7 +39,11 @@ const RESOLVERS: [string, (user: string, deps: any) => Promise<any>][] = [
   ['seal-issue-api', (user, deps) => sealIssue({ signature: validSignature({ reason: 'Agreed' }) }, panelContext(user), deps)],
   ['revoke-seal-api', (user, deps) => revokeSeal({ reason: 'Scope withdrawn' }, panelContext(user), deps)],
   ['seal-history-api', (user, deps) => getSealHistory({}, panelContext(user), deps)],
-  ['seal-evidence-api', (user, deps) => getSealEvidence({}, panelContext(user), deps)]
+  ['seal-evidence-api', (user, deps) => getSealEvidence({}, panelContext(user), deps)],
+  ['signing-code-request-api', (user, deps) => requestSigningCode({ action: 'SEAL' }, panelContext(user), deps)],
+  ['transition-sign-intent-api', (user, deps) => createSigningIntent({ viewHash: 'x', signature: validSignature() }, panelContext(user), deps)],
+  ['stage-sign-api', (user, deps) => signStage({ stageId: 'qa', viewHash: 'x', signature: validSignature() }, panelContext(user), deps)],
+  ['stage-reject-api', (user, deps) => rejectStage({ stageId: 'qa', signature: { declarationVersion: require('../src/domain/declaration').DECLARATION.version, declarationText: require('../src/domain/declaration').DECLARATION.text }, viewHash: 'x', reason: 'No' }, panelContext(user), deps)]
 ];
 
 describe('Q3 a Browse projects check as the user comes before any app read', () => {

@@ -134,3 +134,19 @@ Added 2026-11-08. For use **after** Atlassian approves this listing: a listing c
   - Supports SOC 2 CC8.1, ISO/IEC 27001:2022 A.8.32 and the 21 CFR 11.10(e) audit trail. It does not provide Part 11 electronic signatures by itself: it does not meet 11.200 or 11.300.
   - Runs on Atlassian Forge. The manifest declares no external egress; data stays in Forge storage for your site, under Atlassian's data residency rules.
 - **Search words to keep in the text:** approval, sign-off, electronic signature, change control, audit trail, 21 CFR Part 11, SOC 2, ISO 27001.
+
+## Post-approval copy: code signing (ADR-016)
+
+Added 2026-11-08 by the regulated build (`feature/ledgerseal-regulated`). **Use only after code signing is released to production, live probes pass, and the owner approved declaration version 2 and this wording (Q-03, Q-14; his prose).** Until then the existing line "It does not provide Part 11 electronic signatures by itself: it does not meet 11.200 or 11.300" stays.
+
+- **Replace the description line about Part 11 with (proposed):** "With code signing on, each signature also needs a single-use code that LedgerSeal emails to the signer's own Atlassian address, with lockout and a recorded history of every attempt. LedgerSeal does not re-enter your Jira login at each signature, so it partly meets 21 CFR 11.200(a)(1); your identity provider's controls, procedures and validation decide whether this meets your predicate rules."
+- **Scope line for the Privacy & Security tab:** `send:notification:jira`: emails a signer their own single-use signing code, only in projects where a Jira admin turned code signing on. The app emails nothing else.
+- **Limits to state:** a shared or delegated mailbox defeats the code; when Jira outgoing email is off, nobody can sign in a code-signing project; security alerts are shown on the admin page and are not emailed.
+- **Search words:** electronic signature, signing code, two-step signing.
+- **Transition screen (ADR-018), proposed line:** "Sign on the transition screen: a Jira admin adds the LedgerSeal signature field to a transition screen, and the person signs in the dialog before the move. Transitions without the field (REST, automation, bulk changes) are blocked by the validator until the issue is sealed."
+
+## Post-approval copy: approval routes (ADR-017)
+
+Held until release to production and live probes (Q-14); the owner approves the wording.
+- **Highlight line, proposed:** "Approval routes: QA, then Regulatory. Each stage has its own groups and quorum, every stage signs the same content, one person signs one stage, and the last stage seals the issue. A rejection or a change starts the approval again."
+- **Description line, proposed:** "Bind a route to a project and issue types; the validator can hold a move until the stage that gates it has signed. The open verifier rechecks quorum, stage order and separation of duties offline (version 1.5.0)."

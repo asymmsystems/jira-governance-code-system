@@ -253,6 +253,36 @@ function changeRows(diffs: FieldDiff[], input: PanelInput): ChangeRowView[] {
   });
 }
 
+/** LS-1: what the panel says an attachment change was. */
+const ATTACHMENT_CHANGE: Record<string, string> = { ADDED: 'Added', REMOVED: 'Removed', MODIFIED: 'Replaced' };
+
+/**
+ * LS-1: one change row per attachment added, removed or replaced after the seal: the file name, the kind of change,
+ * and who did it and when where Jira says so.
+ */
+function attachmentRows(diffs: any[], input: PanelInput): ChangeRowView[] {
+  return (diffs || []).map(diff => {
+    const name = String(diff?.filename ?? 'an attachment');
+    const kind = ATTACHMENT_CHANGE[String(diff?.type)] ?? 'Changed';
+    const was = diff?.type === 'ADDED' ? '(none)' : name;
+    const now = diff?.type === 'REMOVED' ? '(removed)' : diff?.type === 'ADDED' ? name : `${name} (replaced)`;
+    return {
+      fieldId: `attachment:${String(diff?.attachmentId ?? name)}`,
+      fieldName: `Attachment: ${name}`,
+      was,
+      now,
+      wasFull: was,
+      nowFull: now,
+      showFullToggle: false,
+      detail: `${kind} after the seal`,
+      changedBy: Array.isArray(diff?.changedBy) ? diff.changedBy.map(String) : [],
+      changedByClosed: 0,
+      changedByUnknown: 0,
+      changedAt: formatTime(diff?.changedAt ?? null, input.locale, input.timeZone)
+    };
+  });
+}
+
 const NO_RIGHTS: ViewerRights = { canSeal: false, canApproveChanges: false, canRevoke: false, blockedBySelfChange: false };
 
 export function statusSentence(state: PanelState, changesCount: number, seal?: SealSummary): string {
@@ -318,6 +348,8 @@ export function nextStepText(state: PanelState, canSeal: boolean, canApprove: bo
   }
 }
 
+export const ROUTE_ASK = 'This issue has an approval route: each stage signs below, and the last stage seals the issue.';
+
 export function buildPanelView(input: PanelInput): PanelView {
   const state = stateOf(input);
   const r = input.result;
@@ -333,14 +365,24 @@ export function buildPanelView(input: PanelInput): PanelView {
   if (['CHANGED', 'CHANGED_BACK'].includes(state) && rights.canApproveChanges) actions.approveChanges = { label: 'Approve these changes' };
   if (['SEALED', 'CHANGED', 'CHANGED_BACK'].includes(state) && rights.canRevoke) actions.revoke = { label: 'Revoke seal' };
 
+  // ADR-017: a routed issue is sealed by its stages, never by the plain seal or approval
+  const routed = Boolean(r?.route && !r.route.invalid);
+  if (routed) {
+    delete actions.seal;
+    delete actions.approveChanges;
+  }
+
   let askText: string | undefined;
-  if (mayActOn && !actions.seal && !actions.approveChanges && !actions.revoke) {
+  if (routed && mayActOn) {
+    askText = ROUTE_ASK;
+  } else if (mayActOn && !actions.seal && !actions.approveChanges && !actions.revoke) {
     askText = rights.blockedBySelfChange ? ASK_OTHER_APPROVER : ASK_APPROVER;
   } else if (mayActOn && rights.blockedBySelfChange && !actions.approveChanges) {
     askText = ASK_OTHER_APPROVER;
   }
 
-  const changes = ['CHANGED', 'CHANGED_BACK'].includes(state) ? changeRows(r?.tamperedFields, input) : [];
+  // LS-1: field rows and attachment rows; the "N items modified" sentence counts both
+  const changes = ['CHANGED', 'CHANGED_BACK'].includes(state) ? [...changeRows(r?.tamperedFields, input), ...attachmentRows(r?.tamperedAttachments, input)] : [];
   const view: PanelView = {
     state,
     title: TITLES[state],

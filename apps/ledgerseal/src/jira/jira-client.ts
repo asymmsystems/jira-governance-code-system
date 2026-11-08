@@ -56,6 +56,17 @@ export interface JiraClient {
   /** The groups with these ids, with the names Jira has. Unknown ids are left out. */
   getGroups(groupIds: string[]): Promise<JiraResult<JiraGroup[]>>;
   putSealProperty(issueId: string, body: unknown): Promise<boolean>;
+  /**
+   * ADR-016 option B: emails one user through Jira, as the app (spike S-8: as the user Jira drops the caller as a
+   * recipient unless their own-changes setting is on). Returns Jira's HTTP status, or 0 when Jira could not be reached.
+   */
+  notifyUser(issueId: string, accountId: string, email: { subject: string; textBody: string; htmlBody: string }): Promise<number>;
+  /** The project and issue type of an issue (read as the app, after the Browse check). */
+  getIssueScope(issueId: string): Promise<JiraResult<{ projectId: string; issueTypeId: string; issueKey: string }>>;
+  /** Statuses by id, as the user (admin page, route gates). Unknown ones are left out. */
+  getStatuses(ids: string[]): Promise<JiraResult<{ id: string; name: string }[]>>;
+  /** Projects by key or id, as the user (admin page). Unknown ones are left out. */
+  getProjects(keysOrIds: string[]): Promise<JiraResult<{ id: string; key: string; name: string }[]>>;
 }
 
 export interface JiraGroup {
@@ -281,6 +292,52 @@ export function createJiraClient(asApp: JiraRequester, asUser: JiraRequester | n
         const res = await getJson<any>(asUser, route`/rest/api/3/group/bulk?groupId=${groupId}`);
         if (!res.ok) return res;
         found.push(...groupsOf(res.value?.values));
+      }
+      return { ok: true, value: found };
+    },
+
+    async notifyUser(issueId, accountId, email) {
+      const res = await send(asApp, route`/rest/api/3/issue/${issueId}/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        // Review M-2: the other recipient kinds are switched off by name, so no Jira default can add a watcher, the
+        // reporter, the assignee or a voter to a signing code email
+        body: JSON.stringify({ ...email, to: { reporter: false, assignee: false, watchers: false, voters: false, users: [{ accountId }], groups: [], groupIds: [] } })
+      });
+      return res ? res.status : 0;
+    },
+
+    async getIssueScope(issueId) {
+      const res = await getJson<any>(asApp, route`/rest/api/3/issue/${issueId}?fields=${'project,issuetype'}`);
+      if (!res.ok) return res;
+      const fields = res.value?.fields ?? {};
+      return { ok: true, value: { projectId: String(fields.project?.id ?? ''), issueTypeId: String(fields.issuetype?.id ?? ''), issueKey: String(res.value?.key ?? issueId) } };
+    },
+
+    async getStatuses(ids) {
+      if (!asUser) return { ok: false, error: 'FORBIDDEN' };
+      const found: { id: string; name: string }[] = [];
+      for (const id of ids) {
+        const res = await getJson<any>(asUser, route`/rest/api/3/status/${id}`);
+        if (!res.ok) {
+          if (res.error === 'NOT_FOUND') continue;
+          return res;
+        }
+        found.push({ id: String(res.value?.id), name: String(res.value?.name ?? '') });
+      }
+      return { ok: true, value: found };
+    },
+
+    async getProjects(keysOrIds) {
+      if (!asUser) return { ok: false, error: 'FORBIDDEN' };
+      const found: { id: string; key: string; name: string }[] = [];
+      for (const keyOrId of keysOrIds) {
+        const res = await getJson<any>(asUser, route`/rest/api/3/project/${keyOrId}`);
+        if (!res.ok) {
+          if (res.error === 'NOT_FOUND') continue;
+          return res;
+        }
+        found.push({ id: String(res.value?.id), key: String(res.value?.key), name: String(res.value?.name ?? '') });
       }
       return { ok: true, value: found };
     },

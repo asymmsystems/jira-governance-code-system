@@ -1,0 +1,36 @@
+{
+  "format": "ledgerseal-canonical-vectors/1",
+  "canonicalizerVersion": "2.3.0",
+  "note": "Written by hand from spec v4 section 16.3 and ADR-018 decision 7: the rules of 2.2.0 plus LedgerSeal's own signature field, matched by app id and module key in any environment. Each vector names its party table and its field schemas. The canonical text is the expected hash input.",
+  "parties": { "acct-a": "pty_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+  "vectors": [
+    {
+      "name": "X1 the signature field of the development environment is left out",
+      "schemas": [{ "id": "customfield_10080", "name": "LedgerSeal signature", "schema": { "type": "string", "custom": "ari:cloud:ecosystem::extension/7489a645-7c96-400a-b289-eb36f2701a00/ace7a105-325a-4156-851f-dc12a6c6cdda/static/ledgerseal-signature", "customId": 10080 } }],
+      "issue": { "id": "1", "key": "X-1", "fields": { "summary": "R", "customfield_10080": "lsi_d38957883d15c6ed671e78e9b1169b69" } },
+      "excluded": ["customfield_10080"],
+      "canonical": "{\"attachments\":[],\"canonicalizerVersion\":\"2.3.0\",\"comments\":[],\"fields\":[{\"id\":\"summary\",\"value\":\"R\"}],\"issueId\":\"1\",\"issueKey\":\"X-1\",\"issueTypeId\":\"\",\"projectId\":\"\"}"
+    },
+    {
+      "name": "X2 the signature field of another environment of the same app is left out too",
+      "schemas": [{ "id": "customfield_20001", "name": "LedgerSeal signature", "schema": { "type": "string", "custom": "ari:cloud:ecosystem::extension/7489a645-7c96-400a-b289-eb36f2701a00/67caefa9-86ec-49da-8542-ad741448fc2b/static/ledgerseal-signature" } }],
+      "issue": { "id": "1", "key": "X-1", "fields": { "summary": "R", "customfield_20001": "lsi_00000000000000000000000000000000" } },
+      "excluded": ["customfield_20001"],
+      "canonical": "{\"attachments\":[],\"canonicalizerVersion\":\"2.3.0\",\"comments\":[],\"fields\":[{\"id\":\"summary\",\"value\":\"R\"}],\"issueId\":\"1\",\"issueKey\":\"X-1\",\"issueTypeId\":\"\",\"projectId\":\"\"}"
+    },
+    {
+      "name": "X3 a field of another app with the same module key is covered",
+      "schemas": [{ "id": "customfield_9", "name": "Signature", "schema": { "type": "string", "custom": "ari:cloud:ecosystem::extension/11111111-2222-3333-4444-555555555555/ace7a105-325a-4156-851f-dc12a6c6cdda/static/ledgerseal-signature" } }],
+      "issue": { "id": "1", "key": "X-1", "fields": { "summary": "R", "customfield_9": "lsi_x" } },
+      "excluded": [],
+      "canonical": "{\"attachments\":[],\"canonicalizerVersion\":\"2.3.0\",\"comments\":[],\"fields\":[{\"id\":\"customfield_9\",\"value\":\"lsi_x\"},{\"id\":\"summary\",\"value\":\"R\"}],\"issueId\":\"1\",\"issueKey\":\"X-1\",\"issueTypeId\":\"\",\"projectId\":\"\"}"
+    },
+    {
+      "name": "X4 the rules of 2.2.0 hold: a user is its party token, with no name",
+      "schemas": [],
+      "issue": { "id": "1", "key": "X-1", "fields": { "summary": "R", "assignee": { "accountId": "acct-a", "displayName": "Alice", "emailAddress": "a@example.com" } } },
+      "excluded": [],
+      "canonical": "{\"attachments\":[],\"canonicalizerVersion\":\"2.3.0\",\"comments\":[],\"fields\":[{\"id\":\"assignee\",\"value\":{\"accountId\":\"pty_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}},{\"id\":\"summary\",\"value\":\"R\"}],\"issueId\":\"1\",\"issueKey\":\"X-1\",\"issueTypeId\":\"\",\"projectId\":\"\"}"
+    }
+  ]
+}

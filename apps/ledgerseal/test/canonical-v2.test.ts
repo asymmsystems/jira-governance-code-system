@@ -85,15 +85,15 @@ describe('B-13 canonical form v2 rules', () => {
     expect(snap.fields.find(f => f.id === 'priority')).toMatchObject({ value: { id: '2' }, display: 'High' });
   });
 
-  it('records the current canonical form, 2.2.0, in every new seal and attestation', async () => {
+  it('records the current canonical form, 2.3.0, in every new seal and attestation', async () => {
     const jira = new FakeJira(sampleIssue());
     jira.approvers = new Set(['ann']);
     jira.currentUser = 'ann';
     const storage = new MemoryStore();
     await sealIssue({ signature: validSignature() }, panelContext('ann'), { jira, storage });
-    expect((await model.workEffort(storage)).attributes.canonicalizerVersion).toBe('2.2.0');
-    expect((await model.sealedSnapshot(storage)).canonicalizerVersion).toBe('2.2.0');
-    expect(jira.propertyWrites[0].body.canonicalizerVersion).toBe('2.2.0');
+    expect((await model.workEffort(storage)).attributes.canonicalizerVersion).toBe('2.3.0');
+    expect((await model.sealedSnapshot(storage)).canonicalizerVersion).toBe('2.3.0');
+    expect(jira.propertyWrites[0].body.canonicalizerVersion).toBe('2.3.0');
   });
 });
 

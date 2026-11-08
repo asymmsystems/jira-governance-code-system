@@ -128,7 +128,7 @@ describe('Q8 errorSummary', () => {
 
 const APP = path.join(__dirname, '..');
 
-describe('Q8 the seven frontend failure log lines', () => {
+describe('Q8 the frontend failure log lines', () => {
   const sites: Array<[string, string]> = [
     ['context.tsx', "logFailure('seal state failed', err);"],
     ['admin.tsx', "logFailure('could not load the approver groups', err);"],
@@ -136,7 +136,17 @@ describe('Q8 the seven frontend failure log lines', () => {
     ['index.tsx', "logFailure('could not load the seal state', err);"],
     ['index.tsx', "logFailure('action failed', err);"],
     ['index.tsx', "logFailure('history failed', err);"],
-    ['index.tsx', "logFailure('evidence failed', err);"]
+    ['index.tsx', "logFailure('evidence failed', err);"],
+    ['index.tsx', "logFailure('code request failed', err);"],
+    ['admin-signing.tsx', "logFailure('could not load code signing', err);"],
+    ['admin-signing.tsx', "logFailure('could not save code signing', err);"],
+    ['admin-signing.tsx', "logFailure('could not load the alerts', err);"],
+    ['admin-signing.tsx', "logFailure('alert action failed', err);"],
+    ['signature-field.tsx', "logFailure('signature field could not load', err);"],
+    ['signature-field.tsx', "logFailure('signature field code request failed', err);"],
+    ['signature-field.tsx', "logFailure('signature field sign failed', err);"],
+    ['admin-routes.tsx', "logFailure('could not load the routes', err);"],
+    ['admin-routes.tsx', "logFailure('route action failed', err);"]
   ];
 
   it.each(sites)('src/frontend/%s: %s drops the secret', (file, call) => {
@@ -149,7 +159,7 @@ describe('Q8 the seven frontend failure log lines', () => {
   });
 
   it('no frontend file logs any other way', () => {
-    for (const file of ['context.tsx', 'admin.tsx', 'index.tsx']) {
+    for (const file of ['context.tsx', 'admin.tsx', 'index.tsx', 'admin-signing.tsx', 'signature-field.tsx', 'admin-routes.tsx']) {
       const text = fs.readFileSync(path.join(APP, 'src/frontend', file), 'utf8');
       expect(text).not.toMatch(/console\./);
       expect((text.match(/logFailure\(/g) || []).length).toBe(sites.filter(([f]) => f === file).length);

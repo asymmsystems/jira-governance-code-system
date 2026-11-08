@@ -11,16 +11,31 @@
 import { CanonicalIssueSnapshot, SealCertificate, SealedWorkEffort, WorkEffortPartyAssignment, WorkEffortStatus } from '../domain/models';
 import { LoadedSeal } from '../domain/seal-record';
 
+/** A time to live for a key (Forge KVS `ttl`; spike S-7 showed it works on keys, secrets and in transactions). */
+export interface WriteOptions {
+  ttlSeconds?: number;
+}
+
 export interface StorageProvider {
   get(key: string): Promise<any>;
-  set(key: string, value: any): Promise<void>;
+  set(key: string, value: any, options?: WriteOptions): Promise<void>;
   delete(key: string): Promise<void>;
   /** Writes `value` only if `key` does not exist yet. Returns false when the key already exists. */
-  createIfAbsent(key: string, value: any): Promise<boolean>;
+  createIfAbsent(key: string, value: any, options?: WriteOptions): Promise<boolean>;
   /** Writes all items together, or none of them (one KVS transaction). */
   commit(items: { key: string; value: any }[]): Promise<void>;
   /** Every key that starts with `prefix`, with its value, read page by page. */
   query(prefix: string): Promise<{ key: string; value: any }[]>;
+}
+
+/**
+ * The Forge secret store (`kvs.getSecret`, `kvs.setSecret`): encrypted, never listed by a query, separate from the
+ * plain keys, and not part of any transaction (spike S-7).
+ */
+export interface SecretStore {
+  getSecret(key: string): Promise<any>;
+  /** Writes the secret only if the key does not exist yet. Returns false when it exists. */
+  createSecretIfAbsent(key: string, value: any): Promise<boolean>;
 }
 
 export const HISTORY_PAGE_SIZE = 50;
@@ -109,13 +124,14 @@ export class SealRepository {
   }
 
   /**
-   * The newest row that set the current status. A redaction row (ADR-011 decision 7) is not a status change,
-   * so it is skipped.
+   * The newest row that set the current status. A redaction row (ADR-011 decision 7) and an approval run row
+   * (ADR-017) are not status changes, so they are skipped.
    */
   async getCurrentStatusRow(workEffort: SealedWorkEffort): Promise<WorkEffortStatus | null> {
     for (let seq = workEffort.statusHead.seq; seq >= 1; seq--) {
       const row = await this.getStatusRow(workEffort.workEffortId, seq);
-      if (!row || row.statusId !== 'LS_REDACTED') return row;
+      // Run rows (ADR-017) are not seal states either
+      if (!row || (row.statusId !== 'LS_REDACTED' && !String(row.statusId).startsWith('LS_RUN_'))) return row;
     }
     return null;
   }

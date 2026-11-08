@@ -7,7 +7,7 @@
  */
 
 import { ChangelogEntry, JiraClient, JiraResult } from '../../src/jira/jira-client';
-import { StorageProvider } from '../../src/storage/seal-repository';
+import { SecretStore, StorageProvider, WriteOptions } from '../../src/storage/seal-repository';
 import { DECLARATION } from '../../src/domain/declaration';
 import { partyFunction } from '../../src/domain/party';
 
@@ -155,6 +155,45 @@ export class FakeJira implements JiraClient {
     return true;
   }
 
+  /** ADR-016: emails sent through notify (as the app), the status Jira answers, and the projects Jira knows. */
+  notifications: { issueId: string; accountId: string; email: { subject: string; textBody: string; htmlBody: string } }[] = [];
+  notifyStatus = 204;
+  failScope = false;
+  projects: { id: string; key: string; name: string }[] = [{ id: '100', key: 'CHG', name: 'Change' }];
+  failProjects = false;
+
+  async notifyUser(issueId: string, accountId: string, email: { subject: string; textBody: string; htmlBody: string }): Promise<number> {
+    if (this.notifyStatus === 204) this.notifications.push({ issueId, accountId, email });
+    return this.notifyStatus;
+  }
+
+  async getIssueScope(issueId: string): Promise<JiraResult<{ projectId: string; issueTypeId: string; issueKey: string }>> {
+    if (this.failScope || this.failIssueGet) return { ok: false, error: 'UNREACHABLE' };
+    return { ok: true, value: { projectId: String(this.issue.fields?.project?.id ?? ''), issueTypeId: String(this.issue.fields?.issuetype?.id ?? ''), issueKey: String(this.issue.key ?? issueId) } };
+  }
+
+  async getProjects(keysOrIds: string[]): Promise<JiraResult<{ id: string; key: string; name: string }[]>> {
+    if (this.failProjects) return { ok: false, error: 'UNREACHABLE' };
+    return { ok: true, value: this.projects.filter(p => keysOrIds.includes(p.key) || keysOrIds.includes(p.id)) };
+  }
+
+  /** ADR-017: statuses Jira knows (route gates). */
+  statuses: { id: string; name: string }[] = [{ id: '10001', name: 'Done' }, { id: '10002', name: 'QA approved' }];
+  failStatuses = false;
+
+  async getStatuses(ids: string[]): Promise<JiraResult<{ id: string; name: string }[]>> {
+    if (this.failStatuses) return { ok: false, error: 'UNREACHABLE' };
+    return { ok: true, value: this.statuses.filter(s => ids.includes(s.id)) };
+  }
+
+  /** The newest code emailed to an account (tests read it as the signer would, from the email). */
+  lastCode(accountId?: string): string {
+    const mail = [...this.notifications].reverse().find(n => !accountId || n.accountId === accountId);
+    const match = mail?.email.textBody.match(/ is (\d{6})\./);
+    if (!match) throw new Error('No code was emailed');
+    return match[1];
+  }
+
   /** Records a field change in the change log, the way Jira does after an edit. */
   edit(accountId: string, at: string, fieldId: string, value: any) {
     const from = this.issue.fields[fieldId];
@@ -168,26 +207,43 @@ export class FakeJira implements JiraClient {
   }
 }
 
-export class MemoryStore implements StorageProvider {
+export class MemoryStore implements StorageProvider, SecretStore {
   map = new Map<string, any>();
   sets: string[] = [];
+  /** Time to live given for each key, in seconds. */
+  ttls = new Map<string, number>();
+  /** The secret store, kept apart from the plain keys as in Forge. */
+  secrets = new Map<string, any>();
+
+  async getSecret(key: string) {
+    return this.secrets.has(key) ? JSON.parse(JSON.stringify(this.secrets.get(key))) : undefined;
+  }
+
+  async createSecretIfAbsent(key: string, value: any) {
+    if (this.secrets.has(key)) return false;
+    this.secrets.set(key, JSON.parse(JSON.stringify(value)));
+    return true;
+  }
 
   async get(key: string) {
     return this.map.has(key) ? JSON.parse(JSON.stringify(this.map.get(key))) : null;
   }
 
-  async set(key: string, value: any) {
+  async set(key: string, value: any, options?: WriteOptions) {
+    // Forge KVS accepts only these key characters; anything else fails with INVALID_KEY (live, 2026-11-08)
+    if (!/^(?!\s+$)[a-zA-Z0-9:._\s\-#]+$/.test(key)) throw Object.assign(new Error('INVALID_KEY'), { code: 'INVALID_KEY' });
     this.sets.push(key);
     this.map.set(key, JSON.parse(JSON.stringify(value)));
+    if (options?.ttlSeconds) this.ttls.set(key, options.ttlSeconds);
   }
 
   async delete(key: string) {
     this.map.delete(key);
   }
 
-  async createIfAbsent(key: string, value: any) {
+  async createIfAbsent(key: string, value: any, options?: WriteOptions) {
     if (this.map.has(key)) return false;
-    await this.set(key, value);
+    await this.set(key, value, options);
     return true;
   }
 
@@ -266,3 +322,8 @@ export const model = {
     return `ls3:wes:${issueId}:${String(seq).padStart(6, '0')}`;
   }
 };
+
+/** Clears the 30-second request rule claims (review H-2), standing in for the wait between two code requests. */
+export function clearRequestSlots(store: MemoryStore): void {
+  for (const key of [...store.map.keys()]) if (key.startsWith('ls3:sig:reqslot:')) store.map.delete(key);
+}

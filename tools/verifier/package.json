@@ -1,6 +1,6 @@
 {
   "name": "@asymm/jira-governance-code-cli",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Standalone offline verifiers for LedgerSeal approval evidence and FourRealities evidence reports for Jira Cloud",
   "main": "verify-evidence.mjs",
   "type": "module",
@@ -9,7 +9,7 @@
     "fourrealities-verify-report": "./verify-fourrealities-report.mjs"
   },
   "scripts": {
-    "test": "node --test test/verify.test.mjs test/verify-fourrealities-report.test.mjs",
+    "test": "node --test test/verify.test.mjs test/verify-fourrealities-report.test.mjs test/format2.test.mjs",
     "self-test": "node verify-evidence.mjs --self-test"
   },
   "keywords": [
