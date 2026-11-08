@@ -31,6 +31,13 @@ const ITEM_FIELDS = new Set(['id', 'title', 'description', 'isMandatory', 'categ
 const ID_PATTERN = ITEM_ID_PATTERN;
 const PERMISSION_PATTERN = /^[A-Z_]{1,64}$/;
 
+/**
+ * The only waiver permissions a template may hold: the choices of the settings page (DG-1a).
+ * Any other key is refused, so a direct resolver call cannot widen who may waive.
+ */
+export const WAIVER_PERMISSIONS: readonly string[] = ['ADMINISTER_PROJECTS', 'RESOLVE_ISSUES', 'TRANSITION_ISSUES'];
+export const WAIVER_PERMISSION_INVALID = 'The waiver permission must be Administer projects, Resolve issues or Transition issues.';
+
 /** Returns every problem with the template, each naming the field. An empty list means valid. */
 export function validateTemplate(input: any): string[] {
   if (!input || typeof input !== 'object') return ['The template is missing.'];
@@ -41,8 +48,8 @@ export function validateTemplate(input: any): string[] {
   if (input.description !== undefined && (typeof input.description !== 'string' || input.description.length > 500)) {
     errors.push('The template description must be text of 500 characters or less.');
   }
-  if (input.waiverPermission !== undefined && (typeof input.waiverPermission !== 'string' || !PERMISSION_PATTERN.test(input.waiverPermission))) {
-    errors.push('The waiver permission must be a Jira permission key.');
+  if (input.waiverPermission !== undefined && (typeof input.waiverPermission !== 'string' || !WAIVER_PERMISSIONS.includes(input.waiverPermission))) {
+    errors.push(WAIVER_PERMISSION_INVALID);
   }
   const items = input.items;
   if (!Array.isArray(items) || items.length < 1 || items.length > MAX_ITEMS) {

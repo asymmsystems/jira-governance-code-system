@@ -36,12 +36,13 @@ export const WAIVER_PERMISSION_OPTIONS: Array<{ label: string; value: string }> 
 
 /**
  * The choices for one template. A saved permission that is not in the list (set before this page
- * offered the choice) is added with its key in plain words, so the page shows it and a save keeps it.
+ * offered the choice) is shown with its key in plain words and a note: the server accepts only the
+ * listed choices (DG-1a), so a save asks for one of them.
  */
 export function waiverPermissionOptions(current: string): Array<{ label: string; value: string }> {
   if (!current || WAIVER_PERMISSION_OPTIONS.some(o => o.value === current)) return WAIVER_PERMISSION_OPTIONS;
   const words = current.toLowerCase().split('_').join(' ');
-  return [...WAIVER_PERMISSION_OPTIONS, { label: words.charAt(0).toUpperCase() + words.slice(1), value: current }];
+  return [...WAIVER_PERMISSION_OPTIONS, { label: `${words.charAt(0).toUpperCase() + words.slice(1)} (no longer accepted: choose another)`, value: current }];
 }
 
 export interface EditorItem extends ChecklistItemTemplate {

@@ -68,7 +68,7 @@ describe('template editor', () => {
     expect(setWaiverPermission(e, '').waiverPermission).toBe(DEFAULT_WAIVER_PERMISSION);
   });
 
-  it('DG-1: waiver choices start with the default, accept only valid keys, and keep a saved key that is not listed', () => {
+  it('DG-1: waiver choices start with the default, accept only valid keys, and show a saved key that is not listed', () => {
     expect(WAIVER_PERMISSION_OPTIONS[0]).toEqual({ label: 'Administer projects (default)', value: 'ADMINISTER_PROJECTS' });
     expect(WAIVER_PERMISSION_OPTIONS.map(o => o.value)).toEqual(['ADMINISTER_PROJECTS', 'RESOLVE_ISSUES', 'TRANSITION_ISSUES']);
     for (const o of WAIVER_PERMISSION_OPTIONS) {
@@ -76,6 +76,6 @@ describe('template editor', () => {
     }
     expect(waiverPermissionOptions('RESOLVE_ISSUES')).toBe(WAIVER_PERMISSION_OPTIONS);
     expect(waiverPermissionOptions('')).toBe(WAIVER_PERMISSION_OPTIONS);
-    expect(waiverPermissionOptions('SCHEDULE_ISSUES').slice(-1)).toEqual([{ label: 'Schedule issues', value: 'SCHEDULE_ISSUES' }]);
+    expect(waiverPermissionOptions('SCHEDULE_ISSUES').slice(-1)).toEqual([{ label: 'Schedule issues (no longer accepted: choose another)', value: 'SCHEDULE_ISSUES' }]);
   });
 });

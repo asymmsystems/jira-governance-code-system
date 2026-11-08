@@ -240,3 +240,10 @@ Branch `fix/definitionguard-guide-gaps`, from `master` at `04d36a2`. The gaps ar
 
 - **Gate:** `tsc` clean; 37 suites, 506 tests pass, coverage 99.25 % statements, 96.67 % branches, 98.38 % functions, 99.46 % lines (90 % branches per file enforced); `npm run build` clean; `npm audit --omit=dev --audit-level=high` exits 0 (7 moderate, the known `@forge/manifest` chain); `forge lint` (`@forge/cli@15.0.0`) "No issues found"; FSRT `6c821bd` built locally and run as `fsrt.yml` runs it: canary reported, 0 findings in both scans; Semgrep 1.182.1 (`docs/security/sast.md` command) 110 rules, 217 files, 0 findings.
 - **Deploy:** development only, version 7.3.0 from `f549fa7`, eligible for Runs on Atlassian (`forge eligibility`). Production untouched.
+
+### Review follow-up DG-1a (2026-11-08)
+
+- `validateTemplate` accepts only `ADMINISTER_PROJECTS`, `RESOLVE_ISSUES` and `TRANSITION_ISSUES` as the waiver permission (`WAIVER_PERMISSIONS`) and refuses any other key, before any write, with "The waiver permission must be Administer projects, Resolve issues or Transition issues." A stored key outside the list is no longer kept by a save from the page: the page shows it with "(no longer accepted: choose another)". Spec v3 section 11 has the row.
+- **Proof:** `test/settings/project-templates.test.ts` "DG-1a" (Browse projects, Edit issues, Schedule issues, Administer, lower case and empty are refused with no write, through the resolver and the store; the three offered keys save; the server list equals the page choices).
+- **Gate (after `npm ci`):** `tsc` clean; 37 suites, 507 tests pass, 99.3 % statements, 96.77 % branches (90 % per file holds); build clean; `npm audit --omit=dev --audit-level=high` exit 0; `forge lint` "No issues found"; FSRT 0 findings in both scans; Semgrep 0 findings.
+- **Deploy:** development only, version 7.4.0, eligible for Runs on Atlassian.

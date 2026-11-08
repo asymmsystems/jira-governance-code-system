@@ -14,11 +14,11 @@ jest.mock('@forge/api', () => {
 });
 jest.mock('@forge/kvs', () => ({ kvs: {}, WhereConditions: { beginsWith: (v: string) => v } }));
 
-import { validateTemplate, TemplateStore, templateKey, MAX_TEMPLATE_BYTES } from '../../src/settings/template-store';
+import { validateTemplate, TemplateStore, templateKey, MAX_TEMPLATE_BYTES, WAIVER_PERMISSIONS, WAIVER_PERMISSION_INVALID } from '../../src/settings/template-store';
 import { getSettings, saveTemplate, settingsHandler } from '../../src/settings/settings-resolvers';
 import { getIssueChecklist, toggleChecklistItem, resetChecklist, validateTransition, setGlobalStorageProvider } from '../../src/index';
 import { PermissionDeniedError, getProjectPermissions } from '../../src/security/permissions';
-import { addItem, editorFromTemplate, setWaiverPermission, toTemplatePayload } from '../../src/ui/template-editor';
+import { addItem, editorFromTemplate, setWaiverPermission, toTemplatePayload, WAIVER_PERMISSION_OPTIONS } from '../../src/ui/template-editor';
 
 const PROJECT = { id: '10000', key: 'DEMO' };
 const settingsCtx = (accountId = '712020:admin') => ({ accountId, extension: { project: PROJECT } });
@@ -70,8 +70,8 @@ describe('B-06 validateTemplate', () => {
     [{ ...goodTemplate, items: [{ ...goodTemplate.items[0], script: 'x' }] }, 'Item 1 has an unknown field "script".'],
     [{ ...goodTemplate, name: '' }, 'The template needs a name.'],
     [{ ...goodTemplate, description: 7 }, 'The template description must be text of 500 characters or less.'],
-    [{ ...goodTemplate, waiverPermission: 'not a key' }, 'The waiver permission must be a Jira permission key.'],
-    [{ ...goodTemplate, waiverPermission: 5 }, 'The waiver permission must be a Jira permission key.'],
+    [{ ...goodTemplate, waiverPermission: 'not a key' }, WAIVER_PERMISSION_INVALID],
+    [{ ...goodTemplate, waiverPermission: 5 }, WAIVER_PERMISSION_INVALID],
     [{ ...goodTemplate, items: [null] }, 'Item 1 is missing.'],
     [{ ...goodTemplate, items: [{ ...goodTemplate.items[0], description: 'd'.repeat(501) }] }, 'Item 1 description must be text of 500 characters or less.'],
     [{ ...goodTemplate, items: [{ ...goodTemplate.items[0], evidenceRequired: 'yes' }] }, 'Item 1 evidenceRequired must be true or false.'],
@@ -193,6 +193,21 @@ describe('B-06 settings resolvers', () => {
     res = await saveTemplate({ issueTypeId: '10004', template: toTemplatePayload(setWaiverPermission(editorFromTemplate(view), 'ADMINISTER_PROJECTS')) }, settingsCtx(), storage);
     expect(res.template.waiverPermission).toBeUndefined();
     expect(storage.read(templateKey('10000', '10004')).waiverRoleTypeId).toBe('PROJECT_ADMIN');
+  });
+
+  it('DG-1a: the server accepts only the three offered waiver permissions and refuses any other key before a write', async () => {
+    expect([...WAIVER_PERMISSIONS]).toEqual(WAIVER_PERMISSION_OPTIONS.map(o => o.value));
+    for (const key of ['BROWSE_PROJECTS', 'EDIT_ISSUES', 'SCHEDULE_ISSUES', 'ADMINISTER', 'administer_projects', '']) {
+      await expect(saveTemplate({ issueTypeId: '10004', template: { ...goodTemplate, waiverPermission: key } }, settingsCtx(), storage))
+        .rejects.toThrow(WAIVER_PERMISSION_INVALID);
+    }
+    expect(storage.sets).toEqual([]);
+    await expect(new TemplateStore(storage).save('10000', '10004', { ...goodTemplate, waiverPermission: 'BROWSE_PROJECTS' }, 'pseudo-1'))
+      .rejects.toThrow(WAIVER_PERMISSION_INVALID);
+    for (const key of WAIVER_PERMISSIONS) {
+      const res: any = await saveTemplate({ issueTypeId: '10004', template: { ...goodTemplate, waiverPermission: key } }, settingsCtx(), storage);
+      expect(res.template.version).toBeGreaterThan(0);
+    }
   });
 
   it('DG-1: a new template without waiverPermission gets the default, Administer projects', async () => {
