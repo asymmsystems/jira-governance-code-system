@@ -262,7 +262,7 @@ describe('rejection, change, re-approval and revoke', () => {
     await sign(jira, deps, 'qa1', 'qa');
     const panel: any = await verifyIssue({}, as(jira, 'reg1'), deps);
     expect(((await rejectStage({ stageId: 'reg', viewHash: panel.viewHash }, as(jira, 'reg1'), deps)) as any).code).toBe('REASON_REQUIRED');
-    expect(((await rejectStage({ stageId: 'reg', viewHash: panel.viewHash, reason: 'Missing test evidence' }, as(jira, 'reg1'), deps)) as any)).toMatchObject({ ok: true, runState: 'REJECTED' });
+    expect(((await rejectStage({ stageId: 'reg', signature: { declarationVersion: require('../src/domain/declaration').DECLARATION.version, declarationText: require('../src/domain/declaration').DECLARATION.text }, viewHash: panel.viewHash, reason: 'Missing test evidence' }, as(jira, 'reg1'), deps)) as any)).toMatchObject({ ok: true, runState: 'REJECTED' });
     const last = model.statusRows(storage).at(-1);
     expect(last).toMatchObject({ statusId: 'LS_RUN_REJECTED', transitionName: 'REJECT', reason: 'Missing test evidence' });
     const gate = await validateTransition(toStatus('10002'), {}, deps);
@@ -277,7 +277,7 @@ describe('rejection, change, re-approval and revoke', () => {
   it('rejects before any signature too, by a person of the first group', async () => {
     const { jira, storage, deps } = await setup();
     const panel: any = await verifyIssue({}, as(jira, 'qa2'), deps);
-    expect(((await rejectStage({ stageId: 'qa', viewHash: panel.viewHash, reason: 'Not ready' }, as(jira, 'qa2'), deps)) as any).runState).toBe('REJECTED');
+    expect(((await rejectStage({ stageId: 'qa', signature: { declarationVersion: require('../src/domain/declaration').DECLARATION.version, declarationText: require('../src/domain/declaration').DECLARATION.text }, viewHash: panel.viewHash, reason: 'Not ready' }, as(jira, 'qa2'), deps)) as any).runState).toBe('REJECTED');
     expect(model.statusRows(storage).map(r => r.statusId)).toEqual(['LS_RUN_REJECTED']);
   });
 

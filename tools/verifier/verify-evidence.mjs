@@ -60,7 +60,7 @@ function selfTest() {
   const failed = vectors.filter(v => canonicalJson(JSON.parse(v.canonical)) !== v.canonical);
   for (const v of failed) console.log(`FAIL ${v.name}`);
   console.log(`${failed.length === 0 ? 'PASS' : 'FAIL'} ${vectors.length - failed.length} of ${vectors.length} vectors`);
-  // 1.4.0: route versions hash to their routeHash, and canonical form 2.3.0 texts hash as written
+  // 1.5.0: route versions hash to their routeHash, and canonical form 2.3.0 texts hash as written
   const routeFile = join(HERE, 'vectors-route-1.json');
   let routesOk = true;
   if (existsSync(routeFile)) {
@@ -115,6 +115,13 @@ function verifyEvidence(evidence, publicKeyPem) {
     .filter(row => row.statusId === 'LS_REDACTED')
     .map(row => `NOTE entry ${row.seq} is a redaction: ${row.data?.redactedValues ?? 'some'} account ids and names were replaced by party tokens, and the entries before it were rewritten (head hash before: ${row.data?.previousHeadHash ?? 'not given'}).`);
   if (evidence.parties) notes.push('NOTE "parties" maps party tokens to account ids (null: a closed account). It is not signed and no check uses it.');
+  // 1.5.0: what each signer agreed to, by declaration version (only when the history names declarations by hash)
+  if (history.some(row => row.data?.declarationHash !== undefined) && evidence.declarations && typeof evidence.declarations === 'object') {
+    for (const [version, text] of Object.entries(evidence.declarations).sort()) {
+      const signers = history.filter(row => row.data?.declarationHash !== undefined && String(row.data?.declarationVersion) === version).map(row => row.seq);
+      notes.push(`NOTE declaration version ${version} (entries ${signers.join(', ') || 'none'}): ${JSON.stringify(String(text))}`);
+    }
+  }
   for (const line of [...results, ...notes]) console.log(line);
   return results.every(line => line.startsWith('PASS'));
 }
@@ -124,7 +131,7 @@ export function needsFormat2(att, history) {
   if (att?.schemaVersion === 4) return true;
   return history.some(row => {
     const data = row?.data && typeof row.data === 'object' ? row.data : {};
-    return String(row?.statusId).startsWith('LS_RUN_') || 'runId' in data || 'routeId' in data || 'signing' in data || 'signingPolicy' in data;
+    return String(row?.statusId).startsWith('LS_RUN_') || 'runId' in data || 'routeId' in data || 'signing' in data || 'signingPolicy' in data || 'declarationHash' in data;
   });
 }
 
@@ -166,7 +173,9 @@ function checkCodeSigning(history, policies, projectId) {
     } else {
       inForce = [...policies].reverse().find(p => String(p.fromDate) <= String(row.statusDatetime));
     }
-    const required = Boolean(inForce && inForce.enabled && Array.isArray(inForce.projectIds) && inForce.projectIds.includes(projectId));
+    // The entry's own project when it names one (an issue can move between projects after it was signed)
+    const project = typeof ref?.projectId === 'string' ? ref.projectId : projectId;
+    const required = Boolean(inForce && inForce.enabled && Array.isArray(inForce.projectIds) && inForce.projectIds.includes(project));
     const s = row.data?.signing;
     const named = s ? policies.find(p => p.version === s.policyVersion) : null;
     const wellFormed = s && s.method === SIGNING_METHOD && s.components === 2 && named && named.policyHash === s.policyHash;
@@ -216,11 +225,50 @@ function checkSealingRun(history, routes, att) {
   return failures;
 }
 
+/**
+ * Check 11 (1.5.0): every entry that names a declaration by hash has that declaration's text in the evidence, and
+ * the text hashes to it. Returns the bad entries, and the versions shown.
+ */
+function checkDeclarations(history, declarations) {
+  const texts = declarations && typeof declarations === 'object' ? declarations : {};
+  const bad = [];
+  const shown = new Set();
+  for (const row of history) {
+    const hash = row.data?.declarationHash;
+    if (hash === undefined) continue;
+    const text = texts[String(row.data?.declarationVersion)];
+    if (typeof text !== 'string' || sha256(text) !== hash) bad.push(row.seq);
+    else shown.add(String(row.data.declarationVersion));
+  }
+  return { bad, shown: [...shown].sort() };
+}
+
+/** Check 12 (1.5.0): no entry of a run follows the entry that ended it. Returns the bad entries. */
+function checkEndedRuns(history) {
+  const ended = new Set();
+  const bad = [];
+  for (const row of history) {
+    const runId = row.data?.runId;
+    if (typeof runId !== 'string') continue;
+    if (ended.has(runId)) bad.push(row.seq);
+    if (row.statusId === 'LS_RUN_VOIDED' || row.statusId === 'LS_RUN_REJECTED' || row.data?.endsRun === true) ended.add(runId);
+  }
+  return bad;
+}
+
 function verifyFormat2(evidence, history, check) {
   const policies = [...(evidence.signingPolicies || [])].sort((a, b) => a.version - b.version);
   check(checkPolicies(policies), `signing policies (${policies.length} versions)`);
   const bad = checkCodeSigning(history, policies, String(evidence.snapshot?.projectId ?? ''));
   check(bad.length === 0, `code signing on every signature that needs it${bad.length ? ` (entries ${bad.join(', ')})` : ''}`);
+  if (history.some(row => row.data?.declarationHash !== undefined)) {
+    const declared = checkDeclarations(history, evidence.declarations);
+    check(declared.bad.length === 0, `declaration texts${declared.bad.length ? ` (entries ${declared.bad.join(', ')})` : ` (versions ${declared.shown.join(', ')})`}`);
+  }
+  if (history.some(isRouted)) {
+    const continued = checkEndedRuns(history);
+    check(continued.length === 0, `no run continues after it ended${continued.length ? ` (entries ${continued.join(', ')})` : ''}`);
+  }
   if (!Array.isArray(evidence.routes)) {
     // Routed content without its route versions cannot be checked: fail, never skip
     if (history.some(isRouted)) check(false, 'route versions (missing)');

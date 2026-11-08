@@ -120,8 +120,18 @@ export class RouteRepository {
     if (!held) return this.storage.createIfAbsent(key, mine, { ttlSeconds: RUN_LOCK_TTL_SECONDS });
     if (nowMs - Number(held.at) < RUN_LOCK_STALE_MS) return false;
     if (!(await this.storage.createIfAbsent(`ls3:runlockbreak:${issueId}:${String(held.owner)}`, mine, { ttlSeconds: DAY_SECONDS }))) return false;
-    await this.storage.set(key, mine, { ttlSeconds: RUN_LOCK_TTL_SECONDS });
-    return true;
+    // Review round 2 (R2-5): the take-over removes only the stale holder's key and then creates its own once. A fresh
+    // caller that created the key after the stale one expired keeps it. The holder's writes are fenced (runLockOwner)
+    const now = await this.storage.get(key);
+    if (now && now.owner !== held.owner) return false;
+    if (now) await this.storage.delete(key);
+    return this.storage.createIfAbsent(key, mine, { ttlSeconds: RUN_LOCK_TTL_SECONDS });
+  }
+
+  /** The owner named in the issue's run lock, or null (the fencing check before a run write). */
+  async runLockOwner(issueId: string): Promise<string | null> {
+    const held = await this.storage.get(`ls3:runlock:${issueId}`);
+    return held ? String(held.owner) : null;
   }
 
   /** Releases the lock only when the caller still holds it (a taken-over lock is not removed). */

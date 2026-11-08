@@ -15,6 +15,7 @@ import { SIGNATURE_FIELD_TYPE } from '../domain/canonicalizer';
 import { SigningEvidence, SigningPolicy } from '../domain/signing';
 import { PartyRepository } from '../storage/party-repository';
 import { fail, LedgerSealDeps, PreparedSeal, SealFailure, sealIssueFlow } from './ledger';
+import { recordSignOk } from './signing';
 
 export const INTENT_PATTERN = /^lsi_[0-9a-f]{32}$/;
 export const INTENT_LIFETIME_SECONDS = 120;
@@ -118,7 +119,11 @@ export async function completeIntent(
   const sealed: any = await sealIssueFlow({ viewHash: intent.viewHash, signature: intent.signature }, context, deps, {
     complete: { policy: intent.policy, signingEvidence: intent.signingEvidence, transitionToStatusId: String(payload?.transition?.to?.id ?? ''), apply }
   });
-  if (sealed.ok) return { ok: true };
+  if (sealed.ok) {
+    // Review round 2 (R2-2): the code was checked when the intent was made; SIGN_OK is written once the row is
+    if (intent.signingEvidence) await recordSignOk(deps, intent.partyId, { issueId: intent.issueId, action: 'TRANSITION', challengeId: intent.signingEvidence.challengeId });
+    return { ok: true };
+  }
   if (sealed.code === 'ISSUE_CHANGED') return { ok: false, message: INTENT_SCREEN_CHANGED };
   return { ok: false, message: `LedgerSeal: the signature was not saved. ${String(sealed.message ?? '')}`.slice(0, 250) };
 }

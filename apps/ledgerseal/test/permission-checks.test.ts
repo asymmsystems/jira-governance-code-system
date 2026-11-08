@@ -43,7 +43,7 @@ const RESOLVERS: [string, (user: string, deps: any) => Promise<any>][] = [
   ['signing-code-request-api', (user, deps) => requestSigningCode({ action: 'SEAL' }, panelContext(user), deps)],
   ['transition-sign-intent-api', (user, deps) => createSigningIntent({ viewHash: 'x', signature: validSignature() }, panelContext(user), deps)],
   ['stage-sign-api', (user, deps) => signStage({ stageId: 'qa', viewHash: 'x', signature: validSignature() }, panelContext(user), deps)],
-  ['stage-reject-api', (user, deps) => rejectStage({ stageId: 'qa', viewHash: 'x', reason: 'No' }, panelContext(user), deps)]
+  ['stage-reject-api', (user, deps) => rejectStage({ stageId: 'qa', signature: { declarationVersion: require('../src/domain/declaration').DECLARATION.version, declarationText: require('../src/domain/declaration').DECLARATION.text }, viewHash: 'x', reason: 'No' }, panelContext(user), deps)]
 ];
 
 describe('Q3 a Browse projects check as the user comes before any app read', () => {

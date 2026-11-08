@@ -145,6 +145,16 @@ follows the same "one person, one stage" rule (L-6). The other half of L-6 is by
 5 and spec 15.5): a rejection blocks the gated transitions until a new run starts, even when the
 issue has a valid seal.
 
+* Fix round 2 (2026-11-08, independent review of f537067)
+A revoke made while a completing stage signature held the run lock wrote its row, and the run it
+said it ended then sealed the issue (R2-1). A revoke now decides (who may revoke, the route, the
+code), writes its row and ends the run while holding the run lock. A stage signature or rejection
+also refuses when the seal changed state since its checks. The open verifier 1.5.0 fails a record in
+which an entry of a run follows the entry that ended it. The run lock's take-over removes only the
+stale holder's key and then creates its own once, and every run write first checks that the lock
+still names its holder (R2-5). A per-issue lock means one slow signature delays others on the same
+issue by up to about 4 seconds before they get "try again" (R2-6); their code stays unused.
+
 * Build results (2026-11-08, branch =feature/ledgerseal-regulated=)
 Built as decided, development 6.7.0 to 6.12.0. Live on development (LSP-7, route bound to project LSP and
 then unbound): a rejection with a reason ended the run, the next signature started a new run and sealed

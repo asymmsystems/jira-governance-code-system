@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Verifier 1.4.0: format 1 gives the same output and exit code as 1.3.0 for every fixture, and the format 2 checks
+ * Verifier 1.5.0: format 1 gives the same output and exit code as 1.3.0 for every fixture, and the format 2 checks
  * (LedgerSeal spec v4 section 15.7). Format 2 vectors are built here with a key made for the test.
  *
  * @author Fahim Farook
@@ -54,7 +54,7 @@ export function evidence({ rows, policies, projectId = '100' }) {
   const snapshotHash = sha256(canonicalJson(snapshot));
   let prev = GENESIS;
   const history = rows.map((r, i) => {
-    const row = { workEffortId: '10001', statusId: 'LS_SEALED', statusDatetime: r.at, setByPartyId: 'pty_' + 'b'.repeat(32), reason: null, transitionName: r.transitionName ?? (i === 0 ? 'SEAL' : 'RESEAL'), seq: i + 1, data: { certificateId: `cert-${i + 1}`, snapshotHash, ...(r.signing ? { signing: r.signing } : {}), ...(r.policyRef ? { signingPolicy: r.policyRef } : {}) }, prevEntryHash: prev, entryHash: '' };
+    const row = { workEffortId: '10001', statusId: 'LS_SEALED', statusDatetime: r.at, setByPartyId: 'pty_' + 'b'.repeat(32), reason: null, transitionName: r.transitionName ?? (i === 0 ? 'SEAL' : 'RESEAL'), seq: i + 1, data: { certificateId: `cert-${i + 1}`, snapshotHash, ...(r.signing ? { signing: r.signing } : {}), ...(r.policyRef ? { signingPolicy: r.policyRef } : {}), ...(r.extra ?? {}) }, prevEntryHash: prev, entryHash: '' };
     if (r.statusId) row.statusId = r.statusId;
     row.entryHash = sha256(canonicalJson(without(row, 'entryHash')));
     prev = row.entryHash;
@@ -75,7 +75,7 @@ function check(ev) {
   return run([file, KEY]);
 }
 
-describe('verifier 1.4.0: format 1 unchanged', () => {
+describe('verifier 1.5.0: format 1 unchanged', () => {
   for (const f of ['valid-evidence', 'broken-chain', 'tampered-snapshot', 'redacted-evidence']) {
     for (const k of ['test-key', 'wrong-key', 'redaction-key']) {
       it(`${f} with ${k}: same output and exit code as 1.3.0`, () => {
@@ -87,7 +87,7 @@ describe('verifier 1.4.0: format 1 unchanged', () => {
   }
 });
 
-describe('verifier 1.4.0: format 2 code signing', () => {
+describe('verifier 1.5.0: format 2 code signing', () => {
   const p1 = policy(null, {});
 
   it('passes a code-signed seal and approval made under the policy', () => {
@@ -143,7 +143,7 @@ describe('verifier 1.4.0: format 2 code signing', () => {
 
 const ref = p => ({ version: p.version, policyHash: p.policyHash });
 
-describe('verifier 1.4.0: the format and the policy in force cannot be switched off by an edit (review M-1)', () => {
+describe('verifier 1.5.0: the format and the policy in force cannot be switched off by an edit (review M-1)', () => {
   const p1 = policy(null, {});
   const unsignedUnderP1 = () => evidence({ policies: [p1], rows: [{ at: '2026-11-08T01:00:00.000Z', policyRef: ref(p1) }] });
 
@@ -177,6 +177,35 @@ describe('verifier 1.4.0: the format and the policy in force cannot be switched 
     assert.strictEqual(named.status, 0, named.stdout);
     const mismatch = check(evidence({ policies: [p1, p2], rows: [{ at: '2026-11-08T01:00:00.000Z', signing: signing(p1), policyRef: ref(p2) }] }));
     assert.strictEqual(mismatch.status, 1, mismatch.stdout);
+  });
+});
+
+describe('verifier 1.5.0: declarations, ended runs and moved issues (review round 2)', () => {
+  const TEXT = 'I am signing this record electronically.';
+  const decl = { declarationVersion: '2', declarationHash: sha256(TEXT) };
+
+  it('shows the declaration each signer agreed to, and fails a missing or changed text', () => {
+    const rows = [{ at: '2026-11-08T01:00:00.000Z', extra: decl }];
+    const ok = check({ ...evidence({ policies: [], rows }), declarations: { 2: TEXT } });
+    assert.strictEqual(ok.status, 0, ok.stdout);
+    assert.match(ok.stdout, /PASS declaration texts \(versions 2\)/);
+    assert.match(ok.stdout, /NOTE declaration version 2 \(entries 1\): "I am signing this record electronically\."/);
+    const missing = check(evidence({ policies: [], rows }));
+    assert.match(missing.stdout, /FAIL declaration texts \(entries 1\)/);
+    const changed = check({ ...evidence({ policies: [], rows }), declarations: { 2: TEXT + ' And more.' } });
+    assert.strictEqual(changed.status, 1);
+    // A downgraded format field does not switch the check off
+    const downgraded = check({ ...evidence({ policies: [], rows }), format: 'ledgerseal-evidence/1' });
+    assert.match(downgraded.stdout, /FAIL declaration texts/);
+  });
+
+  it('judges a row by the project it names, so an issue moved to a code-signing project later is not a false FAIL', () => {
+    const p1 = policy(null, {});
+    // Signed without a code in project 200, then the issue moved to project 100, which needs codes
+    const moved = check(evidence({ policies: [p1], projectId: '100', rows: [{ at: '2026-11-08T01:00:00.000Z', policyRef: { ...ref(p1), projectId: '200' } }] }));
+    assert.strictEqual(moved.status, 0, moved.stdout);
+    const inScope = check(evidence({ policies: [p1], projectId: '999', rows: [{ at: '2026-11-08T01:00:00.000Z', policyRef: { ...ref(p1), projectId: '100' } }] }));
+    assert.match(inScope.stdout, /FAIL code signing on every signature that needs it \(entries 1\)/);
   });
 });
 
@@ -222,7 +251,7 @@ function routedEvidence(r, sigs, { tweak = () => undefined, after = [], stageSig
   return { format: 'ledgerseal-evidence/2', attestation, snapshot, history, signingPolicies: [], routes: [JSON.parse(JSON.stringify(r))], parties: {} };
 }
 
-describe('verifier 1.4.0: format 2 approval routes (checks 6 to 9)', () => {
+describe('verifier 1.5.0: format 2 approval routes (checks 6 to 9)', () => {
   const r = route([QA, REG]);
   const good = [['qa', P('a')], ['reg', P('b')], ['reg', P('c')]];
 
@@ -233,6 +262,14 @@ describe('verifier 1.4.0: format 2 approval routes (checks 6 to 9)', () => {
       assert.strictEqual(res.status, 1, res.stdout);
       assert.match(res.stdout, /FAIL route versions \(missing\)/);
     }
+  });
+
+  it('fails a run that goes on after an entry that ended it (check 12, review round 2 R2-1)', () => {
+    const ev = routedEvidence(r, good, { tweak: row => { if (row.seq === 2) row.data.endsRun = true; } });
+    const res = check(ev);
+    assert.strictEqual(res.status, 1, res.stdout);
+    assert.match(res.stdout, /FAIL no run continues after it ended \(entries 3\)/);
+    assert.match(check(routedEvidence(r, good)).stdout, /PASS no run continues after it ended/);
   });
 
   it('passes a run of QA then two Regulatory signers', () => {

@@ -50,10 +50,21 @@ export class SigningRepository {
     return rows.map(r => r.value as SigningPolicy).sort((a, b) => a.version - b.version);
   }
 
-  /** Creates the version once (a concurrent save of the same number loses), then makes it the current one. */
-  async savePolicy(policy: SigningPolicy): Promise<boolean> {
+  /**
+   * Creates the version once (a concurrent save of the same number loses), runs `beforeInForce` (the policy-change
+   * alert, review round 2 L-5), then makes it the current one. When `beforeInForce` throws, the version is removed
+   * again and the save fails: a policy is never in force without its alert.
+   */
+  async savePolicy(policy: SigningPolicy, beforeInForce: () => Promise<unknown> = async () => undefined): Promise<boolean> {
     if (!hasValidPolicyHash(policy)) throw new Error('LedgerSeal: refusing to store a policy with a wrong hash.');
-    if (!(await this.storage.createIfAbsent(`ls3:sig:policyver:${pad(policy.version)}`, policy))) return false;
+    const key = `ls3:sig:policyver:${pad(policy.version)}`;
+    if (!(await this.storage.createIfAbsent(key, policy))) return false;
+    try {
+      await beforeInForce();
+    } catch (err) {
+      await this.storage.delete(key);
+      throw err;
+    }
     await this.storage.set(POLICY_KEY, policy);
     return true;
   }
@@ -165,14 +176,39 @@ export class SigningRepository {
     return started;
   }
 
-  /** The lock of a series, if any. A lock is a key created once; only a new series (an unlock) ends it. */
+  /**
+   * Review round 2 (R2-3): how a series ended, decided once. A success and a lock race for the same create-once key
+   * (`ls3:sig:end:{party}:{series}`), so a success can never undo a lock made at the same moment, and the other way
+   * round. Returns true when this call decided it.
+   */
+  endSeries(partyId: string, series: number, kind: 'OK' | 'LOCK', at: string): Promise<boolean> {
+    return this.storage.createIfAbsent(`ls3:sig:end:${partyId}:${series}`, { kind, at });
+  }
+
+  async seriesEnd(partyId: string, series: number): Promise<{ kind: 'OK' | 'LOCK'; at: string } | null> {
+    return (await this.storage.get(`ls3:sig:end:${partyId}:${series}`)) || null;
+  }
+
+  /** The lock of a series, if any. A lock is decided once; only a new series (an unlock) ends it. */
   async lockOf(partyId: string, series: number): Promise<{ at: string } | null> {
+    const end = await this.seriesEnd(partyId, series);
+    if (end?.kind === 'LOCK') return { at: end.at };
     return (await this.storage.get(`ls3:sig:lock:${partyId}:${series}`)) || null;
   }
 
-  /** Locks the series. True when this call created the lock. */
-  lock(partyId: string, series: number, at: string): Promise<boolean> {
-    return this.storage.createIfAbsent(`ls3:sig:lock:${partyId}:${series}`, { at });
+  /**
+   * Locks the series. True when this call created the lock. False when it was locked already, or when a success
+   * ended the series first (the failure then belongs to a series that is over).
+   */
+  async lock(partyId: string, series: number, at: string): Promise<boolean> {
+    if (!(await this.endSeries(partyId, series, 'LOCK', at))) return false;
+    await this.storage.createIfAbsent(`ls3:sig:lock:${partyId}:${series}`, { at });
+    return true;
+  }
+
+  /** Review round 2 (R2-2): gives a code back when the signature it was checked for was not written. */
+  async releaseUse(challengeId: string): Promise<void> {
+    await this.storage.delete(`ls3:sig:used:${challengeId}`);
   }
 
   /** The person's state, derived from the claims: the current series, its lock, and the last request time. */
@@ -251,6 +287,8 @@ export class SigningRepository {
     const all = await this.alerts();
     const acked = new Set(all.filter(e => e.kind === 'ACK').map(e => e.ackSeq));
     for (const e of all) if (ALERT_KINDS.includes(e.kind) && !acked.has(e.seq)) await this.storage.set(`ls3:sig:open:${pad(e.seq)}`, e);
+    // Review round 2 (L-8): an acknowledgement written while the index was built is applied again from a fresh read
+    for (const e of await this.alerts()) if (e.kind === 'ACK' && e.ackSeq) await this.storage.delete(`ls3:sig:open:${pad(e.ackSeq)}`);
     await this.storage.set('ls3:sig:openindex', { at: new Date().toISOString() });
   }
 
