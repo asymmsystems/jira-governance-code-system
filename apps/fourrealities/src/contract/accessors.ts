@@ -33,6 +33,10 @@ export interface StorageProvider {
   delete(key: string): Promise<void>;
   /** One page (at most 100) of keys that start with the prefix. */
   queryPrefix<T>(prefix: string, cursor?: string): Promise<{ results: Array<{ key: string; value: T }>; nextCursor?: string }>;
+  /** Writes the values together (one KVS transaction, at most 25); without it the values are written one by one. */
+  transact?(sets: Array<{ key: string; value: unknown }>): Promise<void>;
+  /** Writes the value only when the key is absent; false when it exists. Without it, a get then a set. */
+  setIfAbsent?(key: string, value: unknown): Promise<boolean>;
 }
 
 /** Jira issue reads and user writes, bound to one principal (the user or the app). */

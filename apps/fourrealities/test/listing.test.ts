@@ -65,6 +65,17 @@ describe('FourRealities listing (BL-4)', () => {
     expect(notes).not.toMatch(/asymmsystems\.atlassian\.net|AUDT-/);
   });
 
+  it('ADR-015 Q7: names the evidence reports "evidence reports for change-management audits", never an audit log, and only as release copy', () => {
+    const release = listing.slice(listing.indexOf('## Release copy: evidence reports (ADR-015)'));
+    expect(release).toContain('**Evidence Reports for Change-Management Audits**');
+    expect(release).toContain('"evidence reports for change-management audits"');
+    expect(release).toContain("FourRealities is not an administrative audit log: Jira's audit log and Atlassian Guard keep it.");
+    const before = listing.slice(0, listing.indexOf('## Release copy: evidence reports (ADR-015)'));
+    expect(before).not.toMatch(/evidence report/i);
+    const row = release.split('\n').find(l => l.startsWith('| **Evidence Reports'))!;
+    expect(row).not.toMatch(/audit log|tamper|compliant/i);
+  });
+
   it('uses no em or en dash', () => {
     for (const text of [listing, notes]) expect(text).not.toMatch(/[–—]/);
   });

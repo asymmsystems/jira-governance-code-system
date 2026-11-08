@@ -36,6 +36,22 @@ import { DefaultPersonalDataManager } from './manager/default-personal-data-mana
 import { DefaultKvsPersonalDataAccessor } from './accessor/default-kvs-personal-data-accessor';
 import { DefaultForgePrivacyAccessor } from './accessor/default-forge-privacy-accessor';
 import { DefaultExceptionManager } from './manager/default-exception-manager';
+import { ReportCaller, ReportDailyResult, ReportPermissions } from './contract/data/reports';
+import { ObjectStoreAccessor, ReportCryptoAccessor, ReportQueueAccessor, ReportRuntimeAccessor } from './contract/reports';
+import { reportPermissionsAsUser } from './accessor/default-forge-report-permission-accessor';
+import { JOB_MAX_WAIT_MS } from './accessor/jira-request';
+import { DefaultForgeJiraReportAccessor } from './accessor/default-forge-jira-report-accessor';
+import { DefaultKvsReportStoreAccessor } from './accessor/default-kvs-report-store-accessor';
+import { DefaultForgeObjectStoreAccessor } from './accessor/default-forge-object-store-accessor';
+import { DefaultForgeReportQueueAccessor } from './accessor/default-forge-report-queue-accessor';
+import { DefaultReportCryptoAccessor } from './accessor/default-report-crypto-accessor';
+import { DefaultKvsPartyTokenAccessor } from './accessor/default-kvs-party-token-accessor';
+import { DefaultForgeReportRuntimeAccessor } from './accessor/default-forge-report-runtime-accessor';
+import { DefaultForgeReportPeopleAccessor } from './accessor/default-forge-report-people-accessor';
+import { DefaultReportEngine } from './engine/default-report-engine';
+import { DefaultReportPolicyEngine } from './engine/default-report-policy-engine';
+import { DefaultEvidenceReportManager } from './manager/default-evidence-report-manager';
+import { DefaultReportSettingsManager } from './manager/default-report-settings-manager';
 
 /**
  * Time one resolver invocation may spend, from its start, inside the 25 s Forge limit. Every Jira
@@ -118,6 +134,66 @@ export function compose(storageProvider: StorageProvider | undefined, budgetMs: 
     admin: new DefaultAdminManager({ directory, settings, siteConfig, sources }),
     personalData: (privacy: PrivacyReportAccessor) => new DefaultPersonalDataManager({ data: new DefaultKvsPersonalDataAccessor(storage), privacy, events, notes, lifecycle, appJira })
   };
+}
+
+/** Time one report job event works (HLD section 7.3), inside the 900 s consumer limit. */
+export const REPORT_EVENT_BUDGET_MS = 780_000;
+
+/** The platform parts of the reports that tests replace (Object Store, the queue, the key, the runtime). */
+export interface ReportPlatform {
+  objects?: ObjectStoreAccessor;
+  queue?: ReportQueueAccessor;
+  crypto?: ReportCryptoAccessor;
+  runtime?: ReportRuntimeAccessor;
+}
+
+let reportPlatform: ReportPlatform = {};
+
+/** Replaces the report platform for every later call (tests and tools); {} restores Forge. */
+export function setReportPlatform(platform: ReportPlatform): void {
+  reportPlatform = platform;
+}
+
+/**
+ * Builds the evidence report object graph (ADR-015). The resolver's caller check is made before this graph
+ * is used; the Manager reads as the user for scope and visibility, and as the app only for a job's ids.
+ */
+export function composeReports(storageProvider: StorageProvider | undefined, budgetMs: number) {
+  const storage = resolveStorage(storageProvider);
+  const deadline = Date.now() + budgetMs;
+  const until = () => deadline;
+  const verify = attestationChecker(trustedKeys());
+  const store = new DefaultKvsReportStoreAccessor(storage);
+  const runtime = reportPlatform.runtime || new DefaultForgeReportRuntimeAccessor();
+  const crypto = reportPlatform.crypto || new DefaultReportCryptoAccessor(process.env, runtime.environment());
+  const policy = new DefaultReportPolicyEngine();
+  const appRequest = requestAs('app', until, JOB_MAX_WAIT_MS);
+  const reports = new DefaultEvidenceReportManager({
+    store,
+    objects: reportPlatform.objects || new DefaultForgeObjectStoreAccessor(),
+    queue: reportPlatform.queue || new DefaultForgeReportQueueAccessor(),
+    crypto,
+    tokens: new DefaultKvsPartyTokenAccessor(storage),
+    runtime,
+    userJira: new DefaultForgeJiraReportAccessor(requestAs('user', until), verify),
+    appJira: new DefaultForgeJiraReportAccessor(appRequest, verify),
+    appIssues: new DefaultForgeJiraIssueAccessor('app', until, appRequest, verify),
+    people: new DefaultForgeReportPeopleAccessor(requestAs('user', until)),
+    siteConfig: new DefaultKvsSiteConfigAccessor(storage, requestAs('app', until)),
+    settings: new DefaultKvsSettingsAccessor(storage),
+    sources: new DefaultSourcePolicyEngine(),
+    gates: new DefaultGateEngine(),
+    metrics: new DefaultMetricsEngine(),
+    events: new DefaultKvsExceptionEventAccessor(storage),
+    notes: new DefaultKvsReworkNoteAccessor(storage),
+    lifecycle: new DefaultExceptionPolicyEngine(),
+    history: new DefaultKvsAttestationHistoryAccessor(storage),
+    engine: new DefaultReportEngine(),
+    policy,
+    deadline
+  });
+  const settings = new DefaultReportSettingsManager({ directory: new DefaultForgeJiraDirectoryAccessor(requestAs('user', until)), store, crypto, policy });
+  return { reports, settings, runtime };
 }
 
 export const LICENCE_INACTIVE_MESSAGE = 'The FourRealities licence for this site is not active. A site administrator can renew it in Manage apps.';
@@ -260,6 +336,118 @@ export async function searchConfluencePages(
   return searcher.searchPages(query);
 }
 
+/** The parts of the Forge context that the report Manager uses; the project comes from the context only. */
+export function reportCallerOf(context: ForgeContext | undefined): ReportCaller {
+  const project = context?.extension?.project;
+  return {
+    accountId: context?.accountId ? String(context.accountId) : undefined,
+    projectKey: project?.key ? String(project.key) : undefined,
+    projectId: project?.id !== undefined && project?.id !== null && String(project.id) !== '' ? String(project.id) : undefined,
+    licenceActive: !licenceInactive(context)
+  };
+}
+
+/*
+ * Evidence report resolvers (ADR-015, HLD section 7.2). Each one first asks Jira, as the user, for the
+ * caller's permissions in the context project (reportPermissionsAsUser, the FSRT-visible form of HLD 7.1),
+ * before any storage read and before any call as the app. Listing and download work when the licence is
+ * inactive; creation and schedules do not (owner decision Q9).
+ */
+
+export async function getEvidenceReports(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider) {
+  const caller = reportCallerOf(context);
+  const permissions: ReportPermissions = await reportPermissionsAsUser(caller.projectKey);
+  return composeReports(storageProvider, RESOLVER_LINK_BUDGET_MS).reports.list(caller, permissions, payload);
+}
+
+export async function createEvidenceReport(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider) {
+  const caller = reportCallerOf(context);
+  const permissions: ReportPermissions = await reportPermissionsAsUser(caller.projectKey);
+  return composeReports(storageProvider, RESOLVER_LINK_BUDGET_MS).reports.create(caller, permissions, payload);
+}
+
+export async function getEvidenceReport(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider) {
+  const caller = reportCallerOf(context);
+  const permissions: ReportPermissions = await reportPermissionsAsUser(caller.projectKey);
+  return composeReports(storageProvider, RESOLVER_LINK_BUDGET_MS).reports.detail(caller, permissions, payload);
+}
+
+/** The functionKey of useObjectStore: { [presignedUrl]: key }, empty when refused. */
+export async function generateReportDownloadUrls(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider) {
+  const caller = reportCallerOf(context);
+  const permissions: ReportPermissions = await reportPermissionsAsUser(caller.projectKey);
+  const urls = await composeReports(storageProvider, RESOLVER_LINK_BUDGET_MS).reports.downloadUrls(caller, permissions, payload);
+  // For diagnosis of a failed download: counts only, never a key, an id or a URL.
+  console.log('FourRealities: report download URLs', JSON.stringify({ asked: Array.isArray((payload as { keys?: unknown } | undefined)?.keys) ? ((payload as { keys: unknown[] }).keys).length : 0, given: Object.keys(urls).length }));
+  return urls;
+}
+
+export async function saveReportSchedule(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider) {
+  const caller = reportCallerOf(context);
+  const permissions: ReportPermissions = await reportPermissionsAsUser(caller.projectKey);
+  return composeReports(storageProvider, RESOLVER_LINK_BUDGET_MS).reports.saveSchedule(caller, permissions, payload);
+}
+
+export async function deleteReportSchedule(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider) {
+  const caller = reportCallerOf(context);
+  const permissions: ReportPermissions = await reportPermissionsAsUser(caller.projectKey);
+  return composeReports(storageProvider, RESOLVER_LINK_BUDGET_MS).reports.deleteSchedule(caller, permissions, payload);
+}
+
+export async function deleteEvidenceReport(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider) {
+  const caller = reportCallerOf(context);
+  const permissions: ReportPermissions = await reportPermissionsAsUser(caller.projectKey);
+  return composeReports(storageProvider, RESOLVER_LINK_BUDGET_MS).reports.deleteReport(caller, permissions, payload);
+}
+
+/** One event of a report job, as the app, for the job's stored ids only. */
+export async function runReportJob(reportId: string, storageProvider?: StorageProvider, deadline: number = Date.now() + REPORT_EVENT_BUDGET_MS, eventId?: string): Promise<void> {
+  await composeReports(storageProvider, Math.max(0, deadline - Date.now())).reports.work(reportId, deadline, eventId);
+}
+
+/** Forge consumer of the queue fourrealities-report-jobs (manifest function report-worker). */
+export const reportWorker = async (event: { body?: { reportId?: unknown }; eventId?: unknown } | undefined): Promise<void> => {
+  const reportId = typeof event?.body?.reportId === 'string' ? event.body.reportId : '';
+  const eventId = typeof event?.eventId === 'string' ? event.eventId : undefined;
+  try {
+    await runReportJob(reportId, undefined, Date.now() + REPORT_EVENT_BUDGET_MS, eventId);
+  } catch (err) {
+    console.error(`FourRealities: report job event failed: ${errorSummary(err)}`);
+  }
+};
+
+/** The daily report run: schedules (licence active only), retention, temporary files, stalled jobs. */
+export async function runReportDaily(storageProvider?: StorageProvider, deadline: number = Date.now() + SCHEDULED_BUDGET_MS): Promise<ReportDailyResult> {
+  const app = composeReports(storageProvider, Math.max(0, deadline - Date.now()));
+  // Retention and clean-up run whatever the licence; only new scheduled reports stop (Q9).
+  return app.reports.daily(deadline, app.runtime.licenceActive() !== false);
+}
+
+/** The hourly sweep of temporary people files (review L-3: a file lives at most 25 hours). */
+export async function runReportTmpSweep(storageProvider?: StorageProvider, deadline: number = Date.now() + SCHEDULED_BUDGET_MS): Promise<{ deleted: number; skipped: boolean }> {
+  return composeReports(storageProvider, Math.max(0, deadline - Date.now())).reports.sweepTmp(deadline);
+}
+
+/** Forge scheduledTrigger handler (manifest function report-tmp). */
+export const reportTmp = async (): Promise<void> => {
+  try {
+    const result = await runReportTmpSweep();
+    console.log('FourRealities: report temporary files', JSON.stringify(result));
+  } catch (err) {
+    console.error(`FourRealities: report temporary files failed: ${errorSummary(err)}`);
+  }
+};
+
+/** Forge scheduledTrigger handler (manifest function report-daily). */
+export const reportDaily = async (): Promise<void> => {
+  try {
+    const result = await runReportDaily();
+    console.log('FourRealities: report daily run', JSON.stringify(result));
+  } catch (err) {
+    console.error(`FourRealities: report daily run failed: ${errorSummary(err)}`);
+  }
+};
+
 /**
  * Rendering hooks for Forge modules.
  */
@@ -310,6 +498,34 @@ resolver.define('searchConfluencePages', async (req) => {
   return await searchConfluencePages(req.payload as { query?: string }, req.context);
 });
 
+resolver.define('getEvidenceReports', async (req) => {
+  return await getEvidenceReports(req.payload, req.context);
+});
+
+resolver.define('createEvidenceReport', async (req) => {
+  return await createEvidenceReport(req.payload, req.context);
+});
+
+resolver.define('getEvidenceReport', async (req) => {
+  return await getEvidenceReport(req.payload, req.context);
+});
+
+resolver.define('generateReportDownloadUrls', async (req) => {
+  return await generateReportDownloadUrls(req.payload, req.context);
+});
+
+resolver.define('saveReportSchedule', async (req) => {
+  return await saveReportSchedule(req.payload, req.context);
+});
+
+resolver.define('deleteReportSchedule', async (req) => {
+  return await deleteReportSchedule(req.payload, req.context);
+});
+
+resolver.define('deleteEvidenceReport', async (req) => {
+  return await deleteEvidenceReport(req.payload, req.context);
+});
+
 export const handler = resolver.getDefinitions();
 
 const ADMIN_LICENCE_ERROR = { ok: false as const, code: 'LICENSE_INACTIVE' as const, message: LICENCE_INACTIVE_MESSAGE };
@@ -338,11 +554,25 @@ export async function saveAdminApprovers(payload: unknown, context?: ForgeContex
   return compose(storageProvider, RESOLVER_LINK_BUDGET_MS, 'user').admin.saveApprovers(payload);
 }
 
+/** Admin page: the evidence report settings (retention, report groups, signing key id). Jira administrators only. */
+export async function getReportSettings(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider) {
+  if (licenceInactive(context)) return ADMIN_LICENCE_ERROR;
+  return composeReports(storageProvider, RESOLVER_LINK_BUDGET_MS).settings.view();
+}
+
+/** Admin page: saves the retention and the report groups. */
+export async function setReportSettings(payload: unknown, context?: ForgeContext, storageProvider?: StorageProvider) {
+  if (licenceInactive(context)) return ADMIN_LICENCE_ERROR;
+  return composeReports(storageProvider, RESOLVER_LINK_BUDGET_MS).settings.save(payload);
+}
+
 const adminResolver = new Resolver();
 adminResolver.define('fr-admin-get', async req => getAdminSettings(req.payload, req.context));
 adminResolver.define('fr-admin-save-sources', async req => saveAdminSources(req.payload, req.context));
 adminResolver.define('fr-admin-search-groups', async req => searchAdminGroups(req.payload, req.context));
 adminResolver.define('fr-admin-save-approvers', async req => saveAdminApprovers(req.payload, req.context));
+adminResolver.define('fr-admin-reports-get', async req => getReportSettings(req.payload, req.context));
+adminResolver.define('fr-admin-reports-save', async req => setReportSettings(req.payload, req.context));
 
 /** Forge function of the admin page (manifest function admin-resolver). */
 export const adminHandler = adminResolver.getDefinitions();

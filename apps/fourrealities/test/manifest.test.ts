@@ -49,4 +49,18 @@ describe('manifest.yml', () => {
     expect(manifest).toMatch(/- key: fourrealities-personal-data\s*\n\s*function: personal-data\s*\n\s*interval: week/);
     expect(manifest).toMatch(/- key: personal-data\s*\n\s*handler: index\.personalData\s*\n\s*timeoutSeconds: 600/);
   });
+
+  it('ADR-015: the report consumer (900 s), the daily report run (600 s), Object Store and 1,024 MB, with no new scope', () => {
+    expect(manifest).toMatch(/- key: fourrealities-report-daily\s*\n\s*function: report-daily\s*\n\s*interval: day/);
+    expect(manifest).toMatch(/objectStore:\s*\n\s*- key: fourrealities-reports\s*\n\s*storageClass: standard/);
+    expect(manifest).toMatch(/consumer:\s*\n\s*- key: fourrealities-report-consumer\s*\n\s*queue: fourrealities-report-jobs\s*\n\s*function: report-worker/);
+    expect(manifest).toMatch(/- key: report-worker\s*\n\s*handler: index\.reportWorker\s*\n\s*timeoutSeconds: 900/);
+    expect(manifest).toMatch(/- key: report-daily\s*\n\s*handler: index\.reportDaily\s*\n\s*timeoutSeconds: 600/);
+    // Review L-3: the people files are swept every hour.
+    expect(manifest).toMatch(/- key: fourrealities-report-tmp\s*\n\s*function: report-tmp\s*\n\s*interval: hour/);
+    expect(manifest).toMatch(/- key: report-tmp\s*\n\s*handler: index\.reportTmp\s*\n\s*timeoutSeconds: 600/);
+    expect(manifest).toMatch(/runtime:\s*\n\s*name: nodejs22\.x\s*\n(?:\s*#.*\n)?\s*memoryMB: 1024/);
+    expect(manifest).not.toMatch(/webtrigger|external:/);
+  });
 });
+

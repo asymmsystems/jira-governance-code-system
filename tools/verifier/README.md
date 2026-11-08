@@ -1,4 +1,4 @@
-# LedgerSeal offline evidence verifier
+# LedgerSeal and FourRealities offline verifiers
 
 An offline checker for the approval evidence that LedgerSeal for Jira Cloud exports. It is one file, `verify-evidence.mjs`, of about 135 lines, and uses only the Node.js standard library (`node:crypto`, `node:fs`, `node:path`, `node:url`). It needs no network and no access to Jira or to the LedgerSeal app.
 
@@ -75,6 +75,7 @@ Exit codes: `0` every check passed; `1` at least one check failed (the FAIL line
 |---|---|---|
 | `ls-prod-2026-11` | LedgerSeal production, the Marketplace app | `keys/ls-prod-2026-11.pub.pem` |
 | `ls-dev-2026-11` | LedgerSeal development builds only (test sites) | `keys/ls-dev-2026-11.pub.pem` |
+| `fr-dev-2026-11` | FourRealities evidence reports, development builds only (test sites) | `keys/fr-dev-2026-11.pub.pem` |
 
 Evidence names its key in `attestation.keyId`. The same keys are listed on https://asymm.systems/product/jira-governance/signing-keys.html. The SHA-256 fingerprint of the DER public key (`openssl pkey -pubin -in keys/ls-prod-2026-11.pub.pem -outform DER | sha256sum`) of `ls-prod-2026-11` is `09f2b807adc803a7f687e0561e90b8dcadadd6c1d752c66b55980a27b89cc5d3`.
 
@@ -84,11 +85,32 @@ Check a download against `SHA256SUMS` in the release:
 sha256sum -c SHA256SUMS
 ```
 
+The SHA-256 fingerprint of the DER public key of `fr-dev-2026-11` is `f2ad70911a15f39cf37570f86fb3b55e7cf62b48b65bbfd50c8f649de01b979f`. The FourRealities production key `fr-prod-2026-11` is added here when FourRealities evidence reports are released to production.
+
+## FourRealities evidence reports
+
+`verify-fourrealities-report.mjs` checks an evidence report of FourRealities for Jira Cloud (evidence reports for change-management audits) offline. A report is three files that you download from the project page, tab "Evidence reports": `report.json`, `report.csv` and the signed `manifest.json`. It uses only the Node.js standard library and the canonical JSON of `verify-evidence.mjs`.
+
+| # | Check | Passes when |
+|---|---|---|
+| 1 | File hashes | The SHA-256 and the byte count of `report.json` and of `report.csv` equal the values in the manifest. |
+| 2 | Signature | The Ed25519 signature `sig` verifies over the canonical JSON of the manifest without `sig`, with the public key named by `keyId`. |
+| 3 | Header | The `header` of `report.json` equals the manifest without `files`, `keyId` and `sig`. |
+| 4 | Chain (with `--previous`) | The manifest's `previous.manifestSha256` is the SHA-256 of the previous report's manifest (its canonical JSON with `sig`), and `previous.reportId` names it. A removed report shows as a break. |
+
+```bash
+node verify-fourrealities-report.mjs <manifest.json> <report.json> <report.csv> [public-key.pem] [--previous <previous-manifest.json>]
+```
+
+The verifier also prints the period with both days included (`NOTE period 2026-10-09 to 2026-11-07 ...`): the manifest's `range.to` is the exclusive end, 00:00 UTC of the day after the last day, and the download file names use the last day. When some issues of the scope are not in the report (deleted, no longer readable, or moved to another project while the report was made), the verifier prints a `WARN` line with their number, which the manifest signs, and one line per issue with its key and the reason; it fails when `report.json` lists a different number. A PASS with such lines means the files are intact, not that the report holds every issue. A report signed with a development key (a key id with `-dev-`, such as `fr-dev-2026-11`) prints a `WARN` line: it is a test report, not evidence from a production site. Such a report that says `environment: production` fails. Without a key file, the key is read from `keys/<keyId>.pub.pem`. An unsigned report (manifest `warning: "UNSIGNED"`) fails check 2. The people file of a download is not signed (names change, and a closed account must disappear) and is not needed. Exit codes as above: `0` every check passed, `1` a check failed, `2` a missing argument or file.
+
+What a PASS means: the three files are the ones FourRealities signed, and, with `--previous`, the report follows the previous one. It does not mean that the report holds everything Jira ever recorded: FourRealities reports what Jira's changelog held when the report was made, free-text fields show only that they changed, and the gate results are observed when the report was made.
+
 ## Tests
 
 ```bash
 node verify-evidence.mjs --self-test
-node --test test/verify.test.mjs
+node --test test/verify.test.mjs test/verify-fourrealities-report.test.mjs
 ```
 
 The fixtures in `test/fixtures` are made-up records signed with a test key; they hold no customer data.

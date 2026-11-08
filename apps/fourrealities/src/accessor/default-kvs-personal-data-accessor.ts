@@ -4,7 +4,9 @@
  * FourRealities: every Atlassian account id the app stores, and its erasure (ADR-014).
  * Account ids sit in: Code exception events (fr:ex:*, byAccountId), rework notes (fr:note:*,
  * recordedBy), v1 and v2 exception records kept for migration (fr:issue:*:exception, recordedBy),
- * and snapshot rows (fr:p:{key}:chunk:*, assigneeAccountId, indexed at fr:p:{key}:accounts).
+ * snapshot rows (fr:p:{key}:chunk:*, assigneeAccountId, indexed at fr:p:{key}:accounts), and the party
+ * token map of the evidence reports (fr:party:{token}, ADR-015): on erasure a token's entry becomes a
+ * closed mark, so the signed report files, which hold only tokens, never change.
  * Snapshots written before ADR-014 may also hold names and exception fields; erasure removes them.
  */
 
@@ -62,6 +64,10 @@ export class DefaultKvsPersonalDataAccessor implements PersonalDataAccessor {
       add(r.code?.recordedBy, r.code?.recordedAt, issueId);
       add(r.rework?.recordedBy, r.rework?.recordedAt, issueId);
     }
+    for (const { value } of await queryAll(this.storage, 'fr:party:')) {
+      const p = (value || {}) as Rec;
+      if (p.closed !== true) add(p.accountId, p.updatedAt);
+    }
     for (const projectKey of await this.projects()) {
       const index = await this.storage.get<{ generatedAt: string; accountIds: string[] }>(`fr:p:${projectKey}:accounts`);
       if (index) {
@@ -93,6 +99,11 @@ export class DefaultKvsPersonalDataAccessor implements PersonalDataAccessor {
       if (r.code) next.code = { ...r.code, recordedBy: swap(r.code.recordedBy) };
       if (r.rework) next.rework = { ...r.rework, recordedBy: swap(r.rework.recordedBy) };
       if (JSON.stringify(next) !== JSON.stringify(r)) await this.storage.set(key, next);
+    }
+    const closedAt = new Date().toISOString();
+    for (const { key, value } of await queryAll(this.storage, 'fr:party:')) {
+      const p = (value || {}) as Rec;
+      if (typeof p.accountId === 'string' && gone.has(p.accountId)) await this.storage.set(key, { closed: true, closedAt });
     }
     for (const projectKey of await this.projects()) {
       const meta = await this.storage.get<SnapshotMeta>(`fr:p:${projectKey}:meta`);

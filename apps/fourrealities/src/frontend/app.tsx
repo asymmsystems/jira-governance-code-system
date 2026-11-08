@@ -5,13 +5,15 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { Inline, SectionMessage, Spinner, Text } from '@forge/react';
+import { Inline, SectionMessage, Spinner, Tab, TabList, TabPanel, Tabs, Text } from '@forge/react';
 import { invoke, view } from '@forge/bridge';
 import { ApprovalView, ForgeContext, IssueRow, ProjectDashboardView, ResolverError } from '../contract/data/models';
 import { SPACE, TEXT_ROLE } from '../brand/brand';
 import { AppSurface } from '../brand/layout';
 import { IssuePanel } from './issue-panel';
 import { ProjectDashboard } from './project-dashboard';
+import { EvidenceReports } from './evidence-reports';
+import { DASHBOARD_TAB, REPORT_TAB } from '../ui/report-text';
 import { errorText } from '../ui/triage';
 
 /** What the load resolvers return: an error envelope, an issue row, or a dashboard view. */
@@ -28,6 +30,8 @@ export const FourRealitiesApp: React.FC = () => {
   const [licenceInactive, setLicenceInactive] = useState<boolean>(false);
   const [compact, setCompact] = useState<boolean>(false);
   const [viewerAccountId, setViewerAccountId] = useState<string | undefined>(undefined);
+  // The project page tab; the reports tab loads only when it is opened (HLD section 8.1).
+  const [tab, setTab] = useState<number>(0);
 
   const load = async (refresh = false) => {
     setLoading(true);
@@ -102,5 +106,18 @@ export const FourRealitiesApp: React.FC = () => {
         compact={compact}
       />
     )
-    : <ProjectDashboard view={dashboard as ProjectDashboardView} onRefresh={() => load(true)} viewerAccountId={viewerAccountId} />;
+    : (
+      <Tabs id="fr-project-tabs" selected={tab} onChange={(index: number) => setTab(index)}>
+          <TabList>
+            <Tab>{DASHBOARD_TAB}</Tab>
+            <Tab>{REPORT_TAB}</Tab>
+          </TabList>
+          <TabPanel>
+            <ProjectDashboard view={dashboard as ProjectDashboardView} onRefresh={() => load(true)} viewerAccountId={viewerAccountId} />
+          </TabPanel>
+          <TabPanel>
+            {tab === 1 ? <AppSurface><EvidenceReports /></AppSurface> : null}
+          </TabPanel>
+        </Tabs>
+    );
 };

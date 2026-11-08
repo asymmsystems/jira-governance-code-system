@@ -9,6 +9,8 @@ import { JiraRequestInit } from './jira-types';
 
 const MAX_RETRIES = 3;
 const MAX_WAIT_MS = 5000;
+/** The longest Retry-After wait of a report job (HLD section 7.3). */
+export const JOB_MAX_WAIT_MS = 30_000;
 
 /**
  * Sends one request as a chosen principal. Callers build the route with the @forge/api route tag,
@@ -16,19 +18,21 @@ const MAX_WAIT_MS = 5000;
  */
 export type JiraRequest = (path: Route, init?: JiraRequestInit) => Promise<{ status: number; json: () => Promise<unknown>; headers?: { get: (name: string) => string | null } }>;
 
-const defaultSleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+/** The real wait between 429 retries. */
+export const defaultSleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 /**
  * Wraps a request so that a 429 is retried at most 3 times, waiting Retry-After seconds
- * (default 1, at most 5) while the wait still ends before the deadline. Then the 429 is returned.
+ * (default 1, at most maxWaitMs: 5 s for a resolver, 30 s for a report job) while the wait still ends
+ * before the deadline. Then the 429 is returned.
  */
-export function withRetry(send: JiraRequest, deadline: () => number, sleep: (ms: number) => Promise<void> = defaultSleep): JiraRequest {
+export function withRetry(send: JiraRequest, deadline: () => number, sleep: (ms: number) => Promise<void> = defaultSleep, maxWaitMs: number = MAX_WAIT_MS): JiraRequest {
   return async (r: Route, init?: JiraRequestInit) => {
     let res = await send(r, init);
     for (let attempt = 0; attempt < MAX_RETRIES && res.status === 429; attempt++) {
       const header = res.headers?.get('Retry-After');
       const seconds = header !== null && header !== undefined && header !== '' && Number(header) >= 0 ? Number(header) : 1;
-      const wait = Math.min(seconds, MAX_WAIT_MS / 1000) * 1000;
+      const wait = Math.min(seconds, maxWaitMs / 1000) * 1000;
       if (Date.now() + wait > deadline()) {
         break;
       }

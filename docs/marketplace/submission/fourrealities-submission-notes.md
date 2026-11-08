@@ -69,3 +69,19 @@ Install FourRealities on your own review site; nothing depends on the publisher'
 1. **Development Field:** Jira Software sites have a Development field even without a Git integration. FourRealities uses the Code check only when pull request data exists on the site (or an administrator turns it on); otherwise Code shows "Not used on this site". On a site with no Development field at all, Code shows "No development tool is connected to this site."
 2. **Confluence Access:** Search runs as the user. If Confluence refuses the search, the dialog says "Confluence refused the search (HTTP n). Either you cannot search Confluence, or FourRealities has no access to Confluence on this site. You can still enter the page address and title by hand." A link whose page cannot be checked shows "Evidence found (link only)".
 3. **Third-Party Integrations:** FourRealities does not connect to any server outside Atlassian.
+
+---
+
+## 6. Evidence reports (ADR-015): notes for the version that has them
+
+Add when the version with evidence reports is submitted (development 7.7.0 on 2026-11-08). The scopes do not change, so section 1 keeps its table; add these uses to the rows:
+
+- `read:jira-work`: the evidence report searches (`/rest/api/3/search/jql`), the bulk changelog fetch (`POST /rest/api/3/changelog/bulkfetch`) and the field list.
+- `read:jira-user`: names and the active flag for the unsigned people file of a download, read as the downloading user (`/rest/api/3/user/bulk`).
+- `storage:app`: the report jobs, index, schedules, tombstones, settings and party token map in Forge KVS.
+- Report files are stored in Forge Object Store (module `objectStore`, no scope).
+
+Architecture: report files reside in Forge Object Store (data residency enabled); no egress.
+
+Reviewer test step: open a project, Apps, Four Realities, tab "Evidence reports"; as a project administrator choose **New evidence report** for the last 30 days; when the row is Ready, choose **Download** and save the four files; run `node verify-fourrealities-report.mjs <manifest> <report.json> <report.csv>` from the open verifier: every check passes.
+
