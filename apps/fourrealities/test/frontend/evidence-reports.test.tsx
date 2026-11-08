@@ -257,6 +257,13 @@ describe('schedules', () => {
     await act(async () => { findButton(r.root, 'Add schedule').props.onClick(); });
     expect(textOf(r.toJSON())).toContain('FourRealities could not save the schedule.');
   });
+
+  it('LIC-1: disables Add schedule and Remove when the licence is inactive', async () => {
+    answer({ getEvidenceReports: { ...VIEW, licenceActive: false } });
+    const r = await mount();
+    expect(findButton(r.root, 'Add schedule').props.isDisabled).toBe(true);
+    expect(findButton(r.root, 'Remove').props.isDisabled).toBe(true);
+  });
 });
 
 describe('the project page tabs', () => {

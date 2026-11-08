@@ -279,7 +279,7 @@ const Schedules: React.FC<{ view: ReportsView; onChanged: (schedules: ReportSche
           <Inline key={s.scheduleId} space={SPACE.item} alignBlock="center" shouldWrap>
             <Text as="span">{scheduleLine(s, view.fields)}</Text>
             {s.lastRefusal ? <Text as="span" size="small" color={TEXT_ROLE.secondary}>{refusalLine(s.lastRefusal)}</Text> : null}
-            <Button appearance="subtle" spacing="compact" onClick={() => call('deleteReportSchedule', { scheduleId: s.scheduleId }, 'Schedule removed.')}>Remove</Button>
+            <Button appearance="subtle" spacing="compact" isDisabled={!view.licenceActive} onClick={() => call('deleteReportSchedule', { scheduleId: s.scheduleId }, 'Schedule removed.')}>Remove</Button>
           </Inline>
         ))}
         <FormField id="fr-schedule-cadence" label="Cadence">
