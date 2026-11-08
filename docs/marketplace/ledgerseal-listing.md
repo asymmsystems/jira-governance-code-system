@@ -149,4 +149,4 @@ Added 2026-11-08 by the regulated build (`feature/ledgerseal-regulated`). **Use 
 
 Held until release to production and live probes (Q-14); the owner approves the wording.
 - **Highlight line, proposed:** "Approval routes: QA, then Regulatory. Each stage has its own groups and quorum, every stage signs the same content, one person signs one stage, and the last stage seals the issue. A rejection or a change starts the approval again."
-- **Description line, proposed:** "Bind a route to a project and issue types; the validator can hold a move until the stage that gates it has signed. The open verifier rechecks quorum, stage order and separation of duties offline (version 1.4.0)."
+- **Description line, proposed:** "Bind a route to a project and issue types; the validator can hold a move until the stage that gates it has signed. The open verifier rechecks quorum, stage order and separation of duties offline (version 1.5.0)."

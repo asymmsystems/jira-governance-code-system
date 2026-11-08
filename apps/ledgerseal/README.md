@@ -101,7 +101,7 @@ node ../../tools/verifier/verify-evidence.mjs --self-test
 
 `tools/verifier` is the one copy of the open verifier in this repository. It is identical to the public repository https://github.com/asymmsystems/jira-governance-code-cli (Apache-2.0), where auditors download it.
 
-The verifier uses the Node standard library only. It exits 0 only when the snapshot hash, the history chain, the certificate and the signature all pass. Evidence with code-signed rows or an approval route has `format: "ledgerseal-evidence/2"`; use verifier 1.4.0 or later for it.
+The verifier uses the Node standard library only. It exits 0 only when the snapshot hash, the history chain, the certificate and the signature all pass. Evidence with code-signed rows or an approval route has `format: "ledgerseal-evidence/2"`; use verifier 1.5.0 or later for it.
 
 The full design is in `docs/spec/ledgerseal-spec-v4.md` (v3 frozen).
 

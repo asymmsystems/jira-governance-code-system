@@ -2,7 +2,7 @@
 
 - **Product:** LedgerSeal, a tamper-evident approval seal and transition gate for Jira Cloud
 - **Platform:** Atlassian Forge, UI Kit issue panel, `jira:workflowValidator`, product event trigger
-- **Version:** 4 (canonical form 2.3.0, attestation schema 4 for routed issues, evidence format `ledgerseal-evidence/2`, open verifier 1.4.0)
+- **Version:** 4 (canonical form 2.3.0, attestation schema 4 for routed issues, evidence format `ledgerseal-evidence/2`, open verifier 1.5.0)
 - **Status:** v3 plus the regulated features accepted by the owner on 2026-11-08: ADR-016 Part 11 signing (`architecture/decision/adr-00016-ledgerseal-part11-signing-credential.org`), ADR-017 approval routes (`adr-00017-ledgerseal-approval-routes.org`), ADR-018 signing on the transition screen (`adr-00018-ledgerseal-sign-on-transition.org`). Sections 14 to 18 are new; sections 1, 2, 5, 6, 8 to 11 and 13 name what changed. Build log: `docs/sdlc/ledgerseal-regulated-2026-11/`.
 - **Supersedes:** `docs/spec/ledgerseal-spec-v3.md` (frozen, md5 `b922d63b4cfbdc356129ffe459bd975e`) and the draft delta `docs/spec/ledgerseal-spec-v4-draft.md` (frozen, md5 `85eb9e70b09c22af03be54a4842939eb`); v2 `docs/spec/ledgerseal-spec-v2.md` (frozen, md5 `7d52d65f1da9adc3dff9e33077f3d31a`); v1 `docs/spec/ledgerseal-spec.md` (frozen)
 - **Sources:** source IDs (REG, NJ, JAC, FG, MP, T) refer to `docs/sdlc/ledgerseal-usp-ux-research-2026-11/research-brief.md` section 9.
@@ -443,7 +443,7 @@ The seal form shows this exact text with "(Declaration v1)". The record stores t
 
   It exits 0 when every check passes, 1 when one fails and 2 for a usage error or a missing file. It prints a NOTE for each `LS_REDACTED` entry and for the `parties` map.
 - PDF export is out of scope. It would need a new dependency.
-- v4: evidence format `ledgerseal-evidence/2` and verifier 1.4.0, section 15.7. Format 1 is unchanged for every issue with no route and no Part 11 signature.
+- v4: evidence format `ledgerseal-evidence/2` and verifier 1.5.0, section 15.7. Format 1 is unchanged for every issue with no route and no Part 11 signature.
 
 ---
 
@@ -677,10 +677,10 @@ The binding lookup is two direct reads (issue type, then `*`), no query.
 
 **Canonical form of a route**: canonical JSON as v3 section 4.1 of the `RouteVersion` without `routeHash`; arrays keep their order except `approverGroups` and `gatesStatusIds`, sorted by id. New vectors in `tools/verifier/vectors-route-1.json`.
 
-### 15.7 Evidence format 2 and verifier 1.4.0 (v3 section 11)
+### 15.7 Evidence format 2 and verifier 1.5.0 (v3 section 11)
 - `seal-evidence-api` returns `format: "ledgerseal-evidence/2"` when the history holds a run row, a stage-signed seal, a `signing` object or a `signingPolicy` reference (fix round 1), and `ledgerseal-evidence/1` otherwise (unchanged bytes for every existing issue).
 - Format 2 adds `routes: RouteVersion[]` (each version named by the history) and `signingPolicies: SigningPolicy[]` (versions in force, without group names if the owner prefers, Q-11).
-- Verifier 1.4.0 runs these checks whenever the content needs them (attestation `schemaVersion` 4; an `LS_RUN_*` row; `data.runId`, `data.routeId`, `data.signing` or `data.signingPolicy`), whatever the unsigned `format` field says (fix round 1 M-1). Routed content without `routes` fails check 6. It adds:
+- Verifier 1.5.0 runs these checks whenever the content needs them (attestation `schemaVersion` 4; an `LS_RUN_*` row; `data.runId`, `data.routeId`, `data.signing` or `data.signingPolicy`), whatever the unsigned `format` field says (fix round 1 M-1). Routed content without `routes` fails check 6. It adds:
   6. each route version's hash recomputes;
   7. every `LS_RUN_SIGNED` row of the sealing run, and the `LS_SEALED` row, carry the attestation's `snapshotHash`, and `stageSignatures` equals the run's signature rows;
   8. quorum per stage (distinct `setByPartyId`) and order groups signed in order;
@@ -799,7 +799,7 @@ Overall wording for the listing's "Honest Compliance Boundary", proposed for the
 | Q-06 | Approval of changes after a routed seal | Default: full route; optional re-approval subset per route | ADR-017 |
 | Q-07 | Route edited while a run is open | Pin the run to its version | ADR-017 |
 | Q-08 | Who edits routes | Jira admins only | ADR-017 |
-| Q-09 | Verifier version | 1.4.0 | ADR-017 |
+| Q-09 | Verifier version | 1.4.0; released as 1.5.0, because FourRealities released its report verifier as 1.4.0 first (2026-11-08) | ADR-017 |
 | Q-10 | Transition screens with covered fields or a comment | Block | ADR-018 |
 | Q-11 | Group names in evidence | Include | ADR-017 |
 | Q-12 | Signature field on an issue sealed before 2.3.0 | Show CHANGED until approved; admin guide says so | ADR-018 |

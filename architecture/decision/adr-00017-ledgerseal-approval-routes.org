@@ -69,6 +69,8 @@ open question that he did not answer himself:
   signature (decision 3).
 - *Q-08 (who may edit routes):* Jira admins only.
 - *Q-09 (verifier version for format 2):* 1.4.0, because no existing result changes (decision 13).
+  Released as 1.5.0 (2026-11-08): FourRealities released its report verifier as 1.4.0 in the same
+  tool directory first.
 - *Q-11 (group names in the evidence):* included; group names are not personal data.
 - *Q-15 (new, FourRealities):* the one-line FourRealities change is part of this work: a
   =ledgerseal-cert= property with no =status= reads as "not sealed", not as "shape unknown".
@@ -124,7 +126,7 @@ Adopt option A.
     the property has no =status= and no =certificateId=. A new index path =approval.runState=
     (alias =ledgersealApproval=) lets JQL find issues waiting for approval.
 13. *Evidence and verifier.* Evidence with route data uses =format: "ledgerseal-evidence/2"= and
-    includes the route version it was checked against. Verifier 1.4.0 checks the route hash,
+    includes the route version it was checked against. Verifier 1.5.0 checks the route hash,
     quorum, group order, one stage per person, and that every stage signature signed the sealed
     snapshot. It skips run rows when it compares the newest state with the attestation, as it
     skips =LS_REDACTED=. Evidence of format 1 gives the same result as in v1.3.0.
@@ -180,7 +182,7 @@ the issue; the property became schema 4 with =approval.runState= =COMPLETE=; the
 ** Negative
 - Verifier v1.3.0 FAILs evidence whose newest row is a run row (an issue still in approval). It
   never gives a false PASS. A completed routed seal PASSes in v1.3.0, but v1.3.0 does not check the
-  route; the user guide must say "use 1.4.0 or later for routed evidence".
+  route; the user guide must say "use 1.5.0 or later for routed evidence".
 - FourRealities needs a small change: a property with no =status= means "not sealed" (today it
   would read as "shape unknown").
 - The sealed issue record grows (route reference and stage counts): its size budget goes from
