@@ -454,9 +454,9 @@ describe('signing with the code (spec v4 section 14.3)', () => {
     const repo = new SigningRepository(store, store);
     const p1 = (await repo.getPolicy())!;
     const projectId = '100';
-    expect(await policyReference(deps, projectId, p1)).toEqual({ version: 1, policyHash: p1.policyHash });
+    expect(await policyReference(deps, projectId, p1)).toEqual({ version: 1, policyHash: p1.policyHash, projectId });
     // A project outside the policy: no code was needed, and the off decision still holds
-    expect(await policyReference(deps, '999', null)).toEqual({ version: 1, policyHash: p1.policyHash });
+    expect(await policyReference(deps, '999', null)).toEqual({ version: 1, policyHash: p1.policyHash, projectId: '999' });
     // Checked with no code while the project was on: refused
     expect(await policyReference(deps, projectId, null)).toBe('changed');
     jira.currentUser = 'admin';
@@ -662,7 +662,7 @@ describe('records and evidence', () => {
     const ev: any = await evidenceFlow({}, as(jira, 'alice'), deps);
     expect(ev.format).toBe('ledgerseal-evidence/2');
     expect(ev.signingPolicies).toHaveLength(1);
-    expect(ev.verification.join(' ')).toContain('1.4.0');
+    expect(ev.verification.join(' ')).toContain('1.5.0');
     const { jira: j2, deps: d2 } = await setup({ part11: false });
     const v1 = { meaning: 'APPROVAL', declarationVersion: declaration.DECLARATION.version, declarationText: declaration.DECLARATION.text };
     await sealIssueFlow({ signature: v1 }, as(j2, 'alice'), d2);

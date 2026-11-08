@@ -195,7 +195,7 @@ describe('route flows under the run lock (review H-1)', () => {
     await storage.createIfAbsent('ls3:runlock:10001', { owner: 'other', at: Date.now() });
     const signed: any = await signStage({ stageId: 'qa', viewHash: await view('qa1'), signature: V1 }, panelContext('qa1'), as('qa1'));
     expect(signed).toMatchObject({ ok: false, code: 'CONFLICT', message: RUN_BUSY_MESSAGE });
-    const rejected: any = await rejectStage({ stageId: 'qa', viewHash: await view('qa1'), reason: 'no' }, panelContext('qa1'), as('qa1'));
+    const rejected: any = await rejectStage({ stageId: 'qa', signature: { declarationVersion: require('../src/domain/declaration').DECLARATION.version, declarationText: require('../src/domain/declaration').DECLARATION.text }, viewHash: await view('qa1'), reason: 'no' }, panelContext('qa1'), as('qa1'));
     expect(rejected).toMatchObject({ ok: false, code: 'CONFLICT', message: RUN_BUSY_MESSAGE });
     expect(await new RouteRepository(storage).run('10001')).toBeNull();
   });

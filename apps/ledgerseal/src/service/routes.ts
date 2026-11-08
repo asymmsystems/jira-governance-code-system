@@ -11,7 +11,7 @@
 
 import * as crypto from 'crypto';
 import { computeSnapshotHash } from '../domain/crypto';
-import { declarationFor, isDeclarationV2Approved, validReason } from '../domain/declaration';
+import { declarationFor, declarationHash, isDeclarationV2Approved, validReason } from '../domain/declaration';
 import { buildStatusRow } from '../domain/history';
 import {
   ApprovalRun,
@@ -54,7 +54,7 @@ import {
 import { changeAuthorsSince } from '../domain/policy';
 import { isExcludedField } from '../domain/canonicalizer';
 import { adminCaller } from './policy-admin';
-import { checkSigningCode } from './signing';
+import { checkSigningCode, giveBackCode, recordSignOk } from './signing';
 
 const MAX_ROUTES = 50;
 /** Tries to take a busy run lock before the flow answers "try again" (about 4 seconds in all). */
@@ -211,7 +211,7 @@ export async function withRunLock<T>(deps: LedgerSealDeps, issueId: string, fn: 
   for (let attempt = 0; attempt < RUN_LOCK_TRIES; attempt++) {
     if (await repo.acquireRunLock(issueId, owner, Date.now())) {
       try {
-        return await fn({ ...deps, heldRunLocks: new Set([...(deps.heldRunLocks ?? []), issueId]) });
+        return await fn({ ...deps, heldRunLocks: new Map([...(deps.heldRunLocks ?? new Map<string, string>()), [issueId, owner]]) });
       } finally {
         await repo.releaseRunLock(issueId, owner);
       }
@@ -219,6 +219,16 @@ export async function withRunLock<T>(deps: LedgerSealDeps, issueId: string, fn: 
     await new Promise(resolve => setTimeout(resolve, 100 + Math.floor(Math.random() * 150)));
   }
   return 'busy';
+}
+
+/**
+ * Review round 2 (R2-5): the fencing check before a run write. False when the call holds the issue's run lock in
+ * name but the stored lock names another owner (it was taken over), so the write must not happen.
+ */
+export async function stillHoldsRunLock(deps: LedgerSealDeps, issueId: string): Promise<boolean> {
+  const mine = deps.heldRunLocks?.get(issueId);
+  if (!mine) return true;
+  return (await new RouteRepository(deps.storage).runLockOwner(issueId)) === mine;
 }
 
 /** True when a route is bound to the issue, so a seal must go through its stages (not the plain panel seal). */
@@ -243,6 +253,7 @@ async function chainHead(deps: LedgerSealDeps, issueId: string, run: StoredRun |
 /** Appends a run row and moves the head of the sealed work effort, if any, so the chain stays one chain. */
 async function appendRunRow(deps: LedgerSealDeps, issueId: string, run: StoredRun | null, fields: Parameters<typeof buildStatusRow>[1]) {
   const repo = new SealRepository(deps.storage);
+  if (!(await stillHoldsRunLock(deps, issueId))) return null;
   const { we, head } = await chainHead(deps, issueId, run);
   const row = buildStatusRow(head, fields);
   if (!(await repo.appendStatus(row))) return null;
@@ -259,6 +270,7 @@ async function appendRunRow(deps: LedgerSealDeps, issueId: string, run: StoredRu
 
 async function saveRun(deps: LedgerSealDeps, run: Omit<ApprovalRun, 'recordHash'>, head: { seq: number; entryHash: string }): Promise<StoredRun> {
   const stored: StoredRun = { ...withRunHash(run), chainHead: head };
+  if (!(await stillHoldsRunLock(deps, run.issueId))) throw new Error('LedgerSeal: the run lock was taken over; the run record was not written.');
   await new RouteRepository(deps.storage).saveRun(stored);
   return stored;
 }
@@ -364,7 +376,31 @@ async function lockedStep(deps: LedgerSealDeps, step: StageStep): Promise<StageS
   if (ctx.open && ctx.run && ctx.run.snapshotHash !== computeSnapshotHash(step.live.snapshot)) return fail('ISSUE_CHANGED');
   // The run ended (voided, rejected, revoked or completed) since the checks: the person signs it again on a fresh view
   if (step.ctx.open && step.ctx.run && ctx.run?.runId === step.ctx.run.runId && !ctx.open) return fail('ISSUE_CHANGED');
-  return { ...step, ctx, stage, sealExists };
+  // Review round 2 (R2-1): the seal changed state (a revoke, a new seal) since the checks
+  if ((await sealState(deps, step.issue.id)) !== step.sealState) return fail('ISSUE_CHANGED');
+  // Review round 2 (R2-2): the code is checked under the lock, after every decision, so a busy issue or a refused
+  // decision leaves the person's code unused
+  let signingEvidence: SigningEvidence | null = null;
+  if (step.policy) {
+    const checked = await checkSigningCode(deps, { accountId: step.accountId, partyId: step.party(step.accountId), issueId: step.issue.id, action: step.action, stageId: step.stage.stageId, policy: step.policy, signing: step.signing });
+    if (!checked.ok) return checked;
+    signingEvidence = checked.evidence;
+  }
+  return { ...step, ctx, stage, sealExists, signingEvidence };
+}
+
+/** The seal's state and certificate, to see whether it changed between the checks and the write. */
+async function sealState(deps: LedgerSealDeps, issueId: string): Promise<string> {
+  const we = await new SealRepository(deps.storage).getWorkEffort(issueId);
+  return we ? `${we.currentStatusId}:${we.currentContentId}` : 'none';
+}
+
+/** Records SIGN_OK after a written signature, or gives the code back when nothing was written (review round 2, R2-2). */
+async function settleCode<T extends { ok: boolean }>(deps: LedgerSealDeps, step: StageStep, result: T): Promise<T> {
+  if (!step.signingEvidence) return result;
+  if (result.ok) await recordSignOk(deps, step.party(step.accountId), { issueId: step.issue.id, action: step.action, challengeId: step.signingEvidence.challengeId });
+  else await giveBackCode(deps, step.signingEvidence);
+  return result;
 }
 
 interface StageStep {
@@ -378,6 +414,10 @@ interface StageStep {
   signingEvidence: SigningEvidence | null;
   qualifyingGroupId: string;
   sealExists: boolean;
+  action: 'SIGN_STAGE' | 'REJECT';
+  signing: unknown;
+  sealState: string;
+  declaration: { version: string; text: string };
 }
 
 /**
@@ -433,15 +473,25 @@ async function stageChecks(payload: any, context: any, deps: LedgerSealDeps, act
   const policy = part11 as SigningPolicy | null;
   const declaration = declarationFor(Boolean(policy));
   const signature = payload?.signature ?? {};
-  if (action === 'SIGN_STAGE' && (signature.declarationVersion !== declaration.version || signature.declarationText !== declaration.text)) return fail('DECLARATION_MISMATCH');
+  // Review round 2 (D-1): a rejection is a signature too; its signer agrees to the declaration shown, as a stage signer does
+  if (signature.declarationVersion !== declaration.version || signature.declarationText !== declaration.text) return fail('DECLARATION_MISMATCH');
   if (policy && !isDeclarationV2Approved()) return fail('DECLARATION_PENDING');
-  let signingEvidence: SigningEvidence | null = null;
-  if (policy) {
-    const checked = await checkSigningCode(deps, { accountId, partyId: token, issueId: issue.id, action, stageId, policy, signing: payload?.signing });
-    if (!checked.ok) return checked;
-    signingEvidence = checked.evidence;
-  }
-  return { accountId, issue, stage, ctx, live, party, policy, signingEvidence, qualifyingGroupId: group, sealExists };
+  return {
+    accountId,
+    issue,
+    stage,
+    ctx,
+    live,
+    party,
+    policy,
+    signingEvidence: null,
+    qualifyingGroupId: group,
+    sealExists,
+    action,
+    signing: payload?.signing,
+    sealState: await sealState(deps, issue.id),
+    declaration
+  };
 }
 
 /**
@@ -453,7 +503,7 @@ export async function signStageFlow(payload: any, context: any, deps: LedgerSeal
   if ('ok' in checked) return checked;
   const done = await withRunLock(deps, checked.issue.id, async locked => {
     const step = await lockedStep(locked, checked);
-    return 'ok' in step ? step : signLocked(payload, locked, step);
+    return 'ok' in step ? step : settleCode(locked, step, await signLocked(payload, locked, step));
   });
   return done === 'busy' ? fail('CONFLICT', RUN_BUSY_MESSAGE) : done;
 }
@@ -506,7 +556,13 @@ async function signLocked(payload: any, deps: LedgerSealDeps, step: StageStep) {
       setByPartyId: token,
       reason: null,
       transitionName: 'SIGN_STAGE',
-      data: { ...runData, ...(signingEvidence ? { signing: signingEvidence } : {}), ...(policyRef ? { signingPolicy: policyRef } : {}) }
+      data: {
+        ...runData,
+        declarationVersion: step.declaration.version,
+        declarationHash: declarationHash(step.declaration.text),
+        ...(signingEvidence ? { signing: signingEvidence } : {}),
+        ...(policyRef ? { signingPolicy: policyRef } : {})
+      }
     });
     if (!row) return fail('CONFLICT');
     await new PartyRepository(deps.storage).register([accountId], party, now);
@@ -518,6 +574,7 @@ async function signLocked(payload: any, deps: LedgerSealDeps, step: StageStep) {
   }
 
   // The completing stage writes the seal through the seal flow, with the route data and the run's chain head
+  if (!(await stillHoldsRunLock(deps, issue.id))) return fail('CONFLICT');
   const { head } = await chainHead(deps, issue.id, ctx.run);
   const sealed: any = await sealIssueFlow(
     { viewHash: payload.viewHash, signature: { ...(payload.signature ?? {}), meaning: meaningForRole(stage.roleTypeId) } },
@@ -549,7 +606,7 @@ export async function rejectStageFlow(payload: any, context: any, deps: LedgerSe
   if ('ok' in checked) return checked;
   const done = await withRunLock(deps, checked.issue.id, async locked => {
     const step = await lockedStep(locked, checked);
-    return 'ok' in step ? step : rejectLocked(reason as string, locked, step);
+    return 'ok' in step ? step : settleCode(locked, step, await rejectLocked(reason as string, locked, step));
   });
   return done === 'busy' ? fail('CONFLICT', RUN_BUSY_MESSAGE) : done;
 }
@@ -569,7 +626,12 @@ async function rejectLocked(reason: string, deps: LedgerSealDeps, step: StageSte
     setByPartyId: token,
     reason,
     transitionName: 'REJECT',
-    data: { runId, stageId: stage.stageId, snapshotHash: run?.snapshotHash ?? computeSnapshotHash(live.snapshot), routeHash: ctx.route.routeHash, ...(signingEvidence ? { signing: signingEvidence } : {}), ...(policyRef ? { signingPolicy: policyRef } : {}) }
+    data: { runId, stageId: stage.stageId, snapshotHash: run?.snapshotHash ?? computeSnapshotHash(live.snapshot), routeHash: ctx.route.routeHash,
+      declarationVersion: step.declaration.version,
+      declarationHash: declarationHash(step.declaration.text),
+      ...(signingEvidence ? { signing: signingEvidence } : {}),
+      ...(policyRef ? { signingPolicy: policyRef } : {})
+    }
   });
   if (!row) return fail('CONFLICT');
   await new PartyRepository(deps.storage).register([accountId], party, now);

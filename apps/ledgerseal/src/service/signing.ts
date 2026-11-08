@@ -165,7 +165,9 @@ export interface SigningCheck {
 
 /**
  * The code check of spec v4 section 14.3, run by a signing flow after every other check and before its first write.
- * On success the challenge is used up and the evidence for the status row is returned.
+ * On success the challenge is used up and the evidence for the status row is returned. The flow then records
+ * SIGN_OK once its row is written (`recordSignOk`), or gives the code back when it writes nothing (`giveBackCode`):
+ * review round 2, R2-2.
  */
 export async function checkSigningCode(deps: LedgerSealDeps, check: SigningCheck): Promise<{ ok: true; evidence: SigningEvidence } | SealFailure> {
   if (!isDeclarationV2Approved()) return fail('DECLARATION_PENDING');
@@ -219,21 +221,38 @@ export async function checkSigningCode(deps: LedgerSealDeps, check: SigningCheck
   const key = await repo.siteKey();
   if (!code || !macEquals(codeMac(key, challengeId, code), challenge.codeMac)) return failure('SIGNING_FAILED', 'wrong code', slot);
   // A parallel failure may have locked the series while this code was compared
-  if (await repo.lockOf(check.partyId, series)) return fail('SIGNING_LOCKED');
+  if (await repo.lockOf(check.partyId, series)) {
+    await repo.releaseFailureSlot(check.partyId, series, slot);
+    return fail('SIGNING_LOCKED');
+  }
   if (!(await repo.claimUse(challengeId, at))) {
     // Review L-4: the right code sent twice (a double submit) is recorded and alerted, but is not a failed attempt
     await repo.releaseFailureSlot(check.partyId, series, slot);
     await record(repo, check.partyId, 'CODE_REUSED', at, { ...extra, reason: 'code used before' });
     return fail('CODE_REUSED');
   }
-  // A success ends the run of failures in a row: its slot is given back and the next series starts (once)
+  // A success ends the run of failures in a row. It races a parallel lock for the one key that decides how the
+  // series ended (review round 2, R2-3): a lock that won refuses this success, and gives the code back
   await repo.releaseFailureSlot(check.partyId, series, slot);
+  if (!(await repo.endSeries(check.partyId, series, 'OK', at)) && (await repo.seriesEnd(check.partyId, series))?.kind === 'LOCK') {
+    await repo.releaseUse(challengeId);
+    return fail('SIGNING_LOCKED');
+  }
   await repo.advanceSeries(check.partyId, series, at);
-  await repo.appendEvent(check.partyId, { at, kind: 'SIGN_OK', byPartyId: check.partyId, ...extra });
   return {
     ok: true,
     evidence: { method: SIGNING_METHOD, components: 2, mode: 'PART11', challengeId, policyVersion: check.policy.version, policyHash: check.policy.policyHash }
   };
+}
+
+/** Review round 2 (R2-2): the SIGN_OK event, written only after the signature's row is stored. */
+export async function recordSignOk(deps: LedgerSealDeps, partyId: string, fields: { issueId: string; action: string; challengeId: string }): Promise<void> {
+  await repoOf(deps).appendEvent(partyId, { at: new Date().toISOString(), kind: 'SIGN_OK', byPartyId: partyId, ...fields });
+}
+
+/** Review round 2 (R2-2): a checked code whose signature was not written is given back, so the person can use it again. */
+export async function giveBackCode(deps: LedgerSealDeps, evidence: SigningEvidence | null): Promise<void> {
+  if (evidence) await repoOf(deps).releaseUse(evidence.challengeId);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -290,9 +309,10 @@ export async function setSigningPolicyFlow(payload: any, context: any, deps: Led
   const repo = repoOf(deps);
   const previous = await repo.getPolicy();
   const policy = nextPolicy(previous, { enabled, projectIds, lockoutThreshold: lockout, declarationVersion: DECLARATION_V2.version, setByPartyId: party(caller), fromDate: at });
-  if (!(await repo.savePolicy(policy))) return fail('CONFLICT', 'Another admin saved code signing a moment ago. Reload and try again.');
-  // Review L-5: every policy change (on, off, projects, lockout) is an alert for the other admins to see and acknowledge
-  await repo.appendAlert({ at, kind: 'POLICY_CHANGED', partyId: party(caller), byPartyId: party(caller), reason: `policy version ${policy.version}: ${policy.enabled ? 'on' : 'off'}` });
+  // Review L-5: every policy change (on, off, projects, lockout) is an alert for the other admins to see and acknowledge.
+  // It is written before the version comes into force; when it cannot be written, the save fails (review round 2)
+  const alert = () => repo.appendAlert({ at, kind: 'POLICY_CHANGED', partyId: party(caller), byPartyId: party(caller), reason: `policy version ${policy.version}: ${policy.enabled ? 'on' : 'off'}` });
+  if (!(await repo.savePolicy(policy, alert))) return fail('CONFLICT', 'Another admin saved code signing a moment ago. Reload and try again.');
   return { ok: true as const, policy };
 }
 

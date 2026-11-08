@@ -141,7 +141,7 @@ describe('lost races and failed reads', () => {
     expect((await sign(jira, deps, 'qa1', 'qa')).code).toBe('CONFLICT');
     const panel: any = await verifyIssue({}, as(jira, 'qa1'), deps);
     const { rejectStage } = require('../src/index');
-    expect(((await rejectStage({ stageId: 'qa', viewHash: panel.viewHash, reason: 'No' }, as(jira, 'qa1'), deps)) as any).code).toBe('CONFLICT');
+    expect(((await rejectStage({ stageId: 'qa', signature: { declarationVersion: require('../src/domain/declaration').DECLARATION.version, declarationText: require('../src/domain/declaration').DECLARATION.text }, viewHash: panel.viewHash, reason: 'No' }, as(jira, 'qa1'), deps)) as any).code).toBe('CONFLICT');
     storage.createIfAbsent = create;
     await sign(jira, deps, 'qa1', 'qa');
     storage.createIfAbsent = async (key: string, value: any, options?: any) => (key.startsWith('ls3:wes:') ? false : create(key, value, options));
@@ -212,7 +212,7 @@ describe('gate and revoke messages', () => {
     const { jira, storage, deps } = await setup();
     const panel: any = await verifyIssue({}, as(jira, 'qa1'), deps);
     const { rejectStage } = require('../src/index');
-    await rejectStage({ stageId: 'qa', viewHash: panel.viewHash, reason: 'No' }, as(jira, 'qa1'), deps);
+    await rejectStage({ stageId: 'qa', signature: { declarationVersion: require('../src/domain/declaration').DECLARATION.version, declarationText: require('../src/domain/declaration').DECLARATION.text }, viewHash: panel.viewHash, reason: 'No' }, as(jira, 'qa1'), deps);
     const last = model.statusRows(storage).at(-1);
     const key = model.statusKey(last.seq);
     storage.map.set(key, { ...storage.map.get(key), data: { ...last.data, stageId: 'gone' } });
