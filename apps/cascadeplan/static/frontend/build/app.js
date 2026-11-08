@@ -8616,6 +8616,14 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
 
   // src/ui/second-person.ts
+  function enteredAllocationHours(raw) {
+    const hours = parseInt(String(raw ?? "").trim(), 10);
+    return Number.isFinite(hours) && hours > 0 ? hours : void 0;
+  }
+  function allocationCreatedText(assigneeName, hours) {
+    const who = assigneeName || "Unassigned";
+    return hours === void 0 ? `\u2713 Created Jira subtask for ${who}, with no estimate` : `\u2713 Created Jira subtask for ${who} (${hours}h)`;
+  }
   function formatRemovalPrompt(contributorName, subtaskKey) {
     return `Remove ${contributorName}? Do you want to delete or unassign Jira subtask ${subtaskKey}?`;
   }
@@ -14306,6 +14314,8 @@ Click to manage or assign.`;
       multiResStatus.textContent = "";
       multiResStatus.style.display = "none";
     }
+    const multiResHours = document.getElementById("multiResourceHours");
+    if (multiResHours) multiResHours.value = "";
     const predSelect = document.getElementById("editPredecessorSelect");
     predSelect.innerHTML = '<option value="">None (No Dependency)</option>';
     (currentPlan.tasks || []).forEach((t) => {
@@ -14392,8 +14402,8 @@ Click to manage or assign.`;
     const selected = resSelect.options[resSelect.selectedIndex];
     const assigneeName = selected ? selected.value : "Unassigned";
     const assigneeAccountId = selected?.dataset?.accountId || void 0;
-    const enteredHours = parseInt(document.getElementById("multiResourceHours").value, 10);
-    const hours = Number.isFinite(enteredHours) && enteredHours > 0 ? enteredHours : void 0;
+    const hoursInput = document.getElementById("multiResourceHours");
+    const hours = enteredAllocationHours(hoursInput && hoursInput.value);
     const statusEl = document.getElementById("multiResourceStatus");
     const addBtn = document.getElementById("btnAddResourceSubtaskBtn");
     if (addBtn) {
@@ -14415,10 +14425,11 @@ Click to manage or assign.`;
         }
       } else {
         if (statusEl) {
-          statusEl.textContent = `\u2713 Created Jira subtask for ${assigneeName} (${hours}h)`;
+          statusEl.textContent = allocationCreatedText(assigneeName, hours);
           statusEl.style.color = "var(--cp-text-success)";
           statusEl.style.display = "block";
         }
+        if (hoursInput) hoursInput.value = "";
         await loadProjectPlan();
         const updated = currentPlan.tasks.find((t) => t.key === activeTaskId);
         if (updated) renderModalSubtasks(updated);

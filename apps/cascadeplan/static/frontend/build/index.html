@@ -587,7 +587,7 @@
           </p>
           <div class="ix-row-8-mb6">
             <select class="form-input" id="multiResourceSelect" aria-label="Team member for a new sub-task"></select>
-            <input type="number" class="form-input" id="multiResourceHours" aria-label="Hours for the new sub-task" value="20" placeholder="Hrs" />
+            <input type="number" class="form-input" id="multiResourceHours" aria-label="Hours for the new sub-task (optional)" placeholder="Hrs" />
             <button class="btn btn-outline" id="btnAddResourceSubtaskBtn">+ Allocate Resource</button>
           </div>
           <div id="multiResourceStatus"></div>
@@ -602,26 +602,12 @@
               <button class="btn btn-outline btn-sm" type="button" id="btnApplyParent">Apply</button>
             </div>
           </div>
-          <div class="ix-section-title">Jira sub-tasks and risk buffer</div>
+          <div class="ix-section-title">Jira sub-tasks</div>
           <div id="subtasksList"></div>
           <div class="ix-row-8-mb12">
             <input type="text" class="form-input" id="newSubtaskSummary" aria-label="New Jira sub-task summary" placeholder="New sub-task summary..." />
             <input type="number" class="form-input" id="newSubtaskHours" aria-label="New sub-task hours (optional)" placeholder="hours" />
             <button class="btn btn-outline" id="btnAddSubtaskBtn">+ Create sub-task in Jira</button>
-          </div>
-          <div class="ix-grid2-10">
-            <div class="form-group">
-              <label class="form-label" for="editBufferTypeSelect">Buffer Type</label>
-              <select class="form-input" id="editBufferTypeSelect">
-                <option value="NONE">No Buffer</option>
-                <option value="PERCENTAGE">Percentage Buffer (%)</option>
-                <option value="FIXED_HOURS">Fixed Hours Buffer (h)</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="editBufferValueInput">Buffer Value</label>
-              <input type="number" class="form-input" id="editBufferValueInput" value="15" />
-            </div>
           </div>
         </div>
 

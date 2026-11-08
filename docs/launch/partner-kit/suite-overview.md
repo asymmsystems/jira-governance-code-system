@@ -18,7 +18,7 @@ Atlassian ends Jira Data Center on 2029-03-28. New Data Center apps could not be
 | **LedgerSeal** | An approval that stays bound to what was approved | Seals the issue at approval with a SHA-256 snapshot of covered fields, comments and attachments. Names each later change and who made it. The person who made the changes cannot approve them. A workflow validator blocks the transition until another approver approves the changes. |
 | **DefinitionGuard** | A Definition of Done that blocks the move to Done | Per-issue-type checklists; items that need evidence; items the assignee may not tick; waivers with a reason; a hash-chained history. |
 | **FourRealities** | Delivery evidence per issue, for audit preparation | Four checks per issue: decision record, Definition of Done, pull request, approval seal. Signed records count only when the signature is verified. |
-| **CascadePlan** | A planning baseline with reviewed scope changes | Percent-trigger dependencies, every Jira write shown first and undoable, frozen baselines with a SHA-256 digest, scope changes approved by someone other than the requester. |
+| **CascadePlan** | A planning baseline with reviewed scope changes | Percent-trigger dependencies, every Jira write shown first, date and link changes undoable (a contributor's Jira sub-task stays), frozen baselines with a SHA-256 digest, scope changes approved by someone other than the requester. |
 
 ## Why it fits a regulated cloud
 

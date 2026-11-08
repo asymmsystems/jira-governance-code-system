@@ -14,6 +14,7 @@ import {
   updateWbsTask,
   setGlobalStorageProvider
 } from '../src/index';
+import { enteredAllocationHours, allocationCreatedText } from '../src/ui/second-person';
 import { MemStorage } from './helpers/mem-storage';
 
 const mockRequestJira = jest.fn();
@@ -153,6 +154,21 @@ describe('second person path (B-19)', () => {
     expect(bobParty2.subtaskKey).toBe('TEST-99');
   });
 
+  it('createSubtaskForResource with no hours sends no estimate to Jira (CP-1, INV-03)', async () => {
+    const res = await createSubtaskForResource({
+      projectKey: 'TEST',
+      parentKey: 'TEST-1',
+      assigneeAccountId: 'acc-bob',
+      assigneeName: 'Bob Developer'
+    }, storage);
+    expect(res.ok).toBe(true);
+    const postCalls = mockRequestJira.mock.calls.filter(c => c[1]?.method === 'POST' && /\/rest\/api\/3\/issue$/.test(String(c[0])));
+    expect(postCalls.length).toBe(1);
+    const fields = JSON.parse(postCalls[0][1].body).fields;
+    expect(fields.timetracking).toBeUndefined();
+    expect(JSON.stringify(fields)).not.toMatch(/originalEstimate|timeoriginalestimate/);
+  });
+
   it('updateWbsTask creates Jira subtask when adding a contributor and records subtaskKey (criterion 1)', async () => {
     const res = await updateWbsTask({
       projectKey: 'TEST',
@@ -229,5 +245,21 @@ describe('second person path (B-19)', () => {
     const putCalls = mockRequestJira.mock.calls.filter(c => c[1]?.method === 'PUT' && String(c[0]).includes('/rest/api/3/issue/TEST-99'));
     expect(putCalls.length).toBe(1);
     expect(JSON.parse(putCalls[0][1].body).fields.assignee).toBeNull();
+  });
+});
+
+describe('"+ Allocate Resource" hours and status text (CP-1)', () => {
+  it('an empty field, blanks and values that are not positive whole numbers send no estimate', () => {
+    for (const raw of ['', '   ', null, undefined, '0', '-4', 'abc']) expect(enteredAllocationHours(raw as any)).toBeUndefined();
+    expect(enteredAllocationHours('20')).toBe(20);
+    expect(enteredAllocationHours(' 8 ')).toBe(8);
+    expect(enteredAllocationHours('7.5')).toBe(7);
+  });
+
+  it('the status names the hours only when an estimate was sent, never "undefinedh"', () => {
+    expect(allocationCreatedText('Bob Developer', 20)).toBe('✓ Created Jira subtask for Bob Developer (20h)');
+    expect(allocationCreatedText('Bob Developer', undefined)).toBe('✓ Created Jira subtask for Bob Developer, with no estimate');
+    expect(allocationCreatedText('', undefined)).toBe('✓ Created Jira subtask for Unassigned, with no estimate');
+    expect(allocationCreatedText('Bob Developer', undefined)).not.toMatch(/undefined/);
   });
 });

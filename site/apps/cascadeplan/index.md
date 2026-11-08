@@ -16,7 +16,7 @@
 
 ### Jira stays the record
 - Every date, link, parent and sub-task you see exists in Jira. CascadePlan writes only values you chose in the action you took, as you, with your Jira permissions.
-- The Changes panel lists every Jira write of your session, with the old and the new value. Undo and Redo cover the last 20 changes.
+- The Changes panel lists every Jira write of your session, with the old and the new value. Undo and Redo cover the last 20 date, field and link changes; a contributor's Jira sub-task stays.
 
 ### Plans and baselines
 - Scenario plans next to the Main Plan: each plan has its own row order, columns and milestones; dates, links and the hierarchy are the same in every plan, because they are Jira's.

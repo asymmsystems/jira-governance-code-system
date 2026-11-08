@@ -33,7 +33,7 @@ CascadePlan is a Jira Cloud project page (Forge Custom UI) that plans issues on 
 | INV-09 | One function computes the earliest start for the auto-move, the violation check, the preview and the reason text. | v1 |
 | INV-10 | Every computed earliest start has a reason that names the driving predecessor, the trigger percent, the date and the basis. | v1 |
 | INV-11 | A cascade moves only successors that conflict, never moves a task the user did not see in the preview, and is bounded per call. A successor it cannot move is reported, never dropped. | v1, F-20 |
-| INV-12 | Every edit can be undone (20 steps), including a drag and a block move. No routine edit asks for confirmation; a hierarchy change does (ADR-005). | v1, F-04 |
+| INV-12 | Every date move, scheduling and unscheduling, block move, change to several rows, and task field and link change (`updateWbsTask`, the link editor included) can be undone, 20 steps. A hierarchy change has its own Undo in its message. Adding a contributor creates a Jira sub-task; Undo never deletes that sub-task. Creates, plan management, baselines, plan filters, row order and column settings have no Undo. The history is kept in memory: a plan switch or a reload clears it. No routine edit asks for confirmation; a hierarchy change does (ADR-005). | v1, F-04, CP-2 (2026-11-08) |
 | INV-13 | Every pointer action has a keyboard path and a single-pointer path. | v1 |
 | INV-14 | Every colour comes from an ADS token, in DOM and canvas, and meets WCAG 2.2 AA contrast. | v1 |
 | INV-15 | Every issue key in a payload matches `^[A-Z][A-Z0-9_]+-\d+$` and belongs to the context project. The project comes only from the Forge context; a call without a project in the context is refused. | v1, N-01 |
@@ -53,7 +53,7 @@ The Silverston WorkEffort pattern is the storage model (v1 decision D-03; `docs/
 | `WorkEffort` | One per Jira issue on a plan | `workEffortId` (issue key), `estimatedStartDate`, `estimatedCompletionDate`, `sequenceNum`, `targetPercentComplete`, `manualProgress`, `percentComplete` (only when set by hand) |
 | `WorkEffortAssoc` | History of precedency links into this effort | `workEffortIdFrom`, `workEffortIdTo`, `WORK_EFF_PRECEDENCY`, `fromDate`, `thruDate`. A record only (ADR-006): the active links come from Jira. |
 | `WorkEffortPartyAssignment` | A second person on a task (U3), through a Jira sub-task | `subtaskKey`, `roleTypeId` = `CONTRIBUTOR`, `fromDate`, `thruDate`. `[ADOPTED DEC-2 A]` `partyId` is not stored; the person is read live from the sub-task's assignee. |
-| `WorkEffortEstimate` | The estimate as the user entered it | `estimateUnit`, `rawEstimate`, `normalizedHours`, buffer |
+| `WorkEffortEstimate` | The estimate as the user entered it | `estimateUnit`, `rawEstimate`, `normalizedHours`. The buffer fields of the domain type (`bufferType`, `bufferValue`) are not offered in the UI and are never written (section 10, CP-3). |
 
 Rules:
 - **Dates.** One set of dates per task, the same in every plan (D3). The end is the Jira due date. The start has no standard Jira field, so it is the Jira issue property `cascadeplan.dates` (`startDate`, and the planner's `endDate` when Jira has no due date), set as the user and read in the same issue search (ADR-008, `[ADOPTED DEC-3 C]`). A property without a start marks a task taken off the timeline. A task with no property yet keeps the dates of its plan record until its next date change (lazy migration: opening the planner writes nothing).
@@ -288,3 +288,11 @@ v1 decisions D-01 and D-03 to D-10 stand. Changes and additions:
 | D-18 | Baseline, scope creep and shift approval | Built (DEC-1 Option B, owner): freeze, status, scope delta, requests and review, versions, comparison, CSV export, SHA-256 integrity check (ADR-009) |
 | D-19 | Personal data | Account ids of baseline and scope-change authors, plan record contributors and the approver policy's saver, each reported once every 7 days and erased for closed accounts (ADR-009, INV-04) |
 | D-20 | The parent's Jira due date follows its sub-tasks | Yes (`[ADOPTED DEC-6 A]`) |
+
+## 10. Change log
+
+| Date | Change | Why |
+|---|---|---|
+| 2026-11-08 | CP-1. The "+ Allocate Resource" hours field starts empty for every task and after each create. An empty field sends no estimate, and the status line then reads "Created Jira subtask for <name>, with no estimate". | The field started at 20, so a create wrote a 20-hour estimate the user had not chosen, against INV-03. A blank field showed "(undefinedh)". |
+| 2026-11-08 | CP-2. INV-12 states what Undo covers, as the code does, including that Undo never deletes the Jira sub-task created for an added contributor (review CP-2a). No code change: link changes in the link editor already record an Undo step (`test/ui/undo-coverage.test.ts`, harness probe `test/e2e/e2e_link_undo_probe.py`). | INV-12 and the listing said every edit or write can be undone. Creates, plans, baselines, filters, row order and column settings cannot. |
+| 2026-11-08 | CP-3. The Buffer Type and Buffer Value controls are removed from the task dialog, and the section is named "Jira sub-tasks". | No code read the two controls, so they saved nothing. Section 3.1 named a buffer but did not say where it is stored or how it changes the estimate, the Jira estimate or the schedule. Wiring it would need a new stored field and a new rule that this spec does not define. The domain types and `PlannerEngine.calculateEffortWithSubtasksAndBuffer` stay, unused by the UI, until a spec defines the buffer. |
