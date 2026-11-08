@@ -14,7 +14,7 @@ A regulated project must show what scope it committed to and who accepted each c
 ## What it does
 
 1. **Start at a percent, not only at 100%.** A successor can start when its predecessor reaches a percent of its work. The link is a Jira "Blocks" link.
-2. **Every Jira write shown first.** Before a drop, a line lists every date the drop will change. Only values the user chose are written, as the user, after a Jira permission check. Undo and redo for the last 20 date, field and link changes.
+2. **Every Jira write shown first.** Before a drop, a line lists every date the drop will change. Only values the user chose are written, as the user, after a Jira permission check. Undo and redo for the last 20 date, field and link changes; a contributor's Jira sub-task stays.
 3. **Jira stays the record.** Links, parents and dates are Jira's own; contributors are Jira sub-tasks.
 4. **Baselines and scope reviews.** A plan approver freezes a baseline with a SHA-256 digest. A scope change is accepted or rejected by a plan approver who is not the requester. Versions can be compared and exported as CSV.
 

@@ -565,3 +565,8 @@ Branch `fix/cascadeplan-guide-gaps`, from `master` at `04d36a2`. The gaps are li
 
 - **Gate:** `tsc` clean; 87 suites, 1011 tests pass, coverage 96.93 % statements, 90.97 % branches, 94.61 % functions, 98.57 % lines (thresholds 90); `npm run build` clean; `npm audit --omit=dev --audit-level=high` exits 0 (7 moderate, the known `@forge/manifest` chain); `forge lint` (`@forge/cli@15.0.0`) "No issues found"; FSRT `6c821bd` built locally and run as `fsrt.yml` runs it: canary reported, 0 findings in both scans; Semgrep 1.182.1 (`docs/security/sast.md` command) 110 rules, 217 files, 0 findings.
 - **Deploy:** development only, version 3.20.0, eligible for Runs on Atlassian (`forge eligibility`). Production untouched.
+
+### Review follow-up CP-2a (2026-11-08)
+
+- The Undo texts (listing, spec INV-12, site guide, partner kit, go-to-market plan) now say that adding a contributor creates a Jira sub-task and Undo does not delete it. Docs only; no new deploy (development stays 3.20.0).
+- **Gate (after `npm ci`):** `tsc` clean; 87 suites, 1011 tests pass (coverage unchanged); build clean with no bundle change; `npm audit --omit=dev --audit-level=high` exit 0; `forge lint` "No issues found"; FSRT 0 findings in both scans; Semgrep 0 findings.
