@@ -65,6 +65,8 @@ export const REPORT_LIMITS = {
   reasonMaxChars: 500,
   maxStepFailures: 3,
   maxGroups: 20,
+  /** Missing issues named per page of the download window (owner decision R4-3). */
+  notReadPageSize: 50,
   /** Time one consumer event works, inside the 900 s limit. */
   eventBudgetMs: 780_000,
   /** Time the daily run works, inside its 600 s limit. */
@@ -429,8 +431,12 @@ export interface DownloadDecision {
 
 export interface ReportDetail {
   report: ReportListRow;
-  /** The issues of the scope that are not in the report, with key and reason: only with an allowed download (review R3-1). */
+  /**
+   * One page of the issues of the scope that are not in the report, with key and reason, and where it is in the
+   * whole list: only with an allowed download, checked again for every page (owner decision R4-3, "Name every one").
+   */
   notReadable?: NotReadableIssue[];
+  notReadablePage?: { page: number; pageSize: number; total: number };
   manifest?: ReportManifest;
   download: DownloadDecision;
   fileNames: Record<ReportFileName | 'people.json' | 'people.csv', string>;

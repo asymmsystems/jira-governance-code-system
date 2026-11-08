@@ -50,11 +50,10 @@ import {
   filtersText,
   newReportNote,
   periodText,
-  NOT_READ_SHOWN,
   notReadBadge,
   notReadLine,
-  notReadMore,
   notReadNotice,
+  notReadRange,
   pollDelayMs,
   refusalLine,
   pickedAccountIds,
@@ -140,12 +139,14 @@ const FILE_ROWS: Array<{ file: ReportFileName | 'people.csv'; label: string; typ
 const DownloadModal: React.FC<{ row: ReportListRow; onClose: () => void }> = ({ row, onClose }) => {
   const [detail, setDetail] = useState<ReportResult<ReportDetail> | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [notReadPage, setNotReadPage] = useState(0);
   const { downloadObjects } = useObjectStore();
+  // Every page of the missing issues is asked from the server, which checks the download right each time.
   useEffect(() => {
-    invoke('getEvidenceReport', { reportId: row.reportId })
+    invoke('getEvidenceReport', { reportId: row.reportId, notReadPage })
       .then(r => setDetail((r as ReportResult<ReportDetail>) || null))
       .catch(() => setDetail(null));
-  }, [row.reportId]);
+  }, [row.reportId, notReadPage]);
   const keyOf = (file: ReportFileName | 'people.csv') => (file === 'people.csv' ? `people:${row.reportId}:csv` : row.objectKeys?.[file]);
   const body = () => {
     if (!detail) return <Spinner size="small" label="Loading" />;
@@ -157,10 +158,16 @@ const DownloadModal: React.FC<{ row: ReportListRow; onClose: () => void }> = ({ 
           <SectionMessage appearance="warning" title="Not every issue is in this report">
             <Stack space={SPACE.sub}>
               <Text as="span">{notReadNotice(row.notReadable)}</Text>
-              {(detail.notReadable || []).slice(0, NOT_READ_SHOWN).map(n => (
+              {(detail.notReadable || []).map(n => (
                 <Text key={n.issueId} as="span" size="small">{notReadLine(n)}</Text>
               ))}
-              {notReadMore((detail.notReadable || []).length) ? <Text as="span" size="small">{notReadMore((detail.notReadable || []).length)}</Text> : null}
+              {detail.notReadablePage && detail.notReadablePage.total > detail.notReadablePage.pageSize ? (
+                <Inline space={SPACE.item} alignBlock="center" shouldWrap>
+                  <Text as="span" size="small" color={TEXT_ROLE.secondary}>{notReadRange(detail.notReadablePage)}</Text>
+                  <Button spacing="compact" isDisabled={detail.notReadablePage.page === 0} onClick={() => setNotReadPage(p => Math.max(0, p - 1))}>Previous</Button>
+                  <Button spacing="compact" isDisabled={(detail.notReadablePage.page + 1) * detail.notReadablePage.pageSize >= detail.notReadablePage.total} onClick={() => setNotReadPage(p => p + 1)}>Next</Button>
+                </Inline>
+              ) : null}
             </Stack>
           </SectionMessage>
         ) : null}

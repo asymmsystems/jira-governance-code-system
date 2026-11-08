@@ -34,7 +34,7 @@ FourRealities also makes **evidence reports**. For one project and one date rang
 7. **Viewer permissions.** Rows that a viewer cannot browse in Jira are never returned to that viewer.
 8. **Zero external egress.** The manifest declares no external fetch.
 9. **Deterministic metrics.** The same input gives the same output.
-11. **Complete or not stored; missing issues are signed and listed.** A report that cannot be finished (a cap, three failed reads, a lost part, no signing key in production) stores no file. When Jira cannot return an issue of the scope (deleted, moved to another project, or not readable), the report is still signed, and it names every such issue with its key and the reason: in `report.json` (`notReadable`, counted in the signed `counts.notReadable`), in the verifier output (a `WARN` line with the count and one line per issue), in the UI (a badge with the count on the row, and the download modal naming each missing issue with its key and the reason; the modal opens only for a viewer allowed to download) and in the CSV (a `NOT_READ` row per issue). A report is never refused for this (owner decision of 2026-11-08, "Sign, list them"; D-19).
+11. **Complete or not stored; missing issues are signed and listed.** A report that cannot be finished (a cap, three failed reads, a lost part, no signing key in production) stores no file. When Jira cannot return an issue of the scope (deleted, moved to another project, or not readable), the report is still signed, and it names every such issue with its key and the reason: in `report.json` (`notReadable`, counted in the signed `counts.notReadable`), in the verifier output (a `WARN` line with the count and one line per issue), in the UI (a badge with the count on the row, and the download window naming every missing issue with its key and the reason, 50 per page with Previous and Next, each page returned only when the download is allowed; owner decision of 2026-11-08, "Name every one") and in the CSV (a `NOT_READ` row per issue). A report is never refused for this (owner decision of 2026-11-08, "Sign, list them"; D-19).
 12. **Signed files never change.** Report files are written once. They are removed only by expiry or by a Jira administrator's delete, which leaves a tombstone. Object Store does not refuse a second write to a key (spike S-1), so FourRealities refuses to write a key that exists and checks the stored checksum after each write.
 
 ## Domain Model
@@ -422,7 +422,7 @@ The gate evaluation pipeline, for one issue:
 | D-16 | Report retention is a FourRealities setting for its own reports only | Mirror Jira's history to extend it | Jira keeps issue history; FourRealities keeps the record it made |
 | D-17 | The parts of a job are temporary Object Store objects, not KVS values (spike S-3) | KVS parts of 200,000 bytes (HLD 4.1) | KVS writes are limited to 4,000 units of 10 KB per minute per installation; the spike's KVS parts hit `RATE_LIMIT_EXCEEDED` after about 205 parts, and they would starve the dashboard's own KVS use |
 | D-18 | FourRealities makes "written once" true itself | Rely on `overwrite: false` | Object Store accepted a second write to the same key with `overwrite: false` (spike S-1) |
-| D-19 | When Jira cannot return an in-scope issue (deleted, moved, or not readable), the report is still signed and names every missing issue with its key and the reason in the verifier output, in the UI (the download modal, for a viewer allowed to download; the row shows the count) and in the CSV; a report is never refused for this (invariant 11) | Refuse the report (not stored) when an issue cannot be read | Owner decision of 2026-11-08: "Sign, list them". A refused report gives the auditor nothing for the period; a signed report that names its gaps keeps the record and the gaps visible |
+| D-19 | When Jira cannot return an in-scope issue (deleted, moved, or not readable), the report is still signed and names every missing issue with its key and the reason in the verifier output, in the UI (the download window names every one, 50 per page, each page only for a viewer allowed to download; the row shows the count) and in the CSV; a report is never refused for this (invariant 11) | Refuse the report (not stored) when an issue cannot be read; name only the first 50 in the UI | Owner decisions of 2026-11-08: "Sign, list them", and for the UI "Name every one" (review R4-3). A refused report gives the auditor nothing for the period; a signed report that names its gaps keeps the record and the gaps visible |
 
 ## 11. Evidence reports (ADR-015)
 
@@ -510,11 +510,16 @@ Invariant 11 was not changed in this round while the owner decided the rule; the
 - N-7: in production, a missing or unfitting signing key (no key, a `-dev-` key) makes no report: `createEvidenceReport` returns `NO_SIGNING_KEY`, a running job fails with `NO_SIGNING_KEY`, and a scheduled period is kept with the refusal on its schedule. An unsigned report is made only outside production.
 
 ### 11.13 Changes after review round 3 (2026-11-08)
-- R3-1: the download modal names each issue that is not in the report, with key and reason (the first 50, then how many more are in the files); `getEvidenceReport` returns them only with an allowed download; the row badge keeps the count. Invariant 11 and D-19 say so.
+- R3-1: the download modal names each issue that is not in the report, with key and reason; `getEvidenceReport` returns them only with an allowed download; the row badge keeps the count. (Round 3 named the first 50; round 4 names every one: 11.14.)
 - R3-2, R3-6: the project registry is one KVS value per project (`fr:reports:project:{projectId}`); creating a report or saving a schedule adds the project; opening the tab only updates the key of a known project.
 - R3-3: the download visibility check includes the MOVED issues, so their keys reach only a viewer who can see them.
 - R3-5: on a production site with no fitting signing key the tab offers no "New evidence report" and states the reason (`cannotCreateReason`).
 - File names use the inclusive last day (11.3).
+
+### 11.14 Changes after review round 4 (2026-11-08)
+- R4-3, owner decision of 2026-11-08 "Name every one": `getEvidenceReport` takes `notReadPage` and returns one page of 50 missing issues with `notReadablePage` `{ page, pageSize, total }`; a page outside the list is clamped. Every page runs the permission and visibility check again, and returns nothing when the download is not allowed. The download window shows "Issues 51 to 100 of 1000" with Previous and Next.
+- R4-1: opening the tab registers a project that has reports or schedules but no registry key; a create registers the project before it writes the index entry.
+- R4-2: the verifier gives a FAIL line, never a crash, for a range that is not two dates in order, and for files of any other shape.
 
 ### Grader conflict
 

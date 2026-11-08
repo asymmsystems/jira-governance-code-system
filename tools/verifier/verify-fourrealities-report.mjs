@@ -45,6 +45,15 @@ const sha256 = buffer => createHash('sha256').update(buffer).digest('hex');
 const without = (obj, fields) => Object.fromEntries(Object.entries(obj).filter(([k]) => !fields.includes(k)));
 
 /** The checks of one report; each result line starts with PASS or FAIL. */
+/** verifyReport, with any unexpected shape of a file turned into a FAIL line (review R4-2). */
+export function verifyReportSafely(input) {
+  try {
+    return verifyReport(input);
+  } catch {
+    return ['FAIL the files have a shape this verifier cannot read: they are not a FourRealities evidence report'];
+  }
+}
+
 export function verifyReport({ manifestText, reportJson, reportCsv, publicKeyPem, previousText }) {
   const results = [];
   const check = (ok, text) => results.push(`${ok ? 'PASS' : 'FAIL'} ${text}`) && ok;
@@ -56,10 +65,13 @@ export function verifyReport({ manifestText, reportJson, reportCsv, publicKeyPem
     return results;
   }
   check(manifest.format === FORMAT, `manifest format (${manifest.format ?? 'none'})`);
-  // The range ends at 00:00 UTC the day after its last day; say the period as a reader counts it.
-  if (manifest.range?.from && manifest.range?.to) {
-    const last = new Date(Date.parse(manifest.range.to) - 86_400_000).toISOString().slice(0, 10);
-    results.push(`NOTE period ${String(manifest.range.from).slice(0, 10)} to ${last}, both days included (UTC); range.to in the manifest is the exclusive end ${String(manifest.range.to).slice(0, 10)}.`);
+  // The range ends at 00:00 UTC the day after its last day; say the period as a reader counts it. A range that is
+  // not two dates, in order, is a FAIL line, never a crash (review R4-2).
+  const from = Date.parse(String(manifest.range?.from));
+  const to = Date.parse(String(manifest.range?.to));
+  if (check(Number.isFinite(from) && Number.isFinite(to) && from < to, 'manifest range is two UTC dates, from before to')) {
+    const last = new Date(to - 86_400_000).toISOString().slice(0, 10);
+    results.push(`NOTE period ${new Date(from).toISOString().slice(0, 10)} to ${last}, both days included (UTC); range.to in the manifest is the exclusive end ${new Date(to).toISOString().slice(0, 10)}.`);
   }
 
   const files = Array.isArray(manifest.files) ? manifest.files : [];
@@ -163,7 +175,7 @@ function main(args) {
     }
     publicKeyPem = readFileSync(file, 'utf8');
   }
-  const lines = verifyReport({
+  const lines = verifyReportSafely({
     manifestText,
     reportJson: readFileSync(jsonPath),
     reportCsv: readFileSync(csvPath),

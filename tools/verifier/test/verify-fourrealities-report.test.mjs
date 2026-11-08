@@ -119,6 +119,24 @@ describe('FourRealities evidence report verifier', () => {
     assert.doesNotMatch(run([first.paths.manifest, first.paths.json, first.paths.csv, key]).stdout, /NOT in this report/);
   });
 
+  it('prints FAIL lines and exits 1 for a malformed range or a manifest of another shape, never a stack trace', () => {
+    const bad = join(dir, 'bad-range-manifest.json');
+    writeFileSync(bad, first.manifest.replace('"to":"2026-11-01T00:00:00.000Z"', '"to":"not-a-date"'));
+    const res = run([bad, first.paths.json, first.paths.csv, key]);
+    assert.strictEqual(res.status, 1);
+    assert.match(res.stdout, /FAIL manifest range is two UTC dates, from before to/);
+    assert.doesNotMatch(res.stdout + res.stderr, /RangeError|at .*\.mjs/);
+    const reversed = join(dir, 'reversed-manifest.json');
+    writeFileSync(reversed, first.manifest.replace('"from":"2026-10-01T00:00:00.000Z"', '"from":"2026-12-01T00:00:00.000Z"'));
+    assert.match(run([reversed, first.paths.json, first.paths.csv, key]).stdout, /FAIL manifest range is two UTC dates/);
+    const nul = join(dir, 'null-manifest.json');
+    writeFileSync(nul, 'null');
+    const out = run([nul, first.paths.json, first.paths.csv, key]);
+    assert.strictEqual(out.status, 1);
+    assert.match(out.stdout, /FAIL the files have a shape this verifier cannot read/);
+    assert.doesNotMatch(out.stderr, /TypeError/);
+  });
+
   it('warns for a development key, and fails a production report signed with one', () => {
     const dev = makeReport(dir, 'cccccccc-3333', privateKey, undefined, 'fr-dev-2026-11', 'development');
     const ok = run([dev.paths.manifest, dev.paths.json, dev.paths.csv, key]);

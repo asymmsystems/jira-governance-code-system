@@ -136,16 +136,13 @@ export function notReadNotice(count: number): string {
   return `${count} ${count === 1 ? 'issue' : 'issues'} of the scope ${count === 1 ? 'is' : 'are'} not in this report: deleted, no longer readable, or moved to another project while the report was made. Their changes are not in the files. report.json and report.csv name each one, and the verifier lists them.`;
 }
 
-/** How many missing issues the download modal names one by one; the files name all of them. */
-export const NOT_READ_SHOWN = 50;
-
 /** One missing issue as the download modal names it: key and reason (owner rule "Sign, list them", review R3-1). */
 export function notReadLine(n: { issueId: string; issueKey: string; reason: 'NOT_READABLE' | 'MOVED' }): string {
   const who = n.issueKey ? `${n.issueKey} (id ${n.issueId})` : `Issue id ${n.issueId}`;
   return n.reason === 'MOVED' ? `${who}: moved to another project before the report was made.` : `${who}: FourRealities could not read it when the report was made (deleted, or no longer readable).`;
 }
 
-/** The line after the shown ones, when there are more. */
-export function notReadMore(total: number): string | null {
-  return total > NOT_READ_SHOWN ? `And ${total - NOT_READ_SHOWN} more: report.json and report.csv name every one.` : null;
+/** Where a page of missing issues is in the whole list: "Issues 51 to 100 of 1000". */
+export function notReadRange(p: { page: number; pageSize: number; total: number }): string {
+  return `Issues ${p.page * p.pageSize + 1} to ${Math.min(p.total, (p.page + 1) * p.pageSize)} of ${p.total}`;
 }

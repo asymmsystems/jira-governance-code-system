@@ -297,16 +297,40 @@ describe('review round 2: issues not in the report (N-1)', () => {
 });
 
 describe('review round 3', () => {
-  it('R3-1: names at most 50 missing issues in the modal and says how many more are in the files', async () => {
-    const many = Array.from({ length: 52 }, (_, i) => ({ issueId: String(i + 1), issueKey: `PAY-${i + 1}`, reason: 'NOT_READABLE' }));
-    answer({ getEvidenceReports: { ...VIEW, reports: [{ ...DONE, notReadable: 52 }] }, getEvidenceReport: { ...DETAIL, notReadable: many } });
+  it('R4-3: pages through every missing issue, asking the server for each page', async () => {
+    const all = Array.from({ length: 120 }, (_, i) => ({ issueId: String(i + 1), issueKey: `PAY-${i + 1}`, reason: 'NOT_READABLE' }));
+    bridgeState.invoke.mockImplementation(async (name: string, payload: { notReadPage?: number }) => {
+      if (name === 'getEvidenceReports') return { ...VIEW, reports: [{ ...DONE, notReadable: 120 }] };
+      const p = payload?.notReadPage || 0;
+      return { ...DETAIL, notReadable: all.slice(p * 50, p * 50 + 50), notReadablePage: { page: p, pageSize: 50, total: 120 } };
+    });
     const r = await mount();
     await act(async () => { actionButton(r, 0, 'Download').props.onClick(); });
     await settle(act);
-    const text = textOf(r.toJSON());
-    expect(text).toContain('PAY-50 (id 50)');
-    expect(text).not.toContain('PAY-51 (id 51)');
-    expect(text).toContain('And 2 more: report.json and report.csv name every one.');
+    expect(textOf(r.toJSON())).toContain('Issues 1 to 50 of 120');
+    expect(textOf(r.toJSON())).toContain('PAY-50 (id 50)');
+    expect(findButton(r.root, 'Previous').props.isDisabled).toBe(true);
+    await act(async () => { findButton(r.root, 'Next').props.onClick(); });
+    await settle(act);
+    expect(bridgeState.invoke).toHaveBeenLastCalledWith('getEvidenceReport', { reportId: RID, notReadPage: 1 });
+    expect(textOf(r.toJSON())).toContain('Issues 51 to 100 of 120');
+    await act(async () => { findButton(r.root, 'Next').props.onClick(); });
+    await settle(act);
+    expect(textOf(r.toJSON())).toContain('Issues 101 to 120 of 120');
+    expect(textOf(r.toJSON())).toContain('PAY-120 (id 120)');
+    expect(findButton(r.root, 'Next').props.isDisabled).toBe(true);
+    await act(async () => { findButton(r.root, 'Previous').props.onClick(); });
+    await settle(act);
+    expect(textOf(r.toJSON())).toContain('Issues 51 to 100 of 120');
+  });
+
+  it('R4-3: shows no paging controls when every missing issue fits on one page', async () => {
+    answer({ getEvidenceReports: { ...VIEW, reports: [{ ...DONE, notReadable: 2 }] }, getEvidenceReport: { ...DETAIL, notReadable: [{ issueId: '1', issueKey: 'PAY-1', reason: 'MOVED' }, { issueId: '2', issueKey: 'PAY-2', reason: 'MOVED' }], notReadablePage: { page: 0, pageSize: 50, total: 2 } } });
+    const r = await mount();
+    await act(async () => { actionButton(r, 0, 'Download').props.onClick(); });
+    await settle(act);
+    expect(textOf(r.toJSON())).toContain('PAY-2 (id 2)');
+    expect(() => findButton(r.root, 'Next')).toThrow();
   });
 
   it('R3-5: says why no report can be made, and offers no button', async () => {

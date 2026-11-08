@@ -235,3 +235,15 @@ The development records of 7.9.0 are under the same keys as before except the re
 ### Gate and deploy (fix round 3)
 
 tsc exit 0; 59 suites, 806 tests passed (99.33 % statements, 96.45 % branches, 99.32 % functions, 99.84 % lines; every threshold met); build exit 0; `npm audit --omit=dev --audit-level=high` exit 0 (0 high, 9 moderate, unchanged); `forge lint` "No issues found."; FSRT default and secret-logging 0 findings (75 files, 15 and 7 checks, `fsrt_gate.py` passes); Semgrep 1.182.1 0 findings on 216 files; verifier 19 tests passed. `forge deploy -e development` **7.10.0** from `63f0536`, eligible for Runs on Atlassian; installations at major version 7, "Up-to-date". Production and staging untouched.
+
+## Fix round 4 (2026-11-08)
+
+Input: `repository/tmp/fr-evidence-review/REVIEW-round4.md` (branch at `ec8595f`; no merge or production blockers from the code) and the owner's decision on R4-3, "Name every one".
+
+| Finding | Fix | Test |
+|---|---|---|
+| R4-1 | `list` registers a project that has reports or schedules but no registry key; `enqueue` registers the project before it writes the index entry. On development, PAY (registered in 7.9.0's old key) rejoins the daily run the first time anyone opens its Evidence reports tab on 7.11.0. | manager R4-1 (key removed, tab opened, project back; schedule-only project; order of writes) |
+| R4-2 | The verifier checks that `range.from` and `range.to` are dates in order (FAIL line otherwise), and any other unreadable shape of the files gives one FAIL line, not a stack trace. | verifier test (bad `to`, reversed range, a manifest of `null`) |
+| R4-3 (owner: "Name every one") | The download window names every missing issue, 50 per page, Previous and Next; `getEvidenceReport` returns one page (`notReadPage`, `notReadablePage`) and checks the download right for every page. Spec invariant 11 and D-19 record the decision with its date. | manager: 0, 1, 50, 51 and 1,000 missing issues (every id once, page sizes), clamping, the check on every page (refused pages return nothing), a real job of 51; UI: paging through 120 |
+| R4-4 | Not changed: development data of 7.9.0 only (a count with no stored list). | none |
+| Tests asked | Leap day (2028-02-29), non-leap February, year end and a one-day period in file names; the not-read keys removed after a failed commit (N-3 test). | engine, manager |

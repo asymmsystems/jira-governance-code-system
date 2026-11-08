@@ -265,6 +265,15 @@ describe('manifest, people file, names and JQL', () => {
     expect(engine.fileName('PAY', RANGE, id, 'people.csv')).toBe('fourrealities-PAY-2026-10-01-2026-10-31-1a2b3c4d-people.csv');
   });
 
+  it('names the last day across a year end, a leap day, a non-leap February and a one-day period', () => {
+    const id = '1a2b3c4d-0000-4000-8000-000000000000';
+    const name = (from: string, to: string) => engine.fileName('PAY', { from: `${from}T00:00:00.000Z`, to: `${to}T00:00:00.000Z` }, id, 'report.csv');
+    expect(name('2026-12-01', '2027-01-01')).toBe('fourrealities-PAY-2026-12-01-2026-12-31-1a2b3c4d.csv');
+    expect(name('2028-02-01', '2028-03-01')).toBe('fourrealities-PAY-2028-02-01-2028-02-29-1a2b3c4d.csv');
+    expect(name('2027-02-01', '2027-03-01')).toBe('fourrealities-PAY-2027-02-01-2027-02-28-1a2b3c4d.csv');
+    expect(name('2026-11-07', '2026-11-08')).toBe('fourrealities-PAY-2026-11-07-2026-11-07-1a2b3c4d.csv');
+  });
+
   it('searches one day wider on each side, and builds id lists of digits only', () => {
     expect(engine.scopeJql('10000', RANGE)).toBe('project = 10000 AND updated >= "2026-09-30" AND created < "2026-11-02" ORDER BY created ASC');
     expect(engine.idsJql(['1', '2', '3) OR project = X', '4'])).toBe('id in (1,2,4)');

@@ -6,7 +6,7 @@
  */
 
 import { saveBlob } from '../../src/ui/save-file';
-import { notReadBadge, notReadNotice, pollDelayMs, refusalLine } from '../../src/ui/report-text';
+import { notReadBadge, notReadNotice, notReadRange, pollDelayMs, refusalLine } from '../../src/ui/report-text';
 
 describe('saveBlob', () => {
   it('saves the Blob under the file name with an object URL and a clicked anchor, then cleans up', () => {
@@ -57,6 +57,8 @@ describe('not-read words (review N-1)', () => {
     expect([notReadBadge(undefined), notReadBadge(0), notReadBadge(1), notReadBadge(4)]).toEqual([null, null, '1 issue not in report', '4 issues not in report']);
     expect(notReadNotice(1)).toContain('1 issue of the scope is not in this report');
     expect(notReadNotice(2)).toContain('2 issues of the scope are not in this report');
+    expect(notReadRange({ page: 0, pageSize: 50, total: 51 })).toBe('Issues 1 to 50 of 51');
+    expect(notReadRange({ page: 1, pageSize: 50, total: 51 })).toBe('Issues 51 to 51 of 51');
   });
 });
 

@@ -172,8 +172,12 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
     // The project's current key, so a renamed project's schedules show its new key (review N-2). Only a project
     // that has reports or schedules is in the registry: opening the tab does not add one (review R3-6).
     const known = await this.d.store.projectKey(projectId);
-    if (known !== undefined && known !== projectKey) await this.d.store.registerProject(projectId, projectKey);
     const index = await this.d.store.getIndex(projectId);
+    const schedules = await this.d.store.getSchedules(projectId);
+    // A project with reports or schedules but no registry key (for example a failed registration) is added
+    // again, so the daily run covers its retention, schedules and stalled jobs (review R4-1).
+    const hasRecords = index.length > 0 || schedules.length > 0;
+    if ((known !== undefined || hasRecords) && known !== projectKey) await this.d.store.registerProject(projectId, projectKey);
     const offset = Math.max(0, Number((payload as { cursor?: unknown } | undefined)?.cursor) || 0);
     const page = index.slice(offset, offset + REPORT_LIMITS.pageSize);
     const fields = rights.canCreate || rights.canSchedule ? (await this.fieldList()) || [] : [];
@@ -181,7 +185,7 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
       ok: true,
       projectKey,
       reports: await this.rows(caller, page, settings),
-      schedules: await this.d.store.getSchedules(projectId),
+      schedules,
       tombstones: await this.d.store.listTombstones(projectId),
       canCreate: rights.canCreate && caller.licenceActive && !this.cannotSign(),
       ...(this.cannotSign() ? { cannotCreateReason: NO_KEY_TEXT } : {}),
@@ -303,8 +307,9 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
     const entry: ReportIndexEntry = { reportId, state: 'QUEUED', range: r.range, filters: r.filters, trigger: r.trigger, requestedBy: r.requestedBy, createdAt: now };
     // One write per entry: the new report's own key, and the removal of the entry that made room (review M-1).
     for (const gone of index.filter(e => !admitted.entries.includes(e))) await this.d.store.deleteEntry(r.projectId, gone);
-    await this.d.store.putEntry(r.projectId, entry);
+    // Registered before the entry is written, so a failure between the two never leaves a report outside the daily run.
     await this.d.store.registerProject(r.projectId, r.projectKey);
+    await this.d.store.putEntry(r.projectId, entry);
     await this.d.queue.push(reportId);
     return { ok: true, reportId, state: 'QUEUED' };
   }
@@ -353,8 +358,13 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
     const download = await this.visibility(job, this.d.policy.rights(p, false).isTier1);
     // The manifest, and the issues not in the report with their keys, only for a viewer who may download it
     // (reviews L-8 and R3-1).
-    const notReadable = download.allowed && job.notReadableChunks ? await this.d.store.loadNotReadable(job.reportId, job.notReadableChunks) : [];
-    return { ok: true, report, fileNames, download, ...(manifest && download.allowed ? { manifest } : {}), ...(notReadable.length ? { notReadable } : {}) };
+    // Every missing issue is named, one page at a time, and each page is behind the same check (owner decision R4-3).
+    const all = download.allowed && job.notReadableChunks ? await this.d.store.loadNotReadable(job.reportId, job.notReadableChunks) : [];
+    const size = REPORT_LIMITS.notReadPageSize;
+    const last = Math.max(0, Math.ceil(all.length / size) - 1);
+    const page = Math.min(last, Math.max(0, Math.floor(Number((payload as { notReadPage?: unknown } | undefined)?.notReadPage) || 0)));
+    const named = all.length ? { notReadable: all.slice(page * size, (page + 1) * size), notReadablePage: { page, pageSize: size, total: all.length } } : {};
+    return { ok: true, report, fileNames, download, ...(manifest && download.allowed ? { manifest } : {}), ...named };
   }
 
   async downloadUrls(caller: ReportCaller, p: ReportPermissions, payload: unknown): Promise<Record<string, string>> {

@@ -759,9 +759,12 @@ describe('review round 2', () => {
     const h = seeded();
     const r = await h.manager.create(caller(), ADMIN, RANGE) as { reportId: string };
     h.pushes.length = 0;
+    // An issue not read, so the not-read list is written too, and must go as well (review round 4).
+    h.appJira.dropIds.add('104');
     jest.spyOn(h.store, 'commitDone').mockRejectedValueOnce(new Error('kvs down'));
     await h.manager.work(r.reportId, Date.now() + 780_000);
     expect(Array.from(h.storage.store.keys()).filter(k => k.startsWith(`fr:rj:${r.reportId}:tokens:`))).toHaveLength(1);
+    expect(Array.from(h.storage.store.keys()).filter(k => k.startsWith(`fr:rj:${r.reportId}:nr:`))).toHaveLength(1);
     await h.drain();
     expect((await h.store.getIndex('10000'))[0]).toMatchObject({ state: 'FAILED', error: { code: 'STORE_FAILED' } });
     expect(Array.from(h.storage.store.keys()).filter(k => k.startsWith(`fr:rj:${r.reportId}`))).toEqual([]);
@@ -863,6 +866,102 @@ describe('review round 3', () => {
     expect(await h.store.projectKey('10000')).toBe('PAY');
     await h.manager.list({ ...caller(), projectKey: 'PAYMENTS' }, ADMIN, {});
     expect(await h.store.projectKey('10000')).toBe('PAYMENTS');
+  });
+});
+
+describe('review round 4', () => {
+  it('R4-1: opening the tab registers a project that has reports or schedules but no registry key', async () => {
+    const h = seeded();
+    await makeReport(h);
+    await h.storage.delete('fr:reports:project:10000');
+    expect(await h.store.projects()).toEqual([]);
+    await h.manager.list(caller(), ADMIN, {});
+    expect(await h.store.projects()).toEqual(['10000']);
+    const s2 = seeded();
+    await s2.store.saveSchedules('10000', [{ scheduleId: 's', cadence: 'WEEKLY', filters: { fieldIds: [], actors: [] }, createdBy: 'p', createdAt: 't' }]);
+    await s2.manager.list(caller(), ADMIN, {});
+    expect(await s2.store.projectKey('10000')).toBe('PAY');
+  });
+
+  it('R4-1: a create registers the project before it writes the entry', async () => {
+    const h = seeded();
+    const order: string[] = [];
+    const reg = h.store.registerProject.bind(h.store);
+    const put = h.store.putEntry.bind(h.store);
+    jest.spyOn(h.store, 'registerProject').mockImplementation(async (...a) => { order.push('register'); return reg(...a); });
+    jest.spyOn(h.store, 'putEntry').mockImplementation(async (...a) => { order.push('entry'); return put(...a); });
+    await h.manager.create(caller(), ADMIN, RANGE);
+    expect(order.slice(0, 2)).toEqual(['register', 'entry']);
+  });
+});
+
+describe('owner decision R4-3: "Name every one"', () => {
+  /** A DONE report whose not-read list holds n issues. */
+  async function withMissing(h: ReturnType<typeof harness>, n: number, onlyNotReadable = false) {
+    const id = await makeReport(h);
+    const job = (await h.store.getJob(id))!;
+    const list = Array.from({ length: n }, (_, i) => ({ issueId: String(90_000 + i), issueKey: `PAY-${90_000 + i}`, reason: (i % 2 && !onlyNotReadable ? 'MOVED' : 'NOT_READABLE') as 'MOVED' | 'NOT_READABLE' }));
+    const chunks = await h.store.saveNotReadable(id, list);
+    await h.store.saveJob({ ...job, notReadableChunks: chunks });
+    return { id, list };
+  }
+  const page = async (h: ReturnType<typeof harness>, id: string, notReadPage?: unknown, p = ADMIN) =>
+    h.manager.detail(caller(), p, { reportId: id, notReadPage }) as Promise<{ download: { allowed: boolean }; notReadable?: Array<{ issueId: string }>; notReadablePage?: { page: number; pageSize: number; total: number } }>;
+
+  it.each([[0, 0], [1, 1], [50, 1], [51, 2], [1000, 20]])('%i missing issues are named on %i pages of at most 50, every one exactly once', async (n, pages) => {
+    const h = seeded();
+    const { id, list } = await withMissing(h, n);
+    const seen: string[] = [];
+    for (let i = 0; i < Math.max(1, pages); i++) {
+      const d = await page(h, id, i);
+      if (n === 0) {
+        expect(d).not.toHaveProperty('notReadable');
+        expect(d).not.toHaveProperty('notReadablePage');
+        continue;
+      }
+      expect(d.notReadablePage).toEqual({ page: i, pageSize: 50, total: n });
+      expect(d.notReadable!.length).toBe(i < pages - 1 ? 50 : n - 50 * (pages - 1));
+      seen.push(...d.notReadable!.map(e => e.issueId));
+    }
+    expect(seen).toEqual(list.map(e => e.issueId));
+  });
+
+  it('clamps a page number out of range or not a number to the nearest page', async () => {
+    const h = seeded();
+    const { id } = await withMissing(h, 51);
+    expect((await page(h, id, 99)).notReadablePage?.page).toBe(1);
+    expect((await page(h, id, -3)).notReadablePage?.page).toBe(0);
+    expect((await page(h, id, 'two')).notReadablePage?.page).toBe(0);
+    expect((await page(h, id, 1.7)).notReadablePage?.page).toBe(1);
+  });
+
+  it('checks the download right again for every page: a viewer who cannot see an issue gets no page', async () => {
+    const h = seeded();
+    // NOT_READABLE only: a moved issue that no longer exists would need Tier 1 (R3-3), which this viewer lacks.
+    const { id } = await withMissing(h, 1000, true);
+    const spy = jest.spyOn(h.userJira, 'presentAmong');
+    for (const i of [0, 1, 19]) expect((await page(h, id, i, BROWSER)).notReadable).toHaveLength(50);
+    expect(spy).toHaveBeenCalledTimes(3);
+    h.issues.find(e => e.id === '101')!.hidden = true;
+    for (const i of [0, 7, 19]) {
+      const d = await page(h, id, i, BROWSER);
+      expect(d.download.allowed).toBe(false);
+      expect(d).not.toHaveProperty('notReadable');
+      expect(d).not.toHaveProperty('notReadablePage');
+    }
+    expect((await page(h, id, 0, NOBODY) as unknown as { ok: boolean }).ok).toBe(false);
+  });
+
+  it('names every missing issue of a real job across pages', async () => {
+    const h = seeded();
+    for (let i = 0; i < 51; i++) h.issues.push({ id: String(5000 + i), created: '2026-10-10T00:00:00.000Z' });
+    const r = await h.manager.create(caller(), ADMIN, RANGE) as { reportId: string };
+    for (let i = 0; i < 51; i++) h.appJira.dropIds.add(String(5000 + i));
+    await h.drain();
+    const first = await page(h, r.reportId, 0);
+    const second = await page(h, r.reportId, 1);
+    expect(first.notReadablePage).toEqual({ page: 0, pageSize: 50, total: 51 });
+    expect([...first.notReadable!, ...second.notReadable!].map(e => e.issueId)).toEqual(Array.from({ length: 51 }, (_, i) => String(5000 + i)));
   });
 });
 
