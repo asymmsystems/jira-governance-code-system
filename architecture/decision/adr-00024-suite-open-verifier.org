@@ -1,0 +1,97 @@
+#+TITLE: ADR-024: The Open Verifier Lives in Its Own Public Repository
+#+DATE: 2026-11-06
+#+STATUS: Accepted
+
+* Status
+Accepted. This is a backfill record. The owner chose option A on 2026-11-06
+(=docs/sdlc/suite-readiness-review-2026-11/README.md=, section 2, item 3, "owner decision A"). The
+public repository =asymmsystems/jira-governance-code-cli= was created the same day (first commit
+=c2d449f=, "LedgerSeal offline evidence verifier 1.0.0"), and the monorepo kept one copy
+(commit =8d8f969=, "one open verifier copy, identical to the public repository"). No ADR records the
+decision. This text was written on 2026-11-08. The owner has not yet reviewed it.
+
+* Context
+LedgerSeal evidence (ADR-021) is worth only as much as an outsider's ability to check it without the
+app. On 2026-11-06 the LedgerSeal readiness review found
+(=docs/sdlc/suite-readiness-review-2026-11/ledgerseal-readiness.md=, blocker B3 and finding F-17):
+- the listing called the verifier "open-source", but it lived in the private monorepo, so every link
+  returned HTTP 404;
+- the site said auditors verify "without trusting Jira or Asymm Systems", which is false while the
+  vendor holds the only signing key;
+- the monorepo held two verifier copies that differed (=apps/ledgerseal/verifier/= lacked exit code 2
+  and the named flags of =tools/verifier=).
+
+The repository naming follows asymm-engineering ADR-0007 ("Product Repository Facets"): the archetype
+=cli= is a command-line tool, so the repository is =jira-governance-code-cli=, next to
+=jira-governance-code-system=.
+
+* Decision
+1. *Its own public repository.* The verifier is published at
+   https://github.com/asymmsystems/jira-governance-code-cli, under the Apache License 2.0, with a
+   security policy (=SECURITY.md=). The suite's parent repository pins it as a submodule
+   (=jira-governance/readme.org=, "Layout").
+2. *Small and with no dependencies.* One file (=verify-evidence.mjs=, about 135 lines) that uses only the Node.js standard library, needs no network and no access to Jira or the app. The
+   README asks the reader to read it before running it.
+3. *Releases carry what a checker needs.* Each release is a tag with assets: every =keys/*.pub.pem=,
+   the verifier, =vectors.json=, =SHA256SUMS= and =LICENSE=. Adding a public key bumps the minor
+   version (runbook =docs/security/signing-key-rotation.md=, step 2.4).
+4. *Old evidence keeps verifying.* A change to the evidence format gets a new verifier version, and
+   an older verifier must never pass something it does not understand (ADR-011 decision 10; ADR-017
+   on branch =feature/ledgerseal-regulated=, which plans release 1.4.0).
+5. *One copy in the monorepo, equal to a release.* =tools/verifier= is a copy of a tagged release, so
+   the apps' tests and the open verifier check the same code. =diff -r --exclude=.git <verifier clone>
+   tools/verifier= must print nothing (runbook, step 2.4).
+6. *Honest claim.* A PASS means the evidence file was not changed since it was signed, and that it was
+   signed with the private key of the public key used. It does not mean nobody could have written a
+   different, consistent record: the vendor holds the key (verifier README, "What a PASS means, and
+   what it does not").
+7. *Also a download on asymm.systems with SHA-256 checksums* (owner decision A). Whether the website
+   download exists was not checked for this record; the site is in the repository
+   =asymmsystems/asymm-corporate=, outside this workspace.
+
+* Alternatives Considered
+** Keep the verifier only in the private monorepo
+- Against: nobody outside can read or run it; the "open-source" claim is false (B3).
+- Verdict: rejected.
+** Publish only a download on asymm.systems
+- For: no second repository.
+- Against: the review offered it as an alternative to a public repository. The record does not say
+  why option A chose both. Reason not recorded; inferred from B3: a public repository lets an auditor
+  read the history of the code, not just one file.
+** Keep two copies in the monorepo
+- Against: they differed (F-17).
+- Verdict: rejected; one copy only.
+
+* Consequences
+** Positive
+- Any auditor can read, run and test the verifier with no account and no trust in the app.
+- Each published key has a release that carries it.
+** Negative
+- Two repositories must move together: a key, a canonical form or an evidence format change needs a
+  verifier release and a matching =tools/verifier= copy.
+- The verifier needs Node.js 18 or later on the auditor's machine.
+
+* Open points for the owner
+These are differences between the record and master =29265b5=. This ADR does not resolve them.
+1. *=tools/verifier= no longer equals the public release.* Compared with the public =main= =412b64f=
+   (release v1.3.0 is =870988f=), =tools/verifier= adds =verify-fourrealities-report.mjs=,
+   =test/verify-fourrealities-report.test.mjs= and =keys/fr-dev-2026-11.pub.pem=, and its
+   =package.json= and =README.md= differ. Decision 5 and the runbook require them to be identical. The
+   FourRealities progress log lists these files as "files to copy (not pushed)"
+   (=docs/sdlc/fourrealities-evidence-reports-2026-11/progress-log.md=, section "Public verifier
+   repository").
+2. *Scope of the public repository.* Its =package.json= describes it as "Standalone offline verifier
+   for LedgerSeal Jira cryptographic approval evidence". ADR-015 adds a FourRealities report command to
+   "the open verifier", which is not yet in the public repository (point 1).
+
+* References
+- =docs/sdlc/suite-readiness-review-2026-11/README.md=, section 2, item 3
+- =docs/sdlc/suite-readiness-review-2026-11/ledgerseal-readiness.md=, B3, F-17
+- =docs/sdlc/merge-reviews-2026-11/production-public-keys-merge-review.md= (release v1.3.0 checked
+  identical to =tools/verifier= at that time)
+- =docs/security/signing-key-rotation.md=, steps 2.4 and 7
+- =docs/spec/ledgerseal-spec-v3.md=, section 11
+- asymm-engineering ADR-0007, "Product Repository Facets"
+  (=/home/fahimfarookme/Documents/projects/asymm-engineering/architecture/decision/adr-00007-vcs-product-repository-facets.org=)
+- [[file:adr-00021-ledgerseal-tamper-evident-seal.org][ADR-021: LedgerSeal tamper-evident seal]]
+- [[file:adr-00023-suite-signed-records-and-signing-keys.org][ADR-023: Signed records and signing keys]]

@@ -1,0 +1,119 @@
+#+TITLE: ADR-023: Signed Records With Ed25519, and the Signing-Key Policy
+#+DATE: 2026-11-01
+#+STATUS: Accepted
+
+* Status
+Accepted. This is a backfill record of two linked choices:
+- *The scheme*, chosen on 2026-11-01: Ed25519 over canonical JSON (=docs/spec/ledgerseal-spec-v3.md=,
+  decision D-6; =docs/spec/definitionguard-spec-v2.md=, decision D-06). FourRealities reuses it for its
+  evidence reports (ADR-015, decision 2.2, 2026-11-08).
+- *The key policy*, set on 2026-11-06 when the production keys were made and published: the runbook
+  =docs/security/signing-key-rotation.md= (commit =03d94af=) and the script
+  =tools/rotate-signing-key.sh=. The runbook names the company security policy
+  (https://asymm.systems/security, section 4) as the source of the rules.
+
+No ADR records either. This text was written on 2026-11-08. The owner has not yet reviewed it.
+
+* Context
+Three records of the suite are read by someone other than the app that wrote them:
+
+| Record | Writer | Readers |
+|--------+--------+---------|
+| =ledgerseal-cert= issue property, and the evidence export | LedgerSeal | FourRealities (ADR-012), JQL, auditors with the open verifier (ADR-024) |
+| =definitionguard-dod= issue property | DefinitionGuard | FourRealities (ADR-012), other tools |
+| Evidence report manifest | FourRealities | auditors with the open verifier (ADR-015) |
+
+Any user with Edit issues can write an issue property. A reader therefore needs a way to tell a record
+the app wrote from one a user wrote. An auditor also needs to check a record without a secret and
+without access to the customer's site.
+
+* Decision
+** The scheme
+1. Each record is signed with Ed25519 over the canonical JSON (keys sorted at every level, no white
+   space, =undefined= left out) of every field except =sig=. The record names its key in =keyId=.
+2. Node =crypto= does the signing and the checking. No signing library is added.
+3. Without a configured key, a record is written with no valid signature (=sig: null= or no =sig=), the
+   app logs that it is unsigned, and every reader must treat it as not verified. FourRealities scores
+   such a record like no record (ADR-012, decision 4).
+** The keys
+4. *One key per app and environment.* The key id has the form =<app>-<prod|dev>-<YYYY-MM>=, for
+   example =ls-prod-2026-11= or =dg-prod-2026-11=. A key id names one key for ever and is never reused.
+5. *Private keys stay out of the repository.* A private key is generated outside the repository, set
+   only as an encrypted Forge variable (=forge variables set --encrypt=: =LEDGERSEAL_SIGNING_KEY=,
+   =DG_SIGNING_KEY=, =FOURREALITIES_SIGNING_KEY=, each with a key id variable), and kept otherwise only
+   in the password manager. It is never printed, logged or committed. Local copies are shredded.
+6. *Public keys are published in every place a reader looks.* The repository
+   (=apps/ledgerseal/keys/=, =tools/verifier/keys/=, =docs/marketplace/definitionguard-public-key-*.pem=,
+   =apps/fourrealities/keys/=), the public verifier repository (ADR-024), and the page
+   https://asymm.systems/product/jira-governance/signing-keys.html.
+7. *Trust is per environment.* FourRealities trusts keys from its bundled list
+   (=apps/fourrealities/src/accessor/attestation-keys.ts=). Production trusts only production keys; a
+   development key is never trusted in production (ADR-012, decision 3).
+8. *Rotation.* Every 12 months for each production key, and at once on a suspected exposure. The order
+   is fixed: publish the new public key and deploy FourRealities with the new trust entry before any
+   producer signs with the new key.
+9. *Old public keys stay published.* A retired key stays in the trust list, in every later verifier
+   release, in the repository and on the website, so records and evidence signed with it still check.
+   An exposed key stays published too, marked with the date from which it must not be trusted.
+10. *The vendor-key limit is stated.* The vendor holds the private key. A valid signature shows that
+    the app wrote the record. It does not protect against the vendor. The listings, the specs and the
+    verifier README say so.
+
+* Alternatives Considered
+** HMAC with a shared secret (LedgerSeal D-6 option a; DefinitionGuard D-06)
+- Against: an auditor would need the secret to check, and any holder of the secret can forge.
+- Verdict: rejected.
+** RSA (LedgerSeal D-6 option c)
+- Reason not recorded. The record gives the reason for Ed25519 only: "An auditor verifies with a
+  public key and no secret (REG-99, REG-102). Node =crypto= has it built in, so no dependency." Node
+  =crypto= has RSA built in too, so this reason does not by itself rule RSA out.
+** A key held by each customer
+- Not considered as an option in the record. The LedgerSeal readiness review notes that the earlier
+  listing text ("configured for the installation") described a step "a customer cannot do"
+  (=docs/sdlc/suite-readiness-review-2026-11/ledgerseal-readiness.md=, B5). Inferred: Forge gives a
+  customer no place to set an app's signing key.
+** Remove a retired key from the trust list
+- Against: every record still signed with it would count like no record in production.
+- Verdict: rejected, except after an exposure, where the owner decides and records it (runbook,
+  section 4).
+
+* Consequences
+** Positive
+- FourRealities can tell a record its sibling wrote from one a user wrote.
+- An auditor checks evidence offline with a public key only.
+- Rotation never breaks old evidence.
+** Negative
+- The vendor is a single point of trust.
+- Every rotation needs a FourRealities release before the producer's variable changes, and a new
+  verifier release (runbook, steps 2 to 5).
+- An unsigned production record (no key set) makes LedgerSeal evidence fail the verifier and counts as
+  missing in FourRealities.
+
+* Open points for the owner
+These are differences in the record. This ADR does not resolve them.
+1. *FourRealities' own key is outside the runbook.* FourRealities signs evidence reports with
+   =FOURREALITIES_SIGNING_KEY= (=apps/fourrealities/src/accessor/default-report-crypto-accessor.ts=),
+   and ADR-015 names =fr-prod-2026-11= for production. The runbook's table "What is rotated" lists only
+   LedgerSeal and DefinitionGuard, its rotation log has no FourRealities key, and the repository holds
+   only =fr-dev-2026-11.pub.pem= (=apps/fourrealities/keys/=, =tools/verifier/keys/=). No
+   =fr-prod-2026-11= public key file is in the repository.
+2. *Private key format differs.* LedgerSeal and FourRealities expect base64 of a PKCS#8 DER key;
+   DefinitionGuard expects base64 of a PKCS#8 PEM key (runbook, section 1). The record gives no reason.
+   Reason not recorded.
+
+* Implementation Notes
+- LedgerSeal: =apps/ledgerseal/src/domain/attestation.ts= (=createSigner=, =signerFromEnvironment=).
+- DefinitionGuard: =apps/definitionguard/src/integrity/attestation.ts= (=signIfConfigured=).
+- FourRealities: =apps/fourrealities/src/accessor/default-report-crypto-accessor.ts= (reports);
+  =apps/fourrealities/src/accessor/attestation-verifier.ts= and =attestation-keys.ts= (checking).
+- Key generation: =tools/rotate-signing-key.sh= (refuses a key id the repository already uses; never
+  prints the private key).
+
+* References
+- =docs/security/signing-key-rotation.md= (runbook, sections 1 to 5)
+- =docs/spec/ledgerseal-spec-v3.md=, section 8 and decision D-6
+- =docs/spec/definitionguard-spec-v2.md=, "Integrity design" and decision D-06
+- =docs/security/pentest-report-2026-11-06.md=, section 4.7 (secrets management)
+- [[file:adr-00012-fourrealities-sibling-evidence-verification.org][ADR-012]], decisions 2 and 3
+- [[file:adr-00015-fourrealities-evidence-reports.org][ADR-015]], decision 2.2
+- [[file:adr-00024-suite-open-verifier.org][ADR-024: The open verifier]]

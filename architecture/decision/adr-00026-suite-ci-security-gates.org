@@ -1,0 +1,120 @@
+#+TITLE: ADR-026: CI Security Gates: FSRT, Semgrep, npm audit and a CycloneDX SBOM
+#+DATE: 2026-11-06
+#+STATUS: Accepted
+
+* Status
+Accepted. This is a backfill record. The gates were added one by one, each in its own commit:
+
+| Gate | Added | Commit |
+|------+-------+--------|
+| Clean-clone build, tests with coverage thresholds, =forge lint= | 2026-11-05 | =23011f4= (Refs: ADR-007, fix plan BL-8) |
+| =npm audit --omit=dev --audit-level=high= | 2026-11-05 to 2026-11-06 | =7c953da=, =8666cad=, =42e79fa=, =27e7dbe= |
+| CycloneDX SBOM of the production dependencies | 2026-11-06 | =47bf133= |
+| FSRT, pinned commit, allowlist | 2026-11-06 | =caf43aa= (Refs: AMS-76722) |
+| FSRT canary and empty-scan check | 2026-11-07 | =d32d8b8= |
+| Semgrep Community Edition, pinned | 2026-11-08 | =757dddc=; weekly run =9ace76e= |
+
+No ADR records them as one policy. This text was written on 2026-11-08. The owner has not yet
+reviewed it.
+
+* Context
+- *Atlassian's own scan.* Atlassian runs FSRT on Marketplace apps. A finding becomes a security
+  ticket with a deadline, as AMS-76722 did for DefinitionGuard (P2 Severe,
+  =docs/security/fsrt-scan-2026-11-07.md=).
+- *Marketplace security requirement 11*: no known critical or high vulnerabilities in production
+  dependencies (=.github/workflows/apps-ci.yml=, comment; security questionnaire Q10).
+- *SAST*: Atlassian's Government Cloud vendor rules and the Marketplace security questionnaire ask for
+  static application security testing (=docs/security/sast.md=, introduction).
+- *SBOM*: the security questionnaire, Partner-Extended Q12 (commit =47bf133=).
+
+* Decision
+Every push and pull request that changes =apps/**= or =packages/**= runs these workflows. Each has
+=permissions: contents: read=.
+
+1. *Apps CI* (=.github/workflows/apps-ci.yml=), one job per app:
+   - install in the clean-clone order of ADR-007;
+   - =npm audit --omit=dev --audit-level=high=: a high or critical advisory in a production dependency
+     fails the job; moderate and low do not;
+   - a CycloneDX SBOM with =@cyclonedx/cyclonedx-npm@4.0.0= (production dependencies), checked to be a
+     CycloneDX document with at least one component, kept as an artifact for 90 days;
+   - =tsc --noEmit=, tests with coverage thresholds, and for CascadePlan a rebuild of the UI bundle
+     that must equal the committed one;
+   - =forge lint= with =@forge/cli@15.0.0= when the Forge login secrets exist. It fails on errors and
+     warnings, not on "approval" notices (for example a scope change that makes a major version).
+2. *FSRT* (=.github/workflows/fsrt.yml=):
+   - FSRT is built from a pinned commit (=FSRT_SHA= =6c821bd199fd7e4801384c2eaf9c3100bca0f57e=) and
+     cached by that commit. The pin changes only on purpose.
+   - Each app is scanned with the default scanners and with =secret-logging=.
+   - The job fails on any finding not justified in =docs/security/fsrt-allowlist.txt= (one line per
+     finding, with the evidence), on a scan that did not complete, and on a scan that parsed no file or
+     checked no function. The allowlist is empty.
+   - Before any app scan, FSRT must report the canary app =tools/ci/fsrt-canary= (one unchecked
+     =asApp()= call), or the workflow fails.
+   - No secrets.
+3. *Semgrep* (=.github/workflows/sast.yml=):
+   - Semgrep Community Edition =1.182.1= (=SEMGREP_VERSION=), from PyPI, metrics off, no account and no
+     upload of the source;
+   - the stock packs =p/typescript=, =p/javascript=, =p/nodejs=, =p/secrets=; no custom rules;
+   - =--error=: any finding fails the job, whatever its severity;
+   - a weekly run on master (Mondays 03:17 UTC), so a newly released registry rule shows in a run of
+     its own;
+   - a false positive is suppressed only with =// nosemgrep: <rule id>= plus a row in
+     =docs/security/sast.md=, section 3, in the same change. The allowlist is empty.
+4. *Fix, do not allowlist.* A finding is fixed in the code. An allowlist entry is the exception and
+   must carry evidence. The FSRT finding of AMS-76722 was fixed, not argued (ADR-020).
+
+* Alternatives Considered
+Taken from =docs/security/sast.md=, section 1, and the commit messages.
+** SonarQube Cloud
+- Against: the scanner uploads the source to Sonar's service; the free plan covers private projects
+  only up to 50,000 lines per organisation (about 39,300 lines are scanned today) and the main branch
+  only.
+- Verdict: rejected.
+** SonarQube Server
+- Against: needs a self-hosted server.
+- Verdict: rejected.
+** CodeQL
+- Against: code scanning on a private repository needs a paid GitHub Code Security licence.
+- Verdict: rejected.
+** =npm sbom= in place of cyclonedx-npm
+- Against: it stops on the peer-dependency ranges of Atlassian's UI packages (react 16 wanted, react
+  18 installed).
+- Verdict: rejected.
+** Fail the dependency audit on moderate advisories
+- Against: the moderate advisories come from Atlassian's =@forge/manifest= (=glob=, =minimatch=), and
+  the only npm fix needs breaking =@forge/api= and =@forge/bridge= versions.
+- Verdict: rejected; accepted risk ASYMM-SEC-07 (=docs/security/pentest-report-2026-11-06.md=, section 7).
+
+* Consequences
+** Positive
+- A finding of the kind Atlassian reports fails CI before submission.
+- Each build keeps an SBOM and a SAST report as evidence for questionnaires.
+** Negative
+- The Semgrep rule packs are not versioned, so the same code can get a new finding later. The weekly
+  run is the mitigation.
+- A clean FSRT run proves little for CascadePlan, LedgerSeal and FourRealities: FSRT does not reach
+  CascadePlan's resolvers and cannot classify the Jira calls of the other two (ADR-020).
+- =forge lint= is skipped when the repository has no Forge login secrets.
+- The gates do not block a merge by themselves. GitHub refuses branch protection and rulesets on this
+  private repository on its current plan (=gh api .../branches/master/protection= and
+  =.../rulesets= both answer HTTP 403, "Upgrade to GitHub Pro or make this repository public",
+  checked 2026-11-08). The merge reviews in =docs/sdlc/merge-reviews-2026-11/= read the run results.
+
+* Open points for the owner
+These are differences in the record. This ADR does not resolve them.
+1. The SBOM step in =.github/workflows/apps-ci.yml= and commit =47bf133= cite "asymm-engineering
+   issue-00003". The folder =asymm-engineering/issue/= is empty, and the only "00003" files there are
+   ADR-0003 (repository structure) and task-00003 (publish to Maven Central). The reference does not
+   resolve. It may name a GitHub issue; this was not checked.
+2. The comment "Each app joins this list when its dependency fixes are on master" above the audit step
+   is out of date: all four apps are in the list.
+
+* References
+- =.github/workflows/apps-ci.yml=, =.github/workflows/fsrt.yml=, =.github/workflows/sast.yml=
+- =tools/ci/fsrt_gate.py=, =tools/ci/fsrt-canary/=, =docs/security/fsrt-allowlist.txt=
+- =docs/security/fsrt-scan-2026-11-07.md=, section 7
+- =docs/security/sast.md=, sections 1 to 4
+- =docs/security/pentest-report-2026-11-06.md=, finding ASYMM-SEC-07 and section 7
+- =docs/sdlc/merge-reviews-2026-11/ci-fsrt-merge-review.md= (finding L-55)
+- [[file:adr-00007-shared-ui-package-build.org][ADR-007: Shared UI package built during install]]
+- [[file:adr-00020-suite-user-permission-check-before-app-calls.org][ADR-020: Check Jira permissions as the user before any call as the app]]

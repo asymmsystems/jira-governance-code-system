@@ -1,0 +1,138 @@
+#+TITLE: ADR-021: LedgerSeal Tamper-Evident Seal, Hash-Chained History and Evidence
+#+DATE: 2026-11-01
+#+STATUS: Accepted
+
+* Status
+Accepted. This is a backfill record. The design was specified and built on 2026-11-01
+(=docs/spec/ledgerseal-spec-v2.md=, commit =1a87e39=; canonical form v2 with test vectors, commit
+=8798c08=; storage model, commit =f8d8469=). Its current form is =docs/spec/ledgerseal-spec-v3.md=.
+The design choices are recorded in the decision table of that spec (section 13, D-1 to D-11), but no
+ADR records the core of the product. The only LedgerSeal ADR is ADR-011 (personal data). This text was
+written on 2026-11-08. The owner has not yet reviewed it.
+
+Related records on the unmerged branch =feature/ledgerseal-regulated= build on this one: ADR-016
+(signing credential), ADR-017 (approval routes), ADR-018 (signing while transitioning).
+
+* Context
+LedgerSeal answers one question for an auditor: was this Jira issue changed after it was approved,
+and who approved it? Three facts shape the answer:
+- Jira cannot lock an issue for an app. Anyone with Edit issues can change it after approval, and an
+  admin can only set =jira.issue.editable=false= on a status (research source NJ-01).
+- Any user with Edit issues can write any issue property, so a property cannot be the source of
+  truth (research source NJ-30).
+- Forge KVS is readable and writable only by the app, but the vendor writes the app's code. Whatever
+  LedgerSeal stores, the vendor could in principle rewrite.
+
+So the product can be tamper-evident, not tamper-proof: it can show that content changed after a
+seal, but it cannot stop the change.
+
+* Decision
+1. *A seal is a hash of a published canonical form.* A seal records the SHA-256 of the canonical JSON
+   of the issue's covered fields, comments and attachments (spec v3, section 4.1). Keys are sorted at
+   every level; there is no white space. Fields are chosen by schema type, never by id or value. The
+   status is recorded but not hashed (D-2), because the gated transition changes the status itself;
+   since canonical form 2.1.0 the same holds for the resolution. Fields that change without an edit
+   of the content (Rank, Sprint, fields computed by Jira) are excluded (spec v3, section 4.2).
+2. *Each canonical form has a version, and a version never changes.* A seal names its
+   =canonicalizerVersion= (2.0.0, 2.1.0, 2.2.0 today). The live issue is always checked with the rules
+   of the version the seal was made with. An unknown version is =RECORD_INVALID=, never a guess. The
+   test vectors are published (=tools/verifier/vectors.json=,
+   =apps/ledgerseal/test/fixtures/vectors-2.2.0.json=).
+3. *App storage is the record; the property is an output.* The panel and the workflow validator
+   decide only from Forge KVS (spec v3, invariant 1). The =ledgerseal-cert= issue property is written
+   for other tools (FourRealities, JQL) and is never read as input.
+4. *History is append-only and chained.* Each seal, change incident, reseal and revoke is a history
+   entry created once (=keyPolicy: FAIL_IF_EXISTS=) that holds the hash of the entry before it
+   (invariant 5). The same key is the write lock: the writer that fails to create entry =head.seq + 1=
+   gets =CONFLICT=. A reseal adds an entry and never removes one. =everCompromised= and
+   =incidentCount= carry over across reseals. The one exception is the redaction entry of ADR-011.
+5. *Record bindings.* =recordHash= covers the sealed work effort, which holds the hashes of the current
+   assignment, of the status row that sealed it and of the snapshot. A rewrite of any one fails the
+   check on read (spec v3, section 3.3).
+6. *Live comparison, one incident per distinct change.* The panel, the validator and the issue-change
+   trigger compare the live issue with the seal through one function, =recordIncidentIfNew=. An
+   incident is written only when the live hash differs from both the sealed hash and the last incident
+   hash, so a read with no new change writes nothing (invariants 3 and 4). An issue changed and then
+   changed back stays closed until a reseal (=CHANGED_BACK=).
+7. *The gate.* The =jira:workflowValidator= =ledgerseal-validator= blocks a transition unless the
+   issue is sealed and unchanged, and blocks when Jira cannot be read (spec v3, section 9). It is
+   opt-in: an admin adds it to a workflow.
+8. *Who may seal.* Project admins, Jira admins and members of the approver groups that a Jira admin
+   sets (D-1; section 7.1). A user who changed covered content since the seal cannot approve the
+   change, revoke the seal or seal again after a revoke (invariant 6, section 7.2).
+9. *What was signed is what was shown.* The seal stores the declaration text and version the signer
+   saw (invariant 9), and is refused when the issue changed since the panel showed it (=viewHash=,
+   invariant 13).
+10. *Evidence is JSON that an outsider can recheck.* The evidence export holds the attestation, the
+    canonical snapshot, the history and the verification result (format =ledgerseal-evidence/1=,
+    section 11). The open verifier (ADR-024) recomputes the snapshot hash and the chain and checks the
+    signature (ADR-023). PDF is out of scope (D-7).
+11. *The snapshot is kept in KVS parts.* A canonical snapshot is split by UTF-8 size into parts of at
+    most 120,000 bytes, written with the seal record in one =kvs.transact()= of at most 25 operations
+    (D-5; section 6).
+
+* Alternatives Considered
+Taken from the decision table of =docs/spec/ledgerseal-spec-v3.md=, section 13.
+** Status in the hash (D-2 option b)
+- Against: the gated transition changes the status, so every seal would break at the gate.
+- Verdict: rejected.
+** Snapshot in one value, or in Forge SQL (D-5 options a and c)
+- Against: one value hits the 240 KiB limit; Forge SQL needs a new module.
+- Verdict: rejected for parts in KVS (ADR-025).
+** PDF evidence (D-7 option b)
+- Against: a new dependency, and a verifier cannot recompute a hash from a PDF.
+- Verdict: rejected.
+** Lock the issue after approval
+- Against: Jira gives an app no lock. The spec tells admins to add =jira.issue.editable=false= on the
+  status where a lock fits (section 1).
+- Verdict: not possible; LedgerSeal stays tamper-evident.
+** Read the change authors only from the event trigger (D-4 option b)
+- Against: triggers can arrive up to 3 minutes late.
+- Verdict: rejected; the change log is read at check time.
+
+* Consequences
+** Positive
+- A change after approval is visible in the panel, in the validator message, in the property status
+  and in the evidence, with who changed which field and when.
+- An auditor can recheck exported evidence offline, without access to Jira or the app.
+- Old seals keep their meaning when the canonical form changes, because each is checked with its own
+  rules.
+** Negative
+- Tamper-evident only: LedgerSeal does not stop a change, and it does not protect against someone who
+  can rewrite all of the app's stored data, including the vendor. The listing and the verifier README
+  say so.
+- Every panel view and validator run reads the live issue, its comments, its work log and the field
+  list from Jira.
+- A snapshot over 22 parts (about 2.6 MB) cannot be sealed (=SNAPSHOT_TOO_LARGE=).
+- A new canonical form version is needed for every change to the covered set, and the verifier must
+  learn each version that changes the evidence format.
+
+* Open points for the owner
+These are differences in the record. This ADR does not resolve them.
+1. =docs/spec/ledgerseal-spec-v3.md=, section 6, says of =ls3:party:{token}=: "deleted on account
+   closure". Invariant 12 of the same spec, and ADR-011 decision 4 (amended 2026-11-06), say the key
+   keeps a closed mark ={ closed, closedAt }=.
+2. Section 11 of the same spec calls =tools/verifier= an "identical copy" of the public verifier
+   "release v1.2.0". The public repository is at release v1.3.0, and =tools/verifier= now differs from
+   it (see ADR-024, open point 1).
+
+* Implementation Notes
+- Canonical form: =apps/ledgerseal/src/domain/canonicalizer.ts=, =canonical-json.ts=.
+- Seal record, history and integrity: =apps/ledgerseal/src/domain/seal-record.ts=, =history.ts=,
+  =tamper-detector.ts=; storage keys =ls3:we:=, =ls3:wes:=, =ls3:wepa:=, =ls3:content:= (spec v3,
+  section 6).
+- Flows: =apps/ledgerseal/src/service/ledger.ts= (seal, reseal, revoke, verify, incidents, evidence).
+- Validator: =apps/ledgerseal/src/validator/= and =validateTransition= in =apps/ledgerseal/src/index.ts=.
+
+* References
+- =docs/spec/ledgerseal-spec-v3.md= (current); =docs/spec/ledgerseal-spec-v2.md= and
+  =docs/spec/ledgerseal-spec.md= (frozen)
+- =docs/sdlc/ledgerseal-usp-ux-research-2026-11/research-brief.md=, section 9 (sources NJ-01, NJ-30,
+  FG-07, FG-08)
+- =docs/sdlc/ledgerseal-usp-ux-research-2026-11/adr-01-silverston-data-model.md= (LedgerSeal ADR-01,
+  storage model, D-10)
+- [[file:adr-00011-ledgerseal-personal-data.org][ADR-011: LedgerSeal personal data in hashed records]]
+- [[file:adr-00012-fourrealities-sibling-evidence-verification.org][ADR-012: FourRealities reads and verifies the records of DefinitionGuard and LedgerSeal]]
+- [[file:adr-00023-suite-signed-records-and-signing-keys.org][ADR-023: Signed records and signing keys]]
+- [[file:adr-00024-suite-open-verifier.org][ADR-024: The open verifier]]
+- [[file:adr-00025-suite-forge-storage.org][ADR-025: Forge storage for all app data]]
