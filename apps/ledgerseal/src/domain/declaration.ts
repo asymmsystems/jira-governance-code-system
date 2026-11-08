@@ -14,16 +14,17 @@ export const DECLARATION = {
 } as const;
 
 /**
- * Declaration version 2, for code-signing projects (ADR-016 decision 11, owner decision Q-03 of 2026-11-08).
- * DRAFT BY THE DEVELOPER, PENDING THE OWNER'S APPROVAL. While `approved` is false, code signing cannot be turned
- * on and no code-signed signature can be made. The owner approves the text, then a release sets `approved` to true.
+ * Declaration version 2, for code-signing projects (ADR-016 decision 11). Approved by the owner on 2026-11-08 (Q-03,
+ * option A, with the second sentence replaced: under section 11.100(c) of the FDA rule the customer organisation certifies that
+ * its staff's electronic signatures are legally binding, so the text states the signer's understanding of that, and
+ * the app does not assert it). The `approved` gate stays: a future version ships with `approved: false` until approved.
  */
 export const DECLARATION_V2: { version: string; text: string; approved: boolean } = {
   version: '2',
   text:
-    'I am signing this record electronically. My electronic signature is the legally binding equivalent of my handwritten signature. ' +
+    'I am signing this record electronically. I understand that my organisation treats this electronic signature as the legally binding equivalent of my handwritten signature. ' +
     'I approve this issue as it is now, with the meaning shown above, and I agree that this signature records my approval of its covered fields, comments and attachments.',
-  approved: false
+  approved: true
 };
 
 /** True once the owner approved declaration version 2 (Q-03). */

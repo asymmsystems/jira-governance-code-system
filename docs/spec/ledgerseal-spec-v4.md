@@ -425,8 +425,9 @@ Every message is at most 250 characters. The validator writes only through `reco
 
 The seal form shows this exact text with "(Declaration v1)". The record stores the text and the version. A new text gets a new version. Old records keep theirs.
 
-- version `2` (Part 11 projects, section 14; **draft by the developer, pending the owner's approval, Q-03**): "I am signing this record electronically. My electronic signature is the legally binding equivalent of my handwritten signature. I approve this issue as it is now, with the meaning shown above, and I agree that this signature records my approval of its covered fields, comments and attachments."
-- `src/domain/declaration.ts` holds version 2 with `approved: false`. While it is false, `signing-policy-set-api` refuses to turn the mode on (`DECLARATION_PENDING`) and no Part 11 signature can be made. The owner approves the text, the flag is set in a release, and only then can a Jira admin turn the mode on.
+- version `2` (Part 11 projects, section 14; **approved by the owner on 2026-11-08, Q-03, option A with the second sentence replaced**): "I am signing this record electronically. I understand that my organisation treats this electronic signature as the legally binding equivalent of my handwritten signature. I approve this issue as it is now, with the meaning shown above, and I agree that this signature records my approval of its covered fields, comments and attachments." Why the second sentence changed: under 21 CFR 11.100(c) the customer organisation certifies to FDA that its staff's electronic signatures are legally binding; the app cannot assert it, so the text states the signer's understanding.
+- `src/domain/declaration.ts` holds version 2 with `approved: true` (since 2026-11-08). The gate stays for later versions: while a version's flag is false, `signing-policy-set-api` refuses to turn the mode on (`DECLARATION_PENDING`) and no Part 11 signature can be made.
+- Version 2's text was never in a record before its approval: the mode could not be turned on, so no seal holds the earlier draft. The version number therefore stays `2`.
 
 ---
 
@@ -782,7 +783,7 @@ Overall wording for the listing's "Honest Compliance Boundary", proposed for the
 |---|---|---|---|
 | Q-01 | Second component | Changed by the owner: identity stays the Atlassian account; B (emailed single-use code) if spike S-8 passes, else C (TOTP enrolment). S-8 passed: **B** | ADR-016 |
 | Q-02 | Alert scope | No new Jira permission for alerts; admin page plus a hash-chained record; 11.300(d) stays partly met | ADR-016 |
-| Q-03 | Declaration v2 | The developer drafts it; marked pending the owner's approval; the mode cannot be turned on until approved | ADR-016, section 10 |
+| Q-03 | Declaration v2 | **Resolved 2026-11-08: option A, the developer's draft with the second sentence replaced.** Approved text, verbatim: "I am signing this record electronically. I understand that my organisation treats this electronic signature as the legally binding equivalent of my handwritten signature. I approve this issue as it is now, with the meaning shown above, and I agree that this signature records my approval of its covered fields, comments and attachments." | ADR-016, section 10 |
 | Q-04 | QR code | Not needed under option B (no enrolment) | ADR-016 |
 | Q-05 | 11.50 printed name | No change; ADR-011 stands; 11.50 partly met | ADR-016 |
 | Q-06 | Approval of changes after a routed seal | Default: full route; optional re-approval subset per route | ADR-017 |
