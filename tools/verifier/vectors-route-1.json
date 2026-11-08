@@ -1,0 +1,172 @@
+{
+  "format": "ledgerseal-route-vectors/1",
+  "note": "Route versions (LedgerSeal spec v4 section 15.6). The canonical text is the canonical JSON of the route without routeHash (keys sorted, no whitespace; approverGroups and gatesStatusIds already sorted by id, as the app stores them); routeHash is its SHA-256. Computed with Python json.dumps(sort_keys=True, separators=(',', ':')), independently of the app and the verifier.",
+  "routes": [
+    {
+      "name": "R1 one stage, any one",
+      "route": {
+        "schemaVersion": 1,
+        "routeId": "rte_0123456789abcdef",
+        "version": 1,
+        "name": "R1 one stage, any one",
+        "stages": [
+          {
+            "stageId": "qa",
+            "name": "QA",
+            "orderGroup": 1,
+            "roleTypeId": "LS_REVIEWER",
+            "approverGroups": [
+              {
+                "id": "g-qa",
+                "name": "qa-team"
+              }
+            ],
+            "quorum": {
+              "kind": "ANY"
+            },
+            "gatesStatusIds": [
+              "10002"
+            ]
+          }
+        ],
+        "reapprovalStageIds": null,
+        "setByPartyId": "pty_cccccccccccccccccccccccccccccccc",
+        "fromDate": "2026-11-08T00:00:00.000Z",
+        "routeHash": "44cdd960ed0a324837edaee96c813b6fe7cbbc6949764d92c1db9033bbbb5e35"
+      },
+      "canonical": "{\"fromDate\":\"2026-11-08T00:00:00.000Z\",\"name\":\"R1 one stage, any one\",\"reapprovalStageIds\":null,\"routeId\":\"rte_0123456789abcdef\",\"schemaVersion\":1,\"setByPartyId\":\"pty_cccccccccccccccccccccccccccccccc\",\"stages\":[{\"approverGroups\":[{\"id\":\"g-qa\",\"name\":\"qa-team\"}],\"gatesStatusIds\":[\"10002\"],\"name\":\"QA\",\"orderGroup\":1,\"quorum\":{\"kind\":\"ANY\"},\"roleTypeId\":\"LS_REVIEWER\",\"stageId\":\"qa\"}],\"version\":1}"
+    },
+    {
+      "name": "R2 two order groups, quorum 2 of the group",
+      "route": {
+        "schemaVersion": 1,
+        "routeId": "rte_0123456789abcdef",
+        "version": 1,
+        "name": "R2 two order groups, quorum 2 of the group",
+        "stages": [
+          {
+            "stageId": "qa",
+            "name": "QA",
+            "orderGroup": 1,
+            "roleTypeId": "LS_REVIEWER",
+            "approverGroups": [
+              {
+                "id": "g-qa",
+                "name": "qa-team"
+              }
+            ],
+            "quorum": {
+              "kind": "ANY"
+            },
+            "gatesStatusIds": [
+              "10002"
+            ]
+          },
+          {
+            "stageId": "reg",
+            "name": "Regulatory",
+            "orderGroup": 2,
+            "roleTypeId": "LS_APPROVER",
+            "approverGroups": [
+              {
+                "id": "g-a",
+                "name": "reg-a"
+              },
+              {
+                "id": "g-b",
+                "name": "reg-b"
+              }
+            ],
+            "quorum": {
+              "kind": "N",
+              "n": 2
+            },
+            "gatesStatusIds": [
+              "10001"
+            ]
+          }
+        ],
+        "reapprovalStageIds": null,
+        "setByPartyId": "pty_cccccccccccccccccccccccccccccccc",
+        "fromDate": "2026-11-08T00:00:00.000Z",
+        "routeHash": "8bd43276a22c5def03225f46d6d671aaac8bde5ca93d6c63c71dd04daa309443"
+      },
+      "canonical": "{\"fromDate\":\"2026-11-08T00:00:00.000Z\",\"name\":\"R2 two order groups, quorum 2 of the group\",\"reapprovalStageIds\":null,\"routeId\":\"rte_0123456789abcdef\",\"schemaVersion\":1,\"setByPartyId\":\"pty_cccccccccccccccccccccccccccccccc\",\"stages\":[{\"approverGroups\":[{\"id\":\"g-qa\",\"name\":\"qa-team\"}],\"gatesStatusIds\":[\"10002\"],\"name\":\"QA\",\"orderGroup\":1,\"quorum\":{\"kind\":\"ANY\"},\"roleTypeId\":\"LS_REVIEWER\",\"stageId\":\"qa\"},{\"approverGroups\":[{\"id\":\"g-a\",\"name\":\"reg-a\"},{\"id\":\"g-b\",\"name\":\"reg-b\"}],\"gatesStatusIds\":[\"10001\"],\"name\":\"Regulatory\",\"orderGroup\":2,\"quorum\":{\"kind\":\"N\",\"n\":2},\"roleTypeId\":\"LS_APPROVER\",\"stageId\":\"reg\"}],\"version\":1}"
+    },
+    {
+      "name": "R3 two stages in parallel, then one, with a re-approval list",
+      "route": {
+        "schemaVersion": 1,
+        "routeId": "rte_0123456789abcdef",
+        "version": 2,
+        "name": "R3 two stages in parallel, then one, with a re-approval list",
+        "stages": [
+          {
+            "stageId": "qa",
+            "name": "QA",
+            "orderGroup": 1,
+            "roleTypeId": "LS_REVIEWER",
+            "approverGroups": [
+              {
+                "id": "g-qa",
+                "name": "qa-team"
+              }
+            ],
+            "quorum": {
+              "kind": "ANY"
+            },
+            "gatesStatusIds": [
+              "10002"
+            ]
+          },
+          {
+            "stageId": "sec",
+            "name": "Security",
+            "orderGroup": 1,
+            "roleTypeId": "LS_VERIFIER",
+            "approverGroups": [
+              {
+                "id": "g-sec",
+                "name": "security"
+              }
+            ],
+            "quorum": {
+              "kind": "ANY"
+            },
+            "gatesStatusIds": []
+          },
+          {
+            "stageId": "reg",
+            "name": "Regulatory",
+            "orderGroup": 2,
+            "roleTypeId": "LS_APPROVER",
+            "approverGroups": [
+              {
+                "id": "g-a",
+                "name": "reg-a"
+              },
+              {
+                "id": "g-b",
+                "name": "reg-b"
+              }
+            ],
+            "quorum": {
+              "kind": "N",
+              "n": 2
+            },
+            "gatesStatusIds": [
+              "10001"
+            ]
+          }
+        ],
+        "reapprovalStageIds": [
+          "reg"
+        ],
+        "setByPartyId": "pty_cccccccccccccccccccccccccccccccc",
+        "fromDate": "2026-11-08T00:00:00.000Z",
+        "routeHash": "3e9c7c6aa51e9740316e0a85ddc5df2968f43024ace252dd83410a0765a61c12"
+      },
+      "canonical": "{\"fromDate\":\"2026-11-08T00:00:00.000Z\",\"name\":\"R3 two stages in parallel, then one, with a re-approval list\",\"reapprovalStageIds\":[\"reg\"],\"routeId\":\"rte_0123456789abcdef\",\"schemaVersion\":1,\"setByPartyId\":\"pty_cccccccccccccccccccccccccccccccc\",\"stages\":[{\"approverGroups\":[{\"id\":\"g-qa\",\"name\":\"qa-team\"}],\"gatesStatusIds\":[\"10002\"],\"name\":\"QA\",\"orderGroup\":1,\"quorum\":{\"kind\":\"ANY\"},\"roleTypeId\":\"LS_REVIEWER\",\"stageId\":\"qa\"},{\"approverGroups\":[{\"id\":\"g-sec\",\"name\":\"security\"}],\"gatesStatusIds\":[],\"name\":\"Security\",\"orderGroup\":1,\"quorum\":{\"kind\":\"ANY\"},\"roleTypeId\":\"LS_VERIFIER\",\"stageId\":\"sec\"},{\"approverGroups\":[{\"id\":\"g-a\",\"name\":\"reg-a\"},{\"id\":\"g-b\",\"name\":\"reg-b\"}],\"gatesStatusIds\":[\"10001\"],\"name\":\"Regulatory\",\"orderGroup\":2,\"quorum\":{\"kind\":\"N\",\"n\":2},\"roleTypeId\":\"LS_APPROVER\",\"stageId\":\"reg\"}],\"version\":2}"
+    }
+  ]
+}

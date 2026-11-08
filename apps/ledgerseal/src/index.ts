@@ -29,6 +29,8 @@ import { getPolicyFlow, searchGroupsFlow, setPolicyFlow } from './service/policy
 import { ackAlertFlow, getSigningPolicyFlow, requestCodeFlow, setSigningPolicyFlow, signingAlertsFlow, SigningAuthority, unlockFlow } from './service/signing';
 import { isApprover } from './service/approver';
 import { completeIntent, createIntentFlow } from './service/transition-signing';
+import { bindRouteFlow, listRoutesFlow, rejectStageFlow, routeFor, saveRouteFlow, signStageFlow, stageGate, unbindRouteFlow, voidRunIfChanged } from './service/routes';
+import { openStages, stageCounts, stagesForNewRun } from './domain/route';
 import { fail } from './service/ledger';
 import { deleteIssueRecords, ReportFn, weeklyPersonalDataJob } from './service/personal-data';
 import { privacy } from '@forge/api';
@@ -213,6 +215,11 @@ async function gate(payload: any, deps: LedgerSealDeps): Promise<{ result: boole
     return { result: false, errorMessage: JIRA_UNREACHABLE_MESSAGE };
   }
   issueId = String(live.raw.id || issueId);
+  // ADR-017: a covered change ends an open run (values typed on the screen are not in Jira yet, so they void nothing);
+  // then a stage gate on the target status decides, or the normal gate below
+  if (Object.keys(screen).length === 0 && party) await voidRunIfChanged(deps, issueId, live, now);
+  const staged = await stageGate(deps, issueId, live, String(payload?.transition?.to?.id ?? ''));
+  if (staged) return staged;
   const evaluation = await evaluate(repository, issueId, live, now);
 
   if (evaluation.kind === 'LEGACY') {
@@ -370,8 +377,20 @@ export async function personalDataReport(
  * Who may ask for a signing code (ADR-016): an approver for seal, approval of changes, revoke and the transition
  * signature. Stage actions are decided by the route (ADR-017).
  */
-export const signingAuthority: SigningAuthority = async (deps, issueId, action) => {
-  if (action === 'SIGN_STAGE' || action === 'REJECT') return fail('NOT_APPROVER');
+export const signingAuthority: SigningAuthority = async (deps, issueId, action, stageId) => {
+  if (action === 'SIGN_STAGE' || action === 'REJECT') {
+    // ADR-017: a member of a group of an open stage of the issue's route
+    const ctx = await routeFor(deps, issueId);
+    if (ctx === 'unreachable') return fail('JIRA_UNREACHABLE');
+    if (!ctx || ctx === 'invalid') return fail('NOT_APPROVER');
+    const sealExists = Boolean(await new SealRepository(deps.storage).getWorkEffort(issueId));
+    const required = ctx.open && ctx.run ? ctx.run.requiredStageIds : stagesForNewRun(ctx.route, sealExists);
+    const stage = openStages(ctx.route, required, stageCounts(ctx.open ? ctx.run : null)).find(s => s.stageId === stageId);
+    if (!stage) return fail('STAGE_NOT_OPEN');
+    const groups = await deps.jira.getMyGroupIds();
+    if (!groups.ok) return fail(groups.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
+    return stage.approverGroups.some(g => groups.value.includes(g.id)) ? null : fail('NOT_APPROVER');
+  }
   const permission = await isApprover(deps.jira, deps.storage, issueId);
   if (!permission.ok) return fail(permission.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
   return permission.value ? null : fail('NOT_APPROVER');
@@ -380,6 +399,31 @@ export const signingAuthority: SigningAuthority = async (deps, issueId, action) 
 /** ADR-018: the signature field on the transition screen asks for a single-use signing intent. */
 export async function createSigningIntent(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
   return createIntentFlow(payload, context, deps);
+}
+
+/** ADR-017: approval routes (admin), stage signing and rejection. */
+export async function listRoutes(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return listRoutesFlow(context, deps);
+}
+
+export async function saveRoute(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return saveRouteFlow(payload, context, deps);
+}
+
+export async function bindRoute(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return bindRouteFlow(payload, context, deps);
+}
+
+export async function unbindRoute(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return unbindRouteFlow(payload, context, deps);
+}
+
+export async function signStage(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return signStageFlow(payload, context, deps);
+}
+
+export async function rejectStage(payload: any, context?: any, deps: LedgerSealDeps = forgeDeps(true)) {
+  return rejectStageFlow(payload, context, deps);
 }
 
 /** Code signing (ADR-016): the code request, and the admin page flows. */
@@ -440,6 +484,30 @@ resolver.define('approver-policy-set-api', async (req) => {
 
 resolver.define('approver-group-search-api', async (req) => {
   return await searchApproverGroups(req.payload, req.context);
+});
+
+resolver.define('route-list-api', async (req) => {
+  return await listRoutes(req.payload, req.context);
+});
+
+resolver.define('route-save-api', async (req) => {
+  return await saveRoute(req.payload, req.context);
+});
+
+resolver.define('route-bind-api', async (req) => {
+  return await bindRoute(req.payload, req.context);
+});
+
+resolver.define('route-unbind-api', async (req) => {
+  return await unbindRoute(req.payload, req.context);
+});
+
+resolver.define('stage-sign-api', async (req) => {
+  return await signStage(req.payload, req.context);
+});
+
+resolver.define('stage-reject-api', async (req) => {
+  return await rejectStage(req.payload, req.context);
 });
 
 resolver.define('transition-sign-intent-api', async (req) => {

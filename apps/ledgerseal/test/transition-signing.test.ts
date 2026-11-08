@@ -14,7 +14,7 @@ import { createSigningIntent, signingAuthority, validateTransition } from '../sr
 import { LedgerSealDeps, sealIssueFlow, verifyIssueFlow } from '../src/service/ledger';
 import { requestCodeFlow, setSigningPolicyFlow } from '../src/service/signing';
 import { INTENT_EXPIRED, INTENT_OTHER_USER, INTENT_SCREEN_CHANGED, intentOnScreen } from '../src/service/transition-signing';
-import { buildSignatureFieldView, FIELD_SIGNED_TEXT } from '../src/frontend/signature-field-view-model';
+import { buildSignatureFieldView, FIELD_ROUTED_TEXT, FIELD_SIGNED_TEXT } from '../src/frontend/signature-field-view-model';
 import { FakeJira, MemoryStore, model, panelContext, sampleIssue } from './support/fakes';
 
 jest.mock('@forge/api', () => ({ __esModule: true, default: {}, route: () => '', privacy: { reportPersonalData: jest.fn() } }));
@@ -273,6 +273,7 @@ describe('signature field view model', () => {
     const rights = (r: any) => ({ canSeal: false, canApproveChanges: false, canRevoke: false, blockedBySelfChange: false, ...r });
     const unsealed = { status: 'NO_SEAL', tamperedFields: [], tamperedAttachments: [], rights: rights({ canSeal: true }) };
     expect(buildSignatureFieldView({ ...base, result: unsealed })).toMatchObject({ mode: 'SEAL', action: 'SEAL', needsReason: false });
+    expect(buildSignatureFieldView({ ...base, result: { ...unsealed, route: { stages: [] } } })).toMatchObject({ mode: 'NO_RIGHT', text: FIELD_ROUTED_TEXT });
     expect(buildSignatureFieldView({ ...base, result: { ...unsealed, rights: rights({}) } }).mode).toBe('NO_RIGHT');
     const seal = { certificateId: 'c', state: 'ACTIVE', sealedAt: '2026-11-08T00:00:00.000Z', sealedByAccountId: 'a', meaning: 'APPROVAL', reason: null, declarationVersion: '1', snapshotHash: 'h'.repeat(64), canonicalizerVersion: '2.3.0', everCompromised: false, incidentCount: 0, revocation: null, historyLength: 1 };
     const sealed = { status: 'SEAL_VALID', seal, tamperedFields: [], tamperedAttachments: [], rights: rights({ canSeal: true, canApproveChanges: true, canRevoke: true }) };

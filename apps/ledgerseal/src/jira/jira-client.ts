@@ -63,6 +63,8 @@ export interface JiraClient {
   notifyUser(issueId: string, accountId: string, email: { subject: string; textBody: string; htmlBody: string }): Promise<number>;
   /** The project and issue type of an issue (read as the app, after the Browse check). */
   getIssueScope(issueId: string): Promise<JiraResult<{ projectId: string; issueTypeId: string; issueKey: string }>>;
+  /** Statuses by id, as the user (admin page, route gates). Unknown ones are left out. */
+  getStatuses(ids: string[]): Promise<JiraResult<{ id: string; name: string }[]>>;
   /** Projects by key or id, as the user (admin page). Unknown ones are left out. */
   getProjects(keysOrIds: string[]): Promise<JiraResult<{ id: string; key: string; name: string }[]>>;
 }
@@ -308,6 +310,20 @@ export function createJiraClient(asApp: JiraRequester, asUser: JiraRequester | n
       if (!res.ok) return res;
       const fields = res.value?.fields ?? {};
       return { ok: true, value: { projectId: String(fields.project?.id ?? ''), issueTypeId: String(fields.issuetype?.id ?? ''), issueKey: String(res.value?.key ?? issueId) } };
+    },
+
+    async getStatuses(ids) {
+      if (!asUser) return { ok: false, error: 'FORBIDDEN' };
+      const found: { id: string; name: string }[] = [];
+      for (const id of ids) {
+        const res = await getJson<any>(asUser, route`/rest/api/3/status/${id}`);
+        if (!res.ok) {
+          if (res.error === 'NOT_FOUND') continue;
+          return res;
+        }
+        found.push({ id: String(res.value?.id), name: String(res.value?.name ?? '') });
+      }
+      return { ok: true, value: found };
     },
 
     async getProjects(keysOrIds) {

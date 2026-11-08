@@ -276,7 +276,9 @@ export function evaluateCode(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG
 export function evaluateAudit(f: IssueFacts, c: EvidenceCatalog = DEFAULT_CATALOG, sources?: SourcesInUse): GateResult {
   if (sources && !sources.audit) return NOT_IN_USE;
   const cert = f.properties.ledgerseal;
-  if (cert !== undefined && cert !== null) {
+  // LedgerSeal ADR-017: in approval, before its first seal, a routed issue has a schema 4 property with no status: not sealed
+  const shape = cert as { schemaVersion?: unknown; status?: unknown } | null | undefined;
+  if (shape !== undefined && shape !== null && !(shape.schemaVersion === 4 && shape.status === undefined)) {
     if (!isLedgerSealShape(cert)) {
       return observed(c, 'LEDGERSEAL_PROPERTY', { state: 'MISSING', reason: 'SEAL_SHAPE_UNKNOWN' });
     }

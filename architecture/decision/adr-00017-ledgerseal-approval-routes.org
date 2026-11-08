@@ -134,6 +134,22 @@ Adopt option A.
 15. *Part 11 mode.* When ADR-016's mode is on, every stage signature and every rejection needs the
     signing credential.
 
+* Build results (2026-11-08, branch =feature/ledgerseal-regulated=)
+Built as decided, development 6.7.0 to 6.12.0. Live on development (LSP-7, route bound to project LSP and
+then unbound): a rejection with a reason ended the run, the next signature started a new run and sealed
+the issue; the property became schema 4 with =approval.runState= =COMPLETE=; the exported evidence (format
+2) passed the format 2 checks. Choices made while building, recorded here:
+- A route is edited on the admin page as JSON (=name=, =stages=, =reapprovalStageIds=), checked field by
+  field by the server; group and status names come from Jira. A form per stage can replace it later.
+- The binding for every issue type is stored under the KVS key suffix =all=: =*= is not a valid KVS key
+  character (live finding).
+- The seal row of a route records =requiredStageIds= so an outside verifier can check the quorum of a
+  re-approval run.
+- The signature field on the transition screen (ADR-018) does not sign route stages; on a routed issue it
+  points to the panel.
+- The FourRealities change is the narrow form: a property of schema 4 with no =status= reads as "not
+  sealed"; any other shape without a status stays "shape not written by LedgerSeal".
+
 * Consequences
 ** Positive
 - Closes the "no multi-step approval" gap stated in the gap research, with evidence an auditor can

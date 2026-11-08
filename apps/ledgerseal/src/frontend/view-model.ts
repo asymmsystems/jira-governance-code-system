@@ -318,6 +318,8 @@ export function nextStepText(state: PanelState, canSeal: boolean, canApprove: bo
   }
 }
 
+export const ROUTE_ASK = 'This issue has an approval route: each stage signs below, and the last stage seals the issue.';
+
 export function buildPanelView(input: PanelInput): PanelView {
   const state = stateOf(input);
   const r = input.result;
@@ -333,8 +335,17 @@ export function buildPanelView(input: PanelInput): PanelView {
   if (['CHANGED', 'CHANGED_BACK'].includes(state) && rights.canApproveChanges) actions.approveChanges = { label: 'Approve these changes' };
   if (['SEALED', 'CHANGED', 'CHANGED_BACK'].includes(state) && rights.canRevoke) actions.revoke = { label: 'Revoke seal' };
 
+  // ADR-017: a routed issue is sealed by its stages, never by the plain seal or approval
+  const routed = Boolean(r?.route && !r.route.invalid);
+  if (routed) {
+    delete actions.seal;
+    delete actions.approveChanges;
+  }
+
   let askText: string | undefined;
-  if (mayActOn && !actions.seal && !actions.approveChanges && !actions.revoke) {
+  if (routed && mayActOn) {
+    askText = ROUTE_ASK;
+  } else if (mayActOn && !actions.seal && !actions.approveChanges && !actions.revoke) {
     askText = rights.blockedBySelfChange ? ASK_OTHER_APPROVER : ASK_APPROVER;
   } else if (mayActOn && rights.blockedBySelfChange && !actions.approveChanges) {
     askText = ASK_OTHER_APPROVER;

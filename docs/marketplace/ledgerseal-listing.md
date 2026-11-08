@@ -144,3 +144,9 @@ Added 2026-11-08 by the regulated build (`feature/ledgerseal-regulated`). **Use 
 - **Limits to state:** a shared or delegated mailbox defeats the code; when Jira outgoing email is off, nobody can sign in a code-signing project; security alerts are shown on the admin page and are not emailed.
 - **Search words:** electronic signature, signing code, two-step signing.
 - **Transition screen (ADR-018), proposed line:** "Sign on the transition screen: a Jira admin adds the LedgerSeal signature field to a transition screen, and the person signs in the dialog before the move. Transitions without the field (REST, automation, bulk changes) are blocked by the validator until the issue is sealed."
+
+## Post-approval copy: approval routes (ADR-017)
+
+Held until release to production and live probes (Q-14); the owner approves the wording.
+- **Highlight line, proposed:** "Approval routes: QA, then Regulatory. Each stage has its own groups and quorum, every stage signs the same content, one person signs one stage, and the last stage seals the issue. A rejection or a change starts the approval again."
+- **Description line, proposed:** "Bind a route to a project and issue types; the validator can hold a move until the stage that gates it has signed. The open verifier rechecks quorum, stage order and separation of duties offline (version 1.4.0)."

@@ -129,3 +129,46 @@ Yes: the scope `send:notification:jira` makes the next production deploy a major
 
 ### Major version
 No new scope in Phase 3. The next production deploy is major because of Phase 2's scope.
+
+## Phase 4: approval routes (ADR-017) and verifier 1.4.0
+
+### What was built
+- **Domain** `src/domain/route.ts`: route stages (order groups 1 to 8, 1 to 10 groups, "any one" or N of 1 to 10, gated target statuses), validation (`parseStages`), the route hash (groups and gates sorted), quorum, open stages, re-approval list (Q-06), one person one stage, the stage gate.
+- **Storage** `src/storage/route-repository.ts`: route versions created once and hash-checked; bindings by project and issue type (`*` stored as `all`, live finding); the run record with its own hash and the chain head while there is no seal; run content parts.
+- **Service** `src/service/routes.ts`: admin flows (list, save a new version, bind, unbind; Jira admins only, Q-08; groups and statuses checked in Jira); `routeFor` (open run pinned to its version, Q-07; else the binding); stage signing (Browse, open stage, stage group as the user, one stage per person, shown hash, separation of duties, declaration, code in code-signing projects; a new run stores its snapshot; the completing stage writes the seal through the seal flow with the run's chain head, `stageSignatures` and `requiredStageIds`); rejection with a reason; voiding on change (when the panel loads, in the validator, and at the next stage signature; the issue-change trigger does not void runs); the routed revoke rule (decision 8) with `endsRun`; panel data; the stage gate in the validator with the spec 15.5 messages.
+- **Attestation schema 4** (`buildRoutedAttestation`): `approval` on routed issues; no `status` and no `certificateId` before the first seal; index path `approval.runState` (`ledgersealApproval`). Issues with no route keep schema 3.
+- **Evidence format 2** with `routes` (every version the history names). **Verifier 1.4.0**: checks 6 to 9, check 4 skips run entries, route vectors in `--self-test`; format 1 output unchanged (golden test).
+- **UI:** the panel's route section ("Sign as {stage}", "Reject", who signed, progress, rejection reason) and stage and reject forms; the plain seal and approval are hidden on a routed issue; admin tab "Approval routes" (JSON editor, "Bind this route", Unbind); the transition field points to the panel on a routed issue.
+- **FourRealities** (`apps/fourrealities/src/engine/default-gate-engine.ts`): a `ledgerseal-cert` of schema 4 with no `status` reads as "not sealed" (`SEAL_NONE`); other shapes without a status stay `SEAL_SHAPE_UNKNOWN`. Test in `test/domain/gates.test.ts`. This is a two-line change (a typed alias and the condition): the FourRealities rule B-24 forbids `any`.
+
+### Tests (rules)
+`test/routes.test.ts` (22): domain validation, hash order independence, order groups, quorum, gates; admin refusals and validation; bindings, issue type over all, plain seal refused when bound; the full QA then Regulatory (2 of the group) run with one seal naming every stage signature, schema 4 before and after the seal, format 2 through the real verifier (all route checks PASS); stage not open, outside the group, same person; identity, Browse, hash, declaration, licence; no route; pinned version; rejection and restart with the gate message; reject before any signature; voiding on change (one row per change) and in the validator; stage gates with counts; separation of duties and the re-approval list; the routed revoke rule and `endsRun`; panel flags; stage codes in code-signing projects; tampered run record fails closed; a tampered route version fails the verifier. `test/routes-edge.test.ts` (15): storage, admin inputs, resolution failures, lost races (stage, completing stage, rejection, void), failed reads, gate messages, revoke edge cases, stage-code authority, the approval summary, and the `*` key regression. `test/route-view-models.test.ts` (5). Verifier `test/format2.test.mjs` route group (7): valid run; checks 6, 7 (names and snapshot), 8 (quorum and order), 9; check 4 skipping a later run entry; a format 2 file without a routed seal. Q3 list and registration tests include the stage and route resolvers. The test store now refuses KVS keys with characters Forge refuses.
+
+### Gate (code of the Phase 4 commit)
+| Step | Result |
+|---|---|
+| `npx tsc --noEmit` (LedgerSeal, FourRealities) | 0 errors |
+| `npx jest --coverage` LedgerSeal | 59 suites, 765 tests; statements 98.15%, branches 93.98%, functions 97.96%, lines 98.83%; every file at or above 90% branches |
+| `npx jest --coverage` FourRealities | 48 suites, 577 tests; branches 96.65% |
+| `npm run build` (both) | exit 0 |
+| `npm audit --omit=dev --audit-level=high` (both) | exit 0 (LedgerSeal 7 moderate, unchanged) |
+| `forge lint` (LedgerSeal) | No issues found |
+| FSRT `6c821bd` LedgerSeal default and `secret-logging`, FourRealities default | 0 findings each |
+| Semgrep 1.182.1 | 0 findings, 212 files |
+| Verifier `npm test`, `--self-test` | 37 tests; 10 of 10 vectors, 3 of 3 route vectors |
+| `forge eligibility -e development` | 6.12.0 eligible for Runs on Atlassian |
+
+### Deploy and live check (development only)
+- Versions 6.7.0 to 6.12.0 (6.8.0 route id shown, 6.9.0 bind button, 6.10.0 `all` key fix, 6.11.0 Unbind buttons, 6.12.0 routed field text). Production not touched. FourRealities was not deployed (its change is covered by tests; deploy it with its next development build).
+- Route "LSP probe route (regulated build)" (one stage, any one of `jira-admins-asymmsystems`) saved on the admin page and bound to LSP, every issue type. The first bind failed live with KVS `INVALID_KEY` (`*` in the key); fixed, then bound.
+- Probe issue **LSP-7** (labels `ls-probe`, `ls-probe-regulated`): "Reject" with a reason, the panel showed the rejection; then "Sign as Probe approval": sealed; property schema 4, `SEAL_VALID`, `approval.runState` `COMPLETE`, signed `ls-dev-2026-11`; panel "Approved through every stage." The exported evidence (format 2, rows `LS_RUN_REJECTED/REJECT`, `LS_SEALED/SEAL`) passed snapshot hash, chain, newest seal, status, Ed25519 signature (published dev key), route version, stage signatures, same snapshot and quorum, checked in the browser with a port of the verifier's code (the browser tool would not return the raw file, so the verifier file itself was not run on this export).
+- Then unbound ("No route is bound"). The route itself stays in development storage (there is no delete); LSP-7 stays sealed as the probe record.
+
+### Not built, and why (follow-ups)
+- Signing a route stage in the transition-screen field (ADR-018 intent with `stageId`): the field points to the panel on a routed issue.
+- A form-per-stage route editor: routes are edited as checked JSON.
+- Deleting a route: none (versions are kept; unbinding stops its use).
+- The weekly personal data job does not yet list route or signing records separately; they name people only by party token, which the existing party map and report cover.
+
+### Major version
+No new scope in Phase 4. The next production deploy is major because of Phase 2's scope.
