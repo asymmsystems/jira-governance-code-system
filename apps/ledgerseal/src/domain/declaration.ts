@@ -8,8 +8,6 @@
  * @author Fahim Farook
  */
 
-import { createHash } from 'crypto';
-
 export const DECLARATION = {
   version: '1',
   text: 'I approve this issue as it is now. I agree that this seal records my approval of its covered fields, comments and attachments.'
@@ -57,14 +55,6 @@ export function isMeaning(value: unknown): value is Meaning {
 export function validReason(value: unknown): string | null {
   const reason = typeof value === 'string' ? value.trim() : '';
   return reason.length > 0 && reason.length <= REASON_MAX ? reason : null;
-}
-
-/**
- * Review round 2 (D-1): the SHA-256 (lowercase hex) of a declaration's exact UTF-8 text. Signature rows chain it
- * with the version, and the evidence carries the texts, so an outside verifier shows what each signer agreed to.
- */
-export function declarationHash(text: string): string {
-  return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
 /** Every declaration the app has shown, by version (the evidence's `declarations` map). */

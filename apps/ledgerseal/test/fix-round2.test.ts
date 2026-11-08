@@ -9,7 +9,8 @@
  * @author Fahim Farook
  */
 import * as declaration from '../src/domain/declaration';
-import { DECLARATION, DECLARATION_V2, declarationHash } from '../src/domain/declaration';
+import { DECLARATION, DECLARATION_V2 } from '../src/domain/declaration';
+import { declarationHash } from '../src/domain/declaration-hash';
 import { getSealEvidence, rejectStage, requestSigningCode, signStage, verifyIssue } from '../src/index';
 import { LedgerSealDeps } from '../src/service/ledger';
 import { bindRouteFlow, saveRouteFlow, stillHoldsRunLock, withRunLock } from '../src/service/routes';

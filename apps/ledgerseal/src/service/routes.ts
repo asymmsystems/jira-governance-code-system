@@ -11,7 +11,8 @@
 
 import * as crypto from 'crypto';
 import { computeSnapshotHash } from '../domain/crypto';
-import { declarationFor, declarationHash, isDeclarationV2Approved, validReason } from '../domain/declaration';
+import { declarationFor, isDeclarationV2Approved, validReason } from '../domain/declaration';
+import { declarationHash } from '../domain/declaration-hash';
 import { buildStatusRow } from '../domain/history';
 import {
   ApprovalRun,
