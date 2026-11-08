@@ -177,6 +177,15 @@ export class FakeJira implements JiraClient {
     return { ok: true, value: this.projects.filter(p => keysOrIds.includes(p.key) || keysOrIds.includes(p.id)) };
   }
 
+  /** ADR-017: statuses Jira knows (route gates). */
+  statuses: { id: string; name: string }[] = [{ id: '10001', name: 'Done' }, { id: '10002', name: 'QA approved' }];
+  failStatuses = false;
+
+  async getStatuses(ids: string[]): Promise<JiraResult<{ id: string; name: string }[]>> {
+    if (this.failStatuses) return { ok: false, error: 'UNREACHABLE' };
+    return { ok: true, value: this.statuses.filter(s => ids.includes(s.id)) };
+  }
+
   /** The newest code emailed to an account (tests read it as the signer would, from the email). */
   lastCode(accountId?: string): string {
     const mail = [...this.notifications].reverse().find(n => !accountId || n.accountId === accountId);
@@ -221,6 +230,8 @@ export class MemoryStore implements StorageProvider, SecretStore {
   }
 
   async set(key: string, value: any, options?: WriteOptions) {
+    // Forge KVS accepts only these key characters; anything else fails with INVALID_KEY (live, 2026-11-08)
+    if (!/^(?!\s+$)[a-zA-Z0-9:._\s\-#]+$/.test(key)) throw Object.assign(new Error('INVALID_KEY'), { code: 'INVALID_KEY' });
     this.sets.push(key);
     this.map.set(key, JSON.parse(JSON.stringify(value)));
     if (options?.ttlSeconds) this.ttls.set(key, options.ttlSeconds);

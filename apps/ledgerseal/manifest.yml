@@ -66,6 +66,10 @@ modules:
         - path: incidentCount
           type: number
           searchAlias: ledgersealIncidents
+        # ADR-017: issues waiting for approval (schema 4 only)
+        - path: approval.runState
+          type: string
+          searchAlias: ledgersealApproval
   trigger:
     - key: ledgerseal-issue-changed
       function: on-issue-changed

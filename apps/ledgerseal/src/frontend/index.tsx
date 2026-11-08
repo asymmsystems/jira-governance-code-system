@@ -24,6 +24,7 @@ import ForgeReconciler, {
 import { invoke } from '@forge/bridge';
 import { MEANINGS } from '../domain/declaration';
 import { buildSigningForm } from './signing-view-model';
+import { buildRouteView } from './route-view-model';
 import { logFailure } from '../service/log';
 import { buildPanelView, formatTime, historyLabel, PanelView } from './view-model';
 import {
@@ -43,7 +44,7 @@ import {
   TEXT_ROLE
 } from '@asymm/jira-ui';
 
-type FormMode = 'seal' | 'approve' | 'revoke' | null;
+type FormMode = 'seal' | 'approve' | 'revoke' | 'stage' | 'reject' | null;
 
 /**
  * The LedgerSeal issue panel. Every decision about what to show comes from the view model (view-model.ts);
@@ -71,6 +72,8 @@ export const LedgerSealPanel: React.FC = () => {
   const [challenge, setChallenge] = useState<{ challengeId: string; expiresAt: string } | null>(null);
   const [code, setCode] = useState<string>('');
   const [sending, setSending] = useState<boolean>(false);
+  // ADR-017: the stage a stage or reject form is for
+  const [stageId, setStageId] = useState<string | null>(null);
 
   const loadState = async () => {
     setLoading(true);
@@ -93,13 +96,18 @@ export const LedgerSealPanel: React.FC = () => {
 
   const view: PanelView = buildPanelView({ loading, result, error: loadFailed });
   const sealReasonLabel = form === 'seal' ? view.actions.seal?.reasonLabel : undefined;
-  const reasonNeeded = form === 'approve' || form === 'revoke' || Boolean(sealReasonLabel);
+  const routeView = buildRouteView(result?.route);
+  const stage = routeView?.stages.find(s => s.stageId === stageId) ?? null;
+  // A stage that approves changes after a seal needs a reason, as an approval does
+  const stageReason = form === 'stage' && ['CHANGED', 'CHANGED_BACK', 'REVOKED'].includes(view.state);
+  const reasonNeeded = form === 'approve' || form === 'revoke' || form === 'reject' || stageReason || Boolean(sealReasonLabel);
   const reasonMissing = reasonNeeded && reason.trim().length === 0;
   const signingForm = buildSigningForm(result, { challengeId: challenge?.challengeId ?? null, expiresAt: challenge?.expiresAt ?? null, code });
-  const signingAction = form === 'revoke' ? 'REVOKE' : form === 'approve' ? 'RESEAL' : 'SEAL';
+  const signingAction = form === 'revoke' ? 'REVOKE' : form === 'approve' ? 'RESEAL' : form === 'stage' ? 'SIGN_STAGE' : form === 'reject' ? 'REJECT' : 'SEAL';
 
-  const openForm = (mode: FormMode) => {
+  const openForm = (mode: FormMode, forStage: string | null = null) => {
     setForm(mode);
+    setStageId(forStage);
     setActionError(null);
     setReason('');
     setDeclarationAgreed(false);
@@ -111,7 +119,7 @@ export const LedgerSealPanel: React.FC = () => {
     setSending(true);
     setActionError(null);
     try {
-      const r = (await invoke('signing-code-request-api', { action: signingAction })) as any;
+      const r = (await invoke('signing-code-request-api', { action: signingAction, ...(stageId ? { stageId } : {}) })) as any;
       if (r?.ok) {
         setChallenge({ challengeId: r.challengeId, expiresAt: r.expiresAt });
       } else {
@@ -126,13 +134,22 @@ export const LedgerSealPanel: React.FC = () => {
   };
 
   const submit = async () => {
-    if (reasonMissing || (form !== 'revoke' && !declarationAgreed) || !signingForm.canSubmit) return;
+    if (reasonMissing || (form !== 'revoke' && form !== 'reject' && !declarationAgreed) || !signingForm.canSubmit) return;
     const signing = signingForm.needsCode && challenge ? { challengeId: challenge.challengeId, code: code.trim() } : undefined;
     setSubmitting(true);
     setActionError(null);
     try {
       const response =
-        form === 'revoke'
+        form === 'stage'
+          ? ((await invoke('stage-sign-api', {
+              stageId,
+              viewHash: result?.viewHash,
+              signature: { declarationVersion: signingForm.declaration.version, declarationText: signingForm.declaration.text, reason: stageReason ? reason.trim() : undefined },
+              signing
+            })) as { ok: boolean; message?: string } | undefined)
+          : form === 'reject'
+          ? ((await invoke('stage-reject-api', { stageId, viewHash: result?.viewHash, reason: reason.trim(), signing })) as { ok: boolean; message?: string } | undefined)
+          : form === 'revoke'
           ? ((await invoke('revoke-seal-api', { reason: reason.trim(), signing })) as { ok: boolean; message?: string } | undefined)
           : ((await invoke('seal-issue-api', {
               // F-05: the state this panel showed; the seal is refused when the issue changed since
@@ -317,6 +334,33 @@ export const LedgerSealPanel: React.FC = () => {
         </ActionRow>
       </SummaryBlock>
 
+      {routeView && (
+        <Card>
+          <Heading size="small">{routeView.title}</Heading>
+          <Text as="span" size="small">{routeView.stateText}</Text>
+          {routeView.rejectionText && <Text as="span" size="small" color={TEXT_ROLE.danger}>{routeView.rejectionText}</Text>}
+          {routeView.stages.map(row => (
+            <ListRow key={row.stageId} divided>
+              <Inline space={SPACE.sub} alignBlock="center" shouldWrap>
+                <Text as="span" weight="bold">{row.name}</Text>
+                <Text as="span" size="small" color={TEXT_ROLE.secondary}>({row.meaningLabel}, {row.progress})</Text>
+                {row.signedAccountIds.map(id => <User key={id} accountId={id} />)}
+                {row.canSign && (
+                  <Button appearance="primary" spacing="compact" onClick={() => openForm('stage', row.stageId)}>
+                    Sign as {row.name}
+                  </Button>
+                )}
+                {row.canReject && (
+                  <Button appearance="subtle" spacing="compact" onClick={() => openForm('reject', row.stageId)}>
+                    Reject
+                  </Button>
+                )}
+              </Inline>
+            </ListRow>
+          ))}
+        </Card>
+      )}
+
       {view.seal && (
         <Section title="Certificate & attestation details" count={3} defaultCollapsed={true}>
           <Inline space={SPACE.sub} alignBlock="center" shouldWrap>
@@ -439,9 +483,10 @@ export const LedgerSealPanel: React.FC = () => {
       {form && (
         <Card>
           <Heading size="small">
-            {form === 'revoke' ? 'Revoke seal' : form === 'approve' ? 'Approve these changes' : 'Seal this issue'}
+            {form === 'revoke' ? 'Revoke seal' : form === 'approve' ? 'Approve these changes' : form === 'stage' ? `Sign as ${stage?.name ?? 'stage'}` : form === 'reject' ? `Reject as ${stage?.name ?? 'stage'}` : 'Seal this issue'}
           </Heading>
-          {form !== 'revoke' && (
+          {form === 'stage' && stage && <Text as="span" size="small">Sign-off role: {stage.meaningLabel} (set by the route).</Text>}
+          {form !== 'revoke' && form !== 'stage' && form !== 'reject' && (
             <FormField id="meaning" label="Choose the role of your sign-off for this approval:">
               <RadioGroup
                 name="meaning"
@@ -454,13 +499,13 @@ export const LedgerSealPanel: React.FC = () => {
           {reasonNeeded && (
             <FormField
               id="reason"
-              label={form === 'revoke' ? 'Reason for revoking (required)' : sealReasonLabel || 'Reason for approving these changes (required)'}
+              label={form === 'revoke' ? 'Reason for revoking (required)' : form === 'reject' ? 'Reason for rejecting (required)' : sealReasonLabel || 'Reason for approving these changes (required)'}
             >
               {/* Uncontrolled on purpose: a controlled value lost typed characters over the UI Kit bridge (live, DEMO-34) */}
               <TextArea key={`reason-${form}`} id="reason" name="reason" onChange={(e: any) => setReason(e.target.value)} />
             </FormField>
           )}
-          {form !== 'revoke' && (
+          {form !== 'revoke' && form !== 'reject' && (
             <Stack space={SPACE.sub}>
               <NoteBox>
                 <Text as="span" size="small">{signingForm.declaration.text}</Text>
@@ -503,10 +548,10 @@ export const LedgerSealPanel: React.FC = () => {
           <ActionRow>
             <Button
               appearance="primary"
-              isDisabled={reasonMissing || (form !== 'revoke' && !declarationAgreed) || !signingForm.canSubmit || submitting}
+              isDisabled={reasonMissing || (form !== 'revoke' && form !== 'reject' && !declarationAgreed) || !signingForm.canSubmit || submitting}
               onClick={submit}
             >
-              {submitting ? 'Saving...' : form === 'revoke' ? 'Revoke' : 'Sign and seal'}
+              {submitting ? 'Saving...' : form === 'revoke' ? 'Revoke' : form === 'reject' ? 'Reject' : form === 'stage' ? 'Sign' : 'Sign and seal'}
             </Button>
             <Button appearance="subtle" isDisabled={submitting} onClick={() => setForm(null)}>
               Cancel

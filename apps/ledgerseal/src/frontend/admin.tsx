@@ -10,6 +10,7 @@
 import React, { useState, useEffect } from 'react';
 import ForgeReconciler, { Tab, TabList, TabPanel, Tabs } from '@forge/react';
 import { SecurityAlertsTab, SigningCodesTab } from './admin-signing';
+import { ApprovalRoutesTab } from './admin-routes';
 import { invoke } from '@forge/bridge';
 import { logFailure } from '../service/log';
 import {
@@ -106,6 +107,7 @@ export const LedgerSealAdmin: React.FC = () => (
       <Tab>Approver groups</Tab>
       <Tab>Signing codes</Tab>
       <Tab>Security alerts</Tab>
+      <Tab>Approval routes</Tab>
     </TabList>
     <TabPanel>
       <ApproverGroupsTab />
@@ -115,6 +117,9 @@ export const LedgerSealAdmin: React.FC = () => (
     </TabPanel>
     <TabPanel>
       <SecurityAlertsTab />
+    </TabPanel>
+    <TabPanel>
+      <ApprovalRoutesTab />
     </TabPanel>
   </Tabs>
 );

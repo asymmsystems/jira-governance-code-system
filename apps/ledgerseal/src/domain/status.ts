@@ -10,7 +10,10 @@
 import { Meaning } from './declaration';
 
 export type LedgerSealStatusId = 'LS_SEALED' | 'LS_CHANGED' | 'LS_REVOKED';
-export type TransitionName = 'SEAL' | 'RESEAL' | 'CHANGE' | 'REVOKE' | 'REDACT';
+export type TransitionName = 'SEAL' | 'RESEAL' | 'CHANGE' | 'REVOKE' | 'REDACT' | 'SIGN_STAGE' | 'REJECT' | 'VOID';
+/** Approval run rows (ADR-017 decision 9): in the same chain, never seal states. */
+export type RunStatusId = 'LS_RUN_SIGNED' | 'LS_RUN_REJECTED' | 'LS_RUN_VOIDED';
+export const RUN_STATUS_IDS: readonly string[] = ['LS_RUN_SIGNED', 'LS_RUN_REJECTED', 'LS_RUN_VOIDED'];
 export type LedgerSealRoleTypeId = 'LS_APPROVER' | 'LS_REVIEWER' | 'LS_VERIFIER';
 
 export interface StatusValidChange {

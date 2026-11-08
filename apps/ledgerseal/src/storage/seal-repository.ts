@@ -124,13 +124,14 @@ export class SealRepository {
   }
 
   /**
-   * The newest row that set the current status. A redaction row (ADR-011 decision 7) is not a status change,
-   * so it is skipped.
+   * The newest row that set the current status. A redaction row (ADR-011 decision 7) and an approval run row
+   * (ADR-017) are not status changes, so they are skipped.
    */
   async getCurrentStatusRow(workEffort: SealedWorkEffort): Promise<WorkEffortStatus | null> {
     for (let seq = workEffort.statusHead.seq; seq >= 1; seq--) {
       const row = await this.getStatusRow(workEffort.workEffortId, seq);
-      if (!row || row.statusId !== 'LS_REDACTED') return row;
+      // Run rows (ADR-017) are not seal states either
+      if (!row || (row.statusId !== 'LS_REDACTED' && !String(row.statusId).startsWith('LS_RUN_'))) return row;
     }
     return null;
   }

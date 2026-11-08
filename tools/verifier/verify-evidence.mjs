@@ -60,7 +60,17 @@ function selfTest() {
   const failed = vectors.filter(v => canonicalJson(JSON.parse(v.canonical)) !== v.canonical);
   for (const v of failed) console.log(`FAIL ${v.name}`);
   console.log(`${failed.length === 0 ? 'PASS' : 'FAIL'} ${vectors.length - failed.length} of ${vectors.length} vectors`);
-  return failed.length === 0;
+  // 1.4.0: route versions hash to their routeHash, and canonical form 2.3.0 texts hash as written
+  const routeFile = join(HERE, 'vectors-route-1.json');
+  let routesOk = true;
+  if (existsSync(routeFile)) {
+    const { routes } = JSON.parse(readFileSync(routeFile, 'utf8'));
+    const bad = routes.filter(r => canonicalJson(without(r.route, 'routeHash')) !== r.canonical || sha256(r.canonical) !== r.route.routeHash);
+    for (const r of bad) console.log(`FAIL ${r.name}`);
+    console.log(`${bad.length === 0 ? 'PASS' : 'FAIL'} ${routes.length - bad.length} of ${routes.length} route vectors`);
+    routesOk = bad.length === 0;
+  }
+  return failed.length === 0 && routesOk;
 }
 
 function verifyEvidence(evidence, publicKeyPem) {
@@ -84,7 +94,8 @@ function verifyEvidence(evidence, publicKeyPem) {
 
   // The attestation's status must be the state of the newest entry that is not a redaction
   const STATUS = { LS_SEALED: 'SEAL_VALID', LS_CHANGED: 'SEAL_BROKEN', LS_REVOKED: 'SEAL_REVOKED' };
-  const newestState = [...history].reverse().find(row => row.statusId !== 'LS_REDACTED');
+  // Approval run rows (LS_RUN_*, format 2) are not seal states either; format 1 never has them
+  const newestState = [...history].reverse().find(row => row.statusId !== 'LS_REDACTED' && !String(row.statusId).startsWith('LS_RUN_'));
   check(Boolean(newestState) && STATUS[newestState.statusId] === att.status, `attestation status matches the history (${att.status ?? 'none'})`);
 
   let sigOk = false;
@@ -139,11 +150,59 @@ function checkCodeSigning(history, policies, projectId) {
   return bad;
 }
 
+const quorumOf = stage => (stage.quorum?.kind === 'N' ? stage.quorum.n : 1);
+
+/**
+ * Checks 7 to 9 for the sealing run: its stage signatures all signed the sealed snapshot and are the ones the seal
+ * row names; each order group was complete before the next was signed and every required stage met its quorum; and
+ * no person signed two stages of the run. Returns the failures, one text each.
+ */
+function checkSealingRun(history, routes, att) {
+  const seal = [...history].reverse().find(row => row.statusId === 'LS_SEALED');
+  if (!seal?.data?.runId) return null;
+  const route = routes.find(r => r.routeId === seal.data.routeId && r.version === seal.data.routeVersion);
+  const runRows = history.filter(row => row.statusId === 'LS_RUN_SIGNED' && row.data?.runId === seal.data.runId);
+  const sigs = [...runRows, seal];
+  const failures = [];
+  const named = JSON.stringify(runRows.map(r => r.entryHash)) === JSON.stringify(seal.data.stageSignatures || []);
+  const sameContent = sigs.every(r => r.data?.snapshotHash === att.snapshotHash);
+  if (!route || route.routeHash !== seal.data.routeHash || !named || !sameContent) failures.push('stage signatures of the sealing run');
+  const required = (route?.stages || []).filter(s => (seal.data.requiredStageIds || route.stages.map(x => x.stageId)).includes(s.stageId));
+  const counts = new Map();
+  let ordered = Boolean(route);
+  for (const sig of sigs) {
+    const stage = required.find(s => s.stageId === sig.data?.stageId);
+    if (!stage) {
+      ordered = false;
+      continue;
+    }
+    const earlier = required.filter(s => s.orderGroup < stage.orderGroup);
+    if (!earlier.every(s => (counts.get(s.stageId)?.size || 0) >= quorumOf(s))) ordered = false;
+    if (!counts.has(stage.stageId)) counts.set(stage.stageId, new Set());
+    counts.get(stage.stageId).add(sig.setByPartyId);
+  }
+  if (!ordered || !required.every(s => (counts.get(s.stageId)?.size || 0) >= quorumOf(s))) failures.push('quorum and stage order');
+  const stagesOf = new Map();
+  for (const sig of sigs) {
+    if (!stagesOf.has(sig.setByPartyId)) stagesOf.set(sig.setByPartyId, new Set());
+    stagesOf.get(sig.setByPartyId).add(sig.data?.stageId);
+  }
+  if ([...stagesOf.values()].some(set => set.size > 1) || sigs.length !== new Set(sigs.map(s => s.setByPartyId)).size) failures.push('one stage per person');
+  return failures;
+}
+
 function verifyFormat2(evidence, history, check) {
   const policies = [...(evidence.signingPolicies || [])].sort((a, b) => a.version - b.version);
   check(checkPolicies(policies), `signing policies (${policies.length} versions)`);
   const bad = checkCodeSigning(history, policies, String(evidence.snapshot?.projectId ?? ''));
   check(bad.length === 0, `code signing on every signature that needs it${bad.length ? ` (entries ${bad.join(', ')})` : ''}`);
+  if (!Array.isArray(evidence.routes)) return;
+  const routes = evidence.routes;
+  // Check 6: each route version hashes to its routeHash
+  check(routes.every(r => sha256(canonicalJson(without(r, 'routeHash'))) === r.routeHash), `route versions (${routes.length})`);
+  const failures = checkSealingRun(history, routes, evidence.attestation || {});
+  if (failures === null) return;
+  for (const name of ['stage signatures of the sealing run', 'quorum and stage order', 'one stage per person']) check(!failures.includes(name), name);
 }
 
 function main(args) {

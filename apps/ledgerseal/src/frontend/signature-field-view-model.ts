@@ -19,6 +19,8 @@ export interface SignatureFieldView {
   action: 'SEAL' | 'RESEAL' | null;
 }
 
+export const FIELD_ROUTED_TEXT = 'This issue has an approval route: sign its stages in the LedgerSeal panel, then move the issue.';
+
 export const FIELD_SIGNED_TEXT = 'Signed. Select the transition button to finish. The signature can be used once, within 2 minutes.';
 
 /** What the field shows: a seal or approval form, or why no signature is possible or needed. */
@@ -28,6 +30,8 @@ export function buildSignatureFieldView(input: { loading: boolean; result: any; 
   if (input.loading) return { mode: 'LOADING', text: 'Loading the seal state...', ...none };
   if (input.error || !input.result) return { mode: 'ERROR', text: 'LedgerSeal could not load this issue. Sign in the LedgerSeal panel instead.', ...none };
   if (input.result.ok === false) return { mode: 'ERROR', text: String(input.result.message ?? 'LedgerSeal could not load this issue.'), ...none };
+  // ADR-017: a routed issue is signed stage by stage in the panel; this field does not sign route stages
+  if (input.result.route && !input.result.route.invalid) return { mode: 'NO_RIGHT', text: FIELD_ROUTED_TEXT, ...none };
   const view = buildPanelView({ loading: false, result: input.result, error: false });
   if (view.actions.approveChanges) {
     return { mode: 'APPROVE', text: view.statusSentence, needsReason: true, reasonLabel: 'Reason for approving these changes (required)', action: 'RESEAL' };

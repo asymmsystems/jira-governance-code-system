@@ -1,6 +1,6 @@
 # LedgerSeal offline evidence verifier
 
-An offline checker for the approval evidence that LedgerSeal for Jira Cloud exports. It is one file, `verify-evidence.mjs`, of about 135 lines, and uses only the Node.js standard library (`node:crypto`, `node:fs`, `node:path`, `node:url`). It needs no network and no access to Jira or to the LedgerSeal app.
+An offline checker for the approval evidence that LedgerSeal for Jira Cloud exports. It is one file, `verify-evidence.mjs`, of about 250 lines, and uses only the Node.js standard library (`node:crypto`, `node:fs`, `node:path`, `node:url`). It needs no network and no access to Jira or to the LedgerSeal app.
 
 Read it before you run it: that is the point of keeping it small.
 
@@ -13,8 +13,23 @@ Publisher: Asymm Systems, https://asymm.systems. Licence: Apache License 2.0 (se
 | 1 | Snapshot hash | The SHA-256 of the canonical JSON of `snapshot` equals `attestation.snapshotHash`. |
 | 2 | History chain | The history entries, sorted by `seq`, run 1, 2, 3 with no gap; each `prevEntryHash` equals the previous `entryHash` (the first equals 64 zeros); each `entryHash` is the SHA-256 of its entry without that field. |
 | 3 | Newest seal | The attestation's `certificateId` is the certificate of the newest seal entry in the history. |
-| 4 | Status | `attestation.status` is the state of the newest history entry that is not a redaction: `SEAL_VALID` for `LS_SEALED`, `SEAL_BROKEN` for `LS_CHANGED`, `SEAL_REVOKED` for `LS_REVOKED`. |
+| 4 | Status | `attestation.status` is the state of the newest history entry that is not a redaction and not an approval run entry (`LS_RUN_*`, format 2 only): `SEAL_VALID` for `LS_SEALED`, `SEAL_BROKEN` for `LS_CHANGED`, `SEAL_REVOKED` for `LS_REVOKED`. |
 | 5 | Signature | The Ed25519 signature `attestation.sig` verifies over the canonical JSON of the attestation without `sig`, with the public key you give. |
+
+### Format 2 (`ledgerseal-evidence/2`, version 1.4.0 and later)
+
+LedgerSeal exports format 2 when an issue was signed with a single-use signing code (code signing) or through an approval route. Format 1 files give exactly the same output and exit code as version 1.3.0. For format 2 the verifier adds:
+
+| # | Check | Passes when |
+|---|---|---|
+| 10a | Signing policies | Each entry of `signingPolicies`, sorted by `version`, hashes to its `policyHash` and names the hash before it (64 zeros for version 1). |
+| 10 | Code signing | Every seal, approval, revoke, stage signature and rejection made while a policy that names the snapshot's `projectId` was on carries `data.signing` with `method` `LS_ATL_EMAIL_OTP_1`, `components` 2, and that policy's version and hash; a row that claims code signing names a policy in the file. |
+| 6 | Route versions | Each entry of `routes` hashes (canonical JSON without `routeHash`) to its `routeHash`. |
+| 7 | Stage signatures of the sealing run | The newest seal's `stageSignatures` are exactly the run's `LS_RUN_SIGNED` entries, in order, and every one of them and the seal signed the attestation's `snapshotHash`. |
+| 8 | Quorum and stage order | Each required stage has at least its quorum of distinct signers, and no stage was signed before every stage of an earlier order group had its quorum. |
+| 9 | One stage per person | No person signed two stages, or twice, in the run. |
+
+Checks 6 to 9 run when the file has `routes`; 7 to 9 when the newest seal came from a route. A file still in approval (the newest entry is a run entry and no seal follows it) is not a sealed record, and version 1.3.0 fails it at check 3 or 4. Use version 1.4.0 or later for format 2: version 1.3.0 passes a finished routed seal on checks 1 to 5 but does not check the route or the code signing.
 
 Canonical JSON: object keys sorted by UTF-16 code unit at every level, no whitespace, undefined fields left out. `vectors.json` holds the test vectors; `--self-test` checks the code against them.
 
@@ -26,7 +41,7 @@ Evidence exported since then has a `parties` map from each token in the history 
 
 ## What a PASS means, and what it does not
 
-A PASS on all five checks means:
+A PASS on every check means:
 - the evidence file has not been changed since it was exported and signed, and
 - it was signed with the private key that belongs to the public key you used.
 
@@ -44,7 +59,7 @@ node verify-evidence.mjs --self-test
 
 Without a key file, the verifier reads `keys/<keyId>.pub.pem` next to the script, using the `keyId` named in the evidence.
 
-Every run makes all five checks and prints one line per check, for example:
+Every run makes every check that applies and prints one line per check, for example:
 
 ```text
 PASS snapshot hash
@@ -88,8 +103,10 @@ sha256sum -c SHA256SUMS
 
 ```bash
 node verify-evidence.mjs --self-test
-node --test test/verify.test.mjs
+npm test
 ```
+
+`--self-test` checks the canonical JSON against `vectors.json` and the route hashes against `vectors-route-1.json`. `test/format2.test.mjs` compares format 1 output with the saved output of version 1.3.0 for every fixture (`test/fixtures/expected-1.3.0/`) and checks format 2 files built with a key made for the test.
 
 The fixtures in `test/fixtures` are made-up records signed with a test key; they hold no customer data.
 

@@ -644,7 +644,7 @@ interface ApprovalRun {                // on SealedWorkEffort.run
 
 Row data:
 - `LS_RUN_SIGNED`: `{ runId, routeId, routeVersion, routeHash, stageId, qualifyingGroupId, snapshotHash, signing? }`
-- `LS_SEALED` at the end of a run: as v3 plus `{ runId, routeHash, routeVersion, stageId, stageSignatures: [entryHash...] }`
+- `LS_SEALED` at the end of a run: as v3 plus `{ runId, routeId, routeHash, routeVersion, stageId, qualifyingGroupId, snapshotHash, stageSignatures: [entryHash...], requiredStageIds }`
 - `LS_RUN_REJECTED`: `{ runId, stageId, snapshotHash, signing? }` with `reason`
 - `LS_RUN_VOIDED`: `{ runId, liveHash, changes }` (as an incident's data, without changing `everCompromised`)
 
@@ -654,7 +654,9 @@ Row data:
 |---|---|
 | `ls3:route:{routeId}` | `{ routeId, currentVersion, name }` |
 | `ls3:routever:{routeId}:{version}` | `RouteVersion`, created once |
-| `ls3:routebind:{projectId}:{issueTypeId or *}` | `{ routeId, setByPartyId, fromDate }` |
+| `ls3:routebind:{projectId}:{issueTypeId or all}` | `{ routeId, projectId, issueTypeId, setByPartyId, fromDate }`; "every issue type" is `*` in the API and `all` in the key (`*` is not a valid KVS key character, live 2026-11-08) |
+| `ls3:run:{issueId}` | `ApprovalRun` with its `recordHash` and the chain head it last wrote |
+| `ls3:runcontent:{contentId}:{part}` | the snapshot the stages of a run sign; deleted when the run ends |
 
 The binding lookup is two direct reads (issue type, then `*`), no query.
 
