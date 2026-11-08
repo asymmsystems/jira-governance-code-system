@@ -277,6 +277,69 @@ describe('the project page tabs', () => {
   });
 });
 
+describe('an inactive licence on the project page (owner decision Q9)', () => {
+  const LAPSED = { ok: false, error: { code: 'LICENSE_INACTIVE', message: 'The FourRealities licence for this site is not active. A site administrator can renew it in Manage apps.' } };
+
+  it('keeps both tabs: the dashboard tab shows the licence message, the reports tab lists and downloads existing reports', async () => {
+    bridgeState.context = { extension: { project: { key: 'PAY' } }, accountId: 'acc' };
+    answer({ getProjectDashboard: LAPSED, getEvidenceReports: { ...VIEW, licenceActive: false, canCreate: false, canSchedule: false, canDelete: false, reports: [DONE] }, getEvidenceReport: DETAIL });
+    let r: any;
+    await act(async () => { r = TestRenderer.create(<FourRealitiesApp />); });
+    mounted.push(r);
+    await settle(act);
+    expect(findAll(r.root, 'Tab').map(t => textOf(t.props.children))).toEqual(['Dashboard', 'Evidence reports']);
+    const panels = findAll(r.root, 'TabPanel');
+    expect(findAll(panels[0], 'SectionMessage').map(m => m.props.title)).toEqual(['Licence not active']);
+    expect(textOf(r.toJSON())).toContain('A site administrator can renew it in Manage apps.');
+    expect(textOf(r.toJSON())).not.toContain('Delivery evidence unavailable');
+    await act(async () => { findAll(r.root, 'Tabs')[0].props.onChange(1); });
+    await settle(act);
+    expect(bridgeState.invoke.mock.calls.map(c => c[0])).toContain('getEvidenceReports');
+    const reports = findAll(r.root, 'TabPanel')[1];
+    expect(findAll(reports, 'SectionMessage').map(m => m.props.title)).toContain('Licence not active');
+    expect(textOf(r.toJSON())).toContain('Existing reports can still be viewed and downloaded.');
+    expect(() => findButton(r.root, 'New evidence report')).toThrow();
+    await act(async () => { actionButton(r, 0, 'Download').props.onClick(); });
+    await settle(act);
+    expect(bridgeState.invoke.mock.calls.map(c => c[0])).toContain('getEvidenceReport');
+    const blob = { size: 3 };
+    mockDownload.mockResolvedValue([{ success: true, key: 'k', blob }]);
+    const cards = findAll(r.root, 'FileCard');
+    expect(cards.map(c => c.props.fileName)).toEqual(['f.json', 'f.csv', 'f-manifest.json', 'f-people.csv']);
+    expect(await cards[0].props.onDownload()).toBe(blob);
+    expect(mockDownload).toHaveBeenCalledWith({ functionKey: 'generateReportDownloadUrls', keys: [`reports/1/${RID}/report.json`] });
+    bridgeState.context = {};
+  });
+
+  it.each([
+    ['the issue panel', { extension: { issue: { id: '7', key: 'PAY-7' } } }],
+    ['the compact issue panel', { moduleKey: 'fourrealities-issue-context', extension: { issue: { id: '7', key: 'PAY-7' } } }]
+  ])('%s keeps its single licence message, with no tabs', async (_name, context) => {
+    bridgeState.context = context;
+    answer({ getIssueAlignment: LAPSED });
+    let r: any;
+    await act(async () => { r = TestRenderer.create(<FourRealitiesApp />); });
+    mounted.push(r);
+    await settle(act);
+    expect(findAll(r.root, 'Tabs')).toEqual([]);
+    expect(findAll(r.root, 'SectionMessage').map(m => m.props.title)).toEqual(['Licence not active']);
+    expect(bridgeState.invoke.mock.calls.map(c => c[0])).toEqual(['getIssueAlignment']);
+    bridgeState.context = {};
+  });
+
+  it('still shows the error, without tabs, when the dashboard fails for another reason', async () => {
+    bridgeState.context = { extension: { project: { key: 'PAY' } } };
+    answer({ getProjectDashboard: { ok: false, error: { code: 'JIRA_ERROR', message: 'Jira did not answer.' } } });
+    let r: any;
+    await act(async () => { r = TestRenderer.create(<FourRealitiesApp />); });
+    mounted.push(r);
+    await settle(act);
+    expect(findAll(r.root, 'Tabs')).toEqual([]);
+    expect(findAll(r.root, 'SectionMessage').map(m => m.props.title)).toEqual(['Delivery evidence unavailable']);
+    bridgeState.context = {};
+  });
+});
+
 describe('review round 2: issues not in the report (N-1)', () => {
   it('shows a badge with the count on the row and a notice in the download modal', async () => {
     answer({ getEvidenceReports: { ...VIEW, reports: [{ ...DONE, notReadable: 3 }, { ...DONE, reportId: 'one', notReadable: 1 }] }, getEvidenceReport: { ...DETAIL, notReadable: [{ issueId: '7', issueKey: 'PAY-7', reason: 'MOVED' }, { issueId: '8', issueKey: '', reason: 'NOT_READABLE' }] } });

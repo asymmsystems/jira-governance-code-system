@@ -43,6 +43,7 @@ import {
   setReportSettings
 } from '../../src/index';
 import { MemoryStorage } from '../storage/memory-storage';
+import { DefaultEvidenceReportManager } from '../../src/manager/default-evidence-report-manager';
 import { MemoryObjects } from '../manager/report-harness';
 import { consoleViolations } from '../support/console-rule';
 
@@ -149,6 +150,19 @@ describe('licence (owner decision Q9) and wiring', () => {
     expect(list).toMatchObject({ ok: true, canCreate: false, licenceActive: false });
     expect(await getReportSettings({}, inactive as never)).toMatchObject({ code: 'LICENSE_INACTIVE' });
     expect(await setReportSettings({}, inactive as never)).toMatchObject({ code: 'LICENSE_INACTIVE' });
+  });
+
+  it('passes the inactive licence to the detail and download of an existing report, and refuses neither (fix/fourrealities-licence-tab)', async () => {
+    mockUser.mockImplementation(async (p: string) => (String(p).includes('mypermissions') ? json(200, ADMIN) : json(200, [])));
+    const lapsed = { ...RUNTIME, license: { active: false } };
+    const detail = jest.spyOn(DefaultEvidenceReportManager.prototype, 'detail').mockResolvedValue({ ok: true } as never);
+    const urls = jest.spyOn(DefaultEvidenceReportManager.prototype, 'downloadUrls').mockResolvedValue({ 'https://os.test/k': 'k' });
+    const call = (key: string) => (handler as (e: unknown, r: unknown) => Promise<unknown>)({ call: { functionKey: key, payload: REPORT_CASES[key] }, context: CONTEXT }, lapsed);
+    expect(await call('getEvidenceReport')).toEqual({ ok: true });
+    expect(await call('generateReportDownloadUrls')).toEqual({ 'https://os.test/k': 'k' });
+    expect(detail.mock.calls[0][0]).toMatchObject({ projectKey: 'PAY', licenceActive: false });
+    expect(urls.mock.calls[0][0]).toMatchObject({ projectKey: 'PAY', licenceActive: false });
+    expect(await call('createEvidenceReport')).toMatchObject({ ok: false, error: { code: 'LICENSE_INACTIVE' } });
   });
 
   it('lets a Jira administrator read and save the report settings', async () => {

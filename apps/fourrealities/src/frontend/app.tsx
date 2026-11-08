@@ -76,17 +76,19 @@ export const FourRealitiesApp: React.FC = () => {
     );
   }
 
-  if (licenceInactive) {
-    return (
-      <AppSurface compact={compact}>
-        <SectionMessage appearance="warning" title="Licence not active">
-          <Text as="span">{errorMessage}</Text>
-        </SectionMessage>
-      </AppSurface>
-    );
-  }
+  const licenceMessage = (
+    <AppSurface compact={compact}>
+      <SectionMessage appearance="warning" title="Licence not active">
+        <Text as="span">{errorMessage}</Text>
+      </SectionMessage>
+    </AppSurface>
+  );
 
-  if (errorMessage || (isIssueView ? !row : !dashboard)) {
+  // The issue panel shows only the licence message. The project page keeps its tabs: with an inactive licence,
+  // existing evidence reports can still be listed and downloaded (owner decision Q9); only new ones are refused.
+  if (licenceInactive && isIssueView) return licenceMessage;
+
+  if (!licenceInactive && (errorMessage || (isIssueView ? !row : !dashboard))) {
     return (
       <AppSurface compact={compact}>
         <SectionMessage appearance="error" title="Delivery evidence unavailable">
@@ -113,7 +115,7 @@ export const FourRealitiesApp: React.FC = () => {
             <Tab>{REPORT_TAB}</Tab>
           </TabList>
           <TabPanel>
-            <ProjectDashboard view={dashboard as ProjectDashboardView} onRefresh={() => load(true)} viewerAccountId={viewerAccountId} />
+            {licenceInactive ? licenceMessage : <ProjectDashboard view={dashboard as ProjectDashboardView} onRefresh={() => load(true)} viewerAccountId={viewerAccountId} />}
           </TabPanel>
           <TabPanel>
             {tab === 1 ? <AppSurface><EvidenceReports /></AppSurface> : null}
