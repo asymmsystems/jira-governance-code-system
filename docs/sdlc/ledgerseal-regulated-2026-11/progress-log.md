@@ -263,3 +263,15 @@ LedgerSeal: tsc 0 errors; 63 suites, 808 tests; coverage statements 97.71%, bran
 - Report to the coordinator.
 
 **Next step:** in the LSP-10 panel, open the evidence. Read the JSON in the page (the parties map can be dropped) and run `tools/verifier/verify-evidence.mjs` on it with `keys/ls-dev-2026-11.pub.pem`. Then restore the LSP settings.
+
+## Fix round 3: completed (2026-11-08)
+- The revoke on LSP-10 was signed with its emailed code. Property: schema 4, `SEAL_REVOKED`, `approval.runState` COMPLETE, signed with `ls-dev-2026-11`.
+- The evidence (format 2, 3 entries) was read in the panel. The browser tool refused to return the raw file, so it was checked in the page by a port of the verifier's checks (WebCrypto, Ed25519 against the published `ls-dev-2026-11` key). All passed:
+  - snapshot hash, history chain, newest seal, status `SEAL_REVOKED`, signature;
+  - signing policies (5 versions in force);
+  - code signing on every signature (all 3 entries code-signed);
+  - declaration texts: entry 1 REJECT with `reject/1`, entry 2 SEAL with `approve/2`, entry 3 REVOKE with `revoke/1`, each hash matching the exported text;
+  - no run continues after it ended;
+  - route version hash.
+- `declarations` held exactly `approve/2`, `reject/1` and `revoke/1`.
+- Restored: the probe route is unbound ("No route is bound"), and code signing for LSP is off (policy version 6). LSP-10 stays revoked as the probe record. Production not touched.
