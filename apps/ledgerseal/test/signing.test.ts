@@ -12,11 +12,11 @@
 import * as declaration from '../src/domain/declaration';
 import { DECLARATION_V2 } from '../src/domain/declaration';
 import { codeEmail, codeMac, hasValidPolicyHash, isPart11Project, macEquals, newCode, nextPolicy, normaliseCode, validLockout, verifyEntries } from '../src/domain/signing';
-import { evidenceFlow, LedgerSealDeps, revokeFlow, sealIssueFlow, verifyIssueFlow } from '../src/service/ledger';
+import { evidenceFlow, LedgerSealDeps, policyReference, revokeFlow, sealIssueFlow, verifyIssueFlow } from '../src/service/ledger';
 import { ackAlertFlow, checkSigningCode, getSigningPolicyFlow, requestCodeFlow, setSigningPolicyFlow, signingAlertsFlow, unlockFlow } from '../src/service/signing';
-import { signingAuthority } from '../src/index';
+
 import { SigningRepository } from '../src/storage/signing-repository';
-import { FakeJira, MemoryStore, model, panelContext, sampleIssue } from './support/fakes';
+import { FakeJira, MemoryStore, model, panelContext, sampleIssue, clearRequestSlots } from './support/fakes';
 
 jest.mock('@forge/api', () => ({ __esModule: true, default: {}, route: () => '', privacy: { reportPersonalData: jest.fn() } }));
 jest.mock('@forge/kvs', () => ({ kvs: {}, WhereConditions: {} }));
@@ -63,7 +63,7 @@ const as = (jira: FakeJira, who: string) => {
 };
 
 async function askCode(jira: FakeJira, deps: LedgerSealDeps, who: string, action = 'SEAL') {
-  const res: any = await requestCodeFlow({ action }, as(jira, who), deps, signingAuthority);
+  const res: any = await requestCodeFlow({ action }, as(jira, who), deps);
   return { res, code: res.ok ? jira.lastCode(who) : '' };
 }
 
@@ -156,12 +156,12 @@ describe('code request (spec v4 section 14.2)', () => {
   it('refuses without identity, licence, issue, valid action or stage', async () => {
     const { jira, deps } = await setup();
     approve();
-    expect(((await requestCodeFlow({ action: 'SEAL' }, { extension: { issue: { id: '10001' } } }, deps, signingAuthority)) as any).code).toBe('NO_IDENTITY');
-    expect(((await requestCodeFlow({ action: 'SEAL' }, { ...as(jira, 'alice'), license: { active: false } }, deps, signingAuthority)) as any).code).toBe('LICENSE_INACTIVE');
-    expect(((await requestCodeFlow({ action: 'SEAL' }, { accountId: 'alice' }, deps, signingAuthority)) as any).code).toBe('MISSING_ISSUE');
-    expect(((await requestCodeFlow({ action: 'DELETE' }, as(jira, 'alice'), deps, signingAuthority)) as any).code).toBe('INVALID_REQUEST');
-    expect(((await requestCodeFlow({ action: 'SIGN_STAGE' }, as(jira, 'alice'), deps, signingAuthority)) as any).code).toBe('INVALID_REQUEST');
-    expect(((await requestCodeFlow({ action: 'SIGN_STAGE', stageId: 'Bad Id' }, as(jira, 'alice'), deps, signingAuthority)) as any).code).toBe('INVALID_REQUEST');
+    expect(((await requestCodeFlow({ action: 'SEAL' }, { extension: { issue: { id: '10001' } } }, deps)) as any).code).toBe('NO_IDENTITY');
+    expect(((await requestCodeFlow({ action: 'SEAL' }, { ...as(jira, 'alice'), license: { active: false } }, deps)) as any).code).toBe('LICENSE_INACTIVE');
+    expect(((await requestCodeFlow({ action: 'SEAL' }, { accountId: 'alice' }, deps)) as any).code).toBe('MISSING_ISSUE');
+    expect(((await requestCodeFlow({ action: 'DELETE' }, as(jira, 'alice'), deps)) as any).code).toBe('INVALID_REQUEST');
+    expect(((await requestCodeFlow({ action: 'SIGN_STAGE' }, as(jira, 'alice'), deps)) as any).code).toBe('INVALID_REQUEST');
+    expect(((await requestCodeFlow({ action: 'SIGN_STAGE', stageId: 'Bad Id' }, as(jira, 'alice'), deps)) as any).code).toBe('INVALID_REQUEST');
     expect(jira.notifications).toHaveLength(0);
   });
 
@@ -171,40 +171,40 @@ describe('code request (spec v4 section 14.2)', () => {
     jira.cannotBrowse.add('mallory');
     const sets = store.sets.length;
     const getScope = jest.spyOn(jira, 'getIssueScope');
-    const res: any = await requestCodeFlow({ action: 'SEAL' }, as(jira, 'mallory'), deps, signingAuthority);
+    const res: any = await requestCodeFlow({ action: 'SEAL' }, as(jira, 'mallory'), deps);
     expect(res.code).toBe('NO_BROWSE_PERMISSION');
     expect(getScope).not.toHaveBeenCalled();
     expect(store.sets.length).toBe(sets);
     jira.browseError = 'UNREACHABLE';
-    expect(((await requestCodeFlow({ action: 'SEAL' }, as(jira, 'alice'), deps, signingAuthority)) as any).code).toBe('JIRA_UNREACHABLE');
+    expect(((await requestCodeFlow({ action: 'SEAL' }, as(jira, 'alice'), deps)) as any).code).toBe('JIRA_UNREACHABLE');
   });
 
   it('sends nothing to a person who may not sign', async () => {
     const { jira, deps } = await setup();
     approve();
-    const res: any = await requestCodeFlow({ action: 'SEAL' }, as(jira, 'mallory'), deps, signingAuthority);
+    const res: any = await requestCodeFlow({ action: 'SEAL' }, as(jira, 'mallory'), deps);
     expect(res.code).toBe('NOT_APPROVER');
-    expect(((await requestCodeFlow({ action: 'SIGN_STAGE', stageId: 'qa' }, as(jira, 'alice'), deps, signingAuthority)) as any).code).toBe('NOT_APPROVER');
+    expect(((await requestCodeFlow({ action: 'SIGN_STAGE', stageId: 'qa' }, as(jira, 'alice'), deps)) as any).code).toBe('NOT_APPROVER');
     jira.permissionError = 'UNREACHABLE';
-    expect(((await requestCodeFlow({ action: 'SEAL' }, as(jira, 'alice'), deps, signingAuthority)) as any).code).toBe('JIRA_UNREACHABLE');
+    expect(((await requestCodeFlow({ action: 'SEAL' }, as(jira, 'alice'), deps)) as any).code).toBe('JIRA_UNREACHABLE');
     jira.permissionError = 'FORBIDDEN';
-    expect(((await requestCodeFlow({ action: 'SEAL' }, as(jira, 'alice'), deps, signingAuthority)) as any).code).toBe('NOT_APPROVER');
+    expect(((await requestCodeFlow({ action: 'SEAL' }, as(jira, 'alice'), deps)) as any).code).toBe('NOT_APPROVER');
     expect(jira.notifications).toHaveLength(0);
   });
 
   it('refuses outside a code-signing project, while the declaration is pending, and with a tampered policy', async () => {
     const { jira, store, deps } = await setup();
     approve(false);
-    expect(((await requestCodeFlow({ action: 'SEAL' }, as(jira, 'alice'), deps, signingAuthority)) as any).code).toBe('DECLARATION_PENDING');
+    expect(((await requestCodeFlow({ action: 'SEAL' }, as(jira, 'alice'), deps)) as any).code).toBe('DECLARATION_PENDING');
     approve(true);
     jira.issue.fields.project = { id: '200', key: 'OPS' };
-    expect(((await requestCodeFlow({ action: 'SEAL' }, as(jira, 'alice'), deps, signingAuthority)) as any).code).toBe('NOT_PART11');
+    expect(((await requestCodeFlow({ action: 'SEAL' }, as(jira, 'alice'), deps)) as any).code).toBe('NOT_PART11');
     jira.issue.fields.project = { id: '100', key: 'CHG' };
     jira.failScope = true;
-    expect(((await requestCodeFlow({ action: 'SEAL' }, as(jira, 'alice'), deps, signingAuthority)) as any).code).toBe('JIRA_UNREACHABLE');
+    expect(((await requestCodeFlow({ action: 'SEAL' }, as(jira, 'alice'), deps)) as any).code).toBe('JIRA_UNREACHABLE');
     jira.failScope = false;
     store.map.set('ls3:sig:policy', { ...store.map.get('ls3:sig:policy'), projectIds: ['999'] });
-    expect(((await requestCodeFlow({ action: 'SEAL' }, as(jira, 'alice'), deps, signingAuthority)) as any).code).toBe('POLICY_INVALID');
+    expect(((await requestCodeFlow({ action: 'SEAL' }, as(jira, 'alice'), deps)) as any).code).toBe('POLICY_INVALID');
     expect(jira.notifications).toHaveLength(0);
   });
 
@@ -217,10 +217,10 @@ describe('code request (spec v4 section 14.2)', () => {
     const party = await model.token(store, 'alice');
     // Window limit: the last-request time is pushed back each time, so only the window counts
     for (let i = 0; i < 4; i++) {
-      await repo.saveState({ ...(await repo.getState(party)), lastRequestAt: '2000-01-01T00:00:00.000Z' });
+      clearRequestSlots(store);
       expect((await askCode(jira, deps, 'alice')).res.ok).toBe(true);
     }
-    await repo.saveState({ ...(await repo.getState(party)), lastRequestAt: '2000-01-01T00:00:00.000Z' });
+    clearRequestSlots(store);
     expect((await askCode(jira, deps, 'alice')).res.code).toBe('RATE_LIMITED');
     expect(jira.notifications).toHaveLength(5);
     const alerts = await repo.alerts();
@@ -235,7 +235,7 @@ describe('code request (spec v4 section 14.2)', () => {
     expect(res.code).toBe('CODE_NOT_SENT');
     expect([...store.map.keys()].filter(k => k.startsWith('ls3:sig:chal:'))).toEqual([]);
     const alerts = await new SigningRepository(store, store).alerts();
-    expect(alerts.map(a => [a.kind, a.reason])).toEqual([['CODE_NOT_SENT', 'HTTP 403']]);
+    expect(alerts.filter(a => a.kind !== 'POLICY_CHANGED').map(a => [a.kind, a.reason])).toEqual([['CODE_NOT_SENT', 'HTTP 403']]);
   });
 
   it('refuses a locked person before sending', async () => {
@@ -319,7 +319,7 @@ describe('signing with the code (spec v4 section 14.3)', () => {
     expect(again.code).toBe('CODE_REUSED');
     expect(model.statusRows(store)).toHaveLength(1);
     const alerts = await new SigningRepository(store, store).alerts();
-    expect(alerts.map(a => a.kind)).toEqual(['CODE_REUSED']);
+    expect(alerts.filter(a => a.kind !== 'POLICY_CHANGED').map(a => a.kind)).toEqual(['CODE_REUSED']);
   });
 
   it('refuses a wrong code and counts it, without saying which part was wrong', async () => {
@@ -356,7 +356,7 @@ describe('signing with the code (spec v4 section 14.3)', () => {
     // A code for revoking does not seal
     jira.currentUser = 'alice';
     const repo = new SigningRepository(store, store);
-    await repo.saveState({ ...(await repo.getState(await model.token(store, 'alice'))), lastRequestAt: null });
+    clearRequestSlots(store);
     const revokeCode = await askCode(jira, deps, 'alice', 'REVOKE');
     expect(((await sealIssueFlow({ signature: V2(), signing: { challengeId: revokeCode.res.challengeId, code: revokeCode.code } }, as(jira, 'alice'), deps)) as any).code).toBe('SIGNING_FAILED');
     // A code for another issue does not seal this one
@@ -386,7 +386,7 @@ describe('signing with the code (spec v4 section 14.3)', () => {
     const repo = new SigningRepository(store, store);
     const failOnce = async () => {
       const party = await model.token(store, 'alice').catch(() => null);
-      if (party) await repo.saveState({ ...(await repo.getState(party)), lastRequestAt: null });
+      if (party) clearRequestSlots(store);
       const { res, code } = await askCode(jira, deps, 'alice');
       const wrong = code === '000000' ? '000001' : '000000';
       return sealIssueFlow({ signature: V2(), signing: { challengeId: res.challengeId, code: wrong } }, as(jira, 'alice'), deps) as Promise<any>;
@@ -398,7 +398,7 @@ describe('signing with the code (spec v4 section 14.3)', () => {
     expect((await repo.getState(party)).locked).toBe(true);
     expect((await askCode(jira, deps, 'alice')).res.code).toBe('SIGNING_LOCKED');
     const kinds = (await repo.alerts()).map(a => a.kind);
-    expect(kinds).toEqual(['SIGN_FAIL', 'SIGN_FAIL', 'SIGN_FAIL', 'LOCKED']);
+    expect(kinds).toEqual(['POLICY_CHANGED', 'SIGN_FAIL', 'SIGN_FAIL', 'SIGN_FAIL', 'LOCKED']);
     expect(verifyEntries(await repo.alerts())).toBe(true);
   });
 
@@ -408,7 +408,7 @@ describe('signing with the code (spec v4 section 14.3)', () => {
     const repo = new SigningRepository(store, store);
     const fresh = async () => {
       const party = await model.token(store, 'alice').catch(() => null);
-      if (party) await repo.saveState({ ...(await repo.getState(party)), lastRequestAt: null });
+      if (party) clearRequestSlots(store);
       return askCode(jira, deps, 'alice');
     };
     let r = await fresh();
@@ -422,28 +422,50 @@ describe('signing with the code (spec v4 section 14.3)', () => {
     expect((await repo.getState(await model.token(store, 'alice'))).locked).toBe(false);
   });
 
-  it('needs a code with the RESEAL action to approve changes, and a REVOKE code to revoke', async () => {
+  it('lets a SEAL code approve changes (review L-4), and needs a REVOKE code to revoke', async () => {
     const { jira, store, deps } = await setup();
     approve();
     expect((await signedSeal(jira, deps, 'alice')).ok).toBe(true);
     jira.edit('carol', new Date(Date.now() + 1000).toISOString(), 'summary', 'Changed');
-    // The issue changed: a SEAL code does not approve the changes
-    const repo = new SigningRepository(store, store);
-    await repo.saveState({ ...(await repo.getState(await model.token(store, 'bob').catch(() => 'none'))), partyId: await model.token(store, 'bob'), lastRequestAt: null });
+    // The issue changed between the request and the signature: the SEAL code approves the changes, and the
+    // honest mistake does not count towards the lockout
+    clearRequestSlots(store);
     const sealCode = await askCode(jira, deps, 'bob', 'SEAL');
-    expect(((await sealIssueFlow({ signature: V2({ reason: 'ok' }), signing: { challengeId: sealCode.res.challengeId, code: sealCode.code } }, as(jira, 'bob'), deps)) as any).code).toBe('SIGNING_FAILED');
-    await repo.saveState({ ...(await repo.getState(await model.token(store, 'bob'))), lastRequestAt: null });
-    const approveCode = await askCode(jira, deps, 'bob', 'RESEAL');
-    const approved: any = await sealIssueFlow({ signature: V2({ reason: 'ok' }), signing: { challengeId: approveCode.res.challengeId, code: approveCode.code } }, as(jira, 'bob'), deps);
+    const approved: any = await sealIssueFlow({ signature: V2({ reason: 'ok' }), signing: { challengeId: sealCode.res.challengeId, code: sealCode.code } }, as(jira, 'bob'), deps);
     expect(approved.ok).toBe(true);
     expect(model.statusRows(store).at(-1).transitionName).toBe('RESEAL');
+    // A REVOKE code does not seal
+    clearRequestSlots(store);
+    jira.edit('carol', new Date(Date.now() + 2000).toISOString(), 'summary', 'Changed again');
+    const foreign = await askCode(jira, deps, 'bob', 'REVOKE');
+    expect(((await sealIssueFlow({ signature: V2({ reason: 'ok' }), signing: { challengeId: foreign.res.challengeId, code: foreign.code } }, as(jira, 'bob'), deps)) as any).code).toBe('SIGNING_FAILED');
     // Revoke: no code refused, a REVOKE code accepted
     expect(((await revokeFlow({ reason: 'stop' }, as(jira, 'alice'), deps)) as any).code).toBe('SIGNING_REQUIRED');
-    await repo.saveState({ ...(await repo.getState(await model.token(store, 'alice'))), lastRequestAt: null });
+    clearRequestSlots(store);
     const revokeCode = await askCode(jira, deps, 'alice', 'REVOKE');
     const revoked: any = await revokeFlow({ reason: 'stop', signing: { challengeId: revokeCode.res.challengeId, code: revokeCode.code } }, as(jira, 'alice'), deps);
     expect(revoked.ok).toBe(true);
     expect(model.statusRows(store).at(-1).data.signing.method).toBe('LS_ATL_EMAIL_OTP_1');
+  });
+
+  it('names the policy a signature was checked against, and refuses when a policy was saved meanwhile (review M-1, L-9)', async () => {
+    const { jira, store, deps } = await setup();
+    approve();
+    const repo = new SigningRepository(store, store);
+    const p1 = (await repo.getPolicy())!;
+    const projectId = '100';
+    expect(await policyReference(deps, projectId, p1)).toEqual({ version: 1, policyHash: p1.policyHash });
+    // A project outside the policy: no code was needed, and the off decision still holds
+    expect(await policyReference(deps, '999', null)).toEqual({ version: 1, policyHash: p1.policyHash });
+    // Checked with no code while the project was on: refused
+    expect(await policyReference(deps, projectId, null)).toBe('changed');
+    jira.currentUser = 'admin';
+    expect(((await setSigningPolicyFlow({ enabled: true, projectKeys: ['CHG'], lockoutThreshold: 7 }, panelContext('admin'), deps)) as any).ok).toBe(true);
+    expect(await policyReference(deps, projectId, p1)).toBe('changed');
+    // No policy ever saved: no reference, and a code check against a policy that is gone is refused
+    const bare = new MemoryStore();
+    expect(await policyReference({ jira, storage: bare, secrets: bare }, projectId, null)).toBeNull();
+    expect(await policyReference({ jira, storage: bare, secrets: bare }, projectId, p1)).toBe('changed');
   });
 
   it('fails closed when the stored policy fails its hash', async () => {
@@ -532,17 +554,40 @@ describe('admin page (spec v4 section 14.4)', () => {
     const repo = new SigningRepository(store, store);
     await repo.saveState({ ...(await repo.getState(await model.token(store, 'alice'))), locked: true, lockedAt: 't' });
     const list: any = await signingAlertsFlow(as(jira, 'admin'), deps);
-    expect(list.alerts).toEqual([expect.objectContaining({ seq: 1, kind: 'CODE_NOT_SENT', accountId: 'alice', issueId: '10001' })]);
+    // Newest first: the send failure, then the policy change that turned code signing on (review L-5)
+    expect(list.alerts).toEqual([
+      expect.objectContaining({ seq: 2, kind: 'CODE_NOT_SENT', accountId: 'alice', issueId: '10001' }),
+      expect.objectContaining({ seq: 1, kind: 'POLICY_CHANGED', accountId: 'admin', reason: 'policy version 1: on' })
+    ]);
+    expect(list.openCount).toBe(2);
     expect(list.locked).toEqual([{ accountId: 'alice', lockedAt: 't' }]);
     expect(((await ackAlertFlow({ seq: 'x' }, as(jira, 'admin'), deps)) as any).code).toBe('INVALID_REQUEST');
     expect(((await ackAlertFlow({ seq: 9 }, as(jira, 'admin'), deps)) as any).code).toBe('INVALID_REQUEST');
+    expect(((await ackAlertFlow({ seq: 2 }, as(jira, 'admin'), deps)) as any).ok).toBe(true);
+    expect(((await ackAlertFlow({ seq: 2 }, as(jira, 'admin'), deps)) as any).already).toBe(true);
     expect(((await ackAlertFlow({ seq: 1 }, as(jira, 'admin'), deps)) as any).ok).toBe(true);
-    expect(((await ackAlertFlow({ seq: 1 }, as(jira, 'admin'), deps)) as any).already).toBe(true);
     expect(((await signingAlertsFlow(as(jira, 'admin'), deps)) as any).alerts).toEqual([]);
     const log = await repo.alerts();
-    expect(log.map(e => e.kind)).toEqual(['CODE_NOT_SENT', 'ACK']);
-    expect(log[1].ackSeq).toBe(1);
+    expect(log.map(e => e.kind)).toEqual(['POLICY_CHANGED', 'CODE_NOT_SENT', 'ACK', 'ACK']);
+    expect(log[2].ackSeq).toBe(2);
     expect(verifyEntries(log)).toBe(true);
+  });
+
+  it('builds the open-alert index once from a log written before it, and caps the rate alerts per window (review L-8)', async () => {
+    const { jira, store, deps } = await setup();
+    approve();
+    const repo = new SigningRepository(store, store);
+    // A log from before the index: drop the index keys, as on a site upgraded from 6.13.0
+    for (const key of [...store.map.keys()]) if (key.startsWith('ls3:sig:open')) store.map.delete(key);
+    const before: any = await signingAlertsFlow(as(jira, 'admin'), deps);
+    expect(before.alerts.map((a: any) => a.kind)).toEqual(['POLICY_CHANGED']);
+    // Ten refused requests in one window: ten history entries, one admin alert
+    expect((await askCode(jira, deps, 'alice')).res.ok).toBe(true);
+    for (let i = 0; i < 10; i++) await askCode(jira, deps, 'alice');
+    const party = await model.token(store, 'alice');
+    const history = [...store.map.entries()].filter(([k]) => k.startsWith(`ls3:sig:ev:${party}:`)).map(([, v]) => v.kind);
+    expect(history.filter(k => k === 'RATE_LIMITED')).toHaveLength(10);
+    expect((await repo.alerts()).filter(a => a.kind === 'RATE_LIMITED')).toHaveLength(1);
   });
 
   it('unlocks only with a reason, never for oneself, and only a locked person', async () => {
@@ -633,7 +678,7 @@ describe('records and evidence', () => {
     const repo = new SigningRepository(store, store);
     for (let i = 0; i < 3; i++) {
       const party = await model.token(store, 'alice').catch(() => null);
-      if (party) await repo.saveState({ ...(await repo.getState(party)), lastRequestAt: null });
+      if (party) clearRequestSlots(store);
       const { res, code } = await askCode(jira, deps, 'alice');
       codes.push(code);
       await sealIssueFlow({ signature: V2(), signing: { challengeId: res.challengeId, code: code === '000000' ? '000001' : '000000' } }, as(jira, 'alice'), deps);

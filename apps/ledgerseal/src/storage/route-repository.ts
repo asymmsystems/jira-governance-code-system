@@ -11,6 +11,10 @@ import { ApprovalRun, hasValidRouteHash, hasValidRunHash, RouteVersion } from '.
 import { StorageProvider } from './seal-repository';
 
 const pad = (n: number) => String(n).padStart(6, '0');
+/** A run lock older than this is stale (the Forge function limit is 25 seconds). */
+export const RUN_LOCK_STALE_MS = 60_000;
+const RUN_LOCK_TTL_SECONDS = 120;
+const DAY_SECONDS = 86400;
 /** "*" (every issue type) is not a valid KVS key character (live, development, 2026-11-08), so the key says "all". */
 const typeKey = (issueTypeId: string) => (issueTypeId === '*' ? 'all' : issueTypeId);
 
@@ -100,6 +104,31 @@ export class RouteRepository {
   async deleteRunContent(contentId: string, storage: StorageProvider = this.storage): Promise<void> {
     if (!contentId) return;
     for (const row of await storage.query(`ls3:runcontent:${contentId}:`)) await storage.delete(row.key);
+  }
+
+  /**
+   * Review H-1: the run lock. Every flow that changes an issue's run (stage signature, rejection, void, the end of a
+   * run on revoke) holds it while it re-reads the run, decides and writes, so no write is based on a stale run.
+   * Created once; a lock older than RUN_LOCK_STALE_MS (far above the 25-second Forge function limit) is taken over
+   * by exactly one caller through a create-once break key.
+   */
+  async acquireRunLock(issueId: string, owner: string, nowMs: number): Promise<boolean> {
+    const key = `ls3:runlock:${issueId}`;
+    const mine = { owner, at: nowMs };
+    if (await this.storage.createIfAbsent(key, mine, { ttlSeconds: RUN_LOCK_TTL_SECONDS })) return true;
+    const held = await this.storage.get(key);
+    if (!held) return this.storage.createIfAbsent(key, mine, { ttlSeconds: RUN_LOCK_TTL_SECONDS });
+    if (nowMs - Number(held.at) < RUN_LOCK_STALE_MS) return false;
+    if (!(await this.storage.createIfAbsent(`ls3:runlockbreak:${issueId}:${String(held.owner)}`, mine, { ttlSeconds: DAY_SECONDS }))) return false;
+    await this.storage.set(key, mine, { ttlSeconds: RUN_LOCK_TTL_SECONDS });
+    return true;
+  }
+
+  /** Releases the lock only when the caller still holds it (a taken-over lock is not removed). */
+  async releaseRunLock(issueId: string, owner: string): Promise<void> {
+    const key = `ls3:runlock:${issueId}`;
+    const held = await this.storage.get(key);
+    if (held && held.owner === owner) await this.storage.delete(key);
   }
 
   async deleteRun(issueId: string): Promise<void> {

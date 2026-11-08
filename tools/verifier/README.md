@@ -18,18 +18,20 @@ Publisher: Asymm Systems, https://asymm.systems. Licence: Apache License 2.0 (se
 
 ### Format 2 (`ledgerseal-evidence/2`, version 1.4.0 and later)
 
-LedgerSeal exports format 2 when an issue was signed with a single-use signing code (code signing) or through an approval route. Format 1 files give exactly the same output and exit code as version 1.3.0. For format 2 the verifier adds:
+LedgerSeal exports format 2 when an issue was signed with a single-use signing code (code signing) or through an approval route, or when its history names a code-signing policy. Format 1 files give exactly the same output and exit code as version 1.3.0.
+
+The verifier runs the format 2 checks whenever the content needs them, not only when the `format` field says `ledgerseal-evidence/2`. The content needs them when the signed attestation has `schemaVersion` 4, or a history entry is an approval run entry (`LS_RUN_*`) or has `data.runId`, `data.routeId`, `data.signing` or `data.signingPolicy`. So changing `format` to `ledgerseal-evidence/1` does not switch the checks off. For format 2 the verifier adds:
 
 | # | Check | Passes when |
 |---|---|---|
 | 10a | Signing policies | Each entry of `signingPolicies`, sorted by `version`, hashes to its `policyHash` and names the hash before it (64 zeros for version 1). |
-| 10 | Code signing | Every seal, approval, revoke, stage signature and rejection made while a policy that names the snapshot's `projectId` was on carries `data.signing` with `method` `LS_ATL_EMAIL_OTP_1`, `components` 2, and that policy's version and hash; a row that claims code signing names a policy in the file. |
-| 6 | Route versions | Each entry of `routes` hashes (canonical JSON without `routeHash`) to its `routeHash`. |
+| 10 | Code signing | Every seal, approval, revoke, stage signature and rejection made while a policy that names the snapshot's `projectId` was on carries `data.signing` with `method` `LS_ATL_EMAIL_OTP_1`, `components` 2, and that policy's version and hash; a row that claims code signing names a policy in the file. The policy in force for an entry is the one it names in `data.signingPolicy` (`version` and `policyHash`); that policy must be in `signingPolicies` with the same hash, so a replaced or emptied policy list fails. Only an entry written by an earlier LedgerSeal release, which has no `data.signingPolicy`, uses the newest policy whose `fromDate` is not after the entry. |
+| 6 | Route versions | Each entry of `routes` hashes (canonical JSON without `routeHash`) to its `routeHash`. A file whose history has route entries but no `routes` list fails this check. |
 | 7 | Stage signatures of the sealing run | The newest seal's `stageSignatures` are exactly the run's `LS_RUN_SIGNED` entries, in order, and every one of them and the seal signed the attestation's `snapshotHash`. |
 | 8 | Quorum and stage order | Each required stage has at least its quorum of distinct signers, and no stage was signed before every stage of an earlier order group had its quorum. |
 | 9 | One stage per person | No person signed two stages, or twice, in the run. |
 
-Checks 6 to 9 run when the file has `routes`; 7 to 9 when the newest seal came from a route. A file still in approval (the newest entry is a run entry and no seal follows it) is not a sealed record, and version 1.3.0 fails it at check 3 or 4. Use version 1.4.0 or later for format 2: version 1.3.0 passes a finished routed seal on checks 1 to 5 but does not check the route or the code signing.
+Check 6 runs when the file has `routes` or its history has route entries; 7 to 9 when the newest seal came from a route. A file still in approval (the newest entry is a run entry and no seal follows it) is not a sealed record, and version 1.3.0 fails it at check 3 or 4. Use version 1.4.0 or later for format 2: version 1.3.0 passes a finished routed seal on checks 1 to 5 but does not check the route or the code signing.
 
 Canonical JSON: object keys sorted by UTF-16 code unit at every level, no whitespace, undefined fields left out. `vectors.json` holds the test vectors; `--self-test` checks the code against them.
 
@@ -42,8 +44,12 @@ Evidence exported since then has a `parties` map from each token in the history 
 ## What a PASS means, and what it does not
 
 A PASS on every check means:
-- the evidence file has not been changed since it was exported and signed, and
-- it was signed with the private key that belongs to the public key you used.
+- the attestation was signed with the private key that belongs to the public key you used, and has not been changed since;
+- the snapshot is the one the attestation names (its hash is in the signed attestation);
+- the history is one unbroken hash chain whose newest seal and state match the signed attestation; and
+- in format 2, the signing policies, the route versions and the run's signatures that the history names are consistent with it.
+
+Only the attestation is signed. The history, `signingPolicies` and `routes` are bound to it by hashes, not by the signature: each history entry names its policy and route versions by hash, and the newest seal and state must match the attestation. The `format`, `exportedAt`, `parties` and `verification` fields are not signed, and no check depends on them.
 
 It does not mean that nobody could have created a different, consistent record. Asymm Systems holds the LedgerSeal signing key, and anyone who can rewrite the app's stored data, including the vendor, could write a new consistent chain. The evidence also covers only the fields, comments and attachments that LedgerSeal recorded in its snapshot.
 

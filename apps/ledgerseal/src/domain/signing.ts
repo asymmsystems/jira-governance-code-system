@@ -63,7 +63,7 @@ export interface SigningState {
   lastRequestAt: string | null;
 }
 
-export type ChainKind = 'CODE_SENT' | 'CODE_NOT_SENT' | 'SIGN_OK' | 'SIGN_FAIL' | 'CODE_REUSED' | 'LOCKED' | 'UNLOCKED' | 'RATE_LIMITED' | 'ACK';
+export type ChainKind = 'CODE_SENT' | 'CODE_NOT_SENT' | 'SIGN_OK' | 'SIGN_FAIL' | 'CODE_REUSED' | 'LOCKED' | 'UNLOCKED' | 'RATE_LIMITED' | 'POLICY_CHANGED' | 'ACK';
 
 export interface ChainEntry {
   seq: number;
@@ -200,7 +200,7 @@ export function verifyEntries(entries: ChainEntry[]): boolean {
 }
 
 /** The alert kinds: shown on the admin page until a Jira admin acknowledges them. */
-export const ALERT_KINDS: readonly ChainKind[] = ['SIGN_FAIL', 'CODE_REUSED', 'LOCKED', 'RATE_LIMITED', 'CODE_NOT_SENT'];
+export const ALERT_KINDS: readonly ChainKind[] = ['SIGN_FAIL', 'CODE_REUSED', 'LOCKED', 'RATE_LIMITED', 'CODE_NOT_SENT', 'POLICY_CHANGED'];
 
 /** The words of the email; the code is the only secret in it, and the email goes only to the signer. */
 export function codeEmail(code: string, issueKey: string, action: SigningAction): { subject: string; textBody: string; htmlBody: string } {

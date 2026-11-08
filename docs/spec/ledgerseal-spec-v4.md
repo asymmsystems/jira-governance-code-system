@@ -488,21 +488,23 @@ The seal form shows this exact text with "(Declaration v1)". The record stores t
 Payload: `{ action: 'SEAL' | 'RESEAL' | 'REVOKE' | 'SIGN_STAGE' | 'REJECT' | 'TRANSITION', stageId? }`. The issue comes from the context.
 1. Identity, licence and Browse checks (spec v3 section 7.3 steps 1 and 2, Q3).
 2. The project is a Part 11 project, or `NOT_PART11`.
-3. The caller may perform the action: approver (spec v3 section 7.1) for SEAL, RESEAL and REVOKE; a member of an open stage's groups for SIGN_STAGE and REJECT (section 15); either for TRANSITION. Otherwise `NOT_APPROVER`. Nothing is sent to a person who cannot sign.
+3. The caller may perform the action: approver (spec v3 section 7.1) for SEAL, RESEAL, REVOKE and TRANSITION; a member of an open stage's groups for SIGN_STAGE and REJECT (section 15). Otherwise `NOT_APPROVER`. Nothing is sent to a person who cannot sign. The check is made in the flow itself; for a stage, the caller's groups are read as the user before the route is read as the app (fix round 1 L-7).
 4. Not locked, or `SIGNING_LOCKED`.
-5. Rate limits: at most one request per 30 seconds and 5 per 15 minutes per person, or `RATE_LIMITED` (an event and an alert).
+5. Rate limits: at most one request per 30 seconds and 5 per 15 minutes per person, or `RATE_LIMITED` (an event; an alert once per rule and 15-minute window, fix round 1 L-8). Both rules are create-once claims, not reads (fix round 1 H-2): the 30-second rule claims the request's own 5-second slot and the 6 after it (`ls3:sig:reqslot:{party}:{slot}`), so two requests less than 30 seconds apart always collide and requests 35 seconds or more apart never do.
 6. Make the challenge: `challengeId` (128 random bits, base64url), code (6 digits, `crypto.randomInt`), `codeMac` = HMAC-SHA-256(site signing key, `challengeId + ":" + code`), `expiresAt` = now + 5 minutes. Store `ls3:sig:chal:{challengeId}` (TTL 1 day).
-7. Send, as the app: `POST /rest/api/3/issue/{issueId}/notify` with `to.users` = the caller, subject "LedgerSeal signing code for {issueKey}", and a body with the code, the action and "It works once, for 5 minutes. If you did not ask for it, tell your Jira admin." Any status other than 204 gives `CODE_NOT_SENT` (an event and an alert); the challenge is deleted.
+7. Send, as the app: `POST /rest/api/3/issue/{issueId}/notify` with `to.users` = the caller and `reporter`, `assignee`, `watchers` and `voters` set to `false`, `groups` and `groupIds` empty (fix round 1 M-2), subject "LedgerSeal signing code for {issueKey}", and a body with the code, the action and "It works once, for 5 minutes. If you did not ask for it, tell your Jira admin." Any status other than 204 gives `CODE_NOT_SENT` (an event and an alert); the challenge is deleted.
 8. Event `CODE_SENT`. Result: `{ ok: true, challengeId, expiresAt }`. The code is never returned.
 
 ### 14.3 Code check (inside every signing flow, after every other check and before the first write)
 Payload gains `signing: { challengeId, code }`.
-1. Not locked, or `SIGNING_LOCKED`.
-2. The challenge exists, belongs to the caller's party token, the context issue and the action (and stage), and is not expired; else `SIGNING_FAILED` (an expired one: `CODE_EXPIRED`).
-3. At most 3 wrong codes per challenge (claim `ls3:sig:chalfail:{challengeId}:{n}`, `FAIL_IF_EXISTS`); the fourth answer is `SIGNING_FAILED` whatever the code.
-4. Compare the MAC with `timingSafeEqual`. A mismatch counts a failure: claim `ls3:sig:fail:{party}:{series}:{n}` for the next free n (`FAIL_IF_EXISTS`, TTL 30 days); when n reaches the threshold, lock (event `LOCKED`, alert). Event `SIGN_FAIL`, alert. Answer `SIGNING_FAILED` (the message never says which part was wrong).
-5. A match claims `ls3:sig:used:{challengeId}` (`FAIL_IF_EXISTS`). If it exists: `CODE_REUSED` (counts as a failure).
-6. Success starts a new failure series (the count of failures in a row resets) and writes event `SIGN_OK` with the issue and the action. The flow then writes its row with `data.signing` (14.5).
+Fix round 1 (H-2): every limit is a create-once claim taken before the code is compared, so parallel answers cannot compare more codes than the sequential rules allow.
+1. The person's current series is not locked (`ls3:sig:lock:{party}:{series}` absent), or `SIGNING_LOCKED`.
+2. The challenge exists, belongs to the caller's party token, the context issue and the action (and stage), and is not expired; else `SIGNING_FAILED`, counted as a failure (an expired one: `CODE_EXPIRED`, recorded, not counted). A `SEAL` code also approves changes and a `RESEAL` code also seals, because the issue may change between the request and the signature (L-4); `REVOKE`, stage and `TRANSITION` codes stay bound to their action.
+3. Claim one of the challenge's 3 answer slots (`ls3:sig:attempt:{challengeId}:{n}`, n = 1 to 3). No slot left: `SIGNING_FAILED`, counted.
+4. Claim the next failure slot of the series (`ls3:sig:fail:{party}:{series}:{n}`, n up to the threshold, TTL 30 days). No slot left: lock.
+5. Compare the MAC with `timingSafeEqual`. A mismatch keeps the failure slot (event `SIGN_FAIL`, alert); when its n reaches the threshold, lock: create the lock key once (event `LOCKED`, alert). Answer `SIGNING_FAILED` (the message never says which part was wrong).
+6. A match checks the lock again (a parallel failure may have locked the series), then claims `ls3:sig:used:{challengeId}`. If it exists: `CODE_REUSED` (event and alert; the failure slot is given back, so a double submit does not count, L-4).
+7. Success gives the slot back, starts the next series once (`ls3:sig:series:{party}:{series + 1}`, create-once) and writes event `SIGN_OK` with the issue and the action. The flow then writes its row with `data.signing` (14.5). An unlock also starts the next series; a lock is never cleared, it stays on its series as a record.
 
 ### 14.4 Unlock and alerts (admin page)
 - `signing-policy-get-api`, `signing-policy-set-api`: Jira admin only (as spec v3 section 7.1).
@@ -510,6 +512,7 @@ Payload gains `signing: { challengeId, code }`.
 - `signing-unlock-api` `{ accountId, reason }`: Jira admin, not for self (`SELF_UNLOCK`); reason 1 to 500 characters; event `UNLOCKED`, new failure series.
 - `signing-alerts-api` `{ fromSeq? }` and `signing-alert-ack-api` `{ seq }`: Jira admin. The admin page lists alerts not yet acknowledged, newest first; an acknowledgement is a new chained entry `ACK` naming the alert's seq.
 - No alert is emailed (Q-02). The admin page shows "No email is sent for these alerts. Check this page."
+- Fix round 1: every saved policy version (on, off, projects, lockout) raises a `POLICY_CHANGED` alert naming the admin (L-5). The page reads an index of open alerts (`ls3:sig:open:{seq}`, kept with the log and built once from the log on first use), not the whole log (L-8).
 
 ### 14.5 Data
 ```typescript
@@ -535,7 +538,7 @@ interface SigningState {                  // ls3:sig:state:{partyToken}
 }
 interface ChainEntry {                    // ls3:sig:ev:{partyToken}:{seq} and ls3:sig:alert:{seq}, created once
   seq: number; at: string;
-  kind: 'CODE_SENT' | 'CODE_NOT_SENT' | 'SIGN_OK' | 'SIGN_FAIL' | 'CODE_REUSED' | 'LOCKED' | 'UNLOCKED' | 'RATE_LIMITED' | 'ACK';
+  kind: 'CODE_SENT' | 'CODE_NOT_SENT' | 'SIGN_OK' | 'SIGN_FAIL' | 'CODE_REUSED' | 'LOCKED' | 'UNLOCKED' | 'RATE_LIMITED' | 'POLICY_CHANGED' | 'ACK';
   partyId: string | null;                 // whom the entry is about
   byPartyId: string | null;               // who acted (an admin for UNLOCKED and ACK); null for the app
   issueId: string | null; action: string | null; challengeId: string | null; reason: string | null; ackSeq: number | null;
@@ -543,6 +546,9 @@ interface ChainEntry {                    // ls3:sig:ev:{partyToken}:{seq} and l
 }
 // Status row data (WorkEffortStatus.data), only in a Part 11 project
 signing?: { method: 'LS_ATL_EMAIL_OTP_1'; components: 2; mode: 'PART11'; challengeId: string; policyVersion: number; policyHash: string }
+// Fix round 1 (M-1): every signature row (seal, reseal, revoke, stage signature, rejection) names the policy in force,
+// on or off, once any policy was saved; a policy saved during the signature refuses it (POLICY_CHANGED)
+signingPolicy?: { version: number; policyHash: string }
 ```
 
 | Key | Value |
@@ -550,17 +556,19 @@ signing?: { method: 'LS_ATL_EMAIL_OTP_1'; components: 2; mode: 'PART11'; challen
 | `ls3:sig:key` (secret store, `kvs.setSecret`, created once) | the site signing key, 32 random bytes, base64 |
 | `ls3:sig:policy`, `ls3:sig:policyver:{n}` | `SigningPolicy` |
 | `ls3:sig:chal:{challengeId}` | `SigningChallenge`, TTL 1 day |
-| `ls3:sig:used:{challengeId}`, `ls3:sig:chalfail:{challengeId}:{n}` | claims, TTL 1 day |
+| `ls3:sig:used:{challengeId}`, `ls3:sig:attempt:{challengeId}:{n}` | claims, TTL 1 day |
 | `ls3:sig:fail:{party}:{series}:{n}` | failure claims, TTL 30 days |
-| `ls3:sig:req:{party}:{window}:{n}` | rate-limit claims (window = 15-minute slot), TTL 1 day |
-| `ls3:sig:state:{party}` | `SigningState` |
+| `ls3:sig:series:{party}:{n}`, `ls3:sig:lock:{party}:{series}` | series start and lock, created once (fix round 1) |
+| `ls3:sig:req:{party}:{window}:{n}`, `ls3:sig:reqslot:{party}:{slot}` | rate-limit claims (window = 15-minute slot; slot = 5 seconds), TTL 1 day |
+| `ls3:sig:alertonce:{name}`, `ls3:sig:open:{seq}`, `ls3:sig:openindex` | one rate alert per rule and window; the open-alert index (fix round 1) |
+| `ls3:sig:state:{party}` | `SigningState` hint: the series and the last request time (the series and the lock are derived from the keys above) |
 | `ls3:sig:ev:{party}:{seq}`, `ls3:sig:evhead:{party}` | per-person signing history and its head |
 | `ls3:sig:alert:{seq}`, `ls3:sig:alerthead` | site alert log and its head |
 
 A chain append reads the head, moves forward over entries that exist, then claims the next seq with `FAIL_IF_EXISTS` (a lost race moves on to the next seq), then updates the head.
 
 ### 14.6 Error codes (new)
-`NOT_PART11`, `SIGNING_REQUIRED` (a Part 11 project and no `signing` in the payload), `SIGNING_FAILED`, `CODE_EXPIRED`, `CODE_REUSED`, `SIGNING_LOCKED`, `RATE_LIMITED`, `CODE_NOT_SENT`, `SELF_UNLOCK`, `DECLARATION_PENDING` (turning the mode on while declaration version 2 is not approved).
+`NOT_PART11`, `POLICY_CHANGED` (fix round 1: the policy, or for a transition-screen intent the route binding, changed while the person signed), `SIGNING_REQUIRED` (a Part 11 project and no `signing` in the payload), `SIGNING_FAILED`, `CODE_EXPIRED`, `CODE_REUSED`, `SIGNING_LOCKED`, `RATE_LIMITED`, `CODE_NOT_SENT`, `SELF_UNLOCK`, `DECLARATION_PENDING` (turning the mode on while declaration version 2 is not approved).
 
 ### 14.7 Scope and questionnaire
 - New scope `send:notification:jira` (granular, Beta in the Jira OpenAPI, as is the existing `write:issue.property:jira`). It is used only to send the code to the signer. The production deploy is a major version; site admins consent on upgrade.
@@ -595,6 +603,8 @@ Events, alerts and challenges hold party tokens and issue ids, never an account 
 Payload adds `stageId`. Steps after v3 step 6: resolve the route (binding, then pinned version of the open run); check the stage is open; check the caller is in a stage group (as user) and has not signed another stage of this run; check the separation of duties of v3 section 7.2 for every stage; check `viewHash` equals the run's snapshot hash (a new run takes the live hash); write the row. The first row of a run stores the snapshot content (`ls3:content:`), so every stage signs the same stored content.
 
 `reject-stage-api`: payload `{ stageId, reason, signing? }`; same checks; writes `LS_RUN_REJECTED`.
+
+Fix round 1 (H-1): every flow that changes a run (stage signature, rejection, void, the end of a run on revoke) holds the issue's run lock (`ls3:runlock:{issueId}`, created once; a lock older than 60 seconds is taken over by exactly one caller through a create-once break key; a busy lock is retried for about 4 seconds, then `CONFLICT`). Under the lock the flow reads the run again and repeats the run decisions: the stage is open, the person has not signed another stage of the run, an open run still holds the person's snapshot, and the run the checks saw has not ended (else `ISSUE_CHANGED`). The panel's `canReject` applies "one person, one stage" as the flow does (L-6).
 
 ### 15.4 Attestation schema 4 (v3 section 8)
 Adds, only for an issue with a bound route:
@@ -668,14 +678,14 @@ The binding lookup is two direct reads (issue type, then `*`), no query.
 **Canonical form of a route**: canonical JSON as v3 section 4.1 of the `RouteVersion` without `routeHash`; arrays keep their order except `approverGroups` and `gatesStatusIds`, sorted by id. New vectors in `tools/verifier/vectors-route-1.json`.
 
 ### 15.7 Evidence format 2 and verifier 1.4.0 (v3 section 11)
-- `seal-evidence-api` returns `format: "ledgerseal-evidence/2"` when the history holds a run row, a stage-signed seal or a `signing` object, and `ledgerseal-evidence/1` otherwise (unchanged bytes for every existing issue).
+- `seal-evidence-api` returns `format: "ledgerseal-evidence/2"` when the history holds a run row, a stage-signed seal, a `signing` object or a `signingPolicy` reference (fix round 1), and `ledgerseal-evidence/1` otherwise (unchanged bytes for every existing issue).
 - Format 2 adds `routes: RouteVersion[]` (each version named by the history) and `signingPolicies: SigningPolicy[]` (versions in force, without group names if the owner prefers, Q-11).
-- Verifier 1.4.0, for format 2 only, adds:
+- Verifier 1.4.0 runs these checks whenever the content needs them (attestation `schemaVersion` 4; an `LS_RUN_*` row; `data.runId`, `data.routeId`, `data.signing` or `data.signingPolicy`), whatever the unsigned `format` field says (fix round 1 M-1). Routed content without `routes` fails check 6. It adds:
   6. each route version's hash recomputes;
   7. every `LS_RUN_SIGNED` row of the sealing run, and the `LS_SEALED` row, carry the attestation's `snapshotHash`, and `stageSignatures` equals the run's signature rows;
   8. quorum per stage (distinct `setByPartyId`) and order groups signed in order;
   9. no party signs two stages of one run;
-  10. a row after a Part 11 policy version came into force carries `signing` with `components: 2`.
+  10. a signature row made under a Part 11 policy that names the project carries `signing` with `components: 2` and that policy's version and hash. The policy in force is the one the row names in `data.signingPolicy`, which must be in `signingPolicies` with the same hash (a swapped or emptied list fails); only a row written by an earlier release, without the reference, uses the policy dates (fix round 1 M-1, L-9).
 - Check 4 skips `LS_RUN_SIGNED`, `LS_RUN_REJECTED` and `LS_RUN_VOIDED` rows, as it skips `LS_REDACTED`.
 - A format-1 file gives the same output and exit code as v1.3.0 (tested with every existing fixture).
 - Compatibility of v1.3.0 with format 2: a finished routed seal passes checks 1 to 5 but its route is not checked; an issue still in approval fails check 3 or 4. v1.3.0 never passes a record that is not sealed. The verifier README and the user guide say "use 1.4.0 or later for format 2". Version number: 1.4.0, because no existing result changes (Q-09).
@@ -795,6 +805,14 @@ Overall wording for the listing's "Honest Compliance Boundary", proposed for the
 | Q-12 | Signature field on an issue sealed before 2.3.0 | Show CHANGED until approved; admin guide says so | ADR-018 |
 | Q-13 | Lockout threshold and lifetime | Lockout 5 (3 to 10); code lifetime 5 minutes (fixed) | ADR-016 |
 | Q-14 | Listing and site copy | After release and live probes only | ADR-016 |
+
+## 18A. Fix round 1 (independent review of 427f6c9, 2026-11-08)
+
+The review is `repository/tmp/ls-regulated-review/REVIEW.md`. The changes are written into sections 14.2 to 14.6, 15.3 and 15.7 above; the progress log has a row per finding. In addition:
+- **Transition-screen intents (L-1, L-3):** the validator re-reads the code-signing policy and the route binding when it completes an intent, and refuses on any difference (`POLICY_CHANGED`, `ROUTED`). The intent stores the issue key too; a validator payload with only a key must match it.
+- **Validator (M-3):** any error inside the gate gives `{ result: false }` with "LedgerSeal could not complete its check, so this transition is blocked. Try again in a minute." (fail closed by construction).
+- **Open by design, stated (L-2):** an intent and its `TRANSITION` code are bound to the party, the issue, the shown hash, the stage and the meaning, not to one transition or target status. Within its 120 seconds the signer can use it on another transition of the same issue; the row records the real target status. ADR-018 binds no more than this.
+- **By spec, stated (L-6):** a rejection blocks the gated transitions until a new run starts, even when the issue has a valid seal (section 15.5). One member of a stage group can therefore stop the workflow until someone signs again; the rejection, its reason and its author are in the chained history.
 
 ## 19. Sources
 Each ADR lists its sources with URLs. Spike evidence: `docs/sdlc/ledgerseal-regulated-2026-11/spike-results.md`.

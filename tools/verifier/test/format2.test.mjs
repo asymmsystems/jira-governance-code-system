@@ -54,7 +54,7 @@ export function evidence({ rows, policies, projectId = '100' }) {
   const snapshotHash = sha256(canonicalJson(snapshot));
   let prev = GENESIS;
   const history = rows.map((r, i) => {
-    const row = { workEffortId: '10001', statusId: 'LS_SEALED', statusDatetime: r.at, setByPartyId: 'pty_' + 'b'.repeat(32), reason: null, transitionName: r.transitionName ?? (i === 0 ? 'SEAL' : 'RESEAL'), seq: i + 1, data: { certificateId: `cert-${i + 1}`, snapshotHash, ...(r.signing ? { signing: r.signing } : {}) }, prevEntryHash: prev, entryHash: '' };
+    const row = { workEffortId: '10001', statusId: 'LS_SEALED', statusDatetime: r.at, setByPartyId: 'pty_' + 'b'.repeat(32), reason: null, transitionName: r.transitionName ?? (i === 0 ? 'SEAL' : 'RESEAL'), seq: i + 1, data: { certificateId: `cert-${i + 1}`, snapshotHash, ...(r.signing ? { signing: r.signing } : {}), ...(r.policyRef ? { signingPolicy: r.policyRef } : {}) }, prevEntryHash: prev, entryHash: '' };
     if (r.statusId) row.statusId = r.statusId;
     row.entryHash = sha256(canonicalJson(without(row, 'entryHash')));
     prev = row.entryHash;
@@ -141,6 +141,45 @@ describe('verifier 1.4.0: format 2 code signing', () => {
   });
 });
 
+const ref = p => ({ version: p.version, policyHash: p.policyHash });
+
+describe('verifier 1.4.0: the format and the policy in force cannot be switched off by an edit (review M-1)', () => {
+  const p1 = policy(null, {});
+  const unsignedUnderP1 = () => evidence({ policies: [p1], rows: [{ at: '2026-11-08T01:00:00.000Z', policyRef: ref(p1) }] });
+
+  it('runs the format 2 checks when the content needs them, whatever the format field says', () => {
+    const ev = unsignedUnderP1();
+    assert.strictEqual(check(ev).status, 1);
+    const downgraded = check({ ...ev, format: 'ledgerseal-evidence/1' });
+    assert.strictEqual(downgraded.status, 1, downgraded.stdout);
+    assert.match(downgraded.stdout, /FAIL code signing on every signature that needs it \(entries 1\)/);
+    const dropped = check({ ...ev, format: 'ledgerseal-evidence/1', signingPolicies: undefined });
+    assert.strictEqual(dropped.status, 1, dropped.stdout);
+  });
+
+  it('fails a swapped policy list (self-consistent, turned off) and an emptied one', () => {
+    const off = policy(null, { enabled: false });
+    const swapped = check({ ...unsignedUnderP1(), signingPolicies: [off] });
+    assert.match(swapped.stdout, /PASS signing policies \(1 versions\)/);
+    assert.match(swapped.stdout, /FAIL code signing on every signature that needs it \(entries 1\)/);
+    assert.strictEqual(swapped.status, 1);
+    const emptied = check({ ...unsignedUnderP1(), signingPolicies: [] });
+    assert.strictEqual(emptied.status, 1, emptied.stdout);
+  });
+
+  it('passes a row that names an off policy without a code, and reads the named policy, not the dates (review L-9)', () => {
+    const off = policy(null, { enabled: false });
+    const honest = check(evidence({ policies: [off], rows: [{ at: '2026-11-08T01:00:00.000Z', policyRef: ref(off) }] }));
+    assert.strictEqual(honest.status, 0, honest.stdout);
+    // Policy 2 was saved before the row's time, but the row was checked against policy 1 and names it
+    const p2 = policy(p1, { fromDate: '2026-11-08T00:30:00.000Z' });
+    const named = check(evidence({ policies: [p1, p2], rows: [{ at: '2026-11-08T01:00:00.000Z', signing: signing(p1), policyRef: ref(p1) }] }));
+    assert.strictEqual(named.status, 0, named.stdout);
+    const mismatch = check(evidence({ policies: [p1, p2], rows: [{ at: '2026-11-08T01:00:00.000Z', signing: signing(p1), policyRef: ref(p2) }] }));
+    assert.strictEqual(mismatch.status, 1, mismatch.stdout);
+  });
+});
+
 /** A route version with its hash, as the app stores it (groups and gates sorted). */
 function route(stages, version = 1) {
   const draft = { schemaVersion: 1, routeId: 'rte_t', version, name: 'QA then Regulatory', stages, reapprovalStageIds: null, setByPartyId: 'pty_' + 'c'.repeat(32), fromDate: '2026-11-08T00:00:00.000Z' };
@@ -186,6 +225,15 @@ function routedEvidence(r, sigs, { tweak = () => undefined, after = [], stageSig
 describe('verifier 1.4.0: format 2 approval routes (checks 6 to 9)', () => {
   const r = route([QA, REG]);
   const good = [['qa', P('a')], ['reg', P('b')], ['reg', P('c')]];
+
+  it('fails a routed record whose format field says 1 or whose route versions were removed (review M-1)', () => {
+    const ev = routedEvidence(r, good);
+    for (const edited of [{ ...ev, format: 'ledgerseal-evidence/1', routes: undefined }, { ...ev, routes: undefined }]) {
+      const res = check(edited);
+      assert.strictEqual(res.status, 1, res.stdout);
+      assert.match(res.stdout, /FAIL route versions \(missing\)/);
+    }
+  });
 
   it('passes a run of QA then two Regulatory signers', () => {
     const res = check(routedEvidence(r, good));

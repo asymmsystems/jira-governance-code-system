@@ -4,7 +4,7 @@
  * @author Fahim Farook
  */
 
-import { validateTransition, sealIssue, verifyIssue, handler } from '../src/index';
+import { validateTransition, sealIssue, verifyIssue, handler, VALIDATOR_ERROR_MESSAGE } from '../src/index';
 import { FakeJira, MemoryStore, panelContext, sampleIssue as fakeIssue, validSignature, model } from './support/fakes';
 
 jest.mock('@forge/api', () => ({
@@ -40,6 +40,21 @@ describe('Forge Function Entry Points (index.ts)', () => {
     jira.approvers = new Set(['lead']);
     jira.currentUser = 'lead';
     jira.users = { lead: 'Lead Engineer' };
+  });
+
+  describe('validateTransition fails closed (review M-3)', () => {
+    it('blocks the move with a clear message when the check throws, and logs no record content', async () => {
+      const spy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      expect(((await sealIssue({ signature: sampleSig }, ctx, deps())) as any).ok).toBe(true);
+      const broken = Object.create(storage);
+      broken.get = async () => {
+        throw new Error('storage down');
+      };
+      const result = await validateTransition({ issue: { id: '10001', key: 'PROD-10' }, transition: { to: { id: '3' } } }, undefined, { jira, storage: broken });
+      expect(result).toEqual({ result: false, errorMessage: VALIDATOR_ERROR_MESSAGE });
+      expect(spy.mock.calls.map(c => String(c[0])).join('\n')).toContain('the transition check failed');
+      spy.mockRestore();
+    });
   });
 
   describe('sealIssue', () => {

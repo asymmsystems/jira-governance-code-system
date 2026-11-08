@@ -10,12 +10,13 @@
 
 import * as declaration from '../src/domain/declaration';
 import { DECLARATION, DECLARATION_V2 } from '../src/domain/declaration';
-import { createSigningIntent, signingAuthority, validateTransition } from '../src/index';
+import { createSigningIntent, validateTransition } from '../src/index';
 import { LedgerSealDeps, sealIssueFlow, verifyIssueFlow } from '../src/service/ledger';
 import { requestCodeFlow, setSigningPolicyFlow } from '../src/service/signing';
+import { bindRouteFlow, saveRouteFlow } from '../src/service/routes';
 import { INTENT_EXPIRED, INTENT_OTHER_USER, INTENT_SCREEN_CHANGED, intentOnScreen } from '../src/service/transition-signing';
 import { buildSignatureFieldView, FIELD_ROUTED_TEXT, FIELD_SIGNED_TEXT } from '../src/frontend/signature-field-view-model';
-import { FakeJira, MemoryStore, model, panelContext, sampleIssue } from './support/fakes';
+import { FakeJira, MemoryStore, model, panelContext, sampleIssue, clearRequestSlots } from './support/fakes';
 
 jest.mock('@forge/api', () => ({ __esModule: true, default: {}, route: () => '', privacy: { reportPersonalData: jest.fn() } }));
 jest.mock('@forge/kvs', () => ({ kvs: {}, WhereConditions: {} }));
@@ -105,6 +106,36 @@ describe('validator with an intent on the screen', () => {
     // The field value is not covered (canonical form 2.3.0), so the new seal is unchanged with it set
     jira.issue.fields[FIELD] = intentId;
     expect(await validateTransition(transition(null, 'ann'), {}, deps)).toEqual({ result: true });
+  });
+
+  it('matches the issue by key when the payload has no id (review L-3)', async () => {
+    const { jira, storage, deps } = setup();
+    const { intentId } = await intentFor(jira, deps, 'ann');
+    const keyOnly = (key: string) => ({ ...transition(intentId, 'ann'), issue: { key } });
+    expect(await validateTransition(keyOnly('CHG-2'), {}, deps)).toEqual({ result: false, errorMessage: INTENT_EXPIRED });
+    expect(model.statusRows(storage)).toEqual([]);
+    expect(await validateTransition(keyOnly('CHG-1'), {}, deps)).toEqual({ result: true });
+    expect(model.statusRows(storage)).toHaveLength(1);
+  });
+
+  it('refuses an intent when code signing was turned on, or a route was bound, after it was prepared (review L-1)', async () => {
+    const { jira, storage, deps } = setup();
+    jest.spyOn(declaration, 'isDeclarationV2Approved').mockReturnValue(true);
+    const first = await intentFor(jira, deps, 'ann');
+    expect(((await setSigningPolicyFlow({ enabled: true, projectKeys: ['CHG'], lockoutThreshold: 5 }, as(jira, 'admin'), deps)) as any).ok).toBe(true);
+    const policyRes: any = await validateTransition(transition(first.intentId, 'ann'), {}, deps);
+    expect(policyRes.result).toBe(false);
+    expect(policyRes.errorMessage).toContain('code-signing policy');
+    expect(model.statusRows(storage)).toEqual([]);
+    expect(((await setSigningPolicyFlow({ enabled: false, projectKeys: [], lockoutThreshold: 5 }, as(jira, 'admin'), deps)) as any).ok).toBe(true);
+    const second = await intentFor(jira, deps, 'ann');
+    jira.siteGroups = [{ groupId: 'g-qa', name: 'qa' }];
+    const saved: any = await saveRouteFlow({ name: 'R', stages: [{ stageId: 'qa', name: 'QA', orderGroup: 1, roleTypeId: 'LS_APPROVER', approverGroupIds: ['g-qa'], quorum: 'ANY', gatesStatusIds: [] }] }, as(jira, 'admin'), deps);
+    expect(((await bindRouteFlow({ projectKey: 'CHG', issueTypeId: '*', routeId: saved.route.routeId }, as(jira, 'admin'), deps)) as any).ok).toBe(true);
+    const routedRes: any = await validateTransition(transition(second.intentId, 'ann'), {}, deps);
+    expect(routedRes.result).toBe(false);
+    expect(routedRes.errorMessage).toContain('approval route');
+    expect(model.statusRows(storage)).toEqual([]);
   });
 
   it('uses an intent once', async () => {
@@ -231,12 +262,12 @@ describe('code signing on the transition screen (ADR-016 with ADR-018)', () => {
     const panel: any = await verifyIssueFlow({}, as(jira, 'ann'), deps);
     const v2 = { meaning: 'APPROVAL', declarationVersion: '2', declarationText: DECLARATION_V2.text };
     expect(((await createSigningIntent({ viewHash: panel.viewHash, signature: v2 }, as(jira, 'ann'), deps)) as any).code).toBe('SIGNING_REQUIRED');
-    const sealCode: any = await requestCodeFlow({ action: 'SEAL' }, as(jira, 'ann'), deps, signingAuthority);
+    const sealCode: any = await requestCodeFlow({ action: 'SEAL' }, as(jira, 'ann'), deps);
     const wrongAction: any = await createSigningIntent({ viewHash: panel.viewHash, signature: v2, signing: { challengeId: sealCode.challengeId, code: jira.lastCode('ann') } }, as(jira, 'ann'), deps);
     expect(wrongAction.code).toBe('SIGNING_FAILED');
     const party = await model.token(storage, 'ann');
-    storage.map.set(`ls3:sig:state:${party}`, { ...storage.map.get(`ls3:sig:state:${party}`), lastRequestAt: null });
-    const req: any = await requestCodeFlow({ action: 'TRANSITION' }, as(jira, 'ann'), deps, signingAuthority);
+    clearRequestSlots(storage);
+    const req: any = await requestCodeFlow({ action: 'TRANSITION' }, as(jira, 'ann'), deps);
     const code = jira.lastCode('ann');
     const intent: any = await createSigningIntent({ viewHash: panel.viewHash, signature: v2, signing: { challengeId: req.challengeId, code } }, as(jira, 'ann'), deps);
     expect(intent.ok).toBe(true);

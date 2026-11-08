@@ -157,7 +157,8 @@ describe('code signing calls (ADR-016)', () => {
     const [path, init] = asApp.requestJira.mock.calls[0];
     expect(path).toBe('/rest/api/3/issue/10001/notify');
     expect(init.method).toBe('POST');
-    expect(JSON.parse(init.body)).toEqual({ ...mail, to: { users: [{ accountId: 'acc-1' }] } });
+    // Review M-2: only the named user; every other recipient kind is off by name
+    expect(JSON.parse(init.body)).toEqual({ ...mail, to: { reporter: false, assignee: false, watchers: false, voters: false, users: [{ accountId: 'acc-1' }], groups: [], groupIds: [] } });
     await expect(client.notifyUser('10001', 'acc-1', mail)).resolves.toBe(403);
     await expect(client.notifyUser('10001', 'acc-1', mail)).resolves.toBe(0);
     expect(asUser.requestJira).not.toHaveBeenCalled();
