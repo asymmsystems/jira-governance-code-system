@@ -547,6 +547,11 @@ export interface AdminView {
   settings: EvidenceSourceSettings;
   detected: DetectedSources;
   sources: SourcesInUse;
+  /**
+   * Id of the Jira Development field, from the site configuration; null when this site has none.
+   * Without it Code is Not applicable on every issue, whatever the Code source setting (FR-1).
+   */
+  devFieldId: string | null;
   policy: { parties: Array<{ partyId: string; name: string }> };
   defaultDecisionIssueTypes: string[];
 }

@@ -5,7 +5,7 @@
  */
 
 import { DEFAULT_SOURCE_SETTINGS, SourcesInUse } from '../../src/contract/data/models';
-import { AUDIT_OPTIONS, CODE_OPTIONS, INTENT_OPTIONS, PROCESS_OPTIONS, detectionLine, gateInUse, inUseWord, optionOf, parseIssueTypes, sourcesLine, withSetting } from '../../src/ui/sources-text';
+import { AUDIT_OPTIONS, CODE_OPTIONS, CODE_NEEDS_DEV_FIELD, INTENT_OPTIONS, PROCESS_OPTIONS, codeOptions, detectionLine, gateInUse, inUseWord, optionOf, parseIssueTypes, siteHasDevField, sourceHelper, sourceNowLine, sourcesLine, withSetting } from '../../src/ui/sources-text';
 
 const none: SourcesInUse = { intent: true, process: null, code: false, audit: false, decisionIssueTypes: ['adr'], detected: { process: false, code: false, audit: false } };
 const all: SourcesInUse = { intent: true, process: 'definitionguard', code: true, audit: true, decisionIssueTypes: ['adr'], detected: { process: true, code: true, audit: false } };
@@ -55,5 +55,38 @@ describe('admin page words', () => {
   it('reads issue types from one line and changes one setting', () => {
     expect(parseIssueTypes(' ADR, RFC ,, Design ')).toEqual(['ADR', 'RFC', 'Design']);
     expect(withSetting(DEFAULT_SOURCE_SETTINGS, 'audit', 'off')).toEqual({ ...DEFAULT_SOURCE_SETTINGS, audit: 'off' });
+  });
+});
+
+describe('FR-1 Code needs the Jira Development field', () => {
+  const codeOn: SourcesInUse = { ...none, code: true };
+
+  it('a view without the field id counts as having it; null means the site has none', () => {
+    expect(siteHasDevField('customfield_10000')).toBe(true);
+    expect(siteHasDevField(undefined)).toBe(true);
+    expect(siteHasDevField(null)).toBe(false);
+  });
+
+  it('says plainly that Code needs the Development field, on every site', () => {
+    expect(CODE_NEEDS_DEV_FIELD).toBe("Code needs Jira's Development field. Jira shows it when a development tool, for example Bitbucket, GitHub or GitLab, is connected to this site.");
+    expect(sourceHelper('code', {}, 'customfield_10000')).toBe(`${CODE_NEEDS_DEV_FIELD} No pull request data seen on this site yet.`);
+    expect(sourceHelper('code', {}, null)).toBe(`${CODE_NEEDS_DEV_FIELD} This site has no Development field, so Code is Not applicable on every issue, whatever you choose here.`);
+    expect(sourceHelper('audit', {}, null)).toBe(detectionLine('audit', {}));
+  });
+
+  it('shows Code as Not applicable on a site without the field, whatever the setting', () => {
+    expect(sourceNowLine(codeOn, 'code', null)).toBe('Now: Code: Not applicable on this site (no Development field).');
+    expect(sourceNowLine(none, 'code', null)).toBe('Now: Code: Not applicable on this site (no Development field).');
+    expect(sourceNowLine(codeOn, 'code', 'customfield_10000')).toBe('Now: Code: in use.');
+    expect(sourceNowLine(none, 'audit', null)).toBe('Now: Audit: not used on this site.');
+  });
+
+  it('annotates "In use" on a site without the field and keeps the values', () => {
+    expect(codeOptions('customfield_10000')).toBe(CODE_OPTIONS);
+    expect(codeOptions(undefined)).toBe(CODE_OPTIONS);
+    const opts = codeOptions(null);
+    expect(opts.map(o => o.value)).toEqual(CODE_OPTIONS.map(o => o.value));
+    expect(opts.find(o => o.value === 'on')!.label).toBe('In use (no effect: this site has no Development field)');
+    expect(opts.find(o => o.value === 'off')!.label).toBe('Not in use');
   });
 });

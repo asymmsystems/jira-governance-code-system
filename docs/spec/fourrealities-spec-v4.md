@@ -536,3 +536,10 @@ Invariant 11 was not changed in this round while the owner decided the rule; the
 ### Grader conflict
 
 `loop-engine/graders/grade_spec.py` checks `docs/spec/fourrealities-spec.md` (v1, frozen), not this file. The agent definition `loop-engine/agents/spec_architect.md` also expects scopes limited to `read:jira-work` and `storage:app`. This app needs `write:jira-work` (D-8). The scope stays, and the conflict is recorded here and in the round log. The grader runs against a mirror that holds this v2 file under the v1 name.
+
+## 12. Change log
+
+| Date | Change | Why |
+|---|---|---|
+| 2026-11-08 | FR-1. The admin page says that Code needs Jira's Development field. The admin view (`fr-admin-get`, `AdminView`) carries `devFieldId` from the site configuration. When it is null, the Code control says that the site has no Development field, the "Now:" line reads "Code: Not applicable on this site (no Development field)", and the "In use" choice reads "In use (no effect: this site has no Development field)". The gate engine and the source rules are unchanged: `evaluateCode` still returns NOT_APPLICABLE with `NO_DEV_TOOL` before it reads the source setting. | On a site without the Development field, Code was Not applicable whatever the admin chose, and the admin page did not say so. |
+

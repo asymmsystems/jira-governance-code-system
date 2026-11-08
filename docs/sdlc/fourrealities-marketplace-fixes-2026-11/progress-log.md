@@ -173,3 +173,10 @@ Branch `feature/fourrealities-permission-checks` from `origin/master` (`6c19fa4`
 - **Gate:** `tsc` no errors; `npm test` 570 of 570 passed, all files 99.37% statements and 96.62% branches, every per-file threshold met; build clean; `npm audit --omit=dev --audit-level=high` exit 0 (7 moderate, unchanged); `forge lint` (CLI 15.0.0) "No issues found."
 - **Deploy:** `forge deploy -e development` 5.3.0 (the first try timed out on upload; the second succeeded). No new scope; installations at 5.
 - **Not run:** the live dashboard check. The saved session cookies and the Chrome session for asymmsystems.atlassian.net were signed out (`/rest/api/3/myself` 401). The owner should open the PAY dashboard on the development app once: it should load, and with a full-access user show the trend card text "Trend starts after two weekly snapshots" (the stored trend restarts once).
+
+## 2026-11-08: user guide code gap FR-1
+
+Branch `fix/fourrealities-code-source-text`, from `master` at `04d36a2`. The gap is listed in `jira-governance/.tmp/cache/user-guides/code-gaps.md` (found while writing the user guides).
+
+- **What changed:** the admin page says, under the Code control, "Code needs Jira's Development field. Jira shows it when a development tool, for example Bitbucket, GitHub or GitLab, is connected to this site." `AdminView` carries `devFieldId` from the site configuration (the admin manager copies it; no rule). On a site without the field the page adds "This site has no Development field, so Code is Not applicable on every issue, whatever you choose here.", the "Now:" line reads "Code: Not applicable on this site (no Development field).", and the "In use" choice reads "In use (no effect: this site has no Development field)". UI Kit `Select` has no per-option disable, so the choice is annotated. Engines unchanged.
+- **Proof:** `test/ui/sources-text.test.ts` (4 new tests), `test/manager/admin-manager.test.ts` (the field id passes through; the source rules still resolve "In use" to in use), `test/frontend/admin.test.tsx` (the page with and without the field).

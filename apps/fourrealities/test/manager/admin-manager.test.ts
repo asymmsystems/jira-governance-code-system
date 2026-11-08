@@ -13,7 +13,7 @@ import { MemoryStorage } from '../storage/memory-storage';
 const NOW = () => new Date('2026-11-06T10:00:00.000Z');
 const CONFIG = { devFieldId: 'customfield_10000', siteHost: 's', statusCategories: {}, pullRequestsSeen: true, readAt: 't' };
 
-function setup(o: { admin?: boolean; search?: any; names?: any; configFails?: boolean } = {}) {
+function setup(o: { admin?: boolean; search?: any; names?: any; configFails?: boolean; config?: any } = {}) {
   const storage = new MemoryStorage();
   const directory: any = {
     serviceType: 'accessor',
@@ -21,7 +21,7 @@ function setup(o: { admin?: boolean; search?: any; names?: any; configFails?: bo
     searchGroups: jest.fn().mockResolvedValue(o.search || { status: 200, groups: [{ groupId: 'g1', name: 'release-managers' }] }),
     groupNames: jest.fn().mockImplementation(async (ids: string[]) => ids.map(id => ({ groupId: id, name: `name-${id}` })))
   };
-  const siteConfig: any = { serviceType: 'accessor', get: o.configFails ? jest.fn().mockRejectedValue(new Error('403')) : jest.fn().mockResolvedValue(CONFIG) };
+  const siteConfig: any = { serviceType: 'accessor', get: o.configFails ? jest.fn().mockRejectedValue(new Error('403')) : jest.fn().mockResolvedValue(o.config || CONFIG) };
   const manager = new DefaultAdminManager({ directory, settings: new DefaultKvsSettingsAccessor(storage), siteConfig, sources: new DefaultSourcePolicyEngine(), now: NOW });
   return { manager, storage, directory };
 }
@@ -44,6 +44,17 @@ describe('DefaultAdminManager', () => {
     expect(res).toMatchObject({ ok: true, settings: DEFAULT_SOURCE_SETTINGS, detected: {}, policy: { parties: [] } });
     expect(res.sources).toMatchObject({ intent: true, process: null, code: true, audit: false });
     expect(res.defaultDecisionIssueTypes).toContain('adr');
+  });
+
+  it('FR-1: passes the Development field id of the site to the page, null when the site has none', async () => {
+    expect(((await setup().manager.view()) as any).devFieldId).toBe('customfield_10000');
+    const noDev: any = await setup({ config: { ...CONFIG, devFieldId: null, pullRequestsSeen: false } }).manager.view();
+    expect(noDev.devFieldId).toBeNull();
+    // The source rules are unchanged: "In use" still resolves to in use; the gate engine makes Code Not applicable.
+    const { manager } = setup({ config: { ...CONFIG, devFieldId: null, pullRequestsSeen: false } });
+    const saved: any = await manager.saveSources({ ...DEFAULT_SOURCE_SETTINGS, code: 'on' });
+    expect(saved.sources.code).toBe(true);
+    expect(saved.devFieldId).toBeNull();
   });
 
   it('saves valid evidence sources and refuses invalid ones', async () => {
