@@ -300,7 +300,9 @@ export function createJiraClient(asApp: JiraRequester, asUser: JiraRequester | n
       const res = await send(asApp, route`/rest/api/3/issue/${issueId}/notify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ ...email, to: { users: [{ accountId }] } })
+        // Review M-2: the other recipient kinds are switched off by name, so no Jira default can add a watcher, the
+        // reporter, the assignee or a voter to a signing code email
+        body: JSON.stringify({ ...email, to: { reporter: false, assignee: false, watchers: false, voters: false, users: [{ accountId }], groups: [], groupIds: [] } })
       });
       return res ? res.status : 0;
     },

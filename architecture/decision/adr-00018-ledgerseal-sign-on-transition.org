@@ -123,6 +123,15 @@ sealed and unchanged with the field set (canonical form 2.3.0). Two platform fac
 (spike-results section 6): the field has no =view= resource (a view hid the edit view on the dialog), and
 the field submits its value itself with =view.submit= when the intent exists.
 
+* Fix round 1 (2026-11-08, independent review of 427f6c9)
+- /L-1./ When the validator completes an intent, it reads the code-signing policy and the route
+  binding again. A policy saved, or a route bound, during the 120 seconds refuses the signature.
+- /L-3./ The intent stores the issue key. A validator payload with only a key must name the
+  intent's issue.
+- /L-2, stated./ An intent and its =TRANSITION= code are bound to the party, the issue, the shown
+  hash, the stage and the meaning, not to one transition or target status. Within 120 seconds the
+  signer can use it on another transition of the same issue; the row records the real target status.
+
 * What is not possible in Jira Cloud (stated in the listing and user guide)
 - Re-entering the Atlassian password at the transition: no API, and apps must not collect it.
 - Intercepting the transition button, or opening an app dialog before Jira's transition dialog.

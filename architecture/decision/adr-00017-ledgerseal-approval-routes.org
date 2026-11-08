@@ -134,6 +134,17 @@ Adopt option A.
 15. *Part 11 mode.* When ADR-016's mode is on, every stage signature and every rejection needs the
     signing credential.
 
+* Fix round 1 (2026-11-08, independent review of 427f6c9)
+Decision 4 ("one person, one stage") did not hold when one person signed two stages at the same
+moment, and the run record could lose a signature (H-1). Every flow that changes a run now holds a
+per-issue run lock (=ls3:runlock:{issueId}=, created once; a lock older than 60 seconds is taken
+over by one caller only). Under the lock the flow reads the run again and repeats its decisions:
+the stage is still open, the person signed no other stage of the run, the run still holds the
+snapshot the person signs, and it has not ended since the checks. The panel's "Reject" button
+follows the same "one person, one stage" rule (L-6). The other half of L-6 is by design (decision
+5 and spec 15.5): a rejection blocks the gated transitions until a new run starts, even when the
+issue has a valid seal.
+
 * Build results (2026-11-08, branch =feature/ledgerseal-regulated=)
 Built as decided, development 6.7.0 to 6.12.0. Live on development (LSP-7, route bound to project LSP and
 then unbound): a rejection with a reason ended the run, the next signature started a new run and sealed

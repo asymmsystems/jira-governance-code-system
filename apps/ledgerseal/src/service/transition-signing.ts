@@ -24,6 +24,8 @@ export interface SigningIntent {
   intentId: string;
   partyId: string;
   issueId: string;
+  /** Review L-3: the key too, so a validator payload with only a key is matched. */
+  issueKey: string;
   viewHash: string;
   signature: { meaning: string; declarationVersion: string; declarationText: string; reason?: string };
   approvingChanges: boolean;
@@ -56,6 +58,7 @@ export async function createIntentFlow(payload: any, context: any, deps: LedgerS
     intentId: 'lsi_' + crypto.randomBytes(16).toString('hex'),
     partyId: party(String(context.accountId)),
     issueId: String(context.extension.issue.id),
+    issueKey: String(context.extension.issue.key ?? ''),
     viewHash: prepared.viewHash,
     signature: {
       meaning: s.meaning === undefined ? 'APPROVAL' : String(s.meaning),
@@ -102,8 +105,11 @@ export async function completeIntent(
   const userId = payload?.user?.accountId ? String(payload.user.accountId) : '';
   const party = await new PartyRepository(deps.storage).partyForRead();
   if (!userId || !party || party(userId) !== intent.partyId) return { ok: false, message: INTENT_OTHER_USER };
+  // Review L-3: the payload's issue must be the intent's issue, by id or, when the payload has no id, by key
   const issueId = String(payload?.issue?.id ?? '');
-  if (issueId && issueId !== intent.issueId) return { ok: false, message: INTENT_EXPIRED };
+  const issueKey = String(payload?.issue?.key ?? '');
+  const sameIssue = issueId ? issueId === intent.issueId : Boolean(issueKey) && Boolean(intent.issueKey) && issueKey === intent.issueKey;
+  if (!sameIssue) return { ok: false, message: INTENT_EXPIRED };
   // Claimed once before the seal is written: a second submit of the same intent finds the claim
   if (!(await deps.storage.createIfAbsent(`ls3:intentuse:${intentId}`, { at: new Date().toISOString() }, { ttlSeconds: DAY }))) {
     return { ok: false, message: INTENT_EXPIRED };

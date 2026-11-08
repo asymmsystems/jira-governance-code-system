@@ -106,8 +106,9 @@ function verifyEvidence(evidence, publicKeyPem) {
   }
   check(sigOk, `signature (${att.keyId ?? 'no key id'})`);
 
-  // Format 2 only (LedgerSeal spec v4 section 15.7); format 1 output is unchanged
-  if (evidence.format === 'ledgerseal-evidence/2') verifyFormat2(evidence, history, check);
+  // Format 2 (LedgerSeal spec v4 section 15.7) whenever the signed or chained content needs it, not only when the
+  // unsigned "format" field says so: a changed format field cannot switch the checks off. Format 1 output is unchanged
+  if (evidence.format === 'ledgerseal-evidence/2' || needsFormat2(att, history)) verifyFormat2(evidence, history, check);
 
   // A redaction entry is part of the chain, so the checks above cover it; it is named so a reader sees it
   const notes = history
@@ -117,6 +118,18 @@ function verifyEvidence(evidence, publicKeyPem) {
   for (const line of [...results, ...notes]) console.log(line);
   return results.every(line => line.startsWith('PASS'));
 }
+
+/** True when the attestation (signed) or a history entry (chained) holds content that only format 2 checks. */
+export function needsFormat2(att, history) {
+  if (att?.schemaVersion === 4) return true;
+  return history.some(row => {
+    const data = row?.data && typeof row.data === 'object' ? row.data : {};
+    return String(row?.statusId).startsWith('LS_RUN_') || 'runId' in data || 'routeId' in data || 'signing' in data || 'signingPolicy' in data;
+  });
+}
+
+/** True when an entry belongs to an approval route (it needs the route versions of the evidence). */
+const isRouted = row => String(row?.statusId).startsWith('LS_RUN_') || (row?.data && typeof row.data === 'object' && ('runId' in row.data || 'routeId' in row.data));
 
 const SIGNING_METHOD = 'LS_ATL_EMAIL_OTP_1';
 const SIGNED_TRANSITIONS = new Set(['SEAL', 'RESEAL', 'REVOKE', 'SIGN_STAGE', 'REJECT']);
@@ -134,13 +147,25 @@ function checkPolicies(policies) {
 /**
  * Check 10: every seal, reseal, revoke, stage signature and rejection made while a code-signing policy that names the
  * snapshot's project was on carries data.signing with two components and that policy's version and hash. A row that
- * claims code signing must name a policy of the evidence.
+ * claims code signing must name a policy of the evidence. The policy in force is the one the row names in
+ * data.signingPolicy (chained), which must be in the evidence with the same hash; a swapped or emptied policy list
+ * fails. Only a row from an earlier app version, without data.signingPolicy, falls back to the policy dates.
  */
 function checkCodeSigning(history, policies, projectId) {
   const bad = [];
   for (const row of history) {
     if (!SIGNED_TRANSITIONS.has(row.transitionName)) continue;
-    const inForce = [...policies].reverse().find(p => String(p.fromDate) <= String(row.statusDatetime));
+    const ref = row.data?.signingPolicy;
+    let inForce;
+    if (ref !== undefined) {
+      inForce = policies.find(p => p.version === ref?.version && p.policyHash === ref?.policyHash);
+      if (!inForce) {
+        bad.push(row.seq);
+        continue;
+      }
+    } else {
+      inForce = [...policies].reverse().find(p => String(p.fromDate) <= String(row.statusDatetime));
+    }
     const required = Boolean(inForce && inForce.enabled && Array.isArray(inForce.projectIds) && inForce.projectIds.includes(projectId));
     const s = row.data?.signing;
     const named = s ? policies.find(p => p.version === s.policyVersion) : null;
@@ -196,7 +221,11 @@ function verifyFormat2(evidence, history, check) {
   check(checkPolicies(policies), `signing policies (${policies.length} versions)`);
   const bad = checkCodeSigning(history, policies, String(evidence.snapshot?.projectId ?? ''));
   check(bad.length === 0, `code signing on every signature that needs it${bad.length ? ` (entries ${bad.join(', ')})` : ''}`);
-  if (!Array.isArray(evidence.routes)) return;
+  if (!Array.isArray(evidence.routes)) {
+    // Routed content without its route versions cannot be checked: fail, never skip
+    if (history.some(isRouted)) check(false, 'route versions (missing)');
+    return;
+  }
   const routes = evidence.routes;
   // Check 6: each route version hashes to its routeHash
   check(routes.every(r => sha256(canonicalJson(without(r, 'routeHash'))) === r.routeHash), `route versions (${routes.length})`);
