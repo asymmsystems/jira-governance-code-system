@@ -320,3 +320,12 @@ exit=0
 - **Owner's mailbox:** "[JIRA] LedgerSeal signing code for LSP-12" arrived at **05:15:01Z**, addressed to the owner only. Shuzan's mail was not read; the owner will confirm with Shuzan that no code email arrived.
 - **Completion:** the code was typed and "Sign and seal" pressed. The browser extension then lost its connection, so whether the seal was written, and its check, could not be confirmed from this session.
 - **Still to do by hand:** code signing for LSP is still **on** (policy version 7). Turn it off on the admin page, LedgerSeal settings, Signing codes. Then check LSP-12's panel or its `ledgerseal-cert` property (expected: `SEAL_VALID`).
+
+## Production release (2026-11-08)
+
+- **Released:** LedgerSeal **4.0.0** to production. It was built from master **`2047559`**, the merge of PR #5 (`feature/ledgerseal-regulated-v3`). The previous production version was **3.2.0**.
+- **Major version:** the new scope `send:notification:jira` (code signing) makes this a major version, so site admins accept the upgrade. The owner approved the release.
+- **M-2 passed:** the owner confirmed with Shuzan Fahim that no code email arrived for the LSP-12 request of 05:14:54Z to 05:14:59Z. The code reached only the owner (05:15:01Z). Shuzan's LSP role was removed afterwards.
+- **Open verifier:** release 1.5.0 in the public CLI repository (asymmsystems/jira-governance-code-cli), synced from `tools/verifier` of `2047559` (see `cli-sync.md`).
+- **Developer Console:** the security questionnaire text for the new scope is prepared, not applied, in `docs/marketplace/submission/ledgerseal-security-questionnaires.md` section 5.
+
