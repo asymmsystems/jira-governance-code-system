@@ -848,12 +848,25 @@ describe('review round 3', () => {
     expect(await h.manager.downloadUrls(caller('v'), BROWSER, { keys: [objectKey('10000', r.reportId, 'report.csv')] })).toEqual({});
   });
 
+  it('REL-3: a key whose public half is not the published key makes no report, in any environment', async () => {
+    for (const env of ['development', 'production']) {
+      const h = seeded({ wrongKey: true });
+      h.runtime.environment = () => env;
+      const view = ok<ReportsView>(await h.manager.list(caller(), ADMIN, {}));
+      expect(view.canCreate).toBe(false);
+      expect(view.cannotCreateReason).toContain('no valid signing key for this site');
+      const made = await h.manager.create(caller(), ADMIN, RANGE);
+      expect(made).toMatchObject({ ok: false, error: { code: 'NO_SIGNING_KEY' } });
+      expect(h.pushes).toEqual([]);
+    }
+  });
+
   it('R3-5: a production site with no signing key offers no new report, and says why', async () => {
     const h = seeded({ keys: false });
     h.runtime.environment = () => 'production';
     const view = ok<ReportsView>(await h.manager.list(caller(), ADMIN, {}));
     expect(view.canCreate).toBe(false);
-    expect(view.cannotCreateReason).toContain('no valid signing key for this production site');
+    expect(view.cannotCreateReason).toContain('no valid signing key for this site');
     const dev = seeded();
     expect(ok<ReportsView>(await dev.manager.list(caller(), ADMIN, {}))).not.toHaveProperty('cannotCreateReason');
   });

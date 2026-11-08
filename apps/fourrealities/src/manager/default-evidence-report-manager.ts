@@ -95,7 +95,7 @@ export const NOT_SCHEDULER_TEXT = 'Only a project administrator or a Jira admini
 export const NOT_DELETER_TEXT = 'Only a Jira administrator can delete a report before it expires.';
 export const LICENCE_TEXT = 'The FourRealities licence for this site is not active, so no new reports are made. Existing reports can still be viewed and downloaded.';
 export const NOT_READY_TEXT = 'This report is not ready to download.';
-export const NO_KEY_TEXT = 'FourRealities has no valid signing key for this production site, so it makes no report. Contact Asymm Systems support (security@asymm.systems).';
+export const NO_KEY_TEXT = 'FourRealities has no valid signing key for this site, so it makes no report. Contact Asymm Systems support (security@asymm.systems).';
 export const PEOPLE_NOTE = 'Not signed. Maps each party token of the report to an account id and a display name, read as you when you downloaded it. A closed account shows as a former user. Removed 24 to 25 hours after the download.';
 
 /** Time a consumer event keeps for saving the job and pushing the next event. */
@@ -259,7 +259,7 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
   /** Searches the scope, writes the job, its ids and its index entry, then queues it. Nothing is stored on a refusal. */
   /** True when this production site cannot sign: then no report is made at all (review N-7). */
   private cannotSign(): boolean {
-    return this.d.runtime.environment() === 'production' && !this.d.crypto.keyId();
+    return this.d.crypto.keyRefused() || (this.d.runtime.environment() === 'production' && !this.d.crypto.keyId());
   }
 
   private async enqueue(r: { projectKey: string; projectId: string; range: ReportRange; filters: ReportFilters; people?: { accountId?: string; actorAccountIds: string[] }; trigger: ReportJob['trigger']; requestedBy: string; scheduleId?: string; jira: JiraReportAccessor; deadline: number }): Promise<ReportResult<{ reportId: string; state: 'QUEUED' }>> {
@@ -682,7 +682,7 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
     const head = (await this.d.store.getHead(job.projectId)) || null;
     const missing = await this.missingSince(head, deadline);
     const keyId = this.d.crypto.keyId();
-    if (!keyId && this.d.runtime.environment() === 'production') throw new JobStepError('NO_SIGNING_KEY', NO_KEY_TEXT);
+    if (this.d.crypto.keyRefused() || (!keyId && this.d.runtime.environment() === 'production')) throw new JobStepError('NO_SIGNING_KEY', NO_KEY_TEXT);
     const header: ManifestHeader = {
       format: 'fourrealities-evidence-report/1',
       reportId: job.reportId,

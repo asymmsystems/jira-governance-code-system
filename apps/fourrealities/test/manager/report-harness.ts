@@ -142,7 +142,7 @@ export class FakeJira implements JiraReportAccessor {
   }
 }
 
-export function harness(o: { keys?: boolean; policy?: ReportPolicyEngine; now?: () => Date } = {}) {
+export function harness(o: { keys?: boolean; wrongKey?: boolean; policy?: ReportPolicyEngine; now?: () => Date } = {}) {
   const storage = new MemoryStorage();
   const issues: IssueSpec[] = [];
   const objects = new MemoryObjects();
@@ -162,7 +162,8 @@ export function harness(o: { keys?: boolean; policy?: ReportPolicyEngine; now?: 
     store,
     objects,
     queue: { serviceType: 'accessor', push: async (reportId: string, delay?: number) => { pushes.push({ reportId, ...(delay ? { delay } : {}) }); } },
-    crypto: new DefaultReportCryptoAccessor(env),
+    // REL-3: the published key of 'fr-test-key' is this key's public half, or another key's (wrongKey).
+    crypto: new DefaultReportCryptoAccessor(env, undefined, { 'fr-test-key': (o.wrongKey ? crypto.generateKeyPairSync('ed25519').publicKey : publicKey).export({ format: 'pem', type: 'spki' }).toString() }),
     tokens: new DefaultKvsPartyTokenAccessor(storage),
     runtime,
     userJira,

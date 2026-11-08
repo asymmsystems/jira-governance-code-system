@@ -8,6 +8,7 @@
 
 import * as crypto from 'crypto';
 import { ReportCryptoAccessor } from '../contract/reports';
+import { REPORT_SIGNING_KEYS } from './report-signing-keys';
 
 const KEY_ID = /^[a-z0-9-]{1,40}$/;
 
@@ -15,15 +16,19 @@ export class DefaultReportCryptoAccessor implements ReportCryptoAccessor {
   readonly serviceType = 'accessor' as const;
   private readonly key: crypto.KeyObject | null;
   private readonly id: string | null;
+  private readonly wrongKey: boolean;
 
   /**
    * environment: the Forge environment the report is made in. A development key ("-dev-") never signs a
    * production report, and a production key ("-prod-") never signs a development or staging one (review L-7).
+   * published: the public key of each key id. A private key whose public half is not the published key of its
+   * id is refused (release review REL-3), so a report is never signed with a key the verifier cannot check.
    */
-  constructor(env: Record<string, string | undefined> = process.env, environment?: string) {
+  constructor(env: Record<string, string | undefined> = process.env, environment?: string, published: Readonly<Record<string, string>> = REPORT_SIGNING_KEYS) {
     const raw = env.FOURREALITIES_SIGNING_KEY;
     const id = env.FOURREALITIES_KEY_ID;
     let key: crypto.KeyObject | null = null;
+    let wrongKey = false;
     const fits = !environment || (environment === 'production' ? !String(id).includes('-dev-') : !String(id).includes('-prod-'));
     if (raw && id && KEY_ID.test(id) && fits) {
       try {
@@ -32,8 +37,13 @@ export class DefaultReportCryptoAccessor implements ReportCryptoAccessor {
       } catch {
         key = null;
       }
+      if (key && !matches(key, published[id])) {
+        key = null;
+        wrongKey = true;
+      }
     }
     this.key = key;
+    this.wrongKey = wrongKey;
     this.id = key ? String(id) : null;
   }
 
@@ -51,7 +61,23 @@ export class DefaultReportCryptoAccessor implements ReportCryptoAccessor {
     return this.id;
   }
 
+  keyRefused(): boolean {
+    return this.wrongKey;
+  }
+
   newId(): string {
     return crypto.randomUUID();
+  }
+}
+
+/** True when the public half of the private key is the published SPKI PEM (compared as DER bytes). */
+function matches(key: crypto.KeyObject, pem: string | undefined): boolean {
+  if (!pem) return false;
+  try {
+    const mine = crypto.createPublicKey(key).export({ format: 'der', type: 'spki' });
+    const theirs = crypto.createPublicKey(pem).export({ format: 'der', type: 'spki' });
+    return mine.length === theirs.length && crypto.timingSafeEqual(mine, theirs);
+  } catch {
+    return false;
   }
 }

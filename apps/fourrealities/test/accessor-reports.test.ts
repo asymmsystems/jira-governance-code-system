@@ -7,6 +7,8 @@
  */
 
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const asUserRequest = jest.fn();
 const asAppAtlassian = jest.fn();
@@ -40,6 +42,7 @@ import { DefaultKvsReportStoreAccessor } from '../src/accessor/default-kvs-repor
 import { DefaultForgeObjectStoreAccessor, ObjectStoreClient } from '../src/accessor/default-forge-object-store-accessor';
 import { DefaultForgeReportQueueAccessor } from '../src/accessor/default-forge-report-queue-accessor';
 import { DefaultReportCryptoAccessor } from '../src/accessor/default-report-crypto-accessor';
+import { REPORT_SIGNING_KEYS } from '../src/accessor/report-signing-keys';
 import { DefaultKvsPartyTokenAccessor } from '../src/accessor/default-kvs-party-token-accessor';
 import { DefaultForgeReportRuntimeAccessor } from '../src/accessor/default-forge-report-runtime-accessor';
 import { DefaultForgeReportPeopleAccessor } from '../src/accessor/default-forge-report-people-accessor';
@@ -438,7 +441,8 @@ describe('queue, hashes and signature, runtime, people', () => {
 
   it('signs with the Ed25519 key of the encrypted variable, and is unsigned without a usable key', () => {
     const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
-    const signer = new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64'), FOURREALITIES_KEY_ID: 'fr-dev-2026-11' });
+    const mine = { 'fr-dev-2026-11': publicKey.export({ format: 'pem', type: 'spki' }).toString(), 'fr-prod-2026-11': publicKey.export({ format: 'pem', type: 'spki' }).toString(), k: publicKey.export({ format: 'pem', type: 'spki' }).toString() };
+    const signer = new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64'), FOURREALITIES_KEY_ID: 'fr-dev-2026-11' }, undefined, mine);
     expect(signer.keyId()).toBe('fr-dev-2026-11');
     const signed = signer.sign('text')!;
     expect(signed.keyId).toBe('fr-dev-2026-11');
@@ -452,11 +456,48 @@ describe('queue, hashes and signature, runtime, people', () => {
     expect(new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: rsa, FOURREALITIES_KEY_ID: 'k' }).keyId()).toBeNull();
     // Review L-7: a development key never signs a production report, a production key never a development one.
     const der = privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64');
-    expect(new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: der, FOURREALITIES_KEY_ID: 'fr-dev-2026-11' }, 'production').keyId()).toBeNull();
-    expect(new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: der, FOURREALITIES_KEY_ID: 'fr-dev-2026-11' }, 'development').keyId()).toBe('fr-dev-2026-11');
-    expect(new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: der, FOURREALITIES_KEY_ID: 'fr-prod-2026-11' }, 'staging').keyId()).toBeNull();
-    expect(new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: der, FOURREALITIES_KEY_ID: 'fr-prod-2026-11' }, 'production').keyId()).toBe('fr-prod-2026-11');
+    expect(new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: der, FOURREALITIES_KEY_ID: 'fr-dev-2026-11' }, 'production', mine).keyId()).toBeNull();
+    expect(new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: der, FOURREALITIES_KEY_ID: 'fr-dev-2026-11' }, 'development', mine).keyId()).toBe('fr-dev-2026-11');
+    expect(new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: der, FOURREALITIES_KEY_ID: 'fr-prod-2026-11' }, 'staging', mine).keyId()).toBeNull();
+    expect(new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: der, FOURREALITIES_KEY_ID: 'fr-prod-2026-11' }, 'production', mine).keyId()).toBe('fr-prod-2026-11');
     expect(new DefaultReportCryptoAccessor().keyId() === null || typeof new DefaultReportCryptoAccessor().keyId() === 'string').toBe(true);
+  });
+
+  it('REL-3: refuses a private key whose public half is not the published key of its id', () => {
+    const { privateKey } = crypto.generateKeyPairSync('ed25519');
+    const der = privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64');
+    // The bundled keys: a random private key is not the published fr-prod-2026-11 or fr-dev-2026-11 key.
+    for (const [id, env] of [['fr-prod-2026-11', 'production'], ['fr-dev-2026-11', 'development']]) {
+      const wrong = new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: der, FOURREALITIES_KEY_ID: id }, env);
+      expect([wrong.keyId(), wrong.sign('t'), wrong.keyRefused()]).toEqual([null, null, true]);
+    }
+    // A key id with no published key, and a published value that is not a key, are refused too.
+    expect(new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: der, FOURREALITIES_KEY_ID: 'fr-new-2027-01' }, 'development').keyRefused()).toBe(true);
+    expect(new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: der, FOURREALITIES_KEY_ID: 'k' }, 'development', { k: 'not a key' }).keyRefused()).toBe(true);
+    // Another Ed25519 key published for the id: refused; the key's own public half: accepted.
+    const other = crypto.generateKeyPairSync('ed25519').publicKey.export({ format: 'pem', type: 'spki' }).toString();
+    expect(new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: der, FOURREALITIES_KEY_ID: 'k' }, 'development', { k: other }).keyRefused()).toBe(true);
+    const own = crypto.createPublicKey(privateKey).export({ format: 'pem', type: 'spki' }).toString();
+    const good = new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: der, FOURREALITIES_KEY_ID: 'k' }, 'development', { k: own });
+    expect([good.keyId(), good.keyRefused()]).toEqual(['k', false]);
+    // No key set, or an unreadable one, is "no key", not a refused key.
+    expect(new DefaultReportCryptoAccessor({}).keyRefused()).toBe(false);
+    expect(new DefaultReportCryptoAccessor({ FOURREALITIES_SIGNING_KEY: 'bm90IGEga2V5', FOURREALITIES_KEY_ID: 'k' }).keyRefused()).toBe(false);
+  });
+
+  it('REL-3: the bundled public keys are the published key files, with the published fingerprints', () => {
+    const fingerprints: Record<string, string> = {
+      'fr-dev-2026-11': 'f2ad70911a15f39cf37570f86fb3b55e7cf62b48b65bbfd50c8f649de01b979f',
+      'fr-prod-2026-11': '07b6b5e5749e282627a112d99dac364e199b4a355913e1b820145221cca30419'
+    };
+    expect(Object.keys(REPORT_SIGNING_KEYS).sort()).toEqual(Object.keys(fingerprints));
+    for (const [id, pem] of Object.entries(REPORT_SIGNING_KEYS)) {
+      const file = path.join(__dirname, '..', 'keys', `${id}.pub.pem`);
+      expect(pem).toBe(fs.readFileSync(file, 'utf8'));
+      expect(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'tools', 'verifier', 'keys', `${id}.pub.pem`), 'utf8')).toBe(pem);
+      const der = crypto.createPublicKey(pem).export({ format: 'der', type: 'spki' });
+      expect(crypto.createHash('sha256').update(der).digest('hex')).toBe(fingerprints[id]);
+    }
   });
 
   it('reads the environment, the app version and the licence, and copes with no context', () => {

@@ -116,6 +116,8 @@ export interface ReportCryptoAccessor extends Accessor {
   sign(text: string): { keyId: string; sig: string } | null;
   /** The key id used to sign, or null. */
   keyId(): string | null;
+  /** True when a key is set but its public half is not the published key of its id (REL-3): never sign. */
+  keyRefused(): boolean;
   newId(): string;
 }
 
