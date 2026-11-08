@@ -33,7 +33,7 @@ Atlassian ends Jira Data Center on 2029-03-28. New Data Center apps could not be
 |---|---|---|
 | SOC 2 CC8.1 | Change authorization, post-approval integrity, separation of duties, testing evidence before Done | The apps do not certify a team |
 | ISO/IEC 27001:2022 A.8.32 | Record of changes, formal approval enforced by validators, hash-chained history | A Jira admin must add the validators to each transition |
-| FDA 21 CFR Part 11 | LedgerSeal: audit trail 11.10(e); 11.50 partly met | Not met: 11.200 and 11.300 (no re-authentication at sealing) |
+| FDA 21 CFR Part 11 | LedgerSeal: audit trail 11.10(e); 11.50 partly met | 11.200(a) partly met with code signing on (no re-entry of the Jira login at each signature); 11.300(a) to (c) belong to the identity provider; 11.300(d) partly met |
 
 Full mapping: https://asymm.systems/product/jira-governance/compliance.html
 

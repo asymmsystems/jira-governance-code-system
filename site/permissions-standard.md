@@ -44,7 +44,7 @@ export interface ApproverPolicy {
 
 Administrators configure authorized approver groups via dedicated settings pages located under **Jira Settings** -> **Apps**:
 
-- **LedgerSeal:** `LedgerSeal approvers`
+- **LedgerSeal:** `LedgerSeal settings` (tab `Approver groups`)
 - **DefinitionGuard:** `DefinitionGuard approvers`
 - **CascadePlan:** `CascadePlan approvers`
 - **FourRealities:** `FourRealities gate authority` (also holds the evidence sources and decision issue types)

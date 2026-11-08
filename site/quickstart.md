@@ -31,7 +31,7 @@ The suite utilizes the **Uniform Permission Management Standard** across all app
 
 1. Navigate to **Jira Settings (Gear Icon)** -> **Apps**.
 2. In the left sidebar, click the app's administration page:
-   - **LedgerSeal approvers**
+   - **LedgerSeal settings** (tab **Approver groups**)
    - **DefinitionGuard approvers**
    - **CascadePlan approvers**
 3. In the **Authorized Groups** input, search for and select your compliance, release, or lead groups (e.g. `jira-administrators`, `release-managers`, `tech-leads`).
