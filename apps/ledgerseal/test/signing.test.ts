@@ -641,3 +641,39 @@ describe('records and evidence', () => {
     for (const code of codes) expectCodeNowhere(store, code);
   });
 });
+
+describe('declaration coverage in the seal record (owner approval of v2, 2026-11-08)', () => {
+  it('stores v2 text in the hashed assignment, its version in the chained row, and fails the integrity check if the text changes', async () => {
+    const { jira, store, deps } = await setup();
+    await signedSeal(jira, deps, 'alice');
+    const [row] = model.statusRows(store);
+    expect(row.data.declarationVersion).toBe('2');
+    const [assignment] = model.assignments(store);
+    expect(assignment.declaration).toEqual({ version: '2', text: DECLARATION_V2.text });
+    expect(assignment.declaration.text).toContain('my organisation treats this electronic signature as the legally binding equivalent');
+    expect((await verifyIssueFlow({}, as(jira, 'alice'), deps) as any).status).toBe('SEAL_VALID');
+    const key = [...store.map.keys()].find(k => k.startsWith('ls3:wepa:10001:'))!;
+    store.map.set(key, { ...store.map.get(key), declaration: { version: '2', text: 'Some other text' } });
+    expect((await verifyIssueFlow({}, as(jira, 'alice'), deps) as any).status).toBe('RECORD_INVALID');
+  });
+
+  it('keeps a version 1 seal valid: its stored text and version are unchanged', async () => {
+    const { jira, store, deps } = await setup({ part11: false });
+    const v1 = { meaning: 'APPROVAL', declarationVersion: declaration.DECLARATION.version, declarationText: declaration.DECLARATION.text };
+    await sealIssueFlow({ signature: v1 }, as(jira, 'alice'), deps);
+    const [assignment] = model.assignments(store);
+    expect(assignment.declaration).toEqual({ version: '1', text: declaration.DECLARATION.text });
+    expect(model.statusRows(store)[0].data.declarationVersion).toBe('1');
+    expect((await verifyIssueFlow({}, as(jira, 'alice'), deps) as any).status).toBe('SEAL_VALID');
+  });
+
+  it('refuses a seal that sends the earlier v2 draft text', async () => {
+    const { jira, deps } = await setup();
+    const { res, code } = await askCode(jira, deps, 'alice');
+    // The earlier draft differed only in its second sentence ("My electronic signature is ...")
+    const draft = DECLARATION_V2.text.replace('I understand that my organisation treats this electronic signature as', 'My electronic signature is');
+    expect(draft).not.toBe(DECLARATION_V2.text);
+    const out: any = await sealIssueFlow({ signature: V2({ declarationText: draft }), signing: { challengeId: res.challengeId, code } }, as(jira, 'alice'), deps);
+    expect(out.code).toBe('DECLARATION_MISMATCH');
+  });
+});
