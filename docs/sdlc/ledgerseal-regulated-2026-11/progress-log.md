@@ -268,3 +268,19 @@ LedgerSeal: tsc 0 errors; 63 suites, 808 tests; coverage statements 97.71%, bran
   - route version hash.
 - `declarations` held exactly `approve/2`, `reject/1` and `revoke/1`.
 - Restored: the probe route is unbound ("No route is bound"), and code signing for LSP is off (policy version 6). LSP-10 stays revoked as the probe record. Production not touched.
+
+## LS-1 and review round 4 (2026-11-08)
+
+- **LS-1 (user-guide audit, `.tmp/cache/user-guides/code-gaps.md`):** an attachment added, removed or replaced after the seal is now a change row of the panel. Each row shows the file name, the kind of change and, where Jira says so, who did it and when. An added file names its author; a removed or replaced one names the person the change log gives after the seal. The "N items modified" sentence counts these rows. The names are read from Jira when the panel loads, and they are not recorded. So the validator message (it still names "Attachments") and the evidence export are unchanged; the incident still records `attachmentChanges` only.
+  - Tests: `test/view-model.test.ts` (attachment-only, fields plus attachments, CHANGED_BACK); `test/ls1-attachments.test.ts` (who added and who removed; the validator message and the export unchanged; unknown authors stay empty).
+  - Live on development 6.17.0, probe **LSP-11**: sealed, then a file `ls1-probe.txt` was added through Jira. The panel showed "Approval seal: Changed after approval. 1 item modified." and the row "Attachment: ls1-probe.txt (Added after the seal)", "Was (at approval): (none)", "Now: ls1-probe.txt", changed by the owner with the time.
+- **R4-2:** a revoke code request runs the revoke flow's own checks first: the issue has a seal that is not revoked and passes its check, and the caller did not change the issue after the seal. If any check fails, no code is emailed. Test in `test/signing.test.ts`.
+- **R4-1 and R4-3:** this work is on **`feature/ledgerseal-regulated-v3`**, rebuilt from origin/master 04d36a2 by replaying the v2 commits. The fix round 3 "wip" commit was folded into the commit that records the live run, and its "Left / Next step" block was removed. `feature/ledgerseal-regulated-v2` is left as it was (head 9c8c625).
+- **R4-4 (open):** the live exports of LSP-7, LSP-8 and LSP-10 were checked by a port of the verifier in the browser (the browser tool refuses to return the raw file). Before release, run the real `verify-evidence.mjs` 1.5.0 on one live export.
+
+### Gate (v3, on c3289af)
+- LedgerSeal: tsc 0 errors; 65 suites, 820 tests; branches 93.56%, every file at or above 90%; build, audit and `forge lint` clean; FSRT default and `secret-logging` 0 findings.
+- FourRealities (master's code, after `npm ci`): tsc 0 errors; 59 suites, 833 tests; branches 96.56%; build, audit and `forge lint` clean; FSRT 0. One file is under 90% branches: `src/brand/brand.ts` (88.88%), which comes from master and is unchanged here.
+- Semgrep 1.182.1: 0 findings (233 files).
+- Verifier: 54 tests (format 1 identical to 1.3.0; LedgerSeal and FourRealities); `--self-test` 10/10 and 3/3.
+- `forge eligibility -e development`: **6.17.0** eligible for Runs on Atlassian. Production not touched.
