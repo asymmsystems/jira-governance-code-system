@@ -105,13 +105,18 @@ describe('B-07 declaration text and version', () => {
 });
 
 describe('ADR-016 declaration version 2 (owner decision Q-03)', () => {
-  it('ships as a draft that is not approved, so code signing cannot be turned on', () => {
+  it('holds the text the owner approved on 2026-11-08, verbatim, and is approved', () => {
     const { DECLARATION_V2, isDeclarationV2Approved, declarationFor } = require('../src/domain/declaration');
     expect(DECLARATION_V2.version).toBe('2');
-    expect(DECLARATION_V2.approved).toBe(false);
-    expect(isDeclarationV2Approved()).toBe(false);
+    expect(DECLARATION_V2.approved).toBe(true);
+    expect(isDeclarationV2Approved()).toBe(true);
     expect(declarationFor(true)).toEqual({ version: '2', text: DECLARATION_V2.text });
     expect(declarationFor(false)).toEqual({ version: DECLARATION.version, text: DECLARATION.text });
-    expect(DECLARATION_V2.text).toContain('legally binding equivalent of my handwritten signature');
+    expect(DECLARATION_V2.text).toBe(
+      'I am signing this record electronically. I understand that my organisation treats this electronic signature as the legally binding equivalent of my handwritten signature. ' +
+        'I approve this issue as it is now, with the meaning shown above, and I agree that this signature records my approval of its covered fields, comments and attachments.'
+    );
+    // The app states the signer's understanding; it does not assert legal effect itself (11.100(c) is the customer's)
+    expect(DECLARATION_V2.text).not.toContain('My electronic signature');
   });
 });
