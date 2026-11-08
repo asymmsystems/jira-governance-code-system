@@ -140,3 +140,93 @@ describe('verifier 1.4.0: format 2 code signing', () => {
     assert.match(change.stdout, /PASS code signing/);
   });
 });
+
+/** A route version with its hash, as the app stores it (groups and gates sorted). */
+function route(stages, version = 1) {
+  const draft = { schemaVersion: 1, routeId: 'rte_t', version, name: 'QA then Regulatory', stages, reapprovalStageIds: null, setByPartyId: 'pty_' + 'c'.repeat(32), fromDate: '2026-11-08T00:00:00.000Z' };
+  return { ...draft, routeHash: sha256(canonicalJson(draft)) };
+}
+const QA = { stageId: 'qa', name: 'QA', orderGroup: 1, roleTypeId: 'LS_REVIEWER', approverGroups: [{ id: 'g-qa', name: 'qa' }], quorum: { kind: 'ANY' }, gatesStatusIds: [] };
+const REG = { stageId: 'reg', name: 'Regulatory', orderGroup: 2, roleTypeId: 'LS_APPROVER', approverGroups: [{ id: 'g-reg', name: 'reg' }], quorum: { kind: 'N', n: 2 }, gatesStatusIds: [] };
+const P = c => 'pty_' + c.repeat(32);
+
+/**
+ * A routed evidence export: `sigs` are the run's signatures in order ([stageId, party]); the last one writes the seal.
+ * `tweak` may change a row's data before it is hashed, so the chain stays valid and only the route checks can fail.
+ */
+function routedEvidence(r, sigs, { tweak = () => undefined, after = [], stageSignatures } = {}) {
+  const snapshot = { canonicalizerVersion: '2.3.0', issueId: '10001', issueKey: 'CHG-1', projectId: '100', issueTypeId: '3', fields: [], attachments: [], comments: [] };
+  const snapshotHash = sha256(canonicalJson(snapshot));
+  const runData = stageId => ({ runId: 'run-1', routeId: r.routeId, routeVersion: r.version, routeHash: r.routeHash, stageId, qualifyingGroupId: 'g', snapshotHash });
+  let prev = GENESIS;
+  const history = [];
+  const push = row => {
+    const full = { workEffortId: '10001', reason: null, seq: history.length + 1, prevEntryHash: prev, entryHash: '', ...row };
+    tweak(full);
+    full.entryHash = sha256(canonicalJson(without(full, 'entryHash')));
+    prev = full.entryHash;
+    history.push(full);
+    return full;
+  };
+  const runRows = sigs.slice(0, -1).map(([stageId, party], i) => push({ statusId: 'LS_RUN_SIGNED', statusDatetime: `2026-11-08T0${i + 1}:00:00.000Z`, setByPartyId: party, transitionName: 'SIGN_STAGE', data: runData(stageId) }));
+  const [lastStage, lastParty] = sigs.at(-1);
+  push({
+    statusId: 'LS_SEALED',
+    statusDatetime: '2026-11-08T09:00:00.000Z',
+    setByPartyId: lastParty,
+    transitionName: 'SEAL',
+    data: { certificateId: 'cert-1', meaning: 'APPROVAL', declarationVersion: '1', previousCertificateId: null, previousState: null, ...runData(lastStage), stageSignatures: stageSignatures ?? runRows.map(x => x.entryHash), requiredStageIds: r.stages.map(s => s.stageId) }
+  });
+  for (const row of after) push(row);
+  const body = { schemaVersion: 4, issueId: '10001', status: 'SEAL_VALID', certificateId: 'cert-1', snapshotHash, canonicalizerVersion: '2.3.0', sealedAt: '2026-11-08T09:00:00.000Z', everCompromised: 'false', incidentCount: 0, issuedAt: '2026-11-08T12:00:00.000Z', approval: { runState: 'COMPLETE', stagesComplete: 2, stagesTotal: 2, routeHash: r.routeHash }, keyId: 'test-v2' };
+  const attestation = { ...body, sig: sign(null, Buffer.from(canonicalJson(body), 'utf8'), privateKey).toString('base64') };
+  return { format: 'ledgerseal-evidence/2', attestation, snapshot, history, signingPolicies: [], routes: [JSON.parse(JSON.stringify(r))], parties: {} };
+}
+
+describe('verifier 1.4.0: format 2 approval routes (checks 6 to 9)', () => {
+  const r = route([QA, REG]);
+  const good = [['qa', P('a')], ['reg', P('b')], ['reg', P('c')]];
+
+  it('passes a run of QA then two Regulatory signers', () => {
+    const res = check(routedEvidence(r, good));
+    assert.strictEqual(res.status, 0, res.stdout);
+    for (const name of ['route versions (1)', 'stage signatures of the sealing run', 'quorum and stage order', 'one stage per person']) assert.match(res.stdout, new RegExp(`PASS ${name.replace(/[()]/g, '\\$&')}`));
+  });
+
+  it('check 6: fails a route version that does not hash to its routeHash', () => {
+    const ev = routedEvidence(r, good);
+    ev.routes[0].stages[1].quorum = { kind: 'N', n: 1 };
+    assert.match(check(ev).stdout, /FAIL route versions \(1\)/);
+  });
+
+  it('check 7: fails when the seal row names other stage signatures, or a stage signed another snapshot', () => {
+    assert.match(check(routedEvidence(r, good, { stageSignatures: [] })).stdout, /FAIL stage signatures of the sealing run/);
+    const other = routedEvidence(r, good, { tweak: row => { if (row.seq === 1) row.data.snapshotHash = 'f'.repeat(64); } });
+    assert.match(check(other).stdout, /FAIL stage signatures of the sealing run/);
+  });
+
+  it('check 8: fails a stage below its quorum, and a later group signed before an earlier one was complete', () => {
+    assert.match(check(routedEvidence(r, [['qa', P('a')], ['reg', P('b')]])).stdout, /FAIL quorum and stage order/);
+    assert.match(check(routedEvidence(r, [['reg', P('b')], ['qa', P('a')], ['reg', P('c')]])).stdout, /FAIL quorum and stage order/);
+  });
+
+  it('check 9: fails a person who signed two stages of the run', () => {
+    assert.match(check(routedEvidence(r, [['qa', P('a')], ['reg', P('a')], ['reg', P('c')]])).stdout, /FAIL one stage per person/);
+  });
+
+  it('check 4 skips run rows: a new run after the seal does not change the sealed status', () => {
+    const later = [{ statusId: 'LS_RUN_SIGNED', statusDatetime: '2026-11-08T10:00:00.000Z', setByPartyId: P('d'), transitionName: 'SIGN_STAGE', data: { runId: 'run-2', stageId: 'qa' } }];
+    const res = check(routedEvidence(r, good, { after: later }));
+    assert.match(res.stdout, /PASS attestation status matches the history \(SEAL_VALID\)/);
+    assert.strictEqual(res.status, 0, res.stdout);
+  });
+
+  it('skips the run checks for format 2 evidence whose newest seal has no run', () => {
+    const p1 = policy(null, {});
+    const ev = evidence({ policies: [p1], rows: [{ at: '2026-11-08T01:00:00.000Z', signing: signing(p1) }] });
+    ev.routes = [];
+    const res = check(ev);
+    assert.match(res.stdout, /PASS route versions \(0\)/);
+    assert.doesNotMatch(res.stdout, /quorum and stage order/);
+  });
+});

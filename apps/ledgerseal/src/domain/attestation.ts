@@ -90,6 +90,37 @@ export function buildAttestation(source: AttestationSource, status: AttestationS
   return { ...signed, sig: signer.sign(canonicalJson(signed)) };
 }
 
+/** ADR-017: the approval state of a routed issue (schema 4). */
+export interface ApprovalSummary {
+  runState: 'OPEN' | 'REJECTED' | 'VOIDED' | 'COMPLETE';
+  stagesComplete: number;
+  stagesTotal: number;
+  routeHash: string;
+}
+
+/**
+ * Schema 4 (spec v4 section 15.4), only for an issue with a route: schema 3 plus `approval`. Before the first seal it
+ * has no status, certificate, snapshot hash or seal time. `status` keeps its four values and meanings.
+ */
+export function buildRoutedAttestation(
+  issueId: string,
+  source: AttestationSource | null,
+  status: AttestationStatus | null,
+  approval: ApprovalSummary,
+  issuedAt: string,
+  signer: Signer | null
+): Record<string, unknown> {
+  const sealed = source && status ? { ...buildAttestation(source, status, issuedAt, null) } : null;
+  const body: Record<string, unknown> = sealed
+    ? { ...sealed, schemaVersion: 4, approval }
+    : { schemaVersion: 4, issueId, approval, issuedAt };
+  delete body.sig;
+  delete body.keyId;
+  if (!signer) return body;
+  const signed = { ...body, keyId: signer.keyId };
+  return { ...signed, sig: signer.sign(canonicalJson(signed)) };
+}
+
 export type VerifyResult = { valid: true } | { valid: false; reason: 'UNSIGNED' | 'UNKNOWN_KEY' | 'WRONG_ISSUE' | 'BAD_SIGNATURE' };
 
 /**

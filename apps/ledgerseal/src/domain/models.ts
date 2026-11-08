@@ -6,7 +6,7 @@
  * @author Fahim Farook
  */
 
-import { LedgerSealRoleTypeId, LedgerSealStatusId, TransitionName } from './status';
+import { LedgerSealRoleTypeId, LedgerSealStatusId, RunStatusId, TransitionName } from './status';
 
 export interface CanonicalField {
   id: string;
@@ -240,8 +240,8 @@ export interface WorkEffortPartyAssignment {
 /** One state change, created once (Silverston WorkEffortStatus with the LedgerSeal hash chain). */
 export interface WorkEffortStatus {
   workEffortId: string;
-  /** LS_REDACTED is not a seal state: it records the conversion of ADR-011 decision 7. */
-  statusId: LedgerSealStatusId | 'LS_REDACTED';
+  /** LS_REDACTED is not a seal state: it records the conversion of ADR-011 decision 7. Run rows: ADR-017. */
+  statusId: LedgerSealStatusId | 'LS_REDACTED' | RunStatusId;
   statusDatetime: string;
   setByPartyId: string | null;
   reason: string | null;

@@ -10,7 +10,7 @@
 
 import { hashWithout } from './canonical-json';
 import { WorkEffortStatus } from './models';
-import { LedgerSealStatusId, TransitionName } from './status';
+import { LedgerSealStatusId, RunStatusId, TransitionName } from './status';
 
 export const GENESIS_HASH = '0'.repeat(64);
 
@@ -23,7 +23,7 @@ export function buildStatusRow(
   prev: ChainHead | null,
   fields: {
     workEffortId: string;
-    statusId: LedgerSealStatusId | 'LS_REDACTED';
+    statusId: LedgerSealStatusId | 'LS_REDACTED' | RunStatusId;
     statusDatetime: string;
     setByPartyId: string | null;
     reason: string | null;

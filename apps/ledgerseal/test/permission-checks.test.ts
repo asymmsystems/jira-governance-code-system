@@ -9,7 +9,7 @@
  * @author Fahim Farook
  */
 
-import { createSigningIntent, getSealEvidence, getSealHistory, requestSigningCode, revokeSeal, sealIssue, verifyIssue } from '../src/index';
+import { createSigningIntent, getSealEvidence, getSealHistory, rejectStage, requestSigningCode, revokeSeal, sealIssue, signStage, verifyIssue } from '../src/index';
 import { createJiraClient } from '../src/jira/jira-client';
 import { buildPanelView } from '../src/frontend/view-model';
 import { FakeJira, MemoryStore, panelContext, sampleIssue, validSignature } from './support/fakes';
@@ -41,7 +41,9 @@ const RESOLVERS: [string, (user: string, deps: any) => Promise<any>][] = [
   ['seal-history-api', (user, deps) => getSealHistory({}, panelContext(user), deps)],
   ['seal-evidence-api', (user, deps) => getSealEvidence({}, panelContext(user), deps)],
   ['signing-code-request-api', (user, deps) => requestSigningCode({ action: 'SEAL' }, panelContext(user), deps)],
-  ['transition-sign-intent-api', (user, deps) => createSigningIntent({ viewHash: 'x', signature: validSignature() }, panelContext(user), deps)]
+  ['transition-sign-intent-api', (user, deps) => createSigningIntent({ viewHash: 'x', signature: validSignature() }, panelContext(user), deps)],
+  ['stage-sign-api', (user, deps) => signStage({ stageId: 'qa', viewHash: 'x', signature: validSignature() }, panelContext(user), deps)],
+  ['stage-reject-api', (user, deps) => rejectStage({ stageId: 'qa', viewHash: 'x', reason: 'No' }, panelContext(user), deps)]
 ];
 
 describe('Q3 a Browse projects check as the user comes before any app read', () => {
