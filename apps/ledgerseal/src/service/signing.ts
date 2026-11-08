@@ -37,7 +37,7 @@ import {
 import { DECLARATION_V2, isDeclarationV2Approved, validReason } from '../domain/declaration';
 import { PartyRepository, PartyResolver } from '../storage/party-repository';
 import { SigningRepository } from '../storage/signing-repository';
-import { browseDenied, contextIssue, fail, LedgerSealDeps, licenseInactive, SealFailure } from './ledger';
+import { browseDenied, contextIssue, fail, LedgerSealDeps, licenseInactive, revokeRefusal, SealFailure } from './ledger';
 import { adminCaller } from './policy-admin';
 import { isApprover } from './approver';
 import { openStageFor, routeFor } from './routes';
@@ -126,6 +126,11 @@ export async function requestCodeFlow(payload: any, context: any, deps: LedgerSe
   if (!isDeclarationV2Approved()) return fail('DECLARATION_PENDING');
   const refused = await codeRequestRight(deps, issue.id, action, stageId);
   if (refused) return refused;
+  // Review round 4 (R4-2): no code is emailed for a revoke that the revoke flow would refuse
+  if (action === 'REVOKE') {
+    const blocked = await revokeRefusal(deps, issue.id, accountId);
+    if (blocked) return blocked;
+  }
 
   const repo = repoOf(deps);
   const parties = new PartyRepository(deps.storage);

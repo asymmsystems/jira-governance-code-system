@@ -472,6 +472,26 @@ describe('signing with the code (spec v4 section 14.3)', () => {
     expect(await policyReference({ jira, storage: bare, secrets: bare }, projectId, p1)).toBe('changed');
   });
 
+  it('emails no revoke code for a revoke the flow would refuse: no seal, already revoked, or the change author (review round 4, R4-2)', async () => {
+    const { jira, store, deps } = await setup();
+    approve();
+    const before = jira.notifications.length;
+    expect((await askCode(jira, deps, 'alice', 'REVOKE')).res.code).toBe('NOT_SEALED');
+    expect((await signedSeal(jira, deps, 'alice')).ok).toBe(true);
+    clearRequestSlots(store);
+    jira.edit('bob', new Date(Date.now() + 1000).toISOString(), 'summary', 'Changed by Bob');
+    expect((await askCode(jira, deps, 'bob', 'REVOKE')).res.code).toBe('SELF_APPROVAL');
+    clearRequestSlots(store);
+    const ok = await askCode(jira, deps, 'alice', 'REVOKE');
+    expect(ok.res.ok).toBe(true);
+    const REVOKE_SIG = { declarationId: 'revoke', declarationVersion: declaration.DECLARATION_REVOKE.version, declarationText: declaration.DECLARATION_REVOKE.text };
+    expect(((await revokeFlow({ reason: 'stop', signature: REVOKE_SIG, signing: { challengeId: ok.res.challengeId, code: ok.code } }, as(jira, 'alice'), deps)) as any).ok).toBe(true);
+    clearRequestSlots(store);
+    expect((await askCode(jira, deps, 'alice', 'REVOKE')).res.code).toBe('INVALID_REQUEST');
+    // Only the seal code and the one allowed revoke code were emailed
+    expect(jira.notifications.length - before).toBe(2);
+  });
+
   it('fails closed when the stored policy fails its hash', async () => {
     const { jira, store, deps } = await setup();
     approve();

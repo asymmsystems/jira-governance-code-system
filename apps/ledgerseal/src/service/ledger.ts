@@ -905,6 +905,23 @@ async function authorOfChange(deps: LedgerSealDeps, issueId: string, live: LiveR
   return changeAuthorsSince(changelog.value, live.raw, sinceIso, counts).has(accountId);
 }
 
+/**
+ * Review round 4 (R4-2): the revoke flow's own refusals that a code request can know before it emails a code: no
+ * seal, a seal already revoked or failing its check, and the separation of duties (the caller changed the issue after
+ * the seal). Null when a revoke could go ahead.
+ */
+export async function revokeRefusal(deps: LedgerSealDeps, issueId: string, accountId: string): Promise<SealFailure | null> {
+  const seal = await new SealRepository(deps.storage).getSeal(issueId);
+  if (!seal) return fail('NOT_SEALED', 'This issue is not sealed, so there is nothing to revoke.');
+  if (seal === 'missing' || !isConsistent(seal)) return fail('INVALID_REQUEST', 'The seal record failed its integrity check, so it cannot be revoked. Seal the issue again.');
+  if (!canChange(seal.workEffort.currentStatusId, 'LS_REVOKED')) return fail('INVALID_REQUEST', 'This seal is already revoked.');
+  const live = await readLiveSnapshot(deps.jira, issueId, new Date().toISOString(), { party: await new PartyRepository(deps.storage).partyForRead() });
+  if (!live) return fail('JIRA_UNREACHABLE');
+  const self = await changedSince(deps, issueId, live, seal, accountId);
+  if (self === null) return fail('JIRA_UNREACHABLE');
+  return self ? fail('SELF_APPROVAL', SELF_REVOKE_MESSAGE) : null;
+}
+
 function changedSince(deps: LedgerSealDeps, issueId: string, live: LiveRead, seal: LoadedSeal, accountId: string) {
   return authorOfChange(deps, issueId, live, seal.assignment.fromDate, seal.workEffort.attributes.canonicalizerVersion, accountId);
 }
