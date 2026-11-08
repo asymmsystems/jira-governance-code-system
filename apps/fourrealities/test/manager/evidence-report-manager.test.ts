@@ -965,3 +965,13 @@ describe('owner decision R4-3: "Name every one"', () => {
   });
 });
 
+describe('review round 5', () => {
+  it('R5-3: a create that fails before its index entry leaves no job record and no id chunk', async () => {
+    const h = seeded();
+    jest.spyOn(h.store, 'putEntry').mockRejectedValueOnce(new Error('kvs down'));
+    await expect(h.manager.create(caller(), ADMIN, RANGE)).rejects.toThrow('kvs down');
+    expect(Array.from(h.storage.store.keys()).filter(k => k.startsWith('fr:rj:'))).toEqual([]);
+    expect(h.pushes).toEqual([]);
+  });
+});
+

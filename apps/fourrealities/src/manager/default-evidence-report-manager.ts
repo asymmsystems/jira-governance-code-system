@@ -283,33 +283,41 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
     const now = new Date(Number.isFinite(newest) ? Math.max(this.now().getTime(), newest + 1) : this.now().getTime()).toISOString();
     const reportId = this.d.crypto.newId();
     // Each id with its key, so an issue the job cannot read later is still named (review N-1).
-    const idChunks = await this.d.store.saveIds(reportId, found.ids.map(id => (found.keys[id] ? `${id}:${found.keys[id]}` : id)));
-    const job: ReportJob = {
-      schemaVersion: 1,
-      reportId,
-      projectId: r.projectId,
-      projectKey: r.projectKey,
-      range: r.range,
-      filters: r.filters,
-      trigger: r.trigger,
-      requestedBy: r.requestedBy,
-      ...(r.scheduleId ? { scheduleId: r.scheduleId } : {}),
-      state: 'QUEUED',
-      cursor: 0,
-      parts: 0,
-      idChunks,
-      failures: 0,
-      progress: { issuesTotal: found.ids.length, issuesDone: 0, changes: 0, linksNotRead: 0, notReadable: 0 },
-      createdAt: now,
-      updatedAt: now
-    };
-    await this.d.store.saveJob(job);
-    const entry: ReportIndexEntry = { reportId, state: 'QUEUED', range: r.range, filters: r.filters, trigger: r.trigger, requestedBy: r.requestedBy, createdAt: now };
-    // One write per entry: the new report's own key, and the removal of the entry that made room (review M-1).
-    for (const gone of index.filter(e => !admitted.entries.includes(e))) await this.d.store.deleteEntry(r.projectId, gone);
-    // Registered before the entry is written, so a failure between the two never leaves a report outside the daily run.
-    await this.d.store.registerProject(r.projectId, r.projectKey);
-    await this.d.store.putEntry(r.projectId, entry);
+    const idEntries = found.ids.map(id => (found.keys[id] ? `${id}:${found.keys[id]}` : id));
+    try {
+      const idChunks = await this.d.store.saveIds(reportId, idEntries);
+      const job: ReportJob = {
+        schemaVersion: 1,
+        reportId,
+        projectId: r.projectId,
+        projectKey: r.projectKey,
+        range: r.range,
+        filters: r.filters,
+        trigger: r.trigger,
+        requestedBy: r.requestedBy,
+        ...(r.scheduleId ? { scheduleId: r.scheduleId } : {}),
+        state: 'QUEUED',
+        cursor: 0,
+        parts: 0,
+        idChunks,
+        failures: 0,
+        progress: { issuesTotal: found.ids.length, issuesDone: 0, changes: 0, linksNotRead: 0, notReadable: 0 },
+        createdAt: now,
+        updatedAt: now
+      };
+      await this.d.store.saveJob(job);
+      const entry: ReportIndexEntry = { reportId, state: 'QUEUED', range: r.range, filters: r.filters, trigger: r.trigger, requestedBy: r.requestedBy, createdAt: now };
+      // One write per entry: the new report's own key, and the removal of the entry that made room (review M-1).
+      for (const gone of index.filter(e => !admitted.entries.includes(e))) await this.d.store.deleteEntry(r.projectId, gone);
+      // Registered before the entry is written, so a failure between the two never leaves a report outside the daily run.
+      await this.d.store.registerProject(r.projectId, r.projectKey);
+      await this.d.store.putEntry(r.projectId, entry);
+    } catch (failure) {
+      // A create that fails before its index entry is written leaves no job record and no id chunk (review R5-3).
+      await this.d.store.deleteIds(reportId, Math.ceil(idEntries.length / REPORT_LIMITS.idsPerValue));
+      await this.d.store.deleteJob(reportId);
+      throw failure;
+    }
     await this.d.queue.push(reportId);
     return { ok: true, reportId, state: 'QUEUED' };
   }

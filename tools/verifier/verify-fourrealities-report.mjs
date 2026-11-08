@@ -45,16 +45,22 @@ const sha256 = buffer => createHash('sha256').update(buffer).digest('hex');
 const without = (obj, fields) => Object.fromEntries(Object.entries(obj).filter(([k]) => !fields.includes(k)));
 
 /** The checks of one report; each result line starts with PASS or FAIL. */
-/** verifyReport, with any unexpected shape of a file turned into a FAIL line (review R4-2). */
-export function verifyReportSafely(input) {
+/**
+ * The checks of one report; each result line starts with PASS, FAIL, WARN or NOTE. It never throws: input of any
+ * other shape gives one FAIL line (reviews R4-2 and round 5), also for a caller that uses it as a library.
+ */
+export function verifyReport(input) {
   try {
-    return verifyReport(input);
+    return checkReport(input || {});
   } catch {
     return ['FAIL the files have a shape this verifier cannot read: they are not a FourRealities evidence report'];
   }
 }
 
-export function verifyReport({ manifestText, reportJson, reportCsv, publicKeyPem, previousText }) {
+/** The same, under its earlier name. */
+export const verifyReportSafely = verifyReport;
+
+function checkReport({ manifestText, reportJson, reportCsv, publicKeyPem, previousText }) {
   const results = [];
   const check = (ok, text) => results.push(`${ok ? 'PASS' : 'FAIL'} ${text}`) && ok;
   let manifest;

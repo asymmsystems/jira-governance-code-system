@@ -156,7 +156,7 @@ export function harness(o: { keys?: boolean; policy?: ReportPolicyEngine; now?: 
   const people = { serviceType: 'accessor' as const, people: jest.fn(async (ids: string[]) => Object.fromEntries(ids.filter(id => names[id]).map(id => [id, names[id]]))), myGroupIds: jest.fn(async () => groups) };
   const links = new Map<string, unknown>();
   const appIssues = { remoteLinks: jest.fn(async (ids: string[]) => new Map(ids.filter(id => !links.has(`miss:${id}`)).map(id => [id, []]))) };
-  const runtime = { serviceType: 'accessor' as const, environment: () => 'development', appVersion: () => '9.0.0', licenceActive: () => true };
+  const runtime = { serviceType: 'accessor' as const, environment: () => 'development', appVersion: () => '9.0.0', licenceActive: () => true, licenceState: async () => true as boolean | undefined };
   const store = new DefaultKvsReportStoreAccessor(storage);
   const manager = new DefaultEvidenceReportManager({
     store,

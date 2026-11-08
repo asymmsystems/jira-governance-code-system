@@ -29,6 +29,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson } from '../verify-evidence.mjs';
+import { verifyReport } from '../verify-fourrealities-report.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const VERIFIER = join(HERE, '..', 'verify-fourrealities-report.mjs');
@@ -135,6 +136,14 @@ describe('FourRealities evidence report verifier', () => {
     assert.strictEqual(out.status, 1);
     assert.match(out.stdout, /FAIL the files have a shape this verifier cannot read/);
     assert.doesNotMatch(out.stderr, /TypeError/);
+  });
+
+  it('never throws when called as a library with malformed input', () => {
+    for (const input of [undefined, null, {}, { manifestText: 'x' }, { manifestText: Buffer.from('{}') }, { manifestText: Buffer.from('null'), reportJson: Buffer.from('1'), reportCsv: Buffer.from('') }, { manifestText: Buffer.from('{"files":7,"range":{"to":3}}'), reportJson: 5, reportCsv: null }]) {
+      const lines = verifyReport(input);
+      assert.ok(Array.isArray(lines));
+      assert.ok(lines.some(l => l.startsWith('FAIL')));
+    }
   });
 
   it('warns for a development key, and fails a production report signed with one', () => {

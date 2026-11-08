@@ -131,6 +131,8 @@ export interface ReportRuntimeAccessor extends Accessor {
   environment(): string;
   appVersion(): string | undefined;
   licenceActive(): boolean | undefined;
+  /** The licence for the daily run: the context, else the License REST API in production; undefined when unknown. */
+  licenceState(): Promise<boolean | undefined>;
 }
 
 /** People as the downloading user (scope read:jira-user). */

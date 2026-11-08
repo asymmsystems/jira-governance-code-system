@@ -1211,7 +1211,11 @@ describe('B-08: bounded storage and a scheduled snapshot', () => {
       await snapshot();
       expect(log).toHaveBeenLastCalledWith('FourRealities: scheduled snapshot skipped: the licence is not active.');
       expect(storage.store.has('fr:p:DEMO:meta')).toBe(false);
-      for (const ctx of [() => ({ license: { isActive: true } }), () => ({}), () => { throw new Error('outside the Forge runtime'); }]) {
+      // The current field "active" decides over the deprecated "isActive" (round 5).
+      mockAppContext.get = () => ({ license: { active: false, isActive: true } });
+      await snapshot();
+      expect(log).toHaveBeenLastCalledWith('FourRealities: scheduled snapshot skipped: the licence is not active.');
+      for (const ctx of [() => ({ license: { isActive: true } }), () => ({ license: { active: true } }), () => ({}), () => { throw new Error('outside the Forge runtime'); }]) {
         mockAppContext.get = ctx;
         await snapshot();
         expect(String(log.mock.calls[log.mock.calls.length - 1][0])).toBe('FourRealities: scheduled snapshot');

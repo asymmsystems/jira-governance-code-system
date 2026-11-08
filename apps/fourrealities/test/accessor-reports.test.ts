@@ -9,10 +9,11 @@
 import * as crypto from 'crypto';
 
 const asUserRequest = jest.fn();
+const asAppAtlassian = jest.fn();
 const appContext = jest.fn();
 jest.mock('@forge/api', () => ({
   __esModule: true,
-  default: { asUser: () => ({ requestJira: (...a: unknown[]) => asUserRequest(...a) }), asApp: () => ({ requestJira: jest.fn() }) },
+  default: { asUser: () => ({ requestJira: (...a: unknown[]) => asUserRequest(...a) }), asApp: () => ({ requestJira: jest.fn(), requestAtlassian: (...a: unknown[]) => asAppAtlassian(...a) }) },
   route: (strings: TemplateStringsArray, ...values: unknown[]) => strings.reduce((acc, part, i) => acc + part + (i < values.length ? String(values[i]) : ''), ''),
   assumeTrustedRoute: (p: string) => p,
   getAppContext: () => appContext()
@@ -467,6 +468,25 @@ describe('queue, hashes and signature, runtime, people', () => {
     expect(broken.environment()).toBe('production');
     appContext.mockReturnValue({ environmentType: 'STAGING' });
     expect(new DefaultForgeReportRuntimeAccessor().environment()).toBe('staging');
+  });
+
+  it('reads the licence from "active", else the deprecated "isActive", and asks the License REST API in production (round 5)', async () => {
+    expect(new DefaultForgeReportRuntimeAccessor(() => ({ license: { active: true, isActive: false } })).licenceActive()).toBe(true);
+    expect(new DefaultForgeReportRuntimeAccessor(() => ({ license: { isActive: false } })).licenceActive()).toBe(false);
+    const api = (status: number, body: unknown) => jest.fn(async () => ({ status, json: async () => body }));
+    const prod = (fetch: ReturnType<typeof api>) => new DefaultForgeReportRuntimeAccessor(() => ({ environmentType: 'PRODUCTION' }), fetch);
+    expect(await new DefaultForgeReportRuntimeAccessor(() => ({ environmentType: 'PRODUCTION', license: { active: false } }), api(200, {})).licenceState()).toBe(false);
+    expect(await prod(api(200, { results: [{ appId: 'a', data: { active: true } }] })).licenceState()).toBe(true);
+    expect(await prod(api(200, { results: [{ appId: 'a', data: { active: false } }] })).licenceState()).toBe(false);
+    expect(await prod(api(200, { results: [{ appId: 'a', data: {} }] })).licenceState()).toBeUndefined();
+    expect(await prod(api(429, {})).licenceState()).toBeUndefined();
+    expect(await prod(jest.fn(async () => { throw new Error('down'); })).licenceState()).toBeUndefined();
+    const dev = api(200, { results: [{ data: { active: false } }] });
+    expect(await new DefaultForgeReportRuntimeAccessor(() => ({ environmentType: 'DEVELOPMENT' }), dev).licenceState()).toBeUndefined();
+    expect(dev).not.toHaveBeenCalled();
+    asAppAtlassian.mockResolvedValueOnce({ status: 200, json: async () => ({ results: [{ data: { active: true } }] }) });
+    expect(await new DefaultForgeReportRuntimeAccessor(() => ({ environmentType: 'PRODUCTION' })).licenceState()).toBe(true);
+    expect(asAppAtlassian).toHaveBeenCalledWith('/forge/app/v1/license', { headers: { 'Content-Type': 'application/json' } });
   });
 
   it('reads names and the active flag as the user, 50 per call, and the caller\'s groups', async () => {

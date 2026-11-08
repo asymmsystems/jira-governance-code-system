@@ -14,8 +14,10 @@ export class DefaultForgeAppContextAccessor implements AppContextAccessor {
   /** False only when Forge says the licence is inactive; undefined when there is no licence or no context. */
   licenceActive(): boolean | undefined {
     try {
-      const isActive = getAppContext()?.license?.isActive;
-      return typeof isActive === 'boolean' ? isActive : undefined;
+      // `active` is the current field and `isActive` is deprecated (Forge app context API page, read 2026-11-08).
+      const license = getAppContext()?.license as { active?: unknown; isActive?: unknown } | undefined;
+      const state = typeof license?.active === 'boolean' ? license.active : license?.isActive;
+      return typeof state === 'boolean' ? state : undefined;
     } catch {
       return undefined;
     }

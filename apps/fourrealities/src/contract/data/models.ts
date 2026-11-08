@@ -521,7 +521,8 @@ export interface ForgeContext {
   moduleKey?: string;
   extension?: { issue?: { id?: string | number; key?: string }; project?: { key?: string; id?: string | number } };
   /** Marketplace licence; Forge gives none on development installs (spec v2, D-10). */
-  license?: { isActive?: boolean };
+  /** `active` is the current field; `isActive` is deprecated (Forge app context API page, read 2026-11-08). */
+  license?: { isActive?: boolean; active?: boolean };
 }
 
 /** Resolver payloads as sent by the UI. Every field is optional: the Managers validate them. */

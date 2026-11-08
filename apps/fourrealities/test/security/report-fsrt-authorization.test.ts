@@ -158,6 +158,28 @@ describe('licence (owner decision Q9) and wiring', () => {
     expect(await setReportSettings({ retentionDays: 1 }, CONTEXT as never)).toMatchObject({ ok: false, code: 'INVALID_INPUT' });
   });
 
+  it('the daily run makes scheduled reports only with an active licence, or an unknown one outside production (round 5)', async () => {
+    await storage.set('fr:reports:project:10000', 'PAY');
+    await storage.set('fr:rp:10000:schedules', [{ scheduleId: 's', cadence: 'WEEKLY', filters: { fieldIds: [], actors: [] }, createdBy: 'x', createdAt: '2026-01-01T00:00:00.000Z' }]);
+    const runtime = (environment: string, state: boolean | undefined) => ({ serviceType: 'accessor' as const, environment: () => environment, appVersion: () => undefined, licenceActive: () => state, licenceState: async () => state });
+    for (const [env, state] of [['production', undefined], ['production', false], ['development', false]] as Array<[string, boolean | undefined]>) {
+      setReportPlatform({ objects, runtime: runtime(env, state) });
+      expect(await runReportDaily(storage)).toMatchObject({ scheduled: 0 });
+      expect(mockApp).not.toHaveBeenCalled();
+    }
+    // An active licence (or an unknown one in development) lets the run search the scope as the app.
+    mockApp.mockResolvedValue(json(200, { issues: [], isLast: true }));
+    setReportPlatform({ objects, runtime: runtime('development', undefined) });
+    await runReportDaily(storage);
+    expect(mockApp).toHaveBeenCalled();
+  });
+
+  it('reads the current licence field "active", and the deprecated "isActive" only without it', () => {
+    expect(reportCallerOf({ license: { active: false } } as never).licenceActive).toBe(false);
+    expect(reportCallerOf({ license: { active: true, isActive: false } } as never).licenceActive).toBe(true);
+    expect(reportCallerOf({ license: { isActive: false } } as never).licenceActive).toBe(false);
+  });
+
   it('reads the caller from the context only', () => {
     expect(reportCallerOf(CONTEXT as never)).toEqual({ accountId: '712020:viewer', projectKey: 'PAY', projectId: '10000', licenceActive: true });
     expect(reportCallerOf({ extension: { project: { key: 'PAY', id: '' } } } as never)).toEqual({ accountId: undefined, projectKey: 'PAY', projectId: undefined, licenceActive: true });
@@ -168,7 +190,7 @@ describe('licence (owner decision Q9) and wiring', () => {
   it('builds the Forge graph when no platform is set, and makes no scheduled report when the licence is inactive', async () => {
     setReportPlatform({});
     expect(composeReports(storage, 1000).reports.serviceType).toBe('manager');
-    setReportPlatform({ objects, runtime: { serviceType: 'accessor', environment: () => 'development', appVersion: () => undefined, licenceActive: () => false } });
+    setReportPlatform({ objects, runtime: { serviceType: 'accessor', environment: () => 'development', appVersion: () => undefined, licenceActive: () => false, licenceState: async () => false } });
     await storage.set('fr:reports:project-ids', { '10000': 'PAY' });
     await storage.set('fr:rp:10000:schedules', [{ scheduleId: 's', cadence: 'WEEKLY', filters: { fieldIds: [], actors: [] }, createdBy: 'x', createdAt: '2026-01-01T00:00:00.000Z' }]);
     expect(await runReportDaily(storage)).toMatchObject({ scheduled: 0 });
@@ -219,7 +241,7 @@ describe('question 8: the consumer and the daily run log no error message, objec
   });
 
   it('the daily run logs its counts, or only the error name and code', async () => {
-    setReportPlatform({ objects, runtime: { serviceType: 'accessor', environment: () => 'development', appVersion: () => undefined, licenceActive: () => true } });
+    setReportPlatform({ objects, runtime: { serviceType: 'accessor', environment: () => 'development', appVersion: () => undefined, licenceActive: () => true, licenceState: async () => true } });
     await reportDaily();
     setGlobalStorageProvider(broken());
     await reportDaily();
