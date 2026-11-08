@@ -97,6 +97,23 @@ describe('who may create a report (owner decision Q2)', () => {
   });
 });
 
+describe('an inactive licence and existing reports (Q9, fix/fourrealities-licence-tab)', () => {
+  it('lists, opens and downloads a report made before the licence lapsed, and refuses a new one', async () => {
+    const h = seeded();
+    const id = await makeReport(h);
+    const lapsed = caller('acc-viewer', false);
+    const view = ok<ReportsView>(await h.manager.list(lapsed, BROWSER, {}));
+    expect(view).toMatchObject({ licenceActive: false, canCreate: false });
+    expect(view.reports.map(r => [r.reportId, r.state])).toEqual([[id, 'DONE']]);
+    expect(await h.manager.detail(lapsed, BROWSER, { reportId: id })).toMatchObject({ ok: true, download: { allowed: true }, manifest: { reportId: id } });
+    const key = objectKey('10000', id, 'report.json');
+    expect(await h.manager.downloadUrls(lapsed, BROWSER, { keys: [key] })).toEqual({ [`https://os.test/${key}`]: key });
+    const pushes = h.pushes.length;
+    expect(await h.manager.create(caller('acc-admin', false), ADMIN, RANGE)).toEqual({ ok: false, error: { code: 'LICENSE_INACTIVE', message: LICENCE_TEXT } });
+    expect(h.pushes.length).toBe(pushes);
+  });
+});
+
 describe('creation and its caps (Q6)', () => {
   it('searches as the user, stores the job, its ids and its index entry, and queues it', async () => {
     const h = seeded();
