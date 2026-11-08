@@ -279,7 +279,7 @@ describe('the project page tabs', () => {
 
 describe('review round 2: issues not in the report (N-1)', () => {
   it('shows a badge with the count on the row and a notice in the download modal', async () => {
-    answer({ getEvidenceReports: { ...VIEW, reports: [{ ...DONE, notReadable: 3 }, { ...DONE, reportId: 'one', notReadable: 1 }] }, getEvidenceReport: DETAIL });
+    answer({ getEvidenceReports: { ...VIEW, reports: [{ ...DONE, notReadable: 3 }, { ...DONE, reportId: 'one', notReadable: 1 }] }, getEvidenceReport: { ...DETAIL, notReadable: [{ issueId: '7', issueKey: 'PAY-7', reason: 'MOVED' }, { issueId: '8', issueKey: '', reason: 'NOT_READABLE' }] } });
     const r = await mount();
     const state = table(r)[0].cells.find(c => c.key === 'state')!.content;
     const badges = React.Children.toArray(state.props.children) as any[];
@@ -290,7 +290,31 @@ describe('review round 2: issues not in the report (N-1)', () => {
     await act(async () => { actionButton(r, 0, 'Download').props.onClick(); });
     await settle(act);
     expect(textOf(r.toJSON())).toContain('3 issues of the scope are not in this report');
+    expect(textOf(r.toJSON())).toContain('PAY-7 (id 7): moved to another project before the report was made.');
+    expect(textOf(r.toJSON())).toContain('Issue id 8: FourRealities could not read it when the report was made');
     expect(findAll(r.root, 'SectionMessage').map(m => m.props.title)).toContain('Not every issue is in this report');
+  });
+});
+
+describe('review round 3', () => {
+  it('R3-1: names at most 50 missing issues in the modal and says how many more are in the files', async () => {
+    const many = Array.from({ length: 52 }, (_, i) => ({ issueId: String(i + 1), issueKey: `PAY-${i + 1}`, reason: 'NOT_READABLE' }));
+    answer({ getEvidenceReports: { ...VIEW, reports: [{ ...DONE, notReadable: 52 }] }, getEvidenceReport: { ...DETAIL, notReadable: many } });
+    const r = await mount();
+    await act(async () => { actionButton(r, 0, 'Download').props.onClick(); });
+    await settle(act);
+    const text = textOf(r.toJSON());
+    expect(text).toContain('PAY-50 (id 50)');
+    expect(text).not.toContain('PAY-51 (id 51)');
+    expect(text).toContain('And 2 more: report.json and report.csv name every one.');
+  });
+
+  it('R3-5: says why no report can be made, and offers no button', async () => {
+    answer({ getEvidenceReports: { ...VIEW, canCreate: false, signingKeyId: null, cannotCreateReason: 'FourRealities has no valid signing key for this production site, so it makes no report.' } });
+    const r = await mount();
+    expect(findAll(r.root, 'SectionMessage').map(m => m.props.title)).toContain('No reports can be made on this site');
+    expect(textOf(r.toJSON())).toContain('no valid signing key for this production site');
+    expect(() => findButton(r.root, 'New evidence report')).toThrow();
   });
 });
 

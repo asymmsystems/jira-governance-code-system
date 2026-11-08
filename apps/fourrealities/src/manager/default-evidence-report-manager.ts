@@ -169,8 +169,10 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
     const settings = await this.d.store.getSettings();
     const rights = await this.rightsOf(p, settings);
     const projectId = String(caller.projectId);
-    // The project's current key, so a renamed project's schedules show its new key (review N-2).
-    await this.d.store.registerProject(projectId, projectKey);
+    // The project's current key, so a renamed project's schedules show its new key (review N-2). Only a project
+    // that has reports or schedules is in the registry: opening the tab does not add one (review R3-6).
+    const known = await this.d.store.projectKey(projectId);
+    if (known !== undefined && known !== projectKey) await this.d.store.registerProject(projectId, projectKey);
     const index = await this.d.store.getIndex(projectId);
     const offset = Math.max(0, Number((payload as { cursor?: unknown } | undefined)?.cursor) || 0);
     const page = index.slice(offset, offset + REPORT_LIMITS.pageSize);
@@ -181,7 +183,8 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
       reports: await this.rows(caller, page, settings),
       schedules: await this.d.store.getSchedules(projectId),
       tombstones: await this.d.store.listTombstones(projectId),
-      canCreate: rights.canCreate && caller.licenceActive,
+      canCreate: rights.canCreate && caller.licenceActive && !this.cannotSign(),
+      ...(this.cannotSign() ? { cannotCreateReason: NO_KEY_TEXT } : {}),
       canSchedule: rights.canSchedule,
       canDelete: rights.canDelete,
       licenceActive: caller.licenceActive,
@@ -308,7 +311,9 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
 
   /** The report's issues that the viewer cannot see now (checked as the viewer), and those deleted since. */
   private async visibility(job: ReportJob, isTier1: boolean): Promise<DownloadDecision> {
-    const ids = (await this.d.store.loadIds(job.reportId, job.idChunks)).map(idOf);
+    // A moved issue still exists, and the files name it: the downloader must be able to see it too (review R3-3).
+    const moved = (await this.d.store.loadNotReadable(job.reportId, job.notReadableChunks || 0)).filter(n => n.reason === 'MOVED').map(n => n.issueId);
+    const ids = [...(await this.d.store.loadIds(job.reportId, job.idChunks)).map(idOf), ...moved];
     const seen = await this.d.userJira.presentAmong(ids, this.d.deadline);
     if (!seen) return { allowed: false, code: 'JIRA_ERROR', message: 'FourRealities could not check which issues of this report you can see. Try again.' };
     const notSeen = ids.filter(id => !seen.has(id));
@@ -346,8 +351,10 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
     const text = await this.d.objects.readText(objectKey(job.projectId, job.reportId, 'manifest.json'));
     const manifest = text ? (JSON.parse(text) as ReportManifest) : undefined;
     const download = await this.visibility(job, this.d.policy.rights(p, false).isTier1);
-    // The manifest holds counts of the whole report: only for a viewer who may download it (review L-8).
-    return { ok: true, report, fileNames, download, ...(manifest && download.allowed ? { manifest } : {}) };
+    // The manifest, and the issues not in the report with their keys, only for a viewer who may download it
+    // (reviews L-8 and R3-1).
+    const notReadable = download.allowed && job.notReadableChunks ? await this.d.store.loadNotReadable(job.reportId, job.notReadableChunks) : [];
+    return { ok: true, report, fileNames, download, ...(manifest && download.allowed ? { manifest } : {}), ...(notReadable.length ? { notReadable } : {}) };
   }
 
   async downloadUrls(caller: ReportCaller, p: ReportPermissions, payload: unknown): Promise<Record<string, string>> {
@@ -473,6 +480,7 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
     for (const f of FILES) await this.d.objects.delete(objectKey(job.projectId, job.reportId, f));
     await this.d.store.deleteIds(job.reportId, job.idChunks);
     await this.d.store.deleteTokens(job.reportId, job.tokenChunks || 0);
+    await this.d.store.deleteNotReadable(job.reportId, job.notReadableChunks || 0);
     await this.d.store.deleteJob(job.reportId);
   }
 
@@ -486,6 +494,7 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
     // A job stopped during the assembly may have written some files or tokens already (review L-2).
     for (const f of FILES) await this.d.objects.delete(objectKey(job.projectId, job.reportId, f));
     await this.d.store.deleteTokens(job.reportId, job.tokenChunks || 0);
+    await this.d.store.deleteNotReadable(job.reportId, job.notReadableChunks || 0);
     await this.d.store.deleteIds(job.reportId, job.idChunks);
     await this.d.store.deleteJob(job.reportId);
     await this.setEntry(job.projectId, job.reportId, { state: 'FAILED', finishedAt: this.now().toISOString(), error: { code, message } });
@@ -698,8 +707,10 @@ export class DefaultEvidenceReportManager implements EvidenceReportManager, Repo
     const tokens = this.d.engine.tokensOf(issues, job.filters, job.requestedBy);
     // The job knows its token chunks before they are written, so a failed commit's clean-up finds them (review N-3).
     job.tokenChunks = Math.ceil(tokens.length / REPORT_LIMITS.tokensPerValue);
+    job.notReadableChunks = Math.ceil(notReadable.length / REPORT_LIMITS.idsPerValue);
     await this.d.store.saveJob(job);
     const tokenChunks = await this.d.store.saveTokens(job.reportId, tokens);
+    await this.d.store.saveNotReadable(job.reportId, notReadable);
     await this.d.store.deleteIds(job.reportId, job.idChunks);
     const idChunks = await this.d.store.saveIds(job.reportId, issues.map(i => `${i.issueId}:${i.issueKey}`));
     const finishedAt = this.now().toISOString();

@@ -207,3 +207,27 @@ Also: the index and tombstone sort comparators are single comparisons (same orde
 ### Deploy (fix round 2)
 
 `forge deploy -e development`: **7.9.0** from `8b1c2f5`; Jira and Confluence installations at major version 7, "Up-to-date". Production and staging untouched. The reports made on 7.7.0 and 7.8.0 are not listed any more (N-4); make new ones to retest.
+
+## Owner decision on invariant 11 (2026-11-08)
+
+"Sign, list them": a report with in-scope issues Jira cannot return is still signed and names each one with its key and the reason, in the verifier output, the UI and the CSV; it is never refused for this. Recorded in spec v4 (invariant 11, D-19) and ADR-015 (`89ae51f`).
+
+## Live check of 7.9.0 (coordinator, Chrome, 2026-11-08)
+
+A 30-day report on PAY went from Queued to Ready without a page reload; all four files downloaded; the verifier passed with the development-key WARN; counts: issues 21, changes 90, notReadable 0. The CSV is the same size as the 10-month report's, so the date filter is right. Finding: the file names used the exclusive end date (a report "to 7 Nov" was named `...-2026-11-08-...`).
+
+## Fix round 3 (2026-11-08)
+
+Input: `repository/tmp/fr-evidence-review/REVIEW-round3.md` (branch at `ec20fd7`; no merge blockers; R3-1 and R3-2 block production).
+
+| Finding | Fix | Test |
+|---|---|---|
+| R3-1 (Medium) | The download modal names each missing issue with key and reason (the first 50, then "And N more: report.json and report.csv name every one."); `getEvidenceReport` returns the list only with an allowed download; the list is kept with the report (`fr:rj:{id}:nr:{i}`) and removed with it; the row badge keeps the count. Spec invariant 11 and D-19 corrected to say exactly this. | manager R3-1; UI R3-1 and N-1; store test |
+| R3-2 (Medium) | Registry is one KVS value per project (`fr:reports:project:{projectId}`), listed with a prefix query. | store R3-2: project A's registration is interrupted by project B's; both stay |
+| R3-3 | The download visibility check includes the MOVED issues. | manager R3-3 (a hidden moved issue refuses the download) |
+| R3-4 | Not changed. `@forge/events` 3.0.x types `AsyncEvent.eventId`; if a platform retry carried a new id, it waits for the lease to end (at most 785 s) and then works the job: slower, not broken. | none |
+| R3-5 | On a production site with no fitting key, `canCreate` is false and the tab shows "No reports can be made on this site" with the reason. | manager R3-5; UI R3-5 |
+| R3-6 | Fixed with R3-2: opening the tab adds no project; it only updates the key of a known one. | manager R3-6 |
+| File names | The last day of the period, both days included (`...-2026-10-09-2026-11-07-...` for "9 Oct to 7 Nov"); the manifest `range.to` stays exclusive, as the spec defines it; the verifier prints `NOTE period 2026-10-09 to 2026-11-07, both days included (UTC); ...`. | engine, manager and verifier tests |
+
+The development records of 7.9.0 are under the same keys as before except the registry: projects with reports made on 7.9.0 were in `fr:reports:project-ids`, which is not read any more; such a project rejoins the daily run when its next report is made or a schedule is saved (development only).

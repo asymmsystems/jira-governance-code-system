@@ -129,6 +129,8 @@ export interface ReportJob {
   idChunks: number;
   /** How many KVS values hold the report's party tokens (after assembly). */
   tokenChunks?: number;
+  /** How many KVS values hold the report's issues that are not in it (after assembly; review R3-1). */
+  notReadableChunks?: number;
   failures: number;
   /** notReadable: ids of the scope that the app could not read, or that moved to another project (review H-1). */
   progress: { issuesTotal: number; issuesDone: number; changes: number; linksNotRead: number; notReadable?: number };
@@ -411,6 +413,8 @@ export interface ReportsView {
   licenceActive: boolean;
   retentionDays: number;
   signingKeyId: string | null;
+  /** Why no report can be made on this site now (a production site with no fitting signing key: review R3-5). */
+  cannotCreateReason?: string;
   fields: Array<{ id: string; name: string }>;
   next?: string;
 }
@@ -425,6 +429,8 @@ export interface DownloadDecision {
 
 export interface ReportDetail {
   report: ReportListRow;
+  /** The issues of the scope that are not in the report, with key and reason: only with an allowed download (review R3-1). */
+  notReadable?: NotReadableIssue[];
   manifest?: ReportManifest;
   download: DownloadDecision;
   fileNames: Record<ReportFileName | 'people.json' | 'people.csv', string>;

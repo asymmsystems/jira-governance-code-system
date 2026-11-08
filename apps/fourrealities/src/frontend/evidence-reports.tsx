@@ -50,7 +50,10 @@ import {
   filtersText,
   newReportNote,
   periodText,
+  NOT_READ_SHOWN,
   notReadBadge,
+  notReadLine,
+  notReadMore,
   notReadNotice,
   pollDelayMs,
   refusalLine,
@@ -152,7 +155,13 @@ const DownloadModal: React.FC<{ row: ReportListRow; onClose: () => void }> = ({ 
       <Stack space={SPACE.item}>
         {row.notReadable ? (
           <SectionMessage appearance="warning" title="Not every issue is in this report">
-            <Text as="span">{notReadNotice(row.notReadable)}</Text>
+            <Stack space={SPACE.sub}>
+              <Text as="span">{notReadNotice(row.notReadable)}</Text>
+              {(detail.notReadable || []).slice(0, NOT_READ_SHOWN).map(n => (
+                <Text key={n.issueId} as="span" size="small">{notReadLine(n)}</Text>
+              ))}
+              {notReadMore((detail.notReadable || []).length) ? <Text as="span" size="small">{notReadMore((detail.notReadable || []).length)}</Text> : null}
+            </Stack>
           </SectionMessage>
         ) : null}
         {FILE_ROWS.map(f => (
@@ -377,7 +386,11 @@ export const EvidenceReports: React.FC = () => {
           <Text as="span">The FourRealities licence for this site is not active, so no new reports are made. Existing reports can still be viewed and downloaded.</Text>
         </SectionMessage>
       ) : null}
-      {view.signingKeyId ? null : <SectionMessage appearance="warning"><Text as="span">{signingText(null)}</Text></SectionMessage>}
+      {view.cannotCreateReason ? (
+        <SectionMessage appearance="error" title="No reports can be made on this site">
+          <Text as="span">{view.cannotCreateReason}</Text>
+        </SectionMessage>
+      ) : view.signingKeyId ? null : <SectionMessage appearance="warning"><Text as="span">{signingText(null)}</Text></SectionMessage>}
       {notice ? <NoteBox><Text as="span" size="small">{notice}</Text></NoteBox> : null}
       <TableCard title="Reports" count={view.reports.length} toolbar={<Text as="span" size="small" color={TEXT_ROLE.secondary}>{BOUNDARY_TEXT}</Text>}>
         <DynamicTable head={head} rows={rows} emptyView={<Text as="span" color={TEXT_ROLE.secondary}>No evidence reports yet.</Text>} />

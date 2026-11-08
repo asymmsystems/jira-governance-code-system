@@ -284,6 +284,35 @@ describe('report records in KVS', () => {
     expect(await new DefaultKvsReportStoreAccessor(new MemoryStorage()).projectKey('X')).toBeUndefined();
   });
 
+  it('R3-2: two projects that register at the same moment both stay in the registry (one key per project)', async () => {
+    const storage = new MemoryStorage();
+    const store = new DefaultKvsReportStoreAccessor(storage);
+    // Project A's registration reads its key; before it writes, project B registers. With one map for every
+    // project, A would write back a map without B.
+    const get = storage.get.bind(storage);
+    let inner = false;
+    jest.spyOn(storage, 'get').mockImplementation(async <T,>(key: string) => {
+      if (key === 'fr:reports:project:1' && !inner) {
+        inner = true;
+        await store.registerProject('2', 'BBB');
+      }
+      return get<T>(key);
+    });
+    await store.registerProject('1', 'AAA');
+    expect(await store.projects()).toEqual(['1', '2']);
+    expect([await store.projectKey('1'), await store.projectKey('2')]).toEqual(['AAA', 'BBB']);
+    expect(Array.from(storage.store.keys()).sort()).toEqual(['fr:reports:project:1', 'fr:reports:project:2']);
+  });
+
+  it('keeps the issues not in a report, with key and reason (review R3-1)', async () => {
+    const store = new DefaultKvsReportStoreAccessor(new MemoryStorage());
+    const list = [{ issueId: '1', issueKey: 'PAY-1', reason: 'MOVED' as const }, { issueId: '2', issueKey: '', reason: 'NOT_READABLE' as const }];
+    expect(await store.saveNotReadable('r', list)).toBe(1);
+    expect(await store.loadNotReadable('r', 1)).toEqual(list);
+    await store.deleteNotReadable('r', 1);
+    expect(await store.loadNotReadable('r', 1)).toEqual([]);
+  });
+
   it('writes each tombstone once under a free key, and lists them newest first', async () => {
     const storage = new MemoryStorage();
     const store = new DefaultKvsReportStoreAccessor(storage);

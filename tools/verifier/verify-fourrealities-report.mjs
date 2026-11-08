@@ -56,6 +56,11 @@ export function verifyReport({ manifestText, reportJson, reportCsv, publicKeyPem
     return results;
   }
   check(manifest.format === FORMAT, `manifest format (${manifest.format ?? 'none'})`);
+  // The range ends at 00:00 UTC the day after its last day; say the period as a reader counts it.
+  if (manifest.range?.from && manifest.range?.to) {
+    const last = new Date(Date.parse(manifest.range.to) - 86_400_000).toISOString().slice(0, 10);
+    results.push(`NOTE period ${String(manifest.range.from).slice(0, 10)} to ${last}, both days included (UTC); range.to in the manifest is the exclusive end ${String(manifest.range.to).slice(0, 10)}.`);
+  }
 
   const files = Array.isArray(manifest.files) ? manifest.files : [];
   for (const [name, bytes] of [['report.json', reportJson], ['report.csv', reportCsv]]) {

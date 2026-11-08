@@ -77,6 +77,7 @@ describe('FourRealities evidence report verifier', () => {
     assert.match(res.stdout, /PASS manifest signature \(test-key\)/);
     assert.match(res.stdout, /PASS report\.json header matches the manifest/);
     assert.match(res.stdout, /PASS chain: previous report aaaaaaaa-1111/);
+    assert.match(res.stdout, /NOTE period 2026-10-01 to 2026-10-31, both days included \(UTC\); range\.to in the manifest is the exclusive end 2026-11-01\./);
   });
 
   it('fails a changed CSV with exit code 1', () => {

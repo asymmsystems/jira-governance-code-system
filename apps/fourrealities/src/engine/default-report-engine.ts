@@ -290,7 +290,8 @@ export class DefaultReportEngine implements ReportEngine {
   }
 
   fileName(projectKey: string, range: ReportRange, reportId: string, file: string): string {
-    const base = `fourrealities-${projectKey}-${dateOf(range.from)}-${dateOf(range.to)}-${reportId.slice(0, 8)}`;
+    // The last day of the period, as the tab shows it ("to 7 Nov"); the range itself ends at 00:00 UTC the day after.
+    const base = `fourrealities-${projectKey}-${dateOf(range.from)}-${shiftDays(range.to, -1)}-${reportId.slice(0, 8)}`;
     if (file === 'report.json') return `${base}.json`;
     if (file === 'report.csv') return `${base}.csv`;
     return `${base}-${file}`;

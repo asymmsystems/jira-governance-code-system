@@ -294,7 +294,7 @@ describe('download: visibility, the people file and the split (spec v4 11.3, 11.
     const id = await makeReport(h);
     const detail = await h.manager.detail(caller('acc-viewer'), BROWSER, { reportId: id });
     expect(detail).toMatchObject({ ok: true, download: { allowed: true }, manifest: { reportId: id }, report: { state: 'DONE', requestedByText: 'Name not available' } });
-    expect((detail as { fileNames: Record<string, string> }).fileNames['report.json']).toBe(`fourrealities-PAY-2026-10-01-2026-11-01-${id.slice(0, 8)}.json`);
+    expect((detail as { fileNames: Record<string, string> }).fileNames['report.json']).toBe(`fourrealities-PAY-2026-10-01-2026-10-31-${id.slice(0, 8)}.json`);
     const key = objectKey('10000', id, 'report.csv');
     expect(await h.manager.downloadUrls(caller('acc-viewer'), BROWSER, { keys: [key] })).toEqual({ [`https://os.test/${key}`]: key });
   });
@@ -815,6 +815,54 @@ describe('review round 2', () => {
     const deadline = Date.now() + 700_000;
     await h.manager.work(r.reportId, deadline);
     expect(spy).toHaveBeenCalledWith(expect.any(Array), deadline);
+  });
+});
+
+describe('review round 3', () => {
+  it('R3-1: the download modal data names each missing issue with key and reason, only for a viewer who may download', async () => {
+    const h = seeded();
+    const r = await h.manager.create(caller(), ADMIN, RANGE) as { reportId: string };
+    h.appJira.dropIds.add('102');
+    await h.drain();
+    const detail = await h.manager.detail(caller(), ADMIN, { reportId: r.reportId }) as { notReadable: unknown[] };
+    expect(detail.notReadable).toEqual([{ issueId: '102', issueKey: 'PAY-102', reason: 'NOT_READABLE' }]);
+    h.issues.find(i => i.id === '101')!.hidden = true;
+    expect(await h.manager.detail(caller(), BROWSER, { reportId: r.reportId })).not.toHaveProperty('notReadable');
+    await h.manager.deleteReport(caller(), ADMIN, { reportId: r.reportId, reason: 'Removed for the round 3 test.' });
+    expect(Array.from(h.storage.store.keys()).filter(k => k.startsWith(`fr:rj:${r.reportId}`))).toEqual([]);
+  });
+
+  it('R3-3: a moved issue the viewer cannot see blocks the download, as an unseen in-scope issue does', async () => {
+    const h = seeded();
+    const r = await h.manager.create(caller(), ADMIN, RANGE) as { reportId: string };
+    h.appJira.movedIds.add('103');
+    await h.drain();
+    expect((await h.manager.detail(caller('v'), BROWSER, { reportId: r.reportId }) as { download: { allowed: boolean } }).download.allowed).toBe(true);
+    h.issues.find(i => i.id === '103')!.hidden = true;
+    const refused = await h.manager.detail(caller('v'), BROWSER, { reportId: r.reportId }) as { download: { code: string; count: number }; notReadable?: unknown };
+    expect(refused.download).toMatchObject({ code: 'NOT_ALL_VISIBLE', count: 1 });
+    expect(refused.notReadable).toBeUndefined();
+    expect(await h.manager.downloadUrls(caller('v'), BROWSER, { keys: [objectKey('10000', r.reportId, 'report.csv')] })).toEqual({});
+  });
+
+  it('R3-5: a production site with no signing key offers no new report, and says why', async () => {
+    const h = seeded({ keys: false });
+    h.runtime.environment = () => 'production';
+    const view = ok<ReportsView>(await h.manager.list(caller(), ADMIN, {}));
+    expect(view.canCreate).toBe(false);
+    expect(view.cannotCreateReason).toContain('no valid signing key for this production site');
+    const dev = seeded();
+    expect(ok<ReportsView>(await dev.manager.list(caller(), ADMIN, {}))).not.toHaveProperty('cannotCreateReason');
+  });
+
+  it('R3-6: opening the tab does not add a project to the registry; a known project gets its new key', async () => {
+    const h = seeded();
+    await h.manager.list(caller(), ADMIN, {});
+    expect(await h.store.projects()).toEqual([]);
+    await makeReport(h);
+    expect(await h.store.projectKey('10000')).toBe('PAY');
+    await h.manager.list({ ...caller(), projectKey: 'PAYMENTS' }, ADMIN, {});
+    expect(await h.store.projectKey('10000')).toBe('PAYMENTS');
   });
 });
 

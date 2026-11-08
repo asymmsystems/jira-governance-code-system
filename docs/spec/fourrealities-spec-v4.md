@@ -34,7 +34,7 @@ FourRealities also makes **evidence reports**. For one project and one date rang
 7. **Viewer permissions.** Rows that a viewer cannot browse in Jira are never returned to that viewer.
 8. **Zero external egress.** The manifest declares no external fetch.
 9. **Deterministic metrics.** The same input gives the same output.
-11. **Complete or not stored; missing issues are signed and listed.** A report that cannot be finished (a cap, three failed reads, a lost part, no signing key in production) stores no file. When Jira cannot return an issue of the scope (deleted, moved to another project, or not readable), the report is still signed, and it names every such issue with its key and the reason: in `report.json` (`notReadable`, counted in the signed `counts.notReadable`), in the verifier output (a `WARN` line with the count and one line per issue), in the UI (a badge on the row and a notice in the download modal) and in the CSV (a `NOT_READ` row per issue). A report is never refused for this (owner decision of 2026-11-08, "Sign, list them"; D-19).
+11. **Complete or not stored; missing issues are signed and listed.** A report that cannot be finished (a cap, three failed reads, a lost part, no signing key in production) stores no file. When Jira cannot return an issue of the scope (deleted, moved to another project, or not readable), the report is still signed, and it names every such issue with its key and the reason: in `report.json` (`notReadable`, counted in the signed `counts.notReadable`), in the verifier output (a `WARN` line with the count and one line per issue), in the UI (a badge with the count on the row, and the download modal naming each missing issue with its key and the reason; the modal opens only for a viewer allowed to download) and in the CSV (a `NOT_READ` row per issue). A report is never refused for this (owner decision of 2026-11-08, "Sign, list them"; D-19).
 12. **Signed files never change.** Report files are written once. They are removed only by expiry or by a Jira administrator's delete, which leaves a tombstone. Object Store does not refuse a second write to a key (spike S-1), so FourRealities refuses to write a key that exists and checks the stored checksum after each write.
 
 ## Domain Model
@@ -348,7 +348,8 @@ Preset views (B-40, B-48) set several filters at once, reflect `isSelected` when
 | `fr:rj:{reportId}:ids:{i}` | the job's issue ids, at most 5,000 per value; after assembly the in-scope `{issueId}:{issueKey}` of the report, kept while the report is kept (download check, `missingSincePrevious`) | under 200 KiB |
 | `fr:rj:{reportId}:tokens:{i}` | the party tokens of the report, at most 4,000 per value, for the people file | under 160 KiB |
 | `fr:rt:{projectId}:{deletedAt}:{seq}` | `ReportTombstone`, written once | under 2 KiB |
-| `fr:reports:project-ids` | `{ projectId: current projectKey }` of the projects with reports or schedules; the key is updated when the tab is opened after a rename | under 16 KiB |
+| `fr:reports:project:{projectId}` | the project's current key, one value per project with reports or schedules (review R3-2); the key is updated when the tab is opened after a rename | under 1 KiB |
+| `fr:rj:{reportId}:nr:{i}` | the issues of the report that are not in it, `{issueId}:{reason}:{issueKey}`, at most 5,000 per value, kept while the report is kept (review R3-1) | under 200 KiB |
 | `fr:tmp:{createdAt}:{reportId}:{downloadId}` | the object keys of a temporary people file (Object Store cannot list) | under 1 KiB |
 | `fr:partykey` | the site key of the party tokens, 32 random bytes, written once | under 1 KiB |
 | `fr:party:{token}` | `{ accountId, updatedAt }` or `{ closed: true, closedAt }` | under 1 KiB |
@@ -421,7 +422,7 @@ The gate evaluation pipeline, for one issue:
 | D-16 | Report retention is a FourRealities setting for its own reports only | Mirror Jira's history to extend it | Jira keeps issue history; FourRealities keeps the record it made |
 | D-17 | The parts of a job are temporary Object Store objects, not KVS values (spike S-3) | KVS parts of 200,000 bytes (HLD 4.1) | KVS writes are limited to 4,000 units of 10 KB per minute per installation; the spike's KVS parts hit `RATE_LIMIT_EXCEEDED` after about 205 parts, and they would starve the dashboard's own KVS use |
 | D-18 | FourRealities makes "written once" true itself | Rely on `overwrite: false` | Object Store accepted a second write to the same key with `overwrite: false` (spike S-1) |
-| D-19 | When Jira cannot return an in-scope issue (deleted, moved, or not readable), the report is still signed and names every missing issue with its key and the reason, in the verifier output, the UI and the CSV; a report is never refused for this (invariant 11) | Refuse the report (not stored) when an issue cannot be read | Owner decision of 2026-11-08: "Sign, list them". A refused report gives the auditor nothing for the period; a signed report that names its gaps keeps the record and the gaps visible |
+| D-19 | When Jira cannot return an in-scope issue (deleted, moved, or not readable), the report is still signed and names every missing issue with its key and the reason in the verifier output, in the UI (the download modal, for a viewer allowed to download; the row shows the count) and in the CSV; a report is never refused for this (invariant 11) | Refuse the report (not stored) when an issue cannot be read | Owner decision of 2026-11-08: "Sign, list them". A refused report gives the auditor nothing for the period; a signed report that names its gaps keeps the record and the gaps visible |
 
 ## 11. Evidence reports (ADR-015)
 
@@ -441,7 +442,7 @@ The gate evaluation pipeline, for one issue:
 - `report.json` (`fourrealities-evidence-report-data/1`), `report.csv` (RFC 4180, UTF-8 without byte order mark, CRLF, every cell quoted, quotes doubled; a cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading apostrophe, the JSON keeps the value) and `manifest.json` (`fourrealities-evidence-report/1`), as HLD 3.2 to 3.4. `report.json` and the manifest are canonical JSON (ADR-012 decision 2).
 - The manifest holds the SHA-256 and byte count of each file and `previous`, the id and SHA-256 of the canonical JSON (with `sig`) of the project's previous DONE manifest, or `null` for the first. It is signed with Ed25519 over the canonical JSON of every other field, key `fr-dev-2026-11` in development and staging and `fr-prod-2026-11` in production. Without a configured key it carries `warning: "UNSIGNED"` and no `keyId` or `sig`, and the UI says so. The `header` of `report.json` equals the manifest without `files`, `keyId` and `sig`.
 - The open verifier checks a report offline: `verify-fourrealities-report.mjs <manifest> <report.json> <report.csv> [publicKey.pem] [--previous <manifest>]` (HLD 3.6), in `tools/verifier` and the public `jira-governance-code-cli`.
-- The download file names are `fourrealities-{projectKey}-{from}-{to}-{reportId8}.json`, `.csv`, `-manifest.json` and `-people.csv`, where `to` is the exclusive end date. Object Store sends no file name (no `Content-Disposition`, spike S-1), so the UI Kit `FileCard` sets it.
+- The download file names are `fourrealities-{projectKey}-{from}-{lastDay}-{reportId8}.json`, `.csv`, `-manifest.json` and `-people.csv`, where `lastDay` is the last day of the period, both days included, as the tab shows it (review round 3). The manifest's `range.to` stays the exclusive end (00:00 UTC of the day after the last day); the verifier prints the period with both days included. Object Store sends no file name (no `Content-Disposition`, spike S-1), so the UI Kit `FileCard` sets it.
 - The people file (unsigned, HLD 3.5) is made at download, as the downloading user, from the token map and `GET /rest/api/3/user/bulk`; a closed account shows as "a former user". It is stored as a temporary object and removed 24 to 25 hours after the download by the hourly run `report-tmp` (review L-3). The UI offers its CSV form.
 
 ### 11.4 Who may do what (owner decisions Q2 and Q8)
@@ -507,6 +508,13 @@ Invariant 11 was not changed in this round while the owner decided the rule; the
 - N-5: an event that meets another event's lease is pushed again when the lease ends; the same event delivered again takes the job over.
 - N-6: the 200-report cap stays a soft cap. A hard cap needs a conditional write on a counter, and Forge KVS offers conditions only on Custom Entities, not on plain keys. The overshoot is bounded by the creates that run at the same moment (at most 3 queued per project), and the next create removes the oldest removable entry.
 - N-7: in production, a missing or unfitting signing key (no key, a `-dev-` key) makes no report: `createEvidenceReport` returns `NO_SIGNING_KEY`, a running job fails with `NO_SIGNING_KEY`, and a scheduled period is kept with the refusal on its schedule. An unsigned report is made only outside production.
+
+### 11.13 Changes after review round 3 (2026-11-08)
+- R3-1: the download modal names each issue that is not in the report, with key and reason (the first 50, then how many more are in the files); `getEvidenceReport` returns them only with an allowed download; the row badge keeps the count. Invariant 11 and D-19 say so.
+- R3-2, R3-6: the project registry is one KVS value per project (`fr:reports:project:{projectId}`); creating a report or saving a schedule adds the project; opening the tab only updates the key of a known project.
+- R3-3: the download visibility check includes the MOVED issues, so their keys reach only a viewer who can see them.
+- R3-5: on a production site with no fitting signing key the tab offers no "New evidence report" and states the reason (`cannotCreateReason`).
+- File names use the inclusive last day (11.3).
 
 ### Grader conflict
 

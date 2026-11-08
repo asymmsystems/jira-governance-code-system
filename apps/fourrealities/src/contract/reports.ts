@@ -85,6 +85,10 @@ export interface ReportStoreAccessor extends Accessor {
   /** Records the project's current key under its id (a key rename keeps the id: review N-2). */
   registerProject(projectId: string, projectKey: string): Promise<void>;
   projectKey(projectId: string): Promise<string | undefined>;
+  /** The report's issues that are not in it, kept while the report is kept (review R3-1). */
+  saveNotReadable(reportId: string, entries: NotReadableIssue[]): Promise<number>;
+  loadNotReadable(reportId: string, chunks: number): Promise<NotReadableIssue[]>;
+  deleteNotReadable(reportId: string, chunks: number): Promise<void>;
   addTmp(id: string, entry: TmpObject): Promise<void>;
   listTmp(): Promise<Array<{ id: string; entry: TmpObject }>>;
   deleteTmp(id: string): Promise<void>;

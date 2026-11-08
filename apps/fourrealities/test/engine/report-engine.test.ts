@@ -257,12 +257,12 @@ describe('manifest, people file, names and JQL', () => {
     expect(csv.split('\r\n')).toEqual(['"token","accountId","displayName","active"', '"pty_1","acc-ana","Ana","true"', '"pty_2","","a former user",""', '"pty_3","acc-x","","false"', '']);
   });
 
-  it('names the download files from the project, the range and the report id', () => {
+  it('names the download files from the project, the first and the last day of the period, and the report id', () => {
     const id = '1a2b3c4d-0000-4000-8000-000000000000';
-    expect(engine.fileName('PAY', RANGE, id, 'report.json')).toBe('fourrealities-PAY-2026-10-01-2026-11-01-1a2b3c4d.json');
-    expect(engine.fileName('PAY', RANGE, id, 'report.csv')).toBe('fourrealities-PAY-2026-10-01-2026-11-01-1a2b3c4d.csv');
-    expect(engine.fileName('PAY', RANGE, id, 'manifest.json')).toBe('fourrealities-PAY-2026-10-01-2026-11-01-1a2b3c4d-manifest.json');
-    expect(engine.fileName('PAY', RANGE, id, 'people.csv')).toBe('fourrealities-PAY-2026-10-01-2026-11-01-1a2b3c4d-people.csv');
+    expect(engine.fileName('PAY', RANGE, id, 'report.json')).toBe('fourrealities-PAY-2026-10-01-2026-10-31-1a2b3c4d.json');
+    expect(engine.fileName('PAY', RANGE, id, 'report.csv')).toBe('fourrealities-PAY-2026-10-01-2026-10-31-1a2b3c4d.csv');
+    expect(engine.fileName('PAY', RANGE, id, 'manifest.json')).toBe('fourrealities-PAY-2026-10-01-2026-10-31-1a2b3c4d-manifest.json');
+    expect(engine.fileName('PAY', RANGE, id, 'people.csv')).toBe('fourrealities-PAY-2026-10-01-2026-10-31-1a2b3c4d-people.csv');
   });
 
   it('searches one day wider on each side, and builds id lists of digits only', () => {

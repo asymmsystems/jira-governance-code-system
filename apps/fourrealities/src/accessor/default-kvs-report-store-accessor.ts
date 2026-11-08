@@ -14,17 +14,19 @@
  *   fr:rp:{projectId}:head                  ChainLink of the newest DONE report
  *   fr:rp:{projectId}:schedules             ReportSchedule[], at most 5
  *   fr:rt:{projectId}:{deletedAt}:{seq}     ReportTombstone, written once
- *   fr:reports:project-ids                  { projectId: current projectKey } of the projects with reports or schedules
+ *   fr:reports:project:{projectId}          the project's current key; one key per project with reports or schedules
+ *   fr:rj:{reportId}:nr:{i}                 the report's issues not in it, "{id}:{reason}:{key}", for the download modal
  *   Records of the development builds 7.7.0 and 7.8.0 (keyed by project key) are not read (review N-4).
  *   fr:tmp:{id}                             a temporary people file (Object Store cannot list its objects)
  */
 
-import { ChainLink, DEFAULT_REPORT_SETTINGS, REPORT_LIMITS, ReportIndexEntry, ReportJob, ReportSchedule, ReportSettings, ReportTombstone, TmpObject } from '../contract/data/reports';
+import { ChainLink, DEFAULT_REPORT_SETTINGS, NotReadableIssue, REPORT_LIMITS, ReportIndexEntry, ReportJob, ReportSchedule, ReportSettings, ReportTombstone, TmpObject } from '../contract/data/reports';
 import { StorageProvider } from '../contract/accessors';
 import { ReportStoreAccessor } from '../contract/reports';
 import { queryAll } from './kvs-v2-exception';
 
-const PROJECTS = 'fr:reports:project-ids';
+/** One key per project: fr:reports:project:{projectId} holds the project's current key (review R3-2). */
+const PROJECT_PREFIX = 'fr:reports:project:';
 const entryKey = (projectId: string, e: ReportIndexEntry) => `fr:rp:${projectId}:rep:${e.createdAt}:${e.reportId}`;
 
 async function writeAll(storage: StorageProvider, sets: Array<{ key: string; value: unknown }>): Promise<void> {
@@ -161,18 +163,35 @@ export class DefaultKvsReportStoreAccessor implements ReportStoreAccessor {
   }
 
   async projects(): Promise<string[]> {
-    return Object.keys((await this.storage.get<Record<string, string>>(PROJECTS)) || {}).sort();
+    return (await queryAll(this.storage, PROJECT_PREFIX)).map(r => r.key.slice(PROJECT_PREFIX.length)).sort();
   }
 
-  /** Records the project's current key; a renamed project keeps its id and gets its new key. */
+  /**
+   * Records the project's current key under its own KVS key, so two projects registering at the same time
+   * never drop each other (review R3-2); a renamed project keeps its id and gets its new key.
+   */
   async registerProject(projectId: string, projectKey: string): Promise<void> {
-    const map = (await this.storage.get<Record<string, string>>(PROJECTS)) || {};
-    if (map[projectId] === projectKey) return;
-    await this.storage.set(PROJECTS, { ...map, [projectId]: projectKey });
+    if ((await this.storage.get<string>(`${PROJECT_PREFIX}${projectId}`)) === projectKey) return;
+    await this.storage.set(`${PROJECT_PREFIX}${projectId}`, projectKey);
   }
 
   async projectKey(projectId: string): Promise<string | undefined> {
-    return ((await this.storage.get<Record<string, string>>(PROJECTS)) || {})[projectId];
+    return this.storage.get<string>(`${PROJECT_PREFIX}${projectId}`);
+  }
+
+  saveNotReadable(reportId: string, entries: NotReadableIssue[]): Promise<number> {
+    return this.saveChunks(`fr:rj:${reportId}:nr`, entries.map(e => `${e.issueId}:${e.reason}:${e.issueKey}`), REPORT_LIMITS.idsPerValue);
+  }
+
+  async loadNotReadable(reportId: string, chunks: number): Promise<NotReadableIssue[]> {
+    return (await this.loadChunks(`fr:rj:${reportId}:nr`, chunks)).map(v => {
+      const [issueId, reason, ...key] = v.split(':');
+      return { issueId, reason: reason === 'MOVED' ? 'MOVED' : 'NOT_READABLE', issueKey: key.join(':') };
+    });
+  }
+
+  deleteNotReadable(reportId: string, chunks: number): Promise<void> {
+    return this.deleteChunks(`fr:rj:${reportId}:nr`, chunks);
   }
 
   async addTmp(id: string, entry: TmpObject): Promise<void> {
