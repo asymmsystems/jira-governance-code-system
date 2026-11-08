@@ -244,3 +244,22 @@ FourRealities released its report verifier as 1.4.0 (master 9a7c005, public CLI 
 
 ### Gate (fix round 2, on the rebased branch)
 LedgerSeal: tsc 0 errors; 63 suites, 808 tests; coverage statements 97.71%, branches 93.66%, every file at or above 90% branches; build exit 0; `npm audit --omit=dev --audit-level=high` exit 0; `forge lint` no issues; FSRT default and `secret-logging` 0 findings. FourRealities (changed only by master, rebuilt after `npm ci`): tsc 0 errors; 59 suites, 826 tests; build and audit exit 0. Semgrep 1.182.1: 0 findings (233 files). Verifier `npm test`: 53 tests (LedgerSeal and FourRealities), 0 failures; `--self-test` 10 of 10 and 3 of 3. `forge eligibility -e development`: **6.15.0** eligible for Runs on Atlassian. The first deploy attempt failed to bundle (the panel imports `declaration.ts`, so the hash moved to a server-only `declaration-hash.ts`); the second deployed. Production not touched; FourRealities not deployed.
+
+## Fix round 3: state at pause (2026-11-08)
+
+**Done** (commit 17c1c04, and this note):
+- D-5, the owner decision: every signing records the declaration for its own action, with id, version and hash: `approve/2`, `reject/1`, `revoke/1` (`approve/1` outside code signing). The reject and revoke forms show their own texts; the export map is keyed `id/version`; verifier check 11 also checks the action.
+- D-3, D-4 and P-1 are fixed. V-3: the README now says "about 330 lines". A revoke code on a routed issue follows the route's revoke rule. Spec 18C and the ADR-016 and ADR-017 decision sections hold the verbatim texts; the 11.50 row is updated.
+- Gates on 17c1c04: LedgerSeal tsc 0; 64 suites, 813 tests; branches 93.61%, every file at or above 90%; build, audit and lint clean; FSRT 0 and 0; Semgrep 0 (233 files); verifier 54 tests, self-test 10/10 and 3/3. Deployed to development as **6.16.0** (eligible for Runs on Atlassian).
+- Live on probe **LSP-10**, with the probe route bound to LSP and code signing on (admin page):
+  - Rejection: the form showed the `reject/1` text; the emailed code worked (04:09:04Z); the run was REJECTED.
+  - Stage signature: the form showed the `approve/2` text; the code was emailed at 04:09:52Z; the issue was sealed.
+  - Revoke: the form showed the `revoke/1` text with its checkbox; the code was emailed at 04:10:50Z.
+  - Property after all three: schema 4, `SEAL_REVOKED`, `approval.runState` COMPLETE, signed with `ls-dev-2026-11`.
+
+**Left:**
+- Export the LSP-10 evidence and check it (checks 1 to 12, `declarations` holding `approve/2`, `reject/1` and `revoke/1`).
+- Then unbind the probe route and turn code signing off for LSP.
+- Report to the coordinator.
+
+**Next step:** in the LSP-10 panel, open the evidence. Read the JSON in the page (the parties map can be dropped) and run `tools/verifier/verify-evidence.mjs` on it with `keys/ls-dev-2026-11.pub.pem`. Then restore the LSP settings.
