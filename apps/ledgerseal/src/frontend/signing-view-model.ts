@@ -12,7 +12,8 @@ import { formatTime } from './view-model';
 export interface SigningFormView {
   /** The project needs a code for every signature. */
   needsCode: boolean;
-  declaration: { version: string; text: string };
+  /** The declaration this form shows and sends (review round 3, D-5), or null when the action has none. */
+  declaration: { id: string; version: string; text: string } | null;
   /** Shown instead of the form when code signing cannot be used. */
   blockedText: string | null;
   /** Shown under the code field once a code was sent. */
@@ -20,20 +21,29 @@ export interface SigningFormView {
   canSubmit: boolean;
 }
 
-/** What the seal, approve or revoke form shows, from the verify response and the form's code state. */
-export function buildSigningForm(result: any, state: { challengeId: string | null; expiresAt: string | null; code: string }): SigningFormView {
+/**
+ * What a signing form shows, from the verify response and the form's code state. `kind` picks the declaration of the
+ * form's own action: approval (seal, approval of changes, stage), rejection, or revoke (review round 3, D-5).
+ */
+export function buildSigningForm(
+  result: any,
+  state: { challengeId: string | null; expiresAt: string | null; code: string },
+  kind: 'approve' | 'reject' | 'revoke' = 'approve'
+): SigningFormView {
   const part11 = result?.part11;
-  if (!part11 || !part11.on) return { needsCode: false, declaration: part11?.declaration ?? { version: DECLARATION.version, text: DECLARATION.text }, blockedText: null, sentText: null, canSubmit: true };
+  const approve = { id: 'approve', ...(part11?.declaration ?? { version: DECLARATION.version, text: DECLARATION.text }) };
+  const own = kind === 'approve' ? approve : part11?.declarations?.[kind] ?? null;
+  if (!part11 || !part11.on) return { needsCode: false, declaration: kind === 'approve' ? approve : null, blockedText: null, sentText: null, canSubmit: true };
   if (part11.invalid) {
-    return { needsCode: true, declaration: part11.declaration, blockedText: 'The code signing settings failed their integrity check, so LedgerSeal signs nothing. Ask your Jira admin.', sentText: null, canSubmit: false };
+    return { needsCode: true, declaration: own, blockedText: 'The code signing settings failed their integrity check, so LedgerSeal signs nothing. Ask your Jira admin.', sentText: null, canSubmit: false };
   }
   if (part11.pending) {
-    return { needsCode: true, declaration: part11.declaration, blockedText: 'Code signing is not available yet: its declaration text is waiting for approval.', sentText: null, canSubmit: false };
+    return { needsCode: true, declaration: own, blockedText: 'Code signing is not available yet: its declaration text is waiting for approval.', sentText: null, canSubmit: false };
   }
   const sent = Boolean(state.challengeId);
   return {
     needsCode: true,
-    declaration: part11.declaration,
+    declaration: own,
     blockedText: null,
     sentText: sent ? `We emailed a code to your Atlassian email address. It works once, until ${formatTime(state.expiresAt)}.` : null,
     canSubmit: sent && /^\s*\d{3}[\s-]?\d{3}\s*$/.test(state.code)

@@ -40,7 +40,7 @@ import { SigningRepository } from '../storage/signing-repository';
 import { browseDenied, contextIssue, fail, LedgerSealDeps, licenseInactive, SealFailure } from './ledger';
 import { adminCaller } from './policy-admin';
 import { isApprover } from './approver';
-import { openStageFor } from './routes';
+import { openStageFor, routeFor } from './routes';
 
 
 function repoOf(deps: LedgerSealDeps): SigningRepository {
@@ -81,6 +81,20 @@ export async function codeRequestRight(deps: LedgerSealDeps, issueId: string, ac
     if (stage === null) return fail('NOT_APPROVER');
     if (stage === 'closed') return fail('STAGE_NOT_OPEN');
     return stage.approverGroups.some(g => groups.value.includes(g.id)) ? null : fail('NOT_APPROVER');
+  }
+  if (action === 'REVOKE') {
+    // ADR-017 decision 8: on a routed issue the revoker is a member of a group of the route's last order group (the
+    // revoke flow's own rule; review round 3 found the code request still asked for the approver right)
+    const groups = await deps.jira.getMyGroupIds();
+    if (!groups.ok) return fail(groups.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
+    const ctx = await routeFor(deps, issueId);
+    if (ctx === 'unreachable') return fail('JIRA_UNREACHABLE');
+    if (ctx === 'invalid') return fail('NOT_APPROVER');
+    if (ctx) {
+      const last = Math.max(...ctx.route.stages.map(s => s.orderGroup));
+      const mine = new Set(groups.value);
+      return ctx.route.stages.filter(s => s.orderGroup === last).some(s => s.approverGroups.some(g => mine.has(g.id))) ? null : fail('NOT_APPROVER');
+    }
   }
   const permission = await isApprover(deps.jira, deps.storage, issueId);
   if (!permission.ok) return fail(permission.error === 'FORBIDDEN' ? 'NOT_APPROVER' : 'JIRA_UNREACHABLE');
@@ -281,6 +295,9 @@ export async function getSigningPolicyFlow(context: any, deps: LedgerSealDeps) {
   };
 }
 
+/** A stored policy version older than this, and not in force, belongs to a save that died (Forge limit: 25 seconds). */
+export const POLICY_SAVE_STALE_MS = 60_000;
+
 /** `signing-policy-set-api`: saves a new policy version. Turning the mode on needs the approved declaration (Q-03). */
 export async function setSigningPolicyFlow(payload: any, context: any, deps: LedgerSealDeps) {
   const caller = await adminCaller(context, deps);
@@ -307,7 +324,16 @@ export async function setSigningPolicyFlow(payload: any, context: any, deps: Led
   const at = new Date().toISOString();
   await parties.register([caller], party, at);
   const repo = repoOf(deps);
-  const previous = await repo.getPolicy();
+  // Review round 3 (P-1): a save that died after storing its version (and its alert) never brought it into force; it
+  // is removed here, once it is older than any running save could be, and the alert log says so
+  const recovered = await repo.recoverPolicy(Date.parse(at), POLICY_SAVE_STALE_MS);
+  if (recovered === 'busy') return fail('CONFLICT', 'Another admin saved code signing a moment ago. Reload and try again.');
+  for (const lost of recovered.dropped) {
+    if (await repo.claimAlertOnce(`policylost:${lost.policyHash}`, at)) {
+      await repo.appendAlert({ at, kind: 'POLICY_CHANGED', partyId: party(caller), byPartyId: party(caller), reason: `policy version ${lost.version} never came into force (its save did not finish)` });
+    }
+  }
+  const previous = recovered.current;
   const policy = nextPolicy(previous, { enabled, projectIds, lockoutThreshold: lockout, declarationVersion: DECLARATION_V2.version, setByPartyId: party(caller), fromDate: at });
   // Review L-5: every policy change (on, off, projects, lockout) is an alert for the other admins to see and acknowledge.
   // It is written before the version comes into force; when it cannot be written, the save fails (review round 2)

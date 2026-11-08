@@ -41,8 +41,8 @@ describe('B-07 declaration text and version', () => {
     });
     expect(UI).toContain("from '../domain/declaration'");
     // The panel shows the declaration the view model chooses: version 1, unless the project needs a signing code (ADR-016)
-    expect(UI).toMatch(/\{signingForm\.declaration\.text\}/);
-    expect(buildSigningForm({}, { challengeId: null, expiresAt: null, code: '' }).declaration).toEqual(DECLARATION);
+    expect(UI).toMatch(/\{declared\.text\}/);
+    expect(buildSigningForm({}, { challengeId: null, expiresAt: null, code: '' }).declaration).toEqual({ id: 'approve', ...DECLARATION });
     expect(UI).not.toContain('I certify that I am the authorized signer');
     expect(UI).not.toContain('per ' + 'compli' + 'ance guidelines');
   });

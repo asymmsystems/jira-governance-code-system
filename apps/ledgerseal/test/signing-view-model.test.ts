@@ -14,7 +14,10 @@ const V2 = { version: '2', text: DECLARATION_V2.text };
 
 describe('panel form', () => {
   it('needs no code and shows declaration 1 outside code-signing projects (and for old responses)', () => {
-    expect(buildSigningForm({}, none)).toEqual({ needsCode: false, declaration: { version: '1', text: DECLARATION.text }, blockedText: null, sentText: null, canSubmit: true });
+    expect(buildSigningForm({}, none)).toEqual({ needsCode: false, declaration: { id: 'approve', version: '1', text: DECLARATION.text }, blockedText: null, sentText: null, canSubmit: true });
+    // Review round 3 (D-5): outside code signing, a rejection and a revoke show no declaration
+    expect(buildSigningForm({}, none, 'reject').declaration).toBeNull();
+    expect(buildSigningForm({}, none, 'revoke').declaration).toBeNull();
     expect(buildSigningForm({ part11: { on: false, declaration: { version: '1', text: DECLARATION.text } } }, none).needsCode).toBe(false);
   });
 
@@ -26,6 +29,9 @@ describe('panel form', () => {
   it('allows submit only after a code was sent and 6 digits were typed', () => {
     const on = { part11: { on: true, pending: false, invalid: false, declaration: V2 } };
     expect(buildSigningForm(on, none)).toMatchObject({ needsCode: true, canSubmit: false, sentText: null, declaration: V2 });
+    const own = { reject: { id: 'reject', version: '1', text: 'R' }, revoke: { id: 'revoke', version: '1', text: 'W' } };
+    expect(buildSigningForm({ part11: { ...on.part11, declarations: own } }, none, 'reject').declaration).toEqual(own.reject);
+    expect(buildSigningForm({ part11: { ...on.part11, declarations: own } }, none, 'revoke').declaration).toEqual(own.revoke);
     const sent = { challengeId: 'c', expiresAt: '2026-11-08T10:05:00.000Z', code: '12345' };
     expect(buildSigningForm(on, sent)).toMatchObject({ canSubmit: false, sentText: expect.stringContaining('It works once') });
     expect(buildSigningForm(on, { ...sent, code: ' 123 456 ' }).canSubmit).toBe(true);

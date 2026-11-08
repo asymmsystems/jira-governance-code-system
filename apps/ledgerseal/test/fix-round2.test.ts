@@ -9,7 +9,7 @@
  * @author Fahim Farook
  */
 import * as declaration from '../src/domain/declaration';
-import { DECLARATION, DECLARATION_V2 } from '../src/domain/declaration';
+import { DECLARATION, DECLARATION_REJECT, DECLARATION_V2 } from '../src/domain/declaration';
 import { declarationHash } from '../src/domain/declaration-hash';
 import { getSealEvidence, rejectStage, requestSigningCode, signStage, verifyIssue } from '../src/index';
 import { LedgerSealDeps } from '../src/service/ledger';
@@ -95,14 +95,25 @@ describe('the code is used only for a signature that is written (R2-2)', () => {
     expect(events(storage, 'SIGN_OK')).toBe(1);
   });
 
-  it('records the declaration on a rejection, and refuses a rejection without it', async () => {
+  it('records the rejection declaration on a rejection, and refuses one without it or with the approval text (D-5)', async () => {
     const { storage, deps, sig, view, code } = await routed(true);
     const hash = await view('qa1');
     const signing = await code('qa1', 'REJECT', 'qa');
     expect(((await rejectStage({ stageId: 'qa', viewHash: hash, reason: 'Not ready', signing }, panelContext('qa1'), deps)) as any).code).toBe('DECLARATION_MISMATCH');
+    // The approval text is not a rejection's declaration
+    expect(((await rejectStage({ stageId: 'qa', viewHash: hash, reason: 'Not ready', signature: sig, signing }, panelContext('qa1'), deps)) as any).code).toBe('DECLARATION_MISMATCH');
     expect(storage.map.has(`ls3:sig:used:${signing.challengeId}`)).toBe(false);
-    expect(((await rejectStage({ stageId: 'qa', viewHash: hash, reason: 'Not ready', signature: sig, signing }, panelContext('qa1'), deps)) as any).runState).toBe('REJECTED');
-    expect(model.statusRows(storage).at(-1).data).toMatchObject({ declarationVersion: '2', declarationHash: declarationHash(DECLARATION_V2.text) });
+    const reject = { declarationId: 'reject', declarationVersion: DECLARATION_REJECT.version, declarationText: DECLARATION_REJECT.text };
+    expect(((await rejectStage({ stageId: 'qa', viewHash: hash, reason: 'Not ready', signature: reject, signing }, panelContext('qa1'), deps)) as any).runState).toBe('REJECTED');
+    expect(model.statusRows(storage).at(-1).data).toMatchObject({ declarationId: 'reject', declarationVersion: '1', declarationHash: declarationHash(DECLARATION_REJECT.text) });
+  });
+
+  it('asks for no declaration on a rejection outside code signing, and records none (D-5)', async () => {
+    const { storage, deps, view } = await routed(false);
+    expect(((await rejectStage({ stageId: 'qa', viewHash: await view('qa1'), reason: 'Not ready' }, panelContext('qa1'), deps)) as any).runState).toBe('REJECTED');
+    const row = model.statusRows(storage).at(-1);
+    expect(row.data.declarationHash).toBeUndefined();
+    expect(row.data.declarationId).toBeUndefined();
   });
 });
 
@@ -114,7 +125,7 @@ describe('the evidence carries the declaration texts (D-1)', () => {
     }
     jira.currentUser = 'reg1';
     const ev: any = await getSealEvidence({}, panelContext('reg1'), deps);
-    expect(ev.declarations).toEqual({ '1': DECLARATION.text });
+    expect(ev.declarations).toEqual({ 'approve/1': DECLARATION.text });
     expect(ev.history.every((r: any) => r.data.declarationHash === declarationHash(DECLARATION.text))).toBe(true);
   });
 });

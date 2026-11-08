@@ -108,20 +108,14 @@ function verifyEvidence(evidence, publicKeyPem) {
 
   // Format 2 (LedgerSeal spec v4 section 15.7) whenever the signed or chained content needs it, not only when the
   // unsigned "format" field says so: a changed format field cannot switch the checks off. Format 1 output is unchanged
-  if (evidence.format === 'ledgerseal-evidence/2' || needsFormat2(att, history)) verifyFormat2(evidence, history, check);
+  const format2Notes = evidence.format === 'ledgerseal-evidence/2' || needsFormat2(att, history) ? verifyFormat2(evidence, history, check) : [];
 
   // A redaction entry is part of the chain, so the checks above cover it; it is named so a reader sees it
   const notes = history
     .filter(row => row.statusId === 'LS_REDACTED')
     .map(row => `NOTE entry ${row.seq} is a redaction: ${row.data?.redactedValues ?? 'some'} account ids and names were replaced by party tokens, and the entries before it were rewritten (head hash before: ${row.data?.previousHeadHash ?? 'not given'}).`);
   if (evidence.parties) notes.push('NOTE "parties" maps party tokens to account ids (null: a closed account). It is not signed and no check uses it.');
-  // 1.5.0: what each signer agreed to, by declaration version (only when the history names declarations by hash)
-  if (history.some(row => row.data?.declarationHash !== undefined) && evidence.declarations && typeof evidence.declarations === 'object') {
-    for (const [version, text] of Object.entries(evidence.declarations).sort()) {
-      const signers = history.filter(row => row.data?.declarationHash !== undefined && String(row.data?.declarationVersion) === version).map(row => row.seq);
-      notes.push(`NOTE declaration version ${version} (entries ${signers.join(', ') || 'none'}): ${JSON.stringify(String(text))}`);
-    }
-  }
+  notes.push(...format2Notes);
   for (const line of [...results, ...notes]) console.log(line);
   return results.every(line => line.startsWith('PASS'));
 }
@@ -225,22 +219,37 @@ function checkSealingRun(history, routes, att) {
   return failures;
 }
 
+/** The declaration a signing action states: approval, rejection or the withdrawal of a seal (LedgerSeal spec v4 18C). */
+const DECLARATION_FOR_ACTION = { SEAL: 'approve', RESEAL: 'approve', SIGN_STAGE: 'approve', REJECT: 'reject', REVOKE: 'revoke' };
+
+/** The key of an entry's declaration in "declarations": its id (an entry without one is an approval) and version. */
+const declarationKey = data => `${typeof data?.declarationId === 'string' ? data.declarationId : 'approve'}/${String(data?.declarationVersion)}`;
+
 /**
- * Check 11 (1.5.0): every entry that names a declaration by hash has that declaration's text in the evidence, and
- * the text hashes to it. Returns the bad entries, and the versions shown.
+ * Check 11 (1.5.0): every entry that names a declaration by hash has that declaration's text in the evidence under
+ * "<id>/<version>", the text hashes to it, and the declaration fits the entry's action (an approval entry with a
+ * rejection text fails, and the other way round). Returns the bad entries, and for each declaration whose every entry
+ * passed, the entries that agreed to it: only those texts are shown (review round 3, D-3).
  */
 function checkDeclarations(history, declarations) {
   const texts = declarations && typeof declarations === 'object' ? declarations : {};
   const bad = [];
-  const shown = new Set();
+  const byKey = new Map();
   for (const row of history) {
     const hash = row.data?.declarationHash;
     if (hash === undefined) continue;
-    const text = texts[String(row.data?.declarationVersion)];
-    if (typeof text !== 'string' || sha256(text) !== hash) bad.push(row.seq);
-    else shown.add(String(row.data.declarationVersion));
+    const key = declarationKey(row.data);
+    const text = texts[key];
+    const fits = DECLARATION_FOR_ACTION[row.transitionName] === key.split('/')[0];
+    const ok = fits && typeof text === 'string' && sha256(text) === hash;
+    if (!ok) bad.push(row.seq);
+    if (!byKey.has(key)) byKey.set(key, { entries: [], ok: true });
+    const seen = byKey.get(key);
+    seen.entries.push(row.seq);
+    seen.ok = seen.ok && ok;
   }
-  return { bad, shown: [...shown].sort() };
+  const shown = [...byKey.entries()].filter(([, v]) => v.ok).sort(([a], [b]) => (a < b ? -1 : 1)).map(([key, v]) => ({ key, entries: v.entries, text: String(texts[key]) }));
+  return { bad, shown };
 }
 
 /** Check 12 (1.5.0): no entry of a run follows the entry that ended it. Returns the bad entries. */
@@ -257,13 +266,16 @@ function checkEndedRuns(history) {
 }
 
 function verifyFormat2(evidence, history, check) {
+  const notes = [];
   const policies = [...(evidence.signingPolicies || [])].sort((a, b) => a.version - b.version);
   check(checkPolicies(policies), `signing policies (${policies.length} versions)`);
   const bad = checkCodeSigning(history, policies, String(evidence.snapshot?.projectId ?? ''));
   check(bad.length === 0, `code signing on every signature that needs it${bad.length ? ` (entries ${bad.join(', ')})` : ''}`);
   if (history.some(row => row.data?.declarationHash !== undefined)) {
     const declared = checkDeclarations(history, evidence.declarations);
-    check(declared.bad.length === 0, `declaration texts${declared.bad.length ? ` (entries ${declared.bad.join(', ')})` : ` (versions ${declared.shown.join(', ')})`}`);
+    check(declared.bad.length === 0, `declaration texts${declared.bad.length ? ` (entries ${declared.bad.join(', ')})` : ` (${declared.shown.map(d => d.key).join(', ')})`}`);
+    // What each signer agreed to: only texts that matched every entry naming them, never an unused text of the file
+    for (const d of declared.shown) notes.push(`NOTE declaration ${d.key} (entries ${d.entries.join(', ')}): ${JSON.stringify(d.text)}`);
   }
   if (history.some(isRouted)) {
     const continued = checkEndedRuns(history);
@@ -272,14 +284,14 @@ function verifyFormat2(evidence, history, check) {
   if (!Array.isArray(evidence.routes)) {
     // Routed content without its route versions cannot be checked: fail, never skip
     if (history.some(isRouted)) check(false, 'route versions (missing)');
-    return;
+    return notes;
   }
   const routes = evidence.routes;
   // Check 6: each route version hashes to its routeHash
   check(routes.every(r => sha256(canonicalJson(without(r, 'routeHash'))) === r.routeHash), `route versions (${routes.length})`);
   const failures = checkSealingRun(history, routes, evidence.attestation || {});
-  if (failures === null) return;
-  for (const name of ['stage signatures of the sealing run', 'quorum and stage order', 'one stage per person']) check(!failures.includes(name), name);
+  if (failures !== null) for (const name of ['stage signatures of the sealing run', 'quorum and stage order', 'one stage per person']) check(!failures.includes(name), name);
+  return notes;
 }
 
 function main(args) {
