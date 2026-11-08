@@ -62,7 +62,7 @@ Install LedgerSeal on your own test site; nothing depends on the Asymm Systems s
 3. Observe that Jira blocks the transition with the LedgerSeal message naming the changed items.
 
 ### Test Step 4: Admin Policy Page
-1. Navigate to **Jira Settings** -> **Apps** -> **LedgerSeal approvers**.
+1. Navigate to **Jira Settings** -> **Apps** -> **LedgerSeal settings**, tab **Approver groups**.
 2. Search for a Jira group, add it, and click **Save changes**. Members of the saved groups can seal, approve changes, and revoke seals.
 
 ---

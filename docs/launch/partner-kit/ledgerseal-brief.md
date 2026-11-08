@@ -28,13 +28,13 @@ On Data Center, regulated teams use transition signature and approval apps, or i
 | 21 CFR 11.10(e) audit trail | Supported: hash-chained records of seals, changes, approvals of changes and revokes |
 | 21 CFR 11.50 signature manifestation | Partly met: date, time and meaning are recorded; the name is shown from the Atlassian account while it exists, and as a deleted user after the account closes |
 | 21 CFR 11.70 signature linking | The attestation is signed by the app, not by the approver. The auditor decides |
-| 21 CFR 11.200 and 11.300 | Not met: the signer does not log in again when sealing |
+| 21 CFR 11.200(a) | Partly met with code signing on: the signer's Atlassian account plus a single-use code emailed to that account. LedgerSeal does not re-enter your Jira login at each signature, so it partly meets 21 CFR 11.200(a)(1) |
+| 21 CFR 11.300 | (a) to (c): the customer's identity provider; (d) partly met: lockout, rate limits and a recorded history of every attempt, alerts on the admin page and not emailed; (e) not applicable |
 
 ## What it does not do
 
-- No Part 11 electronic signatures by itself. Keep your own signing control if your predicate rules need them.
-- No re-authentication at signing (some Data Center and cloud apps check credentials; LedgerSeal does not).
-- No multi-step or parallel approval routing.
+- It does not re-enter the Jira login at each signature, so it partly meets 11.200(a)(1). The customer's identity provider controls, procedures and validation decide whether this meets their predicate rules.
+- A shared or delegated mailbox defeats the signing code. Security alerts are shown on the admin page and are not emailed.
 - The validator does nothing until a Jira admin adds it to a transition.
 - The history is tamper-evident, not immutable: someone who can rewrite the app's storage, the vendor included, can write a new consistent chain.
 - Asymm Systems holds the signing key; the signature does not protect against the vendor.

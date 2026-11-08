@@ -34,7 +34,7 @@ For migration leads, Jira admins and QA or compliance leads. Prepared by Asymm S
 | C2 | Separation of duties: can the person who changed a ticket approve it? Can the assignee tick their own review item? | SOC 2 and ISO 27001 auditors test this | LedgerSeal; DefinitionGuard's not-the-assignee rule |
 | C3 | Release gate: is the release transition blocked until the control passes? Who adds the validator? | A validator does nothing until an admin adds it | LedgerSeal and DefinitionGuard validators; DefinitionGuard Gate coverage |
 | C4 | Definition of Done: is evidence required, and are waivers recorded with a reason? | Honour-system checklists fail audits | DefinitionGuard |
-| C5 | Electronic signatures (21 CFR 11.200, 11.300): if your predicate rules need them, which tool re-authenticates the signer? | Many approval tools do not | Not LedgerSeal: it does not meet 11.200 or 11.300 |
+| C5 | Electronic signatures (21 CFR 11.200, 11.300): if your predicate rules need them, which tool re-authenticates the signer? | Many approval tools do not | LedgerSeal with code signing on partly meets 11.200(a): the Atlassian account plus an emailed single-use code; it does not re-enter the Jira login at each signature. 11.300(a) to (c) stay with the identity provider |
 | C6 | Audit trail: is it computer-generated, time-stamped and tamper-evident? Can it be exported and checked? | 21 CFR 11.10(e); audit readiness | LedgerSeal and DefinitionGuard hash-chained histories; LedgerSeal offline verifier |
 | C7 | Evidence per change: decision record, Definition of Done, pull request, approval | Audit sampling | FourRealities |
 | C8 | Scope baseline: who accepted each change of scope? | Project governance | CascadePlan |

@@ -28,7 +28,7 @@ The apps support compliance; they do not make a team compliant. The auditor deci
 | FourRealities | Per issue: a decision record, a Definition of Done, a pull request and an approval seal. A signed record counts only when the signature is verified. Useful in audit preparation. | It cannot read pull request approvals. |
 | CascadePlan | A frozen baseline with a SHA-256 digest; a scope change needs an approver who is not the requester. | A planning tool; its compliance angle is narrow. |
 
-Message: "Your Part 11 audit trail for Jira change records, in cloud, with data that stays in Atlassian. Keep your own signing control for 11.200."
+Message: "Your Part 11 audit trail for Jira change records, in cloud, with data that stays in Atlassian. With code signing on, each signature also needs a single-use code emailed to the signer; it partly meets 11.200(a)(1)."
 
 Computerised system validation: a GxP customer validates the cloud system and its apps. The apps are tested (each listing names its tests), but we provide no validation package. That is a gap (section 5).
 
@@ -220,7 +220,7 @@ From `docs/launch/go-to-market-plan.md`, section 2, plus these for the regulated
 - "Atlassian recommends" or "JCMA suggests" our apps. Atlassian says JCMA alternatives are "not recommended by Atlassian".
 - "Available in Isolated Cloud" or "available in Government Cloud". Both are planned only.
 - "FedRAMP authorized", "SOC 2 certified", "ISO 27001 certified", "Atlassian Enterprise Certified". None is true.
-- "Part 11 compliant" or "Part 11 electronic signatures". LedgerSeal supports the audit trail; it does not meet 11.200 or 11.300.
+- "Part 11 compliant" or "Part 11 electronic signatures". LedgerSeal supports the audit trail and, with code signing on, partly meets 11.200(a); 11.300(a) to (c) belong to the identity provider.
 - "SOX compliant", "GDPR compliant", "NIS2 compliant". We state facts about data flows and controls.
 - "Replaces app X". Say "covers the need for an approval bound to the issue content", and name what we do not cover.
 - Anything about another vendor beyond its own Marketplace listing or documentation, with the date checked.

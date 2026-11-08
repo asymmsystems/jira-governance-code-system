@@ -9,7 +9,7 @@ This guide covers configuring approver groups under the Uniform Permission Stand
 By default, any Jira Administrator or Project Administrator can apply approval seals. To restrict sealing authority to dedicated compliance or release engineering groups:
 
 1. In Jira Cloud, navigate to **Jira Settings (Gear Icon)** -> **Apps**.
-2. In the left sidebar under **Apps**, click **LedgerSeal approvers**.
+2. In the left sidebar under **Apps**, click **LedgerSeal settings**, then the **Approver groups** tab.
 3. In the search input, search for authorized Jira user groups (e.g. `release-managers`, `compliance-officers`, `tech-leads`).
 4. Select one or more groups and click **Save Policy**.
 
