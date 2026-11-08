@@ -271,7 +271,7 @@ LedgerSeal: tsc 0 errors; 63 suites, 808 tests; coverage statements 97.71%, bran
 
 ## LS-1 and review round 4 (2026-11-08)
 
-- **LS-1 (user-guide audit, `.tmp/cache/user-guides/code-gaps.md`):** an attachment added, removed or replaced after the seal is now a change row of the panel. Each row shows the file name, the kind of change and, where Jira says so, who did it and when. An added file names its author; a removed or replaced one names the person the change log gives after the seal. The "N items modified" sentence counts these rows. The names are read from Jira when the panel loads, and they are not recorded. So the validator message (it still names "Attachments") and the evidence export are unchanged; the incident still records `attachmentChanges` only.
+- **LS-1 (user-guide audit, `.tmp/cache/user-guides/code-gaps.md`):** an attachment added, removed or replaced after the seal is now a change row of the panel. Each row shows the file name, the kind of change and, where Jira says so, who did it and when. An added file names its author; a removed or replaced one names the person the change log gives after the seal. The "N items modified" sentence counts these rows. Who changed each attachment, and when, is read from Jira when the panel loads and is not recorded; file names come from the sealed snapshot (removed or replaced files) or from Jira (added files) (wording corrected after review round 5, L5-1). So the validator message (it still names "Attachments") and the evidence export are unchanged; the incident still records `attachmentChanges` only.
   - Tests: `test/view-model.test.ts` (attachment-only, fields plus attachments, CHANGED_BACK); `test/ls1-attachments.test.ts` (who added and who removed; the validator message and the export unchanged; unknown authors stay empty).
   - Live on development 6.17.0, probe **LSP-11**: sealed, then a file `ls1-probe.txt` was added through Jira. The panel showed "Approval seal: Changed after approval. 1 item modified." and the row "Attachment: ls1-probe.txt (Added after the seal)", "Was (at approval): (none)", "Now: ls1-probe.txt", changed by the owner with the time.
 - **R4-2:** a revoke code request runs the revoke flow's own checks first: the issue has a seal that is not revoked and passes its check, and the caller did not change the issue after the seal. If any check fails, no code is emailed. Test in `test/signing.test.ts`.
@@ -284,3 +284,31 @@ LedgerSeal: tsc 0 errors; 63 suites, 808 tests; coverage statements 97.71%, bran
 - Semgrep 1.182.1: 0 findings (233 files).
 - Verifier: 54 tests (format 1 identical to 1.3.0; LedgerSeal and FourRealities); `--self-test` 10/10 and 3/3.
 - `forge eligibility -e development`: **6.17.0** eligible for Runs on Atlassian. Production not touched.
+
+## Review round 5 (2026-11-08)
+
+- **L5-1:** the LS-1 entry above now says what is read at panel load (who and when) and where file names come from.
+- **L5-2, written answer:** the change log is already read once per invocation. Each resolver call builds its own Jira client (`forgeDeps()`, the default argument, is evaluated per call), and that client caches the change log per issue for the invocation (`getChangelog` in `src/jira/jira-client.ts`, F-10; test `F-10: reads the change log once per invocation` in `test/jira-client.test.ts`). The incident attribution, the rights check and the LS-1 attachment attribution share that one read, so spec 7.2 holds and no code change is needed.
+- **M-2, the live watcher test: blocked, not run.** Probe **LSP-12** was created with the owner as reporter and no assignee. Adding Shuzan Fahim as a watcher failed: Jira answered 403, "is not allowed to add watchers to issue 'LSP-12'". The owner's account lacks the Manage watchers permission in LSP (`mypermissions`: MANAGE_WATCHERS false), although Shuzan has Browse there. No code was requested, and code signing was not turned on. Project permissions were not changed and Shuzan's account was not used. To run the test: grant Manage watchers in LSP to the owner (or add Shuzan as a watcher in the UI by someone who has it). Then request a code on LSP-12 as the owner and ask Shuzan to confirm no code email arrived.
+- **R4-4, the real verifier on a live export: done.** The owner approved one download. The LSP-10 evidence (format 2), shown by the panel's "Show evidence (JSON)", was saved from the page to `~/Downloads/ledgerseal-evidence-LSP-10.json`: 14,493 bytes, SHA-256 `bfe7a7494b52aefc75c8923c249899bf9957f6958b02203de82318460abada06`. `tools/verifier/verify-evidence.mjs` 1.5.0 of this branch was then run with host node v26.13.0 and `keys/ls-dev-2026-11.pub.pem`. Full output:
+
+```text
+PASS snapshot hash
+PASS history chain (3 entries)
+PASS attestation names the newest seal
+PASS attestation status matches the history (SEAL_REVOKED)
+PASS signature (ls-dev-2026-11)
+PASS signing policies (6 versions)
+PASS code signing on every signature that needs it
+PASS declaration texts (approve/2, reject/1, revoke/1)
+PASS no run continues after it ended
+PASS route versions (1)
+PASS stage signatures of the sealing run
+PASS quorum and stage order
+PASS one stage per person
+NOTE "parties" maps party tokens to account ids (null: a closed account). It is not signed and no check uses it.
+NOTE declaration approve/2 (entries 2): "I am signing this record electronically. I understand that my organisation treats this electronic signature as the legally binding equivalent of my handwritten signature. I approve this issue as it is now, with the meaning shown above, and I agree that this signature records my approval of its covered fields, comments and attachments."
+NOTE declaration reject/1 (entries 1): "I am signing this record electronically. I understand that my organisation treats this electronic signature as the legally binding equivalent of my handwritten signature. I reject this issue as it is now, for the reason I give, and I agree that this signature records my rejection."
+NOTE declaration revoke/1 (entries 3): "I am signing this record electronically. I understand that my organisation treats this electronic signature as the legally binding equivalent of my handwritten signature. I withdraw the approval seal on this issue, for the reason I give, and I agree that this signature records the withdrawal."
+exit=0
+```
