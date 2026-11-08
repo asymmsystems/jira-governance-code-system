@@ -186,17 +186,41 @@ describe('verifier 1.5.0: declarations, ended runs and moved issues (review roun
 
   it('shows the declaration each signer agreed to, and fails a missing or changed text', () => {
     const rows = [{ at: '2026-11-08T01:00:00.000Z', extra: decl }];
-    const ok = check({ ...evidence({ policies: [], rows }), declarations: { 2: TEXT } });
+    const ok = check({ ...evidence({ policies: [], rows }), declarations: { 'approve/2': TEXT } });
     assert.strictEqual(ok.status, 0, ok.stdout);
-    assert.match(ok.stdout, /PASS declaration texts \(versions 2\)/);
-    assert.match(ok.stdout, /NOTE declaration version 2 \(entries 1\): "I am signing this record electronically\."/);
+    assert.match(ok.stdout, /PASS declaration texts \(approve\/2\)/);
+    assert.match(ok.stdout, /NOTE declaration approve\/2 \(entries 1\): "I am signing this record electronically\."/);
     const missing = check(evidence({ policies: [], rows }));
     assert.match(missing.stdout, /FAIL declaration texts \(entries 1\)/);
-    const changed = check({ ...evidence({ policies: [], rows }), declarations: { 2: TEXT + ' And more.' } });
+    const changed = check({ ...evidence({ policies: [], rows }), declarations: { 'approve/2': TEXT + ' And more.' } });
     assert.strictEqual(changed.status, 1);
+    // D-3: a text that did not match is not printed as what anyone agreed to
+    assert.doesNotMatch(changed.stdout, /NOTE declaration/);
     // A downgraded format field does not switch the check off
     const downgraded = check({ ...evidence({ policies: [], rows }), format: 'ledgerseal-evidence/1' });
     assert.match(downgraded.stdout, /FAIL declaration texts/);
+  });
+
+  it('fails a declaration that does not fit the action, and never prints an unused text (review round 3, D-3 and D-5)', () => {
+    const REJECT = 'I reject this issue.';
+    // An approval entry (SEAL) that names a rejection declaration, with a matching text: the action check fails it
+    const wrongKind = check({ ...evidence({ policies: [], rows: [{ at: '2026-11-08T01:00:00.000Z', extra: { declarationId: 'reject', declarationVersion: '1', declarationHash: sha256(REJECT) } }] }), declarations: { 'reject/1': REJECT } });
+    assert.match(wrongKind.stdout, /FAIL declaration texts \(entries 1\)/);
+    // A revoke entry that names the approval declaration fails too
+    const revokeRow = { at: '2026-11-08T02:00:00.000Z', statusId: 'LS_REVOKED', transitionName: 'REVOKE', extra: decl };
+    const wrongRevoke = check({ ...evidence({ policies: [], rows: [{ at: '2026-11-08T01:00:00.000Z' }, revokeRow] }), declarations: { 'approve/2': TEXT } });
+    assert.match(wrongRevoke.stdout, /FAIL declaration texts \(entries 2\)/);
+    // A rejection text under the approval key: the hash fails
+    const swapped = check({ ...evidence({ policies: [], rows: [{ at: '2026-11-08T01:00:00.000Z', extra: decl }] }), declarations: { 'approve/2': REJECT } });
+    assert.match(swapped.stdout, /FAIL declaration texts/);
+    // An injected text that no entry names passes the check but is never printed
+    const injected = check({ ...evidence({ policies: [], rows: [{ at: '2026-11-08T01:00:00.000Z', extra: decl }] }), declarations: { 'approve/2': TEXT, 'approve/9': 'I agree to anything.' } });
+    assert.strictEqual(injected.status, 0, injected.stdout);
+    assert.doesNotMatch(injected.stdout, /anything/);
+    // A matching revoke entry passes
+    const revokeOk = { ...revokeRow, extra: { declarationId: 'revoke', declarationVersion: '1', declarationHash: sha256('I withdraw.') } };
+    const good = check({ ...evidence({ policies: [], rows: [{ at: '2026-11-08T01:00:00.000Z', extra: decl }, revokeOk] }), declarations: { 'approve/2': TEXT, 'revoke/1': 'I withdraw.' } });
+    assert.match(good.stdout, /PASS declaration texts \(approve\/2, revoke\/1\)/);
   });
 
   it('judges a row by the project it names, so an issue moved to a code-signing project later is not a false FAIL', () => {

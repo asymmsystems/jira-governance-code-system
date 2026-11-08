@@ -157,6 +157,12 @@ stale holder's key and then creates its own once, and every run write first chec
 still names its holder (R2-5). A per-issue lock means one slow signature delays others on the same
 issue by up to about 4 seconds before they get "try again" (R2-6); their code stays unused.
 
+* Owner decision, fix round 3 (2026-11-08)
+A rejection (decision 5) records the rejection declaration =reject/1= in a code-signing project,
+not the approval text, and none elsewhere; a stage signature records =approve/1= or =approve/2=. The
+texts are verbatim in ADR-016 ("Owner decision, fix round 3") and spec v4 section 18C. A revoke code
+on a routed issue is asked for under the route's revoke rule (decision 8).
+
 * Build results (2026-11-08, branch =feature/ledgerseal-regulated=)
 Built as decided, development 6.7.0 to 6.12.0. Live on development (LSP-7, route bound to project LSP and
 then unbound): a rejection with a reason ended the run, the next signature started a new run and sealed

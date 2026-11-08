@@ -251,7 +251,7 @@ describe('ADR-016 code-signed evidence (format 2) through the open verifier', ()
     expect(evidence.format).toBe('ledgerseal-evidence/2');
     expect(evidence.history[0].data.signingPolicy).toEqual({ version: 1, policyHash: evidence.signingPolicies[0].policyHash, projectId: evidence.snapshot.projectId });
     // Review round 2 (D-1): the seal row names its declaration by hash, and the export carries the text
-    expect(evidence.declarations).toEqual({ '1': require('../src/domain/declaration').DECLARATION.text });
+    expect(evidence.declarations).toEqual({ 'approve/1': require('../src/domain/declaration').DECLARATION.text });
     const ok = runVerifier(evidence);
     expect(ok.status).toBe(0);
     // A policy list swapped for one that says "on" (self-consistent) no longer matches the named hash

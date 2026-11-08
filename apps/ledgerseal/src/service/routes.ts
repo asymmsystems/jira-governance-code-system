@@ -11,7 +11,7 @@
 
 import * as crypto from 'crypto';
 import { computeSnapshotHash } from '../domain/crypto';
-import { declarationFor, isDeclarationV2Approved, validReason } from '../domain/declaration';
+import { agreesTo, Declaration, declarationForAction, isDeclarationV2Approved, validReason } from '../domain/declaration';
 import { declarationHash } from '../domain/declaration-hash';
 import { buildStatusRow } from '../domain/history';
 import {
@@ -418,7 +418,7 @@ interface StageStep {
   action: 'SIGN_STAGE' | 'REJECT';
   signing: unknown;
   sealState: string;
-  declaration: { version: string; text: string };
+  declaration: Declaration | null;
 }
 
 /**
@@ -472,10 +472,10 @@ async function stageChecks(payload: any, context: any, deps: LedgerSealDeps, act
   const part11 = await part11Policy(deps, issue.id);
   if (part11 && 'code' in part11) return part11;
   const policy = part11 as SigningPolicy | null;
-  const declaration = declarationFor(Boolean(policy));
-  const signature = payload?.signature ?? {};
-  // Review round 2 (D-1): a rejection is a signature too; its signer agrees to the declaration shown, as a stage signer does
-  if (signature.declarationVersion !== declaration.version || signature.declarationText !== declaration.text) return fail('DECLARATION_MISMATCH');
+  // Review round 3 (D-5): each signing agrees to the declaration of its own action: approval for a stage signature;
+  // in a code-signing project the rejection declaration for a rejection (outside one, a rejection has none)
+  const declaration = declarationForAction(action === 'REJECT' ? 'reject' : 'approve', Boolean(policy));
+  if (declaration && !agreesTo(payload?.signature, declaration)) return fail('DECLARATION_MISMATCH');
   if (policy && !isDeclarationV2Approved()) return fail('DECLARATION_PENDING');
   return {
     accountId,
@@ -559,8 +559,9 @@ async function signLocked(payload: any, deps: LedgerSealDeps, step: StageStep) {
       transitionName: 'SIGN_STAGE',
       data: {
         ...runData,
-        declarationVersion: step.declaration.version,
-        declarationHash: declarationHash(step.declaration.text),
+        declarationId: (step.declaration as Declaration).id,
+        declarationVersion: (step.declaration as Declaration).version,
+        declarationHash: declarationHash((step.declaration as Declaration).text),
         ...(signingEvidence ? { signing: signingEvidence } : {}),
         ...(policyRef ? { signingPolicy: policyRef } : {})
       }
@@ -628,8 +629,9 @@ async function rejectLocked(reason: string, deps: LedgerSealDeps, step: StageSte
     reason,
     transitionName: 'REJECT',
     data: { runId, stageId: stage.stageId, snapshotHash: run?.snapshotHash ?? computeSnapshotHash(live.snapshot), routeHash: ctx.route.routeHash,
-      declarationVersion: step.declaration.version,
-      declarationHash: declarationHash(step.declaration.text),
+      ...(step.declaration
+        ? { declarationId: step.declaration.id, declarationVersion: step.declaration.version, declarationHash: declarationHash(step.declaration.text) }
+        : {}),
       ...(signingEvidence ? { signing: signingEvidence } : {}),
       ...(policyRef ? { signingPolicy: policyRef } : {})
     }

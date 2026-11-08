@@ -44,6 +44,29 @@ export class SigningRepository {
     return (await this.storage.get(`ls3:sig:policyver:${pad(version)}`)) || null;
   }
 
+  /**
+   * Review round 3 (P-1): the versions that came into force, oldest first: every stored version up to the current
+   * one. A version stored by a save that died before it came into force is not listed (it was never in force).
+   */
+  async policiesInForce(): Promise<SigningPolicy[]> {
+    const current = await this.getPolicy();
+    if (!current) return [];
+    return (await this.allPolicies()).filter(p => p.version <= current.version);
+  }
+
+  /**
+   * Review round 3 (P-1): the current policy, after removing versions that a save stored but never brought into force
+   * (it died after the version and its alert). A version younger than `staleMs` may be a save still running: 'busy'.
+   * Returns the removed versions, so the caller can say so in the alert log.
+   */
+  async recoverPolicy(nowMs: number, staleMs: number): Promise<{ current: SigningPolicy | null; dropped: SigningPolicy[] } | 'busy'> {
+    const current = await this.getPolicy();
+    const orphans = (await this.allPolicies()).filter(p => p.version > (current?.version ?? 0));
+    if (orphans.some(p => nowMs - Date.parse(p.fromDate) < staleMs)) return 'busy';
+    for (const p of orphans) await this.storage.delete(`ls3:sig:policyver:${pad(p.version)}`);
+    return { current, dropped: orphans };
+  }
+
   /** Every stored policy version, oldest first. */
   async allPolicies(): Promise<SigningPolicy[]> {
     const rows = await this.storage.query('ls3:sig:policyver:');

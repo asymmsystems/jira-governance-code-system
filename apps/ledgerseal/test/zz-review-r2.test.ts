@@ -121,6 +121,6 @@ it('a revoke made while a completing stage signature holds the run lock waits fo
   fs.writeFileSync(path.join(dir, 'e.json'), JSON.stringify(ev));
   const out = spawnSync(process.execPath, [path.resolve(__dirname, '../../../tools/verifier/verify-evidence.mjs'), path.join(dir, 'e.json'), keyFile], { encoding: 'utf8' });
   expect(out.stdout).toContain('PASS no run continues after it ended');
-  expect(out.stdout).toMatch(/PASS declaration texts \(versions 1\)/);
+  expect(out.stdout).toMatch(/PASS declaration texts \(approve\/1\)/);
   expect(out.status).toBe(0);
 });

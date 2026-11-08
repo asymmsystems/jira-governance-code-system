@@ -74,8 +74,9 @@ export const SignatureField: React.FC = () => {
         viewHash: result?.viewHash,
         signature: {
           meaning,
-          declarationVersion: signing.declaration.version,
-          declarationText: signing.declaration.text,
+          declarationId: signing.declaration?.id,
+          declarationVersion: signing.declaration?.version,
+          declarationText: signing.declaration?.text,
           reason: field.needsReason ? reason.trim() : undefined
         },
         signing: signing.needsCode && challenge ? { challengeId: challenge.challengeId, code: code.trim() } : undefined
@@ -109,7 +110,7 @@ export const SignatureField: React.FC = () => {
                 <TextArea name="reason" onChange={(e: any) => setReason(e.target.value)} />
               </Stack>
             )}
-            <Text as="span" size="small">{signing.declaration.text}</Text>
+            <Text as="span" size="small">{signing.declaration?.text ?? ''}</Text>
             <Checkbox value="agreed" isChecked={agreed} onChange={(e: any) => setAgreed(e.target.checked)} label="I agree to the declaration above." />
             {signing.blockedText && (
               <SectionMessage appearance="warning">

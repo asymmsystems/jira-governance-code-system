@@ -440,10 +440,14 @@ describe('signing with the code (spec v4 section 14.3)', () => {
     const foreign = await askCode(jira, deps, 'bob', 'REVOKE');
     expect(((await sealIssueFlow({ signature: V2({ reason: 'ok' }), signing: { challengeId: foreign.res.challengeId, code: foreign.code } }, as(jira, 'bob'), deps)) as any).code).toBe('SIGNING_FAILED');
     // Revoke: no code refused, a REVOKE code accepted
-    expect(((await revokeFlow({ reason: 'stop' }, as(jira, 'alice'), deps)) as any).code).toBe('SIGNING_REQUIRED');
+    // Review round 3 (D-5): the revoke declaration first (no code is touched without it), then the code
+    expect(((await revokeFlow({ reason: 'stop' }, as(jira, 'alice'), deps)) as any).code).toBe('DECLARATION_MISMATCH');
+    const REVOKE_SIG = { declarationId: 'revoke', declarationVersion: declaration.DECLARATION_REVOKE.version, declarationText: declaration.DECLARATION_REVOKE.text };
+    expect(((await revokeFlow({ reason: 'stop', signature: REVOKE_SIG }, as(jira, 'alice'), deps)) as any).code).toBe('SIGNING_REQUIRED');
     clearRequestSlots(store);
     const revokeCode = await askCode(jira, deps, 'alice', 'REVOKE');
-    const revoked: any = await revokeFlow({ reason: 'stop', signing: { challengeId: revokeCode.res.challengeId, code: revokeCode.code } }, as(jira, 'alice'), deps);
+    const revoked: any = await revokeFlow({ reason: 'stop', signature: REVOKE_SIG, signing: { challengeId: revokeCode.res.challengeId, code: revokeCode.code } }, as(jira, 'alice'), deps);
+    expect(model.statusRows(store).at(-1).data).toMatchObject({ declarationId: 'revoke', declarationVersion: '1' });
     expect(revoked.ok).toBe(true);
     expect(model.statusRows(store).at(-1).data.signing.method).toBe('LS_ATL_EMAIL_OTP_1');
   });
@@ -481,11 +485,15 @@ describe('signing with the code (spec v4 section 14.3)', () => {
     const { jira, deps } = await setup();
     approve(false);
     const pending: any = await verifyIssueFlow({}, as(jira, 'alice'), deps);
-    expect(pending.part11).toEqual({ on: true, invalid: false, declaration: { version: '2', text: DECLARATION_V2.text }, pending: true });
+    const own = {
+      reject: { id: 'reject', version: '1', text: declaration.DECLARATION_REJECT.text },
+      revoke: { id: 'revoke', version: '1', text: declaration.DECLARATION_REVOKE.text }
+    };
+    expect(pending.part11).toEqual({ on: true, invalid: false, declaration: { version: '2', text: DECLARATION_V2.text }, declarations: own, pending: true });
     approve(true);
     jira.issue.fields.project = { id: '200', key: 'OPS' };
     const off: any = await verifyIssueFlow({}, as(jira, 'alice'), deps);
-    expect(off.part11).toEqual({ on: false, invalid: false, declaration: { version: '1', text: declaration.DECLARATION.text }, pending: false });
+    expect(off.part11).toEqual({ on: false, invalid: false, declaration: { version: '1', text: declaration.DECLARATION.text }, declarations: { reject: null, revoke: null }, pending: false });
   });
 });
 
