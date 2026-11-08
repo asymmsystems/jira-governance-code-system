@@ -116,6 +116,8 @@ export interface ReportCryptoAccessor extends Accessor {
   sign(text: string): { keyId: string; sig: string } | null;
   /** The key id used to sign, or null. */
   keyId(): string | null;
+  /** True when a key is set but its public half is not the published key of its id (REL-3): never sign. */
+  keyRefused(): boolean;
   newId(): string;
 }
 
@@ -131,6 +133,8 @@ export interface ReportRuntimeAccessor extends Accessor {
   environment(): string;
   appVersion(): string | undefined;
   licenceActive(): boolean | undefined;
+  /** The licence for the daily run: the context, else the License REST API in production; undefined when unknown. */
+  licenceState(): Promise<boolean | undefined>;
 }
 
 /** People as the downloading user (scope read:jira-user). */

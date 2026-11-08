@@ -200,7 +200,7 @@ export const LICENCE_INACTIVE_MESSAGE = 'The FourRealities licence for this site
 
 /** True only when Forge says the licence is inactive; no licence (development) is allowed (D-10, B-23). */
 export function licenceInactive(context: ForgeContext | undefined): boolean {
-  return context?.license?.isActive === false;
+  return context?.license?.active === false || (context?.license?.active === undefined && context?.license?.isActive === false);
 }
 
 const LICENCE_READ_ERROR = { ok: false as const, error: { code: 'LICENSE_INACTIVE' as const, message: LICENCE_INACTIVE_MESSAGE } };
@@ -419,8 +419,11 @@ export const reportWorker = async (event: { body?: { reportId?: unknown }; event
 /** The daily report run: schedules (licence active only), retention, temporary files, stalled jobs. */
 export async function runReportDaily(storageProvider?: StorageProvider, deadline: number = Date.now() + SCHEDULED_BUDGET_MS): Promise<ReportDailyResult> {
   const app = composeReports(storageProvider, Math.max(0, deadline - Date.now()));
-  // Retention and clean-up run whatever the licence; only new scheduled reports stop (Q9).
-  return app.reports.daily(deadline, app.runtime.licenceActive() !== false);
+  // Retention and clean-up run whatever the licence; only new scheduled reports stop (Q9). New scheduled reports
+  // are made only when the licence is active, or unknown outside production (development has no licence, D-10);
+  // in production an unknown licence makes none (review round 5).
+  const licence = await app.runtime.licenceState();
+  return app.reports.daily(deadline, licence === true || (licence === undefined && app.runtime.environment() !== 'production'));
 }
 
 /** The hourly sweep of temporary people files (review L-3: a file lives at most 25 hours). */
