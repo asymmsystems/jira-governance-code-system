@@ -231,3 +231,7 @@ Input: `repository/tmp/fr-evidence-review/REVIEW-round3.md` (branch at `ec20fd7`
 | File names | The last day of the period, both days included (`...-2026-10-09-2026-11-07-...` for "9 Oct to 7 Nov"); the manifest `range.to` stays exclusive, as the spec defines it; the verifier prints `NOTE period 2026-10-09 to 2026-11-07, both days included (UTC); ...`. | engine, manager and verifier tests |
 
 The development records of 7.9.0 are under the same keys as before except the registry: projects with reports made on 7.9.0 were in `fr:reports:project-ids`, which is not read any more; such a project rejoins the daily run when its next report is made or a schedule is saved (development only).
+
+### Gate and deploy (fix round 3)
+
+tsc exit 0; 59 suites, 806 tests passed (99.33 % statements, 96.45 % branches, 99.32 % functions, 99.84 % lines; every threshold met); build exit 0; `npm audit --omit=dev --audit-level=high` exit 0 (0 high, 9 moderate, unchanged); `forge lint` "No issues found."; FSRT default and secret-logging 0 findings (75 files, 15 and 7 checks, `fsrt_gate.py` passes); Semgrep 1.182.1 0 findings on 216 files; verifier 19 tests passed. `forge deploy -e development` **7.10.0** from `63f0536`, eligible for Runs on Atlassian; installations at major version 7, "Up-to-date". Production and staging untouched.
