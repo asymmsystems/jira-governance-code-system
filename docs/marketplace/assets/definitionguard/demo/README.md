@@ -29,7 +29,7 @@ Frames: `frame-01-done-refused.png`, `frame-02-evidence-ticked.png`, `frame-03-a
 
 ## Posted to
 
-Not posted yet.
+Posted to ECOHELP-182684 (Marketplace Approval for DefinitionGuard) on 2026-11-09, comment 2464312, as a customer comment with this file attached.
 
 ## How it was made
 
