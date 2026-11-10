@@ -1,0 +1,108 @@
+#+TITLE: ADR-019: The Suite Runs on Atlassian, With No External Egress
+#+DATE: 2026-10-30
+#+STATUS: Accepted
+
+* Status
+Accepted. This is a backfill record: the four apps have relied on this decision since the first commit
+of this repository (=eaa725b=, 2026-10-30), but no ADR recorded it. This text was written on
+2026-11-08 from the code and the documents named below. The owner has not yet reviewed this text.
+
+Applies to all four apps: CascadePlan, DefinitionGuard, LedgerSeal and FourRealities.
+
+* Context
+Atlassian's "Runs on Atlassian" programme marks Forge apps that keep customer data inside Atlassian.
+Two of its rules matter here, as the existing records quote them:
+- "Your app must not egress data, with the exception of egress for analytics purposes"
+  (developer.atlassian.com, "Runs on Atlassian", quoted in ADR-016 on branch
+  =feature/ledgerseal-regulated=, read there 2026-11-08).
+- App data must stay in Atlassian hosted storage. ADR-015 records that Forge Object Store "meets the
+  Runs on Atlassian storage criterion" (=.../runs-on-atlassian/=, updated 2026-08-24).
+
+Why it matters to buyers is recorded once, as a tested hypothesis. The FourRealities research brief
+(=docs/sdlc/fourrealities-usp-ux-research-2026-11/research-brief.md=, hypothesis H7, "Runs on
+Atlassian and zero egress change purchases") grades it *Partly true*: Atlassian says customers "favor
+a strict definition of egress" (source BY-02), the Marketplace has a badge filter (BY-01), and rival
+apps egress (EX-02, EX-11). The brief also says there is no data on filter use or conversion.
+
+The rule was in place before any spec: the loop-engine prompt
+=loop-engine/agents/spec_architect.md= (line 9) asks for a manifest "with zero external network egress
+(=no external fetch/backend=)", and =loop-engine/graders/grade_security.py= fails a manifest that has
+=external:=, =fetch:= or =endpoints:=.
+
+* Decision
+1. *No external egress.* No app declares =permissions.external= (no backend or client fetch, no
+   images, scripts, styles or fonts from outside) and no =remotes=. The analytics exception of the
+   programme is not used either.
+2. *No web triggers.* No app declares a =webtrigger= module. Every call comes from Jira: a UI module,
+   a product event, a scheduled trigger, a workflow validator or a Forge queue consumer.
+3. *Only Atlassian APIs.* Code calls only Jira (=requestJira=) and, in FourRealities, the
+   Confluence REST API of the same site (=requestConfluence=), plus Forge platform APIs. No HTTP
+   client library and no Node =http= or =https= module is imported. The one direct =fetch= call is
+   FourRealities' upload to and download from a pre-signed Forge Object Store URL
+   (=DefaultForgeObjectStoreAccessor=, =apps/fourrealities/src/accessor/default-forge-object-store-accessor.ts=).
+   Spike S-1 showed that this needs no =permissions.external= and keeps "Runs on Atlassian"
+   (=docs/sdlc/fourrealities-evidence-reports-2026-11/spike-results.md=).
+4. *Data stays in Forge hosted storage.* All app data is in Forge storage (ADR-025) or in Jira itself
+   (issue properties). Nothing is copied to a store the vendor runs.
+5. *Delivery to the user is by the user.* Any file the suite produces (evidence exports, evidence
+   reports) is downloaded or copied by the user in the browser. The apps never send a file, an e-mail
+   or a webhook.
+6. *Custom UI loads only its own bundle.* CascadePlan's Custom UI declares no =permissions.content=:
+   no outside scripts and, since fix MK-09, no ='unsafe-inline'= styles
+   (=docs/spec/cascadeplan-spec-v2.md=, line 184; =apps/cascadeplan/manifest.yml=).
+
+* Alternatives Considered
+** Allow egress for chosen features
+- Cases in the record: sending evidence reports by e-mail, webhook, SIEM, S3 or SFTP (ADR-015,
+  "Considered and excluded"); a signing step-up at the customer's identity provider (ADR-016, option
+  (c2), on branch =feature/ledgerseal-regulated=).
+- For: features that buyers of audit tools ask for.
+- Against: the app loses "Runs on Atlassian", and customer data leaves Atlassian.
+- Verdict: rejected in each case. ADR-016 keeps the step-up as "reconsider if a customer asks and
+  accepts the badge loss".
+** Use the analytics exception
+- Reason not recorded; inferred from the listings, which say the apps call no external APIs
+  (=docs/marketplace/fourrealities-listing.md=, line 142; =docs/marketplace/ledgerseal-listing.md=,
+  line 135).
+** A vendor-hosted backend or database
+- Reason not recorded beyond the invariants of each first spec (for example
+  =docs/spec/definitionguard-spec.md=, invariants 1 and 2: "Zero External Egress", "Complete Data
+  Residency"). The suite launch playbook states the sales reason: "no external servers, no SOC 2
+  questionnaire friction for buyers" (=docs/marketplace/suite-launch-and-first-sale-playbook.md=,
+  line 157).
+
+* Consequences
+** Positive
+- Each app can carry the "Runs on Atlassian" badge, and the security questionnaires can answer that
+  no customer data leaves Atlassian.
+- The attack surface has no inbound endpoint (no web trigger) and no outbound call.
+** Negative
+- Features that need a network path outside Atlassian are out of scope: e-mail delivery, SIEM
+  export, external identity checks, telemetry.
+- Errors are seen only in the Forge logs of the vendor's developer console; there is no external
+  monitoring.
+- Every heavy job must fit Forge limits (time, memory, storage), because there is no other compute.
+** Enforcement today
+- FourRealities: =apps/fourrealities/test/manifest.test.ts= fails on =external:= and =webtrigger=.
+- LedgerSeal: =apps/ledgerseal/test/security-adversarial.test.ts= fails on =external:=.
+- CascadePlan and DefinitionGuard have no such test. The loop-engine grader checks it, but no CI
+  workflow runs the grader.
+
+* Implementation Notes
+- Manifests checked on master =29265b5=: =apps/cascadeplan/manifest.yml=,
+  =apps/definitionguard/manifest.yml=, =apps/fourrealities/manifest.yml=,
+  =apps/ledgerseal/manifest.yml=. None has =external=, =remotes= or =webtrigger=.
+- The penetration test of 2026-11-06 verified the same (=docs/security/pentest-report-2026-11-06.md=,
+  section 4.6, "Zero External Egress", "Zero Web Triggers").
+
+* References
+- =docs/spec/definitionguard-spec.md= (v1), invariants 1 and 2; =docs/spec/definitionguard-spec-v2.md=,
+  invariant 1
+- =docs/spec/ledgerseal-spec.md= (v1), invariant 1; =docs/spec/fourrealities-spec.md= (v1),
+  invariant 1; =docs/spec/fourrealities-spec-v4.md=, invariant 8
+- =docs/spec/cascadeplan-spec.md=, line 136; =docs/spec/cascadeplan-spec-v2.md=, line 184
+- =docs/security/pentest-report-2026-11-06.md=, section 4.6
+- =docs/design/uniform-permission-management-standard.md=, section 5, "Security Invariant"
+- [[file:adr-00015-fourrealities-evidence-reports.org][ADR-015: FourRealities evidence reports]], "Considered and excluded"
+- [[file:adr-00025-suite-forge-storage.org][ADR-025: Forge storage for all app data]]
+- =loop-engine/agents/spec_architect.md=; =loop-engine/graders/grade_security.py=

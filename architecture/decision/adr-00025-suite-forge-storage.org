@@ -1,0 +1,83 @@
+#+TITLE: ADR-025: Forge Key-Value Storage for All App Data
+#+DATE: 2026-11-01
+#+STATUS: Accepted
+
+* Status
+Accepted. This is a backfill record. Every app has stored its data in Forge KVS since the first
+commit (=eaa725b=, 2026-10-30). The choices against the other Forge stores were recorded app by app on
+2026-11-01 (=docs/spec/definitionguard-spec-v2.md=, decision D-01, owner approved option A;
+=docs/spec/ledgerseal-spec-v3.md=, decision D-5) and on 2026-11-08 for FourRealities' report files
+(ADR-015, owner decision Q5). No ADR states the suite-wide choice. This text was written on
+2026-11-08. The owner has not yet reviewed it.
+
+* Context
+Forge offers an app four hosted stores, all inside "Runs on Atlassian" (ADR-019):
+- *Key-Value Store (KVS)*, =@forge/kvs=: values up to 240 KiB, transactions of up to 25 operations,
+  prefix queries that are eventually consistent, and =keyPolicy: FAIL_IF_EXISTS= on a single set, but
+  not inside a transaction (=@forge/kvs= 2.1.1, research source R-05).
+- *Custom Entities*: typed entities with indexes and conditional writes; each entity is declared in
+  the manifest.
+- *Forge SQL*: a relational database, 1 GiB per production installation.
+- *Object Store* (Preview): objects up to 1 GB, written and read through pre-signed URLs.
+
+Sources: Forge limits pages as quoted in ADR-015 ("Constraints"), and the DefinitionGuard v2 spec,
+"Write protocol".
+
+The suite also uses Jira itself as a store for data that belongs to the issue: issue properties
+(=cascadeplan.dates=, =cascadeplan.links= in ADR-006 and ADR-008; the signed records of ADR-023).
+
+* Decision
+1. *KVS for all app state.* Each app keeps its own records in Forge KVS, under its own key prefix:
+   =cp:= (CascadePlan, with the older =ps:= read once for migration), =dg:= (DefinitionGuard),
+   =ls3:= (LedgerSeal, with the older =cert:= read only), =fr:= (FourRealities).
+2. *Object Store only for large files.* FourRealities stores evidence report files in Forge Object
+   Store (=objectStore= module =fourrealities-reports=; ADR-015, Q5). No other app uses it.
+3. *No Custom Entities and no Forge SQL.* No manifest declares a storage entity or a SQL module.
+4. *Bounded values.* No value grows with use. Large records are split: LedgerSeal snapshots in parts
+   of at most 120,000 bytes (D-5); FourRealities snapshot chunks of at most 100 rows and 200,000 bytes
+   (ADR-014; spec v4, invariant 6); CascadePlan baseline chunks of at most 200 items (ADR-009).
+5. *A create-once key is the lock.* Where a record must not lose a concurrent write, the writer
+   creates the next history key with =FAIL_IF_EXISTS=, and the loser retries or reports a conflict
+   (DefinitionGuard D-01; LedgerSeal spec v3, section 6). A record without history uses a version
+   check (CascadePlan, "swap-and-restore", ADR-008 DEC-4).
+
+* Alternatives Considered
+** Custom Entities with a conditional set (DefinitionGuard D-01 option B)
+- For: a true conditional write on a version field.
+- Against: "needs a manifest storage entity" (D-01). Adding a storage module is a manifest change;
+  the record does not say more. Reason otherwise not recorded.
+- Verdict: rejected by the owner (option A).
+** Forge SQL (LedgerSeal D-5 option c)
+- Against: KVS parts keep one store, need no new module, and fit the 25-operation transaction.
+- Verdict: rejected.
+** KVS chunks for report files (ADR-015 fallback)
+- For: no Preview feature.
+- Against: a Custom UI download page is needed and the cost is higher (HLD, section 10).
+- Verdict: kept as the costed fallback; Object Store chosen.
+
+* Consequences
+** Positive
+- One storage model and one set of limits for all four apps.
+- No storage module in three of the four manifests, so storage changes cause no major version.
+** Negative
+- No joins and no secondary indexes: every list is a prefix query or an index key the app keeps in
+  step itself (for example =cp:pd:accounts=, =fr:p:{projectKey}:accounts=).
+- Prefix queries are eventually consistent; the newest records are confirmed with strict reads.
+- Forge storage is billed by use since 2026-01-01; the vendor pays (ADR-015, Consequences).
+- Each app's data is visible only to that app, so one app cannot read another's records; the suite
+  shares facts only through signed issue properties (ADR-012).
+
+* Implementation Notes
+- KVS access: =apps/cascadeplan/src/storage/=, =apps/definitionguard/src/storage/forge-storage.ts=,
+  =apps/ledgerseal/src/storage/=, =apps/fourrealities/src/accessor/default-forge-kvs-store.ts=.
+- Object Store: =apps/fourrealities/src/accessor/default-forge-object-store-accessor.ts=.
+- Observation, not a decision: =apps/cascadeplan/package.json= and =apps/ledgerseal/package.json= list
+  =@forge/storage= as a dependency, but no file in their =src/= imports it on master =29265b5=.
+
+* References
+- =docs/spec/definitionguard-spec-v2.md=, "Storage Schema", "Write protocol", decision D-01
+- =docs/spec/ledgerseal-spec-v3.md=, section 6, decision D-5
+- =docs/spec/fourrealities-spec-v4.md=, invariants 1 and 6
+- [[file:adr-00001-fourrealities-evidence-data-model.org][ADR-001]] ("Forge KVS is a key-value store")
+- [[file:adr-00008-cascadeplan-start-date-issue-property.org][ADR-008]], [[file:adr-00009-cascadeplan-baselines.org][ADR-009]], [[file:adr-00014-fourrealities-personal-data.org][ADR-014]], [[file:adr-00015-fourrealities-evidence-reports.org][ADR-015]]
+- [[file:adr-00019-suite-runs-on-atlassian.org][ADR-019: The suite runs on Atlassian]]

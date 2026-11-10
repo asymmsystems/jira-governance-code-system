@@ -1,0 +1,133 @@
+#+TITLE: ADR-020: Check Jira Permissions as the User Before Any Call as the App
+#+DATE: 2026-11-06
+#+STATUS: Accepted
+
+* Status
+Accepted. This is a backfill record. The rule grew in three steps, each with its own record, but no
+ADR states it as one decision:
+- 2026-11-01: per-app permission models, each checked as the user (=docs/spec/definitionguard-spec-v2.md=,
+  "Permission model"; =docs/spec/ledgerseal-spec-v3.md=, section 7.1; CascadePlan commit =a2b54fe=,
+  "read Jira issues, epics and users as the user").
+- 2026-11-06: a Browse projects check as the user before any read as the app, in every app, after
+  the penetration test (=docs/security/pentest-report-2026-11-06.md=, findings ASYMM-SEC-01, -02 and
+  -03; merges =696c763=, =bc22524=, =67b6fd6=).
+- 2026-11-07: the check is a direct call that FSRT can see (=docs/security/fsrt-scan-2026-11-07.md=,
+  section 4.2; merge =9673c8c=), and CascadePlan calls Jira only as the user (merge =0d58bba=).
+
+This text was written on 2026-11-08. The owner has not yet reviewed it.
+
+* Context
+A Forge function can call Jira in two ways:
+- =api.asUser()=: Jira applies the caller's own permissions, issue security and comment visibility.
+- =api.asApp()=: Jira applies the app's permissions. The app can read issues, and write properties,
+  that the caller cannot.
+
+So any resolver that takes an issue id, and then reads Jira or app storage as the app, can show data
+to a user who cannot browse that issue. The penetration test found exactly this in LedgerSeal
+(ASYMM-SEC-01, CVSS 8.1) and DefinitionGuard (ASYMM-SEC-02, CVSS 8.1), and found that FourRealities
+counted hidden issues in its dashboard totals (ASYMM-SEC-03).
+
+Atlassian scans every Marketplace app with FSRT (Forge Security Requirements Tester). Its
+authorization check reports an =asApp()= call that an entry point reaches before a permission call.
+It recognises a permission call only in a narrow form (FSRT report, section 3): a call written as
+=api.asUser().requestJira(route`...`)= or =api.asApp().requestJira(...)=, whose literal route
+contains =permission=, made in the function's own body or in a function it calls directly. It does
+not follow closures passed as arguments, routes held in variables, or calls through an object.
+DefinitionGuard made its checks inside =withRetry(() => ...)= closures, so FSRT reported
+=Custom-Check-Authorization-16711047855292326038= (ticket AMS-76722, P2 Severe), and two more were
+hidden behind it.
+
+The Uniform Permission Management Standard
+(=docs/design/uniform-permission-management-standard.md=, approved 2026-11-03) already set two
+invariants: permission checks run as the user against =/rest/api/3/mypermissions= (invariant 1),
+and any failed check denies (invariant 2).
+
+* Decision
+1. *Identity from context.* The acting user is always =context.accountId=, and the issue of a panel
+   is always =context.extension.issue=. A payload never names the user, and never chooses the issue of
+   an issue panel.
+2. *User actions run as the user.* Reads and writes that a user asks for are made with
+   =api.asUser()=. A 403 for the user goes back to the user; there is no retry as the app
+   (=docs/spec/fourrealities-spec-v4.md=, invariant 4). CascadePlan has no =asApp()= call at all
+   (=getJiraCaller=, =apps/cascadeplan/src/server/core.ts=; =apps/cascadeplan/test/reads-as-user.test.ts=).
+3. *Check first.* Before a resolver reads Jira as the app, or reads or writes app storage for an
+   issue, it asks Jira, as the user, whether the user holds the needed permission: at least Browse
+   projects on that issue or project, plus the permission of the action. The question is
+   =GET /rest/api/3/mypermissions= (by =issueId=, =issueKey= or =projectKey=) or
+   =POST /rest/api/3/permissions/check= (CascadePlan, many issues in one call).
+4. *Fail closed.* Any error, timeout, rate limit or unexpected answer of the check denies the action
+   (standard, invariant 2).
+5. *When the app may act as the app.* Only in these cases:
+   - writing the app's own issue property after the check passed: =definitionguard-dod=
+     (DefinitionGuard =publishAttestation=), =ledgerseal-cert= (LedgerSeal), =fourrealities-exception=
+     (FourRealities, ADR-013 decision 6);
+   - reads that the record must make in full after the check passed: LedgerSeal reads the whole issue,
+     its change log and the field list as the app to build the sealed snapshot; DefinitionGuard's
+     project re-sync searches as the app after a project admin check, to find issues hidden from the
+     admin by issue security (FSRT report, section 4.2 table);
+   - code with no user: workflow validators, product event triggers, scheduled triggers and queue
+     consumers. Their output reaches a user only through a later check as that user
+     (=docs/spec/fourrealities-spec-v4.md=, invariant 7; ADR-015 decision 6).
+6. *Viewer filter.* What a resolver returns, rows and counts alike, covers only the issues the viewer
+   can browse (ASYMM-SEC-03).
+7. *A form FSRT can see.* A permission check is written as
+   =await api.asUser().requestJira(route`/rest/api/3/mypermissions?...`)= directly in the checking
+   function's body, with a literal route, not inside a closure or behind a variable. A 429 retry is an
+   inline loop around the call (=retryAfter=, =apps/definitionguard/src/jira/jira-client.ts=). In
+   DefinitionGuard a source rule in =apps/definitionguard/test/security/fsrt-authorization.test.ts=
+   enforces this form.
+
+* Alternatives Considered
+** No call as the app at all
+- For: Jira enforces every permission itself; nothing to check.
+- Against: an app cannot write its own signed property in a way the user cannot also write it, and a
+  workflow validator has no user. CascadePlan, which writes no own record of this kind, does follow it.
+- Verdict: adopted for CascadePlan only.
+** Keep the checks inside retry closures and argue the FSRT finding as a false positive
+- For: no code change; the checks were real.
+- Against: FSRT, as Atlassian runs it, cannot see them, so each future scan reports again, and the
+  report hid two more paths (FSRT report, section 4.1).
+- Verdict: rejected. "No false positive needs to be argued in the ticket" (FSRT report, section 1).
+** Trust the identity or the issue named in the payload
+- Against: any caller can name any issue or person.
+- Verdict: rejected (LedgerSeal spec v3, invariant 2).
+
+* Consequences
+** Positive
+- No resolver can show an issue, a record or a count to a user who cannot browse that issue.
+- DefinitionGuard scans clean with FSRT at commit =6c821bd=, and FSRT shows each check: removing one
+  makes FSRT report it again (FSRT report, section 4.3).
+** Negative
+- One more Jira call per user action.
+- FSRT cannot see the checks of LedgerSeal and FourRealities, because their Jira calls go through an
+  object (=createJiraClient=; =requestAs=). It reports nothing for them in either case, so a clean
+  FSRT scan is no proof there. Their proof is their own tests:
+  =apps/ledgerseal/test/permission-checks.test.ts= and
+  =apps/fourrealities/test/manager/viewer-permissions.test.ts=.
+- FSRT does not reach any CascadePlan resolver (the exported handler is a wrapper), nor any
+  =jira:adminPage= resolver in any app (FSRT report, sections 5.2 and 5.3).
+
+* Open points for the owner
+These are differences in the record. This ADR does not resolve them.
+1. The standard's invariant 1 says "The app never escalates to app-level credentials". Decision 5
+   above lists where the apps do act as the app, after a check. The standard does not name these
+   cases.
+2. The standard's section 5 says "Every app in the suite requires exactly the following four scopes":
+   =read:jira-work=, =write:jira-work=, =read:jira-user=, =storage:app=. No manifest on master has
+   exactly these. DefinitionGuard and LedgerSeal have =write:issue.property:jira= in place of
+   =write:jira-work= (ASYMM-SEC-05); every app adds =report:personal-data=; DefinitionGuard adds
+   =read:workflow:jira=; FourRealities adds =search:confluence= and
+   =read:confluence-content.summary=.
+3. =docs/security/fsrt-scan-2026-11-07.md= section 5.2 still describes a CascadePlan =asApp()=
+   fallback. Merge =0d58bba= (2026-11-07) removed it. The report is dated, so this may be intended.
+
+* References
+- =docs/design/uniform-permission-management-standard.md=, sections 1 to 5
+- =docs/security/pentest-report-2026-11-06.md=, findings ASYMM-SEC-01, -02, -03 and section 7
+- =docs/security/fsrt-scan-2026-11-07.md=, sections 3 to 7
+- =docs/spec/definitionguard-spec-v2.md=, "Permission model" and "Resolver contracts"
+- =docs/spec/ledgerseal-spec-v3.md=, invariants 2 and 7, section 7.1
+- =docs/spec/fourrealities-spec-v4.md=, invariants 4 and 7
+- [[file:adr-00001-fourrealities-evidence-data-model.org][ADR-001]], Pattern 5 (approver check as the user)
+- [[file:adr-00013-fourrealities-evidence-sources-in-use.org][ADR-013]], decisions 1, 5 and 6
+- [[file:adr-00026-suite-ci-security-gates.org][ADR-026: CI security gates]] (the FSRT gate)

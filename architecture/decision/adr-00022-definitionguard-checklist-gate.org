@@ -1,0 +1,123 @@
+#+TITLE: ADR-022: DefinitionGuard Checklist Gate From App Storage, With a Hash-Chained Event Log
+#+DATE: 2026-11-01
+#+STATUS: Accepted
+
+* Status
+Accepted. This is a backfill record. The owner approved backlog items B-01 to B-20 on 2026-11-01, with
+option A for the write protocol (=docs/spec/definitionguard-spec-v2.md=, decision D-01), and on the
+same day approved the Silverston-aligned model (=docs/spec/definitionguard-spec-v3.md=, "approved. A.",
+decision D3-01). The design choices are recorded in the decision tables of those two specs (v2 D-01
+to D-13, v3 D3-01 to D3-07), but no ADR records the core of the product. The only DefinitionGuard ADR
+is ADR-010 (personal data). This text was written on 2026-11-08. The owner has not yet reviewed it.
+
+* Context
+DefinitionGuard puts a Definition of Done checklist on the Jira issue panel and offers a Forge
+workflow validator that blocks a move into a Done-category status while a mandatory item is open.
+Three facts shape the design:
+- Any user with Edit issues, and any app, can write any issue property (portfolio audit findings
+  DG-10 and FR-03), so a property cannot decide a gate.
+- Forge KVS has no conditional write inside a transaction: a =kvs.transact()= cannot carry
+  =keyPolicy= (=@forge/kvs= 2.1.1, =TransactSet.options= is TTL only; research source R-05).
+  Conditions exist only for Custom Entities.
+- An audit of the earlier version found events that could be changed in place (DG-09) and a panel
+  view that wrote records (DG-08).
+
+* Decision
+1. *App storage decides the gate.* The validator =definitionguard-workflow-validator= reads only Forge
+   KVS. It never reads the =definitionguard-dod= property (v2, invariant 2).
+2. *One rule.* The panel and the validator call the same pure function, =evaluateGate=
+   (=apps/definitionguard/src/domain/gate-rule.ts=), to decide "satisfied" (v2, invariant 6). A
+   mandatory item counts when it is waived, or done with evidence where evidence is required.
+3. *The gate applies to Done moves only.* A satisfied checklist passes with no Jira call. An
+   unsatisfied one blocks only a move into a Done-category status that the project admin has not
+   exempted (D-05). A missing target status counts as a Done move.
+4. *The gate fails closed.* Any error in the validator returns =result: false= with a next step
+   (v2, invariant 3). A missing record is built in memory from the template and blocks on it.
+5. *Reads never write.* The panel load and the validator make no KVS write; the first change creates
+   the record (D-02, invariant 4).
+6. *Events are append-only and chained.* Every change is one event under its own key,
+   =dg:evt:<issueId>:<seq 8 digits>=. The event holds =prevHash= and =hash = sha256(canonicalJson(event
+   without hash))=. The first =prevHash= is =sha256("definitionguard:" + issueId)=. =verifyChain=
+   reports the first event whose hash, =prevHash=, =issueId= or =seq= does not match, and any gap
+   (v2, "Integrity design").
+7. *The next event key is the lock.* A writer creates =dg:evt:<id>:<seq+1>= with
+   =keyPolicy: FAIL_IF_EXISTS=, then rewrites the state cache =dg:state:<issueId>=. A lost race retries
+   up to 3 times. A failed cache write loses nothing: the next reader folds the event forward (D-01).
+8. *One event is one transaction of entity rows.* In the v3 model an event holds the rows of one
+   change (status, evidence content and its link), so a tick and its evidence are atomic under the
+   one lock (D3-02). Allowed status changes are a fixed table, and any other change is refused (D3-04).
+9. *Separation of duties at the moment of Done.* For a not-the-assignee item, the validator re-checks,
+   from Jira, whether the person who completed the item has been the assignee since the item was
+   opened (D-04; ADR-010 decision 8 for the pseudonyms).
+10. *The property is a signed, informational copy.* On every change the app writes
+    =definitionguard-dod= as the app, signed with Ed25519 (ADR-023), for other tools such as
+    FourRealities (ADR-012). The chain itself is unkeyed (D-06).
+
+* Alternatives Considered
+Taken from the decision tables of the v2 and v3 specs.
+** A Custom Entity with a conditional set on =stateVersion= (D-01 option B)
+- Against: needs a storage entity in the manifest.
+- Verdict: rejected by the owner (option A chosen).
+** Per-item keys (D-01 option C)
+- Against: keeps no ordered audit trail.
+- Verdict: rejected.
+** An HMAC over the events, or no chain (D-06)
+- Against: a shared HMAC secret lets any holder forge; with no chain, edits are not visible.
+- Verdict: rejected. The unkeyed chain can be checked by the app and by an auditor's export with no
+  secret.
+** Block every transition the validator is attached to (D-05)
+- Against: it blocks moves such as "Cancel request" and "Declined".
+- Verdict: rejected; only non-exempt Done-category targets are gated.
+** Create the record on the first panel load (D-02)
+- Against: a view or a validator run must have no side effect (DG-08).
+- Verdict: rejected.
+** A criterion as a Requirement with RequirementStatus (D3-01 option B)
+- Against: RequirementStatus is keyed on the status, so a tick after an untick cannot be recorded, and
+  it has no reason field.
+- Verdict: rejected for a child WorkEffort with WorkEffortStatus history, as in CascadePlan.
+
+* Consequences
+** Positive
+- No issue property, user or other app can open the gate.
+- Edits, deletions, reordering and copied events are visible in the history check, unless a writer
+  recomputes every later hash.
+- No KVS value grows with the number of changes (v2, invariant 7).
+** Negative
+- The chain does not stop someone who can rewrite the whole store and recompute it, including the
+  vendor. The panel and the listing say so.
+- The validator is opt-in: an admin must add it to each workflow. There is no supported API to attach
+  it (D-12), so the settings page only reports coverage.
+- History reads use a prefix query, which is eventually consistent; the newest events are confirmed
+  with strict reads.
+
+* Open points for the owner
+These are differences between the specs and the code on master =29265b5=. This ADR does not resolve
+them.
+1. *Inactive licence.* Spec v2 decision D-09 says the validator blocks with a licence message when
+   the licence is inactive. The code lets every move through (=evaluateTransition=,
+   =apps/definitionguard/src/index.ts=, comment "BL-4: an inactive licence turns the gate off";
+   =apps/definitionguard/src/security/licence.ts=). The readiness review listed the blocking
+   behaviour as a blocker (=docs/sdlc/suite-readiness-review-2026-11/README.md=, section 1). The spec
+   was not updated.
+2. *Scopes.* Spec v2 decision D-10 keeps =write:jira-work= and the "Manifest" table removes
+   =read:jira-user= (D-07). The manifest has =write:issue.property:jira= (fix of ASYMM-SEC-05, merge
+   =bc22524=) and has =read:jira-user=.
+3. *Actor field.* Spec v2 invariant 5 says each event stores the actor's account id. Since ADR-010,
+   new events store a pseudonym. ADR-010 is later, so this may be a plain supersession, but neither
+   spec says so.
+
+* Implementation Notes
+- Gate rule: =apps/definitionguard/src/domain/gate-rule.ts=; status table:
+  =apps/definitionguard/src/domain/dod-status.ts=; chain: =apps/definitionguard/src/domain/event-log.ts=.
+- Validator: =validateTransition= and =evaluateTransition= in =apps/definitionguard/src/index.ts=.
+- Signed property: =apps/definitionguard/src/integrity/attestation.ts= (=publishAttestation=).
+
+* References
+- =docs/spec/definitionguard-spec-v2.md=: invariants, "Gate rule", "Storage Schema", "Integrity
+  design", decisions D-01 to D-13
+- =docs/spec/definitionguard-spec-v3.md=: sections 3, 5 and 9 (decisions D3-01 to D3-07)
+- =docs/sdlc/portfolio-audit-2026-10-31/= (findings DG-08, DG-09, DG-10)
+- [[file:adr-00010-definitionguard-personal-data-pseudonyms.org][ADR-010: DefinitionGuard personal data: pseudonyms in the hashed history]]
+- [[file:adr-00012-fourrealities-sibling-evidence-verification.org][ADR-012: FourRealities reads and verifies the records of DefinitionGuard and LedgerSeal]]
+- [[file:adr-00023-suite-signed-records-and-signing-keys.org][ADR-023: Signed records and signing keys]]
+- [[file:adr-00025-suite-forge-storage.org][ADR-025: Forge storage for all app data]]

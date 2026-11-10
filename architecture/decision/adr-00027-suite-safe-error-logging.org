@@ -1,0 +1,79 @@
+#+TITLE: ADR-027: A Caught Error Is Logged by Its Name, Code and Status Only
+#+DATE: 2026-11-08
+#+STATUS: Accepted
+
+* Status
+Accepted. This is a backfill record. The rule came in three steps:
+- 2026-11-05: CascadePlan's =logFailure= (=apps/cascadeplan/src/logger.ts=, commit =dc056c1=, fix plan
+  item F-21): one line per failed call, "never issue text, names or account ids".
+- 2026-11-06: LedgerSeal's =logFailure= (=apps/ledgerseal/src/service/log.ts=, commit =90522f7=), the
+  fix of penetration test finding ASYMM-SEC-06.
+- 2026-11-08: every caught-error log line in all four apps follows one rule, with a test in each app
+  (commit =88be6e9=, merge =f896fae=; =docs/sdlc/merge-reviews-2026-11/safe-error-logging-merge-review.md=,
+  verdict "Merge", no finding).
+
+No ADR records the rule. This text was written on 2026-11-08. The owner has not yet reviewed it.
+
+* Context
+- The penetration test found seven LedgerSeal =catch= blocks that passed the whole error object to
+  =console.error= (=docs/security/pentest-report-2026-11-06.md=, ASYMM-SEC-06, CWE-532). An error from a
+  Jira call or from Forge storage can carry request headers, response bodies or query text with
+  personal data or tokens.
+- Forge logs are read in the vendor's developer console. Frontend log lines appear in the user's
+  browser console.
+- The security questionnaire asks, as question 8, "Does the app log sensitive information (PII,
+  credentials, tokens, keys)?" (=docs/marketplace/submission/*-security-questionnaires.md=).
+
+* Decision
+1. *Only fixed text and identifiers.* A log line for a caught error holds a fixed place name from the
+   code and, of the error, only:
+   - its name, kept only when it is a plain identifier (1 to 40 letters), else "Error";
+   - its code, kept only when it is a plain identifier (letters, digits, =_ . : -=, at most 40);
+   - its HTTP status, when it is a whole number.
+   Never its message, its stack or the object.
+2. *One helper per app.*
+   - CascadePlan: =logFailure= and =failureSummary=, =apps/cascadeplan/src/logger.ts=. It writes
+     "HTTP <status>" when the error has a status, else the name and code (=console.warn=).
+   - DefinitionGuard: =logFailure= and =errorSummary=, =apps/definitionguard/src/log.ts= (=console.error=).
+   - LedgerSeal: =logFailure= and =errorSummary=, =apps/ledgerseal/src/service/log.ts= (=console.error=).
+   - FourRealities: =errorSummary=, =apps/fourrealities/src/contract/data/errors.ts=, used in the log
+     lines of =apps/fourrealities/src/index.ts=.
+   The frontend failure lines of CascadePlan and LedgerSeal go through the same helper.
+3. *Other log lines* hold fixed text, counts, and issue ids or keys only (merge review, section 2).
+   Issue ids and keys identify an issue and hold no issue content; the questionnaires list them.
+4. *Tests in every app.* =test/log-safety.test.ts= makes each failure place throw an error with a
+   secret in its message and checks the log output. The source rule =test/support/console-rule.ts=
+   fails when a =console= call in =src/= is given =.message=, =String(...)= or an error object.
+
+* Alternatives Considered
+** Log the error object, and filter in a log viewer
+- Against: the data has already left the function; Forge logs are kept by the platform.
+- Verdict: rejected (ASYMM-SEC-06).
+** Log the message with known secrets masked
+- Reason not recorded; inferred from the merge review: the message is whatever a Forge or Jira API
+  puts there, so no mask can be shown complete. Name, code and status are a closed set.
+** A structured logging library
+- Not considered in the record. The pentest recommends "a structured logger (similar to =logFailure=
+  in CascadePlan ...)", and the apps adopted the small helper. Reason not recorded.
+
+* Consequences
+** Positive
+- No caught error can put issue content, an account id or a token into the Forge logs or the browser
+  console.
+- Question 8 of all four questionnaires has a true "No" with a test behind it.
+** Negative
+- A log line seldom says why a call failed beyond the status or the error code. Debugging needs a
+  reproduction.
+- The source rule reads only =console= calls. A message put into a variable or into the place text
+  passes the rule; the behaviour tests catch those (merge review, section 3).
+- The rule covers errors. A =console= call given other user data, for example an issue summary, would
+  pass the rule. No such call exists on master (merge review, section 2).
+
+* References
+- =docs/sdlc/merge-reviews-2026-11/safe-error-logging-merge-review.md=, sections 1 to 4
+- =docs/security/pentest-report-2026-11-06.md=, finding ASYMM-SEC-06 and section 7
+- =docs/marketplace/submission/cascadeplan-security-questionnaires.md=,
+  =definitionguard-security-questionnaires.md=, =fourrealities-security-questionnaires.md=,
+  =ledgerseal-security-questionnaires.md= (question 8)
+- =docs/legal/dpa-template.md= (Logs row, commit =8beab1c=)
+- [[file:adr-00019-suite-runs-on-atlassian.org][ADR-019: The suite runs on Atlassian]] (no external log or monitoring service)
