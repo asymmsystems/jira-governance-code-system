@@ -8577,6 +8577,20 @@ Please see https://iframe-resizer.com/upgrade for more details.
     return currentView2 === "table" ? "timeline" : "table";
   }
 
+  // src/ui/layout-watch.ts
+  function watchSizes(elements, onChange, Observer = globalThis.ResizeObserver) {
+    const targets = elements.filter((el3) => !!el3);
+    if (!Observer || targets.length === 0) return () => void 0;
+    const observer = new Observer(() => onChange());
+    for (const el3 of targets) observer.observe(el3);
+    return () => observer.disconnect();
+  }
+  function keepMiddleInView(scrollLeft, trackViewBefore, trackViewAfter) {
+    const before = Math.max(0, trackViewBefore);
+    const after = Math.max(0, trackViewAfter);
+    return Math.max(0, Math.round(scrollLeft + (before - after) / 2));
+  }
+
   // src/ui/in-app-search.ts
   function matchTask(task, query) {
     const q = query.trim().toLowerCase();
@@ -9140,6 +9154,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       timeline.onDraw = (links) => renderDependencyBadges(links);
       initArrowLineClicks(wrapper);
       wrapper.addEventListener("scroll", scheduleVirtualRows, { passive: true });
+      watchSizes([wrapper, document.getElementById("ganttTable")], scheduleVirtualRows);
     }
     const tbody = document.getElementById("ganttBody");
     if (tbody) {
@@ -9954,6 +9969,8 @@ Please see https://iframe-resizer.com/upgrade for more details.
     callResolver2("saveColumnWidths", { columnWidths });
   }
   function onColumnsChanged() {
+    const wrapper = document.getElementById("ganttWrapper");
+    const viewBefore = wrapper ? { scrollLeft: wrapper.scrollLeft, width: wrapper.clientWidth - layout.trackLeft } : null;
     try {
       if (currentPlan && currentPlan.projectKey) {
         localStorage.setItem("cascadeplan_hidden_cols_" + currentPlan.projectKey, JSON.stringify(Array.from(hiddenColumns)));
@@ -9965,6 +9982,10 @@ Please see https://iframe-resizer.com/upgrade for more details.
     renderTimelineHeader();
     renderTimelineRows();
     applyTimeAxis();
+    if (wrapper && viewBefore && currentView === "timeline") {
+      setTimelineScrollLeft(keepMiddleInView(viewBefore.scrollLeft, viewBefore.width, wrapper.clientWidth - layout.trackLeft));
+      updateVirtualRows();
+    }
     setTimeout(syncGanttScrollWidth, 50);
   }
   function updateColumnManagerUI() {
