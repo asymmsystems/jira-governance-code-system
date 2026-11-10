@@ -54,6 +54,7 @@ import { previewSingleMove, previewBlockMove } from '../domain/drop-plan';
 import { baselineItems, compareItems } from '../domain/baseline';
 import { shouldAutoCompact, ZOOMS, zoomById, zoomStep, mondayOf, initialRange, rangeDays, extendRange, edgeToExtend, headerCells, gridLines, anchorScroll, dateAt } from '../ui/time-scale';
 import { buildTableViewRows, toggleTableView } from '../ui/table-view';
+import { watchSizes, keepMiddleInView } from '../ui/layout-watch';
 import { findMatchingTasks, findNextMatch, formatMatchCount, isSearchShortcut } from '../ui/in-app-search';
 import { formatRemovalPrompt, enteredAllocationHours, allocationCreatedText } from '../ui/second-person';
 import { statusOffers, offerPrompt, progressLockReason, progressText, isDone } from '../ui/progress-status';
@@ -587,6 +588,10 @@ async function initApp() {
     timeline.onDraw = (links) => renderDependencyBadges(links);
     initArrowLineClicks(wrapper);
     wrapper.addEventListener('scroll', scheduleVirtualRows, { passive: true });
+    // The canvas is drawn from measured positions. A bar shown or hidden above the grid, the backlog
+    // tray and the drop rows' height transition during a backlog drag change the size of the wrapper
+    // or the table, so the planner measures again and redraws after each change.
+    watchSizes([wrapper, document.getElementById('ganttTable')], scheduleVirtualRows);
   }
   const tbody = document.getElementById('ganttBody');
   if (tbody) {
@@ -1504,6 +1509,9 @@ function resetColumnDefaults() {
 }
 
 function onColumnsChanged() {
+  // The data columns change width, so the visible timeline does too: keep its middle date in view.
+  const wrapper = document.getElementById('ganttWrapper');
+  const viewBefore = wrapper ? { scrollLeft: wrapper.scrollLeft, width: wrapper.clientWidth - layout.trackLeft } : null;
   try {
     if (currentPlan && currentPlan.projectKey) {
       localStorage.setItem('cascadeplan_hidden_cols_' + currentPlan.projectKey, JSON.stringify(Array.from(hiddenColumns)));
@@ -1514,6 +1522,10 @@ function onColumnsChanged() {
   renderTimelineHeader();
   renderTimelineRows();
   applyTimeAxis();
+  if (wrapper && viewBefore && currentView === 'timeline') {
+    setTimelineScrollLeft(keepMiddleInView(viewBefore.scrollLeft, viewBefore.width, wrapper.clientWidth - layout.trackLeft));
+    updateVirtualRows();
+  }
   setTimeout(syncGanttScrollWidth, 50);
 }
 
