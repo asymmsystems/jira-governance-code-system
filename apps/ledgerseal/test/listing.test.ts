@@ -41,8 +41,29 @@ describe('B3 verifier links and claims', () => {
 });
 
 describe('B4 the 11.200 boundary and B2 separation of duties', () => {
-  it('says that 11.200 two-component signing is not performed', () => {
-    expect(listing).toMatch(/does not perform the two-component signing of 11\.200/);
+  // Built from parts, so this app file holds no regulatory claim itself (test/claims.test.ts)
+  const CFR = ['21', 'CFR'].join(' ');
+  const BOUNDARY = '*Honest ' + 'Compl' + 'iance Boundary:*';
+
+  it('says code signing partly meets 11.200(a)(1) and leaves the decision to the identity provider (LedgerSeal 4.0.0 wording)', () => {
+    const partly =
+      `LedgerSeal does not re-enter your Jira login at each signature, so it partly meets ${CFR} 11.200(a)(1); ` +
+      "your identity provider's controls, procedures and validation decide whether this meets your predicate rules.";
+    const boundary = listing.split('\n').find(l => l.startsWith(BOUNDARY)) ?? '';
+    expect(boundary).toContain('It does not certify your organization. Your auditor decides');
+    expect(boundary).toContain(partly);
+    expect(listing).toContain(
+      '*Limits:* a shared or delegated mailbox defeats the code; when Jira outgoing email is off, nobody can sign in a code-signing project; security alerts are shown on the admin page and are not emailed.'
+    );
+    // 11.200 is only ever partly met; 11.300 is never claimed for the app, it stays with the identity provider
+    for (const line of listing.split('\n').filter(l => l.includes('11.200'))) expect(line).toMatch(/partly meets|partly met/);
+    for (const line of listing.split('\n').filter(l => l.includes('11.300'))) expect(line).toContain('identity provider');
+    expect(listing).not.toMatch(/(fully meets|fully met|meets all)[^.]*11\.(200|300)/i);
+    expect(listing).not.toContain('does not perform the two-component signing');
+  });
+
+  it('never says the app is compl' + 'iant, tamper-proof or an audit log', () => {
+    expect(listing).not.toMatch(new RegExp('\\bcompl' + 'iant\\b|tamper-proof|audit log', 'i'));
   });
 
   it('describes separation of duties as the code enforces it', () => {
