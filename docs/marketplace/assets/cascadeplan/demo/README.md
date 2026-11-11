@@ -32,7 +32,9 @@ Not posted yet: no review ticket.
 
 # CascadePlan full-story video
 
-File: `cascadeplan-full-story.mp4` (4 minutes 59.8 seconds, 11.3 MB).
+File: `cascadeplan-full-story.mp4` (4 minutes 59.8 seconds, 11.3 MB, 60 fps).
+
+During the five drags (the three Backlog drags, and the row dragged up and down), the pointer stays on the card or row it holds. The browser sends no pointer movement during a drag, so the pointer in those frames was placed from the tracked position of the dragged item.
 
 ## What it shows
 
