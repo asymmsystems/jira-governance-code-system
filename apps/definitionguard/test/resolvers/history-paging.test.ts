@@ -119,7 +119,7 @@ describe('DG-2 the panel can show every history event', () => {
 
   it('the panel passes the cursor of the newest page and appends the rows', () => {
     const ui = fs.readFileSync(path.join(__dirname, '../../src/frontend/index.tsx'), 'utf8');
-    expect(ui).toMatch(/invoke\('getHistory', \{ cursor: history\.nextCursor \}\)/);
+    expect(ui).toMatch(/callResolver\('getHistory', \{ cursor: history\.nextCursor \}\)/);
     expect(ui).toMatch(/setHistory\(appendHistoryPage\(history, next\)\)/);
     expect(ui).toMatch(/Show more/);
   });

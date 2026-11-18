@@ -24,7 +24,7 @@ import ForgeReconciler, {
   ListItem,
   Lozenge
 } from '@forge/react';
-import { invoke } from '@forge/bridge';
+import { callResolver } from './call';
 import {
   CATEGORY_OPTIONS,
   PERMISSION_OPTIONS,
@@ -68,7 +68,7 @@ export const SettingsPage: React.FC = () => {
   const load = async () => {
     setError(null);
     try {
-      const s = (await invoke('getSettings', {})) as unknown as Settings;
+      const s = (await callResolver('getSettings', {})) as unknown as Settings;
       setSettings(s);
       setExempt(s.exemptStatusIds || []);
       const first = issueTypeId || s.issueTypes[0]?.id || '';
@@ -82,7 +82,7 @@ export const SettingsPage: React.FC = () => {
   const loadCoverage = async () => {
     setCoverageError(null);
     try {
-      setCoverage((await invoke('gateCoverage', {})) as any);
+      setCoverage((await callResolver('gateCoverage', {})) as any);
     } catch (err) {
       setCoverageError(panelErrorText(err, 'read the workflows'));
     }
@@ -104,7 +104,7 @@ export const SettingsPage: React.FC = () => {
     setError(null);
     setNotice(null);
     try {
-      const res = (await invoke('saveTemplate', { issueTypeId, template: toTemplatePayload(editor) })) as unknown as { template: any };
+      const res = (await callResolver('saveTemplate', { issueTypeId, template: toTemplatePayload(editor) })) as unknown as { template: any };
       setNotice(`Template "${res.template.name}" version ${res.template.version} saved. New checklists for this issue type use it. Open issues keep their version until you re-sync them.`);
       await load();
     } catch (err) {
@@ -119,7 +119,7 @@ export const SettingsPage: React.FC = () => {
     setError(null);
     setNotice(null);
     try {
-      await invoke('saveExemptions', { exemptStatusIds: exempt });
+      await callResolver('saveExemptions', { exemptStatusIds: exempt });
       setNotice('Saved. Moves into the ticked statuses are not gated, for example Canceled or Declined.');
       await load();
       await loadCoverage();
@@ -139,7 +139,7 @@ export const SettingsPage: React.FC = () => {
       let updated = 0;
       let version = 0;
       do {
-        const page = (await invoke('resyncIssues', { issueTypeId, cursor })) as unknown as { updated: number; nextCursor?: string; templateVersion: number };
+        const page = (await callResolver('resyncIssues', { issueTypeId, cursor })) as unknown as { updated: number; nextCursor?: string; templateVersion: number };
         updated += page.updated;
         version = page.templateVersion;
         cursor = page.nextCursor;

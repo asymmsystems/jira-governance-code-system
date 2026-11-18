@@ -7,6 +7,7 @@
  * Key: dg:tmpl:<projectId>:<issueTypeId>. Ids, not keys or names, so a rename keeps the template.
  * The stored form is a DOD_TEMPLATE WorkEffort (spec v3); the settings page edits the payload form.
  */
+import { RefusalError } from '../domain/refusal';
 import { StorageProvider } from '../storage/checklist-repository';
 import { getTemplateForCategory } from '../domain/checklist-engine';
 import { toDodTemplate } from '../domain/dod-template';
@@ -120,7 +121,7 @@ export class TemplateStore {
    */
   public async save(projectId: string, issueTypeId: string, input: any, actorAccountId: string): Promise<StoredTemplate> {
     const errors = validateTemplate(input);
-    if (errors.length > 0) throw new Error(errors.join(' '));
+    if (errors.length > 0) throw new RefusalError('VALIDATION', errors.join(' '));
     const previous = await this.get(projectId, issueTypeId);
     const dod = toDodTemplate({
       id: `project-${projectId}-${issueTypeId}`,

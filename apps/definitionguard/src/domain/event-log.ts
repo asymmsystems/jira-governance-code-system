@@ -10,6 +10,7 @@
  * always be rebuilt from the entries alone. Each entry stores the hash of the previous one
  * (prevHash), starting from a per-issue genesis hash.
  */
+import { RefusalError } from './refusal';
 import * as crypto from 'crypto';
 import {
   ChangeEntry,
@@ -173,10 +174,10 @@ export interface StatusChange {
 export function statusEntry(state: DodState, change: StatusChange): EntryInput {
   const criterion = state.criteria.find(c => c.templateItemId === change.templateItemId);
   if (!criterion) {
-    throw new Error(`Checklist item with id '${change.templateItemId}' not found on issue ${state.issue.workEffortName}`);
+    throw new RefusalError('NOT_FOUND', `Checklist item with id '${change.templateItemId}' not found on issue ${state.issue.workEffortName}`);
   }
   if (!isValidChange(criterion.currentStatusId, change.statusIdTo, change.transitionName)) {
-    throw new Error(invalidChangeMessage(criterion.currentStatusId, change.transitionName));
+    throw new RefusalError('CONFLICT', invalidChangeMessage(criterion.currentStatusId, change.transitionName));
   }
   const status: DodRow = { entity: 'WorkEffortStatus', workEffortId: criterion.workEffortId, statusId: change.statusIdTo, statusDatetime: change.at, setByPartyId: change.actorPartyId };
   if (change.reason) status.reason = change.reason;

@@ -133,7 +133,7 @@ describe('MK-02 Q3: Browse projects before any read', () => {
     jira.browse = 'deny';
     for (const functionKey of ['getChecklist', 'getHistory', 'getEvidence', 'exportHistory', 'toggleItem', 'waiveItem', 'resetChecklist']) {
       const payload = functionKey === 'waiveItem' ? waive : { itemId: 'item-unit-tests', isCompleted: true };
-      await expect((handler as any)({ call: { functionKey, payload }, context: ctx })).rejects.toThrow(BROWSE_DENIED);
+      await expect((handler as any)({ call: { functionKey, payload }, context: ctx })).resolves.toEqual({ ok: false, error: { kind: 'PERMISSION', message: BROWSE_DENIED } });
     }
     expect(jira.calls.filter(c => !BROWSE_CHECK.test(c.path))).toEqual([]);
   });
@@ -146,7 +146,7 @@ describe('MK-02 Q3: Browse projects before any read', () => {
   it('every resolver in src/index.ts is either an issue resolver tested here or a listed non-issue resolver', () => {
     const src = fs.readFileSync(path.join(__dirname, '../../src/index.ts'), 'utf8');
     const panel = src.slice(src.indexOf('const resolver = new Resolver();'), src.indexOf('export const handler'));
-    const names = [...panel.matchAll(/resolver\.define\('([^']+)'/g)].map(m => m[1]);
+    const names = [...panel.matchAll(/(?<![\w.])define\('([^']+)'/g)].map(m => m[1]);
     // Site-wide, Jira admins only (isJiraAdmin as the user), or a static list: no issue data.
     const notIssue = ['authority-policy-get', 'authority-group-search', 'authority-policy-set', 'getAvailableTemplates'];
     expect(names.filter(n => !notIssue.includes(n)).sort()).toEqual(RESOLVERS.map(r => r[0]).sort());

@@ -13,6 +13,7 @@
  * with FAIL_IF_EXISTS before the state. A reader that finds an event beyond the cached state
  * folds it forward, so a failed state write never loses a change.
  */
+import { RefusalError } from '../domain/refusal';
 import { StorageProvider } from './checklist-repository';
 import {
   applyEntry,
@@ -32,9 +33,9 @@ const MAX_FOLD = 100;
 
 export const CONFLICT_MESSAGE = 'Someone else changed this checklist. Refresh and try again.';
 
-export class ConflictError extends Error {
+export class ConflictError extends RefusalError {
   constructor() {
-    super(CONFLICT_MESSAGE);
+    super('CONFLICT', CONFLICT_MESSAGE);
     this.name = 'ConflictError';
   }
 }

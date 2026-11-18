@@ -4,6 +4,8 @@
  * Copyright (c) 2026 Asymm Systems. All rights reserved.
  * @author Fahim Farook
  */
+import { RefusalError, UnavailableError } from './domain/refusal';
+import { guardResolver, ResolverFunction } from './resolver-boundary';
 import api, { route } from '@forge/api';
 import Resolver from '@forge/resolver';
 import {
@@ -239,7 +241,7 @@ function panelContext(context: any) {
   const issue = context?.extension?.issue;
   const issueId = String(issue?.id || '');
   if (!issueId) {
-    throw new Error('DefinitionGuard: Missing issue context. Open this panel from a Jira issue.');
+    throw new RefusalError('VALIDATION', 'DefinitionGuard: Missing issue context. Open this panel from a Jira issue.');
   }
   return {
     issueId,
@@ -427,7 +429,7 @@ async function currentAssignee(issueKey: string): Promise<string | undefined> {
     res = { status: 0 };
   }
   if (res.status !== 200) {
-    throw new Error('DefinitionGuard could not read the assignee, so the change was not saved. Try again.');
+    throw new UnavailableError('DefinitionGuard could not read the assignee, so the change was not saved. Try again.');
   }
   return (await res.json())?.fields?.assignee?.accountId;
 }
@@ -441,7 +443,7 @@ export async function waiveChecklistItem(payload: any, context?: any, storagePro
   const itemId = itemIdOf(payload?.itemId);
   const reason = typeof payload?.reason === 'string' ? payload.reason.trim() : '';
   if (reason.length < 10 || reason.length > 500) {
-    throw new Error(WAIVER_REASON_INVALID);
+    throw new RefusalError('VALIDATION', WAIVER_REASON_INVALID);
   }
   assertLicensed(context);
   await requireBrowseIssue(c.issueId);
@@ -451,7 +453,7 @@ export async function waiveChecklistItem(payload: any, context?: any, storagePro
   const at = new Date().toISOString();
   const current = await currentState(storage, store, c);
   if (!current.criteria.some(x => x.templateItemId === itemId)) {
-    throw new Error(`Checklist item with id '${itemId}' not found on issue ${current.issue.workEffortName}`);
+    throw new RefusalError('NOT_FOUND', `Checklist item with id '${itemId}' not found on issue ${current.issue.workEffortName}`);
   }
   // Refuse an invalid change before the permission call (StatusValidChange, spec v3 section 5).
   statusEntry(current, { templateItemId: itemId, statusIdTo: 'DOD_WAIVED', transitionName: 'Waive', actorPartyId: c.actorAccountId, at, reason });
@@ -491,7 +493,7 @@ export async function getItemEvidence(payload: any, context?: any, storageProvid
   if (!state) return { itemId, evidence: undefined };
   const criterion = state.criteria.find(x => x.templateItemId === itemId);
   if (!criterion) {
-    throw new Error(`Checklist item with id '${itemId}' not found on issue ${state.issue.workEffortName}`);
+    throw new RefusalError('NOT_FOUND', `Checklist item with id '${itemId}' not found on issue ${state.issue.workEffortName}`);
   }
   if (!criterion.evidenceContentId || !criterion.lastStatusSeq) return { itemId, evidence: undefined };
   const entry = await storage.get<ChangeEntry>(eventKey(c.issueId, criterion.lastStatusSeq));
@@ -546,7 +548,7 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
   const isCompleted = Boolean(payload?.isCompleted);
   const checked = validateEvidence(payload?.evidence);
   if (!checked.ok) {
-    throw new Error(checked.error);
+    throw new RefusalError('VALIDATION', checked.error);
   }
   const evidence = isCompleted ? checked.evidence : undefined;
 
@@ -561,7 +563,7 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
   const current = await currentState(storage, store, c);
   const target = current.criteria.find(x => x.templateItemId === itemId);
   if (!target) {
-    throw new Error(`Checklist item with id '${itemId}' not found on issue ${current.issue.workEffortName}`);
+    throw new RefusalError('NOT_FOUND', `Checklist item with id '${itemId}' not found on issue ${current.issue.workEffortName}`);
   }
   let actor = c.actorAccountId;
   const change = (st: DodState) => statusEntry(st, {
@@ -575,7 +577,7 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
   // Refuse an invalid change (StatusValidChange) and missing evidence before any Jira call.
   change(current);
   if (isCompleted && target.evidenceRequired && !evidence) {
-    throw new Error(EVIDENCE_REQUIRED);
+    throw new RefusalError('VALIDATION', EVIDENCE_REQUIRED);
   }
   const waiverPermission = permissionKeyOf(current.template.waiverRoleTypeId);
   const requiredPermission = target.requiredRoleTypeId ? permissionKeyOf(target.requiredRoleTypeId) : undefined;
@@ -606,7 +608,7 @@ export async function toggleChecklistItem(payload: any, context?: any, storagePr
     st => {
       const item = st.criteria.find(x => x.templateItemId === itemId);
       if (isCompleted && item?.evidenceRequired && !evidence) {
-        throw new Error(EVIDENCE_REQUIRED);
+        throw new RefusalError('VALIDATION', EVIDENCE_REQUIRED);
       }
       return [change(st)];
     },
@@ -646,66 +648,70 @@ export async function resetChecklist(_payload: any, context?: any, storageProvid
   return panelResponse(storage, state);
 }
 
-// Register Forge Resolver for UI Kit 2 bridge invocations
+// Register Forge Resolver for UI Kit 2 bridge invocations. TASK-00006: every resolver function goes
+// through the boundary, so a refusal comes back as a typed result and the Forge runtime never logs
+// an error's message or stack.
 const resolver = new Resolver();
+const define = (name: string, fn: ResolverFunction) => resolver.define(name, guardResolver(name, fn));
 
-resolver.define('getChecklist', async (req) => {
+define('getChecklist', async (req) => {
   return await getIssueChecklist(req.payload, req.context);
 });
 
-resolver.define('toggleItem', async (req) => {
+define('toggleItem', async (req) => {
   return await toggleChecklistItem(req.payload, req.context);
 });
 
-resolver.define('resetChecklist', async (req) => {
+define('resetChecklist', async (req) => {
   return await resetChecklist(req.payload, req.context);
 });
 
-resolver.define('waiveItem', async (req) => {
+define('waiveItem', async (req) => {
   return await waiveChecklistItem(req.payload, req.context);
 });
 
-resolver.define('getEvidence', async (req) => {
+define('getEvidence', async (req) => {
   return await getItemEvidence(req.payload, req.context);
 });
 
-resolver.define('exportHistory', async (req) => {
+define('exportHistory', async (req) => {
   return await exportChecklistHistory(req.payload, req.context);
 });
 
-resolver.define('getHistory', async (req) => {
+define('getHistory', async (req) => {
   return await getChecklistHistory(req.payload, req.context);
 });
 
-resolver.define('authority-policy-get', async (req) => {
+define('authority-policy-get', async (req) => {
   return await getApproverPolicyFlow(resolveStorage(), req.context);
 });
 
-resolver.define('authority-group-search', async (req) => {
+define('authority-group-search', async (req) => {
   return await searchGroupsFlow(req.payload, req.context);
 });
 
-resolver.define('authority-policy-set', async (req) => {
+define('authority-policy-set', async (req) => {
   return await setApproverPolicyFlow(req.payload, resolveStorage(), req.context);
 });
 
-resolver.define('getAvailableTemplates', async () => {
+define('getAvailableTemplates', async () => {
   return getAvailableTemplates();
 });
 
 export const handler = resolver.getDefinitions();
 
 const adminResolver = new Resolver();
+const defineAdmin = (name: string, fn: ResolverFunction) => adminResolver.define(name, guardResolver(name, fn));
 
-adminResolver.define('authority-policy-get', async (req) => {
+defineAdmin('authority-policy-get', async (req) => {
   return await getApproverPolicyFlow(resolveStorage(), req.context);
 });
 
-adminResolver.define('authority-group-search', async (req) => {
+defineAdmin('authority-group-search', async (req) => {
   return await searchGroupsFlow(req.payload, req.context);
 });
 
-adminResolver.define('authority-policy-set', async (req) => {
+defineAdmin('authority-policy-set', async (req) => {
   return await setApproverPolicyFlow(req.payload, resolveStorage(), req.context);
 });
 

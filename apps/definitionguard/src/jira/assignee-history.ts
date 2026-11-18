@@ -8,6 +8,7 @@
  * after the item was opened, not only by the current assignee. Otherwise the assignee could
  * unassign the issue, tick the review item, and move the issue to Done.
  */
+import { UnavailableError } from '../domain/refusal';
 import api, { route } from '@forge/api';
 import { withRetry } from './jira-client';
 
@@ -42,7 +43,7 @@ export async function assigneeChanges(issueIdOrKey: string, who: 'user' | 'app')
     } catch {
       res = { status: 0 };
     }
-    if (res.status !== 200) throw new Error(ASSIGNEE_HISTORY_FAILED);
+    if (res.status !== 200) throw new UnavailableError(ASSIGNEE_HISTORY_FAILED);
     const body = await res.json();
     const values: any[] = Array.isArray(body?.values) ? body.values : [];
     for (const h of values) {
@@ -58,7 +59,7 @@ export async function assigneeChanges(issueIdOrKey: string, who: 'user' | 'app')
       return out.sort((a, b) => a.at - b.at);
     }
   }
-  throw new Error(ASSIGNEE_HISTORY_FAILED);
+  throw new UnavailableError(ASSIGNEE_HISTORY_FAILED);
 }
 
 /**

@@ -42,7 +42,11 @@ function denyEverything() {
 
 type Case = [string, (h: any) => Promise<unknown>, (out: unknown, err: any) => void];
 const call = (h: any, functionKey: string, payload: any, context: any) => h({ call: { functionKey, payload }, context });
-const rejectedWith = (message: string) => (_out: unknown, err: any) => expect(err?.message).toBe(message);
+/** TASK-00006: a refusal is a typed result, never a throw (the Forge runtime would log its message and stack). */
+const rejectedWith = (message: string) => (out: unknown, err: any) => {
+  expect(err).toBeUndefined();
+  expect(out).toEqual({ ok: false, error: { kind: 'PERMISSION', message } });
+};
 const notAdmin = (out: any, err: any) => {
   expect(err).toBeUndefined();
   expect(out).toMatchObject({ ok: false, code: 'NOT_ADMIN', message: NOT_ADMIN_MESSAGE });
@@ -101,19 +105,19 @@ describe('AMS-76722: every resolver refuses a user without the Jira permission',
 
   it('the cases cover every resolver key the source defines', () => {
     const src = (f: string) => fs.readFileSync(path.join(__dirname, '../../src', f), 'utf8');
-    const keys = (text: string, name: string) => [...text.matchAll(new RegExp(`${name}\\.define\\('([^']+)'`, 'g'))].map(m => m[1]);
+    const keys = (text: string, name: string) => [...text.matchAll(new RegExp(`(?<![\\w.])${name}\\('([^']+)'`, 'g'))].map(m => m[1]);
     const index = src('index.ts');
     const defined = [
-      ...keys(index.slice(0, index.indexOf('export const handler')), 'resolver').map(k => `handler ${k}`),
-      ...keys(index, 'adminResolver').map(k => `adminHandler ${k}`),
-      ...keys(src('settings/settings-resolvers.ts'), 'resolver').map(k => `settingsHandler ${k}`)
+      ...keys(index.slice(0, index.indexOf('export const handler')), 'define').map(k => `handler ${k}`),
+      ...keys(index, 'defineAdmin').map(k => `adminHandler ${k}`),
+      ...keys(src('settings/settings-resolvers.ts'), 'define').map(k => `settingsHandler ${k}`)
     ].filter(k => k !== 'handler getAvailableTemplates');
     expect(CASES.map(c => c[0]).sort()).toEqual(defined.sort());
   });
 
   it('a user with Browse but without Edit issues still cannot tick an item', async () => {
     jira.browse = 'grant';
-    await expect(call(handler, 'toggleItem', { itemId: 'item-unit-tests', isCompleted: true }, issueCtx)).rejects.toThrow(EDIT_DENIED);
+    await expect(call(handler, 'toggleItem', { itemId: 'item-unit-tests', isCompleted: true }, issueCtx)).resolves.toEqual({ ok: false, error: { kind: 'PERMISSION', message: EDIT_DENIED } });
     expect(storage.sets).toEqual([]);
     expect(jira.calls.filter(c => c.who === 'app')).toEqual([]);
   });

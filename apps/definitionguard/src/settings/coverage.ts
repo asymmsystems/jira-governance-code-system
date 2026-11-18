@@ -9,6 +9,7 @@
  * with the read-only granular scope read:workflow:jira. The projectId filter returns the
  * workflows the project uses (checked live on DEMO, 2026-11-01).
  */
+import { UnavailableError } from '../domain/refusal';
 import api, { route } from '@forge/api';
 import { StorageProvider } from '../storage/checklist-repository';
 import { resolveStorage } from '../storage/forge-storage';
@@ -82,7 +83,7 @@ export async function gateCoverage(_payload: any, context?: any, storageProvider
   for (let startAt = 0, n = 0; n < MAX_PAGES; n++, startAt += PAGE) {
     const res = await withRetry(() => api.asApp().requestJira(route`/rest/api/3/workflows/search?projectId=${c.projectId}&expand=values.transitions&startAt=${startAt}&maxResults=${PAGE}`));
     if (res.status !== 200) {
-      throw new Error('DefinitionGuard could not read the project workflows. Ask a Jira admin to check that DefinitionGuard has workflow read access.');
+      throw new UnavailableError('DefinitionGuard could not read the project workflows. Ask a Jira admin to check that DefinitionGuard has workflow read access.');
     }
     const page = await res.json();
     pages.push(page);
