@@ -6071,6 +6071,18 @@ Please see https://iframe-resizer.com/upgrade for more details.
     }
     return { failed: false };
   }
+  var INTERNAL_FAILURE = "INTERNAL_FAILURE";
+  function isInternalFailure(value) {
+    const v = value;
+    return !!v && typeof v === "object" && v.ok === false && v.error === INTERNAL_FAILURE;
+  }
+  var ResolverFailure = class extends Error {
+    constructor(resolver) {
+      super("");
+      this.resolver = resolver;
+      this.name = "ResolverFailure";
+    }
+  };
 
   // src/frontend/banner.ts
   function showErrorBanner(message) {
@@ -6230,6 +6242,7 @@ Please see https://iframe-resizer.com/upgrade for more details.
       const d = /* @__PURE__ */ new Date();
       const clientToday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       res = await (0, import_bridge.invoke)(fnName, { ...ids.length ? { ...payload, reconcileIds: ids } : payload, clientToday });
+      if (isInternalFailure(res)) throw new ResolverFailure(fnName);
       rememberWrites(res);
       noteCreateOutcome(signature, payload.createId, true);
     } catch (err) {
@@ -8539,6 +8552,16 @@ Please see https://iframe-resizer.com/upgrade for more details.
   }
   function dateAt(x, originIso2, dayPx2) {
     return addDays(originIso2, Math.floor(x / dayPx2));
+  }
+
+  // src/ui/backlog-drop.ts
+  function backlogDropStart(input) {
+    const { pointerX, timelineLeft, originIso: originIso2, dayPx: dayPx2, snapWeek, todayIso: todayIso2 } = input;
+    if (timelineLeft === null || !Number.isFinite(timelineLeft) || !(dayPx2 > 0)) return todayIso2;
+    const visibleLeft = Number.isFinite(input.visibleLeft) ? Math.max(timelineLeft, input.visibleLeft) : timelineLeft;
+    if (pointerX < visibleLeft) return todayIso2;
+    const day2 = dateAt(pointerX - timelineLeft, originIso2, dayPx2);
+    return snapWeek ? mondayOf(day2) : day2;
   }
 
   // src/ui/table-view.ts
@@ -12352,10 +12375,10 @@ Click to manage or assign.`;
         if (data.fromReorder) {
           await callResolver2("reorderWbsTasks", { taskId: data.taskId, targetIndex });
         } else if (data.taskId) {
-          const curWk = (currentPlan?.weeks || []).find((w) => w.isCurrentWeek)?.weekKey || currentPlan?.weeks[0]?.weekKey;
           await callResolver2("scheduleBacklogTask", {
             taskId: data.taskId,
-            startWeek: curWk,
+            startWeek: "",
+            startDate: todayIso(),
             spanWeeks: 3,
             targetIndex
           });
@@ -12566,10 +12589,10 @@ Click to manage or assign.`;
         if (data.fromReorder) {
           await callResolver2("reorderWbsTasks", { taskId: data.taskId, targetIndex });
         } else {
-          const curWk = (currentPlan?.weeks || []).find((w) => w.isCurrentWeek)?.weekKey || currentPlan?.weeks[0]?.weekKey;
           await callResolver2("scheduleBacklogTask", {
             taskId: data.taskId,
-            startWeek: curWk,
+            startWeek: "",
+            startDate: todayIso(),
             spanWeeks: 3,
             targetIndex
           });
@@ -12580,10 +12603,14 @@ Click to manage or assign.`;
   }
   function setupTrackDrop(trackTd, rowIdx) {
     let badge = null;
-    const dayAt = (e) => {
-      const d = dateAt(e.clientX - trackTd.getBoundingClientRect().left, originIso(), dayPx());
-      return zoomById(zoomId).snap === "week" ? mondayOf(d) : d;
-    };
+    const dayAt = (e) => backlogDropStart({
+      pointerX: e.clientX,
+      timelineLeft: trackTd.getBoundingClientRect().left,
+      originIso: originIso(),
+      dayPx: dayPx(),
+      snapWeek: zoomById(zoomId).snap === "week",
+      todayIso: todayIso()
+    });
     const clear = () => {
       trackTd.classList.remove("drag-over-cell");
       if (badge) badge.remove();
@@ -14016,10 +14043,17 @@ Click to manage or assign.`;
           const data = JSON.parse(dataStr);
           if (data && data.taskId && !data.fromReorder) {
             e.preventDefault();
-            const rect = wrapper.getBoundingClientRect();
-            const relX = e.clientX - rect.left + wrapper.scrollLeft;
-            const d = dateAt(relX, originIso(), dayPx());
-            const snapped = zoomById(zoomId).snap === "week" ? mondayOf(d) : d;
+            const track = wrapper.querySelector("#ganttBody td.timeline-track-cell");
+            const snapped = backlogDropStart({
+              pointerX: e.clientX,
+              timelineLeft: track ? track.getBoundingClientRect().left : null,
+              // The frozen grid columns stay in place while the timeline scrolls under them.
+              visibleLeft: wrapper.getBoundingClientRect().left + (layout.trackLeft || 0),
+              originIso: originIso(),
+              dayPx: dayPx(),
+              snapWeek: zoomById(zoomId).snap === "week",
+              todayIso: todayIso()
+            });
             const res = await callResolver2("scheduleBacklogTask", {
               taskId: data.taskId,
               startWeek: "",

@@ -11,7 +11,7 @@
  */
 
 import { invoke, router, view } from '@forge/bridge';
-import { classifyResult } from '../ui/result';
+import { classifyResult, isInternalFailure, ResolverFailure } from '../ui/result';
 import { showErrorBanner } from './banner';
 import { recordChanges } from './changes-panel';
 import { logFailure } from '../logger';
@@ -70,6 +70,8 @@ async function callOnce(fnName: string, rawPayload: Record<string, unknown>): Pr
     const d = new Date();
     const clientToday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     res = await invoke(fnName, { ...(ids.length ? { ...payload, reconcileIds: ids } : payload), clientToday });
+    // TASK-00006: a failure the resolver caught and logged takes the same path as a thrown call.
+    if (isInternalFailure(res)) throw new ResolverFailure(fnName);
     rememberWrites(res);
     noteCreateOutcome(signature, payload.createId, true);
   } catch (err: any) {

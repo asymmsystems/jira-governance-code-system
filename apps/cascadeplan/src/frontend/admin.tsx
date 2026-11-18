@@ -9,8 +9,16 @@
 
 import React, { useState, useEffect } from 'react';
 import ForgeReconciler from '@forge/react';
-import { invoke } from '@forge/bridge';
+import { invoke as bridgeInvoke } from '@forge/bridge';
 import { logFailure } from '../logger';
+import { isInternalFailure, ResolverFailure } from '../ui/result';
+
+/** TASK-00006: a failure the resolver caught and logged is raised here, so the catch shows the same text as before. */
+const invoke = async (name: string, payload: Record<string, unknown>) => {
+  const r: unknown = await bridgeInvoke(name, payload);
+  if (isInternalFailure(r)) throw new ResolverFailure(name);
+  return r;
+};
 import {
   AdminPolicyPanel,
   buildAdminPolicyView,

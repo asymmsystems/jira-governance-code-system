@@ -12,6 +12,7 @@ modules:
   jira:adminPage:
     - key: cascadeplan-admin
       title: CascadePlan approvers
+      icon: resource:main;icon.svg
       render: native
       resource: admin
       resolver:
