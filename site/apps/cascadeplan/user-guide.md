@@ -8,11 +8,10 @@ This guide shows how to plan work in CascadePlan: the timeline, dependencies, mo
 
 In the project's left navigation, select **CascadePlan Planner**. The planner shows the project's work items in a grid on the left and a timeline on the right. Work items without dates are in the **Backlog** tray; drag one onto the timeline to schedule it.
 
-**Where a Backlog item lands.** The place of the drop sets the start of the work item:
+**Where a Backlog item lands.** One rule: where a date is under the pointer, the work item starts on that day; everywhere else, it starts today.
 
-- **On the timeline part of a row:** the work item starts on the day under the pointer. A date label follows the pointer while you drag. At Month zoom and wider, the start is the Monday of that week.
-- **On the grid** (the columns on the left of a row, or the rows "+ Drop here to place task at top of schedule" and "+ Drop here to place task at bottom of schedule" that show while you drag): the work item starts on the Monday of the current week.
-- **In an empty plan** (the area "Drop backlog issues here to schedule"): the work item starts today, wherever you drop it. **+ Schedule** on a Backlog card also starts it today.
+- **On the timeline** (the timeline part of a row, or the empty timeline below the last row): the work item starts on the day under the pointer. On a row, a date label follows the pointer while you drag. At Month zoom and wider, the start is the Monday of that week.
+- **Everywhere else** (the grid columns on the left of a row, the rows "+ Drop here to place task at top of schedule" and "+ Drop here to place task at bottom of schedule" that show while you drag, and an empty plan, the area "Drop backlog issues here to schedule"): the work item starts today. **+ Schedule** on a Backlog card also starts it today.
 
 The bar is 3 weeks long. If the work item has a due date in Jira, the bar ends on that due date instead, and CascadePlan refuses a drop on a day after the due date. The drop stores the start on the issue and writes no due date to Jira. To change the dates afterwards, move or resize the bar (section 2).
 
