@@ -19,7 +19,7 @@ describe('F-12 the issue context entry', () => {
     # F-12: always visible in the issue's details column; shows the seal state without opening the panel.
     - key: ledgerseal-context
       title: LedgerSeal
-      label: Approval seal
+      label: LedgerSeal
       icon: resource:icons;icon.svg
       render: native
       resource: context

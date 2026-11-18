@@ -1,7 +1,7 @@
 modules:
   jira:issuePanel:
     - key: ledgerseal-panel
-      title: Approval Seal
+      title: LedgerSeal
       tooltip: LedgerSeal approval seal
       icon: resource:icons;icon.svg
       render: native
@@ -12,7 +12,7 @@ modules:
     # F-12: always visible in the issue's details column; shows the seal state without opening the panel.
     - key: ledgerseal-context
       title: LedgerSeal
-      label: Approval seal
+      label: LedgerSeal
       icon: resource:icons;icon.svg
       render: native
       resource: context
@@ -21,6 +21,7 @@ modules:
   jira:adminPage:
     - key: ledgerseal-admin
       title: LedgerSeal settings
+      icon: resource:icons;icon.svg
       render: native
       resource: admin
       resolver:

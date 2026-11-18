@@ -16,7 +16,7 @@ Link the pull request through your Git integration for Jira, or click **Request 
 
 ## Audit: "The issue is not sealed in LedgerSeal."
 
-Seal the issue in its **Approval Seal** panel of LedgerSeal. A broken seal means sealed content changed after approval; an approver reseals it in LedgerSeal.
+Seal the issue in its **LedgerSeal** panel. A broken seal means sealed content changed after approval; an approver reseals it in LedgerSeal.
 
 ## A check you do not use
 

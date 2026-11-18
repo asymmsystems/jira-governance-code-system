@@ -87,7 +87,7 @@ Exit codes: `0` every check passed; `1` at least one check failed (the FAIL line
 
 ## Getting the evidence from Jira
 
-1. Open the sealed issue and open the **Approval Seal** panel from the issue's app button.
+1. Open the sealed issue and open the **LedgerSeal** panel from the issue's app button.
 2. Expand **Certificate & attestation details**.
 3. Choose **Show evidence (JSON)** and copy the JSON into a file, for example `SEC-101-evidence.json`.
 4. Run `node verify-evidence.mjs SEC-101-evidence.json`.

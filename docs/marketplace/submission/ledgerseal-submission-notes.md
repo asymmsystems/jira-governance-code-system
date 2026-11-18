@@ -44,7 +44,7 @@ Install LedgerSeal on your own test site; nothing depends on the Asymm Systems s
 ## 4. Reviewer Test Plan Steps
 
 ### Test Step 1: Seal an issue
-1. Open any issue. The **Approval seal** entry in the details column shows the seal state; expand it to see it. Open the **Approval Seal** panel from the issue's app button (**View app actions**, then **Approval Seal**).
+1. Open any issue. The **LedgerSeal** entry in the details column shows the seal state; expand it to see it. Open the **LedgerSeal** panel from the issue's app button (**View app actions**, then **LedgerSeal**).
 2. Click **Seal this issue**, choose the sign-off role, tick the declaration, click **Sign and seal**.
 3. Observe the green `SEALED` lozenge and "Approval seal: Sealed. No change detected since approval."
 4. Click **Show details** to see the signer, sign-off role, hash and covered fields; **Show history** lists the seal with who acted.

@@ -60,7 +60,7 @@ Each reply names its source. Sign every reply "Asymm Systems support". Replace t
 >
 > In short: [pick one]
 > - CascadePlan: open a project and choose CascadePlan Planner in the project navigation. No setup is needed.
-> - LedgerSeal: seal an issue from the Approval Seal panel. To block transitions, a Jira administrator adds the Require Valid LedgerSeal validator to the release transition.
+> - LedgerSeal: seal an issue from the LedgerSeal panel. To block transitions, a Jira administrator adds the Require Valid LedgerSeal validator to the release transition.
 > - DefinitionGuard: open the Definition of Done panel on an issue; a built-in checklist for the issue type is there. To block moves into Done, a Jira administrator adds the DefinitionGuard DoD Enforcement validator to every transition into a Done status.
 > - FourRealities: open Four Realities in the project navigation; the first open builds the project view.
 >
@@ -135,7 +135,7 @@ Source: `/privacy`; FAQ section 2; listings, "Personal Data".
 
 ### R9. LedgerSeal evidence export and the offline verifier
 
-> To give an auditor the evidence of a seal: open the issue's Approval Seal panel, open the seal details and click Show evidence (JSON). Copy the text into a file such as evidence.json.
+> To give an auditor the evidence of a seal: open the issue's LedgerSeal panel, open the seal details and click Show evidence (JSON). Copy the text into a file such as evidence.json.
 >
 > The auditor checks it offline with our open-source verifier (Apache-2.0, Node.js 18 or later, no dependencies): https://github.com/asymmsystems/jira-governance-code-cli
 >
