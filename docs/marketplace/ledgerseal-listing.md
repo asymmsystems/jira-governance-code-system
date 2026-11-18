@@ -103,12 +103,12 @@ Sources of the banner and highlights: `docs/marketplace/assets/ledgerseal/media-
 
 ## Screenshot Gallery Manifest (1840 x 900)
 
-Real captures of LedgerSeal 4.1.0 on the development site (project PAY "Payments Platform"; 03 in project LSP, the project with the LedgerSeal validator on a transition), 2026-11-06. Each image is cropped to the app (no Jira header, no DEV badge), 1840 x 900 px. Script: `apps/ledgerseal/test/live/shots.py`, `shot_admin.py`, `shot_blocked.py`.
+Real captures of LedgerSeal 4.1.0 on the development site (project PAY "Payments Platform"; 03 in project LSP, the project with the LedgerSeal validator on a transition), 2026-11-06. Each image is cropped to the app (no Jira header, no DEV badge), 1840 x 900 px. Script: `apps/ledgerseal/test/live/shots.py`, `shot_admin.py`, `shot_blocked.py`. 04 was retaken on 2026-11-18 in Chrome from the LedgerSeal settings page (the page has four tabs since 4.0.0; `shot_admin.py` still looks for the old "LedgerSeal approvers" heading).
 
 1. `01-sealed-panel.png` - **Sealed issue:** the green SEALED lozenge, "Approval seal: Sealed. No change detected since approval.", Revoke seal, and the expanded "Certificate & attestation details": signer, sign-off role, hash, covered and not covered fields.
 2. `02-tamper-detected.png` - **Changed after approval:** the red CHANGED lozenge and "Changed items" with Was (at approval), Now (current edit) and Changed by, for a summary edit and a new comment. The person who made the changes is told that another approver must approve them.
 3. `03-transition-blocked.png` - **Workflow gate:** Jira's "Transition failed" message from the Require Valid LedgerSeal validator, over the panel of the changed issue.
-4. `04-admin-approvers.png` - **Approver groups:** the LedgerSeal approvers admin page with the approver group list, Save changes, and a group search.
+4. `04-admin-approvers.png` - **LedgerSeal settings:** the admin page with four tabs (Approver groups, Signing codes, Security alerts, Approval routes), open on Approver groups: the approver group list, Save changes, and a group search.
 5. `05-seal-history.png` - **Seal history:** the seal details with the hash-chained history, naming who sealed.
 
 ---
