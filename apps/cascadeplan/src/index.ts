@@ -24,6 +24,8 @@ import { changeParent, checkConversion, convertIssueType } from './server/hierar
 import { getProjectPlan } from './server/plan-read';
 import { continuePlanCopy, continuePlanDelete, createProjectPlan, deleteProjectPlan, renameProjectPlan, setPlanFilter } from './server/plans';
 import { extractProjectId, extractProjectKey, extractSiteUrl, withResolverHandler } from './server/request';
+import { logFailure } from './logger';
+import { internalFailure } from './ui/result';
 import { batchUpdateTasks, continueCascade, issueDeleted, reorderWbsTasks, saveColumnWidths, saveHiddenColumns, scheduleBacklogTask, unscheduleTask, updateWbsTask } from './server/tasks';
 
 // Everything the modules export stays importable from src/index (tests, triggers) (F-31).
@@ -92,15 +94,32 @@ export const RESOLVER_RULES: Record<string, ResolverRule> = {
   saveHiddenColumns: 'project-user'
 };
 
+/**
+ * TASK-00006: the resolver boundary. What a resolver function returns passes through; what it throws
+ * is logged by name only (logFailure, never the message or the stack) and returned as
+ * INTERNAL_FAILURE, so the Forge runtime logs nothing. Refusals are already typed results
+ * (withResolverHandler: licence, forbidden, busy, validation). `name` is the fixed resolver key.
+ */
+export function guardResolver(name: string, fn: (req: any) => Promise<any>): (req: any) => Promise<any> {
+  return async (req: any) => {
+    try {
+      return await fn(req);
+    } catch (err) {
+      logFailure(`resolver ${name}`, err);
+      return internalFailure();
+    }
+  };
+}
+
 function define(name: string, fn: (req: any) => Promise<any>): void {
   const rule = RESOLVER_RULES[name];
   if (!rule) throw new Error(`Resolver ${name} has no permission rule (BL-2).`);
-  resolver.define(name, async (req) => withClientToday(req?.payload?.clientToday, () => withResolverHandler(req, async () => {
+  resolver.define(name, guardResolver(name, async (req) => withClientToday(req?.payload?.clientToday, () => withResolverHandler(req, async () => {
     if (rule === 'plan-approver' && !(await isPlanApprover(resolveStorage(), { projectId: extractProjectId(req) }))) {
       return forbiddenResult(APPROVER_REQUIRED_MESSAGE);
     }
     return fn(req);
-  })));
+  }))));
 }
 
 const withProject = (req: any) => ({ ...req.payload, projectKey: extractProjectKey(req), projectId: extractProjectId(req) });
@@ -155,9 +174,9 @@ define('setActiveBaseline', async (req) => setActiveBaseline(withProject(req)));
 // The admin page has its own function with only the approver-policy resolvers, so no planner
 // resolver can run without a project (N-01).
 const adminResolver = new Resolver();
-adminResolver.define('approver-policy-get-api', async (req) => getApproverPolicyFlow(resolveStorage(), req.context));
-adminResolver.define('approver-policy-set-api', async (req) => setApproverPolicyFlow(req.payload, resolveStorage(), req.context));
-adminResolver.define('approver-group-search-api', async (req) => searchGroupsFlow(req.payload, req.context));
+adminResolver.define('approver-policy-get-api', guardResolver('approver-policy-get-api', async (req) => getApproverPolicyFlow(resolveStorage(), req.context)));
+adminResolver.define('approver-policy-set-api', guardResolver('approver-policy-set-api', async (req) => setApproverPolicyFlow(req.payload, resolveStorage(), req.context)));
+adminResolver.define('approver-group-search-api', guardResolver('approver-group-search-api', async (req) => searchGroupsFlow(req.payload, req.context)));
 const adminDefinitions = adminResolver.getDefinitions();
 
 /** Forge function of the admin page (manifest key admin-resolver). */

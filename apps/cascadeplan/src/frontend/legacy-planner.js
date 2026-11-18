@@ -53,6 +53,7 @@ import { planBlockMove } from '../domain/block-move';
 import { previewSingleMove, previewBlockMove } from '../domain/drop-plan';
 import { baselineItems, compareItems } from '../domain/baseline';
 import { shouldAutoCompact, ZOOMS, zoomById, zoomStep, mondayOf, initialRange, rangeDays, extendRange, edgeToExtend, headerCells, gridLines, anchorScroll, dateAt } from '../ui/time-scale';
+import { backlogDropStart } from '../ui/backlog-drop';
 import { buildTableViewRows, toggleTableView } from '../ui/table-view';
 import { watchSizes, keepMiddleInView } from '../ui/layout-watch';
 import { findMatchingTasks, findNextMatch, formatMatchCount, isSearchShortcut } from '../ui/in-app-search';
@@ -4279,10 +4280,11 @@ function buildTaskRow(task, rowIdx) {
       if (data.fromReorder) {
         await callResolver('reorderWbsTasks', { taskId: data.taskId, targetIndex });
       } else if (data.taskId) {
-        const curWk = (currentPlan?.weeks || []).find(w => w.isCurrentWeek)?.weekKey || currentPlan?.weeks[0]?.weekKey;
+        // No date is under the pointer on the grid columns: the item starts today (TASK-00003).
         await callResolver('scheduleBacklogTask', {
           taskId: data.taskId,
-          startWeek: curWk,
+          startWeek: '',
+          startDate: todayIso(),
           spanWeeks: 3,
           targetIndex
         });
@@ -4516,10 +4518,11 @@ function setupDropTargetRow(rowEl, targetIndex) {
       if (data.fromReorder) {
         await callResolver('reorderWbsTasks', { taskId: data.taskId, targetIndex });
       } else {
-        const curWk = (currentPlan?.weeks || []).find(w => w.isCurrentWeek)?.weekKey || currentPlan?.weeks[0]?.weekKey;
+        // No date is under the pointer on a "Drop here" row: the item starts today (TASK-00003).
         await callResolver('scheduleBacklogTask', {
           taskId: data.taskId,
-          startWeek: curWk,
+          startWeek: '',
+          startDate: todayIso(),
           spanWeeks: 3,
           targetIndex
         });
@@ -4533,11 +4536,15 @@ function setupDropTargetRow(rowEl, targetIndex) {
 /** Drop from the backlog or a row drag onto the timeline: the week comes from the pointer x (B-03). */
 function setupTrackDrop(trackTd, rowIdx) {
   let badge = null;
-  // The day under the pointer; at Month zoom and above it snaps to the Monday (B-27).
-  const dayAt = (e) => {
-    const d = dateAt(e.clientX - trackTd.getBoundingClientRect().left, originIso(), dayPx());
-    return zoomById(zoomId).snap === 'week' ? mondayOf(d) : d;
-  };
+  // The day under the pointer; at Month zoom and above it snaps to the Monday (B-27, TASK-00003).
+  const dayAt = (e) => backlogDropStart({
+    pointerX: e.clientX,
+    timelineLeft: trackTd.getBoundingClientRect().left,
+    originIso: originIso(),
+    dayPx: dayPx(),
+    snapWeek: zoomById(zoomId).snap === 'week',
+    todayIso: todayIso()
+  });
   const clear = () => {
     trackTd.classList.remove('drag-over-cell');
     if (badge) badge.remove();
@@ -6118,10 +6125,20 @@ function initKeyboard() {
         const data = JSON.parse(dataStr);
         if (data && data.taskId && !data.fromReorder) {
           e.preventDefault();
-          const rect = wrapper.getBoundingClientRect();
-          const relX = e.clientX - rect.left + wrapper.scrollLeft;
-          const d = dateAt(relX, originIso(), dayPx());
-          const snapped = zoomById(zoomId).snap === 'week' ? mondayOf(d) : d;
+          // The empty timeline below the rows: the day under the pointer, measured from the left edge
+          // of the timeline as on a row (not of the wrapper, which also holds the grid columns); left
+          // of the timeline no date is under the pointer, so the item starts today (TASK-00003).
+          const track = wrapper.querySelector('#ganttBody td.timeline-track-cell');
+          const snapped = backlogDropStart({
+            pointerX: e.clientX,
+            timelineLeft: track ? track.getBoundingClientRect().left : null,
+            // The frozen grid columns stay in place while the timeline scrolls under them.
+            visibleLeft: wrapper.getBoundingClientRect().left + (layout.trackLeft || 0),
+            originIso: originIso(),
+            dayPx: dayPx(),
+            snapWeek: zoomById(zoomId).snap === 'week',
+            todayIso: todayIso()
+          });
           const res = await callResolver('scheduleBacklogTask', {
             taskId: data.taskId,
             startWeek: '',
