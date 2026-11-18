@@ -61,7 +61,13 @@ const withParent = (i: any) => {
 const statuses = (): Record<string, string> => JSON.parse(localStorage.getItem('__harness_jira_status') || '{}');
 const NAMES: Record<string, string> = { new: 'To Do', indeterminate: 'In Progress', done: 'Done' };
 const withStatus = (key: string, f: any) => statuses()[key] ? { ...f, status: { statusCategory: { key: statuses()[key] }, name: NAMES[statuses()[key]] } } : f;
-const withDue = (i: any) => ({ ...i, fields: { ...withStatus(i.key, withParent(i)), duedate: dues()[i.key] || null, issuelinks: linksOn(i.key) }, properties: props()[i.key] || {} });
+// Layout switch __harness_long_summaries: every issue and sub-task has a long summary, as real work
+// items often do (TASK-00003, the task dialog). The lists of the task dialog then show long choices.
+const LONG_TAIL = ' for the web and mobile storefronts, with saved cards, wallet payments and the fraud checks that run before settlement';
+const longSummary = (f: any) => ({ ...f, summary: f.summary + LONG_TAIL });
+const withSummary = (f: any) => !localStorage.getItem('__harness_long_summaries') ? f
+  : { ...longSummary(f), ...(f.subtasks ? { subtasks: f.subtasks.map((s: any) => ({ ...s, fields: longSummary(s.fields) })) } : {}) };
+const withDue = (i: any) => ({ ...i, fields: { ...withSummary(withStatus(i.key, withParent(i))), duedate: dues()[i.key] || null, issuelinks: linksOn(i.key) }, properties: props()[i.key] || {} });
 w.__jira = async (url: string, opts: any) => {
   const method = (opts && opts.method) || 'GET';
   if (method !== 'GET' && /\/rest\/api\/3\/issue\//.test(url)) {

@@ -608,3 +608,37 @@ The canvas draws each bar from measured positions: where the first row starts in
 - **Version check after the deploy:** `forge deploy -e production --non-interactive` ended with "The version of your app [2.6.0] that was just deployed to [production] is eligible for the Runs on Atlassian program". `forge eligibility -e production` reports 2.6.0 again. `forge deploy list -e production` shows the deployment of 2026-11-18T02:24:20.420Z, major version 2, status Success.
 - **Not done here:** no check on a production install. Our sites hold no production install of CascadePlan; the production smoke test is TASK-00001 (`jira-governance/task/task-00001-asymm-staging-production-smoke-test.org`). The fix was checked live on development 3.21.0 (project PRAC, entry above). The Marketplace listing is not changed.
 - **Logs:** `jira-governance/.tmp/cache/cp-prod-2.6.0/` (the production deployment list before the deploy, each gate step, the deploy output and the checks after it).
+
+## 2026-11-18: rows of the task dialog (TASK-00003)
+
+Branch `fix/cascadeplan-task-dialog-parent-row`, from `master` at `c594569`. Reported on the development build on 2026-11-08: in the task dialog, the "Apply" button of the row "Parent in Jira" was outside the dialog at normal desktop width. Logged in `jira-governance/task/task-00003-small-ui-and-doc-fixes.org`, which asks for a check at 1366 px and at 390 px.
+
+### The cause
+
+- **A list as wide as its longest choice.** The parent list and "Apply" share a flex row, and the list had `flex: 1` only. A flex item does not become narrower than its content unless `min-width` allows it, and the content width of a closed list is the width of its longest choice. The parent list shows work item titles ("Under epic KEY: title", "Sub-task of KEY: title"), so one long title made the list wider than the dialog and moved "Apply" out. With short titles the row fits, which is why the harness fixture never showed it.
+- **The same in a second row.** "Predecessor Task" shows "KEY: title". Its cell in the two-column grid grew with the longest title and moved "Trigger Completion %" out.
+- **Proof in the harness (old stylesheet, 1366 px, longest choice 152 characters):** the dialog is 520 px wide, the parent list 949 px. The list ends 495 px and "Apply" 552 px past the edge of their panel, "Trigger Completion %" 516 px past it, and the dialog scrolls sideways by 519 px.
+- **Proof live (development 3.21.0, project PAY, task PAY-10, Chrome):** "Apply" is cut at the edge of the dialog (only "Ap" shows), the dialog has a sideways scrollbar, and "Trigger Completion %" is squeezed to a narrow column. FRP-2 and FRP-5 show no fault, because the titles of FRP are short.
+- **At 390 px** the dialog is 351 px wide and more rows end outside it, also with short titles: the "Target Progress" column (163 px), "Effort Value" (134 px), "+ Allocate Resource" (54 px), "Apply" (41 px), "+ Create sub-task in Jira" (160 px) and "Save Changes" (10 px into the footer padding). The dialog scrolls sideways by 130 px. The stylesheet had no rule for a narrow window.
+
+### What changed
+
+`static/frontend/build/style.css` only: no script, no markup, and the UI bundle is the same.
+
+- The parent list has `min-width: 0` and "Apply" has `flex: none`: the list takes the room that is left in the row.
+- In `#taskDetailModal`: the cells of the two-column rows have `min-width: 0`, each field has `max-width: 100%`, a closed list shows a long choice with an ellipsis (the open list shows it in full), and the team member list of "Multi-Resource Allocation" has `min-width: 0`.
+- Below 600 px (the dialog is 520 px wide with `max-width: 90vw`, so it has its full width from 578 px up): the two-column rows of the dialog are one column, the rows that end in a button wrap, the footer wraps, and "Effort Value" has its label above a field of the full width, like the other fields.
+
+### Proof
+
+- **Harness probe `test/e2e/e2e_task_dialog_layout_probe.py`** (new). It opens the dialog of DEMO-26 at 1366 px and at 390 px, with the short titles of the fixture and with long titles (the new fixture switch `__harness_long_summaries` in `test/e2e/setup.ts`). In each of the four cases: the dialog has no sideways scroll; no element of the dialog ends to the right of the dialog's content edge or of its panel; "Apply" is inside the dialog, beside the parent list, and takes a click at its centre with no sideways scroll. Old stylesheet: 11 of 22 checks fail. New stylesheet: 22 of 22 pass, also under `CP_STRICT_CSP=1`.
+- **`test/ui/task-dialog-layout.test.ts`** (new, 6 tests) keeps the rules and the markup they name. On the old stylesheet 3 of the 6 fail.
+- **No change at desktop width with short titles:** at 1366 px, all 112 visible elements of the dialog have the same position and size before and after (measured to 0.1 px). With long titles only the two rows above and the rows below them move.
+- **Other widths (new stylesheet, long titles):** no sideways scroll at 320, 360, 480, 600 and 601 px.
+- **Other harness checks on the new build:** `e2e.py` 31/31; `e2e_reparent_probe.py`, `e2e_assignee_probe.py`, `e2e_subtask_create_probe.py`, `e2e_subtask_epic_probe.py`, `e2e_compact_probe.py` and `e2e_undo_probe.py` pass; `e2e_csp_probe.py` 17 states with 0 violations, with and without `CP_STRICT_CSP=1`.
+- **Gate (local):** `tsc` clean; 89 suites, 1026 tests pass, coverage 96.94 % statements, 90.98 % branches, 94.65 % functions, 98.57 % lines (thresholds 90); `npm run build` clean and the rebuilt bundle equals the committed one (md5 `c3f5d40c`; `style.css` is the only changed file under `static/frontend/build`); `npm audit --omit=dev --audit-level=high` exits 0; `forge lint` (`@forge/cli@15.0.0`) "No issues found". FSRT and Semgrep were not run locally: the change is a stylesheet, a test fixture and two tests, and the CI runs of the pull request cover both. The local run used Node.js 26.13.0 (CI uses 22).
+- **Deploy:** development only, version 3.22.0 (minor; no manifest change), eligible for Runs on Atlassian. Production is untouched (2.6.0).
+- **Live check (development 3.22.0, project PAY, task PAY-10, Chrome, window 1920 px wide):** "Apply" is inside the dialog beside the parent list, the dialog has no sideways scrollbar, and "Trigger Completion %" has its half of the row. The 390 px width was not checked live: the Chrome window was maximized and did not take the smaller size, so the 390 px check is the harness probe.
+- **Live site changes:** none. The dialogs of FRP-2, FRP-5 and PAY-10 were opened and cancelled; "Changes" stayed at 0.
+- **Screenshots:** `~/.cache/cascadeplan-task-dialog-rows/shots/` (live before on 3.21.0 and after on 3.22.0; harness before and after at 1366 px and 390 px).
+- **Not done:** the production release. It needs the owner's approval.
