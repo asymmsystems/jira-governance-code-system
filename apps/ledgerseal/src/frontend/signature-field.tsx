@@ -10,7 +10,8 @@
 
 import React, { useEffect, useState } from 'react';
 import ForgeReconciler, { Box, Button, Checkbox, RadioGroup, SectionMessage, Spinner, Stack, Text, TextArea, Textfield } from '@forge/react';
-import { invoke, view } from '@forge/bridge';
+import { view } from '@forge/bridge';
+import { callResolver } from './call';
 import { MEANINGS } from '../domain/declaration';
 import { logFailure } from '../service/log';
 import { buildSignatureFieldView } from './signature-field-view-model';
@@ -36,7 +37,7 @@ export const SignatureField: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        setResult(await invoke('verify-issue-api', {}));
+        setResult(await callResolver('verify-issue-api', {}));
       } catch (err) {
         logFailure('signature field could not load', err);
         setError(true);
@@ -54,7 +55,7 @@ export const SignatureField: React.FC = () => {
     setBusy(true);
     setNotice(null);
     try {
-      const r = (await invoke('signing-code-request-api', { action: 'TRANSITION' })) as any;
+      const r = (await callResolver('signing-code-request-api', { action: 'TRANSITION' })) as any;
       if (r?.ok) setChallenge({ challengeId: r.challengeId, expiresAt: r.expiresAt });
       else setNotice(r?.message || 'LedgerSeal could not send a code. Try again.');
     } catch (err) {
@@ -70,7 +71,7 @@ export const SignatureField: React.FC = () => {
     setBusy(true);
     setNotice(null);
     try {
-      const r = (await invoke('transition-sign-intent-api', {
+      const r = (await callResolver('transition-sign-intent-api', {
         viewHash: result?.viewHash,
         signature: {
           meaning,

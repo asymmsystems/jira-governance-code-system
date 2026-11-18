@@ -1,4 +1,4 @@
-"""Opens an issue with the Approval Seal panel, adding the panel through "View app actions" when needed.
+"""Opens an issue with the LedgerSeal panel, adding the panel through "View app actions" when needed.
 Copyright (c) 2026 Asymm Systems. All rights reserved.
 @author Fahim Farook
 """
@@ -14,7 +14,7 @@ def open_issue(pg, key):
     if pg.get_by_text('Approval seal:', exact=False).count() == 0:
         pg.get_by_role('button', name='View app actions').first.click()
         pg.wait_for_timeout(2000)
-        pg.get_by_text('Approval Seal', exact=True).first.click()
+        pg.get_by_text('LedgerSeal', exact=True).first.click()
     pg.get_by_text('Approval seal:', exact=False).first.wait_for(timeout=90000)
     pg.wait_for_timeout(1500)
 

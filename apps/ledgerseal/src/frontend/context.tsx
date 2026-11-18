@@ -10,7 +10,7 @@
 
 import React, { useEffect, useState } from 'react';
 import ForgeReconciler, { Lozenge, Spinner, Stack, Text } from '@forge/react';
-import { invoke } from '@forge/bridge';
+import { callResolver } from './call';
 import { SPACE, TEXT_ROLE } from '@asymm/jira-ui';
 import { buildContextView } from './view-model';
 import { logFailure } from '../service/log';
@@ -23,7 +23,7 @@ export const LedgerSealContext: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        setResult(await invoke('verify-issue-api', {}));
+        setResult(await callResolver('verify-issue-api', {}));
       } catch (err) {
         logFailure('seal state failed', err);
         setFailed(true);

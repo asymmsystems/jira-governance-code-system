@@ -35,6 +35,7 @@ describe('approver policy admin page', () => {
     expect(manifest).toContain(`  jira:adminPage:
     - key: ledgerseal-admin
       title: LedgerSeal settings
+      icon: resource:icons;icon.svg
       render: native
       resource: admin
       resolver:
@@ -71,6 +72,25 @@ describe('B-20 bundled icon and no dead code', () => {
     expect(manifest).toMatch(/  - key: icons\n    path: static\/icons/);
     const svg = fs.readFileSync(path.resolve(__dirname, '../static/icons/icon.svg'), 'utf8');
     expect(svg).toMatch(/^<svg [^>]*xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+  });
+
+  it('TASK-00007 5a: every module that Jira shows with an icon has the bundled LedgerSeal icon', () => {
+    // Module types whose manifest schema has `icon`: the issue panel, the issue context and the admin page here
+    for (const key of ['ledgerseal-panel', 'ledgerseal-context', 'ledgerseal-admin']) {
+      expect(manifest).toMatch(new RegExp(`- key: ${key}\\n(?:      .*\\n)*?      icon: resource:icons;icon\\.svg\\n`));
+    }
+    // The Family A mark: the "[ }" frame with the rose wax seal, no Atlassian blue
+    const svg = fs.readFileSync(path.resolve(__dirname, '../static/icons/icon.svg'), 'utf8');
+    expect(svg).toContain('d="M10.5 7.5H5.5V40.5H10.5"');
+    expect(svg).toContain('#BA6E8F');
+    expect(svg).not.toMatch(/#0C66E4/i);
+  });
+
+  it('TASK-00007 5b: Jira shows the app by its listing name, LedgerSeal', () => {
+    expect(manifest).toContain('    - key: ledgerseal-panel\n      title: LedgerSeal\n');
+    expect(manifest).not.toMatch(/Approval Seal/);
+    // Labels that name an action keep the action
+    expect(manifest).toContain('      title: Sign with LedgerSeal\n');
   });
 
   it('has no unused renderIssuePanel handler', () => {

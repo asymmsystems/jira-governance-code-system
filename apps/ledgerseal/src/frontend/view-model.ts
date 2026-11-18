@@ -429,7 +429,7 @@ export interface ContextView {
   hint: string;
 }
 
-export const CONTEXT_HINT = 'Open the Approval Seal panel from the issue\'s app button to seal, approve changes or see the details.';
+export const CONTEXT_HINT = 'Open the LedgerSeal panel from the issue\'s app button to seal, approve changes or see the details.';
 
 export function buildContextView(input: PanelInput): ContextView {
   const view = buildPanelView(input);

@@ -7,7 +7,7 @@ This guide describes how to seal Jira issues, view post-approval change diffs, r
 ## 1. Sealing an Issue
 
 1. Open the Jira issue you wish to approve.
-2. In the right issue panel sidebar, locate the **LedgerSeal Audit Gate** panel.
+2. In the right issue panel sidebar, locate the **LedgerSeal** panel.
 3. Review the covered fields listed under the panel (Summary, Description, Acceptance Criteria, Attachments).
 4. Click **Seal Issue**.
 5. Select the declaration meaning (e.g. `Approved for Release`, `Reviewed`, `Verified`).

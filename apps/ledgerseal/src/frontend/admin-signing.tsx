@@ -10,7 +10,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Box, Button, Checkbox, Heading, Inline, SectionMessage, Spinner, Stack, Text, Textfield, User } from '@forge/react';
-import { invoke } from '@forge/bridge';
+import { callResolver } from './call';
 import { NoteBox, SPACE, TEXT_ROLE } from '@asymm/jira-ui';
 import { logFailure } from '../service/log';
 import { buildAlertRows, buildSigningAdminView, parseProjectKeys } from './signing-view-model';
@@ -28,7 +28,7 @@ export const SigningCodesTab: React.FC = () => {
   const load = async () => {
     setLoading(true);
     try {
-      const r = (await invoke('signing-policy-get-api', {})) as any;
+      const r = (await callResolver('signing-policy-get-api', {})) as any;
       setResponse(r);
       const v = buildSigningAdminView(false, r);
       setEnabled(v.enabled);
@@ -52,7 +52,7 @@ export const SigningCodesTab: React.FC = () => {
     setSaving(true);
     setNotice(null);
     try {
-      const r = (await invoke('signing-policy-set-api', { enabled, projectKeys: parseProjectKeys(keys), lockoutThreshold: Number(lockout) })) as any;
+      const r = (await callResolver('signing-policy-set-api', { enabled, projectKeys: parseProjectKeys(keys), lockoutThreshold: Number(lockout) })) as any;
       setNotice(r?.ok ? 'Saved.' : r?.message || 'LedgerSeal could not save. Nothing was saved.');
       if (r?.ok) await load();
     } catch (err) {
@@ -120,7 +120,7 @@ export const SecurityAlertsTab: React.FC = () => {
   const load = async () => {
     setLoading(true);
     try {
-      setResponse(await invoke('signing-alerts-api', {}));
+      setResponse(await callResolver('signing-alerts-api', {}));
     } catch (err) {
       logFailure('could not load the alerts', err);
       setResponse(null);
@@ -136,7 +136,7 @@ export const SecurityAlertsTab: React.FC = () => {
   const act = async (name: string, payload: any) => {
     setNotice(null);
     try {
-      const r = (await invoke(name, payload)) as any;
+      const r = (await callResolver(name, payload)) as any;
       setNotice(r?.ok ? 'Done.' : r?.message || 'LedgerSeal could not do this. Nothing was saved.');
       if (r?.ok) await load();
     } catch (err) {

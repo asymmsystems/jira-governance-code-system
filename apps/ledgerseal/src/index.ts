@@ -35,6 +35,7 @@ import { fail } from './service/ledger';
 import { deleteIssueRecords, ReportFn, weeklyPersonalDataJob } from './service/personal-data';
 import { privacy } from '@forge/api';
 import { logFailure } from './service/log';
+import { guardResolver, ResolverFunction } from './service/resolver-boundary';
 
 export { LedgerSealDeps } from './service/ledger';
 
@@ -442,87 +443,95 @@ export async function unlockSigning(payload: any, context?: any, deps: LedgerSea
 // Register Forge Resolver for UI Kit 2 bridge invocations
 const resolver = new Resolver();
 
-resolver.define('verify-issue-api', async (req) => {
+/**
+ * TASK-00006: every resolver function goes through the boundary, so a thrown error is logged by name only and
+ * returned as a typed INTERNAL_FAILURE result; the Forge runtime never logs its message or stack.
+ */
+function define(name: string, fn: ResolverFunction): void {
+  resolver.define(name, guardResolver(name, fn));
+}
+
+define('verify-issue-api', async (req) => {
   return await verifyIssue(req.payload, req.context);
 });
 
-resolver.define('seal-issue-api', async (req) => {
+define('seal-issue-api', async (req) => {
   return await sealIssue(req.payload, req.context);
 });
 
-resolver.define('seal-history-api', async (req) => {
+define('seal-history-api', async (req) => {
   return await getSealHistory(req.payload, req.context);
 });
 
-resolver.define('revoke-seal-api', async (req) => {
+define('revoke-seal-api', async (req) => {
   return await revokeSeal(req.payload, req.context);
 });
 
-resolver.define('seal-evidence-api', async (req) => {
+define('seal-evidence-api', async (req) => {
   return await getSealEvidence(req.payload, req.context);
 });
 
-resolver.define('approver-policy-get-api', async (req) => {
+define('approver-policy-get-api', async (req) => {
   return await getApproverPolicy(req.payload, req.context);
 });
 
-resolver.define('approver-policy-set-api', async (req) => {
+define('approver-policy-set-api', async (req) => {
   return await setApproverPolicy(req.payload, req.context);
 });
 
-resolver.define('approver-group-search-api', async (req) => {
+define('approver-group-search-api', async (req) => {
   return await searchApproverGroups(req.payload, req.context);
 });
 
-resolver.define('route-list-api', async (req) => {
+define('route-list-api', async (req) => {
   return await listRoutes(req.payload, req.context);
 });
 
-resolver.define('route-save-api', async (req) => {
+define('route-save-api', async (req) => {
   return await saveRoute(req.payload, req.context);
 });
 
-resolver.define('route-bind-api', async (req) => {
+define('route-bind-api', async (req) => {
   return await bindRoute(req.payload, req.context);
 });
 
-resolver.define('route-unbind-api', async (req) => {
+define('route-unbind-api', async (req) => {
   return await unbindRoute(req.payload, req.context);
 });
 
-resolver.define('stage-sign-api', async (req) => {
+define('stage-sign-api', async (req) => {
   return await signStage(req.payload, req.context);
 });
 
-resolver.define('stage-reject-api', async (req) => {
+define('stage-reject-api', async (req) => {
   return await rejectStage(req.payload, req.context);
 });
 
-resolver.define('transition-sign-intent-api', async (req) => {
+define('transition-sign-intent-api', async (req) => {
   return await createSigningIntent(req.payload, req.context);
 });
 
-resolver.define('signing-code-request-api', async (req) => {
+define('signing-code-request-api', async (req) => {
   return await requestSigningCode(req.payload, req.context);
 });
 
-resolver.define('signing-policy-get-api', async (req) => {
+define('signing-policy-get-api', async (req) => {
   return await getSigningPolicy(req.payload, req.context);
 });
 
-resolver.define('signing-policy-set-api', async (req) => {
+define('signing-policy-set-api', async (req) => {
   return await setSigningPolicy(req.payload, req.context);
 });
 
-resolver.define('signing-alerts-api', async (req) => {
+define('signing-alerts-api', async (req) => {
   return await getSigningAlerts(req.payload, req.context);
 });
 
-resolver.define('signing-alert-ack-api', async (req) => {
+define('signing-alert-ack-api', async (req) => {
   return await ackSigningAlert(req.payload, req.context);
 });
 
-resolver.define('signing-unlock-api', async (req) => {
+define('signing-unlock-api', async (req) => {
   return await unlockSigning(req.payload, req.context);
 });
 

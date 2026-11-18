@@ -11,7 +11,7 @@ import React, { useState, useEffect } from 'react';
 import ForgeReconciler, { Tab, TabList, TabPanel, Tabs } from '@forge/react';
 import { SecurityAlertsTab, SigningCodesTab } from './admin-signing';
 import { ApprovalRoutesTab } from './admin-routes';
-import { invoke } from '@forge/bridge';
+import { callResolver } from './call';
 import { logFailure } from '../service/log';
 import {
   AdminPolicyPanel,
@@ -32,7 +32,7 @@ export const ApproverGroupsTab: React.FC = () => {
   const load = async () => {
     setLoading(true);
     try {
-      const r = (await invoke('approver-policy-get-api', {})) as any;
+      const r = (await callResolver('approver-policy-get-api', {})) as any;
       setResponse(r);
       setChosen(savedGroups(r));
     } catch (err) {
@@ -58,7 +58,7 @@ export const ApproverGroupsTab: React.FC = () => {
 
   const search = async () => {
     setNotice(null);
-    const r = (await invoke('approver-group-search-api', { query })) as any;
+    const r = (await callResolver('approver-group-search-api', { query })) as any;
     if (r?.ok) setResults(r.groups);
     else setNotice(r?.message || 'LedgerSeal could not search the groups. Try again.');
   };
@@ -67,7 +67,7 @@ export const ApproverGroupsTab: React.FC = () => {
     setSaving(true);
     setNotice(null);
     try {
-      const r = (await invoke('approver-policy-set-api', { groupIds: chosen.map(g => g.groupId) })) as any;
+      const r = (await callResolver('approver-policy-set-api', { groupIds: chosen.map(g => g.groupId) })) as any;
       if (r?.ok) {
         setResponse(r);
         setChosen(savedGroups(r));

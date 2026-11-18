@@ -21,7 +21,7 @@ import ForgeReconciler, {
   Heading,
   Textfield
 } from '@forge/react';
-import { invoke } from '@forge/bridge';
+import { callResolver } from './call';
 import { MEANINGS } from '../domain/declaration';
 import { buildSigningForm } from './signing-view-model';
 import { buildRouteView } from './route-view-model';
@@ -79,7 +79,7 @@ export const LedgerSealPanel: React.FC = () => {
     setLoading(true);
     setLoadFailed(false);
     try {
-      setResult(await invoke('verify-issue-api', {}));
+      setResult(await callResolver('verify-issue-api', {}));
     } catch (err) {
       logFailure('could not load the seal state', err);
       // A failed load is an error state, never "not sealed" (LS-12)
@@ -127,7 +127,7 @@ export const LedgerSealPanel: React.FC = () => {
     setSending(true);
     setActionError(null);
     try {
-      const r = (await invoke('signing-code-request-api', { action: signingAction, ...(stageId ? { stageId } : {}) })) as any;
+      const r = (await callResolver('signing-code-request-api', { action: signingAction, ...(stageId ? { stageId } : {}) })) as any;
       if (r?.ok) {
         setChallenge({ challengeId: r.challengeId, expiresAt: r.expiresAt });
       } else {
@@ -149,14 +149,14 @@ export const LedgerSealPanel: React.FC = () => {
     try {
       const response =
         form === 'stage'
-          ? ((await invoke('stage-sign-api', {
+          ? ((await callResolver('stage-sign-api', {
               stageId,
               viewHash: result?.viewHash,
               signature: { ...declarationPayload, reason: stageReason ? reason.trim() : undefined },
               signing
             })) as { ok: boolean; message?: string } | undefined)
           : form === 'reject'
-          ? ((await invoke('stage-reject-api', {
+          ? ((await callResolver('stage-reject-api', {
               stageId,
               viewHash: result?.viewHash,
               reason: reason.trim(),
@@ -164,8 +164,8 @@ export const LedgerSealPanel: React.FC = () => {
               signing
             })) as { ok: boolean; message?: string } | undefined)
           : form === 'revoke'
-          ? ((await invoke('revoke-seal-api', { reason: reason.trim(), signature: declarationPayload, signing })) as { ok: boolean; message?: string } | undefined)
-          : ((await invoke('seal-issue-api', {
+          ? ((await callResolver('revoke-seal-api', { reason: reason.trim(), signature: declarationPayload, signing })) as { ok: boolean; message?: string } | undefined)
+          : ((await callResolver('seal-issue-api', {
               // F-05: the state this panel showed; the seal is refused when the issue changed since
               viewHash: result?.viewHash,
               signature: {
@@ -194,7 +194,7 @@ export const LedgerSealPanel: React.FC = () => {
   const loadHistoryPage = async (fromSeq: number, before: any[]) => {
     setHistoryError(null);
     try {
-      const page = (await invoke('seal-history-api', { fromSeq })) as { entries?: any[]; nextFromSeq?: number | null } | undefined;
+      const page = (await callResolver('seal-history-api', { fromSeq })) as { entries?: any[]; nextFromSeq?: number | null } | undefined;
       setHistory([...before, ...(page?.entries ?? [])]);
       setHistoryNext(page?.nextFromSeq ?? null);
     } catch (err) {
@@ -219,7 +219,7 @@ export const LedgerSealPanel: React.FC = () => {
     }
     setEvidenceError(null);
     try {
-      setEvidence(JSON.stringify(await invoke('seal-evidence-api', {}), null, 2));
+      setEvidence(JSON.stringify(await callResolver('seal-evidence-api', {}), null, 2));
     } catch (err) {
       logFailure('evidence failed', err);
       setEvidenceError('LedgerSeal could not load the evidence record. Try again.');
