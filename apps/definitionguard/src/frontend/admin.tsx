@@ -9,7 +9,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import ForgeReconciler, { SectionMessage, Stack, Text } from '@forge/react';
-import { invoke } from '@forge/bridge';
+import { callResolver } from './call';
 import { AdminPolicyPanel, buildAdminPolicyView, GroupChoice, savedGroups, SPACE } from '@asymm/jira-ui';
 import { APPROVER_ROLE_DESCRIPTION, loadPolicy, saveOutcome } from '../ui/admin-view';
 
@@ -24,7 +24,7 @@ export const DefinitionGuardAdmin: React.FC = () => {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    loadPolicy(() => invoke('authority-policy-get', {})).then((r: any) => {
+    loadPolicy(() => callResolver('authority-policy-get', {})).then((r: any) => {
       setResponse(r);
       setChosen(r?.ok ? savedGroups(r) : []);
       setLoading(false);
@@ -58,7 +58,7 @@ export const DefinitionGuardAdmin: React.FC = () => {
       onSearch={async () => {
         setError(null);
         try {
-          const res: any = await invoke('authority-group-search', { query });
+          const res: any = await callResolver('authority-group-search', { query });
           if (res?.ok) setResults(res.groups);
           else setError(String(res?.message || 'DefinitionGuard could not search groups in Jira. Try again.'));
         } catch {
@@ -69,10 +69,10 @@ export const DefinitionGuardAdmin: React.FC = () => {
       onRemoveGroup={id => setChosen(prev => prev.filter(g => g.groupId !== id))}
       onSave={async () => {
         setSaving(true);
-        const outcome = await saveOutcome(() => invoke('authority-policy-set', { groupIds: chosen.map(g => g.groupId) }));
+        const outcome = await saveOutcome(() => callResolver('authority-policy-set', { groupIds: chosen.map(g => g.groupId) }));
         setNotice(outcome.notice);
         setError(outcome.error);
-        if (outcome.notice) setResponse((await loadPolicy(() => invoke('authority-policy-get', {}))));
+        if (outcome.notice) setResponse((await loadPolicy(() => callResolver('authority-policy-get', {}))));
         setSaving(false);
       }}
     />

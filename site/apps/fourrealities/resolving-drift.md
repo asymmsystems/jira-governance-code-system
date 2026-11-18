@@ -8,7 +8,7 @@ Click **Link decision record** and choose the Confluence page, or link an issue 
 
 ## Process: "No Definition of Done record is on this issue."
 
-Complete the items in the **Definition of Done** panel of DefinitionGuard on the issue (or the checklist of Checklists for Jira, when that is your Process source). A record that failed its signature check was changed after DefinitionGuard wrote it; change any item in DefinitionGuard so it writes its record again.
+Complete the items in the **DefinitionGuard** panel on the issue (or the checklist of Checklists for Jira, when that is your Process source). A record that failed its signature check was changed after DefinitionGuard wrote it; change any item in DefinitionGuard so it writes its record again.
 
 ## Code: "The issue is done, but no pull request is linked."
 

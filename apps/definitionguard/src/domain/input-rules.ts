@@ -6,6 +6,7 @@
  *
  * Each rule is checked before the value reaches storage, Jira or a message.
  */
+import { RefusalError } from './refusal';
 
 /** A checklist item id: the rule validateTemplate applies when a template is saved. */
 export const ITEM_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
@@ -27,7 +28,7 @@ export const CURSOR_INVALID = 'DefinitionGuard could not read this page of the h
 /** The item id from a payload, or throws ITEM_ID_INVALID. */
 export function itemIdOf(value: unknown): string {
   if (typeof value !== 'string' || !ITEM_ID_PATTERN.test(value)) {
-    throw new Error(ITEM_ID_INVALID);
+    throw new RefusalError('VALIDATION', ITEM_ID_INVALID);
   }
   return value;
 }
@@ -36,7 +37,7 @@ export function itemIdOf(value: unknown): string {
 export function cursorOf(value: unknown, invalidMessage = CURSOR_INVALID): string | undefined {
   if (value === undefined || value === null || value === '') return undefined;
   if (typeof value !== 'string' || value.length > MAX_CURSOR_CHARS || !CURSOR_PATTERN.test(value)) {
-    throw new Error(invalidMessage);
+    throw new RefusalError('VALIDATION', invalidMessage);
   }
   return value;
 }

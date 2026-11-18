@@ -19,7 +19,7 @@ import ForgeReconciler, {
   Textfield,
   CodeBlock
 } from '@forge/react';
-import { invoke } from '@forge/bridge';
+import { callResolver } from './call';
 import { IssueChecklistState } from '../domain/models';
 import { logFailure } from '../log';
 import { buildPanelViewModel, historyRows, panelErrorText, Attribution, HistoryPageData, appendHistoryPage, historyShownText } from '../ui/panel-view-model';
@@ -77,7 +77,7 @@ export const DefinitionGuardPanel: React.FC = () => {
   const loadChecklist = async () => {
     setLoading(true);
     await run('load the checklist', null, async () => {
-      setChecklist((await invoke('getChecklist', {})) as unknown as IssueChecklistState);
+      setChecklist((await callResolver('getChecklist', {})) as unknown as IssueChecklistState);
     });
     setLoading(false);
   };
@@ -88,7 +88,7 @@ export const DefinitionGuardPanel: React.FC = () => {
 
   const change = (fn: string, payload: object, id: string, action: string) =>
     run(action, id, async () => {
-      setChecklist((await invoke(fn, payload)) as unknown as IssueChecklistState);
+      setChecklist((await callResolver(fn, payload)) as unknown as IssueChecklistState);
       setEvidenceFor(null);
       setEvUrl('');
       setEvNote('');
@@ -261,7 +261,7 @@ export const DefinitionGuardPanel: React.FC = () => {
                             spacing="compact"
                             onClick={() =>
                               run('load the evidence', item.id, async () => {
-                                const res = (await invoke('getEvidence', { itemId: item.id })) as unknown as { evidence?: Evidence };
+                                const res = (await callResolver('getEvidence', { itemId: item.id })) as unknown as { evidence?: Evidence };
                                 setShownEvidence({ ...shownEvidence, [item.id]: res?.evidence || null });
                               })
                             }
@@ -408,7 +408,7 @@ export const DefinitionGuardPanel: React.FC = () => {
                 isDisabled={loading}
                 onClick={() =>
                   run('load the history', 'history', async () => {
-                    setHistory((await invoke('getHistory', {})) as unknown as HistoryPage);
+                    setHistory((await callResolver('getHistory', {})) as unknown as HistoryPage);
                   })
                 }
               >
@@ -423,7 +423,7 @@ export const DefinitionGuardPanel: React.FC = () => {
                 isDisabled={loading}
                 onClick={() =>
                   run('load the history', 'history', async () => {
-                    setHistory((await invoke('getHistory', {})) as unknown as HistoryPage);
+                    setHistory((await callResolver('getHistory', {})) as unknown as HistoryPage);
                   })
                 }
               >
@@ -437,7 +437,7 @@ export const DefinitionGuardPanel: React.FC = () => {
                   exported
                     ? setExported(null)
                     : run('export the history', 'export', async () => {
-                        setExported((await invoke('exportHistory', {})) as unknown as { fileName: string; text: string });
+                        setExported((await callResolver('exportHistory', {})) as unknown as { fileName: string; text: string });
                       })
                 }
               >
@@ -549,7 +549,7 @@ export const DefinitionGuardPanel: React.FC = () => {
                 onClick={() =>
                   run('load more history', 'history-more', async () => {
                     // The next page goes through the same Browse check as the first (getHistory).
-                    const next = (await invoke('getHistory', { cursor: history.nextCursor })) as unknown as HistoryPage;
+                    const next = (await callResolver('getHistory', { cursor: history.nextCursor })) as unknown as HistoryPage;
                     setHistory(appendHistoryPage(history, next));
                   })
                 }

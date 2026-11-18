@@ -7,6 +7,8 @@
  * The project always comes from context.extension.project, never from the payload.
  * Every function first checks ADMINISTER_PROJECTS for the calling user.
  */
+import { RefusalError, UnavailableError } from '../domain/refusal';
+import { guardResolver, ResolverFunction } from '../resolver-boundary';
 import api, { route } from '@forge/api';
 import Resolver from '@forge/resolver';
 import { StorageProvider } from '../storage/checklist-repository';
@@ -29,7 +31,7 @@ export const TEMPLATE_DENIED = 'Only a project admin or a Jira admin can change 
 export function settingsContext(context: any) {
   const project = context?.extension?.project;
   if (!project?.id || !project?.key) {
-    throw new Error('DefinitionGuard: Missing project context. Open this page from the project settings.');
+    throw new RefusalError('VALIDATION', 'DefinitionGuard: Missing project context. Open this page from the project settings.');
   }
   return { projectId: String(project.id), projectKey: String(project.key), actorAccountId: String(context?.accountId || 'unknown') };
 }
@@ -44,7 +46,7 @@ export async function requireProjectAdmin(context: any) {
 export async function projectIssueTypes(projectId: string): Promise<Array<{ id: string; name: string }>> {
   const res = await withRetry(() => api.asUser().requestJira(route`/rest/api/3/project/${projectId}`));
   if (res.status !== 200) {
-    throw new Error('DefinitionGuard could not read the project issue types. Refresh the page.');
+    throw new UnavailableError('DefinitionGuard could not read the project issue types. Refresh the page.');
   }
   const body = await res.json();
   return (body.issueTypes || []).map((t: any) => ({ id: String(t.id), name: String(t.name) }));
@@ -54,7 +56,7 @@ export async function projectIssueTypes(projectId: string): Promise<Array<{ id: 
 export async function projectDoneStatuses(projectId: string): Promise<Array<{ id: string; name: string }>> {
   const res = await withRetry(() => api.asUser().requestJira(route`/rest/api/3/project/${projectId}/statuses`));
   if (res.status !== 200) {
-    throw new Error('DefinitionGuard could not read the project statuses. Refresh the page.');
+    throw new UnavailableError('DefinitionGuard could not read the project statuses. Refresh the page.');
   }
   const body = await res.json();
   const byId = new Map<string, string>();
@@ -93,7 +95,7 @@ export async function saveExemptions(payload: any, context?: any, storageProvide
   const ids = payload?.exemptStatusIds;
   const done = new Set((await projectDoneStatuses(c.projectId)).map(s => s.id));
   if (!Array.isArray(ids) || ids.length > 50 || !ids.every((id: any) => typeof id === 'string' && done.has(id))) {
-    throw new Error(EXEMPT_INVALID);
+    throw new RefusalError('VALIDATION', EXEMPT_INVALID);
   }
   const storage = resolveStorage(storageProvider);
   const actor = await new PartyStore(storage).pseudonymFor(c.actorAccountId);
@@ -106,12 +108,12 @@ export async function saveTemplate(payload: any, context?: any, storageProvider?
   const issueTypeId = String(payload?.issueTypeId || '');
   const issueTypes = await projectIssueTypes(c.projectId);
   if (!issueTypes.some(t => t.id === issueTypeId)) {
-    throw new Error('This issue type is not in the project.');
+    throw new RefusalError('VALIDATION', 'This issue type is not in the project.');
   }
   const storage = resolveStorage(storageProvider);
   const store = new TemplateStore(storage);
   const errors = validateTemplate(payload?.template);
-  if (errors.length > 0) throw new Error(errors.join(' '));
+  if (errors.length > 0) throw new RefusalError('VALIDATION', errors.join(' '));
   const actor = await new PartyStore(storage).pseudonymFor(c.actorAccountId);
   const template = await store.save(c.projectId, issueTypeId, payload?.template, actor);
   return { template: toTemplateView(template) };
@@ -135,7 +137,7 @@ export async function resyncIssues(payload: any, context?: any, storageProvider?
   const storage = resolveStorage(storageProvider);
   const template = await new TemplateStore(storage).get(c.projectId, issueTypeId);
   if (!template) {
-    throw new Error(NO_TEMPLATE_TO_RESYNC);
+    throw new RefusalError('VALIDATION', NO_TEMPLATE_TO_RESYNC);
   }
   const jql = `project = ${c.projectId} AND issuetype = ${issueTypeId} AND statusCategory != Done`;
   const cursor = cursorOf(payload?.cursor, RESYNC_CURSOR_INVALID) || '';
@@ -143,7 +145,7 @@ export async function resyncIssues(payload: any, context?: any, storageProvider?
     ? await withRetry(() => api.asApp().requestJira(route`/rest/api/3/search/jql?jql=${jql}&maxResults=${RESYNC_PAGE}&fields=id,key&nextPageToken=${cursor}`))
     : await withRetry(() => api.asApp().requestJira(route`/rest/api/3/search/jql?jql=${jql}&maxResults=${RESYNC_PAGE}&fields=id,key`));
   if (res.status !== 200) {
-    throw new Error('DefinitionGuard could not search the open issues. Try again.');
+    throw new UnavailableError('DefinitionGuard could not search the open issues. Try again.');
   }
   const body = await res.json();
   const store = new ChecklistStore(storage);
@@ -173,12 +175,14 @@ export async function resyncIssues(payload: any, context?: any, storageProvider?
 }
 
 const resolver = new Resolver();
+// TASK-00006: every resolver function goes through the boundary (src/resolver-boundary.ts).
+const define = (name: string, fn: ResolverFunction) => resolver.define(name, guardResolver(name, fn));
 
-resolver.define('getSettings', async (req) => getSettings(req.payload, req.context));
-resolver.define('saveTemplate', async (req) => saveTemplate(req.payload, req.context));
-resolver.define('saveExemptions', async (req) => saveExemptions(req.payload, req.context));
-resolver.define('resyncIssues', async (req) => resyncIssues(req.payload, req.context));
-resolver.define('gateCoverage', async (req) => {
+define('getSettings', async (req) => getSettings(req.payload, req.context));
+define('saveTemplate', async (req) => saveTemplate(req.payload, req.context));
+define('saveExemptions', async (req) => saveExemptions(req.payload, req.context));
+define('resyncIssues', async (req) => resyncIssues(req.payload, req.context));
+define('gateCoverage', async (req) => {
   // Loaded lazily: coverage.ts imports requireProjectAdmin from this module.
   const { gateCoverage } = await import('./coverage');
   return gateCoverage(req.payload, req.context);

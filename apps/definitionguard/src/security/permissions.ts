@@ -7,14 +7,19 @@
  * Every check runs as the user, with the issue key or id, because a project-level answer can
  * report EDIT_ISSUES for a user who lacks it on a given issue. Any failure denies (fail closed).
  */
+import { RefusalError } from '../domain/refusal';
 import api, { route } from '@forge/api';
 import { retryAfter } from '../jira/jira-client';
 
 export type JiraPermissionKey = string;
 
-export class PermissionDeniedError extends Error {
-  constructor(message: string) {
-    super(message);
+/**
+ * A permission refusal. When the check itself could not run (Jira could not be read), its kind is
+ * UNAVAILABLE: the change is still refused (fail closed), and the boundary logs the failure by name.
+ */
+export class PermissionDeniedError extends RefusalError {
+  constructor(message: string, kind: 'PERMISSION' | 'UNAVAILABLE' = 'PERMISSION') {
+    super(kind, message);
     this.name = 'PermissionDeniedError';
   }
 }
@@ -32,7 +37,7 @@ export const PERMISSION_CHECK_FAILED =
 /** Reads the requested keys from a /mypermissions response. Any failure denies. */
 async function grantedIn(res: any, keys: JiraPermissionKey[]): Promise<Record<string, boolean>> {
   if (res?.status !== 200) {
-    throw new PermissionDeniedError(PERMISSION_CHECK_FAILED);
+    throw new PermissionDeniedError(PERMISSION_CHECK_FAILED, 'UNAVAILABLE');
   }
   const body = await res.json();
   const granted: Record<string, boolean> = {};
@@ -48,7 +53,7 @@ async function grantedIn(res: any, keys: JiraPermissionKey[]): Promise<Record<st
  */
 export async function getIssuePermissions(issueKey: string, keys: JiraPermissionKey[]): Promise<Record<string, boolean>> {
   if (!issueKey || keys.length === 0) {
-    throw new PermissionDeniedError(PERMISSION_CHECK_FAILED);
+    throw new PermissionDeniedError(PERMISSION_CHECK_FAILED, 'UNAVAILABLE');
   }
   let res: any;
   try {
@@ -57,7 +62,7 @@ export async function getIssuePermissions(issueKey: string, keys: JiraPermission
       if (!(await retryAfter(res, attempt))) break;
     }
   } catch {
-    throw new PermissionDeniedError(PERMISSION_CHECK_FAILED);
+    throw new PermissionDeniedError(PERMISSION_CHECK_FAILED, 'UNAVAILABLE');
   }
   return grantedIn(res, keys);
 }
@@ -67,7 +72,7 @@ export async function getIssuePermissions(issueKey: string, keys: JiraPermission
  */
 export async function getProjectPermissions(projectKey: string, keys: JiraPermissionKey[]): Promise<Record<string, boolean>> {
   if (!projectKey || keys.length === 0) {
-    throw new PermissionDeniedError(PERMISSION_CHECK_FAILED);
+    throw new PermissionDeniedError(PERMISSION_CHECK_FAILED, 'UNAVAILABLE');
   }
   let res: any;
   try {
@@ -76,7 +81,7 @@ export async function getProjectPermissions(projectKey: string, keys: JiraPermis
       if (!(await retryAfter(res, attempt))) break;
     }
   } catch {
-    throw new PermissionDeniedError(PERMISSION_CHECK_FAILED);
+    throw new PermissionDeniedError(PERMISSION_CHECK_FAILED, 'UNAVAILABLE');
   }
   return grantedIn(res, keys);
 }
@@ -142,7 +147,7 @@ export async function requireBrowseIssue(issueId: string): Promise<void> {
     }
     granted = await grantedIn(res, ['BROWSE_PROJECTS']);
   } catch {
-    throw new PermissionDeniedError(BROWSE_CHECK_FAILED);
+    throw new PermissionDeniedError(BROWSE_CHECK_FAILED, 'UNAVAILABLE');
   }
   if (!granted.BROWSE_PROJECTS) {
     throw new PermissionDeniedError(BROWSE_DENIED);

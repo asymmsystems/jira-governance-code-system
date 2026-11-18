@@ -11,6 +11,7 @@
  * Erasing a closed account deletes both keys. The hashed history keeps the pseudonym and still
  * verifies, and nothing links the pseudonym back to the person any more.
  */
+import { UnavailableError } from '../domain/refusal';
 import * as crypto from 'crypto';
 import { StorageProvider } from './checklist-repository';
 
@@ -70,7 +71,7 @@ export class PartyStore {
     }
     // Another call made it first: use theirs, and make sure the way back exists.
     const winner = await this.storage.get<PartyRecord>(accountKey(accountId));
-    if (!winner?.pseudonym) throw new Error('DefinitionGuard could not record who made the change. Try again.');
+    if (!winner?.pseudonym) throw new UnavailableError('DefinitionGuard could not record who made the change. Try again.');
     await this.storage.set(pseudonymKey(winner.pseudonym), { accountId });
     return winner.pseudonym;
   }

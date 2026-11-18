@@ -13,6 +13,7 @@
  * validator lets every move through. The customer stopped paying for enforcement, so the
  * enforcement stops; nobody is kept from closing work. The panel and the settings page say so.
  */
+import { RefusalError } from '../domain/refusal';
 import { getAppContext } from '@forge/api';
 
 export const LICENCE_INACTIVE = 'Your DefinitionGuard licence is not active. Ask your Jira admin.';
@@ -43,6 +44,6 @@ export function isLicenceInactive(context: any): boolean {
 /** Throws for write resolvers when the licence is present and inactive. */
 export function assertLicensed(context: any): void {
   if (isLicenceInactive(context)) {
-    throw new Error(LICENCE_INACTIVE);
+    throw new RefusalError('LICENCE', LICENCE_INACTIVE);
   }
 }

@@ -78,11 +78,15 @@ describe('B-19 hygiene', () => {
 
   it('bundles the panel icon as a resource, with no remote icon URL', () => {
     const manifest = fs.readFileSync(path.join(APP, 'manifest.yml'), 'utf8');
-    expect(manifest).toContain('icon: resource:icons;check.svg');
+    expect(manifest).toContain('icon: resource:icons;icon.svg');
     expect(manifest).not.toMatch(/icon: https?:/);
     expect(manifest).toMatch(/- key: icons\n\s+path: static\/icons/);
-    const svg = fs.readFileSync(path.join(APP, 'static/icons/check.svg'), 'utf8');
+    const svg = fs.readFileSync(path.join(APP, 'static/icons/icon.svg'), 'utf8');
     expect(svg).toMatch(/^<svg [^>]*xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+    // TASK-00007: the Family A mark, the "[ }" frame with the sage criteria, on a sage chiclet for contrast
+    expect(svg).toContain('d="M10.5 7.5H5.5V40.5H10.5"');
+    expect(svg).toContain('fill="#8FA96D"');
+    expect(svg).not.toMatch(/#0C66E4/i);
   });
 
   it('sets a 90% branch threshold for each source file, not only globally', () => {
