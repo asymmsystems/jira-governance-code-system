@@ -74,7 +74,7 @@ export function nextActionText(row: GatesOnly): string | undefined {
       ? 'Next: add and complete the checklist in Checklists for Jira.'
       : 'Next: complete the items in the Definition of Done panel on this issue (DefinitionGuard).';
     case 'code': return row.gates.code.reason === 'PR_OPEN_AT_DONE' ? 'Next: merge the pull request.' : 'Next: link a pull request, or request a Code exception.';
-    case 'audit': return 'Next: seal the issue in its Approval Seal panel (LedgerSeal).';
+    case 'audit': return 'Next: seal the issue in its LedgerSeal panel.';
     default: return undefined;
   }
 }

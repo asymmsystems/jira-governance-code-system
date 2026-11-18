@@ -1,14 +1,15 @@
 modules:
   jira:projectPage:
     - key: fourrealities-project-dashboard
-      title: Four Realities
+      title: FourRealities
+      icon: resource:icons;icon.svg
       render: native
       resource: main
       resolver:
         function: resolver
   jira:issuePanel:
     - key: fourrealities-issue-panel
-      title: Four Realities
+      title: FourRealities
       icon: resource:icons;icon.svg
       render: native
       resource: main
@@ -16,8 +17,9 @@ modules:
         function: resolver
   jira:issueContext:
     - key: fourrealities-issue-context
-      title: Four Realities
-      label: Four Realities
+      title: FourRealities
+      label: FourRealities
+      icon: resource:icons;icon.svg
       render: native
       resource: main
       resolver:
@@ -26,6 +28,7 @@ modules:
     # ADR-013: evidence sources, decision issue types and approver groups (permission standard).
     - key: fourrealities-admin
       title: FourRealities gate authority
+      icon: resource:icons;icon.svg
       render: native
       resource: admin
       resolver:

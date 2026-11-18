@@ -41,12 +41,12 @@ describe('ProjectDashboard', () => {
     expect(triageOrder(rows).map(r => r.issueKey)).toEqual(['DEMO-2', 'DEMO-3', 'DEMO-1', 'DEMO-4']);
   });
 
-  it('shows Four Realities header, readiness lozenge, gate rates with counts first, then Coverage at a glance and RAI', async () => {
+  it('shows FourRealities header, readiness lozenge, gate rates with counts first, then Coverage at a glance and RAI', async () => {
     const r = await mount(dashboard(rows));
     const order = r.root.findAll((n: any) => n.type === 'ui-Heading' && /^(Intent|Audit|Alignment)/.test(flatText(n.props.children)));
     expect(order.map((n: any) => flatText(n.props.children).slice(0, 3))).toEqual(['Int', 'Aud', 'Ali']);
     const text = textOf(r.toJSON());
-    expect(text).toContain('Four Realities DEMO');
+    expect(text).toContain('FourRealities DEMO');
     expect(text).toContain('Coverage at a glance');
     expect(text).toContain('1 of 3 rated issues have evidence');
     expect(findAll(r.root, 'Lozenge').map((l: any) => flatText(l.props.children)).slice(0, 6)).toEqual(['DEMO', 'Incomplete', '33%', '67%', '0%', '50%']);

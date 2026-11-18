@@ -100,7 +100,7 @@ def surface(pg, text, min_width=600):
 
 
 def open_panel(pg):
-    """Opens the Four Realities issue panel from the issue's app actions, with every finding shown."""
+    """Opens the FourRealities issue panel from the issue's app actions, with every finding shown."""
     pg.goto(SITE + f'/browse/{ISSUE}', wait_until='commit', timeout=150000)
     actions = pg.get_by_role('button', name='View app actions').first
     actions.wait_for(timeout=120000)
@@ -111,7 +111,7 @@ def open_panel(pg):
         pg.wait_for_timeout(2000)
     else:
         actions.click()
-        pg.get_by_role('menuitem', name='Four Realities').first.click(timeout=15000)
+        pg.get_by_role('menuitem', name='FourRealities').first.click(timeout=15000)
     for _ in range(45):
         if pg.get_by_text('Gate findings').count():
             break

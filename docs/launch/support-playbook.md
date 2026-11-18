@@ -62,7 +62,7 @@ Each reply names its source. Sign every reply "Asymm Systems support". Replace t
 > - CascadePlan: open a project and choose CascadePlan Planner in the project navigation. No setup is needed.
 > - LedgerSeal: seal an issue from the LedgerSeal panel. To block transitions, a Jira administrator adds the Require Valid LedgerSeal validator to the release transition.
 > - DefinitionGuard: open the DefinitionGuard panel on an issue; a built-in checklist for the issue type is there. To block moves into Done, a Jira administrator adds the DefinitionGuard DoD Enforcement validator to every transition into a Done status.
-> - FourRealities: open Four Realities in the project navigation; the first open builds the project view.
+> - FourRealities: open FourRealities in the project navigation; the first open builds the project view.
 >
 > If a step does not work as the guide says, reply with your site address and a screenshot.
 
