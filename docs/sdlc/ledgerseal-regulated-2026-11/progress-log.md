@@ -329,3 +329,17 @@ exit=0
 - **Open verifier:** release 1.5.0 in the public CLI repository (asymmsystems/jira-governance-code-cli), synced from `tools/verifier` of `2047559` (see `cli-sync.md`).
 - **Developer Console:** the security questionnaire text for the new scope is prepared, not applied, in `docs/marketplace/submission/ledgerseal-security-questionnaires.md` section 5.
 
+
+## 2026-11-18: production release 4.1.0 (TASK-00006 and TASK-00007)
+
+- **Released:** LedgerSeal **4.1.0** to production on 2026-11-18 (Forge deployment of 12:37:35Z), built from `master` at **`41da044`**, the merge of PR #22 (`feature/ledgerseal-review-fixes`). The previous production version was **4.0.0** (`2047559`).
+- **What the release changes:**
+  - TASK-00006: every resolver function goes through one boundary (`src/service/resolver-boundary.ts`). Refusals were already typed results and pass through. A real failure is written through `logFailure` (name, code and status only) and returned as `INTERNAL_FAILURE`; the UI (`src/frontend/call.ts`) raises it again on the client, so every screen shows the same text as before. The Forge runtime no longer logs an error's message or stack.
+  - TASK-00007 (findings 3, 5a, 5b): the issue panel and the issue context entry are titled "LedgerSeal" (were "Approval Seal" and "Approval seal"); "Sign with LedgerSeal" keeps its label. The Family A icon is on the issue panel, the issue context and the admin page (the admin page had no icon before). The Marketplace icon and the portal copy are the 144 px chiclet.
+- **Minor version:** no scope, permission or egress change; `forge lint` showed no approval notice and the deploy ran with no `--approve` rule.
+- **Approval:** the owner approved this release on 2026-11-18.
+- **Gate (local, on the branch tree, which equals `41da044`):** `tsc` clean; 66 suites, 831 tests pass, coverage 97.68 % statements, 93.57 % branches, 98.16 % functions, 98.69 % lines (thresholds 90); `npm audit --omit=dev --audit-level=high` exit 0 (7 moderate); `forge lint` "No issues found"; FSRT `6c821bd` canary reported, 0 findings in both scans (48 files parsed); Semgrep 1.182.1, 0 findings. CI on PR #22: Apps CI, FSRT and SAST green.
+- **Development check (6.18.0, asymmsystems.atlassian.net, Chrome):** LSP-11 shows the panel and the context entry as "LedgerSeal" with the new icon, also in View app actions; the admin page "LedgerSeal settings" shows the new icon in the Apps sidebar. Refusal: a group search of 108 characters on the admin page showed "Search with at most 100 characters." `forge logs -e development` (1 h window) held no line at all, so no ERROR line.
+- **Version check after the deploy:** the deploy ended with "The version of your app [4.1.0] that was just deployed to [production]". `forge deploy list -e production` shows 2026-11-18T12:37:35.317Z, major version 4, Success. `forge logs -e production` (1 h window): no line.
+- **Not done here:** no refusal on a production install. Our sites hold no production install of LedgerSeal (the only one is another site, on major 3), so the refusal was checked on development. The Marketplace listing, the Developer Console icon and the review ticket are not changed (coordinating session).
+- **Logs:** `jira-governance/.tmp/cache/review-fixes-2026-11-18/ls/`.
