@@ -1,9 +1,9 @@
 modules:
   jira:issuePanel:
     - key: definitionguard-issue-panel
-      title: Definition of Done
-      tooltip: Definition of Done Checklist
-      icon: resource:icons;check.svg
+      title: DefinitionGuard
+      tooltip: DefinitionGuard Definition of Done checklist
+      icon: resource:icons;icon.svg
       render: native
       resource: main
       resolver:
@@ -11,6 +11,7 @@ modules:
   jira:projectSettingsPage:
     - key: definitionguard-project-settings
       title: DefinitionGuard
+      icon: resource:icons;icon.svg
       render: native
       resource: settings
       resolver:
@@ -18,6 +19,7 @@ modules:
   jira:adminPage:
     - key: definitionguard-admin
       title: DefinitionGuard approvers
+      icon: resource:icons;icon.svg
       render: native
       resource: admin
       resolver:

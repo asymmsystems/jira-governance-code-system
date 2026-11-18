@@ -21,9 +21,17 @@ describe('B-20 manifest', () => {
     expect(validator).toContain('function: validateTransition');
   });
 
-  it('titles the issue panel Definition of Done without vendor branding', () => {
+  it('TASK-00007 5b: titles the issue panel with the listing name, DefinitionGuard', () => {
     const panel = manifest.slice(manifest.indexOf('jira:issuePanel:'), start);
-    expect(panel).toContain('title: Definition of Done');
+    expect(panel).toContain('    - key: definitionguard-issue-panel\n      title: DefinitionGuard\n');
+    expect(panel).not.toContain('title: Definition of Done');
+  });
+
+  it('TASK-00007 5a: every module that Jira shows with an icon has the bundled DefinitionGuard icon', () => {
+    // Module types whose manifest schema has `icon`: the issue panel, the project settings page and the admin page
+    for (const key of ['definitionguard-issue-panel', 'definitionguard-project-settings', 'definitionguard-admin']) {
+      expect(manifest).toMatch(new RegExp(`- key: ${key}\\n(?:      .*\\n)*?      icon: resource:icons;icon\\.svg\\n`));
+    }
   });
 
   it('declares the native admin page for approvers under module definitionguard-admin', () => {

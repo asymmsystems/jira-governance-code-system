@@ -6,7 +6,7 @@ This guide describes how to complete Definition of Done checklist items, submit 
 
 ## 1. Completing Checklist Items
 
-1. Open a Jira issue and locate the **Definition of Done** panel in the right sidebar.
+1. Open a Jira issue and locate the **DefinitionGuard** panel in the right sidebar.
 2. Review the checklist criteria. Mandatory items are indicated with a bold **Mandatory** badge.
 3. For standard items, click the checkbox to mark the item complete. The panel records your Atlassian account ID and the exact completion timestamp.
 
