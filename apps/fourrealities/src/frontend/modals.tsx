@@ -18,7 +18,7 @@ import {
   Text,
   Textfield
 } from '@forge/react';
-import { invoke } from '@forge/bridge';
+import { callResolver } from './call';
 import { ApprovalView, DecideExceptionPayload, ExceptionDecision, IssueRow, LinkDecisionPayload, RecordExceptionPayload, RequestReviewPayload, WriteResult } from '../contract/data/models';
 import { ConfluencePage } from '../contract/accessors';
 import { messageOf } from '../contract/data/errors';
@@ -54,7 +54,7 @@ export const LinkDecisionModal: React.FC<ModalProps> = ({ issueId, issueKey, onC
     setSearching(true);
     setSearchNotice(null);
     try {
-      const res = (await invoke<{ query: string }, { ok: boolean; pages: ConfluencePage[]; error?: string }>('searchConfluencePages', { query: trimmed })) as { ok: boolean; pages: ConfluencePage[]; error?: string } | undefined;
+      const res = (await callResolver<{ ok: boolean; pages: ConfluencePage[]; error?: string }>('searchConfluencePages', { query: trimmed })) as { ok: boolean; pages: ConfluencePage[]; error?: string } | undefined;
       if (res?.ok) {
         setSearchResults(res.pages || []);
         if ((res.pages || []).length === 0) {
@@ -87,7 +87,7 @@ export const LinkDecisionModal: React.FC<ModalProps> = ({ issueId, issueKey, onC
     setSubmitting(true);
     setError(null);
     try {
-      const res = (await invoke<LinkDecisionPayload, WriteResult>('linkDecision', { issueId, issueKey, url, title })) as WriteResult | undefined;
+      const res = (await callResolver<WriteResult>('linkDecision', { issueId, issueKey, url, title })) as WriteResult | undefined;
       if (res?.success) {
         onDone(res.row, res.approval);
       } else {
@@ -207,7 +207,7 @@ export const ExceptionModal: React.FC<ModalProps & { type: 'CODE' | 'REWORK' }> 
     setSubmitting(true);
     setError(null);
     try {
-      const res = (await invoke<RecordExceptionPayload, WriteResult>('recordException', { issueId, issueKey, type, reason, notes })) as WriteResult | undefined;
+      const res = (await callResolver<WriteResult>('recordException', { issueId, issueKey, type, reason, notes })) as WriteResult | undefined;
       if (res?.success) {
         onDone(res.row, res.approval);
       } else {
@@ -292,7 +292,7 @@ export const DecisionModal: React.FC<ModalProps & { decision: ExceptionDecision 
     setSubmitting(true);
     setError(null);
     try {
-      const res = (await invoke<DecideExceptionPayload, WriteResult>('decideException', { issueId, issueKey, decision, reason })) as WriteResult | undefined;
+      const res = (await callResolver<WriteResult>('decideException', { issueId, issueKey, decision, reason })) as WriteResult | undefined;
       if (res?.success) {
         onDone(res.row, res.approval);
       } else {
@@ -341,7 +341,7 @@ export const ReviewModal: React.FC<ModalProps> = ({ issueId, issueKey, onClose, 
     setSubmitting(true);
     setError(null);
     try {
-      const res = (await invoke<RequestReviewPayload, WriteResult>('requestReview', { issueId, issueKey, comment })) as WriteResult | undefined;
+      const res = (await callResolver<WriteResult>('requestReview', { issueId, issueKey, comment })) as WriteResult | undefined;
       if (res?.success) {
         onDone(res.row, res.approval);
       } else {

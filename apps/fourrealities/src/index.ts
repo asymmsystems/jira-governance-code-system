@@ -5,10 +5,10 @@
  * single composition point that builds the Default implementations (ADR-002).
  */
 
-import Resolver from '@forge/resolver';
+import Resolver, { Request } from '@forge/resolver';
 import { AdminResult, AdminView, ApprovalView, PersonalDataRunResult, CallerContext, DecideExceptionPayload, ForgeContext, IssueRow, LinkDecisionPayload, ProjectDashboardView, RecordExceptionPayload, RequestReviewPayload, ResolverResult, ScheduledRunResult, WriteResult } from './contract/data/models';
 import { ConfluencePage, ConfluencePageSearchAccessor, PrivacyReportAccessor, StorageProvider } from './contract/accessors';
-import { errorSummary } from './contract/data/errors';
+import { errorSummary, internalFailure } from './contract/data/errors';
 import { DefaultForgeKvsStore } from './accessor/default-forge-kvs-store';
 import { DefaultForgeConfluenceSearchAccessor } from './accessor/default-forge-confluence-search-accessor';
 import { DefaultForgeJiraIssueAccessor, Principal } from './accessor/default-forge-jira-issue-accessor';
@@ -466,66 +466,86 @@ export async function renderIssueContext(context: ForgeContext) {
   return { moduleKey: 'fourrealities-issue-context', context };
 }
 
+/** A resolver function as Forge calls it (the payload type is Forge's own, as before). */
+type ResolverFunction = (req: Request) => Promise<unknown>;
+
+/**
+ * TASK-00006: the resolver boundary. What a resolver function returns passes through; what it throws is logged by
+ * name only (errorSummary, never the message or the stack) and returned as INTERNAL_FAILURE, so the Forge runtime
+ * logs nothing. `name` is the fixed resolver key from this file.
+ */
+export function guardResolver(name: string, fn: ResolverFunction): ResolverFunction {
+  return async req => {
+    try {
+      return await fn(req);
+    } catch (err) {
+      console.error(`FourRealities: resolver ${name} failed: ${errorSummary(err)}`);
+      return internalFailure();
+    }
+  };
+}
+
 // Register Forge Resolver for UI Kit invocations
 const resolver = new Resolver();
+const define = (name: string, fn: ResolverFunction) => resolver.define(name, guardResolver(name, fn));
 
-resolver.define('getProjectDashboard', async (req) => {
+define('getProjectDashboard', async (req) => {
   return await getProjectDashboard(req.payload, req.context);
 });
 
-resolver.define('refreshProjectSnapshot', async (req) => {
+define('refreshProjectSnapshot', async (req) => {
   return await refreshProjectSnapshot(req.payload, req.context);
 });
 
-resolver.define('getIssueAlignment', async (req) => {
+define('getIssueAlignment', async (req) => {
   return await getIssueAlignment(req.payload, req.context);
 });
 
-resolver.define('linkDecision', async (req) => {
+define('linkDecision', async (req) => {
   return await linkDecision(req.payload, req.context);
 });
 
-resolver.define('recordException', async (req) => {
+define('recordException', async (req) => {
   return await recordException(req.payload, req.context);
 });
 
-resolver.define('decideException', async (req) => {
+define('decideException', async (req) => {
   return await decideException(req.payload, req.context);
 });
 
-resolver.define('requestReview', async (req) => {
+define('requestReview', async (req) => {
   return await requestReview(req.payload, req.context);
 });
 
-resolver.define('searchConfluencePages', async (req) => {
+define('searchConfluencePages', async (req) => {
   return await searchConfluencePages(req.payload as { query?: string }, req.context);
 });
 
-resolver.define('getEvidenceReports', async (req) => {
+define('getEvidenceReports', async (req) => {
   return await getEvidenceReports(req.payload, req.context);
 });
 
-resolver.define('createEvidenceReport', async (req) => {
+define('createEvidenceReport', async (req) => {
   return await createEvidenceReport(req.payload, req.context);
 });
 
-resolver.define('getEvidenceReport', async (req) => {
+define('getEvidenceReport', async (req) => {
   return await getEvidenceReport(req.payload, req.context);
 });
 
-resolver.define('generateReportDownloadUrls', async (req) => {
+define('generateReportDownloadUrls', async (req) => {
   return await generateReportDownloadUrls(req.payload, req.context);
 });
 
-resolver.define('saveReportSchedule', async (req) => {
+define('saveReportSchedule', async (req) => {
   return await saveReportSchedule(req.payload, req.context);
 });
 
-resolver.define('deleteReportSchedule', async (req) => {
+define('deleteReportSchedule', async (req) => {
   return await deleteReportSchedule(req.payload, req.context);
 });
 
-resolver.define('deleteEvidenceReport', async (req) => {
+define('deleteEvidenceReport', async (req) => {
   return await deleteEvidenceReport(req.payload, req.context);
 });
 
@@ -570,12 +590,13 @@ export async function setReportSettings(payload: unknown, context?: ForgeContext
 }
 
 const adminResolver = new Resolver();
-adminResolver.define('fr-admin-get', async req => getAdminSettings(req.payload, req.context));
-adminResolver.define('fr-admin-save-sources', async req => saveAdminSources(req.payload, req.context));
-adminResolver.define('fr-admin-search-groups', async req => searchAdminGroups(req.payload, req.context));
-adminResolver.define('fr-admin-save-approvers', async req => saveAdminApprovers(req.payload, req.context));
-adminResolver.define('fr-admin-reports-get', async req => getReportSettings(req.payload, req.context));
-adminResolver.define('fr-admin-reports-save', async req => setReportSettings(req.payload, req.context));
+const defineAdmin = (name: string, fn: ResolverFunction) => adminResolver.define(name, guardResolver(name, fn));
+defineAdmin('fr-admin-get', async req => getAdminSettings(req.payload, req.context));
+defineAdmin('fr-admin-save-sources', async req => saveAdminSources(req.payload, req.context));
+defineAdmin('fr-admin-search-groups', async req => searchAdminGroups(req.payload, req.context));
+defineAdmin('fr-admin-save-approvers', async req => saveAdminApprovers(req.payload, req.context));
+defineAdmin('fr-admin-reports-get', async req => getReportSettings(req.payload, req.context));
+defineAdmin('fr-admin-reports-save', async req => setReportSettings(req.payload, req.context));
 
 /** Forge function of the admin page (manifest function admin-resolver). */
 export const adminHandler = adminResolver.getDefinitions();

@@ -6,7 +6,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { Inline, SectionMessage, Spinner, Tab, TabList, TabPanel, Tabs, Text } from '@forge/react';
-import { invoke, view } from '@forge/bridge';
+import { view } from '@forge/bridge';
+import { callResolver } from './call';
 import { ApprovalView, ForgeContext, IssueRow, ProjectDashboardView, ResolverError } from '../contract/data/models';
 import { SPACE, TEXT_ROLE } from '../brand/brand';
 import { AppSurface } from '../brand/layout';
@@ -44,7 +45,7 @@ export const FourRealitiesApp: React.FC = () => {
       setCompact(context?.moduleKey === 'fourrealities-issue-context');
       setViewerAccountId(context?.accountId);
       const resolver = issueView ? 'getIssueAlignment' : refresh ? 'refreshProjectSnapshot' : 'getProjectDashboard';
-      const res = (await invoke<Record<string, never>, LoadResult>(resolver, {})) as LoadResult | undefined;
+      const res = (await callResolver<LoadResult>(resolver, {})) as LoadResult | undefined;
       if (!res?.ok) {
         setLicenceInactive(res?.error?.code === 'LICENSE_INACTIVE');
         setErrorMessage(errorText(res, 'Failed to load delivery evidence.'));
