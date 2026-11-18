@@ -47,7 +47,7 @@ def panel_text(pg):
         show.first.click()
         pg.wait_for_timeout(1500)
     text = pg.inner_text('body')
-    start = text.find('Four Realities\nIncomplete') if 'Four Realities\nIncomplete' in text else text.find('Gate findings')
+    start = text.find('FourRealities\nIncomplete') if 'FourRealities\nIncomplete' in text else text.find('Gate findings')
     return text[start:start + 2500]
 
 

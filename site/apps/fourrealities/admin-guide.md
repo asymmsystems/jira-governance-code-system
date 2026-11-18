@@ -27,7 +27,7 @@ Code exceptions are approved, rejected or revoked by project administrators, Jir
 
 ## 4. Projects and snapshots
 
-A project's dashboard is built the first time someone opens **Four Realities** in the project, and again every day and on **Refresh**. FourRealities reads at most 2,000 issues per project, newest first.
+A project's dashboard is built the first time someone opens **FourRealities** in the project, and again every day and on **Refresh**. FourRealities reads at most 2,000 issues per project, newest first.
 
 ## 5. Data
 

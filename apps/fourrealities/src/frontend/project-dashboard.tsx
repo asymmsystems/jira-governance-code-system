@@ -374,7 +374,7 @@ export const ProjectDashboard: React.FC<{ view: ProjectDashboardView; onRefresh:
       ) : null}
 
       <PageHeader
-        title="Four Realities"
+        title="FourRealities"
         scopeBadge={view.projectKey}
         subtitle="Delivery assurance and audit readiness"
         metaText={`Read ${view.generatedAt.slice(0, 16).replace('T', ' ')} UTC`}

@@ -1,10 +1,10 @@
 # FourRealities User Guide
 
-![Four Realities issue panel](/assets/fourrealities/02-issue-panel.png)
+![FourRealities issue panel](/assets/fourrealities/02-issue-panel.png)
 
 ## The issue panel
 
-Open **Four Realities** from an issue's app actions, or in the issue context on the right. The panel shows the four checks as a chain, one sentence about the first gap, the next step, and **Gate findings** with each check's state and source.
+Open **FourRealities** from an issue's app actions, or in the issue context on the right. The panel shows the four checks as a chain, one sentence about the first gap, the next step, and **Gate findings** with each check's state and source.
 
 | State | Meaning | Scored |
 |---|---|---|
@@ -27,6 +27,6 @@ Open **Four Realities** from an issue's app actions, or in the issue context on 
 
 ## The project dashboard
 
-![Four Realities dashboard](/assets/fourrealities/01-dashboard.png)
+![FourRealities dashboard](/assets/fourrealities/01-dashboard.png)
 
-Open **Four Realities** in the project navigation: audit readiness, one card per check (or "Not used"), the checks in use on this site, Priority actions, Coverage at a glance, the Issue triage table with filters (search, assignee, sprint, gate, risk and presets) and a four-week trend for the whole project. You see only the issues you can browse in Jira.
+Open **FourRealities** in the project navigation: audit readiness, one card per check (or "Not used"), the checks in use on this site, Priority actions, Coverage at a glance, the Issue triage table with filters (search, assignee, sprint, gate, risk and presets) and a four-week trend for the whole project. You see only the issues you can browse in Jira.

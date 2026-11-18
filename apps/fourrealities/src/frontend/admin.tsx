@@ -8,7 +8,7 @@
 
 import React, { useEffect, useState } from 'react';
 import ForgeReconciler, { Button, Heading, SectionMessage, Select, Spinner, Stack, Text, Textfield } from '@forge/react';
-import { invoke } from '@forge/bridge';
+import { callResolver } from './call';
 import { AdminPolicyPanel, GroupChoice, buildAdminPolicyView, savedGroups } from '@asymm/jira-ui';
 import { AdminResult, AdminView, EvidenceSourceSettings, GateName } from '../contract/data/models';
 import {
@@ -78,7 +78,7 @@ export const FourRealitiesAdmin: React.FC = () => {
   };
 
   useEffect(() => {
-    invoke('fr-admin-get', {})
+    callResolver('fr-admin-get', {})
       .then(r => accept((r as AdminResponse) || null))
       .catch(() => accept(null))
       .finally(() => setLoading(false));
@@ -111,7 +111,7 @@ export const FourRealitiesAdmin: React.FC = () => {
     setSaving(true);
     setNotice(null);
     try {
-      const r = (await invoke('fr-admin-save-sources', { ...form, decisionIssueTypes: parseIssueTypes(typesText) })) as AdminResponse;
+      const r = (await callResolver('fr-admin-save-sources', { ...form, decisionIssueTypes: parseIssueTypes(typesText) })) as AdminResponse;
       if (r?.ok) {
         accept(r);
         setNotice('Saved. Dashboards build their snapshot again on the next view.');
@@ -165,7 +165,7 @@ export const FourRealitiesAdmin: React.FC = () => {
           onSearch={async () => {
             setGroupNotice(null);
             try {
-              const r = (await invoke('fr-admin-search-groups', { query })) as GroupResponse;
+              const r = (await callResolver('fr-admin-search-groups', { query })) as GroupResponse;
               if (r?.ok) setResults(r.groups);
               else setGroupNotice(failure(r, 'FourRealities could not search groups in Jira. Try again.'));
             } catch {
@@ -178,7 +178,7 @@ export const FourRealitiesAdmin: React.FC = () => {
             setSavingGroups(true);
             setGroupNotice(null);
             try {
-              const r = (await invoke('fr-admin-save-approvers', { groupIds: chosen.map(g => g.groupId) })) as AdminResponse;
+              const r = (await callResolver('fr-admin-save-approvers', { groupIds: chosen.map(g => g.groupId) })) as AdminResponse;
               if (r?.ok) {
                 accept(r);
                 setGroupNotice('Saved.');

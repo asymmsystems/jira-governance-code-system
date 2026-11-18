@@ -88,9 +88,9 @@ describe('IssuePanel', () => {
     expect(textOf(r.toJSON())).not.toContain('Source: Jira issue links and remote links.');
   });
 
-  it('B-21: shows Four Realities header with readiness lozenge, the four gates first, and RAI last', async () => {
+  it('B-21: shows FourRealities header with readiness lozenge, the four gates first, and RAI last', async () => {
     const r = await mount(row('DEMO-5', { intent: M_INTENT, process: F, code: NA, audit: F }));
-    expect(textOf(r.toJSON())).toContain('Four Realities');
+    expect(textOf(r.toJSON())).toContain('FourRealities');
     const lozenges = findAll(r.root, 'Lozenge').map((l: any) => String(l.props.children));
     // Header readiness lozenge, then pipeline chips, then the four gate rows, then RAI last.
     expect(lozenges[0]).toBe('Incomplete');

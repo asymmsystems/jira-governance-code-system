@@ -68,7 +68,7 @@ const REPORT_CASES: Record<string, unknown> = {
 const OTHER_KEYS = ['getProjectDashboard', 'refreshProjectSnapshot', 'getIssueAlignment', 'linkDecision', 'recordException', 'decideException', 'requestReview', 'searchConfluencePages'];
 
 const source = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'index.ts'), 'utf8');
-const handlerKeys = Array.from(source.matchAll(/^resolver\.define\('([^']+)'/gm)).map(m => m[1]);
+const handlerKeys = Array.from(source.matchAll(/^define\('([^']+)'/gm)).map(m => m[1]);
 
 let storage: MemoryStorage;
 let objects: MemoryObjects;

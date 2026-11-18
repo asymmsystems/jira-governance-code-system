@@ -79,7 +79,7 @@ describe('B-36: drift sentence from the first missing gate', () => {
     expect(nextActionText({ gates: gates({ intent: F, process: miss('CHECKLIST_NONE') }) })).toBe('Next: add and complete the checklist in Checklists for Jira.');
     expect(nextActionText({ gates: gates({ intent: F, code: miss('PR_NONE') }) })).toBe('Next: link a pull request, or request a Code exception.');
     expect(nextActionText({ gates: gates({ intent: F, code: miss('PR_OPEN_AT_DONE') }) })).toBe('Next: merge the pull request.');
-    expect(nextActionText({ gates: gates({ intent: F, audit: miss('SEAL_NONE') }) })).toBe('Next: seal the issue in its Approval Seal panel (LedgerSeal).');
+    expect(nextActionText({ gates: gates({ intent: F, audit: miss('SEAL_NONE') }) })).toBe('Next: seal the issue in its LedgerSeal panel.');
     expect(nextActionText({ gates: gates({ intent: F }) })).toBeUndefined();
   });
 });

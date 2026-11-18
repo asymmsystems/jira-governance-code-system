@@ -8,7 +8,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Button, Select, Stack, Text } from '@forge/react';
-import { invoke } from '@forge/bridge';
+import { callResolver } from './call';
 import { AdminPolicyPanel, GroupChoice, buildAdminPolicyView, savedGroups } from '@asymm/jira-ui';
 import { AdminResult } from '../contract/data/models';
 import { ReportSettingsView } from '../contract/data/reports';
@@ -44,7 +44,7 @@ export const ReportSettingsSection: React.FC = () => {
   };
   useEffect(() => {
     Promise.resolve()
-      .then(() => invoke('fr-admin-reports-get', {}))
+      .then(() => callResolver('fr-admin-reports-get', {}))
       .then(r => accept((r as ReportSettingsResponse) || null))
       .catch(() => accept(null));
   }, []);
@@ -61,7 +61,7 @@ export const ReportSettingsSection: React.FC = () => {
     setSaving(true);
     setNotice(null);
     try {
-      const r = (await invoke('fr-admin-reports-save', { retentionDays: days, reportGroupIds: groupIds })) as ReportSettingsResponse;
+      const r = (await callResolver('fr-admin-reports-save', { retentionDays: days, reportGroupIds: groupIds })) as ReportSettingsResponse;
       if (r?.ok) {
         accept(r);
         setNotice('Saved.');
@@ -97,7 +97,7 @@ export const ReportSettingsSection: React.FC = () => {
           onSearch={async () => {
             setNotice(null);
             try {
-              const r = (await invoke('fr-admin-search-groups', { query })) as GroupResponse;
+              const r = (await callResolver('fr-admin-search-groups', { query })) as GroupResponse;
               if (r?.ok) setResults(r.groups);
               else setNotice(failure(r, 'FourRealities could not search groups in Jira. Try again.'));
             } catch {

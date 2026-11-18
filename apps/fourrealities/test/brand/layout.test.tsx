@@ -52,7 +52,7 @@ describe('brand layout primitives', () => {
   it('renders PageHeader with and without optional scopeBadge, subtitle, metaText, and action', () => {
     const full = TestRenderer.create(
       <PageHeader
-        title="Four Realities"
+        title="FourRealities"
         scopeBadge="DEMO"
         subtitle="Delivery assurance and audit readiness"
         metaText="Read 2026-11-01 08:30 UTC"
@@ -60,35 +60,35 @@ describe('brand layout primitives', () => {
       />
     );
     const fullText = textOf(full.toJSON());
-    expect(fullText).toContain('Four Realities');
+    expect(fullText).toContain('FourRealities');
     expect(fullText).toContain('DEMO');
     expect(fullText).toContain('Delivery assurance and audit readiness');
     expect(fullText).toContain('Read 2026-11-01 08:30 UTC');
     expect(fullText).toContain('Refresh');
     expect(findAll(full.root, 'Lozenge')[0].props.maxWidth).toBe('100%');
 
-    const minimal = TestRenderer.create(<PageHeader title="Four Realities" />);
-    expect(textOf(minimal.toJSON())).toBe('Four Realities');
+    const minimal = TestRenderer.create(<PageHeader title="FourRealities" />);
+    expect(textOf(minimal.toJSON())).toBe('FourRealities');
     expect(findAll(minimal.root, 'Lozenge')).toHaveLength(0);
   });
 
   it('renders PanelHeader with title, status lozenge, and optional action', () => {
     const renderer = TestRenderer.create(
       <PanelHeader
-        title="Four Realities"
+        title="FourRealities"
         statusText="Incomplete"
         statusAppearance="removed"
         action={<button>Refresh</button>}
       />
     );
-    expect(textOf(renderer.toJSON())).toContain('Four Realities');
+    expect(textOf(renderer.toJSON())).toContain('FourRealities');
     expect(textOf(renderer.toJSON())).toContain('Incomplete');
     expect(findAll(renderer.root, 'Lozenge')[0].props.appearance).toBe('removed');
     expect(findAll(renderer.root, 'Lozenge')[0].props.maxWidth).toBe('100%');
     expect(textOf(renderer.toJSON())).toContain('Refresh');
 
-    const minimal = TestRenderer.create(<PanelHeader title="Four Realities" />);
-    expect(textOf(minimal.toJSON())).toBe('Four Realities');
+    const minimal = TestRenderer.create(<PanelHeader title="FourRealities" />);
+    expect(textOf(minimal.toJSON())).toBe('FourRealities');
     expect(findAll(minimal.root, 'Lozenge')).toHaveLength(0);
   });
 

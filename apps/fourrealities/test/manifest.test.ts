@@ -33,14 +33,27 @@ describe('manifest.yml', () => {
     expect(manifest).not.toMatch(/external:/);
   });
 
-  it('unifies project page, issue panel, and issue context module titles to Four Realities', () => {
-    expect(manifest).toMatch(/jira:projectPage:\s*\n\s*- key: fourrealities-project-dashboard\s*\n\s*title: Four Realities/);
-    expect(manifest).toMatch(/jira:issuePanel:\s*\n\s*- key: fourrealities-issue-panel\s*\n\s*title: Four Realities/);
-    expect(manifest).toMatch(/jira:issueContext:\s*\n\s*- key: fourrealities-issue-context\s*\n\s*title: Four Realities\s*\n\s*label: Four Realities/);
+  it('TASK-00007 5b: titles the project page, issue panel and issue context with the listing name, FourRealities', () => {
+    expect(manifest).toMatch(/jira:projectPage:\s*\n\s*- key: fourrealities-project-dashboard\s*\n\s*title: FourRealities\n/);
+    expect(manifest).toMatch(/jira:issuePanel:\s*\n\s*- key: fourrealities-issue-panel\s*\n\s*title: FourRealities\n/);
+    expect(manifest).toMatch(/jira:issueContext:\s*\n\s*- key: fourrealities-issue-context\s*\n\s*title: FourRealities\s*\n\s*label: FourRealities\n/);
+    expect(manifest).not.toMatch(/Four Realities/);
+  });
+
+  it('TASK-00007 5a: every module that Jira shows with an icon has the bundled FourRealities icon', () => {
+    // Module types whose manifest schema has `icon`: the project page, the issue panel, the issue context and the admin page
+    for (const key of ['fourrealities-project-dashboard', 'fourrealities-issue-panel', 'fourrealities-issue-context', 'fourrealities-admin']) {
+      expect(manifest).toMatch(new RegExp(`- key: ${key}\\n(?:      .*\\n)*?      icon: resource:icons;icon\\.svg\\n`));
+    }
+    // The Family A mark: the "[ }" frame with the teal grid, no Atlassian blue
+    const svg = fs.readFileSync(path.join(__dirname, '..', 'static', 'icons', 'icon.svg'), 'utf8');
+    expect(svg).toContain('d="M10.5 7.5H5.5V40.5H10.5"');
+    expect(svg).toContain('#5295A3');
+    expect(svg).not.toMatch(/#0052CC|#0C66E4/i);
   });
 
   it('ADR-013: declares the admin page of the permission standard, with its own resolver function', () => {
-    expect(manifest).toMatch(/jira:adminPage:\s*\n(?:\s*#.*\n)?\s*- key: fourrealities-admin\s*\n\s*title: FourRealities gate authority\s*\n\s*render: native\s*\n\s*resource: admin\s*\n\s*resolver:\s*\n\s*function: admin-resolver/);
+    expect(manifest).toMatch(/jira:adminPage:\s*\n(?:\s*#.*\n)?\s*- key: fourrealities-admin\s*\n\s*title: FourRealities gate authority\s*\n\s*icon: resource:icons;icon\.svg\s*\n\s*render: native\s*\n\s*resource: admin\s*\n\s*resolver:\s*\n\s*function: admin-resolver/);
     expect(manifest).toMatch(/- key: admin-resolver\s*\n\s*handler: index\.adminHandler/);
     expect(manifest).toMatch(/- key: admin\s*\n\s*path: src\/frontend\/admin\.tsx/);
   });

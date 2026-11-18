@@ -31,7 +31,7 @@ import {
   UserPicker,
   useObjectStore
 } from '@forge/react';
-import { invoke } from '@forge/bridge';
+import { callResolver } from './call';
 import { ReportDetail, ReportFileName, ReportListRow, ReportResult, ReportSchedule, ReportsView } from '../contract/data/reports';
 import { SPACE, TEXT_ROLE } from '../brand/brand';
 import { ActionRow, Card, CardHeader, FormField, ModalContent, NoteBox, PageHeader, TableCard } from '../brand/layout';
@@ -87,7 +87,7 @@ const NewReportModal: React.FC<{ view: ReportsView; onClose: () => void; onDone:
     setBusy(true);
     setError(null);
     try {
-      const r = (await invoke('createEvidenceReport', createPayload({ from, to, fieldIds, people }))) as ReportResult<{ reportId: string }> | null;
+      const r = (await callResolver('createEvidenceReport', createPayload({ from, to, fieldIds, people }))) as ReportResult<{ reportId: string }> | null;
       if (r?.ok) onDone('The report is queued. It appears here when it is ready.');
       else setError(errorOf(r, 'FourRealities could not make the report. Try again.'));
     } catch {
@@ -143,7 +143,7 @@ const DownloadModal: React.FC<{ row: ReportListRow; onClose: () => void }> = ({ 
   const { downloadObjects } = useObjectStore();
   // Every page of the missing issues is asked from the server, which checks the download right each time.
   useEffect(() => {
-    invoke('getEvidenceReport', { reportId: row.reportId, notReadPage })
+    callResolver('getEvidenceReport', { reportId: row.reportId, notReadPage })
       .then(r => setDetail((r as ReportResult<ReportDetail>) || null))
       .catch(() => setDetail(null));
   }, [row.reportId, notReadPage]);
@@ -219,7 +219,7 @@ const DeleteModal: React.FC<{ row: ReportListRow; onClose: () => void; onDone: (
     setBusy(true);
     setError(null);
     try {
-      const r = (await invoke('deleteEvidenceReport', { reportId: row.reportId, reason })) as ReportResult<{ tombstone: unknown }> | null;
+      const r = (await callResolver('deleteEvidenceReport', { reportId: row.reportId, reason })) as ReportResult<{ tombstone: unknown }> | null;
       if (r?.ok) onDone('The report was deleted. Its deletion record is shown below the list.');
       else setError(errorOf(r, 'FourRealities could not delete the report.'));
     } catch {
@@ -263,7 +263,7 @@ const Schedules: React.FC<{ view: ReportsView; onChanged: (schedules: ReportSche
   const call = async (resolver: string, payload: Record<string, unknown>, done: string) => {
     setError(null);
     try {
-      const r = (await invoke(resolver, payload)) as ReportResult<{ schedules: ReportSchedule[] }> | null;
+      const r = (await callResolver(resolver, payload)) as ReportResult<{ schedules: ReportSchedule[] }> | null;
       if (r?.ok) onChanged(r.schedules, done);
       else setError(errorOf(r, 'FourRealities could not save the schedule.'));
     } catch {
@@ -311,7 +311,7 @@ export const EvidenceReports: React.FC = () => {
   const load = async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
-      setResponse(((await invoke('getEvidenceReports', {})) as ListResponse) || null);
+      setResponse(((await callResolver('getEvidenceReports', {})) as ListResponse) || null);
     } catch {
       if (!quiet) setResponse(null);
     } finally {

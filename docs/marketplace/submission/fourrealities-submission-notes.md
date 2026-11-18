@@ -48,7 +48,7 @@ Install FourRealities on your own review site; nothing depends on the publisher'
 2. Observe the evidence source of each check (Intent, Process, Code, Audit), what was detected on the site, the decision issue types and the approver groups. Leave the defaults and click **Save evidence sources**.
 
 ### Test Step 2: Issue Panel
-1. Open a Done issue and open **Four Realities** from the issue's app actions (also available as **Four Realities** in the issue context area on the right).
+1. Open a Done issue and open **FourRealities** from the issue's app actions (also available as **FourRealities** in the issue context area on the right).
 2. Observe the four checks as a chain, the next step and the **Refresh** button. On a site without the optional apps, Process and Audit show "Not used on this site".
 3. Expand **Gate findings** to see each check with its source, the RAI and **Why N%?**.
 
@@ -58,7 +58,7 @@ Install FourRealities on your own review site; nothing depends on the publisher'
 3. Click **Add link**. The message says "Link added. Intent: Evidence found." and a remote link appears under the issue's web links.
 
 ### Test Step 4: Project Dashboard
-1. In the same project, open **Four Realities** from the project navigation.
+1. In the same project, open **FourRealities** from the project navigation.
 2. Observe Audit readiness, the four check cards, the checks in use, **Priority actions**, **Coverage at a glance** and **Issue triage** with its filters.
 3. Click **Inspect** on an issue to see its checks. Click **Refresh** to rebuild the snapshot.
 
@@ -83,5 +83,5 @@ Add when the version with evidence reports is submitted (development 7.7.0 on 20
 
 Architecture: report files reside in Forge Object Store (data residency enabled); no egress.
 
-Reviewer test step: open a project, Apps, Four Realities, tab "Evidence reports"; as a project administrator choose **New evidence report** for the last 30 days; when the row is Ready, choose **Download** and save the four files; run `node verify-fourrealities-report.mjs <manifest> <report.json> <report.csv>` from the open verifier: every check passes.
+Reviewer test step: open a project, Apps, FourRealities, tab "Evidence reports"; as a project administrator choose **New evidence report** for the last 30 days; when the row is Ready, choose **Download** and save the four files; run `node verify-fourrealities-report.mjs <manifest> <report.json> <report.csv>` from the open verifier: every check passes.
 

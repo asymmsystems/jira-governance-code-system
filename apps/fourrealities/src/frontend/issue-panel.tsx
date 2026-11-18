@@ -196,7 +196,7 @@ export const IssuePanel: React.FC<IssuePanelProps> = ({
       ) : null}
 
       <PanelHeader
-        title="Four Realities"
+        title="FourRealities"
         statusText={readiness.statusWord}
         statusAppearance={readiness.appearance}
         action={

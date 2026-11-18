@@ -37,3 +37,26 @@ export function jiraError(status: number | undefined, message: string): { ok: fa
   if (status === 429) return { ok: false, error: { code: 'RATE_LIMITED', message, status } };
   return { ok: false, error: { code: 'JIRA_ERROR', message, status } };
 }
+
+/**
+ * TASK-00006: what a resolver returns in place of a thrown error. Refusals are already typed results
+ * (`{ ok: false, error: { code, message } }`); a real failure (a storage or Jira error that escaped) used to reach
+ * the Forge resolver runtime, which logged its message and stack. The resolver boundary in index.ts logs it by
+ * name only (errorSummary) and returns this value; the UI raises it again on the client (frontend/call.ts), so
+ * each screen shows the same text as before.
+ */
+export const INTERNAL_FAILURE_CODE = 'INTERNAL_FAILURE';
+
+export const INTERNAL_FAILURE_MESSAGE = 'FourRealities could not complete this request. Try again.';
+
+export type InternalFailure = { ok: false; error: { code: typeof INTERNAL_FAILURE_CODE; message: string } };
+
+export function internalFailure(): InternalFailure {
+  return { ok: false, error: { code: INTERNAL_FAILURE_CODE, message: INTERNAL_FAILURE_MESSAGE } };
+}
+
+/** True for the value the resolver boundary returns in place of a thrown error. */
+export function isInternalFailure(value: unknown): value is InternalFailure {
+  const v = value as { ok?: unknown; error?: { code?: unknown } } | null | undefined;
+  return Boolean(v) && typeof v === 'object' && v?.ok === false && v?.error?.code === INTERNAL_FAILURE_CODE;
+}
