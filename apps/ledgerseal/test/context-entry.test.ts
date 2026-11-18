@@ -39,7 +39,7 @@ describe('F-12 the issue context entry', () => {
 
   it('the entry offers no action: it calls only the verify resolver (which, as for the panel, records a new change) and has no button', () => {
     const ui = fs.readFileSync(path.resolve(__dirname, '../src/frontend/context.tsx'), 'utf8');
-    expect(ui).toContain("invoke('verify-issue-api', {})");
+    expect(ui).toContain("callResolver('verify-issue-api', {})");
     expect(ui).not.toMatch(/seal-issue-api|revoke-seal-api|<Button/);
   });
 });

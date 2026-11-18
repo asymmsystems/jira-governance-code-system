@@ -9,7 +9,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Box, Button, Heading, Inline, SectionMessage, Spinner, Stack, Text, TextArea, Textfield } from '@forge/react';
-import { invoke } from '@forge/bridge';
+import { callResolver } from './call';
 import { ListRow, SPACE, TEXT_ROLE } from '@asymm/jira-ui';
 import { logFailure } from '../service/log';
 import { buildRouteRows, parseRouteText, ROUTE_EXAMPLE, routeText } from './route-admin-view-model';
@@ -24,7 +24,7 @@ export const ApprovalRoutesTab: React.FC = () => {
   const load = async () => {
     setLoading(true);
     try {
-      setResponse(await invoke('route-list-api', {}));
+      setResponse(await callResolver('route-list-api', {}));
     } catch (err) {
       logFailure('could not load the routes', err);
       setResponse(null);
@@ -40,7 +40,7 @@ export const ApprovalRoutesTab: React.FC = () => {
   const act = async (name: string, payload: any) => {
     setNotice(null);
     try {
-      const r = (await invoke(name, payload)) as any;
+      const r = (await callResolver(name, payload)) as any;
       setNotice(r?.ok ? 'Saved.' : r?.message || 'LedgerSeal could not save. Nothing was saved.');
       if (r?.ok) {
         setEditing(null);
