@@ -18,13 +18,15 @@ The cut plans are next to the demos: `docs/marketplace/assets/<app>/demo/<app>-l
 
 ## State on 2026-11-19
 
-- The four cut plans were made from the demo recordings of 2026-11-09 and 2026-11-10. Those
-  recordings show the old app names and the old icons.
-- No final video exists. Only fast drafts were rendered, as style references.
-- Only the DefinitionGuard draft was checked frame by frame. The LedgerSeal, CascadePlan and
-  FourRealities plans were rendered once and were not checked.
-- Nobody has listened to the sound track.
-- The final cuts are made from new recordings of the production versions (TASK-00008).
+- **DefinitionGuard is final.** Its plan has the times and positions of the demo recorded on
+  2026-11-19 on the production version 3.4.0 (`docs/marketplace/assets/definitionguard/demo/`).
+  The final video (25.45 seconds) was checked frame by frame, and the owner watched it, listened
+  to the sound and approved it on 2026-11-19. The video file is not kept in this repository; a
+  render of the plan makes it again.
+- The LedgerSeal, CascadePlan and FourRealities plans were made from the demo recordings of
+  2026-11-09 and 2026-11-10. Those recordings show the old app names and the old icons. These
+  plans were rendered once as drafts and were not checked. Their final cuts are made from new
+  recordings of the production versions (TASK-00008), with new times and positions.
 
 ## What you need
 
