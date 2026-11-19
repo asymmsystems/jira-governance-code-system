@@ -243,9 +243,10 @@ def build(spec, base, work, draft, with_sound):
     g.add(f"[bg][allv]overlay=x=0:y={TOP}:eof_action=repeat[c0]")
     g.add("[c0][ic]overlay=x=26:y=13[c1]")
     cur = "c1"
-    strip = [g.text(spec["name"], F_BOLD, 32, INK, "86", "17", 0, total + 1, fin=0, rise=0),
-             g.text(spec.get("note", "Screen recording of a test project with test data"), F_REG, 23, MUTED,
-                    "w-text_w-30", "24", 0, te + 0.2, fin=0, rise=0, fout=0.3)]
+    strip = [g.text(spec["name"], F_BOLD, 32, INK, "86", "17", 0, total + 1, fin=0, rise=0)]
+    if spec.get("note"):  # an optional line on the right of the title strip; none by default
+        strip.append(g.text(spec["note"], F_REG, 23, MUTED, "w-text_w-30", "24", 0, te + 0.2,
+                            fin=0, rise=0, fout=0.3))
 
     # 5. The hook: large words on a light band over the dimmed app, from the first frame.
     hook = spec["hook"]

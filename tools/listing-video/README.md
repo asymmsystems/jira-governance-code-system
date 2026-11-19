@@ -57,7 +57,7 @@ tools/listing-video/listing_cut.py <plan>
 
 The video is 1920 x 1080 at 60 frames a second, H.264 with AAC sound.
 
-- A title strip (72 pixels) shows the app icon, the app name and a short note.
+- A title strip (72 pixels) shows the app icon and the app name, and the optional note.
 - The app window (1920 x 864) shows the recording. A camera moves over it.
 - A caption band (144 pixels) shows a small coloured label and one large line.
 - The video starts with the hook: large words on a light band over the dimmed app.
@@ -76,7 +76,7 @@ All paths in a plan are relative to the plan file.
 | `src` | The demo recording. |
 | `icon` | The app icon. The plans use `../icon.png`, so a new icon comes in with no change to the plan. |
 | `out` | The name of the finished video. |
-| `note` | Optional. The short note in the title strip. |
+| `note` | Optional. A short line on the right of the title strip. There is no default: without `note` the strip shows only the icon and the name. |
 | `shots` | The shots, in order. See below. |
 | `hook` | `t1` (end time), `kicker` (the small label), `lines` (the large words), `sub` (one smaller line). |
 | `captions` | Each has `t0`, `t1`, `kicker`, `tone` (`teal`, `rose` or `sage`) and `text`. |
