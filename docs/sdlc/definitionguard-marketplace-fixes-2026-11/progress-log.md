@@ -262,3 +262,11 @@ Branch `fix/definitionguard-guide-gaps`, from `master` at `04d36a2`. The gaps ar
 - **Version check after the deploy:** the deploy ended with "The version of your app [3.4.0] that was just deployed to [production]". `forge deploy list -e production` shows 2026-11-18T12:55:40.585Z, major version 3, Success.
 - **Not done here:** the 3.4.0 listing version (TASK-00002 flow, owner's OK on the Publisher Agreement), the Developer Console icon, and the Marketplace logo (coordinating session).
 - **Logs:** `jira-governance/.tmp/cache/review-fixes-2026-11-18/dg/`.
+
+## 2026-11-19: demo video re-recorded on 3.4.0 (TASK-00008)
+
+- **What changed:** `docs/marketplace/assets/definitionguard/demo/definitionguard-demo.mp4` is a new recording of the production version **3.4.0** (the Marketplace install on asymm-staging). It shows the name "DefinitionGuard" and the new icon in the issue's apps menu. The old demo (2026-11-09, development site, DEV badge, old name and icon) is in the git history; its README section "Earlier version" keeps the ECOHELP-182684 reference.
+- **Content:** test project "Harbor Notes" (HBR), task HBR-3, 4 mandatory items. The move to Done is refused; two evidence ticks and one plain tick; the assignee's tick and waiver of "Peer code review approved" are refused; Done is refused again; the audit history shows "Chain intact". Details and frames: `docs/marketplace/assets/definitionguard/demo/README.md`.
+- **Checks before the owner saw it:** exactly one teal pointer in every frame sampled each half second (209 frames); no browser automation border or label in any frame; no DEV badge. The owner watched the demo and the short listing video and approved both on 2026-11-19.
+- **Also:** the site user guide copy is replaced through the site repo (`asymm-corporate-code-pfw`, branch `feature/definitionguard-demo-3-4-0`). The listing plan for the new recording goes to branch `docs/listing-videos`, without the video files.
+- **Not done here:** the YouTube upload (TASK-00005) and the listing video field (TASK-00002). The owner does those.
