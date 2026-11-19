@@ -1,0 +1,71 @@
+{
+  "app": "cascadeplan",
+  "name": "CascadePlan",
+  "src": "cascadeplan-demo.mp4",
+  "icon": "../icon.png",
+  "out": "cascadeplan-listing.mp4",
+  "shots": [
+    {
+      "lead": 2.6,
+      "segs": [[22.6, 28.85], [30.45, 33.6]],
+      "cam": [
+        [0.0, 951, 428, 1.0],
+        [2.6, 951, 455, 1.08],
+        [3.5, 918, 648, 2.432],
+        [8.7, 918, 648, 2.432],
+        [9.3, 951, 428, 1.0],
+        [9.5, 951, 428, 1.0],
+        [10.3, 293.5, 692, 3.24],
+        [12.0, 293.5, 692, 3.24]
+      ],
+      "focus": [{"t0": 3.6, "t1": 8.8, "rect": [660, 688, 1180, 822]},
+                {"t0": 10.0, "t1": 12.6, "rect": [28, 696, 452, 826]}]
+    },
+    {
+      "x": 0.3,
+      "segs": [[37.0, 42.8]],
+      "cam": [
+        [0.0, 1511, 384, 2.432],
+        [1.2, 1511, 384, 2.432],
+        [2.0, 1561, 391.7, 3.3],
+        [5.8, 1561, 391.7, 3.3]
+      ],
+      "focus": [{"t0": 1.0, "t1": 6.2, "rect": [1274, 284, 1848, 428]}]
+    }
+  ],
+  "hook": {
+    "t1": 2.8,
+    "kicker": "CASCADEPLAN FOR JIRA",
+    "lines": ["What will this move change in Jira?"],
+    "sub": "Drag a work item on the timeline."
+  },
+  "captions": [
+    {"t0": 2.9, "t1": 8.2, "kicker": "BEFORE THE DROP", "tone": "teal", "text": "Every Jira date this move will write."},
+    {"t0": 8.3, "t1": 11.6, "kicker": "APPLIED", "tone": "sage", "text": "The move is applied. Undo is offered."},
+    {"t0": 11.8, "t1": 17.1, "kicker": "CHANGES", "tone": "teal", "text": "Every Jira write of the session, with old and new values."}
+  ],
+  "end": {
+    "dur": 3.8,
+    "title": "CascadePlan",
+    "lines": ["See every Jira date a move will change,", "before you drop."],
+    "notes": [],
+    "by": "by Asymm Systems  ·  On the Atlassian Marketplace"
+  },
+  "sounds": [
+    [0.0, "thump", -18],
+    [2.8, "air", -30],
+    [3.6, "tick", -22],
+    [8.25, "thump", -16],
+    [9.3, "air", -30],
+    [12.3, "tick", -22],
+    [12.9, "air", -30],
+    [16.9, "rise", -28]
+  ],
+  "frames": [
+    [1.5, "listing-frame-01-hook.png"],
+    [6.5, "listing-frame-02-move-preview.png"],
+    [11.2, "listing-frame-03-move-applied.png"],
+    [15.5, "listing-frame-04-changes-panel.png"],
+    [19.8, "listing-frame-05-end-card.png"]
+  ]
+}

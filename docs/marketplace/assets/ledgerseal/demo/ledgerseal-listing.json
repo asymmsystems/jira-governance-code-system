@@ -1,0 +1,98 @@
+{
+  "app": "ledgerseal",
+  "name": "LedgerSeal",
+  "src": "ledgerseal-demo.mp4",
+  "icon": "../icon.png",
+  "out": "ledgerseal-listing.mp4",
+  "shots": [
+    {
+      "lead": 2.6,
+      "segs": [[39.0, 41.2]],
+      "cam": [
+        [0.0, 951, 428, 1.0],
+        [2.6, 900, 455, 1.08],
+        [3.5, 424, 621.7, 2.4],
+        [4.8, 424, 621.7, 2.45]
+      ],
+      "focus": [{"t0": 3.3, "t1": 5.2, "rect": [36, 608, 1170, 792]}]
+    },
+    {
+      "x": 0.3,
+      "segs": [[47.3, 52.7, 1.15]],
+      "cam": [
+        [0.0, 379.8, 354.6, 2.6],
+        [4.7, 379.8, 354.6, 2.66]
+      ],
+      "focus": [{"t0": 0.3, "t1": 5.2, "rect": [20, 194, 1185, 424]}]
+    },
+    {
+      "x": 0.3,
+      "segs": [[65.2, 70.4]],
+      "cam": [
+        [0.0, 443.5, 394, 2.3],
+        [1.6, 443.5, 394, 2.3],
+        [2.4, 367, 520.5, 3.0],
+        [5.2, 367, 520.5, 3.0]
+      ],
+      "focus": [{"t0": 0.3, "t1": 1.8, "rect": [40, 212, 1165, 336]},
+                {"t0": 2.2, "t1": 5.6, "rect": [56, 384, 700, 538]}]
+    },
+    {
+      "x": 0.3,
+      "segs": [[71.0, 72.0], [73.4, 74.9], [76.6, 80.6]],
+      "cam": [
+        [0.0, 1420, 212.6, 2.6],
+        [2.5, 1420, 212.6, 2.6],
+        [3.1, 951, 428, 1.0],
+        [3.35, 951, 428, 1.0],
+        [4.2, 284.8, 727.6, 3.34],
+        [6.5, 284.8, 727.6, 3.34]
+      ],
+      "focus": [{"t0": 0.2, "t1": 2.6, "rect": [1232, 100, 1464, 354]},
+                {"t0": 3.9, "t1": 6.9, "rect": [28, 662, 454, 830]}]
+    }
+  ],
+  "hook": {
+    "t1": 2.8,
+    "kicker": "LEDGERSEAL FOR JIRA",
+    "lines": ["What if an approved issue changes?"],
+    "sub": "This Jira issue is approved and sealed."
+  },
+  "captions": [
+    {"t0": 2.9, "t1": 4.5, "kicker": "SEALED", "tone": "sage", "text": "LedgerSeal recorded the approved content."},
+    {"t0": 4.6, "t1": 8.9, "kicker": "AFTER APPROVAL", "tone": "teal", "text": "Someone edits the description: 10s becomes 50s."},
+    {"t0": 9.0, "t1": 13.8, "kicker": "CHANGED", "tone": "rose", "text": "LedgerSeal names the change and who made it."},
+    {"t0": 13.9, "t1": 16.4, "kicker": "MOVE TO DONE", "tone": "teal", "text": "A user moves the issue to Done."},
+    {"t0": 16.5, "t1": 19.9, "kicker": "REFUSED", "tone": "rose", "text": "Refused until another approver approves the change."}
+  ],
+  "end": {
+    "dur": 3.8,
+    "title": "LedgerSeal",
+    "lines": ["An approved Jira issue changed,", "and the move to Done is refused."],
+    "notes": ["A Jira admin adds the validator to each transition."],
+    "by": "by Asymm Systems  ·  On the Atlassian Marketplace"
+  },
+  "sounds": [
+    [0.0, "thump", -18],
+    [2.8, "air", -30],
+    [4.5, "air", -30],
+    [6.1, "tick", -22],
+    [7.95, "tick", -22],
+    [8.9, "air", -30],
+    [11.1, "air", -30],
+    [13.8, "air", -30],
+    [15.7, "tick", -22],
+    [16.55, "thump", -13],
+    [16.72, "thump", -17],
+    [17.15, "air", -30],
+    [19.6, "rise", -28]
+  ],
+  "frames": [
+    [1.5, "listing-frame-01-hook.png"],
+    [4.2, "listing-frame-02-sealed.png"],
+    [7.0, "listing-frame-03-edit-after-approval.png"],
+    [12.5, "listing-frame-04-changed.png"],
+    [19.0, "listing-frame-05-done-refused.png"],
+    [22.5, "listing-frame-06-end-card.png"]
+  ]
+}
